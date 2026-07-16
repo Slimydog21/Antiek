@@ -48,7 +48,6 @@ import { useWernerResearchReactions } from "./useWernerResearchReactions";
 import { emitWernerExperience, notifyResearchStarted } from "../../werner";
 import { wernerResearchWaitArcadeEnabled } from "../../arcade/waitArcadeFlag";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
-import { deriveResearchWaitArcadeMode } from "./researchWaitArcadePolicy";
 import "./deep-research-mission-control.css";
 
 const LazyResearchWaitArcade = lazy(() => import("./ResearchWaitArcade"));
@@ -58,7 +57,6 @@ interface PlanState {
   tree: PlanTree;
   launchable: boolean;
 }
-
 const NO_STARTERS: StarterPanel[] = [];
 
 export interface DeepResearchWorkspaceProps {
@@ -380,6 +378,16 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
           (research) => !TERMINAL_STATES.has(research.state),
         ).length}
         allTerminal={session.allTerminal}
+        researches={session.researches.map((research) => ({
+          investigationId: research.investigation_id,
+          subQuestion: research.sub_question,
+          state: research.state,
+        }))}
+        onViewResearch={(investigationId) => {
+          window.requestAnimationFrame(() => {
+            document.getElementById(`research-${investigationId}`)?.focus();
+          });
+        }}
         returnFocusRef={monitorHeadingRef}
       />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -404,6 +412,8 @@ export interface ResearchWaitArcadeGateProps {
   researchCount: number;
   activeResearchCount: number;
   allTerminal: boolean;
+  researches?: readonly import("./researchBroadcast").ResearchBroadcastSnapshot[];
+  onViewResearch?: (investigationId: string) => void;
   returnFocusRef: RefObject<HTMLElement | null>;
 }
 
@@ -415,18 +425,30 @@ export function ResearchWaitArcadeGate({
   researchCount,
   activeResearchCount,
   allTerminal,
+  researches = [],
+  onViewResearch = () => {},
   returnFocusRef,
 }: ResearchWaitArcadeGateProps) {
   const reducedMotion = usePrefersReducedMotion();
-  const eligible = activeResearchCount > 0 && deriveResearchWaitArcadeMode({
-    featureEnabled: enabled,
-    hasAuthoritativeSnapshot,
-    researchCount,
-    allTerminal,
-    reducedMotion,
-    offerReady: false,
-    optedIn: false,
-  }) !== "hidden";
+  const eligibilityRef = useRef({ episodeId, observedActive: false });
+  if (eligibilityRef.current.episodeId !== episodeId) {
+    eligibilityRef.current = { episodeId, observedActive: false };
+  }
+  if (
+    enabled &&
+    hasAuthoritativeSnapshot &&
+    !reducedMotion &&
+    activeResearchCount > 0
+  ) {
+    eligibilityRef.current.observedActive = true;
+  }
+  const eligible =
+    enabled &&
+    hasAuthoritativeSnapshot &&
+    researchCount > 0 &&
+    !reducedMotion &&
+    (activeResearchCount > 0 ||
+      (allTerminal && eligibilityRef.current.observedActive));
 
   if (!eligible) return null;
   return (
@@ -435,6 +457,9 @@ export function ResearchWaitArcadeGate({
         key={episodeId}
         episodeId={episodeId}
         activeResearchCount={activeResearchCount}
+        researches={researches}
+        allTerminal={allTerminal}
+        onViewResearch={onViewResearch}
         returnFocusRef={returnFocusRef}
       />
     </Suspense>

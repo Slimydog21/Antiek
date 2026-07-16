@@ -4,19 +4,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "./ResearchWaitArcade.css";
 
 const createArcadeCartridge = vi.hoisted(() => vi.fn(() => ({ id: "test" })));
+const mountProps = vi.hoisted(() => vi.fn());
 
 vi.mock("../../arcade/cartridgeFactory", () => ({
   createArcadeCartridge,
 }));
 
 vi.mock("../../arcade/engine/ArcadeMount", () => ({
-  ArcadeMount: () => (
-    <canvas
-      data-testid="research-wait-arcade-canvas"
-      role="application"
-      tabIndex={0}
-    />
-  ),
+  ArcadeMount: (props: { paused?: boolean }) => {
+    mountProps(props);
+    return (
+      <canvas
+        data-testid="research-wait-arcade-canvas"
+        role="application"
+        tabIndex={0}
+      />
+    );
+  },
 }));
 
 import ResearchWaitArcadeGame from "./ResearchWaitArcadeGame";
@@ -55,5 +59,31 @@ describe("ResearchWaitArcadeGame authored cabinet", () => {
     expect(createArcadeCartridge).toHaveBeenCalledWith("ice-fishing", {
       reducedMotion: false,
     });
+    expect(mountProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ paused: false }),
+    );
+  });
+
+  it("forwards broadcast pause without recreating the cartridge", () => {
+    const callsBefore = createArcadeCartridge.mock.calls.length;
+    const view = render(
+      <ResearchWaitArcadeGame
+        game="zombies"
+        reducedMotion={false}
+        sceneArtSrc="/authored/zombies.webp"
+      />,
+    );
+    view.rerender(
+      <ResearchWaitArcadeGame
+        game="zombies"
+        reducedMotion={false}
+        sceneArtSrc="/authored/zombies.webp"
+        paused
+      />,
+    );
+    expect(createArcadeCartridge).toHaveBeenCalledTimes(callsBefore + 1);
+    expect(mountProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ paused: true }),
+    );
   });
 });

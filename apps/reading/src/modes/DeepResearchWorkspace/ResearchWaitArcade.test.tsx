@@ -11,17 +11,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const createCartridge = vi.hoisted(() => vi.fn());
 const teardown = vi.hoisted(() => vi.fn());
 const receivedSceneArt = vi.hoisted(() => vi.fn());
+const receivedPaused = vi.hoisted(() => vi.fn());
 
 vi.mock("./ResearchWaitArcadeGame", () => ({
   default: ({
     game,
     sceneArtSrc,
+    paused,
   }: {
     game: "clam-catcher" | "ice-fishing" | "zombies";
     sceneArtSrc: string;
+    paused?: boolean;
   }) => {
     createCartridge(game);
     receivedSceneArt(sceneArtSrc);
+    receivedPaused(Boolean(paused));
     const canvasRef = useRef<HTMLCanvasElement>(null);
     useEffect(() => {
       canvasRef.current?.focus();
@@ -112,6 +116,7 @@ beforeEach(() => {
   createCartridge.mockReset();
   teardown.mockReset();
   receivedSceneArt.mockReset();
+  receivedPaused.mockReset();
   createCartridge.mockImplementation(cartridge);
 });
 
@@ -311,5 +316,233 @@ describe("ResearchWaitArcade", () => {
     });
     expect(receivedSceneArt).toHaveBeenCalledTimes(1);
     expect(receivedSceneArt.mock.calls[0]?.[0]).toContain("ice-fishing");
+  });
+
+  it("pauses the same game for a partial arrival, deduplicates polls, and resumes explicitly", () => {
+    const returnFocusRef = createRef<HTMLElement>();
+    const onViewResearch = vi.fn();
+    const initial = [
+      {
+        investigationId: "a",
+        subQuestion: "Map the evidence",
+        state: "running" as const,
+      },
+      {
+        investigationId: "b",
+        subQuestion: "Test the countercase",
+        state: "running" as const,
+      },
+    ];
+    const view = render(
+      <ResearchWaitArcade
+        episodeId="session:broadcast"
+        activeResearchCount={2}
+        offerAfterMs={0}
+        returnFocusRef={returnFocusRef}
+        researches={initial}
+        allTerminal={false}
+        onViewResearch={onViewResearch}
+      />,
+    );
+    act(() => vi.runOnlyPendingTimers());
+    fireEvent.click(screen.getByRole("button", { name: "Play while waiting" }));
+    const canvas = screen.getByTestId("research-wait-arcade-canvas");
+    expect(canvas).toBe(document.activeElement);
+
+    const partial = [{ ...initial[0], state: "done" as const }, initial[1]];
+    view.rerender(
+      <ResearchWaitArcade
+        episodeId="session:broadcast"
+        activeResearchCount={1}
+        offerAfterMs={0}
+        returnFocusRef={returnFocusRef}
+        researches={partial}
+        allTerminal={false}
+        onViewResearch={onViewResearch}
+      />,
+    );
+
+    expect(
+      screen.getByRole("region", { name: "Research arrival" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Map the evidence")).toBeTruthy();
+    expect(screen.getAllByText("1 research still running")).toHaveLength(2);
+    expect(canvas).toBe(document.activeElement);
+    expect(receivedPaused).toHaveBeenLastCalledWith(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue game" }));
+    act(() => vi.runOnlyPendingTimers());
+    expect(
+      screen.queryByRole("region", { name: "Research arrival" }),
+    ).toBeNull();
+    expect(receivedPaused).toHaveBeenLastCalledWith(false);
+    expect(canvas).toBe(document.activeElement);
+
+    view.rerender(
+      <ResearchWaitArcade
+        episodeId="session:broadcast"
+        activeResearchCount={1}
+        offerAfterMs={0}
+        returnFocusRef={returnFocusRef}
+        researches={partial}
+        allTerminal={false}
+        onViewResearch={onViewResearch}
+      />,
+    );
+    expect(
+      screen.queryByRole("region", { name: "Research arrival" }),
+    ).toBeNull();
+    expect(screen.getByTestId("research-wait-arcade-canvas")).toBe(canvas);
+  });
+
+  it("keeps final completion mounted until View results and focuses that action", () => {
+    const returnFocusRef = createRef<HTMLElement>();
+    const onViewResearch = vi.fn();
+    const running = [
+      {
+        investigationId: "final",
+        subQuestion: "Synthesize the answer",
+        state: "running" as const,
+      },
+    ];
+    const props = {
+      episodeId: "session:final",
+      offerAfterMs: 0,
+      returnFocusRef,
+      onViewResearch,
+    };
+    const view = render(
+      <ResearchWaitArcade
+        {...props}
+        activeResearchCount={1}
+        researches={running}
+        allTerminal={false}
+      />,
+    );
+    act(() => vi.runOnlyPendingTimers());
+    fireEvent.click(screen.getByRole("button", { name: "Play while waiting" }));
+    const canvas = screen.getByTestId("research-wait-arcade-canvas");
+
+    view.rerender(
+      <ResearchWaitArcade
+        {...props}
+        activeResearchCount={0}
+        researches={[{ ...running[0], state: "done" }]}
+        allTerminal
+      />,
+    );
+
+    expect(screen.getByText("Research arrived")).toBeTruthy();
+    expect(screen.getByText("Synthesize the answer")).toBeTruthy();
+    expect(screen.getByTestId("research-wait-arcade-canvas")).toBe(canvas);
+    const viewResults = screen.getByRole("button", { name: "View results" });
+    expect(viewResults).toBe(document.activeElement);
+    expect(receivedPaused).toHaveBeenLastCalledWith(true);
+
+    fireEvent.click(viewResults);
+    expect(onViewResearch).toHaveBeenCalledWith("final");
+    expect(screen.queryByTestId("research-wait-arcade")).toBeNull();
+    expect(isStationInstrumentSuspended()).toBe(false);
+  });
+
+  it("walks simultaneous final arrivals in order before offering View results", () => {
+    const returnFocusRef = createRef<HTMLElement>();
+    const running = [
+      {
+        investigationId: "a",
+        subQuestion: "First line",
+        state: "running" as const,
+      },
+      {
+        investigationId: "b",
+        subQuestion: "Second line",
+        state: "running" as const,
+      },
+    ];
+    const props = {
+      episodeId: "session:batch-final",
+      offerAfterMs: 0,
+      returnFocusRef,
+      onViewResearch: vi.fn(),
+    };
+    const view = render(
+      <ResearchWaitArcade
+        {...props}
+        activeResearchCount={2}
+        researches={running}
+        allTerminal={false}
+      />,
+    );
+    act(() => vi.runOnlyPendingTimers());
+    fireEvent.click(screen.getByRole("button", { name: "Play while waiting" }));
+    view.rerender(
+      <ResearchWaitArcade
+        {...props}
+        activeResearchCount={0}
+        researches={running.map((research) => ({
+          ...research,
+          state: "done" as const,
+        }))}
+        allTerminal
+      />,
+    );
+
+    expect(screen.getByText("First line")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next arrival" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "View results" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Next arrival" }));
+    act(() => vi.runOnlyPendingTimers());
+    expect(screen.getByText("Second line")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View results" })).toBe(
+      document.activeElement,
+    );
+  });
+
+  it("consumes a partial broadcast when View research is chosen", () => {
+    const returnFocusRef = createRef<HTMLElement>();
+    const onViewResearch = vi.fn();
+    const running = [
+      {
+        investigationId: "viewed",
+        subQuestion: "Inspect this result",
+        state: "running" as const,
+      },
+      {
+        investigationId: "live",
+        subQuestion: "Still working",
+        state: "running" as const,
+      },
+    ];
+    const props = {
+      episodeId: "session:viewed",
+      offerAfterMs: 0,
+      returnFocusRef,
+      onViewResearch,
+    };
+    const view = render(
+      <ResearchWaitArcade
+        {...props}
+        activeResearchCount={2}
+        researches={running}
+        allTerminal={false}
+      />,
+    );
+    act(() => vi.runOnlyPendingTimers());
+    fireEvent.click(screen.getByRole("button", { name: "Play while waiting" }));
+    const partial = [{ ...running[0], state: "done" as const }, running[1]];
+    view.rerender(
+      <ResearchWaitArcade
+        {...props}
+        activeResearchCount={1}
+        researches={partial}
+        allTerminal={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "View research" }));
+    expect(onViewResearch).toHaveBeenCalledWith("viewed");
+    fireEvent.click(screen.getByRole("button", { name: "Play while waiting" }));
+    expect(
+      screen.queryByRole("region", { name: "Research arrival" }),
+    ).toBeNull();
   });
 });

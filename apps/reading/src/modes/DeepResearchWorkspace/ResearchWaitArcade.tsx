@@ -6,9 +6,11 @@ import {
   useRef,
   useState,
   type RefObject,
+  type Ref,
 } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
+import Werner from "../../brand/Werner";
 import type { ArcadeGameKind } from "../../arcade/cartridgeFactory";
 import iceFishingArt from "../../brand/werner/arcade/ice-fishing-station-key-art-v1.webp";
 import paperclipArt from "../../brand/werner/arcade/paperclip-archive-key-art-v1.webp";
@@ -19,6 +21,12 @@ import {
   deriveResearchWaitArcadeMode,
 } from "./researchWaitArcadePolicy";
 import "./ResearchWaitArcade.css";
+import {
+  deriveResearchBroadcasts,
+  researchStateBaseline,
+  type ResearchBroadcast,
+  type ResearchBroadcastSnapshot,
+} from "./researchBroadcast";
 
 const LazyResearchWaitArcadeGame = lazy(
   () => import("./ResearchWaitArcadeGame"),
@@ -56,6 +64,9 @@ export interface ResearchWaitArcadeProps {
   offerAfterMs?: number;
   returnFocusRef: RefObject<HTMLElement | null>;
   reducedMotion?: boolean;
+  researches?: readonly ResearchBroadcastSnapshot[];
+  allTerminal?: boolean;
+  onViewResearch?: (investigationId: string) => void;
 }
 
 export default function ResearchWaitArcade({
@@ -64,27 +75,46 @@ export default function ResearchWaitArcade({
   offerAfterMs = RESEARCH_WAIT_ARCADE_OFFER_AFTER_MS,
   returnFocusRef,
   reducedMotion,
+  researches = [],
+  allTerminal = false,
+  onViewResearch = () => {},
 }: ResearchWaitArcadeProps) {
   const systemReducedMotion = useReducedMotionPreference();
   const effectiveReducedMotion = reducedMotion ?? systemReducedMotion;
   const [offerReady, setOfferReady] = useState(false);
   const [optedIn, setOptedIn] = useState(false);
   const [selectedGame, setSelectedGame] = useState<ArcadeGameKind>("zombies");
+  const [broadcasts, setBroadcasts] = useState<ResearchBroadcast[]>([]);
   const hostRef = useRef<HTMLElement | null>(null);
   const playRef = useRef<HTMLButtonElement | null>(null);
   const focusedInsideRef = useRef(false);
   const restoreOfferFocusRef = useRef(false);
+  const previousResearchRef = useRef(researchStateBaseline(researches));
+  const finalActionRef = useRef<HTMLButtonElement | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setOfferReady(false);
     setOptedIn(false);
     setSelectedGame("zombies");
+    setBroadcasts([]);
+    previousResearchRef.current = researchStateBaseline(researches);
     const timeout = window.setTimeout(
       () => setOfferReady(true),
       Math.max(0, offerAfterMs),
     );
     return () => window.clearTimeout(timeout);
   }, [episodeId, offerAfterMs]);
+
+  useLayoutEffect(() => {
+    const arrivals = deriveResearchBroadcasts(
+      previousResearchRef.current,
+      researches,
+    );
+    previousResearchRef.current = researchStateBaseline(researches);
+    if (arrivals.length > 0) {
+      setBroadcasts((queued) => [...queued, ...arrivals]);
+    }
+  }, [researches]);
 
   useEffect(
     () => () => {
@@ -99,15 +129,19 @@ export default function ResearchWaitArcade({
     [returnFocusRef],
   );
 
-  const mode = deriveResearchWaitArcadeMode({
+  const policyMode = deriveResearchWaitArcadeMode({
     featureEnabled: true,
     hasAuthoritativeSnapshot: true,
     researchCount: activeResearchCount,
-    allTerminal: false,
+    allTerminal,
     reducedMotion: effectiveReducedMotion,
     offerReady,
     optedIn,
   });
+  const mode = allTerminal && optedIn ? "playing" : policyMode;
+  const activeBroadcast = broadcasts[0] ?? null;
+  const broadcastVisible = mode === "playing" && activeBroadcast !== null;
+  const finalBroadcast = allTerminal && broadcasts.length === 1;
   const selectedChoice =
     ARCADE_CHOICES.find((choice) => choice.id === selectedGame) ??
     ARCADE_CHOICES[0];
@@ -128,10 +162,32 @@ export default function ResearchWaitArcade({
     playRef.current?.focus();
   }, [mode]);
 
+  useEffect(() => {
+    if (!broadcastVisible || !finalBroadcast) return;
+    finalActionRef.current?.focus();
+  }, [finalBroadcast, broadcastVisible, activeBroadcast?.investigationId]);
+
   const exitGame = () => {
     focusedInsideRef.current = true;
     restoreOfferFocusRef.current = true;
     setOptedIn(false);
+  };
+
+  const viewBroadcastResearch = () => {
+    if (!activeBroadcast) return;
+    focusedInsideRef.current = false;
+    setBroadcasts((queued) => queued.slice(1));
+    onViewResearch(activeBroadcast.investigationId);
+    setOptedIn(false);
+  };
+
+  const continueGame = () => {
+    setBroadcasts((queued) => queued.slice(1));
+    if (activeResearchCount > 0) {
+      window.requestAnimationFrame(() => {
+        hostRef.current?.querySelector<HTMLCanvasElement>("canvas")?.focus();
+      });
+    }
   };
 
   if (mode === "waiting" || mode === "hidden") return null;
@@ -250,13 +306,121 @@ export default function ResearchWaitArcade({
                 game={selectedGame}
                 reducedMotion={effectiveReducedMotion}
                 sceneArtSrc={selectedChoice.art}
+                paused={broadcastVisible}
               />
+              {activeBroadcast && (
+                <ResearchArrivalBroadcast
+                  broadcast={activeBroadcast}
+                  remaining={activeResearchCount}
+                  final={finalBroadcast}
+                  onContinue={continueGame}
+                  onView={viewBroadcastResearch}
+                  finalActionRef={finalActionRef}
+                />
+              )}
             </Suspense>
           </div>
         </div>
       )}
     </aside>
   );
+}
+
+function ResearchArrivalBroadcast({
+  broadcast,
+  remaining,
+  final,
+  onContinue,
+  onView,
+  finalActionRef,
+}: {
+  broadcast: ResearchBroadcast;
+  remaining: number;
+  final: boolean;
+  onContinue: () => void;
+  onView: () => void;
+  finalActionRef: RefObject<HTMLButtonElement | null>;
+}) {
+  const copy = broadcastCopy(broadcast);
+  return (
+    <section
+      className="research-wait-arcade__broadcast"
+      aria-label="Research arrival"
+      aria-live="polite"
+      data-final={final ? "true" : "false"}
+    >
+      <Werner
+        mood={copy.mood}
+        size={88}
+        label={`Werner ${copy.wernerLabel}`}
+        className="research-wait-arcade__broadcast-werner"
+      />
+      <div className="research-wait-arcade__broadcast-copy">
+        <p className="research-wait-arcade__broadcast-kicker">{copy.kicker}</p>
+        <h3>{broadcast.subQuestion}</h3>
+        <p>{copy.detail}</p>
+        {!final && remaining > 0 && (
+          <p className="font-mono text-[11px]">
+            {remaining} {remaining === 1 ? "research" : "researches"} still
+            running
+          </p>
+        )}
+      </div>
+      <div className="research-wait-arcade__broadcast-actions">
+        {!final && (
+          <LemonButton size="sm" variant="secondary" onClick={onContinue}>
+            {remaining > 0 ? "Continue game" : "Next arrival"}
+          </LemonButton>
+        )}
+        <LemonButton
+          ref={final ? (finalActionRef as Ref<HTMLButtonElement>) : undefined}
+          size="sm"
+          variant="primary"
+          onClick={onView}
+        >
+          {final ? "View results" : "View research"}
+        </LemonButton>
+      </div>
+    </section>
+  );
+}
+
+function broadcastCopy(broadcast: ResearchBroadcast): {
+  kicker: string;
+  detail: string;
+  mood: "celebrate" | "empty";
+  wernerLabel: string;
+} {
+  if (broadcast.kind === "arrived") {
+    return {
+      kicker: "Research arrived",
+      detail: "Werner kept your place in the game.",
+      mood: "celebrate",
+      wernerLabel: "delivers completed research",
+    };
+  }
+  if (broadcast.kind === "failed") {
+    return {
+      kicker: "Research needs attention",
+      detail: "This line of inquiry ended without a result.",
+      mood: "empty",
+      wernerLabel: "reports a research failure",
+    };
+  }
+  if (broadcast.kind === "budget_halted") {
+    return {
+      kicker: "Research paused at the budget ceiling",
+      detail: "No additional spend was authorized.",
+      mood: "empty",
+      wernerLabel: "guards the research budget",
+    };
+  }
+  return {
+    kicker: "Research stopped",
+    detail: "This line of inquiry ended before completion.",
+    mood: "empty",
+    wernerLabel: "reports stopped research",
+  };
 }
 
 function useReducedMotionPreference(): boolean {

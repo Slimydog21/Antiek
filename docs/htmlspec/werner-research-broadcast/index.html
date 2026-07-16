@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Werner research broadcast — master spec</title>
+    <style>
+      :root {
+        --ink: #151515;
+        --paper: #fafaf7;
+        --card: #fff;
+        --sun: #f9bd2b;
+        --blue: #1d4aff;
+        --muted: #6b6b6b;
+        --soft: #f3f1ea;
+        --green: #d9efe2;
+        --red: #f7d5cd;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: #2c2c2c;
+        font:
+          15px/1.55 system-ui,
+          sans-serif;
+      }
+      .page {
+        max-width: 1100px;
+        margin: auto;
+        padding: 32px 28px 64px;
+      }
+      .hero,
+      .block,
+      .sprint-card {
+        background: var(--card);
+        border: 2px solid var(--ink);
+        border-radius: 6px;
+        box-shadow: 4px 4px 0 var(--ink);
+      }
+      .hero,
+      .block {
+        padding: 24px;
+        margin-bottom: 22px;
+      }
+      .eyebrow {
+        font:
+          700 12px ui-monospace,
+          monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      h1 {
+        margin: 4px 0 8px;
+        font-size: 32px;
+        line-height: 1.12;
+      }
+      h2 {
+        margin: 0 0 8px;
+        font-size: 22px;
+      }
+      h3 {
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: 20px;
+      }
+      .lede {
+        color: var(--muted);
+      }
+      .tags {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .tag {
+        border: 1px solid var(--ink);
+        border-radius: 99px;
+        padding: 3px 9px;
+        font-size: 12px;
+        background: var(--soft);
+      }
+      .tag.sun {
+        background: #fdf1cf;
+      }
+      .tag.blue {
+        background: #e5ecff;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 14px;
+      }
+      .sprint-card {
+        padding: 16px;
+        color: inherit;
+        text-decoration: none;
+      }
+      .sprint-card strong {
+        display: block;
+        font-size: 17px;
+      }
+      .graph,
+      code {
+        font-family: ui-monospace, monospace;
+      }
+      .graph {
+        white-space: pre-wrap;
+        background: var(--soft);
+        padding: 14px;
+        border: 1px solid #cfcfcf;
+        border-radius: 4px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        vertical-align: top;
+        padding: 9px;
+        border-bottom: 1px solid #cfcfcf;
+      }
+      th {
+        background: var(--soft);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+      .callout {
+        border-left: 4px solid var(--blue);
+        background: #e5ecff;
+        padding: 12px;
+      }
+      .danger {
+        border-left-color: #c63d24;
+        background: var(--red);
+      }
+      a {
+        color: var(--blue);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <p class="eyebrow">Master spec · WERNER-BROADCAST-01</p>
+        <h1>Research completion becomes a broadcast, not a teardown</h1>
+        <p>
+          Compose authoritative deep-research state, the active arcade, and
+          Werner into one deliberate living-TV transition.
+        </p>
+        <div class="tags">
+          <span class="tag blue">Status: execution</span
+          ><span class="tag sun">Owner: goal orchestrator</span
+          ><span class="tag">1 sprint · 1 wave</span
+          ><span class="tag">2026-07-17</span>
+        </div>
+      </header>
+      <section
+        id="spec-lineage"
+        class="block"
+        data-spec-depth="0"
+        data-parent-spec=""
+      >
+        <h2>Spec lineage</h2>
+        <p class="lede">
+          Root execution spec; no child subtree is warranted because the engine
+          seam and integration shell share one serial ownership boundary.
+        </p>
+        <ul class="child-specs">
+          <li>None.</li>
+        </ul>
+      </section>
+      <section class="block">
+        <h2>Goal</h2>
+        <p>
+          A newly terminal investigation must pause—but not destroy—the
+          currently playing cartridge and surface an authored, textual Werner
+          broadcast naming the research. Partial completion may resume the same
+          cartridge. Final completion must remain visible until the operator
+          explicitly returns to results.
+        </p>
+        <h3>Success criteria</h3>
+        <ul>
+          <li>
+            The same cartridge instance survives pause/resume and final
+            broadcast.
+          </li>
+          <li>Repeated poll snapshots never replay a terminal transition.</li>
+          <li>
+            Research lifecycle authority remains in the parent snapshot; the
+            arcade derives presentation only.
+          </li>
+          <li>
+            Keyboard, pointer, focus return, and the existing reduced-motion
+            exclusion are mechanically covered.
+          </li>
+        </ul>
+        <div class="callout danger">
+          <strong>Failure mode:</strong> the game vanishes beneath the
+          operator’s hands on the most important event, turning Werner’s world
+          into a conditional widget instead of an asynchronous show.
+        </div>
+      </section>
+      <section class="block">
+        <h2>Architecture</h2>
+        <div class="graph">
+          authoritative ResearchStatus[] │ derive terminal edges by
+          investigation_id + state ▼ ResearchWaitArcadeGate ── presentation
+          snapshot ──▶ ResearchWaitArcade │ broadcast overlay ───┼── paused=true
+          ▼ ArcadeMount (same cartridge) View research/results ── explicit
+          operator action ──▶ parent focus/canvas
+        </div>
+        <h3>Invariants</h3>
+        <ul>
+          <li>Initial terminal data is baseline, not a new arrival.</li>
+          <li>
+            Only nonterminal→terminal edges enqueue broadcasts; identical
+            snapshots are inert.
+          </li>
+          <li>
+            Pause stops simulation input/update without teardown, re-init, score
+            loss, or focus theft.
+          </li>
+          <li>
+            Final completion never auto-navigates and never auto-dismisses.
+          </li>
+          <li>
+            Reduced-motion sessions retain the established policy: the optional
+            arcade and its broadcast shell never mount; research cards remain
+            the static source of completion truth.
+          </li>
+        </ul>
+      </section>
+      <section class="block">
+        <h2>Sprint roster</h2>
+        <div class="grid">
+          <a
+            class="sprint-card"
+            href="sprint-01-research-arrival-broadcast.html"
+            ><span class="eyebrow">SPR-01 · Wave 1</span
+            ><strong>Research arrival broadcast</strong
+            ><span
+              >Build the reusable pause seam and the authoritative cabinet
+              broadcast end to end.</span
+            ></a
+          >
+        </div>
+      </section>
+      <section class="block">
+        <h2>Decision log and rejected alternatives</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Decision</th>
+              <th>Why</th>
+              <th>Rejected</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Cabinet-level persistent overlay</td>
+              <td>
+                The active canvas owns the operator’s attention and input; the
+                transition belongs where the event interrupts play.
+              </td>
+              <td>
+                Global toast/emote: cannot name the research or preserve an
+                explicit return choice.
+              </td>
+            </tr>
+            <tr>
+              <td>Pause the loop, preserve cartridge identity</td>
+              <td>Completion is an interruption, not a new game session.</td>
+              <td>
+                Unmount/remount: destroys score and makes the broadcast feel
+                accidental.
+              </td>
+            </tr>
+            <tr>
+              <td>Text plus existing authored Werner pose</td>
+              <td>
+                State must not be encoded by animation or color, and existing
+                art already carries the brand.
+              </td>
+              <td>
+                New generated art/video: cost without adding product truth.
+              </td>
+            </tr>
+            <tr>
+              <td>Parent-derived presentation model</td>
+              <td>Polling remains the sole lifecycle authority.</td>
+              <td>
+                Arcade-owned research state: creates a second truth source.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="block">
+        <h2>Open integration fact</h2>
+        <p>
+          The newer <code>goal/twin-autoload-session-alpha</code> branch
+          replaces portions of the wait shell with <code>LoadingGameHost</code>.
+          The pure transition model and <code>ArcadeMount paused</code> seam are
+          intentionally portable; integration must be rebased/cherry-picked into
+          whichever arcade shell lands first rather than duplicating both.
+        </p>
+      </section>
+      <section
+        class="block"
+        id="harness-hint-run"
+        data-harness-default-pattern="inline"
+        data-harness-inline-only-sprints="SPR-01"
+      >
+        <h2>Execution harness hint</h2>
+        <p>
+          One serial state machine spans shared files. Build inline; use a
+          heterogeneous adversarial verifier after implementation.
+        </p>
+      </section>
+      <footer>
+        Source: original Antiek infinite objective + exact current code audit ·
+        2026-07-17
+      </footer>
+    </main>
+  </body>
+</html>

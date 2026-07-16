@@ -140,12 +140,65 @@
 }
 
 .research-wait-arcade__canvas-shell {
+  position: relative;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--inset);
   padding: calc(var(--spacing) * 2);
+}
+
+.research-wait-arcade__broadcast {
+  position: absolute;
+  inset: calc(var(--spacing) * 2);
+  z-index: 3;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: calc(var(--spacing) * 3);
+  overflow: auto;
+  border: var(--edge) solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--card) 94%, var(--sun) 6%);
+  box-shadow: var(--shadow-z2);
+  padding: calc(var(--spacing) * 4);
+}
+
+.research-wait-arcade__broadcast-werner {
+  align-self: start;
+}
+
+.research-wait-arcade__broadcast-copy {
+  min-width: 0;
+}
+
+.research-wait-arcade__broadcast-copy h3 {
+  margin: var(--spacing) 0 calc(var(--spacing) * 2);
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.research-wait-arcade__broadcast-copy p {
+  margin: 0 0 calc(var(--spacing) * 1.5);
+}
+
+.research-wait-arcade__broadcast-kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sun-deep);
+}
+
+.research-wait-arcade__broadcast-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: calc(var(--spacing) * 2);
 }
 
 .research-wait-arcade__cabinet {
@@ -211,6 +264,18 @@
   .research-wait-arcade__offer-action button {
     width: 100%;
   }
+
+  .research-wait-arcade__broadcast {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .research-wait-arcade__broadcast-werner {
+    display: none;
+  }
+
+  .research-wait-arcade__broadcast-actions {
+    flex-direction: column;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -220,5 +285,10 @@
 
   .research-wait-arcade__choice-mark {
     transform: none;
+  }
+
+  .research-wait-arcade__broadcast * {
+    animation: none !important;
+    transition: none !important;
   }
 }
