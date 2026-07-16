@@ -1,0 +1,812 @@
+/* Coordination Gatehouse Atlas — Antarctic gatehouse instrument.
+   Decorative environment: coordination_gatehouse_atlas_environment_v1.webp
+   Semantic responsive layout; dedicated cga-prefixed CSS (no Tailwind utilities).
+   Reduced-motion safe: no intrinsic animation. */
+
+.cga-shell {
+  --cga-paper: var(--ice-0);
+  --cga-page: var(--ice-2);
+  --cga-muted: var(--shadow-1);
+  --cga-muted-soft: var(--shadow-2);
+
+  position: relative;
+  min-height: 100%;
+  overflow-x: clip;
+  background: var(--cga-page);
+  color: var(--ink);
+  isolation: isolate;
+}
+
+.cga-environment,
+.cga-veil {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.cga-environment {
+  z-index: -3;
+  object-fit: cover;
+  object-position: center;
+}
+
+.cga-veil {
+  z-index: -2;
+  background: color-mix(in srgb, var(--cga-page) 78%, transparent);
+}
+
+/* The environment image is decorative and static. No motion to collapse. */
+
+.cga-content {
+  width: min(960px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: clamp(34px, 6vw, 82px) 0 72px;
+}
+
+/* ── Hero ────────────────────────────────────────────── */
+
+.cga-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  max-width: 760px;
+  margin-bottom: 28px;
+  padding: clamp(22px, 4vw, 38px);
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  background: var(--glass-bg);
+  box-shadow: 0 20px 70px rgba(15,20,25,0.13);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.cga-hero > div {
+  max-width: 620px;
+}
+
+.cga-eyebrow {
+  margin: 0 0 8px;
+  font: 700 11px/1.4 var(--mono);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--cga-muted);
+}
+
+.cga-hero h1 {
+  margin: 0;
+  font: 600 clamp(34px, 6vw, 62px)/0.98 var(--serif);
+  letter-spacing: -0.045em;
+  color: var(--ink);
+}
+
+.cga-doorway {
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--text-secondary) 42%, transparent);
+  color: var(--text-secondary);
+  display: inline-flex;
+  font-size: var(--text-xs);
+  font-weight: 650;
+  gap: var(--space-2);
+  letter-spacing: 0.08em;
+  margin-top: var(--space-4);
+  padding-bottom: var(--space-1);
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.cga-doorway:hover,
+.cga-doorway:focus-visible {
+  border-color: currentColor;
+  color: var(--text-primary);
+}
+
+.cga-lede {
+  max-width: 620px;
+  margin: 20px 0 0;
+  font: 400 clamp(16px, 2vw, 19px)/1.55 var(--serif);
+  color: var(--cga-muted-soft);
+}
+
+/* ── Stations (glass panels) ─────────────────────────── */
+
+.cga-station {
+  margin-top: 18px;
+  padding: clamp(20px, 4vw, 34px);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  background: var(--glass-bg);
+  box-shadow: 0 16px 50px rgba(15,20,25,0.1);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.cga-station-heading {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.cga-station-heading h2 {
+  margin: 0;
+  font: 600 clamp(23px, 3vw, 32px)/1.1 var(--serif);
+  color: var(--ink);
+}
+
+.cga-station-heading p {
+  margin: 0;
+  font: 400 13px/1.5 var(--mono);
+  color: var(--cga-muted);
+}
+
+/* ── Truth boundary ──────────────────────────────────── */
+
+.cga-truth {
+  margin: 18px 0;
+  padding: 18px 22px;
+  border: 1px solid var(--glass-border);
+  border-left: 3px solid var(--sun-deep);
+  border-radius: 18px;
+  background: var(--sun-hl-faint);
+}
+
+.cga-truth p {
+  margin: 0;
+  font: 400 13px/1.55 var(--sans);
+  color: var(--cga-muted-soft);
+}
+
+.cga-truth p + p {
+  margin-top: 8px;
+}
+
+.cga-truth strong {
+  color: var(--ink);
+}
+
+/* ── Status tally ────────────────────────────────────── */
+
+.cga-tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.cga-tally-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: var(--cga-paper);
+}
+
+.cga-tally-count {
+  font: 600 22px/1.2 var(--mono);
+  color: var(--ink);
+}
+
+.cga-tally-label {
+  font: 400 12px/1.4 var(--mono);
+  color: var(--cga-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Gate wall ───────────────────────────────────────── */
+
+.cga-gate-wall {
+  margin-top: 18px;
+}
+
+.cga-gate-card {
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  transition: border-color 150ms ease;
+}
+
+.cga-gate-card + .cga-gate-card {
+  margin-top: 12px;
+}
+
+.cga-gate-card:focus-within {
+  border-color: var(--sun-deep);
+}
+
+.cga-gate-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cga-gate-id {
+  font: 700 13px/1.4 var(--mono);
+  color: var(--ink);
+  letter-spacing: 0.04em;
+}
+
+.cga-gate-title {
+  margin: 4px 0 0;
+  font: 500 15px/1.35 var(--serif);
+  color: var(--ink);
+}
+
+.cga-gate-raw {
+  margin: 4px 0 0;
+  font: 400 12px/1.4 var(--mono);
+  color: var(--cga-muted);
+}
+
+.cga-gate-owner {
+  margin: 8px 0 0;
+  font: 400 12px/1.5 var(--sans);
+  color: var(--cga-muted-soft);
+}
+
+.cga-gate-owner strong {
+  color: var(--ink);
+}
+
+.cga-gate-blocks {
+  margin: 4px 0 0;
+  font: 400 12px/1.5 var(--sans);
+  color: var(--cga-muted-soft);
+}
+
+.cga-gate-blocks strong {
+  color: var(--ink);
+}
+
+.cga-gate-impacts {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.cga-gate-impacts-label {
+  margin: 0 0 6px;
+  font: 700 10px/1.3 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cga-muted);
+}
+
+.cga-gate-impact {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.cga-gate-impact-tag {
+  flex-shrink: 0;
+  font: 700 10px/1.3 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cga-muted);
+  background: var(--inset, var(--ice-3));
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.cga-gate-impact-effect {
+  font: 400 12px/1.5 var(--sans);
+  color: var(--cga-muted-soft);
+}
+
+.cga-gate-no-impact {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--glass-border);
+  font: 400 12px/1.5 var(--sans);
+  font-style: italic;
+  color: var(--cga-muted);
+}
+
+/* Status indicators */
+.cga-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.cga-status-dot--open { background: var(--emperor); }
+.cga-status-dot--closed { background: var(--glacial-2); }
+.cga-status-dot--calendar { background: var(--sun-deep); }
+.cga-status-dot--data_bound { background: var(--sun-deep); }
+
+.cga-status-tag {
+  display: inline-flex;
+  align-items: center;
+  font: 700 10px/1.3 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 4px;
+}
+
+.cga-status-tag--open {
+  color: var(--ink);
+  background: rgba(206,54,35,0.12);
+}
+
+.cga-status-tag--closed {
+  color: var(--cga-muted);
+  background: var(--inset, var(--ice-3));
+}
+
+.cga-status-tag--calendar,
+.cga-status-tag--data_bound {
+  color: var(--ink);
+  background: var(--sun-hl-faint);
+}
+
+.cga-closure-link {
+  flex-shrink: 0;
+  font: 400 11px/1.4 var(--mono);
+  color: var(--cga-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 150ms ease;
+}
+
+.cga-closure-link:hover {
+  color: var(--ink);
+}
+
+.cga-closure-link:focus-visible {
+  outline: 2px solid var(--sun-deep);
+  outline-offset: 2px;
+}
+
+/* ── Route Atlas ─────────────────────────────────────── */
+
+.cga-route-atlas {
+  margin-top: 18px;
+}
+
+.cga-reconciliation {
+  margin: 18px 0;
+  padding: 14px 18px;
+  border: 1px solid var(--glass-border);
+  border-left: 3px solid var(--aurora);
+  border-radius: 14px;
+  background: rgba(22,194,194,0.06);
+}
+
+.cga-reconciliation-label {
+  margin: 0 0 4px;
+  font: 700 10px/1.3 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cga-muted);
+}
+
+.cga-reconciliation-value {
+  margin: 0;
+  font: 400 13px/1.5 var(--mono);
+  color: var(--ink);
+}
+
+/* Critical path */
+.cga-critical-path {
+  margin: 18px 0;
+}
+
+.cga-critical-path-label {
+  margin: 0 0 8px;
+  font: 700 10px/1.3 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cga-muted);
+}
+
+.cga-critical-path-chain {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cga-critical-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 700 11px/1.3 var(--mono);
+  color: var(--ink);
+  background: var(--sun-hl-faint);
+  padding: 3px 10px;
+  border-radius: 4px;
+}
+
+.cga-critical-arrow {
+  font: 400 14px/1 var(--mono);
+  color: var(--cga-muted);
+}
+
+.cga-critical-note {
+  margin: 6px 0 0;
+  font: 400 12px/1.5 var(--sans);
+  color: var(--cga-muted-soft);
+}
+
+/* Roster */
+.cga-roster {
+  margin: 18px 0;
+}
+
+.cga-roster-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.cga-roster-title {
+  margin: 0;
+  font: 600 16px/1.2 var(--serif);
+  color: var(--ink);
+}
+
+.cga-roster-count {
+  font: 400 12px/1.4 var(--mono);
+  color: var(--cga-muted);
+}
+
+.cga-roster-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 13px/1.4 var(--sans);
+}
+
+.cga-roster-table th {
+  font: 700 10px/1.3 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cga-muted);
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.cga-roster-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(15,20,25,0.05);
+  vertical-align: top;
+}
+
+.cga-roster-table tr:last-child td {
+  border-bottom: none;
+}
+
+.cga-sprint-id {
+  font: 400 12px/1.4 var(--mono);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.cga-sprint-slug {
+  font: 400 13px/1.4 var(--sans);
+  color: var(--ink);
+}
+
+.cga-sprint-status {
+  display: inline-flex;
+  align-items: center;
+  font: 700 10px/1.3 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.cga-sprint-status--live {
+  color: var(--cga-muted);
+  background: var(--inset, var(--ice-3));
+}
+
+.cga-sprint-status--provisional {
+  color: var(--ink);
+  background: var(--sun-hl-faint);
+}
+
+.cga-sprint-status--default {
+  color: var(--cga-muted);
+  background: transparent;
+}
+
+.cga-sprint-unblocked {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 700 10px/1.3 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cga-muted);
+  background: var(--inset, var(--ice-3));
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.cga-sprint-waits {
+  font: 400 12px/1.4 var(--mono);
+  color: var(--cga-muted);
+}
+
+/* Unblocked now */
+.cga-unblocked-now {
+  margin: 18px 0;
+  padding: 14px 18px;
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  background: var(--cga-paper);
+}
+
+.cga-unblocked-now-label {
+  margin: 0 0 6px;
+  font: 700 10px/1.3 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cga-muted);
+}
+
+.cga-unblocked-now-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cga-unblocked-now-item {
+  font: 400 12px/1.4 var(--mono);
+  color: var(--ink);
+  background: var(--sun-hl-faint);
+  padding: 3px 10px;
+  border-radius: 4px;
+}
+
+/* Substrate */
+.cga-substrate {
+  margin: 18px 0;
+}
+
+.cga-substrate-label {
+  margin: 0 0 8px;
+  font: 700 10px/1.3 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cga-muted);
+}
+
+.cga-substrate-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.cga-substrate-item {
+  padding: 12px 18px;
+}
+
+.cga-substrate-item + .cga-substrate-item {
+  border-top: 1px solid var(--glass-border);
+}
+
+.cga-substrate-name {
+  margin: 0;
+  font: 500 14px/1.35 var(--serif);
+  color: var(--ink);
+}
+
+.cga-substrate-meta {
+  margin: 2px 0 0;
+  font: 400 12px/1.4 var(--mono);
+  color: var(--cga-muted);
+}
+
+/* ── State messages ──────────────────────────────────── */
+
+.cga-state {
+  margin: 18px 0;
+  padding: clamp(20px, 4vw, 34px);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.cga-state h2 {
+  margin: 0;
+  font: 500 clamp(23px, 3vw, 32px)/1.15 var(--serif);
+  color: var(--ink);
+}
+
+.cga-state p {
+  margin: 10px 0 0;
+  font: 400 14px/1.55 var(--sans);
+  color: var(--cga-muted);
+}
+
+.cga-state--error {
+  border-left: 3px solid var(--emperor);
+}
+
+.cga-state--error h2 {
+  color: var(--emperor);
+}
+
+.cga-state button {
+  margin-top: 16px;
+  font: 700 12px/1.4 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius, 6px);
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: border-color 150ms ease;
+}
+
+.cga-state button:hover {
+  border-color: var(--ink);
+}
+
+.cga-state button:focus-visible {
+  outline: 2px solid var(--sun-deep);
+  outline-offset: 2px;
+}
+
+/* ── Empty state copy ────────────────────────────────── */
+
+.cga-empty-copy {
+  margin: 18px 0;
+  padding: clamp(20px, 4vw, 34px);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.cga-empty-copy p {
+  margin: 0;
+  font: 400 14px/1.55 var(--sans);
+  color: var(--cga-muted);
+}
+
+/* ── Responsive ──────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .cga-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cga-station-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .cga-tally {
+    flex-direction: column;
+  }
+
+  .cga-critical-path-chain {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cga-critical-arrow {
+    transform: rotate(90deg);
+  }
+
+  .cga-roster-table,
+  .cga-roster-table tbody,
+  .cga-roster-table tr,
+  .cga-roster-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .cga-roster-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .cga-roster-table tr {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--glass-border);
+  }
+
+  .cga-roster-table td {
+    display: grid;
+    grid-template-columns: minmax(92px, 32%) minmax(0, 1fr);
+    gap: 10px;
+    padding: 4px 0;
+    border: 0;
+  }
+
+  .cga-roster-table td::before {
+    content: attr(data-label);
+    font: 700 10px/1.4 var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--cga-muted);
+  }
+
+  .cga-gate-header {
+    flex-direction: column;
+  }
+
+  .cga-gate-impacts {
+    margin-top: 8px;
+  }
+}
+
+/* ── Night mode ──────────────────────────────────────── */
+
+.cga-shell[data-theme="dark"] {
+  /* Explicit visual-fixture override. Values mirror tokens.css's canonical
+     night ramp so Storybook can audit dark mode independent of host media. */
+  --cga-paper: rgb(27, 32, 42);
+  --cga-page: rgb(13, 16, 25);
+  --ink: rgb(238, 241, 246);
+  --cga-muted: rgb(197, 204, 214);
+  --cga-muted-soft: rgb(221, 226, 233);
+  --text-primary: rgb(238, 241, 246);
+  --text-secondary: rgb(197, 204, 214);
+  --inset: rgb(39, 46, 58);
+  --rule: rgb(96, 108, 126);
+  --sun-deep: rgb(132, 114, 47);
+  --sun-hl-faint: rgba(242, 222, 154, 0.30);
+  --emperor: rgb(255, 97, 85);
+  --glass-bg: rgba(27, 32, 42, 0.66);
+  --glass-border: rgba(238, 241, 246, 0.14);
+}
+
+.cga-shell[data-theme="dark"] .cga-veil {
+  background: color-mix(in srgb, var(--cga-page) 82%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  .cga-shell {
+    --cga-paper: var(--ice-0);
+    --cga-page: var(--ice-2);
+    --cga-muted: var(--shadow-1);
+    --cga-muted-soft: var(--shadow-2);
+    --sun-hl-faint: var(--sun-hl-night, rgba(242,222,154,0.30));
+  }
+
+  .cga-veil {
+    background: color-mix(in srgb, var(--cga-page) 82%, transparent);
+  }
+}
+
+/* ── Data-visual-fixture (Storybook / testing) ───────── */
+
+.cga-shell[data-visual-fixture] .cga-environment {
+  display: none;
+}

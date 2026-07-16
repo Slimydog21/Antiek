@@ -1,24 +1,28 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { fn } from "@storybook/test";
 
-import { GateLedger } from "./GateLedger";
-import type { GateView } from "./GateLedger";
-import { Roadmap } from "./Roadmap";
-import type { RoadmapView } from "./Roadmap";
+import {
+  CoordinationView,
+  type CoordinationViewProps,
+  type CoordinationGatesState,
+  type CoordinationRoadmapState,
+  type GateView,
+  type RoadmapView,
+} from "./index";
 
 /**
- * Coordination — gate ledger + roadmap (antiek-unified SPR-05).
+ * Coordination Gatehouse Atlas — the distinctive Antarctic gatehouse view
+ * of canonical operator gates and the dependency-derived cross-product roadmap.
  *
  * The fixtures below mirror the canonical gate states as of the
  * docs/operator_gate_actions.md 2026-05-23 snapshot: G1/G4/G5 closed (G5
- * provisionally), G2/G3/G6 open, G7 calendar (~Nov 2026), G8 data-bound. The
- * ACCURACY_SNAPSHOT constant is the single source these stories render — a
- * parsing/rendering regression that changed a gate's status would change this
- * fixture, which is what the snapshot guards against (M5). The substrate parser
- * is tested against the real file in tests/test_coordination_no_fork.py; this
- * is the rendered-surface counterpart.
+ * provisionally), G2/G3/G6 open, G7 calendar (~Nov 2026), G8 data-bound.
+ * Extended to G9-G13 for the full 13-gate register.
+ *
+ * Every story carries the a11y-audit tag for automated accessibility checks.
  */
 
-// ── The accuracy snapshot: canonical gate states ─────────────────────────────
+// ── Canonical 13 gates ────────────────────────────────────────────────
 
 export const CANONICAL_GATES: GateView[] = [
   {
@@ -128,9 +132,73 @@ export const CANONICAL_GATES: GateView[] = [
       { product: "speak", effect: "Interviewer RL training blocked until the five Loop-3 criteria pass" },
     ],
   },
+  {
+    gate_id: "G9",
+    title: "arXiv researcher-payout counsel/KYC gate (SPR-07/08)",
+    status: "open",
+    status_raw: "❌ OPEN",
+    is_provisional: false,
+    owner: "Operator + counsel",
+    blocks: "The money-moving wave of the arXiv-ingest track — SPR-07 researcher identity and SPR-08 KYC payout",
+    closure_record: null,
+    impacts: [
+      { product: "research", effect: "arXiv SPR-07 researcher identity and SPR-08 KYC + Stripe Connect payout remain blocked at the execution edge" },
+    ],
+  },
+  {
+    gate_id: "G10",
+    title: "Stripe Press §9.10 publisher opt-in",
+    status: "open",
+    status_raw: "❌ OPEN",
+    is_provisional: false,
+    owner: "Operator (BizDev — phone/email Stripe Press / Stripe BizDev)",
+    blocks: "Serving any in-copyright Stripe Press title",
+    closure_record: null,
+    impacts: [
+      { product: "read", effect: "No in-copyright Stripe Press title is servable until a §9.10 publisher opt-in is granted and claimed" },
+    ],
+  },
+  {
+    gate_id: "G11",
+    title: "X (Twitter) no-training constraint",
+    status: "closed",
+    status_raw: "✅ enforced in code / ⏳ standing operator duty",
+    is_provisional: false,
+    owner: "Operator / agent (keep it standing — never relax it)",
+    blocks: "Nothing today; any future training/RL export must honor the standing constraint",
+    closure_record: null,
+    impacts: [
+      { product: "write", effect: "Edit-trajectory SFT must exclude BYOK X content" },
+      { product: "speak", effect: "Interviewer RL training must exclude BYOK X content" },
+    ],
+  },
+  {
+    gate_id: "G12",
+    title: "Bernays per-title copyright-renewal follow-on",
+    status: "open",
+    status_raw: "❌ OPEN (per-title, only if the operator wants more Bernays titles servable)",
+    is_provisional: false,
+    owner: "Operator (per-title US copyright-renewal-records check)",
+    blocks: "Making any additional 1927–1930 Bernays title servable",
+    closure_record: null,
+    impacts: [
+      { product: "read", effect: "No additional 1927–1930 Bernays title is servable without a per-title US copyright-renewal-records check" },
+    ],
+  },
+  {
+    gate_id: "G13",
+    title: "Auth diagnostic matrix for login failure triage",
+    status: "closed",
+    status_raw: "✅ CLOSED 2026-06-02",
+    is_provisional: false,
+    owner: null,
+    blocks: null,
+    closure_record: "docs/diagnostics/auth-failure-mode-matrix.md",
+    impacts: [],
+  },
 ];
 
-// ── The roadmap fixture: the reconciled 45-sprint count + DRW critical path ──
+// ── Roadmap fixture ───────────────────────────────────────────────────
 
 const drwSprints = [
   { n: 1, slug: "insight-question-nodes", status: "live" },
@@ -241,7 +309,12 @@ export const CANONICAL_ROADMAP: RoadmapView = {
       })),
     },
   ],
-  unblocked_now: [],
+  unblocked_now: [
+    ...Array.from({ length: 10 }, (_, i) => `drw:${i + 1}`),
+    ...Array.from({ length: 9 }, (_, i) => `write:${i + 1}`),
+    ...Array.from({ length: 9 }, (_, i) => `speak:${i + 1}`),
+    ...Array.from({ length: 8 }, (_, i) => `unified:${i + 1}`),
+  ],
   substrate_layers: [
     { name: "Write coordination (db_lock)", owner: "runtime/db_lock.py", status: "Hardened (substrate-execution SPR-01)" },
     { name: "Dispatch router + idempotency", owner: "substrate/dispatch/", status: "Hardened (substrate-execution SPR-02/03)" },
@@ -249,27 +322,264 @@ export const CANONICAL_ROADMAP: RoadmapView = {
   ],
 };
 
-// ── Stories ──────────────────────────────────────────────────────────────────
+// ── State builders ────────────────────────────────────────────────────
 
-const gateMeta = {
-  title: "Coordination / GateLedger",
-  component: GateLedger,
-  parameters: { layout: "padded" },
-  tags: ["autodocs"],
-} satisfies Meta<typeof GateLedger>;
+const gatesReady: CoordinationGatesState = {
+  phase: "ready",
+  data: { source_path: "docs/operator_gate_actions.md", gates: CANONICAL_GATES },
+};
 
-export default gateMeta;
-type GateStory = StoryObj<typeof gateMeta>;
+const roadmapReady: CoordinationRoadmapState = {
+  phase: "ready",
+  data: CANONICAL_ROADMAP,
+};
 
-/** Accuracy snapshot — the canonical gate states rendered. A regression in
- * parsing or rendering that flipped a gate would change this surface. */
-export const CanonicalGates: GateStory = {
+const gatesLoading: CoordinationGatesState = { phase: "loading" };
+const roadmapLoading: CoordinationRoadmapState = { phase: "loading" };
+
+const gatesError: CoordinationGatesState = {
+  phase: "error",
+  copy: "Gate data is temporarily unavailable.",
+};
+
+const roadmapError: CoordinationRoadmapState = {
+  phase: "error",
+  copy: "Roadmap data is temporarily unavailable.",
+};
+
+const gatesMalformed: CoordinationGatesState = {
+  phase: "malformed",
+  copy: "Gate data arrived in an unexpected format.",
+};
+
+const roadmapMalformed: CoordinationRoadmapState = {
+  phase: "malformed",
+  copy: "Roadmap data arrived in an unexpected format.",
+};
+
+const callbacks: Pick<
+  CoordinationViewProps,
+  "onRetryGates" | "onRetryRoadmap"
+> = {
+  onRetryGates: fn(),
+  onRetryRoadmap: fn(),
+};
+
+// ── Story meta ────────────────────────────────────────────────────────
+
+const meta = {
+  title: "Coordination / Gatehouse Atlas",
+  component: CoordinationView,
+  parameters: {
+    layout: "fullscreen",
+  },
+  tags: ["autodocs", "a11y-audit"],
   args: {
-    gates: CANONICAL_GATES,
-    sourcePath: "docs/operator_gate_actions.md",
+    gatesState: gatesReady,
+    roadmapState: roadmapReady,
+    ...callbacks,
+  },
+} satisfies Meta<typeof CoordinationView>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+// ── Canonical atlas (both ready) ──────────────────────────────────────
+
+/** Canonical atlas — 13 gates, full roadmap, both endpoints ready. */
+export const CanonicalAtlas: Story = {};
+
+// ── Loading states ────────────────────────────────────────────────────
+
+/** Gates loading, roadmap ready. */
+export const GatesLoading: Story = {
+  args: {
+    gatesState: gatesLoading,
   },
 };
 
-export const RoadmapView_: StoryObj<typeof Roadmap> = {
-  render: () => <Roadmap roadmap={CANONICAL_ROADMAP} />,
+/** Roadmap loading, gates ready. */
+export const RoadmapLoading: Story = {
+  args: {
+    roadmapState: roadmapLoading,
+  },
 };
+
+/** Both loading — Werner thinking. */
+export const BothLoading: Story = {
+  args: {
+    gatesState: gatesLoading,
+    roadmapState: roadmapLoading,
+  },
+};
+
+// ── Error states ──────────────────────────────────────────────────────
+
+/** Gates failed, roadmap healthy — healthy panel retained. */
+export const GatesFailed: Story = {
+  args: {
+    gatesState: gatesError,
+  },
+};
+
+/** Roadmap failed, gates healthy — healthy panel retained. */
+export const RoadmapFailed: Story = {
+  args: {
+    roadmapState: roadmapError,
+  },
+};
+
+/** Both failed — Werner empty. */
+export const BothFailed: Story = {
+  args: {
+    gatesState: gatesError,
+    roadmapState: roadmapError,
+  },
+};
+
+// ── Malformed states ──────────────────────────────────────────────────
+
+/** Gates malformed, roadmap healthy. */
+export const GatesMalformed: Story = {
+  args: {
+    gatesState: gatesMalformed,
+  },
+};
+
+/** Roadmap malformed, gates healthy. */
+export const RoadmapMalformed: Story = {
+  args: {
+    roadmapState: roadmapMalformed,
+  },
+};
+
+// ── Content variants ──────────────────────────────────────────────────
+
+/** Empty roster — a spec with zero sprints. */
+export const EmptyRoster: Story = {
+  args: {
+    roadmapState: {
+      phase: "ready",
+      data: {
+        ...CANONICAL_ROADMAP,
+        rosters: [
+          ...CANONICAL_ROADMAP.rosters.slice(0, 4),
+          {
+            spec: "unified",
+            label: "Antiek-Unified",
+            directory: "antiek-unified",
+            count: 0,
+            sprints: [],
+          },
+        ],
+        total_sprints: 37,
+        reconciliation:
+          "Research 10 + Read 9 + Write 9 + Speak 9 + Antiek-Unified 0 = 37; empty-roster fixture",
+        unblocked_now: CANONICAL_ROADMAP.unblocked_now.filter(
+          (node) => !node.startsWith("unified:"),
+        ),
+      },
+    },
+  },
+};
+
+/** Provisional closure — G5 shown with provisional tag. */
+export const ProvisionalClosure: Story = {
+  args: {
+    gatesState: {
+      phase: "ready",
+      data: {
+        source_path: "docs/operator_gate_actions.md",
+        gates: CANONICAL_GATES.filter((g) =>
+          ["G5", "G4", "G1"].includes(g.gate_id),
+        ),
+      },
+    },
+  },
+};
+
+/** Unmapped impact — an open gate with no reviewed per-product mapping. */
+export const UnmappedImpact: Story = {
+  args: {
+    gatesState: {
+      phase: "ready",
+      data: {
+        source_path: "docs/operator_gate_actions.md",
+        gates: [
+          {
+            gate_id: "G99",
+            title: "New operator gate awaiting cross-workflow review",
+            status: "open" as const,
+            status_raw: "❌ OPEN",
+            is_provisional: false,
+            owner: "Operator",
+            blocks: "Canonical source describes a block; product mapping has not been reviewed",
+            closure_record: null,
+            impacts: [],
+          },
+        ],
+      },
+    },
+  },
+};
+
+/** Many gates — all 13 canonical gates displayed. */
+export const ManyGates: Story = {};
+
+/** Long values — long owner names, long block descriptions. */
+export const LongValues: Story = {
+  args: {
+    gatesState: {
+      phase: "ready",
+      data: {
+        source_path: "docs/operator_gate_actions.md",
+        gates: [
+          {
+            gate_id: "G99",
+            title: "An extremely long gate title that tests how the layout handles verbose descriptions of complex multi-step operator verification requirements across several product domains",
+            status: "open",
+            status_raw: "❌ OPEN — awaiting a very long series of multi-step operator verifications that span several months of iterative review cycles",
+            is_provisional: false,
+            owner: "A very long owner name that represents a complex multi-stakeholder responsibility chain spanning operator, counsel, engineering, and external publisher review teams",
+            blocks: "An extensive list of blocked items including all payout routes, all publisher outreach, all multi-user pivot activities, all training configurations, and all external integrations",
+            closure_record: null,
+            impacts: [
+              {
+                product: "research" as const,
+                effect: "A very detailed and verbose description of how this gate blocks the research workflow across multiple sprints and dependency chains, preventing forward progress on several critical path items",
+              },
+              {
+                product: "read" as const,
+                effect: "Another verbose impact description that explains in great detail how the reading workflow is affected by this gate remaining open",
+              },
+            ],
+          },
+        ],
+      },
+    },
+  },
+};
+
+// ── Visual fixture variants ───────────────────────────────────────────
+
+/** Narrow viewport — responsive layout. */
+export const Narrow: Story = {
+  parameters: {
+    viewport: { defaultViewport: "mobile1" },
+  },
+};
+
+/** Forced night — dark theme for visual audit. */
+export const ForcedNight: Story = {
+  args: {
+    fixtureTheme: "dark",
+  },
+  parameters: {
+    backgrounds: { default: "dark" },
+  },
+};
+
+// ── Re-exported canonical fixtures for test consumption ────────────────
+
+export { CANONICAL_GATES as CANONICAL_GATES_FIXTURE };
+export { CANONICAL_ROADMAP as CANONICAL_ROADMAP_FIXTURE };

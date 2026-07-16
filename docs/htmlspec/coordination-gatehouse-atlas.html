@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Antiek — Coordination Gatehouse Atlas execution spec</title>
+  <style>
+    :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.5; }
+    body { max-width: 70rem; margin: 0 auto; padding: 2rem; }
+    h1, h2 { font-family: Georgia, serif; }
+    code { font-family: ui-monospace, monospace; }
+    section { border-top: 1px solid currentColor; padding-block: 1.25rem; }
+    .binding { border: 2px solid currentColor; padding: 1rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <p>Antiek · operator coordination · read-only</p>
+    <h1>Coordination Gatehouse Atlas</h1>
+    <p>Execution source of truth for a branded, fail-closed view of canonical
+      operator gates and the dependency-derived cross-product roadmap.</p>
+  </header>
+
+  <section class="binding">
+    <h2>Binding truth contract</h2>
+    <ul>
+      <li>The surface displays canonical state; it never changes a gate, sprint, roster, payout, or training configuration.</li>
+      <li>Gate and sprint counts are payload-derived. No prose may hardcode eight, thirteen, or forty-five as current truth.</li>
+      <li><code>status_raw</code> preserves nuance; the coarse status controls presentation only.</li>
+      <li>Empty impacts mean “no reviewed per-product mapping,” never “no product block.”</li>
+      <li>Unblocked means dependency-unblocked, not done, approved, funded, or ready to ship.</li>
+      <li>G8 is displayed as data-bound. This work must not build or activate Loop 3 training.</li>
+      <li>No raw network, HTTP, parser, or validation error reaches the DOM.</li>
+      <li>No freshness or completeness timestamp may be invented; neither endpoint supplies one.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Prerequisite — canonical register repair</h2>
+    <p>The canonical quick table contains G1–G13 while the inherited parser and
+      its supposedly independent verifier recognize only G1–G8. Generalize both
+      extraction paths, add the missing G13 detail section without changing its
+      documented closed status, ground new impact mappings in repository specs,
+      and prove quick-table/detail equality for the complete register.</p>
+  </section>
+
+  <section>
+    <h2>Experience architecture</h2>
+    <ol>
+      <li>Glass hero: “Coordination Gatehouse Atlas,” one Werner, and an Antarctic gatehouse environment.</li>
+      <li>Truth boundary: read-on-request, canonical sources, no mutation authority, no freshness metadata.</li>
+      <li>Blocking frontier: payload-derived status tally and open/waiting gates foregrounded without inventing priority.</li>
+      <li>Gate Wall: open/waiting gates first, then closed; raw status, owner, blocks, closure evidence, and reviewed workflow impacts.</li>
+      <li>Route Atlas: API reconciliation, ordered critical path, rosters, dependency waits, unblocked-now, and substrate bedrock.</li>
+      <li>Cost &amp; Consent doorway: navigation only; no money claims on this surface.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Controller contract</h2>
+    <ul>
+      <li>Pure exported <code>CoordinationView</code> plus a fetching controller.</li>
+      <li>Gates and roadmap have independent loading, ready, and error states.</li>
+      <li>A scoped retry fetches only its failed endpoint.</li>
+      <li>Every response is runtime-validated before render.</li>
+      <li>Request tokens discard stale responses after every await and on unmount.</li>
+      <li>Gate IDs, statuses, workflow impacts, safe integers, roster counts, unique node IDs, critical-path membership, and dependency references are validated without assuming a fixed gate/sprint count.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Visual and responsive contract</h2>
+    <p>Use the project-bound, text-free ChatGPT Image environment. HTML panels
+      remain the sole semantic and interactive layer. Use canonical Antiek
+      tokens, static motion-safe scenery, visible focus, textual status labels,
+      narrow stacked roster rows, and a forced-night Storybook fixture. Werner
+      is thinking while either request loads, empty only when both fail, and
+      otherwise calmly keeps the gatehouse.</p>
+  </section>
+
+  <section>
+    <h2>Required stories</h2>
+    <p>Canonical atlas; gates loading; roadmap loading; both loading; each
+      partial-failure direction; both failed; empty roster; provisional closure;
+      unmapped impact; many gates; long values; narrow; forced night. Every
+      visual story is tagged for the repository accessibility audit.</p>
+  </section>
+
+  <section>
+    <h2>Verification and done gate</h2>
+    <ul>
+      <li>Focused parser/API invariants and frontend view/controller tests pass.</li>
+      <li>Partial endpoint failures retain the healthy panel.</li>
+      <li>Malformed responses fail closed and raw errors are absent.</li>
+      <li>Stale, retry, and unmount behavior is proven.</li>
+      <li>TypeScript, production build, full Storybook, axe, LostPixel, Strix, Cloudflare, and hardenx clear the exact head.</li>
+      <li>A heterogeneous model that did not build the feature returns no unresolved actionable finding.</li>
+    </ul>
+  </section>
+</body>
+</html>

@@ -29,6 +29,9 @@ concurrency:
 jobs:
   lostpixel:
     runs-on: ubuntu-22.04
+    # The inaugural honest blocking contract is five reviewed stories at three
+    # breakpoints. Keep a bounded ceiling with room for dependency installation
+    # and Storybook compilation on a fresh runner.
     timeout-minutes: 15
     defaults:
       run:
@@ -50,12 +53,13 @@ jobs:
       - name: Build Storybook
         run: npm run build-storybook
 
-      - name: Run Lost-Pixel against committed baselines (informational)
+      - name: Run Lost-Pixel against committed baselines (blocking)
         # BLOCKING (AGH SPR-04 G2): the reconsider-if that made this
         # informational — "baselines committed under
         # apps/reading/.lostpixel/baseline/" (ci-informational-gates.md §3) —
-        # is now MET: 381 baseline PNGs are committed there and
-        # lostpixel.config.ts sets imagePathBaseline + generateOnly:false, so
+        # is now MET: reviewed baseline PNGs are committed there and
+        # lostpixel.config.ts sets imagePathBaseline + self-hosted generate-only
+        # comparison mode, so
         # the gate compares current renders against a real committed baseline.
         # Un-swallowed: the step's exit code is now lost-pixel's own, so a real
         # visual regression reds the PR (which is the point). A legitimate

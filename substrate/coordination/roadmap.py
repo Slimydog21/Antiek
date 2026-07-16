@@ -165,12 +165,19 @@ def _read_roster_files(spec_dir: Path) -> list[tuple[int, str]]:
     """Return [(sprint_number, slug)] for a spec dir, read from its
     ``sprint-NN-<slug>.html`` filenames. Sorted by number."""
     found: list[tuple[int, str]] = []
+    sprint_numbers: set[int] = set()
     if not spec_dir.is_dir():
         return found
     for p in spec_dir.iterdir():
         m = _SPRINT_FILE_RE.match(p.name)
         if m:
-            found.append((int(m.group(1)), m.group(2)))
+            sprint = int(m.group(1))
+            if sprint in sprint_numbers:
+                raise ValueError(
+                    f"duplicate sprint identity {sprint:02d} in {spec_dir}"
+                )
+            sprint_numbers.add(sprint)
+            found.append((sprint, m.group(2)))
     found.sort(key=lambda t: t[0])
     return found
 
@@ -243,19 +250,26 @@ def _dependencies_for(node_id: str) -> tuple[str, ...]:
 def build_roadmap(specs_root: Path | None = None) -> Roadmap:
     """Ingest the five rosters + SPR-01's DAG; reconcile the count; compute the
     unblocked set from dependency state. Reads only — authors nothing."""
+    explicit_root = specs_root is not None
     root = specs_root or _specs_root()
     crit = set(dependency_map.critical_path())
 
     rosters: list[SpecRoster] = []
-    # The live specs/ root takes precedence (the operator's current view). Only
-    # when the root itself is absent — CI and prod, where the untracked planning
-    # specs do not ship — fall back to the committed manifest, so the roadmap is
-    # portable rather than empty. When a root IS present (the real dir or a test
-    # fixture), an absent per-spec dir honestly contributes 0 (no backfill).
+    # A live per-spec directory takes precedence over the committed manifest.
+    # The operator's broader specs root may legitimately exist while containing
+    # none of these five historical rosters; in that case each absent canonical
+    # roster falls back independently instead of collapsing the atlas to zero.
+    # An explicitly supplied root is different: it is an exact fixture/view, so
+    # absent directories honestly contribute zero and are never backfilled.
     root_present = root.is_dir()
-    manifest = {} if root_present else _manifest_rosters()
+    manifest = {} if explicit_root else _manifest_rosters()
     for spec, dirname, label in _SPEC_DIRS:
-        files = _read_roster_files(root / dirname) if root_present else manifest.get(spec, [])
+        spec_dir = root / dirname
+        files = (
+            _read_roster_files(spec_dir)
+            if root_present and spec_dir.is_dir()
+            else manifest.get(spec, [])
+        )
         rows: list[SprintRow] = []
         for sprint, slug in files:
             node_id = f"{spec}:{sprint}"
@@ -285,9 +299,10 @@ def build_roadmap(specs_root: Path | None = None) -> Roadmap:
             SpecRoster(spec=spec, label=label, directory=dirname, sprints=tuple(rows))
         )
 
+    superseded_dir = root / _SUPERSEDED_DIR
     superseded_files = (
-        _read_roster_files(root / _SUPERSEDED_DIR)
-        if root_present
+        _read_roster_files(superseded_dir)
+        if root_present and superseded_dir.is_dir()
         else manifest.get(_SUPERSEDED_DIR, [])
     )
 

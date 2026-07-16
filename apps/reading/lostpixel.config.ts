@@ -1,5 +1,30 @@
 import type { CustomProjectConfig } from "lost-pixel";
 
+const BLOCKING_VISUAL_CONTRACT = new Set([
+  "coordination-gatehouse-atlas--canonical-atlas",
+  "coordination-gatehouse-atlas--both-failed",
+  "coordination-gatehouse-atlas--narrow",
+  "coordination-gatehouse-atlas--forced-night",
+  "multimedia-production-bay--night",
+]);
+
+// LostPixel 3.22 derives baseline names with lodash.kebabcase(kind/story).
+// Keep the equivalent word boundaries here so the discovery-time filter is
+// keyed to the same durable identity without reaching into a transitive dep.
+const toShotSegment = (value: string): string =>
+  value
+    .normalize("NFKD")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/([A-Za-z])(\d)/g, "$1-$2")
+    .replace(/(\d)([A-Za-z])/g, "$1-$2")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+
+const shotIdentityFor = (kind: string, story: string): string =>
+  `${toShotSegment(kind)}--${toShotSegment(story)}`;
+
 /**
  * Lost-Pixel — visual regression for Antiek's Storybook.
  *
@@ -11,11 +36,9 @@ import type { CustomProjectConfig } from "lost-pixel";
  *   npm run visualtest         # check current vs baseline
  *   npm run visualtest:update  # accept current as the new baseline
  *
- * Known flaky story `workspace-demo--scene` (framer-motion spring
- * timing) is skipped via `shotsExcludeList` — the spring physics
- * lands at slightly different stages on each Chromium run. The skip
- * is documented + the next time a workspace-demo refactor happens
- * the spring should be replaced with a deterministic transition.
+ * `filterShot` is an explicit reviewed-contract allowlist. Historical
+ * baselines remain in the repository for migration, but are not described as
+ * blocking coverage until their Ubuntu renders have been reviewed and opted in.
  */
 export const config: CustomProjectConfig = {
   storybookShots: {
@@ -42,14 +65,28 @@ export const config: CustomProjectConfig = {
   imagePathBaseline: ".lostpixel/baseline",
   imagePathCurrent: ".lostpixel/current",
   imagePathDifference: ".lostpixel/diff",
-  generateOnly: false,
+  // LostPixel 3.22's local comparison runner only propagates a failing diff
+  // exit code in generate-only mode (the official self-hosted configuration).
+  generateOnly: true,
+  // A comparison job is a gate only when over-threshold diffs reach the exit
+  // code. Without this, LostPixel prints red differences and still returns 0.
+  failOnDifference: true,
+  // New blocking contracts use one explicit viewport height. The legacy PNG
+  // archive mixes historical heights and remains outside this honest gate.
+  configureBrowser: () => ({ viewport: { width: 1280, height: 900 } }),
   // S12 ceiling: 0.4% per-shot delta. Tighter than S2's 1% advisory.
   threshold: 0.004,
-  // Skip known-flaky stories at every breakpoint. The framer-motion
-  // spring on workspace-demo produces sub-1% inter-run diffs that
-  // aren't real regressions.
-  filterShot: ({ shotName }: { shotName?: string }) => {
-    if (!shotName) return true;
-    return !shotName.startsWith("workspace-demo--scene");
+  // Select only reviewed blocking stories at every breakpoint.
+  filterShot: ({ kind, story }: { kind?: string; story?: string }) => {
+    // Storybook's crawler invokes this hook before breakpoint shot names exist.
+    // Reconstruct LostPixel's eventual shot name from the available CSF fields;
+    // `id` is not interchangeable (acronyms and numeric word boundaries differ).
+    if (!kind || !story) return false;
+    const shotIdentity = shotIdentityFor(kind, story);
+    // The previous broad matrix had 388 Ubuntu diffs hidden by a swallowed exit
+    // code. Do not misrepresent those stale files as protected coverage: start
+    // the real blocking contract with this cycle's four Gatehouse states and
+    // the repaired Multimedia night state, then opt in reviewed surfaces only.
+    return BLOCKING_VISUAL_CONTRACT.has(shotIdentity);
   },
 };
