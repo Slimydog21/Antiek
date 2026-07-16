@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BRK-01: Provider Broker Protocol</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; }
+    body { margin: 0; color: #151515; background: #fffdf6; }
+    main { max-width: 960px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1, h2 { line-height: 1.15; }
+    section { border-top: 2px solid #151515; padding: 18px 0; }
+    code { color: #1d4aff; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 2px solid #151515; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f9bd2b; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>BRK-01: Provider broker protocol and canonical authority</h1>
+  <p><strong>Status:</strong> Executed protocol foundation. It qualifies no provider and sends no request.</p>
+
+  <section id="spec-lineage" data-spec-depth="1" data-parent-spec="antiek-durable-provider-broker.html">
+    <h2>Spec lineage</h2>
+    <p>Parent: <a href="antiek-durable-provider-broker.html">Antiek Durable Provider Broker</a>.</p>
+    <ul class="child-specs"></ul>
+  </section>
+
+  <section>
+    <h2>Outcome</h2>
+    <p>Antiek has a transport-free, enum-closed protocol for one bounded provider authorization and its signed reconciliation receipt. Canonical ASCII JSON and SHA-256 digests make field substitution independently detectable before later ledger, worker, API, or adapter work begins.</p>
+  </section>
+
+  <section>
+    <h2>Five-values rigor</h2>
+    <table>
+      <thead><tr><th>Value</th><th>BRK-01 obligation</th></tr></thead>
+      <tbody>
+        <tr><td>Honesty</td><td>Protocol validity is not provider qualification, signature verification, durable persistence, or proof of execution.</td></tr>
+        <tr><td>Fairness</td><td>A receipt cannot increase the user-approved cent ceiling; upstream overage cannot become retroactive user debt.</td></tr>
+        <tr><td>Rigor</td><td>Exact field sets, closed enums, canonical timestamps, bounded integers, canonical route ordering, and golden bytes fail closed.</td></tr>
+        <tr><td>Diligence</td><td>Every receipt binds tenant, idempotency key, operation, route, authorization, ceiling, currency, pricing snapshot, evidence, validity, and signing identity.</td></tr>
+        <tr><td>Defensibility</td><td>Golden vectors and substitution tests let independent implementations recompute authority without trusting Python object order.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Executable contract</h2>
+    <ol>
+      <li><code>BrokerAuthorization</code> binds one tenant/key and operation digest to one HTTPS-origin route, exact billing units and positive usage bounds, USD cent ceiling, pricing snapshot, and validity interval no longer than 24 hours.</li>
+      <li><code>BrokerReceipt</code> uses only <code>authorized</code>, <code>dispatch_possible</code>, <code>upstream_bound</code>, <code>unknown</code>, <code>charged</code>, or <code>not_found</code>.</li>
+      <li>Pre-upstream states contain no evidence or output. <code>upstream_bound</code> requires identity evidence and no output. <code>unknown</code> cannot claim output. <code>charged</code> requires evidence and output and cannot exceed authority. <code>not_found</code> requires evidence, zero charge, and no output.</li>
+      <li><code>assert_receipt_authority</code> exact-matches all authorization identity and pricing fields and requires the receipt validity window to remain inside authorization validity.</li>
+      <li>Ed25519-v1 signatures are represented as canonical unpadded base64url encoding of exactly 64 bytes. Cryptographic key lookup and signature verification belong to BRK-05.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Canonicalization</h2>
+    <p>Signing and digest bytes are ASCII JSON with lexicographically sorted keys, compact separators, escaped non-ASCII, no floats, and enum values serialized as closed strings. Route and authorization SHA-256 digests use those exact bytes. The checked-in vector fixture freezes authorization bytes, route digest, authorization digest, receipt signing bytes, and a structurally canonical signature.</p>
+  </section>
+
+  <section>
+    <h2>Rejected alternatives</h2>
+    <ul>
+      <li><strong>Mutable or open-ended dictionaries:</strong> rejected because omitted, duplicated, or invented authority fields become ambiguous.</li>
+      <li><strong>Unsigned route or pricing metadata:</strong> rejected because a valid receipt could be replayed against a different cost or provider boundary.</li>
+      <li><strong>Floating-point currency:</strong> rejected because cross-runtime rounding is not canonical or defensible.</li>
+      <li><strong>Receipt validity independent of authorization:</strong> rejected because the broker could extend delegated authority after approval.</li>
+      <li><strong>Implementing transport now:</strong> rejected because no adapter has yet proved durable idempotency, lookup, pricing evidence, and crash recovery.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Acceptance proof</h2>
+    <p><code>uv run ruff check runtime/provider_broker tests/test_provider_broker_protocol.py</code>, Python compilation, and <code>PYTHONPATH=. uv run pytest -q tests/test_provider_broker_protocol.py</code> must pass. Tests must recompute every golden vector, reject extra fields and malformed canonical forms, enforce every state evidence rule, and fail every authorization substitution.</p>
+  </section>
+
+  <section>
+    <h2>Out of scope and next sprint</h2>
+    <p>No database, migration, HTTP API, authentication, key storage, signature verification, worker, lease, provider SDK, upstream call, retry, pricing implementation, qualification, deployment, or production claim. BRK-02 may persist these exact canonical fields and state transitions, but must not weaken or reinterpret this protocol.</p>
+  </section>
+
+  <section id="harness-hint" data-pattern="adversarial-verification" data-owned-paths="runtime/provider_broker/protocol.py runtime/provider_broker/__init__.py tests/test_provider_broker_protocol.py tests/fixtures/provider_broker_protocol_vectors.json docs/htmlspec/provider-broker-protocol.html">
+    <h2>Harness hint</h2>
+    <p>Recompute golden bytes independently, mutate each authority field, cross validity boundaries, inject unsupported JSON types and enum values, and prove every nonterminal and terminal evidence combination fails closed.</p>
+  </section>
+  <section id="harness-hint-run" data-pattern="adversarial-verification">
+    <h2>Execution seam</h2>
+    <p>Run focused protocol gates before any BRK-02 persistence work and preserve the fixture as a cross-language compatibility boundary.</p>
+  </section>
+</main>
+</body>
+</html>
