@@ -19,6 +19,7 @@ from pathlib import Path
 from types import TracebackType
 
 from .ledger import (
+    BrokerDispatchIntent,
     BrokerLedgerError,
     BrokerOperationSnapshot,
     BrokerTransition,
@@ -31,6 +32,7 @@ from .protocol import BrokerReceiptState, canonical_json_bytes
 _IDENTITY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _SCHEMA_VERSION = 1
+_MAX_REPLAY_LIFETIME = timedelta(hours=24)
 
 
 class WorkerLeaseError(RuntimeError):
@@ -51,6 +53,10 @@ class WorkerLeaseStale(WorkerLeaseError):
 
 class WorkerDispatchRefused(WorkerLeaseError):
     """The operation cannot receive a new first-send permit."""
+
+
+class WorkerReplayRefused(WorkerLeaseError):
+    """Persisted authority does not permit an idempotent create replay."""
 
 
 class WorkerLeaseStatus(StrEnum):
@@ -87,6 +93,23 @@ class DispatchPermit:
     route_digest: str
     marked_version: int
     process_id: int
+    dispatch_intent: BrokerDispatchIntent
+
+
+@dataclass(frozen=True, slots=True)
+class IdempotentCreateReplayPermit:
+    """One fenced authority to repeat an exact idempotent create request."""
+
+    operation_id: str
+    tenant_id: str
+    idempotency_key: str
+    attempt_id: str
+    fence: int
+    authorization_digest: str
+    route_digest: str
+    marked_version: int
+    process_id: int
+    dispatch_intent: BrokerDispatchIntent
 
 
 def _identity(name: str, value: object) -> str:
@@ -208,6 +231,8 @@ class WorkerLeaseSession:
         self._entered = False
         self._exited = False
         self._permit_consumed = False
+        self._replay_permit_issued = False
+        self._replay_permit_consumed = False
 
     def __enter__(self) -> WorkerLeaseSession:
         if self._entered:
@@ -269,9 +294,15 @@ class WorkerLeaseSession:
             with contextlib.suppress(OSError):
                 os.close(descriptor)
 
-    def prepare_dispatch(self) -> DispatchPermit:
+    def prepare_dispatch(self, intent: BrokerDispatchIntent) -> DispatchPermit:
         self._assert_live()
-        return self._coordinator._prepare_dispatch(self)  # noqa: SLF001
+        return self._coordinator._prepare_dispatch(self, intent)  # noqa: SLF001
+
+    def prepare_idempotent_create_replay(
+        self, intent: BrokerDispatchIntent
+    ) -> IdempotentCreateReplayPermit:
+        self._assert_live()
+        return self._coordinator._prepare_idempotent_create_replay(self, intent)  # noqa: SLF001
 
     def refresh(self) -> BrokerOperationSnapshot:
         """Reconstruct exact primary state without creating send authority."""
@@ -282,6 +313,12 @@ class WorkerLeaseSession:
         """Fence a future adapter immediately before it consumes the permit."""
         self._assert_live()
         return self._coordinator._assert_permit_active(self, permit)  # noqa: SLF001
+
+    def assert_replay_permit_active(
+        self, permit: IdempotentCreateReplayPermit
+    ) -> BrokerOperationSnapshot:
+        self._assert_live()
+        return self._coordinator._assert_replay_permit_active(self, permit)  # noqa: SLF001
 
     def _assert_live(self) -> None:
         if not self._entered:
@@ -447,7 +484,11 @@ class ProviderWorkerLeaseCoordinator:
                 self._verify_current_row(db, row)
             return len(rows)
 
-    def _prepare_dispatch(self, session: WorkerLeaseSession) -> DispatchPermit:
+    def _prepare_dispatch(
+        self, session: WorkerLeaseSession, intent: BrokerDispatchIntent
+    ) -> DispatchPermit:
+        if not isinstance(intent, BrokerDispatchIntent):
+            raise TypeError("intent must be BrokerDispatchIntent")
         lease = session.lease
         with self._transaction() as db:
             row = self._current_row(db, lease)
@@ -473,6 +514,9 @@ class ProviderWorkerLeaseCoordinator:
                 < _parse_timestamp(snapshot.authorization.expires_at)
             ):
                 raise WorkerDispatchRefused("broker authorization is not currently valid")
+            replay_expires_at = _parse_timestamp(intent.replay_expires_at)
+            if not now < replay_expires_at <= now + _MAX_REPLAY_LIFETIME:
+                raise WorkerDispatchRefused("dispatch replay window must be live and bounded")
             command_id = self._command_id(snapshot.operation_id)
             try:
                 marked = self._ledger.transition(
@@ -483,6 +527,7 @@ class ProviderWorkerLeaseCoordinator:
                         snapshot.version,
                         BrokerReceiptState.DISPATCH_POSSIBLE,
                         attempt_id=lease.attempt_id,
+                        dispatch_intent=intent,
                     ),
                 )
             except BrokerTransitionRefused as exc:
@@ -506,6 +551,7 @@ class ProviderWorkerLeaseCoordinator:
                 marked.route_digest,
                 marked.version,
                 os.getpid(),
+                intent,
             )
 
     def _assert_permit_active(
@@ -527,6 +573,7 @@ class ProviderWorkerLeaseCoordinator:
             session.snapshot.route_digest,
             session.snapshot.version,
             os.getpid(),
+            session.snapshot.dispatch_intent,
         )
         if permit != expected:
             raise WorkerLeaseStale("dispatch permit differs from active session authority")
@@ -542,6 +589,7 @@ class ProviderWorkerLeaseCoordinator:
                 or snapshot.authorization_digest != permit.authorization_digest
                 or snapshot.route_digest != permit.route_digest
                 or snapshot.version != permit.marked_version
+                or snapshot.dispatch_intent != permit.dispatch_intent
             ):
                 raise WorkerLeaseStale("primary authority differs from dispatch permit")
             if not (
@@ -551,6 +599,101 @@ class ProviderWorkerLeaseCoordinator:
             ):
                 raise WorkerLeaseStale("broker authorization is invalid at permit consumption")
             session._permit_consumed = True  # noqa: SLF001
+            return snapshot
+
+    def _prepare_idempotent_create_replay(
+        self, session: WorkerLeaseSession, intent: BrokerDispatchIntent
+    ) -> IdempotentCreateReplayPermit:
+        if not isinstance(intent, BrokerDispatchIntent):
+            raise TypeError("intent must be BrokerDispatchIntent")
+        if session._replay_permit_issued:  # noqa: SLF001
+            raise WorkerReplayRefused("replay permit was already issued in this session")
+        lease = session.lease
+        now = self._now()
+        with self._transaction() as db:
+            row = self._current_row(db, lease)
+            snapshot = self._lookup(lease.tenant_id, lease.idempotency_key)
+            session.snapshot = snapshot
+            session.status = self._classify(snapshot)
+            if (
+                session.status is not WorkerLeaseStatus.RECOVERY_ONLY
+                or row["status"] != "recovery_only"
+            ):
+                raise WorkerReplayRefused("operation is not recovery-only")
+            if snapshot.state not in {
+                BrokerReceiptState.DISPATCH_POSSIBLE,
+                BrokerReceiptState.UNKNOWN,
+            }:
+                raise WorkerReplayRefused("receipt state forbids idempotent create replay")
+            if snapshot.dispatch_intent is None:
+                raise WorkerReplayRefused("legacy dispatch has no replay authority")
+            if snapshot.dispatch_intent != intent:
+                raise WorkerReplayRefused("dispatch intent differs from persisted authority")
+            if not (
+                _parse_timestamp(lease.acquired_at) <= now < _parse_timestamp(lease.expires_at)
+            ):
+                raise WorkerLeaseStale("worker lease expired before replay preparation")
+            if now >= _parse_timestamp(intent.replay_expires_at):
+                raise WorkerReplayRefused("dispatch replay authority expired")
+            permit = IdempotentCreateReplayPermit(
+                lease.operation_id,
+                lease.tenant_id,
+                lease.idempotency_key,
+                lease.attempt_id,
+                lease.fence,
+                snapshot.authorization_digest,
+                snapshot.route_digest,
+                snapshot.version,
+                os.getpid(),
+                intent,
+            )
+            session._replay_permit_issued = True  # noqa: SLF001
+            return permit
+
+    def _assert_replay_permit_active(
+        self, session: WorkerLeaseSession, permit: IdempotentCreateReplayPermit
+    ) -> BrokerOperationSnapshot:
+        if not isinstance(permit, IdempotentCreateReplayPermit):
+            raise TypeError("permit must be IdempotentCreateReplayPermit")
+        if session._replay_permit_consumed:  # noqa: SLF001
+            raise WorkerLeaseStale("replay permit was already consumed")
+        lease = session.lease
+        now = self._now()
+        expected = IdempotentCreateReplayPermit(
+            lease.operation_id,
+            lease.tenant_id,
+            lease.idempotency_key,
+            lease.attempt_id,
+            lease.fence,
+            session.snapshot.authorization_digest,
+            session.snapshot.route_digest,
+            session.snapshot.version,
+            os.getpid(),
+            session.snapshot.dispatch_intent,
+        )
+        if permit != expected:
+            raise WorkerLeaseStale("replay permit differs from active session authority")
+        if not (_parse_timestamp(lease.acquired_at) <= now < _parse_timestamp(lease.expires_at)):
+            raise WorkerLeaseStale("worker lease expired before replay consumption")
+        if now >= _parse_timestamp(permit.dispatch_intent.replay_expires_at):
+            raise WorkerReplayRefused("dispatch replay authority expired")
+        with self._transaction() as db:
+            row = self._current_row(db, lease)
+            snapshot = self._lookup(lease.tenant_id, lease.idempotency_key)
+            if row["status"] != "recovery_only" or snapshot.state not in {
+                BrokerReceiptState.DISPATCH_POSSIBLE,
+                BrokerReceiptState.UNKNOWN,
+            }:
+                raise WorkerReplayRefused("current receipt state forbids replay")
+            if (
+                snapshot.attempt_id != permit.attempt_id
+                or snapshot.authorization_digest != permit.authorization_digest
+                or snapshot.route_digest != permit.route_digest
+                or snapshot.version != permit.marked_version
+                or snapshot.dispatch_intent != permit.dispatch_intent
+            ):
+                raise WorkerLeaseStale("primary authority differs from replay permit")
+            session._replay_permit_consumed = True  # noqa: SLF001
             return snapshot
 
     def _refresh_session(self, session: WorkerLeaseSession) -> BrokerOperationSnapshot:
@@ -950,6 +1093,7 @@ class ProviderWorkerLeaseCoordinator:
 
 __all__ = [
     "DispatchPermit",
+    "IdempotentCreateReplayPermit",
     "ProviderWorkerLeaseCoordinator",
     "WorkerDispatchRefused",
     "WorkerLease",
@@ -959,4 +1103,5 @@ __all__ = [
     "WorkerLeaseStale",
     "WorkerLeaseStatus",
     "WorkerLeaseUnavailable",
+    "WorkerReplayRefused",
 ]

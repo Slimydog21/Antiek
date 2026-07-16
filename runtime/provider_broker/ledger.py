@@ -26,7 +26,7 @@ from .protocol import (
     route_digest,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _IDENTITY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _UTC_SECOND = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -86,6 +86,7 @@ class BrokerOperationSnapshot:
     version: int
     send_marker: bool
     attempt_id: str | None
+    dispatch_intent: BrokerDispatchIntent | None
     charge_cents: int | None
     provider_charge_cents: int | None
     broker_loss_cents: int | None
@@ -111,6 +112,7 @@ class BrokerTransition:
     expected_version: int
     target: BrokerReceiptState
     attempt_id: str | None = None
+    dispatch_intent: BrokerDispatchIntent | None = None
     charge_cents: int | None = None
     evidence_digest: str | None = None
     output_digest: str | None = None
@@ -123,6 +125,10 @@ class BrokerTransition:
             raise TypeError("target must be BrokerReceiptState")
         if self.attempt_id is not None:
             _identity("attempt_id", self.attempt_id)
+        if self.dispatch_intent is not None and not isinstance(
+            self.dispatch_intent, BrokerDispatchIntent
+        ):
+            raise TypeError("dispatch_intent must be BrokerDispatchIntent")
         for name in ("evidence_digest", "output_digest"):
             value = getattr(self, name)
             if value is not None and _DIGEST.fullmatch(value) is None:
@@ -136,10 +142,64 @@ class BrokerTransition:
             raise ValueError("charge_cents must be nonnegative integer cents")
 
 
+@dataclass(frozen=True, slots=True)
+class BrokerDispatchIntent:
+    """Exact immutable authority for one idempotent provider create request."""
+
+    request_envelope_digest: str
+    provider_idempotency_token: str
+    adapter_contract_digest: str
+    qualification_digest: str
+    replay_expires_at: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "request_envelope_digest",
+            "adapter_contract_digest",
+            "qualification_digest",
+        ):
+            if _DIGEST.fullmatch(getattr(self, name)) is None:
+                raise ValueError(f"{name} must be a canonical SHA-256 digest")
+        _identity("provider_idempotency_token", self.provider_idempotency_token)
+        expected_token = provider_idempotency_token(
+            self.request_envelope_digest,
+            self.adapter_contract_digest,
+            self.qualification_digest,
+        )
+        if self.provider_idempotency_token != expected_token:
+            raise ValueError("provider_idempotency_token is not deterministic")
+        _parse_timestamp(self.replay_expires_at)
+
+
 def _identity(name: str, value: object) -> str:
     if not isinstance(value, str) or _IDENTITY.fullmatch(value) is None:
         raise ValueError(f"{name} must be a bounded ASCII identity")
     return value
+
+
+def provider_idempotency_token(
+    request_envelope_digest: str,
+    adapter_contract_digest: str,
+    qualification_digest: str,
+) -> str:
+    """Derive the stable provider-create token from immutable request authority."""
+    for name, value in (
+        ("request_envelope_digest", request_envelope_digest),
+        ("adapter_contract_digest", adapter_contract_digest),
+        ("qualification_digest", qualification_digest),
+    ):
+        if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
+            raise ValueError(f"{name} must be a canonical SHA-256 digest")
+    return hashlib.sha256(
+        canonical_json_bytes(
+            {
+                "adapter_contract_digest": adapter_contract_digest,
+                "purpose": "provider-idempotent-create-v1",
+                "qualification_digest": qualification_digest,
+                "request_envelope_digest": request_envelope_digest,
+            }
+        )
+    ).hexdigest()
 
 
 def _utc_now() -> datetime:
@@ -147,11 +207,7 @@ def _utc_now() -> datetime:
 
 
 def _timestamp(value: datetime) -> str:
-    if (
-        not isinstance(value, datetime)
-        or value.tzinfo is None
-        or value.utcoffset() != timedelta(0)
-    ):
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() != timedelta(0):
         raise ValueError("clock must return UTC")
     return value.astimezone(UTC).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -170,8 +226,10 @@ def _command_digest(command: BrokerTransition) -> str:
 
 
 def _result_json(row: sqlite3.Row) -> str:
+    intent = _intent_from_row(row)
     payload = {
         "attempt_id": row["attempt_id"],
+        "dispatch_intent": intent,
         "broker_loss_cents": row["broker_loss_cents"],
         "charge_cents": row["charge_cents"],
         "evidence_digest": row["evidence_digest"],
@@ -282,6 +340,51 @@ BEGIN SELECT RAISE(ABORT, 'broker operations are durable'); END;
 INSERT INTO broker_schema(singleton, version) VALUES (1, 1);
 """
 
+_MIGRATION_2 = """
+ALTER TABLE broker_operations ADD COLUMN request_envelope_digest TEXT;
+ALTER TABLE broker_operations ADD COLUMN provider_idempotency_token TEXT;
+ALTER TABLE broker_operations ADD COLUMN adapter_contract_digest TEXT;
+ALTER TABLE broker_operations ADD COLUMN qualification_digest TEXT;
+ALTER TABLE broker_operations ADD COLUMN replay_expires_at TEXT;
+CREATE TRIGGER broker_dispatch_intent_all_or_none BEFORE UPDATE ON broker_operations
+WHEN ((NEW.request_envelope_digest IS NULL) + (NEW.provider_idempotency_token IS NULL) +
+      (NEW.adapter_contract_digest IS NULL) + (NEW.qualification_digest IS NULL) +
+      (NEW.replay_expires_at IS NULL)) NOT IN (0,5)
+BEGIN SELECT RAISE(ABORT, 'broker dispatch intent must be complete or absent'); END;
+CREATE TRIGGER broker_dispatch_intent_insert_complete BEFORE INSERT ON broker_operations
+WHEN ((NEW.request_envelope_digest IS NULL) + (NEW.provider_idempotency_token IS NULL) +
+      (NEW.adapter_contract_digest IS NULL) + (NEW.qualification_digest IS NULL) +
+      (NEW.replay_expires_at IS NULL)) NOT IN (0,5)
+BEGIN SELECT RAISE(ABORT, 'broker dispatch intent must be complete or absent'); END;
+CREATE TRIGGER broker_dispatch_intent_immutable BEFORE UPDATE OF request_envelope_digest,
+provider_idempotency_token,adapter_contract_digest,qualification_digest,replay_expires_at
+ON broker_operations
+WHEN (OLD.request_envelope_digest IS NOT NULL AND
+      (NEW.request_envelope_digest IS NOT OLD.request_envelope_digest OR
+       NEW.provider_idempotency_token IS NOT OLD.provider_idempotency_token OR
+       NEW.adapter_contract_digest IS NOT OLD.adapter_contract_digest OR
+       NEW.qualification_digest IS NOT OLD.qualification_digest OR
+       NEW.replay_expires_at IS NOT OLD.replay_expires_at)) OR
+     (OLD.request_envelope_digest IS NULL AND NOT
+     ((NEW.request_envelope_digest IS NULL AND NEW.provider_idempotency_token IS NULL AND
+       NEW.adapter_contract_digest IS NULL AND NEW.qualification_digest IS NULL AND
+       NEW.replay_expires_at IS NULL) OR
+      (OLD.state = 'authorized' AND OLD.send_marker = 0 AND
+          NEW.state = 'dispatch_possible' AND NEW.send_marker = 1 AND
+          NEW.request_envelope_digest IS NOT NULL AND
+          NEW.provider_idempotency_token IS NOT NULL AND
+          NEW.adapter_contract_digest IS NOT NULL AND
+          NEW.qualification_digest IS NOT NULL AND NEW.replay_expires_at IS NOT NULL)))
+BEGIN SELECT RAISE(ABORT, 'broker dispatch intent is immutable'); END;
+CREATE TABLE broker_schema_v2 (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    version INTEGER NOT NULL CHECK (version = 2)
+);
+INSERT INTO broker_schema_v2 VALUES (1,2);
+DROP TABLE broker_schema;
+ALTER TABLE broker_schema_v2 RENAME TO broker_schema;
+"""
+
 _EXPECTED_TRIGGER_SQL = {
     "broker_audit_no_update": """
         CREATE TRIGGER broker_audit_no_update BEFORE UPDATE ON broker_audit
@@ -308,11 +411,55 @@ _EXPECTED_TRIGGER_SQL = {
         CREATE TRIGGER broker_operations_no_delete BEFORE DELETE ON broker_operations
         BEGIN SELECT RAISE(ABORT, 'broker operations are durable'); END
     """,
+    "broker_dispatch_intent_all_or_none": """
+        CREATE TRIGGER broker_dispatch_intent_all_or_none BEFORE UPDATE ON broker_operations
+        WHEN ((NEW.request_envelope_digest IS NULL) + (NEW.provider_idempotency_token IS NULL) + (NEW.adapter_contract_digest IS NULL) + (NEW.qualification_digest IS NULL) + (NEW.replay_expires_at IS NULL)) NOT IN (0,5)
+        BEGIN SELECT RAISE(ABORT, 'broker dispatch intent must be complete or absent'); END
+    """,
+    "broker_dispatch_intent_insert_complete": """
+        CREATE TRIGGER broker_dispatch_intent_insert_complete BEFORE INSERT ON broker_operations
+        WHEN ((NEW.request_envelope_digest IS NULL) + (NEW.provider_idempotency_token IS NULL) + (NEW.adapter_contract_digest IS NULL) + (NEW.qualification_digest IS NULL) + (NEW.replay_expires_at IS NULL)) NOT IN (0,5)
+        BEGIN SELECT RAISE(ABORT, 'broker dispatch intent must be complete or absent'); END
+    """,
+    "broker_dispatch_intent_immutable": """
+        CREATE TRIGGER broker_dispatch_intent_immutable BEFORE UPDATE OF request_envelope_digest,provider_idempotency_token,adapter_contract_digest,qualification_digest,replay_expires_at ON broker_operations
+        WHEN (OLD.request_envelope_digest IS NOT NULL AND (NEW.request_envelope_digest IS NOT OLD.request_envelope_digest OR NEW.provider_idempotency_token IS NOT OLD.provider_idempotency_token OR NEW.adapter_contract_digest IS NOT OLD.adapter_contract_digest OR NEW.qualification_digest IS NOT OLD.qualification_digest OR NEW.replay_expires_at IS NOT OLD.replay_expires_at)) OR (OLD.request_envelope_digest IS NULL AND NOT ((NEW.request_envelope_digest IS NULL AND NEW.provider_idempotency_token IS NULL AND NEW.adapter_contract_digest IS NULL AND NEW.qualification_digest IS NULL AND NEW.replay_expires_at IS NULL) OR (OLD.state = 'authorized' AND OLD.send_marker = 0 AND NEW.state = 'dispatch_possible' AND NEW.send_marker = 1 AND NEW.request_envelope_digest IS NOT NULL AND NEW.provider_idempotency_token IS NOT NULL AND NEW.adapter_contract_digest IS NOT NULL AND NEW.qualification_digest IS NOT NULL AND NEW.replay_expires_at IS NOT NULL)))
+        BEGIN SELECT RAISE(ABORT, 'broker dispatch intent is immutable'); END
+    """,
 }
+
+
+def _intent_from_row(row: sqlite3.Row) -> BrokerDispatchIntent | None:
+    values = tuple(
+        row[name]
+        for name in (
+            "request_envelope_digest",
+            "provider_idempotency_token",
+            "adapter_contract_digest",
+            "qualification_digest",
+            "replay_expires_at",
+        )
+    )
+    if values == (None,) * 5:
+        return None
+    if any(value is None for value in values):
+        raise BrokerIntegrityError("dispatch intent is incomplete")
+    return BrokerDispatchIntent(*values)
 
 
 def _normalized_sql(value: str) -> str:
     return "".join(value.lower().split()).removesuffix(";")
+
+
+def _execute_script_in_transaction(db: sqlite3.Connection, script: str) -> None:
+    statement = ""
+    for line in script.splitlines(keepends=True):
+        statement += line
+        if sqlite3.complete_statement(statement):
+            db.execute(statement)
+            statement = ""
+    if statement.strip():
+        raise BrokerIntegrityError("broker migration script is incomplete")
 
 
 class PrimaryBrokerLedger:
@@ -343,9 +490,15 @@ class PrimaryBrokerLedger:
                 if tables is None:
                     connection.executescript(f"BEGIN IMMEDIATE;\n{_MIGRATION_1}\nCOMMIT;")
                     connection.execute("BEGIN IMMEDIATE")
+                    _execute_script_in_transaction(connection, _MIGRATION_2)
                     self._check_schema(connection, full=True)
                 else:
                     connection.execute("BEGIN IMMEDIATE")
+                    version = connection.execute(
+                        "SELECT version FROM broker_schema WHERE singleton=1"
+                    ).fetchone()
+                    if version is not None and version[0] == 1:
+                        self._migrate_v1(connection)
                     self._check_schema(connection, full=True)
                 connection.commit()
             except Exception:
@@ -353,6 +506,10 @@ class PrimaryBrokerLedger:
                 raise
             finally:
                 connection.close()
+
+    def _migrate_v1(self, db: sqlite3.Connection) -> None:
+        """Add replay columns without altering append-only v1 evidence."""
+        _execute_script_in_transaction(db, _MIGRATION_2)
 
     def authorize(self, authorization: BrokerAuthorization) -> BrokerOperationSnapshot:
         if not isinstance(authorization, BrokerAuthorization):
@@ -485,23 +642,26 @@ class PrimaryBrokerLedger:
             now = _timestamp(self._clock())
             self._validate_transition(snapshot, command, now=_parse_timestamp(now))
             version = snapshot.version + 1
-            send_marker = snapshot.send_marker or command.target is BrokerReceiptState.DISPATCH_POSSIBLE
-            attempt_id = command.attempt_id if command.attempt_id is not None else snapshot.attempt_id
+            send_marker = (
+                snapshot.send_marker or command.target is BrokerReceiptState.DISPATCH_POSSIBLE
+            )
+            attempt_id = (
+                command.attempt_id if command.attempt_id is not None else snapshot.attempt_id
+            )
+            dispatch_intent = command.dispatch_intent or snapshot.dispatch_intent
             provider_charge = (
-                command.charge_cents
-                if command.target is BrokerReceiptState.CHARGED
-                else None
+                command.charge_cents if command.target is BrokerReceiptState.CHARGED else None
             )
             client_charge = (
                 min(command.charge_cents, snapshot.authorization.maximum_charge_cents)
                 if provider_charge is not None
                 else command.charge_cents
             )
-            broker_loss = (
-                provider_charge - client_charge if provider_charge is not None else None
-            )
+            broker_loss = provider_charge - client_charge if provider_charge is not None else None
             db.execute(
                 "UPDATE broker_operations SET state=?,version=?,send_marker=?,attempt_id=?,"
+                "request_envelope_digest=?,provider_idempotency_token=?,adapter_contract_digest=?,"
+                "qualification_digest=?,replay_expires_at=?,"
                 "charge_cents=?,provider_charge_cents=?,broker_loss_cents=?,"
                 "evidence_digest=?,output_digest=?,updated_at=? "
                 "WHERE operation_id=? AND version=?",
@@ -510,6 +670,11 @@ class PrimaryBrokerLedger:
                     version,
                     int(send_marker),
                     attempt_id,
+                    dispatch_intent.request_envelope_digest if dispatch_intent else None,
+                    dispatch_intent.provider_idempotency_token if dispatch_intent else None,
+                    dispatch_intent.adapter_contract_digest if dispatch_intent else None,
+                    dispatch_intent.qualification_digest if dispatch_intent else None,
+                    dispatch_intent.replay_expires_at if dispatch_intent else None,
                     client_charge,
                     provider_charge,
                     broker_loss,
@@ -594,25 +759,49 @@ class PrimaryBrokerLedger:
             raise BrokerTransitionRefused("expected version is stale")
         if command.target not in _ALLOWED_TRANSITIONS.get(snapshot.state, frozenset()):
             raise BrokerTransitionRefused("state transition is forbidden")
-        if command.target is not BrokerReceiptState.DISPATCH_POSSIBLE and command.attempt_id:
+        if (
+            command.target is not BrokerReceiptState.DISPATCH_POSSIBLE
+            and command.attempt_id is not None
+        ):
             raise BrokerTransitionRefused("attempt identity is immutable after dispatch")
+        if (
+            command.target is not BrokerReceiptState.DISPATCH_POSSIBLE
+            and command.dispatch_intent is not None
+        ):
+            raise BrokerTransitionRefused("dispatch intent is immutable after dispatch")
         if command.target is BrokerReceiptState.DISPATCH_POSSIBLE:
-            if command.attempt_id is None or any(
-                value is not None
-                for value in (
-                    command.charge_cents,
-                    command.evidence_digest,
-                    command.output_digest,
+            if (
+                command.attempt_id is None
+                or command.dispatch_intent is None
+                or any(
+                    value is not None
+                    for value in (
+                        command.charge_cents,
+                        command.evidence_digest,
+                        command.output_digest,
+                    )
                 )
             ):
-                raise BrokerTransitionRefused("dispatch marker requires only attempt identity")
+                raise BrokerTransitionRefused("dispatch marker requires attempt and intent only")
         elif command.target is BrokerReceiptState.NOT_FOUND:
             if snapshot.send_marker or _parse_timestamp(snapshot.authorization.expires_at) <= now:
-                raise BrokerTransitionRefused("not-found requires unexpired proven-unsent authority")
-            if command.charge_cents != 0 or command.evidence_digest is None or command.output_digest:
-                raise BrokerTransitionRefused("not-found requires zero charge evidence and no output")
+                raise BrokerTransitionRefused(
+                    "not-found requires unexpired proven-unsent authority"
+                )
+            if (
+                command.charge_cents != 0
+                or command.evidence_digest is None
+                or command.output_digest
+            ):
+                raise BrokerTransitionRefused(
+                    "not-found requires zero charge evidence and no output"
+                )
         elif command.target is BrokerReceiptState.UPSTREAM_BOUND:
-            if command.evidence_digest is None or command.charge_cents is not None or command.output_digest:
+            if (
+                command.evidence_digest is None
+                or command.charge_cents is not None
+                or command.output_digest
+            ):
                 raise BrokerTransitionRefused("upstream-bound requires identity evidence only")
         elif command.target is BrokerReceiptState.UNKNOWN:
             if command.charge_cents is not None or command.output_digest is not None:
@@ -649,6 +838,7 @@ class PrimaryBrokerLedger:
                 version=row["version"],
                 send_marker=bool(row["send_marker"]),
                 attempt_id=row["attempt_id"],
+                dispatch_intent=_intent_from_row(row),
                 charge_cents=row["charge_cents"],
                 provider_charge_cents=row["provider_charge_cents"],
                 broker_loss_cents=row["broker_loss_cents"],
@@ -733,9 +923,11 @@ class PrimaryBrokerLedger:
                 canonical_result = canonical_json_bytes(result_value).decode("ascii")
             except (TypeError, ValueError, json.JSONDecodeError) as exc:
                 raise BrokerIntegrityError("audit result bytes are malformed") from exc
-            if canonical_result != event["result_json"] or hashlib.sha256(
-                event["result_json"].encode("ascii")
-            ).hexdigest() != event["result_digest"]:
+            if (
+                canonical_result != event["result_json"]
+                or hashlib.sha256(event["result_json"].encode("ascii")).hexdigest()
+                != event["result_digest"]
+            ):
                 raise BrokerIntegrityError("audit result digest differs")
             if (
                 result_value.get("operation_id") != operation_id
@@ -771,6 +963,7 @@ class PrimaryBrokerLedger:
                 command_value=command_value,
                 previous_result=previous_result,
                 recorded_at=event["recorded_at"],
+                legacy_result="dispatch_intent" not in result_value,
             )
             if canonical_json_bytes(expected_result).decode("ascii") != event["result_json"]:
                 raise BrokerIntegrityError("command semantics differ from audit result")
@@ -781,7 +974,7 @@ class PrimaryBrokerLedger:
             previous_result = result_value
         if previous_state != snapshot.state.value:
             raise BrokerIntegrityError("audit tip differs from operation state")
-        if events[-1]["result_json"] != _result_json(row):
+        if historical != snapshot:
             raise BrokerIntegrityError("audit result tip differs from operation row")
 
     def _validate_snapshot(self, snapshot: BrokerOperationSnapshot) -> None:
@@ -811,6 +1004,7 @@ class PrimaryBrokerLedger:
         if snapshot.state is BrokerReceiptState.AUTHORIZED and (
             snapshot.send_marker
             or snapshot.attempt_id is not None
+            or snapshot.dispatch_intent is not None
             or outcome != (None, None, None, None, None)
         ):
             raise BrokerIntegrityError("authorized row claims dispatch or outcome")
@@ -820,6 +1014,8 @@ class PrimaryBrokerLedger:
             or outcome != (None, None, None, None, None)
         ):
             raise BrokerIntegrityError("dispatch row lacks exact marker authority")
+        if snapshot.dispatch_intent is not None and not snapshot.send_marker:
+            raise BrokerIntegrityError("dispatch intent exists without marker")
         if snapshot.state is BrokerReceiptState.UPSTREAM_BOUND and (
             not snapshot.send_marker
             or snapshot.attempt_id is None
@@ -848,8 +1044,7 @@ class PrimaryBrokerLedger:
             or snapshot.charge_cents > snapshot.authorization.maximum_charge_cents
             or not isinstance(snapshot.provider_charge_cents, int)
             or snapshot.provider_charge_cents < snapshot.charge_cents
-            or snapshot.broker_loss_cents
-            != snapshot.provider_charge_cents - snapshot.charge_cents
+            or snapshot.broker_loss_cents != snapshot.provider_charge_cents - snapshot.charge_cents
             or snapshot.evidence_digest is None
             or snapshot.output_digest is None
         ):
@@ -872,8 +1067,9 @@ class PrimaryBrokerLedger:
             value = json.loads(result_json)
             if canonical_json_bytes(value).decode("ascii") != result_json:
                 raise ValueError("noncanonical result")
-            if set(value) != {
+            result_fields = {
                 "attempt_id",
+                "dispatch_intent",
                 "broker_loss_cents",
                 "charge_cents",
                 "evidence_digest",
@@ -884,7 +1080,9 @@ class PrimaryBrokerLedger:
                 "state",
                 "updated_at",
                 "version",
-            }:
+            }
+            legacy_fields = result_fields - {"dispatch_intent"}
+            if set(value) not in {frozenset(result_fields), frozenset(legacy_fields)}:
                 raise ValueError("invalid result fields")
             historical = replace(
                 current,
@@ -892,6 +1090,11 @@ class PrimaryBrokerLedger:
                 version=value["version"],
                 send_marker=value["send_marker"],
                 attempt_id=value["attempt_id"],
+                dispatch_intent=(
+                    BrokerDispatchIntent(**value["dispatch_intent"])
+                    if value.get("dispatch_intent") is not None
+                    else None
+                ),
                 charge_cents=value["charge_cents"],
                 provider_charge_cents=value["provider_charge_cents"],
                 broker_loss_cents=value["broker_loss_cents"],
@@ -915,6 +1118,7 @@ class PrimaryBrokerLedger:
         command_value: object,
         previous_result: dict[str, object] | None,
         recorded_at: str,
+        legacy_result: bool,
     ) -> dict[str, object]:
         if sequence == 0:
             if (
@@ -922,8 +1126,9 @@ class PrimaryBrokerLedger:
                 or previous_result is not None
             ):
                 raise BrokerIntegrityError("authorization command bytes differ")
-            return {
+            expected = {
                 "attempt_id": None,
+                "dispatch_intent": None,
                 "broker_loss_cents": None,
                 "charge_cents": None,
                 "evidence_digest": None,
@@ -935,9 +1140,15 @@ class PrimaryBrokerLedger:
                 "updated_at": recorded_at,
                 "version": 0,
             }
-        if not isinstance(command_value, dict) or set(command_value) != set(
-            BrokerTransition.__dataclass_fields__
-        ):
+            if legacy_result:
+                del expected["dispatch_intent"]
+            return expected
+        transition_fields = set(BrokerTransition.__dataclass_fields__)
+        legacy_fields = transition_fields - {"dispatch_intent"}
+        if not isinstance(command_value, dict) or frozenset(command_value) not in {
+            frozenset(transition_fields),
+            frozenset(legacy_fields),
+        }:
             raise BrokerIntegrityError("transition command fields are malformed")
         if previous_result is None:
             raise BrokerIntegrityError("transition predecessor is missing")
@@ -947,6 +1158,11 @@ class PrimaryBrokerLedger:
                 expected_version=command_value["expected_version"],
                 target=BrokerReceiptState(command_value["target"]),
                 attempt_id=command_value["attempt_id"],
+                dispatch_intent=(
+                    BrokerDispatchIntent(**command_value["dispatch_intent"])
+                    if command_value.get("dispatch_intent") is not None
+                    else None
+                ),
                 charge_cents=command_value["charge_cents"],
                 evidence_digest=command_value["evidence_digest"],
                 output_digest=command_value["output_digest"],
@@ -959,7 +1175,7 @@ class PrimaryBrokerLedger:
             or command.target not in _ALLOWED_TRANSITIONS.get(previous_state, frozenset())
             or (
                 command.target is not BrokerReceiptState.DISPATCH_POSSIBLE
-                and command.attempt_id is not None
+                and (command.attempt_id is not None or command.dispatch_intent is not None)
             )
         ):
             raise BrokerIntegrityError("historical transition authority is invalid")
@@ -971,21 +1187,23 @@ class PrimaryBrokerLedger:
             if command.target is BrokerReceiptState.DISPATCH_POSSIBLE
             else previous_result["attempt_id"]
         )
+        dispatch_intent = (
+            command.dispatch_intent
+            if command.target is BrokerReceiptState.DISPATCH_POSSIBLE
+            else previous_result.get("dispatch_intent")
+        )
         provider_charge = (
-            command.charge_cents
-            if command.target is BrokerReceiptState.CHARGED
-            else None
+            command.charge_cents if command.target is BrokerReceiptState.CHARGED else None
         )
         client_charge = (
             min(provider_charge, authorization.maximum_charge_cents)
             if provider_charge is not None
             else command.charge_cents
         )
-        broker_loss = (
-            provider_charge - client_charge if provider_charge is not None else None
-        )
+        broker_loss = provider_charge - client_charge if provider_charge is not None else None
         expected = {
             "attempt_id": attempt_id,
+            "dispatch_intent": dispatch_intent,
             "broker_loss_cents": broker_loss,
             "charge_cents": client_charge,
             "evidence_digest": command.evidence_digest,
@@ -997,6 +1215,10 @@ class PrimaryBrokerLedger:
             "updated_at": recorded_at,
             "version": sequence,
         }
+        if legacy_result:
+            if dispatch_intent is not None:
+                raise BrokerIntegrityError("legacy result cannot contain replay authority")
+            del expected["dispatch_intent"]
         if command.target is BrokerReceiptState.NOT_FOUND and (
             _parse_timestamp(recorded_at) >= _parse_timestamp(authorization.expires_at)
             or bool(previous_result["send_marker"])
@@ -1062,8 +1284,7 @@ class PrimaryBrokerLedger:
         actual_triggers = {
             row[0]: _normalized_sql(row[1])
             for row in db.execute(
-                "SELECT name,sql FROM sqlite_master "
-                "WHERE type='trigger' AND name LIKE 'broker_%'"
+                "SELECT name,sql FROM sqlite_master WHERE type='trigger' AND name LIKE 'broker_%'"
             )
         }
         expected_triggers = {
@@ -1097,9 +1318,7 @@ class PrimaryBrokerLedger:
             raise BrokerUnavailable("primary broker database is unavailable") from exc
 
     @contextlib.contextmanager
-    def _serialized(
-        self, tenant_id: str, idempotency_key: str
-    ) -> Iterator[sqlite3.Connection]:
+    def _serialized(self, tenant_id: str, idempotency_key: str) -> Iterator[sqlite3.Connection]:
         with self._key_lock(tenant_id, idempotency_key):
             connection: sqlite3.Connection | None = None
             try:
@@ -1122,9 +1341,7 @@ class PrimaryBrokerLedger:
 
     @contextlib.contextmanager
     def _key_lock(self, tenant_id: str, idempotency_key: str) -> Iterator[None]:
-        identity = hashlib.sha256(
-            f"{tenant_id}\0{idempotency_key}".encode("ascii")
-        ).hexdigest()
+        identity = hashlib.sha256(f"{tenant_id}\0{idempotency_key}".encode("ascii")).hexdigest()
         lock_path = self._lock_dir / f"{identity}.lock"
         try:
             self._lock_dir.mkdir(parents=True, exist_ok=True)
@@ -1139,14 +1356,10 @@ class PrimaryBrokerLedger:
                     break
                 except BlockingIOError:
                     if time.monotonic() >= deadline:
-                        raise BrokerUnavailable(
-                            "tenant/key serialization timed out"
-                        ) from None
+                        raise BrokerUnavailable("tenant/key serialization timed out") from None
                     time.sleep(min(0.01, self._lock_timeout / 10))
                 except OSError as exc:
-                    raise BrokerUnavailable(
-                        "tenant/key lock authority is unavailable"
-                    ) from exc
+                    raise BrokerUnavailable("tenant/key lock authority is unavailable") from exc
             yield
         finally:
             with contextlib.suppress(OSError):
@@ -1156,6 +1369,7 @@ class PrimaryBrokerLedger:
 
 __all__ = [
     "BrokerConflict",
+    "BrokerDispatchIntent",
     "BrokerIntegrityError",
     "BrokerLedgerError",
     "BrokerLookup",
@@ -1165,4 +1379,5 @@ __all__ = [
     "BrokerUnavailable",
     "LookupDisposition",
     "PrimaryBrokerLedger",
+    "provider_idempotency_token",
 ]
