@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ArcadeMount } from "./ArcadeMount";
@@ -109,5 +110,86 @@ describe("ArcadeMount input and accessibility boundary", () => {
 
     expect(releasePointerCapture).toHaveBeenCalledWith(4);
     expect(cart.teardown).toHaveBeenCalledTimes(1);
+  });
+
+  it("pauses and resumes the same cartridge without replaying held input", () => {
+    const cart = cartridge();
+    const view = render(
+      <ArcadeMount cartridge={cart} reducedMotion paused={false} />,
+    );
+    const canvas = screen.getByRole("application", { name: "Test cartridge" });
+
+    fireEvent.keyDown(canvas, { key: "Enter" });
+    expect(cart.init).toHaveBeenCalledTimes(1);
+    expect(cart.update).toHaveBeenCalledTimes(1);
+
+    view.rerender(<ArcadeMount cartridge={cart} reducedMotion paused />);
+    expect(canvas.getAttribute("data-paused")).toBe("true");
+    expect(canvas.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.keyDown(canvas, { key: "Enter" });
+    expect(cart.update).toHaveBeenCalledTimes(1);
+    expect(cart.teardown).not.toHaveBeenCalled();
+
+    view.rerender(
+      <ArcadeMount cartridge={cart} reducedMotion paused={false} />,
+    );
+    expect(canvas.hasAttribute("aria-disabled")).toBe(false);
+    expect(cart.init).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(canvas, { key: "ArrowLeft" });
+    const input = (cart.update as ReturnType<typeof vi.fn>).mock.calls[1]?.[1];
+    expect(input.keysPressed).toEqual(new Set(["ArrowLeft"]));
+    expect(input.keysDown).toEqual(new Set(["ArrowLeft"]));
+
+    view.unmount();
+    expect(cart.teardown).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases pointer capture on pause and never steps a reduced-motion game on the later pointer-up", () => {
+    const cart = cartridge();
+    const view = render(
+      <ArcadeMount cartridge={cart} reducedMotion paused={false} />,
+    );
+    const canvas = screen.getByRole("application", { name: "Test cartridge" });
+    let captured = false;
+    const releasePointerCapture = vi.fn(() => {
+      captured = false;
+    });
+    Object.assign(canvas, {
+      setPointerCapture: vi.fn(() => {
+        captured = true;
+      }),
+      hasPointerCapture: vi.fn(() => captured),
+      releasePointerCapture,
+    });
+
+    fireEvent.pointerDown(canvas, { pointerId: 9, clientX: 10, clientY: 10 });
+    expect(cart.update).toHaveBeenCalledTimes(1);
+    view.rerender(<ArcadeMount cartridge={cart} reducedMotion paused />);
+    expect(releasePointerCapture).toHaveBeenCalledWith(9);
+
+    fireEvent.pointerUp(canvas, { pointerId: 9, clientX: 10, clientY: 10 });
+    expect(cart.update).toHaveBeenCalledTimes(1);
+    view.rerender(
+      <ArcadeMount cartridge={cart} reducedMotion paused={false} />,
+    );
+    fireEvent.keyDown(canvas, { key: "Enter" });
+    const resumedInput = (cart.update as ReturnType<typeof vi.fn>).mock
+      .calls[1]?.[1];
+    expect(resumedInput.pointerPressed).toBe(false);
+    expect(resumedInput.pointerReleased).toBe(false);
+  });
+
+  it("keeps StrictMode setup and teardown balanced while an initially paused cartridge never updates", () => {
+    const cart = cartridge();
+    const view = render(
+      <StrictMode>
+        <ArcadeMount cartridge={cart} reducedMotion paused />
+      </StrictMode>,
+    );
+    expect(cart.init).toHaveBeenCalledTimes(2);
+    expect(cart.teardown).toHaveBeenCalledTimes(1);
+    expect(cart.update).not.toHaveBeenCalled();
+    view.unmount();
+    expect(cart.teardown).toHaveBeenCalledTimes(2);
   });
 });
