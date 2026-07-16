@@ -47,3 +47,17 @@ describe("sessionLivingTv Flipbook-feel invent motion", () => {
     }
   });
 });
+
+describe("sessionLivingTv invent reframe CSS contract", () => {
+  it("ships Flipbook-feel invent class with reduced-motion collapse", () => {
+    const css = readFileSync(
+      join(process.cwd(), "src/brand/sessionLivingTv.css"),
+      "utf8",
+    );
+    expect(css).toMatch(/antiek-living-tv-invent/);
+    expect(css).toMatch(/prefers-reduced-motion:\s*reduce/);
+    expect(css).toMatch(/antiek-living-tv-reframe/);
+    // Pure Flipbook sole UI remains NO-GO — CSS comment is load-bearing honesty.
+    expect(css).toMatch(/NO-GO/i);
+  });
+});
