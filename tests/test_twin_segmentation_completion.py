@@ -114,6 +114,16 @@ def _complete_segments(manifest, ledger, registry, source, key):
         )
 
 
+def test_paid_aggregate_inputs_reject_legacy_segment_receipts(
+    tmp_path, source, signing_key
+):
+    manifest, ledger, registry = _setup(tmp_path, source)
+    _complete_segments(manifest, ledger, registry, source, signing_key)
+
+    with pytest.raises(SegmentationCompletionError, match="paid segment dispatch proof"):
+        ledger.aggregate_inputs(manifest)
+
+
 def _ordered_hash(path, manifest):
     with sqlite3.connect(path) as con:
         rows = con.execute(

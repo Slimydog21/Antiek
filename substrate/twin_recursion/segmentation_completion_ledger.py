@@ -18,9 +18,12 @@ from substrate.twin_note_taker import (
 
 from .segmentation import TwinSegmentationManifest, verify_segmentation_manifest
 from .segmentation_completion import (
+    PAID_COMPLETION_SCHEMA,
     AggregateCompletionReceipt,
+    AggregateCompletionReceiptV2,
     SegmentationCompletionError,
     SegmentCompletionReceipt,
+    SegmentCompletionReceiptV2,
     canonical_json,
     completion_digest,
     proposal_hash,
@@ -172,10 +175,19 @@ def _proposal_from_json(value: str) -> TwinProposal:
 
 
 def _receipt_from_json(
-    value: str, receipt_type: type[SegmentCompletionReceipt] | type[AggregateCompletionReceipt]
-) -> SegmentCompletionReceipt | AggregateCompletionReceipt:
+    value: str,
+    receipt_type: type[SegmentCompletionReceipt] | type[AggregateCompletionReceipt],
+) -> SegmentCompletionReceipt | AggregateCompletionReceipt | SegmentCompletionReceiptV2 | AggregateCompletionReceiptV2:
     try:
-        receipt = receipt_type(**json.loads(value))
+        raw = json.loads(value)
+        actual_type = receipt_type
+        if raw.get("schema") == PAID_COMPLETION_SCHEMA:
+            actual_type = (
+                SegmentCompletionReceiptV2
+                if receipt_type is SegmentCompletionReceipt
+                else AggregateCompletionReceiptV2
+            )
+        receipt = actual_type(**raw)
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise SegmentationCompletionIntegrityError("persisted receipt is malformed") from exc
     if canonical_json(asdict(receipt)) != value:
@@ -268,7 +280,7 @@ class SegmentationCompletionLedger:
         asset: AssetContent,
         segment_index: int,
         proposal: TwinProposal,
-        receipt: SegmentCompletionReceipt,
+        receipt: SegmentCompletionReceipt | SegmentCompletionReceiptV2,
         registry: TwinSegmentationLedger,
     ) -> CompletionSnapshot:
         verify_segmentation_manifest(manifest, account_id=manifest.account_id, asset=asset)
@@ -309,6 +321,7 @@ class SegmentationCompletionLedger:
                 (*key, segment_index),
             ).fetchone()
             if row is not None:
+                verify_receipt(receipt, now_unix=0, require_configured_key=False)
                 if row["completion_digest"] != digest:
                     raise SegmentationCompletionIntegrityError("segment completion substitution")
             else:
@@ -339,7 +352,7 @@ class SegmentationCompletionLedger:
         *,
         asset: AssetContent,
         proposal: TwinProposal,
-        receipt: AggregateCompletionReceipt,
+        receipt: AggregateCompletionReceipt | AggregateCompletionReceiptV2,
         registry: TwinSegmentationLedger,
     ) -> CompletionSnapshot:
         verify_segmentation_manifest(manifest, account_id=manifest.account_id, asset=asset)
@@ -349,12 +362,30 @@ class SegmentationCompletionLedger:
             self._verify_schema(con)
             self._require_manifest(con, manifest)
             rows = con.execute(
-                "SELECT segment_index,binding_id,completion_digest FROM segment_completion_bindings WHERE account_id=? AND asset_id=? AND parent_source_hash=? ORDER BY segment_index",
+                "SELECT segment_index,binding_id,completion_digest,receipt_json "
+                "FROM segment_completion_bindings WHERE account_id=? AND asset_id=? "
+                "AND parent_source_hash=? ORDER BY segment_index",
                 key,
             ).fetchall()
             if [int(row["segment_index"]) for row in rows] != list(range(len(manifest.segments))):
                 raise SegmentationCompletionError("all ordered segment completions are required")
-            ordered_hash = sha256(canonical_json([tuple(row) for row in rows]))
+            ordered_bindings = [
+                (row["segment_index"], row["binding_id"], row["completion_digest"])
+                for row in rows
+            ]
+            if isinstance(receipt, AggregateCompletionReceiptV2):
+                for row in rows:
+                    segment_receipt = _receipt_from_json(
+                        str(row["receipt_json"]), SegmentCompletionReceipt
+                    )
+                    if not isinstance(segment_receipt, SegmentCompletionReceiptV2):
+                        raise SegmentationCompletionError(
+                            "paid aggregate requires paid segment dispatch proof"
+                        )
+                    verify_receipt(
+                        segment_receipt, now_unix=0, require_configured_key=False
+                    )
+            ordered_hash = sha256(canonical_json(ordered_bindings))
             aggregate_source = _aggregate_source(manifest, ordered_hash)
             proposal_receipt_hash(aggregate_source, proposal)
             expected_proposal_hash = proposal_hash(proposal)
@@ -364,6 +395,7 @@ class SegmentationCompletionLedger:
                 key,
             ).fetchone()
             if existing is not None:
+                verify_receipt(receipt, now_unix=0, require_configured_key=False)
                 if existing["completion_digest"] != digest:
                     raise SegmentationCompletionIntegrityError("aggregate completion substitution")
             else:
@@ -402,6 +434,136 @@ class SegmentationCompletionLedger:
                     ),
                 )
         return self.get(*key, asset=asset, registry=registry)
+
+    def aggregate_inputs(
+        self, manifest: TwinSegmentationManifest
+    ) -> tuple[str, tuple[TwinProposal, ...]]:
+        """Return the exact ordered bindings and proposals for paid aggregation."""
+        with self._connect() as con:
+            con.execute("BEGIN")
+            self._verify_schema(con)
+            self._require_manifest(con, manifest)
+            rows = con.execute(
+                "SELECT segment_index,binding_id,completion_digest,proposal_json,receipt_json "
+                "FROM segment_completion_bindings WHERE account_id=? AND asset_id=? "
+                "AND parent_source_hash=? ORDER BY segment_index",
+                (manifest.account_id, manifest.asset_id, manifest.parent_source_hash),
+            ).fetchall()
+            if [int(row["segment_index"]) for row in rows] != list(range(len(manifest.segments))):
+                raise SegmentationCompletionError("all ordered segment completions are required")
+            ordered_hash = sha256(
+                canonical_json(
+                    [
+                        (row["segment_index"], row["binding_id"], row["completion_digest"])
+                        for row in rows
+                    ]
+                )
+            )
+            proposals: list[TwinProposal] = []
+            for row in rows:
+                receipt = _receipt_from_json(
+                    str(row["receipt_json"]), SegmentCompletionReceipt
+                )
+                if not isinstance(receipt, SegmentCompletionReceiptV2):
+                    raise SegmentationCompletionError(
+                        "aggregate inputs require paid segment dispatch proof"
+                    )
+                verify_receipt(receipt, now_unix=0, require_configured_key=False)
+                proposals.append(_proposal_from_json(str(row["proposal_json"])))
+            return ordered_hash, tuple(proposals)
+
+    def segment_is_complete(
+        self,
+        manifest: TwinSegmentationManifest,
+        segment_index: int,
+        *,
+        asset: AssetContent,
+        registry: TwinSegmentationLedger,
+    ) -> bool:
+        self.get(
+            manifest.account_id, manifest.asset_id, manifest.parent_source_hash,
+            asset=asset, registry=registry,
+        )
+        with self._connect() as con:
+            con.execute("BEGIN")
+            self._verify_schema(con)
+            return con.execute(
+                "SELECT 1 FROM segment_completion_bindings WHERE account_id=? "
+                "AND asset_id=? AND parent_source_hash=? AND segment_index=?",
+                (
+                    manifest.account_id, manifest.asset_id,
+                    manifest.parent_source_hash, segment_index,
+                ),
+            ).fetchone() is not None
+
+    def paid_segment_completion(
+        self,
+        manifest: TwinSegmentationManifest,
+        segment_index: int,
+        *,
+        asset: AssetContent,
+        registry: TwinSegmentationLedger,
+    ) -> tuple[TwinProposal, SegmentCompletionReceiptV2] | None:
+        if not self.segment_is_complete(
+            manifest, segment_index, asset=asset, registry=registry
+        ):
+            return None
+        with self._connect() as con:
+            con.execute("BEGIN")
+            self._verify_schema(con)
+            row = con.execute(
+                "SELECT proposal_json,receipt_json FROM segment_completion_bindings "
+                "WHERE account_id=? AND asset_id=? AND parent_source_hash=? "
+                "AND segment_index=?",
+                (
+                    manifest.account_id, manifest.asset_id,
+                    manifest.parent_source_hash, segment_index,
+                ),
+            ).fetchone()
+            assert row is not None
+            proposal = _proposal_from_json(str(row["proposal_json"]))
+            receipt = _receipt_from_json(
+                str(row["receipt_json"]), SegmentCompletionReceipt
+            )
+            if not isinstance(receipt, SegmentCompletionReceiptV2):
+                raise SegmentationCompletionError(
+                    "legacy completion has no paid dispatch proof"
+                )
+            verify_receipt(receipt, now_unix=0, require_configured_key=False)
+            return proposal, receipt
+
+    def paid_aggregate_completion(
+        self,
+        manifest: TwinSegmentationManifest,
+        *,
+        asset: AssetContent,
+        registry: TwinSegmentationLedger,
+    ) -> tuple[TwinProposal, AggregateCompletionReceiptV2] | None:
+        snapshot = self.get(
+            manifest.account_id, manifest.asset_id, manifest.parent_source_hash,
+            asset=asset, registry=registry,
+        )
+        if not snapshot.parent_ready:
+            return None
+        with self._connect() as con:
+            con.execute("BEGIN")
+            self._verify_schema(con)
+            row = con.execute(
+                "SELECT proposal_json,receipt_json FROM aggregate_completion_bindings "
+                "WHERE account_id=? AND asset_id=? AND parent_source_hash=?",
+                (manifest.account_id, manifest.asset_id, manifest.parent_source_hash),
+            ).fetchone()
+            assert row is not None
+            proposal = _proposal_from_json(str(row["proposal_json"]))
+            receipt = _receipt_from_json(
+                str(row["receipt_json"]), AggregateCompletionReceipt
+            )
+            if not isinstance(receipt, AggregateCompletionReceiptV2):
+                raise SegmentationCompletionError(
+                    "legacy completion has no paid dispatch proof"
+                )
+            verify_receipt(receipt, now_unix=0, require_configured_key=False)
+            return proposal, receipt
 
     def _require_manifest(
         self, con: sqlite3.Connection, manifest: TwinSegmentationManifest
@@ -475,7 +637,8 @@ class SegmentationCompletionLedger:
             seen.add(index)
             proposal = _proposal_from_json(str(row["proposal_json"]))
             receipt = _receipt_from_json(str(row["receipt_json"]), SegmentCompletionReceipt)
-            assert isinstance(receipt, SegmentCompletionReceipt)
+            assert isinstance(receipt, (SegmentCompletionReceipt, SegmentCompletionReceiptV2))
+            verify_receipt(receipt, now_unix=0, require_configured_key=False)
             digest = completion_digest(proposal, receipt)
             segment = manifest.segments[index]
             expected_binding = "segment_binding_" + sha256(canonical_json([*key, index, digest]))
@@ -513,7 +676,8 @@ class SegmentationCompletionLedger:
         )
         proposal = _proposal_from_json(str(row["proposal_json"]))
         receipt = _receipt_from_json(str(row["receipt_json"]), AggregateCompletionReceipt)
-        assert isinstance(receipt, AggregateCompletionReceipt)
+        assert isinstance(receipt, (AggregateCompletionReceipt, AggregateCompletionReceiptV2))
+        verify_receipt(receipt, now_unix=0, require_configured_key=False)
         digest = completion_digest(proposal, receipt)
         key = (manifest.account_id, manifest.asset_id, manifest.parent_source_hash)
         expected_binding = "aggregate_binding_" + sha256(

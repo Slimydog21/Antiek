@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cycle 108 - Budgeted Twin Dispatch Worker</title>
+  <style>
+    body{font:16px/1.55 system-ui,sans-serif;max-width:980px;margin:40px auto;padding:0 24px;color:#17202a;background:#fff}
+    h1,h2,h3{line-height:1.2} code{background:#eef1f4;padding:2px 5px} table{border-collapse:collapse;width:100%}
+    th,td{border:1px solid #ccd3da;padding:8px;text-align:left;vertical-align:top}.must{border-left:5px solid #a61b1b;padding-left:14px}
+  </style>
+</head>
+<body>
+<h1>Cycle 108: Budgeted Twin Dispatch Worker</h1>
+<p><strong>Status:</strong> execution contract. <strong>Parent:</strong> Cycle 107 signed segment completion and parent aggregation.</p>
+
+<h2>1. Outcome</h2>
+<p>Antiek can execute one exact segment or aggregate twin-generation operation through the existing hard-ceiling provider gateway. Every billable send is preceded by a durable hold. A completion receipt can be issued only after authoritative settlement and only for provider output durably bound to that exact operation.</p>
+
+<h2>2. Existing Authorities Reused</h2>
+<table><tr><th>Authority</th><th>Responsibility</th></tr>
+<tr><td><code>ResearchSpendLedger</code></td><td>Approved run identity, atomic hold, dispatch marker, settlement, release, ceiling and audit events.</td></tr>
+<tr><td><code>ResearchProviderGateway</code></td><td>Server-owned projection, eligible route enforcement, one-send idempotency, unknown-outcome reconciliation.</td></tr>
+<tr><td><code>TwinSegmentationLedger</code></td><td>Exact current manifest and ordered obligations.</td></tr>
+<tr><td><code>SegmentationCompletionLedger</code></td><td>Signed exact segment and aggregate bindings.</td></tr></table>
+<p class="must">Cycle 108 MUST NOT create another spend ledger, bypass the gateway, accept caller prices, or treat a hold identifier by itself as completion evidence.</p>
+
+<h2>3. New Authority</h2>
+<p>A private SQLite worker journal stores commitments and canonical proposals, but never source text. Its schema is pinned and immutable. Each row binds:</p>
+<ul>
+  <li>account, asset, parent source, manifest, operation kind and segment index;</li>
+  <li>canonical operation digest and provider idempotency key;</li>
+  <li>provider/model, hold identifier and settled state;</li>
+  <li>canonical proposal JSON and proposal hash;</li>
+  <li>authoritative provider evidence hash, never private evidence bodies;</li>
+  <li>the exact persisted signed receipt.</li>
+</ul>
+
+<h2>4. Dispatch Protocol</h2>
+<ol>
+  <li>Reverify current source bytes, manifest, registry and existing completion state.</li>
+  <li>Construct a canonical operation. A segment operation includes exact manifest/range/content commitments and the segment source text sent to the model. An aggregate operation includes the exact ordered segment binding commitments and canonical segment proposals.</li>
+  <li>Require the projection request route to equal the adapter route and the pinned twin seam/operation. Usage maxima are server-validated; zero, missing, stale or unqualified pricing refuses before reservation.</li>
+  <li>Call <code>ResearchProviderGateway.dispatch_paid</code>. The gateway reserves before marking dispatch possible and sending.</li>
+  <li>A twin adapter wrapper validates the returned <code>TwinProposal</code> and durably journals it before returning <code>ProviderSuccess</code> to the gateway. Thus settlement cannot precede recoverable output.</li>
+  <li>For ambiguous calls, reconciliation must return both authoritative billing disposition and the exact recovered proposal when charged. The wrapper journals charged output before reporting reconciliation to the gateway. Charged-without-output remains unknown and cannot settle or sign.</li>
+  <li>After gateway settlement, reload the hold and journal. Recompute every identity. Issue and persist one deterministic signed receipt using a server-held Ed25519 key, then apply it through Cycle 107.</li>
+</ol>
+
+<h2>5. Replay and Crash Contract</h2>
+<table><tr><th>Crash point</th><th>Required recovery</th></tr>
+<tr><td>Before hold</td><td>No provider call and no receipt.</td></tr>
+<tr><td>After hold, before dispatch marker</td><td>Gateway releases as provably unsent.</td></tr>
+<tr><td>After dispatch marker, before provider result</td><td>Reconcile only; never blind retry.</td></tr>
+<tr><td>After provider result, before settlement</td><td>Journal already contains exact proposal; gateway reconciliation converges settlement.</td></tr>
+<tr><td>After settlement, before receipt</td><td>Replay reads settled hold plus journal and issues the same deterministic receipt.</td></tr>
+<tr><td>After receipt, before completion apply</td><td>Replay applies persisted receipt; no provider call and no new spend.</td></tr></table>
+
+<h2>6. Signing and Identity</h2>
+<ul>
+  <li>Signing seed is constructor-injected private bytes, exactly 32 bytes; no key is read from request data.</li>
+  <li>Key identifier and verify key are derived from the signing key and must match Cycle 107 verification.</li>
+  <li>Receipt identifier is deterministic over operation identity, hold, proposal hash and key identifier.</li>
+  <li><code>budget_authority_id</code> and <code>paid_hold_id</code> equal the exact settled hold ID. Worker revalidates owner/run/provider/model/operation digest and settled state immediately before signing.</li>
+  <li>The v2 signed payload binds <code>spend_run_id</code>, provider, provider response ID, the provider-idempotency-key hash, actual cents, currency, settlement evidence hash, settlement intent hash, settlement time and ceiling-breach state.</li>
+  <li>Settlement proof is reconstructed from the spend ledger only when exactly one settlement event and its typed provider evidence bind the expected run, operation digest, idempotency key and output hash.</li>
+  <li>Legacy v1 receipts remain readable for historical Cycle 107 data but are never accepted as proof that a billable Cycle 108 dispatch completed.</li>
+  <li>Receipt expiry is persisted on first issuance. A journaled receipt must remain unexpired and match the active worker key until first completion apply. Once applied, historical reads authenticate its signature against the configured keyring without reapplying issuance expiry.</li>
+</ul>
+
+<h2>7. Refusals</h2>
+<p>The worker fails closed for source or manifest drift, missing segment completion prerequisites, released/reserved/unknown holds, settled holds without journaled output, provider output without settlement, proposal substitution, route/model mismatch, malformed output, key mismatch, journal corruption, schema drift, receipt expiry before first apply, or any operation whose cost cannot be conservatively bounded.</p>
+
+<h2>8. Acceptance Tests</h2>
+<ol>
+  <li>Segment happy path proves reserve precedes send, journal precedes settlement, receipt hold equals settled hold, and Cycle 107 applies it.</li>
+  <li>Aggregate happy path is impossible until every ordered segment binding exists; then it binds the exact ordered set.</li>
+  <li>Exact replay performs zero sends, zero new holds and returns the same receipt/binding.</li>
+  <li>Changed source, manifest, range, proposal, provider, model, projection, run owner or approval revision refuses.</li>
+  <li>Ceiling exhaustion and ineligible routes refuse before adapter invocation.</li>
+  <li>Provider-not-sent releases and cannot sign. Unknown outcome retains authority and cannot sign.</li>
+  <li>Charged reconciliation without exact output remains unknown. Charged reconciliation with exact output journals before settlement and recovers.</li>
+  <li>Crash checkpoints cover journal-before-settle, settle-before-receipt and receipt-before-apply.</li>
+  <li>Concurrent exact calls converge on one provider identity, hold, journal record and receipt; substitutions conflict.</li>
+  <li>Database reopen, schema/object mutation, row corruption and signing-key rotation fail closed.</li>
+  <li>Coupled Cycle104-107, spend-ledger and provider-gateway tests remain green; Ruff, strict typing, HTML parse and security review pass.</li>
+</ol>
+
+<h2>9. Explicit Non-Goals</h2>
+<p>No production provider adapter, pricing catalog entry, API/UI, automatic fleet scheduling, fallback routing, canonical parent projection, graph/search promotion, production corpus mutation, merge, deployment or live spend. This sprint builds and proves the reusable authority boundary; a provider route remains disabled until its pricing, idempotency and reconciliation-with-output guarantees are separately qualified.</p>
+
+<h2>10. Next Authority</h2>
+<p>After this worker is accepted, qualify one exact provider/model route and mount it. Then project a verified aggregate parent binding into the canonical twin lifecycle and graph/search substrate without promoting advisory segment proposals as grounded claims.</p>
+</body>
+</html>
