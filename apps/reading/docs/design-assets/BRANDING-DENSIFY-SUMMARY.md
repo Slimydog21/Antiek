@@ -81,7 +81,10 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | CRT invent Home + Coordination/Backtest | `9b9412745` | penguin-as-TV invent strip; residual operator densify |
 | CrossGraph / SkillRuleDetail | `454f23df9` | citation + skill detail brand chrome |
 | Twin notes / Notebook canvas / CreationStudio | (wave) | recursive note-taker + literate surfaces densify |
-| Living-TV ambient heartbeat | (wave) | 90s quiet → idle/sleeping; re-arm on product experience | |
+| Living-TV ambient heartbeat | `521a18d15` | 90s quiet → idle/sleeping; re-arm on product experience |
+| AutoNotebook densify | `d7b399549` | derived research notebook header brand chrome |
+| Biography invent + Outcomes detail | `f01eea8d5` | living-TV strip + grading surface SessionBrandChrome |
+| SpeakInvite phone densify | `e7a7ae27e` | invitee landing thinking + living-TV invent | |
 
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
