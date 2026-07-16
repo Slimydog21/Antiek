@@ -508,9 +508,10 @@ async def test_handler_emits_fallback_when_provider_raises(
     delivered = [r for r in rows if r["action_type"] == "distillation.delivered"]
     assert delivered
     event = Event.model_validate(delivered[0])
-    assert event.policy_id == "wrestling-fallback/no-provider"
+    assert event.policy_id == "wrestling-fallback/ambiguous"
     assert len(event.payload.claims) == 1
-    assert "Could not dispatch" in event.payload.claims[0].text
+    assert "outcome is unknown" in event.payload.claims[0].text
+    assert "No automatic retry" in event.payload.claims[0].text
 
 
 @pytest.mark.asyncio
@@ -538,7 +539,7 @@ async def test_handler_does_not_crash_when_no_provider_registered(
     delivered = [r for r in rows if r["action_type"] == "distillation.delivered"]
     assert delivered, "fallback delivered event should land even with no provider"
     event = Event.model_validate(delivered[0])
-    assert event.policy_id == "wrestling-fallback/no-provider"
+    assert event.policy_id == "wrestling-fallback/ambiguous"
 
 
 # ---------------------------------------------------------------------------

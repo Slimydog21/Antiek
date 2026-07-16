@@ -1,11 +1,40 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Distillation dispatch idempotency authority</title></head>
 <body><main>
-<header><p>Antiek Infinite / Cycle 80 follow-up / executable specification / 2026-07-16</p><h1>Never repay one distillation request by accident</h1><p>Close the pre-existing crash window between provider acceptance and durable distillation delivery without pretending retrospective events are idempotency authority.</p></header>
-<section><h2>Problem</h2><p>The wrestling handler can receive one <code>distillation.requested</code> event more than once. The current dispatcher calls a provider before recording a dispatch event. A crash after provider acceptance but before durable result/delivery can therefore cause an automatic replay and a second charge.</p></section>
-<section><h2>Durable authority</h2><ol><li>Create a DuckDB dispatch command keyed by request event ID and bound to the canonical request, prompt, role, route, and projection digests.</li><li>Persist <code>reserved</code> before transport. Concurrent exact callers observe one command; changed bytes under the same identity fail closed.</li><li>Carry a digest-derived provider idempotency key only when current provider qualification proves durable idempotency or authoritative lookup.</li><li>Persist the normalized provider result as <code>completed</code> before emitting delivery. Replay from <code>completed</code> emits only the missing exact delivery.</li><li>If transport may have reached a provider and no authoritative result can be recovered, transition to <code>ambiguous</code>. Automatic retry is forbidden; operator reconciliation is required.</li><li>Mark <code>delivered</code> only after the exact event is durably present or reconciled byte-for-byte.</li></ol></section>
-<section><h2>Crash matrix</h2><table><tr><th>Boundary</th><th>Required behavior</th></tr><tr><td>Before reservation commit</td><td>No provider call and no command.</td></tr><tr><td>After reservation, before send</td><td>Recoverable no-send state may dispatch once.</td></tr><tr><td>During/after send without authoritative result</td><td>Ambiguous; retain conservative exposure and never auto-retry.</td></tr><tr><td>After completed result, before delivery</td><td>Replay emits delivery without provider transport.</td></tr><tr><td>After delivery append, before receipt</td><td>Exact event reconciliation records receipt without duplication.</td></tr></table></section>
-<section><h2>Provider qualification</h2><p>A provider lacking proven idempotency or request-status lookup cannot support transparent crash replay. The product must expose reconciliation or require a fresh operator decision; it may not infer “not charged” from a timeout.</p></section>
-<section><h2>Acceptance</h2><ul><li>Concurrent duplicate handlers create one command, one provider call, and one delivery.</li><li>Crash injection covers every boundary and process restart.</li><li>Changed prompt/request/route bytes under one request event fail closed.</li><li>Completed replay performs zero provider calls; ambiguous replay performs zero provider calls.</li><li>Spend reservation and settlement remain conservative and auditable across success, provider failure, timeout, and reconciliation.</li><li>Two-account fixtures are deferred until a durable investigation-owner authority exists; the current implementation must state its authenticated single-operator scope.</li></ul></section>
-<section><h2>Non-goals</h2><p>No in-memory dedupe, trajectory-only scan, silent retry, fabricated provider capability, or weakening of spend approval.</p></section>
+<header><p>Antiek Infinite / Cycle 91 / executable specification / 2026-07-16</p><h1>Never repay one distillation request by accident</h1><p>Close the crash window between provider acceptance and durable delivery without pretending that provider idempotency, spend approval, or retrospective trajectory scans exist.</p></header>
+<section><h2>Current boundary</h2><p>The authenticated single-operator wrestling handler receives replayable <code>distillation.requested</code> events. Its legacy synchronous router can reach providers, but provider adapters expose neither authoritative idempotency nor result lookup. This sprint adds a safety floor around that one call site. It does not make the legacy route an approved paid execution caller.</p></section>
+<section><h2>Durable authority</h2><ol>
+<li>Bind the request event envelope, complete prompt digest, synthesizer role, route-policy digest, and explicit unavailable spend projection into canonical JSON and SHA-256.</li>
+<li>Persist one DuckDB command keyed by request event ID as <code>reserved</code>. DuckDB has no SQLite <code>STRICT</code> suffix; explicit column types, closed state checks, payload checks, digests, primary keys, and unique delivery identity are the enforced contract.</li>
+<li>Hold one private per-command kernel <code>flock</code> across reserve, transport, normalized completion, and delivery. Concurrent processes wait; process death releases the lock without rewriting command state.</li>
+<li>Move <code>reserved → sending</code> before transport. A later lock owner that finds <code>sending</code> moves it to <code>ambiguous</code>, emits one deterministic uncertainty notice, and performs zero provider calls.</li>
+<li>After success, parse and persist the exact typed <code>DistillationDeliveredPayload</code>, its digest, policy, scope, and deterministic event ID as <code>completed</code> before event publication.</li>
+<li>Publish with <code>strict_write</code>, explicit event ID, and idempotent append. Reconcile the physical trajectory before append so a sealed or live event is not duplicated. Mark <code>delivered</code> only after durable presence.</li>
+</ol></section>
+<section><h2>State machine</h2><table><thead><tr><th>State</th><th>Allowed next state</th><th>Replay behavior</th></tr></thead><tbody>
+<tr><td>reserved</td><td>sending</td><td>The lock owner may dispatch once.</td></tr>
+<tr><td>sending</td><td>completed or ambiguous</td><td>A new lock owner never dispatches; it records ambiguity.</td></tr>
+<tr><td>completed</td><td>delivered</td><td>Repair exact event delivery with zero provider calls.</td></tr>
+<tr><td>delivered</td><td>none</td><td>Rebroadcast the exact durable event with zero provider calls.</td></tr>
+<tr><td>ambiguous</td><td>none in this sprint</td><td>Replay one exact uncertainty notice; zero provider calls.</td></tr>
+</tbody></table></section>
+<section><h2>Crash matrix</h2><table><thead><tr><th>Boundary</th><th>Required behavior</th></tr></thead><tbody>
+<tr><td>Before reservation commit</td><td>No provider call and no command.</td></tr>
+<tr><td>After reservation, before sending</td><td>The next lock owner may dispatch once.</td></tr>
+<tr><td>During or after transport without stored result</td><td>Ambiguous; never retry automatically.</td></tr>
+<tr><td>After completed result, before event</td><td>Emit the stored exact delivery without provider access.</td></tr>
+<tr><td>After event append, before receipt</td><td>Reconcile event identity and mark delivered without duplicate append.</td></tr>
+<tr><td>Cancellation while waiting for the command lock</td><td>Finish acquisition, release exactly once, then propagate cancellation; no orphaned process lock.</td></tr>
+</tbody></table></section>
+<section><h2>Acceptance evidence</h2><ul>
+<li>Concurrent exact callers produce one simulated provider call.</li>
+<li>Reopen tests cover reserved, sending, completed, delivered, and ambiguous states.</li>
+<li>Changed request or prompt bytes under one event ID fail with a binding conflict.</li>
+<li>Stored payload corruption fails closed before publication.</li>
+<li>Completed replay and append-before-receipt replay make zero additional provider calls and preserve one event ID.</li>
+<li>A crash after transport leaves sending; restart records ambiguity, emits a value-free notice, and does not redispatch.</li>
+<li>A cancelled waiter blocked behind a real flock cannot prevent a later exact caller from acquiring the command lock.</li>
+</ul></section>
+<section><h2>Explicit gaps and next sprint</h2><p>The legacy wrestling call still has no operator-approved hard ceiling, spend hold, settlement, or fallback-chain authorization. Cycle 91 must not be described as budget-safe paid execution. The next money-path sprint must connect distillation to the existing approved research provider gateway or refuse paid transport; that integration requires an exact owner/run/operation binding and must preserve this command identity. Permanently ambiguous commands also need an authenticated operator reconciliation or abandonment surface before any fresh command can be authorized.</p></section>
+<section><h2>Non-goals</h2><p>No in-memory dedupe, age lease, trajectory-only authority, silent retry, provider capability fabrication, general router mutation, approval bypass, operator reconciliation, live provider call, merge, or deployment.</p></section>
 </main></body></html>
