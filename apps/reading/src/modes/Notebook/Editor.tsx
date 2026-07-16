@@ -231,6 +231,8 @@ export function NotebookEditor({
             throw new Error(`HTTP ${r.status}`);
           }
           setSaved("saved");
+          // Living-TV: notebook autosave confirmed — noted.
+          emitWernerExperience("note_saved");
           // Keep a local mirror so a reload while offline shows the
           // last-known-good state.
           writeStored(notebookId, e.getHTML(), etagRef.current);
@@ -251,12 +253,15 @@ export function NotebookEditor({
           const nextEtag = writeStored(notebookId, e.getHTML(), etagRef.current);
           if (nextEtag === null) {
             setSaved("conflict");
+            emitWernerExperience("fail");
             toast.err(
               "Notebook conflict: another tab edited this notebook. Reload to see the latest.",
             );
           } else {
             etagRef.current = nextEtag;
             setSaved("offline");
+            // Offline local save still preserves work — quiet note.
+            emitWernerExperience("note_saved");
             if (import.meta.env.DEV) {
               // eslint-disable-next-line no-console
               console.warn(
