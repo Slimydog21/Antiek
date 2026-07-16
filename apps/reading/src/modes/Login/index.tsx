@@ -299,7 +299,7 @@ export default function Login() {
             alt=""
             aria-hidden="true"
             data-testid="login-living-tv-art"
-            className="antiek-login__living-tv"
+            className="antiek-login__living-tv antiek-living-tv-invent"
             style={{
               width: "100%",
               maxWidth: 280,

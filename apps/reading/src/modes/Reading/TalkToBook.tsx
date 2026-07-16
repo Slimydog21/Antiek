@@ -157,7 +157,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
         alt=""
         aria-hidden="true"
         data-testid="talk-to-book-living-tv-art"
-        className="h-12 w-full object-cover object-center"
+        className="h-12 w-full object-cover object-center antiek-living-tv-invent"
         loading="lazy"
         decoding="async"
       />

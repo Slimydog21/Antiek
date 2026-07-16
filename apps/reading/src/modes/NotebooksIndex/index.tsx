@@ -131,7 +131,7 @@ export default function NotebooksIndex() {
               alt=""
               aria-hidden="true"
               data-testid="notebooks-home-living-tv-art"
-              className="h-16 w-full max-w-md rounded-md object-cover object-center"
+              className="h-16 w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent"
               loading="lazy"
               decoding="async"
             />

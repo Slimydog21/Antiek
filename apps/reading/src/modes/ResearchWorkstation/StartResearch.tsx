@@ -467,7 +467,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             alt=""
             aria-hidden="true"
             data-testid="research-home-living-tv-art"
-            className="h-16 w-full max-w-sm rounded-md object-cover object-center"
+            className="h-16 w-full max-w-sm rounded-md object-cover object-center antiek-living-tv-invent"
             loading="lazy"
             decoding="async"
           />

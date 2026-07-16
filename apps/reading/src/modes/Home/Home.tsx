@@ -88,7 +88,7 @@ export function Home() {
               alt=""
               aria-hidden="true"
               data-testid="home-living-tv-art"
-              className="mt-3 h-16 w-full max-w-md rounded-md object-cover object-center"
+              className="mt-3 h-16 w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent"
               loading="lazy"
               decoding="async"
             />

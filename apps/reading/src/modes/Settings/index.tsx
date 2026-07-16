@@ -163,7 +163,7 @@ export default function Settings() {
             alt=""
             aria-hidden="true"
             data-testid="settings-home-living-tv-art"
-            className="mt-2 h-16 w-full max-w-md rounded-md object-cover object-center"
+            className="mt-2 h-16 w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent"
             loading="lazy"
             decoding="async"
           />

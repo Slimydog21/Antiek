@@ -179,6 +179,7 @@ export function LoadingGameHost({
         aria-hidden="true"
         data-testid="loading-game-living-tv-brand"
         data-wait-game={game}
+        className="antiek-living-tv-invent"
         style={{
           width: "100%",
           height: 64,

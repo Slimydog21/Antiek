@@ -307,7 +307,7 @@ export default function MasterMdViewer({
             alt=""
             aria-hidden="true"
             data-testid="master-md-living-tv-art"
-            className="mb-3 h-12 w-full max-w-md rounded-md object-cover object-center"
+            className="mb-3 h-12 w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent"
             loading="lazy"
             decoding="async"
           />

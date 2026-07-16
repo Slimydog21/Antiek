@@ -126,6 +126,8 @@ describe("Home (SPR-12 M1)", () => {
     expect(livingTv.getAttribute("src") ?? "").toMatch(
       /werner_crt_living_tv_session_v1/,
     );
+    // Flipbook-feel invent reframe class is load-bearing on product doors.
+    expect(livingTv.className).toMatch(/antiek-living-tv-invent/);
     // Four equal door cards.
     const cards = screen.getByTestId("home-workflow-cards");
     expect(cards.querySelectorAll("button").length).toBe(WORKFLOW_ORDER.length);

@@ -67,7 +67,7 @@ export default function TrajectoryView({
         alt=""
         aria-hidden="true"
         data-testid="trajectory-living-tv-art"
-        className="mx-4 mt-2 h-10 max-w-xs rounded object-cover object-center"
+        className="mx-4 mt-2 h-10 max-w-xs rounded object-cover object-center antiek-living-tv-invent"
         loading="lazy"
         decoding="async"
       />

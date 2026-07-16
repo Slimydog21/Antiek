@@ -232,7 +232,7 @@ export default function SpeakInvite() {
             alt=""
             aria-hidden="true"
             data-testid="speak-invite-living-tv-art"
-            className="mx-auto h-14 w-full max-w-sm rounded-md object-cover object-center"
+            className="mx-auto h-14 w-full max-w-sm rounded-md object-cover object-center antiek-living-tv-invent"
             loading="lazy"
             decoding="async"
           />

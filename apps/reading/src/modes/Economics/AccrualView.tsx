@@ -236,7 +236,7 @@ export default function AccrualView({ synthesisId, onPayoutRefused }: AccrualVie
           alt=""
           aria-hidden="true"
           data-testid="accrual-view-living-tv-art"
-          className="mt-2 h-12 w-full max-w-sm rounded-md object-cover object-center"
+          className="mt-2 h-12 w-full max-w-sm rounded-md object-cover object-center antiek-living-tv-invent"
           loading="lazy"
           decoding="async"
         />

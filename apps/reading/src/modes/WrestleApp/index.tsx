@@ -181,7 +181,7 @@ function EmptyState({
             alt=""
             aria-hidden="true"
             data-testid="wrestle-empty-living-tv-art"
-            className="h-14 w-full max-w-sm rounded-md object-cover object-center"
+            className="h-14 w-full max-w-sm rounded-md object-cover object-center antiek-living-tv-invent"
             loading="lazy"
             decoding="async"
           />

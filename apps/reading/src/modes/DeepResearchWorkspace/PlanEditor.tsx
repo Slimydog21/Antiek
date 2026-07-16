@@ -88,7 +88,7 @@ export default function PlanEditor({ tree, launchable, busy, onEdit, onApprove, 
         alt=""
         aria-hidden="true"
         data-testid="plan-editor-living-tv-art"
-        className="h-14 w-full max-w-lg rounded-md object-cover object-center"
+        className="h-14 w-full max-w-lg rounded-md object-cover object-center antiek-living-tv-invent"
         loading="lazy"
         decoding="async"
       />
