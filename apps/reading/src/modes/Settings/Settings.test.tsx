@@ -246,6 +246,10 @@ describe("Settings SPR-01", () => {
         manifest_sha256: "a".repeat(64),
         outcome: "settled",
         created_at: "2026-07-16T10:00:00Z",
+        currency: "USD",
+        ceiling_cents: 20,
+        maximum_chain_exposure_cents: 20,
+        approval_eligible: false,
         approval_id: `fallback-approval:${"d".repeat(64)}`,
         approved_at: "2026-07-16T09:59:00Z",
         routes: [{
