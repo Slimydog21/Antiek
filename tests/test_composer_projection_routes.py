@@ -120,6 +120,23 @@ def test_candidates_come_from_server_state_not_request_body(client: TestClient) 
     assert len({(row["provider"], row["model"]) for row in body["ranked_candidates"]}) == len(
         body["ranked_candidates"]
     )
+    plan = body["fallback_plan"]
+    assert plan["authority"] == "advisory_fallback_plan"
+    assert plan["status"] == "blocked"
+    assert plan["maximum_chain_exposure_cents"] is None
+    assert plan["would_exceed_budget"] is None
+    assert [
+        (route["fallback_index"], route["provider"], route["model"])
+        for route in plan["routes"]
+    ] == [
+        (0, "zai", "glm-5.2"),
+        (1, "deepseek", "deepseek-v4-pro"),
+        (2, "xiaomi", "mimo-v2.5-pro"),
+    ]
+    assert all(not route["hard_ceiling_eligible"] for route in plan["routes"])
+    assert {
+        route["execution_status"] for route in plan["routes"]
+    } == {"blocked_selection_authority"}
 
 
 def test_client_candidate_claims_are_rejected(client: TestClient) -> None:
@@ -300,7 +317,7 @@ def test_server_decision_failure_does_not_leak_values(
     assert "secret-provider-key-and-rate" not in response.text
 
 
-def test_projection_unavailability_is_honest_unknown(
+def test_projection_unavailability_fails_visibly_closed(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def unavailable(request: CostProjectionRequest) -> CostProjection:
@@ -314,10 +331,11 @@ def test_projection_unavailability_is_honest_unknown(
         "/settings/composer-projection/resolve",
         json=_request(choice={"provider": "zai", "model": "glm-5.2"}),
     )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["chosen_projection"] is None
-    assert body["would_exceed_budget"] is None
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "composer fallback plan could not be resolved"
+    }
+    assert "catalog temporarily unavailable" not in response.text
 
 
 def test_unexpected_projector_fault_propagates(

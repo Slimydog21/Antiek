@@ -74,6 +74,33 @@ export interface ComposerChosenProjection {
   ineligibility: string | null;
 }
 
+export interface ComposerFallbackRouteProjection {
+  maximum_cost_usd: string;
+  reservation_cents: number;
+  disposition: ProjectionDisposition;
+  ineligibility: string | null;
+  rate_snapshot: string;
+}
+
+export interface ComposerFallbackRoute {
+  fallback_index: number;
+  provider: string;
+  model: string;
+  registered: boolean;
+  projection: ComposerFallbackRouteProjection;
+  hard_ceiling_eligible: boolean;
+  execution_status: string;
+}
+
+export interface ComposerFallbackPlan {
+  authority: "advisory_fallback_plan";
+  tier: string;
+  status: "executable" | "blocked";
+  maximum_chain_exposure_cents: number | null;
+  would_exceed_budget: boolean | null;
+  routes: ComposerFallbackRoute[];
+}
+
 export interface ComposerModelProjection {
   task: ComposerDecisionTask;
   recommended_tier: string | null;
@@ -90,6 +117,7 @@ export interface ComposerModelProjection {
   pricing_status: PricingStatus;
   authority: string;
   notes: string[];
+  fallback_plan: ComposerFallbackPlan | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,6 +128,154 @@ const EXACT_NON_NEGATIVE_DECIMAL = /^(?:0|[1-9]\d*)(?:\.\d+)?(?:e[+-]?\d+)?$/i;
 // Mirrors the backend's 1,000-place Decimal exponent bound with room for the
 // coefficient, decimal point, exponent marker/sign, and exponent digits.
 const MAX_EXACT_COST_LENGTH = 1_100;
+const EXECUTION_STATUSES = new Set([
+  "executable",
+  "blocked_unknown_pricing",
+  "blocked_idempotency_unproven",
+  "blocked_reconciliation_unproven",
+  "blocked_hidden_retries",
+  "blocked_provider_qualification",
+  "blocked_selection_authority",
+  "blocked_no_hard_ceiling_adapter",
+  "blocked_hard_ceiling_adapter_mismatch",
+]);
+
+function validExactCost(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= MAX_EXACT_COST_LENGTH &&
+    EXACT_NON_NEGATIVE_DECIMAL.test(value)
+  );
+}
+
+function validCents(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function exactReservationCents(value: string): number | null {
+  const match = /^(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(value);
+  if (match == null) return null;
+  const whole = match[1];
+  const fraction = match[2] ?? "";
+  const exponent = Number(match[3] ?? "0");
+  if (!Number.isSafeInteger(exponent) || Math.abs(exponent) > 1_000) return null;
+  const digits = `${whole}${fraction}`.replace(/^0+(?=\d)/, "");
+  const centsShift = exponent - fraction.length + 2;
+  let cents: bigint;
+  if (centsShift >= 0) {
+    cents = BigInt(digits) * 10n ** BigInt(centsShift);
+  } else {
+    const divisor = 10n ** BigInt(-centsShift);
+    const numerator = BigInt(digits);
+    cents = numerator / divisor + (numerator % divisor === 0n ? 0n : 1n);
+  }
+  return cents <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(cents) : null;
+}
+
+function validIdentity(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 256 &&
+    value.trim() === value
+  );
+}
+
+function validateFallbackPlan(
+  value: unknown,
+  remainingUsd: unknown,
+): asserts value is ComposerFallbackPlan | null {
+  if (value === null) return;
+  if (
+    !isRecord(value) ||
+    value.authority !== "advisory_fallback_plan" ||
+    !validIdentity(value.tier) ||
+    (value.status !== "executable" && value.status !== "blocked") ||
+    !Array.isArray(value.routes) ||
+    value.routes.length < 1 ||
+    value.routes.length > 16
+  ) {
+    throw new Error(
+      "composer projection API returned an invalid fallback plan",
+    );
+  }
+  const identities = new Set<string>();
+  const reservations: number[] = [];
+  let executable = true;
+  value.routes.forEach((raw, index) => {
+    if (
+      !isRecord(raw) ||
+      raw.fallback_index !== index ||
+      !validIdentity(raw.provider) ||
+      !validIdentity(raw.model) ||
+      typeof raw.registered !== "boolean" ||
+      typeof raw.hard_ceiling_eligible !== "boolean" ||
+      typeof raw.execution_status !== "string" ||
+      !EXECUTION_STATUSES.has(raw.execution_status) ||
+      raw.hard_ceiling_eligible !== (raw.execution_status === "executable") ||
+      !isRecord(raw.projection)
+    ) {
+      throw new Error(
+        "composer projection API returned an invalid fallback route",
+      );
+    }
+    const routeKey = JSON.stringify([raw.provider, raw.model]);
+    if (identities.has(routeKey)) {
+      throw new Error(
+        "composer projection API returned duplicate fallback routes",
+      );
+    }
+    identities.add(routeKey);
+    const projected = raw.projection;
+    if (
+      !validExactCost(projected.maximum_cost_usd) ||
+      !validCents(projected.reservation_cents) ||
+      exactReservationCents(projected.maximum_cost_usd) !==
+        projected.reservation_cents ||
+      !["hold_eligible", "zero_cost_receipt", "ineligible"].includes(
+        String(projected.disposition),
+      ) ||
+      (projected.ineligibility !== null &&
+        !validIdentity(projected.ineligibility)) ||
+      !validIdentity(projected.rate_snapshot)
+    ) {
+      throw new Error(
+        "composer projection API returned an invalid fallback cost",
+      );
+    }
+    reservations.push(projected.reservation_cents);
+    executable &&=
+      raw.registered &&
+      raw.hard_ceiling_eligible &&
+      projected.disposition === "hold_eligible";
+  });
+  const exposure = value.maximum_chain_exposure_cents;
+  const validRemaining =
+    remainingUsd === null ||
+    (typeof remainingUsd === "number" &&
+      Number.isFinite(remainingUsd) &&
+      remainingUsd >= 0);
+  const expectedBudgetVerdict =
+    executable &&
+    typeof exposure === "number" &&
+    typeof remainingUsd === "number"
+      ? exposure / 100 > remainingUsd
+      : null;
+  if (
+    (exposure !== null && !validCents(exposure)) ||
+    (value.would_exceed_budget !== null &&
+      typeof value.would_exceed_budget !== "boolean") ||
+    value.status !== (executable ? "executable" : "blocked") ||
+    (executable && exposure !== Math.max(...reservations)) ||
+    (!executable && (exposure !== null || value.would_exceed_budget !== null))
+    || !validRemaining
+    || (executable && value.would_exceed_budget !== expectedBudgetVerdict)
+  ) {
+    throw new Error(
+      "composer projection API returned contradictory fallback authority",
+    );
+  }
+}
 
 async function readJson(res: Response): Promise<ComposerModelProjection> {
   if (!res.ok) {
@@ -116,16 +292,13 @@ async function readJson(res: Response): Promise<ComposerModelProjection> {
   if (chosen !== null) {
     if (
       !isRecord(chosen) ||
-      typeof chosen.maximum_cost_usd !== "string" ||
-      chosen.maximum_cost_usd.length > MAX_EXACT_COST_LENGTH ||
-      !EXACT_NON_NEGATIVE_DECIMAL.test(chosen.maximum_cost_usd) ||
-      typeof chosen.reservation_cents !== "number" ||
-      !Number.isSafeInteger(chosen.reservation_cents) ||
-      chosen.reservation_cents < 0
+      !validExactCost(chosen.maximum_cost_usd) ||
+      !validCents(chosen.reservation_cents)
     ) {
       throw new Error("composer projection API returned an invalid exact cost");
     }
   }
+  validateFallbackPlan(body.fallback_plan, body.remaining_usd);
   return body as unknown as ComposerModelProjection;
 }
 
