@@ -53,6 +53,7 @@ __all__ = [
     "RunStatus",
     "SpendCeilingExceeded",
     "SpendEvent",
+    "SettledProviderProof",
     "ZeroCostAttemptSnapshot",
     "ZeroCostIntent",
     "ZeroCostState",
@@ -473,6 +474,34 @@ class PaidHoldSnapshot:
 
 
 @dataclass(frozen=True)
+class SettledProviderProof:
+    """Typed, ledger-derived proof of one exact provider settlement.
+
+    The evidence body remains private to the ledger.  Consumers receive its
+    digest together with every identity needed to reject a substituted hold.
+    """
+
+    hold_id: str
+    run_id: str
+    owner_id: str
+    provider: str
+    model: str
+    operation: str
+    operation_digest: str
+    provider_idempotency_key: str
+    provider_request_id: str
+    provider_response_id: str
+    output_sha256: str
+    usage_json: str
+    currency: str
+    actual_cents: int
+    settlement_evidence_sha256: str
+    settlement_intent_sha256: str
+    settled_at: str
+    ceiling_breached: bool
+
+
+@dataclass(frozen=True)
 class ZeroCostAttemptSnapshot:
     attempt_id: str
     run_id: str
@@ -870,6 +899,129 @@ def _binding_payload(binding: RunBinding) -> dict[str, JsonScalar]:
 
 class ResearchSpendLedger:
     """SQLite-backed authority and evidence ledger for research hard mode."""
+
+    def settled_provider_proof(
+        self,
+        hold_id: str,
+        *,
+        expected_run_id: str,
+        expected_operation_digest: str,
+        expected_provider_idempotency_key: str,
+    ) -> SettledProviderProof:
+        """Derive paid proof from the pinned ledger row, never caller claims."""
+        with self._connect() as connection:
+            connection.execute("BEGIN")
+            row = connection.execute(
+                "SELECT * FROM research_spend_holds WHERE hold_id = ?", (hold_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(hold_id)
+            hold = self._load_hold(connection, hold_id)
+            if (
+                hold.state is not PaidHoldState.SETTLED
+                or hold.actual_cents is None
+                or hold.resolved_at is None
+                or row["resolution_evidence_json"] is None
+                or row["resolution_intent_json"] is None
+            ):
+                raise InvalidTransition(hold_id, hold.state.value, "prove settlement")
+            evidence_json = str(row["resolution_evidence_json"])
+            evidence_sha256 = _sha256(evidence_json)
+            intent_json = str(row["resolution_intent_json"])
+            intent_sha256 = _sha256(intent_json)
+            expected = _canonical(
+                {
+                    "actual_cents": hold.actual_cents,
+                    "evidence_sha256": evidence_sha256,
+                    "hold_id": hold_id,
+                }
+            )
+            if (
+                intent_json != expected
+                or str(row["resolution_intent_sha256"]) != intent_sha256
+            ):
+                raise LedgerIntegrityError("settlement proof conflicts with durable intent")
+            run = self._load_run(connection, hold.run_id)
+            if (
+                hold.run_id != expected_run_id
+                or hold.intent.operation_digest != expected_operation_digest
+                or hold.intent.provider_idempotency_key != expected_provider_idempotency_key
+            ):
+                raise BindingConflict("settlement proof differs from expected operation")
+            try:
+                evidence = json.loads(evidence_json)
+            except json.JSONDecodeError as exc:
+                raise LedgerIntegrityError("settlement evidence is not JSON") from exc
+            required = {
+                "billing_status", "currency", "operation_digest", "output_sha256",
+                "provider_idempotency_key", "provider_request_id", "provider_response_id",
+                "schema", "usage_json",
+            }
+            if type(evidence) is not dict or set(evidence) != required:
+                raise LedgerIntegrityError("settlement evidence has no typed provider proof")
+            if any(type(evidence[name]) is not str for name in required):
+                raise LedgerIntegrityError("settlement evidence fields must be exact strings")
+            if (
+                evidence["schema"] != "antiek.twin-provider-settlement.v1"
+                or evidence["billing_status"] != "settled"
+                or evidence["currency"] != run.binding.currency
+                or evidence["operation_digest"] != hold.intent.operation_digest
+                or evidence["provider_idempotency_key"]
+                != hold.intent.provider_idempotency_key
+                or len(evidence["output_sha256"]) != 64
+                or any(character not in "0123456789abcdef" for character in evidence["output_sha256"])
+            ):
+                raise LedgerIntegrityError("settlement evidence conflicts with paid intent")
+            try:
+                usage = json.loads(evidence["usage_json"])
+            except json.JSONDecodeError as exc:
+                raise LedgerIntegrityError("provider usage evidence is invalid") from exc
+            if type(usage) is not dict or not usage:
+                raise LedgerIntegrityError("provider usage evidence is empty")
+            command_key = str(row["resolution_key"])
+            try:
+                command_result = self._replay(
+                    connection, command_key, "settle", hold_id, intent_json
+                )
+            except IdempotencyConflict as exc:
+                raise LedgerIntegrityError("settlement command receipt conflicts") from exc
+            if command_result is None:
+                raise LedgerIntegrityError("settlement command receipt is absent")
+            events = connection.execute(
+                "SELECT event_kind,authorized_delta_cents,held_delta_cents,"
+                "observed_delta_dec,evidence_json FROM research_spend_events "
+                "WHERE hold_id=? AND command_key=?",
+                (hold_id, command_key),
+            ).fetchall()
+            expected_event = "hold_breached" if hold.actual_cents > hold.projected_max_cents else "hold_settled"
+            if len(events) != 1 or tuple(events[0]) != (
+                expected_event,
+                min(hold.actual_cents, hold.projected_max_cents),
+                -hold.projected_max_cents,
+                str(hold.actual_cents),
+                evidence_json,
+            ):
+                raise LedgerIntegrityError("settlement event conflicts with paid proof")
+            return SettledProviderProof(
+                hold_id=hold_id,
+                run_id=hold.run_id,
+                owner_id=run.binding.owner_id,
+                provider=hold.intent.provider,
+                model=hold.intent.model,
+                operation=hold.intent.operation,
+                operation_digest=hold.intent.operation_digest,
+                provider_idempotency_key=hold.intent.provider_idempotency_key,
+                provider_request_id=evidence["provider_request_id"],
+                provider_response_id=evidence["provider_response_id"],
+                output_sha256=evidence["output_sha256"],
+                usage_json=evidence["usage_json"],
+                currency=run.binding.currency,
+                actual_cents=hold.actual_cents,
+                settlement_evidence_sha256=evidence_sha256,
+                settlement_intent_sha256=intent_sha256,
+                settled_at=hold.resolved_at,
+                ceiling_breached=hold.actual_cents > hold.projected_max_cents,
+            )
 
     def __init__(
         self,

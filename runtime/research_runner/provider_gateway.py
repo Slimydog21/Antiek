@@ -128,10 +128,11 @@ class ReconciliationStatus(StrEnum):
 
 
 @dataclass(frozen=True)
-class ProviderReconciliation:
+class ProviderReconciliation(Generic[T]):  # noqa: UP046 - Python 3.11 support
     status: ReconciliationStatus
     evidence: JsonEvidence
     actual_cents: int | None = None
+    value: T | None = None
 
 
 class HardCeilingProviderAdapter(Protocol[T]):
@@ -150,7 +151,7 @@ class HardCeilingProviderAdapter(Protocol[T]):
 
     def reconcile(
         self, *, provider_idempotency_key: str, authorized_endpoint: str
-    ) -> ProviderReconciliation: ...
+    ) -> ProviderReconciliation[T]: ...
 
 
 @dataclass(frozen=True)
@@ -889,7 +890,7 @@ class ResearchProviderGateway:
             self._retain_unknown(hold, result.evidence)
             raise ProviderOutcomeUnknown(hold.hold_id, "provider outcome remains unknown")
         return ProviderDispatchResult(
-            hold=self.ledger.hold(hold.hold_id), run=run, recovered=True
+            hold=self.ledger.hold(hold.hold_id), run=run, value=result.value, recovered=True
         )
 
     def _release_or_converge(
