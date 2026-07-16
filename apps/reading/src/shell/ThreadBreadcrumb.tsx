@@ -1,6 +1,7 @@
 import { WORKFLOWS } from "./workflowTaxonomy";
 import { findForkedHop, type Thread, type ThreadHop } from "./threadModel";
 
+import { emitWernerExperience } from "../werner/reactionBus";
 /**
  * ThreadBreadcrumb (antiek-unified SPR-06 M2) — the unified cross-workflow
  * trail.
@@ -116,7 +117,10 @@ export function ThreadBreadcrumb({
               ) : (
                 <button
                   type="button"
-                  onClick={() => onJump?.(hop)}
+                  onClick={() => {
+                    emitWernerExperience("highlight");
+                    onJump?.(hop);
+                  }}
                   className="text-ink dark:text-bright hover:underline"
                   data-testid={`thread-hop-${hop.workflow}`}
                 >
