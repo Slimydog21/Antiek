@@ -15,6 +15,7 @@ import type {
   ProjectMatch,
 } from "../../../api/books";
 import { acceptFiling, suggestFiling } from "../../../lib/researchSuggestion";
+import { emitWernerExperience } from "../../../werner/reactionBus";
 
 /**
  * PersonalSpace — the reader's "personal bed of information that labels itself"
@@ -186,11 +187,11 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
               </p>
               <p className="text-[13px] text-shadow-1 dark:text-moonlight">
                 Read a book in your{" "}
-                <button type="button" className="underline" onClick={() => navigate("/library")}>
+                <button type="button" className="underline" onClick={() => { emitWernerExperience("highlight"); navigate("/library"); }}>
                   library
                 </button>
                 , or{" "}
-                <button type="button" className="underline" onClick={() => navigate("/read/meta-reading")}>
+                <button type="button" className="underline" onClick={() => { emitWernerExperience("highlight"); navigate("/read/meta-reading"); }}>
                   make a reading
                 </button>{" "}
                 across your corpus — they’ll collect here and organize themselves.
@@ -325,7 +326,7 @@ function AssetRow({
                 variant="secondary"
                 size="sm"
                 disabled={filing}
-                onClick={() => void onAccept(m)}
+                onClick={() => { emitWernerExperience("note_saved"); void onAccept(m); }}
               >
                 {filing ? "Filing…" : `File into “${truncate(m.question)}”`}
               </LemonButton>
