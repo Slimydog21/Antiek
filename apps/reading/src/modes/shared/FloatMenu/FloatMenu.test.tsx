@@ -247,6 +247,13 @@ describe("FloatMenu — open on selection (M1)", () => {
     expect(
       screen.getByRole("menuitem", { name: "Deep-research" }),
     ).toBeTruthy();
+    // Living-TV invent densify — float research product door, not inventory-only.
+    const invent = screen.getByTestId(
+      "float-menu-living-tv-art",
+    ) as HTMLImageElement;
+    expect(invent.getAttribute("src") ?? "").toMatch(
+      /werner_collective_merge_session_v1/,
+    );
     // Positioned (fixed) from the raw rect.
     expect((menu as HTMLElement).style.position).toBe("fixed");
   });

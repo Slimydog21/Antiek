@@ -202,3 +202,5 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Model decision tree invent → ModelDecisionBar | `549eb2420` | per-prompt model + budget invent strip |
 | Book marketplace port invent → HouseSlot | `549eb2420` | next-read marketplace/port invent thumb |
 | arXiv/Substack dens invent → Sources | `549eb2420` | knowledge dens product door invent strip |
+| Living-TV ambient episode continuity | `a713819a0` | quiet beat continues last product episode |
+| FloatMenu collective invent product-map | (craft158) | float research windows invent strip |
