@@ -181,3 +181,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Speak project + HardCeiling densify | `33f789d9f` | invite/assemble/ceiling living-TV |
 | DR Canvas BlockCard living-TV | `26facb897` | open/cite highlight |
 | ProjectType/InterviewTranscript densify | `354bd4589` | type pick highlight; transcript note_saved |
+| Biography living-TV densify | `e461179d9` | start piece_started; share note_saved; door jumps highlight |
