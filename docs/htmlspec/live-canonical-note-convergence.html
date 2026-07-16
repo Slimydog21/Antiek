@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Cycle 88 - Live Canonical Note Convergence</title></head>
+<body><main>
+  <h1>Cycle 88: Live Canonical Note Convergence</h1>
+  <p><strong>Status:</strong> executable specification.</p>
+
+  <section><h2>Problem</h2>
+    <p>Repeated observations are distinct provenance records but resolve to one global knowledge node. After a refinement targets one observation, other live rows can continue showing stale wording even though completed DistillView and the graph expose one canonical truth. Live NotesPanel also offers only a one-step local change disclosure while completed research exposes the integrity-checked global history.</p>
+  </section>
+
+  <section><h2>Decision</h2><ul>
+    <li>Every known live alias of one graph node renders the latest authoritative canonical text.</li>
+    <li>Each alias retains its immutable emerged wording as observation provenance.</li>
+    <li>Applied and superseded outcomes advance one node-global sequence projection; broken, stale, partial, or substituted outcomes remain ignored.</li>
+    <li>Applied outcomes update canonical text, prior text, refinement count, and sequence across all known aliases.</li>
+    <li>Superseded outcomes may rebase canonical text/sequence but never expose losing attempted text or increment refinement count.</li>
+    <li>A shared lazy history disclosure component reads the backend's committed authoritative aggregate in both live and completed surfaces.</li>
+  </ul></section>
+
+  <section><h2>Presentation</h2><ul>
+    <li>Canonical text remains the primary row text.</li>
+    <li>When source-local wording differs, an inline disclosure shows “observed as” wording without presenting it as current truth.</li>
+    <li>History labels accepted changes and rejected attempts identically in NotesPanel and DistillView.</li>
+    <li>Integrity/transport failure remains explicit and retryable; no history is reconstructed client-side.</li>
+  </ul></section>
+
+  <section><h2>Acceptance Criteria</h2><ol>
+    <li>A refinement targeting observation A updates visible canonical text for known aliases A and B of the same node.</li>
+    <li>A subsequent refinement targeting B updates both aliases while each preserves its original observation wording.</li>
+    <li>Aliases of another node are unchanged.</li>
+    <li>Superseded and malformed outcomes cannot expose losing or untrusted text.</li>
+    <li>Live history loads lazily, caches while unchanged, invalidates when node count changes, and retries failures.</li>
+    <li>Completed DistillView retains equivalent history behavior through the shared component.</li>
+    <li>Focused frontend tests, typecheck, production build, and diff checks pass.</li>
+  </ol></section>
+</main></body></html>
