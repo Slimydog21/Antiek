@@ -6,6 +6,7 @@ import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_sessi
 import LemonTable from "../../components/lemon/LemonTable";
 import LemonTag from "../../components/lemon/LemonTag";
 import { apiFetch } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Notebooks listing UI (master-spec §4.2 Wedge 2 linchpin).
@@ -160,7 +161,7 @@ export default function NotebooksIndex() {
             />
             <button
               type="button"
-              onClick={() => void createNotebook()}
+              onClick={() => { emitWernerExperience("piece_started"); void createNotebook(); }}
               disabled={submitting || !draftTitle.trim()}
               className="px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50"
             >
@@ -174,7 +175,7 @@ export default function NotebooksIndex() {
                 <button
                   key={f}
                   type="button"
-                  onClick={() => setFilter(f)}
+                  onClick={() => { emitWernerExperience("highlight"); setFilter(f); }}
                   className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors ${
                     filter === f
                       ? "bg-ink text-white"

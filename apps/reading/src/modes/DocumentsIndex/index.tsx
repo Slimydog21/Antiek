@@ -6,6 +6,7 @@ import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_sessi
 import LemonTable from "../../components/lemon/LemonTable";
 import LemonTag from "../../components/lemon/LemonTag";
 import { apiFetch } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Documents listing UI (master-spec §4.1).
@@ -133,7 +134,7 @@ export default function DocumentsIndex() {
                 <button
                   key={String(t)}
                   type="button"
-                  onClick={() => setTierFilter(t)}
+                  onClick={() => { emitWernerExperience("highlight"); setTierFilter(t); }}
                   className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors ${
                     tierFilter === t
                       ? "bg-ink text-white"
