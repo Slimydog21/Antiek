@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { Event } from "../../generated/types";
 import type { InvestigationState } from "../../hooks/useInvestigation";
@@ -17,14 +17,14 @@ import AIActionFailure from "../../shared/AIActionFailure";
  * path (POST .../challenge), which serializes through runtime/db_lock.
  *
  * Living note (M3): a `note.emerged` followed by `note.refined` events for the
- * same note resolves to ONE row whose text is the latest refinement — the note
+ * same note resolves to ONE row whose text is the latest authoritative outcome — the note
  * changed in place, it did not duplicate. The prior text is recoverable (the
  * refined event carries previous→new), surfaced behind a "see what changed"
- * toggle. The determinism (which refinement wins) is the backend's; this view
- * reflects the events it is sent, in order, and never re-implements seq logic.
+ * toggle. The backend decides each outcome; this view validates its complete
+ * authority tuple and folds only a coherent sequence chain.
  *
  * Reconnect idempotency (M1 gate): notes are keyed by note id and refinements
- * collapse onto their note, so a reconnect that re-delivers events the client
+ * collapse onto their origin note, so a reconnect that re-delivers events the client
  * already saw yields the same rows — no doubled note after a dropped socket.
  */
 
@@ -42,6 +42,10 @@ export interface LiveNote {
   nodeId: string | null;
   /** How many times this note's text has changed (living-note signal). */
   refinements: number;
+  /** Highest authoritative applied sequence folded into this row. */
+  lastAppliedSequence: number | null;
+  /** Only model-emerged notes may receive note.refined outcomes. */
+  refinementEligible: boolean;
   /**
    * §9 provenance discriminator. "user" for a note the reader authored (an
    * in-book FloatMenu marginalia note); null for a model-distilled note
@@ -57,11 +61,10 @@ export interface LiveNote {
  * is unit-testable and so a reconnect (duplicate events) is idempotent.
  *
  * Insights/questions arrive as `note.emerged` / `question.identified`. A
- * `note.refined` updates the matching note's text in place (last refinement
- * wins by stream order — the backend has already applied the seq rule, so the
- * event order we receive is the resolved order). Refinements that arrive for a
- * note we have not seen emerge are held as standalone (defensive; should not
- * happen on a well-ordered stream).
+ * Complete outcomes attach through origin identity and a coherent sequence
+ * chain. Applied outcomes contribute new text; superseded outcomes contribute
+ * authoritative prior text. Legacy, malformed, conflicting, and unattached
+ * attempts remain audit evidence and do not become visible notes.
  */
 export function deriveNotes(events: Event[]): LiveNote[] {
   const byId = new Map<string, LiveNote>();
@@ -78,18 +81,21 @@ export function deriveNotes(events: Event[]): LiveNote[] {
       const noteId = asStr(p.note_id);
       const text = asStr(p.note_text);
       if (!noteId || !text) continue;
-      if (!byId.has(noteId)) order.push(noteId);
       const prior = byId.get(noteId);
+      if (prior) continue;
+      order.push(noteId);
       byId.set(noteId, {
         noteId,
         kind: "insight",
         text,
-        previousText: prior?.previousText ?? null,
-        confidence: asStr(p.confidence) ?? prior?.confidence ?? null,
-        nodeId: asStr(p.node_id) ?? prior?.nodeId ?? null,
-        refinements: prior?.refinements ?? 0,
+        previousText: null,
+        confidence: asStr(p.confidence),
+        nodeId: asStr(p.node_id),
+        refinements: 0,
+        lastAppliedSequence: null,
+        refinementEligible: true,
         // A distilled note has no source_kind — the absence is "model".
-        sourceKind: prior?.sourceKind ?? null,
+        sourceKind: null,
       });
     } else if (e.action_type === "marginalia.noted") {
       // Read SPR-07 M3 — an in-book FloatMenu NOTE. The reader highlighted a
@@ -100,59 +106,87 @@ export function deriveNotes(events: Event[]): LiveNote[] {
       const noteId = asStr(p.note_id);
       const text = asStr(p.note_text);
       if (!noteId || !text) continue;
-      if (!byId.has(noteId)) order.push(noteId);
       const prior = byId.get(noteId);
+      if (prior) continue;
+      order.push(noteId);
       byId.set(noteId, {
         noteId,
         kind: "insight",
         text,
-        previousText: prior?.previousText ?? null,
-        confidence: prior?.confidence ?? null,
+        previousText: null,
+        confidence: null,
         // The in-book note's graph node is content-addressed off its text and
         // promoted host-side; the event itself carries no node_id, so the
         // challenge affordance stays unavailable until a node_id is observed.
-        nodeId: prior?.nodeId ?? null,
-        refinements: prior?.refinements ?? 0,
+        nodeId: null,
+        refinements: 0,
+        lastAppliedSequence: null,
+        refinementEligible: false,
         sourceKind: "user",
       });
     } else if (e.action_type === "question.identified") {
       const noteId = asStr(p.question_id);
       const text = asStr(p.question_text);
       if (!noteId || !text) continue;
-      if (!byId.has(noteId)) order.push(noteId);
       const prior = byId.get(noteId);
+      if (prior) continue;
+      order.push(noteId);
       byId.set(noteId, {
         noteId,
         kind: "question",
         text,
-        previousText: prior?.previousText ?? null,
+        previousText: null,
         confidence: null,
-        nodeId: prior?.nodeId ?? null,
-        refinements: prior?.refinements ?? 0,
-        sourceKind: prior?.sourceKind ?? null,
+        nodeId: null,
+        refinements: 0,
+        lastAppliedSequence: null,
+        refinementEligible: false,
+        sourceKind: null,
       });
     } else if (e.action_type === "note.refined") {
-      const noteId = asStr(p.note_id);
+      const noteId = asStr(p.origin_note_id);
+      const graphNodeId = asStr(p.note_id);
       const newText = asStr(p.new_text);
       const prevText = asStr(p.previous_text);
-      if (!noteId || !newText) continue;
+      const sequence = asNonNegativeInt(p.sequence);
+      const previousSequence = asPreviousSequence(p.previous_sequence);
+      const outcome = p.outcome;
+      if (
+        (outcome !== "applied" && outcome !== "superseded") ||
+        !noteId || !graphNodeId || !newText || !prevText ||
+        sequence === null || previousSequence === null ||
+        (outcome === "applied" ? sequence <= previousSequence : sequence > previousSequence)
+      ) continue;
       const existing = byId.get(noteId);
       if (!existing) {
-        // A refinement for a note we never saw emerge — render it standalone
-        // rather than drop it (the new text is the truth either way).
-        order.push(noteId);
+        // Without the emerged note, provenance and graph identity are unknown.
+        // The durable event remains available in audit history; this fold does
+        // not invent a standalone note from an unattached outcome.
+        continue;
+      }
+      if (
+        !existing.refinementEligible ||
+        (existing.nodeId !== null && existing.nodeId !== graphNodeId) ||
+        (existing.lastAppliedSequence !== null && previousSequence !== existing.lastAppliedSequence)
+      ) {
+        continue;
+      }
+      if (outcome === "superseded") {
         byId.set(noteId, {
-          noteId, kind: "insight", text: newText, previousText: prevText,
-          confidence: null, nodeId: null, refinements: 1, sourceKind: null,
+          ...existing,
+          text: prevText,
+          nodeId: graphNodeId,
+          lastAppliedSequence: previousSequence,
         });
         continue;
       }
-      // Update in place — the note CHANGED, it did not duplicate.
       byId.set(noteId, {
         ...existing,
-        previousText: prevText ?? existing.text,
+        previousText: prevText,
         text: newText,
+        nodeId: graphNodeId,
         refinements: existing.refinements + 1,
+        lastAppliedSequence: sequence,
       });
     }
   }
@@ -162,6 +196,14 @@ export function deriveNotes(events: Event[]): LiveNote[] {
 
 function asStr(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+function asNonNegativeInt(v: unknown): number | null {
+  return typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null;
+}
+
+function asPreviousSequence(v: unknown): number | null {
+  return typeof v === "number" && Number.isSafeInteger(v) && v >= -1 ? v : null;
 }
 
 export interface NotesPanelProps {
@@ -195,7 +237,7 @@ export default function NotesPanel({ investigation }: NotesPanelProps) {
 type ChallengeState =
   | { kind: "idle" }
   | { kind: "busy" }
-  | { kind: "changed"; newText: string }
+  | { kind: "changed"; newText: string; baseText: string; baseSequence: number | null }
   | { kind: "unchanged" } // a stale refinement lost the seq race
   | { kind: "escalated" }
   | { kind: "noModel" }
@@ -205,10 +247,29 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
   const [showChange, setShowChange] = useState(false);
   const [challenge, setChallenge] = useState<ChallengeState>({ kind: "idle" });
 
+  useEffect(() => {
+    if (
+      challenge.kind === "changed" &&
+      (note.text !== challenge.baseText || note.lastAppliedSequence !== challenge.baseSequence)
+    ) {
+      setChallenge({ kind: "idle" });
+    }
+  }, [challenge, note.lastAppliedSequence, note.text]);
+
+  const challengeIsCurrent = challenge.kind !== "changed" || (
+    note.text === challenge.baseText &&
+    note.lastAppliedSequence === challenge.baseSequence
+  );
+  const visibleChallenge: ChallengeState = challengeIsCurrent
+    ? challenge
+    : { kind: "idle" };
+
   // Render the live text — the refined text when the note is living. After a
   // successful challenge, the next note.refined event re-derives this; the
   // local "changed" beat is the immediate feedback before that lands.
-  const text = challenge.kind === "changed" ? challenge.newText : note.text;
+  const text = visibleChallenge.kind === "changed"
+    ? visibleChallenge.newText
+    : note.text;
 
   const runChallenge = async () => {
     if (!note.nodeId) return;
@@ -216,7 +277,12 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
     try {
       const res = await challengeNote(note.nodeId, { investigation_id: investigationId });
       if (res.applied && res.new_text) {
-        setChallenge({ kind: "changed", newText: res.new_text });
+        setChallenge({
+          kind: "changed",
+          newText: res.new_text,
+          baseText: note.text,
+          baseSequence: note.lastAppliedSequence,
+        });
       } else if (res.escalated) {
         setChallenge({ kind: "escalated" });
       } else if (res.superseded) {
@@ -286,7 +352,7 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
             </p>
           )}
 
-          <ChallengeOutcome state={challenge} onRetry={onChallenge} />
+          <ChallengeOutcome state={visibleChallenge} onRetry={onChallenge} />
         </div>
       </div>
     </li>
