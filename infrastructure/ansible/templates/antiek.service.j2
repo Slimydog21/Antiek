@@ -53,6 +53,14 @@ Environment="ANTIEK_EVENT_LOG_DIR={{ antiek_state_dir }}/research_events"
 Environment="ANTIEK_KNOWLEDGE_SKILLS_DIR={{ antiek_state_dir }}/knowledge_skills"
 Environment="ANTIEK_RESEARCH_DIR={{ antiek_state_dir }}/research"
 
+# User-configured model credentials are mutable runtime state.  Pin both the
+# encrypted artifact and its master key inside the only persistent directory
+# this hardened unit may write; the library fallbacks intentionally remain
+# useful for local development but resolve inside the read-only checkout here.
+Environment="ANTIEK_BYOK_ARTIFACT={{ antiek_state_dir }}/byok/credentials.enc"
+Environment="ANTIEK_BYOK_KEY_FILE={{ antiek_state_dir }}/byok/byok_master.key"
+Environment="ANTIEK_USER_MODELS_PATH={{ antiek_state_dir }}/settings/user_models.json"
+
 # ML model cache redirects. The decomposer's paraphrase check loads a
 # sentence-transformer embedder; without these overrides, HuggingFace +
 # sentence-transformers default to ~/.cache/huggingface and ~/.cache/torch
