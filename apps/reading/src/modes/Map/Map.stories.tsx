@@ -1,24 +1,25 @@
 import type { Meta, StoryObj } from "@storybook/react";
 
-import Map from "./index";
+import { IglooDirectory } from "./index";
 
-/**
- * Application map page — operator's tour of every surface.
- *
- * Renders the canonical route index with keyboard hints for the
- * palette and sidecar. All 21 routes link out to their respective
- * pages.
- */
 const meta = {
-  title: "Workstation / Map",
-  component: Map,
-  parameters: {
-    layout: "fullscreen",
-  },
+  title: "Modes / Igloo Directory",
+  component: IglooDirectory,
+  parameters: { layout: "fullscreen" },
   tags: ["autodocs"],
-} satisfies Meta<typeof Map>;
+} satisfies Meta<typeof IglooDirectory>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {};
+export const Production: Story = {};
+
+export const VisualFixture: Story = { args: { visualFixture: true } };
+
+export const Night: Story = {
+  parameters: { backgrounds: { default: "space-2 (night)" } },
+};
+
+export const Narrow: Story = {
+  parameters: { viewport: { defaultViewport: "mobile1" } },
+};

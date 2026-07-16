@@ -1,7 +1,7 @@
 # axe-core a11y audit
 
-**Run:** 2026-07-16T09:16:45.530Z
-**Stories audited:** 53
+**Run:** 2026-07-16T09:44:05.492Z
+**Stories audited:** 57
 **Serious / critical violations:** 0
 
 **Rule set:** wcag2a + wcag2aa + wcag21a + wcag21aa + best-practice
@@ -60,6 +60,10 @@
 | `modes-substrate-atlas--safe-error` | 0 | — | — |
 | `modes-substrate-atlas--long-count` | 0 | — | — |
 | `modes-substrate-atlas--narrow` | 0 | — | — |
+| `modes-igloo-directory--production` | 0 | — | — |
+| `modes-igloo-directory--visual-fixture` | 0 | — | — |
+| `modes-igloo-directory--night` | 0 | — | — |
+| `modes-igloo-directory--narrow` | 0 | — | — |
 | `loop-1-notebookeditor--blank` | 0 | — | — |
 | `loop-1-notebookeditor--with-sample-content` | 0 | — | — |
 | `workspace-demo--scene` | 0 | — | — |
