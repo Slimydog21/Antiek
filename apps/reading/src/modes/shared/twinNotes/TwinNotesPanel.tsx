@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 
 import thinkingArt from "../../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import "../../../brand/sessionLivingTv.css";
 // Float-merge invent — recursive note-taker + multi-agent merge product door.
 import livingTvArt from "../../../brand/werner/poses/session/werner_float_research_merge_session_v1.webp";
 import { emitWernerExperience } from "../../../werner/reactionBus";
@@ -119,7 +120,7 @@ export function TwinNotesPanel({
           alt=""
           aria-hidden="true"
           data-testid="twin-notes-living-tv-art"
-          className="h-10 w-full max-w-xs rounded object-cover object-center"
+          className="h-10 w-full max-w-xs rounded object-cover object-center antiek-living-tv-invent"
           loading="lazy"
           decoding="async"
         />

@@ -7,6 +7,7 @@ import {
 } from "../../api/antiekBench";
 import { LemonButton, LemonCard } from "../../components/lemon";
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import "../../brand/sessionLivingTv.css";
 import thoughtPartnerDeskArt from "../../brand/werner/poses/session/werner_antiek_bench_celebrate_session_v1.webp";
 import { emitWernerExperience } from "../../werner/reactionBus";
 
@@ -69,7 +70,7 @@ export default function AntiekBenchPanel({
           alt=""
           aria-hidden="true"
           data-testid="antiek-bench-desk-art"
-          className="h-20 w-full rounded-md object-cover object-center"
+          className="h-20 w-full rounded-md object-cover object-center antiek-living-tv-invent"
           loading="lazy"
           decoding="async"
         />

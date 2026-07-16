@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import "../../brand/sessionLivingTv.css";
 import livingTvArt from "../../brand/werner/poses/session/werner_html_book_float_session_v1.webp";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import Thinking from "../../shared/Thinking";
@@ -106,7 +107,7 @@ export default function ReadingCompanion({
           alt=""
           aria-hidden="true"
           data-testid="reading-companion-living-tv-art"
-          className="h-14 w-full rounded-md object-cover object-center"
+          className="h-14 w-full rounded-md object-cover object-center antiek-living-tv-invent"
           loading="lazy"
           decoding="async"
         />

@@ -8,6 +8,7 @@
 import { useMemo, useState } from "react";
 
 import midnightOilArt from "../../../brand/werner/poses/session/werner_midnight_oil_swarm_session_v1.webp";
+import "../../../brand/sessionLivingTv.css";
 import { emitWernerExperience } from "../../../werner/reactionBus";
 import {
   buildMidnightOilPreflight,
@@ -63,7 +64,7 @@ export function MidnightOilPanel() {
         alt=""
         aria-hidden="true"
         data-testid="midnight-oil-living-tv-art"
-        className="h-20 w-full max-w-xl rounded-md object-cover object-center"
+        className="h-20 w-full max-w-xl rounded-md object-cover object-center antiek-living-tv-invent"
         loading="lazy"
         decoding="async"
       />
