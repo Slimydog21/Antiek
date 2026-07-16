@@ -55,6 +55,10 @@ class ModelRow(BaseModel):
     ready: bool
     tier_bindings: list[str] = Field(default_factory=list)
     primary_model: str | None = None
+    model_id: str | None = None
+    route_eligible: bool = False
+    pricing_status: Literal["known", "unknown"] = "unknown"
+    hard_ceiling_eligible: bool = False
     notes: str | None = None
 
 
@@ -617,6 +621,8 @@ def build_model_decision(
 
 @settings_router.get("/models", response_model=ModelsResponse)
 def get_settings_models(request: Request) -> ModelsResponse:
+    from .settings_models_admin import user_model_authority_snapshot
+
     raw_providers = getattr(request.app.state, "registered_providers", None)
     if isinstance(raw_providers, (set, list, tuple, frozenset)):
         registered_set: set[str] = {str(p) for p in raw_providers}
@@ -624,10 +630,11 @@ def get_settings_models(request: Request) -> ModelsResponse:
         registered_set = set()
     cfg = _load_dispatch_config()
     bindings = _tier_bindings(cfg)
+    user_authority = user_model_authority_snapshot(request.app)
 
     # Union of registered + config-known providers so Settings can show
     # configured-but-not-ready rows honestly.
-    all_ids = sorted(registered_set | set(bindings.keys()))
+    all_ids = sorted(registered_set | set(bindings.keys()) | set(user_authority.keys()))
     rows: list[ModelRow] = []
     for pid in all_ids:
         provider_registered = pid in registered_set
@@ -650,6 +657,14 @@ def get_settings_models(request: Request) -> ModelsResponse:
                 ready=is_ready,
                 tier_bindings=provider_bindings,
                 primary_model=_primary_model_for_provider(cfg, pid),
+                model_id=(
+                    user_authority[pid].model_id
+                    if pid in user_authority
+                    else _primary_model_for_provider(cfg, pid)
+                ),
+                route_eligible=(
+                    user_authority[pid].route_eligible if pid in user_authority else is_ready
+                ),
                 notes=notes,
             )
         )
