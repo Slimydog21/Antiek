@@ -48,6 +48,7 @@ import errno
 import fcntl
 import os
 import time
+import weakref
 from collections.abc import Iterable, Sequence
 from typing import Any, Protocol, runtime_checkable
 
@@ -227,6 +228,27 @@ class LockedConnection:
             )
 
 
+_COORDINATOR_CONNECTIONS: weakref.WeakSet[LockedConnection] = weakref.WeakSet()
+
+
+def is_active_write_connection(con: object) -> bool:
+    """Return whether connect_write issued this connection and still owns its flock."""
+    if type(con) is not LockedConnection or con not in _COORDINATOR_CONNECTIONS or con._closed:
+        return False
+    probe_fd: int | None = None
+    try:
+        probe_fd = os.open(con._lock_path, os.O_WRONLY)
+        fcntl.flock(probe_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        return exc.errno in (errno.EWOULDBLOCK, errno.EAGAIN)
+    else:
+        fcntl.flock(probe_fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        if probe_fd is not None:
+            os.close(probe_fd)
+
+
 def connect_write(
     db_path: str,
     *,
@@ -314,7 +336,7 @@ def connect_write(
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
         raise
-    return LockedConnection(
+    locked = LockedConnection(
         con,
         fd,
         lock_path,
@@ -323,6 +345,8 @@ def connect_write(
         acquired_at=time.monotonic(),
         close_log_max_wait_s=close_log_max_wait_s,
     )
+    _COORDINATOR_CONNECTIONS.add(locked)
+    return locked
 
 
 def connect_read(db_path: str) -> duckdb.DuckDBPyConnection:
@@ -530,6 +554,7 @@ class FlockWriteCoordinator:
             con, fd, lock_path,
             db_path=self.db_path, purpose=purpose, acquired_at=time.monotonic(),
         )
+        _COORDINATOR_CONNECTIONS.add(wrapped)
         try:
             yield wrapped
         except Exception as exc:
