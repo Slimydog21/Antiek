@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from runtime.db_lock import connect_write
 from substrate.schemas import DistillationDeliveredPayload
@@ -114,6 +115,16 @@ def _delivery_event_id(request_event_id: str) -> str:
     return "evt-distill-" + hashlib.sha256(request_event_id.encode("utf-8")).hexdigest()[:32]
 
 
+async def _finish_cancelled_task(task: asyncio.Task[Any]) -> None:
+    """Finish lock cleanup even if the caller receives repeated cancellation."""
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            continue
+    task.result()
+
+
 class DistillationDispatchJournal:
     def __init__(self, db_path: str):
         if not db_path:
@@ -145,11 +156,27 @@ class DistillationDispatchJournal:
     async def async_execution_guard(self, request_event_id: str) -> AsyncIterator[None]:
         """Serialize a command without blocking the caller's event loop."""
         guard = self.execution_guard(request_event_id)
-        await asyncio.to_thread(guard.__enter__)
+        acquire = asyncio.create_task(asyncio.to_thread(guard.__enter__))
+        try:
+            await asyncio.shield(acquire)
+        except asyncio.CancelledError:
+            await _finish_cancelled_task(acquire)
+            release = asyncio.create_task(
+                asyncio.to_thread(guard.__exit__, None, None, None)
+            )
+            await _finish_cancelled_task(release)
+            raise
         try:
             yield
         finally:
-            await asyncio.to_thread(guard.__exit__, None, None, None)
+            release = asyncio.create_task(
+                asyncio.to_thread(guard.__exit__, None, None, None)
+            )
+            try:
+                await asyncio.shield(release)
+            except asyncio.CancelledError:
+                await _finish_cancelled_task(release)
+                raise
 
     def reserve(
         self,

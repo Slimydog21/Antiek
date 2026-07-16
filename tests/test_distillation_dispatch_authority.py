@@ -357,6 +357,29 @@ async def test_concurrent_async_handlers_do_not_deadlock_or_double_dispatch(
 
 
 @pytest.mark.asyncio
+async def test_cancelled_waiter_releases_lock_after_blocked_acquire(tmp_path) -> None:
+    journal = DistillationDispatchJournal(str(tmp_path / "graph.duckdb"))
+    first = journal.execution_guard("evt-request")
+    first.__enter__()
+    entered = asyncio.Event()
+
+    async def contender() -> None:
+        async with journal.async_execution_guard("evt-request"):
+            entered.set()
+
+    cancelled = asyncio.create_task(contender())
+    await asyncio.sleep(0.05)
+    assert not entered.is_set()
+    cancelled.cancel()
+    await asyncio.to_thread(first.__exit__, None, None, None)
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(cancelled, timeout=2)
+
+    await asyncio.wait_for(contender(), timeout=2)
+    assert entered.is_set()
+
+
+@pytest.mark.asyncio
 async def test_malformed_completed_event_tail_fails_closed_on_replay(
     tmp_path, monkeypatch
 ) -> None:

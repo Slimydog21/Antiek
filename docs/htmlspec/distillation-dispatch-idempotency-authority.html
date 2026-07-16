@@ -24,6 +24,7 @@
 <tr><td>During or after transport without stored result</td><td>Ambiguous; never retry automatically.</td></tr>
 <tr><td>After completed result, before event</td><td>Emit the stored exact delivery without provider access.</td></tr>
 <tr><td>After event append, before receipt</td><td>Reconcile event identity and mark delivered without duplicate append.</td></tr>
+<tr><td>Cancellation while waiting for the command lock</td><td>Finish acquisition, release exactly once, then propagate cancellation; no orphaned process lock.</td></tr>
 </tbody></table></section>
 <section><h2>Acceptance evidence</h2><ul>
 <li>Concurrent exact callers produce one simulated provider call.</li>
@@ -32,6 +33,7 @@
 <li>Stored payload corruption fails closed before publication.</li>
 <li>Completed replay and append-before-receipt replay make zero additional provider calls and preserve one event ID.</li>
 <li>A crash after transport leaves sending; restart records ambiguity, emits a value-free notice, and does not redispatch.</li>
+<li>A cancelled waiter blocked behind a real flock cannot prevent a later exact caller from acquiring the command lock.</li>
 </ul></section>
 <section><h2>Explicit gaps and next sprint</h2><p>The legacy wrestling call still has no operator-approved hard ceiling, spend hold, settlement, or fallback-chain authorization. Cycle 91 must not be described as budget-safe paid execution. The next money-path sprint must connect distillation to the existing approved research provider gateway or refuse paid transport; that integration requires an exact owner/run/operation binding and must preserve this command identity. Permanently ambiguous commands also need an authenticated operator reconciliation or abandonment surface before any fresh command can be authorized.</p></section>
 <section><h2>Non-goals</h2><p>No in-memory dedupe, age lease, trajectory-only authority, silent retry, provider capability fabrication, general router mutation, approval bypass, operator reconciliation, live provider call, merge, or deployment.</p></section>
