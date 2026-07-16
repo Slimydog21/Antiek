@@ -213,4 +213,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | midnight_oil_session_v1 invent | inventory | superseded by midnight_oil_swarm on MidnightOilPanel; retained integrity-only |
 | Arcade core free of reactionBus | `5c763e0e5` | inject living-TV via host emit + onWernerBeat; boundary suite green |
 | ResearchWaitArcadeGame living-TV inject | `c97af31d7` | onWernerBeat=emitLivingTvHostBeat like cabinet/LGH |
-| sessionAssets product-map assert | (next tip) | cabinet densify asserts cursor webp invents (ice/clam/zombies), not inventory fringe PNG |
+| sessionAssets product-map assert | `b8a286871` | cabinet densify asserts cursor webp invents (ice/clam/zombies), not inventory fringe PNG |
