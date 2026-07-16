@@ -1,5 +1,4 @@
 import type { Cartridge, GameContext, InputState } from "../../engine/types";
-import { emitWernerExperience } from "../../../werner/reactionBus";
 import {
   clamCatcherWernerBeat,
   createClamCatcherState,
@@ -14,6 +13,10 @@ import {
 
 export function createClamCatcherCartridge(options?: {
   visualKit?: ClamCatcherVisualKit;
+  /**
+   * Living-TV beat sink. Default no-op — product hosts inject the reaction
+   * bus outside the arcade core boundary.
+   */
   onWernerBeat?: (
     beat: NonNullable<ReturnType<typeof clamCatcherWernerBeat>>,
   ) => void;
@@ -21,7 +24,7 @@ export function createClamCatcherCartridge(options?: {
   let state: ClamCatcherState | null = null;
   let terminalReported = false;
   const visualKit = options?.visualKit ?? createClamCatcherVisualKit();
-  const onWernerBeat = options?.onWernerBeat ?? emitWernerExperience;
+  const onWernerBeat = options?.onWernerBeat ?? (() => {});
 
   return {
     id: "clam-catcher",

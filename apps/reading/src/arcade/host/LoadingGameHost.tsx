@@ -12,13 +12,13 @@ import iceFishingArt from "../../brand/werner/poses/session/werner_igloo_ice_arc
 import zombiesArt from "../../brand/werner/poses/session/werner_paperclip_zombies_arcade_session_v1.webp";
 import clamCatcherArt from "../../brand/werner/poses/session/werner_clam_catcher_cursor_session_v1.webp";
 import { wernerArcade } from "../../werner/iceFishingFlags";
-import { emitWernerExperience } from "../../werner/reactionBus";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 import {
   DEFAULT_OFFER_AFTER_MS,
   decideWaitHostMode,
   type WaitHostMode,
 } from "./waitHostLogic";
+import { emitLivingTvHostBeat } from "./livingTvHostEmit";
 
 export type WaitGameKind = ArcadeGameKind;
 
@@ -113,7 +113,12 @@ export function LoadingGameHost({
   // Shared factory with ArcadeCabinet — host-entry tests progress score/wave
   // via createArcadeCartridge + progressCartridge on this same path.
   const cartridge = useMemo(
-    () => createArcadeCartridge(game, { reducedMotion: reduced }),
+    () =>
+      createArcadeCartridge(game, {
+        reducedMotion: reduced,
+        // Host injects living-TV without reactionBus import (arcade boundary).
+        onWernerBeat: emitLivingTvHostBeat,
+      }),
     [game, reduced],
   );
 
@@ -200,7 +205,7 @@ export function LoadingGameHost({
             data-testid="game-offer-play"
             onClick={() => {
               // Living-TV: opting into wait-game is a curious glance from Werner.
-              emitWernerExperience("highlight");
+              emitLivingTvHostBeat("highlight");
               setOptedIn(true);
             }}
             style={{

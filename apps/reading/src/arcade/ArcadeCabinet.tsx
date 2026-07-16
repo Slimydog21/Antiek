@@ -7,7 +7,7 @@ import {
 } from "./cartridgeFactory";
 import { emitProductActivate } from "../components/hotkeys";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
-import { emitWernerExperience } from "../werner/reactionBus";
+import { emitLivingTvHostBeat } from "./host/livingTvHostEmit";
 // Session brand PNGs — UI-consumed cabinet key art + chrome marks.
 // Inventory: brand/werner/sessionAssets.ts (alpha integrity gated).
 // Igloo ice-arcade invent — CRT + cursor-bait cabinet card (align LGH + wait-arcade).
@@ -34,7 +34,11 @@ export function ArcadeCabinet() {
   const cartridge = useMemo(
     () =>
       active
-        ? createArcadeCartridge(active, { reducedMotion: reduced })
+        ? createArcadeCartridge(active, {
+            reducedMotion: reduced,
+            // Host injects living-TV without reactionBus import (arcade boundary).
+            onWernerBeat: emitLivingTvHostBeat,
+          })
         : null,
     [active, reduced],
   );
@@ -42,7 +46,7 @@ export function ArcadeCabinet() {
   function playGame(game: CabinetGame) {
     // Living-TV: product-activate choreography (arcade → curious) + experience.
     emitProductActivate({ productId: "arcade", source: "click" });
-    emitWernerExperience("highlight");
+    emitLivingTvHostBeat("highlight");
     setActive(game);
   }
 

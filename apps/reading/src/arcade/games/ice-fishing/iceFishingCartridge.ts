@@ -1,5 +1,4 @@
 import type { Cartridge, GameContext, InputState } from "../../engine/types";
-import { emitWernerExperience } from "../../../werner/reactionBus";
 import {
   createIceFishingState,
   iceFishingWernerBeat,
@@ -17,6 +16,10 @@ export function createIceFishingCartridge(options?: {
   reducedMotion?: boolean;
   lives?: number;
   visualKit?: IceFishingVisualKit;
+  /**
+   * Living-TV beat sink. Default is a no-op so arcade core stays free of the
+   * product reaction bus (hosts inject emitWernerExperience outside arcade/).
+   */
   onWernerBeat?: (
     beat: NonNullable<ReturnType<typeof iceFishingWernerBeat>>,
   ) => void;
@@ -25,7 +28,7 @@ export function createIceFishingCartridge(options?: {
   const reduced = Boolean(options?.reducedMotion);
   let terminalReported = false;
   const visualKit = options?.visualKit ?? createIceFishingVisualKit();
-  const onWernerBeat = options?.onWernerBeat ?? emitWernerExperience;
+  const onWernerBeat = options?.onWernerBeat ?? (() => {});
 
   return {
     id: "ice-fishing",
