@@ -97,8 +97,11 @@ export default function SpeakSettings({
           perInterviewCapUsd: cap.trim() || "0",
         }),
       );
+      // Living-TV: payout release path engaged — noted (gated honesty).
+      emitWernerExperience("note_saved");
     } catch (e: unknown) {
       setReleaseErr(e instanceof Error ? e.message : String(e));
+      emitWernerExperience("fail");
     } finally {
       setReleaseBusy(false);
     }
