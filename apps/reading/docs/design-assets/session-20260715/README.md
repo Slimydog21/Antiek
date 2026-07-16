@@ -15,6 +15,7 @@ or direct UI import (full-bleed scene webp).
 | werner_clam_catcher_refedit_v1.jpg | image_edit from thinking pose | **PROMOTED** → `poses/session/werner_clam_catcher_session_v1.png` |
 | werner_thought_partner_desk_refedit_v1.jpg | image_edit from thinking pose | **PROMOTED** → `poses/session/werner_thought_partner_desk_session_v1.webp` |
 | werner_igloo_arcade_refedit_v1.jpg | image_edit from thinking pose (2026-07-16) | **PROMOTED** → `poses/session/werner_igloo_arcade_session_v1.webp` (Home arcade card) |
+| werner_midnight_oil_refedit_v1.jpg | image_edit from thinking pose (2026-07-16) | **PROMOTED** → `poses/session/werner_midnight_oil_session_v1.webp` (Midnight Oil panel) |
 
 Product paths:
 

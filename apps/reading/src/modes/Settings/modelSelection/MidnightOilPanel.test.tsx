@@ -11,7 +11,9 @@ describe("MidnightOilPanel", () => {
     const art = screen.getByTestId(
       "midnight-oil-living-tv-art",
     ) as HTMLImageElement;
-    expect(art.getAttribute("src") ?? "").toMatch(/werner_living_tv_session_v1/);
+    expect(art.getAttribute("src") ?? "").toMatch(
+      /werner_midnight_oil_session_v1/,
+    );
 
     fireEvent.change(screen.getByTestId("midnight-oil-goal-input"), {
       target: { value: "Map open-source agent evals" },

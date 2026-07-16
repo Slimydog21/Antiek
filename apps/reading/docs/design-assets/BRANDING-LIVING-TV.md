@@ -79,6 +79,8 @@ UI-consumed invent strips (not inventory-only):
 - Investigations start → `deep_research_start` living-TV beat
 - Sources door — thinking + living-TV invent; ingest → `highlight`
 - Brainstorm empty — thinking + living-TV invent; launch → `deep_research_start`
+- Midnight Oil panel — dedicated midnight-oil invent webp (late-night desk swarm)
+- Operator / Privacy dashboards — thinking + living-TV invent
 
 Cursor model: ice bait instrument (not chase). Station re-home on drag.
 

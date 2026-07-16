@@ -7,7 +7,7 @@
 
 import { useMemo, useState } from "react";
 
-import livingTvArt from "../../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
+import midnightOilArt from "../../../brand/werner/poses/session/werner_midnight_oil_session_v1.webp";
 import { emitWernerExperience } from "../../../werner/reactionBus";
 import {
   buildMidnightOilPreflight,
@@ -59,7 +59,7 @@ export function MidnightOilPanel() {
       </header>
 
       <img
-        src={livingTvArt}
+        src={midnightOilArt}
         alt=""
         aria-hidden="true"
         data-testid="midnight-oil-living-tv-art"
