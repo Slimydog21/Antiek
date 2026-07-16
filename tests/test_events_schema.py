@@ -44,6 +44,7 @@ from substrate.schemas import (  # noqa: E402
     ContextPackAssembledPayload,
     CrossDocQuestionAnsweredPayload,
     DispatchCallPayload,
+    DistillationApprovalRequiredPayload,
     DistillationDeliveredPayload,
     DistillationRequestedPayload,
     DocumentLoadedPayload,
@@ -101,6 +102,16 @@ def _make_payload(at: ActionType):
     if at == ActionType.DISTILLATION_REQUESTED:
         return DistillationRequestedPayload(
             region_id="r-1", user_prompt="distill this", target_token_count=400,
+        )
+    if at == ActionType.DISTILLATION_APPROVAL_REQUIRED:
+        return DistillationApprovalRequiredPayload(
+            request_event_id="evt-parent",
+            reason="approval_required",
+            chain_id="chain-1",
+            manifest_sha256="a" * 64,
+            ceiling_cents=100,
+            currency="USD",
+            maximum_chain_exposure_cents=80,
         )
     if at == ActionType.DISTILLATION_DELIVERED:
         return DistillationDeliveredPayload(
@@ -201,6 +212,7 @@ TYPED_ACTION_TYPES_LIST = [
     ActionType.DOCUMENT_LOADED,
     ActionType.DOCUMENT_REGION_SELECTED,
     ActionType.DISTILLATION_REQUESTED,
+    ActionType.DISTILLATION_APPROVAL_REQUIRED,
     ActionType.DISTILLATION_DELIVERED,
     ActionType.CLAIM_CHALLENGE_RAISED,
     ActionType.CLAIM_GROUNDING_CHECK_PASSED,

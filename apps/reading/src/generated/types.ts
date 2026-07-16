@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 33;
+export const EVENT_SCHEMA_VERSION = 34;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -84,6 +84,7 @@ export const ActionType = {
   DOCUMENT_LOADED: "document.loaded",
   DOCUMENT_REGION_SELECTED: "document.region_selected",
   DISTILLATION_REQUESTED: "distillation.requested",
+  DISTILLATION_APPROVAL_REQUIRED: "distillation.approval_required",
   DISTILLATION_DELIVERED: "distillation.delivered",
   CLAIM_CHALLENGE_RAISED: "claim.challenge_raised",
   CLAIM_GROUNDING_CHECK_PASSED: "claim.grounding_check_passed",
@@ -754,6 +755,17 @@ export interface DistillationRequestedPayload {
   region_id?: string | null;
   user_prompt: string;
   target_token_count: number;
+}
+
+export interface DistillationApprovalRequiredPayload {
+  action_type: "distillation.approval_required";
+  request_event_id: string;
+  reason: "approval_required" | "qualified_route_unavailable";
+  chain_id?: string | null;
+  manifest_sha256?: string | null;
+  ceiling_cents?: number | null;
+  currency?: "USD" | null;
+  maximum_chain_exposure_cents?: number | null;
 }
 
 /**
@@ -2688,6 +2700,7 @@ export type TypedPayload =
   | DocumentLoadedPayload
   | DocumentRegionSelectedPayload
   | DistillationRequestedPayload
+  | DistillationApprovalRequiredPayload
   | DistillationDeliveredPayload
   | ClaimChallengeRaisedPayload
   | ClaimGroundingCheckPassedPayload
@@ -2849,6 +2862,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "discovery.proposed",
   "discovery.selected",
   "dispatch.call",
+  "distillation.approval_required",
   "distillation.delivered",
   "distillation.requested",
   "document.content_class_defaulted",
@@ -2945,6 +2959,7 @@ export const WRESTLING_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionTyp
   "claim.challenge_raised",
   "claim.grounding_check_failed",
   "claim.grounding_check_passed",
+  "distillation.approval_required",
   "distillation.delivered",
   "distillation.requested",
   "document.loaded",

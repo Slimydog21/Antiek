@@ -24,13 +24,14 @@ sees structured claims stream into the notes panel.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import hashlib
 import os
 import sys
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 # Direct import — interfaces/research/api/ depends on substrate.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -44,6 +45,15 @@ from processing.embedding import (  # noqa: E402
     default_embedding_provider,
 )
 from runtime.db_lock import connect_write  # noqa: E402
+from runtime.research_runner.distillation_execution import (  # noqa: E402
+    ApprovedDistillationTicket,
+    DistillationApprovalRequirement,
+    DistillationExecutionResult,
+)
+from runtime.research_runner.provider_gateway import (  # noqa: E402
+    DispatchIneligible,
+    ProviderOutcomeUnknown,
+)
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.context_pack import (  # noqa: E402
     LayerSource,
@@ -51,7 +61,6 @@ from substrate.context_pack import (  # noqa: E402
     assemble_context_pack,
     build_working_memory_layer,
 )
-from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.distillation_dispatch import (  # noqa: E402
     CommandSnapshot,
     CommandState,
@@ -75,6 +84,7 @@ from substrate.schemas import (  # noqa: E402
     ActionType,
     Claim,
     ConfidenceLevel,
+    DistillationApprovalRequiredPayload,
     DistillationDeliveredPayload,
     DistillationRequestedPayload,
     DocumentLoadedPayload,
@@ -146,6 +156,71 @@ def _dispatch_binding(event: Event, full_prompt: str) -> dict[str, object]:
         "route_policy_sha256": _dispatch_policy_digest(),
         "spend_projection": "unavailable_on_legacy_wrestling_route",
     }
+
+
+class DistillationExecutionAuthority(Protocol):
+    def prepare(
+        self, request_event_id: str, prompt: str
+    ) -> DistillationApprovalRequirement | ApprovedDistillationTicket: ...
+
+    def execute(
+        self, ticket: ApprovedDistillationTicket
+    ) -> DistillationExecutionResult: ...
+
+
+def _approval_event_id(request_event_id: str) -> str:
+    digest = hashlib.sha256(request_event_id.encode("utf-8")).hexdigest()[:32]
+    return "evt-distill-approval-" + digest
+
+
+async def _publish_distillation_approval_required(
+    snapshot: CommandSnapshot,
+    requirement: DistillationApprovalRequirement,
+    broadcaster: EventBroadcaster,
+) -> None:
+    payload = DistillationApprovalRequiredPayload(
+        request_event_id=snapshot.request_event_id,
+        reason=requirement.reason,
+        chain_id=requirement.chain_id,
+        manifest_sha256=requirement.manifest_sha256,
+        ceiling_cents=requirement.ceiling_cents,
+        currency=requirement.currency,
+        maximum_chain_exposure_cents=requirement.maximum_chain_exposure_cents,
+    )
+    event_id = _approval_event_id(snapshot.request_event_id)
+    expected = Event(
+        event_id=event_id,
+        investigation_id=snapshot.investigation_id,
+        role="synthesizer",
+        action_type=payload.action_type,
+        payload=payload,
+        parent_event_id=snapshot.request_event_id,
+        policy_id="wrestling-spend/approval-required",
+        param_version=ANTIEK_PARAM_VERSION,
+        schema_version=EVENT_SCHEMA_VERSION,
+        emitted_at=datetime.now(UTC),
+        document_id=snapshot.document_id,
+    )
+    existing = _exact_physical_event(snapshot.investigation_id, expected)
+    if existing is None:
+        emitted = emit_typed(
+            snapshot.investigation_id,
+            payload,
+            parent_event_id=snapshot.request_event_id,
+            role="synthesizer",
+            document_id=snapshot.document_id,
+            policy_id="wrestling-spend/approval-required",
+            event_id=event_id,
+            idempotent=True,
+            strict_write=True,
+        )
+        if emitted is None:
+            return
+        existing = _exact_physical_event(snapshot.investigation_id, expected)
+        if existing is None:
+            raise PhysicalTrajectoryError("approval-required event is not physically visible")
+    with contextlib.suppress(Exception):
+        await broadcaster.broadcast(existing)
 
 
 async def _publish_distillation_delivery(
@@ -439,6 +514,7 @@ def make_distillation_handler(
     broadcaster: EventBroadcaster,
     *,
     db_path: str | None = None,
+    execution_authority: DistillationExecutionAuthority | None = None,
 ):
     """Build the async handler closed over a broadcaster. The handler
     is registered against ``ActionType.DISTILLATION_REQUESTED``; on
@@ -526,8 +602,55 @@ def make_distillation_handler(
                 "Investigation working memory could not be verified. "
                 "No synthesizer call was made."
             )
-            token_count = 0
             policy_id = "wrestling-fallback/memory-integrity"
+            dispatch_journal = DistillationDispatchJournal(resolved_db)
+            async with dispatch_journal.async_execution_guard(event.event_id):
+                command = dispatch_journal.reserve(
+                    event.event_id,
+                    _dispatch_binding(event, full_prompt),
+                    investigation_id=event.investigation_id,
+                    document_id=event.document_id,
+                )
+                if command.state is CommandState.SENDING:
+                    command = dispatch_journal.mark_ambiguous(event.event_id)
+                    await _publish_ambiguous_distillation_notice(command, broadcaster)
+                    return
+                if command.state is CommandState.AMBIGUOUS:
+                    await _publish_ambiguous_distillation_notice(command, broadcaster)
+                    return
+                if command.state in (CommandState.COMPLETED, CommandState.DELIVERED):
+                    await _publish_distillation_delivery(
+                        command, dispatch_journal, broadcaster
+                    )
+                    return
+                rendered_text = response_text
+                claims = [
+                    Claim(
+                        claim_id="c-memory-"
+                        + _sha256_prefix(event.event_id, 12).removeprefix("sha256:"),
+                        text=response_text,
+                        confidence="unknown",
+                        attribution_region_ids=(
+                            [request.region_id] if request.region_id else []
+                        ),
+                    )
+                ]
+                payload = DistillationDeliveredPayload(
+                    request_event_id=event.event_id,
+                    claims=claims,
+                    rendered_text=rendered_text,
+                    rendered_text_hash=_sha256_prefix(rendered_text),
+                    token_count=0,
+                )
+                command = dispatch_journal.mark_proven_unsent_completed(
+                    event.event_id,
+                    payload,
+                    policy_id=policy_id,
+                )
+                await _publish_distillation_delivery(
+                    command, dispatch_journal, broadcaster
+                )
+                return
         else:
             dispatch_journal = DistillationDispatchJournal(resolved_db)
             async with dispatch_journal.async_execution_guard(event.event_id):
@@ -549,29 +672,64 @@ def make_distillation_handler(
                         command, dispatch_journal, broadcaster
                     )
                     return
+                if execution_authority is None:
+                    await _publish_distillation_approval_required(
+                        command,
+                        DistillationApprovalRequirement(
+                            request_event_id=event.event_id,
+                            chain_id=None,
+                            manifest_sha256=None,
+                            ceiling_cents=None,
+                            currency=None,
+                            maximum_chain_exposure_cents=None,
+                            reason="qualified_route_unavailable",
+                        ),
+                        broadcaster,
+                    )
+                    return
+                try:
+                    prepared = await asyncio.to_thread(
+                        execution_authority.prepare, event.event_id, full_prompt
+                    )
+                except DispatchIneligible:
+                    await _publish_distillation_approval_required(
+                        command,
+                        DistillationApprovalRequirement(
+                            request_event_id=event.event_id,
+                            chain_id=None,
+                            manifest_sha256=None,
+                            ceiling_cents=None,
+                            currency=None,
+                            maximum_chain_exposure_cents=None,
+                            reason="qualified_route_unavailable",
+                        ),
+                        broadcaster,
+                    )
+                    return
+                if isinstance(prepared, DistillationApprovalRequirement):
+                    await _publish_distillation_approval_required(
+                        command, prepared, broadcaster
+                    )
+                    return
                 _assert_delivery_id_absent(command)
                 dispatch_journal.mark_sending(event.event_id)
                 try:
-                    result = dispatch(
-                        full_prompt,
-                        "synthesizer",
-                        investigation_id=event.investigation_id,
-                        context_pack_event_id=pack.event_id,
-                        parent_event_id=event.event_id,
+                    result = await asyncio.to_thread(
+                        execution_authority.execute, prepared
                     )
-                except (ProviderError, KeyError):
+                except (ProviderOutcomeUnknown, DispatchIneligible):
                     command = dispatch_journal.mark_ambiguous(event.event_id)
                     await _publish_ambiguous_distillation_notice(command, broadcaster)
                     return
                 claims, rendered_text = _parse_claims_response(
-                    result.text, region_id=request.region_id
+                    result.value.text, region_id=request.region_id
                 )
                 payload = DistillationDeliveredPayload(
                     request_event_id=event.event_id,
                     claims=claims,
                     rendered_text=rendered_text,
                     rendered_text_hash=_sha256_prefix(rendered_text),
-                    token_count=result.usage.output_tokens,
+                    token_count=result.value.output_tokens,
                 )
                 command = dispatch_journal.mark_completed(
                     event.event_id,
@@ -581,39 +739,6 @@ def make_distillation_handler(
                 await _publish_distillation_delivery(
                     command, dispatch_journal, broadcaster
                 )
-                return
-
-        claims, rendered_text = _parse_claims_response(
-            response_text, region_id=request.region_id
-        )
-
-        delivered_event_id = emit_typed(
-            event.investigation_id,
-            DistillationDeliveredPayload(
-                request_event_id=event.event_id,
-                claims=claims,
-                rendered_text=rendered_text,
-                rendered_text_hash=_sha256_prefix(rendered_text),
-                token_count=token_count,
-            ),
-            parent_event_id=event.event_id,
-            role="synthesizer",
-            document_id=event.document_id,
-            policy_id=policy_id,
-        )
-
-        # Broadcast the delivered event so WS subscribers (the reading
-        # UI) see it without waiting for a polling fetch. Look up the
-        # row we just wrote — the trajectory is authoritative.
-        if delivered_event_id is None:
-            return  # events disabled
-        for row in trajectory(event.investigation_id):
-            if row.get("event_id") == delivered_event_id:
-                try:
-                    delivered_event = Event.model_validate(row)
-                    await broadcaster.broadcast(delivered_event)
-                except Exception:  # pragma: no cover — never block on broadcast
-                    pass
                 return
 
     return handle_distillation_requested
@@ -874,6 +999,7 @@ def register_handlers(
     *,
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
+    execution_authority: DistillationExecutionAuthority | None = None,
 ) -> None:
     """Wire every wrestling handler into the broadcaster. Called once
     at app startup (see ``app.create_app``).
@@ -884,7 +1010,11 @@ def register_handlers(
     ``processing/embedding.default_embedding_provider()``."""
     broadcaster.register_handler(
         ActionType.DISTILLATION_REQUESTED.value,
-        make_distillation_handler(broadcaster, db_path=db_path),
+        make_distillation_handler(
+            broadcaster,
+            db_path=db_path,
+            execution_authority=execution_authority,
+        ),
     )
     broadcaster.register_handler(
         ActionType.DOCUMENT_LOADED.value,

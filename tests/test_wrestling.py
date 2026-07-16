@@ -35,6 +35,15 @@ sys.path.insert(0, os.path.dirname(_HERE))
 
 from interfaces.research.api import EventBroadcaster, create_app  # noqa: E402
 from processing.embedding import _reset_default_provider  # noqa: E402
+from runtime.research_runner.distillation_execution import (  # noqa: E402
+    ApprovedDistillationTicket,
+    DistillationExecutionResult,
+    DistillationProviderValue,
+)
+from runtime.research_runner.provider_gateway import (  # noqa: E402
+    PaidFallbackPreparation,
+    ProviderOutcomeUnknown,
+)
 from substrate.dispatch import (  # noqa: E402
     DispatchConfig,
     NormalizedUsage,
@@ -42,10 +51,16 @@ from substrate.dispatch import (  # noqa: E402
     RawProviderResponse,
     TierConfig,
     TierPricing,
+    dispatch,
     register_provider,
     reset_provider_registry,
 )
+from substrate.distillation_dispatch import (  # noqa: E402
+    CommandState,
+    DistillationDispatchJournal,
+)
 from substrate.event_log import trajectory  # noqa: E402
+from substrate.graph import default_db_path  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     DistillationDeliveredPayload,
     Event,
@@ -128,10 +143,49 @@ def _patch_dispatch_config(monkeypatch, config: DispatchConfig) -> None:
     )
 
 
+class _TestExecutionAuthority:
+    """Explicit test-only bridge for legacy parser/broadcast coverage."""
+
+    def prepare(self, request_event_id: str, prompt: str):
+        return ApprovedDistillationTicket(
+            request_event_id=request_event_id,
+            prompt=prompt,
+            preparation=PaidFallbackPreparation(
+                chain_id="test-chain",
+                manifest_sha256="a" * 64,
+                ceiling_cents=1,
+                currency="USD",
+                maximum_chain_exposure_cents=1,
+            ),
+            approval_id="test-approval",
+        )
+
+    def execute(self, ticket: ApprovedDistillationTicket):
+        try:
+            result = dispatch(
+                ticket.prompt,
+                "synthesizer",
+                investigation_id="test-authority",
+            )
+        except (ProviderError, KeyError) as exc:
+            raise ProviderOutcomeUnknown("test-hold", "test outcome unknown") from exc
+        return DistillationExecutionResult(
+            value=DistillationProviderValue(
+                result.text, result.usage.output_tokens
+            ),
+            provider=result.provider,
+            model=result.model,
+        )
+
+
 @pytest.fixture
 def app_and_bus():
     bus = EventBroadcaster()
-    app = create_app(broadcaster=bus, cors_origins=[])
+    app = create_app(
+        broadcaster=bus,
+        cors_origins=[],
+        distillation_execution_authority=_TestExecutionAuthority(),
+    )
     return app, bus
 
 
@@ -405,8 +459,18 @@ async def test_physical_trajectory_corruption_prevents_provider_dispatch(
         for row in trajectory("inv-physical-corruption")
         if row["action_type"] == "distillation.delivered"
     ]
-    assert len(delivered) == 1
-    assert delivered[0].policy_id == "wrestling-fallback/memory-integrity"
+    assert delivered == []
+    requested = [
+        row
+        for row in trajectory("inv-physical-corruption")
+        if row["action_type"] == "distillation.requested"
+    ]
+    assert len(requested) == 1
+    command = DistillationDispatchJournal(default_db_path()).load(
+        requested[0]["event_id"]
+    )
+    assert command.state is CommandState.COMPLETED
+    assert command.policy_id == "wrestling-fallback/memory-integrity"
 
 
 # ---------------------------------------------------------------------------

@@ -43,6 +43,7 @@ Schema changes are load-bearing API changes (architecture_notes.md §7).
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Annotated, Any, Literal
@@ -198,6 +199,7 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     DOCUMENT_LOADED = "document.loaded"
     DOCUMENT_REGION_SELECTED = "document.region_selected"
     DISTILLATION_REQUESTED = "distillation.requested"
+    DISTILLATION_APPROVAL_REQUIRED = "distillation.approval_required"
     DISTILLATION_DELIVERED = "distillation.delivered"
     CLAIM_CHALLENGE_RAISED = "claim.challenge_raised"
     CLAIM_GROUNDING_CHECK_PASSED = "claim.grounding_check_passed"
@@ -756,7 +758,9 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 #     needed for the JSONL/Parquet event log: all fields are nullable/defaulted,
 #     and historical rows validate by schema-on-read defaults. ND remains
 #     advisory only; dispatch is still the authoritative router.
-EVENT_SCHEMA_VERSION: int = 33
+# v34: Distillation can expose a typed, immutable approval-required state
+#     without fabricating a delivery or consuming its deterministic identity.
+EVENT_SCHEMA_VERSION: int = 34
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -1048,6 +1052,45 @@ class DistillationRequestedPayload(_PayloadBase):
     region_id: str | None = None  # None = whole-document distillation
     user_prompt: str
     target_token_count: int = Field(ge=0)
+
+
+class DistillationApprovalRequiredPayload(_PayloadBase):
+    action_type: Literal[ActionType.DISTILLATION_APPROVAL_REQUIRED] = (
+        ActionType.DISTILLATION_APPROVAL_REQUIRED
+    )
+    request_event_id: str
+    reason: Literal["approval_required", "qualified_route_unavailable"]
+    chain_id: str | None = None
+    manifest_sha256: str | None = None
+    ceiling_cents: int | None = Field(default=None, ge=1)
+    currency: Literal["USD"] | None = None
+    maximum_chain_exposure_cents: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _terms_are_complete_only_for_an_approvable_chain(
+        self,
+    ) -> DistillationApprovalRequiredPayload:
+        terms = (
+            self.chain_id,
+            self.manifest_sha256,
+            self.ceiling_cents,
+            self.currency,
+            self.maximum_chain_exposure_cents,
+        )
+        if self.reason == "approval_required":
+            if any(value is None for value in terms):
+                raise ValueError("approval-required distillation terms must be complete")
+            if self.manifest_sha256 is None or not re.fullmatch(
+                r"[0-9a-f]{64}", self.manifest_sha256
+            ):
+                raise ValueError("manifest_sha256 must be lowercase SHA-256")
+            if self.maximum_chain_exposure_cents is None or self.ceiling_cents is None:
+                raise ValueError("approval-required distillation cents are required")
+            if self.maximum_chain_exposure_cents > self.ceiling_cents:
+                raise ValueError("maximum chain exposure exceeds the run ceiling")
+        elif any(value is not None for value in terms):
+            raise ValueError("unavailable distillation routes cannot expose approval terms")
+        return self
 
 
 class DistillationDeliveredPayload(_PayloadBase):
@@ -3971,7 +4014,7 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | SkillPatchGateDecidedPayload | SkillPatchGateReviewedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadBookAnsweredPayload | ReadBookAnswerJudgedPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationApprovalRequiredPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | SkillPatchGateDecidedPayload | SkillPatchGateReviewedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadBookAnsweredPayload | ReadBookAnswerJudgedPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -3990,6 +4033,7 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.DOCUMENT_LOADED.value,
     ActionType.DOCUMENT_REGION_SELECTED.value,
     ActionType.DISTILLATION_REQUESTED.value,
+    ActionType.DISTILLATION_APPROVAL_REQUIRED.value,
     ActionType.DISTILLATION_DELIVERED.value,
     ActionType.CLAIM_CHALLENGE_RAISED.value,
     ActionType.CLAIM_GROUNDING_CHECK_PASSED.value,
@@ -4125,6 +4169,7 @@ WRESTLING_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.DOCUMENT_LOADED.value,
     ActionType.DOCUMENT_REGION_SELECTED.value,
     ActionType.DISTILLATION_REQUESTED.value,
+    ActionType.DISTILLATION_APPROVAL_REQUIRED.value,
     ActionType.DISTILLATION_DELIVERED.value,
     ActionType.CLAIM_CHALLENGE_RAISED.value,
     ActionType.CLAIM_GROUNDING_CHECK_PASSED.value,
@@ -4239,6 +4284,7 @@ __all__ = [
     "DocumentLoadedPayload",
     "DocumentRegionSelectedPayload",
     "DistillationRequestedPayload",
+    "DistillationApprovalRequiredPayload",
     "DistillationDeliveredPayload",
     "ClaimChallengeRaisedPayload",
     "ClaimGroundingCheckPassedPayload",
