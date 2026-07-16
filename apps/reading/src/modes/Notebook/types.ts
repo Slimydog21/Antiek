@@ -38,3 +38,17 @@ export interface NotebookResponse {
   updated_at: string;
   blocks: NotebookBlockResponse[];
 }
+
+/** Props the Notebook surface accepts for story/test injection.
+ *  Every field is optional so stories can render isolated states
+ *  without a real router or API transport. */
+export interface NotebookSurfaceProps {
+  notebookIdOverride?: string | null;
+  initialNotebook?: NotebookResponse | null;
+  initialLoading?: boolean;
+  initialError?: string | null;
+  /** false → all mutation helpers are no-ops and controls are inert.
+   *  Stories set this to false so no transport is possible. */
+  executionEnabled?: boolean;
+  initialMutationPending?: boolean;
+}

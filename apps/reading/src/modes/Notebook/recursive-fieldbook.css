@@ -1,0 +1,122 @@
+/**
+ * recursive-fieldbook.css — Cycle 574 Recursive Fieldbook atmosphere.
+ *
+ * Decorative raster (ChatGPT Image webp) as pointer-inert, empty atmosphere.
+ * All content, labels, statuses, controls, and provenance remain HTML/CSS.
+ *
+ * Night mode via forced dark selector. Responsive: 375px narrow proof.
+ */
+
+/* ── Decorative atmosphere ─────────────────────────────────────── */
+
+.recursive-fieldbook::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: url(../../brand/werner/notebook/recursive_fieldbook_environment_v1.webp) center / cover no-repeat;
+  opacity: 0.07;
+}
+
+.recursive-fieldbook { position: relative; isolation: isolate; }
+.recursive-fieldbook > main { position: relative; z-index: 1; background-color: color-mix(in srgb, white 94%, transparent); }
+
+@media (prefers-color-scheme: dark) {
+  .recursive-fieldbook > main {
+    background-color: color-mix(in srgb, #1b202a 94%, transparent);
+  }
+}
+
+.rf-night .recursive-fieldbook > main {
+  background-color: color-mix(in srgb, #1b202a 94%, transparent);
+  color: #eef1f6;
+}
+
+@media (prefers-color-scheme: dark) {
+  .recursive-fieldbook::before {
+    opacity: 0.04;
+  }
+}
+
+/* Force night mode for story/testing via class selector */
+.rf-night .recursive-fieldbook::before {
+  opacity: 0.04;
+}
+
+/* ── Block controls: focus-visible (not hover-only) ────────────── */
+
+.rf-controls {
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+/* Visible on hover OR focus-within — keyboard users see controls. */
+.rf-block:hover > .rf-controls,
+.rf-controls:focus-within {
+  opacity: 1;
+}
+
+/* Individual control buttons: focus-visible ring. */
+.rf-control:focus-visible {
+  outline: 2px solid var(--blue, #1d4aff);
+  outline-offset: 1px;
+}
+
+/* ── Tombstone blocks ──────────────────────────────────────────── */
+
+.rf-tombstone {
+  padding-left: 0.75rem;
+  border-left: 2px solid #9ca3af;
+}
+
+/* ── Busy state ────────────────────────────────────────────────── */
+
+.rf-block[aria-busy="true"] {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* ── Responsive: 375px narrow proof (no horizontal overflow) ──── */
+
+@media (max-width: 375px) {
+  .rf-block {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  .rf-controls {
+    position: static;
+    transform: none;
+    margin-top: 0.5rem;
+    opacity: 1; /* always visible on narrow — no hover available */
+  }
+
+  .rf-cross-doc,
+  .rf-region {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+}
+
+/* ── Night mode (forced dark selector) ─────────────────────────── */
+
+.rf-night,
+.rf-night .rf-claim,
+.rf-night .rf-note,
+.rf-night .rf-question,
+.rf-night .rf-region,
+.rf-night .rf-master-section,
+.rf-night .rf-cross-doc {
+  color-scheme: dark;
+}
+
+.rf-night .rf-control {
+  background-color: var(--charcoal-2, #2c2c2c);
+  border-color: var(--charcoal-1, #3a3a3a);
+  color: var(--bright, #f5f5f0);
+}
+
+.rf-night .rf-control:focus-visible {
+  outline-color: var(--blue, #1d4aff);
+}

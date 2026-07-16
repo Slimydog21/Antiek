@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { track } from "../../lib/analytics";
 import {
@@ -13,93 +13,178 @@ import NotebookCanvas from "./NotebookCanvas";
 import type {
   NotebookBlockResponse,
   NotebookResponse,
+  NotebookSurfaceProps,
 } from "./types";
+
+import "./recursive-fieldbook.css";
 
 /**
  * Mode F — Notebook Surface (PostHog Wedge 2 linchpin, master-spec §4.2).
  *
- * TipTap-based literate-analysis document. Substrate references are
- * live-pulled at render time (§13.2 substrate-is-source-of-truth);
- * the notebook stores reference IDs, the renderer resolves the
- * current substrate state on each fetch.
+ * Ordered-block fieldbook with honest cached-reference/tombstone authority.
+ * References are visibly identified by type and reference ID; cached text
+ * is never called resolved/live. No twin generation, no graph resolution.
  *
- * Sprint 18-19 ship target. PostHog Wedges 3 (command palette),
- * 4 (ubiquitous AI), and 5 (trajectory replay) all chain off this
- * surface per master-spec §14.3 sequencing discipline.
+ * Stale route suppression: a sequence counter ensures a late prior-route
+ * GET cannot replace a newer notebook after navigation or unmount.
+ *
+ * Mutation serialization: one explicit mutation lane prevents overlapping
+ * snapshots from overwriting newer notebook state. On failure, the last
+ * confirmed notebook remains rendered.
  */
-export default function Notebook() {
-  const params = useParams<{ notebookId?: string }>();
-  const notebookId = params.notebookId ?? null;
-  const [notebook, setNotebook] = useState<NotebookResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(async () => {
-    if (!notebookId) {
-      setNotebook(null);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const data = (await getNotebook(notebookId)) as NotebookResponse;
-      setNotebook(data);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [notebookId]);
+/** Fixed safe error copy — no URL, HTTP status, response body, stack, or secret. */
+function safeErrorMessage(action: string): string {
+  return `Could not ${action} the block. Your notebook is unchanged.`;
+}
+
+export default function Notebook({
+  notebookIdOverride,
+  initialNotebook = null,
+  initialLoading = false,
+  initialError = null,
+  executionEnabled = true,
+  initialMutationPending = false,
+}: Partial<NotebookSurfaceProps> = {}) {
+  const params = useParams<{ notebookId?: string }>();
+  const notebookId = notebookIdOverride !== undefined
+    ? notebookIdOverride
+    : params.notebookId ?? null;
+
+  const [notebook, setNotebook] = useState<NotebookResponse | null>(initialNotebook);
+  const [loading, setLoading] = useState<boolean>(initialLoading);
+  const [error, setError] = useState<string | null>(initialError);
+  const [mutationPending, setMutationPending] = useState<boolean>(initialMutationPending);
+
+  // Stale route suppression: monotonically increasing sequence. Each new
+  // notebookId bumps the seq; unmount resets to 0. A late prior-route GET
+  // that resolves after the seq has advanced is silently discarded.
+  const seqRef = useRef(0);
+  // Mutation serialization: one-at-a-time lane. The next mutation waits
+  // for the current one to resolve before starting.
+  const mutationQueueRef = useRef<Promise<void>>(Promise.resolve());
+  // Track the action class of the in-flight mutation for safe error copy.
+  const lastActionRef = useRef<string>("mutate");
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    const currentSeq = ++seqRef.current;
+    if (!executionEnabled) {
+      setNotebook(initialNotebook);
+      setLoading(initialLoading);
+      setError(initialError);
+      setMutationPending(initialMutationPending);
+      return;
+    }
+    if (!notebookId) {
+      setNotebook(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    void getNotebook(notebookId)
+      .then((data) => {
+        // Suppress stale route: a prior notebookId's late response.
+        if (seqRef.current !== currentSeq) return;
+        if (!isNotebookResponse(data)) throw new Error("invalid notebook response");
+        setNotebook(data);
+      })
+      .catch(() => {
+        if (seqRef.current !== currentSeq) return;
+        setError("Could not load notebook. Please try again.");
+      })
+      .finally(() => {
+        if (seqRef.current !== currentSeq) return;
+        setLoading(false);
+      });
+  }, [executionEnabled, initialError, initialLoading, initialMutationPending, initialNotebook, notebookId]);
+
+  // Reset stale-route counter on unmount.
+  useEffect(() => {
+    return () => {
+      seqRef.current = 0;
+    };
+  }, []);
+
+  /**
+   * Serialize a mutation through the single-flight lane.
+   * While a mutation is pending, conflicting controls are disabled
+   * (via mutationPending prop to NotebookCanvas). On failure, the
+   * last confirmed notebook remains rendered and a safe error is shown.
+   */
+  const enqueueMutation = useCallback(
+    (action: string, fn: () => Promise<unknown>, onSuccess?: () => void) => {
+      const mutationNotebookId = notebookId;
+      const mutationSeq = seqRef.current;
+      const next = mutationQueueRef.current.then(async () => {
+        if (!executionEnabled || !mutationNotebookId) return;
+        if (seqRef.current !== mutationSeq) return;
+        setMutationPending(true);
+        lastActionRef.current = action;
+        try {
+          const data = await fn();
+          if (!isNotebookResponse(data)) throw new Error("invalid notebook response");
+          if (seqRef.current !== mutationSeq) return;
+          setNotebook(data);
+          setError(null);
+          try {
+            onSuccess?.();
+          } catch {
+            // Telemetry is best-effort and must never rewrite mutation truth.
+          }
+        } catch {
+          // Safe fixed error: no URL, no HTTP status, no stack, no secret.
+          // The last confirmed notebook remains rendered.
+          if (seqRef.current === mutationSeq) setError(safeErrorMessage(action));
+        } finally {
+          if (seqRef.current === mutationSeq) setMutationPending(false);
+        }
+      });
+      // Chain: the next queued mutation waits for this one.
+      mutationQueueRef.current = next.then(() => undefined);
+    },
+    [executionEnabled, notebookId],
+  );
 
   const appendBlock = useCallback(
-    async (req: { block_type: string; content: unknown; ref_id?: string | null }) => {
+    (req: { block_type: string; content: unknown; ref_id?: string | null }) => {
       if (!notebookId) return;
-      try {
-        const data = (await appendNotebookBlock(notebookId, req)) as NotebookResponse;
-        track("notebook_block_appended", { block_type: req.block_type });
-        setNotebook(data);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
+      enqueueMutation(
+        "append",
+        () => appendNotebookBlock(notebookId, req),
+        () => track("notebook_block_appended", { block_type: req.block_type }),
+      );
     },
-    [notebookId],
+    [notebookId, enqueueMutation],
   );
 
   const deleteBlock = useCallback(
-    async (blockId: string) => {
+    (blockId: string) => {
       if (!notebookId) return;
-      try {
-        const data = (await deleteNotebookBlock(notebookId, blockId)) as NotebookResponse;
-        track("notebook_block_deleted");
-        setNotebook(data);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
+      enqueueMutation(
+        "delete",
+        () => deleteNotebookBlock(notebookId, blockId),
+        () => track("notebook_block_deleted"),
+      );
     },
-    [notebookId],
+    [notebookId, enqueueMutation],
   );
 
   const editBlock = useCallback(
-    async (blockId: string, content: Record<string, unknown>) => {
+    (blockId: string, content: Record<string, unknown>) => {
       if (!notebookId) return;
-      try {
-        const data = (await patchNotebookBlock(
-          notebookId, blockId, { content },
-        )) as NotebookResponse;
-        setNotebook(data);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
+      enqueueMutation("edit", () =>
+        patchNotebookBlock(notebookId, blockId, { content }),
+      );
     },
-    [notebookId],
+    [notebookId, enqueueMutation],
   );
 
   const moveBlock = useCallback(
-    async (blockId: string, direction: "up" | "down") => {
+    (blockId: string, direction: "up" | "down") => {
       if (!notebookId || !notebook) return;
       const sorted = [...notebook.blocks].sort(
         (a, b) => a.block_index - b.block_index,
@@ -110,45 +195,48 @@ export default function Notebook() {
       if (swapWith < 0 || swapWith >= sorted.length) return;
       const newOrder = sorted.map((b) => b.block_id);
       [newOrder[idx], newOrder[swapWith]] = [newOrder[swapWith], newOrder[idx]];
-      try {
-        const data = (await reorderNotebookBlocks(
-          notebookId, newOrder,
-        )) as NotebookResponse;
-        setNotebook(data);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
+      enqueueMutation("reorder", () =>
+        reorderNotebookBlocks(notebookId, newOrder),
+      );
     },
-    [notebookId, notebook],
+    [notebookId, notebook, enqueueMutation],
   );
 
   if (!notebookId) {
-    return <NotebookEmpty />;
+    return <NotebookMissingId />;
   }
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="recursive-fieldbook flex flex-col h-screen">
       <main className="flex-1 min-h-0 bg-ice-0 dark:bg-charcoal-2 overflow-y-auto">
         {loading && (
-          <div className="px-8 py-6 text-sm text-shadow-1 dark:text-moonlight">Loading notebook…</div>
+          <div className="px-8 py-6 text-sm text-shadow-1 dark:text-moonlight">
+            Loading notebook…
+          </div>
         )}
         {error && (
-          <div className="px-8 py-6 text-sm text-emperor">{error}</div>
+          <div
+            role="alert"
+            className="px-8 py-6 text-sm text-emperor"
+          >
+            {error}
+          </div>
         )}
         {notebook && (
           <>
-            <div className="px-8 pt-6 flex justify-end">
+            {executionEnabled && <div className="px-8 pt-6 flex justify-end">
               <ArtifactExport
                 basePath={`/api/notebooks/${notebookId}`}
                 filenamePrefix={`notebook-${notebookId}`}
               />
-            </div>
+            </div>}
             <NotebookCanvas
               notebook={notebook}
               onAppendBlock={appendBlock}
               onDeleteBlock={deleteBlock}
               onMoveBlock={moveBlock}
               onEditBlock={editBlock}
+              mutationPending={mutationPending}
             />
           </>
         )}
@@ -157,20 +245,17 @@ export default function Notebook() {
   );
 }
 
-function NotebookEmpty() {
+/** Missing notebook ID — honest navigation guidance, no POST instructions. */
+function NotebookMissingId() {
   return (
     <div className="flex flex-col h-screen">
       <main className="flex-1 flex items-center justify-center bg-ice-0 dark:bg-charcoal-2 px-8 py-12">
         <div className="max-w-md text-center space-y-3">
-          <h2 className="text-lg font-serif text-ink dark:text-bright">Notebook</h2>
+          <h2 className="text-lg font-serif text-ink dark:text-bright">
+            Notebook
+          </h2>
           <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-            Literate-analysis surface combining region selections,
-            claim cards, emergent notes, cross-doc links, prose, and
-            LaTeX. Per master-spec §4.2 Sprint 18-19 upgrade.
-          </p>
-          <p className="text-xs text-shadow-1 dark:text-moonlight italic">
-            Notebook needs a notebook_id. Create one via
-            POST /notebooks or open one at /notebook/&lt;id&gt;.
+            Open a notebook to see its blocks here.
           </p>
         </div>
       </main>
@@ -178,4 +263,27 @@ function NotebookEmpty() {
   );
 }
 
-export type { NotebookBlockResponse, NotebookResponse };
+export type { NotebookBlockResponse, NotebookResponse, NotebookSurfaceProps };
+
+function isNotebookResponse(value: unknown): value is NotebookResponse {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<NotebookResponse>;
+  const allowedTypes = new Set([
+    "prose", "region_embed", "claim_card", "note", "question_card",
+    "cross_doc_link", "chat_exchange", "master_md_section", "image", "latex",
+  ]);
+  return typeof candidate.notebook_id === "string"
+    && typeof candidate.title === "string"
+    && (candidate.content_class === "user_owned" || candidate.content_class === "user_public_contribution")
+    && typeof candidate.updated_at === "string"
+    && Array.isArray(candidate.blocks)
+    && candidate.blocks.every((block) => Boolean(block)
+      && typeof block.block_id === "string"
+      && Number.isInteger(block.block_index)
+      && allowedTypes.has(block.block_type)
+      && (block.ref_id === null || typeof block.ref_id === "string")
+      && Boolean(block.content_json)
+      && typeof block.content_json === "object"
+      && !Array.isArray(block.content_json)
+      && typeof block.created_at === "string");
+}

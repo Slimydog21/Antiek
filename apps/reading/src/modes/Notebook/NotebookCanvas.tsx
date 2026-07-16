@@ -8,22 +8,26 @@ interface Props {
     block_type: string;
     content: unknown;
     ref_id?: string | null;
-  }) => Promise<void>;
-  onDeleteBlock?: (blockId: string) => Promise<void>;
-  onMoveBlock?: (blockId: string, direction: "up" | "down") => Promise<void>;
-  onEditBlock?: (blockId: string, content: Record<string, unknown>) => Promise<void>;
+  }) => void;
+  onDeleteBlock?: (blockId: string) => void;
+  onMoveBlock?: (blockId: string, direction: "up" | "down") => void;
+  onEditBlock?: (blockId: string, content: Record<string, unknown>) => void;
+  /** true while a mutation is in flight; disables conflicting controls. */
+  mutationPending?: boolean;
 }
 
 /**
- * NotebookCanvas — renders the ordered blocks in serif typography
- * per master-spec §5.5 voice-and-style discipline.
+ * NotebookCanvas — renders the ordered blocks in semantic block grammar.
  *
- * Sprint 18-19 scaffold: read-only-ish rendering + a thin
- * append-prose affordance. Full TipTap-based block editor lands
- * after the spike that decides Lemon UI vs custom (per Sprint 17
- * Lemon UI evaluation gate). Drag-drop block reordering lands
- * Sprint 19-20 alongside command palette + ubiquitous AI per
- * §14.1.
+ * Each block type has a distinct visual treatment that identifies it by type
+ * and reference ID without claiming the referenced entity is current/resolved.
+ *
+ * Cached text from references is labeled as cached display text — never called
+ * "resolved" or "live". Null references render as tombstones; they never
+ * disappear and never become empty prose blocks.
+ *
+ * Controls are focus-visible (not hover-only) and fully keyboard-accessible.
+ * While a mutation is pending, conflicting controls are disabled.
  */
 export default function NotebookCanvas({
   notebook,
@@ -31,6 +35,7 @@ export default function NotebookCanvas({
   onDeleteBlock,
   onMoveBlock,
   onEditBlock,
+  mutationPending,
 }: Props) {
   const blockCount = notebook.blocks.length;
   return (
@@ -40,15 +45,23 @@ export default function NotebookCanvas({
           {notebook.title}
         </h1>
         <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-          {blockCount} {blockCount === 1 ? "block" : "blocks"} ·{" "}
-          updated {notebook.updated_at}
+          {blockCount} {blockCount === 1 ? "block" : "blocks"} · updated{" "}
+          {notebook.updated_at}
         </p>
       </header>
 
       <div className="space-y-4">
         {notebook.blocks.map((block, idx) => (
-          <div key={block.block_id} className="group relative">
-            <BlockOrEditor block={block} onEditBlock={onEditBlock} />
+          <div key={block.block_id} className="rf-block relative">
+            {onEditBlock && block.block_type === "prose" ? (
+              <InlineProseEditor
+                block={block}
+                onEditBlock={onEditBlock}
+                disabled={mutationPending}
+              />
+            ) : (
+              <BlockView block={block} />
+            )}
             {(onDeleteBlock || onMoveBlock) && (
               <BlockControls
                 blockId={block.block_id}
@@ -57,59 +70,140 @@ export default function NotebookCanvas({
                 isLast={idx === blockCount - 1}
                 onDeleteBlock={onDeleteBlock}
                 onMoveBlock={onMoveBlock}
+                disabled={mutationPending}
               />
             )}
           </div>
         ))}
       </div>
 
-      <AppendProseAffordance onAppendBlock={onAppendBlock} />
+      <AppendBlockAffordance
+        onAppendBlock={onAppendBlock}
+        disabled={mutationPending}
+      />
     </article>
   );
 }
 
-function BlockOrEditor({
+// ── Block controls (focus-visible, keyboard-accessible) ──────────
+
+function BlockControls({
+  blockId,
+  position,
+  isFirst,
+  isLast,
+  onDeleteBlock,
+  onMoveBlock,
+  disabled,
+}: {
+  blockId: string;
+  position: number;
+  isFirst: boolean;
+  isLast: boolean;
+  onDeleteBlock?: Props["onDeleteBlock"];
+  onMoveBlock?: Props["onMoveBlock"];
+  disabled?: boolean;
+}) {
+  return (
+    <div className="rf-controls absolute -right-2 top-0 -translate-y-1/2 flex gap-1">
+      {onMoveBlock && (
+        <>
+          <button
+            type="button"
+            disabled={isFirst || disabled}
+            aria-label={`Move block ${position + 1} up`}
+            onClick={() => onMoveBlock(blockId, "up")}
+            className="rf-control w-6 h-6 rounded bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 text-xs font-mono text-ink dark:text-bright hover:bg-ice-1 dark:hover:bg-charcoal-2 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            disabled={isLast || disabled}
+            aria-label={`Move block ${position + 1} down`}
+            onClick={() => onMoveBlock(blockId, "down")}
+            className="rf-control w-6 h-6 rounded bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 text-xs font-mono text-ink dark:text-bright hover:bg-ice-1 dark:hover:bg-charcoal-2 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            ↓
+          </button>
+        </>
+      )}
+      {onDeleteBlock && (
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={`Delete block ${position + 1}`}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Delete block ${position + 1}? This deletes the row from the substrate.`,
+              )
+            ) {
+              onDeleteBlock(blockId);
+            }
+          }}
+          className="rf-control w-6 h-6 rounded bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 text-xs font-mono text-emperor hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Inline prose editor (keyboard: double-click, ⌘Enter, Esc, Save) ──
+
+function InlineProseEditor({
   block,
   onEditBlock,
+  disabled,
 }: {
   block: NotebookBlockResponse;
   onEditBlock: Props["onEditBlock"];
+  disabled?: boolean;
 }) {
-  const [editing, setEditing] = useState<boolean>(false);
-  const [draft, setDraft] = useState<string>(
-    String(block.content_json.text ?? ""),
-  );
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(block.content_json.text ?? ""));
 
-  if (!onEditBlock || block.block_type !== "prose") {
-    return <BlockView block={block} />;
-  }
+  if (!onEditBlock) return null;
+
+  const cancel = () => {
+    setDraft(String(block.content_json.text ?? ""));
+    setEditing(false);
+  };
+  const save = () => {
+    if (disabled) return;
+    onEditBlock(block.block_id, { text: draft });
+    setEditing(false);
+  };
+
   if (editing) {
     return (
-      <div className="space-y-2">
+      <div className="mt-2 space-y-2">
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") cancel();
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) save();
+          }}
           rows={Math.max(3, Math.min(12, draft.split("\n").length + 1))}
-          className="w-full text-base font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 leading-relaxed"
+          aria-label="Edit prose block"
+          className="w-full text-base font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 leading-relaxed bg-white dark:bg-charcoal-2"
         />
         <div className="flex gap-2 text-xs font-mono">
           <button
             type="button"
-            onClick={async () => {
-              await onEditBlock(block.block_id, { text: draft });
-              setEditing(false);
-            }}
-            className="px-2 py-1 rounded-md bg-ink text-white hover:bg-shadow-2"
+            disabled={disabled}
+            onClick={save}
+            className="px-2 py-1 rounded-md bg-ink text-white hover:bg-shadow-2 disabled:opacity-50"
           >
             Save
           </button>
           <button
             type="button"
-            onClick={() => {
-              setDraft(String(block.content_json.text ?? ""));
-              setEditing(false);
-            }}
-            className="px-2 py-1 rounded-md border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-ice-1 dark:bg-charcoal-2"
+            onClick={cancel}
+            className="px-2 py-1 rounded-md border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-ice-1 dark:hover:bg-charcoal-2"
           >
             Cancel
           </button>
@@ -117,14 +211,18 @@ function BlockOrEditor({
       </div>
     );
   }
+
   return (
     <div
       role="button"
       tabIndex={0}
-      onDoubleClick={() => setEditing(true)}
+      aria-label="Edit prose block"
+      aria-disabled={disabled || undefined}
+      onDoubleClick={() => { if (!disabled) setEditing(true); }}
       onKeyDown={(e) => {
-        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-          setEditing(true);
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (!disabled) setEditing(true);
         }
       }}
       className="cursor-text"
@@ -135,66 +233,11 @@ function BlockOrEditor({
   );
 }
 
-function BlockControls({
-  blockId,
-  position,
-  isFirst,
-  isLast,
-  onDeleteBlock,
-  onMoveBlock,
-}: {
-  blockId: string;
-  position: number;
-  isFirst: boolean;
-  isLast: boolean;
-  onDeleteBlock: Props["onDeleteBlock"];
-  onMoveBlock: Props["onMoveBlock"];
-}) {
-  return (
-    <div className="absolute -right-2 top-0 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-      {onMoveBlock && (
-        <>
-          <button
-            type="button"
-            disabled={isFirst}
-            title="Move up"
-            onClick={() => void onMoveBlock(blockId, "up")}
-            className="w-6 h-6 rounded bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 text-xs font-mono text-ink dark:text-bright hover:bg-ice-1 dark:bg-charcoal-2 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            ↑
-          </button>
-          <button
-            type="button"
-            disabled={isLast}
-            title="Move down"
-            onClick={() => void onMoveBlock(blockId, "down")}
-            className="w-6 h-6 rounded bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 text-xs font-mono text-ink dark:text-bright hover:bg-ice-1 dark:bg-charcoal-2 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            ↓
-          </button>
-        </>
-      )}
-      {onDeleteBlock && (
-        <button
-          type="button"
-          title="Delete block"
-          onClick={() => {
-            if (
-              window.confirm(
-                `Delete block ${position + 1}? This deletes the row from the substrate.`,
-              )
-            ) {
-              void onDeleteBlock(blockId);
-            }
-          }}
-          className="w-6 h-6 rounded bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 text-xs font-mono text-emperor hover:bg-red-50"
-        >
-          ×
-        </button>
-      )}
-    </div>
-  );
-}
+// ── Semantic block grammar ───────────────────────────────────────
+//
+// Each block type has a distinct visual treatment. References carry
+// their type label and ID. Cached text is labeled as cached; never
+// called resolved or live. Null references render tombstones.
 
 function BlockView({ block }: { block: NotebookBlockResponse }) {
   switch (block.block_type) {
@@ -255,11 +298,17 @@ function BlockView({ block }: { block: NotebookBlockResponse }) {
               className="max-w-full"
             />
           ) : null}
+          <figcaption className="text-xs font-mono text-shadow-1 dark:text-moonlight px-2 py-1">
+            image{block.ref_id ? `: ${block.ref_id}` : ""}
+          </figcaption>
         </figure>
       );
     case "chat_exchange":
       return (
         <blockquote className="border-l-4 border-rule dark:border-charcoal-1 pl-4 py-1 text-sm text-ink dark:text-bright">
+          <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mb-1">
+            chat exchange
+          </p>
           {String(block.content_json.exchange ?? "")}
         </blockquote>
       );
@@ -280,43 +329,72 @@ function BlockView({ block }: { block: NotebookBlockResponse }) {
   }
 }
 
-function ClaimReferenceBlock({ claimId, text }: { claimId: string | null; text: string }) {
+/** Claim reference — cached text labeled as cached; tombstone when null. */
+function ClaimReferenceBlock({
+  claimId,
+  text,
+}: {
+  claimId: string | null;
+  text: string;
+}) {
   if (!claimId) {
     return (
-      <div className="text-xs italic text-shadow-1 dark:text-moonlight">
+      <div className="rf-tombstone rf-claim-tombstone text-xs italic text-shadow-1 dark:text-moonlight border-l-2 border-gray-300 pl-3 py-1">
         [tombstone: claim deleted; prior text: {text}]
       </div>
     );
   }
   return (
-    <div className="border-l-2 border-emerald-300 pl-3 py-1">
-      <p className="text-sm text-ink dark:text-bright font-serif">{text || `(claim ${claimId})`}</p>
-      <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">claim: {claimId}</p>
+    <div className="rf-claim border-l-2 border-emerald-300 pl-3 py-1">
+      <p className="text-sm text-ink dark:text-bright font-serif">
+        {text || `(claim ${claimId})`}
+      </p>
+      <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">
+        claim: {claimId} · cached text
+      </p>
     </div>
   );
 }
 
-function NoteReferenceBlock({ noteId, text }: { noteId: string | null; text: string }) {
+/** Note reference — cached text labeled as cached; tombstone when null. */
+function NoteReferenceBlock({
+  noteId,
+  text,
+}: {
+  noteId: string | null;
+  text: string;
+}) {
   if (!noteId) {
     return (
-      <div className="text-xs italic text-shadow-1 dark:text-moonlight">
+      <div className="rf-tombstone rf-note-tombstone text-xs italic text-shadow-1 dark:text-moonlight border-l-2 border-gray-300 pl-3 py-1">
         [tombstone: note deleted; prior text: {text}]
       </div>
     );
   }
   return (
-    <div className="border-l-2 border-amber-300 pl-3 py-1">
-      <p className="text-sm text-ink dark:text-bright font-serif">{text || `(note ${noteId})`}</p>
-      <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">note: {noteId}</p>
+    <div className="rf-note border-l-2 border-amber-300 pl-3 py-1">
+      <p className="text-sm text-ink dark:text-bright font-serif">
+        {text || `(note ${noteId})`}
+      </p>
+      <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">
+        note: {noteId} · cached text
+      </p>
     </div>
   );
 }
 
-function RegionEmbedBlock({ regionId, excerpt }: { regionId: string | null; excerpt: string }) {
+/** Region embed — cached excerpt labeled as cached. */
+function RegionEmbedBlock({
+  regionId,
+  excerpt,
+}: {
+  regionId: string | null;
+  excerpt: string;
+}) {
   return (
-    <div className="rounded-md bg-ice-1 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 px-3 py-2">
+    <div className="rf-region rounded-md bg-ice-1 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 px-3 py-2">
       <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mb-1">
-        region: {regionId ?? "(no ref)"}
+        region: {regionId ?? "(no ref)"} · cached excerpt
       </p>
       <p className="text-sm text-ink dark:text-bright font-serif italic">
         {excerpt || "(no excerpt cached)"}
@@ -325,18 +403,43 @@ function RegionEmbedBlock({ regionId, excerpt }: { regionId: string | null; exce
   );
 }
 
-function QuestionCardBlock({ questionId, text }: { questionId: string | null; text: string }) {
+/** Question card. */
+function QuestionCardBlock({
+  questionId,
+  text,
+}: {
+  questionId: string | null;
+  text: string;
+}) {
+  if (!questionId) {
+    return (
+      <div className="rf-tombstone text-xs italic text-shadow-1 dark:text-moonlight">
+        [tombstone: question reference unavailable; cached text: {text}]
+      </div>
+    );
+  }
   return (
-    <div className="border-l-2 border-blue-300 pl-3 py-1">
-      <p className="text-sm text-ink dark:text-bright font-serif">{text || `(question ${questionId})`}</p>
-      <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">open: {questionId}</p>
+    <div className="rf-question border-l-2 border-blue-300 pl-3 py-1">
+      <p className="text-sm text-ink dark:text-bright font-serif">
+        {text || `(question ${questionId})`}
+      </p>
+      <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">
+        question: {questionId} · cached text
+      </p>
     </div>
   );
 }
 
-function MasterMdSectionBlock({ sectionId, heading }: { sectionId: string | null; heading: string }) {
+/** Master.md section link. */
+function MasterMdSectionBlock({
+  sectionId,
+  heading,
+}: {
+  sectionId: string | null;
+  heading: string;
+}) {
   return (
-    <div className="border border-dashed border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
+    <div className="rf-master-section border border-dashed border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
       <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mb-1">
         master.md section: {sectionId ?? "(no ref)"}
       </p>
@@ -347,13 +450,18 @@ function MasterMdSectionBlock({ sectionId, heading }: { sectionId: string | null
   );
 }
 
+/** Cross-document link. */
 function CrossDocLinkBlock({
   fromDoc,
   toDoc,
   questionId,
-}: { fromDoc: string; toDoc: string; questionId: string }) {
+}: {
+  fromDoc: string;
+  toDoc: string;
+  questionId: string;
+}) {
   return (
-    <div className="rounded-md bg-ice-1 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 px-3 py-2">
+    <div className="rf-cross-doc rounded-md bg-ice-1 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 px-3 py-2">
       <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
         {fromDoc} → {toDoc} · question: {questionId}
       </p>
@@ -361,49 +469,45 @@ function CrossDocLinkBlock({
   );
 }
 
-function AppendProseAffordance({
+// ── Append block affordance ──────────────────────────────────────
+
+function AppendBlockAffordance({
   onAppendBlock,
-}: { onAppendBlock: Props["onAppendBlock"] }) {
-  const [pickerOpen, setPickerOpen] = useState<boolean>(false);
+  disabled,
+}: {
+  onAppendBlock: Props["onAppendBlock"];
+  disabled?: boolean;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const appendProse = () => {
     const text = prompt("Prose text:");
-    if (text && text.trim()) {
-      void onAppendBlock({
-        block_type: "prose",
-        content: { text: text.trim() },
-      });
-    }
+    if (text?.trim()) onAppendBlock({ block_type: "prose", content: { text: text.trim() } });
     setPickerOpen(false);
   };
   const appendQuestion = () => {
     const text = prompt("Question text (will surface as a parked question):");
-    if (text && text.trim()) {
-      void onAppendBlock({
+    if (text?.trim())
+      onAppendBlock({
         block_type: "question_card",
         content: { question_text: text.trim() },
       });
-    }
     setPickerOpen(false);
   };
   const appendLatex = () => {
     const text = prompt("LaTeX source:");
-    if (text && text.trim()) {
-      void onAppendBlock({
-        block_type: "latex",
-        content: { latex: text.trim() },
-      });
-    }
+    if (text?.trim())
+      onAppendBlock({ block_type: "latex", content: { latex: text.trim() } });
     setPickerOpen(false);
   };
   const appendClaimReference = () => {
     const claimId = prompt("Claim ID to embed:");
-    if (!claimId || !claimId.trim()) {
+    if (!claimId?.trim()) {
       setPickerOpen(false);
       return;
     }
     const text = prompt("Display text for the claim:") ?? "";
-    void onAppendBlock({
+    onAppendBlock({
       block_type: "claim_card",
       content: { text: text.trim() },
       ref_id: claimId.trim(),
@@ -412,12 +516,12 @@ function AppendProseAffordance({
   };
   const appendRegionRef = () => {
     const regionId = prompt("Region ID to embed:");
-    if (!regionId || !regionId.trim()) {
+    if (!regionId?.trim()) {
       setPickerOpen(false);
       return;
     }
     const excerpt = prompt("Cached excerpt text (optional):") ?? "";
-    void onAppendBlock({
+    onAppendBlock({
       block_type: "region_embed",
       content: { excerpt: excerpt.trim() },
       ref_id: regionId.trim(),
@@ -429,13 +533,18 @@ function AppendProseAffordance({
     <div className="space-y-2">
       <button
         type="button"
+        disabled={disabled}
         onClick={() => setPickerOpen((v) => !v)}
-        className="text-xs font-mono text-shadow-1 dark:text-moonlight hover:text-ink dark:text-bright underline-offset-2 hover:underline transition-colors"
+        className="text-xs font-mono text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright underline-offset-2 hover:underline transition-colors disabled:opacity-50"
       >
         {pickerOpen ? "× close block picker" : "+ add block"}
       </button>
       {pickerOpen && (
-        <div className="border border-rule dark:border-charcoal-1 rounded-md p-3 grid grid-cols-2 gap-2">
+        <div
+          className="border border-rule dark:border-charcoal-1 rounded-md p-3 grid grid-cols-2 gap-2"
+          role="group"
+          aria-label="Block type picker"
+        >
           <PickerButton label="Prose" onClick={appendProse} />
           <PickerButton label="Question card" onClick={appendQuestion} />
           <PickerButton label="LaTeX" onClick={appendLatex} />
@@ -450,12 +559,15 @@ function AppendProseAffordance({
 function PickerButton({
   label,
   onClick,
-}: { label: string; onClick: () => void }) {
+}: {
+  label: string;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="px-3 py-1.5 rounded-md border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 text-xs font-mono text-ink dark:text-bright hover:bg-ice-1 dark:bg-charcoal-2 transition-colors text-left"
+      className="px-3 py-1.5 rounded-md border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 text-xs font-mono text-ink dark:text-bright hover:bg-ice-1 dark:hover:bg-charcoal-2 transition-colors text-left"
     >
       {label}
     </button>
