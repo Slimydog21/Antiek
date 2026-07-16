@@ -43,8 +43,14 @@ _MAX_CANONICAL_CONTAINER_ITEMS = 100_000
 PRIVATE_CYCLE_35_CONTRACT_SHA256_V1 = (
     "09885cb78fdc7f54198c90240c61c7901a2f7e87c590a12543f2bf827b344711"
 )
+PRIVATE_CYCLE_35_CONTRACT_SHA256_V2 = (
+    "eb013373d470199e2850e2608eac3f67bdf5ecb138193afb80f2fd05921bc47f"
+)
 OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V1 = (
     "7d4551f30ec2a25c60ad114a9cfa67df6ae279de5dab2559e83a7bcea080e339"
+)
+OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V2 = (
+    "c0a87c11c60ffce36364f6d9a665052396e7a2ff80830a836f3bf680e7677a73"
 )
 
 
@@ -242,7 +248,7 @@ _EXACT_SCHEMAS = MappingProxyType(
         "receipt_v7": {
             "fields": (
                 "schema_version:Literal[7],required,default=7",
-                "authority_kind:Literal[owner_private_sealed_source_v7],required",
+                "authority_kind:Literal[owner_private_sealed_source_claim_v7],required",
                 "receipt_id:str,required,pattern=^opsr7_[0-9a-f]{24}$",
                 "receipt_sha256:str,required,hex64",
                 "owner_path_discriminator:str,required,pattern=^opspd1_[0-9a-f]{64}$",
@@ -263,6 +269,8 @@ _EXACT_SCHEMAS = MappingProxyType(
                 "source_selector:str,required,length=1..256",
                 "source_authority_kind:Literal[cycle32_receipt_pair_nonconferring_evidence],required",
                 "source_authority_confers_sink_authority:Literal[False],required",
+                "source_current_verified:Literal[False],required",
+                "admission_live_resolution_required:Literal[True],required",
             ) + _QUARANTINE_SCHEMA,
             "validators": (
                 "strict_frozen_extra_forbid_redacted_repr",
@@ -306,7 +314,7 @@ _PURE_CONTRACTS = MappingProxyType(
     {
         "policy_v4": {
             "fields": (
-                "schema_version:Literal[4]=4", "contract_revision:Literal[2]=2",
+                "schema_version:Literal[4]=4", "contract_revision:Literal[3]=3",
                 "predecessor_policy_v4_sha256:hex64", "policy_id:Literal[antiek-owner-private-provider-output-v4]",
                 "predecessor_kind:Literal[policy_v3_nonconferring_evidence]", "predecessor_policy_v3_sha256:hex64",
                 "content_class:Literal[personal_reading]", "certified_operation:Literal[quarantined_cycle_35_fixture_eligibility_only]",
@@ -589,8 +597,8 @@ _PURE_CONTRACT_SHA256S = MappingProxyType(
 PRIVATE_CYCLE_35_CONTRACT_SHA256 = _digest(
     _CONTRACT_DOMAIN,
     {
-        "schema_version": 2,
-        "predecessor_contract_sha256": PRIVATE_CYCLE_35_CONTRACT_SHA256_V1,
+        "schema_version": 3,
+        "predecessor_contract_sha256": PRIVATE_CYCLE_35_CONTRACT_SHA256_V2,
         "canonical_json": "utf8_sorted_keys_compact_allow_nan_false",
         "domains": dict(_CONTRACT_DOMAINS),
         "contract_sha256s": dict(_PURE_CONTRACT_SHA256S),
@@ -606,8 +614,8 @@ PRIVATE_CYCLE_35_CONTRACT_SHA256 = _digest(
 
 _POLICY_V4_MATERIAL = MappingProxyType({
     "schema_version": 4,
-    "contract_revision": 2,
-    "predecessor_policy_v4_sha256": OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V1,
+    "contract_revision": 3,
+    "predecessor_policy_v4_sha256": OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V2,
     "policy_id": "antiek-owner-private-provider-output-v4",
     "predecessor_kind": "policy_v3_nonconferring_evidence",
     "predecessor_policy_v3_sha256": OWNER_PRIVATE_OUTPUT_POLICY_V3_SHA256,
@@ -694,7 +702,7 @@ class _Closed(BaseModel):
 
 class OwnerPrivateOutputPolicyV4(_Closed):
     schema_version: Literal[4] = 4
-    contract_revision: Literal[2] = 2
+    contract_revision: Literal[3] = 3
     predecessor_policy_v4_sha256: str = Field(pattern=_HEX64)
     policy_id: Literal["antiek-owner-private-provider-output-v4"] = (
         "antiek-owner-private-provider-output-v4"
@@ -792,8 +800,10 @@ def build_owner_private_output_policy_v4() -> OwnerPrivateOutputPolicyV4:
 __all__ = [
     "OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256",
     "OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V1",
+    "OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V2",
     "PRIVATE_CYCLE_35_CONTRACT_SHA256",
     "PRIVATE_CYCLE_35_CONTRACT_SHA256_V1",
+    "PRIVATE_CYCLE_35_CONTRACT_SHA256_V2",
     "OwnerPrivateOutputPolicyV4",
     "build_owner_private_output_policy_v4",
     "owner_private_output_policy_v4_sha256",

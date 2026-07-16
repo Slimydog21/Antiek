@@ -18,6 +18,10 @@ from substrate.midnight_oil.private_provider_capability_v4 import (
     PrivateProviderProcessingCapabilityV4,
     private_provider_capability_v4_sha256,
 )
+from substrate.midnight_oil.private_provider_receipt_v7 import (
+    OwnerPrivatePublicationSourceReceiptV7,
+    build_owner_private_source_receipt_v7,
+)
 from substrate.midnight_oil.private_provider_request_core_v4 import (
     Cycle32SourceReceiptPairV1,
     PreparedOwnerPrivateRequestCoreV4,
@@ -153,6 +157,22 @@ def core_v4(
     )
 
 
+def receipt_v7(
+    *,
+    core: PreparedOwnerPrivateRequestCoreV4 | None = None,
+    capability: PrivateProviderProcessingCapabilityV4 | None = None,
+    ordinal: int = 1,
+) -> OwnerPrivatePublicationSourceReceiptV7:
+    cap = capability or capability_v4()
+    request_core = core or core_v4(capability=cap)
+    return build_owner_private_source_receipt_v7(
+        core=request_core,
+        capability=cap,
+        capability_verification_keys={V4_KEY_ID: public_key()},
+        private_source_ordinal=ordinal,
+    )
+
+
 __all__ = [
     "ACCOUNT_SCOPE_BLIND_ID",
     "OWNER_PATH_DISCRIMINATOR",
@@ -162,5 +182,6 @@ __all__ = [
     "capability_v4",
     "core_v4",
     "public_key",
+    "receipt_v7",
     "source_pair",
 ]

@@ -17,8 +17,10 @@ from substrate.midnight_oil.private_output_policy_v4 import (
     _PURE_CONTRACTS,
     OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256,
     OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V1,
+    OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V2,
     PRIVATE_CYCLE_35_CONTRACT_SHA256,
     PRIVATE_CYCLE_35_CONTRACT_SHA256_V1,
+    PRIVATE_CYCLE_35_CONTRACT_SHA256_V2,
     OwnerPrivateOutputPolicyV4,
     _digest,
     build_owner_private_output_policy_v4,
@@ -36,6 +38,13 @@ from substrate.midnight_oil.private_provider_capability_v4 import (
     parse_private_provider_capability_v4_document,
     private_provider_capability_v4_sha256,
     verify_private_provider_capability_v4,
+)
+from substrate.midnight_oil.private_provider_receipt_v7 import (
+    _RECEIPT_V7_DOMAIN,
+    OwnerPrivatePublicationSourceReceiptV7,
+    build_owner_private_source_receipt_v7,
+    owner_private_source_receipt_v7_sha256,
+    verify_owner_private_source_receipt_v7,
 )
 from substrate.midnight_oil.private_provider_request_core_v4 import (
     _IDEMPOTENCY_V4_DOMAIN,
@@ -55,6 +64,7 @@ from tests.support.owner_private_v4 import (
     capability_v4,
     core_v4,
     public_key,
+    receipt_v7,
     source_pair,
 )
 
@@ -77,10 +87,10 @@ def _capability_v4_document(
 def test_policy_v4_canonical_identity_domains_and_quarantine() -> None:
     policy = build_owner_private_output_policy_v4()
     assert OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256 == (
-        "c0a87c11c60ffce36364f6d9a665052396e7a2ff80830a836f3bf680e7677a73"
+        "cab91cbdea5fc07f130945da5dc5569aade7e10ae425ba71df02383fa0e77a8f"
     )
     assert PRIVATE_CYCLE_35_CONTRACT_SHA256 == (
-        "eb013373d470199e2850e2608eac3f67bdf5ecb138193afb80f2fd05921bc47f"
+        "ceaa329b59dc70304f904b42cf756e334da35475a611ab5d0ba74f0fd179a63d"
     )
     assert _POLICY_V4_DOMAIN == b"antiek.midnight-oil.owner-private-output-policy.v4\x00"
     assert tuple(_CONTRACT_DOMAINS) == (
@@ -96,13 +106,19 @@ def test_policy_v4_canonical_identity_domains_and_quarantine() -> None:
         "test_transport_outcome_receipt_v1",
     )
     assert policy.policy_sha256 == OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256
-    assert policy.contract_revision == 2
-    assert policy.predecessor_policy_v4_sha256 == OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V1
+    assert policy.contract_revision == 3
+    assert policy.predecessor_policy_v4_sha256 == OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V2
     assert OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V1 == (
         "7d4551f30ec2a25c60ad114a9cfa67df6ae279de5dab2559e83a7bcea080e339"
     )
     assert PRIVATE_CYCLE_35_CONTRACT_SHA256_V1 == (
         "09885cb78fdc7f54198c90240c61c7901a2f7e87c590a12543f2bf827b344711"
+    )
+    assert OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V2 == (
+        "c0a87c11c60ffce36364f6d9a665052396e7a2ff80830a836f3bf680e7677a73"
+    )
+    assert PRIVATE_CYCLE_35_CONTRACT_SHA256_V2 == (
+        "eb013373d470199e2850e2608eac3f67bdf5ecb138193afb80f2fd05921bc47f"
     )
     assert policy.policy_sha256 == owner_private_output_policy_v4_sha256(policy)
     assert policy.cycle_35_contract_sha256 == PRIVATE_CYCLE_35_CONTRACT_SHA256
@@ -233,8 +249,8 @@ def test_cycle_35_manifest_mutation_propagates_to_root_and_policy_identity() -> 
     changed_hashes = dict(_PURE_CONTRACT_SHA256S)
     changed_hashes["capability_v4"] = changed_subhash
     root_material = {
-        "schema_version": 2,
-        "predecessor_contract_sha256": PRIVATE_CYCLE_35_CONTRACT_SHA256_V1,
+        "schema_version": 3,
+        "predecessor_contract_sha256": PRIVATE_CYCLE_35_CONTRACT_SHA256_V2,
         "canonical_json": "utf8_sorted_keys_compact_allow_nan_false",
         "domains": dict(_CONTRACT_DOMAINS),
         "contract_sha256s": changed_hashes,
@@ -288,8 +304,8 @@ def test_outcome_matrix_matches_checkpoint_graph_and_mutates_root_identity() -> 
     changed_root = _digest(
         _CONTRACT_DOMAIN,
         {
-            "schema_version": 2,
-            "predecessor_contract_sha256": PRIVATE_CYCLE_35_CONTRACT_SHA256_V1,
+            "schema_version": 3,
+            "predecessor_contract_sha256": PRIVATE_CYCLE_35_CONTRACT_SHA256_V2,
             "canonical_json": "utf8_sorted_keys_compact_allow_nan_false",
             "domains": dict(_CONTRACT_DOMAINS),
             "contract_sha256s": changed_hashes,
@@ -359,11 +375,11 @@ def test_capability_v4_golden_identity_signature_domains_and_quarantine() -> Non
         capability
     )
     assert capability.capability_sha256 == (
-        "423aa1152c0d4d06e4036209dcc36700072c02db9f1409a38db81a5371cae8f9"
+        "55014baf39f88b2f6df6dcde873dc534c5bcac77c4379dca059935d72a0c320b"
     )
     assert capability.signature_ed25519 == (
-        "0982b8f28f42fdc9456adc55203cd8ad60af28b3256cba0170451a7539484629"
-        "e15aed022c77971441cbd78a6d79b54897d09bfe2f243e857021b544c741ad04"
+        "793d38f3c604228598bb38614b4c4fc32c2edb4518a85739556e96bbe90d5ffe"
+        "933e1afc7adcf2e6397a42e4f1907960f6838e9beeafbd34a002a7a861cf2b03"
     )
     verify_private_provider_capability_v4(
         capability, verification_keys={V4_KEY_ID: public_key()}
@@ -604,13 +620,13 @@ def test_capability_v4_route_identity_requires_canonical_ascii(
 def test_core_v4_identity_domains_request_commitment_and_quarantine() -> None:
     core = core_v4()
     assert core.request_core_sha256 == (
-        "cc9af423b86e6cedd9d4879f6119fb46d61c0f84c017148e8e63e1c5c310dff1"
+        "ff0e6f2032a038f786bbb037c656fe196b2c8b9f717da7c798f352290347700d"
     )
     assert core.private_input_commitment_sha256 == (
         "bbce5bd8c53848314a86abf3f89af43db7f2b69981b130e5d7fb07d68125bbf4"
     )
     assert core.provider_scoped_idempotency_sha256 == (
-        "1eed74c8d80b8c80b3c095c11034e9e982d55007edb83f072efa7c47b55a7df7"
+        "e704b0d31d3b3dc0dab0bb7a3a6625de3ab14a73cc5966a31c065f14b5d5ad94"
     )
     assert _REQUEST_CORE_V4_DOMAIN == (
         b"antiek.midnight-oil.owner-private-request-core.v4\x00"
@@ -865,6 +881,200 @@ def test_core_v4_source_collection_is_bounded_before_iteration() -> None:
             )
     with pytest.raises(ValueError, match="commitment v4 is unavailable"):
         private_input_commitment_v4_sha256([source_pair()])  # type: ignore[arg-type]
+
+
+def test_receipt_v7_identity_domain_lineage_and_quarantine() -> None:
+    receipt = receipt_v7()
+    assert receipt.receipt_sha256 == (
+        "d5045e68735ba6ae435c8cbf67e06c3e6e0da20146805dddfc14a88e0def1163"
+    )
+    assert _RECEIPT_V7_DOMAIN == (
+        b"antiek.midnight-oil.owner-private-publication-source-receipt.v7\x00"
+    )
+    assert receipt.receipt_id == "opsr7_" + receipt.receipt_sha256[:24]
+    assert receipt.receipt_sha256 == owner_private_source_receipt_v7_sha256(receipt)
+    assert receipt.source_receipt_id == "opsr5_" + receipt.source_receipt_sha256[:24]
+    assert receipt.authority_kind == "owner_private_sealed_source_claim_v7"
+    assert receipt.source_current_verified is False
+    assert receipt.admission_live_resolution_required is True
+    assert "redacted=True" in repr(receipt)
+    for field in (
+        "source_authority_confers_sink_authority",
+        "source_current_verified",
+        "live_migration_verified",
+        "user_accounting_effect",
+        "transport_reachable",
+        "confers_execution_authority",
+        "confers_checkpoint_authority",
+        "confers_sink_authority",
+        "confers_transition_authority",
+        "production_consumer_enabled",
+    ):
+        assert getattr(receipt, field) is False
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "owner_path_discriminator",
+        "operation_id",
+        "job_id",
+        "execution_id",
+        "stage_key",
+        "request_core_v4_sha256",
+        "output_policy_v4_sha256",
+        "capability_id",
+        "capability_v4_sha256",
+        "required_until_ms",
+        "private_input_commitment_sha256",
+        "private_input_bytes",
+        "private_source_ordinal",
+        "source_receipt_id",
+        "source_receipt_sha256",
+        "source_registry_id",
+        "source_head_sha256",
+        "source_epoch",
+        "opaque_source_bundle_id",
+        "source_selector",
+        "receipt_sha256",
+    ),
+)
+def test_receipt_v7_identity_substitution_rejects(field: str) -> None:
+    raw = receipt_v7().model_dump(mode="python")
+    original = raw[field]
+    if isinstance(original, int):
+        raw[field] = original + 1
+    else:
+        raw[field] = f"x{original}"
+    with pytest.raises((ValidationError, ValueError)):
+        OwnerPrivatePublicationSourceReceiptV7.model_validate(raw)
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "source_authority_confers_sink_authority",
+        "live_migration_verified",
+        "user_accounting_effect",
+        "transport_reachable",
+        "confers_execution_authority",
+        "confers_checkpoint_authority",
+        "confers_sink_authority",
+        "confers_transition_authority",
+        "production_consumer_enabled",
+    ),
+)
+def test_receipt_v7_authority_substitution_rejects(field: str) -> None:
+    raw = receipt_v7().model_dump(mode="python")
+    raw[field] = True
+    with pytest.raises(ValidationError):
+        OwnerPrivatePublicationSourceReceiptV7.model_validate(raw)
+
+
+def test_receipt_v7_cannot_claim_live_resolution_inside_pure_model() -> None:
+    raw = receipt_v7().model_dump(mode="python")
+    raw["source_current_verified"] = True
+    with pytest.raises(ValidationError):
+        OwnerPrivatePublicationSourceReceiptV7.model_validate(raw)
+    raw = receipt_v7().model_dump(mode="python")
+    raw["admission_live_resolution_required"] = False
+    with pytest.raises(ValidationError):
+        OwnerPrivatePublicationSourceReceiptV7.model_validate(raw)
+
+
+@pytest.mark.parametrize("ordinal", (0, 2, True))
+def test_receipt_v7_builder_requires_exact_existing_nonplanner_ordinal(
+    ordinal: object,
+) -> None:
+    cap = capability_v4()
+    core = core_v4(capability=cap)
+    with pytest.raises(ValueError, match="unavailable"):
+        build_owner_private_source_receipt_v7(
+            core=core,
+            capability=cap,
+            capability_verification_keys={V4_KEY_ID: public_key()},
+            private_source_ordinal=ordinal,  # type: ignore[arg-type]
+        )
+
+
+def test_receipt_v7_planner_has_no_source_receipt() -> None:
+    cap = capability_v4(role="planner")
+    core = core_v4(role="planner", capability=cap)
+    with pytest.raises(ValueError, match="unavailable"):
+        build_owner_private_source_receipt_v7(
+            core=core,
+            capability=cap,
+            capability_verification_keys={V4_KEY_ID: public_key()},
+            private_source_ordinal=1,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("source_head_sha256", "9" * 64),
+        ("source_epoch", 99),
+        ("opaque_source_bundle_id", "other-bundle"),
+        ("source_receipt_sha256", "8" * 64),
+        ("request_core_v4_sha256", "7" * 64),
+    ),
+)
+def test_receipt_v7_coordinated_rehash_rejects_signed_core_join(
+    field: str, value: object
+) -> None:
+    cap = capability_v4()
+    core = core_v4(capability=cap)
+    raw = receipt_v7(core=core, capability=cap).model_dump(mode="python")
+    raw[field] = value
+    if field == "source_receipt_sha256":
+        raw["source_receipt_id"] = "opsr5_" + str(value)[:24]
+    digest = owner_private_source_receipt_v7_sha256(raw)
+    raw["receipt_sha256"] = digest
+    raw["receipt_id"] = "opsr7_" + digest[:24]
+    internally_canonical = OwnerPrivatePublicationSourceReceiptV7.model_validate(raw)
+    with pytest.raises(ValueError, match="unavailable"):
+        verify_owner_private_source_receipt_v7(
+            internally_canonical,
+            core=core,
+            capability=cap,
+            capability_verification_keys={V4_KEY_ID: public_key()},
+        )
+
+
+def test_coordinated_core_receipt_source_rehash_remains_explicit_unverified_claim() -> None:
+    cap = capability_v4()
+    core_raw = core_v4(capability=cap).model_dump(mode="python")
+    core_raw["source_head_sha256"] = "9" * 64
+    core_raw["source_epoch"] = 99
+    core_raw["opaque_source_bundle_id"] = "fabricated-but-syntactic-bundle"
+    core_raw["provider_scoped_idempotency_sha256"] = (
+        provider_scoped_idempotency_v4_sha256(core_raw)
+    )
+    core_digest = owner_private_request_core_v4_sha256(core_raw)
+    core_raw["request_core_sha256"] = core_digest
+    core_raw["request_core_id"] = "oprc4_" + core_digest[:24]
+    claimed_core = PreparedOwnerPrivateRequestCoreV4.model_validate(core_raw)
+    verify_owner_private_request_core_v4(
+        claimed_core,
+        capability=cap,
+        capability_verification_keys={V4_KEY_ID: public_key()},
+    )
+    claim = build_owner_private_source_receipt_v7(
+        core=claimed_core,
+        capability=cap,
+        capability_verification_keys={V4_KEY_ID: public_key()},
+        private_source_ordinal=1,
+    )
+    verify_owner_private_source_receipt_v7(
+        claim,
+        core=claimed_core,
+        capability=cap,
+        capability_verification_keys={V4_KEY_ID: public_key()},
+    )
+    assert claim.source_current_verified is False
+    assert claim.admission_live_resolution_required is True
+    assert claim.transport_reachable is False
+    assert claim.confers_execution_authority is False
     raw = build_owner_private_output_policy_v4().model_dump(mode="python")
     raw["predecessor_kind"] = "policy_v3_execution_authority"
     with pytest.raises(ValidationError):
