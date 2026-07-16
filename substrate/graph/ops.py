@@ -196,7 +196,7 @@ def insert_document(
     _assert_write_locked(con)
     # Runtime-local to keep graph module initialization independent from the
     # signed twin materializer, which itself uses graph canonicalization.
-    from substrate.twin_recursion.source_registration import (
+    from substrate.twin_recursion import (
         build_twin_source_envelope,
         stamp_existing_document,
     )
@@ -312,7 +312,7 @@ def update_document_gate_columns(
         touched_indexed.append("ip_holder_id")
     if null_raw_text:
         sets.append("raw_text = NULL")
-        from substrate.twin_recursion.source_registration import build_twin_source_envelope
+        from substrate.twin_recursion import build_twin_source_envelope
 
         source = con.execute(
             "SELECT title,document_type,owner_user_id FROM documents WHERE document_id=?",

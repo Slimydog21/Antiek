@@ -1732,7 +1732,7 @@ def init_database(con: LockedConnection) -> None:
     _repair_empty_partial_v19_frontiers(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL)
     con.execute(ANTIEK_GRAPH_SCHEMA_V20_TWIN_SOURCE_ENVELOPE_SQL)
-    from substrate.twin_recursion.source_registration import backfill_twin_source_envelopes
+    from substrate.twin_recursion import backfill_twin_source_envelopes
 
     backfill_twin_source_envelopes(con)
 
