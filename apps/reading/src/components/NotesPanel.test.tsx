@@ -5,12 +5,14 @@ vi.mock("../api/distillationReconciliation", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/distillationReconciliation")>();
   return {
     ...actual,
+    checkProviderOutcome: vi.fn(),
     getDistillationReconciliation: vi.fn(),
     releaseProvenUnsentHold: vi.fn(),
   };
 });
 
 import {
+  checkProviderOutcome,
   getDistillationReconciliation,
   releaseProvenUnsentHold,
   type DistillationReconciliation,
@@ -21,6 +23,7 @@ import NotesPanel from "./NotesPanel";
 afterEach(cleanup);
 beforeEach(() => {
   vi.mocked(getDistillationReconciliation).mockReset();
+  vi.mocked(checkProviderOutcome).mockReset();
   vi.mocked(releaseProvenUnsentHold).mockReset();
 });
 
@@ -84,6 +87,7 @@ function ambiguousEvent(): Event {
 
 function reconciliationView(
   nextAction: DistillationReconciliation["next_action"] = "release_proven_unsent",
+  actionExecutable = nextAction === "release_proven_unsent",
 ): DistillationReconciliation {
   const state = nextAction === "provider_lookup_required" ? "unknown" : "reserved";
   return {
@@ -100,7 +104,7 @@ function reconciliationView(
     held_cents: 80,
     available_cents: 120,
     next_action: nextAction,
-    action_executable: false,
+    action_executable: actionExecutable,
     holds: [
       {
         fallback_index: 0,
@@ -196,7 +200,7 @@ describe("NotesPanel distillation spend state", () => {
     expect(releaseProvenUnsentHold).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Release reserved hold" }));
-    await screen.findByText("Reserved hold released · budget restored");
+    await screen.findByText("Hold released · budget restored");
     expect(releaseProvenUnsentHold).toHaveBeenCalledWith(
       "evt-request",
       expect.objectContaining({
@@ -217,6 +221,68 @@ describe("NotesPanel distillation spend state", () => {
     await screen.findByText("Provider verification required · budget remains held");
     expect(screen.queryByRole("button", { name: "Release reserved hold" })).toBeNull();
     expect(releaseProvenUnsentHold).not.toHaveBeenCalled();
+    expect(checkProviderOutcome).not.toHaveBeenCalled();
+  });
+
+  it("checks provider only from exact executable terms and renders settlement", async () => {
+    const before = reconciliationView("provider_lookup_required", true);
+    const after = reconciliationView("none", false);
+    after.held_cents = 0;
+    after.authorized_spent_cents = 60;
+    after.holds[0].state = "settled";
+    after.holds[0].actual_cents = 60;
+    vi.mocked(getDistillationReconciliation).mockResolvedValue(before);
+    vi.mocked(checkProviderOutcome).mockResolvedValue(after);
+    renderPanel(ambiguousEvent());
+
+    fireEvent.click(screen.getByRole("button", { name: "Review held budget" }));
+    await screen.findByText("Provider verification available");
+    expect(screen.getByText("Expected hold state unknown")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Check provider outcome" }));
+
+    await screen.findByText("Provider charge verified · hold settled");
+    expect(checkProviderOutcome).toHaveBeenCalledWith(
+      "evt-request",
+      expect.objectContaining({
+        expected_manifest_sha256: "a".repeat(64),
+        expected_hold_id: "hold-1",
+        expected_hold_state: "unknown",
+      }),
+    );
+    expect(releaseProvenUnsentHold).not.toHaveBeenCalled();
+  });
+
+  it("keeps authoritative unknown exposure held after provider check", async () => {
+    const unknown = reconciliationView("provider_lookup_required", true);
+    vi.mocked(getDistillationReconciliation).mockResolvedValue(unknown);
+    vi.mocked(checkProviderOutcome).mockResolvedValue(unknown);
+    renderPanel(ambiguousEvent());
+
+    fireEvent.click(screen.getByRole("button", { name: "Review held budget" }));
+    await screen.findByText("Provider verification available");
+    fireEvent.click(screen.getByRole("button", { name: "Check provider outcome" }));
+
+    await waitFor(() => expect(checkProviderOutcome).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("Held $0.80 USD")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Check provider outcome" })).not.toBeNull();
+  });
+
+  it("discards provider-check terms after a stale or failed lookup", async () => {
+    vi.mocked(getDistillationReconciliation).mockResolvedValue(
+      reconciliationView("provider_lookup_required", true),
+    );
+    vi.mocked(checkProviderOutcome).mockRejectedValue(new Error("private provider failure"));
+    renderPanel(ambiguousEvent());
+
+    fireEvent.click(screen.getByRole("button", { name: "Review held budget" }));
+    await screen.findByText("Provider verification available");
+    fireEvent.click(screen.getByRole("button", { name: "Check provider outcome" }));
+
+    await screen.findByText(
+      "Hold state changed. Review current terms before trying again. Budget remains held.",
+    );
+    expect(screen.queryByRole("button", { name: "Check provider outcome" })).toBeNull();
+    expect(screen.queryByText(/private provider failure/)).toBeNull();
   });
 
   it("keeps budget held and redacts transport failures", async () => {

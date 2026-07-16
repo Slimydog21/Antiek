@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Distillation Provider Check Control</title>
+</head>
+<body>
+  <main>
+    <h1>Distillation Provider Check Control</h1>
+    <p><strong>Status:</strong> Cycle 98 implementation contract.</p>
+
+    <section>
+      <h2>Purpose</h2>
+      <p>Expose the Cycle 97 provider-check action to the authenticated reading workstation only when the server has composed qualified reconciliation authority.</p>
+    </section>
+
+    <section>
+      <h2>Capability truth</h2>
+      <ol>
+        <li>A reserved hold reports executable because its ledger-proven release action is available.</li>
+        <li>A dispatch-possible or unknown hold reports executable only when the runtime contains a server-owned provider authority resolver.</li>
+        <li>A settled or released hold never reports executable.</li>
+        <li>Reading the capability never invokes the resolver or provider.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Operator interaction</h2>
+      <ol>
+        <li>The client derives immutable expected command, run, chain, manifest, route, hold, and state terms from one authoritative response.</li>
+        <li>The client cannot submit provider, model, endpoint, credential, evidence, outcome, or cents.</li>
+        <li>One explicit gesture invokes the provider-check endpoint; an in-flight guard rejects duplicate local gestures.</li>
+        <li>Charged and not-found outcomes render terminal ledger truth. Unknown remains held and may be checked again explicitly.</li>
+        <li>Conflict or transport failure discards all prior terms, redacts details, retains the budget warning, and requires a fresh evidence read.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Acceptance criteria</h2>
+      <ul>
+        <li>Backend tests prove state-derived capability with and without a resolver and zero resolver calls during reads.</li>
+        <li>Client tests prove strict response consistency, exact request shape, unavailable suppression, settlement, unknown retention, and stale-term discard.</li>
+        <li>No code path sends, retries, advances fallback, or restores unknown exposure locally.</li>
+        <li>Backend and frontend tests, typecheck, build, diff hygiene, HardenX, and hostile review pass before transport.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

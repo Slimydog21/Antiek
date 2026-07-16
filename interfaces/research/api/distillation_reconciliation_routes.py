@@ -55,6 +55,18 @@ class DistillationProviderReconciliationAuthority:
 
 
 class DistillationProviderAuthorityResolver(Protocol):
+    def available_for(
+        self,
+        *,
+        operator_id: str,
+        request_event_id: str,
+        spend_run_id: str,
+        fallback_chain_id: str,
+        manifest_sha256: str,
+        fallback_index: int,
+        hold_id: str,
+    ) -> bool: ...
+
     def __call__(
         self,
         *,
@@ -113,7 +125,7 @@ class DistillationReconciliationResponse(BaseModel):
         "provider_lookup_required",
         "none",
     ]
-    action_executable: Literal[False]
+    action_executable: bool
     holds: tuple[DistillationHoldEvidenceResponse, ...]
 
 
@@ -273,7 +285,17 @@ def get_distillation_reconciliation(
         held_cents=run.held_cents,
         available_cents=run.available_cents,
         next_action=_next_action(current_state),
-        action_executable=False,
+        action_executable=_action_executable(
+            current_state,
+            runtime,
+            operator_id=operator_id,
+            request_event_id=command.request_event_id,
+            spend_run_id=command.spend_run_id,
+            fallback_chain_id=command.fallback_chain_id,
+            manifest_sha256=command.manifest_sha256,
+            fallback_index=command.fallback_index,
+            hold_id=command.hold_id,
+        ),
         holds=tuple(holds),
     )
 
@@ -367,17 +389,18 @@ def check_provider_outcome(
             ):
                 return current
             resolver = runtime.provider_authority_resolver
-            if resolver is None:
+            identity = {
+                "operator_id": operator_id,
+                "request_event_id": request_event_id,
+                "spend_run_id": expected.expected_spend_run_id,
+                "fallback_chain_id": expected.expected_fallback_chain_id,
+                "manifest_sha256": expected.expected_manifest_sha256,
+                "fallback_index": expected.expected_fallback_index,
+                "hold_id": expected.expected_hold_id,
+            }
+            if resolver is None or not _resolver_available(resolver, **identity):
                 raise LedgerIntegrityError("provider authority is unavailable")
-            authority = resolver(
-                operator_id=operator_id,
-                request_event_id=request_event_id,
-                spend_run_id=expected.expected_spend_run_id,
-                fallback_chain_id=expected.expected_fallback_chain_id,
-                manifest_sha256=expected.expected_manifest_sha256,
-                fallback_index=expected.expected_fallback_index,
-                hold_id=expected.expected_hold_id,
-            )
+            authority = resolver(**identity)
             gateway = ResearchProviderGateway(
                 ResearchSpendLedger(runtime.spend_db_path),
                 projector=authority.projector,
@@ -468,6 +491,31 @@ def _next_action(
     if state in (PaidHoldState.DISPATCH_POSSIBLE, PaidHoldState.UNKNOWN):
         return "provider_lookup_required"
     return "none"
+
+
+def _action_executable(
+    state: PaidHoldState,
+    runtime: DistillationReconciliationRuntime,
+    **identity: str | int,
+) -> bool:
+    if state is PaidHoldState.RESERVED:
+        return True
+    if state in (PaidHoldState.DISPATCH_POSSIBLE, PaidHoldState.UNKNOWN):
+        resolver = runtime.provider_authority_resolver
+        if resolver is None:
+            return False
+        return _resolver_available(resolver, **identity)
+    return False
+
+
+def _resolver_available(
+    resolver: DistillationProviderAuthorityResolver,
+    **identity: str | int,
+) -> bool:
+    try:
+        return resolver.available_for(**identity) is True
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError):
+        return False
 
 
 __all__ = [
