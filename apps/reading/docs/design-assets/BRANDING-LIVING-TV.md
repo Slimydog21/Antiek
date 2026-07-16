@@ -51,6 +51,19 @@ No inventory-only PNGs in the product path. No auto-launched games over primary 
 | Deep research lifecycle | deep_research_* | thinking/happy/dizzy |
 | FloatMenu confirmed note | note_saved | noted |
 | Budget over | fail | dizzy |
+| Biography CTA | piece_started | happy |
+| Midnight Oil goal add | highlight | curious |
+| Research corpus absorb | highlight | curious |
+
+## Living-TV invent chrome (session webp/PNG, 2026-07-16)
+
+UI-consumed invent strips (not inventory-only):
+
+- Login, Research, Write, Library, Speak doors — `werner_living_tv_session_v1.webp`
+- Home arcade + ArcadeCabinet — `werner_igloo_arcade_session_v1.webp`
+- ThoughtPartner + Antiek-bench — `werner_thought_partner_desk_session_v1.webp`
+- LoadingGameHost — game-specific session PNG via `waitHostBrandArt` (default living-TV webp)
+- Midnight Oil panel — living-TV webp
 
 Cursor model: ice bait instrument (not chase). Station re-home on drag.
 
