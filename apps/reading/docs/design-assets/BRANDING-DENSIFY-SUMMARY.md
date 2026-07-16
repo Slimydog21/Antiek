@@ -255,5 +255,5 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Arcade + wait-arcade invent reframe densify | `7731dd063` | stamp antiek-living-tv-invent on cabinet cards + wait cartridges; densify 27/242 |
 | Wait-arcade invent reframe densify test | `d1c0aeead` | ResearchWaitArcade cartridge invent class densify; FULL GREEN prior tip 74112b6bf |
 | Home arcade igloo invent reframe densify | `b1542f6b6` | stamp antiek-living-tv-invent on home igloo minigame trio banner |
-| Imagine invent polish v2c igloo minigame trio | `TBD` | Home + ArcadeCabinet igloo invent refresh on FULL GREEN tip |
-| Ambient arcade highlight densify test | `TBD` | livingTvAmbient documents highlight→idle living-TV rest |
+| Imagine invent polish v2c igloo minigame trio | `0f7cc3203` | Home + ArcadeCabinet igloo invent refresh on FULL GREEN tip |
+| Ambient arcade highlight densify test | `0f7cc3203` | livingTvAmbient documents highlight→idle living-TV rest |
