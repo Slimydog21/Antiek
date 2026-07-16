@@ -36,14 +36,17 @@ import hashlib
 import json
 import os
 import sys
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 try:
-    from ...event_log import emit_typed
-    from ...graph.insight_question import graph_db_path, promote_question
+    from ...graph.insight_question import (
+        canonical_text,
+        graph_db_path,
+        promote_question,
+        question_node_id,
+    )
     from ...runtime.db_lock import connect_write
     from ...schemas.events import NoteRefinedPayload, QuestionEscalatedToResearchPayload
     from ...write.event_outbox import (
@@ -57,10 +60,11 @@ except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.db_lock import connect_write  # type: ignore[no-redef]
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
     from substrate.graph.insight_question import (  # type: ignore[no-redef]
+        canonical_text,
         graph_db_path,
         promote_question,
+        question_node_id,
     )
     from substrate.schemas.events import (  # type: ignore[no-redef]
         NoteRefinedPayload,
@@ -144,6 +148,42 @@ def _result_from_outcome(payload: NoteRefinedPayload) -> ChallengeResult:
         applied=payload.outcome == "applied",
         superseded=payload.outcome == "superseded",
         new_text=payload.new_text if payload.outcome == "applied" else None,
+    )
+
+
+def _escalation_operation_id(
+    *,
+    investigation_id: str,
+    note_node_id: str,
+    challenge_text: str,
+    seq: int,
+    document_id: str | None,
+) -> str:
+    identity = json.dumps(
+        {
+            "challenge_text": canonical_text(challenge_text),
+            "document_id": document_id,
+            "investigation_id": investigation_id,
+            "note_node_id": note_node_id,
+            "sequence": seq,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+    return "note-escalation:v1:" + hashlib.sha256(identity.encode()).hexdigest()
+
+
+def _escalation_result(
+    note_node_id: str,
+    payload: QuestionEscalatedToResearchPayload,
+) -> ChallengeResult:
+    return ChallengeResult(
+        note_node_id,
+        applied=False,
+        escalated=True,
+        escalated_question_id=payload.question_id,
+        reserved_child_investigation_id=payload.child_investigation_id,
     )
 
 
@@ -268,6 +308,7 @@ def challenge_note(
     embedding_provider: Any = None,
     events_dir: str | None = None,
     con: Any = None,
+    _checkpoint: Callable[[str], None] | None = None,
 ) -> ChallengeResult:
     """Resolve a challenge against a note. If the resolver produces refined
     text, update the note in place (seq rule). If not, escalate: ensure a
@@ -287,26 +328,104 @@ def challenge_note(
                 note_node_id, resolved_text.strip(), seq=seq,
                 investigation_id=investigation_id, reason="challenge_resolved",
                 document_id=document_id, events_dir=events_dir, con=c,
+                _checkpoint=_checkpoint,
             )
-        # Unresolvable → escalate. Promote the challenge as a question node,
-        # reserve a child investigation id, emit the escalation. No launch.
-        qid = promote_question(
-            text=challenge_text, investigation_id=investigation_id,
-            asks_about=[note_node_id] if _is_node_target(note_node_id) else [],
-            metadata={"raised_by_challenge_of": note_node_id},
-            embedding_provider=embedding_provider, con=c,
+        operation_id = _escalation_operation_id(
+            investigation_id=investigation_id,
+            note_node_id=note_node_id,
+            challenge_text=challenge_text,
+            seq=seq,
+            document_id=document_id,
         )
-        reserved_child = "inv-" + uuid.uuid4().hex[:16]
-        emit_typed(
-            investigation_id,
-            QuestionEscalatedToResearchPayload(
-                question_id=qid, child_investigation_id=reserved_child),
-            role="note_taker", document_id=document_id, events_dir=events_dir,
+        digest = operation_id.rsplit(":", 1)[-1]
+        identity_scope = f"challenge:{investigation_id}:{note_node_id}"
+        expected_question_id = question_node_id(
+            challenge_text, identity_scope=identity_scope
         )
-        return ChallengeResult(
-            note_node_id, applied=False, escalated=True,
-            escalated_question_id=qid, reserved_child_investigation_id=reserved_child,
-        )
+        expected_child_id = "inv-" + digest[:16]
+        aggregate_id = note_node_id
+        graph_payloads: list[Any] = []
+        escalation_event = None
+        result = ChallengeResult(note_node_id, applied=False)
+        with eventful_transaction(c, investigation_id, events_dir=events_dir):
+            existing = event_for_operation(c, operation_id)
+            if existing is not None:
+                if not isinstance(
+                    existing.payload, QuestionEscalatedToResearchPayload
+                ):
+                    raise RuntimeError("escalation operation points to another event type")
+                payload = existing.payload
+                if (
+                    existing.investigation_id != investigation_id
+                    or existing.document_id != document_id
+                    or payload.question_id != expected_question_id
+                    or payload.child_investigation_id != expected_child_id
+                ):
+                    raise RuntimeError("stored challenge escalation conflicts with retry")
+                escalation_event = existing
+                result = _escalation_result(note_node_id, payload)
+            else:
+                qid = promote_question(
+                    text=challenge_text,
+                    investigation_id=investigation_id,
+                    asks_about=[note_node_id] if _is_node_target(note_node_id) else [],
+                    metadata={
+                        "raised_by_challenge_of": note_node_id,
+                        "challenge_document_context": document_id,
+                    },
+                    embedding_provider=embedding_provider,
+                    con=c,
+                    identity_scope=identity_scope,
+                    event_sink=graph_payloads.append,
+                )
+                if qid != expected_question_id:
+                    raise RuntimeError("promoted challenge question identity conflicts")
+                for index, graph_payload in enumerate(graph_payloads):
+                    graph_event = build_typed_envelope(
+                        investigation_id,
+                        graph_payload,
+                        role="connector",
+                        event_id=f"evt-note-escalation-{digest[:20]}-g{index}",
+                    )
+                    enqueue_event(
+                        c,
+                        operation_id=f"{operation_id}:graph:{index}",
+                        aggregate_kind="living_note",
+                        aggregate_id=aggregate_id,
+                        event=graph_event,
+                    )
+                escalation_payload = QuestionEscalatedToResearchPayload(
+                    question_id=qid,
+                    child_investigation_id=expected_child_id,
+                )
+                escalation_event = build_typed_envelope(
+                    investigation_id,
+                    escalation_payload,
+                    role="note_taker",
+                    document_id=document_id,
+                    event_id=f"evt-note-escalation-{digest[:24]}",
+                )
+                enqueue_event(
+                    c,
+                    operation_id=operation_id,
+                    aggregate_kind="living_note",
+                    aggregate_id=aggregate_id,
+                    event=escalation_event,
+                )
+                result = _escalation_result(note_node_id, escalation_payload)
+                if _checkpoint:
+                    _checkpoint("after_escalation_enqueue_before_commit")
+        if escalation_event is not None:
+            if _checkpoint:
+                _checkpoint("after_escalation_commit_before_delivery")
+            dispatch_aggregate_pending(
+                c,
+                investigation_id,
+                aggregate_kind="living_note",
+                aggregate_id=aggregate_id,
+                events_dir=events_dir,
+            )
+        return result
     finally:
         if owned:
             c.close()

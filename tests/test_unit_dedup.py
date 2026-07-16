@@ -46,6 +46,7 @@ from substrate.graph import insight_question as iq
 from substrate.graph.insight_question import promote_insight, promote_question
 from substrate.graph.ops import insert_node
 from substrate.graph.schema import init_database
+from substrate.schemas.events import GraphEdgeInsertedPayload, GraphNodeInsertedPayload
 from substrate.unit_dedup import (
     UNIT_DEDUP_COSINE_THRESHOLD,
     CandidateUnit,
@@ -242,6 +243,28 @@ def test_merge_polarity_a_duplicate_is_linked_not_stored(graph_env, emb):
         assert _count_dup_edges(con) == 2
         # Rate = 2 merges / 3 attempts.
         assert rate.linked == 2 and rate.attempts == 3
+    finally:
+        con.close()
+
+
+def test_question_dedup_routes_duplicate_link_through_event_sink(graph_env, emb):
+    payloads = []
+    con = connect_write(graph_env, purpose="spr07_question_sink")
+    try:
+        survivor = promote_question(
+            text=SEED, investigation_id="inv-1", embedding_provider=emb,
+            con=con, dedup=True, event_sink=payloads.append,
+        )
+        assert [type(payload) for payload in payloads] == [GraphNodeInsertedPayload]
+        payloads.clear()
+
+        resolved = promote_question(
+            text=PARAPHRASE, investigation_id="inv-1", embedding_provider=emb,
+            con=con, dedup=True, event_sink=payloads.append,
+        )
+        assert resolved == survivor
+        assert [type(payload) for payload in payloads] == [GraphEdgeInsertedPayload]
+        assert payloads[0].relation == "duplicate_of"
     finally:
         con.close()
 

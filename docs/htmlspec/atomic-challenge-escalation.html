@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Antiek Cycle 82 - Atomic challenge escalation</title>
+  <style>
+    :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.5; }
+    body { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+    h1, h2 { line-height: 1.2; }
+    code { font-family: ui-monospace, monospace; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #8886; padding: 8px; text-align: left; vertical-align: top; }
+    .boundary { border-left: 4px solid #b45309; padding-left: 16px; }
+  </style>
+</head>
+<body>
+  <header>
+    <p>Cycle 82 / executable HTML specification</p>
+    <h1>Atomic unresolved-challenge escalation</h1>
+    <p>When the challenger cannot resolve a living note, create one durable recursive research handoff whose graph state, lineage, and reserved child cannot separate on crash or retry.</p>
+  </header>
+
+  <section>
+    <h2>Five values</h2>
+    <ul>
+      <li><strong>Truth:</strong> the workstation never renders an escalated question whose graph node or asks-about edge failed to commit.</li>
+      <li><strong>Identity:</strong> identical question text raised against different notes remains two distinct recursive threads.</li>
+      <li><strong>Recovery:</strong> exact retries return the same question and reserved child and drain pending events.</li>
+      <li><strong>Causality:</strong> graph discovery events precede the escalation event in one ordered outbox aggregate.</li>
+      <li><strong>Restraint:</strong> reserving a child does not launch research, call another model, or authorize spend.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Identity contract</h2>
+    <table>
+      <tr><th>Identity</th><th>Derivation</th></tr>
+      <tr><td>Escalation operation</td><td>SHA-256 over investigation, challenged note, normalized challenge text, sequence, and source document.</td></tr>
+      <tr><td>Question node</td><td>Existing content identity scoped by investigation plus challenged-note identity, preventing cross-note collapse.</td></tr>
+      <tr><td>Reserved child</td><td>Deterministic prefix of the escalation operation digest; no random second child on retry.</td></tr>
+      <tr><td>Outbox aggregate</td><td><code>living_note</code> / challenged note ID, preserving graph-node, edge, then escalation order.</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Atomic write</h2>
+    <ol>
+      <li>The existing challenger resolver runs once for the call and returns unresolved. This cycle does not add a provider call.</li>
+      <li>Under the global DuckDB writer and configured investigation-stream lock, check for an exact stored escalation operation.</li>
+      <li>On replay, validate and return its immutable question/child identities without graph mutation.</li>
+      <li>On first decision, promote a note-scoped question and its <code>asks_about</code> edge while graph helpers send their existing typed payloads to a caller-owned collector instead of JSONL.</li>
+      <li>Enqueue graph payloads followed by <code>question.escalated_to_research</code> in the same transaction as node and edge rows.</li>
+      <li>After commit, dispatch only this living-note aggregate. Failure remains pending for exact retry or startup recovery.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Graph event sink</h2>
+    <ul>
+      <li><code>insert_node</code> and <code>insert_edge</code> accept an optional payload sink only when event emission is enabled.</li>
+      <li>Without a sink, current direct typed-event behavior is byte-for-byte unchanged.</li>
+      <li>With a sink, helpers construct the same validated payload but perform no file append; the transaction owner chooses the envelope and outbox operation identity.</li>
+      <li>Question promotion passes the sink through node and provenance-edge writes. Insight promotion and all existing callers remain source-compatible.</li>
+    </ul>
+  </section>
+
+  <section class="boundary">
+    <h2>Authority boundary</h2>
+    <p>No child investigation launch, provider routing, extra model call, embedding beyond existing question promotion, spend, cross-investigation retrieval, UI redesign, merge, or deployment. The watch-for-later launch and read-passage linkage are separate workflows and remain unchanged.</p>
+  </section>
+
+  <section>
+    <h2>Acceptance</h2>
+    <ul>
+      <li>A pre-commit fault leaves no question row, asks-about edge, outbox row, graph event, or escalation event.</li>
+      <li>A post-commit/pre-delivery fault leaves node, edge, and ordered pending intents; exact retry returns the original child and delivers one copy of each event.</li>
+      <li>Two exact calls yield one question, one edge, one reserved child, and one physical three-event escalation bundle.</li>
+      <li>Same challenge text against two different notes yields distinct question and child identities.</li>
+      <li><code>distillation_for</code> discovers the question and reserved child from the delivered authoritative events.</li>
+      <li>No <code>investigation.start_requested</code> event is emitted.</li>
+      <li>Focused and coupled tests, Ruff, compileall, frontend type/build, independent review, HardenX, and diff checks pass.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Harness hint</h2>
+    <p>Attack custom event directories, graph-payload/direct-emission duplication, pre-commit rollback, post-commit delivery loss, same-operation byte substitution, identical text on different notes, old global question identity collisions, changed source document, outbox ordering, and accidental child launch.</p>
+  </section>
+</body>
+</html>

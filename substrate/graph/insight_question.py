@@ -186,6 +186,7 @@ def _add_provenance_edges(
     extraction_confidence: float,
     source_document_id: str | None,
     chunk_id: str | None,
+    event_sink: Callable[[Any], None] | None = None,
 ) -> tuple[list, list]:
     """Create ``relation`` edges from ``source_node_id`` to each target
     node, validating against the controlled vocabulary. Returns
@@ -218,6 +219,7 @@ def _add_provenance_edges(
             chunk_id=chunk_id,
             on_conflict="ignore",
             emit_event=emit_events,
+            event_sink=event_sink,
         )
         written.append(eid)
     return written, dangling
@@ -364,6 +366,7 @@ def promote_insight(
                 extraction_confidence=edge_conf,
                 provider=provider,
                 dedup_rate=dedup_rate,
+                emit_events=emit_graph_events,
             )
             if match is not None:
                 # Linked, not stored: skip the row insert + provenance edges and
@@ -431,6 +434,7 @@ def promote_question(
     identity_scope: str | None = None,
     owner_user_id: str | None = None,
     emit_graph_events: bool = True,
+    event_sink: Callable[[Any], None] | None = None,
 ) -> str:
     """Promote a question to a first-class ``question`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
@@ -489,6 +493,8 @@ def promote_question(
                 extraction_confidence=extraction_confidence,
                 provider=provider,
                 dedup_rate=dedup_rate,
+                emit_events=emit_graph_events,
+                event_sink=event_sink,
             )
             if match is not None:
                 return match.existing_unit_id
@@ -505,6 +511,7 @@ def promote_question(
             on_conflict="ignore",
             owner_user_id=owner_user_id,
             emit_event=emit_graph_events,
+            event_sink=event_sink,
         )
         _verify_private_node(
             c,
@@ -521,6 +528,7 @@ def promote_question(
             source_document_id=source_document_id, chunk_id=chunk_id,
             emit_events=emit_graph_events,
             owner_user_id=owner_user_id,
+            event_sink=event_sink,
         )
         _w2, d2 = _add_provenance_edges(
             c, source_node_id=nid, relation="resolved_by", targets=resolved_by,
@@ -529,6 +537,7 @@ def promote_question(
             source_document_id=source_document_id, chunk_id=chunk_id,
             emit_events=emit_graph_events,
             owner_user_id=owner_user_id,
+            event_sink=event_sink,
         )
         if d1:
             _record_dangling(c, nid, "asks_about", d1)
@@ -574,6 +583,8 @@ def _dedup_check(
     extraction_confidence: float,
     provider: Any,
     dedup_rate: Any,
+    emit_events: bool,
+    event_sink: Callable[[Any], None] | None = None,
 ):
     """Run the candidate through the SPR-07 detector against scoped existing
     units; on a match, record the ``duplicate_of`` edge + count it; return the
@@ -608,6 +619,8 @@ def _dedup_check(
             source_document_id=source_document_id,
             chunk_id=chunk_id,
             match=match,
+            emit_events=emit_events,
+            event_sink=event_sink,
         )
     if dedup_rate is not None:
         dedup_rate.record(linked=match is not None)
@@ -691,6 +704,8 @@ def _link_duplicate(
     source_document_id: str | None,
     chunk_id: str | None,
     match,
+    emit_events: bool,
+    event_sink: Callable[[Any], None] | None,
 ) -> str:
     """Record a ``duplicate_of`` edge candidate -> survivor and return the
     edge id. The edge carries the candidate's PRIMARY grounding
@@ -751,6 +766,8 @@ def _link_duplicate(
             "match_key_type": match.key_type,
         },
         on_conflict="ignore",
+        emit_event=emit_events,
+        event_sink=event_sink,
     )
 
 

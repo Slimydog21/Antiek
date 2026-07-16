@@ -431,7 +431,10 @@ async def test_resolvable_challenge_refines(env):
 
 
 async def test_unresolvable_challenge_escalates_without_launch(env):
-    nid = promote_insight(text="Margins are healthy.", investigation_id="inv-1")
+    nid = promote_insight(
+        text="Margins are healthy.", investigation_id="inv-1",
+        source_document_id="doc-1",
+    )
     r = challenge_note(nid, "Source for margins?", resolver=lambda cur, ch: None,
                        seq=3, investigation_id="inv-1", document_id="doc-1", events_dir=env["events"])
     assert r.escalated and r.escalated_question_id and r.reserved_child_investigation_id
@@ -442,6 +445,114 @@ async def test_unresolvable_challenge_escalates_without_launch(env):
     # No investigation.start_requested — nothing launched here.
     assert all(r2["action_type"] != ActionType.INVESTIGATION_START_REQUESTED.value
                for r2 in trajectory("inv-1", events_dir=env["events"]))
+
+
+async def test_escalation_rolls_back_graph_and_outbox_before_commit(env):
+    nid = promote_insight(
+        text="Margins are healthy.", investigation_id="inv-1",
+        source_document_id="doc-1",
+    )
+
+    def fail(stage):
+        if stage == "after_escalation_enqueue_before_commit":
+            raise RuntimeError("injected pre-commit failure")
+
+    with pytest.raises(RuntimeError, match="pre-commit"):
+        challenge_note(
+            nid, "Source for margins?", resolver=lambda cur, ch: None,
+            seq=3, investigation_id="inv-1", events_dir=env["events"],
+            _checkpoint=fail,
+        )
+    con = connect_read(env["db"])
+    try:
+        assert con.execute(
+            "SELECT COUNT(*) FROM nodes WHERE node_type='question'"
+        ).fetchone()[0] == 0
+        assert con.execute("SELECT COUNT(*) FROM write_event_outbox").fetchone()[0] == 0
+    finally:
+        con.close()
+
+
+async def test_escalation_retry_recovers_one_ordered_bundle(env):
+    nid = promote_insight(
+        text="Margins are healthy.", investigation_id="inv-1",
+        source_document_id="doc-1",
+    )
+
+    def fail(stage):
+        if stage == "after_escalation_commit_before_delivery":
+            raise RuntimeError("injected post-commit failure")
+
+    with pytest.raises(RuntimeError, match="post-commit"):
+        challenge_note(
+            nid, "Source for margins?", resolver=lambda cur, ch: None,
+            seq=3, investigation_id="inv-1", events_dir=env["events"],
+            _checkpoint=fail,
+        )
+    con = connect_read(env["db"])
+    try:
+        assert con.execute(
+            "SELECT state, COUNT(*) FROM write_event_outbox GROUP BY state"
+        ).fetchall() == [("pending", 3)]
+    finally:
+        con.close()
+
+    recovered = challenge_note(
+        nid, "Source for margins?", resolver=lambda cur, ch: None,
+        seq=3, investigation_id="inv-1", events_dir=env["events"],
+    )
+    repeated = challenge_note(
+        nid, "Source for margins?", resolver=lambda cur, ch: None,
+        seq=3, investigation_id="inv-1", events_dir=env["events"],
+    )
+    assert recovered == repeated
+    relevant = [
+        row["action_type"] for row in trajectory("inv-1", events_dir=env["events"])
+        if row["action_type"] in {
+            ActionType.GRAPH_NODE_INSERTED.value,
+            ActionType.GRAPH_EDGE_INSERTED.value,
+            ActionType.QUESTION_ESCALATED_TO_RESEARCH.value,
+        }
+    ]
+    assert relevant[-3:] == [
+        ActionType.GRAPH_NODE_INSERTED.value,
+        ActionType.GRAPH_EDGE_INSERTED.value,
+        ActionType.QUESTION_ESCALATED_TO_RESEARCH.value,
+    ]
+    assert relevant.count(ActionType.QUESTION_ESCALATED_TO_RESEARCH.value) == 1
+
+
+async def test_same_challenge_text_is_scoped_to_the_challenged_note(env):
+    first = promote_insight(
+        text="Margins are healthy.", investigation_id="inv-1",
+        source_document_id="doc-1",
+    )
+    second = promote_insight(
+        text="Demand is durable.", investigation_id="inv-1",
+        source_document_id="doc-2",
+    )
+    a = challenge_note(
+        first, "What is the source?", resolver=lambda cur, ch: None,
+        seq=1, investigation_id="inv-1", events_dir=env["events"],
+    )
+    b = challenge_note(
+        second, "What is the source?", resolver=lambda cur, ch: None,
+        seq=1, investigation_id="inv-1", events_dir=env["events"],
+    )
+    assert a.escalated_question_id != b.escalated_question_id
+    assert a.reserved_child_investigation_id != b.reserved_child_investigation_id
+    con = connect_read(env["db"])
+    try:
+        rows = con.execute(
+            "SELECT source_node_id, target_node_id FROM edges "
+            "WHERE relation='asks_about' ORDER BY target_node_id"
+        ).fetchall()
+        assert set(rows) == {
+            (a.escalated_question_id, first),
+            (b.escalated_question_id, second),
+        }
+    finally:
+        con.close()
 
 
 # --------------------------------------------------------------------------
