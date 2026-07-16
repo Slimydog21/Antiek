@@ -12,6 +12,7 @@ import type {
   MultimediaLocalAudiblePlayback,
 } from "../../api/multimedia";
 import { LemonButton, LemonTextarea } from "../../components/lemon";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 const SPEEDS = [1, 1.25, 1.5, 2] as const;
 const CHECKPOINT_INTERVAL_MS = 15_000;
@@ -533,11 +534,14 @@ export function ActiveListeningPlayer({
                         if (generation === identityGenerationRef.current && requestGeneration === researchRequestRef.current) {
                           researchSubmittingRef.current = false;
                           setResearchStatus("prepared");
+                          // Living-TV: listen→research prepared — thinking chase beat.
+                          emitWernerExperience("deep_research_start");
                         }
                       }).catch(() => {
                         if (generation === identityGenerationRef.current && requestGeneration === researchRequestRef.current) {
                           researchSubmittingRef.current = false;
                           setResearchStatus("error");
+                          emitWernerExperience("deep_research_error");
                         }
                       });
                     }}
