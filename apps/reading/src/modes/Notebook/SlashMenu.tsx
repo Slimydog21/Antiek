@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 
+import { emitWernerExperience } from "../../werner/reactionBus";
+
 /**
  * Slash command menu — opens when the operator types `/` at the start
  * of an empty block. Keyboard nav: ↑/↓/Enter/Esc.
@@ -279,6 +281,8 @@ export function SlashMenu({ editor, query, onClose }: Props) {
           aria-selected={idx === hoverIdx}
           onMouseEnter={() => setHoverIdx(idx)}
           onClick={() => {
+            // Living-TV: slash insert is a happy craft beat.
+            emitWernerExperience("piece_started");
             entry.run(editor);
             onClose();
           }}
