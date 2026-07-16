@@ -69,6 +69,10 @@ UI-consumed invent strips (not inventory-only):
 - TalkToBook open/answer — highlight / note_saved / fail
 - VoiceNote save — note_saved
 - Biography landing — session thinking brand mark
+- PersonalSpace / MetaReading — living-TV invent strips
+- Outcomes audit door — thinking mark + living-TV invent (`outcomes-home-*`)
+- Notebooks door — thinking mark + living-TV invent (`notebooks-home-*`)
+- Wrestle empty state — thinking mark + living-TV invent (`wrestle-empty-*`)
 
 Cursor model: ice bait instrument (not chase). Station re-home on drag.
 

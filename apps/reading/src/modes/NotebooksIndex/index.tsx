@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import LemonTable from "../../components/lemon/LemonTable";
 import LemonTag from "../../components/lemon/LemonTag";
 import { apiFetch } from "../../lib/api";
@@ -106,9 +108,30 @@ export default function NotebooksIndex() {
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Notebooks
-            </h1>
+            <div className="flex items-center gap-3">
+              {/* Session thinking mark — densify Notebooks door with living-TV
+                  brand chrome so the literate-analysis surface consumes session
+                  Imagine assets, not inventory-only. */}
+              <img
+                src={thinkingArt}
+                alt=""
+                aria-hidden="true"
+                data-testid="notebooks-home-werner-brand"
+                className="h-12 w-12 shrink-0 object-contain"
+              />
+              <h1 className="text-2xl font-serif text-ink dark:text-bright">
+                Notebooks
+              </h1>
+            </div>
+            <img
+              src={livingTvArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="notebooks-home-living-tv-art"
+              className="h-16 w-full max-w-md rounded-md object-cover object-center"
+              loading="lazy"
+              decoding="async"
+            />
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Per master-spec §4.2: notebooks are the literate-analysis
               surface — markdown prose interleaved with claim cards,

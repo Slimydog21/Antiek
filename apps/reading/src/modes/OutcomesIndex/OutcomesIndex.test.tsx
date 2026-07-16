@@ -74,4 +74,23 @@ describe("OutcomesIndex — cross-investigation grading history (M3)", () => {
       screen.getByText(/validated, falsified, or indeterminate/i),
     ).toBeTruthy();
   });
+
+  it("renders session thinking + living-TV brand chrome on the Outcomes door", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ outcomes: [] }),
+    });
+    renderIndex();
+    await waitFor(() =>
+      expect(screen.getByText(/Outcomes audit/i)).toBeTruthy(),
+    );
+    expect(screen.getByTestId("outcomes-home-werner-brand")).toBeTruthy();
+    const livingTv = screen.getByTestId(
+      "outcomes-home-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
+  });
 });
