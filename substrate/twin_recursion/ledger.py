@@ -9,7 +9,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from substrate.graph.insight_question import canonical_text
 from substrate.research_artifact.render import render_html
@@ -124,17 +124,57 @@ def _asset_from_json(value: str) -> AssetContent:
     return AssetContent(**data)
 
 
+def _required_str(value: dict[str, object], key: str) -> str:
+    field = value.get(key)
+    if not isinstance(field, str):
+        raise TwinIntegrityError(f"persisted field {key!r} is malformed")
+    return field
+
+
 def _receipt_from_value(value: dict[str, object]) -> TwinGenerationReceipt:
-    value = dict(value)
-    value["source_event_ids"] = tuple(value["source_event_ids"])  # type: ignore[arg-type]
-    return TwinGenerationReceipt(**value)  # type: ignore[arg-type]
+    source_event_ids = value.get("source_event_ids")
+    expires_at_unix = value.get("expires_at_unix")
+    if not isinstance(source_event_ids, list) or not all(
+        isinstance(event_id, str) for event_id in source_event_ids
+    ) or not isinstance(expires_at_unix, int):
+        raise TwinIntegrityError("persisted receipt source events are malformed")
+    return TwinGenerationReceipt(
+        receipt_id=_required_str(value, "receipt_id"),
+        account_id=_required_str(value, "account_id"),
+        asset_id=_required_str(value, "asset_id"),
+        model_id=_required_str(value, "model_id"),
+        budget_authority_id=_required_str(value, "budget_authority_id"),
+        source_content_hash=_required_str(value, "source_content_hash"),
+        source_asset_hash=_required_str(value, "source_asset_hash"),
+        source_event_ids=tuple(source_event_ids),
+        proposal_payload_hash=_required_str(value, "proposal_payload_hash"),
+        expires_at_unix=expires_at_unix,
+        signature=_required_str(value, "signature"),
+    )
 
 
 def _proposal_from_value(value: dict[str, object]) -> TwinProposal:
+    insights = value.get("insights")
+    questions = value.get("questions")
+    synthesis_excerpt = value.get("synthesis_excerpt")
+    if (
+        not isinstance(insights, list)
+        or not all(isinstance(item, dict) for item in insights)
+        or not isinstance(questions, list)
+        or not all(isinstance(item, dict) for item in questions)
+        or not isinstance(synthesis_excerpt, str)
+    ):
+        raise TwinIntegrityError("persisted proposal is malformed")
     return TwinProposal(
-        tuple(ProposedInsight(**item) for item in value["insights"]),  # type: ignore[arg-type,union-attr]
-        tuple(ProposedQuestion(**item) for item in value["questions"]),  # type: ignore[arg-type,union-attr]
-        value["synthesis_excerpt"],  # type: ignore[arg-type]
+        tuple(
+            ProposedInsight(
+                text=_required_str(item, "text"),
+                source_asset_id=_required_str(item, "source_asset_id"),
+            )
+            for item in insights
+        ),
+        tuple(ProposedQuestion(text=_required_str(item, "text")) for item in questions),
+        synthesis_excerpt,
     )
 
 
@@ -447,7 +487,7 @@ class TwinRecursionLedger:
             raise TwinConflictError("source revision is not registered")
         if row["asset_json"] != _asset_json(revision.asset):
             raise TwinConflictError("source revision exact bytes do not match registration")
-        return row
+        return cast(sqlite3.Row, row)
 
     def get(self, account_id: str, asset_id: str, source_hash: str) -> TwinSnapshot:
         with self._connect() as con:
