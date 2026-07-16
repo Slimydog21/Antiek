@@ -29,7 +29,12 @@ concurrency:
 jobs:
   lostpixel:
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    # The live committed matrix currently covers roughly 510 shots across three
+    # breakpoints. Fresh GitHub runners can exceed 15 minutes while rendering
+    # that matrix, which previously cancelled the job before Lost-Pixel could
+    # return a visual verdict. Keep a bounded ceiling, but size it to the real
+    # workload rather than converting elapsed time into a false cancellation.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: apps/reading
@@ -50,12 +55,13 @@ jobs:
       - name: Build Storybook
         run: npm run build-storybook
 
-      - name: Run Lost-Pixel against committed baselines (informational)
+      - name: Run Lost-Pixel against committed baselines (blocking)
         # BLOCKING (AGH SPR-04 G2): the reconsider-if that made this
         # informational — "baselines committed under
         # apps/reading/.lostpixel/baseline/" (ci-informational-gates.md §3) —
-        # is now MET: 381 baseline PNGs are committed there and
-        # lostpixel.config.ts sets imagePathBaseline + generateOnly:false, so
+        # is now MET: reviewed baseline PNGs are committed there and
+        # lostpixel.config.ts sets imagePathBaseline + self-hosted generate-only
+        # comparison mode, so
         # the gate compares current renders against a real committed baseline.
         # Un-swallowed: the step's exit code is now lost-pixel's own, so a real
         # visual regression reds the PR (which is the point). A legitimate
