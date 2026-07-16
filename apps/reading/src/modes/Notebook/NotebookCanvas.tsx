@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import type { NotebookBlockResponse, NotebookResponse } from "./types";
 
 interface Props {
@@ -35,15 +36,16 @@ export default function NotebookCanvas({
   const blockCount = notebook.blocks.length;
   return (
     <article className="max-w-3xl mx-auto px-8 py-10 space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-serif text-ink dark:text-bright leading-tight">
-          {notebook.title}
-        </h1>
+      <SessionBrandChrome
+        testIdPrefix="notebook-canvas"
+        title={notebook.title}
+        titleClassName="text-2xl font-serif text-ink dark:text-bright leading-tight"
+      >
         <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
           {blockCount} {blockCount === 1 ? "block" : "blocks"} ·{" "}
           updated {notebook.updated_at}
         </p>
-      </header>
+      </SessionBrandChrome>
 
       <div className="space-y-4">
         {notebook.blocks.map((block, idx) => (

@@ -98,6 +98,13 @@ export {
 } from "./reactionBus";
 
 export {
+  ambientExperienceAfterQuiet,
+  DEFAULT_AMBIENT_QUIET_MS,
+  installLivingTvAmbient,
+  type LivingTvAmbientOptions,
+} from "./livingTvAmbient";
+
+export {
   consumeLocallyStartedResearchSession,
   notifyPointerIdleEdge,
   notifyResearchPhaseEdge,

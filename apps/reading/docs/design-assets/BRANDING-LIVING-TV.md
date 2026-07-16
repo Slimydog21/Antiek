@@ -84,6 +84,13 @@ UI-consumed invent strips (not inventory-only):
 - Residual doors via `SessionBrandChrome` — Trust, Billing, Pricing, Map,
   Stats, Replay, Federation, Loop3, Payouts, SkillRules, Interviews, Multimedia
 
+## Ambient living-TV heartbeat (2026-07-16)
+
+`installLivingTvAmbient` (wired in `PenguinMascot`) emits a soft `idle` →
+sleeping emote after ~90s without product experiences, re-arms after any
+`antiek:werner-experience`, and stays off under `prefers-reduced-motion`.
+Cursor model unchanged: ice bait instrument, no chase.
+
 ## SessionBrandChrome (densify hard-to-vary)
 
 `src/brand/SessionBrandChrome.tsx` is the load-bearing header pattern for

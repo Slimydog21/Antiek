@@ -22,6 +22,8 @@ describe("TwinNotesPanel", () => {
     expect(screen.getByTestId("twin-notes-questions").children.length).toBeGreaterThan(
       0,
     );
+    // Living-TV densify — recursive note-taker companion consumes session brand.
+    expect(screen.getByTestId("twin-notes-werner-brand")).toBeTruthy();
   });
 
   it("shows empty state when demo disabled and no twin", () => {

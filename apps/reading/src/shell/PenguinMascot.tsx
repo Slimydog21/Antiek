@@ -8,6 +8,7 @@ import {
   createWernerStage,
   EmoteView,
   installChoreography,
+  installLivingTvAmbient,
   installReactionBus,
   installTargetChoreography,
   notifyPointerIdleEdge,
@@ -463,10 +464,16 @@ export function PenguinMascot() {
     const teardownChoreo = installChoreography(stage);
     const teardownTarget = installTargetChoreography(stage);
     const teardownReactions = installReactionBus(stage);
+    // Living-TV ambient: after a long quiet, soft idle/sleeping beat.
+    // Disabled under reduced motion (still floor — no ambient TV glance).
+    const teardownAmbient = reduceMotion
+      ? () => {}
+      : installLivingTvAmbient();
     return () => {
       teardownChoreo();
       teardownTarget();
       teardownReactions();
+      teardownAmbient();
       stage.dispose();
       stageRef.current = null;
       if (returnTimer.current !== null) {
@@ -475,7 +482,7 @@ export function PenguinMascot() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reduceMotion]);
 
   // Reduced-motion wiring for the stage. Freeze on reduced motion (no directed
   // waddle — the still floor); unfreeze otherwise. Re-runs only when the
