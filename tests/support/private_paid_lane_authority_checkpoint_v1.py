@@ -157,6 +157,21 @@ _RecoveryFaultBoundary = Literal[
     "seal_collect_after_child_owner",
     "seal_collect_after_child_paid",
     "seal_collect_after_child_provider",
+    "seal_deny_after_root_rename",
+    "seal_deny_after_root_fsync",
+    "seal_deny_after_root_reread",
+    "seal_drain_after_root_rename",
+    "seal_drain_after_root_fsync",
+    "seal_drain_after_root_reread",
+    "seal_revoke_after_root_rename",
+    "seal_revoke_after_root_fsync",
+    "seal_revoke_after_root_reread",
+    "seal_verify_after_root_rename",
+    "seal_verify_after_root_fsync",
+    "seal_verify_after_root_reread",
+    "seal_collect_after_root_rename",
+    "seal_collect_after_root_fsync",
+    "seal_collect_after_root_reread",
 ]
 _SUPPORT_PIN_STATE = "external-pin-state-v1.json"
 _CHILD_ROLES = (
@@ -1268,6 +1283,10 @@ def _fixture_migration_lifecycle_issuer_main(
                 completion_document = _issuer_recovery_barrier_acquisition_completion_document(
                     recovery_barrier_acquisition_completion
                 )
+            elif boundary.startswith("seal_") and recovery_source_sealing_completion is not None:
+                completion_document = _issuer_recovery_source_sealing_completion_document(
+                    recovery_source_sealing_completion
+                )
             raise _InjectedRecoveryFault(
                 f"injected issuer recovery fault: {boundary}",
                 completion_document=completion_document,
@@ -1326,6 +1345,31 @@ def _fixture_migration_lifecycle_issuer_main(
             + (f"child_{role_token}" if role is not None else role_token),
         )
         inject_recovery_fault(boundary)
+
+    def inject_sealing_root_fault(
+        operation: str,
+        boundary: Literal["after_rename", "after_parent_fsync", "after_reread"],
+    ) -> None:
+        operation_token = {
+            "deny_new_admission": "deny",
+            "drain_terminal_only": "drain",
+            "close_and_revoke_all_writers": "revoke",
+            "checkpoint_and_plant_test_all_mutators": "verify",
+            "seal_and_collect": "collect",
+        }.get(operation)
+        boundary_token = {
+            "after_rename": "rename",
+            "after_parent_fsync": "fsync",
+            "after_reread": "reread",
+        }[boundary]
+        if operation_token is None:
+            raise ValueError("issuer sealing root fault boundary")
+        inject_recovery_fault(
+            cast(
+                _RecoveryFaultBoundary,
+                f"seal_{operation_token}_after_root_{boundary_token}",
+            )
+        )
 
     def recover_schema_only_to_barrier_acquired(
         *,
@@ -1593,6 +1637,16 @@ def _fixture_migration_lifecycle_issuer_main(
                 expected_barrier_id=cast(str, barrier_acquired.barrier_id),
                 expected_freeze_nonce=cast(str, barrier_acquired.freeze_nonce),
             )
+            os.fsync(session_root_fd)
+            confirmed_root_record = _issuer_authenticate_barrier_recovery_root(
+                session_root_fd,
+                expected_root_id=barrier_acquired.root_id,
+                expected_root_manifest_sha256=barrier_acquired.root_manifest_sha256,
+                expected_barrier_id=cast(str, barrier_acquired.barrier_id),
+                expected_freeze_nonce=cast(str, barrier_acquired.freeze_nonce),
+            )
+            if confirmed_root_record != root_record:
+                raise ValueError("issuer recovery sealing root durability adoption")
             working_root = dict(root_record)
             root_path = _issuer_root_path(session_root_fd)
 
@@ -1658,6 +1712,14 @@ def _fixture_migration_lifecycle_issuer_main(
                     if current_state != prior_state:
                         raise ValueError("issuer recovery root subphase mismatch")
                     _audit_transition_evidence(working_root)
+
+                    def inject_current_root_fault(
+                        boundary: Literal["after_rename", "after_parent_fsync"],
+                        *,
+                        current_operation: str = operation,
+                    ) -> None:
+                        inject_sealing_root_fault(current_operation, boundary)
+
                     if operation == "seal_and_collect":
                         _execute_barrier_child_operation(
                             root_path,
@@ -1692,7 +1754,11 @@ def _fixture_migration_lifecycle_issuer_main(
                             next_state=next_state,
                         )
                         working_root["state"] = next_state
-                        _issuer_durable_write_root_record(session_root_fd, working_root)
+                        _issuer_durable_write_root_record(
+                            session_root_fd,
+                            working_root,
+                            fault_hook=inject_current_root_fault,
+                        )
                         reread_root = _issuer_authenticate_barrier_recovery_root(
                             session_root_fd,
                             expected_root_id=barrier_acquired.root_id,
@@ -1702,6 +1768,7 @@ def _fixture_migration_lifecycle_issuer_main(
                         )
                         if reread_root.get("state") != "sealed":
                             raise ValueError("issuer recovery source sealing root reread")
+                        inject_sealing_root_fault(operation, "after_reread")
                     else:
                         _execute_barrier_child_operation(
                             root_path,
@@ -1717,7 +1784,11 @@ def _fixture_migration_lifecycle_issuer_main(
                             next_state=next_state,
                         )
                         working_root["state"] = next_state
-                        _issuer_durable_write_root_record(session_root_fd, working_root)
+                        _issuer_durable_write_root_record(
+                            session_root_fd,
+                            working_root,
+                            fault_hook=inject_current_root_fault,
+                        )
                         reread_root = _issuer_authenticate_barrier_recovery_root(
                             session_root_fd,
                             expected_root_id=barrier_acquired.root_id,
@@ -1727,6 +1798,7 @@ def _fixture_migration_lifecycle_issuer_main(
                         )
                         if reread_root.get("state") != next_state:
                             raise ValueError("issuer recovery source sealing subphase reread")
+                        inject_sealing_root_fault(operation, "after_reread")
                     working_root = dict(reread_root)
             if recovery_source_sealing_completion is None:
                 raise ValueError("issuer recovery source sealing completion missing")
@@ -2734,6 +2806,13 @@ def _fixture_migration_lifecycle_issuer_main(
                                     )
                                     if supervisor_exited() or recovery_peer_exited:
                                         return
+                                except _InjectedRecoveryFault as error:
+                                    connection.sendall(
+                                        _issuer_session_frame(
+                                            b"E" + (error.completion_document or b"")
+                                        )
+                                    )
+                                    continue
                                 except Exception:
                                     connection.sendall(_issuer_session_frame(b"E"))
                                     continue
@@ -3606,7 +3685,25 @@ class FixtureMigrationRecoverySessionV1:
             except Exception:
                 self._close_local()
                 raise
-            if response == b"E":
+            if response[:1] == b"E":
+                try:
+                    if response[1:]:
+                        fault_completion = (
+                            _parse_issuer_recovery_source_sealing_completion_document(response[1:])
+                        )
+                        _verify_epoch0_recovery_source_sealing_completion_v1(
+                            fault_completion,
+                            issuer_verification_key=self._verification_key,
+                            expected_barrier_acquired_pins=barrier_pins,
+                        )
+                        object.__setattr__(
+                            self,
+                            "_source_sealing_completion",
+                            fault_completion,
+                        )
+                except Exception:
+                    self._close_local()
+                    raise
                 raise ValueError("fixture recovery source sealing rejected")
             try:
                 if response[:1] != b"Y":
@@ -3825,6 +3922,21 @@ class FixtureMigrationLifecycleIssuerV1:
             "seal_collect_after_child_owner",
             "seal_collect_after_child_paid",
             "seal_collect_after_child_provider",
+            "seal_deny_after_root_rename",
+            "seal_deny_after_root_fsync",
+            "seal_deny_after_root_reread",
+            "seal_drain_after_root_rename",
+            "seal_drain_after_root_fsync",
+            "seal_drain_after_root_reread",
+            "seal_revoke_after_root_rename",
+            "seal_revoke_after_root_fsync",
+            "seal_revoke_after_root_reread",
+            "seal_verify_after_root_rename",
+            "seal_verify_after_root_fsync",
+            "seal_verify_after_root_reread",
+            "seal_collect_after_root_rename",
+            "seal_collect_after_root_fsync",
+            "seal_collect_after_root_reread",
         }:
             raise ValueError("issuer recovery fault boundary")
         context = multiprocessing.get_context("spawn")

@@ -834,6 +834,7 @@ def _attempt_child_recovery_barrier_sealing(
     fault_boundary: str | None,
 ) -> None:
     session: support_checkpoint.FixtureMigrationRecoverySessionV1 | None = None
+    fault_completion: checkpoint_module.Epoch0RecoverySourceSealingCompletionV1 | None = None
     try:
         barrier_pins = _recovery_pins(barrier)
         target_path = support_checkpoint._issuer_fd_path(target_fd)
@@ -868,30 +869,47 @@ def _attempt_child_recovery_barrier_sealing(
                 session.recover_barrier_acquired_to_sources_sealed(
                     expected_barrier_acquired_state_sha256=barrier.state_sha256
                 )
-            assert session._source_sealing_completion is None
-            operation_token = fault_boundary.split("_after_child_", 1)[0].removeprefix("seal_")
+            fault_completion = session._source_sealing_completion
+            split_marker = "_after_child_" if "_after_child_" in fault_boundary else "_after_root_"
+            operation_token = fault_boundary.split(split_marker, 1)[0].removeprefix("seal_")
             operation_index = ("deny", "drain", "revoke", "verify", "collect").index(
                 operation_token
             )
-            child_token = fault_boundary.rsplit("_", 1)[1]
-            completed_children = ("owner", "paid", "provider").index(child_token) + 1
+            if split_marker == "_after_child_":
+                assert fault_completion is None
+                child_token = fault_boundary.rsplit("_", 1)[1]
+                completed_children = ("owner", "paid", "provider").index(child_token) + 1
+            else:
+                assert (fault_completion is not None) == (operation_token == "collect")
+                completed_children = len(support_checkpoint._CHILD_ROLES)
             root_record = support_checkpoint._issuer_root_record(root_fd)
-            assert (
-                root_record["state"]
-                == (
+            expected_root_state = (
+                (
                     "quiesced",
                     "admission_denied",
                     "drained",
                     "writers_revoked",
                     "writers_verified",
-                )[operation_index]
+                )
+                if split_marker == "_after_child_"
+                else (
+                    "admission_denied",
+                    "drained",
+                    "writers_revoked",
+                    "writers_verified",
+                    "sealed",
+                )
             )
-            assert len(root_record["transition_evidence"]) == operation_index + 1
+            assert root_record["state"] == expected_root_state[operation_index]
+            expected_evidence_count = operation_index + (
+                1 if split_marker == "_after_child_" else 2
+            )
+            assert len(root_record["transition_evidence"]) == expected_evidence_count
             child_evidence = root_record["child_adapter_evidence"]
             assert type(child_evidence) is dict
-            if operation_token == "verify":
+            if operation_token == "verify" and split_marker == "_after_child_":
                 assert child_evidence["planted_mutator_rejections"] == []
-            if operation_token == "collect":
+            if operation_token == "collect" and split_marker == "_after_child_":
                 assert child_evidence["sealed_measurements"] is None
             for ordinal, role in enumerate(support_checkpoint._CHILD_ROLES):
                 state = support_checkpoint._read_child_adapter_state(
@@ -936,6 +954,8 @@ def _attempt_child_recovery_barrier_sealing(
         sealing = session.recover_barrier_acquired_to_sources_sealed(
             expected_barrier_acquired_state_sha256=barrier.state_sha256
         )
+        if fault_completion is not None:
+            assert sealing == fault_completion
         checkpoint_module._verify_epoch0_recovery_source_sealing_completion_v1(
             sealing,
             issuer_verification_key=verification_key,
@@ -4153,6 +4173,18 @@ class TestMigrationPrerequisites:
                 )
                 for step, operation in enumerate(("deny", "drain", "revoke", "verify", "collect"))
                 for role in ("owner", "paid", "provider")
+            ),
+            *(
+                (
+                    step,
+                    False,
+                    False,
+                    None,
+                    0,
+                    f"seal_{operation}_after_root_{boundary}",
+                )
+                for step, operation in enumerate(("deny", "drain", "revoke", "verify", "collect"))
+                for boundary in ("rename", "fsync", "reread")
             ),
         ),
     )
