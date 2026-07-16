@@ -1,32 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useMemo } from "react";
 
-import { apiFetch } from "../../lib/api";
-
-/**
- * ReplayStepList (S10 row 10.14) — docked-left step-pill timeline
- * sibling of the main Replay viewer.
- *
- * The main slot in `Replay/index.tsx` already renders the expanded
- * TrajectoryReplay with full event payloads. This panel surfaces a
- * compact, clickable navigation timeline: one pill per significant
- * "delivered" event (decompose, evidence, parameter, connector,
- * synthesize) so the operator can scrub quickly through long runs
- * (≥ 50 events).
- *
- * Click a pill → the main view scrolls to the anchored event id.
- * The anchor link uses `#event-<id>` which the main TrajectoryReplay
- * applies as a `data-event-id` attribute on each row.
- */
-type Props = {
-  investigationId?: string;
-};
-
-type StepEvent = {
-  event_id: string;
-  action_type: string;
-  phase: number | null;
-  emitted_at: string | null;
-};
+import { orderTrajectoryEvents } from "../../components/TrajectoryReplay";
+import { useReplay } from "./ReplayContext";
 
 const SIGNIFICANT_ACTIONS = new Set([
   "decompose.delivered",
@@ -38,127 +13,50 @@ const SIGNIFICANT_ACTIONS = new Set([
   "investigation.failed",
 ]);
 
-export default function ReplayStepList({ investigationId }: Props) {
-  const [steps, setSteps] = useState<StepEvent[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const reload = useCallback(async () => {
-    if (!investigationId) return;
-    setLoading(true);
-    try {
-      const resp = await apiFetch(
-        `/trajectory/${encodeURIComponent(investigationId)}`,
-      );
-      if (!resp.ok) {
-        setError(`HTTP ${resp.status}`);
-        return;
-      }
-      const data = await resp.json();
-      const raw: Array<Record<string, unknown>> = Array.isArray(data.events)
-        ? data.events
-        : [];
-      const filtered: StepEvent[] = raw
-        .filter((e) =>
-          SIGNIFICANT_ACTIONS.has(String(e.action_type ?? "")),
-        )
-        .map((e) => ({
-          event_id: String(e.event_id ?? ""),
-          action_type: String(e.action_type ?? ""),
-          phase: typeof e.phase === "number" ? e.phase : null,
-          emitted_at: (e.emitted_at as string | null) ?? null,
-        }));
-      setSteps(filtered);
-      setError(null);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [investigationId]);
-
-  useEffect(() => {
-    void reload();
-    const t = setInterval(() => void reload(), 5_000);
-    return () => clearInterval(t);
-  }, [reload]);
-
-  if (!investigationId) {
-    return (
-      <div className="h-full p-3 bg-ice-0 dark:bg-charcoal-2 text-[12px] font-mono italic text-ink-mute dark:text-moonlight">
-        No investigation in URL.
-      </div>
-    );
-  }
+export default function ReplayStepList({ investigationId }: { investigationId?: string }) {
+  const { events, loading, error } = useReplay();
+  const steps = useMemo(
+    () => orderTrajectoryEvents(events).filter((event) => SIGNIFICANT_ACTIONS.has(event.action_type)),
+    [events],
+  );
 
   return (
-    <div className="h-full flex flex-col bg-ice-0 dark:bg-charcoal-2">
-      <header className="px-3 py-2 flex items-center justify-between border-b border-rule dark:border-charcoal-1">
-        <h3 className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
-          Steps · {steps.length}
-        </h3>
-        {loading && (
-          <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
-            polling…
-          </span>
-        )}
+    <section className="replay-steps" aria-labelledby="replay-step-heading">
+      <header className="replay-steps__header">
+        <div>
+          <p className="replay-eyebrow">Investigation map</p>
+          <h2 id="replay-step-heading">Signal stops</h2>
+        </div>
+        <span className="replay-count" aria-label={`${steps.length} significant events`}>{steps.length}</span>
       </header>
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {error && (
-          <p className="text-[11px] font-mono text-emperor">{error}</p>
-        )}
-        {!error && steps.length === 0 && !loading && (
-          <p className="text-[11px] font-mono italic text-ink-mute dark:text-moonlight">
-            No significant steps yet.
-          </p>
-        )}
-        {steps.map((s, i) => (
-          <button
-            type="button"
-            key={s.event_id || i}
-            onClick={() => {
-              // TrajectoryReplay is a slider, not a scrollable list —
-              // we dispatch a custom event with the target event_id;
-              // the slider component listens + jumps its currentIndex.
-              window.dispatchEvent(
-                new CustomEvent("antiek:replay:goto", {
-                  detail: { eventId: s.event_id },
-                }),
-              );
-            }}
-            className={
-              "block w-full text-left px-2 py-1.5 rounded text-[12px] font-mono " +
-              "border border-rule dark:border-charcoal-1 " +
-              "bg-ice-1 dark:bg-charcoal-2 " +
-              "hover:bg-sun/15 dark:hover:bg-sun/10 transition-colors"
-            }
-            title={s.action_type}
-          >
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="text-ink dark:text-bright truncate">
-                {prettifyAction(s.action_type)}
+      {!investigationId && <p className="replay-muted">No investigation in this route.</p>}
+      {loading && <p className="replay-muted" role="status">Loading signal stops…</p>}
+      {error && <p className="replay-error" role="alert">{error}</p>}
+      {!loading && !error && investigationId && steps.length === 0 && (
+        <p className="replay-muted">Significant events will appear here as the investigation unfolds.</p>
+      )}
+      {steps.length > 0 && <ol className="replay-steps__list">
+        {steps.map((step, index) => (
+          <li key={step.event_id || index}>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent("antiek:replay:goto", { detail: { eventId: step.event_id } }))}
+              title={step.action_type}
+            >
+              <span className="replay-step__index">{String(index + 1).padStart(2, "0")}</span>
+              <span className="replay-step__copy">
+                <strong>{prettifyAction(step.action_type)}</strong>
+                <small>{step.emitted_at ?? "Time not recorded"}</small>
               </span>
-              {s.phase !== null && (
-                <span className="text-[10px] text-shadow-1 dark:text-moonlight shrink-0">
-                  ph {s.phase}
-                </span>
-              )}
-            </div>
-            {s.emitted_at && (
-              <div className="text-[10px] text-ink-mute dark:text-moonlight truncate">
-                {s.emitted_at}
-              </div>
-            )}
-          </button>
+              {step.phase !== null && step.phase !== undefined && <span className="replay-step__phase">P{step.phase}</span>}
+            </button>
+          </li>
         ))}
-      </div>
-    </div>
+      </ol>}
+    </section>
   );
 }
 
-function prettifyAction(s: string): string {
-  return s
-    .replace(/\.delivered$/, " ✓")
-    .replace(/\./g, " · ")
-    .replace(/_/g, " ");
+function prettifyAction(action: string): string {
+  return action.replace(/\.delivered$/, "").replace(/[._]/g, " ");
 }

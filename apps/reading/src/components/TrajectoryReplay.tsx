@@ -8,6 +8,15 @@ interface Props {
   playSpeed?: number;
 }
 
+/** Existing replay chronology: emitted_at ascending, stable for equal timestamps. */
+export function orderTrajectoryEvents(events: Event[]): Event[] {
+  return [...events].sort((a, b) => {
+    const ta = a.emitted_at ?? "";
+    const tb = b.emitted_at ?? "";
+    return ta < tb ? -1 : ta > tb ? 1 : 0;
+  });
+}
+
 /**
  * Trajectory replay viewer (PostHog Wedge 5 in spirit, master-spec §14.1).
  *
@@ -21,20 +30,31 @@ interface Props {
  * renderer + playback controls.
  */
 export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
-  const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [playing, setPlaying] = useState<boolean>(false);
   const intervalRef = useRef<number | null>(null);
 
   const sortedEvents = useMemo(() => {
-    return [...events].sort((a, b) => {
-      const ta = a.emitted_at ?? "";
-      const tb = b.emitted_at ?? "";
-      return ta < tb ? -1 : ta > tb ? 1 : 0;
-    });
+    return orderTrajectoryEvents(events);
   }, [events]);
 
   const total = sortedEvents.length;
-  const currentEvent = currentIndex < total ? sortedEvents[currentIndex] : null;
+  const sortedEventsRef = useRef(sortedEvents);
+  const selectedIndex = selectedEventId
+    ? sortedEvents.findIndex((event) => event.event_id === selectedEventId)
+    : -1;
+  const resolvedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+  const currentEvent = resolvedIndex < total ? sortedEvents[resolvedIndex] : null;
+
+  useEffect(() => {
+    sortedEventsRef.current = sortedEvents;
+  }, [sortedEvents]);
+
+  useEffect(() => {
+    if (selectedIndex < 0) {
+      setSelectedEventId(sortedEvents[0]?.event_id ?? null);
+    }
+  }, [selectedIndex, sortedEvents]);
 
   useEffect(() => {
     if (!playing || total === 0) {
@@ -46,12 +66,15 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
     }
     const tickMs = Math.max(50, Math.floor(1000 / playSpeed));
     intervalRef.current = window.setInterval(() => {
-      setCurrentIndex((idx) => {
-        if (idx + 1 >= total) {
+      setSelectedEventId((currentId) => {
+        const currentEvents = sortedEventsRef.current;
+        const currentIndex = currentEvents.findIndex((event) => event.event_id === currentId);
+        const nextIndex = Math.max(0, currentIndex) + 1;
+        if (nextIndex >= currentEvents.length) {
           setPlaying(false);
-          return idx;
+          return currentId;
         }
-        return idx + 1;
+        return currentEvents[nextIndex]?.event_id ?? currentId;
       });
     }, tickMs);
     return () => {
@@ -74,7 +97,7 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
       const idx = sortedEvents.findIndex((evt) => evt.event_id === eid);
       if (idx >= 0) {
         setPlaying(false);
-        setCurrentIndex(idx);
+        setSelectedEventId(eid);
       }
     };
     window.addEventListener("antiek:replay:goto", onGoto);
@@ -90,37 +113,41 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-3">
-      <div className="flex items-center gap-3">
+    <div className="trajectory-player">
+      <div className="trajectory-player__controls">
         <button
           type="button"
           onClick={() => setPlaying((p) => !p)}
-          className="px-2.5 py-1 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors"
+          className="trajectory-player__play"
+          aria-pressed={playing}
         >
           {playing ? "Pause" : "Play"}
         </button>
         <button
           type="button"
-          onClick={() => setCurrentIndex(0)}
-          className="text-xs text-shadow-1 dark:text-moonlight hover:text-ink dark:text-bright"
+          onClick={() => { setPlaying(false); setSelectedEventId(sortedEvents[0]?.event_id ?? null); }}
+          className="trajectory-player__restart"
         >
           ⏮ Restart
         </button>
-        <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-          {currentIndex + 1} / {total}
+        <span className="trajectory-player__position" role="status" aria-live="polite">
+          Event {resolvedIndex + 1} of {total}
         </span>
       </div>
 
       <input
+        aria-label="Replay event position"
+        aria-valuetext={`Event ${resolvedIndex + 1} of ${total}`}
         type="range"
         min={0}
         max={Math.max(0, total - 1)}
-        value={currentIndex}
+        value={resolvedIndex}
         onChange={(e) => {
           setPlaying(false);
-          setCurrentIndex(Number(e.target.value));
+          const next = Number(e.target.value);
+          setSelectedEventId(sortedEvents[next]?.event_id ?? null);
         }}
-        className="w-full"
+        className="trajectory-player__range"
       />
 
       {currentEvent && <EventFrame event={currentEvent} />}
@@ -130,16 +157,16 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
 
 function EventFrame({ event }: { event: Event }) {
   return (
-    <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2 bg-ice-0 dark:bg-charcoal-2">
-      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mb-1">
+    <article className="trajectory-frame">
+      <p className="trajectory-frame__meta">
         {event.emitted_at} · {event.role ?? "?"} · {event.action_type}
       </p>
-      <p className="text-xs font-mono text-ink-mute dark:text-moonlight mb-2">
+      <p className="trajectory-frame__id">
         event_id: {event.event_id}
       </p>
-      <pre className="text-xs font-mono text-ink dark:text-bright whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+      <pre>
         {JSON.stringify(event.payload, null, 2)}
       </pre>
-    </div>
+    </article>
   );
 }

@@ -139,6 +139,20 @@ const STORIES: string[] = [
   "outcomes-verdict-chamber--safe-failure",
   "outcomes-verdict-chamber--night",
   "outcomes-verdict-chamber--narrow",
+  "cross-graph-citation-attribution-switchyard--ready",
+  "cross-graph-citation-attribution-switchyard--federation",
+  "cross-graph-citation-attribution-switchyard--submitting",
+  "cross-graph-citation-attribution-switchyard--safe-failure",
+  "cross-graph-citation-attribution-switchyard--recorded",
+  "cross-graph-citation-attribution-switchyard--night",
+  "cross-graph-citation-attribution-switchyard--narrow",
+  "research-investigation-replay-observatory--recorded-trail",
+  "research-investigation-replay-observatory--live-tail",
+  "research-investigation-replay-observatory--waiting-for-events",
+  "research-investigation-replay-observatory--loading-history",
+  "research-investigation-replay-observatory--safe-failure",
+  "research-investigation-replay-observatory--night-watch",
+  "research-investigation-replay-observatory--narrow-instrument",
 ];
 
 type AxeViolation = {
@@ -191,12 +205,16 @@ async function main() {
       story === "modes-igloo-directory--narrow" ||
       story === "modes-expedition-cost-planner--narrow" ||
       story === "multimedia-production-bay--narrow" ||
-      story === "outcomes-verdict-chamber--narrow";
+      story === "outcomes-verdict-chamber--narrow" ||
+      story === "cross-graph-citation-attribution-switchyard--narrow" ||
+      story === "research-investigation-replay-observatory--narrow-instrument";
     const dark =
       story === "modes-igloo-directory--night" ||
       story === "modes-expedition-cost-planner--night" ||
       story === "multimedia-production-bay--night" ||
-      story === "outcomes-verdict-chamber--night";
+      story === "outcomes-verdict-chamber--night" ||
+      story === "cross-graph-citation-attribution-switchyard--night" ||
+      story === "research-investigation-replay-observatory--night-watch";
     const ctx = await browser.newContext({
       viewport: narrow
         ? { width: 375, height: 667 }
@@ -220,6 +238,10 @@ async function main() {
               ? ".multimedia-production-bay"
               : story.startsWith("outcomes-verdict-chamber")
                 ? ".outcomes-verdict-chamber"
+                : story.startsWith("cross-graph-citation-attribution-switchyard")
+                  ? ".citation-switchyard"
+                  : story.startsWith("research-investigation-replay-observatory")
+                    ? ".replay-observatory"
                 : ".igloo-directory";
         const overflow = await page.evaluate(
           (selector) => ({

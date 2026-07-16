@@ -1,7 +1,7 @@
 # axe-core a11y audit
 
-**Run:** 2026-07-16T12:09:51.388Z
-**Stories audited:** 76
+**Run:** 2026-07-16T13:06:49.648Z
+**Stories audited:** 90
 **Serious / critical violations:** 0
 
 **Rule set:** wcag2a + wcag2aa + wcag21a + wcag21aa + best-practice
@@ -86,3 +86,17 @@
 | `outcomes-verdict-chamber--safe-failure` | 0 | — | — |
 | `outcomes-verdict-chamber--night` | 0 | — | — |
 | `outcomes-verdict-chamber--narrow` | 0 | — | — |
+| `cross-graph-citation-attribution-switchyard--ready` | 0 | — | — |
+| `cross-graph-citation-attribution-switchyard--federation` | 0 | — | — |
+| `cross-graph-citation-attribution-switchyard--submitting` | 0 | — | — |
+| `cross-graph-citation-attribution-switchyard--safe-failure` | 0 | — | — |
+| `cross-graph-citation-attribution-switchyard--recorded` | 0 | — | — |
+| `cross-graph-citation-attribution-switchyard--night` | 0 | — | — |
+| `cross-graph-citation-attribution-switchyard--narrow` | 0 | — | — |
+| `research-investigation-replay-observatory--recorded-trail` | 0 | — | — |
+| `research-investigation-replay-observatory--live-tail` | 0 | — | — |
+| `research-investigation-replay-observatory--waiting-for-events` | 0 | — | — |
+| `research-investigation-replay-observatory--loading-history` | 0 | — | — |
+| `research-investigation-replay-observatory--safe-failure` | 0 | — | — |
+| `research-investigation-replay-observatory--night-watch` | 0 | — | — |
+| `research-investigation-replay-observatory--narrow-instrument` | 0 | — | — |
