@@ -3,7 +3,7 @@
   height: 100%;
   overflow: auto;
   isolation: isolate;
-  background: var(--ice-2, #f4f7fa);
+  background: var(--ice-2);
 }
 
 .model-observatory-environment,
@@ -27,7 +27,7 @@
 .model-observatory-veil {
   z-index: -1;
   background:
-    linear-gradient(180deg, rgba(244,247,250,.8), rgba(244,247,250,.96) 42%, #f4f7fa 78%),
+    linear-gradient(180deg, rgba(244,247,250,.8), rgba(244,247,250,.96) 42%, var(--ice-2) 78%),
     radial-gradient(circle at 50% 5%, transparent 0 18rem, rgba(244,247,250,.8) 42rem);
 }
 
@@ -41,11 +41,11 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .model-observatory-frame { background: var(--space-2, #0d1019); }
+  .model-observatory-frame { background: var(--ice-2); }
   .model-observatory-environment { opacity: .24; filter: saturate(.72) brightness(.7); }
   .model-observatory-veil {
     background:
-      linear-gradient(180deg, rgba(13,16,25,.76), rgba(13,16,25,.94) 42%, #0d1019 78%),
+      linear-gradient(180deg, rgba(13,16,25,.76), rgba(13,16,25,.94) 42%, var(--ice-2) 78%),
       radial-gradient(circle at 50% 5%, transparent 0 18rem, rgba(13,16,25,.82) 42rem);
   }
 }
