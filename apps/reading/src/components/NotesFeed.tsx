@@ -5,6 +5,7 @@ import type {
   Event,
   NoteEmergedPayload,
 } from "../generated/types";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 interface NotesFeedProps {
   events: Event[];
@@ -109,7 +110,11 @@ function NoteCard({
           {p.source_event_ids.map((eid) => (
             <button
               key={eid}
-              onClick={() => onCiteJump?.(eid)}
+              onClick={() => {
+                // Living-TV: citation jump — curious glance.
+                emitWernerExperience("highlight");
+                onCiteJump?.(eid);
+              }}
               className="text-[10px] font-mono text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 px-1.5 py-0.5 rounded transition-colors"
               title={`jump to ${eid}`}
             >
