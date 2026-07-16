@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -62,20 +63,22 @@ export default function SkillRuleDetail() {
     <div className="flex flex-col h-screen">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
+          <div className="space-y-2">
             <Link
               to="/skill-rules"
               className="text-xs font-mono text-shadow-1 dark:text-moonlight hover:text-ink dark:text-bright"
             >
               ← Back to skill rules
             </Link>
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Skill rule detail
-            </h1>
-            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-              {ruleId ?? "—"}
-            </p>
-          </header>
+            <SessionBrandChrome
+              testIdPrefix="skill-rule-detail"
+              title="Skill rule detail"
+            >
+              <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+                {ruleId ?? "—"}
+              </p>
+            </SessionBrandChrome>
+          </div>
 
           {loading && (
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
