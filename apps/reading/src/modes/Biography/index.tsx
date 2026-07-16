@@ -87,17 +87,21 @@ export default function Biography() {
   return (
     <div className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
       <div className="mx-auto max-w-2xl px-6 py-12">
-        <header className="mb-8 flex items-start gap-3">
-          <Werner mood="idle" size={52} label="" />
-          <div>
-            <h1 className="font-serif text-3xl font-semibold text-ink dark:text-bright">
-              Write someone&rsquo;s biography
-            </h1>
-            <p className="mt-2 font-serif text-[15px] leading-relaxed text-shadow-1 dark:text-moonlight">
-              A biography brings together everything you can find, write, and
-              remember about a person — in one place, so each part feeds the
-              others. Name someone to begin.
-            </p>
+        <header className="mb-8 space-y-3">
+          <div className="flex items-start gap-3">
+            <span data-testid="biography-werner-brand">
+              <Werner mood="thinking" size={52} label="Biography" />
+            </span>
+            <div>
+              <h1 className="font-serif text-3xl font-semibold text-ink dark:text-bright">
+                Write someone&rsquo;s biography
+              </h1>
+              <p className="mt-2 font-serif text-[15px] leading-relaxed text-shadow-1 dark:text-moonlight">
+                A biography brings together everything you can find, write, and
+                remember about a person — in one place, so each part feeds the
+                others. Name someone to begin.
+              </p>
+            </div>
           </div>
         </header>
 

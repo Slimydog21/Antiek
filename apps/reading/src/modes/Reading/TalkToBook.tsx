@@ -1,9 +1,12 @@
 import { useCallback, useState } from "react";
 
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import { LemonButton } from "../../components/lemon";
 import { askBook, judgeBookAnswer } from "../../api/books";
 import type { BookCitation } from "../../api/books";
 import ReadAloud from "../../components/voice/ReadAloud";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { useTalkThread } from "./useTalkThread";
 import type { TalkMessage } from "./useTalkThread";
 
@@ -74,9 +77,12 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
         res.answer_id,
         res.capture_status,
       );
+      // Living-TV: a landed book answer is a noted craft beat.
+      emitWernerExperience("note_saved");
     } catch (e: unknown) {
       thread.failTurn(messageId);
       setError(e instanceof Error ? e.message : String(e));
+      emitWernerExperience("fail");
     } finally {
       setPending(false);
     }
@@ -87,7 +93,11 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
       <button
         type="button"
         data-testid="talk-to-book-bookmark"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          // Living-TV: opening the bookmark is a curious glance.
+          emitWernerExperience("highlight");
+          setOpen(true);
+        }}
         title="Talk to this book"
         className="fixed bottom-6 right-6 z-30 flex items-center gap-2 rounded-full bg-ink text-white px-4 py-2 text-sm font-serif shadow-lg hover:opacity-90"
       >
@@ -108,9 +118,18 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
       aria-label="Talk to this book"
     >
       <header className="flex items-center justify-between gap-2 border-b border-rule dark:border-charcoal-1 px-3 py-2">
-        <span className="text-[13px] font-serif text-ink dark:text-bright truncate">
-          Talk to “{title ?? "this book"}”
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="talk-to-book-werner-brand"
+            className="h-8 w-8 shrink-0 object-contain"
+          />
+          <span className="text-[13px] font-serif text-ink dark:text-bright truncate">
+            Talk to “{title ?? "this book"}”
+          </span>
+        </div>
         <div className="flex items-center gap-2 shrink-0">
           {turnCount > 0 && (
             <button
@@ -132,6 +151,16 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
           </button>
         </div>
       </header>
+
+      <img
+        src={livingTvArt}
+        alt=""
+        aria-hidden="true"
+        data-testid="talk-to-book-living-tv-art"
+        className="h-12 w-full object-cover object-center"
+        loading="lazy"
+        decoding="async"
+      />
 
       {/* Branch picker — the multi-turn thread can fork a tangent; the bookmark
           carries the active branch and lets the reader return to the trunk. */}

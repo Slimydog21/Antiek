@@ -85,6 +85,26 @@ async function openAndAsk(
 }
 
 describe("TalkToBook (M2)", () => {
+  it("renders living-TV brand chrome when opened and emits highlight on open", () => {
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener("antiek:werner-experience", onExp);
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    window.removeEventListener("antiek:werner-experience", onExp);
+    expect(seen).toContain("highlight");
+    expect(screen.getByTestId("talk-to-book-werner-brand")).toBeTruthy();
+    const livingTv = screen.getByTestId(
+      "talk-to-book-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
+  });
+
   it("answers cite pages and a citation click jumps the reader to that page", async () => {
     askBookMock.mockResolvedValue(answer());
     const jump = vi.fn();
