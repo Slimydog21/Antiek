@@ -3,6 +3,7 @@ import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
 import { stringAttr } from "./attrHelpers";
 
+import { emitWernerExperience } from "../../../werner/reactionBus";
 /**
  * Master-section block — embeds a synthesis fragment (a section of
  * MASTER.md) inline in the notebook. Substrate-ref by synthesis id +
@@ -22,7 +23,7 @@ function MasterSectionNodeView({ node, deleteNode }: NodeViewProps) {
           </span>
           <button
             type="button"
-            onClick={() => deleteNode()}
+            onClick={() => { emitWernerExperience("note_saved"); deleteNode(); }}
             aria-label="Remove block"
             className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor"
           >

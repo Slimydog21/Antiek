@@ -5,6 +5,7 @@ import { stringAttr } from "./attrHelpers";
 
 import LemonCard from "../../../components/lemon/LemonCard";
 
+import { emitWernerExperience } from "../../../werner/reactionBus";
 /** Cross-document bridge — two source thumbnails + a bridge note. */
 function CrossDocLinkNodeView({ node, deleteNode }: NodeViewProps) {
   const fromDoc = (node.attrs.from_doc as string | null) ?? "(unset)";
@@ -21,7 +22,7 @@ function CrossDocLinkNodeView({ node, deleteNode }: NodeViewProps) {
             </span>
             <button
               type="button"
-              onClick={() => deleteNode()}
+              onClick={() => { emitWernerExperience("note_saved"); deleteNode(); }}
               aria-label="Remove block"
               className="font-sans normal-case tracking-normal text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor"
             >

@@ -5,6 +5,7 @@ import { stringAttr } from "./attrHelpers";
 
 import LemonCard from "../../../components/lemon/LemonCard";
 
+import { emitWernerExperience } from "../../../werner/reactionBus";
 /**
  * Chat-exchange block — captures one user-question + assistant-reply
  * turn from the chat panel. Substrate-ref by exchange id; the rendered
@@ -24,7 +25,7 @@ function ChatExchangeNodeView({ node, deleteNode }: NodeViewProps) {
             <span>Chat · {exchangeId.slice(0, 12)}</span>
             <button
               type="button"
-              onClick={() => deleteNode()}
+              onClick={() => { emitWernerExperience("note_saved"); deleteNode(); }}
               aria-label="Remove block"
               className="font-sans normal-case tracking-normal text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor"
             >

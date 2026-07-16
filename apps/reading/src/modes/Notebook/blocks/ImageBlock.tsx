@@ -3,6 +3,7 @@ import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
 import { stringAttr } from "./attrHelpers";
 
+import { emitWernerExperience } from "../../../werner/reactionBus";
 /**
  * Image block — inline image with caption. Source resolves via the
  * substrate attachments endpoint in the full backend; on main, the
@@ -46,7 +47,7 @@ function ImageNodeView({ node, deleteNode }: NodeViewProps) {
         )}
         <button
           type="button"
-          onClick={() => deleteNode()}
+          onClick={() => { emitWernerExperience("note_saved"); deleteNode(); }}
           aria-label="Remove image"
           className="absolute top-2 right-2 text-[11px] text-ink dark:text-bright bg-ice-0 dark:bg-charcoal-2 border border-ink dark:border-bright rounded px-1.5 py-0.5 leading-none hover:text-emperor"
         >

@@ -5,6 +5,7 @@ import type { NodeViewProps } from "@tiptap/react";
 import { stringAttr } from "../../Notebook/blocks/attrHelpers";
 import { emitTraceIntent } from "./traceIntent";
 
+import { emitWernerExperience } from "../../../werner/reactionBus";
 /**
  * Inline citation chip (specs/write/ SPR-04 M3).
  *
@@ -35,7 +36,7 @@ function CitationView({ node }: NodeViewProps) {
       <button
         type="button"
         onClick={() =>
-          emitTraceIntent({ sectionId, outlineBlockId, nodeId, provenanceKind, label })
+          emitWernerExperience("highlight"); emitTraceIntent({ sectionId, outlineBlockId, nodeId, provenanceKind, label })
         }
         title={
           userOriginated

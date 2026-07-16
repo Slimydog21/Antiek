@@ -5,6 +5,7 @@ import type { NodeViewProps } from "@tiptap/react";
 import { stringAttr } from "../../Notebook/blocks/attrHelpers";
 import { emitTraceIntent } from "./traceIntent";
 
+import { emitWernerExperience } from "../../../werner/reactionBus";
 /**
  * Lego block node (specs/write/ SPR-04 M2).
  *
@@ -54,7 +55,7 @@ function LegoBlockView({ node, deleteNode }: NodeViewProps) {
           <button
             type="button"
             onClick={() =>
-              emitTraceIntent({
+              emitWernerExperience("highlight"); emitTraceIntent({
                 sectionId, outlineBlockId, nodeId, provenanceKind,
                 label: nodeId ?? "source",
               })
@@ -67,7 +68,7 @@ function LegoBlockView({ node, deleteNode }: NodeViewProps) {
         )}
         <button
           type="button"
-          onClick={() => deleteNode()}
+          onClick={() => { emitWernerExperience("note_saved"); deleteNode(); }}
           aria-label="Remove block"
           className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor leading-none mt-1"
         >
