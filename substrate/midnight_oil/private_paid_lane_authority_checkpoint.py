@@ -3399,7 +3399,7 @@ class SignedMigrationRecoveryTicketV1(_Closed):
     target_basename: str
     target_dev: int = Field(ge=0, le=MAX_I63)
     target_ino: int = Field(ge=1, le=MAX_I63)
-    maximum_issuer_sequence: Literal[4] = 4
+    maximum_issuer_sequence: Literal[11] = 11
     ticket_nonce: str
     issued_at_ms: int = Field(ge=0, le=MAX_I63)
     ticket_sha256: str
@@ -3515,6 +3515,83 @@ class Epoch0RecoverySourceSealingCompletionV1(_Closed):
     schema_version: Literal[1] = 1
     barrier_acquired_state: SignedMigrationLifecycleStateV1
     sources_sealed_state: SignedMigrationLifecycleStateV1
+    synthetic_fixture_eligibility_only: Literal[True] = True
+    live_migration_verified: Literal[False] = False
+    user_accounting_effect: Literal[False] = False
+    transport_reachable: Literal[False] = False
+    confers_execution_authority: Literal[False] = False
+    confers_checkpoint_authority: Literal[False] = False
+    confers_sink_authority: Literal[False] = False
+    confers_transition_authority: Literal[False] = False
+    production_consumer_enabled: Literal[False] = False
+
+
+class Epoch0RecoveryAbortPreparedAuthorityPinsV1(_Closed):
+    schema_version: Literal[1] = 1
+    target_store_id: str
+    root_id: str
+    root_manifest_sha256: str
+    target_parent_dev: int = Field(ge=0, le=MAX_I63)
+    target_parent_ino: int = Field(ge=1, le=MAX_I63)
+    target_basename: str
+    target_dev: int = Field(ge=0, le=MAX_I63)
+    target_ino: int = Field(ge=1, le=MAX_I63)
+    lifecycle_phase: Literal["abort_prepared"] = "abort_prepared"
+    phase_version: int = Field(ge=1, le=5)
+    issuer_sequence: int = Field(ge=1, le=5)
+    state_sha256: str
+    barrier_id: str | None
+    freeze_nonce: str | None
+    source_manifest_sha256: str | None
+    copy_audit_sha256: str | None
+    witness_sha256: str | None
+
+    @model_validator(mode="after")
+    def _closed_abort_prepared_recovery_pins(self) -> Epoch0RecoveryAbortPreparedAuthorityPinsV1:
+        optional_hashes = (
+            self.freeze_nonce,
+            self.source_manifest_sha256,
+            self.copy_audit_sha256,
+            self.witness_sha256,
+        )
+        expected_presence = {
+            1: (False, False, False, False, False),
+            2: (True, True, False, False, True),
+            3: (True, True, True, False, True),
+            4: (True, True, True, True, True),
+            5: (True, True, True, True, True),
+        }
+        actual_presence = (
+            self.barrier_id is not None,
+            self.freeze_nonce is not None,
+            self.source_manifest_sha256 is not None,
+            self.copy_audit_sha256 is not None,
+            self.witness_sha256 is not None,
+        )
+        if (
+            not _STORE_ID.fullmatch(self.target_store_id)
+            or not _REGISTRY_ID.fullmatch(self.root_id)
+            or not _HEX64.fullmatch(self.root_manifest_sha256)
+            or not _HEX64.fullmatch(self.state_sha256)
+            or not _MIGRATION_BASENAME.fullmatch(self.target_basename)
+            or self.target_basename in {".", ".."}
+            or any(value is not None and not _HEX64.fullmatch(value) for value in optional_hashes)
+            or (self.barrier_id is not None and not _REGISTRY_ID.fullmatch(self.barrier_id))
+            or (
+                self.freeze_nonce is not None
+                and self.barrier_id != _migration_barrier_id(self.freeze_nonce)
+            )
+            or self.phase_version != self.issuer_sequence
+            or actual_presence != expected_presence[self.phase_version]
+        ):
+            raise ValueError("epoch0 recovery abort prepared authority pins")
+        return self
+
+
+class Epoch0RecoveryAbortPreparationCompletionV1(_Closed):
+    schema_version: Literal[1] = 1
+    origin_state: SignedMigrationLifecycleStateV1
+    abort_prepared_state: SignedMigrationLifecycleStateV1
     synthetic_fixture_eligibility_only: Literal[True] = True
     live_migration_verified: Literal[False] = False
     user_accounting_effect: Literal[False] = False
@@ -3891,6 +3968,158 @@ def _verify_epoch0_recovery_source_sealing_completion_v1(
         or sources_sealed.barrier_id != _migration_barrier_id(sources_sealed.freeze_nonce)
     ):
         raise ValueError("epoch0 recovery source sealing completion mismatch")
+
+
+_EPOCH0_RECOVERY_ABORT_ORIGIN_PHASES = Literal[
+    "schema_only",
+    "barrier_acquired",
+    "sources_sealed",
+    "copy_prepared",
+    "copied_epoch0",
+]
+
+
+def _verify_epoch0_recovery_abort_preparation_completion_v1(
+    completion: Epoch0RecoveryAbortPreparationCompletionV1,
+    *,
+    issuer_verification_key: VerificationKeyV1,
+    expected_origin_pins: Epoch0RecoveryAuthorityPinsV1,
+) -> None:
+    if (
+        type(completion) is not Epoch0RecoveryAbortPreparationCompletionV1
+        or type(issuer_verification_key) is not VerificationKeyV1
+        or type(expected_origin_pins) is not Epoch0RecoveryAuthorityPinsV1
+        or expected_origin_pins.lifecycle_phase
+        not in {
+            "schema_only",
+            "barrier_acquired",
+            "sources_sealed",
+            "copy_prepared",
+            "copied_epoch0",
+        }
+    ):
+        raise ValueError("epoch0 recovery abort preparation completion type")
+    completion = Epoch0RecoveryAbortPreparationCompletionV1.model_validate(
+        completion.model_dump(mode="python")
+    )
+    origin = completion.origin_state
+    abort_prepared = completion.abort_prepared_state
+    _verify_signed_migration_lifecycle_state(origin, issuer_verification_key)
+    _verify_migration_lifecycle_transition(origin, abort_prepared, issuer_verification_key)
+    origin_pins = Epoch0RecoveryAuthorityPinsV1.model_validate(
+        {
+            "target_store_id": origin.target_store_id,
+            "root_id": origin.root_id,
+            "root_manifest_sha256": origin.root_manifest_sha256,
+            "target_parent_dev": origin.target_parent_dev,
+            "target_parent_ino": origin.target_parent_ino,
+            "target_basename": origin.target_basename,
+            "target_dev": origin.target_dev,
+            "target_ino": origin.target_ino,
+            "lifecycle_phase": origin.lifecycle_phase,
+            "phase_version": origin.phase_version,
+            "issuer_sequence": origin.issuer_sequence,
+            "state_sha256": origin.state_sha256,
+            "barrier_id": origin.barrier_id,
+            "freeze_nonce": origin.freeze_nonce,
+            "source_manifest_sha256": origin.source_manifest_sha256,
+            "copy_audit_sha256": origin.copy_audit_sha256,
+            "witness_sha256": origin.witness_sha256,
+        }
+    )
+    inherited_pins = (
+        abort_prepared.barrier_id,
+        abort_prepared.freeze_nonce,
+        abort_prepared.source_manifest_sha256,
+        abort_prepared.copy_audit_sha256,
+        abort_prepared.witness_sha256,
+    )
+    origin_pin_tuple = (
+        origin.barrier_id,
+        origin.freeze_nonce,
+        origin.source_manifest_sha256,
+        origin.copy_audit_sha256,
+        origin.witness_sha256,
+    )
+    if (
+        origin_pins != expected_origin_pins
+        or origin.lifecycle_phase != expected_origin_pins.lifecycle_phase
+        or abort_prepared.lifecycle_phase != "abort_prepared"
+        or abort_prepared.phase_version != origin.phase_version + 1
+        or abort_prepared.issuer_sequence != origin.issuer_sequence + 1
+        or inherited_pins != origin_pin_tuple
+    ):
+        raise ValueError("epoch0 recovery abort preparation completion mismatch")
+
+
+def _authenticate_epoch0_recovery_abort_prepared_state_v1(
+    *,
+    parent_fd: int,
+    target_fd: int,
+    verification_key: VerificationKeyV1,
+    expected: Epoch0RecoveryAbortPreparedAuthorityPinsV1,
+) -> SignedMigrationLifecycleStateV1:
+    if (
+        type(parent_fd) is not int
+        or type(target_fd) is not int
+        or type(expected) is not Epoch0RecoveryAbortPreparedAuthorityPinsV1
+    ):
+        raise ValueError("epoch0 recovery abort prepared descriptor type")
+    expected = Epoch0RecoveryAbortPreparedAuthorityPinsV1.model_validate(
+        expected.model_dump(mode="python")
+    )
+    if _migration_lifecycle_parent_identity(parent_fd) != (
+        expected.target_parent_dev,
+        expected.target_parent_ino,
+    ):
+        raise ValueError("epoch0 recovery abort prepared parent identity")
+    target_info = os.fstat(target_fd)
+    if (
+        not stat.S_ISREG(target_info.st_mode)
+        or target_info.st_uid != os.getuid()
+        or target_info.st_nlink != 1
+        or stat.S_IMODE(target_info.st_mode) != 0o600
+        or (target_info.st_dev, target_info.st_ino) != (expected.target_dev, expected.target_ino)
+        or _migration_lifecycle_entry_identity(parent_fd, expected.target_basename)
+        != (expected.target_dev, expected.target_ino)
+    ):
+        raise ValueError("epoch0 recovery abort prepared target identity")
+    state = _read_signed_migration_lifecycle_state(
+        parent_fd=parent_fd,
+        target_basename=expected.target_basename,
+        verification_key=verification_key,
+    )
+    fields = (
+        "target_store_id",
+        "root_id",
+        "root_manifest_sha256",
+        "target_parent_dev",
+        "target_parent_ino",
+        "target_basename",
+        "target_dev",
+        "target_ino",
+        "lifecycle_phase",
+        "phase_version",
+        "issuer_sequence",
+        "state_sha256",
+        "barrier_id",
+        "freeze_nonce",
+        "source_manifest_sha256",
+        "copy_audit_sha256",
+        "witness_sha256",
+    )
+    if any(getattr(state, field) != getattr(expected, field) for field in fields):
+        raise ValueError("epoch0 recovery abort prepared signed state mismatch")
+    target_after = os.fstat(target_fd)
+    if (target_after.st_dev, target_after.st_ino) != (
+        expected.target_dev,
+        expected.target_ino,
+    ) or _migration_lifecycle_entry_identity(parent_fd, expected.target_basename) != (
+        expected.target_dev,
+        expected.target_ino,
+    ):
+        raise ValueError("epoch0 recovery abort prepared target changed during authentication")
+    return state
 
 
 _MAX_MIGRATION_LIFECYCLE_DOCUMENT_BYTES = 65_536

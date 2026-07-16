@@ -32,6 +32,7 @@ from pydantic import BaseModel
 
 from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _CAPABILITY_V4_SIGNATURE_DOMAIN,
+    _COPY_TABLE_ORDER_FIELDS,
     _MIGRATION_CHILD_FINAL_VERSION,
     _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN,
     _MIGRATION_RECOVERY_ADMISSION_DOMAIN,
@@ -51,6 +52,8 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     ConsentClaimMigrationRowV1,
     CopyAuditV1,
     EncryptedSourceBundleMigrationRowV1,
+    Epoch0RecoveryAbortPreparationCompletionV1,
+    Epoch0RecoveryAbortPreparedAuthorityPinsV1,
     Epoch0RecoveryAuthorityPinsV1,
     Epoch0RecoveryBarrierAcquisitionCompletionV1,
     Epoch0RecoveryCopyCompletionV1,
@@ -81,6 +84,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     SourceHeadMigrationRowV1,
     VerificationKeyV1,
     _audit_schema,
+    _authenticate_epoch0_recovery_abort_prepared_state_v1,
     _authenticate_epoch0_recovery_state_v1,
     _canonical_json,
     _capability_v4_document_sha256,
@@ -107,6 +111,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _revocation_head_document_sha256,
     _source_head_document_sha256,
     _source_snapshot_sha256,
+    _verify_epoch0_recovery_abort_preparation_completion_v1,
     _verify_epoch0_recovery_barrier_acquisition_completion_v1,
     _verify_epoch0_recovery_copy_completion_v1,
     _verify_epoch0_recovery_copy_preparation_completion_v1,
@@ -176,6 +181,10 @@ _RecoveryFaultBoundary = Literal[
     "seal_after_journal_rename",
     "seal_after_journal_parent_fsync",
     "seal_after_journal_reread",
+    "abort_prepare_after_intent",
+    "abort_prepare_after_rename",
+    "abort_prepare_after_parent_fsync",
+    "abort_prepare_after_reread",
 ]
 _SUPPORT_PIN_STATE = "external-pin-state-v1.json"
 _CHILD_ROLES = (
@@ -423,6 +432,40 @@ def _parse_issuer_recovery_source_sealing_completion_document(
     completion = Epoch0RecoverySourceSealingCompletionV1.model_validate(material)
     if document != _issuer_recovery_source_sealing_completion_document(completion):
         raise ValueError("issuer recovery source sealing completion canonical")
+    return completion
+
+
+def _issuer_recovery_abort_preparation_completion_document(
+    completion: Epoch0RecoveryAbortPreparationCompletionV1,
+) -> bytes:
+    material = completion.model_dump(mode="python")
+    for state_field in ("origin_state", "abort_prepared_state"):
+        state = cast(dict[str, object], material[state_field])
+        signature = state.get("signature_ed25519")
+        if type(signature) is not bytes:
+            raise ValueError("issuer recovery abort preparation completion signature")
+        state["signature_ed25519"] = signature.hex()
+    encoded = _canonical_json(material)
+    if len(encoded) > _ISSUER_MAX_PACKET:
+        raise ValueError("issuer recovery abort preparation completion bound")
+    return encoded
+
+
+def _parse_issuer_recovery_abort_preparation_completion_document(
+    document: bytes,
+) -> Epoch0RecoveryAbortPreparationCompletionV1:
+    material = _parse_strict_json(document, _ISSUER_MAX_PACKET)
+    for state_field in ("origin_state", "abort_prepared_state"):
+        state = material.get(state_field)
+        if type(state) is not dict:
+            raise ValueError("issuer recovery abort preparation completion state")
+        signature = state.get("signature_ed25519")
+        if type(signature) is not str or not re.fullmatch(r"[0-9a-f]{128}", signature):
+            raise ValueError("issuer recovery abort preparation completion signature")
+        state["signature_ed25519"] = bytes.fromhex(signature)
+    completion = Epoch0RecoveryAbortPreparationCompletionV1.model_validate(material)
+    if document != _issuer_recovery_abort_preparation_completion_document(completion):
+        raise ValueError("issuer recovery abort preparation completion canonical")
     return completion
 
 
@@ -1190,7 +1233,7 @@ def _issuer_authenticate_recovery_descriptors(
     ticket: SignedMigrationRecoveryTicketV1,
     verification_key: VerificationKeyV1,
     raw_pins: object,
-) -> Epoch0RecoveryAuthorityPinsV1:
+) -> Epoch0RecoveryAuthorityPinsV1 | Epoch0RecoveryAbortPreparedAuthorityPinsV1:
     root_info = os.fstat(root_fd)
     root_record = _issuer_root_record(root_fd)
     if (
@@ -1199,6 +1242,30 @@ def _issuer_authenticate_recovery_descriptors(
         or root_record.get("root_manifest_sha256") != ticket.root_manifest_sha256
     ):
         raise ValueError("issuer recovery root identity")
+    if type(raw_pins) is not dict:
+        raise ValueError("issuer recovery pins material")
+    lifecycle_phase = raw_pins.get("lifecycle_phase")
+    if lifecycle_phase == "abort_prepared":
+        abort_pins = Epoch0RecoveryAbortPreparedAuthorityPinsV1.model_validate(raw_pins)
+        if (
+            abort_pins.target_store_id != ticket.target_store_id
+            or abort_pins.root_id != ticket.root_id
+            or abort_pins.root_manifest_sha256 != ticket.root_manifest_sha256
+            or (abort_pins.target_parent_dev, abort_pins.target_parent_ino)
+            != (ticket.target_parent_dev, ticket.target_parent_ino)
+            or abort_pins.target_basename != ticket.target_basename
+            or (abort_pins.target_dev, abort_pins.target_ino)
+            != (ticket.target_dev, ticket.target_ino)
+            or abort_pins.issuer_sequence > ticket.maximum_issuer_sequence
+        ):
+            raise ValueError("issuer recovery ticket abort pins")
+        _authenticate_epoch0_recovery_abort_prepared_state_v1(
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+            verification_key=verification_key,
+            expected=abort_pins,
+        )
+        return abort_pins
     pins = Epoch0RecoveryAuthorityPinsV1.model_validate(raw_pins)
     if (
         pins.target_store_id != ticket.target_store_id
@@ -1226,6 +1293,260 @@ def _issuer_recovery_pins_from_state(
     return Epoch0RecoveryAuthorityPinsV1.model_validate(
         {name: getattr(state, name) for name in Epoch0RecoveryAuthorityPinsV1.model_fields}
     )
+
+
+def _issuer_recovery_abort_prepared_pins_from_state(
+    state: SignedMigrationLifecycleStateV1,
+) -> Epoch0RecoveryAbortPreparedAuthorityPinsV1:
+    return Epoch0RecoveryAbortPreparedAuthorityPinsV1.model_validate(
+        {
+            name: getattr(state, name)
+            for name in Epoch0RecoveryAbortPreparedAuthorityPinsV1.model_fields
+        }
+    )
+
+
+def _issuer_require_target_abort_sidecars_absent(
+    *, parent_fd: int, target_basename: str, target_fd: int
+) -> None:
+    _issuer_require_child_sidecars_absent(_issuer_fd_path(target_fd))
+    for suffix in ("-wal", "-shm", "-journal"):
+        try:
+            os.stat(
+                f"{target_basename}{suffix}",
+                dir_fd=parent_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            continue
+        raise ValueError("issuer abort preparation sidecar present")
+
+
+def _issuer_checkpoint_target_wal_and_release(
+    target_lease: sqlite3.Connection | None,
+) -> None:
+    if target_lease is None:
+        return
+    _issuer_release_target_lease(target_lease)
+
+
+def _issuer_validate_abort_target_schema_only(
+    *,
+    session_target_fd: int,
+    target_lease: sqlite3.Connection | None,
+    expected_target_store_id: str,
+    expected_semantic_source_sha256: str,
+    expected_contract_sha256: str,
+) -> None:
+    lease = target_lease
+    acquired_locally = lease is None
+    if lease is None:
+        lease = _issuer_acquire_target_lease(session_target_fd)
+    try:
+        with _issuer_target_snapshot(session_target_fd, lease) as snapshot_path:
+            conn = sqlite3.connect(f"{snapshot_path.as_uri()}?mode=ro", uri=True)
+            try:
+                conn.execute("PRAGMA foreign_keys=ON")
+                conn.execute("PRAGMA busy_timeout=5000")
+                conn.execute("PRAGMA temp_store=MEMORY")
+                conn.execute(f"PRAGMA max_page_count={MAX_DB_PAGES}")
+                conn.execute("BEGIN")
+                try:
+                    _audit_schema(conn)
+                    singleton = conn.execute(
+                        "SELECT singleton,schema_version,migration_epoch,store_id,"
+                        "semantic_source_sha256,contract_sha256,cutover_marker_sha256,"
+                        "created_at_ms FROM paid_lane_schema"
+                    ).fetchall()
+                    if singleton != [
+                        (
+                            1,
+                            1,
+                            0,
+                            expected_target_store_id,
+                            expected_semantic_source_sha256,
+                            expected_contract_sha256,
+                            None,
+                            0,
+                        )
+                    ]:
+                        raise ValueError("issuer abort preparation schema-only singleton")
+                    for table_name in _COPY_TABLE_ORDER_FIELDS:
+                        if (
+                            conn.execute(f"SELECT 1 FROM {table_name} LIMIT 1").fetchone()
+                            is not None
+                        ):
+                            raise ValueError("issuer abort preparation schema-only has data rows")
+                    conn.execute("COMMIT")
+                except BaseException:
+                    with suppress(sqlite3.Error):
+                        conn.execute("ROLLBACK")
+                    raise
+            finally:
+                conn.close()
+    finally:
+        if acquired_locally:
+            _issuer_release_target_lease(lease)
+
+
+def _issuer_validate_abort_origin_custody(
+    *,
+    session_root_fd: int,
+    session_target_fd: int,
+    origin: SignedMigrationLifecycleStateV1,
+    target_lease: sqlite3.Connection | None,
+    provider_capability_verification_keys: tuple[VerificationKeyV1, ...],
+    provider_revocation_verification_keys: tuple[VerificationKeyV1, ...],
+    source_head_verification_keys: tuple[VerificationKeyV1, ...],
+    provider_revocation_floor_pins: tuple[ProviderRevocationFloorPinV1, ...],
+    source_floor_pins: tuple[OwnerPrivateSourceFloorPinV1, ...],
+    expected_semantic_source_sha256: str,
+    expected_contract_sha256: str,
+) -> None:
+    phase = origin.lifecycle_phase
+    if phase == "schema_only":
+        root_record = _issuer_authenticate_schema_recovery_root(
+            session_root_fd,
+            expected_root_id=origin.root_id,
+            expected_root_manifest_sha256=origin.root_manifest_sha256,
+        )
+        if (
+            root_record.get("state") != "open"
+            or root_record.get("barrier_id") is not None
+            or root_record.get("freeze_nonce") is not None
+        ):
+            raise ValueError("issuer abort preparation schema root")
+        _issuer_validate_abort_target_schema_only(
+            session_target_fd=session_target_fd,
+            target_lease=target_lease,
+            expected_target_store_id=origin.target_store_id,
+            expected_semantic_source_sha256=expected_semantic_source_sha256,
+            expected_contract_sha256=expected_contract_sha256,
+        )
+        return
+    if phase == "barrier_acquired":
+        if origin.barrier_id is None or origin.freeze_nonce is None:
+            raise ValueError("issuer abort preparation barrier pins")
+        root_record = _issuer_authenticate_barrier_recovery_root(
+            session_root_fd,
+            expected_root_id=origin.root_id,
+            expected_root_manifest_sha256=origin.root_manifest_sha256,
+            expected_barrier_id=origin.barrier_id,
+            expected_freeze_nonce=origin.freeze_nonce,
+        )
+        if root_record.get("state") not in {
+            "quiesced",
+            "admission_denied",
+            "drained",
+            "writers_revoked",
+            "writers_verified",
+        }:
+            raise ValueError("issuer abort preparation barrier root")
+        _issuer_validate_abort_target_schema_only(
+            session_target_fd=session_target_fd,
+            target_lease=target_lease,
+            expected_target_store_id=origin.target_store_id,
+            expected_semantic_source_sha256=expected_semantic_source_sha256,
+            expected_contract_sha256=expected_contract_sha256,
+        )
+        return
+    if phase not in {"sources_sealed", "copy_prepared", "copied_epoch0"}:
+        raise ValueError("issuer abort preparation origin phase")
+    compatible = _issuer_compatible_root_record(session_root_fd, phase)
+    corpus = _collect_sealed_corpus(_issuer_root_path(session_root_fd), compatible)
+    if corpus.source_manifest_sha256 != origin.source_manifest_sha256:
+        raise ValueError("issuer abort preparation sealed corpus")
+    if phase == "sources_sealed":
+        _issuer_validate_abort_target_schema_only(
+            session_target_fd=session_target_fd,
+            target_lease=target_lease,
+            expected_target_store_id=origin.target_store_id,
+            expected_semantic_source_sha256=expected_semantic_source_sha256,
+            expected_contract_sha256=expected_contract_sha256,
+        )
+        return
+    if phase == "copy_prepared":
+        if origin.copy_audit_sha256 is None:
+            raise ValueError("issuer abort preparation audit pins")
+        lease = target_lease
+        acquired_locally = lease is None
+        if lease is None:
+            lease = _issuer_acquire_target_lease(session_target_fd)
+        try:
+            try:
+                intent = _issuer_copy_intent_audit(
+                    target_fd=session_target_fd,
+                    target_lease=lease,
+                    corpus=corpus,
+                    provider_capability_verification_keys=provider_capability_verification_keys,
+                    provider_revocation_verification_keys=provider_revocation_verification_keys,
+                    source_head_verification_keys=source_head_verification_keys,
+                    provider_revocation_floor_pins=provider_revocation_floor_pins,
+                    source_floor_pins=source_floor_pins,
+                    expected_target_store_id=origin.target_store_id,
+                    expected_semantic_source_sha256=expected_semantic_source_sha256,
+                    expected_contract_sha256=expected_contract_sha256,
+                )
+                observed_sha256 = _copy_audit_sha256(intent)
+            except ValueError:
+                observed_sha256 = _issuer_observed_copy(
+                    target_fd=session_target_fd,
+                    target_lease=lease,
+                    corpus=corpus,
+                    provider_capability_verification_keys=provider_capability_verification_keys,
+                    provider_revocation_verification_keys=provider_revocation_verification_keys,
+                    source_head_verification_keys=source_head_verification_keys,
+                    provider_revocation_floor_pins=provider_revocation_floor_pins,
+                    source_floor_pins=source_floor_pins,
+                    expected_target_store_id=origin.target_store_id,
+                    expected_semantic_source_sha256=expected_semantic_source_sha256,
+                    expected_contract_sha256=expected_contract_sha256,
+                )
+        finally:
+            if acquired_locally:
+                _issuer_release_target_lease(lease)
+        if observed_sha256 != origin.copy_audit_sha256:
+            raise ValueError("issuer abort preparation target audit")
+        return
+    if phase == "copied_epoch0":
+        if origin.copy_audit_sha256 is None:
+            raise ValueError("issuer abort preparation audit pins")
+        lease = target_lease
+        if lease is None:
+            lease = _issuer_acquire_target_lease(session_target_fd)
+            try:
+                observed_sha256 = _issuer_observed_copy(
+                    target_fd=session_target_fd,
+                    target_lease=lease,
+                    corpus=corpus,
+                    provider_capability_verification_keys=provider_capability_verification_keys,
+                    provider_revocation_verification_keys=provider_revocation_verification_keys,
+                    source_head_verification_keys=source_head_verification_keys,
+                    provider_revocation_floor_pins=provider_revocation_floor_pins,
+                    source_floor_pins=source_floor_pins,
+                    expected_target_store_id=origin.target_store_id,
+                    expected_semantic_source_sha256=expected_semantic_source_sha256,
+                    expected_contract_sha256=expected_contract_sha256,
+                )
+            finally:
+                if target_lease is None:
+                    _issuer_release_target_lease(lease)
+        else:
+            observed_sha256 = _issuer_observed_copy(
+                target_fd=session_target_fd,
+                target_lease=lease,
+                corpus=corpus,
+                provider_capability_verification_keys=provider_capability_verification_keys,
+                provider_revocation_verification_keys=provider_revocation_verification_keys,
+                source_head_verification_keys=source_head_verification_keys,
+                provider_revocation_floor_pins=provider_revocation_floor_pins,
+                source_floor_pins=source_floor_pins,
+                expected_target_store_id=origin.target_store_id,
+                expected_semantic_source_sha256=expected_semantic_source_sha256,
+                expected_contract_sha256=expected_contract_sha256,
+            )
+        if observed_sha256 != origin.copy_audit_sha256:
+            raise ValueError("issuer abort preparation target audit")
 
 
 def _fixture_migration_lifecycle_issuer_main(
@@ -1264,6 +1585,7 @@ def _fixture_migration_lifecycle_issuer_main(
         None
     )
     recovery_source_sealing_completion: Epoch0RecoverySourceSealingCompletionV1 | None = None
+    recovery_abort_preparation_completion: Epoch0RecoveryAbortPreparationCompletionV1 | None = None
     recovery_peer_exited = False
     recovery_peer_pid: int | None = None
     pending_recovery_peer_pid: int | None = None
@@ -1291,10 +1613,30 @@ def _fixture_migration_lifecycle_issuer_main(
                 completion_document = _issuer_recovery_source_sealing_completion_document(
                     recovery_source_sealing_completion
                 )
+            elif (
+                boundary.startswith("abort_prepare_")
+                and recovery_abort_preparation_completion is not None
+            ):
+                completion_document = _issuer_recovery_abort_preparation_completion_document(
+                    recovery_abort_preparation_completion
+                )
             raise _InjectedRecoveryFault(
                 f"injected issuer recovery fault: {boundary}",
                 completion_document=completion_document,
             )
+
+    def inject_abort_prepare_persistence_fault(
+        boundary: Literal["after_rename", "after_parent_fsync", "after_reread"],
+    ) -> None:
+        mapped = cast(
+            _RecoveryFaultBoundary,
+            {
+                "after_rename": "abort_prepare_after_rename",
+                "after_parent_fsync": "abort_prepare_after_parent_fsync",
+                "after_reread": "abort_prepare_after_reread",
+            }[boundary],
+        )
+        inject_recovery_fault(mapped)
 
     def inject_prepare_persistence_fault(
         boundary: Literal["after_rename", "after_parent_fsync", "after_reread"],
@@ -2210,6 +2552,150 @@ def _fixture_migration_lifecycle_issuer_main(
             target_lease = None
             return recovery_copy_completion
 
+    def recover_prepare_abort_uncut_epoch0(
+        *,
+        session_root_fd: int,
+        session_parent_fd: int,
+        session_target_fd: int,
+        expected_origin_state_sha256: str,
+        expected_origin_pins: Epoch0RecoveryAuthorityPinsV1,
+    ) -> Epoch0RecoveryAbortPreparationCompletionV1:
+        nonlocal committed, pending_candidate, pending_state
+        nonlocal recovery_abort_preparation_completion, target_lease
+        if (
+            committed is None
+            or pending_state is not None
+            or expected_origin_pins.lifecycle_phase
+            not in {
+                "schema_only",
+                "barrier_acquired",
+                "sources_sealed",
+                "copy_prepared",
+                "copied_epoch0",
+            }
+            or expected_origin_pins.state_sha256 != expected_origin_state_sha256
+        ):
+            raise ValueError("issuer recovery abort preparation phase")
+        durable = _read_signed_migration_lifecycle_state(
+            parent_fd=session_parent_fd,
+            target_basename=expected_origin_pins.target_basename,
+            verification_key=verification_key,
+        )
+        if (
+            recovery_abort_preparation_completion is not None
+            and durable == recovery_abort_preparation_completion.abort_prepared_state
+        ):
+            with _issuer_transition_lock(session_root_fd):
+                durable = _confirm_signed_migration_lifecycle_state_durable(
+                    parent_fd=session_parent_fd,
+                    expected_state=recovery_abort_preparation_completion.abort_prepared_state,
+                    verification_key=verification_key,
+                )
+                _issuer_validate_abort_origin_custody(
+                    session_root_fd=session_root_fd,
+                    session_target_fd=session_target_fd,
+                    origin=recovery_abort_preparation_completion.origin_state,
+                    target_lease=target_lease,
+                    provider_capability_verification_keys=provider_capability_verification_keys,
+                    provider_revocation_verification_keys=provider_revocation_verification_keys,
+                    source_head_verification_keys=source_head_verification_keys,
+                    provider_revocation_floor_pins=provider_revocation_floor_pins,
+                    source_floor_pins=source_floor_pins,
+                    expected_semantic_source_sha256=expected_semantic_source_sha256,
+                    expected_contract_sha256=expected_contract_sha256,
+                )
+                _issuer_checkpoint_target_wal_and_release(target_lease)
+                target_lease = None
+                _issuer_require_target_abort_sidecars_absent(
+                    parent_fd=session_parent_fd,
+                    target_basename=expected_origin_pins.target_basename,
+                    target_fd=session_target_fd,
+                )
+                committed = durable
+                return recovery_abort_preparation_completion
+        if (
+            committed.lifecycle_phase != expected_origin_pins.lifecycle_phase
+            or committed.state_sha256 != expected_origin_state_sha256
+            or durable != committed
+        ):
+            raise ValueError("issuer recovery abort preparation origin journal")
+        origin = committed
+        with _issuer_transition_lock(session_root_fd):
+            _issuer_validate_abort_origin_custody(
+                session_root_fd=session_root_fd,
+                session_target_fd=session_target_fd,
+                origin=origin,
+                target_lease=target_lease,
+                provider_capability_verification_keys=provider_capability_verification_keys,
+                provider_revocation_verification_keys=provider_revocation_verification_keys,
+                source_head_verification_keys=source_head_verification_keys,
+                provider_revocation_floor_pins=provider_revocation_floor_pins,
+                source_floor_pins=source_floor_pins,
+                expected_semantic_source_sha256=expected_semantic_source_sha256,
+                expected_contract_sha256=expected_contract_sha256,
+            )
+            _issuer_checkpoint_target_wal_and_release(target_lease)
+            target_lease = None
+            _issuer_require_target_abort_sidecars_absent(
+                parent_fd=session_parent_fd,
+                target_basename=origin.target_basename,
+                target_fd=session_target_fd,
+            )
+            if recovery_abort_preparation_completion is None:
+                material = origin.model_dump(
+                    mode="python",
+                    exclude={"issuer_key_id", "state_sha256", "signature_ed25519"},
+                )
+                next_version = origin.phase_version + 1
+                material.update(
+                    {
+                        "lifecycle_phase": "abort_prepared",
+                        "phase_version": next_version,
+                        "issuer_sequence": next_version,
+                        "updated_at_ms": max(origin.updated_at_ms, time.time_ns() // 1_000_000),
+                        "previous_state_sha256": origin.state_sha256,
+                        "issuer_key_id": key_id,
+                    }
+                )
+                state_sha256 = _migration_lifecycle_state_sha256(material)
+                material["state_sha256"] = state_sha256
+                material["signature_ed25519"] = private_key.sign(
+                    _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
+                )
+                abort_prepared = SignedMigrationLifecycleStateV1.model_validate(material)
+                recovery_abort_preparation_completion = Epoch0RecoveryAbortPreparationCompletionV1(
+                    origin_state=origin,
+                    abort_prepared_state=abort_prepared,
+                )
+            else:
+                if recovery_abort_preparation_completion.origin_state != origin:
+                    raise ValueError("issuer recovery abort preparation cached completion")
+                abort_prepared = recovery_abort_preparation_completion.abort_prepared_state
+            _verify_epoch0_recovery_abort_preparation_completion_v1(
+                recovery_abort_preparation_completion,
+                issuer_verification_key=verification_key,
+                expected_origin_pins=expected_origin_pins,
+            )
+            inject_recovery_fault("abort_prepare_after_intent")
+            _persist_signed_migration_lifecycle_state(
+                parent_fd=session_parent_fd,
+                state=abort_prepared,
+                verification_key=verification_key,
+                expected_prior_state_sha256=origin.state_sha256,
+                _fault_hook=inject_abort_prepare_persistence_fault,
+            )
+            reread = _read_signed_migration_lifecycle_state(
+                parent_fd=session_parent_fd,
+                target_basename=origin.target_basename,
+                verification_key=verification_key,
+            )
+            if reread != abort_prepared:
+                raise ValueError("issuer recovery abort prepared journal reread")
+            committed = abort_prepared
+            pending_candidate = None
+            pending_state = None
+            return recovery_abort_preparation_completion
+
     try:
         process_watch.control(
             [
@@ -2385,7 +2871,7 @@ def _fixture_migration_lifecycle_issuer_main(
                             "target_basename": bind_target_basename,
                             "target_dev": target_identity[0],
                             "target_ino": target_identity[1],
-                            "maximum_issuer_sequence": 4,
+                            "maximum_issuer_sequence": 11,
                             "ticket_nonce": secrets.token_hex(32),
                             "issued_at_ms": time.time_ns() // 1_000_000,
                         }
@@ -2455,7 +2941,8 @@ def _fixture_migration_lifecycle_issuer_main(
                     authentication_pins: object = request["authority_pins"]
                     if (
                         (
-                            recovery_copy_completion is not None
+                            recovery_abort_preparation_completion is not None
+                            or recovery_copy_completion is not None
                             or recovery_copy_preparation_completion is not None
                             or recovery_source_sealing_completion is not None
                             or recovery_barrier_acquisition_completion is not None
@@ -2464,7 +2951,23 @@ def _fixture_migration_lifecycle_issuer_main(
                         and recovery_admission is not None
                         and peer_pid == recovery_admission.authenticated_peer_pid
                     ):
-                        if recovery_copy_completion is not None:
+                        if recovery_abort_preparation_completion is not None:
+                            observed_recovery_state = _read_signed_migration_lifecycle_state(
+                                parent_fd=received_descriptors[1],
+                                target_basename=(
+                                    recovery_abort_preparation_completion.origin_state.target_basename
+                                ),
+                                verification_key=verification_key,
+                            )
+                            if observed_recovery_state not in (
+                                recovery_abort_preparation_completion.origin_state,
+                                recovery_abort_preparation_completion.abort_prepared_state,
+                            ):
+                                raise ValueError(
+                                    "issuer recovery abort preparation effective state"
+                                )
+                            effective_state = observed_recovery_state
+                        elif recovery_copy_completion is not None:
                             effective_state = recovery_copy_completion.copied_state
                         elif recovery_copy_preparation_completion is not None:
                             observed_recovery_state = _read_signed_migration_lifecycle_state(
@@ -2511,9 +3014,14 @@ def _fixture_migration_lifecycle_issuer_main(
                                     "issuer recovery barrier acquisition effective state"
                                 )
                             effective_state = observed_recovery_state
-                        authentication_pins = _issuer_recovery_pins_from_state(
-                            effective_state
-                        ).model_dump(mode="json")
+                        if effective_state.lifecycle_phase == "abort_prepared":
+                            authentication_pins = _issuer_recovery_abort_prepared_pins_from_state(
+                                effective_state
+                            ).model_dump(mode="json")
+                        else:
+                            authentication_pins = _issuer_recovery_pins_from_state(
+                                effective_state
+                            ).model_dump(mode="json")
                     recovery_root_fd = received_descriptors.pop(0)
                     recovery_parent_fd = received_descriptors.pop(0)
                     recovery_target_fd = received_descriptors.pop(0)
@@ -2658,6 +3166,8 @@ def _fixture_migration_lifecycle_issuer_main(
                                 expected_fields = common_fields | {
                                     "expected_barrier_acquired_state_sha256"
                                 }
+                            elif session_command == "session_recover_prepare_abort_uncut_epoch0":
+                                expected_fields = common_fields | {"expected_origin_state_sha256"}
                             else:
                                 expected_fields = common_fields
                             if set(session_request) != expected_fields or (
@@ -2670,7 +3180,32 @@ def _fixture_migration_lifecycle_issuer_main(
                             if supervisor_exited() or recovery_peer_exited:
                                 return
                             effective_descriptor_pins = pins
-                            if recovery_copy_completion is not None:
+                            if recovery_abort_preparation_completion is not None:
+                                durable_recovery_state = _read_signed_migration_lifecycle_state(
+                                    parent_fd=session_parent_fd,
+                                    target_basename=(
+                                        recovery_abort_preparation_completion.origin_state.target_basename
+                                    ),
+                                    verification_key=verification_key,
+                                )
+                                if durable_recovery_state not in (
+                                    recovery_abort_preparation_completion.origin_state,
+                                    recovery_abort_preparation_completion.abort_prepared_state,
+                                ):
+                                    raise ValueError(
+                                        "issuer recovery abort preparation effective state"
+                                    )
+                                if durable_recovery_state.lifecycle_phase == "abort_prepared":
+                                    effective_descriptor_pins = (
+                                        _issuer_recovery_abort_prepared_pins_from_state(
+                                            durable_recovery_state
+                                        )
+                                    )
+                                else:
+                                    effective_descriptor_pins = _issuer_recovery_pins_from_state(
+                                        durable_recovery_state
+                                    )
+                            elif recovery_copy_completion is not None:
                                 effective_descriptor_pins = _issuer_recovery_pins_from_state(
                                     recovery_copy_completion.copied_state
                                 )
@@ -2845,6 +3380,11 @@ def _fixture_migration_lifecycle_issuer_main(
                                 )
                                 continue
                             if session_command == "session_recover_sources_sealed_to_copy_prepared":
+                                if (
+                                    type(effective_descriptor_pins)
+                                    is not Epoch0RecoveryAuthorityPinsV1
+                                ):
+                                    raise ValueError("issuer recovery preparation effective pins")
                                 expected_sealed_state_sha256 = session_request.get(
                                     "expected_sources_sealed_state_sha256"
                                 )
@@ -2932,6 +3472,63 @@ def _fixture_migration_lifecycle_issuer_main(
                                     _issuer_session_frame(
                                         b"Y"
                                         + _issuer_recovery_copy_completion_document(copy_completion)
+                                    )
+                                )
+                                continue
+                            if session_command == "session_recover_prepare_abort_uncut_epoch0":
+                                expected_origin_state_sha256 = session_request.get(
+                                    "expected_origin_state_sha256"
+                                )
+                                if type(
+                                    expected_origin_state_sha256
+                                ) is not str or not re.fullmatch(
+                                    r"[0-9a-f]{64}", expected_origin_state_sha256
+                                ):
+                                    raise ValueError(
+                                        "issuer recovery abort preparation expected state"
+                                    )
+                                if recovery_admission.authority_pins.lifecycle_phase not in {
+                                    "schema_only",
+                                    "barrier_acquired",
+                                    "sources_sealed",
+                                    "copy_prepared",
+                                    "copied_epoch0",
+                                }:
+                                    raise ValueError("issuer recovery abort preparation admission")
+                                try:
+                                    _issuer_authenticate_recovery_descriptors(
+                                        root_fd=session_root_fd,
+                                        parent_fd=session_parent_fd,
+                                        target_fd=session_target_fd,
+                                        ticket=recovery_ticket,
+                                        verification_key=verification_key,
+                                        raw_pins=effective_descriptor_pins.model_dump(mode="json"),
+                                    )
+                                    abort_completion = recover_prepare_abort_uncut_epoch0(
+                                        session_root_fd=session_root_fd,
+                                        session_parent_fd=session_parent_fd,
+                                        session_target_fd=session_target_fd,
+                                        expected_origin_state_sha256=expected_origin_state_sha256,
+                                        expected_origin_pins=recovery_admission.authority_pins,
+                                    )
+                                    if supervisor_exited() or recovery_peer_exited:
+                                        return
+                                except _InjectedRecoveryFault as error:
+                                    connection.sendall(
+                                        _issuer_session_frame(
+                                            b"E" + (error.completion_document or b"")
+                                        )
+                                    )
+                                    continue
+                                except Exception:
+                                    connection.sendall(_issuer_session_frame(b"E"))
+                                    continue
+                                connection.sendall(
+                                    _issuer_session_frame(
+                                        b"Y"
+                                        + _issuer_recovery_abort_preparation_completion_document(
+                                            abort_completion
+                                        )
                                     )
                                 )
                                 continue
@@ -3378,6 +3975,7 @@ class FixtureMigrationRecoverySessionV1:
     _descriptors: tuple[int, int, int]
     _handle_nonce: str
     _lock: threading.Lock
+    _abort_preparation_completion: Epoch0RecoveryAbortPreparationCompletionV1 | None
     _barrier_acquisition_completion: Epoch0RecoveryBarrierAcquisitionCompletionV1 | None
     _preparation_completion: Epoch0RecoveryCopyPreparationCompletionV1 | None
     _source_sealing_completion: Epoch0RecoverySourceSealingCompletionV1 | None
@@ -3385,6 +3983,7 @@ class FixtureMigrationRecoverySessionV1:
     _verification_key: VerificationKeyV1
 
     __slots__ = (
+        "_abort_preparation_completion",
         "_admission",
         "_barrier_acquisition_completion",
         "_boot_nonce",
@@ -3512,6 +4111,7 @@ class FixtureMigrationRecoverySessionV1:
         object.__setattr__(session, "_descriptors", tuple(duplicates))
         object.__setattr__(session, "_handle_nonce", handle_nonce)
         object.__setattr__(session, "_lock", threading.Lock())
+        object.__setattr__(session, "_abort_preparation_completion", None)
         object.__setattr__(session, "_barrier_acquisition_completion", None)
         object.__setattr__(session, "_preparation_completion", None)
         object.__setattr__(session, "_source_sealing_completion", None)
@@ -3844,6 +4444,83 @@ class FixtureMigrationRecoverySessionV1:
                 raise
             return completion
 
+    def recover_prepare_abort_uncut_epoch0(
+        self, *, expected_origin_state_sha256: str
+    ) -> Epoch0RecoveryAbortPreparationCompletionV1:
+        self._validate()
+        origin_pins = self._admission.authority_pins
+        if (
+            not re.fullmatch(r"[0-9a-f]{64}", expected_origin_state_sha256)
+            or origin_pins.lifecycle_phase
+            not in {
+                "schema_only",
+                "barrier_acquired",
+                "sources_sealed",
+                "copy_prepared",
+                "copied_epoch0",
+            }
+            or origin_pins.state_sha256 != expected_origin_state_sha256
+        ):
+            raise ValueError("fixture recovery abort preparation origin state")
+        request = _canonical_json(
+            {
+                "command": "session_recover_prepare_abort_uncut_epoch0",
+                "admission_sha256": self._admission.admission_sha256,
+                "handle_nonce": self._handle_nonce,
+                "expected_origin_state_sha256": expected_origin_state_sha256,
+            }
+        )
+        with self._lock:
+            try:
+                self._connection.sendall(_issuer_session_frame(request))
+                response = _issuer_session_receive_frame(self._connection)
+            except Exception:
+                self._close_local()
+                raise
+            if response[:1] == b"E":
+                try:
+                    if response[1:]:
+                        fault_completion = (
+                            _parse_issuer_recovery_abort_preparation_completion_document(
+                                response[1:]
+                            )
+                        )
+                        _verify_epoch0_recovery_abort_preparation_completion_v1(
+                            fault_completion,
+                            issuer_verification_key=self._verification_key,
+                            expected_origin_pins=origin_pins,
+                        )
+                        object.__setattr__(
+                            self,
+                            "_abort_preparation_completion",
+                            fault_completion,
+                        )
+                except Exception:
+                    self._close_local()
+                    raise
+                raise ValueError("fixture recovery abort preparation rejected")
+            try:
+                if response[:1] != b"Y":
+                    raise ValueError("fixture recovery abort preparation response")
+                completion = _parse_issuer_recovery_abort_preparation_completion_document(
+                    response[1:]
+                )
+                _verify_epoch0_recovery_abort_preparation_completion_v1(
+                    completion,
+                    issuer_verification_key=self._verification_key,
+                    expected_origin_pins=origin_pins,
+                )
+                if (
+                    self._abort_preparation_completion is not None
+                    and completion != self._abort_preparation_completion
+                ):
+                    raise ValueError("fixture recovery abort preparation replay")
+                object.__setattr__(self, "_abort_preparation_completion", completion)
+            except Exception:
+                self._close_local()
+                raise
+            return completion
+
     def close(self) -> None:
         if self._closed:
             return
@@ -3960,6 +4637,10 @@ class FixtureMigrationLifecycleIssuerV1:
             "seal_after_journal_rename",
             "seal_after_journal_parent_fsync",
             "seal_after_journal_reread",
+            "abort_prepare_after_intent",
+            "abort_prepare_after_rename",
+            "abort_prepare_after_parent_fsync",
+            "abort_prepare_after_reread",
         }:
             raise ValueError("issuer recovery fault boundary")
         context = multiprocessing.get_context("spawn")
