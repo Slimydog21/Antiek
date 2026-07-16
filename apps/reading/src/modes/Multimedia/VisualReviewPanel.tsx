@@ -17,6 +17,7 @@ import type {
   MultimediaVisualGeneration,
 } from "../../api/multimedia";
 import { LemonButton, LemonTag } from "../../components/lemon";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { projectMultimediaPlan } from "./planProjection";
 
 type Pending = "authorize" | "submit" | "poll" | "materialize" | "attest" | null;
@@ -129,6 +130,8 @@ export function VisualReviewPanel({
   async function authorize() {
     const microdollars = Math.round(Number(ceilingUsd) * 1_000_000);
     if (!Number.isSafeInteger(microdollars) || microdollars <= 0) return;
+    // Living-TV: visual spend authorization is a noted honesty beat.
+    emitWernerExperience("note_saved");
     await command(activeChapterId, "authorize", async (isCurrent) => {
       const authority = await authorizeMultimediaVisual(record.asset.asset_id, {
         request_id: requestId(record.asset.asset_id, record.asset.revision_id, activeChapterId),
@@ -156,6 +159,8 @@ export function VisualReviewPanel({
   async function submit() {
     const authority = activeReview.authority;
     if (!authority) return;
+    // Living-TV: visual generation submit is a happy craft beat.
+    emitWernerExperience("piece_started");
     await command(activeChapterId, "submit", async (isCurrent) => {
       const generation = await submitMultimediaVisualGeneration(
         record.asset.asset_id,
@@ -247,6 +252,8 @@ export function VisualReviewPanel({
     const started = epoch.current;
     setRegistering(true);
     setRegisterError(null);
+    // Living-TV: reviewed visual set registration is a happy craft beat.
+    emitWernerExperience("piece_started");
     try {
       const value = await registerMultimediaReviewedVisuals(
         record.asset.asset_id,
@@ -259,7 +266,10 @@ export function VisualReviewPanel({
       );
       if (started === epoch.current) onRegistered(value);
     } catch (error) {
-      if (started === epoch.current) setRegisterError(message(error));
+      if (started === epoch.current) {
+        emitWernerExperience("fail");
+        setRegisterError(message(error));
+      }
     } finally {
       if (started === epoch.current) setRegistering(false);
     }
