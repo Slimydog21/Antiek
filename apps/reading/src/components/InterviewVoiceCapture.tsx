@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "../lib/api";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 /**
  * Browser-side voice capture for Speak invitees (master-spec
@@ -180,6 +181,7 @@ export default function InterviewVoiceCapture({
       }
       const data = await resp.json();
       setState("uploaded");
+      emitWernerExperience("note_saved");
       if (data.audio_url && onUploaded) {
         onUploaded(data.audio_url);
       } else if (onUploaded) {
@@ -190,6 +192,7 @@ export default function InterviewVoiceCapture({
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
       setState("error");
+      emitWernerExperience("fail");
     } finally {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
