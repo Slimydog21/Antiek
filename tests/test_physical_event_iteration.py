@@ -127,25 +127,24 @@ def test_physical_reader_rejects_linked_event_root(tmp_path: Path) -> None:
 
 
 def test_append_and_seal_share_investigation_lock(monkeypatch, tmp_path: Path) -> None:
-    held = False
+    lock_depth = 0
     appended: list[dict[str, Any]] = []
 
     @contextmanager
     def tracking_lock(*args, **kwargs):
-        nonlocal held
-        assert not held
-        held = True
+        nonlocal lock_depth
+        lock_depth += 1
         try:
             yield
         finally:
-            held = False
+            lock_depth -= 1
 
     def guarded_append(path: str, row: dict[str, Any]) -> None:
-        assert held
+        assert lock_depth > 0
         appended.append(row)
 
     def guarded_seal(*args, **kwargs) -> str:
-        assert held
+        assert lock_depth > 0
         return "sealed"
 
     monkeypatch.setattr(events_module, "investigation_event_lock", tracking_lock)
@@ -160,7 +159,7 @@ def test_append_and_seal_share_investigation_lock(monkeypatch, tmp_path: Path) -
     assert events_module.seal_investigation(
         "inv-1", events_dir=str(tmp_path)
     ) == "sealed"
-    assert not held
+    assert lock_depth == 0
 
 
 @pytest.mark.parametrize("link_kind", ["symbolic", "hard"])

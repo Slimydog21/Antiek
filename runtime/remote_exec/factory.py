@@ -108,6 +108,7 @@ def build_research_runner(
     budget: BudgetManager | None = None,
     max_concurrency: int | None = None,
     events_dir: str | None = None,
+    outbox_db_path: str | None = None,
     on_emit: Callable[[StepEvent], Awaitable[None]] | None = None,
 ) -> ResearchRunner:
     """Return the ``ResearchRunner`` the fan-out should use. Call-site-agnostic:
@@ -128,8 +129,12 @@ def build_research_runner(
     shared_budget = budget or BudgetManager()
 
     def _shared_kwargs() -> dict[str, Any]:
-        kw: dict[str, Any] = {"budget": shared_budget, "events_dir": events_dir,
-                              "on_emit": on_emit}
+        kw: dict[str, Any] = {
+            "budget": shared_budget,
+            "events_dir": events_dir,
+            "outbox_db_path": outbox_db_path,
+            "on_emit": on_emit,
+        }
         if max_concurrency is not None:
             kw["max_concurrency"] = max_concurrency
         return kw

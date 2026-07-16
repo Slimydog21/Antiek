@@ -181,8 +181,8 @@ def investigation_event_lock(
     *,
     events_dir: str | None = None,
     timeout_s: float = 10.0,
-) -> Iterator[None]:
-    """Serialize access to one investigation's durable event files."""
+) -> Iterator[int]:
+    """Serialize access and yield an fd anchored to the validated event root."""
     if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}", investigation_id):
         raise ValueError("investigation_id is not safe for event storage")
     root = events_dir or default_events_dir()
@@ -193,10 +193,25 @@ def investigation_event_lock(
         raise PhysicalTrajectoryError("event root cannot be secured") from exc
     if stat.S_ISLNK(root_stat.st_mode) or not stat.S_ISDIR(root_stat.st_mode):
         raise PhysicalTrajectoryError("event root must be a real directory")
-    lock_path = os.path.join(root, f".{investigation_id}.delivery.lock")
+    root_fd = -1
+    fd = -1
     try:
-        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        opened_root = os.fstat(root_fd)
+        if (opened_root.st_dev, opened_root.st_ino) != (
+            root_stat.st_dev,
+            root_stat.st_ino,
+        ):
+            raise PhysicalTrajectoryError("event root changed during validation")
+        fd = os.open(
+            f".{investigation_id}.delivery.lock",
+            os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=root_fd,
+        )
     except OSError as exc:
+        if root_fd >= 0:
+            os.close(root_fd)
         raise PhysicalTrajectoryError("event lock cannot be opened safely") from exc
     try:
         lock_stat = os.fstat(fd)
@@ -211,14 +226,17 @@ def investigation_event_lock(
                 break
             except BlockingIOError:
                 if time.monotonic() >= deadline:
-                    raise PhysicalTrajectoryError(
+                    raise TimeoutError(
                         "timed out waiting for investigation event lock"
                     ) from None
                 time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
-        yield
+        yield root_fd
     finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
+        if fd >= 0:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+        if root_fd >= 0:
+            os.close(root_fd)
 
 
 def _append_jsonl(path: str, row: dict[str, Any]) -> None:
@@ -569,12 +587,15 @@ class EventEmitter:
 # Sealing — JSONL → Parquet at investigation completion
 # ---------------------------------------------------------------------------
 
+_DEFAULT_OUTBOX_DB = object()
+
 
 def seal_investigation(
     investigation_id: str,
     *,
     events_dir: str | None = None,
     delete_jsonl: bool = True,
+    outbox_db_path: str | None | object = _DEFAULT_OUTBOX_DB,
 ) -> str | None:
     """Convert the live JSONL trajectory to its sealed Parquet form.
 
@@ -585,12 +606,42 @@ def seal_investigation(
     Idempotent: if the Parquet already exists, we re-seal (overwrite) only
     if the JSONL is newer (mtime check).
     """
+    if outbox_db_path is _DEFAULT_OUTBOX_DB:
+        from substrate.graph import default_db_path
+        db_path: str | None = default_db_path()
+    elif isinstance(outbox_db_path, str) or outbox_db_path is None:
+        db_path = outbox_db_path
+    else:
+        raise TypeError("outbox_db_path must be a path or None")
+    if db_path and os.path.exists(db_path):
+        from runtime.db_lock import connect_write
+        with (
+            connect_write(db_path, purpose="event_log/seal") as con,
+            investigation_event_lock(investigation_id, events_dir=events_dir),
+        ):
+            _refuse_pending_write_events(con, investigation_id)
+            return _seal_investigation_unlocked(
+                investigation_id, events_dir=events_dir,
+                delete_jsonl=delete_jsonl,
+            )
     with investigation_event_lock(investigation_id, events_dir=events_dir):
         return _seal_investigation_unlocked(
             investigation_id,
             events_dir=events_dir,
             delete_jsonl=delete_jsonl,
         )
+
+
+def _refuse_pending_write_events(con: Any, investigation_id: str) -> None:
+    exists = con.execute(
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_name='write_event_outbox'"
+    ).fetchone()[0]
+    if exists and con.execute(
+        "SELECT 1 FROM write_event_outbox WHERE investigation_id=? "
+        "AND state='pending' LIMIT 1", [investigation_id],
+    ).fetchone():
+        raise RuntimeError("cannot seal an investigation with pending Write events")
 
 
 def _seal_investigation_unlocked(

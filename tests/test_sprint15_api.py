@@ -149,6 +149,11 @@ def test_patch_prose_promote_writes_claim_node_and_event(temp_substrate):
             "SELECT node_type, metadata FROM nodes WHERE node_id = ?",
             [body["claim_node_id"]],
         ).fetchone()
+        outbox_rows = con.execute(
+            "SELECT state, COUNT(*) FROM write_event_outbox "
+            "WHERE aggregate_id IN (?, ?) GROUP BY state",
+            [body["claim_node_id"], sid],
+        ).fetchall()
     finally:
         con.close()
     assert node_type == "claim"
@@ -158,6 +163,59 @@ def test_patch_prose_promote_writes_claim_node_and_event(temp_substrate):
     assert md["deliverable_id"] == did
     assert md["section_id"] == sid
     assert md["policy_id"] == f"operator/{did}"
+    assert outbox_rows == [("delivered", 2)]
+
+
+def test_promotion_append_failure_retains_pending_intents(temp_substrate, monkeypatch):
+    import duckdb
+
+    import substrate.write.event_outbox as outbox_module
+
+    monkeypatch.setattr(
+        outbox_module, "dispatch_pending_best_effort", lambda *_args, **_kwargs: []
+    )
+    client = _client(temp_substrate)
+    _, sid = _make_deliverable_with_section(client)
+    response = client.patch(
+        f"/sections/{sid}/prose",
+        json={"prose_text": "Durable claim.", "original_text": "", "promote_to_graph": True},
+    )
+    assert response.status_code == 202
+    con = duckdb.connect(temp_substrate["db_path"], read_only=True)
+    try:
+        assert con.execute(
+            "SELECT COUNT(*) FROM write_event_outbox WHERE state='pending'"
+        ).fetchone()[0] == 2
+    finally:
+        con.close()
+
+
+def test_promotion_outbox_failure_rolls_back_prose_and_node(temp_substrate, monkeypatch):
+    import duckdb
+
+    import substrate.write.event_outbox as outbox_module
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("injected outbox failure")
+
+    monkeypatch.setattr(outbox_module, "enqueue_event", fail)
+    client = _client(temp_substrate)
+    _, sid = _make_deliverable_with_section(client)
+    with pytest.raises(RuntimeError, match="injected outbox failure"):
+        client.patch(
+            f"/sections/{sid}/prose",
+            json={"prose_text": "Must roll back.", "original_text": "", "promote_to_graph": True},
+        )
+    con = duckdb.connect(temp_substrate["db_path"], read_only=True)
+    try:
+        assert con.execute(
+            "SELECT prose_text FROM deliverable_sections WHERE section_id=?", [sid]
+        ).fetchone()[0] is None
+        assert con.execute(
+            "SELECT COUNT(*) FROM nodes WHERE canonical_label='Must roll back.'"
+        ).fetchone()[0] == 0
+    finally:
+        con.close()
 
 
 def test_patch_prose_promote_emits_claim_asserted_event(temp_substrate):

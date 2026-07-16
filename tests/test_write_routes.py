@@ -328,6 +328,90 @@ def test_persist_section_draft_round_trips_provenance_and_emits_event(seed, tmp_
     assert payload["prose_provenance"] == {"0": [node], "1": [node]}
     assert payload["all_claims_cited"] is True
     assert node in payload["cited_block_ids"]
+    with connect_write(default_db_path(), purpose="test/outbox_read") as con:
+        assert con.execute(
+            "SELECT state FROM write_event_outbox WHERE event_id=?", [event_id]
+        ).fetchone()[0] == "delivered"
+
+    with connect_write(default_db_path(), purpose="test/persist_retry") as con:
+        replayed_id = persist_section_draft(
+            con,
+            section_id=sec,
+            deliverable_id=seed["deliverable_id"],
+            result=result,
+            report=report,
+            investigation_id=seed["deliverable_id"],
+        )
+    assert replayed_id == event_id
+    assert len([
+        event for event in read_trajectory(seed["deliverable_id"])
+        if event.get("action_type") == "section.draft_generated"
+    ]) == 1
+
+    changed_gate = GenerationResult(
+        status="generated",
+        section_id=sec,
+        prose_text=result.prose_text,
+        citation_report=None,
+        gate=GateResult(score=0.97, passed=True, violations=[]),
+        prose_provenance=result.prose_provenance,
+    )
+    with connect_write(default_db_path(), purpose="test/persist_changed_audit") as con:
+        changed_id = persist_section_draft(
+            con,
+            section_id=sec,
+            deliverable_id=seed["deliverable_id"],
+            result=changed_gate,
+            report=report,
+            investigation_id=seed["deliverable_id"],
+        )
+    assert changed_id != event_id
+    drafted = [
+        event for event in read_trajectory(seed["deliverable_id"])
+        if event.get("action_type") == "section.draft_generated"
+    ]
+    assert [event["payload"]["gate_score"] for event in drafted] == [0.92, 0.97]
+
+
+def test_draft_outbox_failure_rolls_back_prose(seed, monkeypatch):
+    import substrate.write.event_outbox as outbox_module
+    from substrate.write.draft_generation import (
+        CitationReport,
+        GenerationResult,
+        persist_section_draft,
+    )
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("injected outbox failure")
+
+    monkeypatch.setattr(outbox_module, "enqueue_event", fail)
+    result = GenerationResult(
+        status="generated",
+        section_id=seed["section_id"],
+        prose_text="Must roll back.",
+        citation_report=None,
+        gate=None,
+        prose_provenance={0: [seed["node"]]},
+    )
+    report = CitationReport(
+        supported_paragraphs=[0],
+        unsupported_paragraphs=[],
+        fabricated_citations=[],
+        uncited_blocks=[],
+        cited_block_ids=[seed["node"]],
+    )
+    with (
+        connect_write(default_db_path(), purpose="test/persist_draft") as con,
+        pytest.raises(RuntimeError, match="injected outbox failure"),
+    ):
+        persist_section_draft(
+            con,
+            section_id=seed["section_id"],
+            deliverable_id=seed["deliverable_id"],
+            result=result,
+            report=report,
+        )
+    assert _section_prose_row(seed["deliverable_id"])[0] is None
 
 
 def test_persist_refuses_gate_failed_draft(seed):
@@ -338,13 +422,15 @@ def test_persist_refuses_gate_failed_draft(seed):
         status="gate_failed", section_id=seed["section_id"],
         prose_text="slop", citation_report=None, gate=None,
     )
-    with connect_write(default_db_path(), purpose="test/persist_bad") as con:
-        with pytest.raises(ValueError, match="only persists a 'generated'"):
-            persist_section_draft(
-                con, section_id=seed["section_id"],
-                deliverable_id=seed["deliverable_id"], result=bad,
-                report=None,  # type: ignore[arg-type]
-            )
+    with (
+        connect_write(default_db_path(), purpose="test/persist_bad") as con,
+        pytest.raises(ValueError, match="only persists a 'generated'"),
+    ):
+        persist_section_draft(
+            con, section_id=seed["section_id"],
+            deliverable_id=seed["deliverable_id"], result=bad,
+            report=None,  # type: ignore[arg-type]
+        )
     # Nothing was written.
     row = _section_prose_row(seed["deliverable_id"])
     assert row[0] is None
