@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { LemonButton, LemonInput } from "../lemon";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { useLibrary, type LibraryFilter } from "./useLibrary";
 import WorkCard from "./WorkCard";
 
@@ -99,7 +100,7 @@ export default function LibraryView({
               aria-selected={filter === f.key}
               type="button"
               title={f.hint}
-              onClick={() => setFilter(f.key)}
+              onClick={() => { emitWernerExperience("highlight"); setFilter(f.key); }}
               className={`px-3 py-1 rounded-md text-xs font-mono transition-colors ${
                 filter === f.key
                   ? "bg-ink text-white"
@@ -129,7 +130,7 @@ export default function LibraryView({
             The catalog isn’t available yet — the library service hasn’t come up.
             This is an honest “not ready”, not an empty shelf.
           </span>
-          <LemonButton size="sm" type="button" variant="tertiary" onClick={reload}>
+          <LemonButton size="sm" type="button" variant="tertiary" onClick={() => { emitWernerExperience("highlight"); reload(); }}>
             Retry
           </LemonButton>
         </div>
