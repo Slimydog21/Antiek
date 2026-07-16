@@ -8,6 +8,7 @@ import { useWorkspace } from "./WorkspaceStore";
 import { clampRectToViewport } from "./panelLayoutLogic";
 import { openPopoutFor } from "./popout";
 import type { PanelMode } from "./panel.types";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 /**
  * PanelHandle — the title strip rendered at the top of every panel.
@@ -191,7 +192,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                   icon="◧"
                   hint="⌘B"
                   onClick={() => {
-                    setMode("docked-left");
+                    emitWernerExperience("highlight"); setMode("docked-left");
                     close();
                   }}
                 >
@@ -201,7 +202,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                   icon="◨"
                   hint="⇧⌘B"
                   onClick={() => {
-                    setMode("docked-right");
+                    emitWernerExperience("highlight"); setMode("docked-right");
                     close();
                   }}
                 >
@@ -211,7 +212,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                   icon="◯"
                   hint="⌃⌘B"
                   onClick={() => {
-                    setMode("docked-bottom");
+                    emitWernerExperience("highlight"); setMode("docked-bottom");
                     close();
                   }}
                 >
@@ -221,7 +222,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                   icon="▢"
                   hint="⌥⌘F"
                   onClick={() => {
-                    setMode("floating");
+                    emitWernerExperience("highlight"); setMode("floating");
                     close();
                   }}
                 >
@@ -231,7 +232,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                   icon="↗"
                   hint="⌥⌘P"
                   onClick={() => {
-                    setMode("popout");
+                    emitWernerExperience("highlight"); setMode("popout");
                     close();
                   }}
                 >
@@ -258,7 +259,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
           type="button"
           data-handle-action="close"
           onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => actions().close(id)}
+          onClick={() => { emitWernerExperience("note_saved"); actions().close(id); }}
           aria-label="Close panel"
           className="px-1.5 leading-none text-[13px] text-ink-mute dark:text-moonlight hover:text-emperor"
         >
