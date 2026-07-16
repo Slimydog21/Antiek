@@ -3,6 +3,7 @@ import { useState } from "react";
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 // Knowledge dens invent — arXiv / Substack / knowledge-dense publication port.
 import livingTvArt from "../../brand/werner/poses/session/werner_arxiv_substack_dens_session_v1.webp";
+import "../../brand/sessionLivingTv.css";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
   ingestSource,
@@ -169,7 +170,7 @@ export default function Sources() {
               alt=""
               aria-hidden="true"
               data-testid="sources-home-living-tv-art"
-              className="h-16 w-full max-w-md rounded-md object-cover object-center"
+              className="h-16 w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent"
               loading="lazy"
               decoding="async"
             />

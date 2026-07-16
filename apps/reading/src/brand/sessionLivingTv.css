@@ -1,0 +1,38 @@
+/**
+ * Flipbook-feel invent strip motion — illustrations softly reframe with time,
+ * like Flipbook's reshape-with-window living imagery, while remaining HTML
+ * (pure Flipbook sole UI is NO-GO).
+ *
+ * Motion collapses under prefers-reduced-motion.
+ */
+
+@keyframes antiek-living-tv-reframe {
+  0% {
+    object-position: 48% 46%;
+    transform: scale(1);
+  }
+  50% {
+    object-position: 52% 54%;
+    transform: scale(1.02);
+  }
+  100% {
+    object-position: 50% 48%;
+    transform: scale(1.01);
+  }
+}
+
+.antiek-living-tv-invent {
+  object-fit: cover;
+  object-position: center;
+  will-change: object-position, transform;
+  animation: antiek-living-tv-reframe 12s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .antiek-living-tv-invent {
+    animation: none;
+    transform: none;
+    object-position: center;
+    will-change: auto;
+  }
+}

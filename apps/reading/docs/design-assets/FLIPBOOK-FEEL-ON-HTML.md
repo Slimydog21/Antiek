@@ -27,3 +27,10 @@ See `sceneHotspotProductRoutes.ts` and `BRANDING-LIVING-TV.md`.
 Modal + Krea remain available for enrichment. Default path is HTML + tests +
 axe/LostPixel gates. Pure generative sole UI stays behind a future NO-GO
 revisit with cost ceilings operator-approved.
+
+## Living invent reframe (craft159)
+
+Product invent strips use `.antiek-living-tv-invent` (`sessionLivingTv.css`) for a
+soft object-position + scale reframe loop — Flipbook *feel* of living imagery
+without leaving HTML. Collapses under `prefers-reduced-motion`. Wired on
+`SessionBrandChrome` and craft156 invent densify surfaces.

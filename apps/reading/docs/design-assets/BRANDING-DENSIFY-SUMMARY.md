@@ -204,3 +204,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | arXiv/Substack dens invent → Sources | `549eb2420` | knowledge dens product door invent strip |
 | Living-TV ambient episode continuity | `a713819a0` | quiet beat continues last product episode |
 | FloatMenu collective invent product-map | `8100985a9` | float research windows invent strip |
+| Flipbook invent reframe CSS | (craft159) | soft living imagery motion; reduced-motion safe |

@@ -24,6 +24,7 @@ import {
 } from "../api/composerProjection";
 // Model decision tree invent — per-prompt model + budget projection product door.
 import modelDecisionArt from "../brand/werner/poses/session/werner_model_decision_tree_session_v1.webp";
+import "../brand/sessionLivingTv.css";
 
 export interface ModelDecisionBarProps {
   projection: ComposerModelProjection | null;
@@ -186,7 +187,7 @@ export default function ModelDecisionBar({
         alt=""
         aria-hidden="true"
         data-testid="model-decision-bar-living-tv-art"
-        className="h-10 w-full max-w-xs rounded object-cover object-center"
+        className="h-10 w-full max-w-xs rounded object-cover object-center antiek-living-tv-invent"
         loading="lazy"
         decoding="async"
       />

@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 
 import thinkingArt from "./werner/poses/session/werner_thinking_session_v1.png";
 import livingTvArt from "./werner/poses/session/werner_living_tv_session_v1.webp";
+import "./sessionLivingTv.css";
 
 export interface SessionBrandChromeProps {
   /** Human title shown next to the thinking mark. */
@@ -62,7 +63,7 @@ export default function SessionBrandChrome({
         alt=""
         aria-hidden="true"
         data-testid={`${testIdPrefix}-living-tv-art`}
-        className={`${inventHeightClass} w-full max-w-md rounded-md object-cover object-center`}
+        className={`${inventHeightClass} w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent`}
         loading="lazy"
         decoding="async"
       />

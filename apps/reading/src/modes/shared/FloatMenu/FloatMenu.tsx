@@ -17,6 +17,7 @@ import {
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
 // Collective multi-agent float invent — highlight → float windows product door.
 import collectiveMergeArt from "../../../brand/werner/poses/session/werner_collective_merge_session_v1.webp";
+import "../../../brand/sessionLivingTv.css";
 import { emitWernerExperience } from "../../../werner/reactionBus";
 
 /**
@@ -198,7 +199,7 @@ export default function FloatMenu({
             alt=""
             aria-hidden="true"
             data-testid="float-menu-living-tv-art"
-            className="h-8 w-full object-cover object-center rounded-t-md opacity-90"
+            className="h-8 w-full object-cover object-center rounded-t-md opacity-90 antiek-living-tv-invent"
             loading="lazy"
             decoding="async"
           />

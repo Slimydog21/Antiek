@@ -1,6 +1,7 @@
 import { LemonTag } from "../../components/lemon";
 // Book marketplace port invent — zero-buyer house next-read is the marketplace door.
 import bookMarketplaceArt from "../../brand/werner/poses/session/werner_book_marketplace_port_session_v1.webp";
+import "../../brand/sessionLivingTv.css";
 import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
@@ -61,7 +62,7 @@ export default function HouseSlot({ promo, onOpen }: HouseSlotProps) {
         alt=""
         aria-hidden="true"
         data-testid="house-slot-living-tv-art"
-        className="h-9 w-14 shrink-0 rounded object-cover object-center"
+        className="h-9 w-14 shrink-0 rounded object-cover object-center antiek-living-tv-invent"
         loading="lazy"
         decoding="async"
       />
