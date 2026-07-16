@@ -97,7 +97,7 @@ export default function NotebooksIndex() {
       setDraftInvId("");
       if (created.notebook_id) {
         emitWernerExperience("piece_started");
-      navigate(`/notebook/${encodeURIComponent(created.notebook_id)}`);
+        navigate(`/notebook/${encodeURIComponent(created.notebook_id)}`);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
