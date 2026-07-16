@@ -42,6 +42,7 @@ from substrate.research_spend import (
     PaidHoldState,
     ResearchSpendLedger,
     RunBinding,
+    RunNotFound,
     RunStatus,
     SpendCeilingExceeded,
     ZeroCostState,
@@ -248,6 +249,263 @@ def test_authoritative_not_found_releases_ambiguous_hold(tmp_path: Path) -> None
     assert result.hold.state is PaidHoldState.RELEASED
     assert result.run.held_cents == 0
     assert len(adapter.send_calls) == 1
+
+
+def _ambiguous_manifest_hold(
+    gateway: ResearchProviderGateway, adapter: FakeAdapter
+) -> tuple[str, PaidFallbackRoute[str]]:
+    adapter.send_result = TimeoutError("lost response")
+    route = _fallback_route(adapter)
+    approval_id = _approve_fallbacks(gateway, (route,))
+    with pytest.raises(PaidFallbackOutcomeUnknown) as unknown:
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(route,),
+            approval_id=approval_id,
+        )
+    return unknown.value.hold_id, route
+
+
+def _reconcile_only(
+    gateway: ResearchProviderGateway,
+    hold_id: str,
+    adapter: FakeAdapter,
+    route: PaidFallbackRoute[str],
+):
+    history = gateway.ledger.fallback_history("owner-1").items[0]
+    assert history.approval_id is not None
+    return gateway.reconcile_paid_only(
+        hold_id,
+        adapter,
+        owner_id="owner-1",
+        chain_id=history.chain_id,
+        fallback_index=0,
+        approval_id=history.approval_id,
+        projection_request=route.projection_request,
+    )
+
+
+def test_reconciliation_only_settles_without_another_send(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    adapter = FakeAdapter()
+    hold_id, route = _ambiguous_manifest_hold(gateway, adapter)
+
+    result = _reconcile_only(gateway, hold_id, adapter, route)
+
+    assert result.recovered
+    assert result.hold.state is PaidHoldState.SETTLED
+    assert result.run.authorized_spent_cents == 80
+    assert len(adapter.send_calls) == 1
+    assert len(adapter.reconcile_calls) == 1
+
+
+def test_reconciliation_only_authoritative_not_found_releases(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    adapter = FakeAdapter()
+    adapter.reconciliation = ProviderReconciliation(
+        ReconciliationStatus.NOT_FOUND, {"provider_lookup": "not_found"}
+    )
+    hold_id, route = _ambiguous_manifest_hold(gateway, adapter)
+
+    result = _reconcile_only(gateway, hold_id, adapter, route)
+
+    assert result.hold.state is PaidHoldState.RELEASED
+    assert result.run.held_cents == 0
+    assert len(adapter.send_calls) == 1
+    assert len(adapter.reconcile_calls) == 1
+
+
+def test_reconciliation_only_unknown_retains_full_hold(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    adapter = FakeAdapter()
+    adapter.reconciliation = ProviderReconciliation(
+        ReconciliationStatus.UNKNOWN, {"provider_lookup": "pending"}
+    )
+    hold_id, route = _ambiguous_manifest_hold(gateway, adapter)
+
+    with pytest.raises(ProviderOutcomeUnknown, match="remains unknown"):
+        _reconcile_only(gateway, hold_id, adapter, route)
+
+    assert gateway.ledger.hold(hold_id).state is PaidHoldState.UNKNOWN
+    assert gateway.ledger.balance("run-1").held_cents == 100
+    assert len(adapter.send_calls) == 1
+    assert len(adapter.reconcile_calls) == 1
+
+
+def test_reconciliation_only_rejects_reserved_hold_before_lookup(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    adapter = FakeAdapter()
+    route = _fallback_route(adapter)
+    approval_id = _approve_fallbacks(gateway, (route,))
+    observed: list[PaidHoldSnapshot] = []
+
+    def stop_before_send(_index: int, hold: PaidHoldSnapshot) -> None:
+        observed.append(hold)
+        raise RuntimeError("stop before send marker")
+
+    with pytest.raises(RuntimeError, match="stop before send marker"):
+        gateway.dispatch_paid_fallbacks(
+            _binding(), logical_operation_id="op", operation={"prompt": "bounded"},
+            routes=(route,), approval_id=approval_id,
+            on_hold_authorized=stop_before_send,
+        )
+    hold = observed[0]
+
+    with pytest.raises(DispatchIneligible, match="no provider outcome"):
+        _reconcile_only(gateway, hold.hold_id, adapter, route)
+
+    assert gateway.ledger.hold(hold.hold_id).state is PaidHoldState.RESERVED
+    assert adapter.send_calls == adapter.reconcile_calls == []
+
+
+def test_reconciliation_only_terminal_replay_does_not_lookup(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    adapter = FakeAdapter()
+    route = _fallback_route(adapter)
+    approval_id = _approve_fallbacks(gateway, (route,))
+    completed = gateway.dispatch_paid_fallbacks(
+        _binding(), logical_operation_id="op", operation={"prompt": "bounded"},
+        routes=(route,), approval_id=approval_id,
+    )
+    completed_hold = completed.attempts[0].hold
+    adapter.endpoint = "https://rotated-after-terminal.example/v1"
+
+    replay = _reconcile_only(gateway, completed_hold.hold_id, adapter, route)
+
+    assert replay.recovered
+    assert replay.hold == completed_hold
+    assert len(adapter.send_calls) == 1
+    assert adapter.reconcile_calls == []
+
+
+def test_reconciliation_only_refuses_non_manifest_hold(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    adapter = FakeAdapter()
+    adapter.send_result = TimeoutError("lost response")
+    with pytest.raises(ProviderOutcomeUnknown) as unknown:
+        gateway.dispatch_paid(
+            _binding(), logical_operation_id="op", projection_request=_request(),
+            operation={"prompt": "bounded"}, adapter=adapter,
+        )
+
+    with pytest.raises(RunNotFound):
+        gateway.reconcile_paid_only(
+            unknown.value.hold_id,
+            adapter,
+            owner_id="owner-1",
+            chain_id="missing-chain",
+            fallback_index=0,
+            approval_id="missing-approval",
+            projection_request=_request(),
+        )
+
+    assert gateway.ledger.balance("run-1").held_cents == 100
+    assert adapter.reconcile_calls == []
+
+
+def test_reconciliation_only_rejects_reservation_substitution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gateway = _gateway(tmp_path)
+    adapter = FakeAdapter()
+    hold_id, route = _ambiguous_manifest_hold(gateway, adapter)
+    load = gateway.ledger.hold
+    approved_load = gateway.ledger.approved_fallback_hold
+    calls = 0
+
+    def substituted(*args) -> PaidHoldSnapshot:
+        nonlocal calls
+        calls += 1
+        hold = approved_load(*args)
+        if calls == 2:
+            return replace(
+                hold,
+                intent=replace(hold.intent, reservation_key="substituted-reservation"),
+            )
+        return hold
+
+    monkeypatch.setattr(gateway.ledger, "approved_fallback_hold", substituted)
+    with pytest.raises(DispatchIneligible, match="reservation changed"):
+        _reconcile_only(gateway, hold_id, adapter, route)
+
+    assert adapter.reconcile_calls == []
+    assert load(hold_id).state is PaidHoldState.UNKNOWN
+
+
+def test_reconciliation_only_rejects_adapter_and_capability_drift(
+    tmp_path: Path,
+) -> None:
+    gateway = _gateway(tmp_path)
+    adapter = FakeAdapter()
+    hold_id, route = _ambiguous_manifest_hold(gateway, adapter)
+    mismatched = FakeAdapter()
+    mismatched.provider = "other-provider"
+    with pytest.raises(DispatchIneligible, match="does not match"):
+        _reconcile_only(gateway, hold_id, mismatched, route)
+
+    adapter.capabilities = ProviderCapabilities(
+        True, True, True, frozenset({BillingUnit.LOCAL_OPERATION})
+    )
+    with pytest.raises(DispatchIneligible, match="billing units"):
+        _reconcile_only(gateway, hold_id, adapter, route)
+
+    assert adapter.reconcile_calls == mismatched.reconcile_calls == []
+    assert gateway.ledger.balance("run-1").held_cents == 100
+
+
+def test_reconciliation_only_rejects_changed_live_route_authority(
+    tmp_path: Path,
+) -> None:
+    endpoint = ["https://first.example/v1"]
+
+    def authorize(request, adapter):
+        return replace(_authorize_fallback(request, adapter), endpoint=endpoint[0])
+
+    gateway = ResearchProviderGateway(
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"),
+        projector=_project,
+        fallback_route_authorizer=authorize,
+    )
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    adapter = FakeAdapter()
+    route = _fallback_route(adapter)
+    adapter.endpoint = endpoint[0]
+    hold_id, _ = _ambiguous_manifest_hold(gateway, adapter)
+    endpoint[0] = "https://replacement.example/v1"
+    adapter.endpoint = endpoint[0]
+
+    with pytest.raises(DispatchIneligible, match="authority changed"):
+        _reconcile_only(gateway, hold_id, adapter, route)
+
+    assert adapter.reconcile_calls == []
+    assert gateway.ledger.balance("run-1").held_cents == 100
+
+
+def test_reconciliation_only_not_found_never_advances_fallback(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    primary = FakeAdapter()
+    primary.send_result = TimeoutError("lost response")
+    primary.reconciliation = ProviderReconciliation(
+        ReconciliationStatus.NOT_FOUND, {"provider_lookup": "not_found"}
+    )
+    fallback = FakeAdapter()
+    fallback.provider, fallback.model = "fallback-provider", "fallback-model"
+    routes = (_fallback_route(primary), _fallback_route(fallback))
+    approval_id = _approve_fallbacks(gateway, routes)
+    with pytest.raises(PaidFallbackOutcomeUnknown) as unknown:
+        gateway.dispatch_paid_fallbacks(
+            _binding(), logical_operation_id="op", operation={"prompt": "bounded"},
+            routes=routes, approval_id=approval_id,
+        )
+
+    result = _reconcile_only(gateway, unknown.value.hold_id, primary, routes[0])
+
+    assert result.hold.state is PaidHoldState.RELEASED
+    assert primary.send_calls and len(primary.reconcile_calls) == 1
+    assert fallback.send_calls == fallback.reconcile_calls == []
+    assert len(gateway.ledger.fallback_history("owner-1").items[0].routes) == 2
 
 
 def test_process_death_after_provider_return_reconciles_without_second_send(
