@@ -110,6 +110,13 @@ const STORIES: string[] = [
   "modes-igloo-directory--visual-fixture",
   "modes-igloo-directory--night",
   "modes-igloo-directory--narrow",
+  // Expedition Cost Planner — production, image-independent fixture,
+  // cap boundary, forced night, and actual narrow viewport.
+  "modes-expedition-cost-planner--production",
+  "modes-expedition-cost-planner--visual-fixture",
+  "modes-expedition-cost-planner--cap-crossing",
+  "modes-expedition-cost-planner--night",
+  "modes-expedition-cost-planner--narrow",
   // S5 + S6 + S7 — mode panels
   "loop-1-notebookeditor--blank",
   "loop-1-notebookeditor--with-sample-content",
@@ -164,8 +171,11 @@ async function main() {
   for (const story of STORIES) {
     const narrow =
       story === "modes-substrate-atlas--narrow" ||
-      story === "modes-igloo-directory--narrow";
-    const dark = story === "modes-igloo-directory--night";
+      story === "modes-igloo-directory--narrow" ||
+      story === "modes-expedition-cost-planner--narrow";
+    const dark =
+      story === "modes-igloo-directory--night" ||
+      story === "modes-expedition-cost-planner--night";
     const ctx = await browser.newContext({
       viewport: narrow
         ? { width: 375, height: 667 }
@@ -179,22 +189,30 @@ async function main() {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15_000 });
       await page.waitForTimeout(1500); // let the story render
       if (narrow) {
-        const overflow = await page.evaluate(() => ({
-          clientWidth: document.documentElement.clientWidth,
-          scrollWidth: document.documentElement.scrollWidth,
-          directoryClientWidth:
-            document.querySelector<HTMLElement>(".igloo-directory")
-              ?.clientWidth ?? 0,
-          directoryScrollWidth:
-            document.querySelector<HTMLElement>(".igloo-directory")
-              ?.scrollWidth ?? 0,
-        }));
+        const componentSelector = story.startsWith(
+          "modes-expedition-cost-planner",
+        )
+          ? ".expedition-planner"
+          : story.startsWith("modes-substrate-atlas")
+            ? ".substrate-atlas"
+            : ".igloo-directory";
+        const overflow = await page.evaluate(
+          (selector) => ({
+            clientWidth: document.documentElement.clientWidth,
+            scrollWidth: document.documentElement.scrollWidth,
+            componentClientWidth:
+              document.querySelector<HTMLElement>(selector)?.clientWidth ?? 0,
+            componentScrollWidth:
+              document.querySelector<HTMLElement>(selector)?.scrollWidth ?? 0,
+          }),
+          componentSelector,
+        );
         if (
           overflow.scrollWidth > overflow.clientWidth ||
-          overflow.directoryScrollWidth > overflow.directoryClientWidth
+          overflow.componentScrollWidth > overflow.componentClientWidth
         ) {
           throw new Error(
-            `horizontal overflow document ${overflow.scrollWidth}px/${overflow.clientWidth}px; directory ${overflow.directoryScrollWidth}px/${overflow.directoryClientWidth}px`,
+            `horizontal overflow document ${overflow.scrollWidth}px/${overflow.clientWidth}px; component ${overflow.componentScrollWidth}px/${overflow.componentClientWidth}px`,
           );
         }
       }

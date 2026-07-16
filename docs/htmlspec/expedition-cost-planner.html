@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Antiek · Expedition Cost Planner</title>
+  <style>
+    :root{--ink:#151515;--paper:#fafaf7;--card:#fff;--soft:#f3f1ea;--blue:#1d4aff;--sun:#f9bd2b;--green:#1a7f4f;--muted:#626262}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 system-ui,sans-serif}.page{max-width:1060px;margin:auto;padding:32px 24px 64px}.hero,.block{background:var(--card);border:2px solid var(--ink);border-radius:7px;box-shadow:4px 4px 0 var(--ink);padding:24px;margin-bottom:22px}.eyebrow,.tag{font:700 12px/1.2 ui-monospace,monospace;text-transform:uppercase;letter-spacing:.08em}.tag{display:inline-block;border:1px solid var(--ink);border-radius:999px;background:#d9efe2;padding:4px 9px}h1{font-size:34px;line-height:1.1;margin:8px 0}h2{font-size:22px;margin:0 0 6px}h3{font-size:15px;margin:20px 0 6px;text-transform:uppercase;letter-spacing:.05em}.lede{color:var(--muted);margin-top:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}.card{border:2px solid var(--ink);border-radius:6px;background:var(--soft);padding:14px}.card strong{display:block;margin-bottom:6px}.decision{width:100%;border-collapse:collapse}.decision th,.decision td{text-align:left;vertical-align:top;padding:9px;border-bottom:1px solid #ccc}.decision th{background:var(--soft);font-size:12px;text-transform:uppercase}.gate{border-left:4px solid var(--blue);padding:10px 12px;background:#e5ecff;margin:10px 0}code{background:var(--soft);border:1px solid #ccc;border-radius:4px;padding:1px 5px}ul{padding-left:20px}.rigor{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px}.rigor .card{background:#fff8df}.lineage{font-size:13px;color:var(--muted)}@media(max-width:600px){.page{padding:18px 14px 44px}.hero,.block{padding:18px}h1{font-size:28px}.decision{font-size:13px}}
+  </style>
+</head>
+<body><main class="page">
+  <header class="hero">
+    <span class="tag">Cycle 567 · implementation</span>
+    <p class="eyebrow">Canonical `/pricing`</p>
+    <h1>Expedition Cost Planner</h1>
+    <p class="lede">Turn a false-authority pricing page into a branded, deterministic what-if instrument. It may explain proposed policy and calculate from operator assumptions; it may never impersonate live provider pricing, an account balance, a quote, an invoice, checkout, or payout execution.</p>
+  </header>
+
+  <section id="spec-lineage" class="block" data-spec-depth="0" data-parent-spec="">
+    <h2>Spec lineage</h2><p class="lineage">Root bounded implementation spec. Source: live audit of PR #2712 exact <code>b4cfdbfcc</code>. No child spec is warranted because the UI, pure arithmetic, stories, and proof form one tightly coupled route slice.</p>
+  </section>
+
+  <section class="block"><h2>Authority boundary</h2><div class="grid">
+    <div class="card"><strong>May assert</strong>Input values the operator can see; deterministic arithmetic; that the displayed 5M allowance and 50%/10% margins are proposed policy examples.</div>
+    <div class="card"><strong>Must label</strong>Every derived dollar figure as an estimate or illustration based on the visible assumed provider rate.</div>
+    <div class="card"><strong>Must deny</strong>No account, provider catalog, usage ledger, billing system, invoice, checkout, or payout data is read by this route.</div>
+    <div class="card"><strong>Must not promise</strong>Automatic tier conversion, model availability, encryption guarantees, creator payment, or an active free tier.</div>
+  </div></section>
+
+  <section class="block"><h2>Milestones and acceptance</h2>
+    <h3>1 · Extract pure planning arithmetic</h3><p>Export finite non-negative sanitization and a single plan calculator. Clamp invalid values without ever rendering <code>NaN</code> or negative costs. Round only for display.</p>
+    <div class="gate">Acceptance: focused tests cover below, at, and above the 5M public allowance; private 50% and above-allowance public 10% margins; invalid and extreme inputs; additive totals.</div>
+    <h3>2 · Build the authored planner</h3><p>Use a route-root <code>div</code>, because <code>PanelLayout</code> owns the one route-level <code>main</code>. Provide native labelled number and range inputs, a polite live results region, and visibly separate assumptions, policy examples, and estimate.</p>
+    <div class="gate">Acceptance: no provider names, master-spec prose, automatic conversion, payout execution, checkout, invoice, or due-now language; the persistent no-live-data statement is rendered.</div>
+    <h3>3 · Add the decorative environment</h3><p>ChatGPT Image raster is <code>alt=""</code>, aria-hidden, pointer-inert, and draggable false. HTML owns every semantic and interactive pixel.</p>
+    <div class="gate">Acceptance: production, image-independent fixture, forced-night, and actual 375×667 narrow stories preserve content and avoid horizontal overflow.</div>
+    <h3>4 · Prove the composed route</h3><p>Focused RTL tests, TypeScript, token/type-scale/token-parity checks, production and Storybook builds, axe on all new states, hardenx, diff check, and heterogeneous hostile review must pass.</p>
+  </section>
+
+  <section class="block"><h2>Five-values rigor</h2><div class="rigor">
+    <div class="card"><strong>Intellectual honesty</strong>The 5M, 50%, and 10% values are displayed as proposed policy examples, never as live billing configuration. A user-entered rate is called an assumption everywhere it influences output.</div>
+    <div class="card"><strong>Fairness</strong>Do not advertise named providers or imply one model's cost. The planner treats all operator-supplied rates identically and exposes the full arithmetic breakdown.</div>
+    <div class="card"><strong>Rigor</strong>Tests must independently assert numeric expectations, not reproduce exported constants and call that proof. Landmark composition must be tested under an outer shell main.</div>
+    <div class="card"><strong>Diligence</strong>Audit day, forced night, wide, and real narrow viewports. Validate component and document scroll widths rather than relying on screenshots alone.</div>
+    <div class="card"><strong>Defensibility</strong>Every strong copy claim maps either to visible user input, pure arithmetic, or an explicitly named proposal. Anything else is removed.</div>
+  </div></section>
+
+  <section class="block"><h2>Rejected alternatives</h2><table class="decision"><thead><tr><th>Alternative</th><th>Why rejected</th><th>Reconsider if</th></tr></thead><tbody>
+    <tr><td>Keep the three-tier sales page</td><td>It asserts provider, conversion, security, and payout facts the route cannot verify.</td><td>A versioned live catalog and policy API become authoritative and are rendered with freshness/error states.</td></tr>
+    <tr><td>Fetch live provider rates here</td><td>That expands the cycle into routing, secrets, egress, and billing authority.</td><td>A separate reviewed pricing service exists; this route remains a read-only consumer.</td></tr>
+    <tr><td>Hide margins in one total</td><td>Opaque arithmetic defeats the operator's budget-control intent.</td><td>Never; raw cost, margin, allowance, and total remain inspectable.</td></tr>
+    <tr><td>Put numbers into the image</td><td>Raster text is inaccessible, stale, non-localizable, and false authority.</td><td>Never; the image remains decorative.</td></tr>
+  </tbody></table></section>
+
+  <section class="block"><h2>Out of scope</h2><ul><li>Billing backend, checkout, invoices, subscriptions, price catalog, API-key usage, model router, or payment mutation.</li><li>Changing the operator's economic policy or computing creator payouts.</li><li>AppShell, navigation taxonomy, mascot movement, streaming generation, merge, deploy, or paid execution.</li></ul></section>
+
+  <section id="harness-hint-run" data-harness-default-pattern="adversarial-verification" data-harness-inline-only-sprints="cycle-567"><h2>Harness hint</h2><p>One tightly coupled sprint executes inline. Independent verifier lenses: quote-authority/copy falsification; arithmetic boundary errors; nested-landmark and actual-narrow overflow; decorative-image semantic leakage. Minimum two sharpen rounds when a verifier finds anything actionable.</p></section>
+  <footer class="lineage">Generated 2026-07-16 · Source brief: Antiek branding/UI Infinite objective + live `/pricing` audit.</footer>
+</main></body></html>
