@@ -276,3 +276,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2c CRT living-TV | `df10b0467` | Home + DR compose invent refresh on FULL GREEN tip |
 | sessionLivingTv densify product invent doors v2c | `cef3d3b44` | KnowledgePanel/Bench/ModelDecision/MidnightOil invent reframe densify |
 | AntiekBench living-tv-art densify | `67f5985fe` | rename desk invent testid to living-tv-art + invent class assert |
+| AntiekBench invent import honesty densify | `TBD` | rename misnamed thoughtPartnerDeskArt import to antiekBenchCelebrateArt |

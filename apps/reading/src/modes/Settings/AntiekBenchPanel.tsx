@@ -8,7 +8,7 @@ import {
 import { LemonButton, LemonCard } from "../../components/lemon";
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import "../../brand/sessionLivingTv.css";
-import thoughtPartnerDeskArt from "../../brand/werner/poses/session/werner_antiek_bench_celebrate_session_v1.webp";
+import antiekBenchCelebrateArt from "../../brand/werner/poses/session/werner_antiek_bench_celebrate_session_v1.webp";
 import { emitWernerExperience } from "../../werner/reactionBus";
 
 export interface AntiekBenchPanelProps {
@@ -66,7 +66,7 @@ export default function AntiekBenchPanel({
     <LemonCard title="Antiek-bench · weekly evidence" elevation="z1">
       <div className="p-4 space-y-3" data-testid="antiek-bench-panel">
         <img
-          src={thoughtPartnerDeskArt}
+          src={antiekBenchCelebrateArt}
           alt=""
           aria-hidden="true"
           data-testid="antiek-bench-living-tv-art"
