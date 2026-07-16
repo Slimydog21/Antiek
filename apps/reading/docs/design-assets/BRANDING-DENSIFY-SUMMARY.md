@@ -227,4 +227,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2 antiek-bench celebrate | `125880b58` | AntiekBenchPanel product invent |
 | Imagine invent polish v2 CRT igloo cursor TV | `348a9571a` | LoadingGameHost default living-TV invent |
 | Explicit invent reframe class densify | `359f415c1` | stamp antiek-living-tv-invent on residual product invent doors + LGH; densify tests |
-| Mascot receives living-TV host beats | (next tip) | PenguinMascot.reactions densify: arcade host emit → same emote stage |
+| Mascot receives living-TV host beats | `c552362df` | PenguinMascot.reactions densify: arcade host emit → same emote stage |
