@@ -61,13 +61,19 @@ def test_default_research_spend_path_is_shared_and_respects_overrides(
     assert default_research_spend_db_path() == configured
 
 
-def test_v7_to_v8_migration_is_atomic_and_preserves_legacy_replay(tmp_path: Path) -> None:
+def test_v7_to_v9_migrations_are_atomic_and_preserve_legacy_replay(tmp_path: Path) -> None:
     db_path = tmp_path / "research-spend.sqlite3"
     ledger = ResearchSpendLedger(db_path)
     ledger.ensure_schema()
     ledger.create_or_reopen_run("create-run", _binding(), 1_000)
     original = ledger.reserve_paid("legacy-reserve", _binding(), _paid(), 100)
     with sqlite3.connect(db_path) as connection:
+        for name in (
+            "research_fallback_approvals_no_update",
+            "research_fallback_approvals_no_delete",
+        ):
+            connection.execute(f"DROP TRIGGER {name}")
+        connection.execute("DROP TABLE research_fallback_approvals")
         for name in (
             "research_fallback_chains_no_update", "research_fallback_chains_no_delete",
             "research_fallback_routes_no_update", "research_fallback_routes_no_delete",
@@ -92,7 +98,7 @@ def test_v7_to_v8_migration_is_atomic_and_preserves_legacy_replay(tmp_path: Path
     ledger.ensure_schema()
     assert ledger.reserve_paid("legacy-reserve", _binding(), _paid(), 100) == original
     with sqlite3.connect(db_path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 8
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 9
         names = {
             row[0]
             for row in connection.execute(
@@ -104,6 +110,8 @@ def test_v7_to_v8_migration_is_atomic_and_preserves_legacy_replay(tmp_path: Path
         "research_fallback_chains_no_update", "research_fallback_chains_no_delete",
         "research_fallback_routes_no_update", "research_fallback_routes_no_delete",
         "research_fallback_history_owner_idx", "research_fallback_routes_reservation_idx",
+        "research_fallback_approvals", "research_fallback_approvals_no_update",
+        "research_fallback_approvals_no_delete",
     } <= names
 
 
@@ -148,6 +156,122 @@ def test_manifest_commit_without_hold_is_valid_private_unattempted_history(
     ):
         assert secret not in public
     assert ledger.fallback_history("other-owner").items == ()
+
+
+def test_fallback_approval_is_exact_atomic_and_replayable(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    manifest = _register_manifest(ledger)
+    manifest_sha256 = ledger.fallback_history("owner-1").items[0].manifest_sha256
+
+    def fail(checkpoint: str) -> None:
+        if checkpoint == "issue_fallback_approval:after_command":
+            raise RuntimeError("approval write crash")
+
+    crashing = ResearchSpendLedger(
+        tmp_path / "research-spend.sqlite3", failure_injector=fail
+    )
+    with pytest.raises(RuntimeError, match="approval write crash"):
+        crashing.issue_fallback_approval(
+            "approve-chain-1", _binding(), manifest.chain_id,
+            expected_manifest_sha256=manifest_sha256,
+            expected_ceiling_cents=1_000,
+        )
+    with sqlite3.connect(tmp_path / "research-spend.sqlite3") as connection:
+        assert connection.execute("SELECT COUNT(*) FROM research_fallback_approvals").fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM research_spend_commands WHERE command_key='approve-chain-1'"
+        ).fetchone()[0] == 0
+
+    approval = ledger.issue_fallback_approval(
+        "approve-chain-1", _binding(), manifest.chain_id,
+        expected_manifest_sha256=manifest_sha256,
+        expected_ceiling_cents=1_000,
+    )
+    assert approval.maximum_chain_exposure_cents == 100
+    assert ledger.issue_fallback_approval(
+        "approve-chain-1", _binding(), manifest.chain_id,
+        expected_manifest_sha256=manifest_sha256,
+        expected_ceiling_cents=1_000,
+    ) == approval
+    assert ledger.require_fallback_approval(
+        approval.approval_id, _binding(), manifest
+    ) == approval
+    route = manifest.routes[0]
+    ledger.reserve_paid(
+        "reserve-after-approval",
+        _binding(),
+        PaidHoldIntent(
+            reservation_key=route.reservation_key,
+            seam_id=route.seam_id,
+            provider=route.provider,
+            model=route.model,
+            operation=route.operation,
+            operation_digest=route.operation_digest,
+            projection_digest=route.projection_digest,
+            rate_snapshot=route.rate_snapshot,
+            provider_idempotency_key=route.provider_idempotency_key,
+        ),
+        route.projected_max_cents,
+    )
+    assert ledger.issue_fallback_approval(
+        "approve-chain-1", _binding(), manifest.chain_id,
+        expected_manifest_sha256=manifest_sha256,
+        expected_ceiling_cents=1_000,
+    ) == approval
+    with pytest.raises(IdempotencyConflict):
+        ledger.issue_fallback_approval(
+            "approve-chain-1", _binding(), manifest.chain_id,
+            expected_manifest_sha256="f" * 64,
+            expected_ceiling_cents=1_000,
+        )
+
+
+def test_fallback_approval_cannot_retroactively_bless_a_hold(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    manifest = _register_manifest(ledger)
+    route = manifest.routes[0]
+    ledger.reserve_paid(
+        "reserve-before-approval",
+        _binding(),
+        PaidHoldIntent(
+            reservation_key=route.reservation_key,
+            seam_id=route.seam_id,
+            provider=route.provider,
+            model=route.model,
+            operation=route.operation,
+            operation_digest=route.operation_digest,
+            projection_digest=route.projection_digest,
+            rate_snapshot=route.rate_snapshot,
+            provider_idempotency_key=route.provider_idempotency_key,
+        ),
+        route.projected_max_cents,
+    )
+
+    with pytest.raises(InvalidTransition, match="approve fallback spend"):
+        ledger.issue_fallback_approval(
+            "approve-after-hold", _binding(), manifest.chain_id,
+            expected_manifest_sha256=ledger.fallback_history("owner-1").items[0].manifest_sha256,
+            expected_ceiling_cents=1_000,
+        )
+
+
+def test_fallback_approval_integrity_is_revalidated_on_dispatch(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    manifest = _register_manifest(ledger)
+    approval = ledger.issue_fallback_approval(
+        "approve-chain-1", _binding(), manifest.chain_id,
+        expected_manifest_sha256=ledger.fallback_history("owner-1").items[0].manifest_sha256,
+        expected_ceiling_cents=1_000,
+    )
+    with sqlite3.connect(tmp_path / "research-spend.sqlite3") as connection:
+        connection.execute("DROP TRIGGER research_fallback_approvals_no_update")
+        connection.execute(
+            "UPDATE research_fallback_approvals SET ceiling_cents=999 WHERE approval_id=?",
+            (approval.approval_id,),
+        )
+
+    with pytest.raises(LedgerIntegrityError, match="approval columns conflict"):
+        ledger.require_fallback_approval(approval.approval_id, _binding(), manifest)
 
 
 def test_history_validates_route_order_and_settlement_receipt(tmp_path: Path) -> None:

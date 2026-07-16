@@ -38,6 +38,7 @@ from .billing_evidence import (
 
 __all__ = [
     "BindingConflict",
+    "DispatchApprovalRequired",
     "BillingAssessment",
     "BillingClassification",
     "BillingEvidenceKind",
@@ -48,6 +49,7 @@ __all__ = [
     "FallbackChainHistory",
     "FallbackChainHistoryPage",
     "FallbackChainManifest",
+    "FallbackSpendApproval",
     "FallbackChainOutcome",
     "FallbackHistoryCursor",
     "FallbackRouteHistory",
@@ -84,7 +86,7 @@ __all__ = [
 ]
 
 APPLICATION_ID: Final = 0x52535044  # RSPD
-SCHEMA_VERSION: Final = 8
+SCHEMA_VERSION: Final = 9
 MAX_AUTHORITY_CENTS: Final = (1 << 62) - 1
 MAX_ACTUAL_CENTS: Final = (1 << 63) - 1
 BUSY_TIMEOUT_MS: Final = 30_000
@@ -191,6 +193,10 @@ class BindingConflict(RuntimeError):
 
 class IdempotencyConflict(RuntimeError):
     """A command or operation key was replayed with changed intent."""
+
+
+class DispatchApprovalRequired(RuntimeError):
+    """Paid fallback dispatch lacks the exact durable approval."""
 
 
 class InvalidTransition(RuntimeError):
@@ -316,6 +322,42 @@ class FallbackChainManifest:
 
 
 @dataclass(frozen=True)
+class FallbackSpendApproval:
+    approval_id: str
+    chain_id: str
+    run_id: str
+    owner_id: str
+    manifest_sha256: str
+    currency: str
+    ceiling_cents: int
+    maximum_chain_exposure_cents: int
+    command_key: str
+    created_at: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "approval_id", "chain_id", "run_id", "owner_id", "manifest_sha256",
+            "currency", "command_key", "created_at",
+        ):
+            _required_text(name, cast(str, getattr(self, name)))
+        _bounded_int(
+            "ceiling_cents", self.ceiling_cents, minimum=1, maximum=MAX_AUTHORITY_CENTS
+        )
+        _bounded_int(
+            "maximum_chain_exposure_cents",
+            self.maximum_chain_exposure_cents,
+            minimum=1,
+            maximum=MAX_AUTHORITY_CENTS,
+        )
+        if self.currency != "USD":
+            raise ValueError("fallback approvals are USD-only")
+        if len(self.manifest_sha256) != 64 or any(
+            character not in "0123456789abcdef" for character in self.manifest_sha256
+        ):
+            raise ValueError("manifest_sha256 must be lowercase SHA-256")
+
+
+@dataclass(frozen=True)
 class FallbackHistoryCursor:
     created_at: str
     chain_id: str
@@ -375,6 +417,8 @@ class FallbackChainHistory:
     outcome: FallbackChainOutcome
     routes: tuple[FallbackRouteHistory, ...]
     created_at: str
+    approval_id: str | None = None
+    approved_at: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("chain_id", "manifest_sha256", "created_at"):
@@ -387,6 +431,11 @@ class FallbackChainHistory:
             range(len(self.routes))
         ):
             raise ValueError("fallback history routes must remain contiguous")
+        if (self.approval_id is None) != (self.approved_at is None):
+            raise ValueError("fallback approval history must be complete or absent")
+        if self.approval_id is not None:
+            _required_text("approval_id", self.approval_id)
+            _required_text("approved_at", cast(str, self.approved_at))
 
 
 @dataclass(frozen=True)
@@ -1303,6 +1352,36 @@ _MIGRATIONS: Final[dict[int, tuple[str, ...]]] = {
         BEGIN SELECT RAISE(ABORT, 'fallback routes are durable'); END
         """,
     ),
+    8: (
+        """
+        CREATE TABLE research_fallback_approvals (
+            approval_id TEXT PRIMARY KEY,
+            chain_id TEXT NOT NULL UNIQUE REFERENCES research_fallback_chains(chain_id),
+            run_id TEXT NOT NULL REFERENCES research_spend_runs(run_id),
+            owner_id TEXT NOT NULL,
+            manifest_sha256 TEXT NOT NULL,
+            currency TEXT NOT NULL,
+            ceiling_cents INTEGER NOT NULL CHECK(
+                ceiling_cents BETWEEN 1 AND 4611686018427387903
+            ),
+            maximum_chain_exposure_cents INTEGER NOT NULL CHECK(
+                maximum_chain_exposure_cents BETWEEN 1 AND 4611686018427387903
+            ),
+            command_key TEXT NOT NULL UNIQUE REFERENCES research_spend_commands(command_key),
+            created_at TEXT NOT NULL
+        ) STRICT
+        """,
+        """
+        CREATE TRIGGER research_fallback_approvals_no_update
+        BEFORE UPDATE ON research_fallback_approvals
+        BEGIN SELECT RAISE(ABORT, 'fallback approvals are immutable'); END
+        """,
+        """
+        CREATE TRIGGER research_fallback_approvals_no_delete
+        BEFORE DELETE ON research_fallback_approvals
+        BEGIN SELECT RAISE(ABORT, 'fallback approvals are durable'); END
+        """,
+    ),
 }
 
 
@@ -1428,6 +1507,7 @@ class ResearchSpendLedger:
                         *_MIGRATIONS[5],
                         *_MIGRATIONS[6],
                         *_MIGRATIONS[7],
+                        *_MIGRATIONS[8],
                     ),
                     start=1,
                 ):
@@ -1715,6 +1795,246 @@ class ResearchSpendLedger:
             )
             self._checkpoint("register_fallback_manifest:after_routes")
             return manifest
+
+    def issue_fallback_approval(
+        self,
+        command_key: str,
+        binding: RunBinding,
+        chain_id: str,
+        *,
+        expected_manifest_sha256: str,
+        expected_ceiling_cents: int,
+    ) -> FallbackSpendApproval:
+        """Atomically approve the exact persisted chain before any route is held."""
+        for name, value in (
+            ("command_key", command_key),
+            ("chain_id", chain_id),
+            ("expected_manifest_sha256", expected_manifest_sha256),
+        ):
+            _required_text(name, value)
+        _bounded_int(
+            "expected_ceiling_cents", expected_ceiling_cents,
+            minimum=1, maximum=MAX_AUTHORITY_CENTS,
+        )
+        with self._write("issue_fallback_approval") as connection:
+            run = self._require_binding(connection, binding)
+            chain = connection.execute(
+                "SELECT * FROM research_fallback_chains WHERE chain_id=?",
+                (chain_id,),
+            ).fetchone()
+            if (
+                chain is None
+                or str(chain["run_id"]) != binding.run_id
+                or str(chain["owner_id"]) != binding.owner_id
+            ):
+                raise RunNotFound(chain_id)
+            history = self._fallback_history_row(connection, chain, binding.owner_id)
+            manifest_sha256 = str(chain["manifest_sha256"])
+            if manifest_sha256 != expected_manifest_sha256:
+                raise IdempotencyConflict("fallback approval manifest changed")
+            if run.ceiling_cents != expected_ceiling_cents:
+                raise IdempotencyConflict("fallback approval ceiling changed")
+            exposure = max(route.projected_max_cents for route in history.routes)
+            if exposure > run.ceiling_cents:
+                raise SpendCeilingExceeded(binding.run_id, exposure, run.ceiling_cents)
+            approval_id = "fallback-approval:" + _sha256(_canonical({
+                "chain_id": chain_id,
+                "manifest_sha256": manifest_sha256,
+                "run_id": binding.run_id,
+                "owner_id": binding.owner_id,
+                "currency": binding.currency,
+                "ceiling_cents": run.ceiling_cents,
+                "maximum_chain_exposure_cents": exposure,
+            }))
+            intent_json = _canonical({
+                **_binding_payload(binding),
+                "approval_id": approval_id,
+                "chain_id": chain_id,
+                "manifest_sha256": manifest_sha256,
+                "ceiling_cents": run.ceiling_cents,
+                "maximum_chain_exposure_cents": exposure,
+            })
+            replay = self._replay(
+                connection, command_key, "issue_fallback_approval", chain_id, intent_json
+            )
+            if replay is None:
+                if connection.execute(
+                    "SELECT 1 FROM research_fallback_routes r JOIN research_spend_holds h "
+                    "ON h.run_id=? AND h.reservation_key=r.reservation_key "
+                    "WHERE r.chain_id=? LIMIT 1",
+                    (binding.run_id, chain_id),
+                ).fetchone() is not None:
+                    raise InvalidTransition(chain_id, "attempted", "approve fallback spend")
+                existing = connection.execute(
+                    "SELECT * FROM research_fallback_approvals WHERE chain_id=?", (chain_id,)
+                ).fetchone()
+                if existing is not None:
+                    raise IdempotencyConflict("fallback chain already has an approval")
+                now = _now()
+                result_json = _canonical({"approval_id": approval_id, "chain_id": chain_id})
+                self._record_command(
+                    connection, command_key, "issue_fallback_approval", chain_id,
+                    intent_json, result_json,
+                )
+                self._checkpoint("issue_fallback_approval:after_command")
+                connection.execute(
+                    "INSERT INTO research_fallback_approvals "
+                    "(approval_id,chain_id,run_id,owner_id,manifest_sha256,currency,"
+                    "ceiling_cents,maximum_chain_exposure_cents,command_key,created_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (approval_id, chain_id, binding.run_id, binding.owner_id,
+                     manifest_sha256, binding.currency, run.ceiling_cents, exposure,
+                     command_key, now),
+                )
+                self._checkpoint("issue_fallback_approval:after_approval")
+            row = connection.execute(
+                "SELECT * FROM research_fallback_approvals WHERE approval_id=?", (approval_id,)
+            ).fetchone()
+            if row is None:
+                raise LedgerIntegrityError("fallback approval command has no approval")
+            return self._validate_fallback_approval_row(
+                connection, row, binding, chain_id, manifest_sha256, exposure,
+                run.ceiling_cents,
+            )
+
+    def fallback_approval_binding(self, owner_id: str, chain_id: str) -> RunBinding:
+        """Resolve an owned chain to its private run binding."""
+        _required_text("owner_id", owner_id)
+        _required_text("chain_id", chain_id)
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT run_id FROM research_fallback_chains WHERE chain_id=? AND owner_id=?",
+                (chain_id, owner_id),
+            ).fetchone()
+            if row is None:
+                raise RunNotFound(chain_id)
+            run = self._load_run(connection, str(row["run_id"]))
+            if run.binding.owner_id != owner_id:
+                raise LedgerIntegrityError("fallback approval owner binding conflicts")
+            return run.binding
+        finally:
+            connection.close()
+
+    def require_fallback_approval(
+        self,
+        approval_id: str,
+        binding: RunBinding,
+        manifest: FallbackChainManifest,
+    ) -> FallbackSpendApproval:
+        """Require exact durable authority for a freshly recomputed manifest."""
+        _required_text("approval_id", approval_id)
+        connection = self._connect()
+        try:
+            run = self._require_binding(connection, binding)
+            chain = self._validate_fallback_manifest_row(connection, binding, manifest)
+            row = connection.execute(
+                "SELECT * FROM research_fallback_approvals WHERE approval_id=?",
+                (approval_id,),
+            ).fetchone()
+            if row is None:
+                raise DispatchApprovalRequired("exact fallback approval is required")
+            exposure = max(route.projected_max_cents for route in manifest.routes)
+            approval = self._validate_fallback_approval_row(
+                connection,
+                row,
+                binding,
+                manifest.chain_id,
+                str(chain["manifest_sha256"]),
+                exposure,
+                run.ceiling_cents,
+            )
+            expected = (
+                manifest.chain_id, binding.run_id, binding.owner_id,
+                str(chain["manifest_sha256"]), binding.currency, run.ceiling_cents,
+                exposure,
+            )
+            actual = (
+                approval.chain_id, approval.run_id, approval.owner_id,
+                approval.manifest_sha256, approval.currency, approval.ceiling_cents,
+                approval.maximum_chain_exposure_cents,
+            )
+            if actual != expected:
+                raise DispatchApprovalRequired("fallback approval does not match exact plan")
+            return approval
+        finally:
+            connection.close()
+
+    @staticmethod
+    def _fallback_approval_row(row: sqlite3.Row) -> FallbackSpendApproval:
+        return FallbackSpendApproval(
+            approval_id=str(row["approval_id"]), chain_id=str(row["chain_id"]),
+            run_id=str(row["run_id"]), owner_id=str(row["owner_id"]),
+            manifest_sha256=str(row["manifest_sha256"]), currency=str(row["currency"]),
+            ceiling_cents=int(row["ceiling_cents"]),
+            maximum_chain_exposure_cents=int(row["maximum_chain_exposure_cents"]),
+            command_key=str(row["command_key"]), created_at=str(row["created_at"]),
+        )
+
+    def _validate_fallback_approval_row(
+        self,
+        connection: sqlite3.Connection,
+        row: sqlite3.Row,
+        binding: RunBinding,
+        chain_id: str,
+        manifest_sha256: str,
+        exposure: int,
+        ceiling_cents: int,
+    ) -> FallbackSpendApproval:
+        approval = self._fallback_approval_row(row)
+        expected_approval_id = "fallback-approval:" + _sha256(
+            _canonical(
+                {
+                    "chain_id": chain_id,
+                    "manifest_sha256": manifest_sha256,
+                    "run_id": binding.run_id,
+                    "owner_id": binding.owner_id,
+                    "currency": binding.currency,
+                    "ceiling_cents": ceiling_cents,
+                    "maximum_chain_exposure_cents": exposure,
+                }
+            )
+        )
+        if (
+            approval.approval_id != expected_approval_id
+            or approval.chain_id != chain_id
+            or approval.run_id != binding.run_id
+            or approval.owner_id != binding.owner_id
+            or approval.manifest_sha256 != manifest_sha256
+            or approval.currency != binding.currency
+            or approval.ceiling_cents != ceiling_cents
+            or approval.maximum_chain_exposure_cents != exposure
+        ):
+            raise LedgerIntegrityError("fallback approval columns conflict")
+        intent_json = _canonical(
+            {
+                **_binding_payload(binding),
+                "approval_id": approval.approval_id,
+                "chain_id": approval.chain_id,
+                "manifest_sha256": manifest_sha256,
+                "ceiling_cents": ceiling_cents,
+                "maximum_chain_exposure_cents": exposure,
+            }
+        )
+        try:
+            receipt = self._replay(
+                connection,
+                approval.command_key,
+                "issue_fallback_approval",
+                chain_id,
+                intent_json,
+            )
+        except IdempotencyConflict as exc:
+            raise LedgerIntegrityError("fallback approval command receipt conflicts") from exc
+        if receipt is None:
+            raise LedgerIntegrityError("fallback approval has no command receipt")
+        try:
+            result = json.loads(receipt)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise LedgerIntegrityError("fallback approval command result is invalid") from exc
+        if result != {"approval_id": approval.approval_id, "chain_id": chain_id}:
+            raise LedgerIntegrityError("fallback approval command result conflicts")
+        return approval
 
     def fallback_history(
         self,
@@ -3807,6 +4127,25 @@ class ResearchSpendLedger:
             raise LedgerIntegrityError("fallback manifest run owner conflicts")
         self._validate_fallback_manifest_row(connection, run.binding, manifest)
 
+        approval_id: str | None = None
+        approved_at: str | None = None
+        approval_row = connection.execute(
+            "SELECT * FROM research_fallback_approvals WHERE chain_id=?",
+            (manifest.chain_id,),
+        ).fetchone()
+        if approval_row is not None:
+            approval = self._validate_fallback_approval_row(
+                connection,
+                approval_row,
+                run.binding,
+                manifest.chain_id,
+                _sha256(raw),
+                max(route.projected_max_cents for route in manifest.routes),
+                run.ceiling_cents,
+            )
+            approval_id = approval.approval_id
+            approved_at = approval.created_at
+
         public_routes: list[FallbackRouteHistory] = []
         prior_states: list[FallbackRouteState] = []
         settled = False
@@ -3898,6 +4237,8 @@ class ResearchSpendLedger:
             outcome=outcome,
             routes=tuple(public_routes),
             created_at=str(row["created_at"]),
+            approval_id=approval_id,
+            approved_at=approved_at,
         )
 
     def _load_billing_assessment(

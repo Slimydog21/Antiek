@@ -8,6 +8,7 @@ from .ledger import (
     BindingConflict,
     CompanionExecutionSnapshot,
     CompanionExecutionState,
+    DispatchApprovalRequired,
     FallbackChainHistory,
     FallbackChainHistoryPage,
     FallbackChainManifest,
@@ -16,6 +17,7 @@ from .ledger import (
     FallbackRouteHistory,
     FallbackRouteManifest,
     FallbackRouteState,
+    FallbackSpendApproval,
     IdempotencyConflict,
     InvalidTransition,
     LaunchExecutionIntent,
@@ -49,6 +51,7 @@ from .ledger import (
 
 __all__ = [
     "BindingConflict",
+    "DispatchApprovalRequired",
     "BillingAssessment",
     "BillingClassification",
     "BillingEvidenceKind",
@@ -59,6 +62,7 @@ __all__ = [
     "FallbackChainHistoryPage",
     "FallbackChainManifest",
     "FallbackChainOutcome",
+    "FallbackSpendApproval",
     "FallbackHistoryCursor",
     "FallbackRouteHistory",
     "FallbackRouteManifest",

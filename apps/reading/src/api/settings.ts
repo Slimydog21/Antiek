@@ -109,6 +109,8 @@ export interface FallbackReceiptChain {
     "unattempted" | "in_progress" | "ambiguous" | "settled" | "exhausted";
   routes: FallbackReceiptRoute[];
   created_at: string;
+  approval_id: string | null;
+  approved_at: string | null;
 }
 
 export interface FallbackReceiptHistoryResponse {
@@ -221,6 +223,8 @@ function validateFallbackReceiptChain(value: unknown): FallbackReceiptChain {
     "outcome",
     "routes",
     "created_at",
+    "approval_id",
+    "approved_at",
   ]);
   if (
     !nonEmpty(chain.chain_id) ||
@@ -230,7 +234,10 @@ function validateFallbackReceiptChain(value: unknown): FallbackReceiptChain {
     !Array.isArray(chain.routes) ||
     chain.routes.length < 1 ||
     chain.routes.length > 16 ||
-    !nonEmpty(chain.created_at)
+    !nonEmpty(chain.created_at) ||
+    !nullableString(chain.approval_id) ||
+    !nullableString(chain.approved_at) ||
+    ((chain.approval_id === null) !== (chain.approved_at === null))
   ) {
     throw new Error("fallback receipt chain is invalid");
   }

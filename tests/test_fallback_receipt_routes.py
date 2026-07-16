@@ -139,3 +139,76 @@ def test_conflicting_registration_receipt_fails_value_free(
     assert response.status_code == 503
     assert response.json() == {"detail": "fallback receipt history is unavailable"}
     assert "register-a" not in response.text
+
+
+def test_approval_is_exact_replayable_minimized_and_creates_no_hold(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    db_path = tmp_path / "spend.sqlite3"
+    monkeypatch.setenv("ANTIEK_RESEARCH_SPEND_DB", str(db_path))
+    _seed(db_path)
+    client = TestClient(_app())
+    manifest_sha256 = client.get("/settings/fallback-receipts").json()["items"][0][
+        "manifest_sha256"
+    ]
+    payload = {
+        "expected_manifest_sha256": manifest_sha256,
+        "expected_ceiling_cents": 200,
+    }
+
+    first = client.post("/settings/fallback-receipts/chain-a/approval", json=payload)
+    replay = client.post("/settings/fallback-receipts/chain-a/approval", json=payload)
+
+    assert first.status_code == replay.status_code == 200
+    assert first.json() == replay.json()
+    assert first.headers["cache-control"] == "no-store"
+    assert set(first.json()) == {
+        "authority",
+        "approval_id",
+        "chain_id",
+        "manifest_sha256",
+        "currency",
+        "ceiling_cents",
+        "maximum_chain_exposure_cents",
+        "approved_at",
+    }
+    assert first.json()["maximum_chain_exposure_cents"] == 75
+    history = client.get("/settings/fallback-receipts").json()["items"][0]
+    assert history["approval_id"] == first.json()["approval_id"]
+    assert history["approved_at"] == first.json()["approved_at"]
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("SELECT count(*) FROM research_spend_holds").fetchone()[0] == 0
+
+
+def test_approval_rejects_foreign_or_changed_authority_value_free(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    db_path = tmp_path / "spend.sqlite3"
+    monkeypatch.setenv("ANTIEK_RESEARCH_SPEND_DB", str(db_path))
+    _seed(db_path)
+    client = TestClient(_app())
+    digest = client.get("/settings/fallback-receipts").json()["items"][0]["manifest_sha256"]
+
+    foreign = TestClient(_app("owner-b")).post(
+        "/settings/fallback-receipts/chain-a/approval",
+        json={"expected_manifest_sha256": digest, "expected_ceiling_cents": 200},
+    )
+    changed = client.post(
+        "/settings/fallback-receipts/chain-a/approval",
+        json={"expected_manifest_sha256": "0" * 64, "expected_ceiling_cents": 200},
+    )
+    extra = client.post(
+        "/settings/fallback-receipts/chain-a/approval",
+        json={
+            "expected_manifest_sha256": digest,
+            "expected_ceiling_cents": 200,
+            "owner_id": "owner-a",
+        },
+    )
+
+    assert foreign.status_code == 404
+    assert changed.status_code == 409
+    assert extra.status_code == 422
+    assert foreign.headers["cache-control"] == "no-store"
+    assert changed.headers["cache-control"] == "no-store"
+    assert "owner-a" not in foreign.text + changed.text

@@ -729,6 +729,11 @@ function FallbackReceiptHistory({
                 <span className="font-mono font-semibold text-ink dark:text-bright">{chain.outcome.replace("_", " ")}</span>
               </div>
               <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">Manifest {chain.manifest_sha256.slice(0, 10)}</p>
+              {chain.approval_id && chain.approved_at && (
+                <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                  Approved {new Date(chain.approved_at).toLocaleString()} · {chain.approval_id.slice(-10)}
+                </p>
+              )}
               <ol className="mt-3 space-y-2">
                 {chain.routes.map((route) => (
                   <li key={route.fallback_index} className="grid gap-x-3 text-xs sm:grid-cols-[2rem_1fr_auto]">

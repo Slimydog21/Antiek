@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import math
 import os
@@ -25,7 +26,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from orchestration.continuous.budget import (
@@ -42,8 +43,12 @@ from substrate.dispatch.advisory_decision import (
 )
 from substrate.research_spend import (
     FallbackHistoryCursor,
+    IdempotencyConflict,
+    InvalidTransition,
     LedgerIntegrityError,
     ResearchSpendLedger,
+    RunNotFound,
+    SpendCeilingExceeded,
     default_research_spend_db_path,
 )
 
@@ -141,6 +146,8 @@ class FallbackReceiptChainResponse(BaseModel):
     outcome: Literal["unattempted", "in_progress", "ambiguous", "settled", "exhausted"]
     routes: list[FallbackReceiptRouteResponse] = Field(min_length=1, max_length=16)
     created_at: str
+    approval_id: str | None = None
+    approved_at: str | None = None
 
 
 class FallbackReceiptHistoryResponse(BaseModel):
@@ -149,6 +156,26 @@ class FallbackReceiptHistoryResponse(BaseModel):
     )
     items: list[FallbackReceiptChainResponse] = Field(max_length=50)
     next_cursor: str | None = None
+
+
+class FallbackApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_ceiling_cents: int = Field(ge=1)
+
+
+class FallbackApprovalResponse(BaseModel):
+    authority: Literal["durable_fallback_spend_approval"] = (
+        "durable_fallback_spend_approval"
+    )
+    approval_id: str
+    chain_id: str
+    manifest_sha256: str
+    currency: Literal["USD"]
+    ceiling_cents: int = Field(ge=1)
+    maximum_chain_exposure_cents: int = Field(ge=1)
+    approved_at: str
 
 
 class BenchmarkMeasurement(BaseModel):
@@ -886,10 +913,84 @@ def get_fallback_receipts(
                     for route in chain.routes
                 ],
                 created_at=chain.created_at,
+                approval_id=chain.approval_id,
+                approved_at=chain.approved_at,
             )
             for chain in page.items
         ],
         next_cursor=_encode_history_cursor(page.next_cursor),
+    )
+
+
+@settings_router.post(
+    "/fallback-receipts/{chain_id}/approval",
+    response_model=FallbackApprovalResponse,
+)
+def approve_fallback_receipt(
+    chain_id: str,
+    body: FallbackApprovalRequest,
+    request: Request,
+    response: Response,
+) -> FallbackApprovalResponse:
+    response.headers["Cache-Control"] = "no-store"
+    no_store = {"Cache-Control": "no-store"}
+    owner_id = getattr(request.state, "user_id", None)
+    if not isinstance(owner_id, str) or not owner_id.strip():
+        raise HTTPException(
+            status_code=401, detail="operator identity is required", headers=no_store
+        )
+    if not chain_id or len(chain_id) > 256:
+        raise HTTPException(
+            status_code=404, detail="fallback chain was not found", headers=no_store
+        )
+    ledger = ResearchSpendLedger(default_research_spend_db_path())
+    owner = owner_id.strip()
+    try:
+        binding = ledger.fallback_approval_binding(owner, chain_id)
+        command_payload = json.dumps(
+            {
+                "chain_id": chain_id,
+                "expected_ceiling_cents": body.expected_ceiling_cents,
+                "expected_manifest_sha256": body.expected_manifest_sha256,
+                "owner_id": owner,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        command_key = "fallback-approval-command:" + hashlib.sha256(
+            command_payload.encode("utf-8")
+        ).hexdigest()
+        approval = ledger.issue_fallback_approval(
+            command_key,
+            binding,
+            chain_id,
+            expected_manifest_sha256=body.expected_manifest_sha256,
+            expected_ceiling_cents=body.expected_ceiling_cents,
+        )
+    except RunNotFound as exc:
+        raise HTTPException(
+            status_code=404, detail="fallback chain was not found", headers=no_store
+        ) from exc
+    except (IdempotencyConflict, InvalidTransition, SpendCeilingExceeded) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="fallback approval no longer matches an unattempted chain",
+            headers=no_store,
+        ) from exc
+    except (LedgerIntegrityError, sqlite3.Error, OSError, ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="fallback approval is unavailable",
+            headers=no_store,
+        ) from exc
+    return FallbackApprovalResponse(
+        approval_id=approval.approval_id,
+        chain_id=approval.chain_id,
+        manifest_sha256=approval.manifest_sha256,
+        currency="USD",
+        ceiling_cents=approval.ceiling_cents,
+        maximum_chain_exposure_cents=approval.maximum_chain_exposure_cents,
+        approved_at=approval.created_at,
     )
 
 
