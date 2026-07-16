@@ -1,23 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link } from "react-router-dom";
 
+import Werner from "../../brand/Werner";
+import environment from "../../brand/werner/skill-rules/skill_rule_conservatory_environment_v1.webp";
 import { apiFetch } from "../../lib/api";
+import "./skill-rule-conservatory.css";
 
-/**
- * Shared-substrate skill rules surface (master-spec §13.2 + §13.9).
- *
- * Read-only listing of rules that cleared the cross-user promotion
- * gate (``SkillRuleAccumulator`` → ``skill_writer``). Per master-spec
- * §13.2: rules propagate; underlying private content does not. This
- * surface is the operator's window into the cross-user inference
- * the substrate has accumulated.
- *
- * Filters by domain and confidence; counters at the top summarize the
- * full result set before any filter is applied so the operator can
- * gauge total substrate maturity at a glance.
- */
-
-interface SkillRule {
+export interface SkillRule {
   rule_id: string;
   rule_text: string;
   rule_kind: string;
@@ -28,183 +24,385 @@ interface SkillRule {
   extracted_at: string | null;
 }
 
-const CONFIDENCE_ORDER = ["high", "moderate", "low"] as const;
+export type SkillRuleFilters = {
+  query: string;
+  domain: string;
+  confidence: string;
+};
+export type SkillRulesViewProps = {
+  rules: SkillRule[];
+  state?: "ready" | "loading" | "error";
+  filters: SkillRuleFilters;
+  filtersApplied?: boolean;
+  onFiltersChange: (filters: SkillRuleFilters) => void;
+  onApply: () => void;
+  onClear: () => void;
+  onRetry?: () => void;
+};
 
+const CONFIDENCE_ORDER = ["high", "moderate", "low"] as const;
+const safeNumber = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+const safeText = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value : null;
+const isSkillRuleRow = (value: unknown): value is SkillRule =>
+  Boolean(value) &&
+  typeof value === "object" &&
+  !Array.isArray(value) &&
+  Boolean(safeText((value as Record<string, unknown>).rule_id));
+
+function When({ value }: { value: unknown }) {
+  const label = safeText(value);
+  if (!label) return <>Time not reported</>;
+  const parsed = Date.parse(label);
+  return Number.isNaN(parsed) ? (
+    <>Time not reported</>
+  ) : (
+    <time dateTime={label}>
+      {new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
+        parsed,
+      )}
+    </time>
+  );
+}
+
+function RuleCard({ rule }: { rule: SkillRule }) {
+  const contributors = safeNumber(rule.source_user_count);
+  const epsilon = safeNumber(rule.epsilon_budget_consumed);
+  return (
+    <li>
+      <Link
+        className="src-rule"
+        to={`/skill-rules/${encodeURIComponent(rule.rule_id)}`}
+      >
+        <header>
+          <div>
+            <p className="src-overline">
+              {safeText(rule.domain) ?? "Domain not reported"}
+            </p>
+            <h3>{safeText(rule.rule_text) ?? "Rule text unavailable"}</h3>
+          </div>
+          <span
+            className={`src-confidence src-confidence--${safeText(rule.confidence) ?? "unknown"}`}
+          >
+            {safeText(rule.confidence)?.replaceAll("_", " ") ?? "Unlabelled"}
+          </span>
+        </header>
+        <dl>
+          <div>
+            <dt>Rule kind</dt>
+            <dd>
+              {safeText(rule.rule_kind)?.replaceAll("_", " ") ?? "Not reported"}
+            </dd>
+          </div>
+          <div>
+            <dt>Independent contributors</dt>
+            <dd>
+              {contributors === null
+                ? "Not reported"
+                : new Intl.NumberFormat().format(contributors)}
+            </dd>
+          </div>
+          <div>
+            <dt>Cumulative privacy spend</dt>
+            <dd>
+              {epsilon === null ? "Not reported" : `ε ${epsilon.toFixed(4)}`}
+            </dd>
+          </div>
+          <div>
+            <dt>Promoted</dt>
+            <dd>
+              <When value={rule.extracted_at} />
+            </dd>
+          </div>
+        </dl>
+        <p className="src-rule__id">
+          {safeText(rule.rule_id) ?? "Rule identifier unavailable"}
+        </p>
+      </Link>
+    </li>
+  );
+}
+
+export function SkillRulesView({
+  rules,
+  state = "ready",
+  filters,
+  filtersApplied = false,
+  onFiltersChange,
+  onApply,
+  onClear,
+  onRetry,
+}: SkillRulesViewProps) {
+  const visibleRules = useMemo(() => rules.filter(isSkillRuleRow), [rules]);
+  const counts = useMemo(
+    () =>
+      CONFIDENCE_ORDER.reduce<Record<string, number>>(
+        (acc, label) => ({
+          ...acc,
+          [label]: visibleRules.filter((rule) => rule.confidence === label)
+            .length,
+        }),
+        {},
+      ),
+    [visibleRules],
+  );
+  const otherCount =
+    visibleRules.length -
+    CONFIDENCE_ORDER.reduce((sum, label) => sum + counts[label], 0);
+  const apply = (event: FormEvent) => {
+    event.preventDefault();
+    onApply();
+  };
+  return (
+    <main className="src-shell">
+      <img
+        className="src-environment"
+        src={environment}
+        alt=""
+        aria-hidden="true"
+      />
+      <div className="src-veil" aria-hidden="true" />
+      <div className="src-content">
+        <header className="src-hero">
+          <div>
+            <p className="src-eyebrow">
+              Shared craft · privacy-preserving promotion
+            </p>
+            <h1>Skill Rule Conservatory</h1>
+            <p>
+              Inspect practices that independently recurred often enough to
+              enter the shared substrate. Rule text and measured promotion
+              metadata travel here; contributors’ private source material does
+              not.
+            </p>
+          </div>
+          <Werner
+            mood={
+              state === "loading"
+                ? "thinking"
+                : state === "error"
+                  ? "empty"
+                  : "idle"
+            }
+            size={88}
+            label="Werner tending the Skill Rule Conservatory"
+          />
+        </header>
+        <aside className="src-truth" aria-label="How to read this surface">
+          <p className="src-overline">Reading discipline</p>
+          <p>
+            <strong>
+              Confidence is the stored promotion label, not a probability.
+            </strong>{" "}
+            Contributor count records independent support. Cumulative ε records
+            privacy spend; it is not a quality score.
+          </p>
+        </aside>
+        <section className="src-summary" aria-labelledby="src-visible">
+          <header>
+            <div>
+              <p className="src-overline">
+                Current query · capped at 200 results
+              </p>
+              <h2 id="src-visible">Visible promoted rules</h2>
+            </div>
+            <strong>{state === "ready" ? visibleRules.length : "—"}</strong>
+          </header>
+          <div className="src-counts">
+            {CONFIDENCE_ORDER.map((label) => (
+              <div key={label}>
+                <span>{counts[label] ?? 0}</span>
+                <p>{label} label</p>
+              </div>
+            ))}
+            {otherCount > 0 ? (
+              <div>
+                <span>{otherCount}</span>
+                <p>other labels</p>
+              </div>
+            ) : null}
+          </div>
+          <p>
+            Counts describe only the rows returned by the current server query.
+            They are not totals for the whole substrate when filters are active
+            or the 200-row cap is reached.
+          </p>
+        </section>
+        <form
+          className="src-filter"
+          role="search"
+          aria-label="Filter promoted rules"
+          onSubmit={apply}
+        >
+          <header>
+            <div>
+              <p className="src-overline">Specimen finder</p>
+              <h2>Find a promoted practice</h2>
+            </div>
+            {filtersApplied ? (
+              <button type="button" className="src-clear" onClick={onClear}>
+                Clear filters
+              </button>
+            ) : null}
+          </header>
+          <div className="src-filter__grid">
+            <label>
+              <span>Search rule text</span>
+              <input
+                value={filters.query}
+                onChange={(e) =>
+                  onFiltersChange({ ...filters, query: e.target.value })
+                }
+                placeholder="e.g. triangulate vendor claims"
+              />
+            </label>
+            <label>
+              <span>Domain</span>
+              <input
+                value={filters.domain}
+                onChange={(e) =>
+                  onFiltersChange({ ...filters, domain: e.target.value })
+                }
+                placeholder="e.g. semiconductors"
+              />
+            </label>
+            <label>
+              <span>Stored confidence label</span>
+              <select
+                value={filters.confidence}
+                onChange={(e) =>
+                  onFiltersChange({ ...filters, confidence: e.target.value })
+                }
+              >
+                <option value="">Any label</option>
+                <option value="high">High</option>
+                <option value="moderate">Moderate</option>
+                <option value="low">Low</option>
+              </select>
+            </label>
+            <button type="submit">
+              Apply query <span aria-hidden="true">→</span>
+            </button>
+          </div>
+        </form>
+        {state === "loading" ? (
+          <section className="src-state" aria-live="polite">
+            <span className="src-spinner" aria-hidden="true" />
+            <h2>Checking the shared substrate…</h2>
+            <p>Reading promoted rules and their audit metadata.</p>
+          </section>
+        ) : null}
+        {state === "error" ? (
+          <section className="src-state" role="alert">
+            <h2>The conservatory could not be opened</h2>
+            <p>No rule counts were inferred. Try the read-only query again.</p>
+            {onRetry ? (
+              <button type="button" onClick={onRetry}>
+                Try again
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+        {state === "ready" && visibleRules.length === 0 ? (
+          <section className="src-state">
+            <Werner
+              mood="empty"
+              size={72}
+              label="Werner found no matching promoted rules"
+            />
+            <h2>
+              {filtersApplied
+                ? "No promoted rules match this query"
+                : "No rules have cleared promotion yet"}
+            </h2>
+            <p>
+              {filtersApplied
+                ? "Clear or revise the filters. An empty result does not mean the substrate has no promoted rules."
+                : "Promotion requires independent contributor support and privacy accounting. Private source material remains partitioned."}
+            </p>
+          </section>
+        ) : null}
+        {state === "ready" && visibleRules.length > 0 ? (
+          <section className="src-results" aria-labelledby="src-results">
+            <header>
+              <p className="src-overline">Promoted practice archive</p>
+              <h2 id="src-results">Rules in view</h2>
+              <p>
+                Open a rule for its complete promotion metadata. Long text and
+                identifiers remain readable rather than truncated.
+              </p>
+            </header>
+            <ul>
+              {visibleRules.map((rule) => (
+                <RuleCard key={rule.rule_id} rule={rule} />
+              ))}
+            </ul>
+          </section>
+        ) : null}
+      </div>
+    </main>
+  );
+}
+
+const EMPTY_FILTERS: SkillRuleFilters = {
+  query: "",
+  domain: "",
+  confidence: "",
+};
 export default function SkillRules() {
   const [rules, setRules] = useState<SkillRule[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [domain, setDomain] = useState<string>("");
-  const [confidence, setConfidence] = useState<string>("");
-  const [searchQuery, setSearchQuery] = useState<string>("");
-
+  const [state, setState] = useState<"ready" | "loading" | "error">("loading");
+  const [draft, setDraft] = useState<SkillRuleFilters>(EMPTY_FILTERS);
+  const [applied, setApplied] = useState<SkillRuleFilters>(EMPTY_FILTERS);
+  const request = useRef(0);
   const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    const token = ++request.current;
+    setState("loading");
+    const params = new URLSearchParams({ limit: "200" });
+    if (applied.query.trim()) params.set("q", applied.query.trim());
+    if (applied.domain.trim()) params.set("domain", applied.domain.trim());
+    if (applied.confidence) params.set("confidence", applied.confidence);
     try {
-      const params = new URLSearchParams();
-      if (domain.trim()) params.set("domain", domain.trim());
-      if (confidence) params.set("confidence", confidence);
-      if (searchQuery.trim()) params.set("q", searchQuery.trim());
-      params.set("limit", "200");
-      const resp = await apiFetch(`/skill-rules?${params.toString()}`);
-      if (!resp.ok) {
-        throw new Error(`GET /skill-rules failed: HTTP ${resp.status}`);
+      const response = await apiFetch(`/skill-rules?${params}`);
+      if (!response.ok) throw new Error("skill rules unavailable");
+      const body = (await response.json()) as { rules?: SkillRule[] };
+      if (token !== request.current) return;
+      setRules(
+        Array.isArray(body.rules) ? body.rules.filter(isSkillRuleRow) : [],
+      );
+      setState("ready");
+    } catch {
+      if (token === request.current) {
+        setRules([]);
+        setState("error");
       }
-      const data = await resp.json();
-      setRules(data.rules ?? []);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
     }
-  }, [domain, confidence, searchQuery]);
-
+  }, [applied]);
   useEffect(() => {
     void reload();
+    return () => {
+      request.current += 1;
+    };
   }, [reload]);
-
-  const counts = useMemo(() => {
-    const acc = { high: 0, moderate: 0, low: 0 } as Record<string, number>;
-    for (const r of rules) {
-      acc[r.confidence] = (acc[r.confidence] ?? 0) + 1;
-    }
-    return acc;
-  }, [rules]);
-
+  const filtersApplied = Boolean(
+    applied.query.trim() || applied.domain.trim() || applied.confidence,
+  );
   return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Shared substrate skill rules
-            </h1>
-            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Cross-user discovered rules that cleared the §13.9
-              promotion gate. Each rule is content-addressed —
-              independent users producing the same rule land in the
-              same bucket without coordination. Private content stays
-              in its partition; only the rule + ε accounting + audit
-              metadata propagate.
-            </p>
-          </header>
-
-          <section className="grid grid-cols-3 gap-3">
-            {CONFIDENCE_ORDER.map((c) => (
-              <div
-                key={c}
-                className="border border-rule dark:border-charcoal-1 rounded-md px-4 py-3 text-center"
-              >
-                <p className="text-2xl font-serif text-ink dark:text-bright">
-                  {counts[c] ?? 0}
-                </p>
-                <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
-                  {c} confidence
-                </p>
-              </div>
-            ))}
-          </section>
-
-          <section className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-3">
-            <h2 className="text-sm font-serif text-ink dark:text-bright">Filter</h2>
-            <div className="space-y-1">
-              <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
-                Search rule text
-              </label>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="case-insensitive substring match…"
-                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
-                  Domain
-                </label>
-                <input
-                  type="text"
-                  value={domain}
-                  onChange={(e) => setDomain(e.target.value)}
-                  placeholder="quantum, defense, …"
-                  className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
-                  Confidence
-                </label>
-                <select
-                  value={confidence}
-                  onChange={(e) => setConfidence(e.target.value)}
-                  className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 bg-ice-0 dark:bg-charcoal-2"
-                >
-                  <option value="">any</option>
-                  <option value="high">high</option>
-                  <option value="moderate">moderate</option>
-                  <option value="low">low</option>
-                </select>
-              </div>
-            </div>
-          </section>
-
-          {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
-              {error}
-            </p>
-          )}
-
-          {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
-          )}
-
-          {!loading && rules.length === 0 && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">
-              No promoted rules yet. The accumulator needs at least
-              3 distinct contributors before a rule clears the
-              §13.9 gate.
-            </p>
-          )}
-
-          <section className="space-y-3">
-            {rules.map((r) => (
-              <Link
-                key={r.rule_id}
-                to={`/skill-rules/${encodeURIComponent(r.rule_id)}`}
-                className="block border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-2 hover:bg-ice-1 dark:bg-charcoal-2 transition-colors"
-              >
-                <div className="flex items-baseline justify-between gap-3">
-                  <h3 className="text-sm font-serif text-ink dark:text-bright truncate">
-                    {r.rule_text}
-                  </h3>
-                  <span
-                    className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded shrink-0 ${
-                      r.confidence === "high"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : r.confidence === "moderate"
-                        ? "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
-                        : "bg-ice-1 dark:bg-charcoal-2 text-shadow-1 dark:text-moonlight"
-                    }`}
-                  >
-                    {r.confidence}
-                  </span>
-                </div>
-                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-                  {r.domain} · {r.rule_kind} · users={r.source_user_count}
-                  {" · "}ε={r.epsilon_budget_consumed.toFixed(4)}
-                  {r.extracted_at ? ` · ${r.extracted_at}` : ""}
-                </p>
-                <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
-                  {r.rule_id}
-                </p>
-              </Link>
-            ))}
-          </section>
-        </div>
-      </main>
-    </div>
+    <SkillRulesView
+      rules={rules}
+      state={state}
+      filters={draft}
+      filtersApplied={filtersApplied}
+      onFiltersChange={setDraft}
+      onApply={() => setApplied({ ...draft })}
+      onClear={() => {
+        setDraft(EMPTY_FILTERS);
+        setApplied(EMPTY_FILTERS);
+      }}
+      onRetry={() => void reload()}
+    />
   );
 }
