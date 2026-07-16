@@ -1659,6 +1659,12 @@ def create_app(
     # the deny-by-default gate in substrate/books/serve.py.
     from .books import register_book_routes
     register_book_routes(app)
+    from .canonical_twin_reader_routes import register_canonical_twin_reader_routes
+    register_canonical_twin_reader_routes(
+        app,
+        db_path=default_db_path(),
+        ledger_path=os.environ.get("ANTIEK_TWIN_LEDGER_PATH"),
+    )
     # Book acquisition — authorized, bytes-only EPUB port into the
     # personal-reading corpus.  Requires a dedicated signing key
     # (ANTIEK_BOOK_ACQUISITION_SIGNING_KEY) that is NEVER the

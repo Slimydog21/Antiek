@@ -8,12 +8,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from runtime.db_lock import LockedConnection
+from substrate.books.html_sanitizer import sanitize_book_html, sanitized_html_provenance
 from substrate.graph.ops import insert_chunk, insert_document
 
 from .ledger import TwinIntegrityError, TwinRecursionLedger
 from .source_registration import build_twin_source_envelope
 
-PUBLICATION_SCHEMA = "antiek.canonical-twin-publication.v1"
+LEGACY_PUBLICATION_SCHEMA = "antiek.canonical-twin-publication.v1"
+PUBLICATION_SCHEMA = "antiek.canonical-twin-publication.v2"
 
 
 class CanonicalTwinPublicationError(RuntimeError):
@@ -34,7 +36,7 @@ def _canonical_json(value: object) -> str:
 
 def _chunk_id(binding_id: str, chunk_text: str) -> str:
     digest = hashlib.sha256(
-        _canonical_json([PUBLICATION_SCHEMA, binding_id, chunk_text]).encode("utf-8")
+        _canonical_json([LEGACY_PUBLICATION_SCHEMA, binding_id, chunk_text]).encode("utf-8")
     ).hexdigest()
     return "twin-chunk-" + digest
 
@@ -59,6 +61,7 @@ def publish_canonical_twin(
     with ledger.canonical_publication(binding_id) as publication:
         source_uri = f"antiek:twin-binding:{publication.binding_id}"
         chunk_id = _chunk_id(publication.binding_id, publication.chunk_text)
+        sanitized_html = sanitize_book_html(publication.rendered_html)
         metadata = _canonical_json(
             {
                 "authority": "advisory_twin_v1",
@@ -72,12 +75,28 @@ def publish_canonical_twin(
                 "schema": PUBLICATION_SCHEMA,
                 "source_asset_id": publication.source_asset_id,
                 "source_hash": publication.source_hash,
+                **sanitized_html_provenance(),
+            }
+        )
+        legacy_metadata = _canonical_json(
+            {
+                "authority": "advisory_twin_v1",
+                "binding_id": publication.binding_id,
+                "body_hash": publication.body_hash,
+                "chunk_id": chunk_id,
+                "chunk_sha256": hashlib.sha256(
+                    publication.chunk_text.encode("utf-8")
+                ).hexdigest(),
+                "completion_digest": publication.completion_digest,
+                "schema": LEGACY_PUBLICATION_SCHEMA,
+                "source_asset_id": publication.source_asset_id,
+                "source_hash": publication.source_hash,
             }
         )
         envelope = build_twin_source_envelope(
             document_id=publication.twin_id,
             title=publication.title,
-            raw_text=publication.rendered_html,
+            raw_text=sanitized_html,
             document_type="canonical_twin",
             owner_user_id=publication.account_id,
         ).to_json()
@@ -90,12 +109,35 @@ def publish_canonical_twin(
             5,
             "canonical_twin",
             f"twin-{publication.source_asset_id}",
-            publication.rendered_html,
+            sanitized_html,
             metadata,
             "personal_reading",
             None,
             publication.account_id,
             envelope,
+        )
+        legacy_envelope = build_twin_source_envelope(
+            document_id=publication.twin_id,
+            title=publication.title,
+            raw_text=publication.rendered_html,
+            document_type="canonical_twin",
+            owner_user_id=publication.account_id,
+        ).to_json()
+        legacy_document = (
+            publication.twin_id,
+            source_uri,
+            publication.title,
+            None,
+            None,
+            5,
+            "canonical_twin",
+            f"twin-{publication.source_asset_id}",
+            publication.rendered_html,
+            legacy_metadata,
+            "personal_reading",
+            None,
+            publication.account_id,
+            legacy_envelope,
         )
         expected_chunk = (
             chunk_id,
@@ -136,7 +178,7 @@ def publish_canonical_twin(
                     source_uri=source_uri,
                     title=publication.title,
                     investigation_id=f"twin-{publication.source_asset_id}",
-                    raw_text=publication.rendered_html,
+                    raw_text=sanitized_html,
                     metadata=metadata,
                     content_class="personal_reading",
                     owner_user_id=publication.account_id,
@@ -152,6 +194,12 @@ def publish_canonical_twin(
                 )
             elif document is None or chunk is None:
                 raise CanonicalTwinPublicationError("publication document and chunk are not atomic")
+            elif tuple(document) == legacy_document and tuple(chunk) == expected_chunk:
+                con.execute(
+                    "UPDATE documents SET raw_text=?,metadata=?,twin_source_envelope=? "
+                    "WHERE document_id=?",
+                    [sanitized_html, metadata, envelope, publication.twin_id],
+                )
             elif tuple(document) != expected_document or tuple(chunk) != expected_chunk:
                 raise CanonicalTwinPublicationError("canonical publication substitution")
             checkpoint("before_publication_commit")
@@ -172,6 +220,7 @@ def publish_canonical_twin(
 __all__ = [
     "CanonicalTwinPublicationError",
     "CanonicalTwinPublicationResult",
+    "LEGACY_PUBLICATION_SCHEMA",
     "PUBLICATION_SCHEMA",
     "publish_canonical_twin",
 ]

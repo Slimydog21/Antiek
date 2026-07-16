@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Cycle 111: Canonical Twin Owner Reader</title></head>
+<body><main>
+<h1>Canonical Twin Owner Reader</h1>
+<p>Expose a canonical advisory twin only to its authenticated owner, navigated by the exact source asset and revision hash.</p>
+<h2>Authority</h2><p>The output is advisory AI-generated notes, is not shareable, and creates no grounded graph claim.</p>
+<h2>Contract</h2><ol>
+<li>The HTTP adapter derives owner identity from an authenticated server dependency; request data cannot select an owner.</li>
+<li>The read projection filters by owner before inspecting metadata, requires one exact source match, and revalidates the binding against the canonical lifecycle snapshot.</li>
+<li>The document, metadata, and exactly one deterministic advisory chunk must match publication commitments.</li>
+<li>Publication v2 sanitizes on write; exact legacy v1 rows migrate atomically on authorized replay while substitutions remain conflicts.</li>
+<li>HTML passes through the parser-based allowlist sanitizer before release. Responses are private and non-cacheable.</li>
+<li>Absence, wrong owner, malformed metadata, duplicate rows, substitution, and lifecycle corruption collapse to the same external 404.</li>
+</ol>
+<h2>Non-goals</h2><p>No public or link sharing, embedding call, evidence promotion, graph node or edge, provider action, spend, merge, or deployment.</p>
+<h2>Acceptance</h2><p>Tests prove owner success, source navigation, explicit advisory labeling, XSS inertness, anonymous rejection, cross-owner non-disclosure, and forged/duplicate/chunk-substituted fail-closed behavior. Strict typing, Ruff, HTML parsing, coupled tests, hostile review, and HardenX must pass.</p>
+</main></body></html>
