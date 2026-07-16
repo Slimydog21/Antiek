@@ -7,6 +7,7 @@ import {
 } from "../../api/antiekBench";
 import { LemonButton, LemonCard } from "../../components/lemon";
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import thoughtPartnerDeskArt from "../../brand/werner/poses/session/werner_thought_partner_desk_session_v1.webp";
 
 export interface AntiekBenchPanelProps {
   fetchFn?: typeof fetchWeeklyBenchView;
@@ -59,6 +60,15 @@ export default function AntiekBenchPanel({
   return (
     <LemonCard title="Antiek-bench · weekly evidence" elevation="z1">
       <div className="p-4 space-y-3" data-testid="antiek-bench-panel">
+        <img
+          src={thoughtPartnerDeskArt}
+          alt=""
+          aria-hidden="true"
+          data-testid="antiek-bench-desk-art"
+          className="h-20 w-full rounded-md object-cover object-center"
+          loading="lazy"
+          decoding="async"
+        />
         <div className="flex items-start gap-3">
           <img
             src={thinkingArt}
