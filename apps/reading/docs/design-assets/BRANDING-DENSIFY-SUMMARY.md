@@ -245,4 +245,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2b paperclip zombies | `74ae5f498` | wait-arcade/cabinet/LGH zombies invent refresh |
 | Imagine invent polish v2b igloo minigame trio | `616f4556f` | ArcadeCabinet + Home arcade banner invent refresh |
 | Imagine invent polish v2b CRT living-TV | `3b75e1d89` | Home + DR compose invent refresh |
-| Imagine invent polish v2b antiek-bench celebrate | (next tip) | AntiekBenchPanel invent refresh |
+| Imagine invent polish v2b antiek-bench celebrate | `6f97a4832` | AntiekBenchPanel invent refresh |
