@@ -131,6 +131,7 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | SlashMenu piece_started | `0199c8b08` | notebook slash insert craft beat |
 | ArtifactOutlineShelf export | `ab92a59f7` | HTML artifact export piece_started/fail |
 | PlanEditor approve/launch | `33129559b` | cascade glass-box note_saved + DR start |
+| ResearchPanel steer beats | `acb6fc65f` | cascade monitor pause/stop/deepen living-TV |
 | PasteIngest absorb beats | `6256fddad` | highlight on absorb; fail on error |
 | VoiceChase transcript beats | `62697398e` | note_saved on transcript; fail on error |
 
