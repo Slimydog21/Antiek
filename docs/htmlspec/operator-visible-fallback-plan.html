@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Cycle 77: Operator-visible fallback plan</title></head>
+<body>
+<main>
+<h1>Operator-visible hard-ceiling fallback plan</h1>
+<p><strong>Parent:</strong> <a href="hard-ceiling-fallback-orchestration.html">Cycle 76 hard-ceiling fallback orchestration</a>.</p>
+<section><h2>Outcome</h2><p>The Settings decision tree shows the ordered server-configured fallback chain for the currently projected prompt, the independent maximum reservation for every route, the largest possible chain exposure, and the exact reason execution remains unavailable. The projection is read-only and cannot reserve, approve, dispatch, reconcile, settle, release, or imply that a configured route is qualified.</p></section>
+<section><h2>Authority boundaries</h2><ul>
+<li>The request supplies a task, exact bounded usage, and optionally one route selected from the server-ranked candidates. It supplies no fallback routes, prices, capabilities, execution status, or budget facts.</li>
+<li>The ordered chain comes from the selected candidate's server-owned tier in <code>substrate/dispatch/config.yaml</code>. Without an explicit choice, the server previews the recommended tier or, when no route is recommendable, the top server-ranked tier without relabeling it as recommended.</li>
+<li>Every route is independently projected through the same <code>project_cascade_cost</code> authority and exact bounded workload as the chosen prompt projection. A missing or refused projection remains visibly ineligible.</li>
+<li>Configured dispatch identity is not exact paid execution authority. Until a route is joined to Cycle 75's endpoint, provider kind, qualification, price, live adapter, and credential authority, its execution status is <code>blocked_selection_authority</code>.</li>
+<li>The response authority is always <code>advisory_fallback_plan</code>. It is never an approval token or dispatch input.</li>
+</ul></section>
+<section><h2>Exposure invariant</h2><p>Cycle 76 releases a proven-not-sent attempt before reserving the next route, settles and stops on success, and halts while any outcome is ambiguous. Therefore at most one route can remain charge-bearing. <code>maximum_chain_exposure_cents</code> is the maximum independently eligible route reservation, never the sum. It is null unless every route is hold-eligible and execution-authorized. Unknown is never rendered as zero.</p></section>
+<section><h2>Paid-chain boundary</h2><p>This projection mirrors <code>dispatch_paid_fallbacks</code>. A <code>zero_cost_receipt</code> is not hold-eligible and therefore blocks this paid-chain preview; zero-cost work uses the gateway's distinct <code>prepare_zero_cost</code> path and cannot be presented as a paid fallback attempt.</p></section>
+<section><h2>Projection contract</h2><pre>{
+  authority: "advisory_fallback_plan",
+  tier: string,
+  status: "executable" | "blocked",
+  maximum_chain_exposure_cents: integer | null,
+  would_exceed_budget: boolean | null,
+  routes: [{
+    fallback_index: integer,
+    provider: string,
+    model: string,
+    registered: boolean,
+    projection: {
+      maximum_cost_usd: decimal-string,
+      reservation_cents: integer,
+      disposition: "hold_eligible" | "zero_cost_receipt" | "ineligible",
+      ineligibility: string | null,
+      rate_snapshot: string
+    },
+    hard_ceiling_eligible: boolean,
+    execution_status: string
+  }]
+}</pre><p>The route list is unique, ordered, bounded to 16, and shares the request seam, operation, and bounded usage. Malformed, cyclic, truncated, duplicate, missing-identity, or non-object tier state fails the complete preview closed.</p></section>
+<section><h2>Settings interaction</h2><ul>
+<li>The existing Decision tree tab requests the model comparison and exact composer projection together. It displays the existing model selector, budget bar, chosen-route maximum, and the ordered fallback preview.</li>
+<li>Selecting another eligible ranked model recomputes the server projection with the same task and usage. It does not launch work.</li>
+<li>Changing task or usage invalidates comparison, selection, fallback preview, and errors. Monotonic request generations prevent late compare or selection responses from replacing newer state.</li>
+<li>Blocked routes remain visible with their reason. There is no approval, run, retry, or provider command on this surface.</li>
+</ul></section>
+<section><h2>Acceptance</h2><ul>
+<li>Backend tests prove server-owned order, duplicate/cycle/depth/malformed refusal, exact workload equality, route-by-route projection, max-not-sum exposure, all-or-nothing executability, unknown budget, and zero side effects.</li>
+<li>HTTP tests prove no client route injection, no leaked rates or credentials, exact Decimal-string serialization, recommended and explicit-tier selection, and current production blocked posture.</li>
+<li>Frontend client validation rejects malformed route indexes, identities, costs, exposure, status contradictions, and unsafe integers.</li>
+<li>Component and Settings tests prove ordered rendering, blocked reasons, no fabricated zero, explicit recomputation, stale-response refusal, input invalidation, and no launch call.</li>
+<li>Run focused Python and Vitest suites, TypeScript typecheck, production build, Ruff, diff-check, hostile review, and HardenX strict.</li>
+</ul></section>
+<section><h2>Out of scope</h2><p>No provider qualification flip, credential lookup, paid adapter, hold, execution, receipt persistence, launch payload change, learned routing, benchmark rewrite, merge, or deploy.</p></section>
+</main>
+</body>
+</html>

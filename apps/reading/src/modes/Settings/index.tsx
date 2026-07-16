@@ -3,6 +3,7 @@ import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import { LemonButton } from "../../components/lemon";
+import ModelDecisionBar from "../../components/ModelDecisionBar";
 import {
   beginPasskeyRegistration,
   finishPasskeyRegistration,
@@ -21,6 +22,11 @@ import {
   type ModelRow,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
+import {
+  fetchComposerProjection,
+  type ComposerChoice,
+  type ComposerModelProjection,
+} from "../../api/composerProjection";
 import AddModelPanel from "./AddModelPanel";
 
 /**
@@ -469,6 +475,8 @@ function DecisionTreePanel({
 }) {
   const [task, setTask] = useState<ModelDecisionTask>("deep_research");
   const [decision, setDecision] = useState<ModelDecisionResponse | null>(null);
+  const [projection, setProjection] = useState<ComposerModelProjection | null>(null);
+  const [selected, setSelected] = useState<ComposerChoice | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const requestVersion = useRef(0);
@@ -476,6 +484,8 @@ function DecisionTreePanel({
   function invalidateDecision() {
     requestVersion.current += 1;
     setDecision(null);
+    setProjection(null);
+    setSelected(null);
     setError(null);
     setLoading(false);
   }
@@ -486,12 +496,63 @@ function DecisionTreePanel({
     setLoading(true);
     setError(null);
     try {
-      const response = await fetchModelDecision({
+      const [decisionResult, projectionResult] = await Promise.allSettled([
+        fetchModelDecision({
+          task,
+          input_chars: inputChars,
+          expected_output_tokens: outputTokens,
+        }),
+        fetchComposerProjection({
+          task,
+          bounded_usage: [
+            { unit: "input_token", maximum: Math.ceil(inputChars / 4) },
+            { unit: "output_token", maximum: outputTokens },
+          ],
+          seam_id: "user.prompt.generate",
+          operation: "generate",
+        }),
+      ]);
+      if (requestVersion.current !== version) return;
+      if (decisionResult.status === "rejected") throw decisionResult.reason;
+      setDecision(decisionResult.value);
+      if (projectionResult.status === "fulfilled") {
+        setProjection(projectionResult.value);
+        setSelected(null);
+      } else {
+        setProjection(null);
+        setSelected(null);
+        setError("Fallback projection is unavailable.");
+      }
+    } catch (caught) {
+      if (requestVersion.current === version) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    } finally {
+      if (requestVersion.current === version) setLoading(false);
+    }
+  }
+
+  async function selectModel(provider: string, model: string) {
+    const version = requestVersion.current + 1;
+    requestVersion.current = version;
+    const choice = { provider, model };
+    setLoading(true);
+    setError(null);
+    try {
+      const projected = await fetchComposerProjection({
         task,
-        input_chars: inputChars,
-        expected_output_tokens: outputTokens,
+        bounded_usage: [
+          { unit: "input_token", maximum: Math.ceil(inputChars / 4) },
+          { unit: "output_token", maximum: outputTokens },
+        ],
+        choice,
+        seam_id: "user.prompt.generate",
+        operation: "generate",
       });
-      if (requestVersion.current === version) setDecision(response);
+      if (requestVersion.current === version) {
+        setProjection(projected);
+        setSelected(choice);
+      }
     } catch (caught) {
       if (requestVersion.current === version) {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -523,17 +584,23 @@ function DecisionTreePanel({
         </label>
         <label className="text-xs font-semibold text-ink-soft dark:text-starlight">
           Input characters
-          <input type="number" min={0} value={inputChars} onChange={(event) => { invalidateDecision(); setInputChars(Number(event.target.value) || 0); }} className="mt-1 block h-10 w-full border border-ink/20 bg-transparent px-2 text-sm text-ink dark:border-bright/20 dark:text-bright" />
+          <input type="number" min={1} max={2500000} value={inputChars} onChange={(event) => { invalidateDecision(); setInputChars(Number(event.target.value) || 0); }} className="mt-1 block h-10 w-full border border-ink/20 bg-transparent px-2 text-sm text-ink dark:border-bright/20 dark:text-bright" />
         </label>
         <label className="text-xs font-semibold text-ink-soft dark:text-starlight">
           Output tokens
-          <input type="number" min={0} value={outputTokens} onChange={(event) => { invalidateDecision(); setOutputTokens(Number(event.target.value) || 0); }} className="mt-1 block h-10 w-full border border-ink/20 bg-transparent px-2 text-sm text-ink dark:border-bright/20 dark:text-bright" />
+          <input type="number" min={1} max={1000000} value={outputTokens} onChange={(event) => { invalidateDecision(); setOutputTokens(Number(event.target.value) || 0); }} className="mt-1 block h-10 w-full border border-ink/20 bg-transparent px-2 text-sm text-ink dark:border-bright/20 dark:text-bright" />
         </label>
       </div>
       <LemonButton type="button" variant="primary" size="md" disabled={loading} onClick={() => void compare()}>
         {loading ? "Comparing..." : "Compare models"}
       </LemonButton>
       {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+      <ModelDecisionBar
+        projection={projection}
+        loading={loading && decision !== null}
+        selected={selected}
+        onSelect={(provider, model) => void selectModel(provider, model)}
+      />
       {decision && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-ink/15 pb-3 dark:border-bright/15">

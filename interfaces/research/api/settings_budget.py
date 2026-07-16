@@ -471,6 +471,59 @@ def _tier_route_chain(tier: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(routes)
 
 
+def configured_tier_fallback_routes(tier_name: str) -> tuple[tuple[str, str], ...]:
+    """Return one strict server-owned tier chain for operator projection.
+
+    Dispatch's legacy readers tolerate malformed configuration to preserve
+    ordinary startup. A hard-ceiling preview must instead reject cycles,
+    truncation, duplicate routes, and partial identities as one failed plan.
+    """
+    if (
+        type(tier_name) is not str
+        or not tier_name
+        or tier_name != tier_name.strip()
+        or len(tier_name) > 64
+    ):
+        raise ValueError("tier name is invalid")
+    tiers = _load_dispatch_config().get("tiers")
+    if not isinstance(tiers, dict):
+        raise ValueError("dispatch tiers are unavailable")
+    current = tiers.get(tier_name)
+    if not isinstance(current, dict):
+        raise ValueError("configured tier is unavailable")
+    routes: list[tuple[str, str]] = []
+    seen_objects: set[int] = set()
+    while True:
+        if id(current) in seen_objects:
+            raise ValueError("configured fallback chain is cyclic")
+        seen_objects.add(id(current))
+        if len(routes) >= _MAX_FALLBACK_DEPTH:
+            raise ValueError("configured fallback chain exceeds its depth ceiling")
+        provider = current.get("provider")
+        model = current.get("model")
+        if (
+            type(provider) is not str
+            or not provider
+            or provider != provider.strip()
+            or len(provider) > 256
+            or type(model) is not str
+            or not model
+            or model != model.strip()
+            or len(model) > 256
+        ):
+            raise ValueError("configured fallback route identity is invalid")
+        route = (provider, model)
+        if route in routes:
+            raise ValueError("configured fallback routes must be unique")
+        routes.append(route)
+        fallback = current.get("fallback")
+        if fallback is None:
+            return tuple(routes)
+        if not isinstance(fallback, dict):
+            raise ValueError("configured fallback route must be an object")
+        current = fallback
+
+
 def _effective_tier_route(
     tier: dict[str, Any],
     ready_ids: set[str],

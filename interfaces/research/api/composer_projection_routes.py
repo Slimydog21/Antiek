@@ -33,6 +33,7 @@ from interfaces.research.api.settings_budget import (
     BudgetResponse,
     ModelDecisionRequest,
     build_model_decision_candidates,
+    configured_tier_fallback_routes,
     read_operator_budget,
 )
 from runtime.research_runner.cost_projection import project_cascade_cost
@@ -42,6 +43,7 @@ from runtime.research_runner.protocol import (
     CostProjection,
     CostProjectionRequest,
 )
+from runtime.research_runner.provider_route_authority import RouteExecutionStatus
 from substrate.dispatch.advisory_decision import (
     DecisionCandidate,
     rank_model_candidates,
@@ -51,6 +53,12 @@ from substrate.dispatch.composer_model_projection import (
     ComposerModelProjection,
     ProjectionResolver,
     resolve_composer_projection,
+)
+from substrate.dispatch.fallback_plan_projection import (
+    ConfiguredFallbackRoute,
+    FallbackExecutionAuthority,
+    FallbackPlanProjection,
+    resolve_fallback_plan,
 )
 
 composer_projection_router = APIRouter(
@@ -270,10 +278,93 @@ def resolve_projection(
             status_code=503,
             detail="composer projection could not be resolved",
         ) from exc
-    return _serialize(projection)
+    try:
+        fallback_plan = _fallback_plan(
+            request,
+            req,
+            candidates=candidates,
+            projection=projection,
+            projector=projector,
+        )
+    except (LookupError, OSError):
+        # Preserve the established composer contract: a temporarily
+        # unavailable projector yields an honest absent preview, not a 503.
+        fallback_plan = None
+    except (ValueError, TypeError, yaml.YAMLError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="composer fallback plan could not be resolved",
+        ) from exc
+    return _serialize(projection, fallback_plan=fallback_plan)
 
 
-def _serialize(projection: ComposerModelProjection) -> dict[str, Any]:
+def _fallback_plan(
+    request: Request,
+    body: ComposerProjectionRequest,
+    *,
+    candidates: tuple[DecisionCandidate, ...],
+    projection: ComposerModelProjection,
+    projector: ProjectionResolver,
+) -> FallbackPlanProjection | None:
+    """Compose a read-only plan from the exact server-ranked tier and workload."""
+    selected_tier: str | None = projection.recommended_tier or candidates[0].tier
+    if projection.chosen_provider is not None:
+        selected_tier = next(
+            (
+                candidate.tier
+                for candidate in candidates
+                if (candidate.provider, candidate.model)
+                == (projection.chosen_provider, projection.chosen_model)
+            ),
+            None,
+        )
+    if selected_tier is None:
+        return None
+    configured = tuple(
+        ConfiguredFallbackRoute(provider, model)
+        for provider, model in configured_tier_fallback_routes(selected_tier)
+    )
+    raw_registered = getattr(request.app.state, "registered_providers", None)
+    registered = (
+        frozenset(str(provider) for provider in raw_registered)
+        if isinstance(raw_registered, (set, list, tuple, frozenset))
+        else frozenset()
+    )
+    remaining = (
+        Decimal(str(projection.remaining_usd))
+        if projection.remaining_usd is not None
+        else None
+    )
+    usage = tuple(
+        BoundedUsage(unit=_unit(item.unit), maximum=item.maximum)
+        for item in body.bounded_usage
+    )
+    return resolve_fallback_plan(
+        tier=selected_tier,
+        configured_routes=configured,
+        registered_providers=registered,
+        seam_id=body.seam_id,
+        operation=body.operation,
+        bounded_usage=usage,
+        remaining_budget_usd=remaining,
+        project=lambda cost_request: projector(
+            cost_request.provider,
+            cost_request.model,
+        ),
+        # Configured dispatch identity is not Cycle 75's exact endpoint,
+        # qualification, credential, and live-adapter authority.
+        resolve_execution=lambda _route: FallbackExecutionAuthority(
+            hard_ceiling_eligible=False,
+            execution_status=RouteExecutionStatus.BLOCKED_SELECTION_AUTHORITY,
+        ),
+    )
+
+
+def _serialize(
+    projection: ComposerModelProjection,
+    *,
+    fallback_plan: FallbackPlanProjection | None = None,
+) -> dict[str, Any]:
     """Serialize a revalidated projection without losing Decimal precision.
 
     ``chosen_projection.maximum_cost_usd`` is a canonical Decimal string, not
@@ -328,6 +419,44 @@ def _serialize(projection: ComposerModelProjection) -> dict[str, Any]:
         "pricing_status": projection.pricing_status,
         "authority": projection.authority,
         "notes": list(projection.notes),
+        "fallback_plan": _serialize_fallback_plan(fallback_plan),
+    }
+
+
+def _serialize_fallback_plan(
+    plan: FallbackPlanProjection | None,
+) -> dict[str, Any] | None:
+    if plan is None:
+        return None
+    plan.__post_init__()
+    return {
+        "authority": plan.authority,
+        "tier": plan.tier,
+        "status": plan.status,
+        "maximum_chain_exposure_cents": plan.maximum_chain_exposure_cents,
+        "would_exceed_budget": plan.would_exceed_budget,
+        "routes": [
+            {
+                "fallback_index": route.fallback_index,
+                "provider": route.provider,
+                "model": route.model,
+                "registered": route.registered,
+                "projection": {
+                    "maximum_cost_usd": str(route.projection.maximum_cost_usd),
+                    "reservation_cents": route.projection.reservation_cents,
+                    "disposition": route.projection.disposition.value,
+                    "ineligibility": (
+                        route.projection.ineligibility.value
+                        if route.projection.ineligibility is not None
+                        else None
+                    ),
+                    "rate_snapshot": route.projection.rate_snapshot,
+                },
+                "hard_ceiling_eligible": route.hard_ceiling_eligible,
+                "execution_status": route.execution_status.value,
+            }
+            for route in plan.routes
+        ],
     }
 
 

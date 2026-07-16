@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { fetchModelDecision, type ModelDecisionResponse } from "../../api/settings";
+import {
+  fetchModelDecision,
+  type ModelDecisionResponse,
+} from "../../api/settings";
+import { fetchComposerProjection } from "../../api/composerProjection";
 import Settings from "./index";
 
 vi.mock("../../workspace/useViewportTier", () => ({
@@ -82,6 +86,77 @@ vi.mock("../../api/settings", () => ({
   })),
 }));
 
+const composerProjection = {
+  task: "deep_research" as const,
+  recommended_tier: "pro",
+  ranked_candidates: [
+    {
+      rank: 1,
+      tier: "pro",
+      provider: "zai",
+      model: "glm-5.2",
+      quality_score: 0.91,
+      quality_basis: "measured" as const,
+      eligible: true,
+      pricing_status: "unknown" as const,
+      estimated_usd_low: null,
+      estimated_usd_high: null,
+    },
+  ],
+  budget: { daily_cap_usd: 5, spent_usd: 1 },
+  remaining_usd: 4,
+  chosen_provider: null,
+  chosen_model: null,
+  chosen_projection: null,
+  would_exceed_budget: null,
+  pricing_status: "unknown" as const,
+  authority: "advisory_explanatory",
+  notes: ["curated default"],
+  fallback_plan: {
+    authority: "advisory_fallback_plan" as const,
+    tier: "pro",
+    status: "blocked" as const,
+    maximum_chain_exposure_cents: null,
+    would_exceed_budget: null,
+    routes: [
+      {
+        fallback_index: 0,
+        provider: "zai",
+        model: "glm-5.2",
+        registered: true,
+        projection: {
+          maximum_cost_usd: "0",
+          reservation_cents: 0,
+          disposition: "ineligible" as const,
+          ineligibility: "unknown_pricing",
+          rate_snapshot: "unverified-v1",
+        },
+        hard_ceiling_eligible: false,
+        execution_status: "blocked_selection_authority",
+      },
+      {
+        fallback_index: 1,
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        registered: true,
+        projection: {
+          maximum_cost_usd: "0",
+          reservation_cents: 0,
+          disposition: "ineligible" as const,
+          ineligibility: "unknown_pricing",
+          rate_snapshot: "unverified-v1",
+        },
+        hard_ceiling_eligible: false,
+        execution_status: "blocked_selection_authority",
+      },
+    ],
+  },
+};
+
+vi.mock("../../api/composerProjection", () => ({
+  fetchComposerProjection: vi.fn(async () => composerProjection),
+}));
+
 describe("Settings SPR-01", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -105,7 +180,9 @@ describe("Settings SPR-01", () => {
     render(<Settings />);
     await waitFor(() => expect(screen.getByText("zai")).toBeTruthy());
     const buttons = screen.getAllByRole("button");
-    const project = buttons.find((b) => /project cost/i.test(b.textContent ?? ""));
+    const project = buttons.find((b) =>
+      /project cost/i.test(b.textContent ?? ""),
+    );
     expect(project).toBeTruthy();
     await user.click(project!);
     await waitFor(() => {
@@ -125,6 +202,40 @@ describe("Settings SPR-01", () => {
     expect(screen.getByText("glm-5.2")).toBeTruthy();
     expect(screen.getByText("Measured evidence")).toBeTruthy();
     expect(screen.getByText("n=40")).toBeTruthy();
+    expect(screen.getByTestId("fallback-route-0").textContent).toContain(
+      "zai/glm-5.2",
+    );
+    expect(screen.getByTestId("fallback-route-1").textContent).toContain(
+      "deepseek/deepseek-v4-pro",
+    );
+    expect(screen.getByTestId("fallback-plan-exposure").textContent).toBe(
+      "execution blocked",
+    );
+    expect(fetchComposerProjection).toHaveBeenCalledWith({
+      task: "deep_research",
+      bounded_usage: [
+        { unit: "input_token", maximum: 500 },
+        { unit: "output_token", maximum: 500 },
+      ],
+      seam_id: "user.prompt.generate",
+      operation: "generate",
+    });
+  });
+
+  it("preserves model comparison when the supplemental fallback preview fails", async () => {
+    vi.mocked(fetchComposerProjection).mockRejectedValueOnce(
+      new Error("preview down"),
+    );
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(screen.getByRole("tab", { name: "Decision tree" }));
+    await user.click(screen.getByRole("button", { name: "Compare models" }));
+    expect(await screen.findByText(/Recommended tier:/)).toBeTruthy();
+    expect(screen.getByText("glm-5.2")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Fallback projection is unavailable",
+    );
+    expect(screen.queryByTestId("fallback-plan")).toBeNull();
   });
 
   it("links tabs to panels and supports arrow-key navigation", async () => {
@@ -132,7 +243,9 @@ describe("Settings SPR-01", () => {
     render(<Settings />);
     const overview = screen.getByRole("tab", { name: "Overview" });
     const decision = screen.getByRole("tab", { name: "Decision tree" });
-    expect(overview.getAttribute("aria-controls")).toBe("settings-overview-panel");
+    expect(overview.getAttribute("aria-controls")).toBe(
+      "settings-overview-panel",
+    );
     overview.focus();
     await user.keyboard("{ArrowRight}");
     expect(decision.getAttribute("aria-selected")).toBe("true");
@@ -144,7 +257,10 @@ describe("Settings SPR-01", () => {
   it("does not render an in-flight result after the task changes", async () => {
     let resolveDecision: ((value: ModelDecisionResponse) => void) | undefined;
     vi.mocked(fetchModelDecision).mockImplementationOnce(
-      () => new Promise<ModelDecisionResponse>((resolve) => { resolveDecision = resolve; }),
+      () =>
+        new Promise<ModelDecisionResponse>((resolve) => {
+          resolveDecision = resolve;
+        }),
     );
     const user = userEvent.setup();
     render(<Settings />);
@@ -160,6 +276,8 @@ describe("Settings SPR-01", () => {
       notes: [],
       candidates: [],
     });
-    await waitFor(() => expect(screen.queryByText(/Recommended tier:/)).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByText(/Recommended tier:/)).toBeNull(),
+    );
   });
 });

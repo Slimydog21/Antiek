@@ -41,6 +41,47 @@ const projection = {
   pricing_status: "known",
   authority: "advisory_explanatory",
   notes: [],
+  fallback_plan: null,
+};
+
+const fallbackPlan = {
+  authority: "advisory_fallback_plan",
+  tier: "pro",
+  status: "executable",
+  maximum_chain_exposure_cents: 20,
+  would_exceed_budget: false,
+  routes: [
+    {
+      fallback_index: 0,
+      provider: "openai",
+      model: "gpt-pro",
+      registered: true,
+      projection: {
+        maximum_cost_usd: "0.2",
+        reservation_cents: 20,
+        disposition: "hold_eligible",
+        ineligibility: null,
+        rate_snapshot: "rates-v1",
+      },
+      hard_ceiling_eligible: true,
+      execution_status: "executable",
+    },
+    {
+      fallback_index: 1,
+      provider: "fallback",
+      model: "model-b",
+      registered: true,
+      projection: {
+        maximum_cost_usd: "0.1",
+        reservation_cents: 10,
+        disposition: "hold_eligible",
+        ineligibility: null,
+        rate_snapshot: "rates-v1",
+      },
+      hard_ceiling_eligible: true,
+      execution_status: "executable",
+    },
+  ],
 };
 
 beforeEach(() => {
@@ -131,5 +172,83 @@ describe("fetchComposerProjection", () => {
         bounded_usage: [{ unit: "call", maximum: 1 }],
       }),
     ).rejects.toThrow("invalid exact cost");
+  });
+
+  it("preserves a structurally valid max-not-sum fallback plan", async () => {
+    mockFetch.mockResolvedValue(
+      response({ ...projection, fallback_plan: fallbackPlan }),
+    );
+    const result = await fetchComposerProjection({
+      task: "deep_research",
+      bounded_usage: [{ unit: "call", maximum: 1 }],
+    });
+    expect(result.fallback_plan?.maximum_chain_exposure_cents).toBe(20);
+    expect(result.fallback_plan?.routes).toHaveLength(2);
+  });
+
+  it("rejects duplicate or non-contiguous fallback routes", async () => {
+    mockFetch.mockResolvedValue(
+      response({
+        ...projection,
+        fallback_plan: {
+          ...fallbackPlan,
+          routes: [
+            fallbackPlan.routes[0],
+            { ...fallbackPlan.routes[0], fallback_index: 2 },
+          ],
+        },
+      }),
+    );
+    await expect(
+      fetchComposerProjection({
+        task: "deep_research",
+        bounded_usage: [{ unit: "call", maximum: 1 }],
+      }),
+    ).rejects.toThrow(/invalid fallback route|duplicate fallback routes/);
+  });
+
+  it("rejects a summed or unsafe chain exposure", async () => {
+    for (const exposure of [30, Number.MAX_SAFE_INTEGER + 1]) {
+      mockFetch.mockResolvedValueOnce(
+        response({
+          ...projection,
+          fallback_plan: {
+            ...fallbackPlan,
+            maximum_chain_exposure_cents: exposure,
+          },
+        }),
+      );
+      await expect(
+        fetchComposerProjection({
+          task: "deep_research",
+          bounded_usage: [{ unit: "call", maximum: 1 }],
+        }),
+      ).rejects.toThrow("contradictory fallback authority");
+    }
+  });
+
+  it("rejects blocked authority that claims exposure or a budget verdict", async () => {
+    mockFetch.mockResolvedValue(
+      response({
+        ...projection,
+        fallback_plan: {
+          ...fallbackPlan,
+          status: "blocked",
+          routes: [
+            {
+              ...fallbackPlan.routes[0],
+              hard_ceiling_eligible: false,
+              execution_status: "blocked_selection_authority",
+            },
+          ],
+        },
+      }),
+    );
+    await expect(
+      fetchComposerProjection({
+        task: "deep_research",
+        bounded_usage: [{ unit: "call", maximum: 1 }],
+      }),
+    ).rejects.toThrow("contradictory fallback authority");
   });
 });

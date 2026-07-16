@@ -96,6 +96,23 @@ def test_candidates_come_from_server_state_not_request_body(client: TestClient) 
     assert len({(row["provider"], row["model"]) for row in body["ranked_candidates"]}) == len(
         body["ranked_candidates"]
     )
+    plan = body["fallback_plan"]
+    assert plan["authority"] == "advisory_fallback_plan"
+    assert plan["status"] == "blocked"
+    assert plan["maximum_chain_exposure_cents"] is None
+    assert plan["would_exceed_budget"] is None
+    assert [
+        (route["fallback_index"], route["provider"], route["model"])
+        for route in plan["routes"]
+    ] == [
+        (0, "zai", "glm-5.2"),
+        (1, "deepseek", "deepseek-v4-pro"),
+        (2, "xiaomi", "mimo-v2.5-pro"),
+    ]
+    assert all(not route["hard_ceiling_eligible"] for route in plan["routes"])
+    assert {
+        route["execution_status"] for route in plan["routes"]
+    } == {"blocked_selection_authority"}
 
 
 def test_client_candidate_claims_are_rejected(client: TestClient) -> None:
