@@ -77,6 +77,8 @@ UI-consumed invent strips (not inventory-only):
 - Settings operator door — thinking + living-TV invent
 - Home front door — living-TV invent strip under hero Werner
 - Investigations start → `deep_research_start` living-TV beat
+- Sources door — thinking + living-TV invent; ingest → `highlight`
+- Brainstorm empty — thinking + living-TV invent; launch → `deep_research_start`
 
 Cursor model: ice bait instrument (not chase). Station re-home on drag.
 

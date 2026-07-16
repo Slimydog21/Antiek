@@ -1,11 +1,14 @@
 import { useState } from "react";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
   ingestSource,
   type IngestSourceResponse,
   type SourceKind,
 } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 type Status = "idle" | "ingesting" | "done";
 
@@ -101,6 +104,8 @@ export default function Sources() {
     if (urls.length === 0) return;
 
     setStatus("ingesting");
+    // Living-TV: corpus absorb / source ingest is a highlight beat.
+    emitWernerExperience("highlight");
     const initial: IngestRow[] = urls.map((u) => ({
       url: u,
       kind: kindOverride,
@@ -145,14 +150,34 @@ export default function Sources() {
     <div className="flex flex-col h-screen bg-ice-1 dark:bg-charcoal-2">
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-8">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink dark:text-bright">
-            Sources
-          </h1>
-          <p className="mt-1 text-sm text-ink-soft dark:text-starlight">
-            Add arXiv papers, YouTube transcripts, podcast feeds, or any
-            URL into the substrate graph. Auto-detects source kind from
-            the URL.
-          </p>
+          <header className="space-y-2">
+            <div className="flex items-center gap-3">
+              <img
+                src={thinkingArt}
+                alt=""
+                aria-hidden="true"
+                data-testid="sources-home-werner-brand"
+                className="h-12 w-12 shrink-0 object-contain"
+              />
+              <h1 className="text-2xl font-semibold tracking-tight text-ink dark:text-bright">
+                Sources
+              </h1>
+            </div>
+            <img
+              src={livingTvArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="sources-home-living-tv-art"
+              className="h-16 w-full max-w-md rounded-md object-cover object-center"
+              loading="lazy"
+              decoding="async"
+            />
+            <p className="mt-1 text-sm text-ink-soft dark:text-starlight">
+              Add arXiv papers, YouTube transcripts, podcast feeds, or any
+              URL into the substrate graph. Auto-detects source kind from
+              the URL.
+            </p>
+          </header>
 
           <form
             onSubmit={handleSubmit}
