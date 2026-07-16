@@ -35,9 +35,10 @@ function CitationView({ node }: NodeViewProps) {
     <NodeViewWrapper as="span" className="inline" data-block="citation">
       <button
         type="button"
-        onClick={() =>
-          emitWernerExperience("highlight"); emitTraceIntent({ sectionId, outlineBlockId, nodeId, provenanceKind, label })
-        }
+        onClick={() => {
+          emitWernerExperience("highlight");
+          emitTraceIntent({ sectionId, outlineBlockId, nodeId, provenanceKind, label });
+        }}
         title={
           userOriginated
             ? "User-originated — traces to the session, not an external source"

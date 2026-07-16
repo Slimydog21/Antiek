@@ -54,12 +54,13 @@ function LegoBlockView({ node, deleteNode }: NodeViewProps) {
         ) : (
           <button
             type="button"
-            onClick={() =>
-              emitWernerExperience("highlight"); emitTraceIntent({
+            onClick={() => {
+              emitWernerExperience("highlight");
+              emitTraceIntent({
                 sectionId, outlineBlockId, nodeId, provenanceKind,
                 label: nodeId ?? "source",
-              })
-            }
+              });
+            }}
             title="Trace to source"
             className="shrink-0 mt-1 px-1 rounded font-mono text-[10px] font-semibold bg-ocean/15 text-ocean hover:bg-ocean/25"
           >
