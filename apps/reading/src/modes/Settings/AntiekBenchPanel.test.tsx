@@ -40,7 +40,7 @@ describe("AntiekBenchPanel", () => {
     // Living-TV densify: session desk invent + Werner mark are UI-consumed.
     const desk = screen.getByTestId("antiek-bench-desk-art") as HTMLImageElement;
     expect(desk.getAttribute("src") ?? "").toMatch(
-      /werner_thought_partner_desk_session_v1/,
+      /werner_antiek_bench_celebrate_session_v1/,
     );
     expect(screen.getByTestId("antiek-bench-werner")).toBeTruthy();
   });

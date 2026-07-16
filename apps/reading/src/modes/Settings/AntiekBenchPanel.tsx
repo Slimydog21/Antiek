@@ -7,7 +7,7 @@ import {
 } from "../../api/antiekBench";
 import { LemonButton, LemonCard } from "../../components/lemon";
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
-import thoughtPartnerDeskArt from "../../brand/werner/poses/session/werner_thought_partner_desk_session_v1.webp";
+import thoughtPartnerDeskArt from "../../brand/werner/poses/session/werner_antiek_bench_celebrate_session_v1.webp";
 import { emitWernerExperience } from "../../werner/reactionBus";
 
 export interface AntiekBenchPanelProps {
