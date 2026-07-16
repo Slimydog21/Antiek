@@ -7,18 +7,22 @@ not a vibe)."""
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
+from pathlib import Path
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 import nacl.secret  # noqa: E402
+import pytest  # noqa: E402
 
 from runtime.byok.secret_str import SecretStr  # noqa: E402
 from runtime.byok.store import (  # noqa: E402
+    CredentialIntegrityError,
     list_credentials,
     load_credential,
     store_credential,
@@ -96,8 +100,58 @@ def test_list_credentials_carries_metadata_not_key():
 def test_load_unknown_cred_raises():
     with tempfile.TemporaryDirectory() as tmp:
         artifact = os.path.join(tmp, "credentials.enc")
-        try:
+        with pytest.raises(KeyError):
             load_credential("cred-x-nope", artifact_path=artifact, key_bytes=_TEST_KEY)
-            assert False, "expected KeyError"
-        except KeyError:
-            pass
+
+
+def test_ciphertext_cannot_be_substituted_between_bound_credentials():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = os.path.join(tmp, "credentials.enc")
+        first = store_credential(
+            "first",
+            "first-secret",
+            pipeline_kind="user_model_provider",
+            artifact_path=artifact,
+            key_bytes=_TEST_KEY,
+        )
+        second = store_credential(
+            "second",
+            "second-secret",
+            pipeline_kind="user_model_provider",
+            artifact_path=artifact,
+            key_bytes=_TEST_KEY,
+        )
+        data = json.loads(Path(artifact).read_text(encoding="utf-8"))
+        data[first]["ciphertext_hex"] = data[second]["ciphertext_hex"]
+        Path(artifact).write_text(json.dumps(data), encoding="utf-8")
+
+        with pytest.raises(CredentialIntegrityError):
+            load_credential(first, artifact_path=artifact, key_bytes=_TEST_KEY)
+
+
+def test_legacy_unbound_credential_remains_readable_for_non_routing_consumers():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "credentials.enc"
+        cred_id = "cred-x-legacy"
+        sealed = nacl.secret.SecretBox(_TEST_KEY).encrypt(_SECRET.encode("utf-8"))
+        artifact.write_text(
+            json.dumps(
+                {
+                    cred_id: {
+                        "cred_id": cred_id,
+                        "account_handle": "legacy",
+                        "pipeline_kind": "general_feed",
+                        "ciphertext_hex": bytes(sealed).hex(),
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        loaded = load_credential(
+            cred_id,
+            artifact_path=str(artifact),
+            key_bytes=_TEST_KEY,
+        )
+        assert loaded.reveal() == _SECRET
+        assert list_credentials(artifact_path=str(artifact))[0].binding_version == 1

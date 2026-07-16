@@ -92,6 +92,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from runtime.byok.store import (
+    CredentialIntegrityError,
     CredentialMetadata,
     list_credentials,
     load_credential,
@@ -140,6 +141,7 @@ class UserModelRecord(BaseModel):
     display_name: str
     base_url: str | None = None
     cred_ref: str
+    cred_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     enabled: bool = True
 
 
@@ -201,22 +203,14 @@ def _registration_fingerprints(app: FastAPI) -> dict[str, str]:
     return raw
 
 
-def _registration_adapters(app: FastAPI) -> dict[str, Provider]:
-    raw = getattr(app.state, "user_model_registration_adapters", None)
-    if not isinstance(raw, dict):
-        raw = {}
-        app.state.user_model_registration_adapters = raw
-    return raw
-
-
 def _live_adapter_matches(app: FastAPI, provider_id: str) -> bool:
-    expected = _registration_adapters(app).get(provider_id)
-    if expected is None:
-        return False
     try:
-        return get_provider(provider_id) is expected
+        adapter = get_provider(provider_id)
     except KeyError:
         return False
+    return getattr(adapter, "_user_model_authority_fingerprint", None) == (
+        _registration_fingerprints(app).get(provider_id)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +232,7 @@ class _ByokResolvedKeyMixin:
     name: str
     _user_model_id: str
     _cred_ref: str
+    _user_model_authority_fingerprint: str
 
     def _resolve_api_key(self) -> str:
         record = _load_registry().get(self._user_model_id)
@@ -256,7 +251,7 @@ class _ByokResolvedKeyMixin:
             )
         try:
             secret = load_credential(self._cred_ref)
-        except KeyError as exc:
+        except (KeyError, CredentialIntegrityError) as exc:
             raise ProviderError(
                 f"{self.name}: stored credential is missing from the BYOK artifact.",
                 provider=self.name,
@@ -285,6 +280,8 @@ def _credential_matches_record(
         item is not None
         and item.pipeline_kind == _PIPELINE_KIND
         and item.account_handle == record.id
+        and item.binding_version == 2
+        and item.artifact_fingerprint == record.cred_fingerprint
     )
 
 
@@ -307,6 +304,7 @@ class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
         )
         self._user_model_id = record.id
         self._cred_ref = record.cred_ref
+        self._user_model_authority_fingerprint = _record_fingerprint(record)
 
 
 class _UserAnthropicProvider(_ByokResolvedKeyMixin, AnthropicProvider):
@@ -321,6 +319,7 @@ class _UserAnthropicProvider(_ByokResolvedKeyMixin, AnthropicProvider):
         self.name = record.id
         self._user_model_id = record.id
         self._cred_ref = record.cred_ref
+        self._user_model_authority_fingerprint = _record_fingerprint(record)
 
 
 def _make_provider(record: UserModelRecord) -> Provider:
@@ -362,7 +361,6 @@ def reload_user_providers(app: FastAPI) -> set[str]:
     metadata = _credential_metadata()
     registered: set[str] = set()
     fingerprints: dict[str, str] = {}
-    adapters: dict[str, Provider] = {}
     for record_id, record in registry.items():
         # Defense in depth at the authority boundary: even if a future registry
         # reader becomes more permissive, boot reload may only register names
@@ -375,7 +373,6 @@ def reload_user_providers(app: FastAPI) -> set[str]:
         register_provider(adapter)
         registered.add(record.id)
         fingerprints[record.id] = _record_fingerprint(record)
-        adapters[record.id] = adapter
     seam = _seam_names(app)
     stale = {
         name
@@ -385,7 +382,6 @@ def reload_user_providers(app: FastAPI) -> set[str]:
     seam.difference_update(stale)
     seam.update(registered)
     app.state.user_model_registration_fingerprints = fingerprints
-    app.state.user_model_registration_adapters = adapters
     return registered
 
 
@@ -694,6 +690,9 @@ async def post_user_model(request: Request) -> UserModelRow:
     # record referencing the ciphertext. A crash between the two orphans
     # only unreachable ciphertext, never a record with a dangling key.
     cred_ref = store_credential(record_id, spec.api_key, pipeline_kind=_PIPELINE_KIND)
+    credential = _credential_metadata().get(cred_ref)
+    if credential is None:
+        raise HTTPException(status_code=500, detail="credential persistence failed")
     record = UserModelRecord(
         id=record_id,
         provider_kind=spec.provider_kind,
@@ -701,6 +700,7 @@ async def post_user_model(request: Request) -> UserModelRow:
         display_name=spec.display_name,
         base_url=spec.base_url,
         cred_ref=cred_ref,
+        cred_fingerprint=credential.artifact_fingerprint,
         enabled=True,
     )
     registry[record_id] = record
@@ -712,7 +712,6 @@ async def post_user_model(request: Request) -> UserModelRow:
     seam = _seam_names(request.app)
     seam.add(record_id)
     _registration_fingerprints(request.app)[record_id] = _record_fingerprint(record)
-    _registration_adapters(request.app)[record_id] = adapter
 
     metadata = _credential_metadata()
     present = {record.cred_ref} if _credential_matches_record(record, metadata) else set()
@@ -754,7 +753,6 @@ def delete_user_model(user_model_id: str, request: Request) -> UserModelDeleteRe
     _write_registry(registry)
     _seam_names(request.app).discard(user_model_id)
     _registration_fingerprints(request.app).pop(user_model_id, None)
-    _registration_adapters(request.app).pop(user_model_id, None)
     return UserModelDeleteResponse(
         removed=user_model_id,
         notes=[

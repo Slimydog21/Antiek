@@ -237,6 +237,59 @@ def test_same_name_adapter_replacement_revokes_route_authority(client: TestClien
     assert user_row["route_eligible"] is False
 
 
+def test_second_live_app_preserves_equivalent_route_authority(env: Path) -> None:
+    first_app = _fresh_app()
+    with TestClient(first_app) as first:
+        assert first.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+        choice = {
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "deepseek-chat",
+        }
+        assert first.post("/settings/models/user/resolve", json=choice).status_code == 200
+
+        second_app = _fresh_app()
+        with TestClient(second_app) as second:
+            assert second.post("/settings/models/user/resolve", json=choice).status_code == 200
+            assert first.post("/settings/models/user/resolve", json=choice).status_code == 200
+
+
+def test_ciphertext_substitution_revokes_route_and_cannot_reveal_other_key(
+    client: TestClient,
+    env: Path,
+) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    other_secret = "sk-BBBB-other-user-model-key-0987654321"
+    assert client.post(
+        "/settings/models/user",
+        json={
+            **_ADD_BODY,
+            "display_name": "Other Model",
+            "api_key": other_secret,
+        },
+    ).status_code == 201
+
+    registry = json.loads((env / "settings" / "user_models.json").read_text())
+    first_ref = registry["user-my-deepseek"]["cred_ref"]
+    other_ref = registry["user-other-model"]["cred_ref"]
+    artifact_path = env / "byok" / "credentials.enc"
+    artifact = json.loads(artifact_path.read_text())
+    artifact[first_ref]["ciphertext_hex"] = artifact[other_ref]["ciphertext_hex"]
+    artifact_path.write_text(json.dumps(artifact))
+
+    choice = {
+        "authority": "user_model",
+        "provider_id": "user-my-deepseek",
+        "model_id": "deepseek-chat",
+    }
+    response = client.post("/settings/models/user/resolve", json=choice)
+    assert response.status_code == 409
+    assert other_secret not in response.text
+    with pytest.raises(ProviderError) as exc_info:
+        get_provider("user-my-deepseek")._resolve_api_key()  # noqa: SLF001
+    assert other_secret not in str(exc_info.value)
+
+
 @pytest.mark.parametrize(
     "body",
     [

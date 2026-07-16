@@ -58,12 +58,14 @@ without ever touching the key.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+import nacl.exceptions
 import nacl.secret
 import nacl.utils
 
@@ -72,6 +74,8 @@ from runtime.byok.secret_str import SecretStr
 _DEFAULT_ARTIFACT_NAME = "credentials.enc"
 _KEY_SIZE = nacl.secret.SecretBox.KEY_SIZE  # 32
 _KEY_FILE_MODE = 0o600
+_BOUND_CREDENTIAL_VERSION = 2
+_BINDING_PERSON = b"antiek-byok-v2"
 
 _ENV_ARTIFACT = "ANTIEK_BYOK_ARTIFACT"
 _ENV_KEY_FILE = "ANTIEK_BYOK_KEY_FILE"
@@ -102,6 +106,43 @@ class CredentialMetadata:
     cred_id: str
     account_handle: str
     pipeline_kind: str | None = None
+    binding_version: int = 1
+    artifact_fingerprint: str = ""
+
+
+class CredentialIntegrityError(ValueError):
+    """Stored credential bytes no longer match their authenticated identity."""
+
+
+def _bound_key(
+    master: bytes,
+    *,
+    cred_id: str,
+    account_handle: str,
+    pipeline_kind: str | None,
+) -> bytes:
+    """Derive a SecretBox key bound to one immutable credential identity."""
+    identity = json.dumps(
+        {
+            "account_handle": account_handle,
+            "cred_id": cred_id,
+            "pipeline_kind": pipeline_kind,
+            "version": _BOUND_CREDENTIAL_VERSION,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.blake2b(
+        identity,
+        key=master,
+        digest_size=nacl.secret.SecretBox.KEY_SIZE,
+        person=_BINDING_PERSON,
+    ).digest()
+
+
+def _artifact_fingerprint(record: dict[str, object]) -> str:
+    canonical = json.dumps(record, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def _load_master_key(key_bytes: bytes | None, key_file: str | None) -> bytes:
@@ -171,15 +212,23 @@ def store_credential(
     handle = account_handle.lstrip("@")
     artifact = artifact_path or _default_artifact_path()
     master = _load_master_key(key_bytes, key_file)
-    box = nacl.secret.SecretBox(master)
-    sealed = box.encrypt(secret.encode("utf-8"))
     cred_id = f"cred-x-{uuid.uuid4().hex[:16]}"
+    box = nacl.secret.SecretBox(
+        _bound_key(
+            master,
+            cred_id=cred_id,
+            account_handle=handle,
+            pipeline_kind=pipeline_kind,
+        )
+    )
+    sealed = box.encrypt(secret.encode("utf-8"))
 
     data = _read_artifact(artifact)
     data[cred_id] = {
         "cred_id": cred_id,
         "account_handle": handle,
         "pipeline_kind": pipeline_kind,
+        "binding_version": _BOUND_CREDENTIAL_VERSION,
         "ciphertext_hex": bytes(sealed).hex(),
     }
     _write_artifact(artifact, data)
@@ -202,12 +251,38 @@ def load_credential(
     artifact = artifact_path or _default_artifact_path()
     data = _read_artifact(artifact)
     rec = data.get(cred_id)
-    if rec is None:
+    if not isinstance(rec, dict) or rec.get("cred_id") != cred_id:
         raise KeyError(f"unknown cred_id: {cred_id}")
-    master = _load_master_key(key_bytes, key_file)
-    box = nacl.secret.SecretBox(master)
-    sealed = bytes.fromhex(rec["ciphertext_hex"])
-    plaintext = box.decrypt(sealed).decode("utf-8")
+    try:
+        account_handle = rec["account_handle"]
+        pipeline_kind = rec.get("pipeline_kind")
+        binding_version = rec.get("binding_version", 1)
+        if not isinstance(account_handle, str) or (
+            pipeline_kind is not None and not isinstance(pipeline_kind, str)
+        ):
+            raise CredentialIntegrityError("credential metadata is invalid")
+        if not isinstance(binding_version, int) or isinstance(binding_version, bool):
+            raise CredentialIntegrityError("credential binding version is invalid")
+        master = _load_master_key(key_bytes, key_file)
+        if binding_version == _BOUND_CREDENTIAL_VERSION:
+            key = _bound_key(
+                master,
+                cred_id=cred_id,
+                account_handle=account_handle,
+                pipeline_kind=pipeline_kind,
+            )
+        elif binding_version == 1:
+            # Legacy credentials remain readable for non-routing consumers.
+            # New user-model route authority requires v2 below its own seam.
+            key = master
+        else:
+            raise CredentialIntegrityError("credential binding version is unsupported")
+        sealed = bytes.fromhex(rec["ciphertext_hex"])
+        plaintext = nacl.secret.SecretBox(key).decrypt(sealed).decode("utf-8")
+    except (KeyError, TypeError, ValueError, nacl.exceptions.CryptoError) as exc:
+        if isinstance(exc, CredentialIntegrityError):
+            raise
+        raise CredentialIntegrityError("credential integrity check failed") from exc
     return SecretStr(plaintext)
 
 
@@ -220,12 +295,27 @@ def list_credentials(
     artifact = artifact_path or _default_artifact_path()
     data = _read_artifact(artifact)
     out: list[CredentialMetadata] = []
-    for rec in data.values():
+    for cred_id, rec in data.items():
+        if (
+            not isinstance(rec, dict)
+            or rec.get("cred_id") != cred_id
+            or not isinstance(rec.get("account_handle"), str)
+            or (
+                rec.get("pipeline_kind") is not None
+                and not isinstance(rec.get("pipeline_kind"), str)
+            )
+        ):
+            continue
+        binding_version = rec.get("binding_version", 1)
+        if not isinstance(binding_version, int) or isinstance(binding_version, bool):
+            continue
         out.append(
             CredentialMetadata(
-                cred_id=rec["cred_id"],
+                cred_id=cred_id,
                 account_handle=rec["account_handle"],
                 pipeline_kind=rec.get("pipeline_kind"),
+                binding_version=binding_version,
+                artifact_fingerprint=_artifact_fingerprint(rec),
             )
         )
     out.sort(key=lambda m: m.cred_id)
@@ -234,6 +324,7 @@ def list_credentials(
 
 __all__ = [
     "CredentialMetadata",
+    "CredentialIntegrityError",
     "store_credential",
     "load_credential",
     "list_credentials",
