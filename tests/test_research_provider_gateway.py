@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -22,6 +23,10 @@ from runtime.research_runner.protocol import (
 from runtime.research_runner.provider_gateway import (
     HARD_MODE_DISPATCH_POLICY,
     DispatchIneligible,
+    PaidFallbackOutcome,
+    PaidFallbackOutcomeUnknown,
+    PaidFallbackRoute,
+    PaidRouteAuthorityIdentity,
     ProviderCapabilities,
     ProviderNotSent,
     ProviderOutcomeUnknown,
@@ -31,6 +36,7 @@ from runtime.research_runner.provider_gateway import (
     ResearchProviderGateway,
 )
 from substrate.research_spend import (
+    IdempotencyConflict,
     InvalidTransition,
     PaidHoldState,
     ResearchSpendLedger,
@@ -106,6 +112,7 @@ def _project(request: CostProjectionRequest) -> CostProjection:
 class FakeAdapter:
     provider = "test-provider"
     model = "test-model"
+    endpoint = "https://test-provider.example/v1"
     capabilities = ProviderCapabilities(
         True, True, True, frozenset({BillingUnit.CALL})
     )
@@ -122,23 +129,48 @@ class FakeAdapter:
             actual_cents=80,
         )
 
-    def send_once(self, operation: object, *, provider_idempotency_key: str):
+    def send_once(
+        self, operation: object, *, provider_idempotency_key: str, authorized_endpoint: str
+    ):
+        assert authorized_endpoint == self.endpoint
         self.send_calls.append(provider_idempotency_key)
         if isinstance(self.send_result, BaseException):
             raise self.send_result
         return self.send_result
 
-    def reconcile(self, *, provider_idempotency_key: str) -> ProviderReconciliation:
+    def reconcile(
+        self, *, provider_idempotency_key: str, authorized_endpoint: str
+    ) -> ProviderReconciliation:
+        assert authorized_endpoint == self.endpoint
         self.reconcile_calls.append(provider_idempotency_key)
         return self.reconciliation
 
 
 def _gateway(tmp_path: Path, *, ceiling: int = 200) -> ResearchProviderGateway:
     gateway = ResearchProviderGateway(
-        ResearchSpendLedger(tmp_path / "spend.sqlite3"), projector=_project
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"),
+        projector=_project,
+        fallback_route_authorizer=_authorize_fallback,
     )
     gateway.create_or_reopen_run(_binding(), ceiling_cents=ceiling)
     return gateway
+
+
+def _authorize_fallback(
+    request: CostProjectionRequest, adapter: FakeAdapter
+) -> PaidRouteAuthorityIdentity:
+    assert (adapter.provider, adapter.model) == (request.provider, request.model)
+    return PaidRouteAuthorityIdentity(
+        provider_kind="test",
+        provider_id=request.provider,
+        endpoint=f"https://{request.provider}.example/v1",
+        model=request.model,
+        seam_id=request.seam_id,
+        operation=request.operation,
+        rate_snapshot="test-authority-v1",
+        currency="USD",
+        rates=(ProjectionRate(BillingUnit.CALL, Decimal("1.00")),),
+    )
 
 
 def test_hold_is_durable_before_exactly_one_provider_send(tmp_path: Path) -> None:
@@ -358,6 +390,577 @@ def test_definite_not_sent_releases_without_blind_retry(tmp_path: Path) -> None:
     )
     assert result.hold.state is PaidHoldState.RELEASED
     assert result.run.available_cents == 200
+
+
+def _fallback_route(adapter: FakeAdapter) -> PaidFallbackRoute[str]:
+    adapter.endpoint = f"https://{adapter.provider}.example/v1"
+    return PaidFallbackRoute(
+        CostProjectionRequest(
+            seam_id="test.paid",
+            provider=adapter.provider,
+            model=adapter.model,
+            operation="generate",
+            bounded_usage=(BoundedUsage(BillingUnit.CALL, 1),),
+        ),
+        adapter,
+    )
+
+
+def test_primary_success_never_reserves_or_sends_fallback(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    primary = FakeAdapter()
+    fallback = FakeAdapter()
+    fallback.provider, fallback.model = "fallback-provider", "fallback-model"
+
+    result = gateway.dispatch_paid_fallbacks(
+        _binding(),
+        logical_operation_id="op",
+        operation={"prompt": "bounded"},
+        routes=(_fallback_route(primary), _fallback_route(fallback)),
+    )
+
+    assert result.outcome is PaidFallbackOutcome.SETTLED
+    assert result.fallback_index == 0
+    assert result.value_available is True
+    assert (result.requested_provider, result.actual_provider) == (
+        "test-provider",
+        "test-provider",
+    )
+    assert len(result.attempts) == 1
+    assert len(primary.send_calls) == 1
+    assert fallback.send_calls == []
+    assert len(gateway.ledger.events("run-1")) == 4
+
+
+def test_fallback_refuses_without_server_route_authority(tmp_path: Path) -> None:
+    gateway = ResearchProviderGateway(
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"), projector=_project
+    )
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    adapter = FakeAdapter()
+
+    with pytest.raises(DispatchIneligible, match="authority is not configured"):
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(_fallback_route(adapter),),
+        )
+    assert adapter.send_calls == []
+    assert len(gateway.ledger.events("run-1")) == 1
+
+
+def test_changed_endpoint_authority_conflicts_with_existing_lineage(tmp_path: Path) -> None:
+    endpoint = ["https://first.example/v1"]
+
+    def authorize(request, _adapter):
+        return replace(_authorize_fallback(request, _adapter), endpoint=endpoint[0])
+
+    gateway = ResearchProviderGateway(
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"),
+        projector=_project,
+        fallback_route_authorizer=authorize,
+    )
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    adapter = FakeAdapter()
+    route = _fallback_route(adapter)
+    adapter.endpoint = endpoint[0]
+    gateway.dispatch_paid_fallbacks(
+        _binding(),
+        logical_operation_id="op",
+        operation={"prompt": "bounded"},
+        routes=(route,),
+    )
+    endpoint[0] = "https://replacement.example/v1"
+    adapter.endpoint = endpoint[0]
+
+    with pytest.raises(IdempotencyConflict):
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(route,),
+        )
+
+
+def test_fallback_refuses_same_snapshot_with_divergent_authoritative_rates(
+    tmp_path: Path,
+) -> None:
+    def divergent(request, adapter):
+        return replace(
+            _authorize_fallback(request, adapter),
+            rates=(ProjectionRate(BillingUnit.CALL, Decimal("0.01")),),
+        )
+
+    gateway = ResearchProviderGateway(
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"),
+        projector=_project,
+        fallback_route_authorizer=divergent,
+    )
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    adapter = FakeAdapter()
+
+    with pytest.raises(DispatchIneligible, match="exact projected rates"):
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(_fallback_route(adapter),),
+        )
+    assert adapter.send_calls == []
+    assert len(gateway.ledger.events("run-1")) == 1
+
+
+def test_concurrent_replay_cannot_reconcile_before_sender_finishes(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    send_started = threading.Event()
+    allow_send = threading.Event()
+
+    class SlowAdapter(FakeAdapter):
+        def send_once(
+            self,
+            operation: object,
+            *,
+            provider_idempotency_key: str,
+            authorized_endpoint: str,
+        ):
+            assert authorized_endpoint == self.endpoint
+            self.send_calls.append(provider_idempotency_key)
+            send_started.set()
+            assert allow_send.wait(timeout=5)
+            return ProviderSuccess("answer", 80, {"provider_receipt": "slow"})
+
+    adapter = SlowAdapter()
+
+    def dispatch():
+        return gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(_fallback_route(adapter),),
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        sender = pool.submit(dispatch)
+        assert send_started.wait(timeout=5)
+        replay = pool.submit(dispatch)
+        assert not replay.done()
+        allow_send.set()
+        first = sender.result(timeout=5)
+        second = replay.result(timeout=5)
+
+    assert first.outcome is second.outcome is PaidFallbackOutcome.SETTLED
+    assert len(adapter.send_calls) == 1
+    assert adapter.reconcile_calls == []
+
+
+def test_dispatch_guard_uses_database_inode_across_hard_link_paths(tmp_path: Path) -> None:
+    original = tmp_path / "spend.sqlite3"
+    gateway = ResearchProviderGateway(ResearchSpendLedger(original), projector=_project)
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    alias = tmp_path / "same-database.sqlite3"
+    os.link(original, alias)
+    first = ResearchSpendLedger(original)
+    second = ResearchSpendLedger(alias)
+    entered = threading.Event()
+
+    def wait_on_alias() -> None:
+        with second.dispatch_guard("same-reservation"):
+            entered.set()
+
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        with first.dispatch_guard("same-reservation"):
+            waiter = pool.submit(wait_on_alias)
+            assert not entered.wait(timeout=0.05)
+            assert not waiter.done()
+        waiter.result(timeout=5)
+        assert entered.is_set()
+    finally:
+        pool.shutdown(wait=True)
+
+
+def test_fallback_recovery_requires_unchanged_live_authority(tmp_path: Path) -> None:
+    endpoint = ["https://first.example/v1"]
+
+    def authorize(request, adapter):
+        return replace(_authorize_fallback(request, adapter), endpoint=endpoint[0])
+
+    gateway = ResearchProviderGateway(
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"),
+        projector=_project,
+        fallback_route_authorizer=authorize,
+    )
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    adapter = FakeAdapter()
+    adapter.send_result = TimeoutError("lost response")
+    route = _fallback_route(adapter)
+    adapter.endpoint = endpoint[0]
+    with pytest.raises(PaidFallbackOutcomeUnknown) as unknown:
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(route,),
+        )
+
+    with pytest.raises(DispatchIneligible, match="requires exact"):
+        gateway.recover_paid(unknown.value.hold_id, adapter)
+    endpoint[0] = "https://replacement.example/v1"
+    adapter.endpoint = endpoint[0]
+    with pytest.raises(DispatchIneligible, match="authority changed"):
+        gateway.recover_paid(
+            unknown.value.hold_id,
+            adapter,
+            projection_request=route.projection_request,
+        )
+    assert adapter.reconcile_calls == []
+
+
+def test_authoritative_release_uses_separate_fallback_hold_and_key(tmp_path: Path) -> None:
+    def project(request: CostProjectionRequest) -> CostProjection:
+        cents = 60 if request.provider == "fallback-provider" else 100
+        return replace(
+            _project(request),
+            rates=(
+                ProjectionRate(BillingUnit.CALL, Decimal(cents) / Decimal(100)),
+            ),
+            maximum_cost_usd=Decimal(cents) / Decimal(100),
+            reservation_cents=cents,
+            rate_snapshot=f"{request.provider}-rates",
+        )
+
+    gateway = ResearchProviderGateway(
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"),
+        projector=project,
+        fallback_route_authorizer=lambda request, adapter: replace(
+            _authorize_fallback(request, adapter),
+            rate_snapshot=f"{request.provider}-rates",
+            rates=(
+                ProjectionRate(
+                    BillingUnit.CALL,
+                    Decimal(60 if request.provider == "fallback-provider" else 100)
+                    / Decimal(100),
+                ),
+            ),
+        ),
+    )
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    primary = FakeAdapter()
+    primary.send_result = ProviderNotSent("not accepted", evidence={"accepted": False})
+    fallback = FakeAdapter()
+    fallback.provider, fallback.model = "fallback-provider", "fallback-model"
+    fallback.send_result = ProviderSuccess(
+        "fallback-answer", 55, {"provider_receipt": "fallback-receipt"}
+    )
+
+    result = gateway.dispatch_paid_fallbacks(
+        _binding(),
+        logical_operation_id="op",
+        operation={"prompt": "bounded"},
+        routes=(_fallback_route(primary), _fallback_route(fallback)),
+    )
+
+    assert result.outcome is PaidFallbackOutcome.SETTLED
+    assert result.fallback_index == 1
+    assert result.value == "fallback-answer"
+    assert result.value_available is True
+    assert result.actual_provider == "fallback-provider"
+    assert [attempt.hold.projected_max_cents for attempt in result.attempts] == [100, 60]
+    first, second = result.attempts
+    assert first.hold.hold_id != second.hold.hold_id
+    assert first.hold.intent.provider_idempotency_key != (
+        second.hold.intent.provider_idempotency_key
+    )
+    assert first.hold.state is PaidHoldState.RELEASED
+    assert second.hold.state is PaidHoldState.SETTLED
+    assert result.run.authorized_spent_cents == 55
+
+
+def test_ambiguous_primary_halts_before_fallback_send(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    primary = FakeAdapter()
+    primary.send_result = TimeoutError("lost response")
+    fallback = FakeAdapter()
+    fallback.provider, fallback.model = "fallback-provider", "fallback-model"
+
+    with pytest.raises(PaidFallbackOutcomeUnknown) as unknown:
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(_fallback_route(primary), _fallback_route(fallback)),
+        )
+    assert unknown.value.fallback_index == 0
+    assert unknown.value.completed_attempts == ()
+    assert fallback.send_calls == []
+    assert gateway.ledger.balance("run-1").held_cents == 100
+
+
+def test_fallback_preflight_refuses_every_route_before_ledger_mutation(
+    tmp_path: Path,
+) -> None:
+    gateway = _gateway(tmp_path)
+    primary = FakeAdapter()
+    fallback = FakeAdapter()
+    fallback.provider, fallback.model = "fallback-provider", "fallback-model"
+    fallback.capabilities = ProviderCapabilities(True, False, True)
+
+    with pytest.raises(DispatchIneligible, match="capabilities"):
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(_fallback_route(primary), _fallback_route(fallback)),
+        )
+    assert primary.send_calls == fallback.send_calls == []
+    assert [event.event_kind for event in gateway.ledger.events("run-1")] == [
+        "run_created"
+    ]
+
+
+def test_replay_reuses_released_and_settled_route_lineage_without_send(
+    tmp_path: Path,
+) -> None:
+    gateway = _gateway(tmp_path)
+    primary = FakeAdapter()
+    primary.send_result = ProviderNotSent("not accepted", evidence={"accepted": False})
+    fallback = FakeAdapter()
+    fallback.provider, fallback.model = "fallback-provider", "fallback-model"
+    routes = (_fallback_route(primary), _fallback_route(fallback))
+    first = gateway.dispatch_paid_fallbacks(
+        _binding(), logical_operation_id="op", operation={"prompt": "bounded"}, routes=routes
+    )
+    primary_calls, fallback_calls = len(primary.send_calls), len(fallback.send_calls)
+
+    replay = gateway.dispatch_paid_fallbacks(
+        _binding(), logical_operation_id="op", operation={"prompt": "bounded"}, routes=routes
+    )
+    assert replay.outcome is PaidFallbackOutcome.SETTLED
+    assert replay.fallback_index == 1
+    assert replay.value is None
+    assert replay.value_available is False
+    assert [item.hold.hold_id for item in replay.attempts] == [
+        item.hold.hold_id for item in first.attempts
+    ]
+    assert all(item.recovered for item in replay.attempts)
+    assert (len(primary.send_calls), len(fallback.send_calls)) == (
+        primary_calls,
+        fallback_calls,
+    )
+
+
+def test_replay_with_shortened_chain_conflicts_before_another_send(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    primary = FakeAdapter()
+    primary.send_result = ProviderNotSent("not accepted", evidence={"accepted": False})
+    fallback = FakeAdapter()
+    fallback.provider, fallback.model = "fallback-provider", "fallback-model"
+    routes = (_fallback_route(primary), _fallback_route(fallback))
+    gateway.dispatch_paid_fallbacks(
+        _binding(), logical_operation_id="op", operation={"prompt": "bounded"}, routes=routes
+    )
+    calls = (len(primary.send_calls), len(fallback.send_calls))
+
+    with pytest.raises(IdempotencyConflict):
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=routes[:1],
+        )
+    assert (len(primary.send_calls), len(fallback.send_calls)) == calls
+
+
+def test_projection_route_mismatch_is_refused_before_reservation(tmp_path: Path) -> None:
+    def mismatched(request: CostProjectionRequest) -> CostProjection:
+        return replace(_project(request), provider="other-provider")
+
+    gateway = ResearchProviderGateway(
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"),
+        projector=mismatched,
+        fallback_route_authorizer=_authorize_fallback,
+    )
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    adapter = FakeAdapter()
+    with pytest.raises(DispatchIneligible, match="projection differs"):
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(_fallback_route(adapter),),
+        )
+    assert adapter.send_calls == []
+    assert [event.event_kind for event in gateway.ledger.events("run-1")] == [
+        "run_created"
+    ]
+
+
+def test_process_death_after_primary_release_replays_into_one_fallback_hold(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "spend.sqlite3"
+
+    class CrashBeforeSecondReserveLedger(ResearchSpendLedger):
+        def __init__(self, path: Path) -> None:
+            super().__init__(path)
+            self.reserve_calls = 0
+
+        def reserve_paid(self, command_key, binding, intent, projected_max_cents):
+            self.reserve_calls += 1
+            if self.reserve_calls == 2:
+                raise RuntimeError("process death before fallback reserve")
+            return super().reserve_paid(command_key, binding, intent, projected_max_cents)
+
+    ledger = CrashBeforeSecondReserveLedger(db_path)
+    gateway = ResearchProviderGateway(
+        ledger, projector=_project, fallback_route_authorizer=_authorize_fallback
+    )
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    primary = FakeAdapter()
+    primary.send_result = ProviderNotSent("not accepted", evidence={"accepted": False})
+    fallback = FakeAdapter()
+    fallback.provider, fallback.model = "fallback-provider", "fallback-model"
+    routes = (_fallback_route(primary), _fallback_route(fallback))
+
+    with pytest.raises(RuntimeError, match="before fallback reserve"):
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=routes,
+        )
+    assert len(primary.send_calls) == 1
+    assert fallback.send_calls == []
+    assert gateway.ledger.balance("run-1").held_cents == 0
+
+    reopened = ResearchProviderGateway(
+        ResearchSpendLedger(db_path),
+        projector=_project,
+        fallback_route_authorizer=_authorize_fallback,
+    )
+    replay = reopened.dispatch_paid_fallbacks(
+        _binding(),
+        logical_operation_id="op",
+        operation={"prompt": "bounded"},
+        routes=routes,
+    )
+    assert replay.fallback_index == 1
+    assert replay.attempts[0].recovered is True
+    assert len(primary.send_calls) == 1
+    assert len(fallback.send_calls) == 1
+    holds = [event.hold_id for event in reopened.ledger.events("run-1") if event.hold_id]
+    assert len(set(holds)) == 2
+
+
+def test_concurrent_same_plan_has_one_provider_acceptance_per_route(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+
+    class RejectedAdapter(FakeAdapter):
+        def send_once(
+            self,
+            operation: object,
+            *,
+            provider_idempotency_key: str,
+            authorized_endpoint: str,
+        ):
+            assert authorized_endpoint == self.endpoint
+            self.send_calls.append(provider_idempotency_key)
+            raise ProviderNotSent("not accepted", evidence={"accepted": False})
+
+    class IdempotentSuccessAdapter(FakeAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self.accepted_keys: set[str] = set()
+            self.acceptance_count = 0
+            self.reused_response_count = 0
+            self._lock = threading.Lock()
+
+        def send_once(
+            self,
+            operation: object,
+            *,
+            provider_idempotency_key: str,
+            authorized_endpoint: str,
+        ):
+            assert authorized_endpoint == self.endpoint
+            self.send_calls.append(provider_idempotency_key)
+            with self._lock:
+                if provider_idempotency_key in self.accepted_keys:
+                    self.reused_response_count += 1
+                else:
+                    self.accepted_keys.add(provider_idempotency_key)
+                    self.acceptance_count += 1
+            return ProviderSuccess("answer", 80, {"provider_receipt": "same-operation"})
+
+    primary = RejectedAdapter()
+    primary.reconciliation = ProviderReconciliation(
+        ReconciliationStatus.NOT_FOUND, {"provider_lookup": "not_found"}
+    )
+    fallback = IdempotentSuccessAdapter()
+    fallback.provider, fallback.model = "fallback-provider", "fallback-model"
+    routes = (_fallback_route(primary), _fallback_route(fallback))
+    barrier = threading.Barrier(2)
+
+    def run_chain(_worker: int):
+        barrier.wait()
+        return gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=routes,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(run_chain, range(2)))
+    assert all(result.outcome is PaidFallbackOutcome.SETTLED for result in results)
+    assert fallback.acceptance_count == 1
+    assert fallback.acceptance_count + fallback.reused_response_count == len(
+        fallback.send_calls
+    )
+    assert len(fallback.accepted_keys) == 1
+    assert len({call for call in fallback.send_calls}) == 1
+    assert gateway.ledger.balance("run-1").authorized_spent_cents == 80
+
+
+def test_equivalent_terminal_outcome_converges_across_different_evidence(
+    tmp_path: Path,
+) -> None:
+    gateway = _gateway(tmp_path)
+    adapter = FakeAdapter()
+    settled = gateway.dispatch_paid(
+        _binding(),
+        logical_operation_id="settled",
+        projection_request=_request(),
+        operation={"prompt": "bounded"},
+        adapter=adapter,
+    )
+    converged = gateway._settle_or_converge(  # noqa: SLF001
+        f"research-settle-command:{settled.hold.hold_id}",
+        settled.hold,
+        80,
+        {"provider_lookup": "same charge, different evidence"},
+    )
+    assert converged.authorized_spent_cents == 80
+
+    released_adapter = FakeAdapter()
+    released_adapter.provider, released_adapter.model = "released-provider", "released-model"
+    released_adapter.send_result = ProviderNotSent(
+        "not accepted", evidence={"accepted": False}
+    )
+    released = gateway.dispatch_paid(
+        _binding(),
+        logical_operation_id="released",
+        projection_request=_fallback_route(released_adapter).projection_request,
+        operation={"prompt": "bounded"},
+        adapter=released_adapter,
+    )
+    converged_release = gateway._release_or_converge(  # noqa: SLF001
+        f"research-not-sent-command:{released.hold.hold_id}",
+        released.hold,
+        {"provider_lookup": "same absence, different evidence"},
+    )
+    assert converged_release.authorized_spent_cents == 80
 
 
 def test_actual_above_projection_is_observed_and_freezes_run(tmp_path: Path) -> None:

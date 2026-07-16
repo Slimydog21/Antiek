@@ -10,7 +10,12 @@ from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
 from .cost_projection import CostCatalogEntry
-from .provider_gateway import HardCeilingProviderAdapter
+from .protocol import CostProjectionRequest, ProjectionRate
+from .provider_gateway import (
+    DispatchIneligible,
+    HardCeilingProviderAdapter,
+    PaidRouteAuthorityIdentity,
+)
 from .provider_qualification import EvidenceStatus, ProviderQualification
 
 
@@ -141,6 +146,8 @@ class ProviderRouteAuthorityResolver:
             raise ValueError("provider id must be non-empty")
         if (adapter.provider, adapter.model) != (provider_id, identity.model_id):
             raise ValueError("hard-ceiling adapter differs from exact route")
+        if canonical_provider_endpoint(adapter.endpoint) != identity.endpoint:
+            raise ValueError("hard-ceiling adapter endpoint differs from exact route")
         self._adapters[identity] = _AdapterRegistration(provider_id, adapter)
 
     def resolve(
@@ -215,6 +222,12 @@ class ProviderRouteAuthorityResolver:
                 RouteExecutionStatus.BLOCKED_ADAPTER_MISMATCH,
                 entry.cost.snapshot,
             )
+        if canonical_provider_endpoint(adapter.endpoint) != identity.endpoint:
+            return self._blocked(
+                identity,
+                RouteExecutionStatus.BLOCKED_ADAPTER_MISMATCH,
+                entry.cost.snapshot,
+            )
         capabilities = adapter.capabilities
         if not capabilities.durable_idempotency:
             status = RouteExecutionStatus.BLOCKED_IDEMPOTENCY_UNPROVEN
@@ -233,6 +246,48 @@ class ProviderRouteAuthorityResolver:
                 execution_status=RouteExecutionStatus.EXECUTABLE,
             )
         return self._blocked(identity, status, entry.cost.snapshot)
+
+    def authorize_dispatch(
+        self,
+        request: CostProjectionRequest,
+        adapter: HardCeilingProviderAdapter[object],
+        *,
+        now: datetime | None = None,
+    ) -> PaidRouteAuthorityIdentity:
+        """Revalidate and bind a live adapter to one exact paid route."""
+        matches = [
+            identity
+            for identity, registration in self._adapters.items()
+            if registration.adapter is adapter
+            and registration.provider_id == request.provider
+            and identity.model_id == request.model
+            and identity.seam_id == request.seam_id
+            and identity.operation == request.operation
+        ]
+        if len(matches) != 1:
+            raise DispatchIneligible("adapter lacks one exact paid route authority")
+        identity = matches[0]
+        entry = self._entries[identity]
+        authority = self.resolve(identity, provider_id=request.provider, now=now)
+        if authority.execution_status is not RouteExecutionStatus.EXECUTABLE:
+            raise DispatchIneligible(
+                f"paid route authority refused: {authority.execution_status.value}"
+            )
+        if authority.rate_snapshot is None:
+            raise DispatchIneligible("paid route authority lacks a rate snapshot")
+        return PaidRouteAuthorityIdentity(
+            provider_kind=identity.provider_kind,
+            provider_id=request.provider,
+            endpoint=identity.endpoint,
+            model=identity.model_id,
+            seam_id=identity.seam_id,
+            operation=identity.operation,
+            rate_snapshot=authority.rate_snapshot,
+            currency=entry.cost.currency,
+            rates=tuple(
+                ProjectionRate(rate.unit, rate.usd_per_unit) for rate in entry.cost.rates
+            ),
+        )
 
     @staticmethod
     def _qualification_current(

@@ -223,12 +223,19 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
     class ExactAdapter:
         provider = "user-my-deepseek"
         model = "deepseek-chat"
+        endpoint = "https://api.deepseek.com/v1"
         capabilities = ProviderCapabilities(True, True, True, frozenset({BillingUnit.CALL}))
 
-        def send_once(self, operation: object, *, provider_idempotency_key: str):
+        def send_once(
+            self,
+            operation: object,
+            *,
+            provider_idempotency_key: str,
+            authorized_endpoint: str,
+        ):
             raise AssertionError("Settings authority must not send")
 
-        def reconcile(self, *, provider_idempotency_key: str):
+        def reconcile(self, *, provider_idempotency_key: str, authorized_endpoint: str):
             raise AssertionError("Settings authority must not reconcile")
 
     adapter = ExactAdapter()
