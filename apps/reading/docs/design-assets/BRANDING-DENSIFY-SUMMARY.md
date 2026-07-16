@@ -176,3 +176,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | ContextPicker living-TV compose | `7f45f1aec` | compose note_saved; fail on error |
 | Clam catcher cursor invent product-map | `fec8cbae4` | LGH + wait-arcade + cabinet clam invent |
 | WorkCard living-TV shelf open | `587a843ab` | highlight on read/claim |
+| LibraryView living-TV filter | `aea9d8f07` | filter/reload highlight |
