@@ -55,6 +55,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     Epoch0RecoveryBarrierAcquisitionCompletionV1,
     Epoch0RecoveryCopyCompletionV1,
     Epoch0RecoveryCopyPreparationCompletionV1,
+    Epoch0RecoverySourceSealingCompletionV1,
     FrozenPaidLaneMigrationCorpusV1,
     MigrationSourceStoreV1,
     OpaqueSourceBundleRevisionV1,
@@ -109,6 +110,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _verify_epoch0_recovery_barrier_acquisition_completion_v1,
     _verify_epoch0_recovery_copy_completion_v1,
     _verify_epoch0_recovery_copy_preparation_completion_v1,
+    _verify_epoch0_recovery_source_sealing_completion_v1,
     _verify_migration_lifecycle_genesis,
     _verify_migration_lifecycle_transition,
     _verify_signed_epoch0_recovery_admission,
@@ -356,6 +358,40 @@ def _parse_issuer_recovery_barrier_acquisition_completion_document(
     return completion
 
 
+def _issuer_recovery_source_sealing_completion_document(
+    completion: Epoch0RecoverySourceSealingCompletionV1,
+) -> bytes:
+    material = completion.model_dump(mode="python")
+    for state_field in ("barrier_acquired_state", "sources_sealed_state"):
+        state = cast(dict[str, object], material[state_field])
+        signature = state.get("signature_ed25519")
+        if type(signature) is not bytes:
+            raise ValueError("issuer recovery source sealing completion signature")
+        state["signature_ed25519"] = signature.hex()
+    encoded = _canonical_json(material)
+    if len(encoded) > _ISSUER_MAX_PACKET:
+        raise ValueError("issuer recovery source sealing completion bound")
+    return encoded
+
+
+def _parse_issuer_recovery_source_sealing_completion_document(
+    document: bytes,
+) -> Epoch0RecoverySourceSealingCompletionV1:
+    material = _parse_strict_json(document, _ISSUER_MAX_PACKET)
+    for state_field in ("barrier_acquired_state", "sources_sealed_state"):
+        state = material.get(state_field)
+        if type(state) is not dict:
+            raise ValueError("issuer recovery source sealing completion state")
+        signature = state.get("signature_ed25519")
+        if type(signature) is not str or not re.fullmatch(r"[0-9a-f]{128}", signature):
+            raise ValueError("issuer recovery source sealing completion signature")
+        state["signature_ed25519"] = bytes.fromhex(signature)
+    completion = Epoch0RecoverySourceSealingCompletionV1.model_validate(material)
+    if document != _issuer_recovery_source_sealing_completion_document(completion):
+        raise ValueError("issuer recovery source sealing completion canonical")
+    return completion
+
+
 def _issuer_received_descriptors(ancillary: list[tuple[int, int, bytes]]) -> list[int]:
     descriptors: list[int] = []
     for level, kind, data in ancillary:
@@ -473,6 +509,7 @@ def _issuer_authenticate_schema_recovery_root(
     *,
     expected_root_id: str,
     expected_root_manifest_sha256: str,
+    _allow_mixed_children: bool = False,
 ) -> dict[str, object]:
     root_path = _issuer_root_path(root_fd)
     record = _issuer_root_record(root_fd)
@@ -488,7 +525,8 @@ def _issuer_authenticate_schema_recovery_root(
     if record.get("child_adapters") != expected_children:
         raise ValueError("issuer recovery child adapter roster")
     measured = _measure_child_adapters(root_path)
-    _audit_child_phase(record, measured)
+    if not _allow_mixed_children:
+        _audit_child_phase(record, measured)
     inventory = record.get("writer_inventory")
     source_identities = record.get("source_store_identities")
     created_at_ms = record.get("created_at_ms")
@@ -511,6 +549,45 @@ def _issuer_authenticate_schema_recovery_root(
         or record["root_manifest_sha256"] != hashlib.sha256(_canonical_json(manifest)).hexdigest()
     ):
         raise ValueError("issuer recovery inventory hash")
+    return record
+
+
+def _issuer_authenticate_barrier_recovery_root(
+    root_fd: int,
+    *,
+    expected_root_id: str,
+    expected_root_manifest_sha256: str,
+    expected_barrier_id: str,
+    expected_freeze_nonce: str,
+) -> dict[str, object]:
+    record = _issuer_authenticate_schema_recovery_root(
+        root_fd,
+        expected_root_id=expected_root_id,
+        expected_root_manifest_sha256=expected_root_manifest_sha256,
+        _allow_mixed_children=True,
+    )
+    state = record.get("state")
+    if state not in {
+        "quiesced",
+        "admission_denied",
+        "drained",
+        "writers_revoked",
+        "writers_verified",
+        "sealed",
+    }:
+        raise ValueError("issuer recovery barrier root state")
+    if (
+        record.get("barrier_id") != expected_barrier_id
+        or record.get("freeze_nonce") != expected_freeze_nonce
+        or record.get("barrier_id") != _migration_barrier_id(expected_freeze_nonce)
+    ):
+        raise ValueError("issuer recovery barrier root pins")
+    if state == "sealed":
+        measured = _measure_child_adapters(_issuer_root_path(root_fd))
+        _audit_child_phase(record, measured)
+        evidence = record.get("child_adapter_evidence")
+        if type(evidence) is not dict or evidence.get("sealed_measurements") != measured:
+            raise ValueError("issuer recovery sealed root measurements")
     return record
 
 
@@ -1152,6 +1229,7 @@ def _fixture_migration_lifecycle_issuer_main(
     recovery_barrier_acquisition_completion: Epoch0RecoveryBarrierAcquisitionCompletionV1 | None = (
         None
     )
+    recovery_source_sealing_completion: Epoch0RecoverySourceSealingCompletionV1 | None = None
     recovery_peer_exited = False
     recovery_peer_pid: int | None = None
     pending_recovery_peer_pid: int | None = None
@@ -1404,6 +1482,231 @@ def _fixture_migration_lifecycle_issuer_main(
             pending_candidate = None
             pending_state = None
             return recovery_barrier_acquisition_completion
+
+    def recover_barrier_acquired_to_sources_sealed(
+        *,
+        session_root_fd: int,
+        session_parent_fd: int,
+        session_target_fd: int,
+        expected_barrier_acquired_state_sha256: str,
+        expected_pins: Epoch0RecoveryAuthorityPinsV1,
+    ) -> Epoch0RecoverySourceSealingCompletionV1:
+        nonlocal committed, pending_candidate, pending_state
+        nonlocal recovery_source_sealing_completion
+        del session_target_fd
+        if (
+            committed is None
+            or expected_pins.lifecycle_phase != "barrier_acquired"
+            or expected_pins.state_sha256 != expected_barrier_acquired_state_sha256
+            or pending_state is not None
+        ):
+            raise ValueError("issuer recovery source sealing phase")
+        durable = _read_signed_migration_lifecycle_state(
+            parent_fd=session_parent_fd,
+            target_basename=expected_pins.target_basename,
+            verification_key=verification_key,
+        )
+        if (
+            recovery_source_sealing_completion is not None
+            and durable == recovery_source_sealing_completion.sources_sealed_state
+        ):
+            with _issuer_transition_lock(session_root_fd):
+                durable = _confirm_signed_migration_lifecycle_state_durable(
+                    parent_fd=session_parent_fd,
+                    expected_state=recovery_source_sealing_completion.sources_sealed_state,
+                    verification_key=verification_key,
+                )
+                root_record = _issuer_authenticate_barrier_recovery_root(
+                    session_root_fd,
+                    expected_root_id=expected_pins.root_id,
+                    expected_root_manifest_sha256=expected_pins.root_manifest_sha256,
+                    expected_barrier_id=cast(
+                        str,
+                        recovery_source_sealing_completion.sources_sealed_state.barrier_id,
+                    ),
+                    expected_freeze_nonce=cast(
+                        str,
+                        recovery_source_sealing_completion.sources_sealed_state.freeze_nonce,
+                    ),
+                )
+                if root_record.get("state") != "sealed":
+                    raise ValueError("issuer recovery source sealing replay root")
+                compatible = dict(root_record)
+                corpus = _collect_sealed_corpus(_issuer_root_path(session_root_fd), compatible)
+                if (
+                    corpus.source_manifest_sha256
+                    != recovery_source_sealing_completion.sources_sealed_state.source_manifest_sha256
+                ):
+                    raise ValueError("issuer recovery source sealing replay manifest")
+                committed = durable
+                return recovery_source_sealing_completion
+        if (
+            committed.lifecycle_phase != "barrier_acquired"
+            or committed.state_sha256 != expected_barrier_acquired_state_sha256
+            or durable != committed
+        ):
+            raise ValueError("issuer recovery barrier acquired journal")
+        barrier_acquired = committed
+        with _issuer_transition_lock(session_root_fd):
+            root_record = _issuer_authenticate_barrier_recovery_root(
+                session_root_fd,
+                expected_root_id=barrier_acquired.root_id,
+                expected_root_manifest_sha256=barrier_acquired.root_manifest_sha256,
+                expected_barrier_id=cast(str, barrier_acquired.barrier_id),
+                expected_freeze_nonce=cast(str, barrier_acquired.freeze_nonce),
+            )
+            working_root = dict(root_record)
+            root_path = _issuer_root_path(session_root_fd)
+
+            def _cache_source_sealing_completion(
+                corpus: FrozenPaidLaneMigrationCorpusV1,
+            ) -> SignedMigrationLifecycleStateV1:
+                nonlocal recovery_source_sealing_completion
+                if recovery_source_sealing_completion is None:
+                    material = barrier_acquired.model_dump(
+                        mode="python",
+                        exclude={"issuer_key_id", "state_sha256", "signature_ed25519"},
+                    )
+                    material.update(
+                        {
+                            "lifecycle_phase": "sources_sealed",
+                            "phase_version": 2,
+                            "issuer_sequence": 2,
+                            "updated_at_ms": max(
+                                barrier_acquired.updated_at_ms,
+                                time.time_ns() // 1_000_000,
+                            ),
+                            "previous_state_sha256": barrier_acquired.state_sha256,
+                            "source_manifest_sha256": corpus.source_manifest_sha256,
+                            "witness_sha256": barrier_acquired.witness_sha256,
+                            "issuer_key_id": key_id,
+                        }
+                    )
+                    state_sha256 = _migration_lifecycle_state_sha256(material)
+                    material["state_sha256"] = state_sha256
+                    material["signature_ed25519"] = private_key.sign(
+                        _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
+                    )
+                    sources_sealed = SignedMigrationLifecycleStateV1.model_validate(material)
+                    recovery_source_sealing_completion = Epoch0RecoverySourceSealingCompletionV1(
+                        barrier_acquired_state=barrier_acquired,
+                        sources_sealed_state=sources_sealed,
+                    )
+                elif (
+                    recovery_source_sealing_completion.barrier_acquired_state != barrier_acquired
+                    or recovery_source_sealing_completion.sources_sealed_state.source_manifest_sha256
+                    != corpus.source_manifest_sha256
+                ):
+                    raise ValueError("issuer recovery source sealing cached completion")
+                return recovery_source_sealing_completion.sources_sealed_state
+
+            if working_root.get("state") == "sealed":
+                _cache_source_sealing_completion(_collect_sealed_corpus(root_path, working_root))
+            else:
+                subphase_order = (
+                    "quiesced",
+                    "admission_denied",
+                    "drained",
+                    "writers_revoked",
+                    "writers_verified",
+                    "sealed",
+                )
+                for operation, prior_state, next_state in _RECOVERY_ROOT_BARRIER_SUBPHASES:
+                    current_state = working_root.get("state")
+                    if type(current_state) is not str or current_state not in subphase_order:
+                        raise ValueError("issuer recovery root subphase mismatch")
+                    if subphase_order.index(current_state) >= subphase_order.index(next_state):
+                        continue
+                    if current_state != prior_state:
+                        raise ValueError("issuer recovery root subphase mismatch")
+                    _audit_transition_evidence(working_root)
+                    if operation == "seal_and_collect":
+                        _execute_barrier_child_operation(
+                            root_path, working_root, operation, recovery_mode=True
+                        )
+                        measured = _measure_child_adapters(root_path)
+                        evidence = working_root.get("child_adapter_evidence")
+                        if type(evidence) is not dict:
+                            raise ValueError("issuer recovery sealed child evidence")
+                        seal_working = dict(working_root)
+                        seal_working["state"] = "sealed"
+                        evidence_copy = dict(evidence)
+                        evidence_copy["sealed_measurements"] = measured
+                        seal_working["child_adapter_evidence"] = evidence_copy
+                        _cache_source_sealing_completion(
+                            _collect_sealed_corpus(root_path, seal_working)
+                        )
+                        assert recovery_source_sealing_completion is not None
+                        _verify_epoch0_recovery_source_sealing_completion_v1(
+                            recovery_source_sealing_completion,
+                            issuer_verification_key=verification_key,
+                            expected_barrier_acquired_pins=expected_pins,
+                        )
+                        evidence["sealed_measurements"] = measured
+                        _append_transition_evidence(
+                            working_root,
+                            operation=operation,
+                            prior_state=prior_state,
+                            next_state=next_state,
+                        )
+                        working_root["state"] = next_state
+                        _issuer_durable_write_root_record(session_root_fd, working_root)
+                        reread_root = _issuer_authenticate_barrier_recovery_root(
+                            session_root_fd,
+                            expected_root_id=barrier_acquired.root_id,
+                            expected_root_manifest_sha256=barrier_acquired.root_manifest_sha256,
+                            expected_barrier_id=cast(str, barrier_acquired.barrier_id),
+                            expected_freeze_nonce=cast(str, barrier_acquired.freeze_nonce),
+                        )
+                        if reread_root.get("state") != "sealed":
+                            raise ValueError("issuer recovery source sealing root reread")
+                    else:
+                        _execute_barrier_child_operation(
+                            root_path, working_root, operation, recovery_mode=True
+                        )
+                        _append_transition_evidence(
+                            working_root,
+                            operation=operation,
+                            prior_state=prior_state,
+                            next_state=next_state,
+                        )
+                        working_root["state"] = next_state
+                        _issuer_durable_write_root_record(session_root_fd, working_root)
+                        reread_root = _issuer_authenticate_barrier_recovery_root(
+                            session_root_fd,
+                            expected_root_id=barrier_acquired.root_id,
+                            expected_root_manifest_sha256=barrier_acquired.root_manifest_sha256,
+                            expected_barrier_id=cast(str, barrier_acquired.barrier_id),
+                            expected_freeze_nonce=cast(str, barrier_acquired.freeze_nonce),
+                        )
+                        if reread_root.get("state") != next_state:
+                            raise ValueError("issuer recovery source sealing subphase reread")
+                    working_root = dict(reread_root)
+            if recovery_source_sealing_completion is None:
+                raise ValueError("issuer recovery source sealing completion missing")
+            sources_sealed = recovery_source_sealing_completion.sources_sealed_state
+            _verify_epoch0_recovery_source_sealing_completion_v1(
+                recovery_source_sealing_completion,
+                issuer_verification_key=verification_key,
+                expected_barrier_acquired_pins=expected_pins,
+            )
+            _persist_signed_migration_lifecycle_state(
+                parent_fd=session_parent_fd,
+                state=sources_sealed,
+                verification_key=verification_key,
+                expected_prior_state_sha256=barrier_acquired.state_sha256,
+            )
+            reread = _read_signed_migration_lifecycle_state(
+                parent_fd=session_parent_fd,
+                target_basename=barrier_acquired.target_basename,
+                verification_key=verification_key,
+            )
+            if reread != sources_sealed:
+                raise ValueError("issuer recovery source sealing journal reread")
+            committed = sources_sealed
+            pending_candidate = None
+            pending_state = None
+            return recovery_source_sealing_completion
 
     def recover_sources_sealed_to_copy_prepared(
         *,
@@ -2017,6 +2320,7 @@ def _fixture_migration_lifecycle_issuer_main(
                         (
                             recovery_copy_completion is not None
                             or recovery_copy_preparation_completion is not None
+                            or recovery_source_sealing_completion is not None
                             or recovery_barrier_acquisition_completion is not None
                         )
                         and recovery_admission_request == request_bytes
@@ -2038,6 +2342,20 @@ def _fixture_migration_lifecycle_issuer_main(
                                 recovery_copy_preparation_completion.prepared_state,
                             ):
                                 raise ValueError("issuer recovery preparation effective state")
+                            effective_state = observed_recovery_state
+                        elif recovery_source_sealing_completion is not None:
+                            observed_recovery_state = _read_signed_migration_lifecycle_state(
+                                parent_fd=received_descriptors[1],
+                                target_basename=(
+                                    recovery_source_sealing_completion.barrier_acquired_state.target_basename
+                                ),
+                                verification_key=verification_key,
+                            )
+                            if observed_recovery_state not in (
+                                recovery_source_sealing_completion.barrier_acquired_state,
+                                recovery_source_sealing_completion.sources_sealed_state,
+                            ):
+                                raise ValueError("issuer recovery source sealing effective state")
                             effective_state = observed_recovery_state
                         else:
                             assert recovery_barrier_acquisition_completion is not None
@@ -2196,6 +2514,13 @@ def _fixture_migration_lifecycle_issuer_main(
                                 expected_fields = common_fields | {
                                     "expected_schema_only_state_sha256"
                                 }
+                            elif (
+                                session_command
+                                == "session_recover_barrier_acquired_to_sources_sealed"
+                            ):
+                                expected_fields = common_fields | {
+                                    "expected_barrier_acquired_state_sha256"
+                                }
                             else:
                                 expected_fields = common_fields
                             if set(session_request) != expected_fields or (
@@ -2212,6 +2537,40 @@ def _fixture_migration_lifecycle_issuer_main(
                                 effective_descriptor_pins = _issuer_recovery_pins_from_state(
                                     recovery_copy_completion.copied_state
                                 )
+                            elif recovery_copy_preparation_completion is not None:
+                                durable_recovery_state = _read_signed_migration_lifecycle_state(
+                                    parent_fd=session_parent_fd,
+                                    target_basename=(
+                                        recovery_copy_preparation_completion.sealed_state.target_basename
+                                    ),
+                                    verification_key=verification_key,
+                                )
+                                if durable_recovery_state not in (
+                                    recovery_copy_preparation_completion.sealed_state,
+                                    recovery_copy_preparation_completion.prepared_state,
+                                ):
+                                    raise ValueError("issuer recovery preparation effective state")
+                                effective_descriptor_pins = _issuer_recovery_pins_from_state(
+                                    durable_recovery_state
+                                )
+                            elif recovery_source_sealing_completion is not None:
+                                durable_recovery_state = _read_signed_migration_lifecycle_state(
+                                    parent_fd=session_parent_fd,
+                                    target_basename=(
+                                        recovery_source_sealing_completion.barrier_acquired_state.target_basename
+                                    ),
+                                    verification_key=verification_key,
+                                )
+                                if durable_recovery_state not in (
+                                    recovery_source_sealing_completion.barrier_acquired_state,
+                                    recovery_source_sealing_completion.sources_sealed_state,
+                                ):
+                                    raise ValueError(
+                                        "issuer recovery source sealing effective state"
+                                    )
+                                effective_descriptor_pins = _issuer_recovery_pins_from_state(
+                                    durable_recovery_state
+                                )
                             elif recovery_barrier_acquisition_completion is not None:
                                 durable_recovery_state = _read_signed_migration_lifecycle_state(
                                     parent_fd=session_parent_fd,
@@ -2227,22 +2586,6 @@ def _fixture_migration_lifecycle_issuer_main(
                                     raise ValueError(
                                         "issuer recovery barrier acquisition effective state"
                                     )
-                                effective_descriptor_pins = _issuer_recovery_pins_from_state(
-                                    durable_recovery_state
-                                )
-                            elif recovery_copy_preparation_completion is not None:
-                                durable_recovery_state = _read_signed_migration_lifecycle_state(
-                                    parent_fd=session_parent_fd,
-                                    target_basename=(
-                                        recovery_copy_preparation_completion.sealed_state.target_basename
-                                    ),
-                                    verification_key=verification_key,
-                                )
-                                if durable_recovery_state not in (
-                                    recovery_copy_preparation_completion.sealed_state,
-                                    recovery_copy_preparation_completion.prepared_state,
-                                ):
-                                    raise ValueError("issuer recovery preparation effective state")
                                 effective_descriptor_pins = _issuer_recovery_pins_from_state(
                                     durable_recovery_state
                                 )
@@ -2312,6 +2655,51 @@ def _fixture_migration_lifecycle_issuer_main(
                                     )
                                 )
                                 continue
+                            if (
+                                session_command
+                                == "session_recover_barrier_acquired_to_sources_sealed"
+                            ):
+                                expected_barrier_acquired_state_sha256 = session_request.get(
+                                    "expected_barrier_acquired_state_sha256"
+                                )
+                                if type(
+                                    expected_barrier_acquired_state_sha256
+                                ) is not str or not re.fullmatch(
+                                    r"[0-9a-f]{64}", expected_barrier_acquired_state_sha256
+                                ):
+                                    raise ValueError("issuer recovery sealing expected state")
+                                try:
+                                    _issuer_authenticate_recovery_descriptors(
+                                        root_fd=session_root_fd,
+                                        parent_fd=session_parent_fd,
+                                        target_fd=session_target_fd,
+                                        ticket=recovery_ticket,
+                                        verification_key=verification_key,
+                                        raw_pins=effective_descriptor_pins.model_dump(mode="json"),
+                                    )
+                                    sealing_completion = recover_barrier_acquired_to_sources_sealed(
+                                        session_root_fd=session_root_fd,
+                                        session_parent_fd=session_parent_fd,
+                                        session_target_fd=session_target_fd,
+                                        expected_barrier_acquired_state_sha256=(
+                                            expected_barrier_acquired_state_sha256
+                                        ),
+                                        expected_pins=recovery_admission.authority_pins,
+                                    )
+                                    if supervisor_exited() or recovery_peer_exited:
+                                        return
+                                except Exception:
+                                    connection.sendall(_issuer_session_frame(b"E"))
+                                    continue
+                                connection.sendall(
+                                    _issuer_session_frame(
+                                        b"Y"
+                                        + _issuer_recovery_source_sealing_completion_document(
+                                            sealing_completion
+                                        )
+                                    )
+                                )
+                                continue
                             if session_command == "session_recover_sources_sealed_to_copy_prepared":
                                 expected_sealed_state_sha256 = session_request.get(
                                     "expected_sources_sealed_state_sha256"
@@ -2339,7 +2727,7 @@ def _fixture_migration_lifecycle_issuer_main(
                                             expected_sources_sealed_state_sha256=(
                                                 expected_sealed_state_sha256
                                             ),
-                                            expected_pins=recovery_admission.authority_pins,
+                                            expected_pins=effective_descriptor_pins,
                                         )
                                     )
                                     if supervisor_exited() or recovery_peer_exited:
@@ -2848,6 +3236,7 @@ class FixtureMigrationRecoverySessionV1:
     _lock: threading.Lock
     _barrier_acquisition_completion: Epoch0RecoveryBarrierAcquisitionCompletionV1 | None
     _preparation_completion: Epoch0RecoveryCopyPreparationCompletionV1 | None
+    _source_sealing_completion: Epoch0RecoverySourceSealingCompletionV1 | None
     _ticket: SignedMigrationRecoveryTicketV1
     _verification_key: VerificationKeyV1
 
@@ -2862,6 +3251,7 @@ class FixtureMigrationRecoverySessionV1:
         "_handle_nonce",
         "_lock",
         "_preparation_completion",
+        "_source_sealing_completion",
         "_ticket",
         "_verification_key",
     )
@@ -2980,6 +3370,7 @@ class FixtureMigrationRecoverySessionV1:
         object.__setattr__(session, "_lock", threading.Lock())
         object.__setattr__(session, "_barrier_acquisition_completion", None)
         object.__setattr__(session, "_preparation_completion", None)
+        object.__setattr__(session, "_source_sealing_completion", None)
         object.__setattr__(session, "_ticket", recovery_ticket)
         object.__setattr__(session, "_verification_key", verification_key)
         return session
@@ -3143,6 +3534,54 @@ class FixtureMigrationRecoverySessionV1:
                 raise
             return completion
 
+    def recover_barrier_acquired_to_sources_sealed(
+        self, *, expected_barrier_acquired_state_sha256: str
+    ) -> Epoch0RecoverySourceSealingCompletionV1:
+        self._validate()
+        barrier_pins = self._admission.authority_pins
+        if (
+            not re.fullmatch(r"[0-9a-f]{64}", expected_barrier_acquired_state_sha256)
+            or barrier_pins.lifecycle_phase != "barrier_acquired"
+            or barrier_pins.state_sha256 != expected_barrier_acquired_state_sha256
+        ):
+            raise ValueError("fixture recovery barrier acquired state")
+        request = _canonical_json(
+            {
+                "command": "session_recover_barrier_acquired_to_sources_sealed",
+                "admission_sha256": self._admission.admission_sha256,
+                "handle_nonce": self._handle_nonce,
+                "expected_barrier_acquired_state_sha256": (expected_barrier_acquired_state_sha256),
+            }
+        )
+        with self._lock:
+            try:
+                self._connection.sendall(_issuer_session_frame(request))
+                response = _issuer_session_receive_frame(self._connection)
+            except Exception:
+                self._close_local()
+                raise
+            if response == b"E":
+                raise ValueError("fixture recovery source sealing rejected")
+            try:
+                if response[:1] != b"Y":
+                    raise ValueError("fixture recovery source sealing response")
+                completion = _parse_issuer_recovery_source_sealing_completion_document(response[1:])
+                _verify_epoch0_recovery_source_sealing_completion_v1(
+                    completion,
+                    issuer_verification_key=self._verification_key,
+                    expected_barrier_acquired_pins=barrier_pins,
+                )
+                if (
+                    self._source_sealing_completion is not None
+                    and completion != self._source_sealing_completion
+                ):
+                    raise ValueError("fixture recovery source sealing replay")
+                object.__setattr__(self, "_source_sealing_completion", completion)
+            except Exception:
+                self._close_local()
+                raise
+            return completion
+
     def recover_copy_prepared_epoch0(
         self, *, expected_prepared_state_sha256: str
     ) -> Epoch0RecoveryCopyCompletionV1:
@@ -3194,6 +3633,10 @@ class FixtureMigrationRecoverySessionV1:
     ) -> Epoch0RecoveryCopyPreparationCompletionV1:
         self._validate()
         sealed_pins = self._admission.authority_pins
+        if self._source_sealing_completion is not None:
+            sealed_pins = _issuer_recovery_pins_from_state(
+                self._source_sealing_completion.sources_sealed_state
+            )
         if (
             not re.fullmatch(r"[0-9a-f]{64}", expected_sources_sealed_state_sha256)
             or sealed_pins.lifecycle_phase != "sources_sealed"
@@ -4100,142 +4543,333 @@ def _audit_transition_evidence(record: dict[str, object]) -> None:
         raise ValueError("abort release evidence mismatch")
 
 
-def _execute_synthetic_transition(root: Path, record: dict[str, object], operation: str) -> None:
+_CHILD_BARRIER_OPERATION_VERSIONS: dict[str, tuple[int, int]] = {
+    "deny_new_admission": (1, 2),
+    "drain_terminal_only": (2, 3),
+    "close_and_revoke_all_writers": (3, 4),
+    "checkpoint_and_plant_test_all_mutators": (4, 5),
+    "seal_and_collect": (5, 6),
+}
+
+_RECOVERY_ROOT_BARRIER_SUBPHASES: tuple[tuple[str, str, str], ...] = (
+    ("deny_new_admission", "quiesced", "admission_denied"),
+    ("drain_terminal_only", "admission_denied", "drained"),
+    ("close_and_revoke_all_writers", "drained", "writers_revoked"),
+    ("checkpoint_and_plant_test_all_mutators", "writers_revoked", "writers_verified"),
+    ("seal_and_collect", "writers_verified", "sealed"),
+)
+
+
+def _expected_child_adapter_state(role: str, version: int) -> list[int] | None:
+    if version < 1 or version > _MIGRATION_CHILD_FINAL_VERSION:
+        return None
+    admission = 0 if role == "paid-lane-fixture-v1" and version >= 2 else 1
+    writer = 0 if version >= 4 else 1
+    return [admission, writer, 0, 0, version]
+
+
+def _read_child_adapter_state(path: Path) -> list[int]:
+    connection = sqlite3.connect(path)
+    try:
+        row = connection.execute(
+            "SELECT admission_enabled,writer_enabled,active_invocations,"
+            "open_accounting_cents,version FROM adapter_state WHERE singleton=1"
+        ).fetchone()
+        if row is None:
+            raise ValueError("child adapter state missing")
+        return list(row)
+    finally:
+        connection.close()
+
+
+def _child_barrier_operation_pre_satisfied(role: str, path: Path, operation: str) -> bool:
+    pre_version, _ = _CHILD_BARRIER_OPERATION_VERSIONS[operation]
+    state = _read_child_adapter_state(path)
+    expected = _expected_child_adapter_state(role, pre_version)
+    if state != expected:
+        return False
+    if operation == "drain_terminal_only":
+        connection = sqlite3.connect(path)
+        try:
+            row = connection.execute(
+                "SELECT active_invocations,open_accounting_cents FROM adapter_state"
+            ).fetchone()
+            zero_only_rows = 0
+            if role == "paid-lane-fixture-v1":
+                result = connection.execute(
+                    "SELECT COUNT(*) FROM paid_admissions WHERE id != ?", ("__sentinel__",)
+                ).fetchone()
+                if result is None:
+                    raise ValueError("paid admission drain count unavailable")
+                zero_only_rows = int(result[0])
+        finally:
+            connection.close()
+        return row == (0, 0) and zero_only_rows == 0
+    if operation == "seal_and_collect":
+        connection = sqlite3.connect(path)
+        try:
+            checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            adapter = connection.execute(
+                "SELECT admission_enabled,writer_enabled,active_invocations,"
+                "open_accounting_cents FROM adapter_state WHERE singleton=1"
+            ).fetchone()
+            probes = connection.execute("SELECT COUNT(*) FROM mutator_attempts").fetchone()
+        finally:
+            connection.close()
+        return (
+            checkpoint == (0, 0, 0)
+            and adapter is not None
+            and adapter[1:] == (0, 0, 0)
+            and probes == (0,)
+            and not any(
+                Path(str(path) + suffix).exists() for suffix in ("-wal", "-shm", "-journal")
+            )
+        )
+    return True
+
+
+def _child_barrier_operation_post_satisfied(
+    role: str, path: Path, operation: str, *, evidence: Mapping[str, object]
+) -> bool:
+    _, post_version = _CHILD_BARRIER_OPERATION_VERSIONS[operation]
+    state = _read_child_adapter_state(path)
+    expected = _expected_child_adapter_state(role, post_version)
+    if state != expected:
+        return False
+    if operation == "checkpoint_and_plant_test_all_mutators":
+        # Version 5 is committed only after every mutator probe for this child rejects.
+        # The root proof roster is reconstructed once all children reach this marker.
+        return True
+    if operation == "seal_and_collect":
+        connection = sqlite3.connect(path)
+        try:
+            checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            adapter = connection.execute(
+                "SELECT admission_enabled,writer_enabled,active_invocations,"
+                "open_accounting_cents FROM adapter_state WHERE singleton=1"
+            ).fetchone()
+            probes = connection.execute("SELECT COUNT(*) FROM mutator_attempts").fetchone()
+        finally:
+            connection.close()
+        return (
+            checkpoint == (0, 0, 0)
+            and adapter is not None
+            and adapter[1:] == (0, 0, 0)
+            and probes == (0,)
+            and not any(
+                Path(str(path) + suffix).exists() for suffix in ("-wal", "-shm", "-journal")
+            )
+        )
+    return True
+
+
+def _classify_child_barrier_operation(
+    role: str, path: Path, operation: str, *, evidence: Mapping[str, object]
+) -> Literal["pre", "post", "mismatch"]:
+    if operation not in _CHILD_BARRIER_OPERATION_VERSIONS:
+        raise ValueError("child barrier operation unknown")
+    if _child_barrier_operation_post_satisfied(role, path, operation, evidence=evidence):
+        return "post"
+    if _child_barrier_operation_pre_satisfied(role, path, operation):
+        return "pre"
+    return "mismatch"
+
+
+def _apply_child_barrier_operation(
+    role: str, path: Path, operation: str, *, rejected: list[str] | None = None
+) -> None:
+    if operation == "deny_new_admission":
+        connection = sqlite3.connect(path)
+        try:
+            if role == "paid-lane-fixture-v1":
+                changed = connection.execute(
+                    "UPDATE adapter_state SET admission_enabled=0,version=version+1 "
+                    "WHERE singleton=1 AND admission_enabled=1"
+                ).rowcount
+                if changed != 1:
+                    raise ValueError("admission already denied")
+                try:
+                    connection.execute(
+                        "INSERT INTO paid_admissions(id,payload) VALUES('denied',X'00')"
+                    )
+                except sqlite3.IntegrityError as error:
+                    if "admission denied" not in str(error):
+                        raise
+                else:
+                    raise ValueError("denied admission accepted")
+            else:
+                connection.execute("UPDATE adapter_state SET version=version+1 WHERE singleton=1")
+            connection.commit()
+        finally:
+            connection.close()
+        return
+    if operation == "drain_terminal_only":
+        connection = sqlite3.connect(path)
+        try:
+            row = connection.execute(
+                "SELECT active_invocations,open_accounting_cents FROM adapter_state"
+            ).fetchone()
+            zero_only_rows = 0
+            if role == "paid-lane-fixture-v1":
+                result = connection.execute(
+                    "SELECT COUNT(*) FROM paid_admissions WHERE id != ?", ("__sentinel__",)
+                ).fetchone()
+                if result is None:
+                    raise ValueError("paid admission drain count unavailable")
+                zero_only_rows = int(result[0])
+            if row != (0, 0) or zero_only_rows != 0:
+                raise ValueError("child work not drained")
+            connection.execute("UPDATE adapter_state SET version=version+1 WHERE singleton=1")
+            connection.commit()
+        finally:
+            connection.close()
+        return
+    if operation == "close_and_revoke_all_writers":
+        connection = sqlite3.connect(path)
+        try:
+            connection.execute(
+                "UPDATE adapter_state SET writer_enabled=0,version=version+1 "
+                "WHERE singleton=1 AND writer_enabled=1"
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        return
+    if operation == "checkpoint_and_plant_test_all_mutators":
+        if rejected is None:
+            raise ValueError("child mutator rejection roster required")
+        connection = sqlite3.connect(path)
+        try:
+            connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            for table in _owned_child_tables(role):
+                mutations = (
+                    (
+                        "insert",
+                        f'INSERT INTO "{table}"(id,payload) VALUES(?,?)',
+                        ("plant", b"plant"),
+                    ),
+                    (
+                        "update",
+                        f'UPDATE "{table}" SET payload=? WHERE id=?',
+                        (b"changed", "__sentinel__"),
+                    ),
+                    ("delete", f'DELETE FROM "{table}" WHERE id=?', ("__sentinel__",)),
+                )
+                for mutation, sql, parameters in mutations:
+                    try:
+                        connection.execute(sql, parameters)
+                    except sqlite3.IntegrityError as error:
+                        if "writer revoked" not in str(error):
+                            raise
+                        rejected.append(f"{role}:{table}:{mutation}")
+                    else:
+                        raise ValueError("revoked child mutator accepted")
+            connection.execute("UPDATE adapter_state SET version=version+1 WHERE singleton=1")
+            connection.commit()
+        finally:
+            connection.close()
+        return
+    if operation == "seal_and_collect":
+        connection = sqlite3.connect(path)
+        try:
+            checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            state = connection.execute(
+                "SELECT admission_enabled,writer_enabled,active_invocations,"
+                "open_accounting_cents FROM adapter_state WHERE singleton=1"
+            ).fetchone()
+            probes = connection.execute("SELECT COUNT(*) FROM mutator_attempts").fetchone()
+            version = connection.execute(
+                "SELECT version FROM adapter_state WHERE singleton=1"
+            ).fetchone()
+            if version != (_MIGRATION_CHILD_FINAL_VERSION - 1,):
+                raise ValueError("child adapter pre-seal version mismatch")
+            connection.execute("UPDATE adapter_state SET version=version+1 WHERE singleton=1")
+            connection.commit()
+        finally:
+            connection.close()
+        if checkpoint != (0, 0, 0) or state is None or state[1:] != (0, 0, 0) or probes != (0,):
+            raise ValueError("child adapter is not sealed")
+        if any(Path(str(path) + suffix).exists() for suffix in ("-wal", "-shm", "-journal")):
+            raise ValueError("child adapter sidecar remains")
+        return
+    raise ValueError("child barrier operation unknown")
+
+
+def _verify_child_barrier_operation(
+    role: str, path: Path, operation: str, *, evidence: Mapping[str, object]
+) -> None:
+    if _classify_child_barrier_operation(role, path, operation, evidence=evidence) != "post":
+        raise ValueError("child barrier operation verify mismatch")
+
+
+def _execute_barrier_child_operation(
+    root: Path,
+    record: dict[str, object],
+    operation: str,
+    *,
+    recovery_mode: bool,
+) -> bool:
     evidence = record.get("child_adapter_evidence")
     if type(evidence) is not dict:
         raise ValueError("child adapter evidence missing")
-    paths = tuple(_child_path(root, role) for role in _CHILD_ROLES)
+    applied = False
+    rejected: list[str] = []
+    classifications = tuple(
+        (
+            role,
+            _child_path(root, role),
+            _classify_child_barrier_operation(
+                role,
+                _child_path(root, role),
+                operation,
+                evidence=evidence,
+            ),
+        )
+        for role in _CHILD_ROLES
+    )
+    if any(classification == "mismatch" for _, _, classification in classifications):
+        raise ValueError("child barrier operation classification mismatch")
+    if not recovery_mode and any(
+        classification == "post" for _, _, classification in classifications
+    ):
+        raise ValueError("child barrier operation post unexpected")
+    for role, path, classification in classifications:
+        if classification == "post":
+            pass
+        elif classification == "pre":
+            if operation == "checkpoint_and_plant_test_all_mutators":
+                _apply_child_barrier_operation(role, path, operation, rejected=rejected)
+            else:
+                _apply_child_barrier_operation(role, path, operation)
+            applied = True
+        _verify_child_barrier_operation(role, path, operation, evidence=evidence)
     if operation == "deny_new_admission":
-        for role, path in zip(_CHILD_ROLES, paths, strict=True):
-            connection = sqlite3.connect(path)
-            try:
-                if role == "paid-lane-fixture-v1":
-                    changed = connection.execute(
-                        "UPDATE adapter_state SET admission_enabled=0,version=version+1 "
-                        "WHERE singleton=1 AND admission_enabled=1"
-                    ).rowcount
-                    if changed != 1:
-                        raise ValueError("admission already denied")
-                    try:
-                        connection.execute(
-                            "INSERT INTO paid_admissions(id,payload) VALUES('denied',X'00')"
-                        )
-                    except sqlite3.IntegrityError as error:
-                        if "admission denied" not in str(error):
-                            raise
-                    else:
-                        raise ValueError("denied admission accepted")
-                else:
-                    connection.execute(
-                        "UPDATE adapter_state SET version=version+1 WHERE singleton=1"
-                    )
-                connection.commit()
-            finally:
-                connection.close()
         evidence["admission_denied"] = True
     elif operation == "drain_terminal_only":
-        for role, path in zip(_CHILD_ROLES, paths, strict=True):
-            connection = sqlite3.connect(path)
-            try:
-                row = connection.execute(
-                    "SELECT active_invocations,open_accounting_cents FROM adapter_state"
-                ).fetchone()
-                zero_only_rows = 0
-                if role == "paid-lane-fixture-v1":
-                    result = connection.execute(
-                        "SELECT COUNT(*) FROM paid_admissions WHERE id != ?", ("__sentinel__",)
-                    ).fetchone()
-                    if result is None:
-                        raise ValueError("paid admission drain count unavailable")
-                    zero_only_rows = int(result[0])
-                if row == (0, 0) and zero_only_rows == 0:
-                    connection.execute(
-                        "UPDATE adapter_state SET version=version+1 WHERE singleton=1"
-                    )
-                    connection.commit()
-            finally:
-                connection.close()
-            if row != (0, 0) or zero_only_rows != 0:
-                raise ValueError("child work not drained")
         evidence["drain_verified"] = True
     elif operation == "close_and_revoke_all_writers":
-        for path in paths:
-            connection = sqlite3.connect(path)
-            try:
-                connection.execute(
-                    "UPDATE adapter_state SET writer_enabled=0,version=version+1 "
-                    "WHERE singleton=1 AND writer_enabled=1"
-                )
-                connection.commit()
-            finally:
-                connection.close()
         evidence["writers_revoked"] = True
     elif operation == "checkpoint_and_plant_test_all_mutators":
-        rejected: list[str] = []
-        for role, path in zip(_CHILD_ROLES, paths, strict=True):
-            connection = sqlite3.connect(path)
-            try:
-                connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                for table in _owned_child_tables(role):
-                    mutations = (
-                        (
-                            "insert",
-                            f'INSERT INTO "{table}"(id,payload) VALUES(?,?)',
-                            ("plant", b"plant"),
-                        ),
-                        (
-                            "update",
-                            f'UPDATE "{table}" SET payload=? WHERE id=?',
-                            (b"changed", "__sentinel__"),
-                        ),
-                        ("delete", f'DELETE FROM "{table}" WHERE id=?', ("__sentinel__",)),
-                    )
-                    for mutation, sql, parameters in mutations:
-                        try:
-                            connection.execute(sql, parameters)
-                        except sqlite3.IntegrityError as error:
-                            if "writer revoked" not in str(error):
-                                raise
-                            rejected.append(f"{role}:{table}:{mutation}")
-                        else:
-                            raise ValueError("revoked child mutator accepted")
-                connection.execute("UPDATE adapter_state SET version=version+1 WHERE singleton=1")
-                connection.commit()
-            finally:
-                connection.close()
-        evidence["planted_mutator_rejections"] = rejected
-    elif operation == "seal_and_collect":
         expected_rejections = [
             f"{role}:{table}:{mutation}"
             for role in _CHILD_ROLES
             for table in _owned_child_tables(role)
             for mutation in ("insert", "update", "delete")
         ]
+        evidence["planted_mutator_rejections"] = expected_rejections
         if evidence.get("planted_mutator_rejections") != expected_rejections:
             raise ValueError("child mutator proof roster mismatch")
-        for path in paths:
-            connection = sqlite3.connect(path)
-            try:
-                checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
-                state = connection.execute(
-                    "SELECT admission_enabled,writer_enabled,active_invocations,"
-                    "open_accounting_cents FROM adapter_state WHERE singleton=1"
-                ).fetchone()
-                probes = connection.execute("SELECT COUNT(*) FROM mutator_attempts").fetchone()
-                version = connection.execute(
-                    "SELECT version FROM adapter_state WHERE singleton=1"
-                ).fetchone()
-                if version != (_MIGRATION_CHILD_FINAL_VERSION - 1,):
-                    raise ValueError("child adapter pre-seal version mismatch")
-                connection.execute("UPDATE adapter_state SET version=version+1 WHERE singleton=1")
-                connection.commit()
-            finally:
-                connection.close()
-            if checkpoint != (0, 0, 0) or state is None or state[1:] != (0, 0, 0) or probes != (0,):
-                raise ValueError("child adapter is not sealed")
-            if any(Path(str(path) + suffix).exists() for suffix in ("-wal", "-shm", "-journal")):
-                raise ValueError("child adapter sidecar remains")
-        evidence["sealed_measurements"] = _measure_child_adapters(root)
+    elif operation == "seal_and_collect":
+        measured = _measure_child_adapters(root)
+        existing_measurements = evidence.get("sealed_measurements")
+        if existing_measurements is not None and existing_measurements != measured:
+            raise ValueError("sealed source measurement drift")
+        evidence["sealed_measurements"] = measured
+    return applied
+
+
+def _execute_synthetic_transition(root: Path, record: dict[str, object], operation: str) -> None:
+    _execute_barrier_child_operation(root, record, operation, recovery_mode=False)
 
 
 @contextmanager

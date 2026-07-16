@@ -3511,6 +3511,21 @@ class Epoch0RecoveryBarrierAcquisitionCompletionV1(_Closed):
     production_consumer_enabled: Literal[False] = False
 
 
+class Epoch0RecoverySourceSealingCompletionV1(_Closed):
+    schema_version: Literal[1] = 1
+    barrier_acquired_state: SignedMigrationLifecycleStateV1
+    sources_sealed_state: SignedMigrationLifecycleStateV1
+    synthetic_fixture_eligibility_only: Literal[True] = True
+    live_migration_verified: Literal[False] = False
+    user_accounting_effect: Literal[False] = False
+    transport_reachable: Literal[False] = False
+    confers_execution_authority: Literal[False] = False
+    confers_checkpoint_authority: Literal[False] = False
+    confers_sink_authority: Literal[False] = False
+    confers_transition_authority: Literal[False] = False
+    production_consumer_enabled: Literal[False] = False
+
+
 def _verify_signed_migration_recovery_ticket(
     ticket: SignedMigrationRecoveryTicketV1, verification_key: VerificationKeyV1
 ) -> None:
@@ -3811,6 +3826,71 @@ def _verify_epoch0_recovery_barrier_acquisition_completion_v1(
         or barrier_acquired.barrier_id != _migration_barrier_id(barrier_acquired.freeze_nonce)
     ):
         raise ValueError("epoch0 recovery barrier acquisition completion mismatch")
+
+
+def _verify_epoch0_recovery_source_sealing_completion_v1(
+    completion: Epoch0RecoverySourceSealingCompletionV1,
+    *,
+    issuer_verification_key: VerificationKeyV1,
+    expected_barrier_acquired_pins: Epoch0RecoveryAuthorityPinsV1,
+) -> None:
+    if (
+        type(completion) is not Epoch0RecoverySourceSealingCompletionV1
+        or type(issuer_verification_key) is not VerificationKeyV1
+        or type(expected_barrier_acquired_pins) is not Epoch0RecoveryAuthorityPinsV1
+        or expected_barrier_acquired_pins.lifecycle_phase != "barrier_acquired"
+    ):
+        raise ValueError("epoch0 recovery source sealing completion type")
+    completion = Epoch0RecoverySourceSealingCompletionV1.model_validate(
+        completion.model_dump(mode="python")
+    )
+    barrier_acquired = completion.barrier_acquired_state
+    sources_sealed = completion.sources_sealed_state
+    _verify_signed_migration_lifecycle_state(barrier_acquired, issuer_verification_key)
+    _verify_migration_lifecycle_transition(
+        barrier_acquired, sources_sealed, issuer_verification_key
+    )
+    barrier_acquired_pins = Epoch0RecoveryAuthorityPinsV1.model_validate(
+        {
+            "target_store_id": barrier_acquired.target_store_id,
+            "root_id": barrier_acquired.root_id,
+            "root_manifest_sha256": barrier_acquired.root_manifest_sha256,
+            "target_parent_dev": barrier_acquired.target_parent_dev,
+            "target_parent_ino": barrier_acquired.target_parent_ino,
+            "target_basename": barrier_acquired.target_basename,
+            "target_dev": barrier_acquired.target_dev,
+            "target_ino": barrier_acquired.target_ino,
+            "lifecycle_phase": barrier_acquired.lifecycle_phase,
+            "phase_version": barrier_acquired.phase_version,
+            "issuer_sequence": barrier_acquired.issuer_sequence,
+            "state_sha256": barrier_acquired.state_sha256,
+            "barrier_id": barrier_acquired.barrier_id,
+            "freeze_nonce": barrier_acquired.freeze_nonce,
+            "source_manifest_sha256": barrier_acquired.source_manifest_sha256,
+            "copy_audit_sha256": barrier_acquired.copy_audit_sha256,
+            "witness_sha256": barrier_acquired.witness_sha256,
+        }
+    )
+    if (
+        barrier_acquired_pins != expected_barrier_acquired_pins
+        or barrier_acquired.lifecycle_phase != "barrier_acquired"
+        or sources_sealed.lifecycle_phase != "sources_sealed"
+        or sources_sealed.phase_version != 2
+        or sources_sealed.issuer_sequence != 2
+        or barrier_acquired.barrier_id is None
+        or barrier_acquired.freeze_nonce is None
+        or barrier_acquired.witness_sha256 is None
+        or barrier_acquired.source_manifest_sha256 is not None
+        or barrier_acquired.copy_audit_sha256 is not None
+        or sources_sealed.barrier_id != barrier_acquired.barrier_id
+        or sources_sealed.freeze_nonce != barrier_acquired.freeze_nonce
+        or sources_sealed.witness_sha256 != barrier_acquired.witness_sha256
+        or sources_sealed.source_manifest_sha256 is None
+        or not re.fullmatch(r"[0-9a-f]{64}", sources_sealed.source_manifest_sha256)
+        or sources_sealed.copy_audit_sha256 is not None
+        or sources_sealed.barrier_id != _migration_barrier_id(sources_sealed.freeze_nonce)
+    ):
+        raise ValueError("epoch0 recovery source sealing completion mismatch")
 
 
 _MAX_MIGRATION_LIFECYCLE_DOCUMENT_BYTES = 65_536
