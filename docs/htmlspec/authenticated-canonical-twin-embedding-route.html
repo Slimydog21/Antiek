@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Cycle 113: Authenticated Canonical Twin Embedding Route</title></head>
+<body><main>
+<h1>Authenticated Canonical Twin Embedding Route</h1>
+<p>Expose Cycle 112 only through matching-owner authentication and an opaque server-owned route registry that starts empty.</p>
+<h2>Request authority</h2><ol>
+<li>The client may name only source asset, exact source hash, and an opaque route id. The server resolves run, session, plan, approval revision, and integer USD-cent ceiling authority.</li>
+<li>The client cannot submit provider, model, endpoint, rates, rate snapshot, usage units, adapter, evidence, vector, credential, or provider response identity.</li>
+<li>The registry returns one immutable server route containing the exact projection request and adapter. Missing, duplicate, malformed, or substituted routes fail unavailable before graph mutation, reservation, or send.</li>
+<li>The resolver returns an exact authority attesting owner, source asset, source hash, and route alongside its owner-bound run and ceiling. Any mismatch fails before run creation.</li>
+<li>Preview creates/reopens that exact hard-ceiling run, verifies the canonical v2 publication, and returns only the gateway-derived operation digest and cost preparation.</li>
+<li>Approval resolves authority once, carries that validated binding through preparation and approval, and replays the exact durable preview under a server-derived command key. Execution requires its exact approval id and rederives the same owner, source, run, and route.</li>
+</ol>
+<h2>HTTP boundary</h2><p>All namespace responses, including authentication, validation, method mismatch, missing route, and unavailable runtime, are private and no-store. Spend authority accepts only an Antiek-verified session cookie or configured bearer token; unverified Cloudflare identity headers are insufficient. Unauthorized, wrong-owner, missing, and substituted publications do not disclose existence. Production mounts with no qualified provider by default.</p>
+<h2>Non-goals</h2><p>No provider qualification, credential loading, public sharing, arbitrary document embedding, graph promotion, evidence grounding, production corpus mutation, merge, deployment, or live spend.</p>
+<h2>Acceptance</h2><p>Tests prove empty-registry refusal, closed request schemas, owner binding, exact preview and approval replay, one injected execution route, no caller authority fields, public exclusion after embedding, private headers on all response classes, production registration, Ruff, typing, HTML parsing, HardenX, and hostile review.</p>
+</main></body></html>
