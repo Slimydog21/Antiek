@@ -1,7 +1,8 @@
 import { useState } from "react";
 
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
-import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
+// Knowledge dens invent — arXiv / Substack / knowledge-dense publication port.
+import livingTvArt from "../../brand/werner/poses/session/werner_arxiv_substack_dens_session_v1.webp";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
   ingestSource,

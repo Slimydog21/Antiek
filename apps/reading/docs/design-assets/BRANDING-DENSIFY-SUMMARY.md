@@ -197,3 +197,8 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Topbar account living-TV densify | `97252efe2` | profile/settings highlight; sign-out noted |
 | Write editor + notebook blocks densify | `c719bccfe` | cite/trace highlight; block delete noted |
 | ResearchWaitArcade opt-in densify | `2128bb51e` | opt-in highlight; exit note_saved |
+| Write editor multi-stmt repair | `2da6df8fd` | Citation/BlockNode onClick blocks |
+| Collective merge invent → SubAgentProposal | (craft156) | multi-agent strengthen product door invent strip |
+| Model decision tree invent → ModelDecisionBar | (craft156) | per-prompt model + budget invent strip |
+| Book marketplace port invent → HouseSlot | (craft156) | next-read marketplace/port invent thumb |
+| arXiv/Substack dens invent → Sources | (craft156) | knowledge dens product door invent strip |

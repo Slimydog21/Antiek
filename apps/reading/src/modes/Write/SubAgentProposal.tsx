@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 
+// Collective multi-agent merge invent — sub-agent spin is the product door for
+// merging floating research instances into a cohesive strengthen pass.
+import collectiveMergeArt from "../../brand/werner/poses/session/werner_collective_merge_session_v1.webp";
 import { startInvestigation } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
@@ -92,6 +95,16 @@ export default function SubAgentProposal({
       data-testid="sub-agent-proposal"
       className="rounded-md border border-ocean/50 bg-ocean/5 p-3 text-sm"
     >
+      {/* Living-TV invent — collective multi-agent merge product door. */}
+      <img
+        src={collectiveMergeArt}
+        alt=""
+        aria-hidden="true"
+        data-testid="sub-agent-proposal-living-tv-art"
+        className="mb-2 h-10 w-full max-w-xs rounded object-cover object-center"
+        loading="lazy"
+        decoding="async"
+      />
       <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ocean">
         Strengthen this claim
       </p>

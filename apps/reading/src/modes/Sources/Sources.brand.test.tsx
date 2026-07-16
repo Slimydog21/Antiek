@@ -23,7 +23,7 @@ describe("Sources — living-TV brand densify", () => {
       "sources-home-living-tv-art",
     ) as HTMLImageElement;
     expect(livingTv.getAttribute("src") ?? "").toMatch(
-      /werner_living_tv_session_v1/,
+      /werner_arxiv_substack_dens_session_v1/,
     );
   });
 

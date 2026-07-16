@@ -1,0 +1,13 @@
+# Session invent inventory — 2026-07-16
+
+Imagine / Grok Imagine refedits promoted to product webp when densified.
+
+| Asset | Status |
+|---|---|
+| werner_collective_merge_refedit_v1.jpg | **PROMOTED** → poses/session/werner_collective_merge_session_v1.webp (SubAgentProposal) |
+| werner_model_decision_tree_refedit_v1.jpg | **PROMOTED** → poses/session/werner_model_decision_tree_session_v1.webp (ModelDecisionBar) |
+| werner_book_marketplace_port_refedit_v1.jpg | **PROMOTED** → poses/session/werner_book_marketplace_port_session_v1.webp (HouseSlot) |
+
+Candidates retained as `*_session_candidate_v1.webp` beside refedits.
+
+| werner_arxiv_substack_dens_refedit_v1.jpg | **PROMOTED** → poses/session/werner_arxiv_substack_dens_session_v1.webp (Sources) |

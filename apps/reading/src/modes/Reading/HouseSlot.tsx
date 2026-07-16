@@ -1,4 +1,6 @@
 import { LemonTag } from "../../components/lemon";
+// Book marketplace port invent — zero-buyer house next-read is the marketplace door.
+import bookMarketplaceArt from "../../brand/werner/poses/session/werner_book_marketplace_port_session_v1.webp";
 import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
@@ -53,6 +55,16 @@ export default function HouseSlot({ promo, onOpen }: HouseSlotProps) {
       className="flex items-center gap-3 w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sun rounded-md px-2 py-1"
       aria-label={`Next read from the library: ${promo.title}`}
     >
+      {/* Living-TV invent — marketplace port / next-read product door. */}
+      <img
+        src={bookMarketplaceArt}
+        alt=""
+        aria-hidden="true"
+        data-testid="house-slot-living-tv-art"
+        className="h-9 w-14 shrink-0 rounded object-cover object-center"
+        loading="lazy"
+        decoding="async"
+      />
       <LemonTag colour="aurora">Next read</LemonTag>
       <span className="min-w-0">
         <span className="font-serif text-sm text-ink dark:text-bright truncate block">

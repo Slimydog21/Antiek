@@ -22,6 +22,8 @@ import {
   type ComposerCandidateView,
   type ComposerModelProjection,
 } from "../api/composerProjection";
+// Model decision tree invent — per-prompt model + budget projection product door.
+import modelDecisionArt from "../brand/werner/poses/session/werner_model_decision_tree_session_v1.webp";
 
 export interface ModelDecisionBarProps {
   projection: ComposerModelProjection | null;
@@ -178,6 +180,16 @@ export default function ModelDecisionBar({
       className="flex flex-col gap-2 rounded-lg border border-border p-3"
       aria-label="per-prompt model decision"
     >
+      {/* Living-TV invent — model decision tree + budget ceiling product door. */}
+      <img
+        src={modelDecisionArt}
+        alt=""
+        aria-hidden="true"
+        data-testid="model-decision-bar-living-tv-art"
+        className="h-10 w-full max-w-xs rounded object-cover object-center"
+        loading="lazy"
+        decoding="async"
+      />
       <div className="flex items-center gap-2">
         <span className="text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
           model
