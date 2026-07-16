@@ -1,0 +1,561 @@
+/* Billing Usage Observatory — Antarctic instrument.
+   Decorative environment: billing_usage_observatory_environment_v1.webp
+   Semantic responsive layout; dedicated CSS (no Tailwind utilities).
+   Reduced-motion safe: no intrinsic animation. */
+
+.buo-shell {
+  --paper: var(--ice-0);
+  --page: var(--ice-2);
+  --muted: var(--shadow-1);
+  --muted-soft: var(--shadow-2);
+
+  position: relative;
+  min-height: 100%;
+  overflow-x: clip;
+  background: var(--page);
+  color: var(--ink);
+  isolation: isolate;
+}
+
+.buo-environment,
+.buo-veil {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.buo-environment {
+  z-index: -3;
+  object-fit: cover;
+  object-position: center;
+}
+
+.buo-veil {
+  z-index: -2;
+  background: linear-gradient(
+    180deg,
+    rgba(244,247,250,0.38),
+    rgba(234,239,244,0.78) 44%,
+    var(--page)
+  );
+}
+
+/* Prefers-reduced-motion / no-scene: the environment image is decorative
+   and already static; the veil gradient provides the same calm readability
+   without any motion concern. No animation to collapse. */
+
+.buo-content {
+  width: min(960px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: clamp(34px, 6vw, 82px) 0 72px;
+}
+
+/* ── Hero ────────────────────────────────────────────── */
+
+.buo-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  max-width: 760px;
+  margin-bottom: 28px;
+  padding: clamp(22px, 4vw, 38px);
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  background: var(--glass-bg);
+  box-shadow: 0 20px 70px rgba(15,20,25,0.13);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.buo-hero > div {
+  max-width: 620px;
+}
+
+.buo-eyebrow {
+  margin: 0 0 8px;
+  font: 700 11px/1.4 var(--mono);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.buo-hero h1 {
+  margin: 0;
+  font: 600 clamp(34px, 6vw, 62px)/0.98 var(--serif);
+  letter-spacing: -0.045em;
+  color: var(--ink);
+}
+
+.buo-lede {
+  max-width: 620px;
+  margin: 20px 0 0;
+  font: 400 clamp(16px, 2vw, 19px)/1.55 var(--serif);
+  color: var(--muted-soft);
+}
+
+/* ── Stations (glass panels) ─────────────────────────── */
+
+.buo-station {
+  margin-top: 18px;
+  padding: clamp(20px, 4vw, 34px);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  background: var(--glass-bg);
+  box-shadow: 0 16px 50px rgba(15,20,25,0.1);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.buo-section-heading {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.buo-section-heading h2 {
+  margin: 0;
+  font: 600 clamp(23px, 3vw, 32px)/1.1 var(--serif);
+  color: var(--ink);
+}
+
+.buo-section-heading p {
+  margin: 0;
+  font: 400 13px/1.5 var(--mono);
+  color: var(--muted);
+}
+
+/* ── Truth boundary ──────────────────────────────────── */
+
+.buo-truth {
+  margin: 18px 0;
+  padding: 18px 22px;
+  border: 1px solid var(--glass-border);
+  border-left: 3px solid var(--sun-deep);
+  border-radius: 18px;
+  background: var(--sun-hl-faint);
+}
+
+.buo-truth p {
+  margin: 0;
+  font: 400 13px/1.55 var(--sans);
+  color: var(--muted-soft);
+}
+
+.buo-truth p + p {
+  margin-top: 8px;
+}
+
+.buo-truth strong {
+  color: var(--ink);
+}
+
+/* ── Form ────────────────────────────────────────────── */
+
+.buo-form {
+  margin: 18px 0;
+}
+
+.buo-form-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+  margin-bottom: 18px;
+}
+
+.buo-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.buo-form label {
+  display: grid;
+  gap: 7px;
+}
+
+.buo-form label > span {
+  font: 700 10px/1.3 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.buo-form input,
+.buo-form select {
+  font: 400 14px/1.4 var(--mono);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius, 6px);
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color 150ms ease;
+}
+
+.buo-form input:focus-visible {
+  border-color: var(--sun-deep);
+  box-shadow: 0 0 0 2px var(--sun-hl-faint);
+}
+
+.buo-form input[aria-invalid="true"] {
+  border-color: var(--emperor);
+}
+
+.buo-form__hint {
+  margin: 4px 0 0;
+  font: 400 11px/1.4 var(--mono);
+  color: var(--emperor);
+}
+
+.buo-form button[type="submit"] {
+  font: 700 13px/1.4 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--sun);
+  border: 1px solid var(--sun-deep);
+  border-radius: var(--radius, 6px);
+  padding: 10px 22px;
+  cursor: pointer;
+  transition: background 150ms ease, box-shadow 150ms ease;
+}
+
+.buo-form button[type="submit"]:hover {
+  background: var(--sun-deep);
+  color: var(--paper);
+}
+
+.buo-form button[type="submit"]:focus-visible {
+  box-shadow: 0 0 0 2px var(--sun-hl-faint);
+  outline: 2px solid var(--sun-deep);
+  outline-offset: 2px;
+}
+
+.buo-form button[type="submit"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── State messages ──────────────────────────────────── */
+
+.buo-state {
+  margin: 18px 0;
+  padding: clamp(20px, 4vw, 34px);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.buo-state h2 {
+  margin: 0;
+  font: 500 clamp(23px, 3vw, 32px)/1.15 var(--serif);
+  color: var(--ink);
+}
+
+.buo-state p {
+  margin: 10px 0 0;
+  font: 400 14px/1.55 var(--sans);
+  color: var(--muted);
+}
+
+.buo-state--error {
+  border-left: 3px solid var(--emperor);
+}
+
+.buo-state--error h2 {
+  color: var(--emperor);
+}
+
+.buo-state button {
+  margin-top: 16px;
+  font: 700 12px/1.4 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius, 6px);
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: border-color 150ms ease;
+}
+
+.buo-state button:hover {
+  border-color: var(--ink);
+}
+
+.buo-state button:focus-visible {
+  outline: 2px solid var(--sun-deep);
+  outline-offset: 2px;
+}
+
+/* ── Results ─────────────────────────────────────────── */
+
+.buo-results {
+  margin: 18px 0;
+  padding: clamp(20px, 4vw, 34px);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.buo-results-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+  margin-bottom: 22px;
+}
+
+.buo-results-header h2 {
+  margin: 0;
+  font: 500 clamp(23px, 3vw, 32px)/1.15 var(--serif);
+  color: var(--ink);
+}
+
+.buo-results-header strong {
+  font: 600 clamp(23px, 3vw, 32px)/1.1 var(--mono);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.buo-results-subtitle {
+  margin: 0;
+  font: 400 13px/1.5 var(--sans);
+  color: var(--muted);
+}
+
+/* ── Measures grid ───────────────────────────────────── */
+
+.buo-measures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.buo-measure {
+  padding: 14px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.buo-measure span {
+  display: block;
+  font: 600 22px/1.2 var(--mono);
+  color: var(--ink);
+}
+
+.buo-measure p {
+  margin: 4px 0 0;
+  font: 400 12px/1.4 var(--mono);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Cost split cards ────────────────────────────────── */
+
+.buo-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.buo-split-card {
+  padding: 18px;
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  background: var(--paper);
+}
+
+.buo-split-card h3 {
+  margin: 0 0 12px;
+  font: 600 16px/1.2 var(--serif);
+  color: var(--ink);
+}
+
+.buo-split-card dl {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.buo-split-card dl > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.buo-split-card dt {
+  font: 400 12px/1.4 var(--mono);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.buo-split-card dd {
+  margin: 0;
+  font: 500 14px/1.4 var(--mono);
+  color: var(--ink);
+}
+
+.buo-split-card .buo-margin-tag {
+  display: inline-block;
+  font: 700 10px/1.3 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--inset, var(--ice-3));
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+/* ── Totals ──────────────────────────────────────────── */
+
+.buo-totals {
+  margin-top: 18px;
+  padding: clamp(20px, 4vw, 34px);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.buo-totals h2 {
+  margin: 0 0 18px;
+  font: 500 clamp(23px, 3vw, 32px)/1.15 var(--serif);
+  color: var(--ink);
+}
+
+.buo-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+}
+
+.buo-total-row + .buo-total-row {
+  border-top: 1px solid var(--glass-border);
+}
+
+.buo-total-row span:first-child {
+  font: 400 13px/1.4 var(--sans);
+  color: var(--muted);
+}
+
+.buo-total-row span:last-child {
+  font: 500 14px/1.4 var(--mono);
+  color: var(--ink);
+}
+
+.buo-total-row--emphasis {
+  padding: 12px 0;
+}
+
+.buo-total-row--emphasis span:first-child {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.buo-total-row--emphasis span:last-child {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.buo-record-count {
+  margin: 14px 0 0;
+  font: 400 11px/1.4 var(--mono);
+  color: var(--muted);
+}
+
+/* ── Responsive ──────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .buo-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .buo-section-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .buo-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .buo-measures {
+    grid-template-columns: 1fr;
+  }
+
+  .buo-split {
+    grid-template-columns: 1fr;
+  }
+
+  .buo-results-header {
+    flex-direction: column;
+  }
+}
+
+/* ── Night mode ──────────────────────────────────────── */
+
+.buo-shell[data-theme="dark"] {
+  /* Explicit visual-fixture override. Values mirror tokens.css's canonical
+     night ramp so Storybook can audit dark mode independent of host media. */
+  --paper: rgb(27, 32, 42);
+  --page: rgb(13, 16, 25);
+  --ink: rgb(238, 241, 246);
+  --muted: rgb(107, 117, 133);
+  --muted-soft: rgb(160, 170, 184);
+  --rule: rgb(96, 108, 126);
+  --sun-deep: rgb(132, 114, 47);
+  --sun-hl-faint: rgba(242, 222, 154, 0.30);
+  --emperor: rgb(255, 97, 85);
+  --glass-bg: rgba(27, 32, 42, 0.66);
+  --glass-border: rgba(238, 241, 246, 0.14);
+}
+
+.buo-shell[data-theme="dark"] .buo-veil {
+  background: linear-gradient(
+    180deg,
+    rgba(13,16,25,0.38),
+    rgba(13,16,25,0.78) 44%,
+    var(--page)
+  );
+}
+
+@media (prefers-color-scheme: dark) {
+  .buo-shell {
+    --paper: var(--ice-0);
+    --page: var(--ice-2);
+    --muted: var(--shadow-1);
+    --muted-soft: var(--shadow-2);
+    --sun-hl-faint: var(--sun-hl-night, rgba(242,222,154,0.30));
+  }
+
+  .buo-veil {
+    background: linear-gradient(
+      180deg,
+      rgba(13,16,25,0.38),
+      rgba(13,16,25,0.78) 44%,
+      var(--page)
+    );
+  }
+}
+
+/* ── Data-visual-fixture (Storybook / testing) ───────── */
+
+.buo-shell[data-visual-fixture] .buo-environment {
+  display: none;
+}
