@@ -194,3 +194,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Import repair after densify inject | `37b248a86` | multi-line import blocks restored |
 | AIActionFailure living-TV densify | `86d6c8044` | retry highlight |
 | SceneChrome/ThreadBreadcrumb densify | `52e184a69` | chrome actions + thread hop highlight |
+| Topbar account living-TV densify | `97252efe2` | profile/settings highlight; sign-out noted |
