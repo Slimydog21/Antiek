@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BRK-03: Provider broker worker lease</title></head>
+<body><main>
+  <h1>BRK-03: Provider broker worker lease</h1>
+  <p><strong>Status:</strong> Executed transport-free worker-fencing boundary. It qualifies no provider and does not determine provider outcomes.</p>
+  <section id="spec-lineage" data-spec-depth="1" data-parent-spec="antiek-durable-provider-broker.html">
+    <h2>Spec lineage</h2><p>Parent: <a href="antiek-durable-provider-broker.html">durable provider broker</a>. Authority: <a href="provider-broker-primary-ledger.html">BRK-02 primary ledger</a>.</p>
+  </section>
+  <section><h2>Corrected ownership model</h2>
+    <p><code>ProviderWorkerLeaseCoordinator.session</code> returns a context-managed <code>WorkerLeaseSession</code>. Acquisition opens one per-operation advisory flock and the session holds that same descriptor continuously through every state read, <code>prepare_dispatch</code>, the future adapter action, and context exit. The same-user application filesystem is trusted, while acquisition still fails closed on a symlinked or untrusted lock directory, a symlink/non-regular/multiply-linked lock file, or a post-flock descriptor/path inode mismatch. Methods reject another thread, a stale fence, expiry before preparation, and all use after exit. Database expiry is only a liveness bound; it never bypasses a live flock.</p>
+  </section>
+  <section><h2>Sidecar integrity</h2>
+    <p>A separate SQLite sidecar stores current monotonically increasing fences and canonical append-only lease events. Exact table and trigger SQL is checked on every transaction. Triggers prohibit event mutation/deletion, row deletion, fence rollback, marker rollback, and recovery-to-active rollback. Each event includes operation, sequence, event type, holder, fence, deterministic attempt, canonical UTC time, previous hash, and SHA-256 event hash; verification recomputes every chain. The primary ledger schema and implementation remain unchanged and are the sole outcome authority.</p>
+  </section>
+  <section><h2>Classification and permit rule</h2>
+    <table><thead><tr><th>Status</th><th>Meaning</th><th>First-send permit</th></tr></thead><tbody>
+      <tr><td><code>AUTHORIZED</code></td><td>Primary is exactly authorized with no marker.</td><td>Only while the exact current fence and unexpired session are proven.</td></tr>
+      <tr><td><code>RECOVERY_ONLY</code></td><td>Any primary send marker exists. Exact attempt recovery may reconstruct state.</td><td>Never.</td></tr>
+      <tr><td><code>TERMINAL</code></td><td>Primary is charged or not-found.</td><td>Never.</td></tr>
+    </tbody></table>
+    <p><code>prepare_dispatch</code> conditionally commits the primary <code>dispatch_possible</code> marker, records the sidecar observation, and returns one immutable <code>DispatchPermit</code>. Attempt and command identities are deterministic functions of operation identity and purpose only; holder, fence, time, randomness, and process identity are excluded. A future adapter must call <code>session.assert_permit_active</code> immediately before consumption; that check binds the permit to the creating process, thread, live flock, fence, validity window, and exact primary marker. A pre-existing marker, including exact marker recovery after a crash, can never manufacture a new permit.</p>
+  </section>
+  <section><h2>Failure boundaries</h2>
+    <ul>
+      <li>Normal exit, cancellation, or any <code>BaseException</code> before the marker durably releases or cancels the fence before dropping the flock.</li>
+      <li>After any marker, context exit persists recovery-only status; successors remain recovery-only regardless of expiry.</li>
+      <li>A crash releases the kernel flock. A successor advances the durable fence, but marker state still forbids resend.</li>
+      <li>Schema, trigger, chain, primary lookup, identity, or transaction uncertainty fails unavailable, never dispatchable.</li>
+      <li>This module exposes no SDK, HTTP, send, retry, request, or transport method. A later qualified adapter may consume a permit while the session remains open.</li>
+    </ul>
+  </section>
+  <section><h2>Verification</h2><p>Tests cover threads, spawned processes, abrupt process death, expiry under a live flock, cancellation, marker/sidecar crash boundaries, deterministic IDs, successor classification, terminal classification, stale/use-after-exit rejection, symlink lock substitution, exact schema and trigger substitution, event-chain corruption, orphan history, terminal-history regression, separate-database proof, and absence of transport.</p></section>
+</main></body></html>
