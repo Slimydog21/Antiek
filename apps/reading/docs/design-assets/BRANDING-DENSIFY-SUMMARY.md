@@ -263,3 +263,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2c CRT igloo cursor TV | `e6aa331ba` | LoadingGameHost default living-TV invent refresh on FULL GREEN tip |
 | Imagine invent polish v2c living-TV session | `691c74b16` | SessionBrandChrome residual invent refresh on FULL GREEN tip |
 | Imagine invent polish v2c thought partner desk | `691c74b16` | ThoughtPartnerPanel invent refresh on FULL GREEN tip |
+| Imagine invent polish v2c cascade plan | `TBD` | PlanEditor invent refresh on FULL GREEN tip |
