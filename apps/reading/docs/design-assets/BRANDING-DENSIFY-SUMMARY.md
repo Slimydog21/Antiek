@@ -243,4 +243,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2b knowledge twin | `92bf08ed8` | KnowledgePanel invent refresh |
 | Imagine invent polish v2b float research merge | `76e7bd181` | TwinNotesPanel invent refresh |
 | Imagine invent polish v2b paperclip zombies | `74ae5f498` | wait-arcade/cabinet/LGH zombies invent refresh |
-| Imagine invent polish v2b igloo minigame trio | (next tip) | ArcadeCabinet + Home arcade banner invent refresh |
+| Imagine invent polish v2b igloo minigame trio | `616f4556f` | ArcadeCabinet + Home arcade banner invent refresh |
