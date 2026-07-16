@@ -1462,7 +1462,7 @@ export interface ChallengeNoteResponse {
  *  the shared failure surface, never a fabricated change. */
 export async function challengeNote(
   nodeId: string,
-  req: { investigation_id: string; challenge_text?: string },
+  req: { investigation_id: string; idempotency_key: string; challenge_text?: string },
 ): Promise<ChallengeNoteResponse> {
   const resp = await apiFetch(
     `${API_BASE}/research/notes/${encodeURIComponent(nodeId)}/challenge`,

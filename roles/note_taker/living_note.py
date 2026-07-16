@@ -96,6 +96,14 @@ class ChallengeResult:
     reserved_child_investigation_id: str | None = None
 
 
+class ChallengeRequestConflict(RuntimeError):
+    """An idempotency key was reused for a different command."""
+
+
+class ChallengeRequestInProgress(RuntimeError):
+    """A prior resolver dispatch has no durable decision yet."""
+
+
 def _open(con):
     return con if con is not None else connect_write(graph_db_path(), purpose="living_note")
 
@@ -185,6 +193,33 @@ def _escalation_result(
         escalated_question_id=payload.question_id,
         reserved_child_investigation_id=payload.child_investigation_id,
     )
+
+
+def _challenge_request_digest(
+    investigation_id: str, note_node_id: str, challenge_text: str
+) -> str:
+    request = json.dumps(
+        {
+            "challenge_text": canonical_text(challenge_text),
+            "investigation_id": investigation_id,
+            "note_node_id": note_node_id,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+    return hashlib.sha256(request.encode()).hexdigest()
+
+
+def _result_json(result: ChallengeResult) -> str:
+    return json.dumps(vars(result), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def _result_from_json(raw: str) -> ChallengeResult:
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise RuntimeError("stored challenge response is not an object")
+    return ChallengeResult(**value)
 
 
 def apply_refinement(
@@ -308,6 +343,8 @@ def challenge_note(
     embedding_provider: Any = None,
     events_dir: str | None = None,
     con: Any = None,
+    idempotency_key: str | None = None,
+    unavailable_errors: tuple[type[BaseException], ...] = (),
     _checkpoint: Callable[[str], None] | None = None,
 ) -> ChallengeResult:
     """Resolve a challenge against a note. If the resolver produces refined
@@ -322,14 +359,83 @@ def challenge_note(
         if prev_text is None:
             return ChallengeResult(note_node_id, applied=False)
         document_id = document_id or _meta.get("source_document_id")
-        resolved_text = resolver(prev_text, challenge_text)
+        decision: dict[str, Any] | None = None
+        if idempotency_key is not None:
+            request_sha256 = _challenge_request_digest(
+                investigation_id, note_node_id, challenge_text
+            )
+            row = c.execute(
+                "SELECT request_sha256, sequence, state, decision_json, response_json "
+                "FROM challenge_request_journal WHERE idempotency_key = ?",
+                [idempotency_key],
+            ).fetchone()
+            if row is not None:
+                if row[0] != request_sha256:
+                    raise ChallengeRequestConflict("idempotency key belongs to another challenge")
+                seq = int(row[1])
+                if row[2] == "completed":
+                    return _result_from_json(row[4])
+                if row[2] == "unavailable":
+                    if unavailable_errors:
+                        raise unavailable_errors[0]("challenge resolver unavailable")
+                    raise RuntimeError("challenge resolver unavailable")
+                if row[2] == "resolving":
+                    raise ChallengeRequestInProgress("challenge resolution is still indeterminate")
+                decision = json.loads(row[3])
+            else:
+                c.execute(
+                    "INSERT INTO challenge_request_journal "
+                    "(idempotency_key, request_sha256, investigation_id, note_node_id, sequence, state) "
+                    "VALUES (?, ?, ?, ?, ?, 'resolving')",
+                    [idempotency_key, request_sha256, investigation_id, note_node_id, seq],
+                )
+                if _checkpoint:
+                    _checkpoint("after_challenge_claim_before_resolver")
+
+        if decision is None:
+            try:
+                resolved_text = resolver(prev_text, challenge_text)
+            except unavailable_errors:
+                if idempotency_key is not None:
+                    c.execute(
+                        "UPDATE challenge_request_journal SET state = 'unavailable', "
+                        "updated_at = CURRENT_TIMESTAMP WHERE idempotency_key = ?",
+                        [idempotency_key],
+                    )
+                raise
+            if _checkpoint:
+                _checkpoint("after_challenge_resolver_before_decision")
+            decision = (
+                {"kind": "refine", "text": resolved_text.strip()}
+                if resolved_text is not None and resolved_text.strip()
+                else {"kind": "escalate"}
+            )
+            if idempotency_key is not None:
+                c.execute(
+                    "UPDATE challenge_request_journal SET state = 'decided', decision_json = ?, "
+                    "updated_at = CURRENT_TIMESTAMP WHERE idempotency_key = ?",
+                    [json.dumps(decision, sort_keys=True, separators=(",", ":")), idempotency_key],
+                )
+                if _checkpoint:
+                    _checkpoint("after_challenge_decision_before_apply")
+
+        resolved_text = decision.get("text") if decision.get("kind") == "refine" else None
         if resolved_text is not None and resolved_text.strip():
-            return apply_refinement(
+            result = apply_refinement(
                 note_node_id, resolved_text.strip(), seq=seq,
                 investigation_id=investigation_id, reason="challenge_resolved",
                 document_id=document_id, events_dir=events_dir, con=c,
                 _checkpoint=_checkpoint,
             )
+            if idempotency_key is not None:
+                if _checkpoint:
+                    _checkpoint("after_challenge_apply_before_complete")
+                c.execute(
+                    "UPDATE challenge_request_journal SET state = 'completed', response_json = ?, "
+                    "updated_at = CURRENT_TIMESTAMP WHERE idempotency_key = ?",
+                    [_result_json(result), idempotency_key],
+                )
+            return result
         operation_id = _escalation_operation_id(
             investigation_id=investigation_id,
             note_node_id=note_node_id,
@@ -424,6 +530,14 @@ def challenge_note(
                 aggregate_kind="living_note",
                 aggregate_id=aggregate_id,
                 events_dir=events_dir,
+            )
+        if idempotency_key is not None:
+            if _checkpoint:
+                _checkpoint("after_challenge_apply_before_complete")
+            c.execute(
+                "UPDATE challenge_request_journal SET state = 'completed', response_json = ?, "
+                "updated_at = CURRENT_TIMESTAMP WHERE idempotency_key = ?",
+                [_result_json(result), idempotency_key],
             )
         return result
     finally:

@@ -30,6 +30,7 @@ from roles.note_taker import (
     notes_for_step,
     run_document_pass,
 )
+from roles.note_taker.living_note import ChallengeRequestInProgress
 from roles.note_taker.parser import ExtractedNote
 from runtime.db_lock import connect_read
 from substrate.context_pack import build_working_memory_layer
@@ -445,6 +446,99 @@ async def test_unresolvable_challenge_escalates_without_launch(env):
     # No investigation.start_requested — nothing launched here.
     assert all(r2["action_type"] != ActionType.INVESTIGATION_START_REQUESTED.value
                for r2 in trajectory("inv-1", events_dir=env["events"]))
+
+
+async def test_challenge_retry_after_decision_skips_resolver(env):
+    nid = promote_insight(
+        text="Acme is small.", investigation_id="inv-1",
+        source_document_id="doc-1",
+    )
+    calls = 0
+
+    def resolver(current, challenge):
+        nonlocal calls
+        calls += 1
+        return "Acme is mid-sized."
+
+    def fail(stage):
+        if stage == "after_challenge_decision_before_apply":
+            raise RuntimeError("injected after decision")
+
+    with pytest.raises(RuntimeError, match="after decision"):
+        challenge_note(
+            nid, "it grew", resolver=resolver, seq=1,
+            investigation_id="inv-1", events_dir=env["events"],
+            idempotency_key="challenge-decision-0001", _checkpoint=fail,
+        )
+    result = challenge_note(
+        nid, "it grew", resolver=resolver, seq=99,
+        investigation_id="inv-1", events_dir=env["events"],
+        idempotency_key="challenge-decision-0001",
+    )
+    assert result.applied
+    assert calls == 1
+
+
+async def test_challenge_retry_after_graph_commit_skips_resolver(env):
+    nid = promote_insight(
+        text="Acme is small.", investigation_id="inv-1",
+        source_document_id="doc-1",
+    )
+    calls = 0
+
+    def resolver(current, challenge):
+        nonlocal calls
+        calls += 1
+        return "Acme is mid-sized."
+
+    def fail(stage):
+        if stage == "after_challenge_apply_before_complete":
+            raise RuntimeError("injected after graph apply")
+
+    with pytest.raises(RuntimeError, match="after graph apply"):
+        challenge_note(
+            nid, "it grew", resolver=resolver, seq=1,
+            investigation_id="inv-1", events_dir=env["events"],
+            idempotency_key="challenge-graph-commit-1", _checkpoint=fail,
+        )
+    result = challenge_note(
+        nid, "it grew", resolver=resolver, seq=99,
+        investigation_id="inv-1", events_dir=env["events"],
+        idempotency_key="challenge-graph-commit-1",
+    )
+    assert result.applied
+    assert calls == 1
+
+
+async def test_ambiguous_resolver_completion_is_not_dispatched_again(env):
+    nid = promote_insight(
+        text="Acme is small.", investigation_id="inv-1",
+        source_document_id="doc-1",
+    )
+    calls = 0
+
+    def resolver(current, challenge):
+        nonlocal calls
+        calls += 1
+        return "Acme is mid-sized."
+
+    def fail(stage):
+        if stage == "after_challenge_resolver_before_decision":
+            raise RuntimeError("injected ambiguous completion")
+
+    with pytest.raises(RuntimeError, match="ambiguous completion"):
+        challenge_note(
+            nid, "it grew", resolver=resolver, seq=1,
+            investigation_id="inv-1", events_dir=env["events"],
+            idempotency_key="challenge-ambiguous-01", _checkpoint=fail,
+        )
+    with pytest.raises(ChallengeRequestInProgress):
+        challenge_note(
+            nid, "it grew", resolver=resolver, seq=99,
+            investigation_id="inv-1", events_dir=env["events"],
+            idempotency_key="challenge-ambiguous-01",
+        )
+    assert calls == 1
 
 
 async def test_escalation_rolls_back_graph_and_outbox_before_commit(env):

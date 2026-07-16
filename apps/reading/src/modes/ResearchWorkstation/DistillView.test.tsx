@@ -111,7 +111,10 @@ describe("DistillView — challenge a completed-research insight (M3 + M4)", () 
     await waitFor(() => expect(screen.getByText("Acme is small.")).toBeTruthy());
     fireEvent.click(screen.getByText("challenge this"));
     await waitFor(() => expect(screen.getByText("Acme is mid-sized.")).toBeTruthy());
-    expect(challengeNoteMock).toHaveBeenCalledWith("i1", { investigation_id: "inv-1" });
+    expect(challengeNoteMock).toHaveBeenCalledWith("i1", {
+      investigation_id: "inv-1",
+      idempotency_key: expect.any(String),
+    });
     expect(getDistillationMock).toHaveBeenCalledTimes(2); // refetched after the change
   });
 
@@ -124,5 +127,9 @@ describe("DistillView — challenge a completed-research insight (M3 + M4)", () 
     await waitFor(() => expect(screen.getByText("A claim.")).toBeTruthy());
     fireEvent.click(screen.getByText("challenge this"));
     await waitFor(() => expect(screen.getByText(/model provider isn/)).toBeTruthy());
+    const firstKey = challengeNoteMock.mock.calls[0][1].idempotency_key;
+    fireEvent.click(screen.getByText("Try again"));
+    await waitFor(() => expect(challengeNoteMock).toHaveBeenCalledTimes(2));
+    expect(challengeNoteMock.mock.calls[1][1].idempotency_key).toBe(firstKey);
   });
 });
