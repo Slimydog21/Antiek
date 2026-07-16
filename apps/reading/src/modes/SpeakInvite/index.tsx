@@ -5,6 +5,7 @@ import thinkingArt from "../../brand/werner/poses/session/werner_thinking_sessio
 import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import InterviewVoiceCapture from "../../components/InterviewVoiceCapture";
 import { apiFetch } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Speak invitee landing (Product Depth SPR-08 M3) — phone-first, voice-first.
@@ -260,7 +261,7 @@ export default function SpeakInvite() {
             {/* PRIMARY: record-only. Publish is NOT granted here. */}
             <button
               type="button"
-              onClick={() => void takePart(false)}
+              onClick={() => { emitWernerExperience("highlight"); void takePart(false); }}
               disabled={busy}
               className="mt-5 w-full rounded-md border-2 border-ink bg-sun px-4 py-3 font-mono text-[14px] font-semibold text-ink shadow-z1 hover:-translate-y-0.5 disabled:opacity-50 dark:shadow-z1-night"
             >
@@ -275,7 +276,7 @@ export default function SpeakInvite() {
                     chose. Grants record + publish. */}
                 <button
                   type="button"
-                  onClick={() => void takePart(true)}
+                  onClick={() => { emitWernerExperience("highlight"); void takePart(true); }}
                   disabled={busy}
                   className="mt-3 block w-full rounded-md border-2 border-ink bg-ice-0 px-4 py-3 font-mono text-[13px] font-semibold text-ink hover:-translate-y-0.5 disabled:opacity-50 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
                 >
@@ -289,7 +290,7 @@ export default function SpeakInvite() {
             )}
             <button
               type="button"
-              onClick={() => void declineInvite()}
+              onClick={() => { emitWernerExperience("note_saved"); void declineInvite(); }}
               disabled={busy}
               className="mt-3 font-serif text-[13px] text-ink-mute underline hover:text-ink disabled:opacity-50 dark:text-moonlight dark:hover:text-bright"
             >
@@ -355,7 +356,7 @@ export default function SpeakInvite() {
                     <button
                       type="button"
                       className="underline"
-                      onClick={() => setMode("text")}
+                      onClick={() => { emitWernerExperience("highlight"); setMode("text"); }}
                     >
                       type it instead
                     </button>
@@ -364,7 +365,7 @@ export default function SpeakInvite() {
                 )}
                 <button
                   type="button"
-                  onClick={() => setMode("text")}
+                  onClick={() => { emitWernerExperience("highlight"); setMode("text"); }}
                   className="mt-4 block w-full text-center font-serif text-[13px] text-ink-mute underline hover:text-ink dark:text-moonlight dark:hover:text-bright"
                 >
                   I'd rather type
@@ -386,7 +387,7 @@ export default function SpeakInvite() {
                 />
                 <button
                   type="button"
-                  onClick={() => void submitText()}
+                  onClick={() => { emitWernerExperience("note_saved"); void submitText(); }}
                   disabled={busy || !answer.trim()}
                   className="mt-3 w-full rounded-md border-2 border-ink bg-sun px-4 py-3 font-mono text-[14px] font-semibold text-ink shadow-z1 hover:-translate-y-0.5 disabled:opacity-50 dark:shadow-z1-night"
                 >
@@ -395,7 +396,7 @@ export default function SpeakInvite() {
                 {!micDenied && (
                   <button
                     type="button"
-                    onClick={() => setMode("voice")}
+                    onClick={() => { emitWernerExperience("highlight"); setMode("voice"); }}
                     className="mt-3 block w-full text-center font-serif text-[13px] text-ink-mute underline hover:text-ink dark:text-moonlight dark:hover:text-bright"
                   >
                     or talk instead
