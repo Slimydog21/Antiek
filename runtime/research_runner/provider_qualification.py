@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
+
+from .protocol import BillingUnit
 
 if TYPE_CHECKING:
     from .cost_projection import CostCatalogEntry
@@ -59,6 +62,22 @@ def _evidence_is_authoritative(item: object) -> bool:
     )
 
 
+def _qualification_window_valid(
+    checked_at: str, expires_at: datetime | None, *, now: datetime
+) -> bool:
+    if expires_at is None:
+        return False
+    try:
+        checked = datetime.fromisoformat(checked_at)
+    except ValueError:
+        return False
+    if checked.tzinfo is None:
+        checked = checked.replace(tzinfo=UTC)
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    return checked <= now < expires_at and checked < expires_at
+
+
 @dataclass(frozen=True)
 class ProviderQualification:
     provider: str
@@ -67,6 +86,10 @@ class ProviderQualification:
     checked_at: str
     verdict: QualificationVerdict
     evidence: dict[str, QualificationEvidence]
+    provider_kind: str | None = None
+    endpoint: str | None = None
+    chargeable_units: frozenset[BillingUnit] = frozenset()
+    expires_at: datetime | None = None
 
     @property
     def route_key(self) -> tuple[str, str, str]:
@@ -78,8 +101,13 @@ class ProviderQualification:
         # is also a supported server-side seam. Without the exact key check,
         # ``all`` over partial (or empty) evidence is vacuously true and can
         # mint paid authority without pinned pricing or stable-provider proof.
+        now = datetime.now(UTC)
         return (
             self.verdict is QualificationVerdict.QUALIFIED
+            and bool(self.provider_kind)
+            and bool(self.endpoint)
+            and bool(self.chargeable_units)
+            and _qualification_window_valid(self.checked_at, self.expires_at, now=now)
             and set(self.evidence) == _REQUIRED_DIMENSIONS
             and all(_evidence_is_authoritative(item) for item in self.evidence.values())
         )
@@ -121,15 +149,43 @@ def load_provider_qualifications(
 
     qualifications: list[ProviderQualification] = []
     for item in raw["qualifications"]:
-        if not isinstance(item, dict) or set(item) != {
+        required_fields = {
             "provider",
             "model",
             "operation",
             "checked_at",
             "verdict",
             "evidence",
-        }:
+        }
+        authority_fields = {
+            "provider_kind",
+            "endpoint",
+            "chargeable_units",
+            "expires_at",
+        }
+        if (
+            not isinstance(item, dict)
+            or not required_fields.issubset(item)
+            or set(item) - required_fields - authority_fields
+        ):
             raise ValueError("provider qualification entry has an invalid shape")
+        has_authority = bool(authority_fields & set(item))
+        if has_authority and not authority_fields.issubset(item):
+            raise ValueError("provider qualification authority has an invalid shape")
+        expires_at = None
+        if has_authority:
+            raw_units = item["chargeable_units"]
+            if not isinstance(raw_units, list) or not raw_units:
+                raise ValueError("qualified provider chargeable units must be non-empty")
+            try:
+                expires_at = datetime.fromisoformat(
+                    _required_text(item["expires_at"], "expires_at")
+                )
+                chargeable_units = frozenset(BillingUnit(unit) for unit in raw_units)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("provider qualification authority is invalid") from exc
+        else:
+            chargeable_units = frozenset()
         qualification = ProviderQualification(
             provider=_required_text(item["provider"], "provider"),
             model=_required_text(item["model"], "model"),
@@ -137,6 +193,12 @@ def load_provider_qualifications(
             checked_at=_required_text(item["checked_at"], "checked_at"),
             verdict=QualificationVerdict(item["verdict"]),
             evidence=_parse_evidence(item["evidence"]),
+            provider_kind=(
+                _required_text(item["provider_kind"], "provider_kind") if has_authority else None
+            ),
+            endpoint=(_required_text(item["endpoint"], "endpoint") if has_authority else None),
+            chargeable_units=chargeable_units,
+            expires_at=expires_at,
         )
         if qualification.verdict is QualificationVerdict.QUALIFIED and not all(
             evidence.status is EvidenceStatus.PASS for evidence in qualification.evidence.values()

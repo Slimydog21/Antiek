@@ -29,7 +29,12 @@ class FakeHardCeilingAdapter:
     model = "model-a"
 
     def __init__(self, capabilities: ProviderCapabilities | None = None) -> None:
-        self.capabilities = capabilities or ProviderCapabilities(True, True, True)
+        self.capabilities = capabilities or ProviderCapabilities(
+            True,
+            True,
+            True,
+            frozenset({BillingUnit.INPUT_TOKEN, BillingUnit.OUTPUT_TOKEN}),
+        )
 
     def send_once(self, operation: object, *, provider_idempotency_key: str):
         raise AssertionError("authority resolution must not send")
@@ -87,6 +92,10 @@ def _qualification(
         checked_at="2026-07-16",
         verdict=QualificationVerdict.QUALIFIED,
         evidence=evidence,
+        provider_kind="openai_compat",
+        endpoint="https://provider.example/v1",
+        chargeable_units=frozenset({BillingUnit.INPUT_TOKEN, BillingUnit.OUTPUT_TOKEN}),
+        expires_at=datetime.now(UTC) + timedelta(days=30),
     )
 
 
@@ -94,17 +103,12 @@ def _entry(
     identity: ProviderRouteIdentity | None = None,
     cost: CostCatalogEntry | None = None,
     qualification: ProviderQualification | None = None,
-    *,
-    qualified_provider_kind: str | None = None,
-    qualified_endpoint: str | None = None,
 ) -> RouteAuthorityCatalogEntry:
     identity = identity or _identity()
     return RouteAuthorityCatalogEntry(
         identity,
         cost or _cost(),
         qualification or _qualification(),
-        qualified_provider_kind or identity.provider_kind,
-        qualified_endpoint or identity.endpoint,
     )
 
 
@@ -137,15 +141,11 @@ def test_exact_server_authorities_make_route_executable_without_dispatch() -> No
 
 def test_missing_endpoint_or_stale_price_remains_unknown() -> None:
     resolver, adapter, _ = _resolver()
-    mismatch = resolver.resolve(
-        _identity("https://other.example/v1"), provider_id=adapter.provider
-    )
+    mismatch = resolver.resolve(_identity("https://other.example/v1"), provider_id=adapter.provider)
     assert mismatch.execution_status is RouteExecutionStatus.BLOCKED_UNKNOWN_PRICING
     assert mismatch.pricing_status == "unknown"
 
-    expired, adapter, _ = _resolver(
-        cost=_cost(expires_at=datetime.now(UTC) - timedelta(seconds=1))
-    )
+    expired, adapter, _ = _resolver(cost=_cost(expires_at=datetime.now(UTC) - timedelta(seconds=1)))
     stale = expired.resolve(_identity(), provider_id=adapter.provider)
     assert stale.execution_status is RouteExecutionStatus.BLOCKED_UNKNOWN_PRICING
 
@@ -179,12 +179,8 @@ def test_catalog_capability_claim_must_also_pass_for_execution() -> None:
 def test_partial_qualification_cannot_mint_execution_authority() -> None:
     identity = _identity()
     qualification = _qualification()
-    partial = ProviderQualification(
-        provider=qualification.provider,
-        model=qualification.model,
-        operation=qualification.operation,
-        checked_at=qualification.checked_at,
-        verdict=qualification.verdict,
+    partial = replace(
+        qualification,
         evidence={
             key: value
             for key, value in qualification.evidence.items()
@@ -238,9 +234,7 @@ def test_endpoint_canonicalization_is_exact_and_credential_free() -> None:
     with pytest.raises(ValueError, match="credential-free"):
         canonical_provider_endpoint("https://user:secret@provider.example/v1")
     assert canonical_provider_endpoint("https://[::1]:443/v1/") == "https://[::1]/v1"
-    assert canonical_provider_endpoint("https://[::1]:8443/v1/") == (
-        "https://[::1]:8443/v1"
-    )
+    assert canonical_provider_endpoint("https://[::1]:8443/v1/") == ("https://[::1]:8443/v1")
 
 
 def test_duplicate_billing_units_cannot_enter_route_authority() -> None:
@@ -262,12 +256,12 @@ def test_price_for_another_dispatch_seam_cannot_be_borrowed() -> None:
 
 def test_qualification_authority_is_bound_to_exact_provider_route() -> None:
     with pytest.raises(ValueError, match="provider kind"):
-        _entry(qualified_provider_kind="anthropic")
+        _entry(qualification=replace(_qualification(), provider_kind="anthropic"))
     with pytest.raises(ValueError, match="provider endpoint"):
-        _entry(qualified_endpoint="https://other.example/v1")
+        _entry(qualification=replace(_qualification(), endpoint="https://other.example/v1"))
 
     canonical_equivalent = _entry(
-        qualified_endpoint="HTTPS://Provider.Example:443/v1/"
+        qualification=replace(_qualification(), endpoint="HTTPS://Provider.Example:443/v1/")
     )
     assert canonical_equivalent.identity.endpoint == "https://provider.example/v1"
 
@@ -279,4 +273,31 @@ def test_empty_pricing_snapshot_never_mints_execution_authority(snapshot: str) -
 
     assert authority.execution_status is RouteExecutionStatus.BLOCKED_UNKNOWN_PRICING
     assert authority.pricing_status == "unknown"
+    assert not authority.hard_ceiling_eligible
+
+
+def test_qualification_and_adapter_must_cover_every_chargeable_unit() -> None:
+    with pytest.raises(ValueError, match="cover qualified billing units"):
+        _entry(
+            qualification=replace(
+                _qualification(),
+                chargeable_units=frozenset({BillingUnit.INPUT_TOKEN}),
+            )
+        )
+
+    adapter = FakeHardCeilingAdapter(
+        ProviderCapabilities(True, True, True, frozenset({BillingUnit.INPUT_TOKEN}))
+    )
+    resolver, _, _ = _resolver(adapter=adapter)
+    authority = resolver.resolve(_identity(), provider_id=adapter.provider)
+    assert authority.execution_status is RouteExecutionStatus.BLOCKED_QUALIFICATION
+    assert not authority.hard_ceiling_eligible
+
+
+def test_expired_qualification_never_mints_execution_authority() -> None:
+    resolver, adapter, _ = _resolver(
+        qualification=replace(_qualification(), expires_at=datetime.now(UTC) - timedelta(seconds=1))
+    )
+    authority = resolver.resolve(_identity(), provider_id=adapter.provider)
+    assert authority.execution_status is RouteExecutionStatus.BLOCKED_QUALIFICATION
     assert not authority.hard_ceiling_eligible

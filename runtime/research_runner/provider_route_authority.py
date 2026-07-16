@@ -43,9 +43,7 @@ def canonical_provider_endpoint(value: str) -> str:
     port = parsed.port
     default_port = 443 if scheme == "https" else 80
     rendered_host = f"[{host}]" if ":" in host else host
-    netloc = (
-        f"{rendered_host}:{port}" if port not in (None, default_port) else rendered_host
-    )
+    netloc = f"{rendered_host}:{port}" if port not in (None, default_port) else rendered_host
     path = parsed.path.rstrip("/")
     return urlunsplit((scheme, netloc, path, "", ""))
 
@@ -78,16 +76,17 @@ class RouteAuthorityCatalogEntry:
     identity: ProviderRouteIdentity
     cost: CostCatalogEntry
     qualification: ProviderQualification
-    qualified_provider_kind: str
-    qualified_endpoint: str
 
     def __post_init__(self) -> None:
-        if self.qualified_provider_kind != self.identity.provider_kind:
-            raise ValueError("route authority qualification differs from provider kind")
-        if canonical_provider_endpoint(self.qualified_endpoint) != self.identity.endpoint:
-            raise ValueError("route authority qualification differs from provider endpoint")
         if not self.identity.endpoint.startswith("https://"):
             raise ValueError("paid route authority requires an HTTPS endpoint")
+        if self.qualification.provider_kind != self.identity.provider_kind:
+            raise ValueError("route authority qualification differs from provider kind")
+        if (
+            self.qualification.endpoint is None
+            or canonical_provider_endpoint(self.qualification.endpoint) != self.identity.endpoint
+        ):
+            raise ValueError("route authority qualification differs from provider endpoint")
         if (self.cost.seam_id, self.cost.model, self.cost.operation) != (
             self.identity.seam_id,
             self.identity.model_id,
@@ -103,6 +102,8 @@ class RouteAuthorityCatalogEntry:
         units = [rate.unit for rate in self.cost.rates]
         if len(units) != len(set(units)):
             raise ValueError("route authority cost entry repeats a billing unit")
+        if frozenset(units) != self.qualification.chargeable_units:
+            raise ValueError("route authority rates do not cover qualified billing units")
 
 
 AdapterLookup = Callable[[str], object | None]
@@ -154,35 +155,37 @@ class ProviderRouteAuthorityResolver:
             return self._blocked(identity, RouteExecutionStatus.BLOCKED_UNKNOWN_PRICING)
 
         evidence = entry.qualification.evidence
-        if not entry.cost.durable_idempotency or evidence.get("durable_idempotency") is None or evidence[
-            "durable_idempotency"
-        ].status is not EvidenceStatus.PASS:
+        if (
+            not entry.cost.durable_idempotency
+            or evidence.get("durable_idempotency") is None
+            or evidence["durable_idempotency"].status is not EvidenceStatus.PASS
+        ):
             return self._blocked(
                 identity,
                 RouteExecutionStatus.BLOCKED_IDEMPOTENCY_UNPROVEN,
                 entry.cost.snapshot,
             )
-        if not entry.cost.authoritative_reconciliation or evidence.get(
-            "authoritative_reconciliation"
-        ) is None or evidence[
-            "authoritative_reconciliation"
-        ].status is not EvidenceStatus.PASS:
+        if (
+            not entry.cost.authoritative_reconciliation
+            or evidence.get("authoritative_reconciliation") is None
+            or evidence["authoritative_reconciliation"].status is not EvidenceStatus.PASS
+        ):
             return self._blocked(
                 identity,
                 RouteExecutionStatus.BLOCKED_RECONCILIATION_UNPROVEN,
                 entry.cost.snapshot,
             )
-        if not entry.cost.hidden_retries_disabled or evidence.get(
-            "hidden_retries_disabled"
-        ) is None or evidence[
-            "hidden_retries_disabled"
-        ].status is not EvidenceStatus.PASS:
+        if (
+            not entry.cost.hidden_retries_disabled
+            or evidence.get("hidden_retries_disabled") is None
+            or evidence["hidden_retries_disabled"].status is not EvidenceStatus.PASS
+        ):
             return self._blocked(
                 identity,
                 RouteExecutionStatus.BLOCKED_HIDDEN_RETRIES,
                 entry.cost.snapshot,
             )
-        if not entry.qualification.fully_qualified:
+        if not self._qualification_current(entry.qualification, now=now):
             return self._blocked(
                 identity,
                 RouteExecutionStatus.BLOCKED_QUALIFICATION,
@@ -219,6 +222,8 @@ class ProviderRouteAuthorityResolver:
             status = RouteExecutionStatus.BLOCKED_RECONCILIATION_UNPROVEN
         elif not capabilities.hidden_retries_disabled:
             status = RouteExecutionStatus.BLOCKED_HIDDEN_RETRIES
+        elif capabilities.billing_units != frozenset(rate.unit for rate in entry.cost.rates):
+            status = RouteExecutionStatus.BLOCKED_QUALIFICATION
         else:
             return ProviderRouteAuthority(
                 identity=identity,
@@ -228,6 +233,20 @@ class ProviderRouteAuthorityResolver:
                 execution_status=RouteExecutionStatus.EXECUTABLE,
             )
         return self._blocked(identity, status, entry.cost.snapshot)
+
+    @staticmethod
+    def _qualification_current(
+        qualification: ProviderQualification, *, now: datetime | None
+    ) -> bool:
+        if not qualification.fully_qualified or qualification.expires_at is None:
+            return False
+        resolved_now = now or datetime.now(UTC)
+        if resolved_now.tzinfo is None:
+            resolved_now = resolved_now.replace(tzinfo=UTC)
+        expires_at = qualification.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        return resolved_now < expires_at
 
     @staticmethod
     def _pricing_known(cost: CostCatalogEntry, *, now: datetime | None) -> bool:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -60,6 +61,10 @@ def _qualification(status: EvidenceStatus = EvidenceStatus.PASS) -> ProviderQual
         checked_at="2026-07-13",
         verdict=QualificationVerdict.QUALIFIED,
         evidence=evidence,
+        provider_kind="openai_compat",
+        endpoint="https://provider.example/v1",
+        chargeable_units=frozenset({BillingUnit.CALL}),
+        expires_at=datetime.now(UTC) + timedelta(days=30),
     )
 
 
@@ -88,12 +93,8 @@ def test_checked_in_provider_registry_is_closed_and_refuses_all_candidates() -> 
 
 def test_direct_qualification_requires_every_evidence_dimension() -> None:
     qualification = _qualification()
-    incomplete = ProviderQualification(
-        provider=qualification.provider,
-        model=qualification.model,
-        operation=qualification.operation,
-        checked_at=qualification.checked_at,
-        verdict=qualification.verdict,
+    incomplete = replace(
+        qualification,
         evidence={
             key: value
             for key, value in qualification.evidence.items()
@@ -123,16 +124,22 @@ def test_direct_qualification_rejects_untrusted_evidence_shape(
         source_url=source_url,
         finding=finding,
     )
-    malformed = ProviderQualification(
-        provider=qualification.provider,
-        model=qualification.model,
-        operation=qualification.operation,
-        checked_at=qualification.checked_at,
-        verdict=qualification.verdict,
-        evidence=evidence,
-    )
+    malformed = replace(qualification, evidence=evidence)
 
     assert not malformed.fully_qualified
+
+
+@pytest.mark.parametrize("checked_at", ["", "not-a-date", "2999-01-01"])
+def test_direct_qualification_requires_a_valid_nonfuture_check_time(
+    checked_at: str,
+) -> None:
+    assert not replace(_qualification(), checked_at=checked_at).fully_qualified
+
+
+def test_direct_qualification_requires_unexpired_authority() -> None:
+    assert not replace(
+        _qualification(), expires_at=datetime.now(UTC) - timedelta(seconds=1)
+    ).fully_qualified
 
 
 def test_paid_catalog_capability_claim_requires_exact_fully_passing_route() -> None:

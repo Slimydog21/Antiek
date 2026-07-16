@@ -214,12 +214,16 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
         "2026-07-16",
         QualificationVerdict.QUALIFIED,
         evidence,
+        provider_kind="openai_compat",
+        endpoint="https://api.deepseek.com/v1",
+        chargeable_units=frozenset({BillingUnit.CALL}),
+        expires_at=datetime.now(UTC) + timedelta(days=1),
     )
 
     class ExactAdapter:
         provider = "user-my-deepseek"
         model = "deepseek-chat"
-        capabilities = ProviderCapabilities(True, True, True)
+        capabilities = ProviderCapabilities(True, True, True, frozenset({BillingUnit.CALL}))
 
         def send_once(self, operation: object, *, provider_idempotency_key: str):
             raise AssertionError("Settings authority must not send")
@@ -234,8 +238,6 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
                 identity,
                 cost,
                 qualification,
-                identity.provider_kind,
-                identity.endpoint,
             ),
         ),
         adapter_lookup=lambda provider_id: adapter if provider_id == adapter.provider else None,
@@ -386,14 +388,17 @@ def test_ciphertext_substitution_revokes_route_and_cannot_reveal_other_key(
 ) -> None:
     assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
     other_secret = "sk-BBBB-other-user-model-key-0987654321"
-    assert client.post(
-        "/settings/models/user",
-        json={
-            **_ADD_BODY,
-            "display_name": "Other Model",
-            "api_key": other_secret,
-        },
-    ).status_code == 201
+    assert (
+        client.post(
+            "/settings/models/user",
+            json={
+                **_ADD_BODY,
+                "display_name": "Other Model",
+                "api_key": other_secret,
+            },
+        ).status_code
+        == 201
+    )
 
     registry = json.loads((env / "settings" / "user_models.json").read_text())
     first_ref = registry["user-my-deepseek"]["cred_ref"]
@@ -784,9 +789,7 @@ def test_boot_migrates_legacy_user_model_without_losing_authority(env: Path) -> 
 
     reset_provider_registry()
     with TestClient(_fresh_app()) as reborn:
-        migrated = json.loads(registry_path.read_text(encoding="utf-8"))[
-            "user-my-deepseek"
-        ]
+        migrated = json.loads(registry_path.read_text(encoding="utf-8"))["user-my-deepseek"]
         assert migrated["cred_ref"] != legacy_ref
         assert len(migrated["cred_fingerprint"]) == 64
         choice = {
