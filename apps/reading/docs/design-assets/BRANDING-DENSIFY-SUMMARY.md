@@ -224,3 +224,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2 arxiv/substack dens | `f1f411fdd` | Sources product invent |
 | Imagine invent polish v2 html book float | `f1f411fdd` | ReadingCompanion invent |
 | Imagine invent polish v2 knowledge twin cursor | `f1f411fdd` | KnowledgePanel invent |
+| Imagine invent polish v2 antiek-bench celebrate | (next tip) | AntiekBenchPanel product invent |
