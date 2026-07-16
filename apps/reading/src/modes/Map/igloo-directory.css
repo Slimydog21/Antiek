@@ -231,6 +231,14 @@
   background: linear-gradient(145deg, var(--ice-1), var(--ice-3));
 }
 
+@media (prefers-color-scheme: dark) {
+  .igloo-directory {
+    /* The global night shadow-1 is only 4.07:1 on this route's inset.
+       Keep secondary copy secondary while clearing WCAG AA. */
+    --shadow-1: var(--shadow-2);
+  }
+}
+
 @media (max-width: 860px) {
   .igloo-directory__district {
     grid-template-columns: 1fr;

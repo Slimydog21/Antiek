@@ -43,9 +43,7 @@ function LayoutPhaseCursorProbe({
   useStationInstrumentSuspended();
   useLayoutEffect(() => {
     onLayout(
-      document.documentElement.classList.contains(
-        "werner-ice-cursor-hidden",
-      ),
+      document.documentElement.classList.contains("werner-ice-cursor-hidden"),
     );
   });
   return null;
@@ -82,7 +80,9 @@ describe("Werner cursor shell route transitions", () => {
       <MemoryRouter initialEntries={["/brainstorm"]}>
         <WernerIceCursorShell />
         <LayoutPhaseCursorProbe
-          onLayout={(nativeCursorHidden) => layoutStates.push(nativeCursorHidden)}
+          onLayout={(nativeCursorHidden) =>
+            layoutStates.push(nativeCursorHidden)
+          }
         />
       </MemoryRouter>,
     );
@@ -183,7 +183,7 @@ describe("Werner cursor shell route transitions", () => {
     );
     const instrumentCount = () =>
       container.querySelectorAll(
-        '[data-testid="research-lens-cursor"], [data-testid="writing-nib-cursor"], [data-testid="speaking-resonance-cursor"], .werner-ice-bait',
+        '[data-testid="research-lens-cursor"], [data-testid="writing-nib-cursor"], [data-testid="speaking-resonance-cursor"], [data-testid="brass-balance-cursor"], .werner-ice-bait',
       ).length;
 
     expect(getByTestId("research-lens-cursor")).toBeTruthy();
@@ -204,6 +204,14 @@ describe("Werner cursor shell route transitions", () => {
       "werner-writing-nib-active",
     );
     expect(document.documentElement.classList).toContain(
+      "werner-speaking-resonance-active",
+    );
+
+    fireEvent.click(getByRole("button", { name: /brass-balance/ }));
+    expect(queryByTestId("speaking-resonance-cursor")).toBeNull();
+    expect(getByTestId("brass-balance-cursor")).toBeTruthy();
+    expect(instrumentCount()).toBe(1);
+    expect(document.documentElement.classList).not.toContain(
       "werner-speaking-resonance-active",
     );
 

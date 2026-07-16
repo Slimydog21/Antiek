@@ -24,7 +24,11 @@ import type { ComponentType } from "react";
 /** The catalogued fixed-station activities. The arcade (SPR-05) and easter egg
  *  (SPR-04) may widen this union later without gaining movement authority. */
 export type ActivityId =
-  "ice-fishing" | "research-lens" | "writing-nib" | "speaking-resonance";
+  | "ice-fishing"
+  | "research-lens"
+  | "writing-nib"
+  | "speaking-resonance"
+  | "brass-balance";
 
 /** The useMouseFollow read-seam fields an instrument is allowed to consume.
  *  Note what is ABSENT: any read of the penguin's own whereabouts. An
@@ -51,16 +55,16 @@ export interface CursorInstrument {
 }
 
 /**
- * How an activity becomes reachable. Only "default" is wired this sprint; the
- * easter-egg variant is declared now (SPR-04 will wire the sequence trigger)
- * so the registry's shape is stable across Wave 1 and downstream sprints add a
- * variant, not a field.
+ * How an activity becomes reachable. Route policies are intentionally named,
+ * reviewable capabilities; the easter-egg variant remains reserved for a
+ * sequence trigger without changing the registry shape.
  */
 export type ActivityUnlock =
   | { readonly kind: "default" }
   | {
       readonly kind: "route";
-      readonly policyId: "knowledge-work" | "writing-work" | "speaking-work";
+      readonly policyId:
+        "knowledge-work" | "writing-work" | "speaking-work" | "cost-planning";
     }
   | { readonly kind: "easter-egg"; readonly sequenceId: string };
 

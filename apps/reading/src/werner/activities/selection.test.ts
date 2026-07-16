@@ -7,6 +7,7 @@ import {
   researchLensActivity,
   speakingResonanceActivity,
   writingNibActivity,
+  brassBalanceActivity,
 } from "./index";
 
 const concretePath = (route: string) => route.replace(/:[^/]+/g, "fixture");
@@ -23,7 +24,9 @@ const NON_KNOWLEDGE_WORK_ROUTES = MODE_TAXONOMY.filter(
     mode.workflow !== "research" &&
     mode.workflow !== "read" &&
     mode.workflow !== "write" &&
-    mode.workflow !== "speak",
+    mode.workflow !== "speak" &&
+    // /pricing has its own brass-balance activity (exact-match policy).
+    mode.route !== "/pricing",
 ).map((mode) => concretePath(mode.route!));
 
 const WRITING_WORK_ROUTES = MODE_TAXONOMY.filter(
@@ -119,4 +122,20 @@ describe("station activity route policy", () => {
   it("keeps brainstorm in Research rather than treating ideation as Write", () => {
     expect(activityIdForPathname("/brainstorm")).toBe("research-lens");
   });
+
+  it("selects brass-balance for exact /pricing", () => {
+    expect(activityIdForPathname("/pricing")).toBe("brass-balance");
+    expect(getActivityForPathname("/pricing")).toBe(brassBalanceActivity);
+  });
+
+  it("selects brass-balance for /pricing/ with trailing slash", () => {
+    expect(activityIdForPathname("/pricing/")).toBe("brass-balance");
+  });
+
+  it.each(["/pricing-extra", "/pricing/compare", "/pricings"])(
+    "does not leak brass-balance onto pricing-adjacent routes: %s",
+    (pathname) => {
+      expect(activityIdForPathname(pathname)).not.toBe("brass-balance");
+    },
+  );
 });
