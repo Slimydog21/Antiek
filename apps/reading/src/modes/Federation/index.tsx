@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -112,19 +113,19 @@ export default function Federation() {
     <div className="flex flex-col h-screen">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Federation config
-            </h1>
+          <SessionBrandChrome
+            testIdPrefix="federation-home"
+            title="Federation config"
+          >
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Substrate-wide cross-graph federation policy (master-spec
               §13.9 Phase 3). Default is strict: no partners, opt-in
               and attribution required. Adding a partner here authorizes
-              outbound citations to that partner's substrate; the
+              outbound citations to that partner&rsquo;s substrate; the
               attribution + rev-share path picks up the federated_substrate_id
               automatically.
             </p>
-          </header>
+          </SessionBrandChrome>
 
           {error && (
             <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">

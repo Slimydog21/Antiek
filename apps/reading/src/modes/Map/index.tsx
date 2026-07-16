@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
+
 /**
  * Application map — operator-facing index of every route.
  *
@@ -69,10 +71,10 @@ export default function Map() {
     <div className="flex flex-col h-screen">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-8">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Application map
-            </h1>
+          <SessionBrandChrome
+            testIdPrefix="map-home"
+            title="Application map"
+          >
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Every operator-facing surface in the substrate.
               Routes route through the same auth middleware; the
@@ -90,7 +92,7 @@ export default function Map() {
                 </span>
               ))}
             </div>
-          </header>
+          </SessionBrandChrome>
 
           {GROUPS.map((group) => (
             <section

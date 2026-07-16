@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -102,10 +103,10 @@ export default function Loop3() {
     <div className="flex flex-col h-screen">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-8">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Loop 3 unlock checklist
-            </h1>
+          <SessionBrandChrome
+            testIdPrefix="loop3-home"
+            title="Loop 3 unlock checklist"
+          >
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               The five criteria from{" "}
               <code>docs/loop_3_unlock_criteria.md</code>. Per master-spec
@@ -114,7 +115,7 @@ export default function Loop3() {
               also set <code>ANTIEK_LOOP3_UNLOCKED=1</code> in the env
               for substrate-level training-time work to run.
             </p>
-          </header>
+          </SessionBrandChrome>
 
           {error && (
             <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">

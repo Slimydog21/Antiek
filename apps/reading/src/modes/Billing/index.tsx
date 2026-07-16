@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { track } from "../../lib/analytics";
 import { apiFetch } from "../../lib/api";
 
@@ -79,17 +80,17 @@ export default function Billing() {
     <div className="flex flex-col h-screen">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Billing summary
-            </h1>
+          <SessionBrandChrome
+            testIdPrefix="billing-home"
+            title="Billing summary"
+          >
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Per master-spec §13.5: pay-as-you-go pricing. Free-tier
               cap is {FREE_TIER_CAP.toLocaleString()} tokens/month on
               DeepSeek-Flash; paid-public margin is 10%; paid-private
               margin is 50% (managed-service value).
             </p>
-          </header>
+          </SessionBrandChrome>
 
           <section className="border border-rule dark:border-charcoal-1 rounded-md p-4 grid grid-cols-2 gap-3">
             <div className="space-y-1">

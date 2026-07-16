@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -52,18 +53,19 @@ export default function TrustCenter() {
     <div className="flex flex-col h-screen">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-10">
-          <header className="space-y-3">
-            <h1 className="text-3xl font-serif text-ink dark:text-bright">
-              Trust Center
-            </h1>
+          <SessionBrandChrome
+            testIdPrefix="trust-center"
+            title="Trust Center"
+            titleClassName="text-3xl font-serif text-ink dark:text-bright"
+          >
             <p className="text-base text-ink dark:text-bright leading-relaxed">
-              Antiek's standing commitments — privacy architecture,
+              Antiek&rsquo;s standing commitments — privacy architecture,
               differential-privacy parameters, deletion SLA, and the
               gates that govern when the system learns from your
               behavior. The values below are pulled live from the
               substrate; if a bullet is wrong, the bullet is wrong.
             </p>
-          </header>
+          </SessionBrandChrome>
 
           {error && (
             <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">

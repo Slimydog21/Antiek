@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import TrajectoryReplay from "../../components/TrajectoryReplay";
 import type { Event } from "../../generated/types";
 import { API_BASE, apiFetch } from "../../lib/api";
@@ -146,10 +147,10 @@ export default function Replay() {
     <PanelHost starters={starters}>
       <main className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Trajectory replay
-            </h1>
+          <SessionBrandChrome
+            testIdPrefix="replay-home"
+            title="Trajectory replay"
+          >
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Re-read this investigation event-by-event. Per master-spec
               §14.1: replay is the substrate of operator-graded
@@ -168,7 +169,7 @@ export default function Replay() {
               </span>
               <span>· {events.length} events</span>
             </p>
-          </header>
+          </SessionBrandChrome>
 
           {loading && (
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading trajectory…</p>
