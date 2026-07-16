@@ -201,9 +201,15 @@ def _read_artifact(artifact_path: str) -> dict:
     _secure_private_file(p, label="credential artifact")
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (ValueError, OSError):
-        return {}
+    except (ValueError, OSError) as exc:
+        raise CredentialIntegrityError(
+            "credential artifact is unreadable; refusing mutation"
+        ) from exc
+    if not isinstance(data, dict):
+        raise CredentialIntegrityError(
+            "credential artifact root must be an object; refusing mutation"
+        )
+    return data
 
 
 def _fsync_directory(directory: Path) -> None:

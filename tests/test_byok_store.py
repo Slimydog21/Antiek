@@ -245,3 +245,19 @@ def test_existing_artifact_permissions_are_repaired_and_symlink_is_rejected():
         artifact.symlink_to(target)
         with pytest.raises(CredentialIntegrityError, match="regular file"):
             list_credentials(artifact_path=str(artifact))
+
+
+def test_corrupt_artifact_fails_closed_without_overwrite():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "credentials.enc"
+        corrupt = b"{corrupt"
+        artifact.write_bytes(corrupt)
+
+        with pytest.raises(CredentialIntegrityError, match="unreadable"):
+            store_credential(
+                "must-not-overwrite",
+                _SECRET,
+                artifact_path=str(artifact),
+                key_bytes=_TEST_KEY,
+            )
+        assert artifact.read_bytes() == corrupt
