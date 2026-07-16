@@ -30,7 +30,12 @@ from substrate.research_spend import (
 )
 
 from .cost_projection import project_cascade_cost
-from .protocol import BillingUnit, CostProjection, CostProjectionRequest, ProjectionDisposition
+from .protocol import (
+    BillingUnit,
+    CostProjection,
+    CostProjectionRequest,
+    ProjectionDisposition,
+)
 
 T = TypeVar("T")
 JsonEvidence = Mapping[str, str | int | bool | None]
@@ -96,6 +101,7 @@ class ProviderCapabilities:
             self.durable_idempotency
             and self.authoritative_reconciliation
             and self.hidden_retries_disabled
+            and bool(self.billing_units)
         )
 
 
@@ -165,7 +171,9 @@ def canonical_digest(value: object) -> str:
             return item
         raise TypeError(f"unsupported canonical value: {type(item).__name__}")
 
-    payload = json.dumps(normalize(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    payload = json.dumps(
+        normalize(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -188,7 +196,9 @@ class ResearchProviderGateway:
         self.ledger = ledger
         self._projector = projector
 
-    def create_or_reopen_run(self, binding: RunBinding, *, ceiling_cents: int) -> RunSnapshot:
+    def create_or_reopen_run(
+        self, binding: RunBinding, *, ceiling_cents: int
+    ) -> RunSnapshot:
         self.ledger.ensure_schema()
         return self.ledger.create_or_reopen_run(
             deterministic_key("research-run", binding.run_id), binding, ceiling_cents
@@ -240,7 +250,9 @@ class ResearchProviderGateway:
             deterministic_key("research-send-command", hold.hold_id), hold.hold_id
         )
         try:
-            success = adapter.send_once(operation, provider_idempotency_key=provider_key)
+            success = adapter.send_once(
+                operation, provider_idempotency_key=provider_key
+            )
         except ProviderNotSent as exc:
             self.ledger.release(
                 deterministic_key("research-not-sent-command", hold.hold_id),
@@ -403,7 +415,9 @@ class ResearchProviderGateway:
                 or not 0 <= result.actual_cents <= (1 << 63) - 1
             ):
                 self._retain_unknown(hold, {"reconciliation_actual": "invalid"})
-                raise ProviderOutcomeUnknown(hold.hold_id, "provider billing amount is invalid")
+                raise ProviderOutcomeUnknown(
+                    hold.hold_id, "provider billing amount is invalid"
+                )
             run = self.ledger.settle(
                 deterministic_key("research-reconcile-settle", hold.hold_id),
                 hold.hold_id,
@@ -413,7 +427,9 @@ class ResearchProviderGateway:
         else:
             self._retain_unknown(hold, result.evidence)
             raise ProviderOutcomeUnknown(hold.hold_id, "provider outcome remains unknown")
-        return ProviderDispatchResult(hold=self.ledger.hold(hold.hold_id), run=run, recovered=True)
+        return ProviderDispatchResult(
+            hold=self.ledger.hold(hold.hold_id), run=run, recovered=True
+        )
 
     def _retain_unknown(self, hold: PaidHoldSnapshot, evidence: JsonEvidence) -> None:
         current = self.ledger.hold(hold.hold_id)
@@ -439,7 +455,9 @@ class ResearchProviderGateway:
         for key, value in evidence.items():
             if not isinstance(key, str) or not key:
                 raise TypeError("provider evidence keys must be non-empty strings")
-            if isinstance(value, float) or not isinstance(value, (str, int, bool, type(None))):
+            if isinstance(value, float) or not isinstance(
+                value, (str, int, bool, type(None))
+            ):
                 raise TypeError("provider evidence values must be JSON scalars without floats")
 
     @staticmethod
@@ -455,3 +473,6 @@ class ResearchProviderGateway:
             raise DispatchIneligible("adapter route differs from projected route")
         if not adapter.capabilities.hard_ceiling_eligible:
             raise DispatchIneligible("adapter lacks hard-ceiling capabilities")
+        projection_units = frozenset(rate.unit for rate in projection.rates)
+        if adapter.capabilities.billing_units != projection_units:
+            raise DispatchIneligible("adapter billing units differ from projected route")

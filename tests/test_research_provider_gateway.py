@@ -106,7 +106,9 @@ def _project(request: CostProjectionRequest) -> CostProjection:
 class FakeAdapter:
     provider = "test-provider"
     model = "test-model"
-    capabilities = ProviderCapabilities(True, True, True)
+    capabilities = ProviderCapabilities(
+        True, True, True, frozenset({BillingUnit.CALL})
+    )
 
     def __init__(self) -> None:
         self.send_calls: list[str] = []
@@ -388,7 +390,9 @@ def test_actual_above_projection_is_observed_and_freezes_run(tmp_path: Path) -> 
 def test_incapable_adapter_and_real_catalog_route_fail_before_send(tmp_path: Path) -> None:
     gateway = _gateway(tmp_path)
     adapter = FakeAdapter()
-    adapter.capabilities = ProviderCapabilities(True, False, True)
+    adapter.capabilities = ProviderCapabilities(
+        True, False, True, frozenset({BillingUnit.CALL})
+    )
     with pytest.raises(DispatchIneligible, match="capabilities"):
         gateway.dispatch_paid(
             _binding(),
@@ -407,7 +411,9 @@ def test_incapable_adapter_and_real_catalog_route_fail_before_send(tmp_path: Pat
         operation="search",
         bounded_usage=(BoundedUsage(BillingUnit.CALL, 1),),
     )
-    adapter.capabilities = ProviderCapabilities(True, True, True)
+    adapter.capabilities = ProviderCapabilities(
+        True, True, True, frozenset({BillingUnit.CALL})
+    )
     adapter.provider, adapter.model = "exa", "search"
     with pytest.raises(DispatchIneligible):
         real_gateway.dispatch_paid(
@@ -415,6 +421,24 @@ def test_incapable_adapter_and_real_catalog_route_fail_before_send(tmp_path: Pat
             logical_operation_id="exa-op",
             projection_request=exa_request,
             operation={"query": "history of flight"},
+            adapter=adapter,
+        )
+    assert not adapter.send_calls
+
+
+def test_adapter_billing_units_must_match_projection_before_send(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    adapter = FakeAdapter()
+    adapter.capabilities = ProviderCapabilities(
+        True, True, True, frozenset({BillingUnit.INPUT_TOKEN})
+    )
+
+    with pytest.raises(DispatchIneligible, match="billing units"):
+        gateway.dispatch_paid(
+            _binding(),
+            logical_operation_id="op",
+            projection_request=_request(),
+            operation={"prompt": "bounded"},
             adapter=adapter,
         )
     assert not adapter.send_calls
