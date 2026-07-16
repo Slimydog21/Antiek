@@ -281,4 +281,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | branding-densify-pack.sh | `32b4cba09` | reproducible 28-file densify pack for invent reframe + product invent doors |
 | sessionLivingTv.css densify comment crosslinks | `735822246` | Flipbook note + densify-pack.sh pointers in invent reframe CSS |
 | npm test:branding-densify | `58deb43f4` | package.json alias to branding-densify-pack.sh |
-| invent reframe CSS contract densify test | `TBD` | sessionLivingTv CSS reduced-motion + NO-GO honesty densify |
+| invent reframe CSS contract densify test | `2d3bb46b0` | sessionLivingTv CSS reduced-motion + NO-GO honesty densify |
