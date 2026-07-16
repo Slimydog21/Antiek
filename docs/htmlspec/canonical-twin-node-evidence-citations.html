@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cycle 117 - Canonical Twin Node Evidence Citations</title>
+<style>body{font:16px/1.55 system-ui,sans-serif;max-width:940px;margin:auto;padding:32px 20px;color:#17201d;background:#f7f8f6}section{border-top:1px solid #c8d0ca;margin-top:26px;padding-top:12px}code{background:#e7ebe7;padding:2px 5px}li{margin:7px 0}</style></head>
+<body><main><h1>Canonical Twin Node Evidence Citations</h1>
+<p><strong>Cycle 117.</strong> Give reviewed twin insights and questions normalized, ordered, owner-private provenance without pretending documents or chunks are graph nodes.</p>
+<section><h2>Authority</h2><p>Citations are a hash-only DuckDB projection committed in the same transaction as the node. They are not independent truth or serving authority. Every reusable view must reopen the pinned signed promotion and revalidate the canonical twin, source evidence, rights, takedown state, node projection, and citation projection.</p></section>
+<section><h2>Schema</h2><ul>
+<li>Ordinal zero names the canonical twin document and chunk with its exact chunk hash.</li>
+<li>Ordinals one through sixteen preserve owner-reviewed evidence order, document/chunk IDs, exact character range, excerpt/chunk/document/envelope hashes, and rights class.</li>
+<li>Rows contain no source or excerpt text and use soft references so legal deletion is never blocked.</li>
+<li>Deterministic IDs and uniqueness by node plus ordinal make replay exact; any conflicting pre-existing projection aborts the node transaction.</li>
+</ul></section>
+<section><h2>Failure Contract</h2><p>Absent, foreign, stale, taken-down, malformed, incomplete, substituted, or path-replaced authority returns the same <code>historical_withheld</code> shape. Historical node and citation rows remain available only for audit and cannot authorize reuse.</p></section>
+<section><h2>Acceptance</h2><ul>
+<li>Node and all citations commit or roll back together; replay writes nothing new.</li>
+<li>Current reads verify exact ordered rows while one promotion snapshot remains pinned.</li>
+<li>Foreign owners, missing rows, field substitutions, evidence drift, takedown, and late failure fail closed without disclosure or deletion.</li>
+<li>Coupled tests, strict typing, Ruff, HTML parsing, security scan, and independent hostile review pass.</li>
+</ul></section>
+<section><h2>Deferred</h2><p>No graph-edge vocabulary change, HTTP/UI, public sharing, embedding/provider dispatch, production mutation, merge, deployment, or spend.</p></section>
+</main></body></html>

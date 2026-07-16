@@ -41,6 +41,7 @@ from __future__ import annotations
 import contextlib
 import os
 import sys
+from typing import Any
 
 import duckdb
 
@@ -372,6 +373,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "event_consumer_events",
     "event_consumer_receipts",
     "event_consumer_frontiers",
+    "canonical_twin_node_citations",
 )
 
 
@@ -1355,6 +1357,53 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS twin_source_envelope TEXT;
 """
 
 
+# V21 - normalized, hash-only projection for reviewed canonical twin node citations.
+# References are intentionally soft: legal deletion/takedown must not be blocked by
+# historical audit rows, and current serving revalidates every target at read time.
+ANTIEK_GRAPH_SCHEMA_V21_CANONICAL_TWIN_NODE_CITATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS canonical_twin_node_citations (
+    citation_id TEXT PRIMARY KEY,
+    node_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    candidate_id TEXT NOT NULL,
+    candidate_digest TEXT NOT NULL CHECK (
+        regexp_full_match(candidate_digest, '[0-9a-f]{64}')
+    ),
+    review_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0 AND ordinal <= 16),
+    citation_kind TEXT NOT NULL CHECK (citation_kind IN ('canonical_twin', 'evidence')),
+    document_id TEXT NOT NULL,
+    chunk_id TEXT NOT NULL,
+    range_start INTEGER,
+    range_end INTEGER,
+    text_sha256 TEXT NOT NULL CHECK (regexp_full_match(text_sha256, '[0-9a-f]{64}')),
+    chunk_sha256 TEXT NOT NULL CHECK (regexp_full_match(chunk_sha256, '[0-9a-f]{64}')),
+    document_sha256 TEXT,
+    source_envelope_sha256 TEXT,
+    content_class TEXT,
+    schema TEXT NOT NULL CHECK (schema = 'antiek.canonical-twin-node-citation.v1'),
+    UNIQUE (node_id, ordinal),
+    CHECK (
+        (citation_kind = 'canonical_twin' AND ordinal = 0
+            AND range_start IS NULL AND range_end IS NULL
+            AND document_sha256 IS NULL AND source_envelope_sha256 IS NULL
+            AND content_class IS NULL AND text_sha256 = chunk_sha256)
+        OR
+        (citation_kind = 'evidence' AND ordinal > 0
+            AND range_start IS NOT NULL AND range_end IS NOT NULL
+            AND range_start >= 0 AND range_end > range_start
+            AND document_sha256 IS NOT NULL
+            AND regexp_full_match(document_sha256, '[0-9a-f]{64}')
+            AND source_envelope_sha256 IS NOT NULL
+            AND regexp_full_match(source_envelope_sha256, '[0-9a-f]{64}')
+            AND content_class IS NOT NULL)
+    )
+);
+CREATE INDEX IF NOT EXISTS idx_canonical_twin_node_citations_owner_candidate
+    ON canonical_twin_node_citations(owner_id, candidate_id, ordinal);
+"""
+
+
 ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL = """
 CREATE TABLE IF NOT EXISTS event_consumer_events (
     consumer_name TEXT NOT NULL,
@@ -1488,6 +1537,73 @@ _V19_FRONTIER_REQUIRED_SHAPE = {
     "jsonl_byte_offset": ("BIGINT", "NO", None),
     "updated_at": ("TIMESTAMP", "NO", None),
 }
+
+_V21_CITATION_REQUIRED_SHAPE = {
+    "citation_id": ("VARCHAR", "NO", "PRI"),
+    "node_id": ("VARCHAR", "NO", "UNI"),
+    "owner_id": ("VARCHAR", "NO", None),
+    "candidate_id": ("VARCHAR", "NO", None),
+    "candidate_digest": ("VARCHAR", "NO", None),
+    "review_id": ("VARCHAR", "NO", None),
+    "ordinal": ("INTEGER", "NO", "UNI"),
+    "citation_kind": ("VARCHAR", "NO", None),
+    "document_id": ("VARCHAR", "NO", None),
+    "chunk_id": ("VARCHAR", "NO", None),
+    "range_start": ("INTEGER", "YES", None),
+    "range_end": ("INTEGER", "YES", None),
+    "text_sha256": ("VARCHAR", "NO", None),
+    "chunk_sha256": ("VARCHAR", "NO", None),
+    "document_sha256": ("VARCHAR", "YES", None),
+    "source_envelope_sha256": ("VARCHAR", "YES", None),
+    "content_class": ("VARCHAR", "YES", None),
+    "schema": ("VARCHAR", "NO", None),
+}
+_V21_CITATION_CONSTRAINT_SHAPES = {
+    ("PRIMARY KEY", ("citation_id",)),
+    ("UNIQUE", ("node_id", "ordinal")),
+    ("CHECK", ("candidate_digest",)),
+    ("CHECK", ("ordinal",)),
+    ("CHECK", ("citation_kind",)),
+    ("CHECK", ("text_sha256",)),
+    ("CHECK", ("chunk_sha256",)),
+    ("CHECK", ("schema",)),
+    (
+        "CHECK",
+        (
+            "chunk_sha256", "citation_kind", "content_class", "document_sha256",
+            "ordinal", "range_end", "range_start", "source_envelope_sha256",
+            "text_sha256",
+        ),
+    ),
+}
+
+
+def _v21_citation_shape_is_valid(con: Any) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3])
+        for row in con.execute("DESCRIBE canonical_twin_node_citations").fetchall()
+    }
+    if described != _V21_CITATION_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type,constraint_column_names,expression "
+        "FROM duckdb_constraints() WHERE table_name='canonical_twin_node_citations'"
+    ).fetchall()
+    constraint_shapes = {
+        (row[0], tuple(sorted(set(row[1]))))
+        for row in constraints
+        if row[0] in ("PRIMARY KEY", "UNIQUE", "CHECK")
+    }
+    indexes = con.execute(
+        "SELECT index_name,is_unique,is_primary FROM duckdb_indexes() "
+        "WHERE table_name='canonical_twin_node_citations'"
+    ).fetchall()
+    return (
+        constraint_shapes == _V21_CITATION_CONSTRAINT_SHAPES
+        and indexes == [
+            ("idx_canonical_twin_node_citations_owner_candidate", False, False)
+        ]
+    )
 
 
 class SchemaCorruptionError(RuntimeError):
@@ -1646,6 +1762,22 @@ def _repair_empty_partial_v19_frontiers(con: LockedConnection) -> None:
     con.execute("DROP TABLE event_consumer_frontiers")
 
 
+def _repair_empty_partial_v21_citations(con: LockedConnection) -> None:
+    columns = {
+        row[0] for row in con.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema='main' "
+            "AND table_name='canonical_twin_node_citations'"
+        ).fetchall()
+    }
+    if not columns or _v21_citation_shape_is_valid(con):
+        return
+    if con.execute("SELECT COUNT(*) FROM canonical_twin_node_citations").fetchone()[0]:
+        raise SchemaCorruptionError(
+            "populated partial V21 canonical citations require explicit recovery"
+        )
+    con.execute("DROP TABLE canonical_twin_node_citations")
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1732,6 +1864,8 @@ def init_database(con: LockedConnection) -> None:
     _repair_empty_partial_v19_frontiers(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL)
     con.execute(ANTIEK_GRAPH_SCHEMA_V20_TWIN_SOURCE_ENVELOPE_SQL)
+    _repair_empty_partial_v21_citations(con)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V21_CANONICAL_TWIN_NODE_CITATIONS_SQL)
     from substrate.twin_recursion import backfill_twin_source_envelopes
 
     backfill_twin_source_envelopes(con)
@@ -1744,6 +1878,8 @@ def init_database(con: LockedConnection) -> None:
 # read-only open (on a large prod DB) into O(1). A ``set`` (not a bool) because
 # the process may touch more than one db_path (e.g. tests with temp DBs).
 _INITIALIZED_PATHS: set[str] = set()
+_INITIALIZED_PATH_EPOCHS: dict[str, int] = {}
+_SCHEMA_MEMO_EPOCH = 21
 
 
 def _schema_is_present(db_path: str) -> bool:
@@ -1761,7 +1897,10 @@ def _schema_is_present(db_path: str) -> bool:
     Any failure (file absent, read-only open refused, table missing) returns
     False so the caller falls through to the write-lock init path — the fast
     path is a pure optimization that must never change cold-start behavior."""
-    if db_path in _INITIALIZED_PATHS:
+    if (
+        db_path in _INITIALIZED_PATHS
+        and _INITIALIZED_PATH_EPOCHS.get(db_path) == _SCHEMA_MEMO_EPOCH
+    ):
         return True
     try:
         con = duckdb.connect(db_path, read_only=True)
@@ -1803,13 +1942,16 @@ def _schema_is_present(db_path: str) -> bool:
             "AND table_name='event_consumer_frontiers' AND column_name IN ("
             "'consumer_name','consumer_version','investigation_id','next_ordinal',"
             "'chain_sha256','snapshot_generation','snapshot_row_count',"
-            "'next_snapshot_row_offset','jsonl_byte_offset','updated_at')))"
+            "'next_snapshot_row_offset','jsonl_byte_offset','updated_at')) AND EXISTS ("
+            "SELECT 1 FROM information_schema.tables WHERE table_schema='main' "
+            "AND table_name='canonical_twin_node_citations'))"
         ).fetchone()
         present = (
             bool(row and row[0])
             and _v19_receipt_shape_is_valid(con)
             and _v19_frontier_shape_is_valid(con)
             and _v19_event_shape_is_valid(con)
+            and _v21_citation_shape_is_valid(con)
         )
     except Exception:
         return False
@@ -1818,6 +1960,7 @@ def _schema_is_present(db_path: str) -> bool:
             con.close()
     if present:
         _INITIALIZED_PATHS.add(db_path)
+        _INITIALIZED_PATH_EPOCHS[db_path] = _SCHEMA_MEMO_EPOCH
     return present
 
 
@@ -1859,6 +2002,7 @@ def init_database_at_path(db_path: str, *, timeout_s: float | None = None) -> No
     # freshly-initialized DB is O(1) on the next call too (no second read-only
     # open).
     _INITIALIZED_PATHS.add(db_path)
+    _INITIALIZED_PATH_EPOCHS[db_path] = _SCHEMA_MEMO_EPOCH
 
 
 def list_tables(con: duckdb.DuckDBPyConnection) -> list[str]:

@@ -8,7 +8,7 @@ from typing import Literal
 
 from runtime.db_lock import LockedConnection
 
-from .evidence_promotion import TwinEvidencePromotionLedger
+from .evidence_promotion import AcceptedTwinPromotionAuthority, TwinEvidencePromotionLedger
 from .ledger import TwinRecursionLedger
 from .promotion_writer import (
     canonical_promotion_node_id,
@@ -69,39 +69,50 @@ def read_current_canonical_twin_node(
         with promotions.accepted_snapshot(
             con, twins, owner_id=owner_id, candidate_id=candidate_id
         ) as snapshot:
-            authority = snapshot.authority
-            candidate = authority.candidate
-            node_id = canonical_promotion_node_id(authority)
-            rows = con.execute(
-                "SELECT canonical_label,node_type,embedding,graph_scope,metadata,"
-                "owner_user_id FROM nodes WHERE node_id=? AND owner_user_id=?",
-                [node_id, owner_id],
-            ).fetchall()
-            if len(rows) != 1:
-                return withheld
-            row = rows[0]
-            metadata = json.loads(row[4])
-            expected = (
-                candidate.text,
-                candidate.kind,
-                None,
-                "depth",
-                canonical_promotion_node_metadata(authority),
-                owner_id,
-            )
-            if (*row[:4], metadata, *row[5:]) != expected:
+            current = _current_node_for_authority(con, snapshot.authority, owner_id=owner_id)
+            if current is None:
                 return withheld
             promotions.require_snapshot_current(snapshot)
-            return CurrentCanonicalTwinNode(
-                node_id=node_id,
-                candidate_id=candidate.candidate_id,
-                review_id=authority.review.review_id,
-                kind=candidate.kind,
-                text=candidate.text,
-                owner_id=candidate.owner_id,
-            )
+            return current
     except Exception:
         return withheld
+
+
+def _current_node_for_authority(
+    con: LockedConnection,
+    authority: AcceptedTwinPromotionAuthority,
+    *,
+    owner_id: str,
+) -> CurrentCanonicalTwinNode | None:
+    candidate = authority.candidate
+    node_id = canonical_promotion_node_id(authority)
+    rows = con.execute(
+        "SELECT canonical_label,node_type,embedding,graph_scope,metadata,"
+        "owner_user_id FROM nodes WHERE node_id=? AND owner_user_id=?",
+        [node_id, owner_id],
+    ).fetchall()
+    if len(rows) != 1:
+        return None
+    row = rows[0]
+    metadata = json.loads(row[4])
+    expected = (
+        candidate.text,
+        candidate.kind,
+        None,
+        "depth",
+        canonical_promotion_node_metadata(authority),
+        owner_id,
+    )
+    if (*row[:4], metadata, *row[5:]) != expected:
+        return None
+    return CurrentCanonicalTwinNode(
+        node_id=node_id,
+        candidate_id=candidate.candidate_id,
+        review_id=authority.review.review_id,
+        kind=candidate.kind,
+        text=candidate.text,
+        owner_id=candidate.owner_id,
+    )
 
 
 __all__ = [

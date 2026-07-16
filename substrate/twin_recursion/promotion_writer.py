@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from contextlib import suppress
 from dataclasses import asdict, dataclass
 from typing import Literal
@@ -19,6 +21,9 @@ from .evidence_promotion import AcceptedTwinPromotionAuthority, TwinEvidenceProm
 from .ledger import TwinRecursionLedger
 
 WRITER_SCHEMA = "antiek.canonical-twin-promotion-writer.v1"
+CITATION_SCHEMA: Literal["antiek.canonical-twin-node-citation.v1"] = (
+    "antiek.canonical-twin-node-citation.v1"
+)
 
 
 class CanonicalTwinPromotionWriterError(RuntimeError):
@@ -35,6 +40,28 @@ class CanonicalTwinPromotionResult:
     authority: Literal["owner_reviewed_evidence_bound_graph_node_v1"] = (
         "owner_reviewed_evidence_bound_graph_node_v1"
     )
+
+
+@dataclass(frozen=True)
+class CanonicalTwinNodeCitation:
+    citation_id: str
+    node_id: str
+    owner_id: str
+    candidate_id: str
+    candidate_digest: str
+    review_id: str
+    ordinal: int
+    citation_kind: Literal["canonical_twin", "evidence"]
+    document_id: str
+    chunk_id: str
+    range_start: int | None
+    range_end: int | None
+    text_sha256: str
+    chunk_sha256: str
+    document_sha256: str | None
+    source_envelope_sha256: str | None
+    content_class: str | None
+    schema: Literal["antiek.canonical-twin-node-citation.v1"] = CITATION_SCHEMA
 
 
 class _NoEmbeddingProvider:
@@ -98,6 +125,95 @@ def canonical_promotion_node_metadata(
     return metadata
 
 
+def _canonical_json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def canonical_promotion_node_citations(
+    authority: AcceptedTwinPromotionAuthority,
+) -> tuple[CanonicalTwinNodeCitation, ...]:
+    """Derive the exact ordered hash-only citation projection for one node."""
+    candidate = authority.candidate
+    node_id = canonical_promotion_node_id(authority)
+    base: list[dict[str, object]] = [
+        {
+            "node_id": node_id,
+            "owner_id": candidate.owner_id,
+            "candidate_id": candidate.candidate_id,
+            "candidate_digest": authority.review.candidate_digest,
+            "review_id": authority.review.review_id,
+            "ordinal": 0,
+            "citation_kind": "canonical_twin",
+            "document_id": candidate.twin_document_id,
+            "chunk_id": candidate.twin_chunk_id,
+            "range_start": None,
+            "range_end": None,
+            "text_sha256": candidate.twin_chunk_sha256,
+            "chunk_sha256": candidate.twin_chunk_sha256,
+            "document_sha256": None,
+            "source_envelope_sha256": None,
+            "content_class": None,
+            "schema": CITATION_SCHEMA,
+        }
+    ]
+    for ordinal, evidence in enumerate(candidate.evidence, start=1):
+        base.append(
+            {
+                "node_id": node_id,
+                "owner_id": candidate.owner_id,
+                "candidate_id": candidate.candidate_id,
+                "candidate_digest": authority.review.candidate_digest,
+                "review_id": authority.review.review_id,
+                "ordinal": ordinal,
+                "citation_kind": "evidence",
+                "document_id": evidence.document_id,
+                "chunk_id": evidence.chunk_id,
+                "range_start": evidence.start,
+                "range_end": evidence.end,
+                "text_sha256": evidence.text_sha256,
+                "chunk_sha256": evidence.chunk_sha256,
+                "document_sha256": evidence.document_sha256,
+                "source_envelope_sha256": evidence.source_envelope_sha256,
+                "content_class": evidence.content_class,
+                "schema": CITATION_SCHEMA,
+            }
+        )
+    citations: list[CanonicalTwinNodeCitation] = []
+    for payload in base:
+        citation_id = (
+            "twin-citation-" + hashlib.sha256(_canonical_json(payload).encode()).hexdigest()
+        )
+        citations.append(CanonicalTwinNodeCitation(citation_id=citation_id, **payload))  # type: ignore[arg-type]
+    return tuple(citations)
+
+
+_CITATION_COLUMNS = (
+    "citation_id,node_id,owner_id,candidate_id,candidate_digest,review_id,ordinal,"
+    "citation_kind,document_id,chunk_id,range_start,range_end,text_sha256,chunk_sha256,"
+    "document_sha256,source_envelope_sha256,content_class,schema"
+)
+
+
+def _materialize_citations(
+    con: LockedConnection, authority: AcceptedTwinPromotionAuthority
+) -> tuple[CanonicalTwinNodeCitation, ...]:
+    citations = canonical_promotion_node_citations(authority)
+    for citation in citations:
+        con.execute(
+            f"INSERT INTO canonical_twin_node_citations ({_CITATION_COLUMNS}) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+            list(asdict(citation).values()),
+        )
+    rows = con.execute(
+        f"SELECT {_CITATION_COLUMNS} FROM canonical_twin_node_citations "
+        "WHERE node_id=? AND owner_id=? ORDER BY ordinal",
+        [citations[0].node_id, citations[0].owner_id],
+    ).fetchall()
+    if rows != [tuple(asdict(citation).values()) for citation in citations]:
+        raise CanonicalTwinPromotionWriterError("canonical node citation projection conflicts")
+    return citations
+
+
 def materialize_accepted_twin_promotion(
     con: LockedConnection,
     promotions: TwinEvidencePromotionLedger,
@@ -152,6 +268,7 @@ def materialize_accepted_twin_promotion(
                 )
             else:  # pragma: no cover - closed by Cycle 114, retained as a write guard.
                 raise CanonicalTwinPromotionWriterError("candidate kind is not materializable")
+            _materialize_citations(con, authority)
             promotions.require_snapshot_current(snapshot)
             con.execute("COMMIT")
             return CanonicalTwinPromotionResult(
@@ -170,8 +287,11 @@ def materialize_accepted_twin_promotion(
 __all__ = [
     "CanonicalTwinPromotionResult",
     "CanonicalTwinPromotionWriterError",
+    "CanonicalTwinNodeCitation",
+    "CITATION_SCHEMA",
     "WRITER_SCHEMA",
     "canonical_promotion_node_id",
     "canonical_promotion_node_metadata",
+    "canonical_promotion_node_citations",
     "materialize_accepted_twin_promotion",
 ]
