@@ -5,7 +5,7 @@ import {
   createArcadeCartridge,
   type ArcadeGameKind,
 } from "../cartridgeFactory";
-import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
+import livingTvArt from "../../brand/werner/poses/session/werner_crt_living_tv_session_v1.webp";
 import iceFishingArt from "../../brand/werner/poses/session/werner_ice_fishing_session_v1.png";
 import zombiesArt from "../../brand/werner/poses/session/werner_zombies_session_v1.png";
 import clamCatcherArt from "../../brand/werner/poses/session/werner_clam_catcher_session_v1.png";

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -109,10 +110,19 @@ export default function InterviewTranscript({
 
   return (
     <div className="h-full overflow-y-auto p-3 bg-ice-0 dark:bg-charcoal-2">
-      <header className="flex items-center justify-between mb-2">
-        <h3 className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
-          Transcript · {turns.length} turn{turns.length === 1 ? "" : "s"}
-        </h3>
+      <header className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="interview-transcript-werner-brand"
+            className="h-6 w-6 shrink-0 object-contain"
+          />
+          <h3 className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+            Transcript · {turns.length} turn{turns.length === 1 ? "" : "s"}
+          </h3>
+        </div>
         {!seedTurns && (
           <button
             type="button"
