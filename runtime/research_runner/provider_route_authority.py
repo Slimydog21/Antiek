@@ -78,8 +78,14 @@ class RouteAuthorityCatalogEntry:
     identity: ProviderRouteIdentity
     cost: CostCatalogEntry
     qualification: ProviderQualification
+    qualified_provider_kind: str
+    qualified_endpoint: str
 
     def __post_init__(self) -> None:
+        if self.qualified_provider_kind != self.identity.provider_kind:
+            raise ValueError("route authority qualification differs from provider kind")
+        if canonical_provider_endpoint(self.qualified_endpoint) != self.identity.endpoint:
+            raise ValueError("route authority qualification differs from provider endpoint")
         if not self.identity.endpoint.startswith("https://"):
             raise ValueError("paid route authority requires an HTTPS endpoint")
         if (self.cost.seam_id, self.cost.model, self.cost.operation) != (
@@ -234,6 +240,7 @@ class ProviderRouteAuthorityResolver:
         return bool(
             cost.paid_service
             and cost.currency == "USD"
+            and bool(cost.snapshot.strip())
             and resolved_now < expires_at
             and cost.rates
             and all(rate.usd_per_unit.is_finite() and rate.usd_per_unit > 0 for rate in cost.rates)

@@ -90,6 +90,24 @@ def _qualification(
     )
 
 
+def _entry(
+    identity: ProviderRouteIdentity | None = None,
+    cost: CostCatalogEntry | None = None,
+    qualification: ProviderQualification | None = None,
+    *,
+    qualified_provider_kind: str | None = None,
+    qualified_endpoint: str | None = None,
+) -> RouteAuthorityCatalogEntry:
+    identity = identity or _identity()
+    return RouteAuthorityCatalogEntry(
+        identity,
+        cost or _cost(),
+        qualification or _qualification(),
+        qualified_provider_kind or identity.provider_kind,
+        qualified_endpoint or identity.endpoint,
+    )
+
+
 def _resolver(
     *,
     identity: ProviderRouteIdentity | None = None,
@@ -101,7 +119,7 @@ def _resolver(
     adapter = adapter or FakeHardCeilingAdapter()
     live: dict[str, object] = {adapter.provider: adapter}
     resolver = ProviderRouteAuthorityResolver(
-        (RouteAuthorityCatalogEntry(identity, cost or _cost(), qualification or _qualification()),),
+        (_entry(identity, cost, qualification),),
         adapter_lookup=live.get,
     )
     resolver.register_adapter(identity, adapter.provider, adapter)
@@ -175,7 +193,7 @@ def test_partial_qualification_cannot_mint_execution_authority() -> None:
     )
     adapter = FakeHardCeilingAdapter()
     resolver = ProviderRouteAuthorityResolver(
-        (RouteAuthorityCatalogEntry(identity, _cost(), partial),),
+        (_entry(identity, qualification=partial),),
         adapter_lookup=lambda _provider_id: adapter,
     )
     resolver.register_adapter(identity, adapter.provider, adapter)
@@ -188,7 +206,7 @@ def test_partial_qualification_cannot_mint_execution_authority() -> None:
 
 def test_missing_replaced_or_wrong_route_adapter_fails_closed() -> None:
     identity = _identity()
-    entry = RouteAuthorityCatalogEntry(identity, _cost(), _qualification())
+    entry = _entry(identity)
     no_adapter = ProviderRouteAuthorityResolver((entry,))
     result = no_adapter.resolve(identity, provider_id="user-route")
     assert result.execution_status is RouteExecutionStatus.BLOCKED_NO_ADAPTER
@@ -210,7 +228,7 @@ def test_http_endpoint_can_be_selected_but_never_catalogued_for_paid_execution()
     identity = _identity("http://localhost:8080/v1/")
     assert identity.endpoint == "http://localhost:8080/v1"
     with pytest.raises(ValueError, match="HTTPS"):
-        RouteAuthorityCatalogEntry(identity, _cost(), _qualification())
+        _entry(identity)
 
 
 def test_endpoint_canonicalization_is_exact_and_credential_free() -> None:
@@ -234,11 +252,31 @@ def test_duplicate_billing_units_cannot_enter_route_authority() -> None:
         ),
     )
     with pytest.raises(ValueError, match="repeats a billing unit"):
-        RouteAuthorityCatalogEntry(_identity(), duplicate, _qualification())
+        _entry(cost=duplicate)
 
 
 def test_price_for_another_dispatch_seam_cannot_be_borrowed() -> None:
     with pytest.raises(ValueError, match="differs from exact identity"):
-        RouteAuthorityCatalogEntry(
-            _identity(), replace(_cost(), seam_id="other.workload"), _qualification()
-        )
+        _entry(cost=replace(_cost(), seam_id="other.workload"))
+
+
+def test_qualification_authority_is_bound_to_exact_provider_route() -> None:
+    with pytest.raises(ValueError, match="provider kind"):
+        _entry(qualified_provider_kind="anthropic")
+    with pytest.raises(ValueError, match="provider endpoint"):
+        _entry(qualified_endpoint="https://other.example/v1")
+
+    canonical_equivalent = _entry(
+        qualified_endpoint="HTTPS://Provider.Example:443/v1/"
+    )
+    assert canonical_equivalent.identity.endpoint == "https://provider.example/v1"
+
+
+@pytest.mark.parametrize("snapshot", ["", "   "])
+def test_empty_pricing_snapshot_never_mints_execution_authority(snapshot: str) -> None:
+    resolver, adapter, _ = _resolver(cost=replace(_cost(), snapshot=snapshot))
+    authority = resolver.resolve(_identity(), provider_id=adapter.provider)
+
+    assert authority.execution_status is RouteExecutionStatus.BLOCKED_UNKNOWN_PRICING
+    assert authority.pricing_status == "unknown"
+    assert not authority.hard_ceiling_eligible

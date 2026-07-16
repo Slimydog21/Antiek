@@ -229,7 +229,15 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
 
     adapter = ExactAdapter()
     resolver = ProviderRouteAuthorityResolver(
-        (RouteAuthorityCatalogEntry(identity, cost, qualification),),
+        (
+            RouteAuthorityCatalogEntry(
+                identity,
+                cost,
+                qualification,
+                identity.provider_kind,
+                identity.endpoint,
+            ),
+        ),
         adapter_lookup=lambda provider_id: adapter if provider_id == adapter.provider else None,
     )
     resolver.register_adapter(identity, adapter.provider, adapter)
