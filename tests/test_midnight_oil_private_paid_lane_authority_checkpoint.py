@@ -1675,6 +1675,160 @@ def _attempt_child_recovery_fsync_abort_rename(
         os.close(result_fd)
 
 
+def _attempt_child_recovery_unlink_abort_tombstone(
+    socket_path: str,
+    issuer_pid: int,
+    ticket: checkpoint_module.SignedMigrationRecoveryTicketV1,
+    origin: checkpoint_module.SignedMigrationLifecycleStateV1,
+    verification_key: checkpoint_module.VerificationKeyV1,
+    root_fd: int,
+    parent_fd: int,
+    target_fd: int,
+    result_fd: int,
+    *,
+    abort_tombstone_unlink_fault_boundary: Literal[
+        "abort_tombstone_unlink_after_intent",
+        "abort_tombstone_unlink_after_tombstone_unlink",
+        "abort_tombstone_unlink_after_post_target",
+        "abort_tombstone_unlink_after_journal_rename",
+        "abort_tombstone_unlink_after_journal_parent_fsync",
+        "abort_tombstone_unlink_after_journal_reread",
+    ]
+    | None,
+) -> None:
+    session: support_checkpoint.FixtureMigrationRecoverySessionV1 | None = None
+    try:
+        origin_pins = _recovery_pins(origin)
+        target_identity = os.fstat(target_fd)
+        session = support_checkpoint.FixtureMigrationRecoverySessionV1.open(
+            socket_path=socket_path,
+            expected_issuer_pid=issuer_pid,
+            recovery_ticket=ticket,
+            verification_key=verification_key,
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+            authority_pins=origin_pins,
+        )
+        admission = session.admission
+        abort_preparation = session.recover_prepare_abort_uncut_epoch0(
+            expected_origin_state_sha256=origin.state_sha256
+        )
+        abort_prepared = abort_preparation.abort_prepared_state
+        rename_completion = session.recover_abort_prepared_to_renamed_tombstone(
+            expected_abort_prepared_state_sha256=abort_prepared.state_sha256
+        )
+        renamed = rename_completion.abort_renamed_to_tombstone_state
+        fsync_completion = session.recover_abort_renamed_to_rename_fsynced(
+            expected_abort_renamed_state_sha256=renamed.state_sha256
+        )
+        fsynced = fsync_completion.abort_rename_fsynced_state
+        fsynced_pins = support_checkpoint._issuer_recovery_abort_rename_fsynced_pins_from_state(
+            fsynced
+        )
+        if abort_tombstone_unlink_fault_boundary is None:
+            dropped_request = _canonical_json(
+                {
+                    "command": "session_recover_abort_rename_fsynced_to_tombstone_unlinked",
+                    "admission_sha256": admission.admission_sha256,
+                    "handle_nonce": admission.handle_nonce,
+                    "expected_abort_rename_fsynced_state_sha256": fsynced.state_sha256,
+                }
+            )
+            session._connection.sendall(support_checkpoint._issuer_session_frame(dropped_request))
+        else:
+            with pytest.raises(ValueError, match="abort tombstone unlink rejected"):
+                session.recover_abort_rename_fsynced_to_tombstone_unlinked(
+                    expected_abort_rename_fsynced_state_sha256=fsynced.state_sha256
+                )
+            intermediate = checkpoint_module._read_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                target_basename=fsynced.target_basename,
+                verification_key=verification_key,
+            )
+            if abort_tombstone_unlink_fault_boundary in {
+                "abort_tombstone_unlink_after_intent",
+                "abort_tombstone_unlink_after_tombstone_unlink",
+                "abort_tombstone_unlink_after_post_target",
+            }:
+                assert intermediate == fsynced
+                assert session._abort_tombstone_unlink_completion is None
+            else:
+                assert intermediate.lifecycle_phase == "abort_tombstone_unlinked"
+                assert session._abort_tombstone_unlink_completion is not None
+        session._close_local()
+        session = support_checkpoint.FixtureMigrationRecoverySessionV1.reopen_exact(
+            socket_path=socket_path,
+            expected_issuer_pid=issuer_pid,
+            recovery_ticket=ticket,
+            admission=admission,
+            verification_key=verification_key,
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+        )
+        completion = session.recover_abort_rename_fsynced_to_tombstone_unlinked(
+            expected_abort_rename_fsynced_state_sha256=fsynced.state_sha256
+        )
+        checkpoint_module._verify_epoch0_recovery_abort_tombstone_unlink_completion_v1(
+            completion,
+            issuer_verification_key=verification_key,
+            expected_fsynced_pins=fsynced_pins,
+        )
+        assert completion.abort_rename_fsynced_state == fsynced
+        assert (
+            session.recover_abort_rename_fsynced_to_tombstone_unlinked(
+                expected_abort_rename_fsynced_state_sha256=fsynced.state_sha256
+            )
+            == completion
+        )
+        unlinked_pins = (
+            support_checkpoint._issuer_recovery_abort_tombstone_unlinked_pins_from_state(
+                completion.abort_tombstone_unlinked_state
+            )
+        )
+        assert (
+            checkpoint_module._authenticate_epoch0_recovery_abort_tombstone_unlinked_state_v1(
+                parent_fd=parent_fd,
+                target_fd=target_fd,
+                verification_key=verification_key,
+                expected=unlinked_pins,
+            )
+            == completion.abort_tombstone_unlinked_state
+        )
+        assert (
+            checkpoint_module._migration_lifecycle_entry_identity(
+                parent_fd, fsynced.target_basename
+            )
+            is None
+        )
+        assert (
+            checkpoint_module._migration_lifecycle_entry_identity(
+                parent_fd, fsynced.tombstone_basename
+            )
+            is None
+        )
+        retained = os.fstat(target_fd)
+        assert (retained.st_dev, retained.st_ino) == (
+            target_identity.st_dev,
+            target_identity.st_ino,
+        )
+        assert retained.st_nlink == 0
+        assert admission.authority_pins == origin_pins
+        session.ping()
+        session.close()
+        os.write(result_fd, b"1")
+    except BaseException as error:
+        os.write(
+            result_fd,
+            b"0" + type(error).__name__.encode("ascii") + b":" + str(error).encode("utf-8"),
+        )
+    finally:
+        if session is not None:
+            session.close()
+        os.close(result_fd)
+
+
 def _reopen_precutover(case: Any) -> PrivatePaidLaneEligibilityCheckpointStoreV1:
     semantic = compute_private_paid_lane_semantic_sha256()
     return PrivatePaidLaneEligibilityCheckpointStoreV1.open(
@@ -3610,6 +3764,87 @@ class TestMigrationPrerequisites:
                 ),
                 issuer_verification_key=verification_key,
                 expected_renamed_pins=renamed_pins,
+            )
+
+    def test_epoch0_recovery_abort_tombstone_unlink_completion_verifier(self) -> None:
+        private_key = Ed25519PrivateKey.from_private_bytes(b"e" * 32)
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id="migration-lifecycle-key",
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        fsynced = _signed_lifecycle_state(
+            private_key,
+            lifecycle_phase="abort_rename_fsynced",
+            barrier_id=checkpoint_module._migration_barrier_id("a2" * 32),
+            freeze_nonce="a2" * 32,
+            source_manifest_sha256="a3" * 32,
+            witness_sha256="a4" * 32,
+            phase_version=5,
+            issuer_sequence=5,
+            updated_at_ms=6,
+            previous_state_sha256="a1" * 32,
+        )
+        unlinked = _signed_lifecycle_state(
+            private_key,
+            lifecycle_phase="abort_tombstone_unlinked",
+            barrier_id=fsynced.barrier_id,
+            freeze_nonce=fsynced.freeze_nonce,
+            source_manifest_sha256=fsynced.source_manifest_sha256,
+            witness_sha256=fsynced.witness_sha256,
+            phase_version=6,
+            issuer_sequence=6,
+            updated_at_ms=7,
+            previous_state_sha256=fsynced.state_sha256,
+        )
+        completion = checkpoint_module.Epoch0RecoveryAbortTombstoneUnlinkCompletionV1(
+            abort_rename_fsynced_state=fsynced,
+            abort_tombstone_unlinked_state=unlinked,
+        )
+        fsynced_pins = support_checkpoint._issuer_recovery_abort_rename_fsynced_pins_from_state(
+            fsynced
+        )
+        checkpoint_module._verify_epoch0_recovery_abort_tombstone_unlink_completion_v1(
+            completion,
+            issuer_verification_key=verification_key,
+            expected_fsynced_pins=fsynced_pins,
+        )
+        checkpoint_module.Epoch0RecoveryAbortTombstoneUnlinkedAuthorityPinsV1.model_validate(
+            support_checkpoint._issuer_recovery_abort_tombstone_unlinked_pins_from_state(
+                unlinked
+            ).model_dump(mode="python")
+        )
+        with pytest.raises(ValueError, match="migration lifecycle"):
+            checkpoint_module._verify_epoch0_recovery_abort_tombstone_unlink_completion_v1(
+                completion.model_copy(
+                    update={
+                        "abort_tombstone_unlinked_state": unlinked.model_copy(
+                            update={"freeze_nonce": "ff" * 32}
+                        )
+                    }
+                ),
+                issuer_verification_key=verification_key,
+                expected_fsynced_pins=fsynced_pins,
+            )
+        with pytest.raises(ValueError, match="chain mismatch"):
+            checkpoint_module._verify_epoch0_recovery_abort_tombstone_unlink_completion_v1(
+                completion.model_copy(
+                    update={
+                        "abort_tombstone_unlinked_state": _signed_lifecycle_state(
+                            private_key,
+                            lifecycle_phase="abort_tombstone_unlinked",
+                            barrier_id=fsynced.barrier_id,
+                            freeze_nonce=fsynced.freeze_nonce,
+                            source_manifest_sha256=fsynced.source_manifest_sha256,
+                            witness_sha256=fsynced.witness_sha256,
+                            phase_version=6,
+                            issuer_sequence=6,
+                            updated_at_ms=7,
+                            previous_state_sha256="ee" * 32,
+                        )
+                    }
+                ),
+                issuer_verification_key=verification_key,
+                expected_fsynced_pins=fsynced_pins,
             )
 
     def test_migration_lifecycle_rejects_hash_signature_chain_and_pin_forgery(self) -> None:
@@ -6287,6 +6522,469 @@ class TestMigrationPrerequisites:
                     with suppress(OSError):
                         os.close(descriptor)
             issuer.close()
+
+    @pytest.mark.parametrize(
+        ("origin_phase", "abort_tombstone_unlink_fault_boundary"),
+        (
+            ("schema_only", None),
+            ("barrier_acquired", None),
+            ("sources_sealed", None),
+            ("copy_prepared", None),
+            ("copied_epoch0", None),
+            ("schema_only", "abort_tombstone_unlink_after_intent"),
+            ("schema_only", "abort_tombstone_unlink_after_tombstone_unlink"),
+            ("schema_only", "abort_tombstone_unlink_after_post_target"),
+            ("schema_only", "abort_tombstone_unlink_after_journal_rename"),
+            ("schema_only", "abort_tombstone_unlink_after_journal_parent_fsync"),
+            ("schema_only", "abort_tombstone_unlink_after_journal_reread"),
+        ),
+    )
+    def test_recovery_unlink_abort_tombstone_from_each_fsynced_class(
+        self,
+        tmp_path: Path,
+        origin_phase: Literal[
+            "schema_only",
+            "barrier_acquired",
+            "sources_sealed",
+            "copy_prepared",
+            "copied_epoch0",
+        ],
+        abort_tombstone_unlink_fault_boundary: Literal[
+            "abort_tombstone_unlink_after_intent",
+            "abort_tombstone_unlink_after_tombstone_unlink",
+            "abort_tombstone_unlink_after_post_target",
+            "abort_tombstone_unlink_after_journal_rename",
+            "abort_tombstone_unlink_after_journal_parent_fsync",
+            "abort_tombstone_unlink_after_journal_reread",
+        ]
+        | None,
+    ) -> None:
+        with_rows = origin_phase in {"copy_prepared", "copied_epoch0"}
+        target = tmp_path / "paid-lane.sqlite3"
+        _initialize_schema_only_copy_target(target)
+        target.chmod(0o600)
+        target_info = target.stat()
+        root = SupportLegacyRootV1.create_new(
+            root_path=tmp_path / "issuer-root",
+            root_id="issuer-root-unlink-abort-1",
+            writer_inventory=support_checkpoint._CHILD_ROLES,
+            source_store_identities=support_checkpoint._CHILD_ROLES,
+            now_ms=1,
+            typed_rows=(support_checkpoint.fixture_genesis_migration_rows() if with_rows else None),
+        )
+        root_record = json.loads(
+            (root.root_path / "legacy-root-state-v1.json").read_text(encoding="utf-8")
+        )
+        root_fd = os.open(root.root_path, os.O_RDONLY)
+        parent_fd = os.open(tmp_path, os.O_RDONLY)
+        parent_info = os.fstat(parent_fd)
+        issuer = support_checkpoint.FixtureMigrationLifecycleIssuerV1.spawn(
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_basename=target.name,
+            provider_capability_verification_keys=(
+                support_checkpoint.capability_verification_keys() if with_rows else ()
+            ),
+            provider_revocation_verification_keys=(
+                support_checkpoint.revocation_verification_keys() if with_rows else ()
+            ),
+            source_head_verification_keys=(
+                support_checkpoint.source_head_verification_keys() if with_rows else ()
+            ),
+            provider_revocation_floor_pins=(
+                support_checkpoint.provider_revocation_floor_pins() if with_rows else ()
+            ),
+            source_floor_pins=(support_checkpoint.source_floor_pins() if with_rows else ()),
+            expected_target_store_id=STORE_ID,
+            expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+            expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+            recovery_fault_boundary=abort_tombstone_unlink_fault_boundary,
+        )
+        target_fd = result_read = result_write = -1
+        child = -1
+        barrier_handle = None
+        try:
+            key = Ed25519PrivateKey.from_private_bytes(b"e" * 32)
+            candidate = _issuer_candidate(
+                key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                root_id=root_record["root_id"],
+                root_manifest_sha256=root_record["root_manifest_sha256"],
+            )
+            genesis = issuer.reserve(candidate)
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=genesis,
+                verification_key=issuer.verification_key,
+                expected_prior_state_sha256=None,
+            )
+            issuer.commit(state=genesis, parent_fd=parent_fd)
+            origin = genesis
+            if origin_phase != "schema_only":
+                barrier_handle = root.acquire_writer_barrier(
+                    expected_root_id=root_record["root_id"],
+                    expected_root_manifest_sha256=root_record["root_manifest_sha256"],
+                    expected_inventory_sha256=root_record["inventory_sha256"],
+                )
+                barrier_candidate = _issuer_candidate(
+                    key,
+                    target_parent_dev=parent_info.st_dev,
+                    target_parent_ino=parent_info.st_ino,
+                    target_dev=target_info.st_dev,
+                    target_ino=target_info.st_ino,
+                    root_id=root_record["root_id"],
+                    root_manifest_sha256=root_record["root_manifest_sha256"],
+                    lifecycle_phase="barrier_acquired",
+                    barrier_id=barrier_handle.barrier_id,
+                    freeze_nonce=barrier_handle.freeze_nonce,
+                    phase_version=1,
+                    issuer_sequence=1,
+                    updated_at_ms=2,
+                    previous_state_sha256=origin.state_sha256,
+                )
+                barrier = issuer.reserve(barrier_candidate)
+                checkpoint_module._persist_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    state=barrier,
+                    verification_key=issuer.verification_key,
+                    expected_prior_state_sha256=origin.state_sha256,
+                )
+                issuer.commit(state=barrier, parent_fd=parent_fd)
+                origin = barrier
+            if origin_phase in {"sources_sealed", "copy_prepared", "copied_epoch0"}:
+                assert barrier_handle is not None
+                barrier_handle.deny_new_admission()
+                barrier_handle.drain_terminal_only()
+                barrier_handle.close_and_revoke_all_writers()
+                barrier_handle.checkpoint_and_plant_test_all_mutators()
+                sealed_corpus = barrier_handle.seal_and_collect()
+                sealed_candidate = _issuer_candidate(
+                    key,
+                    target_parent_dev=parent_info.st_dev,
+                    target_parent_ino=parent_info.st_ino,
+                    target_dev=target_info.st_dev,
+                    target_ino=target_info.st_ino,
+                    root_id=root_record["root_id"],
+                    root_manifest_sha256=root_record["root_manifest_sha256"],
+                    lifecycle_phase="sources_sealed",
+                    barrier_id=origin.barrier_id,
+                    freeze_nonce=origin.freeze_nonce,
+                    source_manifest_sha256=sealed_corpus.source_manifest_sha256,
+                    phase_version=2,
+                    issuer_sequence=2,
+                    updated_at_ms=3,
+                    previous_state_sha256=origin.state_sha256,
+                )
+                sealed = issuer.reserve(sealed_candidate)
+                checkpoint_module._persist_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    state=sealed,
+                    verification_key=issuer.verification_key,
+                    expected_prior_state_sha256=origin.state_sha256,
+                )
+                issuer.commit(state=sealed, parent_fd=parent_fd)
+                origin = sealed
+            if origin_phase in {"copy_prepared", "copied_epoch0"}:
+                copy_intent = checkpoint_module._copy_audit_intent_v1(
+                    corpus=sealed_corpus,
+                    target_store_id=STORE_ID,
+                    semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+                    contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+                    provider_capability_verification_keys=support_checkpoint.capability_verification_keys(),
+                    provider_revocation_verification_keys=support_checkpoint.revocation_verification_keys(),
+                    source_head_verification_keys=support_checkpoint.source_head_verification_keys(),
+                    provider_revocation_floor_pins=support_checkpoint.provider_revocation_floor_pins(),
+                    source_floor_pins=support_checkpoint.source_floor_pins(),
+                )
+                prepared_candidate = _issuer_candidate(
+                    key,
+                    target_parent_dev=parent_info.st_dev,
+                    target_parent_ino=parent_info.st_ino,
+                    target_dev=target_info.st_dev,
+                    target_ino=target_info.st_ino,
+                    root_id=root_record["root_id"],
+                    root_manifest_sha256=root_record["root_manifest_sha256"],
+                    lifecycle_phase="copy_prepared",
+                    barrier_id=origin.barrier_id,
+                    freeze_nonce=origin.freeze_nonce,
+                    source_manifest_sha256=origin.source_manifest_sha256,
+                    copy_audit_sha256=checkpoint_module._copy_audit_sha256(copy_intent),
+                    phase_version=3,
+                    issuer_sequence=3,
+                    updated_at_ms=4,
+                    previous_state_sha256=origin.state_sha256,
+                )
+                prepared = issuer.reserve(prepared_candidate)
+                checkpoint_module._persist_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    state=prepared,
+                    verification_key=issuer.verification_key,
+                    expected_prior_state_sha256=origin.state_sha256,
+                )
+                issuer.commit(state=prepared, parent_fd=parent_fd)
+                origin = prepared
+            if origin_phase == "copied_epoch0":
+                issuer.copy_epoch0(prepared_state=origin, test_post_commit_pause_ms=0)
+                copied_candidate = {
+                    **prepared_candidate,
+                    "lifecycle_phase": "copied_epoch0",
+                    "phase_version": 4,
+                    "issuer_sequence": 4,
+                    "updated_at_ms": 5,
+                    "previous_state_sha256": origin.state_sha256,
+                }
+                copied = issuer.reserve(copied_candidate)
+                checkpoint_module._persist_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    state=copied,
+                    verification_key=issuer.verification_key,
+                    expected_prior_state_sha256=origin.state_sha256,
+                )
+                issuer.commit(state=copied, parent_fd=parent_fd)
+                origin = copied
+            target_fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            issuer_socket_path = issuer._socket_path
+            issuer_process_id = issuer.process_id
+            recovery_ticket = issuer.recovery_ticket
+            issuer_verification_key = issuer.verification_key
+            result_read, result_write = os.pipe()
+            child = os.fork()
+            if child == 0:
+                os.close(result_read)
+                _attempt_child_recovery_unlink_abort_tombstone(
+                    issuer_socket_path,
+                    issuer_process_id,
+                    recovery_ticket,
+                    origin,
+                    issuer_verification_key,
+                    root_fd,
+                    parent_fd,
+                    target_fd,
+                    result_write,
+                    abort_tombstone_unlink_fault_boundary=abort_tombstone_unlink_fault_boundary,
+                )
+                os._exit(0)
+            os.close(result_write)
+            result_write = -1
+            recovery_result = os.read(result_read, 4_096)
+            assert recovery_result == b"1", recovery_result
+            _, child_status = os.waitpid(child, 0)
+            child = -1
+            assert os.waitstatus_to_exitcode(child_status) == 0
+            unlinked = checkpoint_module._read_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                target_basename=target.name,
+                verification_key=issuer.verification_key,
+            )
+            assert unlinked.lifecycle_phase == "abort_tombstone_unlinked"
+            checkpoint_module._verify_signed_migration_lifecycle_state(
+                unlinked, issuer.verification_key
+            )
+            assert unlinked.phase_version == origin.phase_version + 4
+            assert (
+                unlinked.barrier_id,
+                unlinked.freeze_nonce,
+                unlinked.source_manifest_sha256,
+                unlinked.copy_audit_sha256,
+                unlinked.witness_sha256,
+            ) == (
+                origin.barrier_id,
+                origin.freeze_nonce,
+                origin.source_manifest_sha256,
+                origin.copy_audit_sha256,
+                origin.witness_sha256,
+            )
+            retained = os.fstat(target_fd)
+            assert retained.st_nlink == 0
+            assert (
+                checkpoint_module._migration_lifecycle_entry_identity(parent_fd, target.name)
+                is None
+            )
+            assert (
+                checkpoint_module._migration_lifecycle_entry_identity(
+                    parent_fd, f".{target.name}.abort-v1"
+                )
+                is None
+            )
+        finally:
+            if child > 0:
+                with suppress(ProcessLookupError):
+                    os.kill(child, 9)
+                os.waitpid(child, 0)
+            for descriptor in (target_fd, result_read, result_write, root_fd, parent_fd):
+                if descriptor >= 0:
+                    with suppress(OSError):
+                        os.close(descriptor)
+            issuer.close()
+
+    def test_recovery_abort_tombstone_unlink_authenticator_accepts_pre_post_only(
+        self, tmp_path: Path
+    ) -> None:
+        private_key = Ed25519PrivateKey.from_private_bytes(b"h" * 32)
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id="migration-lifecycle-key",
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        target = tmp_path / "paid-lane.sqlite3"
+        target.write_bytes(b"sqlite-target-placeholder")
+        target.chmod(0o600)
+        target_info = target.stat()
+        parent_fd = os.open(tmp_path, os.O_RDONLY)
+        target_fd = -1
+        try:
+            parent_info = os.fstat(parent_fd)
+            genesis = _signed_lifecycle_state(
+                private_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+            )
+            prepared = _signed_lifecycle_state(
+                private_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                lifecycle_phase="abort_prepared",
+                phase_version=1,
+                issuer_sequence=1,
+                updated_at_ms=2,
+                previous_state_sha256=genesis.state_sha256,
+            )
+            renamed = _signed_lifecycle_state(
+                private_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                lifecycle_phase="abort_renamed_to_tombstone",
+                phase_version=2,
+                issuer_sequence=2,
+                updated_at_ms=3,
+                previous_state_sha256=prepared.state_sha256,
+            )
+            fsynced = _signed_lifecycle_state(
+                private_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                lifecycle_phase="abort_rename_fsynced",
+                phase_version=3,
+                issuer_sequence=3,
+                updated_at_ms=4,
+                previous_state_sha256=renamed.state_sha256,
+            )
+            unlinked = _signed_lifecycle_state(
+                private_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                lifecycle_phase="abort_tombstone_unlinked",
+                phase_version=4,
+                issuer_sequence=4,
+                updated_at_ms=5,
+                previous_state_sha256=fsynced.state_sha256,
+            )
+            for state, prior in (
+                (genesis, None),
+                (prepared, genesis.state_sha256),
+            ):
+                checkpoint_module._persist_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    state=state,
+                    verification_key=verification_key,
+                    expected_prior_state_sha256=prior,
+                )
+            target_fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            checkpoint_module._rename_migration_target_to_tombstone_exclusive(
+                parent_fd=parent_fd,
+                target_basename=target.name,
+                tombstone_basename=renamed.tombstone_basename,
+            )
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=renamed,
+                verification_key=verification_key,
+                expected_prior_state_sha256=prepared.state_sha256,
+            )
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=fsynced,
+                verification_key=verification_key,
+                expected_prior_state_sha256=renamed.state_sha256,
+            )
+            fsynced_pins = support_checkpoint._issuer_recovery_abort_rename_fsynced_pins_from_state(
+                fsynced
+            )
+            # POSIX unlinkat is conditional on the current name lookup, not on inode identity.
+            # These PRE/POST checks therefore assume the pinned 0700 parent and cooperative flock.
+            assert (
+                checkpoint_module._authenticate_epoch0_recovery_abort_rename_fsynced_state_v1(
+                    parent_fd=parent_fd,
+                    target_fd=target_fd,
+                    verification_key=verification_key,
+                    expected=fsynced_pins,
+                )
+                == fsynced
+            )
+            os.unlink(renamed.tombstone_basename, dir_fd=parent_fd)
+            assert (
+                checkpoint_module._authenticate_epoch0_recovery_abort_rename_fsynced_state_v1(
+                    parent_fd=parent_fd,
+                    target_fd=target_fd,
+                    verification_key=verification_key,
+                    expected=fsynced_pins,
+                )
+                == fsynced
+            )
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=unlinked,
+                verification_key=verification_key,
+                expected_prior_state_sha256=fsynced.state_sha256,
+            )
+            unlinked_pins = (
+                support_checkpoint._issuer_recovery_abort_tombstone_unlinked_pins_from_state(
+                    unlinked
+                )
+            )
+            assert (
+                checkpoint_module._authenticate_epoch0_recovery_abort_tombstone_unlinked_state_v1(
+                    parent_fd=parent_fd,
+                    target_fd=target_fd,
+                    verification_key=verification_key,
+                    expected=unlinked_pins,
+                )
+                == unlinked
+            )
+            resurrected = tmp_path / renamed.tombstone_basename
+            resurrected.write_bytes(b"replacement")
+            resurrected.chmod(0o600)
+            with pytest.raises(ValueError, match="layout|identity"):
+                checkpoint_module._authenticate_epoch0_recovery_abort_rename_fsynced_state_v1(
+                    parent_fd=parent_fd,
+                    target_fd=target_fd,
+                    verification_key=verification_key,
+                    expected=fsynced_pins,
+                )
+            with pytest.raises(ValueError, match="layout|identity"):
+                checkpoint_module._authenticate_epoch0_recovery_abort_tombstone_unlinked_state_v1(
+                    parent_fd=parent_fd,
+                    target_fd=target_fd,
+                    verification_key=verification_key,
+                    expected=unlinked_pins,
+                )
+            resurrected.unlink()
+        finally:
+            if target_fd >= 0:
+                os.close(target_fd)
+            os.close(parent_fd)
 
     def test_recovery_fsync_abort_rename_rejects_layout_and_journal_violations(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
