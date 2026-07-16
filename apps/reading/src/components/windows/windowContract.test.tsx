@@ -23,7 +23,13 @@
  * Playwright gate (e2e/windows-default.spec.ts).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import Stats from "../../modes/Stats";
@@ -52,7 +58,10 @@ vi.mock("react-router-dom", async (orig) => {
 function okStats() {
   apiFetchMock.mockResolvedValue({
     ok: true,
-    json: async () => ({ counts: { investigations: 3, documents: 7 }, warnings: [] }),
+    json: async () => ({
+      counts: { investigations: 3, documents: 7 },
+      warnings: [],
+    }),
   } as Response);
 }
 
@@ -65,7 +74,7 @@ afterEach(cleanup);
 /** Find the page's root flex column + its <main> band, by structure. */
 function rootAndMain(container: HTMLElement) {
   const root = container.querySelector("div.flex.flex-col") as HTMLElement;
-  const main = container.querySelector("main") as HTMLElement;
+  const main = container.querySelector(".substrate-atlas__main") as HTMLElement;
   return { root, main };
 }
 
@@ -78,6 +87,7 @@ describe("window-adaptation contract — Stats at its full-page route", () => {
     expect(root.className).not.toContain("h-full");
     expect(main.className).toContain("bg-ice-0");
     expect(main.className).not.toContain("bg-transparent");
+    expect(main.tagName).toBe("MAIN");
   });
 });
 
@@ -96,6 +106,9 @@ describe("window-adaptation contract — Stats hosted in a window", () => {
     // (b) opaque full-bleed bg removed → transparent so the glass/scene shows
     expect(main.className).toContain("bg-transparent");
     expect(main.className).not.toContain("bg-ice-0");
+    expect(main.tagName).toBe("SECTION");
+    expect(main.getAttribute("aria-label")).toBe("Substrate atlas");
+    expect(container.querySelector("main")).toBeNull();
   });
 
   it("still renders the page's real content (no feature change)", async () => {
@@ -105,7 +118,9 @@ describe("window-adaptation contract — Stats hosted in a window", () => {
       </WindowHostProvider>,
     );
     // The substrate counts still load + render — the adaptation is cosmetic only.
-    await waitFor(() => expect(screen.getByText("investigations")).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText("investigations")).toBeTruthy(),
+    );
     expect(screen.getByText("3")).toBeTruthy();
   });
 });
@@ -133,7 +148,9 @@ describe("windows-default policy inversion — ProductsLauncher (M3)", () => {
     // The Research product header is the default product activation. Its
     // accessible name carries the "workflow" keyword so the product-window
     // name-space can never converge with the eligible-mode ⊞ name-space.
-    fireEvent.click(screen.getByLabelText("Open Research workflow in a window"));
+    fireEvent.click(
+      screen.getByLabelText("Open Research workflow in a window"),
+    );
     const ws = useWindows.getState();
     expect(ws.order.length).toBe(1);
     expect(ws.windows[ws.order[0]].kind).toBe("subaction");
@@ -144,33 +161,43 @@ describe("windows-default policy inversion — ProductsLauncher (M3)", () => {
 
   it("a second click on the SAME product focuses the one window (stable id, no duplicate)", () => {
     renderLauncher();
-    fireEvent.click(screen.getByLabelText("Open Research workflow in a window"));
-    fireEvent.click(screen.getByLabelText("Open Research workflow in a window"));
+    fireEvent.click(
+      screen.getByLabelText("Open Research workflow in a window"),
+    );
+    fireEvent.click(
+      screen.getByLabelText("Open Research workflow in a window"),
+    );
     expect(useWindows.getState().order.length).toBe(1);
   });
 
   it("each of the four products opens its OWN sub-action window (per-workflow id)", () => {
     renderLauncher();
     for (const label of ["Research", "Read", "Write", "Speak"]) {
-      fireEvent.click(screen.getByLabelText(`Open ${label} workflow in a window`));
+      fireEvent.click(
+        screen.getByLabelText(`Open ${label} workflow in a window`),
+      );
     }
     const ws = useWindows.getState();
     expect(ws.order.length).toBe(4);
-    expect(new Set(ws.order.map((id) => ws.windows[id].payload.workflow))).toEqual(
-      new Set(["research", "read", "write", "speak"]),
-    );
+    expect(
+      new Set(ws.order.map((id) => ws.windows[id].payload.workflow)),
+    ).toEqual(new Set(["research", "read", "write", "speak"]));
   });
 
   it("a click on an OUT-OF-CONTRACT deep mode NAVIGATES full-page (no window)", () => {
     renderLauncher();
     // ResearchWorkstation owns a PanelHost dock + the dense-opaque /inv view —
     // out-of-contract → it navigates, never floats.
-    fireEvent.click(document.querySelector('[data-mode-id="ResearchWorkstation"]') as Element);
+    fireEvent.click(
+      document.querySelector('[data-mode-id="ResearchWorkstation"]') as Element,
+    );
     expect(navigateMock).toHaveBeenCalledWith("/");
     expect(useWindows.getState().order.length).toBe(0);
 
     // The PDF wrestler (WrestleApp) is likewise out-of-contract → navigate.
-    fireEvent.click(document.querySelector('[data-mode-id="WrestleApp"]') as Element);
+    fireEvent.click(
+      document.querySelector('[data-mode-id="WrestleApp"]') as Element,
+    );
     expect(navigateMock).toHaveBeenCalledWith("/wrestle");
     expect(useWindows.getState().order.length).toBe(0);
   });

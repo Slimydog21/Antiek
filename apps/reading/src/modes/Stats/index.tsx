@@ -1,159 +1,182 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import LemonCard from "../../components/lemon/LemonCard";
 import { useInWindow } from "../../components/windows/windowHostContext";
 import { apiFetch } from "../../lib/api";
+import atlasEnvironment from "../../brand/werner/stats/substrate_atlas_environment_v1.webp";
+import "./substrate-atlas.css";
 
-/**
- * Substrate stats summary UI (master-spec §13.7 audit).
- *
- * Operator-facing "what does the substrate look like right now"
- * dashboard. Pulls GET /stats and renders counts across every
- * load-bearing table. Warnings (e.g. table missing on a partial
- * install) surface verbatim so the operator sees them.
- */
-
-interface StatsResponse {
-  counts: Record<string, number>;
-  warnings: string[];
+export interface StatsResponse {
+  counts?: Record<string, number>;
+  warnings?: unknown[];
 }
 
-const TABLE_GROUPS: { title: string; tables: string[] }[] = [
+export const TABLE_GROUPS = [
   {
     title: "Research",
     tables: ["investigations", "documents", "chunks", "nodes", "edges"],
   },
-  {
-    title: "Notebooks",
-    tables: ["notebooks", "notebook_blocks"],
-  },
-  {
-    title: "Interviews",
-    tables: ["interview_projects", "interviews"],
-  },
-  {
-    title: "IP + payouts",
-    tables: ["ip_holders", "payout_transfers"],
-  },
-  {
-    title: "Outcomes + shared substrate",
-    tables: ["outcomes", "skill_rules"],
-  },
-  {
-    title: "Privacy + governance",
-    tables: ["deletion_requests"],
-  },
-];
+  { title: "Notebooks", tables: ["notebooks", "notebook_blocks"] },
+  { title: "Interviews", tables: ["interview_projects", "interviews"] },
+  { title: "IP + payouts", tables: ["ip_holders", "payout_transfers"] },
+  { title: "Outcomes + shared substrate", tables: ["outcomes", "skill_rules"] },
+  { title: "Privacy + governance", tables: ["deletion_requests"] },
+] as const;
+
+export type StatsViewProps = {
+  data: StatsResponse | null;
+  loading?: boolean;
+  error?: boolean;
+  onRefresh?: () => void;
+  inWindow?: boolean;
+};
+
+function displayCount(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value.toLocaleString()
+    : "Unknown";
+}
+
+/** The single production/presentational boundary; stories render this directly. */
+export function StatsView({
+  data,
+  loading = false,
+  error = false,
+  onRefresh,
+  inWindow = false,
+}: StatsViewProps) {
+  const warningCount = Array.isArray(data?.warnings) ? data.warnings.length : 0;
+  const Surface = inWindow ? "section" : "main";
+
+  return (
+    <div
+      className={`substrate-atlas flex flex-col ${inWindow ? "substrate-atlas--window h-full" : "h-screen"}`}
+    >
+      <Surface
+        aria-label={inWindow ? "Substrate atlas" : undefined}
+        className={`substrate-atlas__main flex-1 overflow-y-auto ${inWindow ? "bg-transparent" : "bg-ice-0 dark:bg-charcoal-2"}`}
+      >
+        {!inWindow && (
+          <img
+            className="substrate-atlas__environment"
+            src={atlasEnvironment}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+          />
+        )}
+        {!inWindow && (
+          <div className="substrate-atlas__veil" aria-hidden="true" />
+        )}
+        <div className="substrate-atlas__console">
+          <header className="substrate-atlas__header">
+            <div>
+              <p className="substrate-atlas__eyebrow">
+                Durable substrate · cardinality survey
+              </p>
+              <h1>Substrate atlas</h1>
+              <p className="substrate-atlas__lede">
+                A measured inventory of Antiek’s load-bearing tables. Unknown
+                means an area was not reported—not empty.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={loading}
+              className="substrate-atlas__refresh"
+            >
+              {loading ? "Surveying…" : "Refresh survey"}
+            </button>
+          </header>
+
+          {error && (
+            <div
+              className="substrate-atlas__notice substrate-atlas__notice--error"
+              role="alert"
+            >
+              <strong>Survey unavailable.</strong> We couldn’t measure the
+              substrate. Try again.
+            </div>
+          )}
+          {warningCount > 0 && (
+            <div className="substrate-atlas__notice" role="status">
+              Some substrate areas could not be measured{" "}
+              <span>
+                {warningCount.toLocaleString()}{" "}
+                {warningCount === 1 ? "area" : "areas"}
+              </span>
+            </div>
+          )}
+          {loading && !data && (
+            <p className="substrate-atlas__loading" role="status">
+              Calibrating instruments…
+            </p>
+          )}
+
+          <div className="substrate-atlas__groups" aria-busy={loading}>
+            {TABLE_GROUPS.map((group, index) => (
+              <section
+                className="substrate-atlas__group"
+                key={group.title}
+                aria-labelledby={`atlas-group-${index}`}
+              >
+                <div className="substrate-atlas__group-heading">
+                  <span aria-hidden="true">0{index + 1}</span>
+                  <h2 id={`atlas-group-${index}`}>{group.title}</h2>
+                </div>
+                <dl>
+                  {group.tables.map((table) => (
+                    <div className="substrate-atlas__metric" key={table}>
+                      <dt>{table.replace(/_/g, " ")}</dt>
+                      <dd>{displayCount(data?.counts?.[table])}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            ))}
+          </div>
+        </div>
+      </Surface>
+    </div>
+  );
+}
 
 export default function Stats() {
-  // SPR-09 window-adaptation contract: when hosted inside a WorkspaceWindow,
-  // fill the window container (h-full, not h-screen) and drop the opaque
-  // full-bleed bg so the glass body + scene shows through. Both edits are
-  // gated on this flag, so the full-page route renders unchanged.
   const inWindow = useInWindow();
   const [data, setData] = useState<StatsResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const request = useRef(0);
 
   const reload = useCallback(async () => {
+    const id = ++request.current;
     setLoading(true);
-    setError(null);
+    setError(false);
     try {
-      const resp = await apiFetch("/stats");
-      if (!resp.ok) {
-        throw new Error(`GET /stats: HTTP ${resp.status}`);
-      }
-      setData(await resp.json());
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      const response = await apiFetch("/stats");
+      if (!response.ok) throw new Error("stats request failed");
+      const next = (await response.json()) as StatsResponse;
+      if (id === request.current) setData(next);
+    } catch {
+      if (id === request.current) setError(true);
     } finally {
-      setLoading(false);
+      if (id === request.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void reload();
+    return () => {
+      request.current += 1;
+    };
   }, [reload]);
-
   return (
-    <div className={`flex flex-col ${inWindow ? "h-full" : "h-screen"}`}>
-      <main
-        className={`flex-1 overflow-y-auto ${inWindow ? "bg-transparent" : "bg-ice-0 dark:bg-charcoal-2"}`}
-      >
-        <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
-          <header className="flex items-baseline justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-serif text-ink dark:text-bright">
-                Substrate stats
-              </h1>
-              <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-                Cardinality across every load-bearing table. Per
-                master-spec §13.7: this is the 'what does the
-                substrate look like right now' surface before grading
-                outcomes or running the Phase 8 gate.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void reload()}
-              className="text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 px-2 py-1 rounded hover:bg-ice-1 dark:bg-charcoal-2"
-            >
-              Refresh
-            </button>
-          </header>
-
-          {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
-              {error}
-            </p>
-          )}
-
-          {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
-          )}
-
-          {data && data.warnings.length > 0 && (
-            <section className="border border-amber-200 bg-sun/10 rounded-md p-4 space-y-1">
-              <p className="text-xs font-mono uppercase text-amber-900">
-                Warnings
-              </p>
-              <ul className="text-xs text-amber-900 list-disc pl-5 space-y-0.5">
-                {data.warnings.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {data &&
-            TABLE_GROUPS.map((group) => (
-              // S10 acceptance: each Stats group/metric → LemonCard.
-              <LemonCard
-                key={group.title}
-                elevation="z2"
-                title={group.title}
-              >
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 pt-2">
-                  {group.tables.map((t) => (
-                    <LemonCard
-                      key={t}
-                      elevation="z1"
-                      colour="glacial"
-                      className="px-3 py-2 text-center"
-                    >
-                      <p className="text-2xl font-serif text-ink dark:text-bright">
-                        {(data.counts[t] ?? 0).toLocaleString()}
-                      </p>
-                      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
-                        {t.replace(/_/g, " ")}
-                      </p>
-                    </LemonCard>
-                  ))}
-                </div>
-              </LemonCard>
-            ))}
-        </div>
-      </main>
-    </div>
+    <StatsView
+      data={data}
+      loading={loading}
+      error={error}
+      onRefresh={() => void reload()}
+      inWindow={inWindow}
+    />
   );
 }
