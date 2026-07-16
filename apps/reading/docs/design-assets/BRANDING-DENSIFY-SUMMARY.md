@@ -183,3 +183,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | ProjectType/InterviewTranscript densify | `354bd4589` | type pick highlight; transcript note_saved |
 | Biography living-TV densify | `e461179d9` | start piece_started; share note_saved; door jumps highlight |
 | PersonalSpace/BlockRepository densify | `59c0f2600` | personal jumps + repo add/folder highlight |
+| CostConsent living-TV densify | `1d614b776` | reload highlight/fail |
