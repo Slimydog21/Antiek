@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -111,6 +112,7 @@ def _project(request: CostProjectionRequest) -> CostProjection:
 class FakeAdapter:
     provider = "test-provider"
     model = "test-model"
+    endpoint = "https://test-provider.example/v1"
     capabilities = ProviderCapabilities(
         True, True, True, frozenset({BillingUnit.CALL})
     )
@@ -533,6 +535,32 @@ def test_concurrent_replay_cannot_reconcile_before_sender_finishes(tmp_path: Pat
     assert first.outcome is second.outcome is PaidFallbackOutcome.SETTLED
     assert len(adapter.send_calls) == 1
     assert adapter.reconcile_calls == []
+
+
+def test_dispatch_guard_uses_database_inode_across_hard_link_paths(tmp_path: Path) -> None:
+    original = tmp_path / "spend.sqlite3"
+    gateway = ResearchProviderGateway(ResearchSpendLedger(original), projector=_project)
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    alias = tmp_path / "same-database.sqlite3"
+    os.link(original, alias)
+    first = ResearchSpendLedger(original)
+    second = ResearchSpendLedger(alias)
+    entered = threading.Event()
+
+    def wait_on_alias() -> None:
+        with second.dispatch_guard("same-reservation"):
+            entered.set()
+
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        with first.dispatch_guard("same-reservation"):
+            waiter = pool.submit(wait_on_alias)
+            assert not entered.wait(timeout=0.05)
+            assert not waiter.done()
+        waiter.result(timeout=5)
+        assert entered.is_set()
+    finally:
+        pool.shutdown(wait=True)
 
 
 def test_fallback_recovery_requires_unchanged_live_authority(tmp_path: Path) -> None:

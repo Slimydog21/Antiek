@@ -16,6 +16,7 @@ import contextlib
 import fcntl
 import hashlib
 import json
+import os
 import sqlite3
 import uuid
 from collections.abc import Callable, Generator, Mapping
@@ -536,9 +537,12 @@ class ResearchSpendLedger:
         a successor can then reconcile the durable dispatch marker.
         """
         _required_text("reservation_key", reservation_key)
-        lock_root = Path(self._db_path).expanduser().parent / ".dispatch-locks"
-        lock_root.mkdir(parents=True, exist_ok=True)
-        lock_path = lock_root / f"{_sha256(reservation_key)}.lock"
+        database = Path(self._db_path).expanduser().resolve(strict=True)
+        identity = os.stat(database)
+        lock_root = Path("/tmp/antiek-research-dispatch-locks")
+        lock_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        lock_name = _sha256(f"{identity.st_dev}:{identity.st_ino}:{reservation_key}")
+        lock_path = lock_root / f"{lock_name}.lock"
         with lock_path.open("a+b") as lock_file:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:

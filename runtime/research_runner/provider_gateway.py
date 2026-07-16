@@ -134,6 +134,7 @@ class ProviderReconciliation:
 class HardCeilingProviderAdapter(Protocol[T]):
     provider: str
     model: str
+    endpoint: str
     capabilities: ProviderCapabilities
 
     def send_once(
@@ -484,6 +485,13 @@ class ResearchProviderGateway:
         )
         with self.ledger.dispatch_guard(reservation_key):
             hold = self.ledger.hold(hold.hold_id)
+            if provider_route_identity is not None:
+                self._revalidate_route_authority(
+                    projection_request,
+                    projection,
+                    adapter,
+                    expected_digest=provider_route_identity,
+                )
             if hold.state in (PaidHoldState.DISPATCH_POSSIBLE, PaidHoldState.UNKNOWN):
                 return self._reconcile(hold, adapter)
             if hold.state in (PaidHoldState.SETTLED, PaidHoldState.RELEASED):
@@ -543,22 +551,18 @@ class ResearchProviderGateway:
             raise DispatchIneligible("recovery adapter does not match persisted route")
         if not adapter.capabilities.hard_ceiling_eligible:
             raise DispatchIneligible("recovery adapter lacks hard-ceiling capabilities")
-        if hold.intent.route_authority_digest is not None:
-            if self._fallback_route_authorizer is None or projection_request is None:
-                raise DispatchIneligible("recovery requires exact paid route authority")
-            authority = self._fallback_route_authorizer(projection_request, adapter)
-            projection = self._projector(projection_request)
-            if canonical_digest(authority) != hold.intent.route_authority_digest:
-                raise DispatchIneligible("recovery route authority changed")
-            if (
-                authority.rate_snapshot,
-                authority.currency,
-                authority.rates,
-            ) != (projection.rate_snapshot, projection.currency, projection.rates):
-                raise DispatchIneligible("recovery authority differs from exact projected rates")
-            self._require_eligible(projection, projection_request, adapter)
         with self.ledger.dispatch_guard(hold.intent.reservation_key):
             hold = self.ledger.hold(hold_id)
+            if hold.intent.route_authority_digest is not None:
+                if projection_request is None:
+                    raise DispatchIneligible("recovery requires exact paid route authority")
+                projection = self._projector(projection_request)
+                self._revalidate_route_authority(
+                    projection_request,
+                    projection,
+                    adapter,
+                    expected_digest=hold.intent.route_authority_digest,
+                )
             if hold.state is PaidHoldState.RESERVED:
                 self.ledger.release(
                     deterministic_key("research-restart-unsent", hold.hold_id),
@@ -575,6 +579,27 @@ class ResearchProviderGateway:
             return ProviderDispatchResult(
                 hold=hold, run=self.ledger.balance(hold.run_id), recovered=True
             )
+
+    def _revalidate_route_authority(
+        self,
+        request: CostProjectionRequest,
+        projection: CostProjection,
+        adapter: HardCeilingProviderAdapter[Any],
+        *,
+        expected_digest: str,
+    ) -> None:
+        if self._fallback_route_authorizer is None:
+            raise DispatchIneligible("paid fallback route authority is not configured")
+        authority = self._fallback_route_authorizer(request, adapter)
+        if canonical_digest(authority) != expected_digest:
+            raise DispatchIneligible("recovery route authority changed")
+        if (
+            authority.rate_snapshot,
+            authority.currency,
+            authority.rates,
+        ) != (projection.rate_snapshot, projection.currency, projection.rates):
+            raise DispatchIneligible("route authority differs from exact projected rates")
+        self._require_eligible(projection, request, adapter)
 
     def prepare_zero_cost(
         self,

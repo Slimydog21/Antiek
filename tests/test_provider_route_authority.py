@@ -27,6 +27,7 @@ from runtime.research_runner.provider_route_authority import (
 class FakeHardCeilingAdapter:
     provider = "user-route"
     model = "model-a"
+    endpoint = "https://provider.example/v1"
 
     def __init__(self, capabilities: ProviderCapabilities | None = None) -> None:
         self.capabilities = capabilities or ProviderCapabilities(
@@ -231,6 +232,22 @@ def test_missing_replaced_or_wrong_route_adapter_fails_closed() -> None:
     adapter.model = "retargeted-model"
     mutated = resolver.resolve(identity, provider_id=adapter.provider)
     assert mutated.execution_status is RouteExecutionStatus.BLOCKED_ADAPTER_MISMATCH
+
+
+def test_adapter_endpoint_is_exact_at_registration_and_resolution() -> None:
+    identity = _identity()
+    wrong = FakeHardCeilingAdapter()
+    wrong.endpoint = "https://other.example/v1"
+    resolver = ProviderRouteAuthorityResolver(
+        (_entry(identity),), adapter_lookup=lambda _provider_id: wrong
+    )
+    with pytest.raises(ValueError, match="endpoint differs"):
+        resolver.register_adapter(identity, wrong.provider, wrong)
+
+    resolver, adapter, _ = _resolver()
+    adapter.endpoint = "https://other.example/v1"
+    authority = resolver.resolve(identity, provider_id=adapter.provider)
+    assert authority.execution_status is RouteExecutionStatus.BLOCKED_ADAPTER_MISMATCH
 
 
 def test_http_endpoint_can_be_selected_but_never_catalogued_for_paid_execution() -> None:

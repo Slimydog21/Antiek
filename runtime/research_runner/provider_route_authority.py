@@ -146,6 +146,8 @@ class ProviderRouteAuthorityResolver:
             raise ValueError("provider id must be non-empty")
         if (adapter.provider, adapter.model) != (provider_id, identity.model_id):
             raise ValueError("hard-ceiling adapter differs from exact route")
+        if canonical_provider_endpoint(adapter.endpoint) != identity.endpoint:
+            raise ValueError("hard-ceiling adapter endpoint differs from exact route")
         self._adapters[identity] = _AdapterRegistration(provider_id, adapter)
 
     def resolve(
@@ -215,6 +217,12 @@ class ProviderRouteAuthorityResolver:
                 entry.cost.snapshot,
             )
         if (adapter.provider, adapter.model) != (provider_id, identity.model_id):
+            return self._blocked(
+                identity,
+                RouteExecutionStatus.BLOCKED_ADAPTER_MISMATCH,
+                entry.cost.snapshot,
+            )
+        if canonical_provider_endpoint(adapter.endpoint) != identity.endpoint:
             return self._blocked(
                 identity,
                 RouteExecutionStatus.BLOCKED_ADAPTER_MISMATCH,
