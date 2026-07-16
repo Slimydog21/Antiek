@@ -328,27 +328,37 @@ def recover(
     deadline = time.monotonic() + wall_time_s
     report = RecoveryReport()
     candidates: list[tuple[str, PhysicalStorageCursor, PhysicalStorageCursor,
-                           dict[str, Any], str, bool]] = []
-    with _connect_write_with_handoff_retry(
-        db_path,
-        purpose="knowledge_event_frontier_snapshot",
-        deadline=deadline,
-    ) as snapshot_con:
-        frontier_snapshot = {
-            row[0]: (row[1], row[2], row[3], row[4], row[5], row[6])
-            for row in snapshot_con.execute(
+                           dict[str, Any], str]] = []
+    # Freeze physical admission before reading frontiers. New investigations
+    # wait for the next pass; exact-ID chunks cannot miss a concurrently
+    # inserted frontier that sorts behind a released pagination cursor.
+    investigations = discover_investigations(events_dir)
+    frontier_snapshot: dict[
+        str, tuple[int, str | None, str | None, int, int, int]
+    ] = {}
+    for offset in range(0, len(investigations), candidate_limit):
+        if time.monotonic() >= deadline:
+            report.catching_up = True
+            report.remaining = None
+            return report
+        investigation_page = investigations[offset : offset + candidate_limit]
+        placeholders = ",".join("?" for _value in investigation_page)
+        with _connect_write_with_handoff_retry(
+            db_path,
+            purpose="knowledge_event_frontier_snapshot_page",
+            deadline=deadline,
+        ) as snapshot_con:
+            rows = snapshot_con.execute(
                 "SELECT investigation_id, next_ordinal, chain_sha256, snapshot_generation, "
                 "snapshot_row_count, next_snapshot_row_offset, jsonl_byte_offset "
-                "FROM event_consumer_frontiers "
-                "WHERE consumer_name=? AND consumer_version=?",
-                [CONSUMER_NAME, CONSUMER_VERSION],
+                "FROM event_consumer_frontiers WHERE consumer_name=? AND consumer_version=? "
+                f"AND investigation_id IN ({placeholders})",
+                [CONSUMER_NAME, CONSUMER_VERSION, *investigation_page],
             ).fetchall()
-        }
-        known_event_ids = {row[0] for row in snapshot_con.execute(
-            "SELECT event_id FROM event_consumer_events WHERE consumer_name=? "
-            "AND consumer_version=?", [CONSUMER_NAME, CONSUMER_VERSION]
-        ).fetchall()}
-    investigations = discover_investigations(events_dir)
+        for row in rows:
+            frontier_snapshot[row[0]] = (
+                row[1], row[2], row[3], row[4], row[5], row[6]
+            )
     # Least-advanced trajectories run first. A perpetually hot lexicographic
     # predecessor therefore cannot monopolize every bounded recovery pass.
     investigations.sort(
@@ -357,7 +367,6 @@ def recover(
         )
     )
     per_investigation_limit = max(1, candidate_limit // max(1, len(investigations)))
-    admitted_event_ids = set(known_event_ids)
     for investigation_id in investigations:
         if len(candidates) >= candidate_limit or time.monotonic() >= deadline:
             report.catching_up = True
@@ -391,11 +400,8 @@ def recover(
                     observation.cursor_after,
                     observation.event,
                     observation.normalized_sha256,
-                    event_id in admitted_event_ids,
                 )
             )
-            if isinstance(event_id, str):
-                admitted_event_ids.add(event_id)
             transaction_cursor = observation.cursor_after
         report.scanned += page.scanned
         if page.has_more:
@@ -403,11 +409,41 @@ def recover(
             report.remaining = None
             continue
 
+    # Look up only the bounded admitted page. Scanning every historical receipt
+    # while holding the global writer made startup recovery monopolize DuckDB
+    # for minutes on production-sized stores.
+    candidate_event_ids = [
+        event["event_id"]
+        for _investigation, _prior, _cursor, event, _digest in candidates
+        if isinstance(event.get("event_id"), str)
+    ]
+    known_event_ids: set[str] = set()
+    if candidate_event_ids:
+        placeholders = ",".join("?" for _value in candidate_event_ids)
+        with _connect_write_with_handoff_retry(
+            db_path,
+            purpose="knowledge_event_candidate_receipts",
+            deadline=max(deadline, time.monotonic() + wall_time_s),
+        ) as receipt_con:
+            known_event_ids = {
+                row[0]
+                for row in receipt_con.execute(
+                    "SELECT event_id FROM event_consumer_events WHERE consumer_name=? "
+                    f"AND consumer_version=? AND event_id IN ({placeholders})",
+                    [CONSUMER_NAME, CONSUMER_VERSION, *candidate_event_ids],
+                ).fetchall()
+            }
+
     # Event locks are closed before embeddings. Each graph transaction then
     # holds the global writer only for deterministic mutation and its receipt.
     provider = embedding_provider
+    admitted_event_ids = set(known_event_ids)
     for (investigation_id, prior_cursor, event_cursor, event,
-         normalized_sha256, known_at_admission) in candidates:
+         normalized_sha256) in candidates:
+        event_id = event.get("event_id")
+        known_at_admission = event_id in admitted_event_ids
+        if isinstance(event_id, str):
+            admitted_event_ids.add(event_id)
         if should_stop is not None and should_stop():
             report.catching_up = True
             report.remaining = None

@@ -32,7 +32,10 @@ jobs:
   pytest-suite:
     name: pytest shard ${{ matrix.shard_index }} of 4
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Shards include production-scale DuckDB tests (for example a real-shape
+    # 5,017-chunk merge). Loaded hosted runners can legitimately exceed the
+    # old 30-minute ceiling even when every assertion is making progress.
+    timeout-minutes: 45
     env:
       # Each hosted runner starts with limited free disk. The full ML/PDF
       # dependency set is large; retaining downloaded wheels alongside the
@@ -54,6 +57,13 @@ jobs:
         with:
           python-version: '3.14'
 
+      - name: Reclaim hosted-runner disk
+        run: |
+          # Antiek's Python/media stack and per-test DuckDB fixtures need the
+          # disk; these preinstalled SDKs are not used anywhere in this job.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          df -h /
+
       - name: Install Antiek + dev deps
         run: |
           python -m pip install --upgrade pip
@@ -71,7 +81,7 @@ jobs:
         run: |
           available_kib=$(df --output=avail -k / | tail -n 1)
           echo "Available disk before pytest: ${available_kib} KiB"
-          test "$available_kib" -ge 2097152
+          test "$available_kib" -ge 8388608
 
       - name: Run pytest shard
         env:

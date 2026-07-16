@@ -31,29 +31,37 @@ threshold and the operator wants the artifact.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import os
 import sys
+import threading
+from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
-_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+_PKG_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from roles.note_taker import (  # noqa: E402
     NOTE_TAKER_SYSTEM_PROMPT,
+    DurableNoteTakerReplay,
     parse_notes_response,
 )
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.context_pack import LayerSource, assemble_context_pack  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
-from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.event_log import emit_typed, iter_physical_events, trajectory  # noqa: E402
+from substrate.graph import default_db_path  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
     Event,
     NoteEmergedPayload,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # Action types the note-taker subscribes to. Tightened to the events
 # that ACTUALLY reflect substantive wrestling movement — distillations
@@ -83,10 +91,73 @@ def _resolve_threshold() -> int:
     if not raw:
         return DEFAULT_THRESHOLD
     try:
-        v = int(raw)
-        return max(1, v)
+        value = int(raw)
+        return max(1, value)
     except ValueError:
         return DEFAULT_THRESHOLD
+
+
+def _default_replay_service(
+    *,
+    db_path: str | None = None,
+    events_dir: str | None = None,
+    threshold: int | None = None,
+) -> DurableNoteTakerReplay:
+    def durable_dispatch(
+        request: dict[str, Any], *, idempotency_key: str
+    ) -> Any:
+        del idempotency_key
+        return dispatch(
+            request["prompt"],
+            "note_taker",
+            investigation_id=request["investigation_id"],
+            parent_event_id=request["source_event_ids"][-1],
+        )
+
+    return DurableNoteTakerReplay(
+        durable_dispatch,
+        db_path=db_path or default_db_path(),
+        events_dir=events_dir,
+        threshold=threshold or _resolve_threshold(),
+    )
+
+
+def start_replay_recovery(
+    *,
+    db_path: str | None = None,
+    events_dir: str | None = None,
+    stop_event: threading.Event | None = None,
+    poll_interval_s: float = 0.5,
+) -> threading.Thread:
+    """Continuously catch up every physical stream without blocking startup."""
+    if poll_interval_s <= 0:
+        raise ValueError("poll_interval_s must be positive")
+    service = _default_replay_service(db_path=db_path, events_dir=events_dir)
+    stop = stop_event or threading.Event()
+
+    def recover() -> None:
+        from substrate.graph.knowledge_event_projector import discover_investigations
+
+        while not stop.is_set():
+            if not os.path.exists(service.db_path):
+                stop.wait(poll_interval_s)
+                continue
+            for investigation_id in discover_investigations(service.events_dir):
+                if stop.is_set():
+                    return
+                try:
+                    service.catch_up(investigation_id)
+                except Exception as exc:
+                    print(
+                        "Note-taker replay recovery remains pending for "
+                        f"{investigation_id}: {exc!r}",
+                        file=sys.stderr,
+                    )
+            stop.wait(poll_interval_s)
+
+    thread = threading.Thread(target=recover, name="note-taker-replay-recovery", daemon=True)
+    thread.start()
+    return thread
 
 
 # ---------------------------------------------------------------------------
@@ -109,28 +180,20 @@ def _format_recent_events_for_prompt(rows: list[dict]) -> str:
         if at == ActionType.DISTILLATION_DELIVERED.value:
             claim_count = len(payload.get("claims") or [])
             rendered = (payload.get("rendered_text") or "")[:160]
-            lines.append(
-                f"[{eid}] {at}: {claim_count} claims; \"{rendered}\""
-            )
+            lines.append(f'[{eid}] {at}: {claim_count} claims; "{rendered}"')
         elif at == ActionType.CLAIM_GROUNDING_CHECK_PASSED.value:
             claim = (payload.get("claim_text") or "")[:140]
             conf = payload.get("confidence", "?")
             region = payload.get("located_region_id") or "?"
-            lines.append(
-                f"[{eid}] {at}: ✓ \"{claim}\" → region={region} conf={conf}"
-            )
+            lines.append(f'[{eid}] {at}: ✓ "{claim}" → region={region} conf={conf}')
         elif at == ActionType.CLAIM_GROUNDING_CHECK_FAILED.value:
             claim = (payload.get("claim_text") or "")[:140]
             reason = payload.get("reason") or "?"
-            lines.append(
-                f"[{eid}] {at}: ⚠ \"{claim}\" → {reason}"
-            )
+            lines.append(f'[{eid}] {at}: ⚠ "{claim}" → {reason}')
         elif at == ActionType.CLAIM_CHALLENGE_RAISED.value:
             claim = (payload.get("claim_text") or "")[:120]
             q = (payload.get("user_question") or "")[:80]
-            lines.append(
-                f"[{eid}] {at}: claim=\"{claim}\" challenged=\"{q}\""
-            )
+            lines.append(f'[{eid}] {at}: claim="{claim}" challenged="{q}"')
         else:
             lines.append(f"[{eid}] {at}")
     return "\n".join(lines)
@@ -145,34 +208,46 @@ def make_note_taker_handler(
     broadcaster: EventBroadcaster,
     *,
     threshold: int | None = None,
+    db_path: str | None = None,
+    events_dir: str | None = None,
+    replay_service: DurableNoteTakerReplay | None = None,
 ):
-    """Build the async handler closed over a broadcaster. Maintains a
-    per-investigation event counter and triggers a synthesis pass
-    every ``threshold`` qualifying events. Same handler is registered
-    against all three SUBSCRIBED_ACTION_TYPES."""
+    """Build the public async bridge over the durable replay service."""
 
     resolved_threshold = threshold if threshold is not None else _resolve_threshold()
-    counters: dict[str, int] = {}
+
+    service = replay_service or _default_replay_service(
+        db_path=db_path,
+        events_dir=events_dir,
+        threshold=resolved_threshold,
+    )
 
     async def handle_subscribed_event(event: Event) -> None:
-        counter_key = event.investigation_id
         # Skip note-taker's OWN emitted events to avoid feedback loops.
         # (Our note.emerged events aren't in SUBSCRIBED_ACTION_TYPES so
         # this is defense-in-depth; helps if someone later adds note
         # events to the subscription.)
-        if (
-            event.role == "note_taker"
-            or str(event.action_type) == ActionType.NOTE_EMERGED.value
-        ):
+        if event.role == "note_taker" or str(event.action_type) == ActionType.NOTE_EMERGED.value:
             return
 
-        counters[counter_key] = counters.get(counter_key, 0) + 1
-        if counters[counter_key] < resolved_threshold:
+        try:
+            delivered = await asyncio.to_thread(service.catch_up, event.investigation_id)
+        except Exception as exc:
+            # Durable evidence records ambiguity; the event bus remains best-effort.
+            print(
+                "Note-taker live replay remains pending for "
+                f"{event.investigation_id}: {exc!r}",
+                file=sys.stderr,
+            )
             return
-
-        # Threshold crossed — reset and run synthesis.
-        counters[counter_key] = 0
-        await _run_note_synthesis(event, broadcaster=broadcaster)
+        if not delivered:
+            return
+        delivered_ids = set(delivered)
+        for row in iter_physical_events(event.investigation_id, events_dir=service.events_dir):
+            if row.get("event_id") not in delivered_ids:
+                continue
+            with contextlib.suppress(Exception):
+                await broadcaster.broadcast(Event.model_validate(row))
 
     return handle_subscribed_event
 
@@ -194,9 +269,7 @@ async def _run_note_synthesis(
         ActionType.CLAIM_CHALLENGE_RAISED.value,
     )
     all_rows = trajectory(triggering_event.investigation_id)
-    history = [
-        r for r in all_rows if r.get("action_type") in substantive_types
-    ]
+    history = [r for r in all_rows if r.get("action_type") in substantive_types]
     if not history:
         return
     recent = history[-SYNTHESIS_HISTORY_WINDOW:]
@@ -239,9 +312,7 @@ async def _run_note_synthesis(
     )
 
     full_prompt = (
-        NOTE_TAKER_SYSTEM_PROMPT + "\n\n"
-        + pack.text + "\n\n"
-        + "Now produce the JSON object."
+        NOTE_TAKER_SYSTEM_PROMPT + "\n\n" + pack.text + "\n\n" + "Now produce the JSON object."
     )
 
     # 3. Dispatch the note_taker role. Failure → no notes this round;
