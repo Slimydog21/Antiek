@@ -8,6 +8,7 @@ import {
 } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
 import type { FloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
@@ -328,6 +329,8 @@ function SectionCard({
     setGenerating(true);
     setGenResult(null);
     setGenError(null);
+    // Living-TV: section draft craft is a happy piece_started beat.
+    emitWernerExperience("piece_started");
     try {
       const r = await generateSection(section.section_id);
       setGenResult(r);
@@ -348,6 +351,7 @@ function SectionCard({
     } catch (e) {
       // Honest no-key / no-result: a 503 (provider not configured) or any
       // backend abort surfaces AIActionFailure — never a fabricated draft.
+      emitWernerExperience("fail");
       const reason = e instanceof ApiError && e.status === 503 ? null : String(e);
       setGenError({ reason: reason === "null" ? null : reason });
     } finally {
