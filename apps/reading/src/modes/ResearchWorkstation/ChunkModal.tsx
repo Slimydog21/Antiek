@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import { LemonModal } from "../../components/lemon/LemonModal";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
+import { notifyEvidenceSourceOpened } from "../../werner";
 
 /**
  * Modal showing the actual text of a chunk cited by a claim.
@@ -16,18 +17,27 @@ import type { ChunkResponse } from "../../lib/api";
 export default function ChunkModal({
   chunkId,
   onClose,
+  onEvidenceOpened = notifyEvidenceSourceOpened,
 }: {
   chunkId: string | null;
   onClose: () => void;
+  /** Observes committed readable evidence; Werner-backed and non-authoritative. */
+  onEvidenceOpened?: () => void;
 }) {
   const [chunk, setChunk] = useState<ChunkResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadedSequence, setLoadedSequence] = useState<number | null>(null);
+  const requestSequenceRef = useRef(0);
+  const notifiedSequenceRef = useRef<number | null>(null);
 
   useEffect(() => {
+    const sequence = ++requestSequenceRef.current;
     if (!chunkId) {
       setChunk(null);
       setError(null);
+      setLoadedSequence(null);
+      notifiedSequenceRef.current = null;
       return;
     }
     let cancelled = false;
@@ -37,7 +47,10 @@ export default function ChunkModal({
     void (async () => {
       try {
         const c = await getChunk(chunkId);
-        if (!cancelled) setChunk(c);
+        if (!cancelled) {
+          setChunk(c);
+          setLoadedSequence(sequence);
+        }
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : String(e));
@@ -50,6 +63,24 @@ export default function ChunkModal({
       cancelled = true;
     };
   }, [chunkId]);
+
+  // This effect runs after React commits the readable chunk. Click intent,
+  // loading, withheld content, and stale requests therefore remain silent.
+  useEffect(() => {
+    if (
+      !chunk?.servable ||
+      loadedSequence === null ||
+      notifiedSequenceRef.current === loadedSequence
+    ) {
+      return;
+    }
+    notifiedSequenceRef.current = loadedSequence;
+    try {
+      onEvidenceOpened();
+    } catch {
+      // Living-TV choreography observes evidence truth; it never owns the modal.
+    }
+  }, [chunk, loadedSequence, onEvidenceOpened]);
 
   if (!chunkId) return null;
 
@@ -154,7 +185,8 @@ function OpenInDocumentButton({ chunk }: { chunk: ChunkResponse }) {
     page !== null
       ? `/wrestle/${encodeURIComponent(chunk.document_id)}?page=${page}`
       : `/wrestle/${encodeURIComponent(chunk.document_id)}`;
-  const label = page !== null ? `Open at page ${page}` : "Open in document viewer";
+  const label =
+    page !== null ? `Open at page ${page}` : "Open in document viewer";
   return (
     <a
       href={href}
