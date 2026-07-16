@@ -8,6 +8,10 @@ describe("MidnightOilPanel", () => {
 
   it("builds preflight and requires ack for approval request", () => {
     render(<MidnightOilPanel />);
+    const art = screen.getByTestId(
+      "midnight-oil-living-tv-art",
+    ) as HTMLImageElement;
+    expect(art.getAttribute("src") ?? "").toMatch(/werner_living_tv_session_v1/);
 
     fireEvent.change(screen.getByTestId("midnight-oil-goal-input"), {
       target: { value: "Map open-source agent evals" },
@@ -30,7 +34,7 @@ describe("MidnightOilPanel", () => {
     expect(json).toMatch(/spend_authorized": false/);
   });
 
-  it("emits deep_research_start when approval request succeeds", () => {
+  it("emits living-TV highlight on goal add and deep_research_start on approval request", () => {
     const seen: string[] = [];
     const onExp = (e: Event) => {
       const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
@@ -42,6 +46,7 @@ describe("MidnightOilPanel", () => {
       target: { value: "Night eval sweep" },
     });
     fireEvent.click(screen.getByTestId("midnight-oil-add-goal"));
+    expect(seen).toContain("highlight");
     fireEvent.click(screen.getByTestId("midnight-oil-ack"));
     fireEvent.click(screen.getByTestId("midnight-oil-request"));
     expect(seen).toContain("deep_research_start");

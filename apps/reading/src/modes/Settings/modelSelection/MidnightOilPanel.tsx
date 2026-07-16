@@ -7,6 +7,7 @@
 
 import { useMemo, useState } from "react";
 
+import livingTvArt from "../../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { emitWernerExperience } from "../../../werner/reactionBus";
 import {
   buildMidnightOilPreflight,
@@ -36,6 +37,8 @@ export function MidnightOilPanel() {
     setGoals((g) => [...g, { id: `g${Date.now().toString(36)}`, text }]);
     setGoalText("");
     setRequestJson(null);
+    // Living-TV: parking a midnight-oil goal is a curious glance.
+    emitWernerExperience("highlight");
   };
 
   return (
@@ -54,6 +57,16 @@ export function MidnightOilPanel() {
           authority stays on the server; this panel never launches work.
         </p>
       </header>
+
+      <img
+        src={livingTvArt}
+        alt=""
+        aria-hidden="true"
+        data-testid="midnight-oil-living-tv-art"
+        className="h-20 w-full max-w-xl rounded-md object-cover object-center"
+        loading="lazy"
+        decoding="async"
+      />
 
       <div className="flex flex-wrap gap-2">
         <input
