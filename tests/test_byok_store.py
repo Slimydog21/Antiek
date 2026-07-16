@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -186,3 +187,41 @@ def test_concurrent_stores_preserve_every_ciphertext_and_valid_json():
                 artifact_path=str(artifact),
                 key_bytes=_TEST_KEY,
             ).reveal() == secret
+
+
+def test_existing_master_key_permissions_are_repaired_before_read():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "credentials.enc"
+        key_file = Path(tmp) / "master.key"
+        cred_id = store_credential(
+            "mode-check",
+            _SECRET,
+            artifact_path=str(artifact),
+            key_file=str(key_file),
+        )
+        key_file.chmod(0o644)
+
+        assert load_credential(
+            cred_id,
+            artifact_path=str(artifact),
+            key_file=str(key_file),
+        ).reveal() == _SECRET
+        assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
+
+
+def test_master_key_symlink_is_rejected_without_touching_target():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "credentials.enc"
+        target = Path(tmp) / "target.key"
+        target.write_bytes(_TEST_KEY)
+        key_file = Path(tmp) / "master.key"
+        key_file.symlink_to(target)
+
+        with pytest.raises(ValueError, match="regular file"):
+            store_credential(
+                "symlink-check",
+                _SECRET,
+                artifact_path=str(artifact),
+                key_file=str(key_file),
+            )
+        assert target.read_bytes() == _TEST_KEY

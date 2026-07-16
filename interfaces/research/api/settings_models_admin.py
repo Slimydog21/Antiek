@@ -161,13 +161,22 @@ def _registry_path() -> Path:
     return base / "settings" / "user_models.json"
 
 
+def _fsync_directory(directory: Path) -> None:
+    fd = os.open(str(directory), os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 @contextmanager
 def _registry_guard(*, exclusive: bool) -> Iterator[None]:
     path = _registry_path()
     lock_path = Path(f"{path}.lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with _REGISTRY_LOCK:
-        fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, _PRIVATE_FILE_MODE)
+        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(str(lock_path), flags, _PRIVATE_FILE_MODE)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
             yield
@@ -228,6 +237,7 @@ def _write_registry_unlocked(registry: dict[str, UserModelRecord]) -> None:
             os.fsync(handle.fileno())
         os.replace(temporary, path)
         os.chmod(path, _PRIVATE_FILE_MODE)
+        _fsync_directory(path.parent)
     finally:
         os.close(fd)
         with suppress(FileNotFoundError):

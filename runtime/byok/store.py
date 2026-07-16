@@ -62,6 +62,7 @@ import fcntl
 import hashlib
 import json
 import os
+import stat
 import threading
 import uuid
 from collections.abc import Iterator
@@ -163,20 +164,32 @@ def _load_master_key(key_bytes: bytes | None, key_file: str | None) -> bytes:
         return key_bytes
     kf = key_file or _default_key_file()
     path = Path(kf)
-    if path.exists():
-        data = path.read_bytes()
-        if len(data) != _KEY_SIZE:
-            raise ValueError(f"key file {kf} is not {_KEY_SIZE} bytes")
-        return data
-    key = nacl.utils.random(_KEY_SIZE)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _KEY_FILE_MODE)
-    try:
-        os.write(fd, key)
-    finally:
-        os.close(fd)
-    os.chmod(str(path), _KEY_FILE_MODE)
-    return key
+    with _STORE_LOCK, _artifact_lock(str(path), exclusive=True):
+        if path.exists() or path.is_symlink():
+            info = path.lstat()
+            if not stat.S_ISREG(info.st_mode):
+                raise ValueError(f"key file {kf} must be a regular file")
+            if hasattr(os, "getuid") and info.st_uid != os.getuid():
+                raise PermissionError(f"key file {kf} must be owned by this user")
+            if stat.S_IMODE(info.st_mode) != _KEY_FILE_MODE:
+                os.chmod(path, _KEY_FILE_MODE)
+            data = path.read_bytes()
+            if len(data) != _KEY_SIZE:
+                raise ValueError(f"key file {kf} is not {_KEY_SIZE} bytes")
+            return data
+
+        key = nacl.utils.random(_KEY_SIZE)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(str(path), flags, _KEY_FILE_MODE)
+        try:
+            os.write(fd, key)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.chmod(path, _KEY_FILE_MODE)
+        _fsync_directory(path.parent)
+        return key
 
 
 def _read_artifact(artifact_path: str) -> dict:
@@ -190,11 +203,20 @@ def _read_artifact(artifact_path: str) -> dict:
         return {}
 
 
+def _fsync_directory(directory: Path) -> None:
+    fd = os.open(str(directory), os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 @contextmanager
 def _artifact_lock(artifact_path: str, *, exclusive: bool) -> Iterator[None]:
     lock_path = Path(f"{artifact_path}.lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, _KEY_FILE_MODE)
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(str(lock_path), flags, _KEY_FILE_MODE)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
         yield
@@ -220,6 +242,7 @@ def _write_artifact(artifact_path: str, data: dict) -> None:
             os.fsync(handle.fileno())
         os.replace(temporary, p)
         os.chmod(p, _KEY_FILE_MODE)
+        _fsync_directory(p.parent)
     finally:
         os.close(fd)
         with suppress(FileNotFoundError):
