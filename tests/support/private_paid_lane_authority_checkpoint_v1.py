@@ -2591,19 +2591,25 @@ def _fixture_migration_lifecycle_issuer_main(
                     expected_state=recovery_abort_preparation_completion.abort_prepared_state,
                     verification_key=verification_key,
                 )
-                _issuer_validate_abort_origin_custody(
-                    session_root_fd=session_root_fd,
-                    session_target_fd=session_target_fd,
-                    origin=recovery_abort_preparation_completion.origin_state,
-                    target_lease=target_lease,
-                    provider_capability_verification_keys=provider_capability_verification_keys,
-                    provider_revocation_verification_keys=provider_revocation_verification_keys,
-                    source_head_verification_keys=source_head_verification_keys,
-                    provider_revocation_floor_pins=provider_revocation_floor_pins,
-                    source_floor_pins=source_floor_pins,
-                    expected_semantic_source_sha256=expected_semantic_source_sha256,
-                    expected_contract_sha256=expected_contract_sha256,
-                )
+                try:
+                    _issuer_validate_abort_origin_custody(
+                        session_root_fd=session_root_fd,
+                        session_target_fd=session_target_fd,
+                        origin=recovery_abort_preparation_completion.origin_state,
+                        target_lease=target_lease,
+                        provider_capability_verification_keys=provider_capability_verification_keys,
+                        provider_revocation_verification_keys=provider_revocation_verification_keys,
+                        source_head_verification_keys=source_head_verification_keys,
+                        provider_revocation_floor_pins=provider_revocation_floor_pins,
+                        source_floor_pins=source_floor_pins,
+                        expected_semantic_source_sha256=expected_semantic_source_sha256,
+                        expected_contract_sha256=expected_contract_sha256,
+                    )
+                except BaseException:
+                    if target_lease is not None:
+                        _issuer_release_target_lease(target_lease)
+                    target_lease = None
+                    raise
                 _issuer_checkpoint_target_wal_and_release(target_lease)
                 target_lease = None
                 _issuer_require_target_abort_sidecars_absent(
@@ -2621,19 +2627,25 @@ def _fixture_migration_lifecycle_issuer_main(
             raise ValueError("issuer recovery abort preparation origin journal")
         origin = committed
         with _issuer_transition_lock(session_root_fd):
-            _issuer_validate_abort_origin_custody(
-                session_root_fd=session_root_fd,
-                session_target_fd=session_target_fd,
-                origin=origin,
-                target_lease=target_lease,
-                provider_capability_verification_keys=provider_capability_verification_keys,
-                provider_revocation_verification_keys=provider_revocation_verification_keys,
-                source_head_verification_keys=source_head_verification_keys,
-                provider_revocation_floor_pins=provider_revocation_floor_pins,
-                source_floor_pins=source_floor_pins,
-                expected_semantic_source_sha256=expected_semantic_source_sha256,
-                expected_contract_sha256=expected_contract_sha256,
-            )
+            try:
+                _issuer_validate_abort_origin_custody(
+                    session_root_fd=session_root_fd,
+                    session_target_fd=session_target_fd,
+                    origin=origin,
+                    target_lease=target_lease,
+                    provider_capability_verification_keys=provider_capability_verification_keys,
+                    provider_revocation_verification_keys=provider_revocation_verification_keys,
+                    source_head_verification_keys=source_head_verification_keys,
+                    provider_revocation_floor_pins=provider_revocation_floor_pins,
+                    source_floor_pins=source_floor_pins,
+                    expected_semantic_source_sha256=expected_semantic_source_sha256,
+                    expected_contract_sha256=expected_contract_sha256,
+                )
+            except BaseException:
+                if target_lease is not None:
+                    _issuer_release_target_lease(target_lease)
+                target_lease = None
+                raise
             _issuer_checkpoint_target_wal_and_release(target_lease)
             target_lease = None
             _issuer_require_target_abort_sidecars_absent(

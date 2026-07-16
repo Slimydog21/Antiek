@@ -1235,6 +1235,7 @@ def _attempt_child_recovery_prepare_abort(
     target_fd: int,
     result_fd: int,
     *,
+    expect_rejection: bool = False,
     abort_fault_boundary: Literal[
         "abort_prepare_after_intent",
         "abort_prepare_after_rename",
@@ -1263,6 +1264,42 @@ def _attempt_child_recovery_prepare_abort(
             authority_pins=origin_pins,
         )
         admission = session.admission
+        if expect_rejection:
+            target_identity = os.fstat(target_fd)
+            with pytest.raises(ValueError, match="abort preparation rejected"):
+                session.recover_prepare_abort_uncut_epoch0(
+                    expected_origin_state_sha256=origin.state_sha256
+                )
+            assert session._abort_preparation_completion is None
+            journal = checkpoint_module._read_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                target_basename=origin.target_basename,
+                verification_key=verification_key,
+            )
+            assert journal == origin
+            unchanged_identity = os.stat(target_path)
+            assert (unchanged_identity.st_dev, unchanged_identity.st_ino) == (
+                target_identity.st_dev,
+                target_identity.st_ino,
+            )
+            assert not list(Path(target_path).parent.glob(f"{origin.target_basename}-*"))
+            assert not list(Path(target_path).parent.glob(f".{origin.target_basename}*.tmp"))
+            assert (
+                checkpoint_module._migration_lifecycle_entry_identity(
+                    parent_fd, origin.tombstone_basename
+                )
+                is None
+            )
+            competing = sqlite3.connect(target_path, isolation_level=None, timeout=0.1)
+            try:
+                assert competing.serialize() == target_image
+                competing.execute("BEGIN IMMEDIATE")
+                competing.execute("ROLLBACK")
+            finally:
+                competing.close()
+            session.close()
+            os.write(result_fd, b"1")
+            return
         if abort_fault_boundary is None:
             dropped_request = _canonical_json(
                 {
@@ -4792,17 +4829,19 @@ class TestMigrationPrerequisites:
             issuer.close()
 
     @pytest.mark.parametrize(
-        ("origin_phase", "abort_fault_boundary"),
+        ("origin_phase", "target_copy_state", "abort_fault_boundary"),
         (
-            ("schema_only", None),
-            ("barrier_acquired", None),
-            ("sources_sealed", None),
-            ("copy_prepared", None),
-            ("copied_epoch0", None),
-            ("schema_only", "abort_prepare_after_intent"),
-            ("schema_only", "abort_prepare_after_rename"),
-            ("schema_only", "abort_prepare_after_parent_fsync"),
-            ("schema_only", "abort_prepare_after_reread"),
+            ("schema_only", "schema_only", None),
+            ("barrier_acquired", "schema_only", None),
+            ("sources_sealed", "schema_only", None),
+            ("copy_prepared", "schema_only", None),
+            ("copy_prepared", "exact_complete", None),
+            ("copy_prepared", "tampered_complete", None),
+            ("copied_epoch0", "exact_complete", None),
+            ("schema_only", "schema_only", "abort_prepare_after_intent"),
+            ("schema_only", "schema_only", "abort_prepare_after_rename"),
+            ("schema_only", "schema_only", "abort_prepare_after_parent_fsync"),
+            ("schema_only", "schema_only", "abort_prepare_after_reread"),
         ),
     )
     def test_recovery_prepare_abort_from_each_origin_class(
@@ -4815,6 +4854,7 @@ class TestMigrationPrerequisites:
             "copy_prepared",
             "copied_epoch0",
         ],
+        target_copy_state: Literal["schema_only", "exact_complete", "tampered_complete"],
         abort_fault_boundary: Literal[
             "abort_prepare_after_intent",
             "abort_prepare_after_rename",
@@ -5019,6 +5059,35 @@ class TestMigrationPrerequisites:
                 issuer.commit(state=copied, parent_fd=parent_fd)
                 origin = copied
                 assert origin.lifecycle_phase == "copied_epoch0"
+            elif target_copy_state in {"exact_complete", "tampered_complete"}:
+                assert origin.lifecycle_phase == "copy_prepared"
+                issuer.copy_epoch0(prepared_state=origin, test_post_commit_pause_ms=0)
+            if target_copy_state == "tampered_complete":
+                partial = tmp_path / "partial-target.sqlite3"
+                source_copy = sqlite3.connect(target)
+                partial_copy = sqlite3.connect(partial)
+                try:
+                    source_copy.backup(partial_copy)
+                finally:
+                    partial_copy.close()
+                    source_copy.close()
+                partial.chmod(0o600)
+                tamper = sqlite3.connect(partial, isolation_level=None)
+                try:
+                    tamper.execute("PRAGMA journal_mode=DELETE")
+                    assert tamper.execute("SELECT COUNT(*) FROM source_heads").fetchone() == (1,)
+                    tamper.execute("DELETE FROM source_heads")
+                finally:
+                    tamper.close()
+                partial_bytes = partial.read_bytes()
+                replacement_fd = os.open(target, os.O_WRONLY)
+                try:
+                    os.ftruncate(replacement_fd, 0)
+                    assert os.write(replacement_fd, partial_bytes) == len(partial_bytes)
+                    os.fsync(replacement_fd)
+                finally:
+                    os.close(replacement_fd)
+                partial.unlink()
             assert origin.lifecycle_phase == origin_phase
             target_fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
             issuer_socket_path = issuer._socket_path
@@ -5039,6 +5108,7 @@ class TestMigrationPrerequisites:
                     parent_fd,
                     target_fd,
                     result_write,
+                    expect_rejection=target_copy_state == "tampered_complete",
                     abort_fault_boundary=abort_fault_boundary,
                 )
                 os._exit(0)
@@ -5054,11 +5124,14 @@ class TestMigrationPrerequisites:
                 target_basename=target.name,
                 verification_key=issuer.verification_key,
             )
-            assert abort_prepared.lifecycle_phase == "abort_prepared"
-            checkpoint_module._verify_migration_lifecycle_transition(
-                origin, abort_prepared, issuer.verification_key
-            )
-            assert abort_prepared.phase_version == origin.phase_version + 1
+            if target_copy_state == "tampered_complete":
+                assert abort_prepared == origin
+            else:
+                assert abort_prepared.lifecycle_phase == "abort_prepared"
+                checkpoint_module._verify_migration_lifecycle_transition(
+                    origin, abort_prepared, issuer.verification_key
+                )
+                assert abort_prepared.phase_version == origin.phase_version + 1
             assert not list(tmp_path.glob(f".{target.name}.abort-v1"))
         finally:
             if child > 0:
