@@ -150,12 +150,14 @@ class TwinSegmentationLedger:
             con.execute("BEGIN IMMEDIATE")
             key = (manifest.account_id, manifest.asset_id, manifest.parent_source_hash)
             row = con.execute(
-                "SELECT manifest_json FROM segmentation_manifests "
+                "SELECT * FROM segmentation_manifests "
                 "WHERE account_id=? AND asset_id=? AND parent_source_hash=?",
                 key,
             ).fetchone()
             if row is not None and row["manifest_json"] != manifest_json:
                 raise TwinSegmentationIntegrityError("manifest substitution for source identity")
+            if row is not None:
+                self._verify_manifest_row(con, row)
             if row is None:
                 con.execute(
                     "INSERT INTO segmentation_manifests VALUES(?,?,?,?,?,?,'pending')",
@@ -185,12 +187,13 @@ class TwinSegmentationLedger:
     def get(self, account_id: str, asset_id: str, parent_source_hash: str) -> SegmentationSnapshot:
         with self._connect() as con:
             row = con.execute(
-                "SELECT manifest_hash,aggregate_state FROM segmentation_manifests "
+                "SELECT * FROM segmentation_manifests "
                 "WHERE account_id=? AND asset_id=? AND parent_source_hash=?",
                 (account_id, asset_id, parent_source_hash),
             ).fetchone()
             if row is None:
                 raise KeyError((account_id, asset_id, parent_source_hash))
+            self._verify_manifest_row(con, row)
             count = con.execute(
                 "SELECT count(*),sum(state='pending') FROM segmentation_obligations "
                 "WHERE account_id=? AND asset_id=? AND parent_source_hash=?",
@@ -213,36 +216,39 @@ class TwinSegmentationLedger:
                 "SELECT * FROM segmentation_manifests ORDER BY account_id,asset_id,parent_source_hash"
             ).fetchall()
             for row in manifests:
-                if _sha(str(row["manifest_json"])) != row["manifest_hash"]:
-                    raise TwinSegmentationIntegrityError("manifest digest mismatch")
-                try:
-                    manifest = TwinSegmentationManifest.from_json(str(row["manifest_json"]))
-                except TwinSegmentationError as exc:
-                    raise TwinSegmentationIntegrityError("persisted manifest is invalid") from exc
-                if (
-                    manifest.account_id != row["account_id"]
-                    or manifest.asset_id != row["asset_id"]
-                    or manifest.parent_source_hash != row["parent_source_hash"]
-                    or manifest.aggregate_obligation_id != row["aggregate_obligation_id"]
-                ):
-                    raise TwinSegmentationIntegrityError("manifest identity conflicts with index")
-                expected = [
-                    (item.index, item.start_char, item.end_char, item.content_sha256)
-                    for item in manifest.segments
-                ]
-                actual = [
-                    tuple(item)
-                    for item in con.execute(
-                        "SELECT segment_index,start_char,end_char,content_sha256 "
-                        "FROM segmentation_obligations WHERE account_id=? AND asset_id=? "
-                        "AND parent_source_hash=? ORDER BY segment_index",
-                        (row["account_id"], row["asset_id"], row["parent_source_hash"]),
-                    ).fetchall()
-                ]
-                if actual != expected:
-                    raise TwinSegmentationIntegrityError(
-                        "segment obligations conflict with manifest"
-                    )
+                self._verify_manifest_row(con, row)
+
+    def _verify_manifest_row(self, con: sqlite3.Connection, row: sqlite3.Row) -> None:
+        if _sha(str(row["manifest_json"])) != row["manifest_hash"]:
+            raise TwinSegmentationIntegrityError("manifest digest mismatch")
+        if row["aggregate_state"] != "pending":
+            raise TwinSegmentationIntegrityError("aggregate state is invalid")
+        try:
+            manifest = TwinSegmentationManifest.from_json(str(row["manifest_json"]))
+        except TwinSegmentationError as exc:
+            raise TwinSegmentationIntegrityError("persisted manifest is invalid") from exc
+        if (
+            manifest.account_id != row["account_id"]
+            or manifest.asset_id != row["asset_id"]
+            or manifest.parent_source_hash != row["parent_source_hash"]
+            or manifest.aggregate_obligation_id != row["aggregate_obligation_id"]
+        ):
+            raise TwinSegmentationIntegrityError("manifest identity conflicts with index")
+        expected = [
+            (item.index, item.start_char, item.end_char, item.content_sha256, "pending")
+            for item in manifest.segments
+        ]
+        actual = [
+            tuple(item)
+            for item in con.execute(
+                "SELECT segment_index,start_char,end_char,content_sha256,state "
+                "FROM segmentation_obligations WHERE account_id=? AND asset_id=? "
+                "AND parent_source_hash=? ORDER BY segment_index",
+                (row["account_id"], row["asset_id"], row["parent_source_hash"]),
+            ).fetchall()
+        ]
+        if actual != expected:
+            raise TwinSegmentationIntegrityError("segment obligations conflict with manifest")
 
 
 __all__ = [

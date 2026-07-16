@@ -141,6 +141,10 @@ def test_manifest_substitution_and_schema_or_obligation_corruption_fail_closed(t
         )
         con.execute(TRIGGERS["segmentation_obligation_no_update"])
     with pytest.raises(TwinSegmentationIntegrityError, match="conflict"):
+        ledger.register(manifest, account_id="acct", asset=asset)
+    with pytest.raises(TwinSegmentationIntegrityError, match="conflict"):
+        ledger.get("acct", asset.asset_id, manifest.parent_source_hash)
+    with pytest.raises(TwinSegmentationIntegrityError, match="conflict"):
         ledger.verify_integrity()
 
 
