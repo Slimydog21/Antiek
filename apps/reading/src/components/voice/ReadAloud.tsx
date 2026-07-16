@@ -29,6 +29,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { narrate, TtsError, TTS_OUT_SOURCE_KIND } from "../../api/tts";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 export type ReadAloudState =
   | "idle"
