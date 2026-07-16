@@ -107,6 +107,14 @@ describe("M1 — list + open + empty", () => {
     render(<PersonalSpace />);
     expect(await screen.findByText("How my books treat free will")).toBeTruthy();
     expect(screen.getByText("Meditations")).toBeTruthy();
+    // Living-TV densify: session brand chrome on personal bed surface.
+    expect(screen.getByTestId("personal-space-werner-brand")).toBeTruthy();
+    const livingTv = screen.getByTestId(
+      "personal-space-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
   });
 
   it("opens an asset back into its reader/meta-doc route", async () => {
