@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { getDistillation, ApiError } from "../../lib/api";
 import type { DistilledNode } from "../../lib/api";
 import { parseSynthesis } from "../../lib/synthesisParser";
@@ -238,15 +239,18 @@ function AutoNotebookBody({ notebook }: { notebook: DerivedNotebook }) {
     // invent a section/insight/question.
     return (
       <article className="max-w-3xl mx-auto px-8 py-12">
-        <div className="max-w-md mx-auto text-center space-y-3">
-          <h1 className="text-2xl font-serif text-ink dark:text-bright leading-tight">
-            {notebook.title}
-          </h1>
-          <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-            This notebook writes itself from the research’s insights and open
-            questions. There’s nothing in the graph to narrate yet — as the
-            research produces insights and questions, they appear here.
-          </p>
+        <div className="mx-auto max-w-md space-y-3 text-center">
+          <SessionBrandChrome
+            testIdPrefix="auto-notebook-empty"
+            title={notebook.title}
+            titleClassName="text-2xl font-serif text-ink dark:text-bright leading-tight"
+          >
+            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
+              This notebook writes itself from the research’s insights and open
+              questions. There’s nothing in the graph to narrate yet — as the
+              research produces insights and questions, they appear here.
+            </p>
+          </SessionBrandChrome>
         </div>
       </article>
     );
@@ -254,14 +258,15 @@ function AutoNotebookBody({ notebook }: { notebook: DerivedNotebook }) {
 
   return (
     <article className="max-w-3xl mx-auto px-8 py-10 space-y-8">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-serif text-ink dark:text-bright leading-tight">
-          {notebook.title}
-        </h1>
+      <SessionBrandChrome
+        testIdPrefix="auto-notebook"
+        title={notebook.title}
+        titleClassName="text-2xl font-serif text-ink dark:text-bright leading-tight"
+      >
         <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
           generated from this research’s graph · regenerates as you work
         </p>
-      </header>
+      </SessionBrandChrome>
 
       {/* The dynamic OUTLINE — derived from which sections the graph carries.
           It flips when the graph changes. This is the artifact SPR-09's Write
