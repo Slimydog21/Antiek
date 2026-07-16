@@ -6,6 +6,7 @@ import type {
   ConfidenceLevel,
 } from "../generated/types";
 import { postTypedEvent } from "../lib/api";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 /**
  * The derived grounding state for a single Claim, computed by the
