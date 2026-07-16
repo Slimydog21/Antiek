@@ -163,8 +163,8 @@ function LoadedCanvas({
           Nothing to lay out yet.
         </p>
         <p className="mt-1 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
-          This research distilled no insights or open questions — when it does,
-          they’ll appear here as blocks.
+          This completed research produced no distilled insights or open
+          questions to arrange as blocks.
         </p>
       </div>
     );

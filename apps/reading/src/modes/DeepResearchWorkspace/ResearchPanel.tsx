@@ -46,8 +46,9 @@ export interface ResearchPanelProps {
   costUsd: number;
   onSteer: (kind: SteerKind, payload?: Record<string, unknown>) => void;
   busy?: boolean;
+  onViewResult?: () => void;
 }
-export default function ResearchPanel({ research, costUsd, onSteer, busy }: ResearchPanelProps) {
+export default function ResearchPanel({ research, costUsd, onSteer, busy, onViewResult }: ResearchPanelProps) {
   const [redirectOpen, setRedirectOpen] = useState(false);
   const [redirectText, setRedirectText] = useState("");
   const terminal = TERMINAL_STATES.has(research.state);
@@ -75,6 +76,19 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
         <span className="font-mono">${costUsd.toFixed(4)}</span>
         <span className="truncate font-mono opacity-60">{research.investigation_id.slice(-12)}</span>
       </div>
+
+      {research.state === "done" && onViewResult && (
+        <div className="flex flex-wrap gap-1.5">
+          <LemonButton
+            id={`research-result-action-${research.investigation_id}`}
+            size="sm"
+            variant="primary"
+            onClick={onViewResult}
+          >
+            View result
+          </LemonButton>
+        </div>
+      )}
 
       {!terminal && (
         <div className="flex flex-wrap gap-1.5">

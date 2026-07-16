@@ -72,6 +72,30 @@ describe("ResearchPanel — steer controls", () => {
     expect(screen.getByText("done")).toBeTruthy();
   });
 
+  it("offers the authoritative result only for a completed research", () => {
+    const onViewResult = vi.fn();
+    const view = render(
+      <ResearchPanel
+        research={{ ...running, state: "done" }}
+        costUsd={0.05}
+        onSteer={() => {}}
+        onViewResult={onViewResult}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "View result" }));
+    expect(onViewResult).toHaveBeenCalledOnce();
+
+    view.rerender(
+      <ResearchPanel
+        research={{ ...running, state: "failed" }}
+        costUsd={0.05}
+        onSteer={() => {}}
+        onViewResult={onViewResult}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "View result" })).toBeNull();
+  });
+
   it("shows Resume (not Pause) when paused", () => {
     const onSteer = vi.fn();
     render(<ResearchPanel research={{ ...running, state: "paused" }} costUsd={0} onSteer={onSteer} />);
