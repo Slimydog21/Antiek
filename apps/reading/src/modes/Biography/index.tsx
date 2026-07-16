@@ -10,6 +10,19 @@ import {
   type BiographyComposition,
 } from "../../lib/speakApi";
 import AIActionFailure from "../../shared/AIActionFailure";
+import "./biography-memory-archive.css";
+
+export interface BiographyProps {
+  executionEnabled?: boolean;
+  initialSubjectName?: string;
+  initialComposition?: BiographyComposition | null;
+  initialInvestigationId?: string | null;
+  initialSubmitting?: boolean;
+  initialFailed?: boolean;
+  initialInviteLink?: string | null;
+  initialInviting?: boolean;
+  initialInviteFailed?: boolean;
+}
 
 /**
  * Biography — the dedicated landing for the biography TEMPLATE (SPR-11).
@@ -34,13 +47,26 @@ import AIActionFailure from "../../shared/AIActionFailure";
  * — no slop, no substrate jargon (the copy-lint scans this file). The landing
  * copy is asserted by a render test (Biography.test.tsx), not just by eye.
  */
-export default function Biography() {
+export default function Biography({
+  executionEnabled = true,
+  initialSubjectName = "",
+  initialComposition = null,
+  initialInvestigationId = null,
+  initialSubmitting = false,
+  initialFailed = false,
+  initialInviteLink = null,
+  initialInviting = false,
+  initialInviteFailed = false,
+}: BiographyProps = {}) {
   const navigate = useNavigate();
 
-  const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [composed, setComposed] = useState<BiographyComposition | null>(null);
+  const [name, setName] = useState(initialSubjectName);
+  const [submitting, setSubmitting] = useState(initialSubmitting);
+  const [failed, setFailed] = useState(initialFailed);
+  const [composed, setComposed] = useState<BiographyComposition | null>(initialComposition);
+  const [confirmedInvestigationId, setConfirmedInvestigationId] = useState<string | null>(
+    initialInvestigationId,
+  );
 
   // Start a biography: provision the three surfaces over the ONE graph.
   //   1. the Research folder — startInvestigation → investigation_id (the
@@ -51,17 +77,22 @@ export default function Biography() {
   // Write document.
   const start = useCallback(async () => {
     const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmed || !executionEnabled) return;
     setSubmitting(true);
     setFailed(false);
     try {
-      const research = await startInvestigation({
-        question: `The life and story of ${trimmed}.`,
-        context:
-          "A biography: gather what is known, written, and remembered about this person.",
-      });
+      let investigationId = confirmedInvestigationId;
+      if (!investigationId) {
+        const research = await startInvestigation({
+          question: `The life and story of ${trimmed}.`,
+          context:
+            "A biography: gather what is known, written, and remembered about this person.",
+        });
+        investigationId = research.investigation_id;
+        setConfirmedInvestigationId(investigationId);
+      }
       const comp = await createBiography({
-        investigationId: research.investigation_id,
+        investigationId,
         subjectName: trimmed,
       });
       setComposed(comp);
@@ -70,25 +101,29 @@ export default function Biography() {
     } finally {
       setSubmitting(false);
     }
-  }, [name]);
+  }, [confirmedInvestigationId, executionEnabled, name]);
 
   if (composed) {
     return (
       <BiographyOnboarding
         subjectName={name.trim()}
         composition={composed}
-        onOpenResearch={() => navigate(`/inv/${composed.investigationId}`)}
-        onOpenWrite={() => navigate(`/write/${composed.deliverableId}`)}
-        onOpenSpeak={() => navigate(`/speak/${composed.projectId}`)}
+        onOpenResearch={() => { if (executionEnabled) navigate(`/inv/${composed.investigationId}`); }}
+        onOpenWrite={() => { if (executionEnabled) navigate(`/write/${composed.deliverableId}`); }}
+        onOpenSpeak={() => { if (executionEnabled) navigate(`/speak/${composed.projectId}`); }}
+        executionEnabled={executionEnabled}
+        initialInviteLink={initialInviteLink}
+        initialInviting={initialInviting}
+        initialInviteFailed={initialInviteFailed}
       />
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
-      <div className="mx-auto max-w-2xl px-6 py-12">
+    <div className="biography-memory-archive h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
+      <div className="biography-memory-archive__content mx-auto max-w-2xl px-6 py-12">
         <header className="mb-8 flex items-start gap-3">
-          <Werner mood="idle" size={52} label="" />
+          <Werner mood={submitting ? "thinking" : failed ? "empty" : "idle"} size={58} label="" />
           <div>
             <h1 className="font-serif text-3xl font-semibold text-ink dark:text-bright">
               Write someone&rsquo;s biography
@@ -131,10 +166,12 @@ export default function Biography() {
             void start();
           }}
           className="mb-6 flex flex-wrap items-center gap-2 rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+          aria-busy={submitting}
         >
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
+            disabled={submitting || Boolean(confirmedInvestigationId)}
             placeholder="A name — e.g. my grandmother, Dad, Maria"
             aria-label="Whose biography do you want to write?"
             className="min-w-[220px] flex-1 rounded border border-rule bg-transparent px-3 py-2 font-serif text-[15px] text-ink focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:text-bright"
@@ -148,12 +185,26 @@ export default function Biography() {
           </LemonButton>
         </form>
 
+        <p role="status" aria-live="polite" className="sr-only">
+          {submitting ? "Setting up the biography." : ""}
+        </p>
+
         {failed && (
-          <AIActionFailure
-            title="We couldn't start that biography"
-            onRetry={() => void start()}
-            retryLabel="Try again"
-          />
+          <div className="space-y-2" data-testid="biography-recovery">
+            {confirmedInvestigationId && (
+              <p role="status" className="text-sm text-ink dark:text-bright">
+                The research folder is safe. Retry to finish connecting the writing and voices
+                without creating another folder.
+              </p>
+            )}
+            <AIActionFailure
+              title={confirmedInvestigationId
+                ? "We couldn't finish setting up the biography"
+                : "We couldn't start that biography"}
+              onRetry={() => void start()}
+              retryLabel={confirmedInvestigationId ? "Finish setup" : "Try again"}
+            />
+          </div>
         )}
       </div>
     </div>
@@ -193,21 +244,30 @@ function BiographyOnboarding({
   onOpenResearch,
   onOpenWrite,
   onOpenSpeak,
+  executionEnabled,
+  initialInviteLink,
+  initialInviting,
+  initialInviteFailed,
 }: {
   subjectName: string;
   composition: BiographyComposition;
   onOpenResearch: () => void;
   onOpenWrite: () => void;
   onOpenSpeak: () => void;
+  executionEnabled: boolean;
+  initialInviteLink: string | null;
+  initialInviting: boolean;
+  initialInviteFailed: boolean;
 }) {
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [inviting, setInviting] = useState(false);
-  const [inviteFailed, setInviteFailed] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(initialInviteLink);
+  const [inviting, setInviting] = useState(initialInviting);
+  const [inviteFailed, setInviteFailed] = useState(initialInviteFailed);
   const [copied, setCopied] = useState(false);
 
   const who = subjectName || "this person";
 
   const sendToAFriend = useCallback(async () => {
+    if (!executionEnabled) return;
     setInviting(true);
     setInviteFailed(false);
     try {
@@ -218,21 +278,21 @@ function BiographyOnboarding({
     } finally {
       setInviting(false);
     }
-  }, [composition.projectId]);
+  }, [composition.projectId, executionEnabled]);
 
   const copyLink = useCallback(async () => {
-    if (!inviteLink) return;
+    if (!inviteLink || !executionEnabled) return;
     try {
       await navigator.clipboard?.writeText(inviteLink);
       setCopied(true);
     } catch {
       /* the link is shown inline regardless — copy is a convenience */
     }
-  }, [inviteLink]);
+  }, [executionEnabled, inviteLink]);
 
   return (
-    <div className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
-      <div className="mx-auto max-w-2xl px-6 py-12">
+    <div className="biography-memory-archive h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
+      <div className="biography-memory-archive__content mx-auto max-w-2xl px-6 py-12">
         <header className="mb-7 flex items-start gap-3">
           <Werner mood="celebrate" size={52} label="" />
           <div>
@@ -283,20 +343,22 @@ function BiographyOnboarding({
           aria-label="Invite someone to share a memory"
           data-testid="biography-invite"
           className="rounded-md border-2 border-ink bg-sun/10 p-5 shadow-z1 dark:border-charcoal-1 dark:bg-sun/5 dark:shadow-z1-night"
+          aria-busy={inviting}
+          aria-live="polite"
         >
           <h2 className="font-serif text-lg font-semibold text-ink dark:text-bright">
             Invite someone to share a memory
           </h2>
           <p className="mt-1 font-serif text-[13.5px] leading-relaxed text-shadow-1 dark:text-moonlight">
-            Get a link to send a friend or family member. They tap it, record a
-            memory of {who} in their own words, and it joins the story. They
+            Create a link for a friend or family member. If they choose to use
+            it, they can record a memory of {who} in their own words. They
             don&rsquo;t need an account.
           </p>
 
           {inviteLink ? (
             <div className="mt-4">
               <p className="font-serif text-[13px] text-ink dark:text-bright">
-                Share this link with someone who knew {who}:
+                Link ready to share with someone who knew {who}:
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <code className="min-w-0 flex-1 truncate rounded border border-rule bg-ice-0 px-2 py-1 text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright">
@@ -348,7 +410,7 @@ function SurfaceCard({
   onClick: () => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-md border border-rule bg-ice-0 p-4 dark:border-charcoal-1 dark:bg-charcoal-1">
+    <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-rule bg-ice-0 p-4 dark:border-charcoal-1 dark:bg-charcoal-1">
       <div className="min-w-0">
         <p className="font-serif text-[15px] font-semibold text-ink dark:text-bright">
           {title}
