@@ -190,3 +190,5 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | AdSlot/OutcomesIndex densify | `e507f5118` | ad click + outcomes open highlight |
 | AssignHotkey living-TV densify | `3d04e6bde` | save note_saved; remove highlight |
 | Shell launcher/tree densify | `2d03f38b0` | ProductsLauncher/ProjectTree/SubActionList/NavRail search |
+| PanelHandle/PdfViewer densify | `332953d6f` | dock modes highlight; PDF note_saved |
+| Import repair after densify inject | `37b248a86` | multi-line import blocks restored |
