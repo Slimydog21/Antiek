@@ -41,6 +41,11 @@ export function notifyVoicePlaybackStarted(): void {
   emitWernerExperience("voice_playback_started");
 }
 
+/** A decoded and parsed 2xx thought-partner reply is ready to be shown. */
+export function notifyThoughtPartnerReplyReceived(): void {
+  emitWernerExperience("thought_partner_reply_received");
+}
+
 export function notifyResearchStarted(sessionId: string): void {
   const startedAt = Date.now();
   locallyStartedResearchSessions.set(sessionId, startedAt);
