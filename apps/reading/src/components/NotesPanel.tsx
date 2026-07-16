@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  checkProviderOutcome,
   getDistillationReconciliation,
+  providerCheckTerms,
   releaseProvenUnsentHold,
   reservedReleaseTerms,
   type DistillationReconciliation,
+  type ProviderCheckTerms,
   type ReservedReleaseTerms,
 } from "../api/distillationReconciliation";
 import type {
@@ -363,9 +366,10 @@ function DistillationReconciliationControl({
   requestEventId: string;
 }) {
   const [view, setView] = useState<DistillationReconciliation | null>(null);
-  const [terms, setTerms] = useState<ReservedReleaseTerms | null>(null);
+  const [releaseTerms, setReleaseTerms] = useState<ReservedReleaseTerms | null>(null);
+  const [checkTerms, setCheckTerms] = useState<ProviderCheckTerms | null>(null);
   const [errorKind, setErrorKind] = useState<"evidence" | "stale">("evidence");
-  const releaseInFlight = useRef(false);
+  const actionInFlight = useRef(false);
   const [phase, setPhase] = useState<"idle" | "loading" | "review" | "releasing" | "done" | "error">("idle");
 
   async function review(): Promise<void> {
@@ -375,34 +379,67 @@ function DistillationReconciliationControl({
       const next = await getDistillationReconciliation(requestEventId);
       setView(next);
       if (next.next_action === "release_proven_unsent") {
-        setTerms(reservedReleaseTerms(next));
+        setReleaseTerms(reservedReleaseTerms(next));
+        setCheckTerms(null);
+      } else if (next.next_action === "provider_lookup_required" && next.action_executable) {
+        setReleaseTerms(null);
+        setCheckTerms(providerCheckTerms(next));
       } else {
-        setTerms(null);
+        setReleaseTerms(null);
+        setCheckTerms(null);
       }
       setPhase("review");
     } catch {
       setView(null);
-      setTerms(null);
+      setReleaseTerms(null);
+      setCheckTerms(null);
       setPhase("error");
     }
   }
 
   async function release(): Promise<void> {
-    if (terms === null || releaseInFlight.current) return;
-    releaseInFlight.current = true;
+    if (releaseTerms === null || actionInFlight.current) return;
+    actionInFlight.current = true;
     setPhase("releasing");
     try {
-      const next = await releaseProvenUnsentHold(requestEventId, terms);
+      const next = await releaseProvenUnsentHold(requestEventId, releaseTerms);
       setView(next);
-      setTerms(null);
+      setReleaseTerms(null);
+      setCheckTerms(null);
       setPhase("done");
     } catch {
       setView(null);
-      setTerms(null);
+      setReleaseTerms(null);
+      setCheckTerms(null);
       setErrorKind("stale");
       setPhase("error");
     } finally {
-      releaseInFlight.current = false;
+      actionInFlight.current = false;
+    }
+  }
+
+  async function checkProvider(): Promise<void> {
+    if (checkTerms === null || actionInFlight.current) return;
+    actionInFlight.current = true;
+    setPhase("releasing");
+    try {
+      const next = await checkProviderOutcome(requestEventId, checkTerms);
+      setView(next);
+      setReleaseTerms(null);
+      setCheckTerms(
+        next.next_action === "provider_lookup_required" && next.action_executable
+          ? providerCheckTerms(next)
+          : null,
+      );
+      setPhase(next.next_action === "none" ? "done" : "review");
+    } catch {
+      setView(null);
+      setReleaseTerms(null);
+      setCheckTerms(null);
+      setErrorKind("stale");
+      setPhase("error");
+    } finally {
+      actionInFlight.current = false;
     }
   }
 
@@ -431,29 +468,57 @@ function DistillationReconciliationControl({
     );
   }
   if (phase === "done") {
-    return <div className="text-xs font-mono">Reserved hold released · budget restored</div>;
-  }
-  if (view?.next_action === "provider_lookup_required") {
+    const terminal = view?.holds.at(-1)?.state;
     return (
       <div className="text-xs font-mono">
-        Provider verification required · budget remains held
+        {terminal === "settled"
+          ? "Provider charge verified · hold settled"
+          : terminal === "released"
+            ? "Hold released · budget restored"
+            : "Reconciliation complete"}
       </div>
     );
   }
-  if (view?.next_action === "none" || terms === null || view === null) {
+  if (view?.next_action === "provider_lookup_required") {
+    if (!view.action_executable || checkTerms === null) {
+      return (
+        <div className="text-xs font-mono">
+          Provider verification required · budget remains held
+        </div>
+      );
+    }
+    const hold = view.holds.at(-1)!;
+    return (
+      <div className="w-[90%] border border-rule dark:border-charcoal-1 rounded-md p-2 text-xs font-mono">
+        <div>Provider verification available</div>
+        <div>Held ${(hold.projected_max_cents / 100).toFixed(2)} USD</div>
+        <div className="break-all">Hold {checkTerms.expected_hold_id}</div>
+        <div>Expected hold state {checkTerms.expected_hold_state}</div>
+        <button
+          type="button"
+          className="mt-2 font-medium underline disabled:opacity-50"
+          disabled={phase === "releasing"}
+          onClick={() => void checkProvider()}
+        >
+          Check provider outcome
+        </button>
+      </div>
+    );
+  }
+  if (view?.next_action === "none" || releaseTerms === null || view === null) {
     return <div className="text-xs font-mono">No local budget action is available</div>;
   }
   const hold = view.holds.at(-1)!;
   return (
     <div className="w-[90%] border border-rule dark:border-charcoal-1 rounded-md p-2 text-xs font-mono">
       <div>Reserved ${(hold.projected_max_cents / 100).toFixed(2)} USD</div>
-      <div>Command state {terms.expected_command_state}</div>
+      <div>Command state {releaseTerms.expected_command_state}</div>
       <div className="break-all">Run {view.spend_run_id}</div>
       <div className="break-all">Chain {view.fallback_chain_id}</div>
       <div className="break-all">Manifest {view.manifest_sha256}</div>
-      <div>Fallback route {terms.expected_fallback_index}</div>
+      <div>Fallback route {releaseTerms.expected_fallback_index}</div>
       <div className="break-all">Hold {view.current_hold_id}</div>
-      <div>Expected hold state {terms.expected_hold_state}</div>
+      <div>Expected hold state {releaseTerms.expected_hold_state}</div>
       <button
         type="button"
         className="mt-2 font-medium underline disabled:opacity-50"

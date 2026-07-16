@@ -190,7 +190,7 @@ def _app(runtime: DistillationReconciliationRuntime, *, owner_id: str, method: s
     return app
 
 
-def test_owner_reads_redacted_non_executable_reserved_hold(tmp_path) -> None:
+def test_owner_reads_redacted_executable_reserved_hold(tmp_path) -> None:
     runtime = _seed(tmp_path)
     ledger = ResearchSpendLedger(runtime.spend_db_path)
     before_events = ledger.events("run-1")
@@ -204,7 +204,7 @@ def test_owner_reads_redacted_non_executable_reserved_hold(tmp_path) -> None:
     body = response.json()
     assert body["command_state"] == "ambiguous"
     assert body["next_action"] == "release_proven_unsent"
-    assert body["action_executable"] is False
+    assert body["action_executable"] is True
     assert body["held_cents"] == 80
     assert body["holds"] == [
         {
@@ -354,6 +354,84 @@ def test_canonical_app_exposes_injected_provider_authority_resolver() -> None:
     assert app.state.distillation_provider_authority_resolver is resolver
 
 
+@pytest.mark.parametrize("target_state", ["dispatch_possible", "unknown"])
+def test_view_reports_provider_action_only_for_configured_server_resolver(
+    tmp_path, target_state
+) -> None:
+    runtime = _seed(tmp_path)
+    ledger = ResearchSpendLedger(runtime.spend_db_path)
+    command = DistillationDispatchJournal(runtime.command_db_path).load("evt-request")
+    assert command.hold_id is not None
+    ledger.mark_dispatch_possible("mark-send", command.hold_id)
+    if target_state == "unknown":
+        ledger.mark_unknown("mark-unknown", command.hold_id, {"timeout": True})
+    availability_calls = 0
+    resolution_calls = 0
+
+    class Resolver:
+        def available_for(self, **_identity):
+            nonlocal availability_calls
+            availability_calls += 1
+            return True
+
+        def __call__(self, **_identity):
+            nonlocal resolution_calls
+            resolution_calls += 1
+            raise AssertionError("the read model must not resolve provider authority")
+
+    runtime = DistillationReconciliationRuntime(
+        runtime.command_db_path,
+        runtime.spend_db_path,
+        Resolver(),
+    )
+    response = TestClient(_app(runtime, owner_id="owner-1", method="bearer_token")).get(
+        "/research/distillation/commands/evt-request/reconciliation"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["next_action"] == "provider_lookup_required"
+    assert response.json()["action_executable"] is True
+    assert availability_calls == 1
+    assert resolution_calls == 0
+
+
+def test_view_and_action_fail_closed_when_resolver_rejects_exact_hold(tmp_path) -> None:
+    runtime = _seed(tmp_path)
+    ledger = ResearchSpendLedger(runtime.spend_db_path)
+    command = DistillationDispatchJournal(runtime.command_db_path).load("evt-request")
+    assert command.hold_id is not None
+    ledger.mark_dispatch_possible("mark-send", command.hold_id)
+    resolution_calls = 0
+
+    class Resolver:
+        def available_for(self, **_identity):
+            return False
+
+        def __call__(self, **_identity):
+            nonlocal resolution_calls
+            resolution_calls += 1
+            raise AssertionError("unavailable authority must never resolve")
+
+    runtime = DistillationReconciliationRuntime(
+        runtime.command_db_path,
+        runtime.spend_db_path,
+        Resolver(),
+    )
+    client = TestClient(_app(runtime, owner_id="owner-1", method="bearer_token"))
+    view = client.get("/research/distillation/commands/evt-request/reconciliation")
+    action = client.post(
+        "/research/distillation/commands/evt-request/reconciliation/actions/check-provider",
+        json=_provider_terms(runtime, state="dispatch_possible"),
+    )
+
+    assert view.status_code == 200
+    assert view.json()["action_executable"] is False
+    assert action.status_code == 409
+    assert action.json() == {"detail": "reconciliation action conflicts"}
+    assert resolution_calls == 0
+    assert ledger.balance("run-1").held_cents == 80
+
+
 def _release_terms(**overrides) -> dict[str, object]:
     terms: dict[str, object] = {
         "expected_command_state": "ambiguous",
@@ -393,20 +471,24 @@ def _provider_runtime(
     approval_id = history.items[0].approval_id
     assert approval_id is not None
 
-    def resolve(**identity):
-        resolver_calls.append(identity)
-        return DistillationProviderReconciliationAuthority(
-            adapter=adapter,
-            projection_request=_projection_request(),
-            approval_id=approval_id,
-            projector=_project,
-            route_authorizer=_route_authorizer,
-        )
+    class Resolver:
+        def available_for(self, **_identity):
+            return True
+
+        def __call__(self, **identity):
+            resolver_calls.append(identity)
+            return DistillationProviderReconciliationAuthority(
+                adapter=adapter,
+                projection_request=_projection_request(),
+                approval_id=approval_id,
+                projector=_project,
+                route_authorizer=_route_authorizer,
+            )
 
     return DistillationReconciliationRuntime(
         runtime.command_db_path,
         runtime.spend_db_path,
-        resolve,
+        Resolver(),
     )
 
 

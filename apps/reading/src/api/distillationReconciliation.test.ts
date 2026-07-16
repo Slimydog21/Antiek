@@ -4,7 +4,9 @@ vi.mock("../lib/api", () => ({ API_BASE: "", apiFetch: vi.fn() }));
 
 import { apiFetch } from "../lib/api";
 import {
+  checkProviderOutcome,
   getDistillationReconciliation,
+  providerCheckTerms,
   releaseProvenUnsentHold,
   reservedReleaseTerms,
   type DistillationReconciliation,
@@ -27,7 +29,7 @@ function view(): DistillationReconciliation {
     held_cents: 80,
     available_cents: 120,
     next_action: "release_proven_unsent",
-    action_executable: false,
+    action_executable: true,
     holds: [
       {
         fallback_index: 0,
@@ -66,9 +68,27 @@ describe("distillation reconciliation API", () => {
     expect(() => reservedReleaseTerms(unsafe)).toThrow("not authorized");
   });
 
+  it("derives provider-check terms only from executable server capability", () => {
+    const providerView = view();
+    providerView.next_action = "provider_lookup_required";
+    providerView.holds[0].state = "unknown";
+    expect(providerCheckTerms(providerView)).toEqual({
+      expected_command_state: "ambiguous",
+      expected_spend_run_id: "run-1",
+      expected_fallback_chain_id: "chain-1",
+      expected_manifest_sha256: "a".repeat(64),
+      expected_fallback_index: 0,
+      expected_hold_id: "hold-1",
+      expected_hold_state: "unknown",
+    });
+    providerView.action_executable = false;
+    expect(() => providerCheckTerms(providerView)).toThrow("not authorized");
+  });
+
   it("posts the exact reviewed terms and strictly parses the result", async () => {
     const responseView = view();
     responseView.next_action = "none";
+    responseView.action_executable = false;
     responseView.held_cents = 0;
     responseView.holds[0].state = "released";
     mockFetch.mockResolvedValue(
@@ -84,10 +104,63 @@ describe("distillation reconciliation API", () => {
     );
   });
 
+  it("posts exact provider-check terms without transport authority fields", async () => {
+    const providerView = view();
+    providerView.next_action = "provider_lookup_required";
+    providerView.holds[0].state = "dispatch_possible";
+    const terms = providerCheckTerms(providerView);
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify(providerView), { status: 200 }),
+    );
+
+    await expect(checkProviderOutcome("evt/request", terms)).resolves.toEqual(
+      providerView,
+    );
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("evt%2Frequest/reconciliation/actions/check-provider"),
+      expect.objectContaining({ method: "POST", body: JSON.stringify(terms) }),
+    );
+    expect(JSON.stringify(terms)).not.toMatch(/endpoint|evidence|actual_cents|provider/);
+  });
+
   it("rejects malformed read responses", async () => {
     mockFetch.mockResolvedValue(
-      new Response(JSON.stringify({ ...view(), action_executable: true }), { status: 200 }),
+      new Response(JSON.stringify({ ...view(), action_executable: false }), { status: 200 }),
     );
+    await expect(getDistillationReconciliation("evt-request")).rejects.toThrow(
+      "Invalid reconciliation response",
+    );
+  });
+
+  it("rejects contradictory terminal executability", async () => {
+    const malformed = view();
+    malformed.next_action = "none";
+    malformed.action_executable = true;
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify(malformed), { status: 200 }),
+    );
+    await expect(getDistillationReconciliation("evt-request")).rejects.toThrow(
+      "Invalid reconciliation response",
+    );
+  });
+
+  it.each([
+    ["next_action", "invented_action"],
+    ["hold_state", "invented_state"],
+    ["evidence_requirement", "invented_evidence"],
+  ])("rejects unknown %s values", async (field, unknownValue) => {
+    const malformed = view() as DistillationReconciliation;
+    if (field === "next_action") {
+      Object.assign(malformed, { next_action: unknownValue });
+    } else if (field === "hold_state") {
+      Object.assign(malformed.holds[0], { state: unknownValue });
+    } else {
+      Object.assign(malformed.holds[0], { evidence_requirement: unknownValue });
+    }
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify(malformed), { status: 200 }),
+    );
+
     await expect(getDistillationReconciliation("evt-request")).rejects.toThrow(
       "Invalid reconciliation response",
     );
