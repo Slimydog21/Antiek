@@ -71,6 +71,7 @@ def _qualification(status: EvidenceStatus = EvidenceStatus.PASS) -> ProviderQual
 def test_checked_in_provider_registry_is_closed_and_refuses_all_candidates() -> None:
     qualifications = load_provider_qualifications()
     assert {item.provider for item in qualifications} == {
+        "aws-bedrock",
         "exa",
         "openai",
         "perplexity",
@@ -89,6 +90,28 @@ def test_checked_in_provider_registry_is_closed_and_refuses_all_candidates() -> 
         }
         for item in qualifications
     )
+
+
+def test_bedrock_refusal_preserves_passes_but_blocks_on_exact_reconciliation() -> None:
+    qualification = next(
+        item
+        for item in load_provider_qualifications()
+        if item.provider == "aws-bedrock"
+    )
+
+    assert qualification.evidence["durable_idempotency"].status is EvidenceStatus.PASS
+    assert qualification.evidence["hidden_retries_disabled"].status is EvidenceStatus.PASS
+    assert qualification.evidence["pinned_pricing"].status is EvidenceStatus.UNPROVEN
+    assert (
+        qualification.evidence["authoritative_reconciliation"].status
+        is EvidenceStatus.FAIL
+    )
+    assert (
+        qualification.evidence["stable_provider_evidence"].status
+        is EvidenceStatus.UNPROVEN
+    )
+    assert qualification.verdict is QualificationVerdict.REFUSED
+    assert not qualification.fully_qualified
 
 
 def test_direct_qualification_requires_every_evidence_dimension() -> None:

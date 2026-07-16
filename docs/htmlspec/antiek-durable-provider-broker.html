@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Antiek Durable Provider Broker</title>
+</head>
+<body>
+  <main>
+    <h1>Antiek Durable Provider Broker</h1>
+    <p><strong>Status:</strong> Proposed execution master spec. No provider is qualified by this document.</p>
+
+    <section>
+      <h2>Problem</h2>
+      <p>Direct model APIs commonly return their durable operation identity only after accepting a billable request. If that response is lost, Antiek cannot distinguish charged from not sent. Provider idempotency prevents duplicate work but is insufficient unless the provider also supports authoritative lookup and not-found by the same caller key.</p>
+    </section>
+
+    <section>
+      <h2>Boundary decision</h2>
+      <p>Create an Antiek-owned broker as the qualified provider boundary. The broker durably records Antiek's idempotency identity and maximum authorization before upstream transport, owns the upstream ambiguity risk, and exposes exact reconciliation by the original key. The research gateway remains unchanged and continues to treat unknown as fully held.</p>
+      <ul>
+        <li>The broker is not a pass-through HTTP proxy.</li>
+        <li>The broker never trusts client-supplied provider outcome or cost.</li>
+        <li>The broker cannot increase the approved ceiling or switch provider/model after authorization.</li>
+        <li>The broker's qualified charge is bounded by the authorization it accepted, even if its upstream cost is higher.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Durable state machine</h2>
+      <ol>
+        <li><code>authorized</code>: exact owner, operation digest, provider route, maximum cents, expiry, and idempotency key committed; no upstream boundary crossed.</li>
+        <li><code>dispatch_possible</code>: committed before the one upstream call. This state can never return authoritative not-found.</li>
+        <li><code>upstream_bound</code>: provider operation identity and accepted timestamp durably recorded.</li>
+        <li><code>unknown</code>: upstream outcome cannot yet be proven; full client authorization remains reserved.</li>
+        <li><code>charged</code>: terminal signed evidence includes exact client charge cents, upstream evidence digest, output digest, and completion identity.</li>
+        <li><code>not_found</code>: terminal only from an unexpired <code>authorized</code> record with a database-proven absence of the upstream-send marker.</li>
+      </ol>
+      <p>Every transition is conditional, append-audited, idempotent, and bound to one canonical operation digest. Terminal rows are immutable.</p>
+    </section>
+
+    <section>
+      <h2>API contract</h2>
+      <h3>Create</h3>
+      <p><code>POST /v1/provider-operations</code> requires a provider-authenticated caller, deterministic idempotency key, canonical operation digest, exact qualified route, bounded usage, maximum charge cents, and signed Antiek authorization. Replaying identical bytes returns the same operation; changed bytes return conflict.</p>
+      <h3>Lookup</h3>
+      <p><code>GET /v1/provider-operations/by-idempotency/{key}</code> returns one signed redacted state and exact charge evidence. Create and lookup serialize on the same tenant/key lock. Missing is authoritative only after acquiring that lock and a primary-database transaction proves no row ever existed for that tenant/key; access failures, lock timeout, replica lag, integrity failure, and timeout are unknown, never not-found.</p>
+      <h3>Output</h3>
+      <p>Generated content is fetched separately through an expiring owner-scoped artifact reference. Reconciliation responses never include prompts, credentials, raw provider errors, or content.</p>
+    </section>
+
+    <section>
+      <h2>One-send transport</h2>
+      <ol>
+        <li>Acquire a per-operation process and database lease.</li>
+        <li>Re-read authorization and route qualification from the primary database.</li>
+        <li>Commit <code>dispatch_possible</code> and an immutable attempt identity.</li>
+        <li>Call upstream exactly once with SDK retries disabled and a provider idempotency token where supported.</li>
+        <li>Persist provider identity and evidence before publishing completion.</li>
+        <li>On any exception after the send marker, retain unknown. Recovery may replay the byte-identical upstream create only when the qualified provider durably enforces the same idempotency token and returns the original operation identity; otherwise the route is ineligible. No generic worker may alter or independently retry the request.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Charge policy</h2>
+      <p>The broker accepts a maximum client charge before dispatch. Terminal client charge is the lesser of that authorization and the deterministic price function over provider evidence. Upstream overage is broker loss, not a retroactive user charge. Pricing snapshots are signed, versioned, currency-pinned, and expire. Zero, malformed, missing, or contradictory usage remains unknown until operator-reviewed recovery.</p>
+    </section>
+
+    <section>
+      <h2>Security and tenancy</h2>
+      <ul>
+        <li>Mutual service authentication; tenant derives from credentials, never request body.</li>
+        <li>Per-tenant uniqueness on idempotency key and operation digest.</li>
+        <li>Envelope-encrypted upstream credentials with provider- and environment-scoped access.</li>
+        <li>Outbound endpoint allowlist and DNS/TLS pinning policy; no request-selected URL.</li>
+        <li>Signed reconciliation receipts bind issuer, audience, tenant, idempotency key, operation digest, provider route, authorization cents/currency, pricing snapshot/version, state, charge evidence digest, issued/not-before/expiry times, nonce, key ID, algorithm, and rotation overlap.</li>
+        <li>Redacted structured logs; prompts, outputs, secrets, and raw headers excluded.</li>
+        <li>Rate, concurrency, and maximum-authorization limits enforced before durable acceptance.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Failure matrix</h2>
+      <table>
+        <thead><tr><th>Failure</th><th>Required state</th><th>Permitted recovery</th></tr></thead>
+        <tbody>
+          <tr><td>Crash before authorization commit</td><td>Absent</td><td>Caller may retry create.</td></tr>
+          <tr><td>Crash after authorization, before send marker</td><td>Authorized</td><td>Lease successor may dispatch once.</td></tr>
+          <tr><td>Crash after send marker, before upstream call</td><td>Dispatch possible</td><td>Replay byte-identical create only through a provider-qualified durable idempotency token; recover the same operation identity or retain unknown.</td></tr>
+          <tr><td>Lost upstream response</td><td>Unknown</td><td>Lookup by upstream or caller identity; retain full authorization.</td></tr>
+          <tr><td>Database unavailable during lookup</td><td>Unknown to caller</td><td>Retry read; never return not-found.</td></tr>
+          <tr><td>Signing key unavailable</td><td>Persisted truth unchanged</td><td>Fail response; never emit unsigned evidence.</td></tr>
+          <tr><td>Charge exceeds authorization</td><td>Charged at authorization cap</td><td>Broker records loss and blocks route pending review.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Execution sprints</h2>
+      <ol>
+        <li><strong>BRK-01: Protocol and canonicalization.</strong> Typed request/receipt schemas, canonical digests, signature envelope, enum-closed parsing, and golden vectors.</li>
+        <li><strong>BRK-02: Primary ledger.</strong> Transactional schema, state transitions, idempotent commands, tenant/key serialization shared by create and lookup, primary-only authoritative lookup, migrations, and integrity verifier.</li>
+        <li><strong>BRK-03: Worker lease.</strong> Per-operation flock/database lease, dispatch marker, cancellation-safe release, crash recovery, and no-resend invariant.</li>
+        <li><strong>BRK-04: First upstream adapter.</strong> One exact provider/model/region/currency/pricing route with fixed endpoint, bounded request, automatic retries disabled, provider-enforced idempotent replay for ambiguous creates, evidence parser, and no generic recovery claims.</li>
+        <li><strong>BRK-05: Signed reconciliation API.</strong> Tenant auth, exact-key lookup, terminal evidence, unknown behavior, key rotation, replay protection, and redaction.</li>
+        <li><strong>BRK-06: Antiek resolver composition.</strong> Verify broker qualification, signatures, pricing snapshot, and route identity before exposing Cycle 98 capability.</li>
+        <li><strong>BRK-07: Fault campaign.</strong> Kill process at every checkpoint and socket boundary; corrupt, delay, duplicate, reorder, and substitute every identity and evidence field.</li>
+        <li><strong>BRK-08: Shadow rollout.</strong> Zero-cost fixtures, then broker-funded capped canary, manual reconciliation comparison, kill switch, and reviewed qualification expiry.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Qualification gate</h2>
+      <p>No route becomes <code>qualified</code> until every sprint is merged, a live sandbox fault campaign proves deterministic recovery, signed evidence independently recomputes charge, security review has zero unwaived real findings, and the machine-readable qualification has five passing dimensions with a short expiry. A broker deployment alone is not qualification.</p>
+    </section>
+  </main>
+</body>
+</html>

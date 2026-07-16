@@ -2,15 +2,16 @@
 
 **Status:** Refused for all evaluated paid routes
 
-**Checked:** 2026-07-13
+**Checked:** 2026-07-16
 
 **Contract:** `runtime/research_runner/provider_gateway.py`
 
 ## Decision
 
-Keep Exa Agent, Tavily Research, Perplexity Agent, and OpenAI Responses out of
-Antiek research hard-ceiling mode. They remain usable under the truthful stop
-limit contract. A route can enter hard mode only when primary provider evidence
+Keep Exa Agent, Tavily Research, Perplexity Agent, OpenAI Responses, and AWS
+Bedrock async invocation out of Antiek research hard-ceiling mode. They remain
+usable under the truthful stop-limit contract. A route can enter hard mode only
+when primary provider evidence
 proves all five requirements:
 
 1. pinned authoritative pricing for every bounded billing unit;
@@ -34,6 +35,7 @@ dimensions.
 | Tavily Research | Pass | Unproven | Unproven | Fail | Pass | Refused |
 | Perplexity Agent | Pass | Unproven | Unproven | Fail | Pass | Refused |
 | OpenAI Responses deep research | Pass | Unproven | Pass | Fail | Pass | Refused |
+| AWS Bedrock StartAsyncInvoke | Unproven | Pass | Pass | Fail | Unproven | Refused |
 
 Primary contracts checked:
 
@@ -60,6 +62,19 @@ Primary contracts checked:
   [background mode](https://developers.openai.com/api/docs/guides/background),
   [pricing](https://developers.openai.com/api/docs/pricing), and
   [SDK retries](https://github.com/openai/openai-python#retries).
+- AWS Bedrock `StartAsyncInvoke` has the strongest direct-provider identity contract
+  evaluated so far: it accepts a durable `clientRequestToken`, and AWS SDKs can
+  set maximum attempts to one. Its generic route does not pin one exact model,
+  region, currency snapshot, or complete billing-unit set. `ListAsyncInvokes` returns tokens but cannot
+  filter by one and documents no complete-retention boundary; `GetAsyncInvoke`
+  requires the generated invocation ARN and does not return exact charge cents.
+  A lost create response therefore cannot be reconciled into charged or
+  authoritative not-found from Antiek's key. See
+  [StartAsyncInvoke](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_StartAsyncInvoke.html),
+  [ListAsyncInvokes](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ListAsyncInvokes.html),
+  [GetAsyncInvoke](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_GetAsyncInvoke.html),
+  [retry behavior](https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html),
+  and [pricing](https://aws.amazon.com/bedrock/pricing/).
 
 ## Decisive failure trace
 
@@ -76,6 +91,25 @@ Primary contracts checked:
 Callbacks, streaming an early generated ID, per-operation API keys, and account
 usage deltas narrow or move the ambiguity window; none makes create acceptance
 and Antiek identity durable as one provider-enforced operation.
+
+Bedrock's caller token closes duplicate acceptance but not lookup. Scanning an
+unfiltered paginated list is not authoritative not-found without a provider
+guarantee that the list is complete for a bounded retention interval. Retrying
+the create solely to recover the ARN would invoke a create operation from a
+reconciliation-only path and is outside the gateway's no-send contract.
+
+## Durable broker direction
+
+The viable reversal is an Antiek-owned broker that durably commits the caller
+key and bounded authorization before any upstream call, exposes exact lookup by
+that key, performs one upstream send with SDK retries disabled, and persists the
+upstream identity and terminal charge evidence. The broker, rather than an
+unverifiable external create response, becomes Antiek's qualified provider
+boundary. It must absorb upstream ambiguity without releasing the user's hold,
+never claim authoritative not-found after an upstream send marker, and pass
+crash injection at every persistence/network boundary. The executable contract
+is specified in `docs/htmlspec/antiek-durable-provider-broker.html`; it does not
+qualify any route by itself.
 
 ## Reversal conditions
 
