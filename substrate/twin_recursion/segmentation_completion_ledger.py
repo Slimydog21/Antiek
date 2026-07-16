@@ -218,8 +218,7 @@ class SegmentationCompletionLedger:
             raise SegmentationCompletionIntegrityError("completion schema metadata changed")
         expected = {**TABLES, **TRIGGERS}
         rows = con.execute(
-            "SELECT name,sql FROM sqlite_master WHERE type IN ('table','trigger') "
-            "AND name NOT LIKE 'sqlite_%'"
+            "SELECT name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'"
         ).fetchall()
         actual = {str(row["name"]): _normalize_sql(str(row["sql"])) for row in rows}
         if set(actual) != set(expected):

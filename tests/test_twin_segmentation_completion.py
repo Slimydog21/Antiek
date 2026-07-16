@@ -18,6 +18,7 @@ from substrate.twin_note_taker import (
 )
 from substrate.twin_recursion.segmentation import build_segmentation_manifest
 from substrate.twin_recursion.segmentation_completion import (
+    AUTHORITY_KEYRING_ENV,
     COMPLETION_SCHEMA,
     AggregateCompletionReceipt,
     SegmentationCompletionError,
@@ -36,7 +37,10 @@ from substrate.twin_recursion.segmentation_ledger import TwinSegmentationLedger
 @pytest.fixture
 def signing_key(monkeypatch: pytest.MonkeyPatch) -> SigningKey:
     key = SigningKey.generate()
-    monkeypatch.setenv(AUTHORITY_VERIFY_KEY_ENV, base64.b64encode(bytes(key.verify_key)).decode())
+    encoded = base64.b64encode(bytes(key.verify_key)).decode()
+    key_id = "key_" + hashlib.sha256(bytes(key.verify_key)).hexdigest()
+    monkeypatch.setenv(AUTHORITY_VERIFY_KEY_ENV, encoded)
+    monkeypatch.setenv(AUTHORITY_KEYRING_ENV, json.dumps({key_id: encoded}))
     return key
 
 
@@ -290,6 +294,20 @@ def test_ready_read_rechecks_source_and_registry_but_survives_key_rotation(
         "acct", "book", manifest.parent_source_hash, asset=source, registry=registry
     )
     assert snapshot.completed_segments == snapshot.segment_count
+    monkeypatch.delenv(AUTHORITY_KEYRING_ENV)
+    with pytest.raises(SegmentationCompletionError, match="not trusted"):
+        ledger.get("acct", "book", manifest.parent_source_hash, asset=source, registry=registry)
+    monkeypatch.setenv(
+        AUTHORITY_KEYRING_ENV,
+        json.dumps(
+            {
+                "key_"
+                + hashlib.sha256(bytes(signing_key.verify_key)).hexdigest(): base64.b64encode(
+                    bytes(signing_key.verify_key)
+                ).decode()
+            }
+        ),
+    )
     with pytest.raises(ValueError, match="conflict"):
         ledger.get(
             "acct",
@@ -300,13 +318,10 @@ def test_ready_read_rechecks_source_and_registry_but_survives_key_rotation(
         )
 
 
-def test_unexpected_trigger_is_schema_corruption(tmp_path, source):
+def test_unexpected_index_is_schema_corruption(tmp_path, source):
     manifest, ledger, registry = _setup(tmp_path, source)
     with sqlite3.connect(tmp_path / "completion.sqlite") as con:
-        con.execute(
-            "CREATE TRIGGER exfiltrate_after_insert AFTER INSERT ON completion_manifests "
-            "BEGIN SELECT 1; END"
-        )
+        con.execute("CREATE INDEX unexpected_index ON completion_manifests(account_id)")
     with pytest.raises(SegmentationCompletionIntegrityError, match="object set"):
         ledger.get("acct", "book", manifest.parent_source_hash, asset=source, registry=registry)
 

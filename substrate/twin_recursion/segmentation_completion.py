@@ -15,6 +15,7 @@ from nacl.signing import VerifyKey
 from substrate.twin_note_taker import AUTHORITY_VERIFY_KEY_ENV, TwinProposal
 
 COMPLETION_SCHEMA = "antiek.twin-segment-completion.v1"
+AUTHORITY_KEYRING_ENV = "ANTIEK_TWIN_AUTHORITY_VERIFY_KEYRING"
 
 
 class SegmentationCompletionError(ValueError):
@@ -113,12 +114,28 @@ def verify_receipt(
         embedded_key = base64.b64decode(receipt.authority_verify_key, validate=True)
         if receipt.authority_key_id != "key_" + hashlib.sha256(embedded_key).hexdigest():
             raise SegmentationCompletionError("completion authority key identity is invalid")
+        configured = os.environ.get(AUTHORITY_VERIFY_KEY_ENV, "")
+        trusted_keys: dict[str, str] = {}
+        raw_keyring = os.environ.get(AUTHORITY_KEYRING_ENV, "")
+        if raw_keyring:
+            decoded_keyring = json.loads(raw_keyring)
+            if not isinstance(decoded_keyring, dict) or not all(
+                isinstance(key, str) and isinstance(value, str)
+                for key, value in decoded_keyring.items()
+            ):
+                raise SegmentationCompletionError("completion authority keyring is invalid")
+            trusted_keys = decoded_keyring
+        if configured:
+            configured_bytes = base64.b64decode(configured, validate=True)
+            trusted_keys["key_" + hashlib.sha256(configured_bytes).hexdigest()] = configured
         if require_configured_key:
-            configured = os.environ.get(AUTHORITY_VERIFY_KEY_ENV, "")
             if not configured:
                 raise SegmentationCompletionError("completion authority verify key is unavailable")
-            if base64.b64decode(configured, validate=True) != embedded_key:
+            if configured_bytes != embedded_key:
                 raise SegmentationCompletionError("completion authority key is not configured")
+        trusted = trusted_keys.get(receipt.authority_key_id)
+        if trusted is None or base64.b64decode(trusted, validate=True) != embedded_key:
+            raise SegmentationCompletionError("completion authority key is not trusted")
         verify_key = VerifyKey(embedded_key)
         signature = base64.b64decode(receipt.signature, validate=True)
         verify_key.verify(receipt_payload(receipt), signature)
@@ -137,6 +154,7 @@ def completion_digest(
 
 __all__ = [
     "AggregateCompletionReceipt",
+    "AUTHORITY_KEYRING_ENV",
     "COMPLETION_SCHEMA",
     "SegmentCompletionReceipt",
     "SegmentationCompletionError",
