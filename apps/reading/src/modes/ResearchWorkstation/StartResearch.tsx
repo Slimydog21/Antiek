@@ -12,6 +12,7 @@ import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
 import type { ResearchTier } from "../../lib/api";
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
@@ -203,6 +204,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   const onAbsorbed = useCallback(
     (title: string) => {
       setAttach({ kind: "absorbed", title });
+      // Living-TV: absorbing source into the corpus is a curious glance.
+      emitWernerExperience("highlight");
       setQuestion((q) => {
         if (q.trim().length > 0) return q; // keep an explicit prompt
         setPromptDerived(true);
