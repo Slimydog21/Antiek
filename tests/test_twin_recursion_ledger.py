@@ -20,9 +20,9 @@ from substrate.twin_note_taker import (
     source_asset_receipt_hash,
 )
 from substrate.twin_recursion.ledger import (
+    TRIGGERS,
     FailureCode,
     SourceRevision,
-    TRIGGERS,
     TwinConflictError,
     TwinIntegrityError,
     TwinRecursionLedger,
