@@ -235,3 +235,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2 living-TV session | `823b9779a` | SessionBrandChrome residual doors invent |
 | Imagine invent polish v2 cascade plan | `cfb698eb4` | PlanEditor invent |
 | Imagine invent polish v2b html book float | `7dcb2f843` | ReadingCompanion invent refresh on green tip |
+| Imagine invent polish v2b arxiv dens | (next tip) | Sources invent refresh on green tip |
