@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Cycle 74: BYOK model route authority foundation</title></head>
+<body><main>
+<h1>BYOK model route authority foundation</h1>
+<p>Status: executable substrate slice. Parent: <code>docs/specs/byok-model-route-authority.md</code>.</p>
+<section><h2>Finding</h2><p>The existing generic text dispatcher is not a hard-ceiling provider gateway. Its fallback may execute a route different from the selected route, while generic OpenAI-compatible and Anthropic adapters provide neither provider idempotency nor authoritative billing reconciliation. A picker wired directly to <code>provider_override</code> would therefore overstate execution authority.</p></section>
+<section><h2>Outcome</h2><ul>
+<li>One shared server resolver accepts only <code>{authority:user_model, provider_id, model_id}</code>.</li>
+<li>Resolution reopens the durable registry and credential metadata and requires exact enabled record, exact model, exact credential pipeline/account binding, and live registration.</li>
+<li>Inventory distinguishes registered, tier-ready, route-authoritative, pricing-known, and hard-ceiling-executable states.</li>
+<li>All failures are value-free and no credential is decrypted during resolution.</li>
+</ul></section>
+<section><h2>Execution gate</h2><p>Resolved generic BYOK routes remain <code>hard_ceiling_eligible=false</code> until a text provider adapter supports send-once idempotency, authoritative reconciliation, exact-route holds, and fallback as a separately projected/reserved attempt. Start Research and collective launch must not expose the picker before that gate exists.</p></section>
+<section><h2>Acceptance</h2><ul>
+<li>Exact enabled binding resolves deterministically.</li><li>Unknown model pair, deleted/disabled record, stale registration, changed credential reference, unrelated credential, and malformed choice fail before provider calls.</li><li>Responses and durable files contain no key material.</li><li>Concurrent reads do not cache stale authority.</li><li>Focused tests, lint, strict security scan, and hostile review pass.</li>
+</ul></section>
+<section><h2>Next sub-spec</h2><ol><li>Add hard-ceiling adapters only for providers with stable idempotency and billing-status APIs.</li><li>Project and reserve each fallback route independently; never reuse the selected-route hold.</li><li>Persist requested route, resolved route, hold, actual dispatch route, and fallback index.</li><li>Then wire the existing <code>ModelDecisionBar</code> into Start Research and collective launch.</li></ol></section>
+</main></body></html>

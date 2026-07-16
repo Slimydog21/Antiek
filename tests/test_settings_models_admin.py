@@ -12,16 +12,20 @@ from __future__ import annotations
 
 import json
 import logging
+import stat
 import traceback
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
+import nacl.secret
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.settings_budget import register_settings_budget_routes
+from interfaces.research.api.settings_models_admin import UserModelRegistryIntegrityError
 from substrate.dispatch.base import ProviderError
 from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
 from substrate.dispatch.router import (
@@ -53,12 +57,8 @@ def _fresh_app() -> FastAPI:
 @pytest.fixture
 def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
-    monkeypatch.setenv(
-        "ANTIEK_USER_MODELS_PATH", str(tmp_path / "settings" / "user_models.json")
-    )
-    monkeypatch.setenv(
-        "ANTIEK_BYOK_ARTIFACT", str(tmp_path / "byok" / "credentials.enc")
-    )
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(tmp_path / "settings" / "user_models.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "byok" / "credentials.enc"))
     monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "byok" / "master.key"))
     reset_provider_registry()
     return tmp_path
@@ -79,6 +79,9 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     assert body["key_present"] is True
     assert body["registered"] is True
     assert body["enabled"] is True
+    assert body["route_eligible"] is True
+    assert body["pricing_status"] == "unknown"
+    assert body["hard_ceiling_eligible"] is False
     assert "api_key" not in body
 
     inv = client.get("/settings/models/user")
@@ -86,6 +89,7 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     rows = inv.json()["models"]
     assert [row["id"] for row in rows] == ["user-my-deepseek"]
     assert rows[0]["key_present"] is True
+    assert rows[0]["route_eligible"] is True
 
     # Registration proof through the SAME seam register_default_providers
     # populates: the existing inventory endpoint reads
@@ -93,11 +97,13 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     # provider route-ready until an explicit dispatch tier binds it.
     models = client.get("/settings/models")
     assert models.status_code == 200
-    row = next(
-        m for m in models.json()["models"] if m["provider_id"] == "user-my-deepseek"
-    )
+    row = next(m for m in models.json()["models"] if m["provider_id"] == "user-my-deepseek")
     assert row["registered"] is True
     assert row["ready"] is False
+    assert row["model_id"] == "deepseek-chat"
+    assert row["route_eligible"] is True
+    assert row["pricing_status"] == "unknown"
+    assert row["hard_ceiling_eligible"] is False
     assert row["tier_bindings"] == []
     assert row["notes"] == "registered, but not bound to an active dispatch tier"
 
@@ -108,6 +114,245 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     provider = get_provider("user-my-deepseek")
     assert provider._resolve_api_key() == _SECRET  # noqa: SLF001
     assert provider.base_url == "https://api.deepseek.com/v1"
+
+
+def test_exact_choice_resolves_but_execution_remains_hard_ceiling_blocked(
+    client: TestClient,
+) -> None:
+    created = client.post("/settings/models/user", json=_ADD_BODY)
+    assert created.status_code == 201
+    response = client.post(
+        "/settings/models/user/resolve",
+        json={
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "deepseek-chat",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "authority": "user_model",
+        "provider_id": "user-my-deepseek",
+        "model_id": "deepseek-chat",
+        "pricing_status": "unknown",
+        "hard_ceiling_eligible": False,
+        "execution_status": "blocked_missing_hard_ceiling_adapter",
+    }
+    assert _SECRET not in response.text
+    assert "cred" not in response.text
+
+
+@pytest.mark.parametrize(
+    "choice",
+    [
+        {"authority": "user_model", "provider_id": "user-my-deepseek", "model_id": "other"},
+        {"authority": "user_model", "provider_id": "user-other", "model_id": "deepseek-chat"},
+    ],
+)
+def test_non_exact_choice_fails_value_free(client: TestClient, choice: dict[str, str]) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    response = client.post("/settings/models/user/resolve", json=choice)
+    assert response.status_code == 409
+    assert response.json() == {"detail": "user model route is unavailable"}
+    assert all(value not in response.text for value in choice.values())
+
+
+def test_deleted_stale_and_credential_rebound_routes_fail_closed(
+    client: TestClient,
+    env: Path,
+) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    choice = {
+        "authority": "user_model",
+        "provider_id": "user-my-deepseek",
+        "model_id": "deepseek-chat",
+    }
+    client.app.state.registered_providers.discard("user-my-deepseek")
+    assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
+    stale_row = next(
+        row
+        for row in client.get("/settings/models").json()["models"]
+        if row["provider_id"] == "user-my-deepseek"
+    )
+    assert stale_row["registered"] is False
+    assert stale_row["route_eligible"] is False
+
+    client.app.state.registered_providers.add("user-my-deepseek")
+    path = env / "settings" / "user_models.json"
+    registry = json.loads(path.read_text())
+    registry["user-my-deepseek"]["cred_ref"] = "cred-x-missing"
+    path.write_text(json.dumps(registry))
+    assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
+
+    assert client.delete("/settings/models/user/user-my-deepseek").status_code == 200
+    assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
+
+
+def test_registry_mutation_cannot_borrow_stale_live_adapter(
+    client: TestClient,
+    env: Path,
+) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    path = env / "settings" / "user_models.json"
+    registry = json.loads(path.read_text())
+    registry["user-my-deepseek"]["model_id"] = "mutated-model"
+    registry["user-my-deepseek"]["base_url"] = "https://mutated.invalid/v1"
+    path.write_text(json.dumps(registry))
+    response = client.post(
+        "/settings/models/user/resolve",
+        json={
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "mutated-model",
+        },
+    )
+    assert response.status_code == 409
+    row = next(
+        item
+        for item in client.get("/settings/models").json()["models"]
+        if item["provider_id"] == "user-my-deepseek"
+    )
+    assert row["route_eligible"] is False
+    user_row = client.get("/settings/models/user").json()["models"][0]
+    assert user_row["route_eligible"] is False
+
+
+def test_same_name_adapter_replacement_revokes_route_authority(client: TestClient) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    replacement = OpenAICompatProvider(
+        name="user-my-deepseek",
+        base_url="https://replacement.invalid/v1",
+    )
+    register_provider(replacement)
+
+    choice = {
+        "authority": "user_model",
+        "provider_id": "user-my-deepseek",
+        "model_id": "deepseek-chat",
+    }
+    assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
+    generic_row = next(
+        item
+        for item in client.get("/settings/models").json()["models"]
+        if item["provider_id"] == "user-my-deepseek"
+    )
+    assert generic_row["route_eligible"] is False
+    user_row = client.get("/settings/models/user").json()["models"][0]
+    assert user_row["route_eligible"] is False
+
+
+def test_second_live_app_preserves_equivalent_route_authority(env: Path) -> None:
+    first_app = _fresh_app()
+    with TestClient(first_app) as first:
+        assert first.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+        choice = {
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "deepseek-chat",
+        }
+        assert first.post("/settings/models/user/resolve", json=choice).status_code == 200
+
+        second_app = _fresh_app()
+        with TestClient(second_app) as second:
+            assert second.post("/settings/models/user/resolve", json=choice).status_code == 200
+            assert first.post("/settings/models/user/resolve", json=choice).status_code == 200
+
+
+def test_ciphertext_substitution_revokes_route_and_cannot_reveal_other_key(
+    client: TestClient,
+    env: Path,
+) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    other_secret = "sk-BBBB-other-user-model-key-0987654321"
+    assert client.post(
+        "/settings/models/user",
+        json={
+            **_ADD_BODY,
+            "display_name": "Other Model",
+            "api_key": other_secret,
+        },
+    ).status_code == 201
+
+    registry = json.loads((env / "settings" / "user_models.json").read_text())
+    first_ref = registry["user-my-deepseek"]["cred_ref"]
+    other_ref = registry["user-other-model"]["cred_ref"]
+    artifact_path = env / "byok" / "credentials.enc"
+    artifact = json.loads(artifact_path.read_text())
+    artifact[first_ref]["ciphertext_hex"] = artifact[other_ref]["ciphertext_hex"]
+    artifact_path.write_text(json.dumps(artifact))
+
+    choice = {
+        "authority": "user_model",
+        "provider_id": "user-my-deepseek",
+        "model_id": "deepseek-chat",
+    }
+    response = client.post("/settings/models/user/resolve", json=choice)
+    assert response.status_code == 409
+    assert other_secret not in response.text
+    with pytest.raises(ProviderError) as exc_info:
+        get_provider("user-my-deepseek")._resolve_api_key()  # noqa: SLF001
+    assert other_secret not in str(exc_info.value)
+
+
+def test_concurrent_creates_preserve_registry_and_credential_artifact(
+    client: TestClient,
+    env: Path,
+) -> None:
+    def create(index: int) -> int:
+        response = client.post(
+            "/settings/models/user",
+            json={
+                **_ADD_BODY,
+                "display_name": f"Concurrent Model {index}",
+                "api_key": f"sk-concurrent-{index:02d}-abcdefghijklmnopqrstuvwxyz",
+            },
+        )
+        return response.status_code
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        statuses = list(pool.map(create, range(16)))
+
+    assert statuses == [201] * 16
+    registry = json.loads((env / "settings" / "user_models.json").read_text())
+    artifact = json.loads((env / "byok" / "credentials.enc").read_text())
+    assert len(registry) == 16
+    assert len(artifact) == 16
+    inventory = client.get("/settings/models/user").json()
+    assert inventory["count"] == 16
+    assert all(row["route_eligible"] is True for row in inventory["models"])
+
+
+def test_registry_permissions_are_repaired_and_symlink_is_rejected(
+    client: TestClient,
+    env: Path,
+) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    registry_path = env / "settings" / "user_models.json"
+    registry_path.chmod(0o644)
+    assert client.get("/settings/models/user").status_code == 200
+    assert stat.S_IMODE(registry_path.stat().st_mode) == 0o600
+
+    target = env / "settings" / "registry-target.json"
+    registry_path.rename(target)
+    registry_path.symlink_to(target)
+    with pytest.raises(RuntimeError, match="regular file"):
+        client.get("/settings/models/user")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"authority": "curated", "provider_id": "x", "model_id": "y"},
+        {"authority": "user_model", "provider_id": "x", "model_id": "y", "api_key": _SECRET},
+        ["user_model", "x", "y"],
+    ],
+)
+def test_malformed_choice_is_value_free(client: TestClient, body: object) -> None:
+    response = client.post("/settings/models/user/resolve", json=body)
+    assert response.status_code == 422
+    assert response.json() == {"detail": "model choice is invalid"}
+    assert _SECRET not in response.text
 
 
 def test_key_absent_from_responses_artifacts_and_logs(
@@ -238,10 +483,12 @@ def test_untrusted_endpoint_cannot_reflect_key_in_success_response(
             }
         else:
             payload = {
-                "choices": [{
-                    "message": {"content": f"answer {reflected}"},
-                    "finish_reason": "stop",
-                }],
+                "choices": [
+                    {
+                        "message": {"content": f"answer {reflected}"},
+                        "finish_reason": "stop",
+                    }
+                ],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1},
             }
         # Preserve an encoded credential in the raw wire response.  A raw
@@ -394,6 +641,42 @@ def test_boot_time_reload_of_user_providers(env: Path) -> None:
     reset_provider_registry()
 
 
+def test_boot_migrates_legacy_user_model_without_losing_authority(env: Path) -> None:
+    with TestClient(_fresh_app()) as first:
+        assert first.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+
+    registry_path = env / "settings" / "user_models.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    record = registry["user-my-deepseek"]
+    legacy_ref = record["cred_ref"]
+    record.pop("cred_fingerprint")
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    artifact_path = env / "byok" / "credentials.enc"
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    master_key = (env / "byok" / "master.key").read_bytes()
+    legacy_sealed = nacl.secret.SecretBox(master_key).encrypt(_SECRET.encode("utf-8"))
+    artifact[legacy_ref].pop("binding_version")
+    artifact[legacy_ref]["ciphertext_hex"] = bytes(legacy_sealed).hex()
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+    reset_provider_registry()
+    with TestClient(_fresh_app()) as reborn:
+        migrated = json.loads(registry_path.read_text(encoding="utf-8"))[
+            "user-my-deepseek"
+        ]
+        assert migrated["cred_ref"] != legacy_ref
+        assert len(migrated["cred_fingerprint"]) == 64
+        choice = {
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "deepseek-chat",
+        }
+        assert reborn.post("/settings/models/user/resolve", json=choice).status_code == 200
+        assert get_provider("user-my-deepseek")._resolve_api_key() == _SECRET  # noqa: SLF001
+    reset_provider_registry()
+
+
 def test_boot_reload_cannot_shadow_default_provider_from_corrupt_registry(
     env: Path,
 ) -> None:
@@ -417,10 +700,11 @@ def test_boot_reload_cannot_shadow_default_provider_from_corrupt_registry(
     app = _fresh_app()
     app.state.registered_providers = {"openrouter"}
 
-    with TestClient(app) as reborn:
-        assert get_provider("openrouter") is sentinel
-        assert reborn.get("/settings/models/user").json()["count"] == 0
-        assert app.state.registered_providers == {"openrouter"}
+    with pytest.raises(UserModelRegistryIntegrityError), TestClient(app):
+        pass
+    assert get_provider("openrouter") is sentinel
+    assert app.state.registered_providers == {"openrouter"}
+    assert json.loads(registry_path.read_text(encoding="utf-8"))["openrouter"] == shadow
     reset_provider_registry()
 
 
@@ -475,9 +759,7 @@ def test_credential_bearing_base_url_rejected_value_free(client: TestClient) -> 
         "https://:443/v1",  # empty hostname (truthy netloc, no host)
     ],
 )
-def test_malformed_base_url_is_clean_422_not_500(
-    client: TestClient, bad_url: str
-) -> None:
+def test_malformed_base_url_is_clean_422_not_500(client: TestClient, bad_url: str) -> None:
     # FINDING-1 round-2 regression: a malformed authority must be a clean,
     # value-free 422 — never an uncaught ValueError surfacing as HTTP 500.
     r = client.post("/settings/models/user", json={**_ADD_BODY, "base_url": bad_url})
@@ -517,17 +799,23 @@ def test_over_length_inputs_rejected_value_free(client: TestClient, env: Path) -
     assert not (env / "byok" / "credentials.enc").exists()
 
 
-def test_live_registry_corruption_surfaces_stale_registered(
-    client: TestClient, env: Path
+def test_live_registry_corruption_fails_closed_without_overwrite(
+    client: TestClient,
+    env: Path,
 ) -> None:
-    # FINDING-3 regression (live half): registry corrupted while the process
-    # is up -> inventory empties (lenient read must not crash) and the
-    # still-registered seam name is SURFACED as stale, not hidden.
     assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
-    (env / "settings" / "user_models.json").write_text("{corrupt", encoding="utf-8")
-    inv = client.get("/settings/models/user").json()
-    assert inv["count"] == 0
-    assert inv["stale_registered"] == ["user-my-deepseek"]
+    registry_path = env / "settings" / "user_models.json"
+    corrupt = b"{corrupt"
+    registry_path.write_bytes(corrupt)
+
+    with pytest.raises(UserModelRegistryIntegrityError):
+        client.get("/settings/models/user")
+    with pytest.raises(UserModelRegistryIntegrityError):
+        client.post(
+            "/settings/models/user",
+            json={**_ADD_BODY, "display_name": "Must Not Overwrite"},
+        )
+    assert registry_path.read_bytes() == corrupt
 
 
 def test_boot_reconcile_discards_stale_user_names(env: Path) -> None:
@@ -584,10 +872,14 @@ def test_disabled_record_is_not_registered_at_boot(env: Path) -> None:
 
     reset_provider_registry()
     with TestClient(_fresh_app()) as reborn:
-        ids = {
-            m["provider_id"] for m in reborn.get("/settings/models").json()["models"]
-        }
-        assert "user-my-deepseek" not in ids
+        row = next(
+            item
+            for item in reborn.get("/settings/models").json()["models"]
+            if item["provider_id"] == "user-my-deepseek"
+        )
+        assert row["registered"] is False
+        assert row["ready"] is False
+        assert row["route_eligible"] is False
         rows = reborn.get("/settings/models/user").json()["models"]
         assert rows[0]["enabled"] is False
         assert rows[0]["registered"] is False

@@ -58,12 +58,19 @@ without ever touching the key.
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import json
 import os
+import stat
+import threading
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
+import nacl.exceptions
 import nacl.secret
 import nacl.utils
 
@@ -72,6 +79,9 @@ from runtime.byok.secret_str import SecretStr
 _DEFAULT_ARTIFACT_NAME = "credentials.enc"
 _KEY_SIZE = nacl.secret.SecretBox.KEY_SIZE  # 32
 _KEY_FILE_MODE = 0o600
+_BOUND_CREDENTIAL_VERSION = 2
+_BINDING_PERSON = b"antiek-byok-v2"
+_STORE_LOCK = threading.RLock()
 
 _ENV_ARTIFACT = "ANTIEK_BYOK_ARTIFACT"
 _ENV_KEY_FILE = "ANTIEK_BYOK_KEY_FILE"
@@ -102,6 +112,43 @@ class CredentialMetadata:
     cred_id: str
     account_handle: str
     pipeline_kind: str | None = None
+    binding_version: int = 1
+    artifact_fingerprint: str = ""
+
+
+class CredentialIntegrityError(ValueError):
+    """Stored credential bytes no longer match their authenticated identity."""
+
+
+def _bound_key(
+    master: bytes,
+    *,
+    cred_id: str,
+    account_handle: str,
+    pipeline_kind: str | None,
+) -> bytes:
+    """Derive a SecretBox key bound to one immutable credential identity."""
+    identity = json.dumps(
+        {
+            "account_handle": account_handle,
+            "cred_id": cred_id,
+            "pipeline_kind": pipeline_kind,
+            "version": _BOUND_CREDENTIAL_VERSION,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.blake2b(
+        identity,
+        key=master,
+        digest_size=nacl.secret.SecretBox.KEY_SIZE,
+        person=_BINDING_PERSON,
+    ).digest()
+
+
+def _artifact_fingerprint(record: dict[str, object]) -> str:
+    canonical = json.dumps(record, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def _load_master_key(key_bytes: bytes | None, key_file: str | None) -> bytes:
@@ -117,37 +164,122 @@ def _load_master_key(key_bytes: bytes | None, key_file: str | None) -> bytes:
         return key_bytes
     kf = key_file or _default_key_file()
     path = Path(kf)
-    if path.exists():
-        data = path.read_bytes()
-        if len(data) != _KEY_SIZE:
-            raise ValueError(f"key file {kf} is not {_KEY_SIZE} bytes")
-        return data
-    key = nacl.utils.random(_KEY_SIZE)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _KEY_FILE_MODE)
-    try:
-        os.write(fd, key)
-    finally:
-        os.close(fd)
-    os.chmod(str(path), _KEY_FILE_MODE)
-    return key
+    _ensure_directory(path.parent)
+    with _STORE_LOCK, _artifact_lock(str(path), exclusive=True):
+        if path.exists() or path.is_symlink():
+            info = path.lstat()
+            if not stat.S_ISREG(info.st_mode):
+                raise ValueError(f"key file {kf} must be a regular file")
+            if hasattr(os, "getuid") and info.st_uid != os.getuid():
+                raise PermissionError(f"key file {kf} must be owned by this user")
+            if stat.S_IMODE(info.st_mode) != _KEY_FILE_MODE:
+                os.chmod(path, _KEY_FILE_MODE)
+            data = path.read_bytes()
+            if len(data) != _KEY_SIZE:
+                raise ValueError(f"key file {kf} is not {_KEY_SIZE} bytes")
+            return data
+
+        key = nacl.utils.random(_KEY_SIZE)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(str(path), flags, _KEY_FILE_MODE)
+        try:
+            os.write(fd, key)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.chmod(path, _KEY_FILE_MODE)
+        _fsync_directory(path.parent)
+        return key
 
 
 def _read_artifact(artifact_path: str) -> dict:
     p = Path(artifact_path)
     if not p.exists():
+        if p.is_symlink():
+            raise CredentialIntegrityError("credential artifact must be a regular file")
         return {}
+    _secure_private_file(p, label="credential artifact")
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (ValueError, OSError):
-        return {}
+    except (ValueError, OSError) as exc:
+        raise CredentialIntegrityError(
+            "credential artifact is unreadable; refusing mutation"
+        ) from exc
+    if not isinstance(data, dict):
+        raise CredentialIntegrityError(
+            "credential artifact root must be an object; refusing mutation"
+        )
+    return data
+
+
+def _fsync_directory(directory: Path) -> None:
+    fd = os.open(str(directory), os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _ensure_directory(directory: Path) -> None:
+    missing: list[Path] = []
+    current = directory
+    while not current.exists():
+        missing.append(current)
+        if current.parent == current:
+            break
+        current = current.parent
+    for item in reversed(missing):
+        item.mkdir(exist_ok=True)
+        _fsync_directory(item)
+        _fsync_directory(item.parent)
+
+
+def _secure_private_file(path: Path, *, label: str) -> None:
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode):
+        raise CredentialIntegrityError(f"{label} must be a regular file")
+    if hasattr(os, "getuid") and info.st_uid != os.getuid():
+        raise PermissionError(f"{label} must be owned by this user")
+    if stat.S_IMODE(info.st_mode) != _KEY_FILE_MODE:
+        os.chmod(path, _KEY_FILE_MODE)
+
+
+@contextmanager
+def _artifact_lock(artifact_path: str, *, exclusive: bool) -> Iterator[None]:
+    lock_path = Path(f"{artifact_path}.lock")
+    _ensure_directory(lock_path.parent)
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(str(lock_path), flags, _KEY_FILE_MODE)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 def _write_artifact(artifact_path: str, data: dict) -> None:
     p = Path(artifact_path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    _ensure_directory(p.parent)
+    temporary = p.with_name(f".{p.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    fd = os.open(
+        str(temporary),
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        _KEY_FILE_MODE,
+    )
+    try:
+        payload = json.dumps(data, indent=2, sort_keys=True).encode("utf-8")
+        with os.fdopen(fd, "wb", closefd=False) as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, p)
+        os.chmod(p, _KEY_FILE_MODE)
+        _fsync_directory(p.parent)
+    finally:
+        os.close(fd)
+        with suppress(FileNotFoundError):
+            temporary.unlink()
 
 
 def store_credential(
@@ -171,18 +303,27 @@ def store_credential(
     handle = account_handle.lstrip("@")
     artifact = artifact_path or _default_artifact_path()
     master = _load_master_key(key_bytes, key_file)
-    box = nacl.secret.SecretBox(master)
-    sealed = box.encrypt(secret.encode("utf-8"))
     cred_id = f"cred-x-{uuid.uuid4().hex[:16]}"
+    box = nacl.secret.SecretBox(
+        _bound_key(
+            master,
+            cred_id=cred_id,
+            account_handle=handle,
+            pipeline_kind=pipeline_kind,
+        )
+    )
+    sealed = box.encrypt(secret.encode("utf-8"))
 
-    data = _read_artifact(artifact)
-    data[cred_id] = {
-        "cred_id": cred_id,
-        "account_handle": handle,
-        "pipeline_kind": pipeline_kind,
-        "ciphertext_hex": bytes(sealed).hex(),
-    }
-    _write_artifact(artifact, data)
+    with _STORE_LOCK, _artifact_lock(artifact, exclusive=True):
+        data = _read_artifact(artifact)
+        data[cred_id] = {
+            "cred_id": cred_id,
+            "account_handle": handle,
+            "pipeline_kind": pipeline_kind,
+            "binding_version": _BOUND_CREDENTIAL_VERSION,
+            "ciphertext_hex": bytes(sealed).hex(),
+        }
+        _write_artifact(artifact, data)
     return cred_id
 
 
@@ -200,14 +341,44 @@ def load_credential(
     NEVER logged / emitted by this function — it is handed back wrapped.
     """
     artifact = artifact_path or _default_artifact_path()
-    data = _read_artifact(artifact)
-    rec = data.get(cred_id)
-    if rec is None:
+    artifact_file = Path(artifact)
+    if not artifact_file.exists() and not artifact_file.is_symlink():
         raise KeyError(f"unknown cred_id: {cred_id}")
-    master = _load_master_key(key_bytes, key_file)
-    box = nacl.secret.SecretBox(master)
-    sealed = bytes.fromhex(rec["ciphertext_hex"])
-    plaintext = box.decrypt(sealed).decode("utf-8")
+    with _STORE_LOCK, _artifact_lock(artifact, exclusive=False):
+        data = _read_artifact(artifact)
+    rec = data.get(cred_id)
+    if not isinstance(rec, dict) or rec.get("cred_id") != cred_id:
+        raise KeyError(f"unknown cred_id: {cred_id}")
+    try:
+        account_handle = rec["account_handle"]
+        pipeline_kind = rec.get("pipeline_kind")
+        binding_version = rec.get("binding_version", 1)
+        if not isinstance(account_handle, str) or (
+            pipeline_kind is not None and not isinstance(pipeline_kind, str)
+        ):
+            raise CredentialIntegrityError("credential metadata is invalid")
+        if not isinstance(binding_version, int) or isinstance(binding_version, bool):
+            raise CredentialIntegrityError("credential binding version is invalid")
+        master = _load_master_key(key_bytes, key_file)
+        if binding_version == _BOUND_CREDENTIAL_VERSION:
+            key = _bound_key(
+                master,
+                cred_id=cred_id,
+                account_handle=account_handle,
+                pipeline_kind=pipeline_kind,
+            )
+        elif binding_version == 1:
+            # Legacy credentials remain readable for non-routing consumers.
+            # New user-model route authority requires v2 below its own seam.
+            key = master
+        else:
+            raise CredentialIntegrityError("credential binding version is unsupported")
+        sealed = bytes.fromhex(rec["ciphertext_hex"])
+        plaintext = nacl.secret.SecretBox(key).decrypt(sealed).decode("utf-8")
+    except (KeyError, TypeError, ValueError, nacl.exceptions.CryptoError) as exc:
+        if isinstance(exc, CredentialIntegrityError):
+            raise
+        raise CredentialIntegrityError("credential integrity check failed") from exc
     return SecretStr(plaintext)
 
 
@@ -218,14 +389,33 @@ def list_credentials(
     """List the NON-SECRET metadata for every stored credential. Never decrypts,
     never touches the key — safe to call from a config/listing surface."""
     artifact = artifact_path or _default_artifact_path()
-    data = _read_artifact(artifact)
+    artifact_file = Path(artifact)
+    if not artifact_file.exists() and not artifact_file.is_symlink():
+        return []
+    with _STORE_LOCK, _artifact_lock(artifact, exclusive=False):
+        data = _read_artifact(artifact)
     out: list[CredentialMetadata] = []
-    for rec in data.values():
+    for cred_id, rec in data.items():
+        if (
+            not isinstance(rec, dict)
+            or rec.get("cred_id") != cred_id
+            or not isinstance(rec.get("account_handle"), str)
+            or (
+                rec.get("pipeline_kind") is not None
+                and not isinstance(rec.get("pipeline_kind"), str)
+            )
+        ):
+            continue
+        binding_version = rec.get("binding_version", 1)
+        if not isinstance(binding_version, int) or isinstance(binding_version, bool):
+            continue
         out.append(
             CredentialMetadata(
-                cred_id=rec["cred_id"],
+                cred_id=cred_id,
                 account_handle=rec["account_handle"],
                 pipeline_kind=rec.get("pipeline_kind"),
+                binding_version=binding_version,
+                artifact_fingerprint=_artifact_fingerprint(rec),
             )
         )
     out.sort(key=lambda m: m.cred_id)
@@ -234,6 +424,7 @@ def list_credentials(
 
 __all__ = [
     "CredentialMetadata",
+    "CredentialIntegrityError",
     "store_credential",
     "load_credential",
     "list_credentials",

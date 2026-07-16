@@ -79,18 +79,26 @@ the explicit follow-up that grants these registered providers route authority.
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import json
 import os
 import re
+import stat
+import threading
+import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from runtime.byok.store import (
+    CredentialIntegrityError,
     CredentialMetadata,
     list_credentials,
     load_credential,
@@ -99,16 +107,22 @@ from runtime.byok.store import (
 from substrate.dispatch.base import Provider, ProviderError
 from substrate.dispatch.providers.anthropic import AnthropicProvider
 from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
-from substrate.dispatch.router import register_provider
+from substrate.dispatch.router import get_provider, register_provider
 
 _ENV_REGISTRY_PATH = "ANTIEK_USER_MODELS_PATH"
 _ENV_HOME = "ANTIEK_HOME"
 
 _PIPELINE_KIND = "model_provider"
 _ID_PREFIX = "user-"
+_REGISTRY_LOCK = threading.RLock()
+_PRIVATE_FILE_MODE = 0o600
 
 ProviderKind = Literal["openai_compat", "anthropic"]
 _PROVIDER_KINDS: tuple[str, ...] = ("openai_compat", "anthropic")
+
+
+class UserModelRegistryIntegrityError(RuntimeError):
+    """Durable model authority is corrupt and must not be overwritten."""
 
 # Shortest real provider keys are far longer; this catches truncated pastes
 # without rejecting any legitimate key format.
@@ -139,6 +153,7 @@ class UserModelRecord(BaseModel):
     display_name: str
     base_url: str | None = None
     cred_ref: str
+    cred_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     enabled: bool = True
 
 
@@ -151,41 +166,143 @@ def _registry_path() -> Path:
     return base / "settings" / "user_models.json"
 
 
-def _load_registry() -> dict[str, UserModelRecord]:
-    """Lenient read, mirroring ``store._read_artifact``: a missing or
-    corrupt file yields an empty registry rather than a crashed boot."""
+def _fsync_directory(directory: Path) -> None:
+    fd = os.open(str(directory), os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _ensure_directory(directory: Path) -> None:
+    missing: list[Path] = []
+    current = directory
+    while not current.exists():
+        missing.append(current)
+        if current.parent == current:
+            break
+        current = current.parent
+    for item in reversed(missing):
+        item.mkdir(exist_ok=True)
+        _fsync_directory(item)
+        _fsync_directory(item.parent)
+
+
+def _secure_registry_file(path: Path) -> None:
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode):
+        raise RuntimeError("user-model registry must be a regular file")
+    if hasattr(os, "getuid") and info.st_uid != os.getuid():
+        raise PermissionError("user-model registry must be owned by this user")
+    if stat.S_IMODE(info.st_mode) != _PRIVATE_FILE_MODE:
+        os.chmod(path, _PRIVATE_FILE_MODE)
+
+
+@contextmanager
+def _registry_guard(*, exclusive: bool) -> Iterator[None]:
     path = _registry_path()
-    if not path.is_file():
+    lock_path = Path(f"{path}.lock")
+    _ensure_directory(lock_path.parent)
+    with _REGISTRY_LOCK:
+        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(str(lock_path), flags, _PRIVATE_FILE_MODE)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+
+
+def _load_registry_unlocked() -> dict[str, UserModelRecord]:
+    """Read durable authority, preserving corrupt bytes for operator recovery."""
+    path = _registry_path()
+    if not path.exists():
+        if path.is_symlink():
+            raise RuntimeError("user-model registry must be a regular file")
         return {}
+    _secure_registry_file(path)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except (ValueError, OSError):
-        return {}
+    except (ValueError, OSError) as exc:
+        raise UserModelRegistryIntegrityError(
+            "user-model registry is unreadable; refusing mutation"
+        ) from exc
     if not isinstance(raw, dict):
-        return {}
+        raise UserModelRegistryIntegrityError(
+            "user-model registry root must be an object; refusing mutation"
+        )
     out: dict[str, UserModelRecord] = {}
     for rid, entry in raw.items():
         try:
             record = UserModelRecord.model_validate(entry)
-        except ValidationError:
-            continue
+        except ValidationError as exc:
+            raise UserModelRegistryIntegrityError(
+                f"user-model registry entry {rid!r} is invalid; refusing mutation"
+            ) from exc
         record_id = str(rid)
         # CREATE is the only authority that mints registry identities.  Apply
         # its namespace and key/id invariants again on every read so a restored
         # or externally corrupted sidecar cannot smuggle a default provider
         # name into the live dispatch registry at boot.
         if record_id != record.id or not record.id.startswith(_ID_PREFIX):
-            continue
+            raise UserModelRegistryIntegrityError(
+                f"user-model registry entry {record_id!r} violates identity invariants"
+            )
         out[record_id] = record
     return out
 
 
-def _write_registry(registry: dict[str, UserModelRecord]) -> None:
+def _load_registry() -> dict[str, UserModelRecord]:
+    with _registry_guard(exclusive=False):
+        return _load_registry_unlocked()
+
+
+def _write_registry_unlocked(registry: dict[str, UserModelRecord]) -> None:
     path = _registry_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_directory(path.parent)
     data = {rid: rec.model_dump() for rid, rec in registry.items()}
-    path.write_text(
-        json.dumps(data, indent=2, sort_keys=True), encoding="utf-8"
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    fd = os.open(
+        str(temporary),
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        _PRIVATE_FILE_MODE,
+    )
+    try:
+        payload = json.dumps(data, indent=2, sort_keys=True).encode("utf-8")
+        with os.fdopen(fd, "wb", closefd=False) as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        os.chmod(path, _PRIVATE_FILE_MODE)
+        _fsync_directory(path.parent)
+    finally:
+        os.close(fd)
+        with suppress(FileNotFoundError):
+            temporary.unlink()
+
+
+def _record_fingerprint(record: UserModelRecord) -> str:
+    canonical = json.dumps(record.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _registration_fingerprints(app: FastAPI) -> dict[str, str]:
+    raw = getattr(app.state, "user_model_registration_fingerprints", None)
+    if not isinstance(raw, dict):
+        raw = {}
+        app.state.user_model_registration_fingerprints = raw
+    return raw
+
+
+def _live_adapter_matches(app: FastAPI, provider_id: str) -> bool:
+    try:
+        adapter = get_provider(provider_id)
+    except KeyError:
+        return False
+    return getattr(adapter, "_user_model_authority_fingerprint", None) == (
+        _registration_fingerprints(app).get(provider_id)
     )
 
 
@@ -208,6 +325,7 @@ class _ByokResolvedKeyMixin:
     name: str
     _user_model_id: str
     _cred_ref: str
+    _user_model_authority_fingerprint: str
 
     def _resolve_api_key(self) -> str:
         record = _load_registry().get(self._user_model_id)
@@ -220,15 +338,18 @@ class _ByokResolvedKeyMixin:
             raise ProviderError(
                 f"{self.name}: user-added provider was removed, disabled, or "
                 "its credential binding changed; refusing credential resolution.",
-                provider=self.name, model="<unknown>", latency_ms=0,
+                provider=self.name,
+                model="<unknown>",
+                latency_ms=0,
             )
         try:
             secret = load_credential(self._cred_ref)
-        except KeyError as exc:
+        except (KeyError, CredentialIntegrityError) as exc:
             raise ProviderError(
-                f"{self.name}: stored credential is missing from the BYOK "
-                "artifact.",
-                provider=self.name, model="<unknown>", latency_ms=0,
+                f"{self.name}: stored credential is missing from the BYOK artifact.",
+                provider=self.name,
+                model="<unknown>",
+                latency_ms=0,
             ) from exc
         return secret.reveal()
 
@@ -252,7 +373,52 @@ def _credential_matches_record(
         item is not None
         and item.pipeline_kind == _PIPELINE_KIND
         and item.account_handle == record.id
+        and item.binding_version == 2
+        and item.artifact_fingerprint == record.cred_fingerprint
     )
+
+
+def _migrate_legacy_registry_unlocked(
+    registry: dict[str, UserModelRecord],
+    metadata: dict[str, CredentialMetadata],
+) -> tuple[dict[str, UserModelRecord], bool]:
+    """Re-seal legacy user-model credentials under v2 identity binding."""
+    changed = False
+    migrated = dict(registry)
+    for record_id, record in registry.items():
+        if record.cred_fingerprint is not None:
+            continue
+        legacy = metadata.get(record.cred_ref)
+        if (
+            legacy is None
+            or legacy.binding_version != 1
+            or legacy.pipeline_kind != _PIPELINE_KIND
+            or legacy.account_handle != record.id
+        ):
+            continue
+        plaintext: str | None = None
+        try:
+            plaintext = load_credential(record.cred_ref).reveal()
+            new_ref = store_credential(
+                record.id,
+                plaintext,
+                pipeline_kind=_PIPELINE_KIND,
+            )
+        except (KeyError, CredentialIntegrityError, OSError, ValueError):
+            continue
+        finally:
+            plaintext = None
+        new_metadata = _credential_metadata().get(new_ref)
+        if new_metadata is None or new_metadata.binding_version != 2:
+            continue
+        migrated[record_id] = record.model_copy(
+            update={
+                "cred_ref": new_ref,
+                "cred_fingerprint": new_metadata.artifact_fingerprint,
+            }
+        )
+        changed = True
+    return migrated, changed
 
 
 class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
@@ -274,6 +440,7 @@ class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
         )
         self._user_model_id = record.id
         self._cred_ref = record.cred_ref
+        self._user_model_authority_fingerprint = _record_fingerprint(record)
 
 
 class _UserAnthropicProvider(_ByokResolvedKeyMixin, AnthropicProvider):
@@ -288,6 +455,7 @@ class _UserAnthropicProvider(_ByokResolvedKeyMixin, AnthropicProvider):
         self.name = record.id
         self._user_model_id = record.id
         self._cred_ref = record.cred_ref
+        self._user_model_authority_fingerprint = _record_fingerprint(record)
 
 
 def _make_provider(record: UserModelRecord) -> Provider:
@@ -325,9 +493,15 @@ def reload_user_providers(app: FastAPI) -> set[str]:
     that cannot resolve credentials. Default provider names are never
     touched (prefix-guarded).
     """
-    registry = _load_registry()
-    metadata = _credential_metadata()
+    with _registry_guard(exclusive=True):
+        registry = _load_registry_unlocked()
+        metadata = _credential_metadata()
+        registry, migrated = _migrate_legacy_registry_unlocked(registry, metadata)
+        if migrated:
+            _write_registry_unlocked(registry)
+            metadata = _credential_metadata()
     registered: set[str] = set()
+    fingerprints: dict[str, str] = {}
     for record_id, record in registry.items():
         # Defense in depth at the authority boundary: even if a future registry
         # reader becomes more permissive, boot reload may only register names
@@ -336,17 +510,19 @@ def reload_user_providers(app: FastAPI) -> set[str]:
             continue
         if not record.enabled or not _credential_matches_record(record, metadata):
             continue
-        register_provider(_make_provider(record))
+        adapter = _make_provider(record)
+        register_provider(adapter)
         registered.add(record.id)
+        fingerprints[record.id] = _record_fingerprint(record)
     seam = _seam_names(app)
     stale = {
         name
         for name in seam
-        if name.startswith(_ID_PREFIX)
-        and not (name in registry and registry[name].enabled)
+        if name.startswith(_ID_PREFIX) and not (name in registry and registry[name].enabled)
     }
     seam.difference_update(stale)
     seam.update(registered)
+    app.state.user_model_registration_fingerprints = fingerprints
     return registered
 
 
@@ -364,6 +540,9 @@ class UserModelRow(BaseModel):
     enabled: bool
     key_present: bool
     registered: bool
+    route_eligible: bool
+    pricing_status: Literal["known", "unknown"] = "unknown"
+    hard_ceiling_eligible: bool = False
 
 
 class UserModelsResponse(BaseModel):
@@ -379,6 +558,90 @@ class UserModelsResponse(BaseModel):
 class UserModelDeleteResponse(BaseModel):
     removed: str
     notes: list[str]
+
+
+class UserModelChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    authority: Literal["user_model"]
+    provider_id: str = Field(min_length=1, max_length=128)
+    model_id: str = Field(min_length=1, max_length=200)
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedUserModelRoute:
+    authority: Literal["user_model"]
+    provider_id: str
+    model_id: str
+    credential_ref: str
+    pricing_status: Literal["unknown"] = "unknown"
+    hard_ceiling_eligible: bool = False
+
+
+class UserModelChoiceUnavailable(ValueError):
+    """The requested route has no current exact server authority."""
+
+
+@dataclass(frozen=True, slots=True)
+class UserModelAuthoritySnapshot:
+    model_id: str
+    route_eligible: bool
+
+
+def user_model_authority_snapshot(
+    app: FastAPI,
+) -> dict[str, UserModelAuthoritySnapshot]:
+    """Return non-secret current authority facts for the shared inventory."""
+    registry = _load_registry()
+    metadata = _credential_metadata()
+    seam = _seam_names(app)
+    fingerprints = _registration_fingerprints(app)
+    return {
+        record.id: UserModelAuthoritySnapshot(
+            model_id=record.model_id,
+            route_eligible=(
+                record.enabled
+                and _credential_matches_record(record, metadata)
+                and record.id in seam
+                and fingerprints.get(record.id) == _record_fingerprint(record)
+                and _live_adapter_matches(app, record.id)
+            ),
+        )
+        for record in registry.values()
+    }
+
+
+def resolve_user_model_choice(app: FastAPI, choice: UserModelChoice) -> ResolvedUserModelRoute:
+    """Resolve one prompt route without decrypting credentials or trusting cache."""
+    validated = UserModelChoice.model_validate(choice.model_dump(mode="json"))
+    record = _load_registry().get(validated.provider_id)
+    metadata = _credential_metadata()
+    fingerprints = _registration_fingerprints(app)
+    if (
+        record is None
+        or not record.enabled
+        or record.id != validated.provider_id
+        or record.model_id != validated.model_id
+        or not _credential_matches_record(record, metadata)
+        or record.id not in _seam_names(app)
+        or fingerprints.get(record.id) != _record_fingerprint(record)
+        or not _live_adapter_matches(app, record.id)
+    ):
+        raise UserModelChoiceUnavailable("user model route is unavailable")
+    return ResolvedUserModelRoute(
+        authority="user_model",
+        provider_id=record.id,
+        model_id=record.model_id,
+        credential_ref=record.cred_ref,
+    )
+
+
+class UserModelRouteResponse(BaseModel):
+    authority: Literal["user_model"]
+    provider_id: str
+    model_id: str
+    pricing_status: Literal["unknown"]
+    hard_ceiling_eligible: Literal[False]
+    execution_status: Literal["blocked_missing_hard_ceiling_adapter"]
 
 
 @dataclass(frozen=True)
@@ -402,9 +665,7 @@ def _parse_create(payload: object) -> _ValidatedCreate:
 
     provider_kind = payload.get("provider_kind")
     if provider_kind not in _PROVIDER_KINDS:
-        raise _reject(
-            "provider_kind must be one of: " + ", ".join(_PROVIDER_KINDS)
-        )
+        raise _reject("provider_kind must be one of: " + ", ".join(_PROVIDER_KINDS))
 
     model_id = payload.get("model_id")
     if (
@@ -443,8 +704,7 @@ def _parse_create(payload: object) -> _ValidatedCreate:
             or any(c.isspace() for c in base_url)
         ):
             raise _reject(
-                "base_url must be an http(s) URL of at most 2048 characters "
-                "without whitespace"
+                "base_url must be an http(s) URL of at most 2048 characters without whitespace"
             )
         # urlsplit raises ValueError on a malformed authority (unclosed IPv6
         # bracket), and .port raises ValueError on a non-numeric port —
@@ -494,8 +754,20 @@ def _slug_id(display_name: str) -> str:
 
 
 def _row(
-    record: UserModelRecord, *, present: set[str], seam: set[str]
+    record: UserModelRecord,
+    *,
+    app: FastAPI,
+    present: set[str],
+    seam: set[str],
+    fingerprints: dict[str, str],
 ) -> UserModelRow:
+    route_eligible = (
+        record.enabled
+        and record.cred_ref in present
+        and record.id in seam
+        and fingerprints.get(record.id) == _record_fingerprint(record)
+        and _live_adapter_matches(app, record.id)
+    )
     return UserModelRow(
         id=record.id,
         provider_kind=record.provider_kind,
@@ -505,6 +777,7 @@ def _row(
         enabled=record.enabled,
         key_present=record.cred_ref in present,
         registered=record.id in seam,
+        route_eligible=route_eligible,
     )
 
 
@@ -525,15 +798,12 @@ def get_user_models(request: Request) -> UserModelsResponse:
         if _credential_matches_record(record, metadata)
     }
     seam = _seam_names(request.app)
+    fingerprints = _registration_fingerprints(request.app)
     rows = [
-        _row(rec, present=present, seam=seam)
+        _row(rec, app=request.app, present=present, seam=seam, fingerprints=fingerprints)
         for rec in sorted(registry.values(), key=lambda r: r.id)
     ]
-    stale = sorted(
-        name
-        for name in seam
-        if name.startswith(_ID_PREFIX) and name not in registry
-    )
+    stale = sorted(name for name in seam if name.startswith(_ID_PREFIX) and name not in registry)
     return UserModelsResponse(models=rows, count=len(rows), stale_registered=stale)
 
 
@@ -549,52 +819,89 @@ async def post_user_model(request: Request) -> UserModelRow:
     spec = _parse_create(payload)
 
     record_id = _slug_id(spec.display_name)
-    registry = _load_registry()
-    if record_id in registry:
-        raise HTTPException(
-            status_code=409,
-            detail=f"user model {record_id!r} already exists; "
-            "delete it first or pick another display name",
+    with _registry_guard(exclusive=True):
+        registry = _load_registry_unlocked()
+        if record_id in registry:
+            raise HTTPException(
+                status_code=409,
+                detail=f"user model {record_id!r} already exists; "
+                "delete it first or pick another display name",
+            )
+
+        # Encrypt-at-rest FIRST, then persist the non-secret record in the
+        # same registry transaction. A crash between the two orphans only
+        # unreachable ciphertext, never a record with a dangling key.
+        cred_ref = store_credential(
+            record_id,
+            spec.api_key,
+            pipeline_kind=_PIPELINE_KIND,
+        )
+        credential = _credential_metadata().get(cred_ref)
+        if credential is None:
+            raise HTTPException(status_code=500, detail="credential persistence failed")
+        record = UserModelRecord(
+            id=record_id,
+            provider_kind=spec.provider_kind,
+            model_id=spec.model_id,
+            display_name=spec.display_name,
+            base_url=spec.base_url,
+            cred_ref=cred_ref,
+            cred_fingerprint=credential.artifact_fingerprint,
+            enabled=True,
+        )
+        registry[record_id] = record
+        _write_registry_unlocked(registry)
+
+        # Registration and app-local authority update remain inside the same
+        # transaction, so a concurrent delete cannot resurrect a stale seam.
+        adapter = _make_provider(record)
+        register_provider(adapter)
+        seam = _seam_names(request.app)
+        seam.add(record_id)
+        fingerprints = _registration_fingerprints(request.app)
+        fingerprints[record_id] = _record_fingerprint(record)
+
+        metadata = _credential_metadata()
+        present = {record.cred_ref} if _credential_matches_record(record, metadata) else set()
+        return _row(
+            record,
+            app=request.app,
+            present=present,
+            seam=seam,
+            fingerprints=fingerprints,
         )
 
-    # Encrypt-at-rest FIRST (byok SecretBox), then persist the non-secret
-    # record referencing the ciphertext. A crash between the two orphans
-    # only unreachable ciphertext, never a record with a dangling key.
-    cred_ref = store_credential(
-        record_id, spec.api_key, pipeline_kind=_PIPELINE_KIND
-    )
-    record = UserModelRecord(
-        id=record_id,
-        provider_kind=spec.provider_kind,
-        model_id=spec.model_id,
-        display_name=spec.display_name,
-        base_url=spec.base_url,
-        cred_ref=cred_ref,
-        enabled=True,
-    )
-    registry[record_id] = record
-    _write_registry(registry)
 
-    # Real registration, immediately — same seam as the default bootstrap.
-    register_provider(_make_provider(record))
-    seam = _seam_names(request.app)
-    seam.add(record_id)
-
-    metadata = _credential_metadata()
-    present = (
-        {record.cred_ref} if _credential_matches_record(record, metadata) else set()
+@user_models_router.post("/resolve", response_model=UserModelRouteResponse)
+async def resolve_user_model_route(request: Request) -> UserModelRouteResponse:
+    try:
+        choice = UserModelChoice.model_validate(await request.json())
+    except (ValueError, ValidationError):
+        raise HTTPException(status_code=422, detail="model choice is invalid") from None
+    try:
+        route = resolve_user_model_choice(request.app, choice)
+    except UserModelChoiceUnavailable:
+        raise HTTPException(status_code=409, detail="user model route is unavailable") from None
+    return UserModelRouteResponse(
+        authority=route.authority,
+        provider_id=route.provider_id,
+        model_id=route.model_id,
+        pricing_status=route.pricing_status,
+        hard_ceiling_eligible=False,
+        execution_status="blocked_missing_hard_ceiling_adapter",
     )
-    return _row(record, present=present, seam=seam)
 
 
 @user_models_router.delete("/{user_model_id}", response_model=UserModelDeleteResponse)
 def delete_user_model(user_model_id: str, request: Request) -> UserModelDeleteResponse:
-    registry = _load_registry()
-    if user_model_id not in registry:
-        raise HTTPException(status_code=404, detail="unknown user model id")
-    del registry[user_model_id]
-    _write_registry(registry)
-    _seam_names(request.app).discard(user_model_id)
+    with _registry_guard(exclusive=True):
+        registry = _load_registry_unlocked()
+        if user_model_id not in registry:
+            raise HTTPException(status_code=404, detail="unknown user model id")
+        del registry[user_model_id]
+        _write_registry_unlocked(registry)
+        _seam_names(request.app).discard(user_model_id)
+        _registration_fingerprints(request.app).pop(user_model_id, None)
     return UserModelDeleteResponse(
         removed=user_model_id,
         notes=[
@@ -630,10 +937,17 @@ def register_settings_models_admin_routes(app: FastAPI) -> None:
 
 __all__ = [
     "UserModelDeleteResponse",
+    "ResolvedUserModelRoute",
+    "UserModelChoice",
+    "UserModelChoiceUnavailable",
+    "UserModelAuthoritySnapshot",
     "UserModelRecord",
+    "UserModelRegistryIntegrityError",
     "UserModelRow",
     "UserModelsResponse",
     "register_settings_models_admin_routes",
+    "resolve_user_model_choice",
+    "user_model_authority_snapshot",
     "reload_user_providers",
     "user_models_router",
 ]

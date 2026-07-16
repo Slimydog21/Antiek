@@ -22,6 +22,7 @@ SPR-01's ``substrate.constants.NON_TRAINABLE_CONTENT_CLASSES`` denylist).
 
 from runtime.byok.secret_str import SecretStr
 from runtime.byok.store import (
+    CredentialIntegrityError,
     CredentialMetadata,
     list_credentials,
     load_credential,
@@ -31,6 +32,7 @@ from runtime.byok.store import (
 __all__ = [
     "SecretStr",
     "CredentialMetadata",
+    "CredentialIntegrityError",
     "store_credential",
     "load_credential",
     "list_credentials",
