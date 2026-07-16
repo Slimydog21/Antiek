@@ -21,11 +21,18 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { Event } from "../../generated/types";
 import type { InvestigationState } from "../../hooks/useInvestigation";
 
-const { challengeNoteMock } = vi.hoisted(() => ({ challengeNoteMock: vi.fn() }));
+const { challengeNoteMock, getNoteHistoryMock } = vi.hoisted(() => ({
+  challengeNoteMock: vi.fn(),
+  getNoteHistoryMock: vi.fn(),
+}));
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
-  return { ...actual, challengeNote: challengeNoteMock };
+  return {
+    ...actual,
+    challengeNote: challengeNoteMock,
+    getNoteHistory: getNoteHistoryMock,
+  };
 });
 
 import NotesPanel, { deriveNotes } from "./NotesPanel";
@@ -38,6 +45,7 @@ import { ApiError } from "../../lib/api";
 afterEach(() => {
   cleanup();
   challengeNoteMock.mockReset();
+  getNoteHistoryMock.mockReset();
 });
 
 let seq = 0;
@@ -136,7 +144,24 @@ describe("deriveNotes — the pure reducer (M1 + M3)", () => {
     ]);
     expect(notes.find((note) => note.noteId === "a")?.text).toBe("Shared v3");
     expect(notes.find((note) => note.noteId === "a")?.lastAppliedSequence).toBe(3);
-    expect(notes.find((note) => note.noteId === "b")?.text).toBe("Shared v2");
+    expect(notes.find((note) => note.noteId === "b")?.text).toBe("Shared v3");
+    expect(notes.find((note) => note.noteId === "a")?.refinements).toBe(3);
+    expect(notes.find((note) => note.noteId === "b")?.refinements).toBe(3);
+    expect(notes.find((note) => note.noteId === "a")?.observationText).toBe("Shared v0");
+    expect(notes.find((note) => note.noteId === "b")?.observationText).toBe("Shared v0");
+  });
+
+  it("rebases a later observation onto already-known canonical node truth", () => {
+    const notes = deriveNotes([
+      ev("note.emerged", { note_id: "a", note_text: "Observed v0", node_id: "node-1" }),
+      ev("note.refined", { note_id: "node-1", origin_note_id: "a", previous_text: "Observed v0", new_text: "Canonical v1", refinement_reason: "challenge_resolved", sequence: 1, previous_sequence: -1, outcome: "applied" }),
+      ev("note.emerged", { note_id: "b", note_text: "Later observation", node_id: "node-1" }),
+    ]);
+    const later = notes.find((note) => note.noteId === "b");
+    expect(later?.text).toBe("Canonical v1");
+    expect(later?.observationText).toBe("Later observation");
+    expect(later?.refinements).toBe(1);
+    expect(later?.lastAppliedSequence).toBe(1);
   });
 
   it("never lets a superseded attempt replace the settled note", () => {
@@ -149,14 +174,26 @@ describe("deriveNotes — the pure reducer (M1 + M3)", () => {
     expect(notes[0].refinements).toBe(1);
   });
 
-  it("uses a first superseded outcome to rebase legacy visible text", () => {
+  it("does not trust a first superseded outcome without known canonical text", () => {
     const notes = deriveNotes([
       ev("note.emerged", { note_id: "n1", note_text: "old" }),
       ev("note.refined", { note_id: "node-1", origin_note_id: "n1", previous_text: "settled", new_text: "loser", refinement_reason: "background", sequence: 2, previous_sequence: 4, outcome: "superseded" }),
     ]);
-    expect(notes[0].text).toBe("settled");
-    expect(notes[0].nodeId).toBe("node-1");
+    expect(notes[0].text).toBe("old");
+    expect(notes[0].nodeId).toBeNull();
     expect(notes[0].refinements).toBe(0);
+  });
+
+  it("rejects a coherent-sequence event whose prior text contradicts canonical truth", () => {
+    const notes = deriveNotes([
+      ev("note.emerged", { note_id: "a", note_text: "v1", node_id: "node-1" }),
+      ev("note.emerged", { note_id: "b", note_text: "v1", node_id: "node-1" }),
+      ev("note.refined", { note_id: "node-1", origin_note_id: "a", previous_text: "v1", new_text: "v2", refinement_reason: "challenge_resolved", sequence: 1, previous_sequence: -1, outcome: "applied" }),
+      ev("note.refined", { note_id: "node-1", origin_note_id: "b", previous_text: "forged", new_text: "loser", refinement_reason: "background", sequence: 2, previous_sequence: 1, outcome: "applied" }),
+      ev("note.refined", { note_id: "node-1", origin_note_id: "a", previous_text: "forged", new_text: "loser", refinement_reason: "background", sequence: 0, previous_sequence: 1, outcome: "superseded" }),
+    ]);
+    expect(notes.map((note) => note.text)).toEqual(["v2", "v2"]);
+    expect(notes.map((note) => note.refinements)).toEqual([1, 1]);
   });
 
   it("ignores ambiguous legacy and reordered applied outcomes", () => {
@@ -255,14 +292,93 @@ describe("NotesPanel — living note + challenge (M3 + M4)", () => {
     ]);
   }
 
-  it("see-what-changed reveals the prior text after a refinement", () => {
+  it("reveals immutable observed wording after canonical refinement", () => {
     render(<NotesPanel investigation={state([
       ev("note.emerged", { note_id: "n1", note_text: "v1", node_id: "node-1" }),
       ev("note.refined", { note_id: "node-1", origin_note_id: "n1", previous_text: "v1", new_text: "v2", refinement_reason: "challenge_resolved", sequence: 1, previous_sequence: -1, outcome: "applied" }),
     ])} />);
     expect(screen.getByText("v2")).toBeTruthy();
-    fireEvent.click(screen.getByText("see what changed"));
-    expect(screen.getByText(/was: v1/)).toBeTruthy();
+    fireEvent.click(screen.getByText("see observed wording"));
+    expect(screen.getByText(/observed as: v1/)).toBeTruthy();
+  });
+
+  it("shows one canonical truth across aliases without erasing observations", () => {
+    render(<NotesPanel investigation={state([
+      ev("note.emerged", { note_id: "a", note_text: "Observation A", node_id: "node-1" }),
+      ev("note.emerged", { note_id: "b", note_text: "Observation B", node_id: "node-1" }),
+      ev("note.emerged", { note_id: "c", note_text: "Other node", node_id: "node-2" }),
+      ev("note.refined", { note_id: "node-1", origin_note_id: "a", previous_text: "Observation A", new_text: "Canonical truth", refinement_reason: "challenge_resolved", sequence: 1, previous_sequence: -1, outcome: "applied" }),
+    ])} />);
+    expect(screen.getAllByText("Canonical truth")).toHaveLength(2);
+    expect(screen.getByText("Other node")).toBeTruthy();
+    expect(screen.getAllByText("see observed wording")).toHaveLength(2);
+  });
+
+  it("loads and caches authoritative history lazily", async () => {
+    getNoteHistoryMock.mockResolvedValue({
+      investigation_id: "inv-test", node_id: "node-1", current_text: "v2",
+      current_sequence: 1, refinement_count: 1, authoritative_applied_count: 1,
+      superseded_count: 0, complete: true,
+      entries: [{
+        event_id: "history-1", sequence: 1, previous_sequence: -1,
+        previous_text: "v1", new_text: "v2", reason: "challenge_resolved",
+        outcome: "applied", delivery_state: "delivered", emitted_at: "2026-07-16T00:00:00Z",
+      }],
+    });
+    render(<NotesPanel investigation={state([
+      ev("note.emerged", { note_id: "n1", note_text: "v1", node_id: "node-1" }),
+      ev("note.refined", { note_id: "node-1", origin_note_id: "n1", previous_text: "v1", new_text: "v2", refinement_reason: "challenge_resolved", sequence: 1, previous_sequence: -1, outcome: "applied" }),
+    ])} />);
+    expect(getNoteHistoryMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("1 change"));
+    await waitFor(() => expect(screen.getByText("Changed")).toBeTruthy());
+    expect(getNoteHistoryMock).toHaveBeenCalledWith("node-1", "inv-test");
+    fireEvent.click(screen.getByText("1 change"));
+    fireEvent.click(screen.getByText("1 change"));
+    expect(getNoteHistoryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("discards stale history when the investigation changes mid-request", async () => {
+    type History = Awaited<ReturnType<typeof import("../../lib/api").getNoteHistory>>;
+    let resolveOld!: (value: History) => void;
+    let resolveNew!: (value: History) => void;
+    getNoteHistoryMock
+      .mockImplementationOnce(() => new Promise<History>((resolve) => { resolveOld = resolve; }))
+      .mockImplementationOnce(() => new Promise<History>((resolve) => { resolveNew = resolve; }));
+    const events = [
+      ev("note.emerged", { note_id: "n1", note_text: "v1", node_id: "node-1" }),
+      ev("note.refined", { note_id: "node-1", origin_note_id: "n1", previous_text: "v1", new_text: "v2", refinement_reason: "challenge_resolved", sequence: 1, previous_sequence: -1, outcome: "applied" }),
+    ];
+    const view = render(<NotesPanel investigation={state(events)} />);
+    fireEvent.click(screen.getByText("1 change"));
+
+    view.rerender(<NotesPanel investigation={state(events, { id: "inv-new" })} />);
+    fireEvent.click(screen.getByText("1 change"));
+    resolveNew({
+      investigation_id: "inv-new", node_id: "node-1", current_text: "v2",
+      current_sequence: 1, refinement_count: 1, authoritative_applied_count: 1,
+      superseded_count: 0, complete: true,
+      entries: [{
+        event_id: "new-history", sequence: 1, previous_sequence: -1,
+        previous_text: "new prior", new_text: "new history", reason: "challenge_resolved",
+        outcome: "applied", delivery_state: "delivered", emitted_at: "2026-07-16T00:00:00Z",
+      }],
+    });
+    await waitFor(() => expect(screen.getByText("new history")).toBeTruthy());
+
+    resolveOld({
+      investigation_id: "inv-test", node_id: "node-1", current_text: "v2",
+      current_sequence: 1, refinement_count: 1, authoritative_applied_count: 1,
+      superseded_count: 0, complete: true,
+      entries: [{
+        event_id: "old-history", sequence: 1, previous_sequence: -1,
+        previous_text: "old prior", new_text: "stale history", reason: "challenge_resolved",
+        outcome: "applied", delivery_state: "delivered", emitted_at: "2026-07-16T00:00:00Z",
+      }],
+    });
+    await waitFor(() => expect(screen.queryByText("stale history")).toBeNull());
+    expect(screen.getByText("new history")).toBeTruthy();
+    expect(getNoteHistoryMock).toHaveBeenNthCalledWith(2, "node-1", "inv-new");
   });
 
   it("challenge that resolves shows the note changed (no duplicate)", async () => {

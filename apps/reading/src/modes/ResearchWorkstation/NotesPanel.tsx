@@ -4,6 +4,7 @@ import type { Event } from "../../generated/types";
 import type { InvestigationState } from "../../hooks/useInvestigation";
 import { challengeNote, ApiError } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
+import NoteHistoryDisclosure from "./NoteHistoryDisclosure";
 
 /**
  * NotesPanel — auto-notes appearing as the research runs (SPR-03 M1 + M3).
@@ -34,6 +35,8 @@ export interface LiveNote {
   kind: "insight" | "question";
   /** Current text — the latest refinement if the note is living. */
   text: string;
+  /** Immutable wording captured by this source-local observation. */
+  observationText: string;
   /** The text before the most recent refinement, when one happened. */
   previousText: string | null;
   confidence: string | null;
@@ -71,6 +74,9 @@ export function deriveNotes(events: Event[]): LiveNote[] {
   const order: string[] = [];
   const seenEvents = new Set<string>();
   const nodeSequences = new Map<string, number>();
+  const nodeCanonicalTexts = new Map<string, string>();
+  const nodePreviousTexts = new Map<string, string>();
+  const nodeRefinementCounts = new Map<string, number>();
 
   for (const e of events) {
     const id = e.event_id;
@@ -80,20 +86,22 @@ export function deriveNotes(events: Event[]): LiveNote[] {
 
     if (e.action_type === "note.emerged") {
       const noteId = asStr(p.note_id);
-      const text = asStr(p.note_text);
-      if (!noteId || !text) continue;
+      const observationText = asStr(p.note_text);
+      if (!noteId || !observationText) continue;
       const prior = byId.get(noteId);
       if (prior) continue;
+      const nodeId = asStr(p.node_id);
       order.push(noteId);
       byId.set(noteId, {
         noteId,
         kind: "insight",
-        text,
-        previousText: null,
+        text: (nodeId && nodeCanonicalTexts.get(nodeId)) ?? observationText,
+        observationText,
+        previousText: (nodeId && nodePreviousTexts.get(nodeId)) ?? null,
         confidence: asStr(p.confidence),
-        nodeId: asStr(p.node_id),
-        refinements: 0,
-        lastAppliedSequence: null,
+        nodeId,
+        refinements: nodeId ? (nodeRefinementCounts.get(nodeId) ?? 0) : 0,
+        lastAppliedSequence: nodeId ? (nodeSequences.get(nodeId) ?? null) : null,
         refinementEligible: true,
         // A distilled note has no source_kind — the absence is "model".
         sourceKind: null,
@@ -114,6 +122,7 @@ export function deriveNotes(events: Event[]): LiveNote[] {
         noteId,
         kind: "insight",
         text,
+        observationText: text,
         previousText: null,
         confidence: null,
         // The in-book note's graph node is content-addressed off its text and
@@ -136,6 +145,7 @@ export function deriveNotes(events: Event[]): LiveNote[] {
         noteId,
         kind: "question",
         text,
+        observationText: text,
         previousText: null,
         confidence: null,
         nodeId: null,
@@ -165,31 +175,50 @@ export function deriveNotes(events: Event[]): LiveNote[] {
         // not invent a standalone note from an unattached outcome.
         continue;
       }
+      const knownCanonicalText = nodeCanonicalTexts.get(graphNodeId);
       if (
         !existing.refinementEligible ||
         (existing.nodeId !== null && existing.nodeId !== graphNodeId) ||
-        (nodeSequences.has(graphNodeId) && previousSequence !== nodeSequences.get(graphNodeId))
+        (nodeSequences.has(graphNodeId) && previousSequence !== nodeSequences.get(graphNodeId)) ||
+        // An applied transition must start at the text this fold already
+        // knows. A superseded attempt may only restate established canonical
+        // truth; it cannot bootstrap arbitrary text from an unseen history.
+        (outcome === "applied" && prevText !== (knownCanonicalText ?? existing.text)) ||
+        (outcome === "superseded" && (knownCanonicalText === undefined || prevText !== knownCanonicalText))
       ) {
         continue;
       }
       if (outcome === "superseded") {
-        byId.set(noteId, {
-          ...existing,
-          text: prevText,
-          nodeId: graphNodeId,
-          lastAppliedSequence: previousSequence,
-        });
+        nodeCanonicalTexts.set(graphNodeId, prevText);
+        for (const [aliasId, alias] of byId) {
+          if (aliasId !== noteId && alias.nodeId !== graphNodeId) continue;
+          if (!alias.refinementEligible) continue;
+          byId.set(aliasId, {
+            ...alias,
+            text: prevText,
+            nodeId: graphNodeId,
+            lastAppliedSequence: previousSequence,
+          });
+        }
         nodeSequences.set(graphNodeId, previousSequence);
         continue;
       }
-      byId.set(noteId, {
-        ...existing,
-        previousText: prevText,
-        text: newText,
-        nodeId: graphNodeId,
-        refinements: existing.refinements + 1,
-        lastAppliedSequence: sequence,
-      });
+      const refinementCount = (nodeRefinementCounts.get(graphNodeId) ?? 0) + 1;
+      nodeCanonicalTexts.set(graphNodeId, newText);
+      nodePreviousTexts.set(graphNodeId, prevText);
+      nodeRefinementCounts.set(graphNodeId, refinementCount);
+      for (const [aliasId, alias] of byId) {
+        if (aliasId !== noteId && alias.nodeId !== graphNodeId) continue;
+        if (!alias.refinementEligible) continue;
+        byId.set(aliasId, {
+          ...alias,
+          previousText: prevText,
+          text: newText,
+          nodeId: graphNodeId,
+          refinements: refinementCount,
+          lastAppliedSequence: sequence,
+        });
+      }
       nodeSequences.set(graphNodeId, sequence);
     }
   }
@@ -247,7 +276,7 @@ type ChallengeState =
   | { kind: "error"; detail: string };
 
 function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: string }) {
-  const [showChange, setShowChange] = useState(false);
+  const [showObservation, setShowObservation] = useState(false);
   const [challenge, setChallenge] = useState<ChallengeState>({ kind: "idle" });
   const [challengeKey, setChallengeKey] = useState(() => crypto.randomUUID());
 
@@ -334,14 +363,21 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
             {note.confidence && note.kind === "insight" && (
               <span className="font-mono">{confidenceWord(note.confidence)}</span>
             )}
-            {note.refinements > 0 && note.previousText && (
+            {note.observationText !== note.text && (
               <button
                 type="button"
-                onClick={() => setShowChange((v) => !v)}
+                onClick={() => setShowObservation((value) => !value)}
                 className="font-mono underline decoration-dotted underline-offset-2 transition-colors hover:text-ink dark:hover:text-bright"
               >
-                {showChange ? "hide what changed" : "see what changed"}
+                {showObservation ? "hide observed wording" : "see observed wording"}
               </button>
+            )}
+            {note.nodeId && note.refinements > 0 && (
+              <NoteHistoryDisclosure
+                nodeId={note.nodeId}
+                investigationId={investigationId}
+                refinementCount={note.refinements}
+              />
             )}
             {note.nodeId && challenge.kind !== "busy" && (
               <button
@@ -357,9 +393,9 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
             )}
           </div>
 
-          {showChange && note.previousText && (
+          {showObservation && note.observationText !== note.text && (
             <p className="mt-1.5 border-l-2 border-rule pl-2 font-serif text-[12px] italic leading-relaxed text-ink-mute dark:border-charcoal-1 dark:text-moonlight">
-              was: {note.previousText}
+              observed as: {note.observationText}
             </p>
           )}
 
