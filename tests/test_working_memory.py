@@ -77,6 +77,99 @@ def test_working_memory_folds_emerged_notes_and_open_questions_causally() -> Non
     assert layer.source == f"investigation-memory:sha256:{digest}:items=2"
 
 
+def test_working_memory_rebases_legacy_history_and_folds_authoritative_outcomes() -> None:
+    rows = [
+        _row(1, ActionType.NOTE_EMERGED.value, {
+            "note_id": "note-a", "note_text": "emerged text",
+            "source_event_ids": ["source"], "confidence": "moderate",
+            "node_id": None,
+        }),
+        _row(2, ActionType.NOTE_REFINED.value, {
+            "note_id": "graph-a", "previous_text": "emerged text",
+            "new_text": "legacy applied text", "refinement_reason": "legacy",
+        }),
+        _row(3, ActionType.NOTE_REFINED.value, {
+            "note_id": "graph-a", "origin_note_id": "note-a",
+            "previous_text": "legacy applied text", "new_text": "winner text",
+            "refinement_reason": "new", "sequence": 12,
+            "previous_sequence": 11, "outcome": "applied",
+        }),
+        _row(4, ActionType.NOTE_REFINED.value, {
+            "note_id": "graph-a", "origin_note_id": "note-a",
+            "previous_text": "winner text", "new_text": "losing text",
+            "refinement_reason": "stale", "sequence": 10,
+            "previous_sequence": 12, "outcome": "superseded",
+        }),
+        _row(5, ActionType.NOTE_REFINED.value, {
+            "note_id": "graph-a", "origin_note_id": "note-a",
+            "previous_text": "winner text", "new_text": "final text",
+            "refinement_reason": "newer", "sequence": 13,
+            "previous_sequence": 12, "outcome": "applied",
+        }),
+        _cutoff(6),
+    ]
+
+    layer = build_working_memory_layer(
+        rows, investigation_id="inv-a", cutoff_event_id="event-6"
+    )
+    assert layer is not None
+    assert "final text" in layer.content
+    assert "emerged text" not in layer.content
+    assert "legacy applied text" not in layer.content
+    assert "winner text" not in layer.content
+    assert "losing text" not in layer.content
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({
+            "note_id": "graph-a", "origin_note_id": "note-a",
+            "previous_text": "base", "new_text": "changed",
+            "refinement_reason": "partial", "sequence": 1,
+        }, "authority is incomplete"),
+        ({
+            "note_id": "graph-a", "origin_note_id": "note-a",
+            "previous_text": "base", "new_text": "changed",
+            "refinement_reason": "false outcome", "sequence": 1,
+            "previous_sequence": 2, "outcome": "applied",
+        }, "outcome conflicts"),
+    ],
+)
+def test_working_memory_rejects_invalid_refinement_authority(payload, message) -> None:
+    note = _row(1, ActionType.NOTE_EMERGED.value, {
+        "note_id": "note-a", "note_text": "base", "source_event_ids": ["source"],
+        "confidence": "unknown", "node_id": None,
+    })
+    with pytest.raises(WorkingMemoryIntegrityError, match=message):
+        build_working_memory_layer(
+            [note, _row(2, ActionType.NOTE_REFINED.value, payload), _cutoff(3)],
+            investigation_id="inv-a", cutoff_event_id="event-3",
+        )
+
+
+def test_working_memory_rejects_broken_authoritative_sequence_chain() -> None:
+    note = _row(1, ActionType.NOTE_EMERGED.value, {
+        "note_id": "note-a", "note_text": "base", "source_event_ids": ["source"],
+        "confidence": "unknown", "node_id": None,
+    })
+    first = _row(2, ActionType.NOTE_REFINED.value, {
+        "note_id": "graph-a", "origin_note_id": "note-a",
+        "previous_text": "base", "new_text": "one", "refinement_reason": "first",
+        "sequence": 1, "previous_sequence": -1, "outcome": "applied",
+    })
+    broken = _row(3, ActionType.NOTE_REFINED.value, {
+        "note_id": "graph-a", "origin_note_id": "note-a",
+        "previous_text": "one", "new_text": "two", "refinement_reason": "broken",
+        "sequence": 3, "previous_sequence": 2, "outcome": "applied",
+    })
+    with pytest.raises(WorkingMemoryIntegrityError, match="sequence conflicts"):
+        build_working_memory_layer(
+            [note, first, broken, _cutoff(4)],
+            investigation_id="inv-a", cutoff_event_id="event-4",
+        )
+
+
 def test_working_memory_is_bounded_to_recent_chronological_suffix() -> None:
     rows = [
         _row(index, ActionType.NOTE_EMERGED.value, {

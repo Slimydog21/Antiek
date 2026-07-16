@@ -10,8 +10,10 @@ debounces + applies budget backpressure.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import tempfile
+from contextlib import contextmanager
 
 import pytest
 
@@ -30,10 +32,11 @@ from roles.note_taker import (
 )
 from roles.note_taker.parser import ExtractedNote
 from runtime.db_lock import connect_read
-from substrate.event_log import trajectory
+from substrate.context_pack import build_working_memory_layer
+from substrate.event_log import emit_typed, iter_physical_events, trajectory
 from substrate.graph.insight_question import promote_insight
 from substrate.graph.schema import init_database_at_path
-from substrate.schemas.events import ActionType
+from substrate.schemas.events import ActionType, DistillationRequestedPayload
 
 
 class _FakeEmbedding:
@@ -234,6 +237,180 @@ async def test_living_note_seq_rule_is_deterministic(env):
                if r["action_type"] == ActionType.NOTE_REFINED.value]
     assert len(refines) == 2
     assert any(r["payload"]["new_text"] == "from-seq-11" for r in refines)
+
+
+def _promoted_emerged_note(env, *, text="Base.", note_id="note-origin"):
+    return promote_insight(
+        text=text,
+        investigation_id="inv-1",
+        source_document_id="doc-1",
+        metadata={"origin_note_id": note_id},
+    )
+
+
+async def test_refinement_rolls_back_graph_and_outbox_before_commit(env):
+    nid = _promoted_emerged_note(env)
+
+    def fail(stage):
+        if stage == "after_enqueue_before_commit":
+            raise RuntimeError("pre-commit failure")
+
+    with pytest.raises(RuntimeError, match="pre-commit failure"):
+        apply_refinement(
+            nid, "Changed.", seq=1, investigation_id="inv-1",
+            events_dir=env["events"], _checkpoint=fail,
+        )
+    con = connect_read(env["db"])
+    try:
+        text, metadata = con.execute(
+            "SELECT canonical_label, metadata FROM nodes WHERE node_id=?", [nid]
+        ).fetchone()
+        assert text == "Base."
+        assert json.loads(metadata).get("refinement_count", 0) == 0
+        assert con.execute("SELECT COUNT(*) FROM write_event_outbox").fetchone()[0] == 0
+    finally:
+        con.close()
+    assert not [
+        row for row in trajectory("inv-1", events_dir=env["events"])
+        if row["action_type"] == ActionType.NOTE_REFINED.value
+    ]
+
+
+async def test_refinement_transaction_locks_custom_event_stream(env, monkeypatch):
+    import roles.note_taker.living_note as living_note
+
+    nid = _promoted_emerged_note(env)
+    observed = []
+    original = living_note.eventful_transaction
+
+    @contextmanager
+    def recording_transaction(con, investigation_id, *, events_dir=None):
+        observed.append((investigation_id, events_dir))
+        with original(con, investigation_id, events_dir=events_dir):
+            yield
+
+    monkeypatch.setattr(living_note, "eventful_transaction", recording_transaction)
+    apply_refinement(
+        nid, "Changed.", seq=1, investigation_id="inv-1",
+        events_dir=env["events"],
+    )
+    assert observed == [("inv-1", env["events"])]
+
+
+async def test_refinement_exact_retry_recovers_pending_delivery_once(env):
+    nid = _promoted_emerged_note(env)
+
+    def fail(stage):
+        if stage == "after_commit_before_delivery":
+            raise RuntimeError("post-commit failure")
+
+    with pytest.raises(RuntimeError, match="post-commit failure"):
+        apply_refinement(
+            nid, "Changed.", seq=1, investigation_id="inv-1",
+            events_dir=env["events"], _checkpoint=fail,
+        )
+    con = connect_read(env["db"])
+    try:
+        text, metadata = con.execute(
+            "SELECT canonical_label, metadata FROM nodes WHERE node_id=?", [nid]
+        ).fetchone()
+        assert text == "Changed."
+        assert json.loads(metadata)["refinement_count"] == 1
+        assert con.execute(
+            "SELECT state FROM write_event_outbox"
+        ).fetchone()[0] == "pending"
+    finally:
+        con.close()
+
+    replay = apply_refinement(
+        nid, "Changed.", seq=1, investigation_id="inv-1",
+        events_dir=env["events"],
+    )
+    assert replay.applied and not replay.superseded
+    rows = [
+        row for row in trajectory("inv-1", events_dir=env["events"])
+        if row["action_type"] == ActionType.NOTE_REFINED.value
+    ]
+    assert len(rows) == 1
+    payload = rows[0]["payload"]
+    assert payload["origin_note_id"] == "note-origin"
+    assert payload["sequence"] == 1
+    assert payload["previous_sequence"] == -1
+    assert payload["outcome"] == "applied"
+    con = connect_read(env["db"])
+    try:
+        assert json.loads(con.execute(
+            "SELECT metadata FROM nodes WHERE node_id=?", [nid]
+        ).fetchone()[0])["refinement_count"] == 1
+        assert con.execute(
+            "SELECT state, attempt_count FROM write_event_outbox"
+        ).fetchone() == ("delivered", 1)
+    finally:
+        con.close()
+
+
+async def test_distinct_same_sequence_attempt_is_durably_superseded(env):
+    nid = _promoted_emerged_note(env)
+    winner = apply_refinement(
+        nid, "Winner.", seq=4, investigation_id="inv-1", events_dir=env["events"]
+    )
+    loser = apply_refinement(
+        nid, "Losing attempt.", seq=4, investigation_id="inv-1",
+        events_dir=env["events"],
+    )
+    assert winner.applied
+    assert loser.superseded and not loser.applied
+    rows = [
+        row for row in trajectory("inv-1", events_dir=env["events"])
+        if row["action_type"] == ActionType.NOTE_REFINED.value
+    ]
+    assert [row["payload"]["outcome"] for row in rows] == [
+        "applied", "superseded"
+    ]
+    assert rows[1]["payload"]["previous_text"] == "Winner."
+    assert rows[1]["payload"]["new_text"] == "Losing attempt."
+    assert rows[1]["payload"]["previous_sequence"] == 4
+
+
+async def test_document_note_refinement_becomes_causal_working_memory(env):
+    result = await run_document_pass(
+        "doc-1",
+        "source text",
+        investigation_id="inv-1",
+        distiller=FakeDistiller(insights=["Emerged hypothesis."]),
+        chunk_ids=["chunk-1"],
+        source_event_ids=["source-1"],
+        events_dir=env["events"],
+    )
+    assert len(result.insight_node_ids) == 1
+    refinement = apply_refinement(
+        result.insight_node_ids[0],
+        "Authoritative hypothesis.",
+        seq=1,
+        investigation_id="inv-1",
+        events_dir=env["events"],
+    )
+    assert refinement.applied
+    cutoff_id = emit_typed(
+        "inv-1",
+        DistillationRequestedPayload(
+            region_id="region-1",
+            user_prompt="What follows?",
+            target_token_count=100,
+        ),
+        document_id="doc-1",
+        events_dir=env["events"],
+    )
+    assert cutoff_id is not None
+
+    layer = build_working_memory_layer(
+        list(iter_physical_events("inv-1", events_dir=env["events"])),
+        investigation_id="inv-1",
+        cutoff_event_id=cutoff_id,
+    )
+    assert layer is not None
+    assert "Authoritative hypothesis." in layer.content
+    assert "Emerged hypothesis." not in layer.content
 
 
 # --------------------------------------------------------------------------

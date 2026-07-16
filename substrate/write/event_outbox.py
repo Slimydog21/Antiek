@@ -33,14 +33,23 @@ def _events_disabled() -> bool:
 
 
 @contextmanager
-def eventful_transaction(con: LockedConnection, investigation_id: str):
+def eventful_transaction(
+    con: LockedConnection,
+    investigation_id: str,
+    *,
+    events_dir: str | None = None,
+):
     """Commit a mutation and its outbox intent before sealing can intervene.
 
     Callers already hold the global DuckDB write lock, so the lock order is
     always database then investigation event stream. Sealing uses the same
     order. Delivery reacquires the event lock only after this context exits.
     """
-    lock = nullcontext() if _events_disabled() else investigation_event_lock(investigation_id)
+    lock = (
+        nullcontext()
+        if _events_disabled()
+        else investigation_event_lock(investigation_id, events_dir=events_dir)
+    )
     with lock:
         con.execute("BEGIN TRANSACTION")
         try:

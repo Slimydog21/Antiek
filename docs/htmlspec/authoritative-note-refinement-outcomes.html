@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Antiek Cycle 81 - Authoritative note refinement outcomes</title>
+  <style>
+    :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.5; }
+    body { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+    h1, h2 { line-height: 1.2; }
+    code { font-family: ui-monospace, monospace; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #8886; padding: 8px; text-align: left; vertical-align: top; }
+    .boundary { border-left: 4px solid #b45309; padding-left: 16px; }
+  </style>
+</head>
+<body>
+  <header>
+    <p>Cycle 81 / executable HTML specification</p>
+    <h1>Authoritative note refinement outcomes</h1>
+    <p>Make a living-note decision durable in the same transaction as its graph state, then let later wrestling prompts consume only those authoritative outcomes.</p>
+  </header>
+
+  <section>
+    <h2>Five values</h2>
+    <ul>
+      <li><strong>Truth:</strong> no event may claim a refinement applied unless the graph mutation committed with its delivery intent.</li>
+      <li><strong>Causality:</strong> later prompts fold only decisions physically before their request cutoff.</li>
+      <li><strong>Determinism:</strong> sequence ordering decides graph state independent of arrival order.</li>
+      <li><strong>Recovery:</strong> exact retries replay one immutable decision and drain pending delivery without mutating twice.</li>
+      <li><strong>Compatibility:</strong> legacy audit-only <code>note.refined</code> events remain readable but never become prompt truth.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Outcome contract</h2>
+    <table>
+      <tr><th>Field</th><th>Meaning</th></tr>
+      <tr><td><code>note_id</code></td><td>The promoted graph insight node targeted by the attempt.</td></tr>
+      <tr><td><code>origin_note_id</code></td><td>The originating <code>note.emerged</code> identity when graph metadata can prove it; nullable for graph-only notes.</td></tr>
+      <tr><td><code>sequence</code></td><td>The attempted monotonic sequence.</td></tr>
+      <tr><td><code>previous_sequence</code></td><td>The highest sequence applied before this decision, or -1 for none.</td></tr>
+      <tr><td><code>outcome</code></td><td><code>applied</code> iff sequence is greater than previous sequence; otherwise <code>superseded</code>.</td></tr>
+      <tr><td>text fields</td><td><code>previous_text</code> is authoritative graph text immediately before the decision. <code>new_text</code> is the attempted replacement.</td></tr>
+    </table>
+    <p>All new authority fields are optional at schema level so historical audit events deserialize. Authority is all-or-nothing: a partially populated outcome is corruption.</p>
+  </section>
+
+  <section>
+    <h2>Atomic write</h2>
+    <ol>
+      <li>Derive a content-addressed operation identity from investigation, graph note, proposed text, reason, sequence, and document.</li>
+      <li>Under the existing single DuckDB writer and one <code>eventful_transaction</code>, read current note state, decide applied versus superseded, mutate only for applied, build the typed outcome, and enqueue it.</li>
+      <li>Commit graph state and outbox intent together.</li>
+      <li>After commit, deliver this note aggregate's pending event. A delivery failure is surfaced; retry finds the exact stored event, performs no second mutation, and retries delivery.</li>
+      <li>Reusing an operation identity with different bytes fails closed. Distinct content at the same sequence remains a distinct attempt and is decided against current graph state.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Working-memory fold</h2>
+    <ul>
+      <li>Legacy outcome-absent refinement events are ignored.</li>
+      <li>Complete applied outcomes replace the corresponding emerged snapshot with <code>new_text</code>.</li>
+      <li>Complete superseded outcomes set the corresponding memory to authoritative <code>previous_text</code>, never attempted <code>new_text</code>.</li>
+      <li>The first complete outcome may rebase an older emerged snapshot across legacy audit history; later complete outcomes must form a coherent sequence chain.</li>
+      <li>An outcome with no provable emerged identity is excluded rather than attached by text similarity.</li>
+      <li>Partial outcomes, impossible sequence/outcome combinations, identity changes, and broken authoritative chains fail closed before provider dispatch.</li>
+    </ul>
+  </section>
+
+  <section class="boundary">
+    <h2>Authority boundary</h2>
+    <p>No cross-investigation lookup, embedding, graph retrieval, provider call, spend, schema migration, or merge/deploy authority. This cycle records and consumes a decision already made by the existing deterministic living-note rule.</p>
+  </section>
+
+  <section>
+    <h2>Acceptance</h2>
+    <ul>
+      <li>Applied graph text and its outbox event commit together; injected failures prove rollback before commit and replay after commit.</li>
+      <li>Exact retry emits one physical event and increments refinement count once.</li>
+      <li>Higher sequence wins regardless of arrival; a later lower sequence is durably superseded and never enters prompt text.</li>
+      <li>Legacy events deserialize and remain ignored until a complete outcome rebases memory.</li>
+      <li>A later live wrestling prompt contains the authoritative applied text, excludes emerged/stale/losing text, and makes no additional provider call.</li>
+      <li>Ruff, generated contracts, focused and coupled tests, frontend typecheck/build, independent review, HardenX, and diff checks pass.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Harness hint</h2>
+    <p>Attack pre-commit rollback, post-commit/pre-delivery failure, exact replay, same-sequence different-content collision, malformed partial authority, false applied/superseded sequence relations, origin substitution, legacy rebasing, future-event leakage, and losing text injection.</p>
+  </section>
+</body>
+</html>

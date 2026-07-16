@@ -368,9 +368,11 @@ def test_event_lock_timeout_is_bounded(outbox):
     try:
         assert child.stdout is not None
         assert child.stdout.readline().strip() == "ready"
-        with pytest.raises(TimeoutError, match="event lock"):
-            with investigation_event_lock("inv-1", events_dir=str(events), timeout_s=0.05):
-                pass
+        with (
+            pytest.raises(TimeoutError, match="event lock"),
+            investigation_event_lock("inv-1", events_dir=str(events), timeout_s=0.05),
+        ):
+            pass
     finally:
         child.terminate()
         child.wait(timeout=10)

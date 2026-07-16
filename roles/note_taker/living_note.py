@@ -12,15 +12,17 @@ log.** Each refinement carries a monotonic ``seq`` (in production, the
 emission order of the driving event). The note node records the highest
 ``seq`` it has applied in ``metadata.last_update_seq``. An incoming
 refinement is applied to the node iff its ``seq`` is strictly greater;
-otherwise it is the *loser* — the node is left untouched, but a
-``note.refined`` event is still written so the log records the attempt and
-the prior text. Determinism is therefore independent of arrival order.
+otherwise it is the *loser* — the node is left untouched. An authoritative
+``note.refined`` outcome is committed to the durable outbox in the same
+transaction as a winning graph mutation; losing attempts are explicitly
+recorded as ``superseded``. Determinism is therefore independent of arrival
+order, and a crash cannot separate graph truth from its event intent.
 
 Worked example (the docstring the maintainer should not have to guess):
 a background pass refines a note at ``seq=11`` and a user challenge refines
 it at ``seq=12``. Whichever lands first, the node's final text is the
 ``seq=12`` text; the ``seq=11`` refinement is preserved in the event log
-(``previous_text`` + ``new_text``) but not reflected on the node.
+(``previous_text`` + ``new_text`` + the decision) but not reflected on the node.
 
 Escalation seam (M6): a challenge the existing graph cannot resolve emits
 ``question.escalated_to_research`` on the relevant question node, carrying a
@@ -30,6 +32,7 @@ into that reserved id later. **Nothing is launched here.**
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -43,6 +46,13 @@ try:
     from ...graph.insight_question import graph_db_path, promote_question
     from ...runtime.db_lock import connect_write
     from ...schemas.events import NoteRefinedPayload, QuestionEscalatedToResearchPayload
+    from ...write.event_outbox import (
+        build_typed_envelope,
+        dispatch_aggregate_pending,
+        enqueue_event,
+        event_for_operation,
+        eventful_transaction,
+    )
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
@@ -55,6 +65,13 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from substrate.schemas.events import (  # type: ignore[no-redef]
         NoteRefinedPayload,
         QuestionEscalatedToResearchPayload,
+    )
+    from substrate.write.event_outbox import (  # type: ignore[no-redef]
+        build_typed_envelope,
+        dispatch_aggregate_pending,
+        enqueue_event,
+        event_for_operation,
+        eventful_transaction,
     )
 
 
@@ -94,6 +111,42 @@ def _read_node(con, node_id: str) -> tuple[str | None, dict]:
     return row[0], meta
 
 
+def _refinement_operation_id(
+    *,
+    investigation_id: str,
+    note_node_id: str,
+    new_text: str,
+    reason: str,
+    seq: int,
+    document_id: str | None,
+) -> str:
+    identity = json.dumps(
+        {
+            "document_id": document_id,
+            "investigation_id": investigation_id,
+            "new_text": new_text,
+            "note_node_id": note_node_id,
+            "reason": reason,
+            "sequence": seq,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+    return "note-refinement:v1:" + hashlib.sha256(identity.encode()).hexdigest()
+
+
+def _result_from_outcome(payload: NoteRefinedPayload) -> ChallengeResult:
+    if payload.outcome not in {"applied", "superseded"}:
+        raise RuntimeError("stored note refinement has no authoritative outcome")
+    return ChallengeResult(
+        payload.note_id,
+        applied=payload.outcome == "applied",
+        superseded=payload.outcome == "superseded",
+        new_text=payload.new_text if payload.outcome == "applied" else None,
+    )
+
+
 def apply_refinement(
     note_node_id: str,
     new_text: str,
@@ -104,40 +157,101 @@ def apply_refinement(
     document_id: str | None = None,
     events_dir: str | None = None,
     con: Any = None,
+    _checkpoint: Callable[[str], None] | None = None,
 ) -> ChallengeResult:
-    """Apply a refinement to a note node under the seq rule. Always writes a
-    ``note.refined`` event (history); updates the node only if ``seq`` beats
-    the last applied seq."""
+    """Atomically decide a refinement and enqueue its authoritative outcome."""
+    if isinstance(seq, bool) or not isinstance(seq, int) or seq < 0:
+        raise ValueError("refinement sequence must be a non-negative integer")
     owned = con is None
     c = _open(con)
     try:
-        prev_text, meta = _read_node(c, note_node_id)
-        if prev_text is None:
-            return ChallengeResult(note_node_id, applied=False)
-        # note.refined is a wrestling-loop event and requires document_id on
-        # the envelope (architecture_notes §9.1). A living note inherits the
-        # document it was distilled from — resolve it from node metadata when
-        # the caller did not pass one.
-        document_id = document_id or meta.get("source_document_id")
-        last_seq = int(meta.get("last_update_seq", -1))
-        wins = seq > last_seq
-        # History is preserved regardless of who wins.
-        emit_typed(
-            investigation_id,
-            NoteRefinedPayload(note_id=note_node_id, previous_text=prev_text,
-                               new_text=new_text, refinement_reason=reason),
-            role="note_taker", document_id=document_id, events_dir=events_dir,
-        )
-        if wins:
-            meta["last_update_seq"] = seq
-            meta.setdefault("refinement_count", 0)
-            meta["refinement_count"] += 1
-            c.execute(
-                "UPDATE nodes SET canonical_label = ?, metadata = ? WHERE node_id = ?",
-                [new_text, json.dumps(meta, default=str), note_node_id],
+        outcome_event = None
+        result = ChallengeResult(note_node_id, applied=False)
+        aggregate_id = note_node_id
+        with eventful_transaction(c, investigation_id, events_dir=events_dir):
+            prev_text, meta = _read_node(c, note_node_id)
+            if prev_text is None:
+                return result
+            # note.refined requires the source document on its envelope. The
+            # promoted note carries both source and emerged-note identity.
+            resolved_document_id = document_id or meta.get("source_document_id")
+            operation_id = _refinement_operation_id(
+                investigation_id=investigation_id,
+                note_node_id=note_node_id,
+                new_text=new_text,
+                reason=reason,
+                seq=seq,
+                document_id=resolved_document_id,
             )
-        return ChallengeResult(note_node_id, applied=wins, superseded=not wins,
-                               new_text=new_text if wins else None)
+            existing = event_for_operation(c, operation_id)
+            if existing is not None:
+                if not isinstance(existing.payload, NoteRefinedPayload):
+                    raise RuntimeError("refinement operation points to another event type")
+                payload = existing.payload
+                if (
+                    existing.investigation_id != investigation_id
+                    or existing.document_id != resolved_document_id
+                    or payload.note_id != note_node_id
+                    or payload.new_text != new_text
+                    or payload.refinement_reason != reason
+                    or payload.sequence != seq
+                ):
+                    raise RuntimeError("stored refinement operation conflicts with retry")
+                outcome_event = existing
+                result = _result_from_outcome(payload)
+            else:
+                last_seq = int(meta.get("last_update_seq", -1))
+                wins = seq > last_seq
+                payload = NoteRefinedPayload(
+                    note_id=note_node_id,
+                    origin_note_id=meta.get("origin_note_id"),
+                    previous_text=prev_text,
+                    new_text=new_text,
+                    refinement_reason=reason,
+                    sequence=seq,
+                    previous_sequence=last_seq,
+                    outcome="applied" if wins else "superseded",
+                )
+                if wins:
+                    meta["last_update_seq"] = seq
+                    meta.setdefault("refinement_count", 0)
+                    meta["refinement_count"] += 1
+                    c.execute(
+                        "UPDATE nodes SET canonical_label = ?, metadata = ? "
+                        "WHERE node_id = ?",
+                        [new_text, json.dumps(meta, default=str), note_node_id],
+                    )
+                if _checkpoint:
+                    _checkpoint("after_decision_before_enqueue")
+                digest = operation_id.rsplit(":", 1)[-1]
+                outcome_event = build_typed_envelope(
+                    investigation_id,
+                    payload,
+                    role="note_taker",
+                    document_id=resolved_document_id,
+                    event_id=f"evt-note-refinement-{digest[:24]}",
+                )
+                enqueue_event(
+                    c,
+                    operation_id=operation_id,
+                    aggregate_kind="living_note",
+                    aggregate_id=aggregate_id,
+                    event=outcome_event,
+                )
+                result = _result_from_outcome(payload)
+                if _checkpoint:
+                    _checkpoint("after_enqueue_before_commit")
+        if outcome_event is not None:
+            if _checkpoint:
+                _checkpoint("after_commit_before_delivery")
+            dispatch_aggregate_pending(
+                c,
+                investigation_id,
+                aggregate_kind="living_note",
+                aggregate_id=aggregate_id,
+                events_dir=events_dir,
+            )
+        return result
     finally:
         if owned:
             c.close()
