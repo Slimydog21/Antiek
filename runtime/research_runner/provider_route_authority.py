@@ -10,7 +10,7 @@ from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
 from .cost_projection import CostCatalogEntry
-from .protocol import CostProjectionRequest
+from .protocol import CostProjectionRequest, ProjectionRate
 from .provider_gateway import (
     DispatchIneligible,
     HardCeilingProviderAdapter,
@@ -259,6 +259,7 @@ class ProviderRouteAuthorityResolver:
         if len(matches) != 1:
             raise DispatchIneligible("adapter lacks one exact paid route authority")
         identity = matches[0]
+        entry = self._entries[identity]
         authority = self.resolve(identity, provider_id=request.provider, now=now)
         if authority.execution_status is not RouteExecutionStatus.EXECUTABLE:
             raise DispatchIneligible(
@@ -274,6 +275,10 @@ class ProviderRouteAuthorityResolver:
             seam_id=identity.seam_id,
             operation=identity.operation,
             rate_snapshot=authority.rate_snapshot,
+            currency=entry.cost.currency,
+            rates=tuple(
+                ProjectionRate(rate.unit, rate.usd_per_unit) for rate in entry.cost.rates
+            ),
         )
 
     @staticmethod

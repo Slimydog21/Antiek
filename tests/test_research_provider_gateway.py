@@ -160,6 +160,8 @@ def _authorize_fallback(
         seam_id=request.seam_id,
         operation=request.operation,
         rate_snapshot="test-authority-v1",
+        currency="USD",
+        rates=(ProjectionRate(BillingUnit.CALL, Decimal("1.00")),),
     )
 
 
@@ -469,6 +471,104 @@ def test_changed_endpoint_authority_conflicts_with_existing_lineage(tmp_path: Pa
         )
 
 
+def test_fallback_refuses_same_snapshot_with_divergent_authoritative_rates(
+    tmp_path: Path,
+) -> None:
+    def divergent(request, adapter):
+        return replace(
+            _authorize_fallback(request, adapter),
+            rates=(ProjectionRate(BillingUnit.CALL, Decimal("0.01")),),
+        )
+
+    gateway = ResearchProviderGateway(
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"),
+        projector=_project,
+        fallback_route_authorizer=divergent,
+    )
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    adapter = FakeAdapter()
+
+    with pytest.raises(DispatchIneligible, match="exact projected rates"):
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(_fallback_route(adapter),),
+        )
+    assert adapter.send_calls == []
+    assert len(gateway.ledger.events("run-1")) == 1
+
+
+def test_concurrent_replay_cannot_reconcile_before_sender_finishes(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    send_started = threading.Event()
+    allow_send = threading.Event()
+
+    class SlowAdapter(FakeAdapter):
+        def send_once(self, operation: object, *, provider_idempotency_key: str):
+            self.send_calls.append(provider_idempotency_key)
+            send_started.set()
+            assert allow_send.wait(timeout=5)
+            return ProviderSuccess("answer", 80, {"provider_receipt": "slow"})
+
+    adapter = SlowAdapter()
+
+    def dispatch():
+        return gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(_fallback_route(adapter),),
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        sender = pool.submit(dispatch)
+        assert send_started.wait(timeout=5)
+        replay = pool.submit(dispatch)
+        assert not replay.done()
+        allow_send.set()
+        first = sender.result(timeout=5)
+        second = replay.result(timeout=5)
+
+    assert first.outcome is second.outcome is PaidFallbackOutcome.SETTLED
+    assert len(adapter.send_calls) == 1
+    assert adapter.reconcile_calls == []
+
+
+def test_fallback_recovery_requires_unchanged_live_authority(tmp_path: Path) -> None:
+    endpoint = ["https://first.example/v1"]
+
+    def authorize(request, adapter):
+        return replace(_authorize_fallback(request, adapter), endpoint=endpoint[0])
+
+    gateway = ResearchProviderGateway(
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"),
+        projector=_project,
+        fallback_route_authorizer=authorize,
+    )
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    adapter = FakeAdapter()
+    adapter.send_result = TimeoutError("lost response")
+    with pytest.raises(PaidFallbackOutcomeUnknown) as unknown:
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(_fallback_route(adapter),),
+        )
+
+    with pytest.raises(DispatchIneligible, match="requires exact"):
+        gateway.recover_paid(unknown.value.hold_id, adapter)
+    endpoint[0] = "https://replacement.example/v1"
+    with pytest.raises(DispatchIneligible, match="authority changed"):
+        gateway.recover_paid(
+            unknown.value.hold_id,
+            adapter,
+            projection_request=_fallback_route(adapter).projection_request,
+        )
+    assert adapter.reconcile_calls == []
+
+
 def test_authoritative_release_uses_separate_fallback_hold_and_key(tmp_path: Path) -> None:
     def project(request: CostProjectionRequest) -> CostProjection:
         cents = 60 if request.provider == "fallback-provider" else 100
@@ -488,6 +588,13 @@ def test_authoritative_release_uses_separate_fallback_hold_and_key(tmp_path: Pat
         fallback_route_authorizer=lambda request, adapter: replace(
             _authorize_fallback(request, adapter),
             rate_snapshot=f"{request.provider}-rates",
+            rates=(
+                ProjectionRate(
+                    BillingUnit.CALL,
+                    Decimal(60 if request.provider == "fallback-provider" else 100)
+                    / Decimal(100),
+                ),
+            ),
         ),
     )
     gateway.create_or_reopen_run(_binding(), ceiling_cents=200)

@@ -37,6 +37,7 @@ from .protocol import (
     CostProjection,
     CostProjectionRequest,
     ProjectionDisposition,
+    ProjectionRate,
 )
 
 T = TypeVar("T")
@@ -161,10 +162,14 @@ class PaidRouteAuthorityIdentity:
     seam_id: str
     operation: str
     rate_snapshot: str
+    currency: str
+    rates: tuple[ProjectionRate, ...]
 
     def __post_init__(self) -> None:
-        if not all(asdict(self).values()):
+        if not all(value for name, value in asdict(self).items() if name != "rates"):
             raise ValueError("paid route authority identity fields must be non-empty")
+        if not self.rates:
+            raise ValueError("paid route authority identity requires exact rates")
 
 
 @dataclass(frozen=True)
@@ -330,8 +335,12 @@ class ResearchProviderGateway:
             ) != (request.provider, request.model, request.seam_id, request.operation):
                 raise DispatchIneligible("route authority differs from requested route")
             projection = self._projector(request)
-            if authority.rate_snapshot != projection.rate_snapshot:
-                raise DispatchIneligible("route authority differs from projected rate snapshot")
+            if (
+                authority.rate_snapshot,
+                authority.currency,
+                authority.rates,
+            ) != (projection.rate_snapshot, projection.currency, projection.rates):
+                raise DispatchIneligible("route authority differs from exact projected rates")
             self._require_eligible(projection, request, route.adapter)
             current_workload = (request.seam_id, request.operation, request.bounded_usage)
             if workload is None:
@@ -465,6 +474,7 @@ class ResearchProviderGateway:
             projection_digest=projection_digest,
             rate_snapshot=projection.rate_snapshot,
             provider_idempotency_key=provider_key,
+            route_authority_digest=provider_route_identity,
         )
         hold = self.ledger.reserve_paid(
             deterministic_key("research-reserve-command", reservation_key),
@@ -472,77 +482,99 @@ class ResearchProviderGateway:
             intent,
             projection.reservation_cents,
         )
-        if hold.state in (PaidHoldState.DISPATCH_POSSIBLE, PaidHoldState.UNKNOWN):
-            return self._reconcile(hold, adapter)
-        if hold.state in (PaidHoldState.SETTLED, PaidHoldState.RELEASED):
-            return ProviderDispatchResult(
-                hold=hold, run=self.ledger.balance(hold.run_id), recovered=True
-            )
+        with self.ledger.dispatch_guard(reservation_key):
+            hold = self.ledger.hold(hold.hold_id)
+            if hold.state in (PaidHoldState.DISPATCH_POSSIBLE, PaidHoldState.UNKNOWN):
+                return self._reconcile(hold, adapter)
+            if hold.state in (PaidHoldState.SETTLED, PaidHoldState.RELEASED):
+                return ProviderDispatchResult(
+                    hold=hold, run=self.ledger.balance(hold.run_id), recovered=True
+                )
 
-        hold = self.ledger.mark_dispatch_possible(
-            deterministic_key("research-send-command", hold.hold_id), hold.hold_id
-        )
-        try:
-            success = adapter.send_once(
-                operation, provider_idempotency_key=provider_key
+            hold = self.ledger.mark_dispatch_possible(
+                deterministic_key("research-send-command", hold.hold_id), hold.hold_id
             )
-        except ProviderNotSent as exc:
-            self._release_or_converge(
-                deterministic_key("research-not-sent-command", hold.hold_id),
+            try:
+                success = adapter.send_once(
+                    operation, provider_idempotency_key=provider_key
+                )
+            except ProviderNotSent as exc:
+                self._release_or_converge(
+                    deterministic_key("research-not-sent-command", hold.hold_id),
+                    hold,
+                    exc.evidence,
+                )
+                return ProviderDispatchResult(
+                    hold=self.ledger.hold(hold.hold_id),
+                    run=self.ledger.balance(hold.run_id),
+                )
+            except Exception as exc:
+                self._retain_unknown(hold, {"exception_type": type(exc).__name__})
+                raise ProviderOutcomeUnknown(
+                    hold.hold_id, "provider outcome is unknown; reconcile before retry"
+                ) from exc
+
+            try:
+                self._validate_success(success)
+            except (TypeError, ValueError) as exc:
+                self._retain_unknown(hold, {"invalid_provider_result": type(exc).__name__})
+                raise ProviderOutcomeUnknown(
+                    hold.hold_id, "provider returned non-authoritative billing evidence"
+                ) from exc
+            run = self._settle_or_converge(
+                deterministic_key("research-settle-command", hold.hold_id),
                 hold,
-                exc.evidence,
+                success.actual_cents,
+                success.evidence,
             )
             return ProviderDispatchResult(
-                hold=self.ledger.hold(hold.hold_id),
-                run=self.ledger.balance(hold.run_id),
+                hold=self.ledger.hold(hold.hold_id), run=run, value=success.value
             )
-        except Exception as exc:
-            self._retain_unknown(hold, {"exception_type": type(exc).__name__})
-            raise ProviderOutcomeUnknown(
-                hold.hold_id, "provider outcome is unknown; reconcile before retry"
-            ) from exc
-
-        try:
-            self._validate_success(success)
-        except (TypeError, ValueError) as exc:
-            self._retain_unknown(hold, {"invalid_provider_result": type(exc).__name__})
-            raise ProviderOutcomeUnknown(
-                hold.hold_id, "provider returned non-authoritative billing evidence"
-            ) from exc
-        run = self._settle_or_converge(
-            deterministic_key("research-settle-command", hold.hold_id),
-            hold,
-            success.actual_cents,
-            success.evidence,
-        )
-        return ProviderDispatchResult(
-            hold=self.ledger.hold(hold.hold_id), run=run, value=success.value
-        )
 
     def recover_paid(
-        self, hold_id: str, adapter: HardCeilingProviderAdapter[T]
+        self,
+        hold_id: str,
+        adapter: HardCeilingProviderAdapter[T],
+        *,
+        projection_request: CostProjectionRequest | None = None,
     ) -> ProviderDispatchResult[T]:
         hold = self.ledger.hold(hold_id)
         if (hold.intent.provider, hold.intent.model) != (adapter.provider, adapter.model):
             raise DispatchIneligible("recovery adapter does not match persisted route")
         if not adapter.capabilities.hard_ceiling_eligible:
             raise DispatchIneligible("recovery adapter lacks hard-ceiling capabilities")
-        if hold.state is PaidHoldState.RESERVED:
-            self.ledger.release(
-                deterministic_key("research-restart-unsent", hold.hold_id),
-                hold.hold_id,
-                {"restart_proof": "send marker absent"},
-            )
+        if hold.intent.route_authority_digest is not None:
+            if self._fallback_route_authorizer is None or projection_request is None:
+                raise DispatchIneligible("recovery requires exact paid route authority")
+            authority = self._fallback_route_authorizer(projection_request, adapter)
+            projection = self._projector(projection_request)
+            if canonical_digest(authority) != hold.intent.route_authority_digest:
+                raise DispatchIneligible("recovery route authority changed")
+            if (
+                authority.rate_snapshot,
+                authority.currency,
+                authority.rates,
+            ) != (projection.rate_snapshot, projection.currency, projection.rates):
+                raise DispatchIneligible("recovery authority differs from exact projected rates")
+            self._require_eligible(projection, projection_request, adapter)
+        with self.ledger.dispatch_guard(hold.intent.reservation_key):
+            hold = self.ledger.hold(hold_id)
+            if hold.state is PaidHoldState.RESERVED:
+                self.ledger.release(
+                    deterministic_key("research-restart-unsent", hold.hold_id),
+                    hold.hold_id,
+                    {"restart_proof": "send marker absent"},
+                )
+                return ProviderDispatchResult(
+                    hold=self.ledger.hold(hold_id),
+                    run=self.ledger.balance(hold.run_id),
+                    recovered=True,
+                )
+            if hold.state in (PaidHoldState.DISPATCH_POSSIBLE, PaidHoldState.UNKNOWN):
+                return self._reconcile(hold, adapter)
             return ProviderDispatchResult(
-                hold=self.ledger.hold(hold_id),
-                run=self.ledger.balance(hold.run_id),
-                recovered=True,
+                hold=hold, run=self.ledger.balance(hold.run_id), recovered=True
             )
-        if hold.state in (PaidHoldState.DISPATCH_POSSIBLE, PaidHoldState.UNKNOWN):
-            return self._reconcile(hold, adapter)
-        return ProviderDispatchResult(
-            hold=hold, run=self.ledger.balance(hold.run_id), recovered=True
-        )
 
     def prepare_zero_cost(
         self,

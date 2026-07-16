@@ -13,6 +13,7 @@ single reservation authority. No Python lock participates in correctness.
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import hashlib
 import json
 import sqlite3
@@ -167,9 +168,12 @@ class PaidHoldIntent:
     projection_digest: str
     rate_snapshot: str
     provider_idempotency_key: str
+    route_authority_digest: str | None = None
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
+            if name == "route_authority_digest" and getattr(self, name) is None:
+                continue
             _required_text(name, cast(str, getattr(self, name)))
 
 
@@ -522,6 +526,25 @@ class ResearchSpendLedger:
     def _checkpoint(self, name: str) -> None:
         if self._failure_injector is not None:
             self._failure_injector(name)
+
+    @contextlib.contextmanager
+    def dispatch_guard(self, reservation_key: str) -> Generator[None]:
+        """Serialize one provider boundary across threads and local processes.
+
+        SQLite is local authority in this substrate, so a sibling lock file has
+        the same failure domain. The kernel releases the lock on process death;
+        a successor can then reconcile the durable dispatch marker.
+        """
+        _required_text("reservation_key", reservation_key)
+        lock_root = Path(self._db_path).expanduser().parent / ".dispatch-locks"
+        lock_root.mkdir(parents=True, exist_ok=True)
+        lock_path = lock_root / f"{_sha256(reservation_key)}.lock"
+        with lock_path.open("a+b") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def _connect(self, *, initialize: bool = False) -> sqlite3.Connection:
         if initialize:
@@ -1514,6 +1537,11 @@ class ResearchSpendLedger:
             projection_digest=str(row["projection_digest"]),
             rate_snapshot=str(row["rate_snapshot"]),
             provider_idempotency_key=str(row["provider_idempotency_key"]),
+            route_authority_digest=(
+                None
+                if payload.get("route_authority_digest") is None
+                else str(payload["route_authority_digest"])
+            ),
         )
         expected = {
             **_binding_payload(self._load_run(connection, str(row["run_id"])).binding),
@@ -1528,6 +1556,8 @@ class ResearchSpendLedger:
             "reservation_key": intent.reservation_key,
             "seam_id": intent.seam_id,
         }
+        if intent.route_authority_digest is not None:
+            expected["route_authority_digest"] = intent.route_authority_digest
         intent_json = str(row["intent_json"])
         if payload != expected or str(row["intent_sha256"]) != _sha256(intent_json):
             raise LedgerIntegrityError("paid hold intent does not match columns")
@@ -1597,8 +1627,7 @@ class ResearchSpendLedger:
     def _paid_intent_json(
         binding: RunBinding, intent: PaidHoldIntent, projected_max_cents: int
     ) -> str:
-        return _canonical(
-            {
+        payload = {
                 **_binding_payload(binding),
                 "model": intent.model,
                 "operation": intent.operation,
@@ -1611,7 +1640,9 @@ class ResearchSpendLedger:
                 "reservation_key": intent.reservation_key,
                 "seam_id": intent.seam_id,
             }
-        )
+        if intent.route_authority_digest is not None:
+            payload["route_authority_digest"] = intent.route_authority_digest
+        return _canonical(payload)
 
     @staticmethod
     def _replay(
