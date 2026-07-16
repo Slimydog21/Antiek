@@ -8,6 +8,9 @@ checkpoint, sink or transport authority.
 from __future__ import annotations
 
 import ast
+import ctypes
+import ctypes.util
+import errno
 import fcntl
 import hashlib
 import hmac
@@ -19,6 +22,7 @@ import secrets
 import sqlite3
 import stat
 import struct
+import sys
 import threading
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, closing, suppress
@@ -3603,6 +3607,83 @@ class Epoch0RecoveryAbortPreparationCompletionV1(_Closed):
     production_consumer_enabled: Literal[False] = False
 
 
+class Epoch0RecoveryAbortRenamedAuthorityPinsV1(_Closed):
+    schema_version: Literal[1] = 1
+    target_store_id: str
+    root_id: str
+    root_manifest_sha256: str
+    target_parent_dev: int = Field(ge=0, le=MAX_I63)
+    target_parent_ino: int = Field(ge=1, le=MAX_I63)
+    target_basename: str
+    target_dev: int = Field(ge=0, le=MAX_I63)
+    target_ino: int = Field(ge=1, le=MAX_I63)
+    lifecycle_phase: Literal["abort_renamed_to_tombstone"] = "abort_renamed_to_tombstone"
+    phase_version: int = Field(ge=2, le=6)
+    issuer_sequence: int = Field(ge=2, le=6)
+    state_sha256: str
+    barrier_id: str | None
+    freeze_nonce: str | None
+    source_manifest_sha256: str | None
+    copy_audit_sha256: str | None
+    witness_sha256: str | None
+
+    @model_validator(mode="after")
+    def _closed_abort_renamed_recovery_pins(self) -> Epoch0RecoveryAbortRenamedAuthorityPinsV1:
+        optional_hashes = (
+            self.freeze_nonce,
+            self.source_manifest_sha256,
+            self.copy_audit_sha256,
+            self.witness_sha256,
+        )
+        expected_presence = {
+            2: (False, False, False, False, False),
+            3: (True, True, False, False, True),
+            4: (True, True, True, False, True),
+            5: (True, True, True, True, True),
+            6: (True, True, True, True, True),
+        }
+        actual_presence = (
+            self.barrier_id is not None,
+            self.freeze_nonce is not None,
+            self.source_manifest_sha256 is not None,
+            self.copy_audit_sha256 is not None,
+            self.witness_sha256 is not None,
+        )
+        if (
+            not _STORE_ID.fullmatch(self.target_store_id)
+            or not _REGISTRY_ID.fullmatch(self.root_id)
+            or not _HEX64.fullmatch(self.root_manifest_sha256)
+            or not _HEX64.fullmatch(self.state_sha256)
+            or not _MIGRATION_BASENAME.fullmatch(self.target_basename)
+            or self.target_basename in {".", ".."}
+            or any(value is not None and not _HEX64.fullmatch(value) for value in optional_hashes)
+            or (self.barrier_id is not None and not _REGISTRY_ID.fullmatch(self.barrier_id))
+            or (
+                self.freeze_nonce is not None
+                and self.barrier_id != _migration_barrier_id(self.freeze_nonce)
+            )
+            or self.phase_version != self.issuer_sequence
+            or actual_presence != expected_presence[self.phase_version]
+        ):
+            raise ValueError("epoch0 recovery abort renamed authority pins")
+        return self
+
+
+class Epoch0RecoveryAbortRenameCompletionV1(_Closed):
+    schema_version: Literal[1] = 1
+    abort_prepared_state: SignedMigrationLifecycleStateV1
+    abort_renamed_to_tombstone_state: SignedMigrationLifecycleStateV1
+    synthetic_fixture_eligibility_only: Literal[True] = True
+    live_migration_verified: Literal[False] = False
+    user_accounting_effect: Literal[False] = False
+    transport_reachable: Literal[False] = False
+    confers_execution_authority: Literal[False] = False
+    confers_checkpoint_authority: Literal[False] = False
+    confers_sink_authority: Literal[False] = False
+    confers_transition_authority: Literal[False] = False
+    production_consumer_enabled: Literal[False] = False
+
+
 def _verify_signed_migration_recovery_ticket(
     ticket: SignedMigrationRecoveryTicketV1, verification_key: VerificationKeyV1
 ) -> None:
@@ -4052,6 +4133,72 @@ def _verify_epoch0_recovery_abort_preparation_completion_v1(
         raise ValueError("epoch0 recovery abort preparation completion mismatch")
 
 
+def _verify_epoch0_recovery_abort_rename_completion_v1(
+    completion: Epoch0RecoveryAbortRenameCompletionV1,
+    *,
+    issuer_verification_key: VerificationKeyV1,
+    expected_prepared_pins: Epoch0RecoveryAbortPreparedAuthorityPinsV1,
+) -> None:
+    if (
+        type(completion) is not Epoch0RecoveryAbortRenameCompletionV1
+        or type(issuer_verification_key) is not VerificationKeyV1
+        or type(expected_prepared_pins) is not Epoch0RecoveryAbortPreparedAuthorityPinsV1
+        or expected_prepared_pins.lifecycle_phase != "abort_prepared"
+    ):
+        raise ValueError("epoch0 recovery abort rename completion type")
+    completion = Epoch0RecoveryAbortRenameCompletionV1.model_validate(
+        completion.model_dump(mode="python")
+    )
+    abort_prepared = completion.abort_prepared_state
+    renamed = completion.abort_renamed_to_tombstone_state
+    _verify_signed_migration_lifecycle_state(abort_prepared, issuer_verification_key)
+    _verify_migration_lifecycle_transition(abort_prepared, renamed, issuer_verification_key)
+    prepared_pins = Epoch0RecoveryAbortPreparedAuthorityPinsV1.model_validate(
+        {
+            "target_store_id": abort_prepared.target_store_id,
+            "root_id": abort_prepared.root_id,
+            "root_manifest_sha256": abort_prepared.root_manifest_sha256,
+            "target_parent_dev": abort_prepared.target_parent_dev,
+            "target_parent_ino": abort_prepared.target_parent_ino,
+            "target_basename": abort_prepared.target_basename,
+            "target_dev": abort_prepared.target_dev,
+            "target_ino": abort_prepared.target_ino,
+            "lifecycle_phase": abort_prepared.lifecycle_phase,
+            "phase_version": abort_prepared.phase_version,
+            "issuer_sequence": abort_prepared.issuer_sequence,
+            "state_sha256": abort_prepared.state_sha256,
+            "barrier_id": abort_prepared.barrier_id,
+            "freeze_nonce": abort_prepared.freeze_nonce,
+            "source_manifest_sha256": abort_prepared.source_manifest_sha256,
+            "copy_audit_sha256": abort_prepared.copy_audit_sha256,
+            "witness_sha256": abort_prepared.witness_sha256,
+        }
+    )
+    inherited_pins = (
+        renamed.barrier_id,
+        renamed.freeze_nonce,
+        renamed.source_manifest_sha256,
+        renamed.copy_audit_sha256,
+        renamed.witness_sha256,
+    )
+    prepared_pin_tuple = (
+        abort_prepared.barrier_id,
+        abort_prepared.freeze_nonce,
+        abort_prepared.source_manifest_sha256,
+        abort_prepared.copy_audit_sha256,
+        abort_prepared.witness_sha256,
+    )
+    if (
+        prepared_pins != expected_prepared_pins
+        or abort_prepared.lifecycle_phase != "abort_prepared"
+        or renamed.lifecycle_phase != "abort_renamed_to_tombstone"
+        or renamed.phase_version != abort_prepared.phase_version + 1
+        or renamed.issuer_sequence != abort_prepared.issuer_sequence + 1
+        or inherited_pins != prepared_pin_tuple
+    ):
+        raise ValueError("epoch0 recovery abort rename completion mismatch")
+
+
 def _authenticate_epoch0_recovery_abort_prepared_state_v1(
     *,
     parent_fd: int,
@@ -4119,6 +4266,280 @@ def _authenticate_epoch0_recovery_abort_prepared_state_v1(
         expected.target_ino,
     ):
         raise ValueError("epoch0 recovery abort prepared target changed during authentication")
+    return state
+
+
+_MIGRATION_ABORT_TARGET_LAYOUT = Literal["pre_rename", "post_rename"]
+
+
+def _require_migration_abort_target_sidecars_absent(
+    *, parent_fd: int, target_basename: str, tombstone_basename: str
+) -> None:
+    if type(parent_fd) is not int or parent_fd < 0:
+        raise ValueError("migration abort sidecar parent descriptor")
+    for basename in (target_basename, tombstone_basename):
+        for suffix in ("-wal", "-shm", "-journal"):
+            try:
+                os.stat(f"{basename}{suffix}", dir_fd=parent_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            raise ValueError("migration lifecycle sqlite sidecar remains")
+
+
+def _classify_migration_abort_prepared_target_layout(
+    *,
+    parent_fd: int,
+    target_fd: int,
+    target_basename: str,
+    tombstone_basename: str,
+    expected_target_identity: tuple[int, int],
+) -> _MIGRATION_ABORT_TARGET_LAYOUT:
+    if type(parent_fd) is not int or type(target_fd) is not int or parent_fd < 0 or target_fd < 0:
+        raise ValueError("migration abort target layout descriptor")
+    target_info = os.fstat(target_fd)
+    if (
+        not stat.S_ISREG(target_info.st_mode)
+        or target_info.st_uid != os.getuid()
+        or target_info.st_nlink != 1
+        or stat.S_IMODE(target_info.st_mode) != 0o600
+        or (target_info.st_dev, target_info.st_ino) != expected_target_identity
+    ):
+        raise ValueError("migration abort target layout identity")
+    target_entry = _migration_lifecycle_entry_identity(parent_fd, target_basename)
+    tombstone_entry = _migration_lifecycle_entry_identity(parent_fd, tombstone_basename)
+    if target_entry == expected_target_identity and tombstone_entry is None:
+        return "pre_rename"
+    if target_entry is None and tombstone_entry == expected_target_identity:
+        return "post_rename"
+    raise ValueError("migration abort target layout mismatch")
+
+
+def _verify_migration_abort_post_rename_target_layout(
+    *,
+    parent_fd: int,
+    target_fd: int,
+    target_basename: str,
+    tombstone_basename: str,
+    expected_target_identity: tuple[int, int],
+) -> None:
+    if (
+        _classify_migration_abort_prepared_target_layout(
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+            target_basename=target_basename,
+            tombstone_basename=tombstone_basename,
+            expected_target_identity=expected_target_identity,
+        )
+        != "post_rename"
+    ):
+        raise ValueError("migration abort post-rename target layout")
+
+
+def _rename_migration_target_to_tombstone_exclusive(
+    *,
+    parent_fd: int,
+    target_basename: str,
+    tombstone_basename: str,
+) -> None:
+    if type(parent_fd) is not int or parent_fd < 0:
+        raise ValueError("migration target rename parent descriptor")
+    if (
+        not _MIGRATION_BASENAME.fullmatch(target_basename)
+        or target_basename in {".", ".."}
+        or tombstone_basename != f".{target_basename}.abort-v1"
+        or len(tombstone_basename.encode()) > 255
+    ):
+        raise ValueError("migration target rename basename")
+    libc_path = ctypes.util.find_library("c")
+    if libc_path is None:
+        raise ValueError("migration target rename libc unavailable")
+    libc = ctypes.CDLL(libc_path, use_errno=True)
+    old_bytes = target_basename.encode()
+    new_bytes = tombstone_basename.encode()
+    if sys.platform == "darwin":
+        rename = getattr(libc, "renameatx_np", None)
+        if rename is None:
+            raise ValueError("migration target rename unsupported platform")
+        rename.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        rename.restype = ctypes.c_int
+        result = rename(parent_fd, old_bytes, parent_fd, new_bytes, 0x00000004)
+    elif sys.platform.startswith("linux"):
+        rename = getattr(libc, "renameat2", None)
+        if rename is None:
+            raise ValueError("migration target rename unsupported platform")
+        rename.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        rename.restype = ctypes.c_int
+        result = rename(parent_fd, old_bytes, parent_fd, new_bytes, 1)
+    else:
+        raise ValueError("migration target rename unsupported platform")
+    if result != 0:
+        error_number = ctypes.get_errno()
+        if error_number in {errno.EEXIST, errno.ENOTEMPTY}:
+            raise ValueError("migration target rename collision")
+        raise OSError(error_number, os.strerror(error_number))
+
+
+def _authenticate_epoch0_recovery_abort_prepared_state_for_rename_v1(
+    *,
+    parent_fd: int,
+    target_fd: int,
+    verification_key: VerificationKeyV1,
+    expected: Epoch0RecoveryAbortPreparedAuthorityPinsV1,
+) -> tuple[SignedMigrationLifecycleStateV1, _MIGRATION_ABORT_TARGET_LAYOUT]:
+    if (
+        type(parent_fd) is not int
+        or type(target_fd) is not int
+        or type(expected) is not Epoch0RecoveryAbortPreparedAuthorityPinsV1
+    ):
+        raise ValueError("epoch0 recovery abort prepared rename descriptor type")
+    expected = Epoch0RecoveryAbortPreparedAuthorityPinsV1.model_validate(
+        expected.model_dump(mode="python")
+    )
+    if _migration_lifecycle_parent_identity(parent_fd) != (
+        expected.target_parent_dev,
+        expected.target_parent_ino,
+    ):
+        raise ValueError("epoch0 recovery abort prepared rename parent identity")
+    expected_target_identity = (expected.target_dev, expected.target_ino)
+    target_info = os.fstat(target_fd)
+    if (
+        not stat.S_ISREG(target_info.st_mode)
+        or target_info.st_uid != os.getuid()
+        or target_info.st_nlink != 1
+        or stat.S_IMODE(target_info.st_mode) != 0o600
+        or (target_info.st_dev, target_info.st_ino) != expected_target_identity
+    ):
+        raise ValueError("epoch0 recovery abort prepared rename target identity")
+    tombstone_basename = f".{expected.target_basename}.abort-v1"
+    _require_migration_abort_target_sidecars_absent(
+        parent_fd=parent_fd,
+        target_basename=expected.target_basename,
+        tombstone_basename=tombstone_basename,
+    )
+    layout = _classify_migration_abort_prepared_target_layout(
+        parent_fd=parent_fd,
+        target_fd=target_fd,
+        target_basename=expected.target_basename,
+        tombstone_basename=tombstone_basename,
+        expected_target_identity=expected_target_identity,
+    )
+    state = _read_signed_migration_lifecycle_state(
+        parent_fd=parent_fd,
+        target_basename=expected.target_basename,
+        verification_key=verification_key,
+    )
+    fields = (
+        "target_store_id",
+        "root_id",
+        "root_manifest_sha256",
+        "target_parent_dev",
+        "target_parent_ino",
+        "target_basename",
+        "target_dev",
+        "target_ino",
+        "lifecycle_phase",
+        "phase_version",
+        "issuer_sequence",
+        "state_sha256",
+        "barrier_id",
+        "freeze_nonce",
+        "source_manifest_sha256",
+        "copy_audit_sha256",
+        "witness_sha256",
+    )
+    if any(getattr(state, field) != getattr(expected, field) for field in fields):
+        raise ValueError("epoch0 recovery abort prepared rename signed state mismatch")
+    target_after = os.fstat(target_fd)
+    if (target_after.st_dev, target_after.st_ino) != expected_target_identity:
+        raise ValueError("epoch0 recovery abort prepared rename target changed")
+    return state, layout
+
+
+def _authenticate_epoch0_recovery_abort_renamed_state_v1(
+    *,
+    parent_fd: int,
+    target_fd: int,
+    verification_key: VerificationKeyV1,
+    expected: Epoch0RecoveryAbortRenamedAuthorityPinsV1,
+) -> SignedMigrationLifecycleStateV1:
+    if (
+        type(parent_fd) is not int
+        or type(target_fd) is not int
+        or type(expected) is not Epoch0RecoveryAbortRenamedAuthorityPinsV1
+    ):
+        raise ValueError("epoch0 recovery abort renamed descriptor type")
+    expected = Epoch0RecoveryAbortRenamedAuthorityPinsV1.model_validate(
+        expected.model_dump(mode="python")
+    )
+    if _migration_lifecycle_parent_identity(parent_fd) != (
+        expected.target_parent_dev,
+        expected.target_parent_ino,
+    ):
+        raise ValueError("epoch0 recovery abort renamed parent identity")
+    expected_target_identity = (expected.target_dev, expected.target_ino)
+    target_info = os.fstat(target_fd)
+    if (
+        not stat.S_ISREG(target_info.st_mode)
+        or target_info.st_uid != os.getuid()
+        or target_info.st_nlink != 1
+        or stat.S_IMODE(target_info.st_mode) != 0o600
+        or (target_info.st_dev, target_info.st_ino) != expected_target_identity
+    ):
+        raise ValueError("epoch0 recovery abort renamed target identity")
+    tombstone_basename = f".{expected.target_basename}.abort-v1"
+    _require_migration_abort_target_sidecars_absent(
+        parent_fd=parent_fd,
+        target_basename=expected.target_basename,
+        tombstone_basename=tombstone_basename,
+    )
+    _verify_migration_abort_post_rename_target_layout(
+        parent_fd=parent_fd,
+        target_fd=target_fd,
+        target_basename=expected.target_basename,
+        tombstone_basename=tombstone_basename,
+        expected_target_identity=expected_target_identity,
+    )
+    state = _read_signed_migration_lifecycle_state(
+        parent_fd=parent_fd,
+        target_basename=expected.target_basename,
+        verification_key=verification_key,
+    )
+    fields = (
+        "target_store_id",
+        "root_id",
+        "root_manifest_sha256",
+        "target_parent_dev",
+        "target_parent_ino",
+        "target_basename",
+        "target_dev",
+        "target_ino",
+        "lifecycle_phase",
+        "phase_version",
+        "issuer_sequence",
+        "state_sha256",
+        "barrier_id",
+        "freeze_nonce",
+        "source_manifest_sha256",
+        "copy_audit_sha256",
+        "witness_sha256",
+    )
+    if any(getattr(state, field) != getattr(expected, field) for field in fields):
+        raise ValueError("epoch0 recovery abort renamed signed state mismatch")
+    target_after = os.fstat(target_fd)
+    if (target_after.st_dev, target_after.st_ino) != expected_target_identity:
+        raise ValueError("epoch0 recovery abort renamed target changed during authentication")
     return state
 
 
@@ -4196,17 +4617,11 @@ def _verify_migration_lifecycle_target_state(
     target = _migration_lifecycle_entry_identity(parent_fd, state.target_basename)
     tombstone = _migration_lifecycle_entry_identity(parent_fd, state.tombstone_basename)
     if state.lifecycle_phase.startswith("abort_"):
-        for suffix in ("-wal", "-shm", "-journal"):
-            try:
-                os.stat(
-                    f"{state.target_basename}{suffix}",
-                    dir_fd=parent_fd,
-                    follow_symlinks=False,
-                )
-            except FileNotFoundError:
-                continue
-            else:
-                raise ValueError("migration lifecycle sqlite sidecar remains")
+        _require_migration_abort_target_sidecars_absent(
+            parent_fd=parent_fd,
+            target_basename=state.target_basename,
+            tombstone_basename=state.tombstone_basename,
+        )
     before_abort = {
         "schema_only",
         "barrier_acquired",
@@ -4400,6 +4815,7 @@ def _persist_signed_migration_lifecycle_state(
     expected_prior_state_sha256: str | None,
     _fault_hook: Callable[[Literal["after_rename", "after_parent_fsync", "after_reread"]], None]
     | None = None,
+    locked_parent_fd: int | None = None,
 ) -> SignedMigrationLifecycleStateV1:
     parent_identity = _migration_lifecycle_parent_identity(parent_fd)
     if (
@@ -4409,22 +4825,27 @@ def _persist_signed_migration_lifecycle_state(
         raise ValueError("migration lifecycle persistence parent mismatch")
     _verify_signed_migration_lifecycle_state(state, verification_key)
     state_basename = _migration_lifecycle_state_basename(state.target_basename)
-    locked_parent_fd = os.open(
-        ".",
-        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
-        dir_fd=parent_fd,
-    )
+    owns_parent_lock = locked_parent_fd is None
+    if locked_parent_fd is None:
+        locked_parent_fd = os.open(
+            ".",
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=parent_fd,
+        )
     try:
         locked_parent_identity = _migration_lifecycle_parent_identity(locked_parent_fd)
     except Exception:
-        os.close(locked_parent_fd)
+        if owns_parent_lock:
+            os.close(locked_parent_fd)
         raise
     if locked_parent_identity != parent_identity:
-        os.close(locked_parent_fd)
+        if owns_parent_lock:
+            os.close(locked_parent_fd)
         raise ValueError("migration lifecycle locked parent mismatch")
     temporary_basename: str | None = None
     try:
-        fcntl.flock(locked_parent_fd, fcntl.LOCK_EX)
+        if owns_parent_lock:
+            fcntl.flock(locked_parent_fd, fcntl.LOCK_EX)
         _cleanup_migration_lifecycle_temporaries(locked_parent_fd, state.target_basename)
         _verify_migration_lifecycle_target_state(locked_parent_fd, state)
         if expected_prior_state_sha256 is None:
@@ -4494,8 +4915,9 @@ def _persist_signed_migration_lifecycle_state(
             with suppress(FileNotFoundError):
                 os.unlink(temporary_basename, dir_fd=locked_parent_fd)
                 os.fsync(locked_parent_fd)
-        fcntl.flock(locked_parent_fd, fcntl.LOCK_UN)
-        os.close(locked_parent_fd)
+        if owns_parent_lock:
+            fcntl.flock(locked_parent_fd, fcntl.LOCK_UN)
+            os.close(locked_parent_fd)
 
 
 def _confirm_signed_migration_lifecycle_state_durable(
