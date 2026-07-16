@@ -16,6 +16,11 @@ from .canonical_reader import (
     CanonicalTwinReaderNotFound,
     CanonicalTwinReaderView,
 )
+from .embedding_routes import (
+    CanonicalEmbeddingRouteRegistry,
+    CanonicalEmbeddingRouteUnavailable,
+    QualifiedCanonicalEmbeddingRoute,
+)
 from .ledger import (
     CanonicalTwinPublication,
     FailureCode,
@@ -49,8 +54,11 @@ __all__ = [
     "CanonicalTwinReader",
     "CanonicalTwinReaderNotFound",
     "CanonicalTwinReaderView",
+    "CanonicalEmbeddingRouteRegistry",
+    "CanonicalEmbeddingRouteUnavailable",
     "FailureCode",
     "SourceRevision",
+    "QualifiedCanonicalEmbeddingRoute",
     "TwinConflictError",
     "TwinIntegrityError",
     "TwinLedgerError",

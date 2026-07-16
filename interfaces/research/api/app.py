@@ -1665,6 +1665,9 @@ def create_app(
         db_path=default_db_path(),
         ledger_path=os.environ.get("ANTIEK_TWIN_LEDGER_PATH"),
     )
+    from .canonical_twin_embedding_routes import register_canonical_twin_embedding_routes
+
+    register_canonical_twin_embedding_routes(app)
     # Book acquisition — authorized, bytes-only EPUB port into the
     # personal-reading corpus.  Requires a dedicated signing key
     # (ANTIEK_BOOK_ACQUISITION_SIGNING_KEY) that is NEVER the
