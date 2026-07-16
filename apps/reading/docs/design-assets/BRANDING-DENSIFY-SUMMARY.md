@@ -229,3 +229,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Explicit invent reframe class densify | `359f415c1` | stamp antiek-living-tv-invent on residual product invent doors + LGH; densify tests |
 | Mascot receives living-TV host beats | `c552362df` | PenguinMascot.reactions densify: arcade host emit → same emote stage |
 | Imagine invent polish v2 thought partner desk | `ed1a43c31` | ThoughtPartnerPanel invent |
+| Imagine invent polish v2 igloo ice arcade cursor | (next tip) | cabinet/LGH/wait ice-fishing invent |

@@ -31,3 +31,4 @@ Candidates retained as `*_session_candidate_v1.webp` beside refedits.
 | werner_antiek_bench_celebrate_refedit_v2.jpg | **PROMOTED** → poses/session/werner_antiek_bench_celebrate_session_v1.webp |
 | werner_crt_igloo_cursor_tv_refedit_v2.jpg | **PROMOTED** → poses/session/werner_crt_igloo_cursor_tv_session_v1.webp |
 | werner_thought_partner_desk_refedit_v2.jpg | **PROMOTED** → poses/session/werner_thought_partner_desk_session_v1.webp |
+| werner_igloo_ice_arcade_cursor_refedit_v2.jpg | **PROMOTED** → poses/session/werner_igloo_ice_arcade_cursor_session_v1.webp |
