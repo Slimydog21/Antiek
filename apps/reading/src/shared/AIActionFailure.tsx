@@ -5,6 +5,7 @@ import {
   type FailureCode,
 } from "../lib/api";
 
+import { emitWernerExperience } from "../werner/reactionBus";
 /**
  * AIActionFailure — the one honest-failure surface every AI action shares.
  *
@@ -103,7 +104,7 @@ export default function AIActionFailure({
       </p>
       {showRetry ? (
         <div>
-          <LemonButton variant="secondary" size="sm" onClick={onRetry}>
+          <LemonButton variant="secondary" size="sm" onClick={() => { emitWernerExperience("highlight"); onRetry(); }}>
             {retryLabel}
           </LemonButton>
         </div>
