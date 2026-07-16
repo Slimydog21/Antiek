@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cycle 566 · Igloo Directory</title>
+    <style>
+      :root {
+        --ink: #151515;
+        --paper: #fafaf7;
+        --card: #fff;
+        --soft: #f3f1ea;
+        --blue: #1d4aff;
+        --yellow: #f9bd2b;
+        --line: #151515;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: #2c2c2c;
+        font:
+          15px/1.55 -apple-system,
+          BlinkMacSystemFont,
+          "Helvetica Neue",
+          sans-serif;
+      }
+      main {
+        width: min(1120px, calc(100% - 32px));
+        margin: 32px auto 72px;
+      }
+      header,
+      section {
+        border: 2px solid var(--line);
+        border-radius: 8px;
+        background: var(--card);
+        box-shadow: 4px 4px 0 var(--ink);
+        padding: 24px;
+        margin: 0 0 22px;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+      h1 {
+        font-size: 36px;
+        line-height: 1.05;
+      }
+      h2 {
+        font-size: 22px;
+      }
+      h3 {
+        font-size: 15px;
+      }
+      .eyebrow {
+        font:
+          700 12px/1.2 ui-monospace,
+          monospace;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .tags,
+      .grid {
+        display: grid;
+        gap: 12px;
+      }
+      .tags {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      }
+      .tag,
+      .card {
+        border: 1px solid var(--ink);
+        border-radius: 6px;
+        padding: 12px;
+        background: var(--soft);
+      }
+      .grid {
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      }
+      code {
+        background: var(--soft);
+        border: 1px solid #cfcfcf;
+        border-radius: 4px;
+        padding: 1px 5px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 9px;
+        border-bottom: 1px solid #cfcfcf;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: var(--soft);
+      }
+      .warn {
+        border-left: 5px solid var(--yellow);
+        padding: 12px;
+        background: #fff5dd;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">Cycle 566 · bounded implementation spec</p>
+        <h1>The Igloo Directory</h1>
+        <p>
+          Replace the stale generic <code>/map</code> registry with a truthful,
+          image-led wayfinding surface for canonical human doors.
+        </p>
+        <div class="tags">
+          <div class="tag">Status: implemented · verification green</div>
+          <div class="tag">Base: PR #2707 · <code>b9ca8c14a</code></div>
+          <div class="tag">Owner: Codex Infinite</div>
+        </div>
+      </header>
+
+      <section>
+        <h2>Problem and truth boundary</h2>
+        <p>
+          The current page says it lists every surface, but its 20 entries omit
+          live product doors, include retired redirect paths, and describe the
+          reading loop as PDF-based. A manually curated page cannot honestly
+          certify router completeness.
+        </p>
+        <p class="warn">
+          <strong>Invariant:</strong> this is a human field guide, not a route
+          manifest, availability monitor, permission oracle, dependency graph,
+          or product-completion claim.
+        </p>
+      </section>
+
+      <section>
+        <h2>Information architecture</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Make and investigate</h3>
+            <p>
+              Canonical daily doors for research, deep research, evidence
+              intake, reading, notes, writing, speaking, and multimedia.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Review and steward</h3>
+            <p>
+              Canonical doors for calibration, substrate cardinality, privacy,
+              trust, settings, billing, payouts, coordination, and operator
+              review.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Specialist rooms</h3>
+            <p>
+              Secondary but intentional doors for creation, federation,
+              citation, skill-rule, biography, replay-adjacent, and experimental
+              governance work.
+            </p>
+          </div>
+        </div>
+        <p>
+          Do not advertise redirect aliases (<code>/investigations</code>,
+          <code>/interviews</code>), parameter-only deep links, unauthenticated
+          token routes, panel implementation routes, or Storybook.
+        </p>
+      </section>
+
+      <section>
+        <h2>Visual contract</h2>
+        <ul>
+          <li>
+            Use one ChatGPT Image polar directory-hall raster as a decorative
+            <code>img</code> with empty alt text, <code>aria-hidden</code>, no
+            pointer events, and no semantic hot regions.
+          </li>
+          <li>
+            Central content is ordinary HTML links. Image generation never owns
+            navigation, labels, route claims, focus order, or availability.
+          </li>
+          <li>
+            Day and night themes use repository tokens and opaque-enough veils;
+            cards retain readable contrast over the image.
+          </li>
+          <li>
+            At narrow widths the masthead and cards collapse to one column
+            without horizontal scrolling. Reduced motion removes card
+            translation.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Acceptance gates</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Gate</th>
+              <th>Proof</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Truth</td>
+              <td>
+                No “every route” or PDF copy; aliases and implementation routes
+                absent; canonical destinations covered by focused tests.
+              </td>
+            </tr>
+            <tr>
+              <td>Semantics</td>
+              <td>
+                The composed AppShell owns the only route-level
+                <code>main</code>; the directory root adds no nested landmark;
+                groups are labelled sections; every destination is a native
+                link; raster is decorative.
+              </td>
+            </tr>
+            <tr>
+              <td>Responsive</td>
+              <td>
+                Default and narrow stories; Playwright axe run at a true 375×667
+                viewport; explicit horizontal-overflow assertion.
+              </td>
+            </tr>
+            <tr>
+              <td>Mechanical</td>
+              <td>
+                Focused Vitest, TypeScript, token/type/parity gates, Storybook
+                build, production build, and diff check pass.
+              </td>
+            </tr>
+            <tr>
+              <td>Security</td>
+              <td>
+                Hardenx reports zero REAL findings; no network, secret, raw
+                error, or new authority is introduced.
+              </td>
+            </tr>
+            <tr>
+              <td>Review</td>
+              <td>
+                A non-builder lineage tries to refute truth, accessibility,
+                route integrity, and dark-theme contrast; findings are repaired
+                before push.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Five values</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Intellectual honesty</h3>
+            <p>
+              Call the page a curated directory. Never infer route health,
+              access, or completeness from a static link list.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Fairness</h3>
+            <p>
+              Keep specialist and governance work discoverable without letting
+              operator plumbing dominate daily research doors.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Rigor</h3>
+            <p>
+              Test positive canonical destinations and negative
+              redirect/parameter routes; a screenshot alone cannot prove route
+              truth.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Diligence</h3>
+            <p>
+              Reconcile labels against <code>App.tsx</code>, command palette,
+              and workflow taxonomy before writing the directory.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Defensibility</h3>
+            <p>
+              Record generated-asset provenance and rejected alternatives so
+              future agents can reconstruct why the image remains decorative.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Rejected alternatives</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Alternative</th>
+              <th>Why rejected</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Auto-parse <code>App.tsx</code></td>
+              <td>
+                A brittle source parser would confuse aliases, parameter routes,
+                public routes, and implementation plumbing with intentional
+                human doors.
+              </td>
+            </tr>
+            <tr>
+              <td>Clickable image regions</td>
+              <td>
+                Hotspots would make navigation crop-dependent, inaccessible, and
+                model-authored. The user’s Flipbook inspiration does not justify
+                surrendering route truth.
+              </td>
+            </tr>
+            <tr>
+              <td>Node-edge product map</td>
+              <td>
+                The directory does not possess dependency or knowledge-graph
+                evidence; edges would fabricate relationships.
+              </td>
+            </tr>
+            <tr>
+              <td>Keep the generic registry and only reskin it</td>
+              <td>That preserves false completeness and stale PDF language.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section
+        id="harness-hint-run"
+        data-harness-default-pattern="inline"
+        data-harness-inline-only-sprints="SPR-01"
+      >
+        <h2>Harness hint</h2>
+        <p>
+          One tightly coupled UI seam; implement inline. Use heterogeneous
+          adversarial verification after all gates. No agent may merge or
+          deploy.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

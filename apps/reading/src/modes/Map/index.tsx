@@ -1,129 +1,334 @@
 import { Link } from "react-router-dom";
 
-/**
- * Application map — operator-facing index of every route.
- *
- * The substrate has grown enough that the operator benefits from
- * a single page listing every surface with a one-line description.
- * Routes are grouped by category (workstation / governance / audit /
- * config / Storybook) so the operator can locate any surface
- * without leaving home.
- */
+import directoryEnvironment from "../../brand/werner/map/igloo_directory_environment_v1.webp";
+import "./igloo-directory.css";
 
-interface RouteEntry {
+export interface DirectoryDoor {
   path: string;
   title: string;
   description: string;
+  marker: string;
 }
 
-const GROUPS: { title: string; routes: RouteEntry[] }[] = [
-  {
-    title: "Workstation",
-    routes: [
-      { path: "/", title: "Research workstation", description: "Mode A — chat-first investigation surface" },
-      { path: "/wrestle", title: "Document wrestler", description: "Mode B — PDF reading + region selection" },
-      { path: "/create", title: "Creation studio", description: "Mode C — lego-block writing" },
-      { path: "/brainstorm", title: "Brainstorm station", description: "Mode E — watch-for-later + thought partner" },
-      { path: "/investigations", title: "Investigations index", description: "List + create investigations" },
-      { path: "/documents", title: "Documents", description: "Substrate-attached sources by tier" },
-      { path: "/notebooks", title: "Notebooks", description: "Wedge 2 literate-analysis surface" },
-      { path: "/sources", title: "Sources", description: "Acquisition adapters" },
-      { path: "/interviews", title: "Interviews", description: "Loop 4 informant projects + invites" },
-      { path: "/skill-rules", title: "Skill rules", description: "Cross-user discovered rules" },
-    ],
-  },
-  {
-    title: "Governance",
-    routes: [
-      { path: "/privacy", title: "Privacy dashboard", description: "ε budgets + delete-all (§13.3)" },
-      { path: "/trust", title: "Trust Center", description: "Substrate-wide DP + control posture" },
-      { path: "/federation", title: "Federation config", description: "Cross-substrate citation policy (§13.9 Phase 3)" },
-      { path: "/loop-3", title: "Loop 3 checklist", description: "RL unlock criteria + env gate (§14.2)" },
-      { path: "/operator", title: "Operator dashboard", description: "Composite operator-facing snapshot" },
-    ],
-  },
-  {
-    title: "Audit + analytics",
-    routes: [
-      { path: "/stats", title: "Substrate stats", description: "Per-table cardinality dashboard" },
-      { path: "/outcomes", title: "Outcomes audit", description: "Cross-investigation grading history" },
-      { path: "/payouts", title: "Payouts audit", description: "Stripe Connect transfer log" },
-      { path: "/billing", title: "Billing", description: "Free-tier usage + margin breakdown" },
-    ],
-  },
-  {
-    title: "Pricing + replay",
-    routes: [
-      { path: "/pricing", title: "Pricing", description: "OpenRouter-style pay-as-you-go calculator" },
-    ],
-  },
-];
+export interface DirectoryDistrict {
+  id: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  doors: readonly DirectoryDoor[];
+}
 
-const KEYBOARD_HINTS: { label: string; key: string }[] = [
-  { label: "Command palette", key: "⌘K" },
-  { label: "AI sidecar", key: "⌘J" },
-];
+export const DIRECTORY_DISTRICTS: readonly DirectoryDistrict[] = [
+  {
+    id: "make",
+    eyebrow: "The working rooms",
+    title: "Make and investigate",
+    description:
+      "Begin with a question, gather evidence, read it as HTML, and carry the strongest thinking into notes, drafts, and conversations.",
+    doors: [
+      {
+        path: "/",
+        title: "Research workstation",
+        description:
+          "Interrogate evidence and chase questions with research agents.",
+        marker: "01",
+      },
+      {
+        path: "/deep-research",
+        title: "Deep research",
+        description:
+          "Watch launched research sessions develop in one workspace.",
+        marker: "02",
+      },
+      {
+        path: "/my-research",
+        title: "My research",
+        description:
+          "Survey running and completed investigations from one chart room.",
+        marker: "03",
+      },
+      {
+        path: "/sources",
+        title: "Source intake",
+        description: "Bring publications and other evidence into Antiek.",
+        marker: "04",
+      },
+      {
+        path: "/documents",
+        title: "Evidence archive",
+        description: "Find substrate-attached records by evidence tier.",
+        marker: "05",
+      },
+      {
+        path: "/library",
+        title: "Library",
+        description: "Choose an owned reading asset and open its HTML edition.",
+        marker: "06",
+      },
+      {
+        path: "/wrestle",
+        title: "Reading wrestler",
+        description:
+          "Open a document for close reading and region-level interrogation.",
+        marker: "07",
+      },
+      {
+        path: "/readings",
+        title: "Personal readings",
+        description: "Return to saved reads and created information assets.",
+        marker: "08",
+      },
+      {
+        path: "/notebooks",
+        title: "Notebooks",
+        description: "Develop durable notes and literate analysis.",
+        marker: "09",
+      },
+      {
+        path: "/brainstorm",
+        title: "Brainstorm",
+        description:
+          "Wrestle with parked questions and future lines of inquiry.",
+        marker: "10",
+      },
+      {
+        path: "/write",
+        title: "Write",
+        description: "Shape evidence into outlines, drafts, and finished work.",
+        marker: "11",
+      },
+      {
+        path: "/speak",
+        title: "Speak",
+        description: "Run interview projects and corroborate human testimony.",
+        marker: "12",
+      },
+      {
+        path: "/multimedia",
+        title: "Multimedia",
+        description: "Review local visual and audible research experiences.",
+        marker: "13",
+      },
+    ],
+  },
+  {
+    id: "steward",
+    eyebrow: "The instrument rooms",
+    title: "Review and steward",
+    description:
+      "Inspect quality, privacy, model behavior, budget posture, and the substrate itself without confusing observation with authority.",
+    doors: [
+      {
+        path: "/outcomes",
+        title: "Calibration observatory",
+        description:
+          "Review outcome history and the evidence behind calibration.",
+        marker: "14",
+      },
+      {
+        path: "/stats",
+        title: "Substrate atlas",
+        description:
+          "Inspect known corpus cardinalities without invented relationships.",
+        marker: "15",
+      },
+      {
+        path: "/settings",
+        title: "Model observatory",
+        description:
+          "Steward models, budgets, projections, and benchmark evidence.",
+        marker: "16",
+      },
+      {
+        path: "/privacy",
+        title: "Privacy",
+        description: "Review privacy budgets and account-level controls.",
+        marker: "17",
+      },
+      {
+        path: "/trust",
+        title: "Trust center",
+        description: "Read Antiek’s substrate-wide control posture.",
+        marker: "18",
+      },
+      {
+        path: "/billing",
+        title: "Billing",
+        description: "Inspect usage and account economics.",
+        marker: "19",
+      },
+      {
+        path: "/payouts",
+        title: "Payout audit",
+        description: "Review contributor accrual and transfer history.",
+        marker: "20",
+      },
+      {
+        path: "/coordination",
+        title: "Coordination",
+        description:
+          "Inspect gates, sprint posture, and shared execution state.",
+        marker: "21",
+      },
+      {
+        path: "/operator",
+        title: "Operator room",
+        description: "Open the composite operator-facing snapshot.",
+        marker: "22",
+      },
+    ],
+  },
+  {
+    id: "specialist",
+    eyebrow: "The side chambers",
+    title: "Specialist rooms",
+    description:
+      "Intentional secondary surfaces for advanced composition, policy, citation, and learning-system work.",
+    doors: [
+      {
+        path: "/home",
+        title: "Antiek home",
+        description: "Return to the unified branded threshold.",
+        marker: "23",
+      },
+      {
+        path: "/create",
+        title: "Creation studio",
+        description: "Use the lower-level block composition surface.",
+        marker: "24",
+      },
+      {
+        path: "/biography",
+        title: "Biography template",
+        description:
+          "Start a research, writing, and interview project over one graph.",
+        marker: "25",
+      },
+      {
+        path: "/federation",
+        title: "Federation",
+        description: "Review cross-substrate citation policy.",
+        marker: "26",
+      },
+      {
+        path: "/cross-graph/citations",
+        title: "Cross-graph citations",
+        description: "Inspect citations crossing graph boundaries.",
+        marker: "27",
+      },
+      {
+        path: "/skill-rules",
+        title: "Skill rules",
+        description: "Review learned rules before they shape future work.",
+        marker: "28",
+      },
+      {
+        path: "/loop-3",
+        title: "Learning-loop gate",
+        description: "Inspect the unlock checklist for adaptive behavior.",
+        marker: "29",
+      },
+      {
+        path: "/pricing",
+        title: "Pricing",
+        description: "Estimate pay-as-you-go research economics.",
+        marker: "30",
+      },
+    ],
+  },
+] as const;
 
-export default function Map() {
+export interface IglooDirectoryProps {
+  districts?: readonly DirectoryDistrict[];
+  visualFixture?: boolean;
+}
+
+export function IglooDirectory({
+  districts = DIRECTORY_DISTRICTS,
+  visualFixture = false,
+}: IglooDirectoryProps) {
   return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-4xl mx-auto px-8 py-10 space-y-8">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Application map
-            </h1>
-            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Every operator-facing surface in the substrate.
-              Routes route through the same auth middleware; the
-              left-side categories group by intent (workstation
-              for daily work, governance for policy, audit for
-              after-the-fact review).
-            </p>
-            <div className="flex flex-wrap gap-3 pt-1">
-              {KEYBOARD_HINTS.map((h) => (
-                <span
-                  key={h.label}
-                  className="text-[11px] font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-2 py-1 rounded"
-                >
-                  {h.label}: <kbd className="font-mono">{h.key}</kbd>
-                </span>
-              ))}
-            </div>
-          </header>
+    <div
+      className={`igloo-directory${visualFixture ? " igloo-directory--fixture" : ""}`}
+    >
+      <img
+        src={directoryEnvironment}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        decoding="async"
+      />
+      <div className="igloo-directory__veil" aria-hidden="true" />
 
-          {GROUPS.map((group) => (
-            <section
-              key={group.title}
-              className="space-y-3"
-            >
-              <h2 className="text-base font-serif text-ink dark:text-bright border-b border-rule dark:border-charcoal-1 pb-1">
-                {group.title}
-              </h2>
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {group.routes.map((r) => (
-                  <li key={r.path}>
-                    <Link
-                      to={r.path}
-                      className="block border border-rule dark:border-charcoal-1 rounded-md px-3 py-2 hover:bg-ice-1 dark:bg-charcoal-2 transition-colors"
-                    >
-                      <p className="text-sm font-serif text-ink dark:text-bright">
-                        {r.title}
-                      </p>
-                      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
-                        {r.path}
-                      </p>
-                      <p className="text-xs text-ink-soft dark:text-starlight mt-1">
-                        {r.description}
-                      </p>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
+      <header className="igloo-directory__masthead">
+        <p className="igloo-directory__eyebrow">
+          Antiek · a field guide to the igloo
+        </p>
+        <h1>The Igloo Directory</h1>
+        <p>
+          Choose a room by the work you want to do. This is a curated wayfinding
+          guide—not a claim that every implementation route is a separate
+          destination.
+        </p>
+        <div className="igloo-directory__keys" aria-label="Workspace shortcuts">
+          <span>
+            <kbd>⌘K</kbd> find a room
+          </span>
+          <span>
+            <kbd>⌘J</kbd> open the thought partner
+          </span>
         </div>
-      </main>
+      </header>
+
+      <div className="igloo-directory__districts">
+        {districts.map((district) => (
+          <section
+            key={district.id}
+            className="igloo-directory__district"
+            aria-labelledby={`directory-${district.id}`}
+          >
+            <header>
+              <p>{district.eyebrow}</p>
+              <h2 id={`directory-${district.id}`}>{district.title}</h2>
+              <span>{district.description}</span>
+            </header>
+            <ul>
+              {district.doors.map((door) => (
+                <li key={door.path}>
+                  <Link to={door.path} className="igloo-directory__door">
+                    <span
+                      className="igloo-directory__marker"
+                      aria-hidden="true"
+                    >
+                      {door.marker}
+                    </span>
+                    <span className="igloo-directory__door-copy">
+                      <strong>{door.title}</strong>
+                      <span>{door.description}</span>
+                      <code>{door.path}</code>
+                    </span>
+                    <span className="igloo-directory__arrow" aria-hidden="true">
+                      ↗
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+
+      <footer className="igloo-directory__footnote">
+        <p>
+          <strong>About this directory</strong> It names intentional human
+          doors. Redirect aliases, invitation tokens, popout internals, and
+          document-specific deep links stay out of the way.
+        </p>
+      </footer>
     </div>
   );
+}
+
+export default function Map() {
+  return <IglooDirectory />;
 }

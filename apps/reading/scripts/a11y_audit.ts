@@ -105,6 +105,11 @@ const STORIES: string[] = [
   "modes-substrate-atlas--safe-error",
   "modes-substrate-atlas--long-count",
   "modes-substrate-atlas--narrow",
+  // Igloo Directory — production, image-independent fixture, and real narrow bound.
+  "modes-igloo-directory--production",
+  "modes-igloo-directory--visual-fixture",
+  "modes-igloo-directory--night",
+  "modes-igloo-directory--narrow",
   // S5 + S6 + S7 — mode panels
   "loop-1-notebookeditor--blank",
   "loop-1-notebookeditor--with-sample-content",
@@ -157,11 +162,15 @@ async function main() {
   // so portaled content (modals, toasts, dropdowns) can linger).
   const results: StoryResult[] = [];
   for (const story of STORIES) {
-    const narrow = story === "modes-substrate-atlas--narrow";
+    const narrow =
+      story === "modes-substrate-atlas--narrow" ||
+      story === "modes-igloo-directory--narrow";
+    const dark = story === "modes-igloo-directory--night";
     const ctx = await browser.newContext({
       viewport: narrow
         ? { width: 375, height: 667 }
         : { width: 1280, height: 900 },
+      colorScheme: dark ? "dark" : "light",
     });
     const page = await ctx.newPage();
     const url =
@@ -173,10 +182,19 @@ async function main() {
         const overflow = await page.evaluate(() => ({
           clientWidth: document.documentElement.clientWidth,
           scrollWidth: document.documentElement.scrollWidth,
+          directoryClientWidth:
+            document.querySelector<HTMLElement>(".igloo-directory")
+              ?.clientWidth ?? 0,
+          directoryScrollWidth:
+            document.querySelector<HTMLElement>(".igloo-directory")
+              ?.scrollWidth ?? 0,
         }));
-        if (overflow.scrollWidth > overflow.clientWidth) {
+        if (
+          overflow.scrollWidth > overflow.clientWidth ||
+          overflow.directoryScrollWidth > overflow.directoryClientWidth
+        ) {
           throw new Error(
-            `horizontal overflow ${overflow.scrollWidth}px > ${overflow.clientWidth}px`,
+            `horizontal overflow document ${overflow.scrollWidth}px/${overflow.clientWidth}px; directory ${overflow.directoryScrollWidth}px/${overflow.directoryClientWidth}px`,
           );
         }
       }
