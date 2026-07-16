@@ -47,6 +47,7 @@ try:
         promote_question,
         question_node_id,
     )
+    from ...graph.node_membership import membership_for
     from ...runtime.db_lock import connect_write
     from ...schemas.events import NoteRefinedPayload, QuestionEscalatedToResearchPayload
     from ...write.event_outbox import (
@@ -66,6 +67,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
         promote_question,
         question_node_id,
     )
+    from substrate.graph.node_membership import membership_for  # type: ignore[no-redef]
     from substrate.schemas.events import (  # type: ignore[no-redef]
         NoteRefinedPayload,
         QuestionEscalatedToResearchPayload,
@@ -108,9 +110,11 @@ class LivingNoteScopeConflict(RuntimeError):
     """The requested investigation does not own this living note."""
 
 
-def _assert_note_scope(meta: dict, investigation_id: str) -> None:
-    if meta.get("investigation_id") != investigation_id:
+def _assert_note_scope(con, node_id: str, investigation_id: str):
+    membership = membership_for(con, node_id, investigation_id)
+    if membership is None or membership.node_type != "insight":
         raise LivingNoteScopeConflict("living note does not belong to this investigation")
+    return membership
 
 
 def _open(con):
@@ -256,7 +260,7 @@ def apply_refinement(
             prev_text, meta = _read_node(c, note_node_id)
             if prev_text is None:
                 return result
-            _assert_note_scope(meta, investigation_id)
+            membership = _assert_note_scope(c, note_node_id, investigation_id)
             # note.refined requires the source document on its envelope. The
             # promoted note carries both source and emerged-note identity.
             resolved_document_id = document_id or meta.get("source_document_id")
@@ -289,7 +293,7 @@ def apply_refinement(
                 wins = seq > last_seq
                 payload = NoteRefinedPayload(
                     note_id=note_node_id,
-                    origin_note_id=meta.get("origin_note_id"),
+                    origin_note_id=membership.origin_note_id,
                     previous_text=prev_text,
                     new_text=new_text,
                     refinement_reason=reason,
@@ -368,7 +372,7 @@ def challenge_note(
         prev_text, _meta = _read_node(c, note_node_id)
         if prev_text is None:
             return ChallengeResult(note_node_id, applied=False)
-        _assert_note_scope(_meta, investigation_id)
+        _assert_note_scope(c, note_node_id, investigation_id)
         document_id = document_id or _meta.get("source_document_id")
         decision: dict[str, Any] | None = None
         if idempotency_key is not None:

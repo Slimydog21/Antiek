@@ -105,16 +105,21 @@ def distillation_for(
     their *current* text + grounding. Read-only. Nodes whose event was
     recorded but whose row no longer exists (deleted) are skipped — the
     log is history, the row is truth."""
-    node_ids, escalations = _node_ids_from_trajectory(
+    _legacy_node_ids, escalations = _node_ids_from_trajectory(
         investigation_id, events_dir=events_dir
     )
-    if not node_ids:
-        return Distillation()
-
     insights: list[DistilledNode] = []
     questions: list[DistilledNode] = []
     con = connect_read(db_path or graph_db_path())
     try:
+        node_ids = [
+            row[0]
+            for row in con.execute(
+                "SELECT node_id FROM node_investigation_memberships "
+                "WHERE investigation_id=? ORDER BY created_at, node_id",
+                [investigation_id],
+            ).fetchall()
+        ]
         for nid in node_ids:
             row = con.execute(
                 "SELECT node_type, canonical_label, metadata FROM nodes WHERE node_id = ?",

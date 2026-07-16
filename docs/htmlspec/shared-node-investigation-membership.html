@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Cycle 86 - Shared Node Investigation Membership</title></head>
+<body>
+<main>
+  <h1>Cycle 86: Shared Node Investigation Membership</h1>
+  <p><strong>Status:</strong> executable specification.</p>
+
+  <section>
+    <h2>Problem</h2>
+    <p>Insight and question node identifiers are content-addressed and deliberately reused across investigations. A graph insert conflict therefore means "existing shared knowledge", not "this investigation did not produce the knowledge". Today investigation discovery and challenge authorization depend on the first node-insert event or the single investigation identifier in node metadata. Reuse can consequently hide a valid result and reject a valid challenge.</p>
+  </section>
+
+  <section>
+    <h2>Decision</h2>
+    <p>Add an append-only relational membership between a global node and every investigation that produced or adopted it. Canonical node text and refinement ordering remain global in the current single-operator graph. Investigation membership authorizes disclosure and mutation; it does not create divergent node copies.</p>
+    <ul>
+      <li>Membership identity is unique on node id plus investigation id; presentation order is deterministic by creation time and node id.</li>
+      <li>Membership records node kind, optional owner, and the investigation-local emerged-note identity used by live event folding.</li>
+      <li>Promotion records membership for new inserts, exact content-address collisions, and near-duplicate survivor returns.</li>
+      <li>Existing insight and question metadata is backfilled only where it proves a non-empty investigation identifier.</li>
+      <li>No membership is inferred from mere node visibility or user input.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Read And Write Semantics</h2>
+    <ul>
+      <li>Distillation discovers nodes from ordered memberships, while escalation state still comes from the investigation trajectory.</li>
+      <li>A living-note challenge must find an insight membership before resolver invocation or durable request claiming.</li>
+      <li>Refinement events use the requesting membership's local origin note id so the correct live note folds the outcome.</li>
+      <li>History disclosure first authorizes the requested investigation, then reads all committed outcomes for the global node aggregate.</li>
+      <li>Every outcome's source investigation must itself be a member. Digest, event identity, authority tuple, chain, and graph reconciliation remain mandatory.</li>
+      <li>History entries expose source investigation identity through the API; the compact UI need not display internal identifiers.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Compatibility And Boundaries</h2>
+    <ul>
+      <li>Legacy node metadata remains readable but is no longer an authorization source after migration.</li>
+      <li>Current deployment semantics are a single operator and one graph. The owner column preserves a future account-isolation seam but does not claim multi-tenant isolation.</li>
+      <li>Global canonical text means a refinement from one member investigation is visible in every member investigation.</li>
+      <li>Deleted nodes may leave historical soft memberships; reads skip absent nodes and never fabricate content.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Acceptance Criteria</h2>
+    <ol>
+      <li>Two investigations promoting identical text receive the same node id and each receives one membership.</li>
+      <li>The reused node appears in both completed distillation views even when only the first promotion emitted a graph insert event.</li>
+      <li>Both member investigations may challenge the node; a non-member is rejected before resolver execution and before idempotency-journal mutation.</li>
+      <li>A refinement initiated from the second investigation emits that investigation's local origin note id.</li>
+      <li>History requested by either member returns the same global authoritative chain and identifies each entry's source investigation.</li>
+      <li>A history event attributed to a non-member fails closed as an integrity error.</li>
+      <li>Near-duplicate survivor paths record membership without inserting a duplicate node.</li>
+      <li>Schema initialization and upgrade are idempotent, and proven legacy metadata memberships are backfilled.</li>
+      <li>Focused backend and UI tests, full relevant suites, lint, type checking, and production build pass.</li>
+    </ol>
+  </section>
+</main>
+</body>
+</html>

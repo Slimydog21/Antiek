@@ -109,6 +109,7 @@ class ChallengeOut(BaseModel):
 
 class NoteHistoryEntryOut(BaseModel):
     event_id: str
+    source_investigation_id: str
     sequence: int
     previous_sequence: int
     previous_text: str

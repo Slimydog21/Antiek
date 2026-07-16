@@ -62,6 +62,7 @@ try:
         validate_insight_question_edge,
     )
     from ...runtime.db_lock import LockedConnection, connect_write
+    from .node_membership import ensure_membership
     from .ops import content_addressed_id, insert_edge, insert_node
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -71,6 +72,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
         DUCKDB_PATH,
         validate_insight_question_edge,
     )
+    from substrate.graph.node_membership import ensure_membership  # type: ignore[no-redef]
     from substrate.graph.ops import (  # type: ignore[no-redef]
         content_addressed_id,
         insert_edge,
@@ -372,6 +374,12 @@ def promote_insight(
                 # Linked, not stored: skip the row insert + provenance edges and
                 # return the SURVIVOR's id. The survivor's row (and its §9.0
                 # servability) is untouched.
+                ensure_membership(
+                    c, node_id=match.existing_unit_id,
+                    investigation_id=investigation_id, node_type="insight",
+                    owner_user_id=owner_user_id,
+                    origin_note_id=node_meta.get("origin_note_id"),
+                )
                 return match.existing_unit_id
         emb = provider.encode(text)
         insert_node(
@@ -394,6 +402,11 @@ def promote_insight(
             node_type="insight",
             metadata=node_meta,
             owner_user_id=owner_user_id,
+        )
+        ensure_membership(
+            c, node_id=nid, investigation_id=investigation_id,
+            node_type="insight", owner_user_id=owner_user_id,
+            origin_note_id=node_meta.get("origin_note_id"),
         )
         _written, dangling = _add_provenance_edges(
             c,
@@ -497,6 +510,11 @@ def promote_question(
                 event_sink=event_sink,
             )
             if match is not None:
+                ensure_membership(
+                    c, node_id=match.existing_unit_id,
+                    investigation_id=investigation_id, node_type="question",
+                    owner_user_id=owner_user_id,
+                )
                 return match.existing_unit_id
         emb = provider.encode(text)
         insert_node(
@@ -520,6 +538,10 @@ def promote_question(
             node_type="question",
             metadata=node_meta,
             owner_user_id=owner_user_id,
+        )
+        ensure_membership(
+            c, node_id=nid, investigation_id=investigation_id,
+            node_type="question", owner_user_id=owner_user_id,
         )
         _w1, d1 = _add_provenance_edges(
             c, source_node_id=nid, relation="asks_about", targets=asks_about,

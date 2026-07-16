@@ -386,6 +386,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "derived_evidence_manifest_collections",
     "derived_evidence_manifest_operations",
     "challenge_request_journal",
+    "node_investigation_memberships",
 )
 
 
@@ -1471,6 +1472,36 @@ CREATE INDEX IF NOT EXISTS idx_challenge_request_journal_note
     ON challenge_request_journal(investigation_id, note_node_id, created_at);
 """
 
+# Cycle 86: a content-addressed node may be produced by many investigations.
+# This relation is the authorization and discovery source for that fact.
+ANTIEK_GRAPH_SCHEMA_V25_NODE_INVESTIGATION_MEMBERSHIP_SQL = """
+CREATE TABLE IF NOT EXISTS node_investigation_memberships (
+    node_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    node_type TEXT NOT NULL CHECK (node_type IN ('insight', 'question')),
+    owner_user_id TEXT,
+    origin_note_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (node_id, investigation_id)
+);
+CREATE INDEX IF NOT EXISTS idx_node_investigation_memberships_investigation
+    ON node_investigation_memberships(investigation_id, created_at, node_id);
+
+INSERT INTO node_investigation_memberships
+    (node_id, investigation_id, node_type, owner_user_id, origin_note_id)
+SELECT node_id,
+       json_extract_string(metadata, '$.investigation_id'),
+       node_type,
+       owner_user_id,
+       json_extract_string(metadata, '$.origin_note_id')
+FROM nodes
+WHERE node_type IN ('insight', 'question')
+  AND metadata IS NOT NULL
+  AND try(json_extract_string(metadata, '$.investigation_id')) IS NOT NULL
+  AND length(trim(try(json_extract_string(metadata, '$.investigation_id')))) > 0
+ON CONFLICT (node_id, investigation_id) DO NOTHING;
+"""
+
 _V22_REQUIRED_DESCRIBE = {
     "twin_note_compositions": [
         ("composition_id", "VARCHAR", "NO", "PRI", None), ("account_id", "VARCHAR", "NO", "UNI", None),
@@ -1975,6 +2006,7 @@ def init_database(con: LockedConnection) -> None:
     _repair_empty_partial_v23_twin_notes(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V23_TWIN_NOTE_WORKFLOW_SQL)
     con.execute(ANTIEK_GRAPH_SCHEMA_V24_CHALLENGE_REQUEST_JOURNAL_SQL)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V25_NODE_INVESTIGATION_MEMBERSHIP_SQL)
     from .derived_asset_schema import install as _install_derived_asset_schema
 
     _install_derived_asset_schema(con)

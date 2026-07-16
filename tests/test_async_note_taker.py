@@ -27,10 +27,11 @@ from roles.note_taker import (
     apply_refinement,
     challenge_note,
     distillation_for,
+    living_note_history,
     notes_for_step,
     run_document_pass,
 )
-from roles.note_taker.living_note import ChallengeRequestInProgress
+from roles.note_taker.living_note import ChallengeRequestInProgress, LivingNoteScopeConflict
 from roles.note_taker.parser import ExtractedNote
 from runtime.db_lock import connect_read
 from substrate.context_pack import build_working_memory_layer
@@ -707,6 +708,55 @@ async def test_distillation_for_empty_when_no_notes(env):
     # No provider / no pass run → honest empty result, never canned content.
     view = distillation_for("inv-empty", db_path=env["db"], events_dir=env["events"])
     assert view.empty and view.insights == [] and view.questions == []
+
+
+async def test_shared_node_is_visible_and_challengeable_from_each_member(env):
+    first = await run_document_pass(
+        "doc-a", "src", investigation_id="inv-a",
+        distiller=FakeDistiller(insights=["A shared fact."]), events_dir=env["events"],
+    )
+    second = await run_document_pass(
+        "doc-b", "src", investigation_id="inv-b",
+        distiller=FakeDistiller(insights=["A shared fact."]), events_dir=env["events"],
+    )
+    assert first.insight_node_ids == second.insight_node_ids
+    nid = first.insight_node_ids[0]
+    assert [n.node_id for n in distillation_for(
+        "inv-a", db_path=env["db"], events_dir=env["events"]
+    ).insights] == [nid]
+    assert [n.node_id for n in distillation_for(
+        "inv-b", db_path=env["db"], events_dir=env["events"]
+    ).insights] == [nid]
+
+    result = challenge_note(
+        nid, "sharpen", resolver=lambda _cur, _challenge: "A refined shared fact.",
+        seq=1, investigation_id="inv-b", events_dir=env["events"],
+    )
+    assert result.applied
+    refined = [
+        row for row in trajectory("inv-b", events_dir=env["events"])
+        if row["action_type"] == "note.refined"
+    ]
+    assert refined[-1]["payload"]["origin_note_id"] == "n-0"
+
+    history_a = living_note_history("inv-a", nid, db_path=env["db"])
+    history_b = living_note_history("inv-b", nid, db_path=env["db"])
+    assert history_a.entries == history_b.entries
+    assert history_a.entries[0].source_investigation_id == "inv-b"
+
+    resolver_called = False
+
+    def foreign_resolver(_current, _challenge):
+        nonlocal resolver_called
+        resolver_called = True
+        return "must not run"
+
+    with pytest.raises(LivingNoteScopeConflict, match="does not belong"):
+        challenge_note(
+            nid, "foreign", resolver=foreign_resolver, seq=2,
+            investigation_id="inv-c", events_dir=env["events"],
+        )
+    assert not resolver_called
 
 
 async def test_distillation_for_reflects_living_note_in_place(env):
