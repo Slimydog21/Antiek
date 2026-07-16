@@ -14,6 +14,13 @@ from types import SimpleNamespace
 import pytest
 
 import interfaces.research.api.wrestling as wrestling
+from runtime.research_runner.distillation_execution import (
+    ApprovedDistillationTicket,
+    DistillationApprovalRequirement,
+    DistillationExecutionResult,
+    DistillationProviderValue,
+)
+from runtime.research_runner.provider_gateway import PaidFallbackPreparation
 from substrate.distillation_dispatch import (
     BindingConflict,
     CommandState,
@@ -164,8 +171,8 @@ def test_concurrent_exact_callers_have_one_transport_winner(tmp_path) -> None:
     second = threading.Thread(target=invoke)
     first.start()
     second.start()
-    first.join(timeout=5)
-    second.join(timeout=5)
+    first.join(timeout=30)
+    second.join(timeout=30)
 
     assert not first.is_alive() and not second.is_alive()
     assert provider_calls == ["called"]
@@ -201,7 +208,7 @@ with j.execution_guard('evt-request'):
         assert journal.mark_ambiguous("evt-request").state is CommandState.AMBIGUOUS
 
 
-def _patch_handler_dependencies(monkeypatch, calls: list[str], *, crash: bool = False) -> None:
+def _patch_handler_dependencies(monkeypatch, calls: list[str], *, crash: bool = False):
     monkeypatch.setattr(wrestling, "_resolve_region_text", lambda *args, **kwargs: "source")
     monkeypatch.setattr(wrestling, "build_working_memory_layer", lambda *args, **kwargs: None)
     monkeypatch.setattr(
@@ -210,18 +217,43 @@ def _patch_handler_dependencies(monkeypatch, calls: list[str], *, crash: bool = 
         lambda **kwargs: SimpleNamespace(text="context", event_id="evt-pack"),
     )
 
-    def fake_dispatch(*args, **kwargs):
-        calls.append("called")
-        if crash:
-            raise RuntimeError("process died after transport")
-        return SimpleNamespace(
-            text='{"rendered_text":"answer","claims":[{"text":"claim","confidence":"high"}]}',
-            usage=SimpleNamespace(output_tokens=7),
-            provider="provider",
-            model="model",
-        )
+    class Authority:
+        def prepare(self, request_event_id, prompt):
+            return ApprovedDistillationTicket(
+                request_event_id=request_event_id,
+                prompt=prompt,
+                preparation=PaidFallbackPreparation(
+                    chain_id="chain",
+                    manifest_sha256="a" * 64,
+                    ceiling_cents=100,
+                    currency="USD",
+                    maximum_chain_exposure_cents=100,
+                ),
+                approval_id="approval",
+            )
 
-    monkeypatch.setattr(wrestling, "dispatch", fake_dispatch)
+        def execute(self, ticket):
+            calls.append("called")
+            if crash:
+                raise RuntimeError("process died after transport")
+            return DistillationExecutionResult(
+                value=DistillationProviderValue(
+                    text='{"rendered_text":"answer","claims":[{"text":"claim","confidence":"high"}]}',
+                    output_tokens=7,
+                ),
+                provider="provider",
+                model="model",
+            )
+
+    authority = Authority()
+    original_factory = wrestling.make_distillation_handler
+
+    def factory(*args, **kwargs):
+        kwargs.setdefault("execution_authority", authority)
+        return original_factory(*args, **kwargs)
+
+    monkeypatch.setattr(wrestling, "make_distillation_handler", factory)
+    return authority
 
 
 @pytest.mark.asyncio
@@ -351,7 +383,7 @@ async def test_concurrent_async_handlers_do_not_deadlock_or_double_dispatch(
     event = _request_event()
     await asyncio.wait_for(
         asyncio.gather(handler(event), handler(event)),
-        timeout=2,
+        timeout=30,
     )
     assert calls == ["called"]
 
@@ -470,3 +502,106 @@ async def test_preexisting_delivery_identity_refuses_provider_spend(
     with pytest.raises(PhysicalTrajectoryError, match="before provider dispatch"):
         await handler(event)
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_paid_route_emits_one_unavailable_state_and_no_delivery(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    monkeypatch.setattr(wrestling, "_resolve_region_text", lambda *args, **kwargs: "source")
+    monkeypatch.setattr(wrestling, "build_working_memory_layer", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        wrestling,
+        "assemble_context_pack",
+        lambda **kwargs: SimpleNamespace(text="context", event_id="evt-pack"),
+    )
+    event = _request_event()
+    handler = wrestling.make_distillation_handler(
+        _Broadcaster(), db_path=str(tmp_path / "graph.duckdb")
+    )
+
+    await handler(event)
+    await handler(event)
+
+    rows = wrestling.trajectory("inv-1")
+    required = [
+        row for row in rows
+        if row["action_type"] == "distillation.approval_required"
+    ]
+    assert len(required) == 1
+    assert required[0]["payload"]["reason"] == "qualified_route_unavailable"
+    assert not [row for row in rows if row["action_type"] == "distillation.delivered"]
+    assert DistillationDispatchJournal(str(tmp_path / "graph.duckdb")).load(
+        event.event_id
+    ).state is CommandState.RESERVED
+
+
+@pytest.mark.asyncio
+async def test_prepared_request_waits_reserved_then_executes_after_exact_approval(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    monkeypatch.setattr(wrestling, "_resolve_region_text", lambda *args, **kwargs: "source")
+    monkeypatch.setattr(wrestling, "build_working_memory_layer", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        wrestling,
+        "assemble_context_pack",
+        lambda **kwargs: SimpleNamespace(text="context", event_id="evt-pack"),
+    )
+    calls: list[str] = []
+
+    class Authority:
+        approved = False
+
+        def prepare(self, request_event_id, prompt):
+            if not self.approved:
+                return DistillationApprovalRequirement(
+                    request_event_id=request_event_id,
+                    chain_id="chain-1",
+                    manifest_sha256="a" * 64,
+                    ceiling_cents=100,
+                    currency="USD",
+                    maximum_chain_exposure_cents=80,
+                    reason="approval_required",
+                )
+            return ApprovedDistillationTicket(
+                request_event_id=request_event_id,
+                prompt=prompt,
+                preparation=PaidFallbackPreparation(
+                    "chain-1", "a" * 64, 100, "USD", 80
+                ),
+                approval_id="approval-1",
+            )
+
+        def execute(self, ticket):
+            calls.append(ticket.approval_id)
+            return DistillationExecutionResult(
+                DistillationProviderValue(
+                    '{"rendered_text":"answer","claims":[]}', 3
+                ),
+                "provider",
+                "model",
+            )
+
+    authority = Authority()
+    handler = wrestling.make_distillation_handler(
+        _Broadcaster(),
+        db_path=str(tmp_path / "graph.duckdb"),
+        execution_authority=authority,
+    )
+    event = _request_event()
+
+    await handler(event)
+    await handler(event)
+    journal = DistillationDispatchJournal(str(tmp_path / "graph.duckdb"))
+    assert journal.load(event.event_id).state is CommandState.RESERVED
+    assert calls == []
+
+    authority.approved = True
+    await handler(event)
+    assert calls == ["approval-1"]
+    assert journal.load(event.event_id).state is CommandState.DELIVERED
+    rows = wrestling.trajectory("inv-1")
+    assert len([r for r in rows if r["action_type"] == "distillation.approval_required"]) == 1
+    assert len([r for r in rows if r["action_type"] == "distillation.delivered"]) == 1

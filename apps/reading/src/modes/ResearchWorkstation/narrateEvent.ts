@@ -231,6 +231,7 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.DOCUMENT_LOADED]: null,
   [ActionType.DOCUMENT_REGION_SELECTED]: null,
   [ActionType.DISTILLATION_REQUESTED]: null,
+  [ActionType.DISTILLATION_APPROVAL_REQUIRED]: null,
   [ActionType.DISTILLATION_DELIVERED]: null,
   [ActionType.CLAIM_CHALLENGE_RAISED]: null,
   [ActionType.CLAIM_GROUNDING_CHECK_PASSED]: null,

@@ -39,6 +39,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 if TYPE_CHECKING:
+    from interfaces.research.api.wrestling import DistillationExecutionAuthority
     from orchestration.cascade_session import CascadeSession
     from orchestration.session_evidence_pack import SessionEvidencePack
     from substrate.attribution.compute import AttributionResult
@@ -1327,6 +1328,7 @@ def create_app(
     register_wrestling: bool = True,
     wrestling_db_path: str | None = None,
     wrestling_embedder: Any = None,
+    distillation_execution_authority: DistillationExecutionAuthority | None = None,
     register_providers: bool = True,
 ) -> FastAPI:
     """Create the FastAPI app. Pass ``broadcaster`` for tests that want to
@@ -1340,8 +1342,9 @@ def create_app(
     proxy on the same origin shouldn't need it).
 
     ``register_wrestling`` wires the proto-note_taker handler that
-    reacts to ``distillation.requested`` events by dispatching a
-    synthesizer call and emitting ``distillation.delivered``. Tests
+    reacts to ``distillation.requested`` events. Paid delivery requires an
+    explicitly injected qualified ``distillation_execution_authority``;
+    production otherwise emits a fail-closed unavailable state. Tests
     that want to exercise the API without the handler firing can pass
     ``False``."""
     app = FastAPI(
@@ -1800,6 +1803,7 @@ def create_app(
             bus,
             db_path=wrestling_db_path,
             embedder=wrestling_embedder,
+            execution_authority=distillation_execution_authority,
         )
         # The grounder shares the wrestling bridge's DB + embedder so a
         # single create_app call wires the full Loop 2 closed-loop:

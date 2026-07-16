@@ -5,6 +5,7 @@ import type {
   ClaimGroundingCheckFailedPayload,
   ClaimGroundingCheckPassedPayload,
   DispatchCallPayload,
+  DistillationApprovalRequiredPayload,
   DistillationDeliveredPayload,
   DistillationRequestedPayload,
   DocumentLoadedPayload,
@@ -61,6 +62,10 @@ export default function NotesPanel({
     () => findPendingRequestIds(events),
     [events],
   );
+  const deliveredRequestIds = useMemo(
+    () => findDeliveredRequestIds(events),
+    [events],
+  );
 
   const groundingByClaim = useMemo(
     () => findGroundingByClaim(events),
@@ -88,6 +93,12 @@ export default function NotesPanel({
                   e.action_type === "distillation.requested" &&
                   pendingRequestIds.has(e.event_id)
                 }
+                approvalResolved={
+                  e.action_type === "distillation.approval_required" &&
+                  deliveredRequestIds.has(
+                    (e.payload as DistillationApprovalRequiredPayload).request_event_id,
+                  )
+                }
                 investigationId={investigationId}
                 documentId={documentId}
                 groundingByClaim={groundingByClaim}
@@ -114,6 +125,7 @@ export default function NotesPanel({
 interface FeedRowProps {
   event: Event;
   isPending: boolean;
+  approvalResolved: boolean;
   investigationId: string;
   documentId: string | null;
   groundingByClaim: Map<string, GroundingStatus>;
@@ -122,6 +134,7 @@ interface FeedRowProps {
 function FeedRow({
   event,
   isPending,
+  approvalResolved,
   investigationId,
   documentId,
   groundingByClaim,
@@ -153,6 +166,16 @@ function FeedRow({
         />
       );
     }
+
+    case "distillation.approval_required":
+      return (
+        <ApprovalRequiredRow
+          eventId={event.event_id}
+          emittedAt={event.emitted_at}
+          payload={event.payload as DistillationApprovalRequiredPayload}
+          resolved={approvalResolved}
+        />
+      );
 
     case "claim.challenge_raised":
       return (
@@ -319,6 +342,50 @@ function AssistantClaimsBubble({
   );
 }
 
+function ApprovalRequiredRow({
+  eventId,
+  emittedAt,
+  payload,
+  resolved,
+}: {
+  eventId: string;
+  emittedAt: string;
+  payload: DistillationApprovalRequiredPayload;
+  resolved: boolean;
+}) {
+  const approvable = payload.reason === "approval_required";
+  return (
+    <li
+      id={`event-row-${eventId}`}
+      className="flex flex-col gap-1 rounded-md border border-rule dark:border-charcoal-1 px-3 py-2 scroll-mt-4"
+    >
+      <div className="text-xs font-mono text-ink dark:text-bright">
+        {resolved
+          ? "Spend approved · completed"
+          : approvable
+            ? "Spend approval required"
+            : "Qualified paid route unavailable"}
+      </div>
+      {approvable && (
+        <div className="text-[11px] font-mono text-ink-soft dark:text-starlight">
+          Ceiling ${(payload.ceiling_cents! / 100).toFixed(2)} USD · maximum exposure ${(
+            payload.maximum_chain_exposure_cents! / 100
+          ).toFixed(2)} USD
+        </div>
+      )}
+      {!resolved && (
+        <a
+          href="/settings"
+          className="w-fit text-xs font-medium text-blue-700 dark:text-sun underline"
+        >
+          {approvable ? "Review exact terms in Settings" : "Open model settings"}
+        </a>
+      )}
+      <EventMeta eventId={eventId} emittedAt={emittedAt} align="left" />
+    </li>
+  );
+}
+
 function SystemRow({
   eventId,
   emittedAt,
@@ -429,17 +496,30 @@ function findLastSelectedRegion(
 
 function findPendingRequestIds(events: Event[]): Set<string> {
   const requested = new Set<string>();
-  const fulfilled = new Set<string>();
+  const noLongerDispatching = new Set<string>();
   for (const e of events) {
     if (e.action_type === "distillation.requested") {
       requested.add(e.event_id);
     } else if (e.action_type === "distillation.delivered") {
       const p = e.payload as DistillationDeliveredPayload;
-      fulfilled.add(p.request_event_id);
+      noLongerDispatching.add(p.request_event_id);
+    } else if (e.action_type === "distillation.approval_required") {
+      const p = e.payload as DistillationApprovalRequiredPayload;
+      noLongerDispatching.add(p.request_event_id);
     }
   }
-  for (const fid of fulfilled) requested.delete(fid);
+  for (const requestId of noLongerDispatching) requested.delete(requestId);
   return requested;
+}
+
+function findDeliveredRequestIds(events: Event[]): Set<string> {
+  const delivered = new Set<string>();
+  for (const event of events) {
+    if (event.action_type === "distillation.delivered") {
+      delivered.add((event.payload as DistillationDeliveredPayload).request_event_id);
+    }
+  }
+  return delivered;
 }
 
 

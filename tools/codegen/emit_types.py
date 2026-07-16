@@ -150,6 +150,7 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.DocumentLoadedPayload,
     schema_module.DocumentRegionSelectedPayload,
     schema_module.DistillationRequestedPayload,
+    schema_module.DistillationApprovalRequiredPayload,
     schema_module.DistillationDeliveredPayload,
     schema_module.ClaimChallengeRaisedPayload,
     schema_module.ClaimGroundingCheckPassedPayload,
