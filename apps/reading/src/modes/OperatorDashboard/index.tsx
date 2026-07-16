@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import watchRoomEnvironment from "../../brand/werner/operator/operator_watch_room_environment_v1.webp";
 import { apiFetch } from "../../lib/api";
+import "./operator-watch-room.css";
 
-interface PublisherSummary {
+export interface PublisherSummary {
   ip_holder_id: string;
   display_name: string;
   legal_contact_email: string | null;
@@ -14,325 +16,276 @@ interface PublisherSummary {
   opted_out_at: string | null;
 }
 
-interface StatsResponse {
-  counts: Record<string, number>;
-  warnings: string[];
+export interface StatsResponse {
+  counts?: Record<string, number>;
+  warnings?: unknown[];
 }
 
-interface DeletionRequest {
-  request_id: string;
-  status: string;
-  requested_at: string;
-}
+interface DeletionRequest { status: string }
 
-interface PayoutTransfer {
+export interface PayoutTransfer {
   status: string;
   amount_usd_cents: number;
   initiated_at: string | null;
 }
 
-interface CompositeSnapshot {
+export interface OperatorSnapshot {
   stats: StatsResponse | null;
-  pendingDeletions: number;
-  recentPayouts: PayoutTransfer[];
+  pendingDeletions: number | null;
+  recentPayouts: PayoutTransfer[] | null;
 }
 
-/**
- * Operator dashboard (master-spec §9.10 + §13.7).
- *
- * Single-pane view of:
- * - Pre-onboarded IP holder escrow (per §9.10)
- * - Notification status + claim state machine
- * - First-cohort outreach progress (MIT Press / Cambridge / Princeton)
- * - Quality-gate / Phase 8 verdict review
- *
- * Operator-only surface. Bound to the operator user_id via the
- * existing auth path; cross-user access not exposed here.
- */
-export default function OperatorDashboard() {
-  const [publishers, setPublishers] = useState<PublisherSummary[]>([]);
-  const [snapshot, setSnapshot] = useState<CompositeSnapshot>({
-    stats: null,
-    pendingDeletions: 0,
-    recentPayouts: [],
-  });
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+export interface OperatorDashboardProps {
+  executionEnabled?: boolean;
+  initialPublishers?: PublisherSummary[] | null;
+  initialSnapshot?: OperatorSnapshot;
+  initialLoading?: boolean;
+  initialError?: boolean;
+  initialNotifyingId?: string | null;
+}
+
+const EMPTY_SNAPSHOT: OperatorSnapshot = {
+  stats: null,
+  pendingDeletions: null,
+  recentPayouts: null,
+};
+const SAFE_LOAD_ERROR = "The operator watch room could not be refreshed. Try again in a moment.";
+const SAFE_RECORD_ERROR = "The external notice could not be recorded. Nothing was changed.";
+
+export default function OperatorDashboard({
+  executionEnabled = true,
+  initialPublishers,
+  initialSnapshot = EMPTY_SNAPSHOT,
+  initialLoading,
+  initialError = false,
+  initialNotifyingId = null,
+}: OperatorDashboardProps) {
+  const [publishers, setPublishers] = useState<PublisherSummary[] | null>(
+    initialPublishers !== undefined ? initialPublishers : (executionEnabled ? null : []),
+  );
+  const [snapshot, setSnapshot] = useState<OperatorSnapshot>(initialSnapshot);
+  const [loading, setLoading] = useState(initialLoading ?? executionEnabled);
+  const [error, setError] = useState<string | null>(initialError ? SAFE_LOAD_ERROR : null);
+  const [notifyingIds, setNotifyingIds] = useState<ReadonlySet<string>>(
+    () => new Set(initialNotifyingId ? [initialNotifyingId] : []),
+  );
+  const requestSequence = useRef(0);
+  const notificationsInFlight = useRef(new Set<string>());
 
   const reload = useCallback(async () => {
+    if (!executionEnabled) return;
+    const requestId = ++requestSequence.current;
     setLoading(true);
     setError(null);
     try {
-      const [
-        publishersResp,
-        statsResp,
-        deletionsResp,
-        payoutsResp,
-      ] = await Promise.all([
+      const [publishersResp, statsResp, deletionsResp, payoutsResp] = await Promise.all([
         apiFetch("/publishers"),
         apiFetch("/stats").catch(() => null),
         apiFetch("/trust-center/deletion-requests").catch(() => null),
         apiFetch("/payouts/transfers?limit=5").catch(() => null),
       ]);
+      if (!publishersResp.ok) throw new Error("publisher roster unavailable");
 
-      if (!publishersResp.ok) {
-        throw new Error(`GET /publishers failed: HTTP ${publishersResp.status}`);
+      const publisherData = await publishersResp.json();
+      if (!Array.isArray(publisherData?.publishers) ||
+          !publisherData.publishers.every(isPublisherSummary)) {
+        throw new Error("invalid publisher roster");
       }
-      const pubData = await publishersResp.json();
-      setPublishers(pubData.publishers ?? []);
-
+      const nextPublishers = publisherData.publishers as PublisherSummary[];
       let stats: StatsResponse | null = null;
-      if (statsResp?.ok) stats = await statsResp.json();
-
-      let pendingDeletions = 0;
+      if (statsResp?.ok) {
+        try { stats = await statsResp.json() as StatsResponse; } catch { stats = null; }
+      }
+      let pendingDeletions: number | null = null;
       if (deletionsResp?.ok) {
-        const drData = await deletionsResp.json();
-        pendingDeletions = (drData.requests ?? []).filter(
-          (r: DeletionRequest) => r.status === "pending",
-        ).length;
+        try {
+          const data = await deletionsResp.json();
+          if (Array.isArray(data?.requests)) {
+            pendingDeletions = (data.requests as DeletionRequest[]).filter((request) => request.status === "pending").length;
+          }
+        } catch { pendingDeletions = null; }
       }
-
-      let recentPayouts: PayoutTransfer[] = [];
+      let recentPayouts: PayoutTransfer[] | null = null;
       if (payoutsResp?.ok) {
-        const pData = await payoutsResp.json();
-        recentPayouts = pData.transfers ?? [];
+        try {
+          const data = await payoutsResp.json();
+          if (Array.isArray(data?.transfers) && data.transfers.every(isPayoutTransfer)) {
+            recentPayouts = data.transfers;
+          }
+        } catch { recentPayouts = null; }
       }
-
-      setSnapshot({ stats, pendingDeletions, recentPayouts });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (requestId === requestSequence.current) {
+        setPublishers(nextPublishers);
+        setSnapshot({ stats, pendingDeletions, recentPayouts });
+      }
+    } catch {
+      if (requestId === requestSequence.current) setError(SAFE_LOAD_ERROR);
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
-  }, []);
+  }, [executionEnabled]);
 
   useEffect(() => {
     void reload();
+    return () => { requestSequence.current += 1; };
   }, [reload]);
 
-  const handleNotify = async (id: string) => {
+  const handleRecordNotice = async (id: string) => {
+    if (!executionEnabled || notificationsInFlight.current.has(id)) return;
+    notificationsInFlight.current.add(id);
+    setNotifyingIds((current) => new Set(current).add(id));
+    setError(null);
+    let response: Response;
     try {
-      const resp = await apiFetch(
-        `/publishers/${encodeURIComponent(id)}/notify`,
-        { method: "POST", headers: { "Content-Type": "application/json" } },
-      );
-      if (!resp.ok) {
-        throw new Error(`POST notify failed: HTTP ${resp.status}`);
-      }
+      response = await apiFetch(`/publishers/${encodeURIComponent(id)}/notify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!response.ok) throw new Error("notice receipt unavailable");
+    } catch {
+      setError(SAFE_RECORD_ERROR);
+      notificationsInFlight.current.delete(id);
+      setNotifyingIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+      return;
+    }
+
+    try {
+      const recordedPublisher: unknown = await response.json();
+      setPublishers((current) => current?.map((publisher) =>
+        publisher.ip_holder_id === id
+          ? (isPublisherSummary(recordedPublisher)
+              ? { ...publisher, ...recordedPublisher }
+              : { ...publisher, status: "invited" })
+          : publisher,
+      ) ?? current);
+    } catch {
+      // The 2xx response is the mutation authority. Keep the row non-actionable
+      // even if its response body cannot be decoded; reload will reconcile it.
+      setPublishers((current) => current?.map((publisher) =>
+        publisher.ip_holder_id === id ? { ...publisher, status: "invited" } : publisher,
+      ) ?? current);
+    }
+
+    try {
       await reload();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      notificationsInFlight.current.delete(id);
+      setNotifyingIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
-  const byStatus = {
-    pre_onboarded: publishers.filter((p) => p.status === "pre_onboarded"),
-    invited: publishers.filter((p) => p.status === "invited"),
-    claimed: publishers.filter((p) => p.status === "claimed"),
-    opted_out: publishers.filter((p) => p.status === "opted_out"),
-  };
-
   return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-5xl mx-auto px-8 py-10 space-y-8">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Operator dashboard
-            </h1>
-            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Composite operator surface — substrate snapshot,
-              pre-onboarded IP holder escrow review, recent payouts,
-              pending deletion requests. Per master-spec §9.10:
-              'lawyer involved before first notification email
-              sends.' The Notify action records that the operator has
-              sent the canonical notification email externally;
-              this dashboard does NOT send email itself.
-            </p>
-          </header>
+    <main className="operator-watch-room">
+      <img className="operator-watch-room__environment" src={watchRoomEnvironment} alt="" aria-hidden="true" draggable={false} />
+      <div className="operator-watch-room__veil" aria-hidden="true" />
+      <div className="operator-watch-room__content">
+        <header className="operator-watch-room__hero">
+          <div>
+            <p className="operator-watch-room__eyebrow">Operator watch room · independent instruments</p>
+            <h1>Keep watch without inventing certainty.</h1>
+            <p className="operator-watch-room__lede">Publisher records are the primary roster. Substrate counts, deletion requests, and payout transfers report independently; an unavailable instrument never becomes zero.</p>
+          </div>
+          <button type="button" onClick={() => void reload()} disabled={!executionEnabled || loading} className="operator-watch-room__refresh">
+            {loading ? "Refreshing…" : "Refresh watch room"}
+          </button>
+        </header>
 
-          {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight">Loading publishers…</p>
-          )}
-          {error && (
-            <p className="text-sm text-emperor">{error}</p>
-          )}
+        <aside className="operator-watch-room__boundary" aria-label="Authority boundary">
+          <strong>This room observes and records.</strong> “Record external notice” confirms an email was sent outside Antiek. It does not send email, approve counsel, move escrow, execute a payout, or process a deletion.
+        </aside>
 
-          <CompositeSnapshotSection snapshot={snapshot} />
+        {error && <p className="operator-watch-room__alert" role="alert">{error}</p>}
+        {loading && publishers === null && <p className="operator-watch-room__state" role="status">Opening the publisher ledger…</p>}
 
-          <PublisherSection
-            title="Pre-onboarded (no notification sent)"
-            description={`§9.10 first-cohort targets are MIT Press, Cambridge University Press, Princeton University Press. Big Five last.`}
-            publishers={byStatus.pre_onboarded}
-            actionLabel="Mark notified"
-            onAction={handleNotify}
-          />
-
-          <PublisherSection
-            title="Invited (notification email sent)"
-            description="Escrow accrues; payouts gate strictly on claim. No money has moved."
-            publishers={byStatus.invited}
-            actionLabel={null}
-            onAction={null}
-          />
-
-          <PublisherSection
-            title="Claimed (payouts unlocked)"
-            description="Publisher opted in via documented process. Stripe Connect can route the accrued escrow."
-            publishers={byStatus.claimed}
-            actionLabel={null}
-            onAction={null}
-          />
-
-          <PublisherSection
-            title="Opted out (content removal scheduled)"
-            description="30-day SLA for removal per §9.10 implementation requirement 4."
-            publishers={byStatus.opted_out}
-            actionLabel={null}
-            onAction={null}
-          />
-        </div>
-      </main>
-    </div>
+        <InstrumentDeck snapshot={snapshot} />
+        <PublisherLedger publishers={publishers} notifyingIds={notifyingIds} onRecordNotice={handleRecordNotice} />
+      </div>
+    </main>
   );
 }
 
-function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot }) {
-  const counts = snapshot.stats?.counts ?? {};
+function InstrumentDeck({ snapshot }: { snapshot: OperatorSnapshot }) {
   const headlineKeys: [string, string][] = [
-    ["investigations", "Investigations"],
-    ["notebooks", "Notebooks"],
-    ["outcomes", "Outcomes"],
-    ["skill_rules", "Skill rules"],
-    ["payout_transfers", "Payouts"],
-    ["ip_holders", "IP holders"],
+    ["investigations", "Investigations"], ["notebooks", "Notebooks"], ["outcomes", "Outcomes"],
+    ["skill_rules", "Skill rules"], ["payout_transfers", "Payout records"], ["ip_holders", "IP holders"],
   ];
   return (
-    <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-base font-serif text-ink dark:text-bright">
-          Substrate snapshot
-        </h2>
-        <Link
-          to="/stats"
-          className="text-xs font-mono text-shadow-1 dark:text-moonlight hover:text-ink dark:text-bright"
-        >
-          full stats →
-        </Link>
-      </div>
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-        {headlineKeys.map(([k, label]) => (
-          <div
-            key={k}
-            className="border border-rule dark:border-charcoal-1 rounded-md px-2 py-2 text-center"
-          >
-            <p className="text-xl font-serif text-ink dark:text-bright">
-              {(counts[k] ?? 0).toLocaleString()}
-            </p>
-            <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
-              {label}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
-          <p className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
-            Pending deletion requests
-          </p>
-          <p className="text-lg font-serif text-ink dark:text-bright">
-            {snapshot.pendingDeletions}
-            {snapshot.pendingDeletions > 0 && (
-              <Link
-                to="/privacy"
-                className="ml-2 text-xs font-mono text-shadow-1 dark:text-moonlight hover:underline"
-              >
-                review →
-              </Link>
-            )}
-          </p>
-        </div>
-        <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
-          <p className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
-            Recent payouts
-          </p>
-          {snapshot.recentPayouts.length === 0 ? (
-            <p className="text-sm italic text-shadow-1 dark:text-moonlight">No transfers yet.</p>
-          ) : (
-            <ul className="text-xs font-mono text-ink dark:text-bright space-y-0.5">
-              {snapshot.recentPayouts.slice(0, 3).map((p, i) => (
-                <li
-                  key={i}
-                  className="flex justify-between gap-2 truncate"
-                >
-                  <span>{p.status.replace(/_/g, " ")}</span>
-                  <span>${(p.amount_usd_cents / 100).toFixed(2)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Link
-            to="/payouts"
-            className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
-          >
-            full audit →
-          </Link>
-        </div>
+    <section className="operator-instruments" aria-labelledby="operator-instruments-heading">
+      <div className="operator-watch-room__section-heading"><div><p className="operator-watch-room__eyebrow">Four separate authorities</p><h2 id="operator-instruments-heading">Observation instruments</h2></div><Link to="/stats">Open substrate atlas →</Link></div>
+      <div className="operator-instruments__grid">
+        <article className="operator-instrument operator-instrument--wide"><header><span>01</span><h3>Substrate cardinality</h3><Availability available={snapshot.stats !== null} /></header><dl>{headlineKeys.map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{formatKnownCount(snapshot.stats?.counts?.[key])}</dd></div>)}</dl>{Array.isArray(snapshot.stats?.warnings) && snapshot.stats.warnings.length > 0 && <p className="operator-instrument__note">{snapshot.stats.warnings.length} {snapshot.stats.warnings.length === 1 ? "area was" : "areas were"} not measured. Diagnostic details stay private.</p>}</article>
+        <article className="operator-instrument"><header><span>02</span><h3>Deletion requests</h3><Availability available={snapshot.pendingDeletions !== null} /></header><p className="operator-instrument__value">{snapshot.pendingDeletions === null ? "Unknown" : snapshot.pendingDeletions.toLocaleString()}</p><p className="operator-instrument__note">Pending records only. Processing remains in Privacy.</p><Link to="/privacy">Review privacy queue →</Link></article>
+        <article className="operator-instrument"><header><span>03</span><h3>Recent payouts</h3><Availability available={snapshot.recentPayouts !== null} /></header>{snapshot.recentPayouts === null ? <p className="operator-instrument__value">Unknown</p> : snapshot.recentPayouts.length === 0 ? <p className="operator-instrument__empty">No transfer records returned.</p> : <ul>{snapshot.recentPayouts.slice(0, 3).map((payout, index) => <li key={`${payout.initiated_at ?? "undated"}-${index}`}><span>{payout.status.replace(/_/g, " ")}</span><strong>{formatCents(payout.amount_usd_cents)}</strong></li>)}</ul>}<Link to="/payouts">Open payout audit →</Link></article>
       </div>
     </section>
   );
 }
 
-function PublisherSection({
-  title,
-  description,
-  publishers,
-  actionLabel,
-  onAction,
-}: {
-  title: string;
-  description: string;
-  publishers: PublisherSummary[];
-  actionLabel: string | null;
-  onAction: ((id: string) => void) | null;
-}) {
+function Availability({ available }: { available: boolean }) {
+  return <small className={available ? "is-available" : "is-unavailable"}>{available ? "Available" : "Unavailable"}</small>;
+}
+
+function PublisherLedger({ publishers, notifyingIds, onRecordNotice }: { publishers: PublisherSummary[] | null; notifyingIds: ReadonlySet<string>; onRecordNotice: (id: string) => Promise<void> }) {
+  const buckets = [
+    { status: "pre_onboarded", title: "Pre-onboarded", description: "No notification is recorded. Counsel review and external delivery happen outside this room.", action: true },
+    { status: "invited", title: "Invited", description: "An external notification is recorded. Escrow and payout authority remain elsewhere.", action: false },
+    { status: "claimed", title: "Claimed", description: "A claim is recorded. Inspect the payout audit for transfer facts.", action: false },
+    { status: "opted_out", title: "Opted out", description: "An opt-out is recorded. Inspect Privacy for removal work.", action: false },
+  ];
+  const knownStatuses = new Set(buckets.map((bucket) => bucket.status));
+  const unknown = publishers?.filter((publisher) => !knownStatuses.has(publisher.status)) ?? [];
   return (
-    <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
-      <div className="space-y-1">
-        <h2 className="text-base font-serif text-ink dark:text-bright">{title}</h2>
-        <p className="text-xs text-ink-soft dark:text-starlight">{description}</p>
-      </div>
-      {publishers.length === 0 ? (
-        <p className="text-xs italic text-shadow-1 dark:text-moonlight">No publishers in this bucket.</p>
-      ) : (
-        <ul className="divide-y divide-rule dark:divide-charcoal-1">
-          {publishers.map((p) => (
-            <li key={p.ip_holder_id} className="py-2 flex items-center justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-serif text-ink dark:text-bright truncate">
-                  {p.display_name}
-                </p>
-                <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
-                  {p.ip_holder_id} · escrow ${p.escrow_balance_usd}
-                  {p.legal_contact_email && (
-                    <span> · {p.legal_contact_email}</span>
-                  )}
-                </p>
-              </div>
-              {actionLabel && onAction && (
-                <button
-                  type="button"
-                  onClick={() => onAction(p.ip_holder_id)}
-                  className="px-2.5 py-1 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors shrink-0"
-                >
-                  {actionLabel}
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+    <section className="publisher-ledger" aria-labelledby="publisher-ledger-heading"><div className="operator-watch-room__section-heading"><div><p className="operator-watch-room__eyebrow">Primary roster</p><h2 id="publisher-ledger-heading">Publisher ledger</h2></div><span>{publishers === null ? "Unavailable" : `${publishers.length} records`}</span></div>
+      {publishers === null ? <p className="operator-watch-room__state">The publisher roster is unavailable.</p> : <div className="publisher-ledger__grid">{buckets.map((bucket) => <PublisherBucket key={bucket.status} {...bucket} publishers={publishers.filter((publisher) => publisher.status === bucket.status)} notifyingIds={notifyingIds} onRecordNotice={onRecordNotice} />)}{unknown.length > 0 && <PublisherBucket status="other" title="Other recorded state" description="These records use a status this view does not interpret." action={false} publishers={unknown} notifyingIds={notifyingIds} onRecordNotice={onRecordNotice} />}</div>}
     </section>
   );
+}
+
+function PublisherBucket({ title, description, publishers, action, notifyingIds, onRecordNotice }: { status: string; title: string; description: string; publishers: PublisherSummary[]; action: boolean; notifyingIds: ReadonlySet<string>; onRecordNotice: (id: string) => Promise<void> }) {
+  return <article className="publisher-bucket"><header><div><h3>{title}</h3><p>{description}</p></div><span aria-label={`${publishers.length} ${title} records`}>{publishers.length}</span></header>{publishers.length === 0 ? <p className="publisher-bucket__empty">No records in this state.</p> : <ul>{publishers.map((publisher) => { const pending = notifyingIds.has(publisher.ip_holder_id); return <li key={publisher.ip_holder_id}><div><strong>{publisher.display_name}</strong><code>{publisher.ip_holder_id}</code><small>Escrow recorded: {formatEscrow(publisher.escrow_balance_usd)}</small>{publisher.legal_contact_email && <small>Legal contact: {publisher.legal_contact_email}</small>}</div>{action && <button type="button" disabled={pending} onClick={() => void onRecordNotice(publisher.ip_holder_id)}>{pending ? "Recording…" : "Record external notice"}</button>}</li>; })}</ul>}</article>;
+}
+
+function isPayoutTransfer(value: unknown): value is PayoutTransfer {
+  if (typeof value !== "object" || value === null) return false;
+  const transfer = value as Record<string, unknown>;
+  return typeof transfer.status === "string" &&
+    typeof transfer.amount_usd_cents === "number" &&
+    Number.isFinite(transfer.amount_usd_cents) &&
+    (typeof transfer.initiated_at === "string" || transfer.initiated_at === null);
+}
+
+function isPublisherSummary(value: unknown): value is PublisherSummary {
+  if (typeof value !== "object" || value === null) return false;
+  const publisher = value as Record<string, unknown>;
+  return typeof publisher.ip_holder_id === "string" &&
+    typeof publisher.display_name === "string" &&
+    typeof publisher.status === "string" &&
+    typeof publisher.escrow_balance_usd === "string" &&
+    isNullableString(publisher.legal_contact_email) &&
+    isNullableString(publisher.notification_sent_at) &&
+    isNullableString(publisher.claimed_at) &&
+    isNullableString(publisher.opted_out_at);
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return typeof value === "string" || value === null;
+}
+
+function formatKnownCount(value: number | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value.toLocaleString() : "Unknown";
+}
+function formatCents(value: number): string {
+  return Number.isFinite(value) ? new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(value / 100) : "Unknown";
+}
+function formatEscrow(value: string): string {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(amount) : "Unknown";
 }

@@ -153,6 +153,14 @@ const STORIES: string[] = [
   "research-investigation-replay-observatory--safe-failure",
   "research-investigation-replay-observatory--night-watch",
   "research-investigation-replay-observatory--narrow-instrument",
+  "modes-operator-watch-room--populated",
+  "modes-operator-watch-room--partial",
+  "modes-operator-watch-room--safe-failure",
+  "modes-operator-watch-room--empty",
+  "modes-operator-watch-room--notifying",
+  "modes-operator-watch-room--loading",
+  "modes-operator-watch-room--night",
+  "modes-operator-watch-room--narrow",
 ];
 
 type AxeViolation = {
@@ -207,14 +215,16 @@ async function main() {
       story === "multimedia-production-bay--narrow" ||
       story === "outcomes-verdict-chamber--narrow" ||
       story === "cross-graph-citation-attribution-switchyard--narrow" ||
-      story === "research-investigation-replay-observatory--narrow-instrument";
+      story === "research-investigation-replay-observatory--narrow-instrument" ||
+      story === "modes-operator-watch-room--narrow";
     const dark =
       story === "modes-igloo-directory--night" ||
       story === "modes-expedition-cost-planner--night" ||
       story === "multimedia-production-bay--night" ||
       story === "outcomes-verdict-chamber--night" ||
       story === "cross-graph-citation-attribution-switchyard--night" ||
-      story === "research-investigation-replay-observatory--night-watch";
+      story === "research-investigation-replay-observatory--night-watch" ||
+      story === "modes-operator-watch-room--night";
     const ctx = await browser.newContext({
       viewport: narrow
         ? { width: 375, height: 667 }
@@ -227,6 +237,9 @@ async function main() {
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15_000 });
       await page.waitForTimeout(1500); // let the story render
+      if (story.startsWith("modes-operator-watch-room")) {
+        await page.waitForSelector(".operator-watch-room", { timeout: 5_000 });
+      }
       if (narrow) {
         const componentSelector = story.startsWith(
           "modes-expedition-cost-planner",
@@ -242,6 +255,8 @@ async function main() {
                   ? ".citation-switchyard"
                   : story.startsWith("research-investigation-replay-observatory")
                     ? ".replay-observatory"
+                    : story.startsWith("modes-operator-watch-room")
+                      ? ".operator-watch-room"
                 : ".igloo-directory";
         const overflow = await page.evaluate(
           (selector) => ({
