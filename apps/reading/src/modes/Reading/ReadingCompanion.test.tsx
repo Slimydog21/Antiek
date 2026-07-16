@@ -80,7 +80,7 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
       "reading-companion-living-tv-art",
     ) as HTMLImageElement;
     expect(livingTv.getAttribute("src") ?? "").toMatch(
-      /werner_living_tv_session_v1/,
+      /werner_html_book_float_session_v1/,
     );
   });
 

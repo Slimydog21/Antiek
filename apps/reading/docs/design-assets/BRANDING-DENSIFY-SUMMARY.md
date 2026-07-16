@@ -184,3 +184,5 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Biography living-TV densify | `e461179d9` | start piece_started; share note_saved; door jumps highlight |
 | PersonalSpace/BlockRepository densify | `59c0f2600` | personal jumps + repo add/folder highlight |
 | CostConsent living-TV densify | `1d614b776` | reload highlight/fail |
+| SpeakInvite living-TV densify | `dbcaab839` | invitee take-part/mode/submit densify |
+| HTML book float invent → ReadingCompanion | pending | product-map HTML-first Flipbook-feel invent |
