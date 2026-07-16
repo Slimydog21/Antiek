@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Antiek Durable Twin Recursion Lifecycle</title>
+<style>
+body{font:16px/1.55 system-ui,sans-serif;color:#1c1917;background:#fafaf9;margin:0}main{max-width:960px;margin:auto;padding:32px}h1,h2{font-family:Georgia,serif}section{border-top:1px solid #d6d3d1;padding:20px 0}code{background:#f5f5f4;padding:2px 5px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #d6d3d1;padding:8px;text-align:left;vertical-align:top}.must{color:#991b1b;font-weight:700}
+</style>
+</head>
+<body><main>
+<h1>Durable Twin Recursion Lifecycle</h1>
+<p><strong>Status:</strong> executable Cycle 104 substrate spec. This closes the canonical lifecycle authority prerequisite for recursive note twins. It does not claim automatic model dispatch, universal asset-writer integration, graph promotion, or search indexing.</p>
+
+<section><h2>Purpose and invariant</h2>
+<p>Every registered, twinnable source revision has exactly one durable obligation and at most one canonical twin binding. A generated twin can be registered as a first-class source only by deriving it from that binding; callers cannot label arbitrary content as a twin to suppress recursion.</p>
+<p class="must">The complete canonical source asset, authenticated account, signed completion bytes, canonical output body, and lifecycle history must remain independently verifiable after restart.</p></section>
+
+<section><h2>Authority boundaries</h2>
+<table><tr><th>Owned here</th><th>Explicitly outside this cycle</th></tr>
+<tr><td>Source-revision registration; stable job identity; pending, failed, and ready states; exact completion binding; bounded failures; append-only hash-chained events; derived twin registration; account-scoped universality; HTML rendering from the canonical body.</td><td>Provider calls; budget reservation or consumption; receipt signing; retry workers; source-writer hooks; graph/search promotion; UI/API; deployment; paid execution.</td></tr></table>
+<p>The ledger accepts only an already completed proposal carrying the existing Ed25519 receipt. It never dispatches a model and replay never repeats receipt validation or paid work after an exact terminal binding exists.</p></section>
+
+<section><h2>Identity model</h2>
+<ul>
+<li><code>source_hash</code> is the existing canonical asset receipt hash over identity, title, class, content, and source events. A title or provenance change is a new revision.</li>
+<li><code>job_id</code>, <code>twin_id</code>, and <code>binding_id</code> are deterministic domain-separated hashes.</li>
+<li><code>completion_digest</code> binds the model identifier, full normalized proposal value, and every receipt claim including its signature.</li>
+<li>The canonical twin body is stored as sorted compact JSON and HTML is a derived view through the existing research-artifact renderer.</li>
+</ul></section>
+
+<section><h2>Lifecycle</h2>
+<ol>
+<li><strong>Register source:</strong> validate the complete asset and atomically create a pending obligation plus <code>source_registered</code> event. Exact replay is idempotent.</li>
+<li><strong>Record failure:</strong> pending may become failed only with a closed failure code. Reset returns the same job to pending and preserves both facts in immutable events.</li>
+<li><strong>Bind completion:</strong> verify the signed receipt using the existing materializer, persist exact completion evidence and canonical body, transition to ready, and append <code>completion_bound</code> in one transaction.</li>
+<li><strong>Register twin:</strong> derive child identity and bytes from a real binding, assign a canonical provenance event, mark it non-twinnable, and append <code>twin_registered</code>. No caller-supplied exclusion marker exists.</li>
+</ol></section>
+
+<section><h2>Durability and corruption policy</h2>
+<p>Initialization is one immediate transaction. Exact table and trigger SQL plus a schema digest are pinned. Source identities, bindings, metadata, and events reject mutation/deletion. The integrity verifier checks SQLite, schema objects, the global event hash chain, source hashes, deterministic IDs, parent-child linkage, canonical bodies, receipt linkage, and completion evidence. Any mismatch fails closed.</p></section>
+
+<section><h2>Coverage semantics</h2>
+<p>Coverage is isolated by authenticated account and applies to every registered source revision. Empty or twin-only corpora are <code>unknown</code>; a non-empty corpus with missing bindings is <code>partial</code>; only a non-empty corpus where every twinnable revision is bound is <code>universal</code>. This is persisted-ledger coverage, not a claim that every Antiek asset writer is wired yet.</p></section>
+
+<section><h2>Acceptance evidence</h2>
+<ul>
+<li>Restart and duplicate registration preserve one source and one stable job.</li>
+<li>Invalid receipts and injected pre-commit crashes leave no binding, ready state, or completion event.</li>
+<li>Concurrent exact completions converge; altered signed bytes conflict.</li>
+<li>Arbitrary twin exclusions are impossible; child registration requires and reproduces a canonical binding.</li>
+<li>Failure text cannot carry secrets; reset leaves an auditable history.</li>
+<li>Schema/event corruption fails startup and integrity checks.</li>
+<li>Account-scoped reports distinguish unknown, partial, and universal.</li>
+</ul></section>
+
+<section><h2>Next executable sub-specs</h2>
+<p><strong>104A, source-writer integration:</strong> enumerate every canonical asset creation path and require registration in its commit/outbox boundary. Acceptance requires adversarial coverage proving no writer bypass.</p>
+<p><strong>104B, authorized worker:</strong> lease pending jobs, reserve budget, dispatch through the provider broker, sign receipts, and apply completion with crash-safe retry semantics.</p>
+<p><strong>104C, graph and search projection:</strong> project ready twin bodies and parent bindings into tenant-isolated graph/search indexes with rebuildable checkpoints.</p>
+<p><strong>104D, operator surface:</strong> expose pending/failed coverage, bounded remediation actions, canonical HTML twin reading, and provenance navigation without overstating universality.</p>
+</section>
+</main></body></html>
