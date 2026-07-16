@@ -11,6 +11,7 @@ import {
   type BiographyComposition,
 } from "../../lib/speakApi";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Biography — the dedicated landing for the biography TEMPLATE (SPR-11).
@@ -66,8 +67,10 @@ export default function Biography() {
         subjectName: trimmed,
       });
       setComposed(comp);
+      emitWernerExperience("piece_started");
     } catch {
       setFailed(true);
+      emitWernerExperience("fail");
     } finally {
       setSubmitting(false);
     }
@@ -227,8 +230,10 @@ function BiographyOnboarding({
     try {
       const link = await makeShareLink(composition.projectId);
       setInviteLink(link);
+      emitWernerExperience("note_saved");
     } catch {
       setInviteFailed(true);
+      emitWernerExperience("fail");
     } finally {
       setInviting(false);
     }
@@ -272,21 +277,21 @@ function BiographyOnboarding({
             title="A place to gather what is known"
             body="Your research folder. Empty for now — add records, articles, or notes whenever you like."
             cta="Open it"
-            onClick={onOpenResearch}
+            onClick={() => { emitWernerExperience("highlight"); onOpenResearch(); }}
           />
           <SurfaceCard
             testid="biography-open-write"
             title="A draft of the story"
             body="It fills in from what you gather and what people share. Nothing is invented; every line is traceable to who said it."
             cta="Open it"
-            onClick={onOpenWrite}
+            onClick={() => { emitWernerExperience("highlight"); onOpenWrite(); }}
           />
           <SurfaceCard
             testid="biography-open-speak"
             title="The voices of the people who knew them"
             body="No voices yet. Invite friends and family below — each shares a memory in their own words."
             cta="Open it"
-            onClick={onOpenSpeak}
+            onClick={() => { emitWernerExperience("highlight"); onOpenSpeak(); }}
           />
         </section>
 
