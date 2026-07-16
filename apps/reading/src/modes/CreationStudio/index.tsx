@@ -17,6 +17,7 @@ import {
   type ExportFormatName,
   type SectionResponse,
 } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import {
   DRAG_MIME,
   type PaletteDragPayload,
@@ -206,6 +207,10 @@ function ExportButton({ deliverableId }: { deliverableId: string }) {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       setOpen(false);
+      // Living-TV: HTML/MD export complete — happy craft.
+      emitWernerExperience("piece_started");
+    } catch {
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }
@@ -364,6 +369,10 @@ function ProseEditor({
       setLastStatus(r.status);
       setEditing(false);
       await onSaved();
+      // Living-TV: prose saved (optionally promoted) — noted.
+      emitWernerExperience("note_saved");
+    } catch {
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }
@@ -473,6 +482,10 @@ function NewSectionForm({
       });
       setTitle("");
       await onCreated();
+      // Living-TV: new section scaffolded — happy craft.
+      emitWernerExperience("piece_started");
+    } catch {
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }

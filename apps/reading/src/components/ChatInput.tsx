@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 
 import type { DistillationRequestedPayload } from "../generated/types";
 import { postTypedEvent } from "../lib/api";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 interface ChatInputProps {
   investigationId: string;
@@ -57,8 +58,11 @@ export default function ChatInput({
         role: "user_agent",
       });
       setText("");
+      // Living-TV: distillation asked of the document — thinking chase.
+      emitWernerExperience("deep_research_start");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }
