@@ -87,20 +87,25 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | SpeakInvite phone densify | `e7a7ae27e` | invitee landing thinking + living-TV invent | |
 
 
+
+| CostMeter / BlockDetail densify | `c1980850f` | budget living-TV beats + block chase DR start |
+| Zombies living-TV beats | `c1980850f` | start/wave/gameover Werner experiences |
+| Ice + Clam living-TV beats | `f2a9073af` | Club Penguin wait games living-TV contract |
+| Cascade plan invent | `f2d5855ec` | PlanEditor cascade invent webp |
+
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
 
 **Honest residuals still open:** pure Flipbook sole UI NO-GO; curious v2 candidate alpha-honest but not product-mapped (reactions are CSS/SVG); invent `living_tv_imagine_v1` superseded by promoted refedit v2; CF Pages external-pending often; operator merge.
 
 ## Living-TV product-door emotes (choreography)
 
-| Product id | Emote |
+| Product id family | Emote |
 |---|---|
-| research | thinking |
-| read | curious |
-| write | happy |
-| speak | curious |
-| home | happy |
-| more | noted |
+| research, library, investigations, documents, notebooks | thinking |
+| read, speak, arcade, sources | curious |
+| write, home, create | happy |
+| more, settings, billing, pricing | noted |
+| midnight-oil / midnight_oil | sleeping |
 | (other) | hit |
 
-Exported as `emoteForProductDoor` from `werner` barrel. Tip at densify close: `de93a97e5` axe+LP green.
+Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on tip `8bc22c346`.
