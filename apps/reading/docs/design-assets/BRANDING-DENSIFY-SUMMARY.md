@@ -143,6 +143,7 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | ActiveListening research prepare | `432431ccf` | listen→research deep_research_start/error |
 | CommandPalette / AISidecar / IdeaDump | `c4ef69275` | palette highlight; thought-partner note_saved; brainstorm piece_started |
 | Paperclip zombies arcade invent product-map | `e3810ac85` | LGH + wait-arcade + cabinet zombies CRT invent |
+| CreationStudio / ContextWindow / ChatInput | `a2d86a2d4` | create/export/save/promote/generate + distill living-TV |
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
 
