@@ -29,6 +29,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { narrate, TtsError, TTS_OUT_SOURCE_KIND } from "../../api/tts";
+import { notifyVoicePlaybackStarted } from "../../werner/shellExperienceSignals";
 
 export type ReadAloudState =
   | "idle"
@@ -53,6 +54,8 @@ export interface ReadAloudProps {
    *  `new Audio(URL.createObjectURL(blob))`. Tests inject a fake so jsdom's
    *  unimplemented HTMLMediaElement.play does not throw. */
   makeAudio?: (blob: Blob) => HTMLAudioElement;
+  /** Observes first-play success; Werner-backed by default and never authoritative. */
+  onPlaybackStarted?: () => void;
 }
 
 function defaultMakeAudio(blob: Blob): HTMLAudioElement {
@@ -70,10 +73,13 @@ export function ReadAloud({
   voice,
   label,
   makeAudio = defaultMakeAudio,
+  onPlaybackStarted = notifyVoicePlaybackStarted,
 }: ReadAloudProps) {
   const [state, setState] = useState<ReadAloudState>("idle");
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const mountedRef = useRef(true);
+  const playAttemptRef = useRef(0);
 
   const cleanup = useCallback(() => {
     const audio = audioRef.current;
@@ -86,6 +92,7 @@ export function ReadAloud({
   }, []);
 
   const stop = useCallback(() => {
+    playAttemptRef.current += 1;
     cleanup();
     setState("idle");
     setError(null);
@@ -101,13 +108,22 @@ export function ReadAloud({
   const play = useCallback(async () => {
     // Resume a paused narration without re-synthesizing.
     if (state === "paused" && audioRef.current) {
-      await audioRef.current.play();
-      setState("playing");
+      const audio = audioRef.current;
+      const attempt = playAttemptRef.current;
+      await audio.play();
+      if (
+        mountedRef.current &&
+        attempt === playAttemptRef.current &&
+        audioRef.current === audio
+      ) {
+        setState("playing");
+      }
       return;
     }
     // Empty text is a quiet no-op, never a crash (rigor #3 silent/empty).
     if (!text.trim()) return;
 
+    const attempt = ++playAttemptRef.current;
     cleanup();
     setState("loading");
     setError(null);
@@ -115,16 +131,30 @@ export function ReadAloud({
       // narrate enforces §9.0 (withheld → throws) + length bound + scoping, then
       // synthesizes. The audio is model-generated; no user node is created.
       const result = await narrate(text, { chunkId, minutes, voice });
+      if (!mountedRef.current || attempt !== playAttemptRef.current) return;
       const audio = makeAudio(result.audio);
       audioRef.current = audio;
-      audio.onended = () => setState("idle");
+      audio.onended = () => {
+        if (mountedRef.current && attempt === playAttemptRef.current) {
+          setState("idle");
+        }
+      };
       audio.onerror = () => {
-        setError("Playback failed.");
-        setState("error");
+        if (mountedRef.current && attempt === playAttemptRef.current) {
+          setError("Playback failed.");
+          setState("error");
+        }
       };
       await audio.play();
+      if (!mountedRef.current || attempt !== playAttemptRef.current) return;
       setState("playing");
+      try {
+        onPlaybackStarted();
+      } catch {
+        // Living-TV choreography observes product truth; it never owns audio.
+      }
     } catch (e: unknown) {
+      if (!mountedRef.current || attempt !== playAttemptRef.current) return;
       if (e instanceof TtsError && e.kind === "withheld") {
         // §9.0 — never narrated. Honest, distinct state (not a generic error).
         setState("withheld");
@@ -134,10 +164,17 @@ export function ReadAloud({
       setError(e instanceof Error ? e.message : String(e));
       setState("error");
     }
-  }, [state, text, chunkId, minutes, voice, makeAudio, cleanup]);
+  }, [state, text, chunkId, minutes, voice, makeAudio, cleanup, onPlaybackStarted]);
 
   // Stop + revoke any object URL on unmount.
-  useEffect(() => cleanup, [cleanup]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      playAttemptRef.current += 1;
+      cleanup();
+    };
+  }, [cleanup]);
 
   const primaryLabel =
     label ??
