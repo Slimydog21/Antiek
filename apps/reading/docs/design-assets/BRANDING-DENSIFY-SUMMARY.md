@@ -94,9 +94,11 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | Cascade plan invent | `f2d5855ec` | PlanEditor cascade invent webp |
 | Arcade cabinet product-id | `be7a29660` | cards stamp `data-product-id=arcade` + PRODUCT_ACTIVATE |
 | Accrual/Chase/trust living-TV beats | `ea49628ac` | invent + DR spawn/error + notify/delete beats |
-| TwinNotes living-TV invent | (local tip) | recursive note-taker companion invent strip |
-| DistillView living-TV beats | (local tip) | complete/fail/chase deep_research edges |
-| MyResearch SessionBrandChrome | (local tip) | standalone monitor invent + launch DR start |
+| TwinNotes living-TV invent | `6eb4a9373` | recursive note-taker companion invent strip |
+| DistillView + MyResearch densify | `204eeaae9` | complete/fail/chase + SessionBrandChrome monitor |
+| BookReader open/fail beats | `3d6f97d4a` | highlight on open; fail on load error |
+| NotesPanel + ThinkingStream beats | `d71580cf5` | challenge + status-transition living-TV |
+| SuggestedResearch chase beats | `e746c1588` | flywheel Chase this → deep_research_start |
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
 
