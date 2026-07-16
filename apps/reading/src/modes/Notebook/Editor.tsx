@@ -8,6 +8,7 @@ import type { JSONContent } from "@tiptap/core";
 
 import { toast } from "../../components/lemon/LemonToast";
 import { API_BASE, apiFetch, getNotebookContent } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { ChatExchangeBlock } from "./blocks/ChatExchangeBlock";
 import { ClaimCardBlock } from "./blocks/ClaimCardBlock";
 import { CrossDocLinkBlock } from "./blocks/CrossDocLinkBlock";
