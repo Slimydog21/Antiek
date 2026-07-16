@@ -74,6 +74,8 @@ from tests.support.certified_private_paid_lane_34e import (
     CERTIFIED_34E_COMMIT,
     CERTIFIED_34E_CONTRACT_SHA256,
     CERTIFIED_34E_SEMANTIC_SHA256,
+    CERTIFIED_34E_STORE_ID,
+    create_certified_34e_schema_only_genesis,
     probe_certified_34e_runtime,
 )
 from tests.support.private_paid_lane_authority_checkpoint_v1 import (
@@ -3204,6 +3206,95 @@ class TestIdentities:
         )
         assert checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V2 != (
             CERTIFIED_34E_CONTRACT_SHA256
+        )
+
+    def test_detached_34e_creates_schema_only_target_on_final_inode(self, tmp_path: Path) -> None:
+        destination = tmp_path / "live-34e-target"
+        result = create_certified_34e_schema_only_genesis(
+            Path(__file__).resolve().parents[1], destination
+        )
+        target = destination / "paid-lane.sqlite3"
+        before = target.stat(follow_symlinks=False)
+        assert (result["target_device"], result["target_inode"]) == (
+            before.st_dev,
+            before.st_ino,
+        )
+        target_fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            checkpoint_module._validate_secure_durable_path(target, require_exists=True)
+            with sqlite3.connect(f"file:{target}?mode=ro", uri=True) as connection:
+                connection.execute("PRAGMA foreign_keys=ON")
+                connection.execute("PRAGMA busy_timeout=5000")
+                connection.execute("PRAGMA synchronous=FULL")
+                connection.execute("PRAGMA temp_store=MEMORY")
+                connection.execute(f"PRAGMA max_page_count={checkpoint_module.MAX_DB_PAGES}")
+                checkpoint_module._audit_schema(connection)
+                assert connection.execute(
+                    "SELECT migration_epoch,store_id,semantic_source_sha256,contract_sha256,"
+                    "cutover_marker_sha256 FROM paid_lane_schema WHERE singleton=1"
+                ).fetchone() == (
+                    0,
+                    CERTIFIED_34E_STORE_ID,
+                    CERTIFIED_34E_SEMANTIC_SHA256,
+                    CERTIFIED_34E_CONTRACT_SHA256,
+                    None,
+                )
+                assert all(
+                    connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone() == (0,)
+                    for table in checkpoint_module._EXPECTED_TABLE_SET
+                    if table != "paid_lane_schema"
+                )
+            after = target.stat(follow_symlinks=False)
+            opened = os.fstat(target_fd)
+            assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+            assert (opened.st_dev, opened.st_ino) == (before.st_dev, before.st_ino)
+        finally:
+            os.close(target_fd)
+
+        legacy_root = destination / "legacy-root"
+        assert support_checkpoint._secure_support_root(
+            legacy_root, create=False
+        ) == legacy_root.resolve(strict=True)
+        root_info = legacy_root.stat(follow_symlinks=False)
+        assert (result["root_device"], result["root_inode"]) == (
+            root_info.st_dev,
+            root_info.st_ino,
+        )
+        root_record = json.loads(
+            (legacy_root / "legacy-root-state-v1.json").read_text(encoding="utf-8")
+        )
+        assert support_checkpoint._read_json_audited(
+            legacy_root / "legacy-root-state-v1.json"
+        ) == root_record
+        roles = support_checkpoint._CHILD_ROLES
+        manifest = {
+            "root_id": "certified-34e-root",
+            "writer_inventory": roles,
+            "source_store_identities": roles,
+            "created_at_ms": 0,
+        }
+        assert root_record["root_manifest_sha256"] == hashlib.sha256(
+            _canonical_json(manifest)
+        ).hexdigest()
+        assert root_record["inventory_sha256"] == hashlib.sha256(
+            _canonical_json(roles)
+        ).hexdigest()
+        assert root_record["state"] == "open"
+        assert root_record["barrier_id"] is None
+        assert root_record["freeze_nonce"] is None
+        assert set(root_record["child_adapters"]) == set(roles)
+        reopened_root = support_checkpoint.QuarantinedSyntheticLegacyRootV1.open_existing(
+            root_path=legacy_root,
+            expected_root_id="certified-34e-root",
+            expected_root_manifest_sha256=str(result["root_manifest_sha256"]),
+            expected_inventory_sha256=str(result["inventory_sha256"]),
+        )
+        assert reopened_root.root_path == legacy_root.resolve(strict=True)
+        extracted = support_checkpoint._extract_child_migration_rows(legacy_root)
+        expected_genesis = support_checkpoint.fixture_genesis_migration_rows()
+        assert all(extracted[name] == rows for name, rows in expected_genesis.items())
+        assert all(
+            rows == () for name, rows in extracted.items() if name not in expected_genesis
         )
 
     def test_exported_v2_contract_matches_computed(self) -> None:
