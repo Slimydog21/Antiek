@@ -12,6 +12,7 @@ import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
 import type { ResearchTier } from "../../lib/api";
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { emitWernerExperience } from "../../werner/reactionBus";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
@@ -460,6 +461,15 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             aria-hidden="true"
             data-testid="research-home-werner-brand"
             className="h-14 w-14 object-contain"
+          />
+          <img
+            src={livingTvArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="research-home-living-tv-art"
+            className="h-16 w-full max-w-sm rounded-md object-cover object-center"
+            loading="lazy"
+            decoding="async"
           />
           <h1 className="text-2xl font-serif text-ink dark:text-bright text-center">
             What do you want to research?

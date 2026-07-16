@@ -121,6 +121,12 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     expect(surface, "the idle home column must render through GlassSurface").toBeTruthy();
     // Session brand mark UI-consumed on the Research home (living-TV).
     expect(screen.getByTestId("research-home-werner-brand")).toBeTruthy();
+    const livingTv = screen.getByTestId(
+      "research-home-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
     expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
   });
 
