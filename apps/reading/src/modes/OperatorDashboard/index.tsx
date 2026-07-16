@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { apiFetch } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 interface PublisherSummary {
   ip_holder_id: string;
@@ -121,8 +122,11 @@ export default function OperatorDashboard() {
       if (!resp.ok) {
         throw new Error(`POST notify failed: HTTP ${resp.status}`);
       }
+      // Living-TV: mark-notified is a noted beat (operator bookkeeping).
+      emitWernerExperience("note_saved");
       await reload();
     } catch (e: unknown) {
+      emitWernerExperience("fail");
       setError(e instanceof Error ? e.message : String(e));
     }
   };

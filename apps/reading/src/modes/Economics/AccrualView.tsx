@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { LemonButton } from "../../components/lemon";
 import AIActionFailure from "../../shared/AIActionFailure";
 import {
@@ -11,6 +12,7 @@ import {
   type AttributionReportResponse,
   type ConsentViewResponse,
 } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * AccrualView — §9 made legible: whose work grounds a synthesis, and what
@@ -177,6 +179,8 @@ export default function AccrualView({ synthesisId, onPayoutRefused }: AccrualVie
         `Payouts are on hold until the legal review and a publisher's opt-in are complete (${reasonGates.join(" + ")}). ` +
           "Nothing was paid — this only shows what would be owed.",
       );
+      // Living-TV: honest refusal is a fail beat — never money path.
+      emitWernerExperience("fail");
       onPayoutRefused?.({ openGates: reasonGates });
       return;
     }
@@ -226,6 +230,16 @@ export default function AccrualView({ synthesisId, onPayoutRefused }: AccrualVie
             What would be owed for this answer
           </h3>
         </div>
+        {/* Living-TV invent strip — §9 honesty surface is product-mapped brand. */}
+        <img
+          src={livingTvArt}
+          alt=""
+          aria-hidden="true"
+          data-testid="accrual-view-living-tv-art"
+          className="mt-2 h-12 w-full max-w-sm rounded-md object-cover object-center"
+          loading="lazy"
+          decoding="async"
+        />
         <p className="mt-1 font-serif text-[13px] text-ink dark:text-bright">
           This is who grounds this answer and how attribution would split across
           their work — shown as the promise, not a payment. No ad revenue flows

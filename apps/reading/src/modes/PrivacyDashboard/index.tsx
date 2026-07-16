@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { apiFetch } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Privacy Dashboard (master-spec §13.3 — first-class product surface).
@@ -97,8 +98,11 @@ export default function PrivacyDashboard() {
       if (!resp.ok) {
         throw new Error(`POST deletion request: HTTP ${resp.status}`);
       }
+      // Living-TV: delete-everything request is a noted honesty beat.
+      emitWernerExperience("note_saved");
       await reload();
     } catch (e: unknown) {
+      emitWernerExperience("fail");
       setError(e instanceof Error ? e.message : String(e));
     }
   };
@@ -113,8 +117,10 @@ export default function PrivacyDashboard() {
       if (!resp.ok) {
         throw new Error(`Cancel deletion: HTTP ${resp.status}`);
       }
+      emitWernerExperience("highlight");
       await reload();
     } catch (e: unknown) {
+      emitWernerExperience("fail");
       setError(e instanceof Error ? e.message : String(e));
     }
   };

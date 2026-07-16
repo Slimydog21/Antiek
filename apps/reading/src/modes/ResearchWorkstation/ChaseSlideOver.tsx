@@ -7,6 +7,7 @@ import { useInvestigation } from "../../hooks/useInvestigation";
 import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import { startInvestigation } from "../../lib/api";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import ThinkingStream from "./ThinkingStream";
 
 /**
@@ -53,6 +54,8 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
     }
     setBusy(true);
     setError(null);
+    // Living-TV: chase spawn is a deep-research start from a highlight.
+    emitWernerExperience("deep_research_start");
     try {
       const resp = await startInvestigation({
         question: q,
@@ -63,6 +66,7 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
       setSpawnedId(resp.investigation_id);
       recordSpawnRelationship(resp.investigation_id, parentInvestigationId);
     } catch (e) {
+      emitWernerExperience("deep_research_error");
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);

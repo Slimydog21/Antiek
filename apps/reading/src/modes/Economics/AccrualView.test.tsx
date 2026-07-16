@@ -195,6 +195,23 @@ describe("AccrualView — NO money path (M4, BINDING)", () => {
   });
 });
 
+describe("AccrualView — living-TV brand densify", () => {
+  it("renders session thinking mark + living-TV invent strip", async () => {
+    getAttributionReportMock.mockResolvedValue(report());
+    getConsentViewMock.mockResolvedValue(consent());
+    render(<AccrualView synthesisId="syn-1" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("accrual-view-werner-brand")).toBeTruthy(),
+    );
+    const livingTv = screen.getByTestId(
+      "accrual-view-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
+  });
+});
+
 describe("AccrualView — honest no-key state (M4)", () => {
   it("shows the no-result state, no fabricated owed amounts, when attribution can't compute", async () => {
     getAttributionReportMock.mockRejectedValue(new Error("no result"));
