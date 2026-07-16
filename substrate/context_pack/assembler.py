@@ -31,12 +31,13 @@ Layer kinds (matching ``substrate.schemas.events.ContextLayer.kind``):
   from THIS investigation's own retrieved evidence; same evidence-level
   priority (60, background but truncatable), rendered just before
   ``graph_evidence``.
+- ``working_memory`` — prior notes and open questions from this investigation.
 - ``graph_evidence`` — retrieved facts from the knowledge graph.
 - ``session`` — current investigation state, the role-specific task.
   Highest non-mandatory priority — preserved before evidence and skills.
 
 Rendering order in the final prompt:
-``param_version_stamp → phase_metadata → style_guide → long_term_skill → reuse → graph_evidence → session``
+``param_version_stamp → phase_metadata → style_guide → long_term_skill → reuse → graph_evidence → working_memory → session``
 
 The user's action-relevant content (``session``) goes last so it is
 closest to the model's response — standard LLM prompt-tail attention.
@@ -74,8 +75,8 @@ except ImportError:  # pragma: no cover — direct-script fallback
 
 
 LayerKind = Literal[
-    "session", "long_term_skill", "reuse", "graph_evidence", "style_guide",
-    "phase_metadata", "param_version_stamp",
+    "session", "working_memory", "long_term_skill", "reuse", "graph_evidence",
+    "style_guide", "phase_metadata", "param_version_stamp",
 ]
 
 TruncationStrategy = Literal["smart", "head", "tail"]
@@ -87,6 +88,7 @@ DEFAULT_KIND_PRIORITY: dict[str, int] = {
     "param_version_stamp": 100,  # tiny, always
     "phase_metadata":       95,  # small, always
     "session":              80,  # current task — almost always keep
+    "working_memory":       70,  # same-investigation notes/questions
     "reuse":                60,  # prior-investigation reuse (AFF SPR-06) — evidence-level
     "graph_evidence":       60,  # retrieved facts — important but truncatable
     "long_term_skill":      40,  # background — easiest to truncate
@@ -105,6 +107,7 @@ CANONICAL_RENDER_ORDER: tuple[str, ...] = (
     "long_term_skill",
     "reuse",
     "graph_evidence",
+    "working_memory",
     "session",
 )
 
@@ -456,8 +459,8 @@ def assemble_context_pack(
     text = "".join(rt for _, rt, _ in kept_canonical)
 
     assembled = tuple(
-        AssembledLayer(kind=l.kind, source=l.source, tokens=t, rendered=r)
-        for l, r, t in kept_canonical
+        AssembledLayer(kind=layer.kind, source=layer.source, tokens=tokens, rendered=text)
+        for layer, text, tokens in kept_canonical
     )
 
     # Emit the typed event so the pack provenance is queryable.

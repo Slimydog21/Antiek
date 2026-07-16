@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Antiek Cycle 80 - Recursive investigation working memory</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; line-height: 1.55; }
+    main { max-width: 980px; margin: auto; padding: 28px 20px 56px; }
+    header, section { border-bottom: 1px solid #8886; padding: 18px 0; }
+    h1 { font-size: 2rem; } h2 { font-size: 1.3rem; }
+    code { font-family: ui-monospace, monospace; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #8888; padding: 8px; text-align: left; vertical-align: top; }
+  </style>
+</head>
+<body><main>
+  <header>
+    <p>Antiek / Infinite / Cycle 80</p>
+    <h1>Recursive investigation working memory</h1>
+    <p>Make prior notes and open questions from the current investigation inform the next wrestling prompt through a bounded, causal, auditable context layer.</p>
+  </header>
+  <section>
+    <h2>Problem</h2>
+    <p>The live wrestling and note-taking handlers emit auditable context packs and durable <code>note.emerged</code> events, but every later wrestling call rebuilds context from only the current highlight and question. Valuable prior thinking is visible in the event rail yet absent from the model's next prompt. The broader knowledge-reuse substrate is exercised by a CLI, not this live product path.</p>
+  </section>
+  <section>
+    <h2>Decision</h2>
+    <ol>
+      <li>Read only the triggering investigation's trajectory and cut it at the exact current <code>distillation.requested</code> event. Events appended after that causal boundary are invisible.</li>
+      <li>Fold immutable <code>note.emerged</code> snapshots. Fold <code>question.identified</code> and remove questions resolved before the cutoff.</li>
+      <li>Do not fold <code>note.refined</code>: the current event is an audit attempt, uses a different graph-node identity, and does not record whether the refinement won concurrency. Authoritative refined-note memory is deferred until that outcome is represented durably.</li>
+      <li>Select a fixed recent suffix, render it in chronological order, cap every item and aggregate bytes, and derive the layer source digest from the exact rendered bytes.</li>
+      <li>Insert one session-class working-memory layer immediately before the current-highlight session layer. It is labeled untrusted hypothesis memory, never source evidence or instruction authority.</li>
+      <li>If no usable memory exists, preserve the existing three-layer prompt byte-for-byte.</li>
+    </ol>
+  </section>
+  <section>
+    <h2>Authority boundaries</h2>
+    <table><thead><tr><th>Concern</th><th>Required rule</th></tr></thead><tbody>
+      <tr><td>Ownership and scope</td><td>No caller supplies an investigation or owner to memory assembly. The handler uses the already validated triggering event's investigation and reads only that trajectory.</td></tr>
+      <tr><td>Causality</td><td>The cutoff event must exist exactly once in the physical durable trajectory. Later notes, concurrent requests, and later refinements cannot enter this prompt.</td></tr>
+      <tr><td>Integrity</td><td>Malformed completed event records, conflicting duplicate event IDs, changed duplicate note identities, resolution of an unknown question, malformed relevant payloads, or cross-investigation rows fail memory assembly closed before provider dispatch.</td></tr>
+      <tr><td>Prompt safety</td><td>Memory is explicitly model/user-authored and untrusted. The model may use it to orient or challenge itself, but must not treat it as source evidence, system instruction, or support for a factual claim.</td></tr>
+      <tr><td>Spend</td><td>No additional dispatch, provider, embedding, graph query, reservation, or model call is introduced. Existing explicit dispatch remains the only paid boundary.</td></tr>
+      <tr><td>Audit</td><td>The context-pack event records a source containing a lowercase SHA-256 digest and item count. The digest covers the exact rendered memory content the model saw.</td></tr>
+    </tbody></table>
+  </section>
+  <section>
+    <h2>Bounds and ordering</h2>
+    <ul>
+      <li>At most 12 combined notes and open questions survive, selected from the newest identities after folding and rendered oldest-to-newest.</li>
+      <li>Each text is deterministically capped at 1,200 characters with an explicit truncation marker; total rendered memory is capped before context-pack token budgeting.</li>
+      <li>A fixed safe-alphabet identity digest and confidence are included for notes; an identity digest is included for questions. Raw identities, owner, document path, provider, model, source-event list, and unrelated event payloads are omitted.</li>
+      <li>Stable unchanged trajectories yield byte-identical memory and source digest.</li>
+    </ul>
+  </section>
+  <section>
+    <h2>Acceptance</h2>
+    <ul>
+      <li>A second wrestling prompt contains an earlier note and open question from the same investigation before the current highlight and question.</li>
+      <li>Another investigation's identical-looking memory never appears.</li>
+      <li>A note appended after the triggering request never appears, even when the handler runs later.</li>
+      <li>Refinement audit attempts never overwrite emerged-note memory, including superseded attempts.</li>
+      <li>Resolved questions are absent; unknown resolution fails closed.</li>
+      <li>Exact and over-bound fixtures prove deterministic suffix selection, per-item truncation, total bounds, chronological render order, stable digest, and no unbounded payload copying.</li>
+      <li>No-memory behavior preserves existing wrestling tests and prompt composition.</li>
+      <li>Context-pack, wrestling, note-taking, event-schema, Ruff, compilation, security, and heterogeneous hostile-review gates pass.</li>
+    </ul>
+  </section>
+  <section>
+    <h2>Non-goals</h2>
+    <p>No cross-investigation reuse, owner-wide memory, embedding retrieval, graph promotion, automatic note acceptance, prompt editing UI, model routing, provider qualification, paid fallback, or new spend approval. Cross-investigation compounding requires owner-bearing graph authority or an owner-scoped verified twin-note source; this cycle does not manufacture that guarantee.</p>
+  </section>
+  <section id="harness-hint" data-harness-pattern="causal-event-fold" data-harness-fanout-unit="memory reducer; wrestling integration; prompt-injection critic" data-harness-sharpen-floor="2">
+    <h2>Harness hint</h2><p>Attack future-event leakage, cross-investigation substitution, duplicate identities, superseded refinement attempts, unknown resolutions, oversized text, prompt-instruction confusion, ordering drift, and a second hidden dispatch.</p>
+  </section>
+</main></body></html>

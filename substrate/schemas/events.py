@@ -882,8 +882,8 @@ class ContextLayer(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal[
-        "session", "long_term_skill", "reuse", "graph_evidence", "style_guide",
-        "phase_metadata", "param_version_stamp",
+        "session", "working_memory", "long_term_skill", "reuse", "graph_evidence",
+        "style_guide", "phase_metadata", "param_version_stamp",
     ]
     source: str
     tokens: int = Field(ge=0)

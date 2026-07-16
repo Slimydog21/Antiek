@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import inspect
 import json
 import os
-import fcntl
-import time
 import threading
+import time
 from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -20,7 +20,11 @@ from substrate.event_log import default_events_dir, iter_physical_events
 from substrate.graph import default_db_path
 from substrate.graph.schema import init_database_at_path
 from substrate.schemas.events import NoteEmergedPayload
-from substrate.write.event_outbox import build_typed_envelope, dispatch_aggregate_pending, enqueue_event
+from substrate.write.event_outbox import (
+    build_typed_envelope,
+    dispatch_aggregate_pending,
+    enqueue_event,
+)
 
 from .parser import parse_notes_response
 from .prompt import NOTE_TAKER_SYSTEM_PROMPT
@@ -132,9 +136,8 @@ class DurableNoteTakerReplay:
         key = (os.path.abspath(self.db_path), investigation_id)
         with _locks_guard:
             lock = _locks.setdefault(key, threading.Lock())
-        with lock:
-            with _replay_lock(investigation_id, self.events_dir):
-                return self._catch_up_locked(investigation_id)
+        with lock, _replay_lock(investigation_id, self.events_dir):
+            return self._catch_up_locked(investigation_id)
 
     def _catch_up_locked(self, investigation_id: str) -> list[str]:
         _assert_complete_tail(investigation_id, self.events_dir)
@@ -204,7 +207,10 @@ class DurableNoteTakerReplay:
         request = json.loads(request_json)
         if not isinstance(request, dict):
             raise TypeError("stored provider request must be an object")
-        params = inspect.signature(self.dispatcher).parameters
+        try:
+            params = inspect.signature(self.dispatcher).parameters
+        except (TypeError, ValueError) as exc:
+            raise TypeError("dispatcher signature cannot be validated") from exc
         if "idempotency_key" in params:
             return lambda: self.dispatcher(request, idempotency_key=key)
         if len(params) >= 2:
