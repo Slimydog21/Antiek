@@ -451,6 +451,48 @@
       tags: [frontend, debug]
 
     # ── 4. Restart the substrate ────────────────────────────────────────
+    # The API startup path is deliberately read-only, so deploying code alone
+    # does not apply newly-added DuckDB tables or columns. The initializer is
+    # idempotent and uses the same writer coordination as request DML.
+    - name: stop antiek for graph schema migration
+      ansible.builtin.systemd:
+        name: antiek.service
+        state: stopped
+      tags: [code]
+
+    - name: initialize graph schema
+      ansible.builtin.command:
+        argv:
+          - "{{ antiek_install_dir }}/.venv/bin/python"
+          - -m
+          - substrate.graph.schema
+          - --db-path
+          - "{{ antiek_state_dir }}/antiek.duckdb"
+        chdir: "{{ antiek_install_dir }}"
+      become_user: "{{ antiek_user }}"
+      changed_when: false
+      tags: [code]
+
+    - name: verify crash-recoverable write outbox schema
+      ansible.builtin.command:
+        argv:
+          - "{{ antiek_install_dir }}/.venv/bin/python"
+          - tools/verify_write_event_outbox_schema.py
+          - --db-path
+          - "{{ antiek_state_dir }}/antiek.duckdb"
+        chdir: "{{ antiek_install_dir }}"
+      become_user: "{{ antiek_user }}"
+      changed_when: false
+      tags: [code]
+
+    # Keep --tags code self-contained: a successful schema migration must not
+    # leave the API stopped merely because the later restart tag was omitted.
+    - name: start antiek after graph schema migration
+      ansible.builtin.systemd:
+        name: antiek.service
+        state: started
+      tags: [code]
+
     - name: restart antiek
       ansible.builtin.systemd:
         name: antiek.service
@@ -465,6 +507,25 @@
       retries: 6
       delay: 5
       until: systemd_status.stdout == "active"
+      changed_when: false
+      tags: [verify]
+
+    # Re-run the same fail-closed contract during verify-only playbook runs.
+    # The tool coordinates with application writers; task retries also cover
+    # the narrow cross-process DuckDB-open race after service startup.
+    - name: verify crash-recoverable write outbox schema on live service
+      ansible.builtin.command:
+        argv:
+          - "{{ antiek_install_dir }}/.venv/bin/python"
+          - tools/verify_write_event_outbox_schema.py
+          - --db-path
+          - "{{ antiek_state_dir }}/antiek.duckdb"
+        chdir: "{{ antiek_install_dir }}"
+      become_user: "{{ antiek_user }}"
+      register: live_write_outbox_schema
+      retries: 3
+      delay: 2
+      until: live_write_outbox_schema.rc == 0
       changed_when: false
       tags: [verify]
 
