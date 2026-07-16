@@ -96,6 +96,15 @@ const STORIES: string[] = [
   "settings-model-observatory--wide",
   "settings-model-observatory--tablet",
   "settings-model-observatory--mobile",
+  // Substrate Atlas — truthful cardinality states and responsive bound.
+  "modes-substrate-atlas--measured",
+  "modes-substrate-atlas--known-zero",
+  "modes-substrate-atlas--loading",
+  "modes-substrate-atlas--missing-counts",
+  "modes-substrate-atlas--integrity-warning",
+  "modes-substrate-atlas--safe-error",
+  "modes-substrate-atlas--long-count",
+  "modes-substrate-atlas--narrow",
   // S5 + S6 + S7 — mode panels
   "loop-1-notebookeditor--blank",
   "loop-1-notebookeditor--with-sample-content",
@@ -148,18 +157,29 @@ async function main() {
   // so portaled content (modals, toasts, dropdowns) can linger).
   const results: StoryResult[] = [];
   for (const story of STORIES) {
+    const narrow = story === "modes-substrate-atlas--narrow";
     const ctx = await browser.newContext({
-      viewport: { width: 1280, height: 900 },
+      viewport: narrow
+        ? { width: 375, height: 667 }
+        : { width: 1280, height: 900 },
     });
     const page = await ctx.newPage();
     const url =
-      args.storybook +
-      "/iframe.html?args=&id=" +
-      story +
-      "&viewMode=story";
+      args.storybook + "/iframe.html?args=&id=" + story + "&viewMode=story";
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15_000 });
       await page.waitForTimeout(1500); // let the story render
+      if (narrow) {
+        const overflow = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }));
+        if (overflow.scrollWidth > overflow.clientWidth) {
+          throw new Error(
+            `horizontal overflow ${overflow.scrollWidth}px > ${overflow.clientWidth}px`,
+          );
+        }
+      }
       // Storybook hosts each story inside an iframe. Some axe rules
       // fire on the IFRAME WRAPPER, not the Antiek code:
       //   - scrollable-region-focusable: the iframe scrollport itself
@@ -223,6 +243,7 @@ async function main() {
 
   // ── Aggregation ────────────────────────────────────────
   const seriousOrCritical: { story: string; v: AxeViolation }[] = [];
+  const loadErrors = results.filter((result) => result.error !== null);
   for (const r of results) {
     for (const v of r.violations) {
       if (v.impact === "serious" || v.impact === "critical") {
@@ -242,7 +263,9 @@ async function main() {
   lines.push(
     `**Serious / critical violations:** ${seriousOrCritical.length}\n`,
   );
-  lines.push("**Rule set:** wcag2a + wcag2aa + wcag21a + wcag21aa + best-practice");
+  lines.push(
+    "**Rule set:** wcag2a + wcag2aa + wcag21a + wcag21aa + best-practice",
+  );
   lines.push("");
   lines.push("## Per-story summary\n");
   lines.push("| Story | Violations | Top impact | Worst rule |");
@@ -268,9 +291,10 @@ async function main() {
         (top ? `${top.impact ?? "—"} · ${top.id}` : "—") +
         ")";
     lines.push(
-      `| \`${r.story}\` | ${r.violations.length} | ${top?.impact ?? "—"} | ${top?.id ?? "—"} |`,
+      r.error
+        ? `| \`${r.story}\` | 0 | error | ${cell} |`
+        : `| \`${r.story}\` | ${r.violations.length} | ${top?.impact ?? "—"} | ${top?.id ?? "—"} |`,
     );
-    void cell;
   }
   if (seriousOrCritical.length > 0) {
     lines.push("");
@@ -286,9 +310,10 @@ async function main() {
   writeFileSync(outPath, lines.join("\n") + "\n");
   console.log("");
   console.log(`  report  : ${outPath}`);
-  console.log(`  verdict : ${seriousOrCritical.length === 0 ? "PASS" : "FAIL"}`);
+  const passed = seriousOrCritical.length === 0 && loadErrors.length === 0;
+  console.log(`  verdict : ${passed ? "PASS" : "FAIL"}`);
 
-  exit(seriousOrCritical.length === 0 ? 0 : 1);
+  exit(passed ? 0 : 1);
 }
 
 void main();

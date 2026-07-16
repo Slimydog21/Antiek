@@ -1,7 +1,7 @@
 # axe-core a11y audit
 
-**Run:** 2026-07-16T08:16:54.757Z
-**Stories audited:** 45
+**Run:** 2026-07-16T09:16:45.530Z
+**Stories audited:** 53
 **Serious / critical violations:** 0
 
 **Rule set:** wcag2a + wcag2aa + wcag21a + wcag21aa + best-practice
@@ -52,6 +52,14 @@
 | `settings-model-observatory--wide` | 0 | — | — |
 | `settings-model-observatory--tablet` | 0 | — | — |
 | `settings-model-observatory--mobile` | 0 | — | — |
+| `modes-substrate-atlas--measured` | 0 | — | — |
+| `modes-substrate-atlas--known-zero` | 0 | — | — |
+| `modes-substrate-atlas--loading` | 0 | — | — |
+| `modes-substrate-atlas--missing-counts` | 0 | — | — |
+| `modes-substrate-atlas--integrity-warning` | 0 | — | — |
+| `modes-substrate-atlas--safe-error` | 0 | — | — |
+| `modes-substrate-atlas--long-count` | 0 | — | — |
+| `modes-substrate-atlas--narrow` | 0 | — | — |
 | `loop-1-notebookeditor--blank` | 0 | — | — |
 | `loop-1-notebookeditor--with-sample-content` | 0 | — | — |
 | `workspace-demo--scene` | 0 | — | — |
