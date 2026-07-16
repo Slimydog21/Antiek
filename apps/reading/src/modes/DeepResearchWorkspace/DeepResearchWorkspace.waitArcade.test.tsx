@@ -104,7 +104,7 @@ describe("Deep Research wait arcade gate", () => {
     expect(arcadeRender).not.toHaveBeenCalled();
   });
 
-  it("mounts for a partial session and removes in the terminal render", async () => {
+  it("mounts for a partial session and preserves the lazy host for its terminal broadcast", async () => {
     const { rerender } = render(<ResearchWaitArcadeGate {...base} />);
     expect(await screen.findByTestId("lazy-wait-arcade")).toBeTruthy();
     expect(arcadeRender).toHaveBeenCalledWith(
@@ -117,7 +117,10 @@ describe("Deep Research wait arcade gate", () => {
     rerender(
       <ResearchWaitArcadeGate {...base} activeResearchCount={0} allTerminal />,
     );
-    expect(screen.queryByTestId("lazy-wait-arcade")).toBeNull();
+    expect(screen.getByTestId("lazy-wait-arcade")).toBeTruthy();
+    expect(arcadeRender).toHaveBeenLastCalledWith(
+      expect.objectContaining({ allTerminal: true, activeResearchCount: 0 }),
+    );
   });
 
   it("does not request the lazy host under reduced motion", async () => {
@@ -128,7 +131,19 @@ describe("Deep Research wait arcade gate", () => {
     expect(arcadeRender).not.toHaveBeenCalled();
   });
 
-  it("keeps partial cards and reconnect truth visible, then removes the host in the terminal render", async () => {
+  it("does not retain terminal eligibility from activity hidden by reduced motion", async () => {
+    motion.reduced = true;
+    const view = render(<ResearchWaitArcadeGate {...base} />);
+    await Promise.resolve();
+    motion.reduced = false;
+    view.rerender(
+      <ResearchWaitArcadeGate {...base} activeResearchCount={0} allTerminal />,
+    );
+    await Promise.resolve();
+    expect(screen.queryByTestId("lazy-wait-arcade")).toBeNull();
+  });
+
+  it("keeps cards and reconnect truth visible while the terminal broadcast host remains mounted", async () => {
     const { rerender } = render(
       <Monitor
         sessionId="session-partial"
@@ -148,7 +163,9 @@ describe("Deep Research wait arcade gate", () => {
         busy={false}
       />,
     );
-    expect(screen.getByText(/reconnecting.*status details stay private/)).toBeTruthy();
+    expect(
+      screen.getByText(/reconnecting.*status details stay private/),
+    ).toBeTruthy();
     expect(screen.queryByText(/poll dropped/)).toBeNull();
     expect(screen.getByTestId("lazy-wait-arcade")).toBeTruthy();
 
@@ -168,7 +185,7 @@ describe("Deep Research wait arcade gate", () => {
         busy={false}
       />,
     );
-    expect(screen.queryByTestId("lazy-wait-arcade")).toBeNull();
+    expect(screen.getByTestId("lazy-wait-arcade")).toBeTruthy();
     expect(screen.getByText("Finished evidence")).toBeTruthy();
     expect(screen.getByText("Live evidence")).toBeTruthy();
   });

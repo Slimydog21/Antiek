@@ -47,7 +47,6 @@ export interface ResearchPanelProps {
   onSteer: (kind: SteerKind, payload?: Record<string, unknown>) => void;
   busy?: boolean;
 }
-
 export default function ResearchPanel({ research, costUsd, onSteer, busy }: ResearchPanelProps) {
   const [redirectOpen, setRedirectOpen] = useState(false);
   const [redirectText, setRedirectText] = useState("");
@@ -57,6 +56,8 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
 
   return (
     <section
+      id={`research-${research.investigation_id}`}
+      tabIndex={-1}
       className="flex flex-col gap-2 rounded-md border-2 border-sun bg-ice-0 p-3 dark:bg-charcoal-2"
       aria-label={`research ${research.investigation_id}`}
     >

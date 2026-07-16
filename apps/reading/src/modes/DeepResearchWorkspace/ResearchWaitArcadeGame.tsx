@@ -11,10 +11,12 @@ export default function ResearchWaitArcadeGame({
   game,
   reducedMotion,
   sceneArtSrc,
+  paused = false,
 }: {
   game: ArcadeGameKind;
   reducedMotion: boolean;
   sceneArtSrc: string;
+  paused?: boolean;
 }) {
   const cartridge = useMemo(
     () => createArcadeCartridge(game, { reducedMotion }),
@@ -42,6 +44,7 @@ export default function ResearchWaitArcadeGame({
         width={480}
         height={300}
         reducedMotion={reducedMotion}
+        paused={paused}
         testId="research-wait-arcade-canvas"
       />
     </div>

@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SPR-01 · Research arrival broadcast</title>
+    <style>
+      :root {
+        --ink: #151515;
+        --paper: #fafaf7;
+        --card: #fff;
+        --sun: #f9bd2b;
+        --blue: #1d4aff;
+        --muted: #6b6b6b;
+        --soft: #f3f1ea;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: #2c2c2c;
+        font:
+          15px/1.55 system-ui,
+          sans-serif;
+      }
+      .page {
+        max-width: 1000px;
+        margin: auto;
+        padding: 32px 28px 64px;
+      }
+      .hero,
+      .block {
+        background: var(--card);
+        border: 2px solid var(--ink);
+        border-radius: 6px;
+        box-shadow: 4px 4px 0 var(--ink);
+        padding: 24px;
+        margin-bottom: 22px;
+      }
+      .eyebrow {
+        font:
+          700 12px ui-monospace,
+          monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      h1 {
+        font-size: 31px;
+        line-height: 1.12;
+        margin: 4px 0;
+      }
+      h2 {
+        font-size: 22px;
+        margin: 0 0 8px;
+      }
+      .milestone {
+        display: grid;
+        grid-template-columns: 34px 1fr;
+        gap: 12px;
+        padding: 14px 0;
+        border-bottom: 1px solid #ccc;
+      }
+      .num {
+        width: 32px;
+        height: 32px;
+        border: 2px solid var(--ink);
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--sun);
+        font-weight: 800;
+      }
+      .criteria,
+      .rigor-card {
+        background: var(--soft);
+        border-left: 3px solid var(--blue);
+        padding: 10px 12px;
+        margin-top: 8px;
+      }
+      .rigor {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+        gap: 12px;
+      }
+      .rigor-card {
+        border: 2px solid var(--ink);
+        border-left-width: 2px;
+      }
+      .label {
+        font:
+          700 11px ui-monospace,
+          monospace;
+        text-transform: uppercase;
+      }
+      .files,
+      code {
+        font-family: ui-monospace, monospace;
+      }
+      .files {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      a {
+        color: var(--blue);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <p class="eyebrow">
+          <a href="index.html">← Werner research broadcast</a> · SPR-01
+        </p>
+        <h1>Research arrival broadcast</h1>
+        <p>
+          Preserve the game and let Werner hand the operator each completed line
+          of inquiry.
+        </p>
+      </header>
+      <section class="block">
+        <h2>Parent context</h2>
+        <p>
+          The deep-research monitor polls durable server snapshots. Its wait
+          arcade currently sees only an aggregate running count and is removed
+          immediately when all research becomes terminal. The canvas therefore
+          disappears at the moment results arrive. This sprint adds
+          presentation-only edge detection, a cartridge-preserving pause seam,
+          and one cabinet overlay.
+        </p>
+        <p>
+          The integration may later move from <code>ResearchWaitArcade</code> to
+          <code>LoadingGameHost</code>. Keep the transition reducer and engine
+          pause seam shell-agnostic; do not import research APIs into arcade
+          core.
+        </p>
+      </section>
+      <section class="block">
+        <h2>Technical milestones</h2>
+        <div class="milestone">
+          <div class="num">1</div>
+          <div>
+            <strong>Define terminal-edge presentation</strong>
+            <p>
+              Create a pure reducer/model keyed by investigation id. Baseline
+              initial data, enqueue each nonterminal→terminal edge once, retain
+              order from the authoritative snapshot, and distinguish done,
+              failed, stopped, and budget-halted copy.
+            </p>
+            <div class="criteria">
+              Tests prove: identical polls inert; simultaneous edges
+              deterministic; regression to nonterminal and a later new terminal
+              edge is handled deliberately; episode reset clears history.
+            </div>
+            <p class="files">
+              researchBroadcast.ts · researchBroadcast.test.ts
+            </p>
+          </div>
+        </div>
+        <div class="milestone">
+          <div class="num">2</div>
+          <div>
+            <strong>Pause without teardown</strong>
+            <p>
+              Add <code>paused</code> to <code>ArcadeMount</code>. Stop/start
+              the existing loop through a live ref; keep cartridge init/teardown
+              tied only to mount identity. While paused, clear held/edge input
+              so resume cannot replay a stale shot or movement.
+            </p>
+            <div class="criteria">
+              The same cartridge is initialized once, update count freezes,
+              resume continues, stale inputs do not fire, and unmount tears down
+              exactly once.
+            </div>
+            <p class="files">
+              arcade/engine/ArcadeMount.tsx · ArcadeMount.test.tsx
+            </p>
+          </div>
+        </div>
+        <div class="milestone">
+          <div class="num">3</div>
+          <div>
+            <strong>Compose the cabinet broadcast</strong>
+            <p>
+              Pass the small research presentation array through the gate.
+              During active play, show a labelled, non-modal overlay with
+              existing authored Werner art, textual state, the sub-question, and
+              remaining count. Partial arrivals offer Continue game and View
+              research; final arrival offers View results and Exit game.
+            </p>
+            <div class="criteria">
+              Partial arrival does not steal focus; final arrival focuses the
+              explicit results action once; Escape keeps the existing exit
+              contract; reduced motion keeps the optional arcade absent and
+              leaves completion truth in the static research cards; no
+              auto-dismiss/navigation.
+            </div>
+            <p class="files">
+              DeepResearchWorkspace/index.tsx · ResearchWaitArcade.tsx ·
+              ResearchWaitArcadeGame.tsx · CSS/tests
+            </p>
+          </div>
+        </div>
+        <div class="milestone">
+          <div class="num">4</div>
+          <div>
+            <strong>Verify portability and truth</strong>
+            <p>
+              Run focused suites, typecheck, production build,
+              visual/accessibility checks, heterogeneous refutation, and
+              hardenx. Diff the pure/engine seams against
+              <code>goal/twin-autoload-session-alpha</code> and record any
+              integration conflict.
+            </p>
+            <div class="criteria">
+              All gates green; no research lifecycle logic enters arcade core;
+              no claim that the newer shell is integrated unless verified on
+              that branch.
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="block">
+        <h2>Rigor — operating manual</h2>
+        <div class="rigor">
+          <div class="rigor-card">
+            <span class="label">1 · Intellectual honesty</span>
+            <p>
+              A poll snapshot proves state, not event time. Call an arrival only
+              when this mounted episode observed a nonterminal state before the
+              terminal state; initial terminal rows are baseline.
+            </p>
+          </div>
+          <div class="rigor-card">
+            <span class="label">2 · Fairness</span>
+            <p>
+              Steelman immediate teardown: it is simpler and restores results
+              quickly. Reject it only because explicit active gameplay means the
+              operator chose continuity; non-playing sessions should still
+              terminate immediately.
+            </p>
+          </div>
+          <div class="rigor-card">
+            <span class="label">3 · Rigor</span>
+            <p>
+              Assert cartridge identity, update counts, input clearing, focus
+              movement, duplicate polling, simultaneous completions, and final
+              completion. A DOM snapshot without loop evidence is insufficient.
+            </p>
+          </div>
+          <div class="rigor-card">
+            <span class="label">4 · Diligence</span>
+            <p>
+              Read the loop, gate, wait shell, research types, focus-return
+              tests, and newer LoadingGameHost history before editing. Reuse
+              existing poses and buttons.
+            </p>
+          </div>
+          <div class="rigor-card">
+            <span class="label">5 · Defensibility</span>
+            <p>
+              Keep shell portability explicit in types and commit message.
+              Record why final completion remains operator-dismissed and why no
+              new image spend was warranted.
+            </p>
+          </div>
+        </div>
+      </section>
+      <section class="block">
+        <h2>Dependencies and out of scope</h2>
+        <p>
+          <strong>Depends on:</strong> #2820 exact head; current research
+          polling contract; existing arcade cartridge identity; operator merge
+          gate.
+        </p>
+        <p>
+          <strong>Out:</strong> new games, scores, persistence, sounds,
+          notifications, new reaction events, backend changes, streamed
+          generative UI, Modal/Krea, new art, automatic navigation, analytics,
+          and merging either PR stack.
+        </p>
+      </section>
+      <section class="block">
+        <h2>Verification gates</h2>
+        <ul>
+          <li>
+            Focused Vitest suites for reducer, mount, gate, shell, and game.
+          </li>
+          <li>
+            <code>npm run typecheck</code> and production build in
+            <code>apps/reading</code>.
+          </li>
+          <li><code>git diff --check</code> and changed-file Prettier.</li>
+          <li>
+            Independent hostile reviewer plus hardenx with zero real findings.
+          </li>
+          <li>Exact-head PR CI before the cycle is recorded.</li>
+        </ul>
+      </section>
+      <section
+        class="block"
+        id="harness-hint"
+        data-harness-pattern="inline"
+        data-harness-fanout-unit="Shared reducer→engine→shell state machine; overlapping files make build fan-out unsafe"
+        data-harness-verifier-lenses="poll-edge truth and cartridge identity; focus/reduced-motion and newer-shell portability"
+        data-harness-rounds-floor="1"
+        data-harness-rounds-cap="6"
+      >
+        <h2>Execution harness hint</h2>
+        <p>
+          Build inline. Verify with distinct lifecycle/engine and
+          accessibility/portability lenses.
+        </p>
+      </section>
+      <footer>
+        SPR-01 · generated 2026-07-17 · <a href="index.html">Back to master</a>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useLayoutEffect, useRef } from "react";
 
 import { createArcadeLoop } from "./loop";
 import { createSeededRng } from "./rng";
@@ -10,6 +10,8 @@ export interface ArcadeMountProps {
   height?: number;
   seed?: number;
   reducedMotion?: boolean;
+  /** Freeze simulation without re-initialising or tearing down the cartridge. */
+  paused?: boolean;
   className?: string;
   /** data-testid for shell / wait-host assertions */
   testId?: string;
@@ -25,11 +27,16 @@ export function ArcadeMount({
   height = 240,
   seed = 1,
   reducedMotion = false,
+  paused = false,
   className,
   testId = "arcade-mount",
 }: ArcadeMountProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const bestRef = useRef(0);
+  const loopRef = useRef<ReturnType<typeof createArcadeLoop> | null>(null);
+  const clearInputRef = useRef<(() => void) | null>(null);
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
   const instructionsId = useId();
 
   useEffect(() => {
@@ -78,6 +85,7 @@ export function ArcadeMount({
       ) {
         e.preventDefault();
       }
+      if (pausedRef.current) return;
       const pressed = !keysDown.has(e.key);
       if (pressed) keysPressed.add(e.key);
       keysDown.add(e.key);
@@ -87,6 +95,7 @@ export function ArcadeMount({
       keysDown.delete(e.key);
     };
     const onPointerMove = (e: PointerEvent) => {
+      if (pausedRef.current) return;
       const rect = canvas.getBoundingClientRect();
       const scaleX = rect.width > 0 ? width / rect.width : 1;
       const scaleY = rect.height > 0 ? height / rect.height : 1;
@@ -96,6 +105,7 @@ export function ArcadeMount({
       };
     };
     const onPointerDown = (e: PointerEvent) => {
+      if (pausedRef.current) return;
       canvas.focus();
       canvas.setPointerCapture(e.pointerId);
       capturedPointers.add(e.pointerId);
@@ -105,6 +115,16 @@ export function ArcadeMount({
       if (reducedMotion) loop?.stepOnce(sample());
     };
     const onPointerUp = (e: PointerEvent) => {
+      if (pausedRef.current) {
+        pointerDown = false;
+        pointerPressed = false;
+        pointerReleased = false;
+        if (canvas.hasPointerCapture(e.pointerId)) {
+          canvas.releasePointerCapture(e.pointerId);
+        }
+        capturedPointers.delete(e.pointerId);
+        return;
+      }
       pointerDown = false;
       pointerReleased = true;
       if (canvas.hasPointerCapture(e.pointerId)) {
@@ -117,6 +137,19 @@ export function ArcadeMount({
       keysDown.clear();
       keysPressed.clear();
       pointerDown = false;
+    };
+    clearInputRef.current = () => {
+      keysDown.clear();
+      keysPressed.clear();
+      pointerDown = false;
+      pointerPressed = false;
+      pointerReleased = false;
+      for (const pointerId of capturedPointers) {
+        if (canvas.hasPointerCapture(pointerId)) {
+          canvas.releasePointerCapture(pointerId);
+        }
+      }
+      capturedPointers.clear();
     };
 
     canvas.addEventListener("keydown", onKeyDown);
@@ -145,10 +178,13 @@ export function ArcadeMount({
       getCtx2d: () => c2d,
       reducedMotion,
     });
-    loop.start();
+    loopRef.current = loop;
+    if (!pausedRef.current) loop.start();
 
     return () => {
       loop?.stop();
+      if (loopRef.current === loop) loopRef.current = null;
+      clearInputRef.current = null;
       cartridge.teardown();
       for (const pointerId of capturedPointers) {
         if (canvas.hasPointerCapture(pointerId)) {
@@ -166,6 +202,17 @@ export function ArcadeMount({
     };
   }, [cartridge, width, height, seed, reducedMotion]);
 
+  useLayoutEffect(() => {
+    const loop = loopRef.current;
+    if (!loop) return;
+    if (paused) {
+      clearInputRef.current?.();
+      loop.stop();
+    } else {
+      loop.start();
+    }
+  }, [paused]);
+
   return (
     <>
       <canvas
@@ -174,7 +221,9 @@ export function ArcadeMount({
         height={height}
         className={className}
         data-testid={testId}
+        data-paused={paused ? "true" : "false"}
         role="application"
+        aria-disabled={paused || undefined}
         tabIndex={0}
         aria-label={cartridge.meta.title}
         aria-describedby={instructionsId}
