@@ -5,7 +5,7 @@ import { emitProductActivate } from "../../components/hotkeys";
 import { emitWernerExperience } from "../../werner/reactionBus";
 import homeEnvironment from "../../brand/werner/home/antiek-knowledge-home-v1.webp";
 import iglooArcadeArt from "../../brand/werner/poses/session/werner_igloo_arcade_session_v1.webp";
-import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
+import livingTvArt from "../../brand/werner/poses/session/werner_crt_living_tv_session_v1.webp";
 import GlassSurface from "../../shell/GlassSurface";
 import { WORKFLOWS, WORKFLOW_ORDER } from "../../shell/workflowTaxonomy";
 

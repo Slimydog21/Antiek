@@ -124,7 +124,7 @@ describe("Home (SPR-12 M1)", () => {
     // Living-TV invent strip densifies the front door (not inventory-only).
     const livingTv = screen.getByTestId("home-living-tv-art") as HTMLImageElement;
     expect(livingTv.getAttribute("src") ?? "").toMatch(
-      /werner_living_tv_session_v1/,
+      /werner_crt_living_tv_session_v1/,
     );
     // Four equal door cards.
     const cards = screen.getByTestId("home-workflow-cards");

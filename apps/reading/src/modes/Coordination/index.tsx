@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { apiFetch } from "../../lib/api";
 import { GateLedger } from "./GateLedger";
 import type { GateView } from "./GateLedger";
@@ -67,18 +68,18 @@ export default function Coordination() {
     <div className="flex flex-col h-screen">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-10">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Coordination
-            </h1>
+          <SessionBrandChrome
+            testIdPrefix="coordination-home"
+            title="Coordination"
+          >
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              What's blocked and why. The gate ledger is a read-only view over
+              What&rsquo;s blocked and why. The gate ledger is a read-only view over
               the canonical operator gate file; the roadmap reads the five
-              specs' rosters and the dependency DAG. Nothing on this page can
-              change a gate's state — that is an operator action in the source
+              specs&rsquo; rosters and the dependency DAG. Nothing on this page can
+              change a gate&rsquo;s state — that is an operator action in the source
               file.
             </p>
-          </header>
+          </SessionBrandChrome>
 
           {loading && (
             <p className="text-sm text-shadow-1 dark:text-moonlight">
