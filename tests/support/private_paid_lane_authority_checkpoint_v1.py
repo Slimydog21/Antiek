@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _CAPABILITY_V4_SIGNATURE_DOMAIN,
     _COPY_TABLE_ORDER_FIELDS,
+    _CUTOVER_LIFECYCLE_SIGNATURE_DOMAIN_V2,
     _MIGRATION_CHILD_FINAL_VERSION,
     _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN,
     _MIGRATION_RECOVERY_ADMISSION_DOMAIN,
@@ -48,6 +49,10 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _SOURCE_SIGNATURE_DOMAIN,
     _SOURCE_STORE_ROWS_DOMAIN,
     MAX_DB_PAGES,
+    PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_34E,
+    PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V2,
+    PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_34E,
+    PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V2,
     BudgetAccountMigrationRowV1,
     ConsentClaimMigrationRowV1,
     CopyAuditV1,
@@ -86,6 +91,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     QuarantinedSyntheticExternalPinRecordV1,
     QuarantinedSyntheticReadyRecordV1,
     QueueLeaseMigrationRowV1,
+    SignedCutoverLifecycleStateV2,
     SignedEpoch0RecoveryAdmissionV1,
     SignedMigrationLifecycleStateV1,
     SignedMigrationRecoveryTicketV1,
@@ -106,14 +112,19 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _authenticate_epoch0_recovery_state_v1,
     _canonical_json,
     _capability_v4_document_sha256,
+    _cleanup_migration_lifecycle_temporaries,
     _confirm_signed_migration_lifecycle_state_durable,
     _copy_audit_intent_v1,
     _copy_audit_observed_target_v1,
     _copy_audit_sha256,
+    _cutover_lifecycle_state_document_v2,
+    _cutover_lifecycle_state_sha256_v2,
+    _exchange_migration_lifecycle_entries,
     _migration_barrier_id,
     _migration_encode,
     _migration_lifecycle_entry_identity,
     _migration_lifecycle_parent_identity,
+    _migration_lifecycle_state_basename,
     _migration_lifecycle_state_document,
     _migration_lifecycle_state_sha256,
     _migration_role_schema_sha256,
@@ -121,15 +132,19 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _migration_role_schema_sql,
     _migration_row_sha256,
     _migration_source_manifest_sha256,
+    _parse_cutover_lifecycle_state_document_v2,
+    _parse_lifecycle_journal_document_v2,
     _parse_migration_lifecycle_state_document,
     _parse_strict_json,
     _persist_signed_migration_lifecycle_state,
+    _read_signed_lifecycle_journal_v2,
     _read_signed_migration_lifecycle_state,
     _reconcile_copy_prepared_target_v1,
     _rename_migration_target_to_tombstone_exclusive,
     _revocation_head_document_sha256,
     _source_head_document_sha256,
     _source_snapshot_sha256,
+    _verify_cutover_lifecycle_origin_v2,
     _verify_epoch0_recovery_abort_barrier_release_completion_v1,
     _verify_epoch0_recovery_abort_deletion_fsync_completion_v1,
     _verify_epoch0_recovery_abort_preparation_completion_v1,
@@ -246,6 +261,10 @@ _RecoveryFaultBoundary = Literal[
     "abort_barrier_release_after_journal_rename",
     "abort_barrier_release_after_journal_parent_fsync",
     "abort_barrier_release_after_journal_reread",
+    "cutover_intent_after_temp_fsync",
+    "cutover_intent_after_exchange",
+    "cutover_intent_after_parent_fsync",
+    "cutover_intent_after_reread",
 ]
 _SUPPORT_PIN_STATE = "external-pin-state-v1.json"
 _CHILD_ROLES = (
@@ -2379,7 +2398,12 @@ def _fixture_migration_lifecycle_issuer_main(
     committed: SignedMigrationLifecycleStateV1 | None = None
     pending_candidate: bytes | None = None
     pending_state: SignedMigrationLifecycleStateV1 | None = None
+    pending_cutover_request: bytes | None = None
+    pending_cutover_intent: SignedCutoverLifecycleStateV2 | None = None
+    committed_cutover_intent: SignedCutoverLifecycleStateV2 | None = None
     bound_root_fd: int | None = None
+    bound_root_lock_fd: int | None = None
+    bound_parent_fd: int | None = None
     bound_target_fd: int | None = None
     target_lease: sqlite3.Connection | None = None
     bound_identity: dict[str, object] | None = None
@@ -2417,6 +2441,54 @@ def _fixture_migration_lifecycle_issuer_main(
     process_watch = select.kqueue()
     active_store_revoked = False
     pending_recovery_fault = recovery_fault_boundary
+
+    @contextmanager
+    def _issuer_bound_transition_lock(root_fd: int) -> Iterator[None]:
+        if bound_root_fd is None or bound_root_lock_fd is None:
+            raise ValueError("issuer transition lock unavailable")
+        expected_root = os.fstat(bound_root_fd)
+        observed_root = os.fstat(root_fd)
+        if (observed_root.st_dev, observed_root.st_ino) != (
+            expected_root.st_dev,
+            expected_root.st_ino,
+        ):
+            raise ValueError("issuer transition root mismatch")
+        path_info = os.stat(
+            ".migration.lock", dir_fd=bound_root_fd, follow_symlinks=False
+        )
+        lock_info = os.fstat(bound_root_lock_fd)
+        if (
+            not stat.S_ISREG(lock_info.st_mode)
+            or lock_info.st_uid != os.getuid()
+            or lock_info.st_nlink != 1
+            or stat.S_IMODE(lock_info.st_mode) != 0o600
+            or (path_info.st_dev, path_info.st_ino)
+            != (lock_info.st_dev, lock_info.st_ino)
+        ):
+            raise ValueError("issuer transition lock changed")
+        fcntl.flock(bound_root_lock_fd, fcntl.LOCK_EX)
+        try:
+            path_after_lock = os.stat(
+                ".migration.lock", dir_fd=bound_root_fd, follow_symlinks=False
+            )
+            if (path_after_lock.st_dev, path_after_lock.st_ino) != (
+                lock_info.st_dev,
+                lock_info.st_ino,
+            ):
+                raise ValueError("issuer transition lock substituted")
+            yield
+        finally:
+            try:
+                path_before_unlock = os.stat(
+                    ".migration.lock", dir_fd=bound_root_fd, follow_symlinks=False
+                )
+                if (path_before_unlock.st_dev, path_before_unlock.st_ino) != (
+                    lock_info.st_dev,
+                    lock_info.st_ino,
+                ):
+                    raise ValueError("issuer transition lock changed while held")
+            finally:
+                fcntl.flock(bound_root_lock_fd, fcntl.LOCK_UN)
 
     def inject_recovery_fault(boundary: _RecoveryFaultBoundary) -> None:
         nonlocal pending_recovery_fault
@@ -2625,6 +2697,493 @@ def _fixture_migration_lifecycle_issuer_main(
         )
         inject_recovery_fault(mapped)
 
+    def _issuer_cutover_swap_basenames(parent_fd: int, target_basename: str) -> tuple[str, ...]:
+        prefix = f".{target_basename}.cutover-swap-v2."
+        return tuple(
+            sorted(
+                name
+                for name in os.listdir(parent_fd)
+                if name.startswith(prefix)
+                and name.endswith(".swap")
+                and re.fullmatch(r"[0-9a-f]{24}", name[len(prefix) : -5])
+            )
+        )
+
+    def _issuer_read_lifecycle_entry(
+        *, parent_fd: int, basename: str
+    ) -> SignedMigrationLifecycleStateV1 | SignedCutoverLifecycleStateV2:
+        path_info = os.stat(basename, dir_fd=parent_fd, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(path_info.st_mode)
+            or path_info.st_uid != os.getuid()
+            or path_info.st_nlink != 1
+            or stat.S_IMODE(path_info.st_mode) != 0o600
+            or not 0 < path_info.st_size <= _ISSUER_MAX_PACKET
+        ):
+            raise ValueError("issuer cutover swap entry identity")
+        descriptor = os.open(
+            basename,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=parent_fd,
+        )
+        try:
+            opened = os.fstat(descriptor)
+            if (opened.st_dev, opened.st_ino) != (path_info.st_dev, path_info.st_ino):
+                raise ValueError("issuer cutover swap entry changed during open")
+            chunks: list[bytes] = []
+            remaining = _ISSUER_MAX_PACKET + 1
+            while remaining:
+                chunk = os.read(descriptor, min(65_536, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            document = b"".join(chunks)
+            after = os.fstat(descriptor)
+            if (
+                len(document) != opened.st_size
+                or len(document) > _ISSUER_MAX_PACKET
+                or (after.st_dev, after.st_ino, after.st_size)
+                != (opened.st_dev, opened.st_ino, opened.st_size)
+            ):
+                raise ValueError("issuer cutover swap entry changed during read")
+        finally:
+            os.close(descriptor)
+        path_after = os.stat(basename, dir_fd=parent_fd, follow_symlinks=False)
+        if (path_after.st_dev, path_after.st_ino, path_after.st_size) != (
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_size,
+        ):
+            raise ValueError("issuer cutover swap entry changed after read")
+        return _parse_lifecycle_journal_document_v2(document, verification_key)
+
+    def _issuer_reconcile_cutover_swap_locked(
+        *,
+        parent_fd: int,
+        target_basename: str,
+        predecessor: SignedMigrationLifecycleStateV1,
+        intent: SignedCutoverLifecycleStateV2,
+    ) -> tuple[SignedCutoverLifecycleStateV2 | SignedMigrationLifecycleStateV1, str | None]:
+        swap_basenames = _issuer_cutover_swap_basenames(parent_fd, target_basename)
+        if not swap_basenames:
+            return (
+                _read_signed_lifecycle_journal_v2(
+                    parent_fd=parent_fd,
+                    target_basename=target_basename,
+                    verification_key=verification_key,
+                ),
+                None,
+            )
+        if len(swap_basenames) != 1:
+            raise ValueError("issuer cutover swap artifact roster")
+        swap_basename = swap_basenames[0]
+        state_basename = _migration_lifecycle_state_basename(target_basename)
+        journal = _issuer_read_lifecycle_entry(
+            parent_fd=parent_fd, basename=state_basename
+        )
+        artifact = _issuer_read_lifecycle_entry(
+            parent_fd=parent_fd, basename=swap_basename
+        )
+        if journal == predecessor and artifact == intent:
+            _exchange_migration_lifecycle_entries(
+                parent_fd=parent_fd,
+                left_basename=swap_basename,
+                right_basename=state_basename,
+            )
+            journal = _issuer_read_lifecycle_entry(
+                parent_fd=parent_fd, basename=state_basename
+            )
+            artifact = _issuer_read_lifecycle_entry(
+                parent_fd=parent_fd, basename=swap_basename
+            )
+        if journal != intent or artifact != predecessor:
+            raise ValueError("issuer cutover swap pair mismatch")
+        return intent, swap_basename
+
+    def reserve_and_persist_cutover_intent_v2(
+        *, expected_copied_state_sha256: str
+    ) -> SignedCutoverLifecycleStateV2:
+        nonlocal pending_cutover_request, pending_cutover_intent
+        nonlocal committed_cutover_intent, target_lease
+        nonlocal active_store_revoked, pending_recovery_peer_revoked
+        nonlocal recovery_admission, recovery_admission_request
+        if (
+            committed is None
+            or committed.lifecycle_phase != "copied_epoch0"
+            or committed.phase_version != 4
+            or committed.issuer_sequence != 4
+            or committed.state_sha256 != expected_copied_state_sha256
+            or recovery_ticket is None
+            or bound_root_fd is None
+            or bound_parent_fd is None
+            or bound_target_fd is None
+            or bound_identity is None
+        ):
+            raise ValueError("issuer cutover intent origin")
+        request_fingerprint = _canonical_json(
+            {"expected_copied_state_sha256": expected_copied_state_sha256}
+        )
+        if pending_cutover_request not in {None, request_fingerprint}:
+            raise ValueError("issuer cutover intent request equivocation")
+        parent_fd = bound_parent_fd
+        with _issuer_bound_transition_lock(bound_root_fd):
+            fcntl.flock(parent_fd, fcntl.LOCK_EX)
+            try:
+                parent_identity = _migration_lifecycle_parent_identity(parent_fd)
+                if parent_identity != (
+                    recovery_ticket.target_parent_dev,
+                    recovery_ticket.target_parent_ino,
+                ):
+                    raise ValueError("issuer cutover intent parent")
+                target_info = os.fstat(bound_target_fd)
+                target_identity = _migration_lifecycle_entry_identity(
+                    parent_fd, recovery_ticket.target_basename
+                )
+                if (
+                    not stat.S_ISREG(target_info.st_mode)
+                    or target_info.st_uid != os.getuid()
+                    or target_info.st_nlink != 1
+                    or stat.S_IMODE(target_info.st_mode) != 0o600
+                    or (target_info.st_dev, target_info.st_ino) != target_identity
+                    or target_identity
+                    != (recovery_ticket.target_dev, recovery_ticket.target_ino)
+                ):
+                    raise ValueError("issuer cutover intent target custody")
+                if target_lease is None:
+                    target_lease = _issuer_acquire_target_lease(bound_target_fd)
+                _issuer_validate_abort_origin_custody(
+                    session_root_fd=bound_root_fd,
+                    session_target_fd=bound_target_fd,
+                    origin=committed,
+                    target_lease=target_lease,
+                    provider_capability_verification_keys=(
+                        provider_capability_verification_keys
+                    ),
+                    provider_revocation_verification_keys=(
+                        provider_revocation_verification_keys
+                    ),
+                    source_head_verification_keys=source_head_verification_keys,
+                    provider_revocation_floor_pins=provider_revocation_floor_pins,
+                    source_floor_pins=source_floor_pins,
+                    expected_semantic_source_sha256=expected_semantic_source_sha256,
+                    expected_contract_sha256=expected_contract_sha256,
+                )
+                _cleanup_migration_lifecycle_temporaries(
+                    parent_fd, committed.target_basename
+                )
+                state_basename = _migration_lifecycle_state_basename(
+                    committed.target_basename
+                )
+                if pending_cutover_intent is None:
+                    if _issuer_cutover_swap_basenames(
+                        parent_fd, committed.target_basename
+                    ):
+                        raise ValueError("issuer cutover swap requires original issuer")
+                    durable = _read_signed_lifecycle_journal_v2(
+                        parent_fd=parent_fd,
+                        target_basename=committed.target_basename,
+                        verification_key=verification_key,
+                    )
+                    if durable != committed:
+                        raise ValueError("issuer cutover intent durable origin")
+                    prepared_at_ms = max(
+                        committed.updated_at_ms, time.time_ns() // 1_000_000
+                    )
+                    material = {
+                        "schema_version": 2,
+                        "phase": "cutover_intent_prepared",
+                        "sequence": 5,
+                        "prior_v1_state_sha256": committed.state_sha256,
+                        "target_store_id": committed.target_store_id,
+                        "target_basename": committed.target_basename,
+                        "target_parent_device": committed.target_parent_dev,
+                        "target_parent_inode": committed.target_parent_ino,
+                        "target_device": committed.target_dev,
+                        "target_inode": committed.target_ino,
+                        "root_id": committed.root_id,
+                        "root_manifest_sha256": committed.root_manifest_sha256,
+                        "barrier_id": committed.barrier_id,
+                        "freeze_nonce": committed.freeze_nonce,
+                        "source_manifest_sha256": committed.source_manifest_sha256,
+                        "copy_audit_sha256": committed.copy_audit_sha256,
+                        "predecessor_semantic_sha256": (
+                            PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_34E
+                        ),
+                        "predecessor_contract_sha256": (
+                            PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_34E
+                        ),
+                        "successor_semantic_sha256": (
+                            PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V2
+                        ),
+                        "successor_contract_sha256": (
+                            PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V2
+                        ),
+                        "intent_prepared_at_ms": prepared_at_ms,
+                        "marker_sha256": None,
+                        "marker_committed_at_ms": None,
+                        "pin_sha256": None,
+                        "root_state_sha256": None,
+                        "ready_sha256": None,
+                        "preflight_audit_sha256": None,
+                        "release_evidence_sha256": None,
+                        "previous_state_sha256": committed.state_sha256,
+                        "key_id": key_id,
+                        "issuer_generation_nonce": issuer_generation_nonce,
+                        "issuer_role": "private_paid_cutover_fixture_issuer",
+                        "purpose": "private_paid_cutover_lifecycle_v2",
+                        "scheme": "ed25519",
+                    }
+                    state_sha256 = _cutover_lifecycle_state_sha256_v2(material)
+                    pending_cutover_intent = SignedCutoverLifecycleStateV2.model_validate(
+                        {
+                            **material,
+                            "state_sha256": state_sha256,
+                            "signature_ed25519": private_key.sign(
+                                _CUTOVER_LIFECYCLE_SIGNATURE_DOMAIN_V2
+                                + bytes.fromhex(state_sha256)
+                            ),
+                        }
+                    )
+                    pending_cutover_request = request_fingerprint
+                intent = pending_cutover_intent
+                _verify_cutover_lifecycle_origin_v2(
+                    committed,
+                    intent,
+                    verification_key,
+                    expected_issuer_generation_nonce=issuer_generation_nonce,
+                )
+                durable, swap_basename = _issuer_reconcile_cutover_swap_locked(
+                    parent_fd=parent_fd,
+                    target_basename=committed.target_basename,
+                    predecessor=committed,
+                    intent=intent,
+                )
+                if durable == intent:
+                    os.fsync(parent_fd)
+                elif durable == committed:
+                    encoded = _cutover_lifecycle_state_document_v2(intent)
+                    temporary_basename = (
+                        f".{committed.target_basename}.cutover-swap-v2."
+                        f"{secrets.token_hex(12)}.swap"
+                    )
+                    exchanged = False
+                    try:
+                        temporary_fd = os.open(
+                            temporary_basename,
+                            os.O_WRONLY
+                            | os.O_CREAT
+                            | os.O_EXCL
+                            | getattr(os, "O_NOFOLLOW", 0),
+                            0o600,
+                            dir_fd=parent_fd,
+                        )
+                        try:
+                            os.fchmod(temporary_fd, 0o600)
+                            view = memoryview(encoded)
+                            while view:
+                                written = os.write(temporary_fd, view)
+                                if written <= 0:
+                                    raise OSError("short issuer cutover intent write")
+                                view = view[written:]
+                            os.fsync(temporary_fd)
+                            opened_temporary = os.fstat(temporary_fd)
+                            path_temporary = os.stat(
+                                temporary_basename,
+                                dir_fd=parent_fd,
+                                follow_symlinks=False,
+                            )
+                            if (
+                                not stat.S_ISREG(opened_temporary.st_mode)
+                                or opened_temporary.st_uid != os.getuid()
+                                or opened_temporary.st_nlink != 1
+                                or stat.S_IMODE(opened_temporary.st_mode) != 0o600
+                                or (opened_temporary.st_dev, opened_temporary.st_ino)
+                                != (path_temporary.st_dev, path_temporary.st_ino)
+                            ):
+                                raise ValueError("issuer cutover intent temporary identity")
+                            inject_recovery_fault("cutover_intent_after_temp_fsync")
+                        finally:
+                            os.close(temporary_fd)
+                        before_rename = os.stat(
+                            temporary_basename,
+                            dir_fd=parent_fd,
+                            follow_symlinks=False,
+                        )
+                        if (
+                            before_rename.st_nlink != 1
+                            or (before_rename.st_dev, before_rename.st_ino)
+                            != (opened_temporary.st_dev, opened_temporary.st_ino)
+                        ):
+                            raise ValueError("issuer cutover intent temporary changed")
+                        os.fsync(parent_fd)
+                        _exchange_migration_lifecycle_entries(
+                            parent_fd=parent_fd,
+                            left_basename=temporary_basename,
+                            right_basename=state_basename,
+                        )
+                        exchanged = True
+                        reconciled, reconciled_swap = (
+                            _issuer_reconcile_cutover_swap_locked(
+                                parent_fd=parent_fd,
+                                target_basename=committed.target_basename,
+                                predecessor=committed,
+                                intent=intent,
+                            )
+                        )
+                        if reconciled != intent or reconciled_swap != temporary_basename:
+                            raise ValueError("issuer cutover intent exchange mismatch")
+                        inject_recovery_fault("cutover_intent_after_exchange")
+                        os.fsync(parent_fd)
+                        inject_recovery_fault("cutover_intent_after_parent_fsync")
+                        swap_basename = temporary_basename
+                    finally:
+                        if temporary_basename and not exchanged:
+                            with suppress(FileNotFoundError):
+                                os.unlink(temporary_basename, dir_fd=parent_fd)
+                                os.fsync(parent_fd)
+                else:
+                    raise ValueError("issuer cutover intent journal successor")
+                reread = _issuer_read_lifecycle_entry(
+                    parent_fd=parent_fd,
+                    basename=state_basename,
+                )
+                target_after = os.fstat(bound_target_fd)
+                if (
+                    reread != intent
+                    or _migration_lifecycle_entry_identity(
+                        parent_fd, committed.target_basename
+                    )
+                    != (target_after.st_dev, target_after.st_ino)
+                    or (target_after.st_dev, target_after.st_ino)
+                    != (committed.target_dev, committed.target_ino)
+                ):
+                    raise ValueError("issuer cutover intent durable custody")
+                inject_recovery_fault("cutover_intent_after_reread")
+                committed_cutover_intent = intent
+                active_store_revoked = True
+                pending_recovery_peer_revoked = True
+                recovery_admission = None
+                recovery_admission_request = None
+                if swap_basename is not None:
+                    displaced = _issuer_read_lifecycle_entry(
+                        parent_fd=parent_fd, basename=swap_basename
+                    )
+                    if displaced != committed:
+                        raise ValueError("issuer cutover displaced predecessor changed")
+                    os.unlink(swap_basename, dir_fd=parent_fd)
+                    os.fsync(parent_fd)
+                if _issuer_cutover_swap_basenames(
+                    parent_fd, committed.target_basename
+                ):
+                    raise ValueError("issuer cutover swap artifact remains")
+                final_intent = _read_signed_lifecycle_journal_v2(
+                    parent_fd=parent_fd,
+                    target_basename=committed.target_basename,
+                    verification_key=verification_key,
+                )
+                if final_intent != intent:
+                    raise ValueError("issuer cutover final journal changed")
+                _issuer_release_target_lease(target_lease)
+                target_lease = None
+                return intent
+            finally:
+                fcntl.flock(parent_fd, fcntl.LOCK_UN)
+
+    def reconcile_cutover_intent_after_error() -> None:
+        nonlocal committed_cutover_intent, active_store_revoked
+        nonlocal pending_recovery_peer_revoked
+        nonlocal recovery_admission, recovery_admission_request
+        nonlocal target_lease
+        if (
+            pending_cutover_intent is None
+            or bound_root_fd is None
+            or bound_parent_fd is None
+            or bound_target_fd is None
+            or committed is None
+        ):
+            return
+        active_store_revoked = True
+        pending_recovery_peer_revoked = True
+        recovery_admission = None
+        recovery_admission_request = None
+        with _issuer_bound_transition_lock(bound_root_fd):
+            fcntl.flock(bound_parent_fd, fcntl.LOCK_EX)
+            try:
+                durable, swap_basename = _issuer_reconcile_cutover_swap_locked(
+                    parent_fd=bound_parent_fd,
+                    target_basename=committed.target_basename,
+                    predecessor=committed,
+                    intent=pending_cutover_intent,
+                )
+                if durable == pending_cutover_intent:
+                    os.fsync(bound_parent_fd)
+                    confirmed = _issuer_read_lifecycle_entry(
+                        parent_fd=bound_parent_fd,
+                        basename=_migration_lifecycle_state_basename(
+                            committed.target_basename
+                        ),
+                    )
+                    if confirmed != pending_cutover_intent:
+                        raise ValueError("issuer cutover reconciliation changed")
+                    target_info = os.fstat(bound_target_fd)
+                    if (
+                        _migration_lifecycle_entry_identity(
+                            bound_parent_fd, committed.target_basename
+                        )
+                        != (target_info.st_dev, target_info.st_ino)
+                        or (target_info.st_dev, target_info.st_ino)
+                        != (committed.target_dev, committed.target_ino)
+                    ):
+                        raise ValueError("issuer cutover reconciliation target custody")
+                    if target_lease is None:
+                        target_lease = _issuer_acquire_target_lease(bound_target_fd)
+                    _issuer_validate_abort_origin_custody(
+                        session_root_fd=bound_root_fd,
+                        session_target_fd=bound_target_fd,
+                        origin=committed,
+                        target_lease=target_lease,
+                        provider_capability_verification_keys=(
+                            provider_capability_verification_keys
+                        ),
+                        provider_revocation_verification_keys=(
+                            provider_revocation_verification_keys
+                        ),
+                        source_head_verification_keys=source_head_verification_keys,
+                        provider_revocation_floor_pins=provider_revocation_floor_pins,
+                        source_floor_pins=source_floor_pins,
+                        expected_semantic_source_sha256=(
+                            expected_semantic_source_sha256
+                        ),
+                        expected_contract_sha256=expected_contract_sha256,
+                    )
+                    committed_cutover_intent = pending_cutover_intent
+                    if swap_basename is not None:
+                        displaced = _issuer_read_lifecycle_entry(
+                            parent_fd=bound_parent_fd, basename=swap_basename
+                        )
+                        if displaced != committed:
+                            raise ValueError(
+                                "issuer cutover reconciliation predecessor changed"
+                            )
+                        os.unlink(swap_basename, dir_fd=bound_parent_fd)
+                        os.fsync(bound_parent_fd)
+                    if _issuer_cutover_swap_basenames(
+                        bound_parent_fd, committed.target_basename
+                    ):
+                        raise ValueError("issuer cutover reconciliation artifact remains")
+                    final_intent = _read_signed_lifecycle_journal_v2(
+                        parent_fd=bound_parent_fd,
+                        target_basename=committed.target_basename,
+                        verification_key=verification_key,
+                    )
+                    if final_intent != pending_cutover_intent:
+                        raise ValueError("issuer cutover reconciliation final journal")
+                elif durable != committed:
+                    raise ValueError("issuer cutover reconciliation ambiguous")
+            finally:
+                fcntl.flock(bound_parent_fd, fcntl.LOCK_UN)
+
     def inject_barrier_root_persistence_fault(
         boundary: Literal["after_rename", "after_parent_fsync"],
     ) -> None:
@@ -2738,7 +3297,7 @@ def _fixture_migration_lifecycle_issuer_main(
             recovery_barrier_acquisition_completion is not None
             and durable == recovery_barrier_acquisition_completion.barrier_acquired_state
         ):
-            with _issuer_transition_lock(session_root_fd):
+            with _issuer_bound_transition_lock(session_root_fd):
                 durable = _confirm_signed_migration_lifecycle_state_durable(
                     parent_fd=session_parent_fd,
                     expected_state=recovery_barrier_acquisition_completion.barrier_acquired_state,
@@ -2767,7 +3326,7 @@ def _fixture_migration_lifecycle_issuer_main(
         ):
             raise ValueError("issuer recovery schema journal")
         schema_only = committed
-        with _issuer_transition_lock(session_root_fd):
+        with _issuer_bound_transition_lock(session_root_fd):
             root_record = _issuer_authenticate_schema_recovery_root(
                 session_root_fd,
                 expected_root_id=schema_only.root_id,
@@ -2932,7 +3491,7 @@ def _fixture_migration_lifecycle_issuer_main(
             recovery_source_sealing_completion is not None
             and durable == recovery_source_sealing_completion.sources_sealed_state
         ):
-            with _issuer_transition_lock(session_root_fd):
+            with _issuer_bound_transition_lock(session_root_fd):
                 durable = _confirm_signed_migration_lifecycle_state_durable(
                     parent_fd=session_parent_fd,
                     expected_state=recovery_source_sealing_completion.sources_sealed_state,
@@ -2969,7 +3528,7 @@ def _fixture_migration_lifecycle_issuer_main(
         ):
             raise ValueError("issuer recovery barrier acquired journal")
         barrier_acquired = committed
-        with _issuer_transition_lock(session_root_fd):
+        with _issuer_bound_transition_lock(session_root_fd):
             root_record = _issuer_authenticate_barrier_recovery_root(
                 session_root_fd,
                 expected_root_id=barrier_acquired.root_id,
@@ -3194,7 +3753,7 @@ def _fixture_migration_lifecycle_issuer_main(
             recovery_copy_preparation_completion is not None
             and durable == recovery_copy_preparation_completion.prepared_state
         ):
-            with _issuer_transition_lock(session_root_fd):
+            with _issuer_bound_transition_lock(session_root_fd):
                 durable = _confirm_signed_migration_lifecycle_state_durable(
                     parent_fd=session_parent_fd,
                     expected_state=recovery_copy_preparation_completion.prepared_state,
@@ -3230,7 +3789,7 @@ def _fixture_migration_lifecycle_issuer_main(
         ):
             raise ValueError("issuer recovery sealed journal")
         sealed = committed
-        with _issuer_transition_lock(session_root_fd):
+        with _issuer_bound_transition_lock(session_root_fd):
             compatible = _issuer_compatible_root_record(session_root_fd, sealed.lifecycle_phase)
             corpus = _collect_sealed_corpus(_issuer_root_path(session_root_fd), compatible)
             if corpus.source_manifest_sha256 != sealed.source_manifest_sha256:
@@ -3361,7 +3920,7 @@ def _fixture_migration_lifecycle_issuer_main(
             recovery_copy_completion is not None
             and durable == recovery_copy_completion.copied_state
         ):
-            with _issuer_transition_lock(session_root_fd):
+            with _issuer_bound_transition_lock(session_root_fd):
                 durable = _confirm_signed_migration_lifecycle_state_durable(
                     parent_fd=session_parent_fd,
                     expected_state=recovery_copy_completion.copied_state,
@@ -3404,7 +3963,7 @@ def _fixture_migration_lifecycle_issuer_main(
         ):
             raise ValueError("issuer recovery prepared journal")
         prepared = committed
-        with _issuer_transition_lock(session_root_fd):
+        with _issuer_bound_transition_lock(session_root_fd):
             compatible = _issuer_compatible_root_record(session_root_fd, prepared.lifecycle_phase)
             corpus = _collect_sealed_corpus(_issuer_root_path(session_root_fd), compatible)
             if (
@@ -3566,7 +4125,7 @@ def _fixture_migration_lifecycle_issuer_main(
             recovery_abort_preparation_completion is not None
             and durable == recovery_abort_preparation_completion.abort_prepared_state
         ):
-            with _issuer_transition_lock(session_root_fd):
+            with _issuer_bound_transition_lock(session_root_fd):
                 durable = _confirm_signed_migration_lifecycle_state_durable(
                     parent_fd=session_parent_fd,
                     expected_state=recovery_abort_preparation_completion.abort_prepared_state,
@@ -3607,7 +4166,7 @@ def _fixture_migration_lifecycle_issuer_main(
         ):
             raise ValueError("issuer recovery abort preparation origin journal")
         origin = committed
-        with _issuer_transition_lock(session_root_fd):
+        with _issuer_bound_transition_lock(session_root_fd):
             try:
                 _issuer_validate_abort_origin_custody(
                     session_root_fd=session_root_fd,
@@ -3715,7 +4274,7 @@ def _fixture_migration_lifecycle_issuer_main(
             recovery_abort_rename_completion is not None
             and durable == recovery_abort_rename_completion.abort_renamed_to_tombstone_state
         ):
-            with _issuer_transition_lock(session_root_fd):
+            with _issuer_bound_transition_lock(session_root_fd):
                 durable = _confirm_signed_migration_lifecycle_state_durable(
                     parent_fd=session_parent_fd,
                     expected_state=recovery_abort_rename_completion.abort_renamed_to_tombstone_state,
@@ -3737,7 +4296,7 @@ def _fixture_migration_lifecycle_issuer_main(
         ):
             raise ValueError("issuer recovery abort rename prepared journal")
         abort_prepared = committed
-        with _issuer_transition_lock(session_root_fd):
+        with _issuer_bound_transition_lock(session_root_fd):
             locked_parent_fd = os.open(
                 ".",
                 os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
@@ -3855,7 +4414,7 @@ def _fixture_migration_lifecycle_issuer_main(
             recovery_abort_rename_fsync_completion is not None
             and durable == recovery_abort_rename_fsync_completion.abort_rename_fsynced_state
         ):
-            with _issuer_transition_lock(session_root_fd):
+            with _issuer_bound_transition_lock(session_root_fd):
                 durable = _confirm_signed_migration_lifecycle_state_durable(
                     parent_fd=session_parent_fd,
                     expected_state=(
@@ -3879,7 +4438,7 @@ def _fixture_migration_lifecycle_issuer_main(
         ):
             raise ValueError("issuer recovery abort rename fsync journal")
         renamed = committed
-        with _issuer_transition_lock(session_root_fd):
+        with _issuer_bound_transition_lock(session_root_fd):
             locked_parent_fd = os.open(
                 ".",
                 os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
@@ -4005,7 +4564,7 @@ def _fixture_migration_lifecycle_issuer_main(
             recovery_abort_tombstone_unlink_completion is not None
             and durable == recovery_abort_tombstone_unlink_completion.abort_tombstone_unlinked_state
         ):
-            with _issuer_transition_lock(session_root_fd):
+            with _issuer_bound_transition_lock(session_root_fd):
                 durable = _confirm_signed_migration_lifecycle_state_durable(
                     parent_fd=session_parent_fd,
                     expected_state=(
@@ -4029,7 +4588,7 @@ def _fixture_migration_lifecycle_issuer_main(
         ):
             raise ValueError("issuer recovery abort tombstone unlink journal")
         fsynced = committed
-        with _issuer_transition_lock(session_root_fd):
+        with _issuer_bound_transition_lock(session_root_fd):
             locked_parent_fd = os.open(
                 ".",
                 os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
@@ -4147,7 +4706,7 @@ def _fixture_migration_lifecycle_issuer_main(
             recovery_abort_deletion_fsync_completion is not None
             and durable == recovery_abort_deletion_fsync_completion.abort_deletion_fsynced_state
         ):
-            with _issuer_transition_lock(session_root_fd):
+            with _issuer_bound_transition_lock(session_root_fd):
                 locked_parent_fd = os.open(
                     ".",
                     os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
@@ -4190,7 +4749,7 @@ def _fixture_migration_lifecycle_issuer_main(
         ):
             raise ValueError("issuer recovery abort deletion fsync journal")
         unlinked = committed
-        with _issuer_transition_lock(session_root_fd):
+        with _issuer_bound_transition_lock(session_root_fd):
             locked_parent_fd = os.open(
                 ".",
                 os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
@@ -4306,7 +4865,7 @@ def _fixture_migration_lifecycle_issuer_main(
             and durable
             == recovery_abort_sources_revalidation_completion.abort_sources_revalidated_state
         ):
-            with _issuer_transition_lock(session_root_fd):
+            with _issuer_bound_transition_lock(session_root_fd):
                 locked_parent_fd = os.open(
                     ".",
                     os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
@@ -4362,7 +4921,7 @@ def _fixture_migration_lifecycle_issuer_main(
         ):
             raise ValueError("issuer recovery abort sources revalidation journal")
         fsynced = committed
-        with _issuer_transition_lock(session_root_fd):
+        with _issuer_bound_transition_lock(session_root_fd):
             locked_parent_fd = os.open(
                 ".",
                 os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
@@ -4487,7 +5046,7 @@ def _fixture_migration_lifecycle_issuer_main(
             recovery_abort_barrier_release_completion is not None
             and durable == recovery_abort_barrier_release_completion.abort_barrier_released_state
         ):
-            with _issuer_transition_lock(session_root_fd):
+            with _issuer_bound_transition_lock(session_root_fd):
                 locked_parent_fd = os.open(
                     ".",
                     os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
@@ -4550,7 +5109,7 @@ def _fixture_migration_lifecycle_issuer_main(
         ):
             raise ValueError("issuer recovery abort barrier release journal")
         revalidated = committed
-        with _issuer_transition_lock(session_root_fd):
+        with _issuer_bound_transition_lock(session_root_fd):
             locked_parent_fd = os.open(
                 ".",
                 os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
@@ -4800,11 +5359,21 @@ def _fixture_migration_lifecycle_issuer_main(
                 command = request.get("command")
                 if supervisor_exited():
                     return
-                if (peer_pid != authorized_pid or active_store_revoked) and command not in {
+                recovery_entry_commands = {
                     "recover_open",
                     "recover_session_open",
-                }:
+                }
+                if peer_pid != authorized_pid and command not in recovery_entry_commands:
                     raise ValueError("issuer peer pid")
+                if active_store_revoked and command not in (
+                    recovery_entry_commands | {"prepare_cutover_intent_v2"}
+                ):
+                    raise ValueError("issuer active store revoked")
+                if command in recovery_entry_commands and (
+                    pending_cutover_intent is not None
+                    or committed_cutover_intent is not None
+                ):
+                    raise ValueError("issuer V1 recovery retired by cutover")
                 if command == "bind":
                     if (
                         bound_root_fd is not None
@@ -4817,6 +5386,8 @@ def _fixture_migration_lifecycle_issuer_main(
                     root_fd = received_descriptors.pop(0)
                     parent_fd = received_descriptors.pop(0)
                     independent_root_fd = -1
+                    independent_root_lock_fd = -1
+                    independent_parent_fd = -1
                     independent_target_fd = -1
                     try:
                         independent_root_fd = os.open(
@@ -4834,7 +5405,36 @@ def _fixture_migration_lifecycle_issuer_main(
                             or root_record.get("barrier_id") is not None
                         ):
                             raise ValueError("issuer bind root phase")
+                        independent_root_lock_fd = os.open(
+                            ".migration.lock",
+                            os.O_RDWR
+                            | os.O_CREAT
+                            | getattr(os, "O_NOFOLLOW", 0),
+                            0o600,
+                            dir_fd=independent_root_fd,
+                        )
+                        os.fchmod(independent_root_lock_fd, 0o600)
+                        lock_info = os.fstat(independent_root_lock_fd)
+                        if (
+                            not stat.S_ISREG(lock_info.st_mode)
+                            or lock_info.st_uid != os.getuid()
+                            or lock_info.st_nlink != 1
+                            or stat.S_IMODE(lock_info.st_mode) != 0o600
+                        ):
+                            raise ValueError("issuer bind transition lock")
                         parent_identity = _migration_lifecycle_parent_identity(parent_fd)
+                        independent_parent_fd = os.open(
+                            ".",
+                            os.O_RDONLY
+                            | getattr(os, "O_DIRECTORY", 0)
+                            | getattr(os, "O_NOFOLLOW", 0),
+                            dir_fd=parent_fd,
+                        )
+                        if (
+                            _migration_lifecycle_parent_identity(independent_parent_fd)
+                            != parent_identity
+                        ):
+                            raise ValueError("issuer bind parent changed")
                         bind_target_basename = request["target_basename"]
                         target_identity = _migration_lifecycle_entry_identity(
                             parent_fd, bind_target_basename
@@ -4860,6 +5460,10 @@ def _fixture_migration_lifecycle_issuer_main(
                         }
                         bound_root_fd = independent_root_fd
                         independent_root_fd = -1
+                        bound_root_lock_fd = independent_root_lock_fd
+                        independent_root_lock_fd = -1
+                        bound_parent_fd = independent_parent_fd
+                        independent_parent_fd = -1
                         bound_target_fd = independent_target_fd
                         independent_target_fd = -1
                         root_info = os.fstat(bound_root_fd)
@@ -4909,6 +5513,10 @@ def _fixture_migration_lifecycle_issuer_main(
                     finally:
                         if independent_root_fd >= 0:
                             os.close(independent_root_fd)
+                        if independent_root_lock_fd >= 0:
+                            os.close(independent_root_lock_fd)
+                        if independent_parent_fd >= 0:
+                            os.close(independent_parent_fd)
                         if independent_target_fd >= 0:
                             os.close(independent_target_fd)
                         if root_fd >= 0:
@@ -6329,7 +6937,7 @@ def _fixture_migration_lifecycle_issuer_main(
                         or not 0 <= request["test_post_commit_pause_ms"] <= 1_000
                     ):
                         raise ValueError("issuer copy command state")
-                    with _issuer_transition_lock(bound_root_fd):
+                    with _issuer_bound_transition_lock(bound_root_fd):
                         if target_lease is None:
                             target_lease = _issuer_acquire_target_lease(bound_target_fd)
                         compatible = _issuer_compatible_root_record(
@@ -6413,6 +7021,28 @@ def _fixture_migration_lifecycle_issuer_main(
                         + (b"1" if copied else b"0"),
                     )
                     continue
+                if command == "prepare_cutover_intent_v2":
+                    if (
+                        set(request)
+                        != {"command", "expected_copied_state_sha256"}
+                        or received_descriptors
+                    ):
+                        raise ValueError("issuer cutover intent envelope")
+                    expected_copied_state_sha256 = request[
+                        "expected_copied_state_sha256"
+                    ]
+                    if type(expected_copied_state_sha256) is not str or not re.fullmatch(
+                        r"[0-9a-f]{64}", expected_copied_state_sha256
+                    ):
+                        raise ValueError("issuer cutover intent expected state")
+                    intent = reserve_and_persist_cutover_intent_v2(
+                        expected_copied_state_sha256=expected_copied_state_sha256,
+                    )
+                    _issuer_response(
+                        connection,
+                        b"V" + _cutover_lifecycle_state_document_v2(intent),
+                    )
+                    continue
                 if command == "reserve":
                     if (
                         bound_root_fd is None
@@ -6428,7 +7058,7 @@ def _fixture_migration_lifecycle_issuer_main(
                     if pending_candidate is not None:
                         if candidate_bytes != pending_candidate or pending_state is None:
                             raise ValueError("issuer pending equivocation")
-                        with _issuer_transition_lock(bound_root_fd):
+                        with _issuer_bound_transition_lock(bound_root_fd):
                             compatible = _issuer_compatible_root_record(
                                 bound_root_fd, pending_state.lifecycle_phase
                             )
@@ -6491,7 +7121,7 @@ def _fixture_migration_lifecycle_issuer_main(
                     ):
                         raise ValueError("issuer candidate bound identity")
                     phase = candidate.get("lifecycle_phase")
-                    with _issuer_transition_lock(bound_root_fd):
+                    with _issuer_bound_transition_lock(bound_root_fd):
                         root_record = _issuer_compatible_root_record(bound_root_fd, phase)
                         if phase == "schema_only":
                             witness_sha256 = None
@@ -6595,7 +7225,7 @@ def _fixture_migration_lifecycle_issuer_main(
                     if state_for_commit is None:
                         raise ValueError("issuer commit without state")
                     release_copy_lease = False
-                    with _issuer_transition_lock(bound_root_fd):
+                    with _issuer_bound_transition_lock(bound_root_fd):
                         compatible = _issuer_compatible_root_record(
                             bound_root_fd, state_for_commit.lifecycle_phase
                         )
@@ -6677,8 +7307,15 @@ def _fixture_migration_lifecycle_issuer_main(
                     continue
                 raise ValueError("issuer command")
             except Exception:
+                cutover_reconciliation_failed = False
+                if pending_cutover_intent is not None:
+                    try:
+                        reconcile_cutover_intent_after_error()
+                    except Exception:
+                        cutover_reconciliation_failed = True
                 if (
                     target_lease is not None
+                    and not cutover_reconciliation_failed
                     and pending_state is None
                     and recovery_copy_preparation_completion is None
                     and (committed is None or committed.lifecycle_phase != "copy_prepared")
@@ -6719,6 +7356,10 @@ def _fixture_migration_lifecycle_issuer_main(
         if bound_root_fd is not None:
             fcntl.flock(bound_root_fd, fcntl.LOCK_UN)
             os.close(bound_root_fd)
+        if bound_root_lock_fd is not None:
+            os.close(bound_root_lock_fd)
+        if bound_parent_fd is not None:
+            os.close(bound_parent_fd)
         if bound_target_fd is not None:
             os.close(bound_target_fd)
         listener.close()
@@ -7891,6 +8532,10 @@ class FixtureMigrationLifecycleIssuerV1:
             "abort_barrier_release_after_journal_rename",
             "abort_barrier_release_after_journal_parent_fsync",
             "abort_barrier_release_after_journal_reread",
+            "cutover_intent_after_temp_fsync",
+            "cutover_intent_after_exchange",
+            "cutover_intent_after_parent_fsync",
+            "cutover_intent_after_reread",
         }:
             raise ValueError("issuer recovery fault boundary")
         context = multiprocessing.get_context("spawn")
@@ -8147,6 +8792,48 @@ class FixtureMigrationLifecycleIssuerV1:
         if response not in {expected_prefix + b"0", expected_prefix + b"1"}:
             raise ValueError("issuer copy response")
         return response[-1:] == b"1"
+
+    def prepare_cutover_intent_v2(
+        self,
+        *,
+        expected_copied_state: SignedMigrationLifecycleStateV1,
+    ) -> SignedCutoverLifecycleStateV2:
+        self._validate_client()
+        if (
+            type(expected_copied_state) is not SignedMigrationLifecycleStateV1
+            or expected_copied_state.lifecycle_phase != "copied_epoch0"
+            or expected_copied_state.phase_version != 4
+            or expected_copied_state.issuer_sequence != 4
+        ):
+            raise ValueError("issuer cutover intent client values")
+        request = _canonical_json(
+            {
+                "command": "prepare_cutover_intent_v2",
+                "expected_copied_state_sha256": expected_copied_state.state_sha256,
+            }
+        )
+        with self._lock:
+            response = self._request(request)
+        if response[:1] != b"V":
+            raise ValueError("issuer cutover intent response")
+        intent = _parse_cutover_lifecycle_state_document_v2(
+            response[1:], self.verification_key
+        )
+        _verify_cutover_lifecycle_origin_v2(
+            expected_copied_state,
+            intent,
+            self.verification_key,
+            expected_issuer_generation_nonce=(
+                self.recovery_ticket.issuer_generation_nonce
+            ),
+        )
+        if (
+            intent.key_id != self.recovery_ticket.issuer_key_id
+            or intent.issuer_generation_nonce
+            != self.recovery_ticket.issuer_generation_nonce
+        ):
+            raise ValueError("issuer cutover intent ticket correlation")
+        return intent
 
     def recover_open(
         self,

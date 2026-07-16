@@ -3507,6 +3507,21 @@ class TestCutoverLifecycleV2:
             assert target_after.st_ino == target_info.st_ino
             assert target_after.st_nlink == 1
             assert target_after.st_mode & 0o777 == 0o600
+            swap_artifact = (
+                tmp_path
+                / f".{target.name}.cutover-swap-v2.{'ab' * 12}.swap"
+            )
+            swap_artifact.write_bytes(
+                checkpoint_module._cutover_lifecycle_state_document_v2(intent)
+            )
+            swap_artifact.chmod(0o600)
+            with pytest.raises(ValueError, match="unresolved artifact"):
+                checkpoint_module._read_signed_lifecycle_journal_v2(
+                    parent_fd=parent_fd,
+                    target_basename=target.name,
+                    verification_key=verification_key,
+                )
+            swap_artifact.unlink()
             with pytest.raises(ValueError, match="compare-and-swap mismatch"):
                 checkpoint_module._persist_signed_cutover_lifecycle_state_v2(
                     parent_fd=parent_fd,
@@ -5410,6 +5425,10 @@ class TestMigrationPrerequisites:
             "after_rename",
             "after_parent_fsync",
             "after_reread",
+            "cutover_intent_after_temp_fsync",
+            "cutover_intent_after_exchange",
+            "cutover_intent_after_parent_fsync",
+            "cutover_intent_after_reread",
         ),
     )
     def test_isolated_issuer_reserves_replays_and_commits_only_durable_state(
@@ -5420,6 +5439,10 @@ class TestMigrationPrerequisites:
             "after_rename",
             "after_parent_fsync",
             "after_reread",
+            "cutover_intent_after_temp_fsync",
+            "cutover_intent_after_exchange",
+            "cutover_intent_after_parent_fsync",
+            "cutover_intent_after_reread",
         ]
         | None,
     ) -> None:
@@ -5826,7 +5849,12 @@ class TestMigrationPrerequisites:
                         parent_fd,
                         target_fd,
                         result_write,
-                        recovery_fault_boundary,
+                        (
+                            None
+                            if recovery_fault_boundary is not None
+                            and recovery_fault_boundary.startswith("cutover_intent_")
+                            else recovery_fault_boundary
+                        ),
                     )
                     os._exit(0)
                 os.close(result_write)
@@ -5984,6 +6012,61 @@ class TestMigrationPrerequisites:
                         )
                 finally:
                     os.close(replacement_fd)
+                if recovery_fault_boundary is not None and recovery_fault_boundary.startswith(
+                    "cutover_intent_"
+                ):
+                    with pytest.raises(ValueError, match="issuer rejected"):
+                        issuer.prepare_cutover_intent_v2(
+                            expected_copied_state=copied,
+                        )
+                intent = issuer.prepare_cutover_intent_v2(
+                    expected_copied_state=copied,
+                )
+                assert intent.phase == "cutover_intent_prepared"
+                assert intent.sequence == 5
+                assert intent.previous_state_sha256 == copied.state_sha256
+                assert intent.issuer_generation_nonce == ticket.issuer_generation_nonce
+                assert issuer.prepare_cutover_intent_v2(
+                    expected_copied_state=copied,
+                ) == intent
+                assert checkpoint_module._read_signed_lifecycle_journal_v2(
+                    parent_fd=parent_fd,
+                    target_basename=target.name,
+                    verification_key=issuer.verification_key,
+                ) == intent
+                assert not checkpoint_module._cutover_lifecycle_swap_basenames_v2(
+                    parent_fd, target.name
+                )
+                with pytest.raises(ValueError):
+                    checkpoint_module._read_signed_migration_lifecycle_state(
+                        parent_fd=parent_fd,
+                        target_basename=target.name,
+                        verification_key=issuer.verification_key,
+                    )
+                with pytest.raises(ValueError, match="issuer rejected"):
+                    issuer.reserve(genesis_candidate)
+                with pytest.raises(ValueError, match="issuer rejected"):
+                    issuer.recover_open(
+                        root_fd=root_fd,
+                        parent_fd=parent_fd,
+                        target_fd=target_fd,
+                        authority_pins=copied_recovery_pins,
+                        caller_boot_nonce="a1" * 32,
+                        handle_nonce="a2" * 32,
+                    )
+                _adversarial_rewrite_lifecycle_state(parent_fd, copied)
+                with pytest.raises(ValueError, match="issuer rejected"):
+                    issuer.recover_open(
+                        root_fd=root_fd,
+                        parent_fd=parent_fd,
+                        target_fd=target_fd,
+                        authority_pins=copied_recovery_pins,
+                        caller_boot_nonce="a3" * 32,
+                        handle_nonce="a4" * 32,
+                    )
+                assert issuer.prepare_cutover_intent_v2(
+                    expected_copied_state=copied,
+                ) == intent
             finally:
                 os.close(target_fd)
             target_connection = sqlite3.connect(target, timeout=0.1)

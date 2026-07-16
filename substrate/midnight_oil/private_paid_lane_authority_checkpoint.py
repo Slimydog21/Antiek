@@ -5606,6 +5606,55 @@ def _rename_migration_target_to_tombstone_exclusive(
         raise OSError(error_number, os.strerror(error_number))
 
 
+def _exchange_migration_lifecycle_entries(
+    *, parent_fd: int, left_basename: str, right_basename: str
+) -> None:
+    if (
+        type(parent_fd) is not int
+        or parent_fd < 0
+        or any(
+            type(name) is not str
+            or not name
+            or name in {".", ".."}
+            or "/" in name
+            or len(name.encode()) > 255
+            for name in (left_basename, right_basename)
+        )
+        or left_basename == right_basename
+    ):
+        raise ValueError("migration lifecycle exchange values")
+    libc_path = ctypes.util.find_library("c")
+    if libc_path is None:
+        raise ValueError("migration lifecycle exchange libc unavailable")
+    libc = ctypes.CDLL(libc_path, use_errno=True)
+    if sys.platform == "darwin":
+        exchange = getattr(libc, "renameatx_np", None)
+    elif sys.platform.startswith("linux"):
+        exchange = getattr(libc, "renameat2", None)
+    else:
+        exchange = None
+    if exchange is None:
+        raise ValueError("migration lifecycle exchange unsupported platform")
+    exchange.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    ]
+    exchange.restype = ctypes.c_int
+    result = exchange(
+        parent_fd,
+        left_basename.encode(),
+        parent_fd,
+        right_basename.encode(),
+        0x00000002,
+    )
+    if result != 0:
+        error_number = ctypes.get_errno()
+        raise OSError(error_number, os.strerror(error_number))
+
+
 def _authenticate_epoch0_recovery_abort_prepared_state_for_rename_v1(
     *,
     parent_fd: int,
@@ -6338,6 +6387,21 @@ def _migration_lifecycle_temporary_basenames(
     )
 
 
+def _cutover_lifecycle_swap_basenames_v2(
+    parent_fd: int, target_basename: str
+) -> tuple[str, ...]:
+    prefix = f".{target_basename}.cutover-swap-v2."
+    return tuple(
+        sorted(
+            name
+            for name in os.listdir(parent_fd)
+            if name.startswith(prefix)
+            and name.endswith(".swap")
+            and re.fullmatch(r"[0-9a-f]{24}", name[len(prefix) : -5])
+        )
+    )
+
+
 def _cleanup_migration_lifecycle_temporaries(parent_fd: int, target_basename: str) -> None:
     removed = False
     for basename in _migration_lifecycle_temporary_basenames(parent_fd, target_basename):
@@ -6479,8 +6543,10 @@ def _read_signed_lifecycle_journal_v2(
         if (state.target_parent_device, state.target_parent_inode) != parent_identity:
             raise ValueError("lifecycle journal V2 parent mismatch")
         _verify_cutover_lifecycle_target_state_v2(parent_fd, state)
-    if _migration_lifecycle_temporary_basenames(parent_fd, target_basename):
-        raise ValueError("lifecycle journal orphan temporary")
+    if _migration_lifecycle_temporary_basenames(
+        parent_fd, target_basename
+    ) or _cutover_lifecycle_swap_basenames_v2(parent_fd, target_basename):
+        raise ValueError("lifecycle journal unresolved artifact")
     return state
 
 
