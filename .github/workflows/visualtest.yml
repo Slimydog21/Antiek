@@ -29,12 +29,10 @@ concurrency:
 jobs:
   lostpixel:
     runs-on: ubuntu-22.04
-    # The live committed matrix currently covers roughly 510 shots across three
-    # breakpoints. Fresh GitHub runners can exceed 15 minutes while rendering
-    # that matrix, which previously cancelled the job before Lost-Pixel could
-    # return a visual verdict. Keep a bounded ceiling, but size it to the real
-    # workload rather than converting elapsed time into a false cancellation.
-    timeout-minutes: 30
+    # The inaugural honest blocking contract is five reviewed stories at three
+    # breakpoints. Keep a bounded ceiling with room for dependency installation
+    # and Storybook compilation on a fresh runner.
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: apps/reading
