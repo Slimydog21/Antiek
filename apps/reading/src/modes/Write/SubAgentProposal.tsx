@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { startInvestigation } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { searchRepository, type RepositoryHit } from "./writeApi";
 
 /**
@@ -66,6 +67,8 @@ export default function SubAgentProposal({
   async function accept() {
     setSpawning(true);
     setFailure(null);
+    // Living-TV: accept spins a sub-agent deep research.
+    emitWernerExperience("deep_research_start");
     try {
       // The SHIPPED spawn path — a child investigation chasing the claim,
       // parented to the piece's backing folder. No new spawn path.
@@ -76,6 +79,7 @@ export default function SubAgentProposal({
       });
       onAccept(child.investigation_id);
     } catch (e) {
+      emitWernerExperience("deep_research_error");
       const status = (e as { status?: number })?.status;
       setFailure({ reason: status === 503 ? null : e instanceof Error ? e.message : String(e) });
     } finally {
@@ -132,7 +136,10 @@ export default function SubAgentProposal({
             </button>
             <button
               type="button"
-              onClick={onReject}
+              onClick={() => {
+                emitWernerExperience("highlight");
+                onReject();
+              }}
               disabled={spawning}
               className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
             >
