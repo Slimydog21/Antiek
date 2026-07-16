@@ -169,3 +169,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | NotebookEditor living-TV autosave | `265511b13` | note_saved on save; fail on conflict |
 | NotesFeed living-TV cite jump | `b8ea77fb4` | highlight on source-event chip |
 | Midnight oil swarm invent product-map | `4ba9b6147` | MidnightOilPanel swarm desk invent |
+| SpokenReply/ReadAloud living-TV | `f93b7e578` | listen highlight; withheld/error fail |
