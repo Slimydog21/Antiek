@@ -23,3 +23,5 @@ Candidates retained as `*_session_candidate_v1.webp` beside refedits.
 | werner_model_decision_tree_refedit_v2.jpg | **PROMOTED** → poses/session/werner_model_decision_tree_session_v1.webp |
 | werner_midnight_oil_swarm_refedit_v2.jpg | **PROMOTED** → poses/session/werner_midnight_oil_swarm_session_v1.webp |
 | werner_float_research_merge_refedit_v2.jpg | **PROMOTED** → poses/session/werner_float_research_merge_session_v1.webp |
+| werner_collective_merge_refedit_v2.jpg | **PROMOTED** → poses/session/werner_collective_merge_session_v1.webp |
+| werner_book_marketplace_port_refedit_v2.jpg | **PROMOTED** → poses/session/werner_book_marketplace_port_session_v1.webp |
