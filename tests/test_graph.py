@@ -253,6 +253,36 @@ def test_insert_node_emits_typed_event(db_path):
     assert event.role == "connector"
 
 
+def test_insert_helpers_can_collect_payloads_without_direct_emission(db_path):
+    payloads = []
+    con = connect_write(db_path, purpose="test/event-sink")
+    try:
+        src = insert_node(
+            con, canonical_label="A", node_type="entity",
+            graph_scope="depth", investigation_id="inv-sink",
+            event_sink=payloads.append,
+        )
+        tgt = insert_node(
+            con, canonical_label="B", node_type="entity",
+            graph_scope="depth", investigation_id="inv-sink",
+            event_sink=payloads.append,
+        )
+        insert_edge(
+            con, source_node_id=src, target_node_id=tgt, relation="depends_on",
+            source_tier=2, extraction_confidence=0.8, graph_scope="depth",
+            investigation_id="inv-sink", event_sink=payloads.append,
+        )
+    finally:
+        con.close()
+
+    assert [type(payload) for payload in payloads] == [
+        GraphNodeInsertedPayload,
+        GraphNodeInsertedPayload,
+        GraphEdgeInsertedPayload,
+    ]
+    assert trajectory("inv-sink") == []
+
+
 def test_insert_edge_emits_typed_event(db_path):
     con = connect_write(db_path, purpose="test")
     try:

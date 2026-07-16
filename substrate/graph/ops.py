@@ -31,7 +31,7 @@ import json
 import os
 import sys
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -382,6 +382,7 @@ def insert_node(
     events_dir: str | None = None,
     owner_user_id: str | None = None,
     emit_event: bool = True,
+    event_sink: Callable[[Any], None] | None = None,
 ) -> str:
     """Insert one node row AND emit GRAPH_NODE_INSERTED. Returns the
     node_id.
@@ -404,23 +405,24 @@ def insert_node(
             graph_scope, _maybe_json(metadata), owner_user_id,
         ],
     )
-    # Typed event AFTER the row commits — the Pydantic Literal validators
-    # on node_type and graph_scope raise here if the caller passed
-    # something the DB CHECK would also reject. We get both layers.
     if emit_event:
-        emit_typed(
-            investigation_id,
-            GraphNodeInsertedPayload(
-                node_id=nid,
-                canonical_label=canonical_label,
-                node_type=node_type,  # type: ignore[arg-type]
-                graph_scope=graph_scope,  # type: ignore[arg-type]
-                has_embedding=embedding is not None,
-            ),
-            parent_event_id=parent_event_id,
-            role="connector",
-            events_dir=events_dir,
+        payload = GraphNodeInsertedPayload(
+            node_id=nid,
+            canonical_label=canonical_label,
+            node_type=node_type,  # type: ignore[arg-type]
+            graph_scope=graph_scope,  # type: ignore[arg-type]
+            has_embedding=embedding is not None,
         )
+        if event_sink is not None:
+            event_sink(payload)
+        else:
+            emit_typed(
+                investigation_id,
+                payload,
+                parent_event_id=parent_event_id,
+                role="connector",
+                events_dir=events_dir,
+            )
     return nid
 
 
@@ -447,6 +449,7 @@ def insert_edge(
     parent_event_id: str | None = None,
     on_conflict: OnConflict = "error",
     emit_event: bool = True,
+    event_sink: Callable[[Any], None] | None = None,
 ) -> str:
     """Insert one edge row AND emit GRAPH_EDGE_INSERTED. Returns the
     edge_id.
@@ -477,9 +480,7 @@ def insert_edge(
         ],
     )
     if emit_event:
-        emit_typed(
-            investigation_id,
-            GraphEdgeInsertedPayload(
+        payload = GraphEdgeInsertedPayload(
             edge_id=eid,
             source_node_id=source_node_id,
             target_node_id=target_node_id,
@@ -489,10 +490,16 @@ def insert_edge(
             source_tier=int(source_tier),
             extraction_confidence=float(extraction_confidence),
             graph_scope=graph_scope,  # type: ignore[arg-type]
-            ),
-            parent_event_id=parent_event_id,
-            role="connector",
         )
+        if event_sink is not None:
+            event_sink(payload)
+        else:
+            emit_typed(
+                investigation_id,
+                payload,
+                parent_event_id=parent_event_id,
+                role="connector",
+            )
     return eid
 
 
