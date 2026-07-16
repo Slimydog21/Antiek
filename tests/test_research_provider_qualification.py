@@ -104,6 +104,37 @@ def test_direct_qualification_requires_every_evidence_dimension() -> None:
     assert not incomplete.fully_qualified
 
 
+@pytest.mark.parametrize(
+    "source_url,finding",
+    [
+        ("http://provider.example/contract", "Provider evidence."),
+        ("https://token@provider.example/contract", "Provider evidence."),
+        ("https://provider.example/contract?api_key=secret", "Provider evidence."),
+        ("https://provider.example/contract", "   "),
+    ],
+)
+def test_direct_qualification_rejects_untrusted_evidence_shape(
+    source_url: str, finding: str
+) -> None:
+    qualification = _qualification()
+    evidence = dict(qualification.evidence)
+    evidence["pinned_pricing"] = QualificationEvidence(
+        status=EvidenceStatus.PASS,
+        source_url=source_url,
+        finding=finding,
+    )
+    malformed = ProviderQualification(
+        provider=qualification.provider,
+        model=qualification.model,
+        operation=qualification.operation,
+        checked_at=qualification.checked_at,
+        verdict=qualification.verdict,
+        evidence=evidence,
+    )
+
+    assert not malformed.fully_qualified
+
+
 def test_paid_catalog_capability_claim_requires_exact_fully_passing_route() -> None:
     entry = _catalog_entry()
     with pytest.raises(ValueError, match="without fully passing"):

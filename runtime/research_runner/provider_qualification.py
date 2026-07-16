@@ -42,6 +42,23 @@ class QualificationEvidence:
     finding: str
 
 
+def _evidence_is_authoritative(item: object) -> bool:
+    if not isinstance(item, QualificationEvidence):
+        return False
+    if item.status is not EvidenceStatus.PASS or not item.finding.strip():
+        return False
+    parsed = urlparse(item.source_url)
+    return bool(
+        parsed.scheme == "https"
+        and parsed.netloc
+        and parsed.hostname
+        and parsed.username is None
+        and parsed.password is None
+        and not parsed.query
+        and not parsed.fragment
+    )
+
+
 @dataclass(frozen=True)
 class ProviderQualification:
     provider: str
@@ -64,10 +81,7 @@ class ProviderQualification:
         return (
             self.verdict is QualificationVerdict.QUALIFIED
             and set(self.evidence) == _REQUIRED_DIMENSIONS
-            and all(
-                item.status is EvidenceStatus.PASS
-                for item in self.evidence.values()
-            )
+            and all(_evidence_is_authoritative(item) for item in self.evidence.values())
         )
 
 
