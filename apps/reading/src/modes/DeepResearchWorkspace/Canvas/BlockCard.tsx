@@ -29,6 +29,7 @@
  */
 
 import type { DistilledNode } from "../../../lib/api";
+import { emitWernerExperience } from "../../../werner/reactionBus";
 
 export interface BlockCardProps {
   node: DistilledNode;
@@ -96,7 +97,7 @@ export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCar
       {clickable ? (
         <button
           type="button"
-          onClick={() => onOpenDetail?.(node)}
+          onClick={() => { emitWernerExperience("highlight"); onOpenDetail?.(node); }}
           className="text-left"
           aria-label="Open block detail"
         >
@@ -117,7 +118,7 @@ export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCar
           onCiteSource ? (
             <button
               type="button"
-              onClick={() => onCiteSource(node)}
+              onClick={() => { emitWernerExperience("highlight"); onCiteSource(node); }}
               className="font-mono underline decoration-dotted underline-offset-2 hover:text-ink dark:hover:text-bright"
             >
               cite source
