@@ -165,6 +165,18 @@ describe("ResearchWaitArcade", () => {
     expect(isStationInstrumentSuspended()).toBe(true);
   });
 
+  it("stamps Flipbook invent reframe on wait-arcade cartridge invent art", () => {
+    render(<Host after={0} />);
+    act(() => vi.runOnlyPendingTimers());
+    for (const id of ["ice-fishing", "clam-catcher", "zombies"] as const) {
+      const art = screen.getByTestId(
+        `research-wait-${id}-living-tv-art`,
+      ) as HTMLImageElement;
+      expect(art.className).toMatch(/antiek-living-tv-invent/);
+      expect(art.getAttribute("src")).toBeTruthy();
+    }
+  });
+
   it("offers all cartridges without constructing any and launches the explicit choice", async () => {
     render(<Host after={0} />);
     act(() => vi.runOnlyPendingTimers());
