@@ -46,6 +46,14 @@ describe("ArcadeCabinet host entry", () => {
     expect(celebrate.getAttribute("src")).toBeTruthy();
   });
 
+  it("renders igloo arcade session invent banner in cabinet chrome", () => {
+    render(<ArcadeCabinet />);
+    const art = screen.getByTestId("cabinet-igloo-art") as HTMLImageElement;
+    expect(art.getAttribute("src") ?? "").toMatch(
+      /werner_igloo_arcade_session_v1/,
+    );
+  });
+
   it("renders ice fishing, clam catcher, and zombies cards", () => {
     render(<ArcadeCabinet />);
     expect(screen.getByTestId("cabinet-ice-fishing")).toBeTruthy();

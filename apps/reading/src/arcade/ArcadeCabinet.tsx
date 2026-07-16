@@ -16,6 +16,8 @@ import celebrateArt from "../brand/werner/poses/session/werner_celebrate_session
 // Clam Catcher: session Imagine refedit promoted via cut_session_fringe (2026-07-16).
 // Authored webp remains for in-game station chrome / visual kit only.
 import clamCatcherArt from "../brand/werner/poses/session/werner_clam_catcher_session_v1.png";
+// Igloo arcade scene invent (full-bleed webp) — Home + cabinet living-TV chrome.
+import iglooArcadeArt from "../brand/werner/poses/session/werner_igloo_arcade_session_v1.webp";
 
 type CabinetGame = ArcadeGameKind;
 
@@ -59,6 +61,16 @@ export function ArcadeCabinet() {
           — never blocks work.
         </p>
       </header>
+
+      <img
+        src={iglooArcadeArt}
+        alt=""
+        aria-hidden="true"
+        data-testid="cabinet-igloo-art"
+        className="h-32 w-full max-w-2xl rounded-lg object-cover object-center"
+        loading="lazy"
+        decoding="async"
+      />
 
       <div
         className="flex items-center gap-3"
