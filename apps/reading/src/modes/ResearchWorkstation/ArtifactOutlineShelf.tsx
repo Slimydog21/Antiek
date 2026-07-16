@@ -11,6 +11,7 @@ import {
   type PaletteDragPayload,
 } from "../CreationStudio/BlockPalette";
 import LemonButton from "../../components/lemon/LemonButton";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * ANT-AHT SPR-AHT-06 — draggable insight/question blocks sourced from
@@ -61,8 +62,11 @@ export default function ArtifactOutlineShelf({
     try {
       const res = await exportResearchArtifact(investigationId);
       setExportPath(res.path);
+      // Living-TV: HTML artifact export is a happy craft beat.
+      emitWernerExperience("piece_started");
       await reload();
     } catch (e) {
+      emitWernerExperience("fail");
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
