@@ -74,7 +74,7 @@ export function ArcadeCabinet() {
         alt=""
         aria-hidden="true"
         data-testid="cabinet-igloo-art"
-        className="h-32 w-full max-w-2xl rounded-lg object-cover object-center"
+        className="h-32 w-full max-w-2xl rounded-lg object-cover object-center antiek-living-tv-invent"
         loading="lazy"
         decoding="async"
       />
@@ -189,7 +189,8 @@ function CabinetCard({
       <img
         src={art}
         alt=""
-        className="h-36 w-full object-cover object-top"
+        data-testid={`${testId}-living-tv-art`}
+        className="h-36 w-full object-cover object-top antiek-living-tv-invent"
         loading="lazy"
       />
       <div className="p-3">

@@ -52,6 +52,20 @@ describe("ArcadeCabinet host entry", () => {
     expect(art.getAttribute("src") ?? "").toMatch(
       /werner_igloo_minigame_trio_session_v1/,
     );
+    expect(art.className).toMatch(/antiek-living-tv-invent/);
+  });
+
+  it("stamps Flipbook invent reframe on minigame card invent art", () => {
+    render(<ArcadeCabinet />);
+    for (const id of [
+      "cabinet-ice-fishing",
+      "cabinet-clam-catcher",
+      "cabinet-zombies",
+    ] as const) {
+      const art = screen.getByTestId(`${id}-living-tv-art`) as HTMLImageElement;
+      expect(art.className).toMatch(/antiek-living-tv-invent/);
+      expect(art.getAttribute("src")).toBeTruthy();
+    }
   });
 
   it("renders ice fishing, clam catcher, and zombies cards", () => {

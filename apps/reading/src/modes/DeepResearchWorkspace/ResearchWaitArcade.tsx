@@ -202,6 +202,8 @@ export default function ResearchWaitArcade({
                     alt=""
                     aria-hidden="true"
                     decoding="async"
+                    data-testid={`research-wait-${choice.id}-living-tv-art`}
+                    className="antiek-living-tv-invent"
                   />
                   <span className="research-wait-arcade__cartridge-copy">
                     <span className="font-serif text-sm font-semibold text-ink dark:text-bright">

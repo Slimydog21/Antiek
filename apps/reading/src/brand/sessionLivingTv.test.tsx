@@ -29,6 +29,11 @@ describe("sessionLivingTv Flipbook-feel invent motion", () => {
       "modes/DeepResearchWorkspace/index.tsx",
       "modes/Login/index.tsx",
       "arcade/host/LoadingGameHost.tsx",
+      // Residual invent doors (v2b wave surfaces)
+      "modes/BrainstormStation/ThoughtPartnerPanel.tsx",
+      "modes/DeepResearchWorkspace/PlanEditor.tsx",
+      "modes/DeepResearchWorkspace/ResearchWaitArcade.tsx",
+      "arcade/ArcadeCabinet.tsx",
     ];
     for (const rel of paths) {
       const src = readFileSync(join(root, rel), "utf8");
