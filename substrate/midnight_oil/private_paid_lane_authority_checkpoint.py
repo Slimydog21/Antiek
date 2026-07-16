@@ -224,6 +224,12 @@ _MIGRATION_LIFECYCLE_STATE_DOMAIN: bytes = (
 _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN: bytes = (
     b"antiek.midnight-oil.private-paid-migration-state-signature.v1\x00"
 )
+_CUTOVER_LIFECYCLE_STATE_DOMAIN_V2: bytes = (
+    b"antiek/private-paid-cutover-lifecycle-state/v2\x00"
+)
+_CUTOVER_LIFECYCLE_SIGNATURE_DOMAIN_V2: bytes = (
+    b"antiek/private-paid-cutover-lifecycle-signature/v2\x00"
+)
 _MIGRATION_RECOVERY_TICKET_DOMAIN: bytes = (
     b"antiek.midnight-oil.private-paid-recovery-ticket.v1\x00"
 )
@@ -3316,6 +3322,148 @@ class SignedMigrationLifecycleStateV1(_Closed):
         return self
 
 
+_CUTOVER_LIFECYCLE_PHASES_V2 = Literal[
+    "cutover_intent_prepared",
+    "marker_committed_in_target",
+    "external_pin_installed",
+    "legacy_read_only",
+    "runtime_ready",
+    "preflight_verified",
+    "barrier_released",
+]
+_CUTOVER_LIFECYCLE_SEQUENCE_V2: Mapping[str, int] = MappingProxyType(
+    {
+        "cutover_intent_prepared": 5,
+        "marker_committed_in_target": 6,
+        "external_pin_installed": 7,
+        "legacy_read_only": 8,
+        "runtime_ready": 9,
+        "preflight_verified": 10,
+        "barrier_released": 11,
+    }
+)
+
+
+def _cutover_lifecycle_state_sha256_v2(value: Mapping[str, object]) -> str:
+    material = {
+        key: item for key, item in value.items() if key not in {"state_sha256", "signature_ed25519"}
+    }
+    return hashlib.sha256(
+        _CUTOVER_LIFECYCLE_STATE_DOMAIN_V2 + _canonical_json(material)
+    ).hexdigest()
+
+
+class SignedCutoverLifecycleStateV2(_Closed):
+    schema_version: Literal[2] = 2
+    phase: _CUTOVER_LIFECYCLE_PHASES_V2
+    sequence: int = Field(ge=5, le=11)
+    prior_v1_state_sha256: str
+    target_store_id: str
+    target_basename: str
+    target_device: int = Field(ge=0, le=MAX_I63)
+    target_inode: int = Field(ge=1, le=MAX_I63)
+    root_id: str
+    root_manifest_sha256: str
+    barrier_id: str
+    freeze_nonce: str
+    source_manifest_sha256: str
+    copy_audit_sha256: str
+    predecessor_semantic_sha256: str
+    predecessor_contract_sha256: str
+    successor_semantic_sha256: str
+    successor_contract_sha256: str
+    intent_prepared_at_ms: int = Field(ge=0, le=MAX_I63)
+    marker_sha256: str | None
+    marker_committed_at_ms: int | None = Field(default=None, ge=0, le=MAX_I63)
+    pin_sha256: str | None
+    root_state_sha256: str | None
+    ready_sha256: str | None
+    preflight_audit_sha256: str | None
+    release_evidence_sha256: str | None
+    previous_state_sha256: str
+    key_id: str
+    issuer_generation_nonce: str
+    issuer_role: Literal["private_paid_cutover_fixture_issuer"] = (
+        "private_paid_cutover_fixture_issuer"
+    )
+    purpose: Literal["private_paid_cutover_lifecycle_v2"] = (
+        "private_paid_cutover_lifecycle_v2"
+    )
+    scheme: Literal["ed25519"] = "ed25519"
+    state_sha256: str
+    signature_ed25519: bytes
+
+    @model_validator(mode="after")
+    def _closed_cutover_lifecycle_state(self) -> SignedCutoverLifecycleStateV2:
+        required_hashes = (
+            self.prior_v1_state_sha256,
+            self.root_manifest_sha256,
+            self.freeze_nonce,
+            self.source_manifest_sha256,
+            self.copy_audit_sha256,
+            self.predecessor_semantic_sha256,
+            self.predecessor_contract_sha256,
+            self.successor_semantic_sha256,
+            self.successor_contract_sha256,
+            self.previous_state_sha256,
+            self.issuer_generation_nonce,
+            self.state_sha256,
+        )
+        optional_hashes = (
+            self.marker_sha256,
+            self.pin_sha256,
+            self.root_state_sha256,
+            self.ready_sha256,
+            self.preflight_audit_sha256,
+            self.release_evidence_sha256,
+        )
+        if (
+            any(not _HEX64.fullmatch(value) for value in required_hashes)
+            or any(value is not None and not _HEX64.fullmatch(value) for value in optional_hashes)
+            or not _STORE_ID.fullmatch(self.target_store_id)
+            or not _MIGRATION_BASENAME.fullmatch(self.target_basename)
+            or self.target_basename in {".", ".."}
+            or not _REGISTRY_ID.fullmatch(self.root_id)
+            or not _REGISTRY_ID.fullmatch(self.barrier_id)
+            or self.barrier_id != _migration_barrier_id(self.freeze_nonce)
+            or not _KEY_ID.fullmatch(self.key_id)
+            or len(self.signature_ed25519) != 64
+            or self.sequence != _CUTOVER_LIFECYCLE_SEQUENCE_V2[self.phase]
+        ):
+            raise ValueError("cutover lifecycle identity")
+        presence = (
+            self.marker_sha256 is not None,
+            self.marker_committed_at_ms is not None,
+            self.pin_sha256 is not None,
+            self.root_state_sha256 is not None,
+            self.ready_sha256 is not None,
+            self.preflight_audit_sha256 is not None,
+            self.release_evidence_sha256 is not None,
+        )
+        expected_presence = {
+            "cutover_intent_prepared": (False, False, False, False, False, False, False),
+            "marker_committed_in_target": (True, True, False, False, False, False, False),
+            "external_pin_installed": (True, True, True, False, False, False, False),
+            "legacy_read_only": (True, True, True, True, False, False, False),
+            "runtime_ready": (True, True, True, True, True, False, False),
+            "preflight_verified": (True, True, True, True, True, True, False),
+            "barrier_released": (True, True, True, True, True, True, True),
+        }[self.phase]
+        if presence != expected_presence:
+            raise ValueError("cutover lifecycle phase evidence")
+        if (
+            self.marker_committed_at_ms is not None
+            and self.marker_committed_at_ms < self.intent_prepared_at_ms
+        ):
+            raise ValueError("cutover lifecycle time order")
+        expected_state_sha256 = _cutover_lifecycle_state_sha256_v2(
+            self.model_dump(mode="python")
+        )
+        if self.state_sha256 != expected_state_sha256:
+            raise ValueError("cutover lifecycle state hash")
+        return self
+
+
 _MIGRATION_EPOCH0_RECOVERY_PHASES = Literal[
     "schema_only",
     "barrier_acquired",
@@ -4131,6 +4279,122 @@ def _verify_signed_migration_lifecycle_state(
         state.signature_ed25519,
         _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state.state_sha256),
     )
+
+
+def _verify_signed_cutover_lifecycle_state_v2(
+    state: SignedCutoverLifecycleStateV2, verification_key: VerificationKeyV1
+) -> None:
+    if (
+        type(state) is not SignedCutoverLifecycleStateV2
+        or type(verification_key) is not VerificationKeyV1
+    ):
+        raise ValueError("cutover lifecycle verifier type mismatch")
+    state = SignedCutoverLifecycleStateV2.model_validate(state.model_dump(mode="python"))
+    verification_key = VerificationKeyV1.model_validate(verification_key.model_dump(mode="python"))
+    if state.key_id != verification_key.key_id:
+        raise ValueError("cutover lifecycle issuer key mismatch")
+    Ed25519PublicKey.from_public_bytes(verification_key.public_key_bytes).verify(
+        state.signature_ed25519,
+        _CUTOVER_LIFECYCLE_SIGNATURE_DOMAIN_V2 + bytes.fromhex(state.state_sha256),
+    )
+
+
+def _verify_cutover_lifecycle_origin_v2(
+    prior: SignedMigrationLifecycleStateV1,
+    successor: SignedCutoverLifecycleStateV2,
+    verification_key: VerificationKeyV1,
+    *,
+    expected_issuer_generation_nonce: str,
+) -> None:
+    _verify_signed_migration_lifecycle_state(prior, verification_key)
+    _verify_signed_cutover_lifecycle_state_v2(successor, verification_key)
+    if (
+        prior.lifecycle_phase != "copied_epoch0"
+        or prior.phase_version != 4
+        or prior.issuer_sequence != 4
+        or not _HEX64.fullmatch(expected_issuer_generation_nonce)
+        or successor.phase != "cutover_intent_prepared"
+        or successor.sequence != 5
+        or successor.prior_v1_state_sha256 != prior.state_sha256
+        or successor.previous_state_sha256 != prior.state_sha256
+        or successor.target_store_id != prior.target_store_id
+        or successor.target_basename != prior.target_basename
+        or (successor.target_device, successor.target_inode)
+        != (prior.target_dev, prior.target_ino)
+        or successor.root_id != prior.root_id
+        or successor.root_manifest_sha256 != prior.root_manifest_sha256
+        or successor.barrier_id != prior.barrier_id
+        or successor.freeze_nonce != prior.freeze_nonce
+        or successor.source_manifest_sha256 != prior.source_manifest_sha256
+        or successor.copy_audit_sha256 != prior.copy_audit_sha256
+        or successor.predecessor_semantic_sha256
+        != PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_34E
+        or successor.predecessor_contract_sha256
+        != PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_34E
+        or successor.successor_semantic_sha256
+        != PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V2
+        or successor.successor_contract_sha256
+        != PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V2
+        or successor.key_id != prior.issuer_key_id
+        or successor.issuer_generation_nonce != expected_issuer_generation_nonce
+        or successor.intent_prepared_at_ms < prior.updated_at_ms
+    ):
+        raise ValueError("cutover lifecycle V1 origin mismatch")
+
+
+def _verify_cutover_lifecycle_transition_v2(
+    prior: SignedCutoverLifecycleStateV2,
+    successor: SignedCutoverLifecycleStateV2,
+    verification_key: VerificationKeyV1,
+) -> None:
+    _verify_signed_cutover_lifecycle_state_v2(prior, verification_key)
+    _verify_signed_cutover_lifecycle_state_v2(successor, verification_key)
+    static_fields = (
+        "prior_v1_state_sha256",
+        "target_store_id",
+        "target_basename",
+        "target_device",
+        "target_inode",
+        "root_id",
+        "root_manifest_sha256",
+        "barrier_id",
+        "freeze_nonce",
+        "source_manifest_sha256",
+        "copy_audit_sha256",
+        "predecessor_semantic_sha256",
+        "predecessor_contract_sha256",
+        "successor_semantic_sha256",
+        "successor_contract_sha256",
+        "intent_prepared_at_ms",
+        "key_id",
+        "issuer_generation_nonce",
+        "issuer_role",
+        "purpose",
+        "scheme",
+    )
+    phases = tuple(_CUTOVER_LIFECYCLE_SEQUENCE_V2)
+    if (
+        any(getattr(prior, field) != getattr(successor, field) for field in static_fields)
+        or successor.previous_state_sha256 != prior.state_sha256
+        or successor.sequence != prior.sequence + 1
+        or phases.index(successor.phase) != phases.index(prior.phase) + 1
+    ):
+        raise ValueError("cutover lifecycle transition mismatch")
+    evidence_fields = (
+        "marker_sha256",
+        "marker_committed_at_ms",
+        "pin_sha256",
+        "root_state_sha256",
+        "ready_sha256",
+        "preflight_audit_sha256",
+        "release_evidence_sha256",
+    )
+    if any(
+        getattr(prior, field) is not None
+        and getattr(successor, field) != getattr(prior, field)
+        for field in evidence_fields
+    ):
+        raise ValueError("cutover lifecycle accumulated evidence changed")
 
 
 def _verify_migration_lifecycle_genesis(
@@ -7333,19 +7597,21 @@ class PrivatePaidLaneEligibilityCheckpointStoreV1:
                 src_floor_map[key] = src_pin
 
             # Compute semantic/contract
-            semantic_sha256 = compute_private_paid_lane_semantic_sha256()
-            contract_sha256 = compute_private_paid_lane_contract_sha256(
-                semantic_sha256=semantic_sha256,
+            current_semantic_sha256 = compute_private_paid_lane_semantic_sha256()
+            current_contract_sha256 = compute_private_paid_lane_contract_sha256(
+                semantic_sha256=current_semantic_sha256,
                 sql=_SCHEMA_SQL_V1,
                 predecessor_cycle33_contract=_PREDECESSOR_CYCLE33_CONTRACT_SHA256,
                 predecessor_cycle32_source=_PREDECESSOR_CYCLE32_SOURCE_SHA256,
                 predecessor_cycle30_capability=_PREDECESSOR_CYCLE30_CAPABILITY_SHA256,
             )
 
-            if expected_semantic_source_sha256 != semantic_sha256:
+            if expected_semantic_source_sha256 != current_semantic_sha256:
                 raise ValueError
-            if expected_contract_sha256 != contract_sha256:
+            if expected_contract_sha256 != current_contract_sha256:
                 raise ValueError
+            semantic_sha256 = current_semantic_sha256
+            contract_sha256 = current_contract_sha256
 
             # Validate store_id syntax
             if type(expected_store_id) is not str or not _STORE_ID.fullmatch(expected_store_id):
@@ -9617,6 +9883,10 @@ def compute_private_paid_lane_semantic_sha256() -> str:
     excluded_names = {
         "PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V1",
         "PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V1",
+        "PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_34E",
+        "PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_34E",
+        "PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V2",
+        "PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V2",
     }
     parts: list[str] = []
     for node in ast.iter_child_nodes(tree):
@@ -9922,25 +10192,57 @@ def compute_private_paid_lane_contract_sha256(
     return hashlib.sha256(_CONTRACT_DOMAIN + _canonical_json(contract_material)).hexdigest()
 
 
-# Exported identity values (computed at module load)
-PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V1: str = compute_private_paid_lane_semantic_sha256()
-PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V1: str = compute_private_paid_lane_contract_sha256(
-    semantic_sha256=PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V1,
-    sql=_SCHEMA_SQL_V1,
-    predecessor_cycle33_contract=_PREDECESSOR_CYCLE33_CONTRACT_SHA256,
-    predecessor_cycle32_source=_PREDECESSOR_CYCLE32_SOURCE_SHA256,
-    predecessor_cycle30_capability=_PREDECESSOR_CYCLE30_CAPABILITY_SHA256,
+def compute_private_paid_lane_contract_sha256_v2(*, semantic_sha256: str) -> str:
+    base_contract_sha256 = compute_private_paid_lane_contract_sha256(
+        semantic_sha256=semantic_sha256,
+        sql=_SCHEMA_SQL_V1,
+        predecessor_cycle33_contract=_PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+        predecessor_cycle32_source=_PREDECESSOR_CYCLE32_SOURCE_SHA256,
+        predecessor_cycle30_capability=_PREDECESSOR_CYCLE30_CAPABILITY_SHA256,
+    )
+    material = {
+        "schema_version": 2,
+        "semantic_source_sha256": semantic_sha256,
+        "base_contract_sha256": base_contract_sha256,
+        "predecessor_semantic_sha256": PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_34E,
+        "predecessor_contract_sha256": PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_34E,
+        "cutover_lifecycle_state_domain": _CUTOVER_LIFECYCLE_STATE_DOMAIN_V2.decode(),
+        "cutover_lifecycle_signature_domain": _CUTOVER_LIFECYCLE_SIGNATURE_DOMAIN_V2.decode(),
+        "signed_cutover_lifecycle_state_v2": SignedCutoverLifecycleStateV2.model_json_schema(),
+    }
+    return hashlib.sha256(_CONTRACT_DOMAIN + _canonical_json(material)).hexdigest()
+
+
+# Certified Cycle 34E identities are historical literals, never recomputed by newer code.
+PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_34E: str = (
+    "a21550642f926069ab730e849fe0ac10718a114f0adb2242e9552a6c0124c7eb"
 )
-
-
+PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_34E: str = (
+    "482ab934c724f6f4cc5efa36dad75e89314f4c25a11f78cc17b3ddf90696e757"
+)
+PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V1: str = (
+    PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_34E
+)
+PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V1: str = (
+    PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_34E
+)
+PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V2: str = compute_private_paid_lane_semantic_sha256()
+PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V2: str = compute_private_paid_lane_contract_sha256_v2(
+    semantic_sha256=PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V2,
+)
 __all__ = [
+    "PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_34E",
+    "PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_34E",
     "PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V1",
     "PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V1",
+    "PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V2",
+    "PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V2",
     "PrivatePaidLaneEligibilityCheckpointRejected",
     "PrivatePaidLaneEligibilityCheckpointStoreV1",
     "SignedProviderCapabilityV4FixtureV1",
     "SignedProviderRevocationHeadFixtureV1",
     "SignedSourceHeadFixtureV1",
+    "SignedCutoverLifecycleStateV2",
     "OwnerPrivateSourceAuthoritySnapshotV1",
     "OpaqueSourceBundleRevisionV1",
     "VerificationKeyV1",
@@ -9978,5 +10280,6 @@ __all__ = [
     "verify_source_head",
     "compute_private_paid_lane_semantic_sha256",
     "compute_private_paid_lane_contract_sha256",
+    "compute_private_paid_lane_contract_sha256_v2",
     "_SCHEMA_SQL_V1",
 ]

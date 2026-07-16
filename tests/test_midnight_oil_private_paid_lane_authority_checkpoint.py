@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import ast
+import base64
 import copy
 import fcntl
+import gzip
 import hashlib
 import hmac
 import inspect
@@ -99,6 +101,19 @@ def _schema_row_count(connection: sqlite3.Connection) -> int:
     row = connection.execute("SELECT COUNT(*) FROM paid_lane_schema").fetchone()
     assert row is not None
     return int(row[0])
+
+
+def _restore_fixture_bytes(value: object) -> object:
+    if isinstance(value, dict):
+        if set(value) == {"__bytes_hex__"}:
+            encoded = value["__bytes_hex__"]
+            if type(encoded) is not str:
+                raise ValueError("fixture byte encoding")
+            return bytes.fromhex(encoded)
+        return {str(key): _restore_fixture_bytes(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_restore_fixture_bytes(item) for item in value]
+    return value
 
 
 def _initialize_schema_only_copy_target(path: Path) -> None:
@@ -233,6 +248,67 @@ def _signed_lifecycle_state(
         checkpoint_module._MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
     )
     return checkpoint_module.SignedMigrationLifecycleStateV1.model_validate(material)
+
+
+def _signed_cutover_intent_v2(
+    private_key: Ed25519PrivateKey,
+    prior: checkpoint_module.SignedMigrationLifecycleStateV1,
+    **overrides: object,
+) -> checkpoint_module.SignedCutoverLifecycleStateV2:
+    assert prior.barrier_id is not None
+    assert prior.freeze_nonce is not None
+    assert prior.source_manifest_sha256 is not None
+    assert prior.copy_audit_sha256 is not None
+    material: dict[str, object] = {
+        "schema_version": 2,
+        "phase": "cutover_intent_prepared",
+        "sequence": 5,
+        "prior_v1_state_sha256": prior.state_sha256,
+        "target_store_id": prior.target_store_id,
+        "target_basename": prior.target_basename,
+        "target_device": prior.target_dev,
+        "target_inode": prior.target_ino,
+        "root_id": prior.root_id,
+        "root_manifest_sha256": prior.root_manifest_sha256,
+        "barrier_id": prior.barrier_id,
+        "freeze_nonce": prior.freeze_nonce,
+        "source_manifest_sha256": prior.source_manifest_sha256,
+        "copy_audit_sha256": prior.copy_audit_sha256,
+        "predecessor_semantic_sha256": (
+            checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_34E
+        ),
+        "predecessor_contract_sha256": (
+            checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_34E
+        ),
+        "successor_semantic_sha256": (
+            checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V2
+        ),
+        "successor_contract_sha256": (
+            checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V2
+        ),
+        "intent_prepared_at_ms": prior.updated_at_ms,
+        "marker_sha256": None,
+        "marker_committed_at_ms": None,
+        "pin_sha256": None,
+        "root_state_sha256": None,
+        "ready_sha256": None,
+        "preflight_audit_sha256": None,
+        "release_evidence_sha256": None,
+        "previous_state_sha256": prior.state_sha256,
+        "key_id": prior.issuer_key_id,
+        "issuer_generation_nonce": "ab" * 32,
+        "issuer_role": "private_paid_cutover_fixture_issuer",
+        "purpose": "private_paid_cutover_lifecycle_v2",
+        "scheme": "ed25519",
+    }
+    material.update(overrides)
+    state_sha256 = checkpoint_module._cutover_lifecycle_state_sha256_v2(material)
+    material["state_sha256"] = state_sha256
+    material["signature_ed25519"] = private_key.sign(
+        checkpoint_module._CUTOVER_LIFECYCLE_SIGNATURE_DOMAIN_V2
+        + bytes.fromhex(state_sha256)
+    )
+    return checkpoint_module.SignedCutoverLifecycleStateV2.model_validate(material)
 
 
 def _issuer_candidate(private_key: Ed25519PrivateKey, **overrides: object) -> dict[str, object]:
@@ -2421,7 +2497,13 @@ class TestSchemaAudit:
             expected_copy_audit_sha256=None,
             expected_external_pin_store_id=STORE_ID,
             expected_semantic_source_sha256=compute_private_paid_lane_semantic_sha256(),
-            expected_contract_sha256=checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V1,
+            expected_contract_sha256=compute_private_paid_lane_contract_sha256(
+                semantic_sha256=compute_private_paid_lane_semantic_sha256(),
+                sql=_SCHEMA_SQL_V1,
+                predecessor_cycle33_contract=_PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+                predecessor_cycle32_source=_PREDECESSOR_CYCLE32_SOURCE_SHA256,
+                predecessor_cycle30_capability=_PREDECESSOR_CYCLE30_CAPABILITY_SHA256,
+            ),
             provider_capability_verification_keys=capability_verification_keys(),
             provider_revocation_verification_keys=revocation_verification_keys(),
             source_head_verification_keys=source_head_verification_keys(),
@@ -3039,6 +3121,10 @@ class TestIdentities:
         excluded_names = {
             "PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V1",
             "PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V1",
+            "PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_34E",
+            "PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_34E",
+            "PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V2",
+            "PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V2",
         }
         parts: list[str] = []
         for node in ast.iter_child_nodes(tree):
@@ -3083,22 +3169,26 @@ class TestIdentities:
         h = _source_head_document_sha256(head)
         assert h == head.head_sha256
 
-    def test_exported_semantic_matches_computed(self) -> None:
+    def test_certified_v1_identities_are_frozen_and_v2_semantic_matches_computed(self) -> None:
+        assert (
+            checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V1
+            == "a21550642f926069ab730e849fe0ac10718a114f0adb2242e9552a6c0124c7eb"
+        )
+        assert (
+            checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V1
+            == "482ab934c724f6f4cc5efa36dad75e89314f4c25a11f78cc17b3ddf90696e757"
+        )
         assert (
             compute_private_paid_lane_semantic_sha256()
-            == checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V1
+            == checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V2
         )
 
-    def test_exported_contract_matches_computed(self) -> None:
+    def test_exported_v2_contract_matches_computed(self) -> None:
         assert (
-            compute_private_paid_lane_contract_sha256(
+            checkpoint_module.compute_private_paid_lane_contract_sha256_v2(
                 semantic_sha256=compute_private_paid_lane_semantic_sha256(),
-                sql=_SCHEMA_SQL_V1,
-                predecessor_cycle33_contract=_PREDECESSOR_CYCLE33_CONTRACT_SHA256,
-                predecessor_cycle32_source=_PREDECESSOR_CYCLE32_SOURCE_SHA256,
-                predecessor_cycle30_capability=_PREDECESSOR_CYCLE30_CAPABILITY_SHA256,
             )
-            == checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V1
+            == checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V2
         )
 
     def test_contract_identity_changes_with_sql_and_predecessor_inputs(self) -> None:
@@ -3178,6 +3268,306 @@ class TestIdentities:
 # HMAC blind identity tests
 # ---------------------------------------------------------------------------
 
+
+class TestCutoverLifecycleV2:
+    @staticmethod
+    def _successor(
+        private_key: Ed25519PrivateKey,
+        prior: checkpoint_module.SignedCutoverLifecycleStateV2,
+        *,
+        phase: str,
+        **evidence: object,
+    ) -> checkpoint_module.SignedCutoverLifecycleStateV2:
+        material = prior.model_dump(
+            mode="python", exclude={"state_sha256", "signature_ed25519"}
+        )
+        material.update(
+            {
+                "phase": phase,
+                "sequence": prior.sequence + 1,
+                "previous_state_sha256": prior.state_sha256,
+                **evidence,
+            }
+        )
+        state_sha256 = checkpoint_module._cutover_lifecycle_state_sha256_v2(material)
+        material["state_sha256"] = state_sha256
+        material["signature_ed25519"] = private_key.sign(
+            checkpoint_module._CUTOVER_LIFECYCLE_SIGNATURE_DOMAIN_V2
+            + bytes.fromhex(state_sha256)
+        )
+        return checkpoint_module.SignedCutoverLifecycleStateV2.model_validate(material)
+
+    def test_intent_closure_and_v1_origin(self) -> None:
+        private_key = Ed25519PrivateKey.generate()
+        freeze_nonce = "33" * 32
+        prior = _signed_lifecycle_state(
+            private_key,
+            barrier_id=checkpoint_module._migration_barrier_id(freeze_nonce),
+            freeze_nonce=freeze_nonce,
+            source_manifest_sha256="44" * 32,
+            copy_audit_sha256="55" * 32,
+            lifecycle_phase="copied_epoch0",
+            phase_version=4,
+            issuer_sequence=4,
+            updated_at_ms=9,
+            witness_sha256="66" * 32,
+        )
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id=prior.issuer_key_id,
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        intent = _signed_cutover_intent_v2(private_key, prior)
+
+        checkpoint_module._verify_cutover_lifecycle_origin_v2(
+            prior,
+            intent,
+            verification_key,
+            expected_issuer_generation_nonce="ab" * 32,
+        )
+        assert intent.sequence == 5
+        assert intent.previous_state_sha256 == prior.state_sha256
+        assert intent.prior_v1_state_sha256 == prior.state_sha256
+        assert (
+            intent.marker_sha256,
+            intent.marker_committed_at_ms,
+            intent.pin_sha256,
+            intent.root_state_sha256,
+            intent.ready_sha256,
+            intent.preflight_audit_sha256,
+            intent.release_evidence_sha256,
+        ) == (None,) * 7
+
+        with pytest.raises(ValueError, match="phase evidence"):
+            _signed_cutover_intent_v2(private_key, prior, marker_sha256="77" * 32)
+        with pytest.raises(ValueError, match="identity"):
+            _signed_cutover_intent_v2(private_key, prior, sequence=6)
+
+        wrong_predecessor = _signed_cutover_intent_v2(
+            private_key,
+            prior,
+            predecessor_contract_sha256="88" * 32,
+        )
+        with pytest.raises(ValueError, match="origin mismatch"):
+            checkpoint_module._verify_cutover_lifecycle_origin_v2(
+                prior,
+                wrong_predecessor,
+                verification_key,
+                expected_issuer_generation_nonce="ab" * 32,
+            )
+
+        corrupted = intent.model_copy(
+            update={"signature_ed25519": b"\x00" * 64}
+        )
+        with pytest.raises(InvalidSignature):
+            checkpoint_module._verify_signed_cutover_lifecycle_state_v2(
+                corrupted, verification_key
+            )
+
+    def test_all_phases_add_exactly_one_evidence_class(self) -> None:
+        private_key = Ed25519PrivateKey.generate()
+        freeze_nonce = "33" * 32
+        prior_v1 = _signed_lifecycle_state(
+            private_key,
+            barrier_id=checkpoint_module._migration_barrier_id(freeze_nonce),
+            freeze_nonce=freeze_nonce,
+            source_manifest_sha256="44" * 32,
+            copy_audit_sha256="55" * 32,
+            lifecycle_phase="copied_epoch0",
+            phase_version=4,
+            issuer_sequence=4,
+            witness_sha256="66" * 32,
+        )
+        state = _signed_cutover_intent_v2(private_key, prior_v1)
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id=state.key_id,
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        additions = (
+            (
+                "marker_committed_in_target",
+                {"marker_sha256": "10" * 32, "marker_committed_at_ms": 2},
+            ),
+            ("external_pin_installed", {"pin_sha256": "20" * 32}),
+            ("legacy_read_only", {"root_state_sha256": "30" * 32}),
+            ("runtime_ready", {"ready_sha256": "40" * 32}),
+            ("preflight_verified", {"preflight_audit_sha256": "50" * 32}),
+            ("barrier_released", {"release_evidence_sha256": "60" * 32}),
+        )
+        for phase, evidence in additions:
+            successor = self._successor(private_key, state, phase=phase, **evidence)
+            checkpoint_module._verify_cutover_lifecycle_transition_v2(
+                state, successor, verification_key
+            )
+            state = successor
+        assert state.phase == "barrier_released"
+        assert state.sequence == 11
+
+    def test_certified_34e_copied_vector_survives_v2_code(self, tmp_path: Path) -> None:
+        fixture_path = (
+            Path(__file__).parent
+            / "fixtures"
+            / "midnight_oil"
+            / "34e_copied_epoch0.bundle.b64"
+        )
+        packed = base64.b64decode(fixture_path.read_text(encoding="ascii").strip())
+        bundle = json.loads(gzip.decompress(packed))
+        assert bundle["provenance_commit"] == "ddfc996c1"
+
+        database_path = tmp_path / "paid-lane.sqlite3"
+        database_path.write_bytes(
+            gzip.decompress(base64.b64decode(bundle["database_gzip_base64"]))
+        )
+        database_path.chmod(0o600)
+        lifecycle = checkpoint_module.SignedMigrationLifecycleStateV1.model_validate(
+            _restore_fixture_bytes(bundle["lifecycle"])
+        )
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id=bundle["verification_key"]["key_id"],
+            public_key_bytes=bytes.fromhex(bundle["verification_key"]["public_key_hex"]),
+        )
+        checkpoint_module._verify_signed_migration_lifecycle_state(
+            lifecycle, verification_key
+        )
+        assert lifecycle.lifecycle_phase == "copied_epoch0"
+        assert lifecycle.phase_version == lifecycle.issuer_sequence == 4
+
+        restored_corpus = _restore_fixture_bytes(bundle["corpus"])
+        assert isinstance(restored_corpus, dict)
+        for field_name in checkpoint_module.FrozenPaidLaneMigrationCorpusV1.model_fields:
+            if isinstance(restored_corpus.get(field_name), list):
+                restored_corpus[field_name] = tuple(restored_corpus[field_name])
+        corpus = checkpoint_module.FrozenPaidLaneMigrationCorpusV1.model_validate(restored_corpus)
+        restored_audit = _restore_fixture_bytes(bundle["copy_audit"])
+        assert isinstance(restored_audit, dict)
+        restored_audit["foreign_key_check_rows"] = tuple(
+            tuple(row) for row in restored_audit["foreign_key_check_rows"]
+        )
+        restored_audit["ordered_table_row_sha256s"] = tuple(
+            (name, tuple(hashes))
+            for name, hashes in restored_audit["ordered_table_row_sha256s"]
+        )
+        expected_audit = checkpoint_module.CopyAuditV1.model_validate(
+            restored_audit
+        )
+        connection = sqlite3.connect(database_path)
+        try:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA synchronous=FULL")
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute("PRAGMA busy_timeout=5000")
+            connection.execute("PRAGMA temp_store=MEMORY")
+            connection.execute("PRAGMA page_size=4096")
+            connection.execute(f"PRAGMA max_page_count={checkpoint_module.MAX_DB_PAGES}")
+            observed = checkpoint_module._copy_audit_observed_target_v1(
+                connection,
+                corpus=corpus,
+                target_store_id=STORE_ID,
+                semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+                contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+                provider_capability_verification_keys=capability_verification_keys(),
+                provider_revocation_verification_keys=revocation_verification_keys(),
+                source_head_verification_keys=source_head_verification_keys(),
+                provider_revocation_floor_pins=provider_revocation_floor_pins(),
+                source_floor_pins=source_floor_pins(),
+            )
+        finally:
+            connection.close()
+        assert observed == expected_audit
+        assert lifecycle.source_manifest_sha256 == corpus.source_manifest_sha256
+        assert lifecycle.copy_audit_sha256 == checkpoint_module._copy_audit_sha256(
+            expected_audit
+        )
+    def test_generation_substitution_rejects_even_with_same_key(self) -> None:
+        private_key = Ed25519PrivateKey.generate()
+        freeze_nonce = "33" * 32
+        prior_v1 = _signed_lifecycle_state(
+            private_key,
+            barrier_id=checkpoint_module._migration_barrier_id(freeze_nonce),
+            freeze_nonce=freeze_nonce,
+            source_manifest_sha256="44" * 32,
+            copy_audit_sha256="55" * 32,
+            lifecycle_phase="copied_epoch0",
+            phase_version=4,
+            issuer_sequence=4,
+            witness_sha256="66" * 32,
+        )
+        intent = _signed_cutover_intent_v2(private_key, prior_v1)
+        committed_material = intent.model_dump(
+            mode="python", exclude={"state_sha256", "signature_ed25519"}
+        )
+        committed_material.update(
+            {
+                "phase": "marker_committed_in_target",
+                "sequence": 6,
+                "marker_sha256": "77" * 32,
+                "marker_committed_at_ms": intent.intent_prepared_at_ms,
+                "previous_state_sha256": intent.state_sha256,
+                "issuer_generation_nonce": "cd" * 32,
+            }
+        )
+        state_sha256 = checkpoint_module._cutover_lifecycle_state_sha256_v2(
+            committed_material
+        )
+        committed_material["state_sha256"] = state_sha256
+        committed_material["signature_ed25519"] = private_key.sign(
+            checkpoint_module._CUTOVER_LIFECYCLE_SIGNATURE_DOMAIN_V2
+            + bytes.fromhex(state_sha256)
+        )
+        substituted = checkpoint_module.SignedCutoverLifecycleStateV2.model_validate(
+            committed_material
+        )
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id=intent.key_id,
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        with pytest.raises(ValueError, match="transition mismatch"):
+            checkpoint_module._verify_cutover_lifecycle_transition_v2(
+                intent, substituted, verification_key
+            )
+
+        committed_material["issuer_generation_nonce"] = intent.issuer_generation_nonce
+        committed_state_sha256 = checkpoint_module._cutover_lifecycle_state_sha256_v2(
+            committed_material
+        )
+        committed_material["state_sha256"] = committed_state_sha256
+        committed_material["signature_ed25519"] = private_key.sign(
+            checkpoint_module._CUTOVER_LIFECYCLE_SIGNATURE_DOMAIN_V2
+            + bytes.fromhex(committed_state_sha256)
+        )
+        committed = checkpoint_module.SignedCutoverLifecycleStateV2.model_validate(
+            committed_material
+        )
+        checkpoint_module._verify_cutover_lifecycle_transition_v2(
+            intent, committed, verification_key
+        )
+
+        pinned_material = committed.model_dump(
+            mode="python", exclude={"state_sha256", "signature_ed25519"}
+        )
+        pinned_material.update(
+            {
+                "phase": "external_pin_installed",
+                "sequence": 7,
+                "previous_state_sha256": committed.state_sha256,
+                "marker_sha256": "99" * 32,
+                "pin_sha256": "aa" * 32,
+            }
+        )
+        pinned_state_sha256 = checkpoint_module._cutover_lifecycle_state_sha256_v2(
+            pinned_material
+        )
+        pinned_material["state_sha256"] = pinned_state_sha256
+        pinned_material["signature_ed25519"] = private_key.sign(
+            checkpoint_module._CUTOVER_LIFECYCLE_SIGNATURE_DOMAIN_V2
+            + bytes.fromhex(pinned_state_sha256)
+        )
+        rewritten = checkpoint_module.SignedCutoverLifecycleStateV2.model_validate(
+            pinned_material
+        )
+        with pytest.raises(ValueError, match="accumulated evidence"):
+            checkpoint_module._verify_cutover_lifecycle_transition_v2(
+                committed, rewritten, verification_key
+            )
 
 class TestBlindIdentities:
     def test_no_module_level_unkeyed_or_arbitrary_key_blind_api(self) -> None:
