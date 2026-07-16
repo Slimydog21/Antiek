@@ -1427,6 +1427,86 @@ class ResearchSpendLedger:
         finally:
             connection.close()
 
+    def approved_fallback_hold(
+        self,
+        owner_id: str,
+        chain_id: str,
+        fallback_index: int,
+        hold_id: str,
+        approval_id: str,
+    ) -> PaidHoldSnapshot:
+        """Load one hold only under its complete persisted approval authority."""
+        for name, value in (
+            ("owner_id", owner_id),
+            ("chain_id", chain_id),
+            ("hold_id", hold_id),
+            ("approval_id", approval_id),
+        ):
+            _required_text(name, value)
+        _bounded_int("fallback_index", fallback_index, minimum=0, maximum=15)
+        connection = self._connect_read_only()
+        try:
+            connection.execute("BEGIN")
+            chain_row = connection.execute(
+                "SELECT * FROM research_fallback_chains "
+                "WHERE chain_id=? AND owner_id=?",
+                (chain_id, owner_id),
+            ).fetchone()
+            if chain_row is None:
+                raise RunNotFound(chain_id)
+            history = self._fallback_history_row(connection, chain_row, owner_id)
+            run = self._load_run(connection, str(chain_row["run_id"]))
+            if run.binding.owner_id != owner_id:
+                raise RunNotFound(chain_id)
+            route = connection.execute(
+                "SELECT * FROM research_fallback_routes "
+                "WHERE chain_id=? AND fallback_index=?",
+                (chain_id, fallback_index),
+            ).fetchone()
+            hold = self._load_hold(connection, hold_id)
+            intent = hold.intent
+            if route is None or (
+                hold.run_id != run.binding.run_id
+                or intent.seam_id != str(route["seam_id"])
+                or intent.provider != str(route["provider"])
+                or intent.model != str(route["model"])
+                or intent.operation != str(route["operation"])
+                or intent.operation_digest != str(route["operation_digest"])
+                or intent.projection_digest != str(route["projection_digest"])
+                or intent.rate_snapshot != str(route["rate_snapshot"])
+                or intent.reservation_key != str(route["reservation_key"])
+                or intent.provider_idempotency_key
+                != str(route["provider_idempotency_key"])
+                or intent.route_authority_digest
+                != str(route["route_authority_digest"])
+                or hold.projected_max_cents != int(route["projected_max_cents"])
+            ):
+                raise LedgerIntegrityError("approved fallback hold authority conflicts")
+            approval_row = connection.execute(
+                "SELECT * FROM research_fallback_approvals WHERE approval_id=?",
+                (approval_id,),
+            ).fetchone()
+            if approval_row is None:
+                raise DispatchApprovalRequired("exact fallback approval is required")
+            exposure = max(item.projected_max_cents for item in history.routes)
+            self._validate_fallback_approval_row(
+                connection,
+                approval_row,
+                run.binding,
+                chain_id,
+                history.manifest_sha256,
+                exposure,
+                run.ceiling_cents,
+            )
+            connection.execute("COMMIT")
+            return hold
+        except BaseException:
+            with contextlib.suppress(sqlite3.Error):
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
+
     def reconciliation_snapshot(
         self,
         owner_id: str,

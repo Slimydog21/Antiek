@@ -15,6 +15,7 @@ import pytest
 
 from substrate.research_spend import (
     BindingConflict,
+    DispatchApprovalRequired,
     FallbackChainManifest,
     FallbackChainOutcome,
     FallbackRouteManifest,
@@ -179,6 +180,37 @@ def test_exact_reserved_fallback_release_is_atomic_and_replayable(tmp_path: Path
     assert [event.event_kind for event in ledger.events("run-1")].count(
         "hold_released"
     ) == 1
+
+
+def test_approved_fallback_hold_requires_exact_persisted_approval(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    manifest = _register_manifest(ledger)
+    history = ledger.fallback_history("owner-1").items[0]
+    approval = ledger.issue_fallback_approval(
+        "approve-exact-route",
+        _binding(),
+        manifest.chain_id,
+        expected_manifest_sha256=history.manifest_sha256,
+        expected_ceiling_cents=1_000,
+    )
+    hold = ledger.reserve_paid(
+        "reserve-approved-route-0",
+        _binding(),
+        _manifest_hold(manifest.routes[0]),
+        manifest.routes[0].projected_max_cents,
+    )
+
+    with pytest.raises(DispatchApprovalRequired, match="exact fallback approval"):
+        ledger.approved_fallback_hold(
+            "owner-1", manifest.chain_id, 0, hold.hold_id, "missing-approval"
+        )
+
+    assert (
+        ledger.approved_fallback_hold(
+            "owner-1", manifest.chain_id, 0, hold.hold_id, approval.approval_id
+        )
+        == hold
+    )
 
 
 def test_reserved_fallback_release_rejects_private_route_substitution(tmp_path: Path) -> None:

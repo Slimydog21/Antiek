@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cycle 96: Provider Reconciliation-Only Gateway</title>
+</head>
+<body>
+<main>
+  <h1>Provider reconciliation without provider execution</h1>
+  <section>
+    <h2>Outcome</h2>
+    <p>An authenticated product command can eventually ask one qualified provider adapter about one exact persisted paid hold without gaining authority to send, retry, or advance a fallback chain.</p>
+  </section>
+  <section>
+    <h2>Current provider fact</h2>
+    <p>Ordinary synchronous OpenAI-compatible and Anthropic chat APIs are not qualified merely because they expose request identifiers. Production remains fail-closed until an adapter proves durable caller idempotency, authoritative lookup by that identity, disabled hidden retries, exact billing units, and current server-owned route authority.</p>
+  </section>
+  <section>
+    <h2>Authority contract</h2>
+    <ol>
+      <li>The caller supplies a persisted hold identity and a server-composed adapter, never provider evidence or a desired outcome.</li>
+      <li>The gateway first proves in one read transaction that one owner-scoped hold belongs to the exact persisted chain route and its immutable approval receipt, then locks that reservation and repeats the complete transactional proof.</li>
+      <li>It exact-matches the canonical projection digest, provider, model, hard-ceiling capabilities, billing units, endpoint, and mandatory manifest route-authority digest.</li>
+      <li><code>reserved</code> is rejected because no provider outcome exists. Terminal holds return without lookup.</li>
+      <li><code>dispatch_possible</code> and <code>unknown</code> invoke exactly one authoritative lookup after database identity verification.</li>
+      <li><code>charged</code> settles exact provider cents; <code>not_found</code> releases; <code>unknown</code>, malformed evidence, contradiction, and lookup failure retain the full hold.</li>
+    </ol>
+  </section>
+  <section>
+    <h2>Structural non-execution</h2>
+    <p>The method accepts no operation payload and no fallback route list. It cannot call <code>send_once</code>, reserve a new hold, or continue to another route. Provider reconciliation is evidence-only.</p>
+  </section>
+  <section>
+    <h2>Acceptance matrix</h2>
+    <table>
+      <thead><tr><th>Persisted state</th><th>Provider result</th><th>Required effect</th></tr></thead>
+      <tbody>
+        <tr><td>reserved</td><td>not queried</td><td>Refuse; retain hold.</td></tr>
+        <tr><td>dispatch_possible / unknown</td><td>charged with valid cents</td><td>Settle once.</td></tr>
+        <tr><td>dispatch_possible / unknown</td><td>authoritative not found</td><td>Release once.</td></tr>
+        <tr><td>dispatch_possible / unknown</td><td>unknown, invalid, contradictory, or error</td><td>Retain full hold.</td></tr>
+        <tr><td>released / settled</td><td>not queried</td><td>Return terminal snapshot.</td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section>
+    <h2>Future composition</h2>
+    <p>A later authenticated distillation action may resolve the current manifest-bound hold through a server-owned adapter registry and then refresh the Cycle 94 read model. It must not accept an adapter name, endpoint, idempotency key, evidence, status, or cents from request JSON. Legacy holds without persisted route authority remain held.</p>
+  </section>
+  <section>
+    <h2>Non-goals</h2>
+    <p>No HTTP or UI action, generic adapter qualification, provider implementation, retry, fallback continuation, ledger schema, live provider call, merge, or deployment.</p>
+  </section>
+</main>
+</body>
+</html>

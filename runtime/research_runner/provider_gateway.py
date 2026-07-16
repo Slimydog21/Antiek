@@ -767,6 +767,82 @@ class ResearchProviderGateway:
                 hold=hold, run=self.ledger.balance(hold.run_id), recovered=True
             )
 
+    def reconcile_paid_only(
+        self,
+        hold_id: str,
+        adapter: HardCeilingProviderAdapter[T],
+        *,
+        owner_id: str,
+        chain_id: str,
+        fallback_index: int,
+        approval_id: str,
+        projection_request: CostProjectionRequest,
+    ) -> ProviderDispatchResult[T]:
+        """Reconcile one persisted provider outcome without any send capability.
+
+        Unlike ``recover_paid``, this entry point never releases a reserved hold
+        and has no operation payload from which provider work could be sent. A
+        fallback route is reconciled in isolation; this method cannot advance
+        to another route.
+        """
+        initial = self.ledger.approved_fallback_hold(
+            owner_id, chain_id, fallback_index, hold_id, approval_id
+        )
+        with self.ledger.dispatch_guard(
+            initial.intent.reservation_key
+        ) as database_identity:
+            hold = self.ledger.approved_fallback_hold(
+                owner_id, chain_id, fallback_index, hold_id, approval_id
+            )
+            if hold.intent.reservation_key != initial.intent.reservation_key:
+                raise DispatchIneligible(
+                    "persisted reservation changed before reconciliation"
+                )
+            if (hold.intent.provider, hold.intent.model) != (
+                adapter.provider,
+                adapter.model,
+            ):
+                raise DispatchIneligible(
+                    "reconciliation adapter does not match persisted route"
+                )
+            if not adapter.capabilities.hard_ceiling_eligible:
+                raise DispatchIneligible(
+                    "reconciliation adapter lacks hard-ceiling capabilities"
+                )
+            if hold.state in (PaidHoldState.SETTLED, PaidHoldState.RELEASED):
+                self.ledger.assert_dispatch_identity(database_identity)
+                return ProviderDispatchResult(
+                    hold=hold,
+                    run=self.ledger.balance(hold.run_id),
+                    recovered=True,
+                )
+            if hold.intent.route_authority_digest is None:  # pragma: no cover - ledger proof
+                raise DispatchIneligible("manifest-bound route authority is required")
+            projection = self._projector(projection_request)
+            if canonical_digest(projection) != hold.intent.projection_digest:
+                raise DispatchIneligible("reconciliation projection authority changed")
+            authority = self._revalidate_route_authority(
+                projection_request,
+                projection,
+                adapter,
+                expected_digest=hold.intent.route_authority_digest,
+            )
+            if hold.state is PaidHoldState.RESERVED:
+                raise DispatchIneligible(
+                    "reserved hold has no provider outcome to reconcile"
+                )
+            if hold.state not in (
+                PaidHoldState.DISPATCH_POSSIBLE,
+                PaidHoldState.UNKNOWN,
+            ):
+                raise DispatchIneligible("hold is not provider-reconcilable")
+            self.ledger.assert_dispatch_identity(database_identity)
+            return self._reconcile(
+                hold,
+                adapter,
+                authorized_endpoint=authority.endpoint,
+            )
+
     def _revalidate_route_authority(
         self,
         request: CostProjectionRequest,
