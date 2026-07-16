@@ -8,6 +8,7 @@ import {
 import { LemonButton, LemonCard } from "../../components/lemon";
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import thoughtPartnerDeskArt from "../../brand/werner/poses/session/werner_thought_partner_desk_session_v1.webp";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 export interface AntiekBenchPanelProps {
   fetchFn?: typeof fetchWeeklyBenchView;
@@ -25,9 +26,12 @@ export default function AntiekBenchPanel({
     setError(null);
     try {
       setView(await fetchFn());
+      // Living-TV: weekly bench evidence landed — curious highlight glance.
+      emitWernerExperience("highlight");
     } catch (caught) {
       setView(null);
       setError(caught instanceof Error ? caught.message : String(caught));
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }
