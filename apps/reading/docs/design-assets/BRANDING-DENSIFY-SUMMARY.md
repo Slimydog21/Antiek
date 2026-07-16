@@ -162,3 +162,4 @@ PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall re
 | (other) | hit |
 
 Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on tip `8bc22c346`.
+| Speak Invites/Settings densify | `7ab9d486a` | invite note_saved; payout release noted/fail |
