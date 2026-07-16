@@ -89,13 +89,15 @@ export default function NotebooksIndex() {
         }),
       });
       if (!resp.ok) {
+        emitWernerExperience("fail");
         throw new Error(`POST /notebooks: HTTP ${resp.status}`);
       }
       const created: NotebookSummary = await resp.json();
       setDraftTitle("");
       setDraftInvId("");
       if (created.notebook_id) {
-        navigate(`/notebook/${encodeURIComponent(created.notebook_id)}`);
+        emitWernerExperience("piece_started");
+      navigate(`/notebook/${encodeURIComponent(created.notebook_id)}`);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -161,7 +163,7 @@ export default function NotebooksIndex() {
             />
             <button
               type="button"
-              onClick={() => { emitWernerExperience("piece_started"); void createNotebook(); }}
+              onClick={() => void createNotebook()}
               disabled={submitting || !draftTitle.trim()}
               className="px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50"
             >
