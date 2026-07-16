@@ -7,7 +7,13 @@ from dataclasses import asdict, dataclass
 from typing import Literal
 
 from runtime.db_lock import LockedConnection
-from substrate.graph.insight_question import promote_insight, promote_question
+from substrate.graph.insight_question import (
+    canonical_text,
+    insight_node_id,
+    promote_insight,
+    promote_question,
+    question_node_id,
+)
 
 from .evidence_promotion import AcceptedTwinPromotionAuthority, TwinEvidencePromotionLedger
 from .ledger import TwinRecursionLedger
@@ -37,12 +43,25 @@ class _NoEmbeddingProvider:
         return None
 
 
-def _provenance_metadata(
+def canonical_promotion_node_id(authority: AcceptedTwinPromotionAuthority) -> str:
+    """Return the exact owner-scoped graph identity for an accepted candidate."""
+    candidate = authority.candidate
+    if candidate.kind == "insight":
+        node_id: str = insight_node_id(candidate.text, identity_scope=candidate.owner_id)
+        return node_id
+    if candidate.kind == "question":
+        question_id: str = question_node_id(candidate.text, identity_scope=candidate.owner_id)
+        return question_id
+    raise CanonicalTwinPromotionWriterError("candidate kind is not materializable")
+
+
+def canonical_promotion_node_metadata(
     authority: AcceptedTwinPromotionAuthority,
 ) -> dict[str, object]:
+    """Build the complete metadata projection written by the sanctioned graph writer."""
     candidate = authority.candidate
     review = authority.review
-    return {
+    metadata: dict[str, object] = {
         "writer_schema": WRITER_SCHEMA,
         "authority_temporality": "materialization_time",
         "reuse_policy": "revalidate_promotion_authority_before_use",
@@ -64,6 +83,19 @@ def _provenance_metadata(
             for item in candidate.evidence
         ],
     }
+    metadata.update(
+        {
+            "promoted_kind": candidate.kind,
+            "canonical_text": canonical_text(candidate.text),
+            "investigation_id": candidate.candidate_id,
+            "identity_scope": candidate.owner_id,
+        }
+    )
+    if candidate.kind == "insight":
+        metadata["confidence"] = "unknown"
+    elif candidate.kind != "question":
+        raise CanonicalTwinPromotionWriterError("candidate kind is not materializable")
+    return metadata
 
 
 def materialize_accepted_twin_promotion(
@@ -93,7 +125,7 @@ def materialize_accepted_twin_promotion(
         ) as snapshot:
             authority = snapshot.authority
             candidate = authority.candidate
-            metadata = _provenance_metadata(authority)
+            metadata = canonical_promotion_node_metadata(authority)
             if candidate.kind == "insight":
                 node_id = promote_insight(
                     text=candidate.text,
@@ -139,5 +171,7 @@ __all__ = [
     "CanonicalTwinPromotionResult",
     "CanonicalTwinPromotionWriterError",
     "WRITER_SCHEMA",
+    "canonical_promotion_node_id",
+    "canonical_promotion_node_metadata",
     "materialize_accepted_twin_promotion",
 ]

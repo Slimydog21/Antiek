@@ -16,6 +16,12 @@ from .canonical_reader import (
     CanonicalTwinReaderNotFound,
     CanonicalTwinReaderView,
 )
+from .current_node import (
+    CanonicalTwinNodeView,
+    CurrentCanonicalTwinNode,
+    HistoricalCanonicalTwinNodeWithheld,
+    read_current_canonical_twin_node,
+)
 from .embedding_routes import (
     CanonicalEmbeddingRouteRegistry,
     CanonicalEmbeddingRouteUnavailable,
@@ -70,6 +76,9 @@ __all__ = [
     "CanonicalTwinReader",
     "CanonicalTwinReaderNotFound",
     "CanonicalTwinReaderView",
+    "CanonicalTwinNodeView",
+    "CurrentCanonicalTwinNode",
+    "HistoricalCanonicalTwinNodeWithheld",
     "CanonicalTwinPromotionResult",
     "CanonicalTwinPromotionWriterError",
     "CanonicalEmbeddingRouteRegistry",
@@ -87,6 +96,7 @@ __all__ = [
     "TwinPromotionReview",
     "issue_owner_review_authorization",
     "materialize_accepted_twin_promotion",
+    "read_current_canonical_twin_node",
     "TwinConflictError",
     "TwinIntegrityError",
     "TwinLedgerError",
