@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import sqlite3
 from dataclasses import replace
@@ -65,6 +66,7 @@ def _sign(receipt, key: SigningKey):
 
 def _segment_receipt(manifest, source, index, proposal, key):
     segment = manifest.segments[index]
+    verify_key = base64.b64encode(bytes(key.verify_key)).decode()
     receipt = SegmentCompletionReceipt(
         COMPLETION_SCHEMA,
         f"segment-receipt-{index}",
@@ -78,6 +80,8 @@ def _segment_receipt(manifest, source, index, proposal, key):
         "model",
         "approved-hold",
         proposal_hash(proposal),
+        "key_" + hashlib.sha256(bytes(key.verify_key)).hexdigest(),
+        verify_key,
         4_000_000_000,
         "",
     )
@@ -90,10 +94,10 @@ def _setup(tmp_path, source):
     registry.register(manifest, account_id="acct", asset=source)
     ledger = SegmentationCompletionLedger(tmp_path / "completion.sqlite")
     ledger.register_manifest(manifest, asset=source, registry=registry)
-    return manifest, ledger
+    return manifest, ledger, registry
 
 
-def _complete_segments(manifest, ledger, source, key):
+def _complete_segments(manifest, ledger, registry, source, key):
     for index in range(len(manifest.segments)):
         proposal = _proposal(str(index))
         ledger.apply_segment(
@@ -102,6 +106,7 @@ def _complete_segments(manifest, ledger, source, key):
             segment_index=index,
             proposal=proposal,
             receipt=_segment_receipt(manifest, source, index, proposal, key),
+            registry=registry,
         )
 
 
@@ -117,9 +122,11 @@ def _ordered_hash(path, manifest):
 def test_signed_segments_and_parent_aggregate_are_exact_and_restart_safe(
     tmp_path, source, signing_key
 ):
-    manifest, ledger = _setup(tmp_path, source)
-    _complete_segments(manifest, ledger, source, signing_key)
-    pending = ledger.get("acct", "book", manifest.parent_source_hash)
+    manifest, ledger, registry = _setup(tmp_path, source)
+    _complete_segments(manifest, ledger, registry, source, signing_key)
+    pending = ledger.get(
+        "acct", "book", manifest.parent_source_hash, asset=source, registry=registry
+    )
     assert pending.completed_segments == pending.segment_count and not pending.parent_ready
     aggregate = _proposal("aggregate")
     ordered_hash = _ordered_hash(tmp_path / "completion.sqlite", manifest)
@@ -134,21 +141,25 @@ def test_signed_segments_and_parent_aggregate_are_exact_and_restart_safe(
             "model",
             "aggregate-hold",
             proposal_hash(aggregate),
+            "key_" + hashlib.sha256(bytes(signing_key.verify_key)).hexdigest(),
+            base64.b64encode(bytes(signing_key.verify_key)).decode(),
             4_000_000_000,
             "",
         ),
         signing_key,
     )
-    ready = ledger.apply_aggregate(manifest, asset=source, proposal=aggregate, receipt=receipt)
+    ready = ledger.apply_aggregate(
+        manifest, asset=source, proposal=aggregate, receipt=receipt, registry=registry
+    )
     replay = SegmentationCompletionLedger(tmp_path / "completion.sqlite").apply_aggregate(
-        manifest, asset=source, proposal=aggregate, receipt=receipt
+        manifest, asset=source, proposal=aggregate, receipt=receipt, registry=registry
     )
     assert ready == replay and ready.parent_ready and ready.body_json
     assert json.loads(ready.body_json)["synthesis_withheld"] is True
 
 
 def test_missing_segment_refuses_aggregate(tmp_path, source, signing_key):
-    manifest, ledger = _setup(tmp_path, source)
+    manifest, ledger, registry = _setup(tmp_path, source)
     proposal = _proposal("aggregate")
     receipt = _sign(
         AggregateCompletionReceipt(
@@ -161,17 +172,21 @@ def test_missing_segment_refuses_aggregate(tmp_path, source, signing_key):
             "model",
             "hold",
             proposal_hash(proposal),
+            "key_" + hashlib.sha256(bytes(signing_key.verify_key)).hexdigest(),
+            base64.b64encode(bytes(signing_key.verify_key)).decode(),
             4_000_000_000,
             "",
         ),
         signing_key,
     )
     with pytest.raises(SegmentationCompletionError, match="all ordered"):
-        ledger.apply_aggregate(manifest, asset=source, proposal=proposal, receipt=receipt)
+        ledger.apply_aggregate(
+            manifest, asset=source, proposal=proposal, receipt=receipt, registry=registry
+        )
 
 
 def test_segment_substitution_signature_and_source_drift_fail_closed(tmp_path, source, signing_key):
-    manifest, ledger = _setup(tmp_path, source)
+    manifest, ledger, registry = _setup(tmp_path, source)
     proposal = _proposal("0")
     receipt = _segment_receipt(manifest, source, 0, proposal, signing_key)
     mismatched = _sign(replace(receipt, segment_index=1, signature=""), signing_key)
@@ -182,6 +197,7 @@ def test_segment_substitution_signature_and_source_drift_fail_closed(tmp_path, s
             segment_index=0,
             proposal=proposal,
             receipt=mismatched,
+            registry=registry,
         )
     with pytest.raises(SegmentationCompletionError, match="signature"):
         ledger.apply_segment(
@@ -190,6 +206,7 @@ def test_segment_substitution_signature_and_source_drift_fail_closed(tmp_path, s
             segment_index=0,
             proposal=proposal,
             receipt=replace(receipt, signature="invalid"),
+            registry=registry,
         )
     with pytest.raises(ValueError, match="conflict"):
         ledger.apply_segment(
@@ -198,19 +215,30 @@ def test_segment_substitution_signature_and_source_drift_fail_closed(tmp_path, s
             segment_index=0,
             proposal=proposal,
             receipt=receipt,
+            registry=registry,
         )
 
 
 def test_exact_replay_converges_and_changed_completion_conflicts(tmp_path, source, signing_key):
-    manifest, ledger = _setup(tmp_path, source)
+    manifest, ledger, registry = _setup(tmp_path, source)
     proposal = _proposal("0")
     receipt = _segment_receipt(manifest, source, 0, proposal, signing_key)
     first = ledger.apply_segment(
-        manifest, asset=source, segment_index=0, proposal=proposal, receipt=receipt
+        manifest,
+        asset=source,
+        segment_index=0,
+        proposal=proposal,
+        receipt=receipt,
+        registry=registry,
     )
     assert (
         ledger.apply_segment(
-            manifest, asset=source, segment_index=0, proposal=proposal, receipt=receipt
+            manifest,
+            asset=source,
+            segment_index=0,
+            proposal=proposal,
+            receipt=receipt,
+            registry=registry,
         )
         == first
     )
@@ -220,7 +248,12 @@ def test_exact_replay_converges_and_changed_completion_conflicts(tmp_path, sourc
         )
         assert (
             ledger.apply_segment(
-                manifest, asset=source, segment_index=0, proposal=proposal, receipt=receipt
+                manifest,
+                asset=source,
+                segment_index=0,
+                proposal=proposal,
+                receipt=receipt,
+                registry=registry,
             )
             == first
         )
@@ -232,19 +265,54 @@ def test_exact_replay_converges_and_changed_completion_conflicts(tmp_path, sourc
             segment_index=0,
             proposal=changed,
             receipt=_segment_receipt(manifest, source, 0, changed, signing_key),
+            registry=registry,
         )
 
 
 def test_schema_and_body_corruption_fail_closed(tmp_path, source, signing_key):
-    manifest, ledger = _setup(tmp_path, source)
+    manifest, ledger, registry = _setup(tmp_path, source)
     with sqlite3.connect(tmp_path / "completion.sqlite") as con:
         con.execute("DROP TRIGGER completion_manifest_immutable")
     with pytest.raises(SegmentationCompletionIntegrityError, match="schema object"):
-        ledger.get("acct", "book", manifest.parent_source_hash)
+        ledger.get("acct", "book", manifest.parent_source_hash, asset=source, registry=registry)
+
+
+def test_ready_read_rechecks_source_and_registry_but_survives_key_rotation(
+    tmp_path, source, signing_key, monkeypatch
+):
+    manifest, ledger, registry = _setup(tmp_path, source)
+    _complete_segments(manifest, ledger, registry, source, signing_key)
+    rotated = SigningKey.generate()
+    monkeypatch.setenv(
+        AUTHORITY_VERIFY_KEY_ENV, base64.b64encode(bytes(rotated.verify_key)).decode()
+    )
+    snapshot = ledger.get(
+        "acct", "book", manifest.parent_source_hash, asset=source, registry=registry
+    )
+    assert snapshot.completed_segments == snapshot.segment_count
+    with pytest.raises(ValueError, match="conflict"):
+        ledger.get(
+            "acct",
+            "book",
+            manifest.parent_source_hash,
+            asset=replace(source, content_text=source.content_text + "drift"),
+            registry=registry,
+        )
+
+
+def test_unexpected_trigger_is_schema_corruption(tmp_path, source):
+    manifest, ledger, registry = _setup(tmp_path, source)
+    with sqlite3.connect(tmp_path / "completion.sqlite") as con:
+        con.execute(
+            "CREATE TRIGGER exfiltrate_after_insert AFTER INSERT ON completion_manifests "
+            "BEGIN SELECT 1; END"
+        )
+    with pytest.raises(SegmentationCompletionIntegrityError, match="object set"):
+        ledger.get("acct", "book", manifest.parent_source_hash, asset=source, registry=registry)
 
 
 def test_no_source_body_is_persisted(tmp_path, source):
-    manifest, _ledger = _setup(tmp_path, source)
+    manifest, _ledger, _registry = _setup(tmp_path, source)
     with sqlite3.connect(tmp_path / "completion.sqlite") as con:
         stored = " ".join(
             str(value)

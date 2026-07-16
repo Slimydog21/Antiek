@@ -47,6 +47,8 @@ class SegmentCompletionReceipt:
     model_id: str
     budget_authority_id: str
     proposal_hash: str
+    authority_key_id: str
+    authority_verify_key: str
     expires_at_unix: int
     signature: str
 
@@ -62,6 +64,8 @@ class AggregateCompletionReceipt:
     model_id: str
     budget_authority_id: str
     proposal_hash: str
+    authority_key_id: str
+    authority_verify_key: str
     expires_at_unix: int
     signature: str
 
@@ -76,6 +80,7 @@ def verify_receipt(
     receipt: SegmentCompletionReceipt | AggregateCompletionReceipt,
     *,
     now_unix: int | None = None,
+    require_configured_key: bool = True,
 ) -> None:
     if receipt.schema != COMPLETION_SCHEMA:
         raise SegmentationCompletionError("completion receipt schema is unsupported")
@@ -87,6 +92,8 @@ def verify_receipt(
         receipt.model_id,
         receipt.budget_authority_id,
         receipt.proposal_hash,
+        receipt.authority_key_id,
+        receipt.authority_verify_key,
     ]
     if isinstance(receipt, SegmentCompletionReceipt):
         text_fields.append(receipt.content_sha256)
@@ -102,13 +109,21 @@ def verify_receipt(
         raise SegmentationCompletionError("completion receipt field is invalid")
     if receipt.expires_at_unix < (int(time.time()) if now_unix is None else now_unix):
         raise SegmentationCompletionError("completion receipt expired")
-    raw_key = os.environ.get(AUTHORITY_VERIFY_KEY_ENV, "")
-    if not raw_key:
-        raise SegmentationCompletionError("completion authority verify key is unavailable")
     try:
-        verify_key = VerifyKey(base64.b64decode(raw_key, validate=True))
+        embedded_key = base64.b64decode(receipt.authority_verify_key, validate=True)
+        if receipt.authority_key_id != "key_" + hashlib.sha256(embedded_key).hexdigest():
+            raise SegmentationCompletionError("completion authority key identity is invalid")
+        if require_configured_key:
+            configured = os.environ.get(AUTHORITY_VERIFY_KEY_ENV, "")
+            if not configured:
+                raise SegmentationCompletionError("completion authority verify key is unavailable")
+            if base64.b64decode(configured, validate=True) != embedded_key:
+                raise SegmentationCompletionError("completion authority key is not configured")
+        verify_key = VerifyKey(embedded_key)
         signature = base64.b64decode(receipt.signature, validate=True)
         verify_key.verify(receipt_payload(receipt), signature)
+    except SegmentationCompletionError:
+        raise
     except (BadSignatureError, ValueError, TypeError) as exc:
         raise SegmentationCompletionError("completion receipt signature is invalid") from exc
 

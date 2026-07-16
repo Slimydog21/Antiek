@@ -180,7 +180,7 @@ def _receipt_from_json(
         raise SegmentationCompletionIntegrityError("persisted receipt is malformed") from exc
     if canonical_json(asdict(receipt)) != value:
         raise SegmentationCompletionIntegrityError("persisted receipt is not canonical")
-    verify_receipt(receipt, now_unix=0)
+    verify_receipt(receipt, now_unix=0, require_configured_key=False)
     return receipt
 
 
@@ -218,9 +218,12 @@ class SegmentationCompletionLedger:
             raise SegmentationCompletionIntegrityError("completion schema metadata changed")
         expected = {**TABLES, **TRIGGERS}
         rows = con.execute(
-            "SELECT name,sql FROM sqlite_master WHERE name LIKE 'completion_%' OR name LIKE 'segment_completion%' OR name LIKE 'aggregate_completion%'"
+            "SELECT name,sql FROM sqlite_master WHERE type IN ('table','trigger') "
+            "AND name NOT LIKE 'sqlite_%'"
         ).fetchall()
         actual = {str(row["name"]): _normalize_sql(str(row["sql"])) for row in rows}
+        if set(actual) != set(expected):
+            raise SegmentationCompletionIntegrityError("completion schema object set changed")
         for name, statement in expected.items():
             if actual.get(name) != _normalize_sql(statement):
                 raise SegmentationCompletionIntegrityError(
@@ -257,7 +260,7 @@ class SegmentationCompletionLedger:
                 )
             elif row["manifest_json"] != manifest.to_json():
                 raise SegmentationCompletionIntegrityError("completion manifest substitution")
-        return self.get(*key)
+        return self.get(*key, asset=asset, registry=registry)
 
     def apply_segment(
         self,
@@ -267,6 +270,7 @@ class SegmentationCompletionLedger:
         segment_index: int,
         proposal: TwinProposal,
         receipt: SegmentCompletionReceipt,
+        registry: TwinSegmentationLedger,
     ) -> CompletionSnapshot:
         verify_segmentation_manifest(manifest, account_id=manifest.account_id, asset=asset)
         if segment_index < 0 or segment_index >= len(manifest.segments):
@@ -328,7 +332,7 @@ class SegmentationCompletionLedger:
                         canonical_json(asdict(receipt)),
                     ),
                 )
-        return self.get(*key)
+        return self.get(*key, asset=asset, registry=registry)
 
     def apply_aggregate(
         self,
@@ -337,6 +341,7 @@ class SegmentationCompletionLedger:
         asset: AssetContent,
         proposal: TwinProposal,
         receipt: AggregateCompletionReceipt,
+        registry: TwinSegmentationLedger,
     ) -> CompletionSnapshot:
         verify_segmentation_manifest(manifest, account_id=manifest.account_id, asset=asset)
         key = (manifest.account_id, manifest.asset_id, manifest.parent_source_hash)
@@ -397,7 +402,7 @@ class SegmentationCompletionLedger:
                         sha256(body_json),
                     ),
                 )
-        return self.get(*key)
+        return self.get(*key, asset=asset, registry=registry)
 
     def _require_manifest(
         self, con: sqlite3.Connection, manifest: TwinSegmentationManifest
@@ -409,7 +414,15 @@ class SegmentationCompletionLedger:
         if row is None or tuple(row) != (manifest.manifest_hash, manifest.to_json()):
             raise SegmentationCompletionIntegrityError("completion manifest is absent or changed")
 
-    def get(self, account_id: str, asset_id: str, parent_source_hash: str) -> CompletionSnapshot:
+    def get(
+        self,
+        account_id: str,
+        asset_id: str,
+        parent_source_hash: str,
+        *,
+        asset: AssetContent,
+        registry: TwinSegmentationLedger,
+    ) -> CompletionSnapshot:
         with self._connect() as con:
             con.execute("BEGIN")
             self._verify_schema(con)
@@ -421,6 +434,12 @@ class SegmentationCompletionLedger:
             if manifest is None:
                 raise KeyError(key)
             manifest_value = TwinSegmentationManifest.from_json(str(manifest["manifest_json"]))
+            verify_segmentation_manifest(manifest_value, account_id=account_id, asset=asset)
+            registered = registry.get(account_id, asset_id, parent_source_hash)
+            if registered.manifest_hash != manifest_value.manifest_hash:
+                raise SegmentationCompletionIntegrityError(
+                    "current segmentation registry conflicts with completion authority"
+                )
             segment_rows = con.execute(
                 "SELECT * FROM segment_completion_bindings WHERE account_id=? AND asset_id=? "
                 "AND parent_source_hash=? ORDER BY segment_index",
