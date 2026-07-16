@@ -2,7 +2,7 @@
   "name": "antiek-reading",
   "private": true,
   "version": "0.1.0",
-  "description": "Antiek reading surface — Loop 2 wrestling UI. The TS side of the polyglot seam (architecture_notes §11).",
+  "description": "Antiek reading surface \u2014 Loop 2 wrestling UI. The TS side of the polyglot seam (architecture_notes \u00a711).",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,7 +31,8 @@
     "visualtest": "npm run build-storybook && lost-pixel",
     "visualtest:update": "npm run build-storybook && lost-pixel update",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:branding-densify": "bash scripts/branding-densify-pack.sh"
   },
   "dependencies": {
     "@posthog/react": "^1.10.0",
