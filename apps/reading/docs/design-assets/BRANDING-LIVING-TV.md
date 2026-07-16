@@ -95,9 +95,12 @@ UI-consumed invent strips (not inventory-only):
 | midnight-oil / midnight_oil | sleeping |
 | (other) | hit |
 
-DRW glass-box densify: ComposeBar CRT invent + PlanEditor living-TV strip;
+DRW glass-box densify: ComposeBar CRT invent + PlanEditor cascade invent strip;
 cascade create → `piece_started`; plan approve → `highlight`; launch →
 `notifyResearchStarted` / deep_research_start.
+CostMeter → `fail` at cap / `highlight` near warn; BlockDetail chase →
+`deep_research_start`. Paperclip Zombies wait egg → start `highlight`,
+wave clear `piece_started`, gameover `fail`.
 
 ## Ambient living-TV heartbeat (2026-07-16)
 

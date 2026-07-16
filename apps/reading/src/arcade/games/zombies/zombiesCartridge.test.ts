@@ -65,6 +65,21 @@ describe("Paperclip Zombies cartridge lifecycle", () => {
     expect(saveBestScore).toHaveBeenCalledTimes(1);
   });
 
+  it("emits living-TV highlight when play starts from ready", () => {
+    const onWernerBeat = vi.fn();
+    const ctx: GameContext = {
+      width: 100,
+      height: 80,
+      rng: () => 0.5,
+      saveBestScore: vi.fn(),
+      readBestScore: () => 0,
+    };
+    const cart = createZombiesCartridge({ onWernerBeat });
+    cart.init(ctx);
+    cart.update(1 / 60, input(["Enter"]), ctx);
+    expect(onWernerBeat).toHaveBeenCalledWith("highlight");
+  });
+
   it("saves the current score once on voluntary exit", () => {
     const saveBestScore = vi.fn();
     const ctx: GameContext = {

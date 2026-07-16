@@ -1,5 +1,11 @@
 import type { Cartridge, GameContext, InputState } from "../../engine/types";
-import { createZombiesState, stepZombies, type ZombiesState } from "./logic";
+import { emitWernerExperience } from "../../../werner/reactionBus";
+import {
+  createZombiesState,
+  stepZombies,
+  zombiesWernerBeat,
+  type ZombiesState,
+} from "./logic";
 import {
   createZombiesVisualKit,
   drawZombiesScene,
@@ -11,11 +17,14 @@ export function createZombiesCartridge(options?: {
   reducedMotion?: boolean;
   lives?: number;
   visualKit?: ZombiesVisualKit;
+  /** Inject for tests — defaults to living-TV emitWernerExperience. */
+  onWernerBeat?: (beat: NonNullable<ReturnType<typeof zombiesWernerBeat>>) => void;
 }): Cartridge {
   let state: ZombiesState | null = null;
   const reduced = Boolean(options?.reducedMotion);
   let terminalReported = false;
   const visualKit = options?.visualKit ?? createZombiesVisualKit();
+  const onWernerBeat = options?.onWernerBeat ?? emitWernerExperience;
 
   return {
     id: "paperclip-zombies",
@@ -44,7 +53,14 @@ export function createZombiesCartridge(options?: {
         input.keysPressed.has("Enter") || input.keysPressed.has(" ");
       const exit =
         input.keysPressed.has("Escape") || input.keysPressed.has("q");
+      const prev = {
+        phase: state.phase,
+        wave: state.wave,
+        lives: state.lives,
+      };
       state = stepZombies(state, dt, { fireAt, start, exit }, ctx.rng);
+      const beat = zombiesWernerBeat(prev, state);
+      if (beat) onWernerBeat(beat);
       const terminal = state.phase === "gameover" || state.phase === "exited";
       if (terminal && !terminalReported) {
         ctx.saveBestScore(state.score);

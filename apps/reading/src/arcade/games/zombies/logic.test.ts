@@ -6,6 +6,7 @@ import {
   startZombies,
   stepZombies,
   zombiesCanExit,
+  zombiesWernerBeat,
 } from "./logic";
 
 describe("paperclip zombies pure logic", () => {
@@ -133,6 +134,33 @@ describe("paperclip zombies pure logic", () => {
     );
     expect(s.score).toBeGreaterThan(0);
     expect(s.zombies.length).toBe(0);
+  });
+
+  it("zombiesWernerBeat maps living-TV edges for start, wave, and gameover", () => {
+    expect(
+      zombiesWernerBeat(
+        { phase: "ready", wave: 0, lives: 3 },
+        { phase: "playing", wave: 1, lives: 3 },
+      ),
+    ).toBe("highlight");
+    expect(
+      zombiesWernerBeat(
+        { phase: "playing", wave: 1, lives: 3 },
+        { phase: "playing", wave: 2, lives: 3 },
+      ),
+    ).toBe("piece_started");
+    expect(
+      zombiesWernerBeat(
+        { phase: "playing", wave: 2, lives: 1 },
+        { phase: "gameover", wave: 2, lives: 0 },
+      ),
+    ).toBe("fail");
+    expect(
+      zombiesWernerBeat(
+        { phase: "playing", wave: 2, lives: 2 },
+        { phase: "playing", wave: 2, lives: 2 },
+      ),
+    ).toBeNull();
   });
 
   it("preserves configured lives across start and restart", () => {

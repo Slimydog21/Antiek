@@ -1,8 +1,10 @@
 import { useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import { startInvestigation, type DistilledNode } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import {
   useFloatMenuSelection,
@@ -63,13 +65,22 @@ export default function BlockDetail({
       spawn_context: safeSpawnText,
     });
     recordSpawnRelationship(resp.investigation_id, investigationId);
+    // Living-TV: block-detail chase spawn is deep research start.
+    emitWernerExperience("deep_research_start");
     navigate(`/inv/${resp.investigation_id}`);
   }
 
   return (
     <div className="flex flex-col h-full text-ink dark:text-bright p-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="block-detail-werner-brand"
+            className="h-6 w-6 shrink-0 object-contain"
+          />
           {node.kind} · block detail
         </span>
         {onClose && (

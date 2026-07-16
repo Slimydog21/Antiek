@@ -198,3 +198,33 @@ export function stepZombies(
 export function zombiesCanExit(state: ZombiesState): boolean {
   return state.phase === "playing" || state.phase === "gameover";
 }
+
+/**
+ * Living-TV beat for a zombies step (pure). Wire to emitWernerExperience at
+ * the cartridge edge so wait-arcade feels like the penguin TV show.
+ *
+ * - ready → playing: highlight (curious opt-in)
+ * - wave advanced while playing: piece_started (happy craft)
+ * - playing → gameover: fail (dizzy)
+ */
+export type ZombiesWernerBeat =
+  | "highlight"
+  | "piece_started"
+  | "fail"
+  | null;
+
+export function zombiesWernerBeat(
+  prev: Pick<ZombiesState, "phase" | "wave" | "lives">,
+  next: Pick<ZombiesState, "phase" | "wave" | "lives">,
+): ZombiesWernerBeat {
+  if (prev.phase === "ready" && next.phase === "playing") return "highlight";
+  if (prev.phase === "playing" && next.phase === "gameover") return "fail";
+  if (
+    prev.phase === "playing" &&
+    next.phase === "playing" &&
+    next.wave > prev.wave
+  ) {
+    return "piece_started";
+  }
+  return null;
+}
