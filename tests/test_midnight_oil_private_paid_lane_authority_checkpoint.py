@@ -690,6 +690,103 @@ def _attempt_child_recovery_copy(
         os.close(result_fd)
 
 
+def _attempt_child_recovery_prepare_and_copy(
+    socket_path: str,
+    issuer_pid: int,
+    ticket: checkpoint_module.SignedMigrationRecoveryTicketV1,
+    sealed: checkpoint_module.SignedMigrationLifecycleStateV1,
+    verification_key: checkpoint_module.VerificationKeyV1,
+    root_fd: int,
+    parent_fd: int,
+    target_fd: int,
+    result_fd: int,
+) -> None:
+    session: support_checkpoint.FixtureMigrationRecoverySessionV1 | None = None
+    try:
+        sealed_pins = _recovery_pins(sealed)
+        target_path = support_checkpoint._issuer_fd_path(target_fd)
+        observed_target = sqlite3.connect(target_path)
+        try:
+            schema_only_image = observed_target.serialize()
+        finally:
+            observed_target.close()
+        session = support_checkpoint.FixtureMigrationRecoverySessionV1.open(
+            socket_path=socket_path,
+            expected_issuer_pid=issuer_pid,
+            recovery_ticket=ticket,
+            verification_key=verification_key,
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+            authority_pins=sealed_pins,
+        )
+        admission = session.admission
+        dropped_prepare = _canonical_json(
+            {
+                "command": "session_recover_sources_sealed_to_copy_prepared",
+                "admission_sha256": admission.admission_sha256,
+                "handle_nonce": admission.handle_nonce,
+                "expected_sources_sealed_state_sha256": sealed.state_sha256,
+            }
+        )
+        session._connection.sendall(support_checkpoint._issuer_session_frame(dropped_prepare))
+        session._close_local()
+        session = support_checkpoint.FixtureMigrationRecoverySessionV1.reopen_exact(
+            socket_path=socket_path,
+            expected_issuer_pid=issuer_pid,
+            recovery_ticket=ticket,
+            admission=admission,
+            verification_key=verification_key,
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+        )
+        preparation = session.recover_sources_sealed_to_copy_prepared(
+            expected_sources_sealed_state_sha256=sealed.state_sha256
+        )
+        checkpoint_module._verify_epoch0_recovery_copy_preparation_completion_v1(
+            preparation,
+            issuer_verification_key=verification_key,
+            expected_sealed_pins=sealed_pins,
+        )
+        assert preparation.sealed_state == sealed
+        assert (
+            session.recover_sources_sealed_to_copy_prepared(
+                expected_sources_sealed_state_sha256=sealed.state_sha256
+            )
+            == preparation
+        )
+        prepared = preparation.prepared_state
+        observed_target = sqlite3.connect(target_path)
+        try:
+            assert observed_target.serialize() == schema_only_image
+        finally:
+            observed_target.close()
+        competing = sqlite3.connect(target_path, isolation_level=None, timeout=0.05)
+        try:
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                competing.execute("BEGIN IMMEDIATE")
+        finally:
+            competing.close()
+        copied = session.recover_copy_prepared_epoch0(
+            expected_prepared_state_sha256=prepared.state_sha256
+        )
+        checkpoint_module._verify_epoch0_recovery_copy_completion_v1(
+            copied,
+            issuer_verification_key=verification_key,
+            expected_prepared_pins=_recovery_pins(prepared),
+        )
+        assert copied.prepared_state == prepared
+        session.close()
+        os.write(result_fd, b"1")
+    except BaseException:
+        os.write(result_fd, b"0")
+    finally:
+        if session is not None:
+            session.close()
+        os.close(result_fd)
+
+
 def _reopen_precutover(case: Any) -> PrivatePaidLaneEligibilityCheckpointStoreV1:
     semantic = compute_private_paid_lane_semantic_sha256()
     return PrivatePaidLaneEligibilityCheckpointStoreV1.open(
@@ -3417,6 +3514,180 @@ class TestMigrationPrerequisites:
             issuer.close()
             os.close(root_fd)
             os.close(parent_fd)
+
+    @pytest.mark.parametrize("with_rows", (True, False))
+    def test_recovery_chains_sources_sealed_through_prepared_and_copied(
+        self, tmp_path: Path, with_rows: bool
+    ) -> None:
+        target = tmp_path / "paid-lane.sqlite3"
+        _initialize_schema_only_copy_target(target)
+        target.chmod(0o600)
+        target_info = target.stat()
+        root = SupportLegacyRootV1.create_new(
+            root_path=tmp_path / "issuer-root",
+            root_id="issuer-root-recovery-chain-1",
+            writer_inventory=support_checkpoint._CHILD_ROLES,
+            source_store_identities=support_checkpoint._CHILD_ROLES,
+            now_ms=1,
+            typed_rows=(support_checkpoint.fixture_genesis_migration_rows() if with_rows else None),
+        )
+        root_record = json.loads(
+            (root.root_path / "legacy-root-state-v1.json").read_text(encoding="utf-8")
+        )
+        root_fd = os.open(root.root_path, os.O_RDONLY)
+        parent_fd = os.open(tmp_path, os.O_RDONLY)
+        parent_info = os.fstat(parent_fd)
+        target_fd = -1
+        child = -1
+        result_read = result_write = -1
+        issuer = support_checkpoint.FixtureMigrationLifecycleIssuerV1.spawn(
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_basename=target.name,
+            provider_capability_verification_keys=(
+                support_checkpoint.capability_verification_keys() if with_rows else ()
+            ),
+            provider_revocation_verification_keys=(
+                support_checkpoint.revocation_verification_keys() if with_rows else ()
+            ),
+            source_head_verification_keys=(
+                support_checkpoint.source_head_verification_keys() if with_rows else ()
+            ),
+            provider_revocation_floor_pins=(
+                support_checkpoint.provider_revocation_floor_pins() if with_rows else ()
+            ),
+            source_floor_pins=(support_checkpoint.source_floor_pins() if with_rows else ()),
+            expected_target_store_id=STORE_ID,
+            expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+            expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+        )
+        try:
+            key = Ed25519PrivateKey.from_private_bytes(b"r" * 32)
+            genesis_candidate = _issuer_candidate(
+                key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                root_id=root_record["root_id"],
+                root_manifest_sha256=root_record["root_manifest_sha256"],
+            )
+            genesis = issuer.reserve(genesis_candidate)
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=genesis,
+                verification_key=issuer.verification_key,
+                expected_prior_state_sha256=None,
+            )
+            issuer.commit(state=genesis, parent_fd=parent_fd)
+            barrier_handle = root.acquire_writer_barrier(
+                expected_root_id=root_record["root_id"],
+                expected_root_manifest_sha256=root_record["root_manifest_sha256"],
+                expected_inventory_sha256=root_record["inventory_sha256"],
+            )
+            barrier_candidate = _issuer_candidate(
+                key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                root_id=root_record["root_id"],
+                root_manifest_sha256=root_record["root_manifest_sha256"],
+                lifecycle_phase="barrier_acquired",
+                barrier_id=barrier_handle.barrier_id,
+                freeze_nonce=barrier_handle.freeze_nonce,
+                phase_version=1,
+                issuer_sequence=1,
+                updated_at_ms=2,
+                previous_state_sha256=genesis.state_sha256,
+            )
+            barrier = issuer.reserve(barrier_candidate)
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=barrier,
+                verification_key=issuer.verification_key,
+                expected_prior_state_sha256=genesis.state_sha256,
+            )
+            issuer.commit(state=barrier, parent_fd=parent_fd)
+            barrier_handle.deny_new_admission()
+            barrier_handle.drain_terminal_only()
+            barrier_handle.close_and_revoke_all_writers()
+            barrier_handle.checkpoint_and_plant_test_all_mutators()
+            corpus = barrier_handle.seal_and_collect()
+            sources_candidate = _issuer_candidate(
+                key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                root_id=root_record["root_id"],
+                root_manifest_sha256=root_record["root_manifest_sha256"],
+                lifecycle_phase="sources_sealed",
+                barrier_id=barrier.barrier_id,
+                freeze_nonce=barrier.freeze_nonce,
+                source_manifest_sha256=corpus.source_manifest_sha256,
+                phase_version=2,
+                issuer_sequence=2,
+                updated_at_ms=3,
+                previous_state_sha256=barrier.state_sha256,
+            )
+            sources = issuer.reserve(sources_candidate)
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=sources,
+                verification_key=issuer.verification_key,
+                expected_prior_state_sha256=barrier.state_sha256,
+            )
+            issuer.commit(state=sources, parent_fd=parent_fd)
+            target_fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            result_read, result_write = os.pipe()
+            issuer_pid = issuer.process_id
+            socket_path = issuer._socket_path
+            ticket = issuer.recovery_ticket
+            verification_key = issuer.verification_key
+            child = os.fork()
+            if child == 0:
+                os.close(result_read)
+                _attempt_child_recovery_prepare_and_copy(
+                    socket_path,
+                    issuer_pid,
+                    ticket,
+                    sources,
+                    verification_key,
+                    root_fd,
+                    parent_fd,
+                    target_fd,
+                    result_write,
+                )
+                os._exit(0)
+            os.close(result_write)
+            result_write = -1
+            assert os.read(result_read, 1) == b"1"
+            _, child_status = os.waitpid(child, 0)
+            child = -1
+            assert os.waitstatus_to_exitcode(child_status) == 0
+            copied = checkpoint_module._read_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                target_basename=target.name,
+                verification_key=issuer.verification_key,
+            )
+            assert copied.lifecycle_phase == "copied_epoch0"
+            competing = sqlite3.connect(target, isolation_level=None, timeout=0.1)
+            try:
+                competing.execute("BEGIN IMMEDIATE")
+                competing.execute("ROLLBACK")
+            finally:
+                competing.close()
+        finally:
+            if child > 0:
+                with suppress(ProcessLookupError):
+                    os.kill(child, 9)
+                os.waitpid(child, 0)
+            for descriptor in (target_fd, result_read, result_write, root_fd, parent_fd):
+                if descriptor >= 0:
+                    with suppress(OSError):
+                        os.close(descriptor)
+            issuer.close()
 
     @pytest.mark.parametrize(
         "death_source",

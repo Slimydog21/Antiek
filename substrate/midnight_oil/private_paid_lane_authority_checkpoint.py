@@ -3480,6 +3480,22 @@ class Epoch0RecoveryCopyCompletionV1(_Closed):
     production_consumer_enabled: Literal[False] = False
 
 
+class Epoch0RecoveryCopyPreparationCompletionV1(_Closed):
+    schema_version: Literal[1] = 1
+    sealed_state: SignedMigrationLifecycleStateV1
+    prepared_state: SignedMigrationLifecycleStateV1
+    copy_audit: CopyAuditV1
+    synthetic_fixture_eligibility_only: Literal[True] = True
+    live_migration_verified: Literal[False] = False
+    user_accounting_effect: Literal[False] = False
+    transport_reachable: Literal[False] = False
+    confers_execution_authority: Literal[False] = False
+    confers_checkpoint_authority: Literal[False] = False
+    confers_sink_authority: Literal[False] = False
+    confers_transition_authority: Literal[False] = False
+    production_consumer_enabled: Literal[False] = False
+
+
 def _verify_signed_migration_recovery_ticket(
     ticket: SignedMigrationRecoveryTicketV1, verification_key: VerificationKeyV1
 ) -> None:
@@ -3664,6 +3680,65 @@ def _verify_epoch0_recovery_copy_completion_v1(
         or copied.target_store_id != audit.target_store_id
     ):
         raise ValueError("epoch0 recovery copy completion mismatch")
+
+
+def _verify_epoch0_recovery_copy_preparation_completion_v1(
+    completion: Epoch0RecoveryCopyPreparationCompletionV1,
+    *,
+    issuer_verification_key: VerificationKeyV1,
+    expected_sealed_pins: Epoch0RecoveryAuthorityPinsV1,
+) -> None:
+    if (
+        type(completion) is not Epoch0RecoveryCopyPreparationCompletionV1
+        or type(issuer_verification_key) is not VerificationKeyV1
+        or type(expected_sealed_pins) is not Epoch0RecoveryAuthorityPinsV1
+        or expected_sealed_pins.lifecycle_phase != "sources_sealed"
+    ):
+        raise ValueError("epoch0 recovery copy preparation completion type")
+    completion = Epoch0RecoveryCopyPreparationCompletionV1.model_validate(
+        completion.model_dump(mode="python")
+    )
+    sealed = completion.sealed_state
+    prepared = completion.prepared_state
+    audit = completion.copy_audit
+    _verify_signed_migration_lifecycle_state(sealed, issuer_verification_key)
+    _verify_migration_lifecycle_transition(sealed, prepared, issuer_verification_key)
+    sealed_pins = Epoch0RecoveryAuthorityPinsV1.model_validate(
+        {
+            "target_store_id": sealed.target_store_id,
+            "root_id": sealed.root_id,
+            "root_manifest_sha256": sealed.root_manifest_sha256,
+            "target_parent_dev": sealed.target_parent_dev,
+            "target_parent_ino": sealed.target_parent_ino,
+            "target_basename": sealed.target_basename,
+            "target_dev": sealed.target_dev,
+            "target_ino": sealed.target_ino,
+            "lifecycle_phase": sealed.lifecycle_phase,
+            "phase_version": sealed.phase_version,
+            "issuer_sequence": sealed.issuer_sequence,
+            "state_sha256": sealed.state_sha256,
+            "barrier_id": sealed.barrier_id,
+            "freeze_nonce": sealed.freeze_nonce,
+            "source_manifest_sha256": sealed.source_manifest_sha256,
+            "copy_audit_sha256": sealed.copy_audit_sha256,
+            "witness_sha256": sealed.witness_sha256,
+        }
+    )
+    audit_sha256 = _copy_audit_sha256(audit)
+    if (
+        sealed_pins != expected_sealed_pins
+        or sealed.lifecycle_phase != "sources_sealed"
+        or prepared.lifecycle_phase != "copy_prepared"
+        or prepared.phase_version != 3
+        or prepared.issuer_sequence != 3
+        or sealed.copy_audit_sha256 is not None
+        or prepared.copy_audit_sha256 != audit_sha256
+        or sealed.source_manifest_sha256 != audit.source_manifest_sha256
+        or prepared.source_manifest_sha256 != audit.source_manifest_sha256
+        or sealed.target_store_id != audit.target_store_id
+        or prepared.target_store_id != audit.target_store_id
+    ):
+        raise ValueError("epoch0 recovery copy preparation completion mismatch")
 
 
 _MAX_MIGRATION_LIFECYCLE_DOCUMENT_BYTES = 65_536
