@@ -17,6 +17,7 @@ or direct UI import (full-bleed scene webp).
 | werner_igloo_arcade_refedit_v1.jpg | image_edit from thinking pose (2026-07-16) | **PROMOTED** → `poses/session/werner_igloo_arcade_session_v1.webp` (Home arcade card) |
 | werner_midnight_oil_refedit_v1.jpg | image_edit from thinking pose (2026-07-16) | **PROMOTED** → `poses/session/werner_midnight_oil_session_v1.webp` (Midnight Oil panel) |
 | werner_crt_living_tv_refedit_v1.jpg | image_edit from thinking pose (2026-07-16) | **PROMOTED** → `poses/session/werner_crt_living_tv_session_v1.webp` (Home hero invent strip) |
+| werner_cascade_plan_refedit_v1.jpg | image_edit from thinking pose (2026-07-16) | **PROMOTED** → `poses/session/werner_cascade_plan_session_v1.webp` (DRW PlanEditor strip) |
 
 Product paths:
 

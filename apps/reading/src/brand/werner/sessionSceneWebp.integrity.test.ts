@@ -14,6 +14,7 @@ const PRODUCT_SCENE_WEBPS = [
   "./poses/session/werner_midnight_oil_session_v1.webp",
   "./poses/session/werner_igloo_arcade_session_v1.webp",
   "./poses/session/werner_thought_partner_desk_session_v1.webp",
+  "./poses/session/werner_cascade_plan_session_v1.webp",
 ] as const;
 
 describe("session scene webp product invent", () => {

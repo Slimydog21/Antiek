@@ -12,7 +12,7 @@
 import { useState } from "react";
 
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
-import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
+import cascadePlanArt from "../../brand/werner/poses/session/werner_cascade_plan_session_v1.webp";
 import LemonButton from "../../components/lemon/LemonButton";
 import type { PlanNode, PlanTree } from "../../api/research";
 
@@ -70,7 +70,7 @@ export default function PlanEditor({ tree, launchable, busy, onEdit, onApprove, 
         </div>
       </div>
       <img
-        src={livingTvArt}
+        src={cascadePlanArt}
         alt=""
         aria-hidden="true"
         data-testid="plan-editor-living-tv-art"
