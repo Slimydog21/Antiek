@@ -1,28 +1,57 @@
 /**
- * Living-TV ambient — quiet-period idle beat for Werner.
+ * Living-TV ambient — quiet-period episode continuity for Werner.
  *
  * Antiek is the home of the penguin: when the product is quiet for a while,
- * the asynchronous TV show takes a soft idle/sleeping glance. Never chases
+ * the asynchronous TV show takes a soft ambient glance that continues the
+ * last product "episode" (not a generic always-idle loop). Never chases
  * the cursor; never auto-starts games. Pure policy is unit-tested; the
  * installer wires timers + emitWernerExperience.
  */
 
-import { emitWernerExperience, type ProductExperience } from "./reactionBus";
+import {
+  emitWernerExperience,
+  isProductExperience,
+  type ProductExperience,
+  type WernerExperienceDetail,
+  WERNER_EXPERIENCE_EVENT,
+} from "./reactionBus";
 
-/** Default quiet window before ambient idle (90s). */
+/** Default quiet window before ambient episode (90s). */
 export const DEFAULT_AMBIENT_QUIET_MS = 90_000;
 
 /**
  * Pure policy: after `quietMs` without product experiences, return the ambient
- * experience to emit once. Null means stay silent.
+ * experience that continues the last episode. Null means stay silent.
+ *
+ * Episode continuity (hard to vary):
+ * - deep_research_start → idle (sleep while research runs)
+ * - deep_research_complete / piece_started → note_saved (soft pride savor)
+ * - fail / deep_research_error → idle (recover)
+ * - idle (already ambient) → null (no ambient spam loop)
+ * - default / null → idle
  */
 export function ambientExperienceAfterQuiet(
   quietMs: number,
   thresholdMs: number = DEFAULT_AMBIENT_QUIET_MS,
+  lastExperience: ProductExperience | null = null,
 ): ProductExperience | null {
   if (!Number.isFinite(quietMs) || quietMs < 0) return null;
   if (quietMs < thresholdMs) return null;
-  return "idle";
+  // Already showed ambient idle — stay silent until a real product beat.
+  if (lastExperience === "idle") return null;
+  switch (lastExperience) {
+    case "deep_research_complete":
+    case "piece_started":
+      return "note_saved";
+    case "deep_research_start":
+    case "fail":
+    case "deep_research_error":
+    case "highlight":
+    case "note_saved":
+    case null:
+    default:
+      return "idle";
+  }
 }
 
 export interface LivingTvAmbientOptions {
@@ -45,8 +74,9 @@ export interface LivingTvAmbientOptions {
 }
 
 /**
- * Install ambient living-TV heartbeat. Resets on any antiek:werner-experience.
- * Emits at most one idle per quiet window (re-arms after each product beat).
+ * Install ambient living-TV heartbeat with episode continuity.
+ * Resets on any antiek:werner-experience. Emits at most one ambient beat
+ * per quiet window (re-arms after each product beat).
  */
 export function installLivingTvAmbient(
   options: LivingTvAmbientOptions = {},
@@ -69,24 +99,36 @@ export function installLivingTvAmbient(
 
   let lastBeat = now();
   let armed = true;
+  let lastExperience: ProductExperience | null = null;
 
-  const onExperience = () => {
+  const onExperience = (event: Event) => {
     lastBeat = now();
     armed = true;
+    const detail = (event as CustomEvent<Partial<WernerExperienceDetail>>)
+      .detail;
+    const exp = detail?.experience;
+    if (isProductExperience(exp)) {
+      lastExperience = exp;
+    }
   };
 
   if (target) {
     target.addEventListener(
-      "antiek:werner-experience",
+      WERNER_EXPERIENCE_EVENT,
       onExperience as EventListener,
     );
   }
 
   const timerId = setInt(() => {
     const quietMs = now() - lastBeat;
-    const next = ambientExperienceAfterQuiet(quietMs, quietThreshold);
+    const next = ambientExperienceAfterQuiet(
+      quietMs,
+      quietThreshold,
+      lastExperience,
+    );
     if (next && armed) {
       armed = false;
+      lastExperience = next;
       emit(next);
       lastBeat = now();
     }
@@ -96,7 +138,7 @@ export function installLivingTvAmbient(
     clearInt(timerId);
     if (target) {
       target.removeEventListener(
-        "antiek:werner-experience",
+        WERNER_EXPERIENCE_EVENT,
         onExperience as EventListener,
       );
     }

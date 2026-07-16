@@ -104,10 +104,21 @@ start `highlight`, progress/score/wave `piece_started`, gameover `fail`.
 
 ## Ambient living-TV heartbeat (2026-07-16)
 
-`installLivingTvAmbient` (wired in `PenguinMascot`) emits a soft `idle` →
-sleeping emote after ~90s without product experiences, re-arms after any
+`installLivingTvAmbient` (wired in `PenguinMascot`) emits a soft ambient beat
+after ~90s without product experiences, re-arms after any
 `antiek:werner-experience`, and stays off under `prefers-reduced-motion`.
 Cursor model unchanged: ice bait instrument, no chase.
+
+### Episode continuity (craft156+)
+
+Ambient is not a generic always-idle loop. It continues the last product
+episode of the asynchronous TV show:
+
+| Last product experience | Ambient beat |
+|---|---|
+| deep_research_complete, piece_started | `note_saved` (soft pride savor) |
+| deep_research_start, fail, deep_research_error, highlight, note_saved, null | `idle` (sleep / recover) |
+| idle (already ambient) | silent (no ambient spam loop) |
 
 ## SessionBrandChrome (densify hard-to-vary)
 
