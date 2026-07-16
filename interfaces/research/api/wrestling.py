@@ -24,10 +24,12 @@ sees structured claims stream into the notes panel.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import sys
 import uuid
+from pathlib import Path
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate.
@@ -35,7 +37,7 @@ _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-from datetime import UTC  # noqa: E402
+from datetime import UTC, datetime  # noqa: E402
 
 from processing.embedding import (  # noqa: E402
     EmbeddingProvider,
@@ -50,6 +52,11 @@ from substrate.context_pack import (  # noqa: E402
     build_working_memory_layer,
 )
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
+from substrate.distillation_dispatch import (  # noqa: E402
+    CommandSnapshot,
+    CommandState,
+    DistillationDispatchJournal,
+)
 from substrate.event_log import (  # noqa: E402
     PhysicalTrajectoryError,
     emit_typed,
@@ -64,6 +71,7 @@ from substrate.graph import (  # noqa: E402
     insert_node,
 )
 from substrate.schemas import (  # noqa: E402
+    EVENT_SCHEMA_VERSION,
     ActionType,
     Claim,
     ConfidenceLevel,
@@ -122,6 +130,147 @@ def _sha256_prefix(s: str, n: int = 12) -> str:
 
 def _new_claim_id() -> str:
     return "c-" + uuid.uuid4().hex[:12]
+
+
+def _dispatch_policy_digest() -> str:
+    config_path = Path(_PKG_ROOT) / "substrate" / "dispatch" / "config.yaml"
+    return hashlib.sha256(config_path.read_bytes()).hexdigest()
+
+
+def _dispatch_binding(event: Event, full_prompt: str) -> dict[str, object]:
+    return {
+        "schema": "antiek.distillation-dispatch-binding.v1",
+        "request_event": event.model_dump(mode="json"),
+        "prompt_sha256": hashlib.sha256(full_prompt.encode("utf-8")).hexdigest(),
+        "role": "synthesizer",
+        "route_policy_sha256": _dispatch_policy_digest(),
+        "spend_projection": "unavailable_on_legacy_wrestling_route",
+    }
+
+
+async def _publish_distillation_delivery(
+    snapshot: CommandSnapshot,
+    journal: DistillationDispatchJournal,
+    broadcaster: EventBroadcaster,
+) -> None:
+    payload = snapshot.delivery_payload
+    if payload is None or snapshot.policy_id is None:
+        raise RuntimeError("completed distillation command has no durable delivery")
+    expected = _expected_delivery_event(snapshot, payload, snapshot.policy_id)
+    existing_event = _exact_physical_event(snapshot.investigation_id, expected)
+    if existing_event is None:
+        emitted = emit_typed(
+            snapshot.investigation_id,
+            payload,
+            parent_event_id=snapshot.request_event_id,
+            role="synthesizer",
+            document_id=snapshot.document_id,
+            policy_id=snapshot.policy_id,
+            event_id=snapshot.delivery_event_id,
+            idempotent=True,
+            strict_write=True,
+        )
+        if emitted is None:
+            return
+        existing_event = _exact_physical_event(snapshot.investigation_id, expected)
+        if existing_event is None:
+            raise PhysicalTrajectoryError("strict delivery append is not physically visible")
+    if snapshot.state is CommandState.COMPLETED:
+        journal.mark_delivered(snapshot.request_event_id)
+    if existing_event is not None:
+        with contextlib.suppress(Exception):  # durable delivery outranks broadcast
+            await broadcaster.broadcast(existing_event)
+
+
+async def _publish_ambiguous_distillation_notice(
+    snapshot: CommandSnapshot,
+    broadcaster: EventBroadcaster,
+) -> None:
+    text = (
+        "Synthesizer dispatch outcome is unknown. "
+        "No automatic retry was attempted."
+    )
+    payload = DistillationDeliveredPayload(
+        request_event_id=snapshot.request_event_id,
+        claims=[
+            Claim(
+                claim_id="c-ambiguous-" + _sha256_prefix(snapshot.request_event_id, 12)[7:],
+                text=text,
+                confidence="unknown",
+                attribution_region_ids=[],
+            )
+        ],
+        rendered_text=text,
+        rendered_text_hash=_sha256_prefix(text),
+        token_count=0,
+    )
+    expected = _expected_delivery_event(
+        snapshot, payload, "wrestling-fallback/ambiguous"
+    )
+    existing_event = _exact_physical_event(snapshot.investigation_id, expected)
+    if existing_event is None:
+        emitted = emit_typed(
+            snapshot.investigation_id,
+            payload,
+            parent_event_id=snapshot.request_event_id,
+            role="synthesizer",
+            document_id=snapshot.document_id,
+            policy_id="wrestling-fallback/ambiguous",
+            event_id=snapshot.delivery_event_id,
+            idempotent=True,
+            strict_write=True,
+        )
+        if emitted is None:
+            return
+        existing_event = _exact_physical_event(snapshot.investigation_id, expected)
+        if existing_event is None:
+            raise PhysicalTrajectoryError("strict ambiguity append is not physically visible")
+    if existing_event is not None:
+        with contextlib.suppress(Exception):  # durable notice outranks broadcast
+            await broadcaster.broadcast(existing_event)
+
+
+def _expected_delivery_event(
+    snapshot: CommandSnapshot,
+    payload: DistillationDeliveredPayload,
+    policy_id: str,
+) -> Event:
+    return Event(
+        event_id=snapshot.delivery_event_id,
+        investigation_id=snapshot.investigation_id,
+        role="synthesizer",
+        action_type=payload.action_type,
+        payload=payload,
+        parent_event_id=snapshot.request_event_id,
+        policy_id=policy_id,
+        param_version=ANTIEK_PARAM_VERSION,
+        schema_version=EVENT_SCHEMA_VERSION,
+        emitted_at=datetime.now(UTC),
+        document_id=snapshot.document_id,
+    )
+
+
+def _exact_physical_event(investigation_id: str, expected: Event) -> Event | None:
+    """Find one immutable event and reject substitution or corrupt storage."""
+    found: Event | None = None
+    for row in iter_physical_events(investigation_id):
+        if row.get("event_id") != expected.event_id:
+            continue
+        event = Event.model_validate(row)
+        actual = event.model_dump(mode="json", exclude={"emitted_at"})
+        identity = expected.model_dump(mode="json", exclude={"emitted_at"})
+        if actual != identity:
+            raise PhysicalTrajectoryError("distillation delivery identity conflicts with journal")
+        found = event
+    return found
+
+
+def _assert_delivery_id_absent(snapshot: CommandSnapshot) -> None:
+    for row in iter_physical_events(snapshot.investigation_id):
+        if row.get("event_id") == snapshot.delivery_event_id:
+            raise PhysicalTrajectoryError(
+                "distillation delivery identity exists before provider dispatch"
+            )
 
 
 def _extract_json_object(text: str) -> dict | None:
@@ -367,11 +516,11 @@ def make_distillation_handler(
 
         full_prompt = pack.text + "\n\n" + ROLE_PROMPT_TAIL
 
-        # Dispatch. If no provider is configured or the call fails,
-        # surface a single low-confidence claim with the error so the
-        # user sees something in the notes panel rather than silent
-        # failure. A future refinement: emit a dedicated
-        # ``distillation.failed`` event type.
+        # A working-memory integrity failure is proven pre-dispatch and keeps
+        # the existing no-provider fallback. Provider failures are different:
+        # without authoritative provider lookup they may represent an accepted
+        # paid call, so the durable command becomes ambiguous and emits no
+        # fabricated successful delivery.
         if memory_integrity_failed:
             response_text = (
                 "Investigation working memory could not be verified. "
@@ -380,24 +529,59 @@ def make_distillation_handler(
             token_count = 0
             policy_id = "wrestling-fallback/memory-integrity"
         else:
-            try:
-                result = dispatch(
-                    full_prompt,
-                    "synthesizer",
+            dispatch_journal = DistillationDispatchJournal(resolved_db)
+            async with dispatch_journal.async_execution_guard(event.event_id):
+                command = dispatch_journal.reserve(
+                    event.event_id,
+                    _dispatch_binding(event, full_prompt),
                     investigation_id=event.investigation_id,
-                    context_pack_event_id=pack.event_id,
-                    parent_event_id=event.event_id,
+                    document_id=event.document_id,
                 )
-                response_text = result.text
-                token_count = result.usage.output_tokens
-                policy_id = f"{result.provider}/{result.model}"
-            except (ProviderError, KeyError) as exc:
-                response_text = (
-                    "Could not dispatch a synthesizer call: "
-                    f"{type(exc).__name__}: {exc}"
+                if command.state is CommandState.SENDING:
+                    command = dispatch_journal.mark_ambiguous(event.event_id)
+                    await _publish_ambiguous_distillation_notice(command, broadcaster)
+                    return
+                if command.state is CommandState.AMBIGUOUS:
+                    await _publish_ambiguous_distillation_notice(command, broadcaster)
+                    return
+                if command.state in (CommandState.COMPLETED, CommandState.DELIVERED):
+                    await _publish_distillation_delivery(
+                        command, dispatch_journal, broadcaster
+                    )
+                    return
+                _assert_delivery_id_absent(command)
+                dispatch_journal.mark_sending(event.event_id)
+                try:
+                    result = dispatch(
+                        full_prompt,
+                        "synthesizer",
+                        investigation_id=event.investigation_id,
+                        context_pack_event_id=pack.event_id,
+                        parent_event_id=event.event_id,
+                    )
+                except (ProviderError, KeyError):
+                    command = dispatch_journal.mark_ambiguous(event.event_id)
+                    await _publish_ambiguous_distillation_notice(command, broadcaster)
+                    return
+                claims, rendered_text = _parse_claims_response(
+                    result.text, region_id=request.region_id
                 )
-                token_count = 0
-                policy_id = "wrestling-fallback/no-provider"
+                payload = DistillationDeliveredPayload(
+                    request_event_id=event.event_id,
+                    claims=claims,
+                    rendered_text=rendered_text,
+                    rendered_text_hash=_sha256_prefix(rendered_text),
+                    token_count=result.usage.output_tokens,
+                )
+                command = dispatch_journal.mark_completed(
+                    event.event_id,
+                    payload,
+                    policy_id=f"{result.provider}/{result.model}",
+                )
+                await _publish_distillation_delivery(
+                    command, dispatch_journal, broadcaster
+                )
+                return
 
         claims, rendered_text = _parse_claims_response(
             response_text, region_id=request.region_id
