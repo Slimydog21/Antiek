@@ -3496,6 +3496,21 @@ class Epoch0RecoveryCopyPreparationCompletionV1(_Closed):
     production_consumer_enabled: Literal[False] = False
 
 
+class Epoch0RecoveryBarrierAcquisitionCompletionV1(_Closed):
+    schema_version: Literal[1] = 1
+    schema_only_state: SignedMigrationLifecycleStateV1
+    barrier_acquired_state: SignedMigrationLifecycleStateV1
+    synthetic_fixture_eligibility_only: Literal[True] = True
+    live_migration_verified: Literal[False] = False
+    user_accounting_effect: Literal[False] = False
+    transport_reachable: Literal[False] = False
+    confers_execution_authority: Literal[False] = False
+    confers_checkpoint_authority: Literal[False] = False
+    confers_sink_authority: Literal[False] = False
+    confers_transition_authority: Literal[False] = False
+    production_consumer_enabled: Literal[False] = False
+
+
 def _verify_signed_migration_recovery_ticket(
     ticket: SignedMigrationRecoveryTicketV1, verification_key: VerificationKeyV1
 ) -> None:
@@ -3739,6 +3754,63 @@ def _verify_epoch0_recovery_copy_preparation_completion_v1(
         or prepared.target_store_id != audit.target_store_id
     ):
         raise ValueError("epoch0 recovery copy preparation completion mismatch")
+
+
+def _verify_epoch0_recovery_barrier_acquisition_completion_v1(
+    completion: Epoch0RecoveryBarrierAcquisitionCompletionV1,
+    *,
+    issuer_verification_key: VerificationKeyV1,
+    expected_schema_only_pins: Epoch0RecoveryAuthorityPinsV1,
+) -> None:
+    if (
+        type(completion) is not Epoch0RecoveryBarrierAcquisitionCompletionV1
+        or type(issuer_verification_key) is not VerificationKeyV1
+        or type(expected_schema_only_pins) is not Epoch0RecoveryAuthorityPinsV1
+        or expected_schema_only_pins.lifecycle_phase != "schema_only"
+    ):
+        raise ValueError("epoch0 recovery barrier acquisition completion type")
+    completion = Epoch0RecoveryBarrierAcquisitionCompletionV1.model_validate(
+        completion.model_dump(mode="python")
+    )
+    schema_only = completion.schema_only_state
+    barrier_acquired = completion.barrier_acquired_state
+    _verify_signed_migration_lifecycle_state(schema_only, issuer_verification_key)
+    _verify_migration_lifecycle_transition(schema_only, barrier_acquired, issuer_verification_key)
+    schema_only_pins = Epoch0RecoveryAuthorityPinsV1.model_validate(
+        {
+            "target_store_id": schema_only.target_store_id,
+            "root_id": schema_only.root_id,
+            "root_manifest_sha256": schema_only.root_manifest_sha256,
+            "target_parent_dev": schema_only.target_parent_dev,
+            "target_parent_ino": schema_only.target_parent_ino,
+            "target_basename": schema_only.target_basename,
+            "target_dev": schema_only.target_dev,
+            "target_ino": schema_only.target_ino,
+            "lifecycle_phase": schema_only.lifecycle_phase,
+            "phase_version": schema_only.phase_version,
+            "issuer_sequence": schema_only.issuer_sequence,
+            "state_sha256": schema_only.state_sha256,
+            "barrier_id": schema_only.barrier_id,
+            "freeze_nonce": schema_only.freeze_nonce,
+            "source_manifest_sha256": schema_only.source_manifest_sha256,
+            "copy_audit_sha256": schema_only.copy_audit_sha256,
+            "witness_sha256": schema_only.witness_sha256,
+        }
+    )
+    if (
+        schema_only_pins != expected_schema_only_pins
+        or schema_only.lifecycle_phase != "schema_only"
+        or barrier_acquired.lifecycle_phase != "barrier_acquired"
+        or barrier_acquired.phase_version != 1
+        or barrier_acquired.issuer_sequence != 1
+        or barrier_acquired.barrier_id is None
+        or barrier_acquired.freeze_nonce is None
+        or barrier_acquired.witness_sha256 is None
+        or barrier_acquired.source_manifest_sha256 is not None
+        or barrier_acquired.copy_audit_sha256 is not None
+        or barrier_acquired.barrier_id != _migration_barrier_id(barrier_acquired.freeze_nonce)
+    ):
+        raise ValueError("epoch0 recovery barrier acquisition completion mismatch")
 
 
 _MAX_MIGRATION_LIFECYCLE_DOCUMENT_BYTES = 65_536

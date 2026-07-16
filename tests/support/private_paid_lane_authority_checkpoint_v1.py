@@ -52,6 +52,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     CopyAuditV1,
     EncryptedSourceBundleMigrationRowV1,
     Epoch0RecoveryAuthorityPinsV1,
+    Epoch0RecoveryBarrierAcquisitionCompletionV1,
     Epoch0RecoveryCopyCompletionV1,
     Epoch0RecoveryCopyPreparationCompletionV1,
     FrozenPaidLaneMigrationCorpusV1,
@@ -105,6 +106,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _revocation_head_document_sha256,
     _source_head_document_sha256,
     _source_snapshot_sha256,
+    _verify_epoch0_recovery_barrier_acquisition_completion_v1,
     _verify_epoch0_recovery_copy_completion_v1,
     _verify_epoch0_recovery_copy_preparation_completion_v1,
     _verify_migration_lifecycle_genesis,
@@ -303,6 +305,40 @@ def _parse_issuer_recovery_copy_preparation_completion_document(
     return completion
 
 
+def _issuer_recovery_barrier_acquisition_completion_document(
+    completion: Epoch0RecoveryBarrierAcquisitionCompletionV1,
+) -> bytes:
+    material = completion.model_dump(mode="python")
+    for state_field in ("schema_only_state", "barrier_acquired_state"):
+        state = cast(dict[str, object], material[state_field])
+        signature = state.get("signature_ed25519")
+        if type(signature) is not bytes:
+            raise ValueError("issuer recovery barrier acquisition completion signature")
+        state["signature_ed25519"] = signature.hex()
+    encoded = _canonical_json(material)
+    if len(encoded) > _ISSUER_MAX_PACKET:
+        raise ValueError("issuer recovery barrier acquisition completion bound")
+    return encoded
+
+
+def _parse_issuer_recovery_barrier_acquisition_completion_document(
+    document: bytes,
+) -> Epoch0RecoveryBarrierAcquisitionCompletionV1:
+    material = _parse_strict_json(document, _ISSUER_MAX_PACKET)
+    for state_field in ("schema_only_state", "barrier_acquired_state"):
+        state = material.get(state_field)
+        if type(state) is not dict:
+            raise ValueError("issuer recovery barrier acquisition completion state")
+        signature = state.get("signature_ed25519")
+        if type(signature) is not str or not re.fullmatch(r"[0-9a-f]{128}", signature):
+            raise ValueError("issuer recovery barrier acquisition completion signature")
+        state["signature_ed25519"] = bytes.fromhex(signature)
+    completion = Epoch0RecoveryBarrierAcquisitionCompletionV1.model_validate(material)
+    if document != _issuer_recovery_barrier_acquisition_completion_document(completion):
+        raise ValueError("issuer recovery barrier acquisition completion canonical")
+    return completion
+
+
 def _issuer_received_descriptors(ancillary: list[tuple[int, int, bytes]]) -> list[int]:
     descriptors: list[int] = []
     for level, kind, data in ancillary:
@@ -413,6 +449,146 @@ def _issuer_transition_lock(root_fd: int) -> Iterator[None]:
     finally:
         fcntl.flock(descriptor, fcntl.LOCK_UN)
         os.close(descriptor)
+
+
+def _issuer_authenticate_schema_recovery_root(
+    root_fd: int,
+    *,
+    expected_root_id: str,
+    expected_root_manifest_sha256: str,
+) -> dict[str, object]:
+    root_path = _issuer_root_path(root_fd)
+    record = _issuer_root_record(root_fd)
+    if (
+        record["root_id"] != expected_root_id
+        or record["root_manifest_sha256"] != expected_root_manifest_sha256
+    ):
+        raise ValueError("issuer recovery schema root identity")
+    expected_children = {
+        role: os.fspath(_child_path(root_path, role).relative_to(root_path))
+        for role in _CHILD_ROLES
+    }
+    if record.get("child_adapters") != expected_children:
+        raise ValueError("issuer recovery child adapter roster")
+    measured = _measure_child_adapters(root_path)
+    _audit_child_phase(record, measured)
+    inventory = record.get("writer_inventory")
+    source_identities = record.get("source_store_identities")
+    created_at_ms = record.get("created_at_ms")
+    if (
+        type(inventory) is not list
+        or type(source_identities) is not list
+        or type(created_at_ms) is not int
+        or inventory != list(_CHILD_ROLES)
+        or source_identities != list(_CHILD_ROLES)
+    ):
+        raise ValueError("issuer recovery inventory shape")
+    manifest = {
+        "root_id": record.get("root_id"),
+        "writer_inventory": inventory,
+        "source_store_identities": source_identities,
+        "created_at_ms": created_at_ms,
+    }
+    if (
+        record["inventory_sha256"] != hashlib.sha256(_canonical_json(inventory)).hexdigest()
+        or record["root_manifest_sha256"]
+        != hashlib.sha256(_canonical_json(manifest)).hexdigest()
+    ):
+        raise ValueError("issuer recovery inventory hash")
+    return record
+
+
+def _issuer_durable_write_root_record(root_fd: int, record: dict[str, object]) -> None:
+    root_info = os.fstat(root_fd)
+    if (
+        not stat.S_ISDIR(root_info.st_mode)
+        or root_info.st_uid != os.getuid()
+        or stat.S_IMODE(root_info.st_mode) != 0o700
+    ):
+        raise ValueError("issuer recovery root persistence identity")
+    encoded = _canonical_json(record)
+    if not 0 < len(encoded) <= 1_048_576:
+        raise ValueError("issuer recovery root persistence bound")
+    temporary = f".{_SUPPORT_ROOT_STATE}.recovery-{os.getpid()}-{secrets.token_hex(8)}.tmp"
+    descriptor = os.open(
+        temporary,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+        dir_fd=root_fd,
+    )
+    renamed = False
+    try:
+        view = memoryview(encoded)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise OSError("short issuer recovery root write")
+            view = view[written:]
+        os.fsync(descriptor)
+        os.replace(
+            temporary,
+            _SUPPORT_ROOT_STATE,
+            src_dir_fd=root_fd,
+            dst_dir_fd=root_fd,
+        )
+        renamed = True
+        os.fsync(root_fd)
+    finally:
+        os.close(descriptor)
+        if not renamed:
+            with suppress(FileNotFoundError):
+                os.unlink(temporary, dir_fd=root_fd)
+
+
+def _issuer_barrier_material_for_schema_recovery(
+    record: dict[str, object], *, root_ahead: bool
+) -> tuple[str, str, bool]:
+    if root_ahead:
+        barrier_id = record.get("barrier_id")
+        freeze_nonce = record.get("freeze_nonce")
+        evidence = record.get("transition_evidence")
+        created_at_ms = record.get("created_at_ms")
+        if (
+            record.get("state") != "quiesced"
+            or type(barrier_id) is not str
+            or type(freeze_nonce) is not str
+            or not re.fullmatch(r"[0-9a-f]{64}", freeze_nonce)
+            or barrier_id != _migration_barrier_id(freeze_nonce)
+            or type(created_at_ms) is not int
+            or record.get("acquired_at_ms") != created_at_ms
+            or type(evidence) is not list
+            or len(evidence) != 1
+            or type(evidence[0]) is not dict
+            or evidence[0].get("operation") != "acquire_writer_barrier"
+            or evidence[0].get("prior_state") != "open"
+            or evidence[0].get("next_state") != "quiesced"
+        ):
+            raise ValueError("issuer recovery root-ahead barrier")
+        return barrier_id, freeze_nonce, False
+    if (
+        record.get("state") != "open"
+        or record.get("barrier_id") is not None
+        or record.get("freeze_nonce") is not None
+        or "acquired_at_ms" in record
+        or record.get("transition_evidence") != []
+    ):
+        raise ValueError("issuer recovery schema root state")
+    freeze_nonce = secrets.token_hex(32)
+    barrier_id = _migration_barrier_id(freeze_nonce)
+    created_at_ms = record.get("created_at_ms")
+    if type(created_at_ms) is not int:
+        raise ValueError("issuer recovery root creation timestamp")
+    record["freeze_nonce"] = freeze_nonce
+    record["barrier_id"] = barrier_id
+    record["acquired_at_ms"] = created_at_ms
+    _append_transition_evidence(
+        record,
+        operation="acquire_writer_barrier",
+        prior_state="open",
+        next_state="quiesced",
+    )
+    record["state"] = "quiesced"
+    return barrier_id, freeze_nonce, True
 
 
 def _issuer_compatible_root_record(root_fd: int, phase: object) -> dict[str, object]:
@@ -940,6 +1116,9 @@ def _fixture_migration_lifecycle_issuer_main(
     recovery_admission: SignedEpoch0RecoveryAdmissionV1 | None = None
     recovery_copy_completion: Epoch0RecoveryCopyCompletionV1 | None = None
     recovery_copy_preparation_completion: Epoch0RecoveryCopyPreparationCompletionV1 | None = None
+    recovery_barrier_acquisition_completion: Epoch0RecoveryBarrierAcquisitionCompletionV1 | None = (
+        None
+    )
     recovery_peer_exited = False
     recovery_peer_pid: int | None = None
     pending_recovery_peer_pid: int | None = None
@@ -962,6 +1141,166 @@ def _fixture_migration_lifecycle_issuer_main(
     ) -> None:
         mapped: _RecoveryFaultBoundary = cast(_RecoveryFaultBoundary, f"prepare_{boundary}")
         inject_recovery_fault(mapped)
+
+    def recover_schema_only_to_barrier_acquired(
+        *,
+        session_root_fd: int,
+        session_parent_fd: int,
+        session_target_fd: int,
+        expected_schema_only_state_sha256: str,
+        expected_pins: Epoch0RecoveryAuthorityPinsV1,
+    ) -> Epoch0RecoveryBarrierAcquisitionCompletionV1:
+        nonlocal committed, pending_candidate, pending_state
+        nonlocal recovery_barrier_acquisition_completion
+        del session_target_fd
+        if (
+            committed is None
+            or expected_pins.lifecycle_phase != "schema_only"
+            or expected_pins.state_sha256 != expected_schema_only_state_sha256
+            or pending_state is not None
+        ):
+            raise ValueError("issuer recovery barrier acquisition phase")
+        durable = _read_signed_migration_lifecycle_state(
+            parent_fd=session_parent_fd,
+            target_basename=expected_pins.target_basename,
+            verification_key=verification_key,
+        )
+        if (
+            recovery_barrier_acquisition_completion is not None
+            and durable == recovery_barrier_acquisition_completion.barrier_acquired_state
+        ):
+            with _issuer_transition_lock(session_root_fd):
+                durable = _confirm_signed_migration_lifecycle_state_durable(
+                    parent_fd=session_parent_fd,
+                    expected_state=recovery_barrier_acquisition_completion.barrier_acquired_state,
+                    verification_key=verification_key,
+                )
+                root_record = _issuer_authenticate_schema_recovery_root(
+                    session_root_fd,
+                    expected_root_id=expected_pins.root_id,
+                    expected_root_manifest_sha256=expected_pins.root_manifest_sha256,
+                )
+                if (
+                    root_record.get("state") != "quiesced"
+                    or root_record.get("barrier_id")
+                    != recovery_barrier_acquisition_completion.barrier_acquired_state.barrier_id
+                    or root_record.get("freeze_nonce")
+                    != recovery_barrier_acquisition_completion.barrier_acquired_state.freeze_nonce
+                ):
+                    raise ValueError("issuer recovery barrier acquisition replay root")
+                committed = durable
+                return recovery_barrier_acquisition_completion
+        if (
+            committed.lifecycle_phase != "schema_only"
+            or committed.state_sha256 != expected_schema_only_state_sha256
+            or durable != committed
+        ):
+            raise ValueError("issuer recovery schema journal")
+        schema_only = committed
+        with _issuer_transition_lock(session_root_fd):
+            root_record = _issuer_authenticate_schema_recovery_root(
+                session_root_fd,
+                expected_root_id=schema_only.root_id,
+                expected_root_manifest_sha256=schema_only.root_manifest_sha256,
+            )
+            root_ahead = (
+                root_record.get("state") == "quiesced"
+                and root_record.get("barrier_id") is not None
+            )
+            if root_ahead and root_record.get("state") != "quiesced":
+                raise ValueError("issuer recovery schema root-ahead state")
+            if not root_ahead and root_record.get("state") != "open":
+                raise ValueError("issuer recovery schema root state")
+            working_root = dict(root_record)
+            barrier_id, freeze_nonce, mutate_root = _issuer_barrier_material_for_schema_recovery(
+                working_root,
+                root_ahead=root_ahead,
+            )
+            witness_sha256 = _issuer_witness_sha256(
+                root_record=working_root,
+                target_parent_identity=(
+                    schema_only.target_parent_dev,
+                    schema_only.target_parent_ino,
+                ),
+                target_basename=schema_only.target_basename,
+                target_identity=(schema_only.target_dev, schema_only.target_ino),
+            )
+            if recovery_barrier_acquisition_completion is None:
+                material = schema_only.model_dump(
+                    mode="python",
+                    exclude={"issuer_key_id", "state_sha256", "signature_ed25519"},
+                )
+                material.update(
+                    {
+                        "lifecycle_phase": "barrier_acquired",
+                        "phase_version": 1,
+                        "issuer_sequence": 1,
+                        "updated_at_ms": max(schema_only.updated_at_ms, time.time_ns() // 1_000_000),
+                        "previous_state_sha256": schema_only.state_sha256,
+                        "barrier_id": barrier_id,
+                        "freeze_nonce": freeze_nonce,
+                        "witness_sha256": witness_sha256,
+                        "issuer_key_id": key_id,
+                    }
+                )
+                state_sha256 = _migration_lifecycle_state_sha256(material)
+                material["state_sha256"] = state_sha256
+                material["signature_ed25519"] = private_key.sign(
+                    _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
+                )
+                barrier_acquired = SignedMigrationLifecycleStateV1.model_validate(material)
+                recovery_barrier_acquisition_completion = Epoch0RecoveryBarrierAcquisitionCompletionV1(
+                    schema_only_state=schema_only,
+                    barrier_acquired_state=barrier_acquired,
+                )
+            else:
+                if (
+                    recovery_barrier_acquisition_completion.schema_only_state != schema_only
+                    or recovery_barrier_acquisition_completion.barrier_acquired_state.barrier_id
+                    != barrier_id
+                    or recovery_barrier_acquisition_completion.barrier_acquired_state.freeze_nonce
+                    != freeze_nonce
+                    or recovery_barrier_acquisition_completion.barrier_acquired_state.witness_sha256
+                    != witness_sha256
+                ):
+                    raise ValueError("issuer recovery barrier acquisition cached completion")
+                barrier_acquired = recovery_barrier_acquisition_completion.barrier_acquired_state
+            _verify_epoch0_recovery_barrier_acquisition_completion_v1(
+                recovery_barrier_acquisition_completion,
+                issuer_verification_key=verification_key,
+                expected_schema_only_pins=expected_pins,
+            )
+            if mutate_root:
+                _issuer_durable_write_root_record(session_root_fd, working_root)
+                reread_root = _issuer_authenticate_schema_recovery_root(
+                    session_root_fd,
+                    expected_root_id=schema_only.root_id,
+                    expected_root_manifest_sha256=schema_only.root_manifest_sha256,
+                )
+                if (
+                    reread_root.get("state") != "quiesced"
+                    or reread_root.get("barrier_id") != barrier_id
+                    or reread_root.get("freeze_nonce") != freeze_nonce
+                    or len(cast(list[object], reread_root.get("transition_evidence"))) != 1
+                ):
+                    raise ValueError("issuer recovery barrier root reread")
+            _persist_signed_migration_lifecycle_state(
+                parent_fd=session_parent_fd,
+                state=barrier_acquired,
+                verification_key=verification_key,
+                expected_prior_state_sha256=schema_only.state_sha256,
+            )
+            reread = _read_signed_migration_lifecycle_state(
+                parent_fd=session_parent_fd,
+                target_basename=schema_only.target_basename,
+                verification_key=verification_key,
+            )
+            if reread != barrier_acquired:
+                raise ValueError("issuer recovery barrier journal reread")
+            committed = barrier_acquired
+            pending_candidate = None
+            pending_state = None
+            return recovery_barrier_acquisition_completion
 
     def recover_sources_sealed_to_copy_prepared(
         *,
@@ -1575,6 +1914,7 @@ def _fixture_migration_lifecycle_issuer_main(
                         (
                             recovery_copy_completion is not None
                             or recovery_copy_preparation_completion is not None
+                            or recovery_barrier_acquisition_completion is not None
                         )
                         and recovery_admission_request == request_bytes
                         and recovery_admission is not None
@@ -1582,8 +1922,7 @@ def _fixture_migration_lifecycle_issuer_main(
                     ):
                         if recovery_copy_completion is not None:
                             effective_state = recovery_copy_completion.copied_state
-                        else:
-                            assert recovery_copy_preparation_completion is not None
+                        elif recovery_copy_preparation_completion is not None:
                             observed_recovery_state = _read_signed_migration_lifecycle_state(
                                 parent_fd=received_descriptors[1],
                                 target_basename=(
@@ -1596,6 +1935,23 @@ def _fixture_migration_lifecycle_issuer_main(
                                 recovery_copy_preparation_completion.prepared_state,
                             ):
                                 raise ValueError("issuer recovery preparation effective state")
+                            effective_state = observed_recovery_state
+                        else:
+                            assert recovery_barrier_acquisition_completion is not None
+                            observed_recovery_state = _read_signed_migration_lifecycle_state(
+                                parent_fd=received_descriptors[1],
+                                target_basename=(
+                                    recovery_barrier_acquisition_completion.schema_only_state.target_basename
+                                ),
+                                verification_key=verification_key,
+                            )
+                            if observed_recovery_state not in (
+                                recovery_barrier_acquisition_completion.schema_only_state,
+                                recovery_barrier_acquisition_completion.barrier_acquired_state,
+                            ):
+                                raise ValueError(
+                                    "issuer recovery barrier acquisition effective state"
+                                )
                             effective_state = observed_recovery_state
                         authentication_pins = _issuer_recovery_pins_from_state(
                             effective_state
@@ -1731,6 +2087,13 @@ def _fixture_migration_lifecycle_issuer_main(
                                 expected_fields = common_fields | {
                                     "expected_sources_sealed_state_sha256"
                                 }
+                            elif (
+                                session_command
+                                == "session_recover_schema_only_to_barrier_acquired"
+                            ):
+                                expected_fields = common_fields | {
+                                    "expected_schema_only_state_sha256"
+                                }
                             else:
                                 expected_fields = common_fields
                             if set(session_request) != expected_fields or (
@@ -1746,6 +2109,24 @@ def _fixture_migration_lifecycle_issuer_main(
                             if recovery_copy_completion is not None:
                                 effective_descriptor_pins = _issuer_recovery_pins_from_state(
                                     recovery_copy_completion.copied_state
+                                )
+                            elif recovery_barrier_acquisition_completion is not None:
+                                durable_recovery_state = _read_signed_migration_lifecycle_state(
+                                    parent_fd=session_parent_fd,
+                                    target_basename=(
+                                        recovery_barrier_acquisition_completion.schema_only_state.target_basename
+                                    ),
+                                    verification_key=verification_key,
+                                )
+                                if durable_recovery_state not in (
+                                    recovery_barrier_acquisition_completion.schema_only_state,
+                                    recovery_barrier_acquisition_completion.barrier_acquired_state,
+                                ):
+                                    raise ValueError(
+                                        "issuer recovery barrier acquisition effective state"
+                                    )
+                                effective_descriptor_pins = _issuer_recovery_pins_from_state(
+                                    durable_recovery_state
                                 )
                             elif recovery_copy_preparation_completion is not None:
                                 durable_recovery_state = _read_signed_migration_lifecycle_state(
@@ -1780,6 +2161,51 @@ def _fixture_migration_lifecycle_issuer_main(
                                     )
                                 )
                                 continue
+                            if (
+                                session_command
+                                == "session_recover_schema_only_to_barrier_acquired"
+                            ):
+                                expected_schema_only_state_sha256 = session_request.get(
+                                    "expected_schema_only_state_sha256"
+                                )
+                                if type(
+                                    expected_schema_only_state_sha256
+                                ) is not str or not re.fullmatch(
+                                    r"[0-9a-f]{64}", expected_schema_only_state_sha256
+                                ):
+                                    raise ValueError("issuer recovery barrier expected state")
+                                try:
+                                    _issuer_authenticate_recovery_descriptors(
+                                        root_fd=session_root_fd,
+                                        parent_fd=session_parent_fd,
+                                        target_fd=session_target_fd,
+                                        ticket=recovery_ticket,
+                                        verification_key=verification_key,
+                                        raw_pins=effective_descriptor_pins.model_dump(mode="json"),
+                                    )
+                                    barrier_completion = recover_schema_only_to_barrier_acquired(
+                                        session_root_fd=session_root_fd,
+                                        session_parent_fd=session_parent_fd,
+                                        session_target_fd=session_target_fd,
+                                        expected_schema_only_state_sha256=(
+                                            expected_schema_only_state_sha256
+                                        ),
+                                        expected_pins=recovery_admission.authority_pins,
+                                    )
+                                    if supervisor_exited() or recovery_peer_exited:
+                                        return
+                                except Exception:
+                                    connection.sendall(_issuer_session_frame(b"E"))
+                                    continue
+                                connection.sendall(
+                                    _issuer_session_frame(
+                                        b"Y"
+                                        + _issuer_recovery_barrier_acquisition_completion_document(
+                                            barrier_completion
+                                        )
+                                    )
+                                )
+                                continue
                             if session_command == "session_recover_sources_sealed_to_copy_prepared":
                                 expected_sealed_state_sha256 = session_request.get(
                                     "expected_sources_sealed_state_sha256"
@@ -1799,7 +2225,7 @@ def _fixture_migration_lifecycle_issuer_main(
                                         verification_key=verification_key,
                                         raw_pins=effective_descriptor_pins.model_dump(mode="json"),
                                     )
-                                    completion = recover_sources_sealed_to_copy_prepared(
+                                    preparation_completion = recover_sources_sealed_to_copy_prepared(
                                         session_root_fd=session_root_fd,
                                         session_parent_fd=session_parent_fd,
                                         session_target_fd=session_target_fd,
@@ -1817,7 +2243,7 @@ def _fixture_migration_lifecycle_issuer_main(
                                     _issuer_session_frame(
                                         b"Y"
                                         + _issuer_recovery_copy_preparation_completion_document(
-                                            completion
+                                            preparation_completion
                                         )
                                     )
                                 )
@@ -2312,12 +2738,14 @@ class FixtureMigrationRecoverySessionV1:
     _descriptors: tuple[int, int, int]
     _handle_nonce: str
     _lock: threading.Lock
+    _barrier_acquisition_completion: Epoch0RecoveryBarrierAcquisitionCompletionV1 | None
     _preparation_completion: Epoch0RecoveryCopyPreparationCompletionV1 | None
     _ticket: SignedMigrationRecoveryTicketV1
     _verification_key: VerificationKeyV1
 
     __slots__ = (
         "_admission",
+        "_barrier_acquisition_completion",
         "_boot_nonce",
         "_closed",
         "_connection",
@@ -2442,6 +2870,7 @@ class FixtureMigrationRecoverySessionV1:
         object.__setattr__(session, "_descriptors", tuple(duplicates))
         object.__setattr__(session, "_handle_nonce", handle_nonce)
         object.__setattr__(session, "_lock", threading.Lock())
+        object.__setattr__(session, "_barrier_acquisition_completion", None)
         object.__setattr__(session, "_preparation_completion", None)
         object.__setattr__(session, "_ticket", recovery_ticket)
         object.__setattr__(session, "_verification_key", verification_key)
@@ -2535,6 +2964,56 @@ class FixtureMigrationRecoverySessionV1:
             except Exception:
                 self._close_local()
                 raise
+
+    def recover_schema_only_to_barrier_acquired(
+        self, *, expected_schema_only_state_sha256: str
+    ) -> Epoch0RecoveryBarrierAcquisitionCompletionV1:
+        self._validate()
+        schema_pins = self._admission.authority_pins
+        if (
+            not re.fullmatch(r"[0-9a-f]{64}", expected_schema_only_state_sha256)
+            or schema_pins.lifecycle_phase != "schema_only"
+            or schema_pins.state_sha256 != expected_schema_only_state_sha256
+        ):
+            raise ValueError("fixture recovery schema-only state")
+        request = _canonical_json(
+            {
+                "command": "session_recover_schema_only_to_barrier_acquired",
+                "admission_sha256": self._admission.admission_sha256,
+                "handle_nonce": self._handle_nonce,
+                "expected_schema_only_state_sha256": expected_schema_only_state_sha256,
+            }
+        )
+        with self._lock:
+            try:
+                self._connection.sendall(_issuer_session_frame(request))
+                response = _issuer_session_receive_frame(self._connection)
+            except Exception:
+                self._close_local()
+                raise
+            if response == b"E":
+                raise ValueError("fixture recovery barrier acquisition rejected")
+            try:
+                if response[:1] != b"Y":
+                    raise ValueError("fixture recovery barrier acquisition response")
+                completion = _parse_issuer_recovery_barrier_acquisition_completion_document(
+                    response[1:]
+                )
+                _verify_epoch0_recovery_barrier_acquisition_completion_v1(
+                    completion,
+                    issuer_verification_key=self._verification_key,
+                    expected_schema_only_pins=schema_pins,
+                )
+                if (
+                    self._barrier_acquisition_completion is not None
+                    and completion != self._barrier_acquisition_completion
+                ):
+                    raise ValueError("fixture recovery barrier acquisition replay")
+                object.__setattr__(self, "_barrier_acquisition_completion", completion)
+            except Exception:
+                self._close_local()
+                raise
+            return completion
 
     def recover_copy_prepared_epoch0(
         self, *, expected_prepared_state_sha256: str

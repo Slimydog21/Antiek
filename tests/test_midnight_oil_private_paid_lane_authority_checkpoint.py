@@ -819,6 +819,113 @@ def _attempt_child_recovery_prepare_and_copy(
         os.close(result_fd)
 
 
+def _attempt_child_recovery_schema_barrier(
+    socket_path: str,
+    issuer_pid: int,
+    ticket: checkpoint_module.SignedMigrationRecoveryTicketV1,
+    genesis: checkpoint_module.SignedMigrationLifecycleStateV1,
+    verification_key: checkpoint_module.VerificationKeyV1,
+    root_fd: int,
+    parent_fd: int,
+    target_fd: int,
+    result_fd: int,
+    *,
+    root_ahead: bool,
+) -> None:
+    session: support_checkpoint.FixtureMigrationRecoverySessionV1 | None = None
+    try:
+        genesis_pins = _recovery_pins(genesis)
+        target_path = support_checkpoint._issuer_fd_path(target_fd)
+        observed_target = sqlite3.connect(target_path)
+        try:
+            schema_only_image = observed_target.serialize()
+        finally:
+            observed_target.close()
+        session = support_checkpoint.FixtureMigrationRecoverySessionV1.open(
+            socket_path=socket_path,
+            expected_issuer_pid=issuer_pid,
+            recovery_ticket=ticket,
+            verification_key=verification_key,
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+            authority_pins=genesis_pins,
+        )
+        admission = session.admission
+        dropped_request = _canonical_json(
+            {
+                "command": "session_recover_schema_only_to_barrier_acquired",
+                "admission_sha256": admission.admission_sha256,
+                "handle_nonce": admission.handle_nonce,
+                "expected_schema_only_state_sha256": genesis.state_sha256,
+            }
+        )
+        session._connection.sendall(support_checkpoint._issuer_session_frame(dropped_request))
+        session._close_local()
+        session = support_checkpoint.FixtureMigrationRecoverySessionV1.reopen_exact(
+            socket_path=socket_path,
+            expected_issuer_pid=issuer_pid,
+            recovery_ticket=ticket,
+            admission=admission,
+            verification_key=verification_key,
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+        )
+        acquisition = session.recover_schema_only_to_barrier_acquired(
+            expected_schema_only_state_sha256=genesis.state_sha256
+        )
+        checkpoint_module._verify_epoch0_recovery_barrier_acquisition_completion_v1(
+            acquisition,
+            issuer_verification_key=verification_key,
+            expected_schema_only_pins=genesis_pins,
+        )
+        assert acquisition.schema_only_state == genesis
+        assert acquisition.barrier_acquired_state.lifecycle_phase == "barrier_acquired"
+        assert (
+            session.recover_schema_only_to_barrier_acquired(
+                expected_schema_only_state_sha256=genesis.state_sha256
+            )
+            == acquisition
+        )
+        observed_target = sqlite3.connect(target_path)
+        try:
+            assert observed_target.serialize() == schema_only_image
+        finally:
+            observed_target.close()
+        competing = sqlite3.connect(target_path, isolation_level=None, timeout=0.1)
+        try:
+            competing.execute("BEGIN IMMEDIATE")
+            competing.execute("ROLLBACK")
+        finally:
+            competing.close()
+        if not root_ahead:
+            forbidden_request = _canonical_json(
+                {
+                    "command": "session_recover_schema_only_to_barrier_acquired",
+                    "admission_sha256": admission.admission_sha256,
+                    "handle_nonce": admission.handle_nonce,
+                    "expected_schema_only_state_sha256": genesis.state_sha256,
+                    "fault_boundary": "after_rename",
+                }
+            )
+            session._connection.sendall(
+                support_checkpoint._issuer_session_frame(forbidden_request)
+            )
+            assert support_checkpoint._issuer_session_receive_frame(session._connection) == b"E"
+        session.close()
+        os.write(result_fd, b"1")
+    except BaseException as error:
+        os.write(
+            result_fd,
+            b"0" + type(error).__name__.encode("ascii") + b":" + str(error).encode("utf-8"),
+        )
+    finally:
+        if session is not None:
+            session.close()
+        os.close(result_fd)
+
+
 def _reopen_precutover(case: Any) -> PrivatePaidLaneEligibilityCheckpointStoreV1:
     semantic = compute_private_paid_lane_semantic_sha256()
     return PrivatePaidLaneEligibilityCheckpointStoreV1.open(
@@ -3546,6 +3653,132 @@ class TestMigrationPrerequisites:
             issuer.close()
             os.close(root_fd)
             os.close(parent_fd)
+
+    @pytest.mark.parametrize("root_ahead", (False, True))
+    def test_recovery_schema_only_to_barrier_acquired(
+        self, tmp_path: Path, root_ahead: bool
+    ) -> None:
+        target = tmp_path / "paid-lane.sqlite3"
+        _initialize_schema_only_copy_target(target)
+        target.chmod(0o600)
+        target_info = target.stat()
+        root = SupportLegacyRootV1.create_new(
+            root_path=tmp_path / "issuer-root",
+            root_id="issuer-root-schema-barrier-1",
+            writer_inventory=support_checkpoint._CHILD_ROLES,
+            source_store_identities=support_checkpoint._CHILD_ROLES,
+            now_ms=1,
+        )
+        root_record = json.loads(
+            (root.root_path / "legacy-root-state-v1.json").read_text(encoding="utf-8")
+        )
+        root_fd = os.open(root.root_path, os.O_RDONLY)
+        parent_fd = os.open(tmp_path, os.O_RDONLY)
+        parent_info = os.fstat(parent_fd)
+        target_fd = -1
+        child = -1
+        result_read = result_write = -1
+        issuer = support_checkpoint.FixtureMigrationLifecycleIssuerV1.spawn(
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_basename=target.name,
+            provider_capability_verification_keys=(),
+            provider_revocation_verification_keys=(),
+            source_head_verification_keys=(),
+            provider_revocation_floor_pins=(),
+            source_floor_pins=(),
+            expected_target_store_id=STORE_ID,
+            expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+            expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+        )
+        try:
+            key = Ed25519PrivateKey.from_private_bytes(b"s" * 32)
+            genesis_candidate = _issuer_candidate(
+                key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                root_id=root_record["root_id"],
+                root_manifest_sha256=root_record["root_manifest_sha256"],
+            )
+            genesis = issuer.reserve(genesis_candidate)
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=genesis,
+                verification_key=issuer.verification_key,
+                expected_prior_state_sha256=None,
+            )
+            issuer.commit(state=genesis, parent_fd=parent_fd)
+            if root_ahead:
+                root.acquire_writer_barrier(
+                    expected_root_id=root_record["root_id"],
+                    expected_root_manifest_sha256=root_record["root_manifest_sha256"],
+                    expected_inventory_sha256=root_record["inventory_sha256"],
+                )
+            target_fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            result_read, result_write = os.pipe()
+            issuer_pid = issuer.process_id
+            socket_path = issuer._socket_path
+            ticket = issuer.recovery_ticket
+            verification_key = issuer.verification_key
+            child = os.fork()
+            if child == 0:
+                os.close(result_read)
+                _attempt_child_recovery_schema_barrier(
+                    socket_path,
+                    issuer_pid,
+                    ticket,
+                    genesis,
+                    verification_key,
+                    root_fd,
+                    parent_fd,
+                    target_fd,
+                    result_write,
+                    root_ahead=root_ahead,
+                )
+                os._exit(0)
+            os.close(result_write)
+            result_write = -1
+            recovery_result = os.read(result_read, 4_096)
+            assert recovery_result == b"1", recovery_result
+            _, child_status = os.waitpid(child, 0)
+            child = -1
+            assert os.waitstatus_to_exitcode(child_status) == 0
+            barrier_acquired = checkpoint_module._read_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                target_basename=target.name,
+                verification_key=issuer.verification_key,
+            )
+            assert barrier_acquired.lifecycle_phase == "barrier_acquired"
+            assert barrier_acquired.phase_version == 1
+            assert barrier_acquired.issuer_sequence == 1
+            assert barrier_acquired.barrier_id is not None
+            assert barrier_acquired.witness_sha256 is not None
+            checkpoint_module._verify_migration_lifecycle_transition(
+                genesis, barrier_acquired, issuer.verification_key
+            )
+            durable_root = json.loads(
+                (root.root_path / "legacy-root-state-v1.json").read_text(encoding="utf-8")
+            )
+            evidence = durable_root["transition_evidence"]
+            assert len(evidence) == 1
+            assert evidence[0]["operation"] == "acquire_writer_barrier"
+            assert evidence[0]["prior_state"] == "open"
+            assert evidence[0]["next_state"] == "quiesced"
+            assert durable_root["barrier_id"] == barrier_acquired.barrier_id
+            assert durable_root["freeze_nonce"] == barrier_acquired.freeze_nonce
+            assert durable_root["state"] == "quiesced"
+        finally:
+            if child > 0:
+                with suppress(ProcessLookupError):
+                    os.kill(child, 9)
+                os.waitpid(child, 0)
+            for descriptor in (target_fd, result_read, result_write, root_fd, parent_fd):
+                if descriptor >= 0:
+                    with suppress(OSError):
+                        os.close(descriptor)
+            issuer.close()
 
     @pytest.mark.parametrize(
         ("with_rows", "prepare_fault_boundary"),
