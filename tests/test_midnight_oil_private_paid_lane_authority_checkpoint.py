@@ -3950,6 +3950,127 @@ class TestProductionWritersDeferred:
         with pytest.raises(TypeError):
             pickle.dumps(handle)
 
+    @pytest.mark.parametrize(
+        ("slot", "value"),
+        (
+            ("_migration_stage_handle", object()),
+            ("_prepared_cutover_intent_sha256", "ab" * 32),
+        ),
+    )
+    def test_migration_authority_slots_are_bound_into_construction_mac(
+        self, tmp_path: Path, slot: str, value: object
+    ) -> None:
+        case = fixture_store_case(tmp_path / slot)
+        object.__setattr__(case.store, slot, value)
+        with pytest.raises(PrivatePaidLaneEligibilityCheckpointRejected):
+            case.store.create_empty_checkpoint_root(now_ms=7)
+
+    def test_in_place_root_handle_mutation_invalidates_construction_mac(
+        self, tmp_path: Path
+    ) -> None:
+        case = fixture_store_case(tmp_path / "root-field-mutation")
+        handle = case.store.create_empty_checkpoint_root(now_ms=7)
+        object.__setattr__(handle, "_consumed", True)
+        with pytest.raises(PrivatePaidLaneEligibilityCheckpointRejected):
+            case.store.put_fixture_owner_operation(
+                owner_path_authority=case.authority,
+                owner_path_discriminator=OWNER_PATH_DISCRIMINATOR,
+                value=FixtureOwnerOperationPutV1(
+                    operation_id="op",
+                    job_id="job",
+                    execution_id="exec",
+                    stage_id="stage",
+                    state="queued",
+                ),
+                now_ms=8,
+            )
+
+    def test_prepared_intent_cannot_coexist_with_epoch_zero_handles(self, tmp_path: Path) -> None:
+        case = fixture_store_case(tmp_path / "prepared-topology")
+        case.store.create_empty_checkpoint_root(now_ms=7)
+        object.__setattr__(case.store, "_prepared_cutover_intent_sha256", "ab" * 32)
+        object.__setattr__(case.store, "_construction_mac", case.store._compute_construction_mac())
+        with pytest.raises(PrivatePaidLaneEligibilityCheckpointRejected):
+            case.store.put_fixture_owner_operation(
+                owner_path_authority=case.authority,
+                owner_path_discriminator=OWNER_PATH_DISCRIMINATOR,
+                value=FixtureOwnerOperationPutV1(
+                    operation_id="op",
+                    job_id="job",
+                    execution_id="exec",
+                    stage_id="stage",
+                    state="queued",
+                ),
+                now_ms=8,
+            )
+
+    @pytest.mark.parametrize(
+        "handle_type",
+        (
+            checkpoint_module.QuarantinedSealedCorpusHandleV1,
+            checkpoint_module.QuarantinedCopiedCorpusHandleV1,
+        ),
+    )
+    def test_partial_exact_type_stage_handle_is_not_authority(
+        self, tmp_path: Path, handle_type: type[object]
+    ) -> None:
+        case = fixture_store_case(tmp_path / handle_type.__name__)
+        case.store.create_empty_checkpoint_root(now_ms=7)
+        partial = object.__new__(handle_type)
+        for name, value in {
+            "creator_pid": os.getpid(),
+            "boot_nonce": case.store._boot_nonce,
+            "target_store_id": case.store.store_id,
+            "target_database_path": case.store.database_path,
+            "consumed": False,
+        }.items():
+            object.__setattr__(partial, name, value)
+        object.__setattr__(case.store, "_migration_stage_handle", partial)
+        assert case.store._migration_authority_topology_is_valid() is False
+        with pytest.raises(ValueError, match="migration stage handle mismatch"):
+            checkpoint_module._require_process_stage_handle(
+                partial, handle_type, store=case.store
+            )
+        with pytest.raises(AttributeError):
+            case.store._compute_construction_mac()
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        (("schema_version", True), ("schema_version", 1.0), ("creator_pid", None)),
+    )
+    def test_stage_integer_identity_fields_require_exact_ints(
+        self, tmp_path: Path, field: str, value: object
+    ) -> None:
+        case = fixture_store_case(tmp_path / f"{field}-{value}")
+        case.store.create_empty_checkpoint_root(now_ms=7)
+        freeze_nonce = "ab" * 32
+        facts: dict[str, object] = {
+            "barrier_id": checkpoint_module._migration_barrier_id(freeze_nonce),
+            "boot_nonce": case.store._boot_nonce,
+            "canonical_corpus_sha256": "cd" * 32,
+            "consumed": False,
+            "creator_pid": os.getpid(),
+            "freeze_nonce": freeze_nonce,
+            "legacy_root_id": "legacy-root",
+            "schema_version": 1,
+            "sealed_at_ms": 8,
+            "source_manifest_sha256": "ef" * 32,
+            "target_database_path": case.store.database_path,
+            "target_store_id": case.store.store_id,
+        }
+        facts[field] = float(os.getpid()) if field == "creator_pid" else value
+        forged = object.__new__(checkpoint_module.QuarantinedSealedCorpusHandleV1)
+        for name, fact in facts.items():
+            object.__setattr__(forged, name, fact)
+        object.__setattr__(case.store, "_migration_stage_handle", forged)
+        assert case.store._migration_authority_topology_is_valid() is False
+        with pytest.raises(ValueError, match="migration stage handle mismatch"):
+            checkpoint_module._require_process_stage_handle(
+                forged,
+                checkpoint_module.QuarantinedSealedCorpusHandleV1,
+                store=case.store,
+            )
+
     def test_unbound_public_apis_reject_fabricated_receiver(self) -> None:
         class FabricatedReceiver:
             pass

@@ -1941,6 +1941,26 @@ def _require_process_handle(
         raise ValueError("migration handle mismatch")
 
 
+def _require_process_stage_handle(
+    handle: object,
+    handle_type: type[object],
+    *,
+    store: PrivatePaidLaneEligibilityCheckpointStoreV1,
+) -> None:
+    """Require the exact current seal/copy-stage authority for this process."""
+    if (
+        type(handle) is not handle_type
+        or getattr(handle, "creator_pid", None) != os.getpid()
+        or getattr(handle, "boot_nonce", None) != store._boot_nonce
+        or getattr(handle, "target_store_id", None) != store.store_id
+        or getattr(handle, "target_database_path", None) != store.database_path
+        or getattr(handle, "consumed", None) is not False
+        or store._migration_stage_handle is not handle
+        or not store._migration_stage_handle_facts_are_valid(handle)
+    ):
+        raise ValueError("migration stage handle mismatch")
+
+
 class MigrationSourceStoreV1(_Closed):
     store_kind: str
     store_id: str
@@ -3581,6 +3601,29 @@ class SignedMigrationRecoveryTicketV1(_Closed):
         if self.ticket_sha256 != expected:
             raise ValueError("migration recovery ticket hash")
         return self
+
+
+class _TrustedClockV1(Protocol):
+    """Typing shape only; never sufficient as runtime clock authority."""
+
+    def now_ms(self) -> int: ...
+
+
+class _CutoverFixtureIssuerV2(Protocol):
+    """Typing shape only; runtime code must require an exact bound issuer."""
+
+    @property
+    def verification_key(self) -> VerificationKeyV1: ...
+
+    @property
+    def recovery_ticket(self) -> SignedMigrationRecoveryTicketV1: ...
+
+    @property
+    def trusted_clock_authority(self) -> _TrustedClockV1: ...
+
+    def prepare_cutover_intent_v2(
+        self, *, expected_copied_state: SignedMigrationLifecycleStateV1
+    ) -> SignedCutoverLifecycleStateV2: ...
 
 
 class SignedEpoch0RecoveryAdmissionV1(_Closed):
@@ -7717,6 +7760,8 @@ class PrivatePaidLaneEligibilityCheckpointStoreV1:
     _observed_hmac_keys: dict[bytes, _BLIND_PURPOSES]
     _synthetic_legacy_root: object
     _migration_root_handle: object | None
+    _migration_stage_handle: object | None
+    _prepared_cutover_intent_sha256: str | None
 
     __slots__ = (
         "__weakref__",
@@ -7744,6 +7789,8 @@ class PrivatePaidLaneEligibilityCheckpointStoreV1:
         "_observed_hmac_keys",
         "_synthetic_legacy_root",
         "_migration_root_handle",
+        "_migration_stage_handle",
+        "_prepared_cutover_intent_sha256",
     )
 
     def __init__(self, *args: object, **kwargs: object) -> None:
@@ -7962,6 +8009,8 @@ class PrivatePaidLaneEligibilityCheckpointStoreV1:
                 instance._observed_hmac_keys = {}
                 instance._synthetic_legacy_root = synthetic_legacy_root
                 instance._migration_root_handle = None
+                instance._migration_stage_handle = None
+                instance._prepared_cutover_intent_sha256 = None
                 instance._boot_nonce = secrets.token_bytes(32)
                 instance._pending_key = secrets.token_bytes(32)
                 instance._pid = os.getpid()
@@ -7985,6 +8034,90 @@ class PrivatePaidLaneEligibilityCheckpointStoreV1:
             raise AttributeError("paid-lane checkpoint store is immutable")
         object.__setattr__(self, name, value)
 
+    def _migration_handle_mac_snapshot(self, handle: object | None) -> Mapping[str, object] | None:
+        if handle is None:
+            return None
+        names: tuple[str, ...]
+        if type(handle) is QuarantinedPrecutoverHandleV1:
+            names = ("_consumed", "_process_id", "_boot_nonce", "store_id", "created_at_ms")
+        elif type(handle) is QuarantinedSealedCorpusHandleV1:
+            names = QuarantinedSealedCorpusHandleV1.__slots__
+        elif type(handle) is QuarantinedCopiedCorpusHandleV1:
+            names = QuarantinedCopiedCorpusHandleV1.__slots__
+        else:
+            return {"type": f"invalid:{type(handle).__module__}.{type(handle).__qualname__}"}
+        facts: dict[str, object] = {"type": type(handle).__name__, "identity": id(handle)}
+        for name in names:
+            value = getattr(handle, name)
+            if isinstance(value, bytes):
+                value = value.hex()
+            elif isinstance(value, Path):
+                value = os.fspath(value)
+            facts[name] = value
+        return facts
+
+    def _migration_stage_handle_facts_are_valid(self, handle: object) -> bool:
+        try:
+            if type(handle) not in {
+                QuarantinedSealedCorpusHandleV1,
+                QuarantinedCopiedCorpusHandleV1,
+            }:
+                return False
+            stage = cast(
+                QuarantinedSealedCorpusHandleV1 | QuarantinedCopiedCorpusHandleV1,
+                handle,
+            )
+            common = (
+                type(stage.schema_version) is int
+                and stage.schema_version == 1
+                and type(stage.creator_pid) is int
+                and stage.creator_pid == os.getpid()
+                and stage.boot_nonce == self._boot_nonce
+                and stage.target_store_id == self.store_id
+                and stage.target_database_path == self.database_path
+                and stage.consumed is False
+                and _REGISTRY_ID.fullmatch(stage.legacy_root_id) is not None
+                and _HEX64.fullmatch(stage.freeze_nonce) is not None
+                and _REGISTRY_ID.fullmatch(stage.barrier_id) is not None
+                and stage.barrier_id == _migration_barrier_id(stage.freeze_nonce)
+                and _HEX64.fullmatch(stage.source_manifest_sha256) is not None
+                and _HEX64.fullmatch(stage.canonical_corpus_sha256) is not None
+            )
+            if not common:
+                return False
+            if type(handle) is QuarantinedSealedCorpusHandleV1:
+                return _valid_i63(handle.sealed_at_ms)
+            if type(handle) is QuarantinedCopiedCorpusHandleV1:
+                copied = handle
+                return (
+                    _valid_i63(copied.copied_at_ms)
+                    and _HEX64.fullmatch(copied.copy_audit_sha256) is not None
+                )
+            return False
+        except (AttributeError, TypeError):
+            return False
+
+    def _migration_authority_topology_is_valid(self) -> bool:
+        root = self._migration_root_handle
+        stage = self._migration_stage_handle
+        prepared = self._prepared_cutover_intent_sha256
+        if prepared is not None:
+            return root is None and stage is None
+        if root is None:
+            return stage is None
+        if (
+            type(root) is not QuarantinedPrecutoverHandleV1
+            or getattr(root, "_consumed", None) is not False
+            or type(getattr(root, "_process_id", None)) is not int
+            or getattr(root, "_process_id", None) != os.getpid()
+            or getattr(root, "_boot_nonce", None) != self._boot_nonce
+            or getattr(root, "store_id", None) != self.store_id
+        ):
+            return False
+        if stage is None:
+            return True
+        return self._migration_stage_handle_facts_are_valid(stage)
+
     def _compute_construction_mac(self) -> bytes:
         material = _canonical_json(
             {
@@ -7998,7 +8131,13 @@ class PrivatePaidLaneEligibilityCheckpointStoreV1:
                 "semantic_source_sha256": self.semantic_source_sha256,
                 "contract_sha256": self.contract_sha256,
                 "synthetic_legacy_root_identity": id(self._synthetic_legacy_root),
-                "migration_root_handle_identity": id(self._migration_root_handle),
+                "migration_root_handle": self._migration_handle_mac_snapshot(
+                    self._migration_root_handle
+                ),
+                "migration_stage_handle": self._migration_handle_mac_snapshot(
+                    self._migration_stage_handle
+                ),
+                "prepared_cutover_intent_sha256": self._prepared_cutover_intent_sha256,
             }
         )
         return hmac.new(self._pending_key, material, hashlib.sha256).digest()
@@ -8018,6 +8157,14 @@ class PrivatePaidLaneEligibilityCheckpointStoreV1:
                 or type(self._lock) is not type(threading.Lock())
                 or type(self._active_handles) is not dict
                 or type(self._observed_hmac_keys) is not dict
+                or not self._migration_authority_topology_is_valid()
+                or (
+                    self._prepared_cutover_intent_sha256 is not None
+                    and (
+                        type(self._prepared_cutover_intent_sha256) is not str
+                        or not _HEX64.fullmatch(self._prepared_cutover_intent_sha256)
+                    )
+                )
                 or not hmac.compare_digest(self._construction_mac, self._compute_construction_mac())
             ):
                 raise ValueError
