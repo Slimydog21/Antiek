@@ -66,6 +66,12 @@ describe("SpeakInvite — phone-first, voice-first", () => {
     expect(screen.getByRole("button", { name: /i'll share a memory/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /not right now/i })).toBeTruthy();
     expect(document.querySelectorAll('input[type="checkbox"]').length).toBe(0);
+    // Living-TV densify on invitee door (phone-first).
+    expect(screen.getByTestId("speak-invite-werner-brand")).toBeTruthy();
+    expect(
+      (screen.getByTestId("speak-invite-living-tv-art") as HTMLImageElement)
+        .getAttribute("src") ?? "",
+    ).toMatch(/werner_living_tv_session_v1/);
   });
 
   it("makes VOICE the primary input once consented, with typing as a fallback", async () => {

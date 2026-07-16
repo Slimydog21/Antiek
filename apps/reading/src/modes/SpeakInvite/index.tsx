@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import InterviewVoiceCapture from "../../components/InterviewVoiceCapture";
 import { apiFetch } from "../../lib/api";
 
@@ -210,13 +212,29 @@ export default function SpeakInvite() {
   return (
     <div className="min-h-screen bg-ice-0 px-4 py-10 dark:bg-charcoal-2">
       <div className="mx-auto max-w-md">
-        <header className="mb-7 text-center">
+        <header className="mb-7 space-y-3 text-center">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="speak-invite-werner-brand"
+            className="mx-auto h-12 w-12 object-contain"
+          />
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-sun-deep dark:text-sun">
             You've been asked to help
           </p>
           <h1 className="mt-1 font-serif text-2xl text-ink dark:text-bright">
             Remember {landing.subject_ref ?? landing.project_title}
           </h1>
+          <img
+            src={livingTvArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="speak-invite-living-tv-art"
+            className="mx-auto h-14 w-full max-w-sm rounded-md object-cover object-center"
+            loading="lazy"
+            decoding="async"
+          />
           <p className="mt-2 font-serif text-[14px] text-ink-mute dark:text-moonlight">
             Share a memory in your own words. There's no right answer and no
             rush — anything you remember helps.
