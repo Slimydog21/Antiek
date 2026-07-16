@@ -234,3 +234,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | ThoughtPartner invent reframe densify | `2a0dfd2f0` | living-tv-art testid + antiek-living-tv-invent class |
 | Imagine invent polish v2 living-TV session | `823b9779a` | SessionBrandChrome residual doors invent |
 | Imagine invent polish v2 cascade plan | `cfb698eb4` | PlanEditor invent |
+| Imagine invent polish v2b html book float | (next tip) | ReadingCompanion invent refresh on green tip |
