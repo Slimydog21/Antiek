@@ -5,6 +5,9 @@ import {
   createArcadeCartridge,
   type ArcadeGameKind,
 } from "../../arcade/cartridgeFactory";
+// Host-layer living-TV inject (same path as ArcadeCabinet / LoadingGameHost).
+// Arcade core stays free of reactionBus; beats still reach antiek:werner-experience.
+import { emitLivingTvHostBeat } from "../../arcade/host/livingTvHostEmit";
 
 /** Loaded only after explicit Play; keeps cartridge code out of the offer chunk. */
 export default function ResearchWaitArcadeGame({
@@ -17,7 +20,11 @@ export default function ResearchWaitArcadeGame({
   sceneArtSrc: string;
 }) {
   const cartridge = useMemo(
-    () => createArcadeCartridge(game, { reducedMotion }),
+    () =>
+      createArcadeCartridge(game, {
+        reducedMotion,
+        onWernerBeat: emitLivingTvHostBeat,
+      }),
     [game, reducedMotion],
   );
   const shellRef = useRef<HTMLDivElement | null>(null);
