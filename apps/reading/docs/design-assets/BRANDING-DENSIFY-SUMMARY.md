@@ -279,3 +279,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | AntiekBench invent import honesty densify | `e19be5f9d` | rename misnamed thoughtPartnerDeskArt import to antiekBenchCelebrateArt |
 | Flipbook-feel HTML streaming design note | `73cb1875c` | cost-intelligent Modal/Krea ladder; pure Flipbook sole UI NO-GO |
 | branding-densify-pack.sh | `32b4cba09` | reproducible 28-file densify pack for invent reframe + product invent doors |
+| sessionLivingTv.css densify comment crosslinks | `TBD` | Flipbook note + densify-pack.sh pointers in invent reframe CSS |

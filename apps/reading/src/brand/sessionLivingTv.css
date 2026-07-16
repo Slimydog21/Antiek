@@ -1,13 +1,15 @@
 /**
  * Flipbook-feel invent strip motion — illustrations softly reframe with time,
  * like Flipbook's reshape-with-window living imagery, while remaining HTML
- * (pure Flipbook sole UI is NO-GO).
+ * (pure Flipbook sole UI is NO-GO). See design-assets/FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md
+ * for cost-intelligent optional streaming ladder (CDN → Krea → Modal).
  *
  * Applied via:
  *   - explicit class `.antiek-living-tv-invent`
- *   - global invent testids (imported once from main.tsx)
+ *   - global invent testids ending in `-living-tv-art` / `-living-tv-brand`
  *
  * Motion collapses under prefers-reduced-motion.
+ * Gate: apps/reading/scripts/branding-densify-pack.sh
  */
 
 @keyframes antiek-living-tv-reframe {
