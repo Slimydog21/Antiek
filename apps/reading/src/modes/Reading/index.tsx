@@ -24,7 +24,7 @@ import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
-import { notifyResearchStarted } from "../../werner";
+import { emitWernerExperience, notifyResearchStarted } from "../../werner";
 import { emitSourceRead, isRead } from "./sourceRead";
 
 /**
@@ -63,6 +63,8 @@ export default function BookReader() {
         if (cancelled) return;
         setBook(detail);
         setBody(full);
+        // Living-TV: opening a book is a curious highlight glance.
+        emitWernerExperience("highlight");
         // House-state candidates for the zero-buyer ad border.
         try {
           const servable = await listBooks("servable");
@@ -71,7 +73,10 @@ export default function BookReader() {
           /* house pool is best-effort; a neutral house card is fine */
         }
       } catch (e: unknown) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) {
+          emitWernerExperience("fail");
+          setError(e instanceof Error ? e.message : String(e));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
