@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Provider broker idempotent replay authority</title></head>
+<body>
+<main>
+  <h1>Provider broker idempotent replay authority</h1>
+  <p>Cycle 103 separates first-send authority from recovery replay authority. The primary ledger remains the source of truth; the worker sidecar supplies only a live, process-and-thread-bound fence. Neither layer performs provider transport.</p>
+
+  <h2>Durable dispatch intent</h2>
+  <p><code>BrokerDispatchIntent</code> freezes the canonical request-envelope digest, provider idempotency token, adapter-contract digest, qualification digest, and canonical UTC replay expiry. A <code>dispatch_possible</code> transition requires both its deterministic attempt identity and the complete intent. Every other transition forbids dispatch intent. Schema v2 stores the five fields in the same transaction as the send marker, includes them in snapshots and hash-chained audit results, and prevents partial or subsequent mutation with database triggers.</p>
+  <p>The v1-to-v2 migration is transactional. It adds nullable authority fields without changing any historical command, audit result, digest, or hash byte. Verification recognizes the exact legacy result shape as having no intent. Database triggers forbid retrofitting intent onto a legacy marked operation, making it permanently ineligible for replay.</p>
+
+  <h2>Two non-interchangeable permits</h2>
+  <p><code>DispatchPermit</code> is emitted only while committing a previously absent marker and is consumed once immediately before the first provider create. Recovery never returns this permit.</p>
+  <p><code>IdempotentCreateReplayPermit</code> is emitted only by <code>prepare_idempotent_create_replay(intent)</code> for an exact, complete persisted intent. The session must be recovery-only; the primary state must still be <code>dispatch_possible</code> or <code>unknown</code>; replay expiry and the worker lease must both be live; and process, thread, flock, fence, attempt, operation, authorization, route, version, and intent must still match at consumption. Authorized, upstream-bound, charged, and not-found operations cannot mint replay authority.</p>
+
+  <h2>Crash and substitution rules</h2>
+  <p>A crash after primary marker commit is reconstructed as recovery-only. At most one replay permit may be issued per session, and its immutable replay window is no longer than 24 hours from first dispatch. A later fenced session may mint another permit for the same exact intent, allowing bounded recovery without weakening serialization. Any changed envelope, token, adapter contract, qualification, expiry, version, or fence fails closed. Expired and legacy-null intent never replay.</p>
+</main>
+</body>
+</html>

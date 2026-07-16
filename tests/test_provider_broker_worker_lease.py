@@ -8,15 +8,18 @@ import os
 import sqlite3
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from runtime.provider_broker import (
+    BrokerDispatchIntent,
     BrokerReceiptState,
     BrokerTransition,
     DispatchPermit,
+    IdempotentCreateReplayPermit,
     PrimaryBrokerLedger,
     ProviderWorkerLeaseCoordinator,
     WorkerDispatchRefused,
@@ -25,11 +28,20 @@ from runtime.provider_broker import (
     WorkerLeaseStale,
     WorkerLeaseStatus,
     WorkerLeaseUnavailable,
+    WorkerReplayRefused,
     authorization_from_mapping,
+    provider_idempotency_token,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures/provider_broker_protocol_vectors.json"
 NOW = datetime(2026, 7, 16, 18, 30, tzinfo=UTC)
+INTENT = BrokerDispatchIntent(
+    "1" * 64,
+    provider_idempotency_token("1" * 64, "2" * 64, "3" * 64),
+    "2" * 64,
+    "3" * 64,
+    "2026-07-17T00:00:00Z",
+)
 
 
 def _ready(tmp_path: Path, clock: list[datetime] | None = None, *, timeout: float = 0.1):
@@ -68,6 +80,62 @@ def _crash_process(root: str, ready: multiprocessing.Queue[bool]) -> None:
     os._exit(23)
 
 
+def test_exact_idempotent_create_replay_is_recovery_only_fenced_and_single_use(
+    tmp_path: Path,
+) -> None:
+    coordinator, _, _, _ = _ready(tmp_path)
+    with coordinator.session("tenant-1", "op-key-1", "first") as first:
+        dispatch = first.prepare_dispatch(INTENT)
+        assert isinstance(dispatch, DispatchPermit)
+        first.assert_permit_active(dispatch)
+
+    with coordinator.session("tenant-1", "op-key-1", "recovery") as recovery:
+        permit = recovery.prepare_idempotent_create_replay(INTENT)
+        assert isinstance(permit, IdempotentCreateReplayPermit)
+        with pytest.raises(WorkerReplayRefused, match="already issued"):
+            recovery.prepare_idempotent_create_replay(INTENT)
+        assert recovery.assert_replay_permit_active(permit).dispatch_intent == INTENT
+        with pytest.raises(WorkerReplayRefused, match="already issued"):
+            recovery.prepare_idempotent_create_replay(INTENT)
+
+    with coordinator.session("tenant-1", "op-key-1", "successor") as successor:
+        later = successor.prepare_idempotent_create_replay(INTENT)
+        assert later.fence > permit.fence
+        assert later.dispatch_intent == permit.dispatch_intent
+
+
+def test_replay_refuses_substitution_expiry_and_first_send_state(tmp_path: Path) -> None:
+    coordinator, _, _, clock = _ready(tmp_path)
+    expiring = replace(INTENT, replay_expires_at="2026-07-16T18:30:05Z")
+    changed = replace(
+        expiring,
+        qualification_digest="4" * 64,
+        provider_idempotency_token=provider_idempotency_token(
+            expiring.request_envelope_digest, expiring.adapter_contract_digest, "4" * 64
+        ),
+    )
+    with coordinator.session("tenant-1", "op-key-1", "first") as first:
+        with pytest.raises(WorkerReplayRefused, match="recovery-only"):
+            first.prepare_idempotent_create_replay(expiring)
+        first.prepare_dispatch(expiring)
+    with coordinator.session("tenant-1", "op-key-1", "recovery") as recovery:
+        with pytest.raises(WorkerReplayRefused, match="differs"):
+            recovery.prepare_idempotent_create_replay(changed)
+        clock[0] += timedelta(seconds=5)
+        with pytest.raises(WorkerReplayRefused, match="expired"):
+            recovery.prepare_idempotent_create_replay(expiring)
+
+
+def test_first_dispatch_refuses_unbounded_replay_window(tmp_path: Path) -> None:
+    coordinator, _, _, _ = _ready(tmp_path)
+    unbounded = replace(INTENT, replay_expires_at="2026-07-18T18:30:01Z")
+    with (
+        coordinator.session("tenant-1", "op-key-1", "first") as first,
+        pytest.raises(WorkerDispatchRefused, match="live and bounded"),
+    ):
+        first.prepare_dispatch(unbounded)
+
+
 def test_session_holds_flock_across_prepare_until_exit(tmp_path: Path) -> None:
     coordinator, ledger, operation, _ = _ready(tmp_path)
     session = coordinator.session("tenant-1", "op-key-1", "worker-a")
@@ -75,7 +143,7 @@ def test_session_holds_flock_across_prepare_until_exit(tmp_path: Path) -> None:
         assert session.status is WorkerLeaseStatus.AUTHORIZED
         with pytest.raises(WorkerLeaseBusy):
             coordinator.session("tenant-1", "op-key-1", "worker-b")
-        permit = session.prepare_dispatch()
+        permit = session.prepare_dispatch(INTENT)
         assert isinstance(permit, DispatchPermit)
         assert permit.operation_id == operation.operation_id
         assert permit.authorization_digest == operation.authorization_digest
@@ -87,7 +155,7 @@ def test_session_holds_flock_across_prepare_until_exit(tmp_path: Path) -> None:
             session.assert_permit_active(permit)
         assert session.status is WorkerLeaseStatus.RECOVERY_ONLY
         with pytest.raises(WorkerDispatchRefused, match="already exists"):
-            session.prepare_dispatch()
+            session.prepare_dispatch(INTENT)
     assert ledger.lookup("tenant-1", "op-key-1").operation.send_marker
     with pytest.raises(WorkerLeaseStale, match="exited"):
         session.refresh()
@@ -103,7 +171,7 @@ def test_attempt_and_command_are_deterministic_across_holders_fences_and_time(
     with coordinator.session("tenant-1", "op-key-1", "worker-b") as second:
         assert second.lease.fence == 2
         assert second.lease.attempt_id == attempt
-        permit = second.prepare_dispatch()
+        permit = second.prepare_dispatch(INTENT)
     assert permit.command_id == coordinator._command_id(second.lease.operation_id)  # noqa: SLF001
 
 
@@ -120,7 +188,7 @@ def test_cancellation_before_marker_is_durable_and_successor_can_dispatch(tmp_pa
         )
     with coordinator.session("tenant-1", "op-key-1", "worker-b") as successor:
         assert successor.lease.fence == 2
-        successor.prepare_dispatch()
+        successor.prepare_dispatch(INTENT)
 
 
 def test_crash_after_primary_marker_reconstructs_recovery_but_never_permit(tmp_path: Path) -> None:
@@ -132,7 +200,7 @@ def test_crash_after_primary_marker_reconstructs_recovery_but_never_permit(tmp_p
         pytest.raises(WorkerLeaseUnavailable),
         coordinator.session("tenant-1", "op-key-1", "worker-a") as session,
     ):
-        session.prepare_dispatch()
+        session.prepare_dispatch(INTENT)
     marked = ledger.lookup("tenant-1", "op-key-1").operation
     assert marked is not None and marked.send_marker
     coordinator._after_primary_dispatch = lambda: None  # noqa: SLF001
@@ -140,13 +208,13 @@ def test_crash_after_primary_marker_reconstructs_recovery_but_never_permit(tmp_p
         assert recovery.status is WorkerLeaseStatus.RECOVERY_ONLY
         assert recovery.refresh() == marked
         with pytest.raises(WorkerDispatchRefused):
-            recovery.prepare_dispatch()
+            recovery.prepare_dispatch(INTENT)
 
 
 def test_terminal_primary_state_classifies_terminal(tmp_path: Path) -> None:
     coordinator, ledger, _, _ = _ready(tmp_path)
     with coordinator.session("tenant-1", "op-key-1", "worker-a") as session:
-        session.prepare_dispatch()
+        session.prepare_dispatch(INTENT)
     ledger.transition(
         "tenant-1",
         "op-key-1",
@@ -163,7 +231,7 @@ def test_terminal_primary_state_classifies_terminal(tmp_path: Path) -> None:
         assert terminal.status is WorkerLeaseStatus.TERMINAL
         assert terminal.refresh().state is BrokerReceiptState.CHARGED
         with pytest.raises(WorkerDispatchRefused):
-            terminal.prepare_dispatch()
+            terminal.prepare_dispatch(INTENT)
     assert coordinator.verify_integrity() == 1
     with coordinator.session("tenant-1", "op-key-1", "worker-c") as terminal_again:
         assert terminal_again.status is WorkerLeaseStatus.TERMINAL
@@ -176,7 +244,7 @@ def test_expiry_does_not_bypass_live_flock_and_expired_owner_cannot_prepare(tmp_
         with pytest.raises(WorkerLeaseBusy):
             coordinator.session("tenant-1", "op-key-1", "worker-b")
         with pytest.raises(WorkerLeaseStale, match="dispatch window"):
-            session.prepare_dispatch()
+            session.prepare_dispatch(INTENT)
 
 
 def test_clock_rollback_before_acquisition_never_commits_marker(tmp_path: Path) -> None:
@@ -185,7 +253,7 @@ def test_clock_rollback_before_acquisition_never_commits_marker(tmp_path: Path) 
         try:
             clock[0] -= timedelta(seconds=1)
             with pytest.raises(WorkerLeaseStale, match="dispatch window"):
-                session.prepare_dispatch()
+                session.prepare_dispatch(INTENT)
         finally:
             clock[0] = NOW
     operation = ledger.lookup("tenant-1", "op-key-1").operation
@@ -217,7 +285,7 @@ def test_expired_authorization_never_receives_dispatch_permit(tmp_path: Path) ->
     with coordinator.session("tenant-1", "op-key-1", "worker-a") as session:
         clock[0] = datetime(2026, 7, 17, 0, 0, tzinfo=UTC)
         with pytest.raises(WorkerDispatchRefused, match="authorization"):
-            session.prepare_dispatch()
+            session.prepare_dispatch(INTENT)
     operation = ledger.lookup("tenant-1", "op-key-1").operation
     assert operation is not None and operation.send_marker is False
 
@@ -232,7 +300,7 @@ def test_permit_cannot_be_consumed_after_authorization_expiry(tmp_path: Path) ->
         lock_timeout_seconds=0.1,
     )
     with coordinator.session("tenant-1", "op-key-1", "worker") as session:
-        permit = session.prepare_dispatch()
+        permit = session.prepare_dispatch(INTENT)
         clock[0] = datetime(2026, 7, 17, 0, 0, tzinfo=UTC)
         with pytest.raises(WorkerLeaseStale, match="authorization"):
             session.assert_permit_active(permit)
@@ -304,19 +372,20 @@ def test_preexisting_primary_marker_never_returns_permit(tmp_path: Path) -> None
             0,
             BrokerReceiptState.DISPATCH_POSSIBLE,
             attempt_id=attempt_id,
+            dispatch_intent=INTENT,
         ),
     )
     with coordinator.session("tenant-1", "op-key-1", "worker") as recovery:
         assert recovery.status is WorkerLeaseStatus.RECOVERY_ONLY
         with pytest.raises(WorkerDispatchRefused):
-            recovery.prepare_dispatch()
+            recovery.prepare_dispatch(INTENT)
 
 
 def test_session_requires_context_and_abandonment_releases_flock(tmp_path: Path) -> None:
     coordinator, _, _, _ = _ready(tmp_path)
     abandoned = coordinator.session("tenant-1", "op-key-1", "worker-a")
     with pytest.raises(WorkerLeaseStale, match="not entered"):
-        abandoned.prepare_dispatch()
+        abandoned.prepare_dispatch(INTENT)
     del abandoned
     gc.collect()
     with coordinator.session("tenant-1", "op-key-1", "worker-b") as successor:
@@ -327,7 +396,7 @@ def test_session_requires_context_and_abandonment_releases_flock(tmp_path: Path)
 def test_forked_child_cannot_use_inherited_session(tmp_path: Path) -> None:
     coordinator, _, _, _ = _ready(tmp_path)
     with coordinator.session("tenant-1", "op-key-1", "parent") as session:
-        permit = session.prepare_dispatch()
+        permit = session.prepare_dispatch(INTENT)
         child = os.fork()
         if child == 0:
             try:
@@ -463,7 +532,7 @@ def test_orphan_event_chain_fails_integrity(tmp_path: Path) -> None:
 def test_hash_valid_terminal_regression_fails_integrity(tmp_path: Path) -> None:
     coordinator, ledger, _, _ = _ready(tmp_path)
     with coordinator.session("tenant-1", "op-key-1", "worker") as session:
-        session.prepare_dispatch()
+        session.prepare_dispatch(INTENT)
     ledger.transition(
         "tenant-1",
         "op-key-1",

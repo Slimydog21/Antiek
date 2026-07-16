@@ -14,12 +14,14 @@ import pytest
 import runtime.provider_broker.ledger as broker_ledger_module
 from runtime.provider_broker.ledger import (
     BrokerConflict,
+    BrokerDispatchIntent,
     BrokerIntegrityError,
     BrokerTransition,
     BrokerTransitionRefused,
     BrokerUnavailable,
     LookupDisposition,
     PrimaryBrokerLedger,
+    provider_idempotency_token,
 )
 from runtime.provider_broker.protocol import (
     BrokerAuthorization,
@@ -29,6 +31,13 @@ from runtime.provider_broker.protocol import (
 
 FIXTURE = Path(__file__).parent / "fixtures/provider_broker_protocol_vectors.json"
 NOW = datetime(2026, 7, 16, 18, 30, tzinfo=UTC)
+INTENT = BrokerDispatchIntent(
+    "1" * 64,
+    provider_idempotency_token("1" * 64, "2" * 64, "3" * 64),
+    "2" * 64,
+    "3" * 64,
+    "2026-07-17T00:00:00Z",
+)
 
 
 def _authorization() -> BrokerAuthorization:
@@ -46,11 +55,155 @@ def _ready(path: Path) -> PrimaryBrokerLedger:
     return ledger
 
 
-def _hold_key_lock(path: str, ready: multiprocessing.Queue[bool], release: multiprocessing.Queue[bool]) -> None:
+def _hold_key_lock(
+    path: str, ready: multiprocessing.Queue[bool], release: multiprocessing.Queue[bool]
+) -> None:
     ledger = PrimaryBrokerLedger(path, lock_timeout_seconds=2.0)
     with ledger._key_lock("tenant-1", "missing-key"):  # noqa: SLF001
         ready.put(True)
         release.get(timeout=5)
+
+
+def test_schema_v1_migrates_transactionally_to_v2(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.sqlite"
+    source = _ready(source_path)
+    source.authorize(_authorization())
+    path = tmp_path / "broker.sqlite"
+    with sqlite3.connect(source_path) as source_db, sqlite3.connect(path) as db:
+        source_db.row_factory = sqlite3.Row
+        db.executescript(broker_ledger_module._MIGRATION_1)  # noqa: SLF001
+        operation_columns = [row[1] for row in db.execute("PRAGMA table_info(broker_operations)")]
+        operation = source_db.execute(
+            f"SELECT {','.join(operation_columns)} FROM broker_operations"  # noqa: S608
+        ).fetchone()
+        db.execute(
+            f"INSERT INTO broker_operations ({','.join(operation_columns)}) "  # noqa: S608
+            f"VALUES ({','.join('?' for _ in operation_columns)})",
+            tuple(operation),
+        )
+        command = source_db.execute("SELECT * FROM broker_commands").fetchone()
+        db.execute("INSERT INTO broker_commands VALUES (?,?,?,?,?)", tuple(command))
+        event = dict(source_db.execute("SELECT * FROM broker_audit").fetchone())
+        legacy_result = json.loads(event["result_json"])
+        del legacy_result["dispatch_intent"]
+        event["result_json"] = json.dumps(legacy_result, sort_keys=True, separators=(",", ":"))
+        event["result_digest"] = broker_ledger_module.hashlib.sha256(
+            event["result_json"].encode("ascii")
+        ).hexdigest()
+        event["event_hash"] = broker_ledger_module._event_hash(  # noqa: SLF001
+            operation_id=event["operation_id"],
+            sequence=event["sequence"],
+            from_state=event["from_state"],
+            to_state=event["to_state"],
+            version=event["version"],
+            command_id=event["command_id"],
+            command_digest=event["command_digest"],
+            result_digest=event["result_digest"],
+            recorded_at=event["recorded_at"],
+            previous_hash=event["previous_hash"],
+        )
+        db.execute(
+            "INSERT INTO broker_audit VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            tuple(event.values()),
+        )
+        audit_before = db.execute("SELECT * FROM broker_audit").fetchall()
+    ledger = _ledger(path)
+    ledger.ensure_schema()
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT version FROM broker_schema").fetchone() == (2,)
+        columns = {row[1] for row in db.execute("PRAGMA table_info(broker_operations)")}
+        assert db.execute("SELECT * FROM broker_audit").fetchall() == audit_before
+    assert {
+        "request_envelope_digest",
+        "provider_idempotency_token",
+        "adapter_contract_digest",
+        "qualification_digest",
+        "replay_expires_at",
+    } <= columns
+    assert ledger.verify_integrity() == 1
+
+
+def test_dispatch_intent_is_audited_immutable_and_command_replay_exact(tmp_path: Path) -> None:
+    path = tmp_path / "broker.sqlite"
+    ledger = _ready(path)
+    ledger.authorize(_authorization())
+    command = BrokerTransition(
+        "dispatch-intent",
+        0,
+        BrokerReceiptState.DISPATCH_POSSIBLE,
+        attempt_id="attempt-1",
+        dispatch_intent=INTENT,
+    )
+    marked = ledger.transition("tenant-1", "op-key-1", command)
+    assert marked.dispatch_intent == INTENT
+    assert ledger.transition("tenant-1", "op-key-1", command) == marked
+    with pytest.raises(BrokerConflict, match="different bytes"):
+        ledger.transition(
+            "tenant-1",
+            "op-key-1",
+            replace(
+                command,
+                dispatch_intent=replace(
+                    INTENT,
+                    qualification_digest="4" * 64,
+                    provider_idempotency_token=provider_idempotency_token(
+                        INTENT.request_envelope_digest,
+                        INTENT.adapter_contract_digest,
+                        "4" * 64,
+                    ),
+                ),
+            ),
+        )
+    with sqlite3.connect(path) as db, pytest.raises(sqlite3.IntegrityError, match="immutable"):
+        db.execute(
+            "UPDATE broker_operations SET qualification_digest=? WHERE operation_id=?",
+            ("4" * 64, marked.operation_id),
+        )
+    assert ledger.verify_integrity() == 1
+
+
+def test_schema_trigger_refuses_retrofit_on_legacy_marked_row(tmp_path: Path) -> None:
+    path = tmp_path / "broker.sqlite"
+    ledger = _ready(path)
+    ledger.authorize(_authorization())
+    marked = ledger.transition(
+        "tenant-1",
+        "op-key-1",
+        BrokerTransition(
+            "dispatch-intent",
+            0,
+            BrokerReceiptState.DISPATCH_POSSIBLE,
+            attempt_id="attempt-1",
+            dispatch_intent=INTENT,
+        ),
+    )
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER broker_dispatch_intent_immutable")
+        db.execute(
+            "UPDATE broker_operations SET request_envelope_digest=NULL,"
+            "provider_idempotency_token=NULL,adapter_contract_digest=NULL,"
+            "qualification_digest=NULL,replay_expires_at=NULL WHERE operation_id=?",
+            (marked.operation_id,),
+        )
+        db.execute(
+            broker_ledger_module._EXPECTED_TRIGGER_SQL[  # noqa: SLF001
+                "broker_dispatch_intent_immutable"
+            ]
+        )
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            db.execute(
+                "UPDATE broker_operations SET request_envelope_digest=?,"
+                "provider_idempotency_token=?,adapter_contract_digest=?,"
+                "qualification_digest=?,replay_expires_at=? WHERE operation_id=?",
+                (
+                    INTENT.request_envelope_digest,
+                    INTENT.provider_idempotency_token,
+                    INTENT.adapter_contract_digest,
+                    INTENT.qualification_digest,
+                    INTENT.replay_expires_at,
+                    marked.operation_id,
+                ),
+            )
 
 
 def test_missing_is_authoritative_only_after_primary_schema_and_transaction(
@@ -84,9 +237,7 @@ def test_authorize_exact_replay_returns_one_operation_and_audit(tmp_path: Path) 
         datetime(2026, 7, 17, 0, 0, tzinfo=UTC),
     ],
 )
-def test_authorize_refuses_authority_outside_its_validity(
-    tmp_path: Path, now: datetime
-) -> None:
+def test_authorize_refuses_authority_outside_its_validity(tmp_path: Path, now: datetime) -> None:
     ledger = _ledger(tmp_path / "broker.sqlite", now=now)
     ledger.ensure_schema()
     with pytest.raises(BrokerTransitionRefused, match="not currently valid"):
@@ -134,6 +285,7 @@ def test_dispatch_unknown_bound_and_charge_are_conditional_and_audited(
         0,
         BrokerReceiptState.DISPATCH_POSSIBLE,
         attempt_id="attempt-1",
+        dispatch_intent=INTENT,
     )
     sent = ledger.transition("tenant-1", "op-key-1", dispatch)
     assert sent.version == 1 and sent.send_marker and sent.attempt_id == "attempt-1"
@@ -191,6 +343,7 @@ def test_provider_overage_charges_client_cap_and_records_broker_loss(tmp_path: P
             0,
             BrokerReceiptState.DISPATCH_POSSIBLE,
             attempt_id="attempt-1",
+            dispatch_intent=INTENT,
         ),
     )
     result = ledger.transition(
@@ -221,6 +374,7 @@ def test_command_replay_conflict_stale_version_and_terminal_mutation_fail(
         0,
         BrokerReceiptState.DISPATCH_POSSIBLE,
         attempt_id="attempt-1",
+        dispatch_intent=INTENT,
     )
     ledger.transition("tenant-1", "op-key-1", dispatch)
     with pytest.raises(BrokerConflict, match="different bytes"):
@@ -343,6 +497,7 @@ def test_not_found_is_forbidden_after_dispatch_marker(tmp_path: Path) -> None:
             0,
             BrokerReceiptState.DISPATCH_POSSIBLE,
             attempt_id="attempt-1",
+            dispatch_intent=INTENT,
         ),
     )
     with pytest.raises(BrokerTransitionRefused, match="forbidden"):
@@ -435,6 +590,7 @@ def test_failed_audit_append_rolls_back_state_and_command(tmp_path: Path) -> Non
                 0,
                 BrokerReceiptState.DISPATCH_POSSIBLE,
                 attempt_id="attempt-1",
+                dispatch_intent=INTENT,
             ),
         )
     ledger._append_event = real_append  # type: ignore[method-assign]  # noqa: SLF001
@@ -474,9 +630,7 @@ def test_existing_lookup_and_replay_refuse_corrupted_authority(tmp_path: Path) -
     ledger = _ready(path)
     ledger.authorize(_authorization())
     connection = sqlite3.connect(path)
-    connection.execute(
-        "UPDATE broker_operations SET authorization_digest=?", ("d" * 64,)
-    )
+    connection.execute("UPDATE broker_operations SET authorization_digest=?", ("d" * 64,))
     connection.commit()
     connection.close()
     with pytest.raises(BrokerIntegrityError, match="authorization digest differs"):
@@ -511,6 +665,7 @@ def test_integrity_binds_canonical_command_and_result_bytes(tmp_path: Path) -> N
             0,
             BrokerReceiptState.DISPATCH_POSSIBLE,
             attempt_id="attempt-1",
+            dispatch_intent=INTENT,
         ),
     )
     ledger.transition(
@@ -653,20 +808,17 @@ def test_verifier_rejects_coherently_rehashed_result_that_differs_from_command(
             0,
             BrokerReceiptState.DISPATCH_POSSIBLE,
             attempt_id="attempt-1",
+            dispatch_intent=INTENT,
         ),
     )
     connection = sqlite3.connect(path)
     connection.row_factory = sqlite3.Row
     connection.execute("DROP TRIGGER broker_audit_no_update")
-    event = connection.execute(
-        "SELECT * FROM broker_audit WHERE sequence=1"
-    ).fetchone()
+    event = connection.execute("SELECT * FROM broker_audit WHERE sequence=1").fetchone()
     changed_result = json.loads(event["result_json"])
     changed_result["attempt_id"] = "attempt-2"
     result_json = json.dumps(changed_result, sort_keys=True, separators=(",", ":"))
-    result_digest = broker_ledger_module.hashlib.sha256(
-        result_json.encode("ascii")
-    ).hexdigest()
+    result_digest = broker_ledger_module.hashlib.sha256(result_json.encode("ascii")).hexdigest()
     event_hash = broker_ledger_module._event_hash(  # noqa: SLF001
         operation_id=event["operation_id"],
         sequence=event["sequence"],

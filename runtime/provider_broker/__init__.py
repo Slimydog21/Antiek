@@ -2,6 +2,7 @@
 
 from .ledger import (
     BrokerConflict,
+    BrokerDispatchIntent,
     BrokerIntegrityError,
     BrokerLedgerError,
     BrokerLookup,
@@ -11,6 +12,7 @@ from .ledger import (
     BrokerUnavailable,
     LookupDisposition,
     PrimaryBrokerLedger,
+    provider_idempotency_token,
 )
 from .protocol import (
     BrokerAuthorization,
@@ -30,6 +32,7 @@ from .protocol import (
 )
 from .worker_lease import (
     DispatchPermit,
+    IdempotentCreateReplayPermit,
     ProviderWorkerLeaseCoordinator,
     WorkerDispatchRefused,
     WorkerLease,
@@ -39,11 +42,13 @@ from .worker_lease import (
     WorkerLeaseStale,
     WorkerLeaseStatus,
     WorkerLeaseUnavailable,
+    WorkerReplayRefused,
 )
 
 __all__ = [
     "BrokerAuthorization",
     "BrokerConflict",
+    "BrokerDispatchIntent",
     "BrokerIntegrityError",
     "BrokerLedgerError",
     "BrokerLookup",
@@ -56,8 +61,10 @@ __all__ = [
     "BrokerTransitionRefused",
     "BrokerUnavailable",
     "DispatchPermit",
+    "IdempotentCreateReplayPermit",
     "LookupDisposition",
     "PrimaryBrokerLedger",
+    "provider_idempotency_token",
     "ProviderWorkerLeaseCoordinator",
     "ReceiptAlgorithm",
     "SignedBrokerReceipt",
@@ -69,6 +76,7 @@ __all__ = [
     "WorkerLeaseStale",
     "WorkerLeaseStatus",
     "WorkerLeaseUnavailable",
+    "WorkerReplayRefused",
     "authorization_digest",
     "authorization_from_mapping",
     "assert_receipt_authority",
