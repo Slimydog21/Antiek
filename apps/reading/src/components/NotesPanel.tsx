@@ -1,5 +1,12 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  getDistillationReconciliation,
+  releaseProvenUnsentHold,
+  reservedReleaseTerms,
+  type DistillationReconciliation,
+  type ReservedReleaseTerms,
+} from "../api/distillationReconciliation";
 import type {
   ClaimChallengeRaisedPayload,
   ClaimGroundingCheckFailedPayload,
@@ -158,6 +165,7 @@ function FeedRow({
       return (
         <AssistantClaimsBubble
           eventId={event.event_id}
+          policyId={event.policy_id}
           payload={p}
           investigationId={investigationId}
           documentId={documentId}
@@ -299,6 +307,7 @@ function UserBubble({
 
 function AssistantClaimsBubble({
   eventId,
+  policyId,
   emittedAt,
   payload,
   investigationId,
@@ -306,6 +315,7 @@ function AssistantClaimsBubble({
   groundingByClaim,
 }: {
   eventId: string;
+  policyId: string | undefined;
   emittedAt: string;
   payload: DistillationDeliveredPayload;
   investigationId: string;
@@ -326,6 +336,11 @@ function AssistantClaimsBubble({
           {payload.rendered_text}
         </div>
       )}
+      {policyId === "wrestling-fallback/ambiguous" && (
+        <DistillationReconciliationControl
+          requestEventId={payload.request_event_id}
+        />
+      )}
       {documentId &&
         payload.claims.map((c) => (
           <div key={c.claim_id} className="w-[90%]">
@@ -339,6 +354,115 @@ function AssistantClaimsBubble({
         ))}
       <EventMeta eventId={eventId} emittedAt={emittedAt} align="left" />
     </li>
+  );
+}
+
+function DistillationReconciliationControl({
+  requestEventId,
+}: {
+  requestEventId: string;
+}) {
+  const [view, setView] = useState<DistillationReconciliation | null>(null);
+  const [terms, setTerms] = useState<ReservedReleaseTerms | null>(null);
+  const [errorKind, setErrorKind] = useState<"evidence" | "stale">("evidence");
+  const releaseInFlight = useRef(false);
+  const [phase, setPhase] = useState<"idle" | "loading" | "review" | "releasing" | "done" | "error">("idle");
+
+  async function review(): Promise<void> {
+    setErrorKind("evidence");
+    setPhase("loading");
+    try {
+      const next = await getDistillationReconciliation(requestEventId);
+      setView(next);
+      if (next.next_action === "release_proven_unsent") {
+        setTerms(reservedReleaseTerms(next));
+      } else {
+        setTerms(null);
+      }
+      setPhase("review");
+    } catch {
+      setView(null);
+      setTerms(null);
+      setPhase("error");
+    }
+  }
+
+  async function release(): Promise<void> {
+    if (terms === null || releaseInFlight.current) return;
+    releaseInFlight.current = true;
+    setPhase("releasing");
+    try {
+      const next = await releaseProvenUnsentHold(requestEventId, terms);
+      setView(next);
+      setTerms(null);
+      setPhase("done");
+    } catch {
+      setView(null);
+      setTerms(null);
+      setErrorKind("stale");
+      setPhase("error");
+    } finally {
+      releaseInFlight.current = false;
+    }
+  }
+
+  if (phase === "idle") {
+    return (
+      <button type="button" className="text-xs font-medium underline" onClick={() => void review()}>
+        Review held budget
+      </button>
+    );
+  }
+  if (phase === "loading") {
+    return <div className="text-xs font-mono text-ink-soft">Checking spend evidence…</div>;
+  }
+  if (phase === "error") {
+    return (
+      <div className="flex flex-col items-start gap-1 text-xs">
+        <span>
+          {errorKind === "stale"
+            ? "Hold state changed. Review current terms before trying again. Budget remains held."
+            : "Spend evidence is unavailable. Budget remains held."}
+        </span>
+        <button type="button" className="font-medium underline" onClick={() => void review()}>
+          Retry evidence check
+        </button>
+      </div>
+    );
+  }
+  if (phase === "done") {
+    return <div className="text-xs font-mono">Reserved hold released · budget restored</div>;
+  }
+  if (view?.next_action === "provider_lookup_required") {
+    return (
+      <div className="text-xs font-mono">
+        Provider verification required · budget remains held
+      </div>
+    );
+  }
+  if (view?.next_action === "none" || terms === null || view === null) {
+    return <div className="text-xs font-mono">No local budget action is available</div>;
+  }
+  const hold = view.holds.at(-1)!;
+  return (
+    <div className="w-[90%] border border-rule dark:border-charcoal-1 rounded-md p-2 text-xs font-mono">
+      <div>Reserved ${(hold.projected_max_cents / 100).toFixed(2)} USD</div>
+      <div>Command state {terms.expected_command_state}</div>
+      <div className="break-all">Run {view.spend_run_id}</div>
+      <div className="break-all">Chain {view.fallback_chain_id}</div>
+      <div className="break-all">Manifest {view.manifest_sha256}</div>
+      <div>Fallback route {terms.expected_fallback_index}</div>
+      <div className="break-all">Hold {view.current_hold_id}</div>
+      <div>Expected hold state {terms.expected_hold_state}</div>
+      <button
+        type="button"
+        className="mt-2 font-medium underline disabled:opacity-50"
+        disabled={phase === "releasing"}
+        onClick={() => void release()}
+      >
+        {phase === "releasing" ? "Releasing reserved hold…" : "Release reserved hold"}
+      </button>
+    </div>
   );
 }
 

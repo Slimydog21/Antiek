@@ -1980,6 +1980,152 @@ class ResearchSpendLedger:
             self._checkpoint("release:after_event")
             return run
 
+    def release_reserved_fallback_hold(
+        self,
+        command_key: str,
+        *,
+        owner_id: str,
+        request_event_id: str,
+        run_id: str,
+        chain_id: str,
+        manifest_sha256: str,
+        fallback_index: int,
+        hold_id: str,
+    ) -> RunSnapshot:
+        """Atomically release one exact fallback hold proven never dispatched."""
+        for name, value in (
+            ("command_key", command_key),
+            ("owner_id", owner_id),
+            ("request_event_id", request_event_id),
+            ("run_id", run_id),
+            ("chain_id", chain_id),
+            ("manifest_sha256", manifest_sha256),
+            ("hold_id", hold_id),
+        ):
+            _required_text(name, value)
+        _bounded_int("fallback_index", fallback_index, minimum=0, maximum=15)
+        evidence = {
+            "evidence_kind": "ledger_reserved_before_dispatch",
+            "request_event_id": request_event_id,
+        }
+        evidence_json = _canonical(evidence)
+        intent_json = _canonical(
+            {
+                "chain_id": chain_id,
+                "fallback_index": fallback_index,
+                "hold_id": hold_id,
+                "manifest_sha256": manifest_sha256,
+                "owner_id": owner_id,
+                "request_event_id": request_event_id,
+                "run_id": run_id,
+            }
+        )
+        with self._write("release_reserved_fallback_hold") as connection:
+            replay = self._replay(
+                connection,
+                command_key,
+                "release_reserved_fallback_hold",
+                hold_id,
+                intent_json,
+            )
+            if replay is not None:
+                hold = self._load_hold(connection, hold_id)
+                if hold.run_id != run_id or hold.state is not PaidHoldState.RELEASED:
+                    raise LedgerIntegrityError("reserved fallback release replay conflicts")
+                return self._load_run(connection, run_id)
+
+            run = self._load_run(connection, run_id)
+            if run.binding.owner_id != owner_id:
+                raise RunNotFound(run_id)
+            chain_row = connection.execute(
+                "SELECT * FROM research_fallback_chains "
+                "WHERE chain_id=? AND owner_id=? AND run_id=?",
+                (chain_id, owner_id, run_id),
+            ).fetchone()
+            if chain_row is None or str(chain_row["manifest_sha256"]) != manifest_sha256:
+                raise LedgerIntegrityError("reserved fallback chain authority conflicts")
+            chain = self._fallback_history_row(connection, chain_row, owner_id)
+            if chain.manifest_sha256 != manifest_sha256:
+                raise LedgerIntegrityError("reserved fallback manifest conflicts")
+            route = connection.execute(
+                "SELECT * FROM research_fallback_routes "
+                "WHERE chain_id=? AND fallback_index=?",
+                (chain_id, fallback_index),
+            ).fetchone()
+            hold = self._load_hold(connection, hold_id)
+            intent = hold.intent
+            if route is None or (
+                hold.run_id != run_id
+                or intent.seam_id != str(route["seam_id"])
+                or intent.provider != str(route["provider"])
+                or intent.model != str(route["model"])
+                or intent.operation != str(route["operation"])
+                or intent.operation_digest != str(route["operation_digest"])
+                or intent.projection_digest != str(route["projection_digest"])
+                or intent.rate_snapshot != str(route["rate_snapshot"])
+                or intent.reservation_key != str(route["reservation_key"])
+                or intent.provider_idempotency_key
+                != str(route["provider_idempotency_key"])
+                or intent.route_authority_digest
+                != str(route["route_authority_digest"])
+                or hold.projected_max_cents != int(route["projected_max_cents"])
+            ):
+                raise LedgerIntegrityError("reserved fallback hold authority conflicts")
+            if hold.state is not PaidHoldState.RESERVED:
+                raise InvalidTransition(
+                    hold_id, hold.state.value, "release reserved fallback hold"
+                )
+
+            now = _now()
+            updated_run = connection.execute(
+                "UPDATE research_spend_runs SET held_cents = held_cents - ?, "
+                "updated_at = ? WHERE run_id = ? AND held_cents >= ? RETURNING run_id",
+                (hold.projected_max_cents, now, run_id, hold.projected_max_cents),
+            ).fetchone()
+            if updated_run is None:
+                raise LedgerIntegrityError("reserved fallback release lost held authority")
+            updated_hold = connection.execute(
+                "UPDATE research_spend_holds SET state='released',actual_cents=NULL,"
+                "authorized_applied_cents=0,resolution_key=?,resolution_intent_json=?,"
+                "resolution_intent_sha256=?,resolution_evidence_json=?,resolved_at=?,updated_at=? "
+                "WHERE hold_id=? AND state='reserved' RETURNING hold_id",
+                (
+                    command_key,
+                    intent_json,
+                    _sha256(intent_json),
+                    evidence_json,
+                    now,
+                    now,
+                    hold_id,
+                ),
+            ).fetchone()
+            if updated_hold is None:
+                raise LedgerIntegrityError("reserved fallback release lost hold state")
+            self._checkpoint("release_reserved_fallback_hold:after_state_updates")
+            self._advance_closed_reconciliation(connection, run_id, now)
+            run = self._load_run(connection, run_id)
+            result_json = self._run_result(run)
+            self._record_command(
+                connection,
+                command_key,
+                "release_reserved_fallback_hold",
+                hold_id,
+                intent_json,
+                result_json,
+            )
+            self._checkpoint("release_reserved_fallback_hold:after_command")
+            self._append_event(
+                connection,
+                run,
+                command_key=command_key,
+                event_kind="hold_released",
+                hold_id=hold_id,
+                held_delta_cents=-hold.projected_max_cents,
+                evidence_json=evidence_json,
+            )
+            self._checkpoint("release_reserved_fallback_hold:after_event")
+            return run
+
     def complete_zero_cost(
         self, command_key: str, attempt_id: str, outcome_digest: str
     ) -> ZeroCostAttemptSnapshot:

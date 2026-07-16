@@ -1,17 +1,21 @@
-"""Authenticated, read-only distillation reconciliation evidence."""
+"""Authenticated distillation reconciliation evidence and exact actions."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from substrate.distillation_dispatch import DistillationDispatchJournal
 from substrate.graph import default_db_path
 from substrate.research_spend import (
+    IdempotencyConflict,
+    InvalidTransition,
     LedgerIntegrityError,
     PaidHoldState,
     ResearchSpendLedger,
@@ -73,6 +77,20 @@ class DistillationReconciliationResponse(BaseModel):
     ]
     action_executable: Literal[False]
     holds: tuple[DistillationHoldEvidenceResponse, ...]
+
+
+class ReleaseProvenUnsentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_command_state: Literal["ambiguous"]
+    expected_spend_run_id: str = Field(min_length=1, max_length=512)
+    expected_fallback_chain_id: str = Field(min_length=1, max_length=512)
+    expected_manifest_sha256: str = Field(
+        min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$"
+    )
+    expected_fallback_index: int = Field(ge=0, le=15)
+    expected_hold_id: str = Field(min_length=1, max_length=512)
+    expected_hold_state: Literal["reserved"]
 
 
 def get_distillation_reconciliation_runtime() -> DistillationReconciliationRuntime:
@@ -211,6 +229,94 @@ def get_distillation_reconciliation(
         action_executable=False,
         holds=tuple(holds),
     )
+
+
+@distillation_reconciliation_router.post(
+    "/commands/{request_event_id}/reconciliation/actions/release-proven-unsent",
+    response_model=DistillationReconciliationResponse,
+)
+def release_proven_unsent_hold(
+    request_event_id: str,
+    expected: ReleaseProvenUnsentRequest,
+    operator_id: str = Depends(authenticated_distillation_operator),
+    runtime: DistillationReconciliationRuntime = Depends(
+        get_distillation_reconciliation_runtime
+    ),
+) -> DistillationReconciliationResponse:
+    journal = DistillationDispatchJournal(runtime.command_db_path)
+    try:
+        with journal.execution_guard(request_event_id):
+            current = get_distillation_reconciliation(
+                request_event_id, operator_id, runtime
+            )
+            if (
+                current.command_state != expected.expected_command_state
+                or current.spend_run_id != expected.expected_spend_run_id
+                or current.fallback_chain_id != expected.expected_fallback_chain_id
+                or current.manifest_sha256 != expected.expected_manifest_sha256
+                or current.current_fallback_index != expected.expected_fallback_index
+                or current.current_hold_id != expected.expected_hold_id
+            ):
+                raise LedgerIntegrityError("operator reconciliation terms changed")
+            current_hold = current.holds[-1]
+            if current_hold.hold_id != expected.expected_hold_id or current_hold.state not in (
+                expected.expected_hold_state,
+                PaidHoldState.RELEASED.value,
+            ):
+                raise LedgerIntegrityError("operator reconciliation hold changed")
+            command_key = _release_command_key(
+                operator_id, request_event_id, expected
+            )
+            ResearchSpendLedger(runtime.spend_db_path).release_reserved_fallback_hold(
+                command_key,
+                owner_id=operator_id,
+                request_event_id=request_event_id,
+                run_id=expected.expected_spend_run_id,
+                chain_id=expected.expected_fallback_chain_id,
+                manifest_sha256=expected.expected_manifest_sha256,
+                fallback_index=expected.expected_fallback_index,
+                hold_id=expected.expected_hold_id,
+            )
+            return get_distillation_reconciliation(
+                request_event_id, operator_id, runtime
+            )
+    except RunNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="command unavailable"
+        ) from exc
+    except (
+        IdempotencyConflict,
+        IndexError,
+        InvalidTransition,
+        KeyError,
+        LedgerIntegrityError,
+        RuntimeError,
+        ValueError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="reconciliation action conflicts",
+        ) from exc
+
+
+def _release_command_key(
+    operator_id: str,
+    request_event_id: str,
+    expected: ReleaseProvenUnsentRequest,
+) -> str:
+    canonical = json.dumps(
+        {
+            "expected": expected.model_dump(mode="json"),
+            "operator_id": operator_id,
+            "request_event_id": request_event_id,
+        },
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return "distillation-reserved-release:" + hashlib.sha256(
+        canonical.encode("utf-8")
+    ).hexdigest()
 
 
 def _evidence_requirement(

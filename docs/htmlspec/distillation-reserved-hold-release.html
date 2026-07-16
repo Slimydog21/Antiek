@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Antiek - Distillation Reserved Hold Release</title></head>
+<body><main>
+<h1>Distillation reserved-hold release</h1>
+<section><h2>User outcome</h2><p>An authenticated owner can inspect an ambiguous distillation request, review its complete run, chain, manifest, fallback index, hold identity, and reserved amount, then deliberately restore budget only when the ledger proves that exact current hold never crossed the provider-send boundary.</p></section>
+<section><h2>Authority boundary</h2><ul>
+<li>The read model remains evidence-only and never executes an action.</li>
+<li>The release command accepts only <code>expected_command_state=ambiguous</code> and <code>expected_hold_state=reserved</code>.</li>
+<li>The per-request process flock spans the final command comparison, atomic ledger mutation, and refreshed response, preventing fallback-correlation advance during compare-and-act.</li>
+<li>The ledger atomically validates owner, run, chain, manifest, fallback route, every private hold-intent field, projected maximum, and current reserved state before subtracting held cents.</li>
+<li><code>dispatch_possible</code> and <code>unknown</code> require authoritative provider lookup and can never use this command. Local abandonment never restores budget.</li>
+<li>One deterministic command key makes exact retries idempotent; changed terms conflict without mutation.</li>
+</ul></section>
+<section><h2>Operator interaction</h2><ol>
+<li>An ambiguous delivery offers only “Review held budget.”</li>
+<li>The first gesture fetches authoritative evidence. Raw transport errors are never shown.</li>
+<li>For a reserved hold, the UI displays complete run, chain, manifest, hold, and amount. A separate second gesture submits exactly those reviewed terms.</li>
+<li>Pending release disables duplicate submission. Success reports restored headroom. Failure keeps budget described as held and requires a fresh evidence check.</li>
+<li>Provider-possible evidence displays “Provider verification required” and renders no release control.</li>
+</ol></section>
+<section><h2>Action matrix</h2><table><thead><tr><th>Command</th><th>Hold</th><th>Result</th></tr></thead><tbody>
+<tr><td>ambiguous</td><td>reserved</td><td>Exact two-step release eligible.</td></tr>
+<tr><td>ambiguous</td><td>dispatch_possible or unknown</td><td>No local action; provider evidence required.</td></tr>
+<tr><td>ambiguous</td><td>released</td><td>Exact command replay returns the same terminal view; a different release conflicts.</td></tr>
+<tr><td>any other command state</td><td>any</td><td>Conflict; no mutation.</td></tr>
+</tbody></table></section>
+<section><h2>Acceptance evidence</h2><ul>
+<li>Exact owner release changes one hold and one ledger event, restores only its projected cents, and exact replay adds nothing.</li>
+<li>Foreign owner, stale manifest, substituted hold, skipped fallback index, malformed body, changed command state, and private route-intent substitution fail closed.</li>
+<li>Dispatch-possible and unknown holds retain their full held amount.</li>
+<li>Frontend tests prove two gestures, complete term disclosure, exact body reuse, pending behavior, safe failure copy, and no release button for provider-possible exposure.</li>
+<li>Coupled tests, Ruff, strict types, production build, HardenX, and independent hostile review pass.</li>
+</ul></section>
+<section><h2>Non-goals</h2><p>No provider lookup, settlement, retry, abandonment, adapter qualification, generic spend release, event schema, live provider call, merge, or deployment.</p></section>
+</main></body></html>
