@@ -15,7 +15,9 @@ def test_trajectory_merges_events_appended_after_seal(tmp_path):
         "before.seal",
         events_dir=events_dir,
     )
-    assert seal_investigation(investigation_id, events_dir=events_dir) is not None
+    assert seal_investigation(
+        investigation_id, events_dir=events_dir, outbox_db_path=None
+    ) is not None
     second_id = log_event(
         investigation_id,
         "after.seal",
@@ -25,6 +27,8 @@ def test_trajectory_merges_events_appended_after_seal(tmp_path):
     rows = trajectory(investigation_id, events_dir=events_dir)
     assert [row["event_id"] for row in rows] == [first_id, second_id]
 
-    assert seal_investigation(investigation_id, events_dir=events_dir) is not None
+    assert seal_investigation(
+        investigation_id, events_dir=events_dir, outbox_db_path=None
+    ) is not None
     resealed = trajectory(investigation_id, events_dir=events_dir)
     assert [row["event_id"] for row in resealed] == [first_id, second_id]

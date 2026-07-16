@@ -3159,9 +3159,14 @@ def create_app(
         to a first-class operator-asserted claim in the graph (master
         spec §10.4 Option B)."""
         from runtime.db_lock import connect_write
-        from substrate.event_log import emit_typed
-        from substrate.graph.ops import insert_node, update_section_prose
-        from substrate.schemas import ClaimAssertedByOperatorPayload
+        from substrate.graph.ops import content_addressed_id, insert_node, update_section_prose
+        from substrate.schemas import ClaimAssertedByOperatorPayload, GraphNodeInsertedPayload
+        from substrate.write.event_outbox import (
+            build_typed_envelope,
+            dispatch_pending_best_effort,
+            enqueue_event,
+            eventful_transaction,
+        )
 
         db = _resolve_db_path()
         with connect_write(db, purpose="sections/prose_update") as con:
@@ -3174,52 +3179,73 @@ def create_app(
                     status_code=404, detail="section not found",
                 )
             deliverable_id = row[0]
-            update_section_prose(
-                con, section_id=section_id, prose_text=req.prose_text,
-            )
             claim_node_id: str | None = None
-            if req.promote_to_graph:
-                # Use the section title + first line of the prose as
-                # the claim's canonical label (keeps it indexable).
-                label = req.prose_text.strip().splitlines()[0]
-                if len(label) > 160:
-                    label = label[:159] + "…"
-                claim_node_id = insert_node(
-                    con,
-                    canonical_label=label,
-                    node_type="claim",
-                    graph_scope="cross_domain",
-                    investigation_id=req.investigation_id,
-                    metadata={
-                        "source": "operator_asserted",
-                        "deliverable_id": deliverable_id,
-                        "section_id": section_id,
-                        "policy_id": f"operator/{deliverable_id}",
-                        "cited_chunk_ids": req.cited_chunk_ids,
-                    },
-                    on_conflict="ignore",
+            claim_event_id: str | None = None
+            with eventful_transaction(con, req.investigation_id):
+                update_section_prose(
+                    con, section_id=section_id, prose_text=req.prose_text,
                 )
+                if req.promote_to_graph:
+                    label = req.prose_text.strip().splitlines()[0]
+                    if len(label) > 160:
+                        label = label[:159] + "…"
+                    claim_node_id = content_addressed_id(
+                        "node", f"{label}|claim|cross_domain"
+                    )
+                    node_existed = con.execute(
+                        "SELECT 1 FROM nodes WHERE node_id=?", [claim_node_id]
+                    ).fetchone() is not None
+                    insert_node(
+                        con, canonical_label=label, node_type="claim",
+                        graph_scope="cross_domain",
+                        investigation_id=req.investigation_id,
+                        metadata={
+                            "source": "operator_asserted",
+                            "deliverable_id": deliverable_id,
+                            "section_id": section_id,
+                            "policy_id": f"operator/{deliverable_id}",
+                            "cited_chunk_ids": req.cited_chunk_ids,
+                        },
+                        on_conflict="ignore",
+                        node_id=claim_node_id, emit_event=False,
+                    )
+                    if not node_existed:
+                        node_event = build_typed_envelope(
+                            req.investigation_id,
+                            GraphNodeInsertedPayload(
+                                node_id=claim_node_id, canonical_label=label,
+                                node_type="claim", graph_scope="cross_domain",
+                                has_embedding=False,
+                            ), role="connector",
+                        )
+                        enqueue_event(
+                            con, operation_id=f"graph.node:{node_event.event_id}",
+                            aggregate_kind="graph_node", aggregate_id=claim_node_id,
+                            event=node_event,
+                        )
+                    claim_event = build_typed_envelope(
+                        req.investigation_id,
+                        ClaimAssertedByOperatorPayload(
+                            deliverable_id=deliverable_id,
+                            section_id=section_id,
+                            claim_text=req.prose_text,
+                            original_text=req.original_text,
+                            node_id=claim_node_id,
+                            source_tier=5,
+                            cited_chunk_ids=req.cited_chunk_ids,
+                        ),
+                        role="creation_surface",
+                        policy_id=f"operator/{deliverable_id}",
+                    )
+                    claim_event_id = enqueue_event(
+                        con, operation_id=f"claim.asserted:{claim_event.event_id}",
+                        aggregate_kind="deliverable_section", aggregate_id=section_id,
+                        event=claim_event,
+                    )
+            if req.promote_to_graph:
+                dispatch_pending_best_effort(con, req.investigation_id)
 
-        claim_event_id: str | None = None
         if req.promote_to_graph and claim_node_id is not None:
-            # Source tier: default 5 (unsupported) unless the operator
-            # explicitly attached chunk citations. Even with citations
-            # we keep it at tier 5 until the grounder verifies — the
-            # grounder demotes the tier on success.
-            payload = ClaimAssertedByOperatorPayload(
-                deliverable_id=deliverable_id,
-                section_id=section_id,
-                claim_text=req.prose_text,
-                original_text=req.original_text,
-                node_id=claim_node_id,
-                source_tier=5,
-                cited_chunk_ids=req.cited_chunk_ids,
-            )
-            claim_event_id = emit_typed(
-                req.investigation_id, payload,
-                role="creation_surface",
-                policy_id=f"operator/{deliverable_id}",
-            )
             return UpdateSectionProseResponse(
                 status="saved_and_promoted",
                 section_id=section_id,

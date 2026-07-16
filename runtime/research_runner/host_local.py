@@ -189,6 +189,7 @@ class HostLocalRunner:
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         budget: BudgetManager | None = None,
         events_dir: str | None = None,
+        outbox_db_path: str | None = None,
         seal_on_complete: bool = True,
         on_emit: Callable[[StepEvent], Awaitable[None]] | None = None,
         retrieval_substrate: object | None = None,
@@ -199,6 +200,11 @@ class HostLocalRunner:
         self.max_concurrency = max_concurrency
         self.budget = budget or BudgetManager()
         self._events_dir = events_dir
+        if outbox_db_path is None:
+            from substrate.graph import default_db_path
+
+            outbox_db_path = default_db_path()
+        self._outbox_db_path = outbox_db_path
         self._seal_on_complete = seal_on_complete
         # Optional async hook the promotion funnel subscribes to so notes /
         # questions get drained as they are emitted.
@@ -399,7 +405,11 @@ class HostLocalRunner:
             # line-shifted out of the declared-bar baseline — shrink real debt,
             # do not re-mint a phantom)
             with contextlib.suppress(Exception):
-                seal_investigation(iid, events_dir=self._events_dir)
+                seal_investigation(
+                    iid,
+                    events_dir=self._events_dir,
+                    outbox_db_path=self._outbox_db_path,
+                )
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 

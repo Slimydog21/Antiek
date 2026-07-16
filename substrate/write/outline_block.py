@@ -54,13 +54,11 @@ from typing import Any, Literal
 
 try:
     from ...runtime.db_lock import LockedConnection
-    from ..event_log import emit_typed
     from ..graph.ops import new_random_id
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
     from substrate.graph.ops import new_random_id  # type: ignore[no-redef]
 
 from substrate.schemas.events import (
@@ -266,6 +264,8 @@ def place_block(
     outline_block_id: str | None = None,
     parent_event_id: str | None = None,
     on_conflict: Literal["error", "ignore"] = "error",
+    emit_event: bool = True,
+    transaction_owner: bool = True,
 ) -> str:
     """Place a lego block into an outline section. Returns its
     ``outline_block_id`` and emits ``OUTLINE_BLOCK_PLACED`` after commit.
@@ -285,34 +285,86 @@ def place_block(
             [obid],
         ).fetchone()
         if exists is not None:
+            from substrate.write.event_outbox import dispatch_pending_best_effort
+
+            dispatch_pending_best_effort(con, investigation_id)
             return obid  # idempotent: no INSERT, no event
     did = deliverable_id or _resolve_deliverable_id(con, section_id)
-    con.execute(
-        "INSERT INTO outline_blocks "
-        "(outline_block_id, section_id, block_kind, provenance_kind, "
-        " node_id, source_block_kind, source_block_id, content, "
-        " block_index, cluster_id, metadata) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-            obid, section_id, block_kind, provenance_kind, node_id,
-            source_block_kind, source_block_id, content, int(block_index),
-            cluster_id, _maybe_json(metadata),
-        ],
+    if emit_event and not transaction_owner:
+        raise OutlineBlockError("eventful block placement must own its transaction")
+    from substrate.write.event_outbox import (
+        build_typed_envelope,
+        dispatch_pending_best_effort,
+        enqueue_event,
+        eventful_transaction,
+        next_aggregate_operation_id,
     )
-    emit_typed(
-        investigation_id,
-        OutlineBlockPlacedPayload(
-            outline_block_id=obid,
-            deliverable_id=did,
-            section_id=section_id,
-            block_kind=block_kind,  # type: ignore[arg-type]
-            provenance_kind=provenance_kind,  # type: ignore[arg-type]
-            node_id=node_id,
-            block_index=int(block_index),
-        ),
-        parent_event_id=parent_event_id,
-        role="write_composition",
+
+    event = (
+        build_typed_envelope(
+            investigation_id,
+            OutlineBlockPlacedPayload(
+                outline_block_id=obid,
+                deliverable_id=did,
+                section_id=section_id,
+                block_kind=block_kind,  # type: ignore[arg-type]
+                provenance_kind=provenance_kind,  # type: ignore[arg-type]
+                node_id=node_id,
+                block_index=int(block_index),
+            ),
+            parent_event_id=parent_event_id,
+            role="write_composition",
+        )
+        if emit_event else None
     )
+    operation_id = (
+        next_aggregate_operation_id(
+            con,
+            action="outline.place",
+            aggregate_kind="outline_block",
+            aggregate_id=obid,
+        )
+        if event is not None else None
+    )
+
+    def apply_mutation() -> None:
+        con.execute(
+            "INSERT INTO outline_blocks "
+            "(outline_block_id, section_id, block_kind, provenance_kind, "
+            " node_id, source_block_kind, source_block_id, content, "
+            " block_index, cluster_id, metadata) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                obid, section_id, block_kind, provenance_kind, node_id,
+                source_block_kind, source_block_id, content, int(block_index),
+                cluster_id, _maybe_json(metadata),
+            ],
+        )
+        if event is not None:
+            assert operation_id is not None
+            enqueue_event(
+                con,
+                operation_id=operation_id,
+                aggregate_kind="outline_block",
+                aggregate_id=obid,
+                event=event,
+            )
+
+    if event is not None:
+        with eventful_transaction(con, investigation_id):
+            apply_mutation()
+    elif transaction_owner:
+        con.execute("BEGIN TRANSACTION")
+        try:
+            apply_mutation()
+            con.execute("COMMIT")
+        except Exception:
+            con.execute("ROLLBACK")
+            raise
+    else:
+        apply_mutation()
+    if event is not None:
+        dispatch_pending_best_effort(con, investigation_id)
     return obid
 
 
@@ -377,19 +429,30 @@ def move_block(
     if row is None:
         raise OutlineBlockError(f"outline block not found: {outline_block_id!r}")
     from_section_id, from_index = row[0], int(row[1])
+    if to_section_id == from_section_id and int(to_index) == from_index:
+        from substrate.write.event_outbox import dispatch_pending_best_effort
+
+        dispatch_pending_best_effort(con, investigation_id)
+        return
     # Validate the target section exists (reparent target).
-    if to_section_id != from_section_id:
-        if con.execute(
+    if (
+        to_section_id != from_section_id
+        and con.execute(
             "SELECT 1 FROM deliverable_sections WHERE section_id = ?",
             [to_section_id],
-        ).fetchone() is None:
-            raise OutlineBlockError(f"target section not found: {to_section_id!r}")
-    con.execute(
-        "UPDATE outline_blocks SET section_id = ?, block_index = ? "
-        "WHERE outline_block_id = ?",
-        [to_section_id, int(to_index), outline_block_id],
+        ).fetchone()
+        is None
+    ):
+        raise OutlineBlockError(f"target section not found: {to_section_id!r}")
+    from substrate.write.event_outbox import (
+        build_typed_envelope,
+        dispatch_pending_best_effort,
+        enqueue_event,
+        eventful_transaction,
+        next_aggregate_operation_id,
     )
-    emit_typed(
+
+    event = build_typed_envelope(
         investigation_id,
         OutlineBlockMovedPayload(
             outline_block_id=outline_block_id,
@@ -401,6 +464,27 @@ def move_block(
         parent_event_id=parent_event_id,
         role="write_composition",
     )
+    operation_id = next_aggregate_operation_id(
+        con,
+        action="outline.move",
+        aggregate_kind="outline_block",
+        aggregate_id=outline_block_id,
+    )
+
+    with eventful_transaction(con, investigation_id):
+        con.execute(
+            "UPDATE outline_blocks SET section_id = ?, block_index = ? "
+            "WHERE outline_block_id = ?",
+            [to_section_id, int(to_index), outline_block_id],
+        )
+        enqueue_event(
+            con,
+            operation_id=operation_id,
+            aggregate_kind="outline_block",
+            aggregate_id=outline_block_id,
+            event=event,
+        )
+    dispatch_pending_best_effort(con, investigation_id)
 
 
 def remove_block(
@@ -419,13 +503,20 @@ def remove_block(
         [outline_block_id],
     ).fetchone()
     if row is None:
+        from substrate.write.event_outbox import dispatch_pending_best_effort
+
+        dispatch_pending_best_effort(con, investigation_id)
         return False
     section_id = row[0]
-    con.execute(
-        "DELETE FROM outline_blocks WHERE outline_block_id = ?",
-        [outline_block_id],
+    from substrate.write.event_outbox import (
+        build_typed_envelope,
+        dispatch_pending_best_effort,
+        enqueue_event,
+        eventful_transaction,
+        next_aggregate_operation_id,
     )
-    emit_typed(
+
+    event = build_typed_envelope(
         investigation_id,
         OutlineBlockRemovedPayload(
             outline_block_id=outline_block_id, section_id=section_id,
@@ -433,6 +524,26 @@ def remove_block(
         parent_event_id=parent_event_id,
         role="write_composition",
     )
+    operation_id = next_aggregate_operation_id(
+        con,
+        action="outline.remove",
+        aggregate_kind="outline_block",
+        aggregate_id=outline_block_id,
+    )
+
+    with eventful_transaction(con, investigation_id):
+        con.execute(
+            "DELETE FROM outline_blocks WHERE outline_block_id = ?",
+            [outline_block_id],
+        )
+        enqueue_event(
+            con,
+            operation_id=operation_id,
+            aggregate_kind="outline_block",
+            aggregate_id=outline_block_id,
+            event=event,
+        )
+    dispatch_pending_best_effort(con, investigation_id)
     return True
 
 

@@ -140,6 +140,7 @@ class RemoteResearchRunner:
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         budget: BudgetManager | None = None,
         events_dir: str | None = None,
+        outbox_db_path: str | None = None,
         seal_on_complete: bool = True,
         on_emit: Callable[[StepEvent], Awaitable[None]] | None = None,
     ):
@@ -148,6 +149,11 @@ class RemoteResearchRunner:
         self.max_concurrency = max_concurrency
         self.budget = budget or BudgetManager()
         self._events_dir = events_dir
+        if outbox_db_path is None:
+            from substrate.graph import default_db_path
+
+            outbox_db_path = default_db_path()
+        self._outbox_db_path = outbox_db_path
         self._seal_on_complete = seal_on_complete
         self._on_emit = on_emit
         self._states: dict[str, _RemoteState] = {}
@@ -266,7 +272,11 @@ class RemoteResearchRunner:
                       events_dir=self._events_dir)
         if self._seal_on_complete:
             try:
-                seal_investigation(iid, events_dir=self._events_dir)
+                seal_investigation(
+                    iid,
+                    events_dir=self._events_dir,
+                    outbox_db_path=self._outbox_db_path,
+                )
             except Exception as e:  # seal is best-effort
                 try:
                     logger.warning(
