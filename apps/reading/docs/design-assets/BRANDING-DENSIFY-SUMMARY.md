@@ -112,6 +112,7 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | Xray regenerate piece_started | `9e66cdca5` | write rewrite craft living-TV beat |
 | CRT igloo invent LGH default | `9e66cdca5` | Flipbook-feel default wait-host invent strip |
 | SubAgentProposal accept/reject | `169ba0606` | write sub-agent spin living-TV beats |
+| Outline generate piece_started | `ddae1e6d2` | section draft craft living-TV beat |
 | PasteIngest absorb beats | `6256fddad` | highlight on absorb; fail on error |
 | VoiceChase transcript beats | `62697398e` | note_saved on transcript; fail on error |
 
