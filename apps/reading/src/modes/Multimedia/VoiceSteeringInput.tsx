@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { transcribe } from "../../api/asr";
 import { LemonButton, LemonTextarea } from "../../components/lemon";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 type CapturePhase = "idle" | "requesting" | "transcribing" | "review" | "error";
 const HAS_WORD_CHARACTER = /[\p{L}\p{N}]/u;
@@ -49,15 +50,19 @@ export function VoiceSteeringInput({
         if (!HAS_WORD_CHARACTER.test(transcript)) {
           setPhase("error");
           setError("No words were detected. Type the steer or record again.");
+          emitWernerExperience("fail");
           return;
         }
         onTranscriptRef.current(transcript);
         setPhase("review");
+        // Living-TV: voice steer transcript landed — noted beat.
+        emitWernerExperience("note_saved");
       })
       .catch((caught: unknown) => {
         if (cancelled) return;
         setPhase("error");
         setError(caught instanceof Error ? caught.message : "Voice transcription failed. Type the steer instead.");
+        emitWernerExperience("fail");
       });
     return () => {
       cancelled = true;
