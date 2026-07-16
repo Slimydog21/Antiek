@@ -179,3 +179,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | LibraryView living-TV filter | `aea9d8f07` | filter/reload highlight |
 | ResearchThis/ReplayStepList living-TV | `141d2b191` | spin fail DR error; replay step highlight |
 | Speak project + HardCeiling densify | `33f789d9f` | invite/assemble/ceiling living-TV |
+| DR Canvas BlockCard living-TV | `26facb897` | open/cite highlight |
