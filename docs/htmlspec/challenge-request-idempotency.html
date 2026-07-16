@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Antiek Cycle 84 - Challenge request idempotency</title></head>
+<body>
+  <h1>Durable challenge request idempotency</h1>
+  <p>A browser retry of one living-note challenge must never pay for or dispatch the same model decision twice.</p>
+  <h2>Command identity</h2>
+  <ul>
+    <li>The browser creates one opaque ASCII idempotency key per explicit challenge gesture and retains it across transport, server, and provider failures.</li>
+    <li>The server binds that key to a canonical request digest containing the investigation, note, and challenge text. Reuse for different content is a conflict.</li>
+    <li>The first accepted command durably records its note sequence and <code>resolving</code> state before resolver dispatch.</li>
+  </ul>
+  <h2>Durable state machine</h2>
+  <ul>
+    <li><code>resolving</code>: provider outcome is unknown. A retry fails closed and never dispatches again.</li>
+    <li><code>decided</code>: the normalized resolver decision is durable. A retry applies that decision without provider work.</li>
+    <li><code>completed</code>: the serialized challenge result is durable. A retry returns it exactly without provider or graph work.</li>
+    <li><code>unavailable</code>: provider failure is durably classified without storing raw provider details. A retry returns the same generic unavailable response without dispatch.</li>
+    <li>A crash after graph commit but before completion replays the durable decision through the existing idempotent refinement/escalation operation, then completes the receipt.</li>
+  </ul>
+  <h2>Boundaries</h2>
+  <ul>
+    <li>The request journal uses the existing graph writer connection and lock; no parallel write authority is introduced.</li>
+    <li>Raw provider errors, prompts, credentials, and secret-bearing response bodies are never persisted or returned.</li>
+    <li>An ambiguous <code>resolving</code> command is not automatically reclaimed because the provider has no reconciliation contract.</li>
+    <li>Existing authoritative graph outcomes, outbox delivery, sequence ordering, and event schemas remain unchanged.</li>
+  </ul>
+  <h2>Acceptance</h2>
+  <ul>
+    <li>Concurrent or sequential calls with the same key invoke the resolver at most once.</li>
+    <li>A changed request under the same key returns HTTP 409 with no resolver call.</li>
+    <li>A retry after durable decision or graph commit returns the same semantic result with no resolver call.</li>
+    <li>A retry of an ambiguous in-flight command returns HTTP 409; a persisted provider failure returns HTTP 503.</li>
+    <li>Malformed keys are rejected before model dispatch.</li>
+    <li>The workstation sends the same key when its existing retry controls repeat a failed command.</li>
+  </ul>
+</body>
+</html>

@@ -246,6 +246,7 @@ type ChallengeState =
 function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: string }) {
   const [showChange, setShowChange] = useState(false);
   const [challenge, setChallenge] = useState<ChallengeState>({ kind: "idle" });
+  const [challengeKey, setChallengeKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     if (
@@ -275,8 +276,12 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
     if (!note.nodeId) return;
     setChallenge({ kind: "busy" });
     try {
-      const res = await challengeNote(note.nodeId, { investigation_id: investigationId });
+      const res = await challengeNote(note.nodeId, {
+        investigation_id: investigationId,
+        idempotency_key: challengeKey,
+      });
       if (res.applied && res.new_text) {
+        setChallengeKey(crypto.randomUUID());
         setChallenge({
           kind: "changed",
           newText: res.new_text,
@@ -284,8 +289,10 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
           baseSequence: note.lastAppliedSequence,
         });
       } else if (res.escalated) {
+        setChallengeKey(crypto.randomUUID());
         setChallenge({ kind: "escalated" });
       } else if (res.superseded) {
+        setChallengeKey(crypto.randomUUID());
         setChallenge({ kind: "unchanged" });
       } else {
         setChallenge({ kind: "idle" });

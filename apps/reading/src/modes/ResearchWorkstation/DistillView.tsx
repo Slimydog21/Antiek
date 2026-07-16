@@ -167,18 +167,25 @@ function InsightRow({
   const [outcome, setOutcome] = useState<
     "idle" | "busy" | "changed" | "unchanged" | "escalated" | "noSource" | "noModel" | "error"
   >("idle");
+  const [challengeKey, setChallengeKey] = useState(() => crypto.randomUUID());
 
   const runChallenge = async () => {
     setOutcome("busy");
     try {
-      const res = await challengeNote(node.node_id, { investigation_id: investigationId });
+      const res = await challengeNote(node.node_id, {
+        investigation_id: investigationId,
+        idempotency_key: challengeKey,
+      });
       if (res.applied) {
         setOutcome("changed");
         await onRefined(); // refetch so the refined node text re-renders from the graph
+        setChallengeKey(crypto.randomUUID());
       } else if (res.escalated) {
         setOutcome("escalated");
         await onRefined();
+        setChallengeKey(crypto.randomUUID());
       } else if (res.superseded) {
+        setChallengeKey(crypto.randomUUID());
         setOutcome("unchanged");
       } else {
         setOutcome("idle");

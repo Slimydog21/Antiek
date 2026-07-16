@@ -69,6 +69,14 @@ def _seed(env, *, insights=(), questions=()):
     return ids
 
 
+def _challenge_body(text: str = "", *, key: str = "challenge-key-0001"):
+    return {
+        "investigation_id": "inv-1",
+        "challenge_text": text,
+        "idempotency_key": key,
+    }
+
+
 # --------------------------------------------------------------------------
 # M2 — read the distilled insights + open questions
 # --------------------------------------------------------------------------
@@ -104,7 +112,7 @@ def test_challenge_resolves_mutates_in_place(env):
     env["mp"].setattr(dr, "make_dispatch_resolver",
                       lambda inv, **k: (lambda cur, ch: "Acme is mid-sized."))
     r = env["client"].post(f"/research/notes/{nid}/challenge",
-                           json={"investigation_id": "inv-1", "challenge_text": "it grew"})
+                           json=_challenge_body("it grew"))
     assert r.status_code == 200, r.text
     assert r.json()["applied"] is True and r.json()["new_text"] == "Acme is mid-sized."
     # The distill view now reflects the mutation; still exactly one insight.
@@ -124,7 +132,7 @@ def test_unresolvable_challenge_escalates_without_launch(env):
     env["mp"].setattr(dr, "make_dispatch_resolver",
                       lambda inv, **k: (lambda cur, ch: None))
     r = env["client"].post(f"/research/notes/{nid}/challenge",
-                           json={"investigation_id": "inv-1", "challenge_text": "source?"})
+                           json=_challenge_body("source?"))
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["escalated"] is True
@@ -155,7 +163,7 @@ def test_chase_reuses_reserved_escalation_id(env):
     env["mp"].setattr(dr, "make_dispatch_resolver",
                       lambda inv, **k: (lambda cur, ch: None))
     esc_body = client.post(f"/research/notes/{nid}/challenge",
-                           json={"investigation_id": "inv-1", "challenge_text": "source?"}).json()
+                           json=_challenge_body("source?")).json()
     reserved = esc_body["reserved_child_investigation_id"]
     assert reserved
     # Nothing launched yet — the reserved id has no research.
@@ -186,8 +194,15 @@ def test_challenge_with_no_provider_is_honest_503(env):
     # → 503, NOT a fabricated refinement and NOT a spurious escalation.
     ids = _seed(env, insights=["A grounded claim."])
     nid = ids["insights"][0]
+    env["mp"].setattr(
+        dr,
+        "make_dispatch_resolver",
+        lambda inv, **k: (lambda cur, ch: (_ for _ in ()).throw(
+            dr.ChallengeUnavailable("no provider")
+        )),
+    )
     r = env["client"].post(f"/research/notes/{nid}/challenge",
-                           json={"investigation_id": "inv-1", "challenge_text": "really?"})
+                           json=_challenge_body("really?"))
     assert r.status_code == 503, r.text
     assert "no model is configured" in r.json()["detail"]
     # No escalation was recorded — the note is untouched.
@@ -200,8 +215,79 @@ def test_challenge_unknown_note_404(env):
     env["mp"].setattr(dr, "make_dispatch_resolver",
                       lambda inv, **k: (lambda cur, ch: "x"))
     r = env["client"].post("/research/notes/node-does-not-exist/challenge",
-                           json={"investigation_id": "inv-1"})
+                           json=_challenge_body())
     assert r.status_code == 404
+
+
+def test_challenge_retry_replays_without_second_resolver_call(env):
+    nid = _seed(env, insights=["Acme is small."])["insights"][0]
+    calls = 0
+
+    def resolver(current, challenge):
+        nonlocal calls
+        calls += 1
+        return "Acme is mid-sized."
+
+    env["mp"].setattr(dr, "make_dispatch_resolver", lambda inv, **k: resolver)
+    body = _challenge_body("it grew", key="challenge-replay-0001")
+    first = env["client"].post(f"/research/notes/{nid}/challenge", json=body)
+    second = env["client"].post(f"/research/notes/{nid}/challenge", json=body)
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+    assert calls == 1
+
+
+def test_challenge_key_reuse_with_changed_request_conflicts(env):
+    nid = _seed(env, insights=["Acme is small."])["insights"][0]
+    calls = 0
+
+    def resolver(current, challenge):
+        nonlocal calls
+        calls += 1
+        return "Acme is mid-sized."
+
+    env["mp"].setattr(dr, "make_dispatch_resolver", lambda inv, **k: resolver)
+    url = f"/research/notes/{nid}/challenge"
+    assert env["client"].post(url, json=_challenge_body("first", key="challenge-conflict-1")).status_code == 200
+    conflict = env["client"].post(url, json=_challenge_body("changed", key="challenge-conflict-1"))
+    assert conflict.status_code == 409
+    assert calls == 1
+
+
+def test_unavailable_challenge_retry_does_not_dispatch_again(env):
+    nid = _seed(env, insights=["A grounded claim."])["insights"][0]
+    calls = 0
+
+    def resolver(current, challenge):
+        nonlocal calls
+        calls += 1
+        raise dr.ChallengeUnavailable("secret provider detail")
+
+    env["mp"].setattr(dr, "make_dispatch_resolver", lambda inv, **k: resolver)
+    body = _challenge_body("really?", key="challenge-unavailable-1")
+    first = env["client"].post(f"/research/notes/{nid}/challenge", json=body)
+    second = env["client"].post(f"/research/notes/{nid}/challenge", json=body)
+    assert first.status_code == second.status_code == 503
+    assert "secret provider detail" not in first.text + second.text
+    assert calls == 1
+
+
+def test_challenge_rejects_malformed_key_before_resolver(env):
+    nid = _seed(env, insights=["A grounded claim."])["insights"][0]
+    calls = 0
+
+    def resolver(current, challenge):
+        nonlocal calls
+        calls += 1
+        return "changed"
+
+    env["mp"].setattr(dr, "make_dispatch_resolver", lambda inv, **k: resolver)
+    response = env["client"].post(
+        f"/research/notes/{nid}/challenge",
+        json=_challenge_body("really?", key="bad key"),
+    )
+    assert response.status_code == 422
+    assert calls == 0
 
 
 @pytest.mark.store_isolation_contract

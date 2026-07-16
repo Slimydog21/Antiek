@@ -43,7 +43,11 @@ if _PKG_ROOT not in sys.path:
 
 from roles.challenger import ChallengeUnavailable, make_dispatch_resolver  # noqa: E402
 from roles.note_taker import distillation_for  # noqa: E402
-from roles.note_taker.living_note import challenge_note  # noqa: E402
+from roles.note_taker.living_note import (  # noqa: E402
+    ChallengeRequestConflict,
+    ChallengeRequestInProgress,
+    challenge_note,
+)
 from runtime.db_lock import connect_read  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 
@@ -83,6 +87,7 @@ class DistillationOut(BaseModel):
 class ChallengeRequest(BaseModel):
     investigation_id: str = Field(..., min_length=1)
     challenge_text: str = Field(default="", max_length=2000)
+    idempotency_key: str = Field(..., min_length=16, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
 
 
 class ChallengeOut(BaseModel):
@@ -132,14 +137,18 @@ async def challenge(node_id: str, req: ChallengeRequest) -> ChallengeOut:
             resolver=resolver,
             seq=seq,
             investigation_id=req.investigation_id,
+            idempotency_key=req.idempotency_key,
+            unavailable_errors=(ChallengeUnavailable,),
         )
-    except ChallengeUnavailable as exc:
+    except ChallengeUnavailable:
         # No model configured — honest no-key state, never a fabricated
         # refinement nor a misleading escalation.
         raise HTTPException(
             status_code=503,
-            detail=f"no model is configured to weigh this challenge: {exc}",
-        )
+            detail="no model is configured to weigh this challenge",
+        ) from None
+    except (ChallengeRequestConflict, ChallengeRequestInProgress) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     except ValueError as exc:
         # ``note.refined`` / ``question.escalated_to_research`` require the
         # note's source document on the envelope (schema invariant §9.1). A
@@ -150,7 +159,7 @@ async def challenge(node_id: str, req: ChallengeRequest) -> ChallengeOut:
         raise HTTPException(
             status_code=422,
             detail=f"this note can't be challenged yet — it has no source on record: {exc}",
-        )
+        ) from None
     if not result.applied and not result.escalated and not result.superseded:
         # The node id did not resolve to a note in the graph.
         raise HTTPException(status_code=404, detail="no such note")

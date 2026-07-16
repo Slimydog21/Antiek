@@ -260,7 +260,10 @@ describe("NotesPanel — living note + challenge (M3 + M4)", () => {
     render(<NotesPanel investigation={withNode()} />);
     fireEvent.click(screen.getByText("challenge this"));
     await waitFor(() => expect(screen.getByText(/the note changed/)).toBeTruthy());
-    expect(challengeNoteMock).toHaveBeenCalledWith("node-1", { investigation_id: "inv-test" });
+    expect(challengeNoteMock).toHaveBeenCalledWith("node-1", {
+      investigation_id: "inv-test",
+      idempotency_key: expect.any(String),
+    });
     // Still one note rendered — mutated in place, not duplicated.
     expect(screen.getAllByText("Acme is mid-sized.")).toHaveLength(1);
   });
@@ -321,6 +324,10 @@ describe("NotesPanel — living note + challenge (M3 + M4)", () => {
     render(<NotesPanel investigation={withNode()} />);
     fireEvent.click(screen.getByText("challenge this"));
     await waitFor(() => expect(screen.getByText(/model provider isn/)).toBeTruthy());
+    const firstKey = challengeNoteMock.mock.calls[0][1].idempotency_key;
+    fireEvent.click(screen.getByText("Try again"));
+    await waitFor(() => expect(challengeNoteMock).toHaveBeenCalledTimes(2));
+    expect(challengeNoteMock.mock.calls[1][1].idempotency_key).toBe(firstKey);
     // The note text is untouched — no fabricated refinement.
     expect(screen.getByText("Acme is small.")).toBeTruthy();
   });

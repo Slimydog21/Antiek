@@ -385,6 +385,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "derived_evidence_manifests",
     "derived_evidence_manifest_collections",
     "derived_evidence_manifest_operations",
+    "challenge_request_journal",
 )
 
 
@@ -1444,6 +1445,32 @@ CREATE INDEX IF NOT EXISTS idx_deliverable_twin_note_import_source
     ON deliverable_twin_note_imports(owner_user_id, source_kind, source_id);
 """
 
+# Cycle 84: durable identity and resolver-decision receipts for living-note
+# challenges. The journal deliberately stores normalized decisions/results,
+# never provider response bodies or errors.
+ANTIEK_GRAPH_SCHEMA_V24_CHALLENGE_REQUEST_JOURNAL_SQL = """
+CREATE TABLE IF NOT EXISTS challenge_request_journal (
+    idempotency_key TEXT PRIMARY KEY,
+    request_sha256 TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    note_node_id TEXT NOT NULL,
+    sequence BIGINT NOT NULL CHECK (sequence > 0),
+    state TEXT NOT NULL CHECK (state IN ('resolving', 'decided', 'completed', 'unavailable')),
+    decision_json TEXT,
+    response_json TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (state = 'resolving' AND decision_json IS NULL AND response_json IS NULL)
+        OR (state = 'decided' AND decision_json IS NOT NULL AND response_json IS NULL)
+        OR (state = 'completed' AND decision_json IS NOT NULL AND response_json IS NOT NULL)
+        OR (state = 'unavailable' AND decision_json IS NULL AND response_json IS NULL)
+    )
+);
+CREATE INDEX IF NOT EXISTS idx_challenge_request_journal_note
+    ON challenge_request_journal(investigation_id, note_node_id, created_at);
+"""
+
 _V22_REQUIRED_DESCRIBE = {
     "twin_note_compositions": [
         ("composition_id", "VARCHAR", "NO", "PRI", None), ("account_id", "VARCHAR", "NO", "UNI", None),
@@ -1947,6 +1974,7 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V22_TWIN_NOTE_SERVING_SQL)
     _repair_empty_partial_v23_twin_notes(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V23_TWIN_NOTE_WORKFLOW_SQL)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V24_CHALLENGE_REQUEST_JOURNAL_SQL)
     from .derived_asset_schema import install as _install_derived_asset_schema
 
     _install_derived_asset_schema(con)
