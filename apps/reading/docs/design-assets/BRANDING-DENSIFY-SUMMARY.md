@@ -273,4 +273,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2c knowledge twin cursor | `c614911a4` | KnowledgePanel invent refresh on FULL GREEN tip |
 | Imagine invent polish v2c antiek-bench celebrate | `c614911a4` | AntiekBenchPanel invent refresh on FULL GREEN tip |
 | Imagine invent polish v2c model decision tree | `c614911a4` | ModelDecisionBar invent refresh on FULL GREEN tip |
-| Imagine invent polish v2c CRT living-TV | `TBD` | Home + DR compose invent refresh on FULL GREEN tip |
+| Imagine invent polish v2c CRT living-TV | `df10b0467` | Home + DR compose invent refresh on FULL GREEN tip |
