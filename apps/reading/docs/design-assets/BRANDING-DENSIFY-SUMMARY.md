@@ -196,3 +196,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | SceneChrome/ThreadBreadcrumb densify | `52e184a69` | chrome actions + thread hop highlight |
 | Topbar account living-TV densify | `97252efe2` | profile/settings highlight; sign-out noted |
 | Write editor + notebook blocks densify | `c719bccfe` | cite/trace highlight; block delete noted |
+| ResearchWaitArcade opt-in densify | `2128bb51e` | opt-in highlight; exit note_saved |
