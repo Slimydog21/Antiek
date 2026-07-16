@@ -55,6 +55,12 @@ describe("session brand assets integration", () => {
     expect(wernerSrc).toMatch(/werner_celebrate_session_v1\.png/);
     expect(cabinetSrc).toMatch(/cabinet-brand-thinking/);
     expect(cabinetSrc).toMatch(/cabinet-brand-celebrate/);
-    expect(cabinetSrc).toMatch(/werner_clam_catcher_session_v1\.png/);
+    // Product-mapped invent (cursor/ice-bait webp), not inventory-only fringe PNG.
+    // densify map: Clam catcher cursor invent → cabinet/LGH/wait-arcade cards.
+    expect(cabinetSrc).toMatch(/werner_clam_catcher_cursor_session_v1\.webp/);
+    expect(cabinetSrc).toMatch(/werner_igloo_ice_arcade_cursor_session_v1\.webp/);
+    expect(cabinetSrc).toMatch(
+      /werner_paperclip_zombies_arcade_session_v1\.webp/,
+    );
   });
 });
