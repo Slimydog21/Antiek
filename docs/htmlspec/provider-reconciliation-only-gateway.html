@@ -21,7 +21,7 @@
     <ol>
       <li>The caller supplies a persisted hold identity and a server-composed adapter, never provider evidence or a desired outcome.</li>
       <li>The gateway first proves in one read transaction that one owner-scoped hold belongs to the exact persisted chain route and its immutable approval receipt, then locks that reservation and repeats the complete transactional proof.</li>
-      <li>It exact-matches provider, model, hard-ceiling capabilities, projection, billing units, endpoint, and mandatory manifest route-authority digest.</li>
+      <li>It exact-matches the canonical projection digest, provider, model, hard-ceiling capabilities, billing units, endpoint, and mandatory manifest route-authority digest.</li>
       <li><code>reserved</code> is rejected because no provider outcome exists. Terminal holds return without lookup.</li>
       <li><code>dispatch_possible</code> and <code>unknown</code> invoke exactly one authoritative lookup after database identity verification.</li>
       <li><code>charged</code> settles exact provider cents; <code>not_found</code> releases; <code>unknown</code>, malformed evidence, contradiction, and lookup failure retain the full hold.</li>

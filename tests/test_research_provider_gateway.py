@@ -483,6 +483,29 @@ def test_reconciliation_only_rejects_changed_live_route_authority(
     assert gateway.ledger.balance("run-1").held_cents == 100
 
 
+def test_reconciliation_only_rejects_projection_substitution(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    adapter = FakeAdapter()
+    hold_id, route = _ambiguous_manifest_hold(gateway, adapter)
+    changed = replace(route.projection_request, operation="different-operation")
+
+    history = gateway.ledger.fallback_history("owner-1").items[0]
+    assert history.approval_id is not None
+    with pytest.raises(DispatchIneligible, match="projection authority changed"):
+        gateway.reconcile_paid_only(
+            hold_id,
+            adapter,
+            owner_id="owner-1",
+            chain_id=history.chain_id,
+            fallback_index=0,
+            approval_id=history.approval_id,
+            projection_request=changed,
+        )
+
+    assert adapter.reconcile_calls == []
+    assert gateway.ledger.balance("run-1").held_cents == 100
+
+
 def test_reconciliation_only_not_found_never_advances_fallback(tmp_path: Path) -> None:
     gateway = _gateway(tmp_path)
     primary = FakeAdapter()

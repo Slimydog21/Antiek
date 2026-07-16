@@ -819,6 +819,8 @@ class ResearchProviderGateway:
             if hold.intent.route_authority_digest is None:  # pragma: no cover - ledger proof
                 raise DispatchIneligible("manifest-bound route authority is required")
             projection = self._projector(projection_request)
+            if canonical_digest(projection) != hold.intent.projection_digest:
+                raise DispatchIneligible("reconciliation projection authority changed")
             authority = self._revalidate_route_authority(
                 projection_request,
                 projection,
