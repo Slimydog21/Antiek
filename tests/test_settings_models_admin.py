@@ -25,6 +25,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.settings_budget import register_settings_budget_routes
+from interfaces.research.api.settings_models_admin import UserModelRegistryIntegrityError
 from substrate.dispatch.base import ProviderError
 from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
 from substrate.dispatch.router import (
@@ -699,10 +700,11 @@ def test_boot_reload_cannot_shadow_default_provider_from_corrupt_registry(
     app = _fresh_app()
     app.state.registered_providers = {"openrouter"}
 
-    with TestClient(app) as reborn:
-        assert get_provider("openrouter") is sentinel
-        assert reborn.get("/settings/models/user").json()["count"] == 0
-        assert app.state.registered_providers == {"openrouter"}
+    with pytest.raises(UserModelRegistryIntegrityError), TestClient(app):
+        pass
+    assert get_provider("openrouter") is sentinel
+    assert app.state.registered_providers == {"openrouter"}
+    assert json.loads(registry_path.read_text(encoding="utf-8"))["openrouter"] == shadow
     reset_provider_registry()
 
 
@@ -797,15 +799,23 @@ def test_over_length_inputs_rejected_value_free(client: TestClient, env: Path) -
     assert not (env / "byok" / "credentials.enc").exists()
 
 
-def test_live_registry_corruption_surfaces_stale_registered(client: TestClient, env: Path) -> None:
-    # FINDING-3 regression (live half): registry corrupted while the process
-    # is up -> inventory empties (lenient read must not crash) and the
-    # still-registered seam name is SURFACED as stale, not hidden.
+def test_live_registry_corruption_fails_closed_without_overwrite(
+    client: TestClient,
+    env: Path,
+) -> None:
     assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
-    (env / "settings" / "user_models.json").write_text("{corrupt", encoding="utf-8")
-    inv = client.get("/settings/models/user").json()
-    assert inv["count"] == 0
-    assert inv["stale_registered"] == ["user-my-deepseek"]
+    registry_path = env / "settings" / "user_models.json"
+    corrupt = b"{corrupt"
+    registry_path.write_bytes(corrupt)
+
+    with pytest.raises(UserModelRegistryIntegrityError):
+        client.get("/settings/models/user")
+    with pytest.raises(UserModelRegistryIntegrityError):
+        client.post(
+            "/settings/models/user",
+            json={**_ADD_BODY, "display_name": "Must Not Overwrite"},
+        )
+    assert registry_path.read_bytes() == corrupt
 
 
 def test_boot_reconcile_discards_stale_user_names(env: Path) -> None:

@@ -120,6 +120,10 @@ _PRIVATE_FILE_MODE = 0o600
 ProviderKind = Literal["openai_compat", "anthropic"]
 _PROVIDER_KINDS: tuple[str, ...] = ("openai_compat", "anthropic")
 
+
+class UserModelRegistryIntegrityError(RuntimeError):
+    """Durable model authority is corrupt and must not be overwritten."""
+
 # Shortest real provider keys are far longer; this catches truncated pastes
 # without rejecting any legitimate key format.
 _MIN_KEY_LEN = 8
@@ -211,8 +215,7 @@ def _registry_guard(*, exclusive: bool) -> Iterator[None]:
 
 
 def _load_registry_unlocked() -> dict[str, UserModelRecord]:
-    """Lenient read, mirroring ``store._read_artifact``: a missing or
-    corrupt file yields an empty registry rather than a crashed boot."""
+    """Read durable authority, preserving corrupt bytes for operator recovery."""
     path = _registry_path()
     if not path.exists():
         if path.is_symlink():
@@ -221,23 +224,31 @@ def _load_registry_unlocked() -> dict[str, UserModelRecord]:
     _secure_registry_file(path)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except (ValueError, OSError):
-        return {}
+    except (ValueError, OSError) as exc:
+        raise UserModelRegistryIntegrityError(
+            "user-model registry is unreadable; refusing mutation"
+        ) from exc
     if not isinstance(raw, dict):
-        return {}
+        raise UserModelRegistryIntegrityError(
+            "user-model registry root must be an object; refusing mutation"
+        )
     out: dict[str, UserModelRecord] = {}
     for rid, entry in raw.items():
         try:
             record = UserModelRecord.model_validate(entry)
-        except ValidationError:
-            continue
+        except ValidationError as exc:
+            raise UserModelRegistryIntegrityError(
+                f"user-model registry entry {rid!r} is invalid; refusing mutation"
+            ) from exc
         record_id = str(rid)
         # CREATE is the only authority that mints registry identities.  Apply
         # its namespace and key/id invariants again on every read so a restored
         # or externally corrupted sidecar cannot smuggle a default provider
         # name into the live dispatch registry at boot.
         if record_id != record.id or not record.id.startswith(_ID_PREFIX):
-            continue
+            raise UserModelRegistryIntegrityError(
+                f"user-model registry entry {record_id!r} violates identity invariants"
+            )
         out[record_id] = record
     return out
 
@@ -931,6 +942,7 @@ __all__ = [
     "UserModelChoiceUnavailable",
     "UserModelAuthoritySnapshot",
     "UserModelRecord",
+    "UserModelRegistryIntegrityError",
     "UserModelRow",
     "UserModelsResponse",
     "register_settings_models_admin_routes",
