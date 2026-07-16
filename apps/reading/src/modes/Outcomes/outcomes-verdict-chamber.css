@@ -1,0 +1,275 @@
+.outcomes-verdict-chamber {
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  min-height: 100dvh;
+  overflow-x: clip;
+  overflow-y: auto;
+  background: var(--page);
+  color: var(--ink);
+}
+
+.outcomes-verdict-chamber__environment,
+.outcomes-verdict-chamber__veil {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.outcomes-verdict-chamber__environment {
+  z-index: -3;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 42%;
+}
+
+.outcomes-verdict-chamber__veil {
+  z-index: -2;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--page) 72%, transparent),
+    color-mix(in srgb, var(--page) 92%, transparent) 68%,
+    var(--page)
+  );
+}
+
+.outcomes-verdict-chamber__content {
+  width: min(68rem, calc(100% - 2.5rem));
+  margin-inline: auto;
+  padding: clamp(2rem, 6vw, 5rem) 0 5rem;
+}
+
+.outcomes-verdict-chamber__hero,
+.outcomes-verdict-chamber__panel,
+.outcomes-verdict-chamber__count,
+.outcomes-verdict-chamber__error {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  box-shadow: var(--shadow-z1);
+  backdrop-filter: blur(18px);
+}
+
+.outcomes-verdict-chamber__hero,
+.outcomes-verdict-chamber__panel {
+  border-radius: 1.25rem;
+  padding: clamp(1.25rem, 3vw, 2.25rem);
+}
+
+.outcomes-verdict-chamber__hero h1 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: clamp(2.25rem, 6vw, 4.75rem);
+  line-height: 0.95;
+  letter-spacing: -0.045em;
+}
+
+.outcomes-verdict-chamber__eyebrow,
+.outcomes-verdict-chamber__meta,
+.outcomes-verdict-chamber__status {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--shadow-2);
+}
+
+.outcomes-verdict-chamber__lede {
+  max-width: 46rem;
+  margin: 1.25rem 0 0;
+  font-family: var(--serif);
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  line-height: 1.55;
+  color: var(--shadow-2);
+}
+
+.outcomes-verdict-chamber__identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 1.5rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.outcomes-verdict-chamber__identity code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+.outcomes-verdict-chamber__identity a {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.outcomes-verdict-chamber__error {
+  margin: 1rem 0 0;
+  border-left: 3px solid var(--emperor);
+  border-radius: 0.75rem;
+  padding: 0.85rem 1rem;
+}
+
+.outcomes-verdict-chamber__panel {
+  margin-top: 1.25rem;
+}
+
+.outcomes-verdict-chamber__section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.outcomes-verdict-chamber__section-heading h2 {
+  margin: 0.25rem 0 0;
+  font-family: var(--serif);
+  font-size: clamp(1.45rem, 3vw, 2rem);
+}
+
+.outcomes-verdict-chamber__status {
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.4rem 0.65rem;
+  white-space: nowrap;
+}
+
+.outcomes-verdict-chamber__choices,
+.outcomes-verdict-chamber__counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.outcomes-verdict-chamber__choices {
+  margin-top: 1rem;
+}
+
+.outcomes-verdict-chamber__choice {
+  display: flex;
+  min-width: 0;
+  min-height: 13rem;
+  flex-direction: column;
+  padding: 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.9rem;
+  background: var(--inset);
+}
+
+.outcomes-verdict-chamber__choice h3 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.25rem;
+}
+
+.outcomes-verdict-chamber__choice p {
+  margin: 0.65rem 0 1rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--shadow-2);
+}
+
+.outcomes-verdict-chamber__choice-action {
+  width: 100%;
+  margin-top: auto;
+}
+
+.outcomes-verdict-chamber__counts {
+  margin-top: 1.25rem;
+}
+
+.outcomes-verdict-chamber__count {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-radius: 0.85rem;
+  padding: 0.9rem 1rem;
+}
+
+.outcomes-verdict-chamber__count strong {
+  font: 600 2rem/1 var(--serif);
+}
+.outcomes-verdict-chamber__count span {
+  font: 700 0.68rem/1.2 var(--mono);
+  text-transform: uppercase;
+}
+.outcomes-verdict-chamber__quiet {
+  color: var(--shadow-2);
+  font-style: italic;
+}
+.outcomes-verdict-chamber__history {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.outcomes-verdict-chamber__history li {
+  padding: 1rem 0;
+  border-top: 1px solid var(--divider);
+}
+
+.outcomes-verdict-chamber__history li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.outcomes-verdict-chamber__history p {
+  margin: 0.35rem 0 0;
+  overflow-wrap: anywhere;
+}
+.outcomes-verdict-chamber__history [data-recorded-kind="validated"] strong {
+  color: var(--ink);
+}
+.outcomes-verdict-chamber__history [data-recorded-kind="falsified"] strong {
+  color: var(--ink);
+}
+.outcomes-verdict-chamber__history [data-recorded-kind="indeterminate"] strong {
+  color: var(--ink);
+}
+.outcomes-verdict-chamber__note {
+  color: var(--shadow-2);
+  font-style: italic;
+}
+
+@media (prefers-color-scheme: dark) {
+  .outcomes-verdict-chamber__environment {
+    filter: brightness(0.42) saturate(0.72);
+  }
+  .outcomes-verdict-chamber__veil {
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--page) 64%, transparent),
+      color-mix(in srgb, var(--page) 90%, transparent) 70%,
+      var(--page)
+    );
+  }
+}
+
+@media (max-width: 720px) {
+  .outcomes-verdict-chamber__content {
+    width: min(100% - 1.5rem, 68rem);
+    padding: 1.5rem 0 3rem;
+  }
+  .outcomes-verdict-chamber__section-heading {
+    flex-direction: column;
+  }
+  .outcomes-verdict-chamber__choices,
+  .outcomes-verdict-chamber__counts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .outcomes-verdict-chamber__choice {
+    min-height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .outcomes-verdict-chamber *,
+  .outcomes-verdict-chamber *::before,
+  .outcomes-verdict-chamber *::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
