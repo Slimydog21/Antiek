@@ -10,6 +10,7 @@ from typing import Any, Literal
 from substrate.schemas import (
     ActionType,
     NoteEmergedPayload,
+    NoteRefinedPayload,
     QuestionIdentifiedPayload,
     QuestionResolvedByDocPayload,
 )
@@ -96,9 +97,12 @@ def build_working_memory_layer(
         raise WorkingMemoryIntegrityError("working-memory cutoff action conflicts")
 
     notes: dict[str, _MemoryItem] = {}
+    node_aliases: dict[str, str] = {}
+    applied_sequences: dict[str, int] = {}
     questions: dict[str, _MemoryItem] = {}
     relevant_actions = {
         ActionType.NOTE_EMERGED.value,
+        ActionType.NOTE_REFINED.value,
         ActionType.QUESTION_IDENTIFIED.value,
         ActionType.QUESTION_RESOLVED_BY_DOC.value,
     }
@@ -118,6 +122,75 @@ def build_working_memory_layer(
                 raise WorkingMemoryIntegrityError("working-memory note identity repeats")
             notes[note_id] = _MemoryItem(
                 "note", note_id, payload.note_text, ordinal, payload.confidence
+            )
+            if payload.node_id is not None:
+                node_id = _required_identity(payload.node_id, "node_id")
+                prior = node_aliases.setdefault(node_id, note_id)
+                if prior != note_id:
+                    raise WorkingMemoryIntegrityError(
+                        "working-memory graph note identity conflicts"
+                    )
+        elif action == ActionType.NOTE_REFINED.value:
+            payload = _payload(row, NoteRefinedPayload)
+            authority = (payload.sequence, payload.previous_sequence, payload.outcome)
+            if authority == (None, None, None):
+                continue  # legacy audit attempt, never prompt authority
+            if any(value is None for value in authority):
+                raise WorkingMemoryIntegrityError(
+                    "working-memory refinement authority is incomplete"
+                )
+            assert payload.sequence is not None
+            assert payload.previous_sequence is not None
+            assert payload.outcome is not None
+            _required_identity(payload.note_id, "note_id")
+            _capped_text(payload.previous_text)
+            _capped_text(payload.new_text)
+            if (
+                payload.outcome == "applied"
+                and payload.sequence <= payload.previous_sequence
+            ) or (
+                payload.outcome == "superseded"
+                and payload.sequence > payload.previous_sequence
+            ):
+                raise WorkingMemoryIntegrityError(
+                    "working-memory refinement outcome conflicts"
+                )
+            origin_note_id = payload.origin_note_id or node_aliases.get(payload.note_id)
+            if origin_note_id is None:
+                continue  # graph-only note has no emerged snapshot to update
+            origin_note_id = _required_identity(origin_note_id, "origin_note_id")
+            alias = node_aliases.get(payload.note_id)
+            if alias is not None and alias != origin_note_id:
+                raise WorkingMemoryIntegrityError(
+                    "working-memory refinement identity conflicts"
+                )
+            existing = notes.get(origin_note_id)
+            if existing is None:
+                continue
+            known_sequence = applied_sequences.get(origin_note_id)
+            if (
+                known_sequence is not None
+                and payload.previous_sequence != known_sequence
+            ):
+                raise WorkingMemoryIntegrityError(
+                    "working-memory refinement sequence conflicts"
+                )
+            authoritative_text = (
+                payload.new_text
+                if payload.outcome == "applied"
+                else payload.previous_text
+            )
+            notes[origin_note_id] = _MemoryItem(
+                "note",
+                origin_note_id,
+                authoritative_text,
+                ordinal,
+                existing.confidence,
+            )
+            applied_sequences[origin_note_id] = (
+                payload.sequence
+                if payload.outcome == "applied"
+                else payload.previous_sequence
             )
         elif action == ActionType.QUESTION_IDENTIFIED.value:
             payload = _payload(row, QuestionIdentifiedPayload)

@@ -282,6 +282,17 @@ async def test_later_wrestling_prompt_receives_only_causal_same_investigation_me
         "question_text": "Which mechanism remains unresolved?",
         "anchor_region_id": None,
     })
+    await post_memory("inv-memory", {
+        "action_type": "note.refined",
+        "note_id": "graph-note-memory",
+        "origin_note_id": "note-memory",
+        "previous_text": "Earlier insight to challenge, not source evidence.",
+        "new_text": "Authoritative refined insight, still not source evidence.",
+        "refinement_reason": "operator challenge",
+        "sequence": 1,
+        "previous_sequence": -1,
+        "outcome": "applied",
+    })
     await post_memory("inv-foreign", {
         "action_type": "note.emerged",
         "note_id": "note-foreign",
@@ -302,7 +313,8 @@ async def test_later_wrestling_prompt_receives_only_causal_same_investigation_me
 
     assert len(provider.prompts) == 1
     prompt = provider.prompts[0]
-    assert "Earlier insight to challenge, not source evidence." in prompt
+    assert "Authoritative refined insight, still not source evidence." in prompt
+    assert "Earlier insight to challenge, not source evidence." not in prompt
     assert "Which mechanism remains unresolved?" in prompt
     assert "FOREIGN MEMORY MUST NOT APPEAR" not in prompt
     assert prompt.index("## working_memory:") < prompt.index("## session:")

@@ -768,7 +768,10 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 #     the validator preserves the singleton/same-revision source invariant.
 # v37: investigation.start_requested gains compact immutable research
 #     composition provenance. Exact member HTML remains in the artifact store.
-EVENT_SCHEMA_VERSION: int = 37
+# v38: note.refined gains nullable authoritative decision fields. New writers
+#     commit graph state and outcome intent atomically; null fields preserve
+#     audit-only historical rows without pretending they applied.
+EVENT_SCHEMA_VERSION: int = 38
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -1128,6 +1131,12 @@ class NoteRefinedPayload(_PayloadBase):
     previous_text: str
     new_text: str
     refinement_reason: str
+    # Optional for backward compatibility with audit-only events emitted before
+    # authoritative refinement outcomes were transactionally recorded.
+    origin_note_id: str | None = None
+    sequence: int | None = Field(default=None, ge=0)
+    previous_sequence: int | None = Field(default=None, ge=-1)
+    outcome: Literal["applied", "superseded"] | None = None
 
 
 class NoteCompressedDocWrittenPayload(_PayloadBase):
