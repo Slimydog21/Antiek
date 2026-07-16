@@ -1,242 +1,157 @@
 import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 
+import citationEnvironment from "../../brand/werner/citations/citation_attribution_switchyard_environment_v1.webp";
 import { apiFetch } from "../../lib/api";
+import "./citation-attribution-switchyard.css";
 
-/**
- * Cross-graph citation recording UI (master-spec §13.9 Phase 3).
- *
- * Operator-facing form for ``POST /cross-graph/citations``.
- * Records a citation from one user's investigation to another
- * user's public note. The attribution pipeline picks up the
- * recorded reference and routes 70% of any attached ad revenue
- * to the referenced user via the existing Stripe Connect path.
- *
- * For federation citations (citing a partner substrate's content),
- * the operator must have the partner substrate's id authorized in
- * /federation first; the form surfaces the relationship explicitly
- * so the operator can't accidentally route revenue to an
- * un-allow-listed substrate.
- */
-
-interface RecordedCitation {
-  reference_id: string;
+export interface CitationDraft {
   referencing_user_id: string;
   referencing_investigation_id: string;
   referenced_user_id: string;
   referenced_note_id: string;
+  federated_substrate_id?: string;
+}
+
+export interface RecordedCitation extends Omit<CitationDraft, "federated_substrate_id"> {
+  reference_id: string;
   federated_substrate_id: string | null;
   cited_at: string;
 }
 
-export default function CrossGraphCitations() {
-  const [referencingUserId, setReferencingUserId] = useState<string>("__operator__");
-  const [referencingInvId, setReferencingInvId] = useState<string>("");
-  const [referencedUserId, setReferencedUserId] = useState<string>("");
-  const [referencedNoteId, setReferencedNoteId] = useState<string>("");
-  const [federationToggle, setFederationToggle] = useState<boolean>(false);
-  const [federatedSubstrateId, setFederatedSubstrateId] = useState<string>("");
-  const [submitting, setSubmitting] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [recorded, setRecorded] = useState<RecordedCitation[]>([]);
+export interface CrossGraphCitationsProps {
+  recordCitation?: (draft: CitationDraft) => Promise<RecordedCitation>;
+  executionEnabled?: boolean;
+  initialRecorded?: RecordedCitation[];
+  submittingPreview?: boolean;
+  initialFederation?: boolean;
+}
 
-  const canSubmit =
-    referencingUserId.trim() &&
-    referencingInvId.trim() &&
-    referencedUserId.trim() &&
-    referencedNoteId.trim() &&
-    (!federationToggle || federatedSubstrateId.trim());
+async function recordCitationToApi(draft: CitationDraft): Promise<RecordedCitation> {
+  const response = await apiFetch("/cross-graph/citations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(draft),
+  });
+  if (!response.ok) throw new Error("Citation recording failed");
+  return response.json() as Promise<RecordedCitation>;
+}
+
+const SAFE_ERROR = "Could not record the citation reference. No reference was added.";
+
+export default function CrossGraphCitations({
+  recordCitation = recordCitationToApi,
+  executionEnabled = true,
+  initialRecorded = [],
+  submittingPreview = false,
+  initialFederation = false,
+}: CrossGraphCitationsProps) {
+  const [referencingUserId, setReferencingUserId] = useState("__operator__");
+  const [referencingInvId, setReferencingInvId] = useState(initialFederation ? "inv-atlas" : "");
+  const [referencedUserId, setReferencedUserId] = useState(initialFederation ? "research-partner" : "");
+  const [referencedNoteId, setReferencedNoteId] = useState(initialFederation ? "note-fieldwork" : "");
+  const [federationToggle, setFederationToggle] = useState(initialFederation);
+  const [federatedSubstrateId, setFederatedSubstrateId] = useState(initialFederation ? "partner-research-coop" : "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [recorded, setRecorded] = useState(initialRecorded);
+
+  const isSubmitting = submitting || submittingPreview;
+  const canSubmit = Boolean(
+    executionEnabled && referencingUserId.trim() && referencingInvId.trim() &&
+      referencedUserId.trim() && referencedNoteId.trim() &&
+      (!federationToggle || federatedSubstrateId.trim()),
+  );
 
   const submit = useCallback(async () => {
-    if (!canSubmit || submitting) return;
+    if (!canSubmit || isSubmitting) return;
     setSubmitting(true);
     setError(null);
+    const draft: CitationDraft = {
+      referencing_user_id: referencingUserId.trim(),
+      referencing_investigation_id: referencingInvId.trim(),
+      referenced_user_id: referencedUserId.trim(),
+      referenced_note_id: referencedNoteId.trim(),
+    };
+    if (federationToggle) draft.federated_substrate_id = federatedSubstrateId.trim();
     try {
-      const body: Record<string, unknown> = {
-        referencing_user_id: referencingUserId.trim(),
-        referencing_investigation_id: referencingInvId.trim(),
-        referenced_user_id: referencedUserId.trim(),
-        referenced_note_id: referencedNoteId.trim(),
-      };
-      if (federationToggle && federatedSubstrateId.trim()) {
-        body.federated_substrate_id = federatedSubstrateId.trim();
-      }
-      const resp = await apiFetch("/cross-graph/citations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!resp.ok) {
-        const txt = await resp.text();
-        throw new Error(
-          `POST /cross-graph/citations: HTTP ${resp.status} — ${txt}`,
-        );
-      }
-      const created: RecordedCitation = await resp.json();
-      setRecorded((prev) => [created, ...prev]);
+      const created = await recordCitation(draft);
+      setRecorded((previous) => [created, ...previous]);
       setReferencedUserId("");
       setReferencedNoteId("");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+    } catch {
+      setError(SAFE_ERROR);
     } finally {
       setSubmitting(false);
     }
-  }, [
-    canSubmit,
-    submitting,
-    referencingUserId,
-    referencingInvId,
-    referencedUserId,
-    referencedNoteId,
-    federationToggle,
-    federatedSubstrateId,
-  ]);
+  }, [canSubmit, isSubmitting, referencingUserId, referencingInvId, referencedUserId, referencedNoteId, federationToggle, federatedSubstrateId, recordCitation]);
 
   return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Cross-graph citations
-            </h1>
-            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Record a citation from one user's investigation to
-              another user's public note. Per master-spec §13.9
-              Phase 3: the attribution pipeline picks this up and
-              routes 70% of any attached ad revenue to the
-              referenced user.
-            </p>
-            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-              For federation citations:{" "}
-              <Link to="/federation" className="underline hover:text-ink dark:text-bright">
-                /federation
-              </Link>{" "}
-              must allow-list the partner substrate first.
-            </p>
-          </header>
+    <main className="citation-switchyard" data-theme-preview={submittingPreview ? "submitting" : undefined}>
+      <img className="citation-switchyard__environment" src={citationEnvironment} alt="" aria-hidden="true" draggable={false} />
+      <div className="citation-switchyard__veil" aria-hidden="true" />
+      <div className="citation-switchyard__shell">
+        <header className="citation-switchyard__header">
+          <p className="citation-switchyard__eyebrow">Knowledge graph · reference desk</p>
+          <h1>Citation attribution switchyard</h1>
+          <p className="citation-switchyard__lede">Records a citation reference between an investigation and a public note.</p>
+          <div className="citation-switchyard__truth" role="note">
+            <strong>Reference, not clearance.</strong> This screen does not verify partner trust or consent and does not execute a payout. Attribution and any revenue handling happen downstream under separate policy.
+          </div>
+        </header>
 
-          {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
-              {error}
-            </p>
-          )}
+        {error && <p className="citation-switchyard__alert" role="alert">{error}</p>}
 
-          <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
-            <h2 className="text-base font-serif text-ink dark:text-bright">
-              Record citation
-            </h2>
-            <Row label="Referencing user_id" required>
-              <input
-                type="text"
-                value={referencingUserId}
-                onChange={(e) => setReferencingUserId(e.target.value)}
-                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-              />
-            </Row>
-            <Row label="Referencing investigation_id" required>
-              <input
-                type="text"
-                value={referencingInvId}
-                onChange={(e) => setReferencingInvId(e.target.value)}
-                placeholder="inv-..."
-                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-              />
-            </Row>
-            <Row label="Referenced user_id" required>
-              <input
-                type="text"
-                value={referencedUserId}
-                onChange={(e) => setReferencedUserId(e.target.value)}
-                placeholder="user-A"
-                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-              />
-            </Row>
-            <Row label="Referenced note_id" required>
-              <input
-                type="text"
-                value={referencedNoteId}
-                onChange={(e) => setReferencedNoteId(e.target.value)}
-                placeholder="note-7"
-                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-              />
-            </Row>
-            <label className="flex items-center gap-2 text-sm text-ink dark:text-bright">
-              <input
-                type="checkbox"
-                checked={federationToggle}
-                onChange={(e) => setFederationToggle(e.target.checked)}
-                className="accent-ink dark:accent-bright"
-              />
-              <span>This is a federation citation (cross-substrate)</span>
-            </label>
-            {federationToggle && (
-              <Row label="Federated substrate id" required>
-                <input
-                  type="text"
-                  value={federatedSubstrateId}
-                  onChange={(e) => setFederatedSubstrateId(e.target.value)}
-                  placeholder="partner-research-coop"
-                  className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-                />
-              </Row>
-            )}
-            <button
-              type="button"
-              onClick={() => void submit()}
-              disabled={!canSubmit || submitting}
-              className="px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50"
-            >
-              {submitting ? "Recording…" : "Record citation"}
-            </button>
-          </section>
+        <section className="citation-switchyard__panel" aria-labelledby="citation-route-title">
+          <div className="citation-switchyard__section-heading">
+            <div><p className="citation-switchyard__kicker">New reference</p><h2 id="citation-route-title">Set the citation route</h2></div>
+            <span className="citation-switchyard__status">Draft · not recorded</span>
+          </div>
 
-          {recorded.length > 0 && (
-            <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
-              <h2 className="text-base font-serif text-ink dark:text-bright">
-                Recently recorded
-              </h2>
-              <ul className="space-y-2">
-                {recorded.map((c) => (
-                  <li
-                    key={c.reference_id}
-                    className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2"
-                  >
-                    <p className="text-xs font-mono text-ink dark:text-bright truncate">
-                      {c.referencing_user_id}/{c.referencing_investigation_id}{" "}
-                      → {c.referenced_user_id}/{c.referenced_note_id}
-                    </p>
-                    <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-                      {c.reference_id} · {c.cited_at}
-                      {c.federated_substrate_id ? (
-                        <> · federated: {c.federated_substrate_id}</>
-                      ) : (
-                        <> · same-substrate</>
-                      )}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </div>
-      </main>
-    </div>
+          <div className="citation-switchyard__route">
+            <fieldset className="citation-switchyard__terminal">
+              <legend>From · operator context</legend>
+              <Field id="referencing-user" label="Operator identity">
+                <input id="referencing-user" value={referencingUserId} onChange={(event) => setReferencingUserId(event.target.value)} required />
+              </Field>
+              <Field id="referencing-investigation" label="Investigation">
+                <input id="referencing-investigation" value={referencingInvId} onChange={(event) => setReferencingInvId(event.target.value)} placeholder="inv-…" required />
+              </Field>
+            </fieldset>
+            <div className="citation-switchyard__conduit" aria-hidden="true"><span>reference</span></div>
+            <fieldset className="citation-switchyard__terminal">
+              <legend>To · cited work</legend>
+              <Field id="referenced-user" label="Referenced contributor">
+                <input id="referenced-user" value={referencedUserId} onChange={(event) => setReferencedUserId(event.target.value)} placeholder="user-…" required />
+              </Field>
+              <Field id="referenced-note" label="Public note">
+                <input id="referenced-note" value={referencedNoteId} onChange={(event) => setReferencedNoteId(event.target.value)} placeholder="note-…" required />
+              </Field>
+            </fieldset>
+          </div>
+
+          <div className="citation-switchyard__federation">
+            <label className="citation-switchyard__check"><input type="checkbox" checked={federationToggle} onChange={(event) => setFederationToggle(event.target.checked)} /><span><strong>Partner substrate reference</strong><small>Add the partner substrate identifier to this reference.</small></span></label>
+            {federationToggle && <><Field id="federated-substrate" label="Partner substrate identifier"><input id="federated-substrate" value={federatedSubstrateId} onChange={(event) => setFederatedSubstrateId(event.target.value)} placeholder="partner-…" required /></Field><p className="citation-switchyard__policy">This does not verify trust, allow-list status, or consent. Review the <Link to="/federation">federation policy</Link> first.</p></>}
+          </div>
+
+          <div className="citation-switchyard__actions">
+            <p>Only the reference is written here. Downstream systems may consume it under their own authority.</p>
+            <button type="button" onClick={() => void submit()} disabled={!canSubmit || isSubmitting}>{isSubmitting ? "Recording reference…" : "Record reference"}</button>
+          </div>
+        </section>
+
+        <section className="citation-switchyard__receipts" aria-labelledby="citation-receipts-title">
+          <div className="citation-switchyard__section-heading"><div><p className="citation-switchyard__kicker">This session</p><h2 id="citation-receipts-title">Reference receipts</h2></div><span className="citation-switchyard__status">Not durable history</span></div>
+          <p className="citation-switchyard__receipt-note">Receipts shown here last for this session only.</p>
+          <div aria-live="polite" aria-atomic="true" className="citation-switchyard__live">{recorded.length === 0 ? "No references recorded in this session." : `${recorded.length} reference${recorded.length === 1 ? "" : "s"} recorded in this session.`}</div>
+          {recorded.length > 0 && <ol className="citation-switchyard__receipt-list">{recorded.map((citation) => <li key={citation.reference_id}><div><strong>{citation.referencing_investigation_id}</strong><span aria-hidden="true">→</span><strong>{citation.referenced_note_id}</strong></div><p>{citation.reference_id} · {citation.federated_substrate_id ? `partner ${citation.federated_substrate_id}` : "same substrate"} · {citation.cited_at}</p></li>)}</ol>}
+        </section>
+      </div>
+    </main>
   );
 }
 
-function Row({
-  label,
-  required,
-  children,
-}: { label: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
-        {label}
-        {required && <span className="text-emperor ml-0.5">*</span>}
-      </label>
-      {children}
-    </div>
-  );
+function Field({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
+  return <div className="citation-switchyard__field"><label htmlFor={id}>{label}</label>{children}</div>;
 }
