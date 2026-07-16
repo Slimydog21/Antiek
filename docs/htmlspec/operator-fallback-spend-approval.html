@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cycle 90 - Operator fallback spend approval</title></head>
+<body><main>
+<header><p>Antiek Infinite / Cycle 90 / executable specification / 2026-07-16</p><h1>Let the operator approve one exact prepared fallback chain</h1><p>Turn the existing durable approval API into an explicit Settings workflow without granting execution, retry, reconciliation, or provider authority.</p></header>
+
+<section><h2>Outcome</h2><p>An authenticated operator inspecting recent fallback receipts can review the immutable manifest digest, ordered route caps, run hard ceiling, and maximum sequential exposure, then explicitly approve those exact terms. Success updates only that chain to its durable approval receipt. No hold or provider call occurs.</p></section>
+
+<section><h2>Authority model</h2><ol>
+<li>The owner-scoped history read is the approval preview. Each validated chain includes USD currency, run ceiling cents, maximum route exposure cents, and a derived eligibility bit.</li>
+<li>Eligibility is true only when every route is unattempted and no approval exists. The server derives it from validated ledger state; the browser never infers authority from timestamps or labels.</li>
+<li>The first gesture opens an inline review. The second explicit gesture posts the preview's exact chain ID, manifest SHA-256, and ceiling cents.</li>
+<li>The server reopens and revalidates the chain. Any changed manifest, ceiling, owner, lifecycle, existing hold, or integrity state refuses approval.</li>
+<li>Success returns the existing minimized immutable receipt. The client applies it only if the same chain and manifest remain rendered.</li>
+</ol></section>
+
+<section><h2>Interaction</h2><ul>
+<li>Unapproved eligible chains show <strong>Review approval</strong>, not Execute, Run, Retry, or Start.</li>
+<li>The review shows the run ceiling and maximum single-route exposure in dollars, explains that fallback attempts are sequential, and lists the manifest prefix already visible on the chain.</li>
+<li><strong>Approve exact terms</strong> is disabled while pending. A second click cannot create a second request.</li>
+<li>Success displays the durable approval time and receipt suffix. Failure retains the review and exact terms for inspection or retry.</li>
+<li>Approved, attempted, ambiguous, settled, exhausted, malformed, unavailable, and older-page chains expose no approval command.</li>
+</ul></section>
+
+<section><h2>Data contract</h2><ul>
+<li><code>FallbackChainHistory</code> and the API response add <code>currency="USD"</code>, positive <code>ceiling_cents</code>, positive <code>maximum_chain_exposure_cents</code>, and <code>approval_eligible</code>.</li>
+<li>The history validator recomputes maximum exposure from route caps and rejects mismatches, non-USD currency, impossible eligibility, and approval/eligibility contradiction.</li>
+<li>The approval client requires an exact response shape, SHA-256 and approval ID formats, matching chain/manifest/ceiling/exposure, and no unexpected fields.</li>
+</ul></section>
+
+<section><h2>Acceptance</h2><ul>
+<li>Ledger and route tests prove preview terms come from the owner-bound run and validated manifest, not request data.</li>
+<li>Cross-owner, corrupt, changed, attempted, already-approved, and stale-ceiling cases expose no new authority and preserve value-free failures.</li>
+<li>Component tests prove two gestures, exact POST terms, pending dedupe, matching-chain-only success, retained failure, and no execution-like controls.</li>
+<li>API-client tests reject malformed terms and response substitution.</li>
+<li>Approval creates zero holds, provider resolutions, sends, retries, and events.</li>
+<li>Focused Python/Vitest, TypeScript, production build, Ruff, compileall, token/type lints, diff check, and hostile review pass or unrelated pre-existing failures are reported exactly.</li>
+</ul></section>
+
+<section><h2>Non-goals</h2><p>No paid execution button, automatic dispatch after approval, approval revocation, ambiguous-call reconciliation, fallback reordering, model selection mutation, credential handling, invoice claim, merge, or deployment.</p></section>
+</main></body></html>

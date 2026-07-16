@@ -146,6 +146,10 @@ class FallbackReceiptChainResponse(BaseModel):
     outcome: Literal["unattempted", "in_progress", "ambiguous", "settled", "exhausted"]
     routes: list[FallbackReceiptRouteResponse] = Field(min_length=1, max_length=16)
     created_at: str
+    currency: Literal["USD"]
+    ceiling_cents: int = Field(ge=1)
+    maximum_chain_exposure_cents: int = Field(ge=1)
+    approval_eligible: bool
     approval_id: str | None = None
     approved_at: str | None = None
 
@@ -913,6 +917,10 @@ def get_fallback_receipts(
                     for route in chain.routes
                 ],
                 created_at=chain.created_at,
+                currency="USD",
+                ceiling_cents=chain.ceiling_cents,
+                maximum_chain_exposure_cents=chain.maximum_chain_exposure_cents,
+                approval_eligible=chain.approval_eligible,
                 approval_id=chain.approval_id,
                 approved_at=chain.approved_at,
             )

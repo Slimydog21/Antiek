@@ -12,6 +12,7 @@ import {
   type SavedPasskey,
 } from "../../lib/auth";
 import {
+  approveFallbackReceipt,
   estimatePromptCost,
   fetchFallbackReceiptHistory,
   fetchModelDecision,
@@ -487,6 +488,9 @@ function DecisionTreePanel({
   const [receiptError, setReceiptError] = useState(false);
   const requestVersion = useRef(0);
   const receiptRequestVersion = useRef(0);
+  const approvalRequestVersion = useRef(0);
+  const [approvingChainId, setApprovingChainId] = useState<string | null>(null);
+  const [approvalError, setApprovalError] = useState<{ chainId: string; message: string } | null>(null);
 
   useEffect(() => {
     const version = receiptRequestVersion.current + 1;
@@ -506,6 +510,7 @@ function DecisionTreePanel({
     );
     return () => {
       receiptRequestVersion.current += 1;
+      approvalRequestVersion.current += 1;
     };
   }, []);
 
@@ -524,6 +529,40 @@ function DecisionTreePanel({
       if (receiptRequestVersion.current === version) setReceiptError(true);
     } finally {
       if (receiptRequestVersion.current === version) setReceiptLoading(false);
+    }
+  }
+
+  async function approveReceipt(chain: FallbackReceiptChain): Promise<boolean> {
+    if (approvingChainId !== null) return false;
+    const version = approvalRequestVersion.current + 1;
+    approvalRequestVersion.current = version;
+    setApprovingChainId(chain.chain_id);
+    setApprovalError(null);
+    try {
+      const receipt = await approveFallbackReceipt(chain);
+      if (approvalRequestVersion.current !== version) return false;
+      setReceiptHistory((current) => current.map((candidate) =>
+        candidate.chain_id === receipt.chain_id &&
+        candidate.manifest_sha256 === receipt.manifest_sha256
+          ? {
+              ...candidate,
+              approval_id: receipt.approval_id,
+              approved_at: receipt.approved_at,
+              approval_eligible: false,
+            }
+          : candidate,
+      ));
+      return true;
+    } catch (caught) {
+      if (approvalRequestVersion.current === version) {
+        setApprovalError({
+          chainId: chain.chain_id,
+          message: caught instanceof Error ? caught.message : "Could not approve exact terms",
+        });
+      }
+      return false;
+    } finally {
+      if (approvalRequestVersion.current === version) setApprovingChainId(null);
     }
   }
 
@@ -693,6 +732,9 @@ function DecisionTreePanel({
         loading={receiptLoading}
         unavailable={receiptError}
         onLoadOlder={() => void loadOlderReceipts()}
+        approvingChainId={approvingChainId}
+        approvalError={approvalError}
+        onApprove={approveReceipt}
       />
     </section>
   );
@@ -704,13 +746,36 @@ function FallbackReceiptHistory({
   loading,
   unavailable,
   onLoadOlder,
+  approvingChainId,
+  approvalError,
+  onApprove,
 }: {
   chains: FallbackReceiptChain[];
   cursor: string | null;
   loading: boolean;
   unavailable: boolean;
   onLoadOlder: () => void;
+  approvingChainId: string | null;
+  approvalError: { chainId: string; message: string } | null;
+  onApprove: (chain: FallbackReceiptChain) => Promise<boolean>;
 }) {
+  const [reviewingChainId, setReviewingChainId] = useState<string | null>(null);
+  const reviewRegionRef = useRef<HTMLDivElement>(null);
+  const approvalResultRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (reviewingChainId !== null) reviewRegionRef.current?.focus();
+  }, [reviewingChainId]);
+  useEffect(() => {
+    if (
+      reviewingChainId !== null &&
+      chains.some((chain) =>
+        chain.chain_id === reviewingChainId && chain.approval_id !== null
+      )
+    ) {
+      approvalResultRef.current?.focus();
+      setReviewingChainId(null);
+    }
+  }, [chains, reviewingChainId]);
   return (
     <section aria-labelledby="fallback-receipt-history-title" className="border-t border-ink/15 pt-5 dark:border-bright/15">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -730,7 +795,11 @@ function FallbackReceiptHistory({
               </div>
               <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">Manifest {chain.manifest_sha256.slice(0, 10)}</p>
               {chain.approval_id && chain.approved_at && (
-                <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                <p
+                  ref={reviewingChainId === chain.chain_id ? approvalResultRef : undefined}
+                  tabIndex={reviewingChainId === chain.chain_id ? -1 : undefined}
+                  className="mt-1 font-mono text-[11px] text-ink-soft outline-none dark:text-starlight"
+                >
                   Approved {new Date(chain.approved_at).toLocaleString()} · {chain.approval_id.slice(-10)}
                 </p>
               )}
@@ -744,6 +813,65 @@ function FallbackReceiptHistory({
                   </li>
                 ))}
               </ol>
+              {chain.approval_eligible && chain.approval_id === null && reviewingChainId !== chain.chain_id && (
+                <LemonButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={approvingChainId !== null}
+                  onClick={() => setReviewingChainId(chain.chain_id)}
+                  className="mt-3"
+                >
+                  Review approval
+                </LemonButton>
+              )}
+              {chain.approval_eligible && chain.approval_id === null && reviewingChainId === chain.chain_id && (
+                <div
+                  ref={reviewRegionRef}
+                  role="region"
+                  aria-label="Fallback approval review"
+                  tabIndex={-1}
+                  className="mt-3 border-l-2 border-sun pl-3 text-sm text-ink outline-none dark:text-bright"
+                >
+                  <p className="font-semibold">Approve this exact prepared chain</p>
+                  <dl className="mt-2 grid gap-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    <div>
+                      <dt className="inline font-semibold text-ink dark:text-bright">Chain </dt>
+                      <dd className="inline break-all">{chain.chain_id}</dd>
+                    </div>
+                    <div>
+                      <dt className="inline font-semibold text-ink dark:text-bright">Manifest </dt>
+                      <dd className="inline break-all">{chain.manifest_sha256}</dd>
+                    </div>
+                  </dl>
+                  <p className="mt-1 text-xs text-ink-soft dark:text-starlight">
+                    Hard ceiling ${(chain.ceiling_cents / 100).toFixed(2)} · maximum sequential exposure ${(chain.maximum_chain_exposure_cents / 100).toFixed(2)}. Fallback routes are attempted one at a time.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <LemonButton
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      disabled={approvingChainId !== null}
+                      onClick={() => void onApprove(chain)}
+                    >
+                      {approvingChainId === chain.chain_id ? "Approving..." : "Approve exact terms"}
+                    </LemonButton>
+                    <LemonButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={approvingChainId !== null}
+                      onClick={() => setReviewingChainId(null)}
+                    >
+                      Cancel
+                    </LemonButton>
+                  </div>
+                </div>
+              )}
+              {approvalError?.chainId === chain.chain_id && (
+                <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">{approvalError.message}</p>
+              )}
             </li>
           ))}
         </ol>

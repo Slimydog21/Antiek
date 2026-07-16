@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
+  approveFallbackReceipt,
   fetchFallbackReceiptHistory,
   fetchModelDecision,
   type ModelDecisionResponse,
@@ -54,6 +55,7 @@ vi.mock("../../api/settings", () => ({
     next_cursor: null,
     items: [],
   })),
+  approveFallbackReceipt: vi.fn(),
   fetchModelDecision: vi.fn(async () => ({
     authority: "advisory",
     task: "deep_research",
@@ -237,6 +239,10 @@ describe("Settings SPR-01", () => {
         manifest_sha256: "a".repeat(64),
         outcome: "settled",
         created_at: "2026-07-16T10:00:00Z",
+        currency: "USD",
+        ceiling_cents: 20,
+        maximum_chain_exposure_cents: 20,
+        approval_eligible: false,
         approval_id: `fallback-approval:${"d".repeat(64)}`,
         approved_at: "2026-07-16T09:59:00Z",
         routes: [{
@@ -262,6 +268,102 @@ describe("Settings SPR-01", () => {
     expect(screen.getByText(/actual \$0\.12/)).toBeTruthy();
     expect(screen.getByText("Receipt bbbbbbbbbb")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /execute|retry|run/i })).toBeNull();
+  });
+
+  it("reviews and approves one exact unattempted fallback chain", async () => {
+    const chain = {
+      chain_id: "chain-ready",
+      manifest_sha256: "a".repeat(64),
+      outcome: "unattempted" as const,
+      created_at: "2026-07-16T10:00:00Z",
+      currency: "USD" as const,
+      ceiling_cents: 200,
+      maximum_chain_exposure_cents: 75,
+      approval_eligible: true,
+      approval_id: null,
+      approved_at: null,
+      routes: [{
+        fallback_index: 0,
+        provider: "zai",
+        model: "glm-5.2",
+        seam_id: "user.prompt.generate",
+        operation: "generate",
+        projected_max_cents: 75,
+        state: "unattempted" as const,
+        actual_cents: null,
+        resolved_at: null,
+        settlement_evidence_sha256: null,
+        settlement_intent_sha256: null,
+      }],
+    };
+    vi.mocked(fetchFallbackReceiptHistory).mockResolvedValueOnce({
+      authority: "read_only_fallback_receipt_history",
+      next_cursor: null,
+      items: [chain],
+    });
+    vi.mocked(approveFallbackReceipt).mockResolvedValueOnce({
+      authority: "durable_fallback_spend_approval",
+      approval_id: `fallback-approval:${"e".repeat(64)}`,
+      chain_id: chain.chain_id,
+      manifest_sha256: chain.manifest_sha256,
+      currency: "USD",
+      ceiling_cents: 200,
+      maximum_chain_exposure_cents: 75,
+      approved_at: "2026-07-16T10:01:00Z",
+    });
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(screen.getByRole("tab", { name: "Decision tree" }));
+    await user.click(await screen.findByRole("button", { name: "Review approval" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("region", { name: "Fallback approval review" }),
+    );
+    expect(screen.getByText(chain.chain_id)).toBeTruthy();
+    expect(screen.getByText(chain.manifest_sha256)).toBeTruthy();
+    expect(screen.getByText(/Hard ceiling \$2\.00/)).toBeTruthy();
+    expect(screen.getByText(/maximum sequential exposure \$0\.75/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Approve exact terms" }));
+    await waitFor(() => expect(approveFallbackReceipt).toHaveBeenCalledWith(chain));
+    const approved = await screen.findByText(/Approved/);
+    expect(document.activeElement).toBe(approved);
+    expect(screen.queryByRole("button", { name: "Review approval" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /execute|dispatch|retry|run/i })).toBeNull();
+  });
+
+  it("deduplicates pending approval and retains exact terms after failure", async () => {
+    const chain = {
+      chain_id: "chain-fail", manifest_sha256: "f".repeat(64),
+      outcome: "unattempted" as const, created_at: "2026-07-16T10:00:00Z",
+      currency: "USD" as const, ceiling_cents: 100,
+      maximum_chain_exposure_cents: 40, approval_eligible: true,
+      approval_id: null, approved_at: null,
+      routes: [{
+        fallback_index: 0, provider: "zai", model: "glm-5.2",
+        seam_id: "user.prompt.generate", operation: "generate",
+        projected_max_cents: 40, state: "unattempted" as const,
+        actual_cents: null, resolved_at: null,
+        settlement_evidence_sha256: null, settlement_intent_sha256: null,
+      }],
+    };
+    vi.mocked(fetchFallbackReceiptHistory).mockResolvedValueOnce({
+      authority: "read_only_fallback_receipt_history", next_cursor: null, items: [chain],
+    });
+    let rejectApproval!: (reason: Error) => void;
+    vi.mocked(approveFallbackReceipt).mockImplementationOnce(() => new Promise((_resolve, reject) => {
+      rejectApproval = reject;
+    }));
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(screen.getByRole("tab", { name: "Decision tree" }));
+    await user.click(await screen.findByRole("button", { name: "Review approval" }));
+    const approve = screen.getByRole("button", { name: "Approve exact terms" });
+    await user.click(approve);
+    expect(screen.getByRole("button", { name: "Approving..." }).hasAttribute("disabled")).toBe(true);
+    expect(approveFallbackReceipt).toHaveBeenCalledTimes(1);
+    rejectApproval(new Error("approval terms changed"));
+    expect((await screen.findByRole("alert")).textContent).toContain("approval terms changed");
+    expect(screen.getByText(/Hard ceiling \$1\.00/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Approve exact terms" })).toBeTruthy();
   });
 
   it("preserves decision controls when receipt history is unavailable", async () => {

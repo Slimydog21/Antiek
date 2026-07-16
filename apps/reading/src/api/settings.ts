@@ -109,8 +109,23 @@ export interface FallbackReceiptChain {
     "unattempted" | "in_progress" | "ambiguous" | "settled" | "exhausted";
   routes: FallbackReceiptRoute[];
   created_at: string;
+  currency: "USD";
+  ceiling_cents: number;
+  maximum_chain_exposure_cents: number;
+  approval_eligible: boolean;
   approval_id: string | null;
   approved_at: string | null;
+}
+
+export interface FallbackApprovalReceipt {
+  authority: "durable_fallback_spend_approval";
+  approval_id: string;
+  chain_id: string;
+  manifest_sha256: string;
+  currency: "USD";
+  ceiling_cents: number;
+  maximum_chain_exposure_cents: number;
+  approved_at: string;
 }
 
 export interface FallbackReceiptHistoryResponse {
@@ -120,6 +135,7 @@ export interface FallbackReceiptHistoryResponse {
 }
 
 const SHA256 = /^[0-9a-f]{64}$/;
+const FALLBACK_APPROVAL_ID = /^fallback-approval:[0-9a-f]{64}$/;
 const ROUTE_STATES = new Set<FallbackReceiptRouteState>([
   "unattempted",
   "reserved_not_sent",
@@ -162,6 +178,27 @@ function nullableString(value: unknown): value is string | null {
   return value === null || nonEmpty(value);
 }
 
+function validTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|([+-])(\d{2}):(\d{2}))$/.exec(value);
+  if (!match) return false;
+  const [year, month, day, hour, minute, second] = match
+    .slice(1, 7)
+    .map(Number);
+  const offsetHour = match[9] === undefined ? 0 : Number(match[9]);
+  const offsetMinute = match[10] === undefined ? 0 : Number(match[10]);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return (
+    year >= 2000 &&
+    month >= 1 && month <= 12 &&
+    day >= 1 && day <= daysInMonth &&
+    hour <= 23 && minute <= 59 && second <= 59 &&
+    offsetHour <= 14 && offsetMinute <= 59 &&
+    !(offsetHour === 14 && offsetMinute !== 0) &&
+    Number.isFinite(Date.parse(value))
+  );
+}
+
 function validateFallbackReceiptRoute(
   value: unknown,
   index: number,
@@ -194,7 +231,7 @@ function validateFallbackReceiptRoute(
       (Number.isSafeInteger(route.actual_cents) &&
         (route.actual_cents as number) >= 0)
     ) ||
-    !nullableString(route.resolved_at)
+    !(route.resolved_at === null || validTimestamp(route.resolved_at))
   ) {
     throw new Error("fallback receipt route is invalid");
   }
@@ -223,6 +260,10 @@ function validateFallbackReceiptChain(value: unknown): FallbackReceiptChain {
     "outcome",
     "routes",
     "created_at",
+    "currency",
+    "ceiling_cents",
+    "maximum_chain_exposure_cents",
+    "approval_eligible",
     "approval_id",
     "approved_at",
   ]);
@@ -234,10 +275,19 @@ function validateFallbackReceiptChain(value: unknown): FallbackReceiptChain {
     !Array.isArray(chain.routes) ||
     chain.routes.length < 1 ||
     chain.routes.length > 16 ||
-    !nonEmpty(chain.created_at) ||
+    !validTimestamp(chain.created_at) ||
+    chain.currency !== "USD" ||
+    !Number.isSafeInteger(chain.ceiling_cents) ||
+    (chain.ceiling_cents as number) < 1 ||
+    !Number.isSafeInteger(chain.maximum_chain_exposure_cents) ||
+    (chain.maximum_chain_exposure_cents as number) < 1 ||
+    typeof chain.approval_eligible !== "boolean" ||
     !nullableString(chain.approval_id) ||
     !nullableString(chain.approved_at) ||
-    ((chain.approval_id === null) !== (chain.approved_at === null))
+    (chain.approved_at !== null && !validTimestamp(chain.approved_at)) ||
+    ((chain.approval_id === null) !== (chain.approved_at === null)) ||
+    (typeof chain.approval_id === "string" &&
+      !FALLBACK_APPROVAL_ID.test(chain.approval_id))
   ) {
     throw new Error("fallback receipt chain is invalid");
   }
@@ -247,6 +297,13 @@ function validateFallbackReceiptChain(value: unknown): FallbackReceiptChain {
     routes.length
   ) {
     throw new Error("fallback receipt routes are not unique");
+  }
+  if (
+    chain.maximum_chain_exposure_cents !==
+      Math.max(...routes.map((route) => route.projected_max_cents)) ||
+    (chain.maximum_chain_exposure_cents as number) > (chain.ceiling_cents as number)
+  ) {
+    throw new Error("fallback receipt exposure contradicts its routes");
   }
   const states = routes.map((route) => route.state);
   const expected = states.every((state) => state === "unattempted")
@@ -263,7 +320,42 @@ function validateFallbackReceiptChain(value: unknown): FallbackReceiptChain {
   if (chain.outcome !== expected) {
     throw new Error("fallback receipt chain contradicts its routes");
   }
+  const expectedEligible = expected === "unattempted" && chain.approval_id === null;
+  if (chain.approval_eligible !== expectedEligible) {
+    throw new Error("fallback approval eligibility contradicts chain state");
+  }
   return { ...(chain as unknown as FallbackReceiptChain), routes };
+}
+
+function validateFallbackApprovalReceipt(
+  value: unknown,
+  expected: FallbackReceiptChain,
+): FallbackApprovalReceipt {
+  const receipt = record(value);
+  exactKeys(receipt, [
+    "authority",
+    "approval_id",
+    "chain_id",
+    "manifest_sha256",
+    "currency",
+    "ceiling_cents",
+    "maximum_chain_exposure_cents",
+    "approved_at",
+  ]);
+  if (
+    receipt.authority !== "durable_fallback_spend_approval" ||
+    typeof receipt.approval_id !== "string" ||
+    !FALLBACK_APPROVAL_ID.test(receipt.approval_id) ||
+    receipt.chain_id !== expected.chain_id ||
+    receipt.manifest_sha256 !== expected.manifest_sha256 ||
+    receipt.currency !== expected.currency ||
+    receipt.ceiling_cents !== expected.ceiling_cents ||
+    receipt.maximum_chain_exposure_cents !== expected.maximum_chain_exposure_cents ||
+    !validTimestamp(receipt.approved_at)
+  ) {
+    throw new Error("fallback approval receipt does not match exact terms");
+  }
+  return receipt as unknown as FallbackApprovalReceipt;
 }
 
 function validateFallbackReceiptHistory(
@@ -314,6 +406,29 @@ export async function fetchFallbackReceiptHistory(
     throw new Error(`fallback receipt history API ${res.status}`);
   }
   return validateFallbackReceiptHistory(await res.json());
+}
+
+export async function approveFallbackReceipt(
+  chain: FallbackReceiptChain,
+): Promise<FallbackApprovalReceipt> {
+  if (!chain.approval_eligible || chain.approval_id !== null) {
+    throw new Error("fallback chain is not eligible for approval");
+  }
+  const res = await apiFetch(
+    `${API_BASE}/settings/fallback-receipts/${encodeURIComponent(chain.chain_id)}/approval`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_manifest_sha256: chain.manifest_sha256,
+        expected_ceiling_cents: chain.ceiling_cents,
+      }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`fallback approval API ${res.status}`);
+  }
+  return validateFallbackApprovalReceipt(await res.json(), chain);
 }
 
 export async function estimatePromptCost(

@@ -417,6 +417,10 @@ class FallbackChainHistory:
     outcome: FallbackChainOutcome
     routes: tuple[FallbackRouteHistory, ...]
     created_at: str
+    currency: str
+    ceiling_cents: int
+    maximum_chain_exposure_cents: int
+    approval_eligible: bool
     approval_id: str | None = None
     approved_at: str | None = None
 
@@ -427,6 +431,21 @@ class FallbackChainHistory:
             raise TypeError("outcome must be FallbackChainOutcome")
         if not 1 <= len(self.routes) <= 16:
             raise ValueError("fallback history must contain 1 to 16 routes")
+        if self.currency != "USD":
+            raise ValueError("fallback history is USD-only")
+        _bounded_int(
+            "ceiling_cents", self.ceiling_cents, minimum=1, maximum=MAX_AUTHORITY_CENTS
+        )
+        _bounded_int(
+            "maximum_chain_exposure_cents",
+            self.maximum_chain_exposure_cents,
+            minimum=1,
+            maximum=MAX_AUTHORITY_CENTS,
+        )
+        if self.maximum_chain_exposure_cents != max(
+            route.projected_max_cents for route in self.routes
+        ):
+            raise ValueError("fallback history exposure conflicts with route caps")
         if tuple(route.fallback_index for route in self.routes) != tuple(
             range(len(self.routes))
         ):
@@ -436,6 +455,12 @@ class FallbackChainHistory:
         if self.approval_id is not None:
             _required_text("approval_id", self.approval_id)
             _required_text("approved_at", cast(str, self.approved_at))
+        expected_eligible = (
+            self.outcome is FallbackChainOutcome.UNATTEMPTED
+            and self.approval_id is None
+        )
+        if self.approval_eligible is not expected_eligible:
+            raise ValueError("fallback approval eligibility conflicts with chain state")
 
 
 @dataclass(frozen=True)
@@ -4237,6 +4262,14 @@ class ResearchSpendLedger:
             outcome=outcome,
             routes=tuple(public_routes),
             created_at=str(row["created_at"]),
+            currency="USD",
+            ceiling_cents=run.ceiling_cents,
+            maximum_chain_exposure_cents=max(
+                route.projected_max_cents for route in manifest.routes
+            ),
+            approval_eligible=(
+                outcome is FallbackChainOutcome.UNATTEMPTED and approval_id is None
+            ),
             approval_id=approval_id,
             approved_at=approved_at,
         )

@@ -6,7 +6,7 @@ vi.mock("../lib/api", () => ({
 }));
 
 import { apiFetch } from "../lib/api";
-import { fetchFallbackReceiptHistory } from "./settings";
+import { approveFallbackReceipt, fetchFallbackReceiptHistory } from "./settings";
 
 const mockFetch = apiFetch as unknown as ReturnType<typeof vi.fn>;
 
@@ -28,6 +28,10 @@ function history() {
         manifest_sha256: "a".repeat(64),
         outcome: "settled",
         created_at: "2026-07-16T10:00:00Z",
+        currency: "USD",
+        ceiling_cents: 100,
+        maximum_chain_exposure_cents: 20,
+        approval_eligible: false,
         approval_id: `fallback-approval:${"d".repeat(64)}`,
         approved_at: "2026-07-16T09:59:00Z",
         routes: [
@@ -78,6 +82,13 @@ describe("fetchFallbackReceiptHistory", () => {
     await expect(fetchFallbackReceiptHistory()).rejects.toThrow(
       "contradicts its state",
     );
+
+    const impossibleDate = history();
+    impossibleDate.items[0].approved_at = "2026-02-30T09:59:00Z";
+    mockFetch.mockResolvedValueOnce(response(impossibleDate));
+    await expect(fetchFallbackReceiptHistory()).rejects.toThrow(
+      "fallback receipt chain is invalid",
+    );
   });
 
   it("returns a value-free HTTP failure", async () => {
@@ -85,6 +96,98 @@ describe("fetchFallbackReceiptHistory", () => {
 
     await expect(fetchFallbackReceiptHistory()).rejects.toThrow(
       "fallback receipt history API 503",
+    );
+  });
+});
+
+describe("approveFallbackReceipt", () => {
+  it("posts exact preview terms and accepts only the matching receipt", async () => {
+    const body = history();
+    const chain = {
+      ...body.items[0],
+      currency: "USD" as const,
+      outcome: "unattempted" as const,
+      approval_id: null,
+      approved_at: null,
+      approval_eligible: true,
+      routes: [{
+        ...body.items[0].routes[0],
+        state: "unattempted" as const,
+        actual_cents: null,
+        resolved_at: null,
+        settlement_evidence_sha256: null,
+        settlement_intent_sha256: null,
+      }],
+    };
+    mockFetch.mockResolvedValue(response({
+      authority: "durable_fallback_spend_approval",
+      approval_id: `fallback-approval:${"e".repeat(64)}`,
+      chain_id: "chain-a",
+      manifest_sha256: "a".repeat(64),
+      currency: "USD",
+      ceiling_cents: 100,
+      maximum_chain_exposure_cents: 20,
+      approved_at: "2026-07-16T11:00:00Z",
+    }));
+
+    const receipt = await approveFallbackReceipt(chain);
+
+    expect(receipt.approval_id).toBe(`fallback-approval:${"e".repeat(64)}`);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/settings/fallback-receipts/chain-a/approval",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expected_manifest_sha256: "a".repeat(64),
+          expected_ceiling_cents: 100,
+        }),
+      },
+    );
+  });
+
+  it("rejects substituted approval terms", async () => {
+    const body = history();
+    const chain = {
+      ...body.items[0],
+      currency: "USD" as const,
+      outcome: "unattempted" as const,
+      approval_id: null,
+      approved_at: null,
+      approval_eligible: true,
+      routes: [{
+        ...body.items[0].routes[0], state: "unattempted" as const,
+        actual_cents: null, resolved_at: null,
+        settlement_evidence_sha256: null, settlement_intent_sha256: null,
+      }],
+    };
+    mockFetch.mockResolvedValue(response({
+      authority: "durable_fallback_spend_approval",
+      approval_id: `fallback-approval:${"e".repeat(64)}`,
+      chain_id: "chain-other",
+      manifest_sha256: "a".repeat(64),
+      currency: "USD",
+      ceiling_cents: 100,
+      maximum_chain_exposure_cents: 20,
+      approved_at: "2026-07-16T11:00:00Z",
+    }));
+
+    await expect(approveFallbackReceipt(chain)).rejects.toThrow(
+      "does not match exact terms",
+    );
+
+    mockFetch.mockResolvedValue(response({
+      authority: "durable_fallback_spend_approval",
+      approval_id: `fallback-approval:${"e".repeat(64)}`,
+      chain_id: "chain-a",
+      manifest_sha256: "a".repeat(64),
+      currency: "USD",
+      ceiling_cents: 100,
+      maximum_chain_exposure_cents: 20,
+      approved_at: "2026-02-30T11:00:00Z",
+    }));
+    await expect(approveFallbackReceipt(chain)).rejects.toThrow(
+      "does not match exact terms",
     );
   });
 });
