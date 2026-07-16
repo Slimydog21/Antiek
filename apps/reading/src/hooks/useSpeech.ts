@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { API_BASE, apiFetch } from "../lib/api";
+import { notifyVoicePlaybackStarted } from "../werner/shellExperienceSignals";
 
 /**
  * useSpeech (Read SPR-07) — synthesize a reply to audio and play it.
@@ -23,15 +24,27 @@ export interface UseSpeech {
   stop: () => void;
 }
 
-export function useSpeech(): UseSpeech {
+export interface UseSpeechOptions {
+  /** Observes successful initial playback; Werner-backed and non-authoritative. */
+  onPlaybackStarted?: () => void;
+}
+
+export function useSpeech({
+  onPlaybackStarted = notifyVoicePlaybackStarted,
+}: UseSpeechOptions = {}): UseSpeech {
   const [state, setState] = useState<SpeechState>("idle");
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+  const attemptRef = useRef(0);
 
   const cleanup = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
+    const audio = audioRef.current;
+    if (audio) {
+      audio.onended = null;
+      audio.onerror = null;
+      audio.pause();
       audioRef.current = null;
     }
     if (urlRef.current) {
@@ -41,14 +54,21 @@ export function useSpeech(): UseSpeech {
   }, []);
 
   const stop = useCallback(() => {
+    attemptRef.current += 1;
     cleanup();
     setState("idle");
+    setError(null);
   }, [cleanup]);
 
   const speak = useCallback(
     async (text: string, voice?: string) => {
+      const attempt = ++attemptRef.current;
       cleanup();
-      if (!text.trim()) return;
+      if (!text.trim()) {
+        setState("idle");
+        setError(null);
+        return;
+      }
       setState("loading");
       setError(null);
       try {
@@ -63,28 +83,67 @@ export function useSpeech(): UseSpeech {
         if (!resp.ok) {
           throw new Error(`TTS failed: HTTP ${resp.status}`);
         }
+        if (!mountedRef.current || attempt !== attemptRef.current) return;
         const blob = await resp.blob();
+        if (!mountedRef.current || attempt !== attemptRef.current) return;
         const url = URL.createObjectURL(blob);
         urlRef.current = url;
         const audio = new Audio(url);
         audioRef.current = audio;
-        audio.onended = () => setState("idle");
+        audio.onended = () => {
+          if (
+            mountedRef.current &&
+            attempt === attemptRef.current &&
+            audioRef.current === audio
+          ) {
+            cleanup();
+            setState("idle");
+          }
+        };
         audio.onerror = () => {
-          setError("Playback failed.");
-          setState("error");
+          if (
+            mountedRef.current &&
+            attempt === attemptRef.current &&
+            audioRef.current === audio
+          ) {
+            cleanup();
+            setError("Playback failed.");
+            setState("error");
+          }
         };
         await audio.play();
+        if (
+          !mountedRef.current ||
+          attempt !== attemptRef.current ||
+          audioRef.current !== audio
+        ) {
+          return;
+        }
         setState("playing");
+        try {
+          onPlaybackStarted();
+        } catch {
+          // Living-TV choreography observes product truth; it never owns audio.
+        }
       } catch (e: unknown) {
+        if (!mountedRef.current || attempt !== attemptRef.current) return;
+        cleanup();
         setError(e instanceof Error ? e.message : String(e));
         setState("error");
       }
     },
-    [cleanup],
+    [cleanup, onPlaybackStarted],
   );
 
   // Revoke any object URL + stop audio on unmount.
-  useEffect(() => cleanup, [cleanup]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      attemptRef.current += 1;
+      cleanup();
+    };
+  }, [cleanup]);
 
   return { state, error, speak, stop };
 }
