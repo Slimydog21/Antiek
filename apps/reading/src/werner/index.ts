@@ -102,6 +102,7 @@ export {
   notifyVoiceRecordingStarted,
   notifyVoicePlaybackStarted,
   notifyThoughtPartnerReplyReceived,
+  notifyEvidenceSourceOpened,
   type ResearchReactionPhase,
 } from "./shellExperienceSignals";
 
