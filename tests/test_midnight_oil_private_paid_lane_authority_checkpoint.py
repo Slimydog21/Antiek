@@ -831,8 +831,19 @@ def _attempt_child_recovery_schema_barrier(
     result_fd: int,
     *,
     root_ahead: bool,
+    fault_boundary: Literal[
+        "barrier_after_intent",
+        "barrier_after_root_rename",
+        "barrier_after_root_fsync",
+        "barrier_after_root_reread",
+        "barrier_after_journal_rename",
+        "barrier_after_journal_parent_fsync",
+        "barrier_after_journal_reread",
+    ]
+    | None,
 ) -> None:
     session: support_checkpoint.FixtureMigrationRecoverySessionV1 | None = None
+    fault_completion: checkpoint_module.Epoch0RecoveryBarrierAcquisitionCompletionV1 | None = None
     try:
         genesis_pins = _recovery_pins(genesis)
         target_path = support_checkpoint._issuer_fd_path(target_fd)
@@ -852,15 +863,52 @@ def _attempt_child_recovery_schema_barrier(
             authority_pins=genesis_pins,
         )
         admission = session.admission
-        dropped_request = _canonical_json(
-            {
-                "command": "session_recover_schema_only_to_barrier_acquired",
-                "admission_sha256": admission.admission_sha256,
-                "handle_nonce": admission.handle_nonce,
-                "expected_schema_only_state_sha256": genesis.state_sha256,
-            }
-        )
-        session._connection.sendall(support_checkpoint._issuer_session_frame(dropped_request))
+        if fault_boundary is None:
+            dropped_request = _canonical_json(
+                {
+                    "command": "session_recover_schema_only_to_barrier_acquired",
+                    "admission_sha256": admission.admission_sha256,
+                    "handle_nonce": admission.handle_nonce,
+                    "expected_schema_only_state_sha256": genesis.state_sha256,
+                }
+            )
+            session._connection.sendall(support_checkpoint._issuer_session_frame(dropped_request))
+        else:
+            with pytest.raises(ValueError, match="barrier acquisition rejected"):
+                session.recover_schema_only_to_barrier_acquired(
+                    expected_schema_only_state_sha256=genesis.state_sha256
+                )
+            fault_completion = session._barrier_acquisition_completion
+            assert fault_completion is not None
+            root_record = support_checkpoint._issuer_root_record(root_fd)
+            journal = checkpoint_module._read_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                target_basename=genesis.target_basename,
+                verification_key=verification_key,
+            )
+            assert root_record["state"] == (
+                "open" if fault_boundary == "barrier_after_intent" else "quiesced"
+            )
+            assert journal.lifecycle_phase == (
+                "barrier_acquired"
+                if fault_boundary.startswith("barrier_after_journal_")
+                else "schema_only"
+            )
+            competing = sqlite3.connect(target_path, isolation_level=None, timeout=0.1)
+            try:
+                competing.execute("BEGIN IMMEDIATE")
+                competing.execute("ROLLBACK")
+            finally:
+                competing.close()
+            observed_target = sqlite3.connect(target_path)
+            try:
+                assert observed_target.serialize() == schema_only_image
+            finally:
+                observed_target.close()
+            root_path = support_checkpoint._issuer_fd_path(root_fd)
+            parent_path = support_checkpoint._issuer_fd_path(parent_fd)
+            assert not list(root_path.glob(".*.tmp"))
+            assert not list(parent_path.glob(".*.tmp"))
         session._close_local()
         session = support_checkpoint.FixtureMigrationRecoverySessionV1.reopen_exact(
             socket_path=socket_path,
@@ -875,6 +923,8 @@ def _attempt_child_recovery_schema_barrier(
         acquisition = session.recover_schema_only_to_barrier_acquired(
             expected_schema_only_state_sha256=genesis.state_sha256
         )
+        if fault_completion is not None:
+            assert acquisition == fault_completion
         checkpoint_module._verify_epoch0_recovery_barrier_acquisition_completion_v1(
             acquisition,
             issuer_verification_key=verification_key,
@@ -909,9 +959,7 @@ def _attempt_child_recovery_schema_barrier(
                     "fault_boundary": "after_rename",
                 }
             )
-            session._connection.sendall(
-                support_checkpoint._issuer_session_frame(forbidden_request)
-            )
+            session._connection.sendall(support_checkpoint._issuer_session_frame(forbidden_request))
             assert support_checkpoint._issuer_session_receive_frame(session._connection) == b"E"
         session.close()
         os.write(result_fd, b"1")
@@ -3654,9 +3702,34 @@ class TestMigrationPrerequisites:
             os.close(root_fd)
             os.close(parent_fd)
 
-    @pytest.mark.parametrize("root_ahead", (False, True))
+    @pytest.mark.parametrize(
+        ("root_ahead", "fault_boundary"),
+        (
+            (False, None),
+            (True, None),
+            (False, "barrier_after_intent"),
+            (False, "barrier_after_root_rename"),
+            (False, "barrier_after_root_fsync"),
+            (False, "barrier_after_root_reread"),
+            (False, "barrier_after_journal_rename"),
+            (False, "barrier_after_journal_parent_fsync"),
+            (False, "barrier_after_journal_reread"),
+        ),
+    )
     def test_recovery_schema_only_to_barrier_acquired(
-        self, tmp_path: Path, root_ahead: bool
+        self,
+        tmp_path: Path,
+        root_ahead: bool,
+        fault_boundary: Literal[
+            "barrier_after_intent",
+            "barrier_after_root_rename",
+            "barrier_after_root_fsync",
+            "barrier_after_root_reread",
+            "barrier_after_journal_rename",
+            "barrier_after_journal_parent_fsync",
+            "barrier_after_journal_reread",
+        ]
+        | None,
     ) -> None:
         target = tmp_path / "paid-lane.sqlite3"
         _initialize_schema_only_copy_target(target)
@@ -3690,6 +3763,7 @@ class TestMigrationPrerequisites:
             expected_target_store_id=STORE_ID,
             expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
             expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+            recovery_fault_boundary=fault_boundary,
         )
         try:
             key = Ed25519PrivateKey.from_private_bytes(b"s" * 32)
@@ -3736,6 +3810,7 @@ class TestMigrationPrerequisites:
                     target_fd,
                     result_write,
                     root_ahead=root_ahead,
+                    fault_boundary=fault_boundary,
                 )
                 os._exit(0)
             os.close(result_write)
@@ -3769,6 +3844,8 @@ class TestMigrationPrerequisites:
             assert durable_root["barrier_id"] == barrier_acquired.barrier_id
             assert durable_root["freeze_nonce"] == barrier_acquired.freeze_nonce
             assert durable_root["state"] == "quiesced"
+            assert not list(root.root_path.glob(".*.tmp"))
+            assert not [candidate for candidate in tmp_path.glob(".*.tmp") if candidate.is_file()]
         finally:
             if child > 0:
                 with suppress(ProcessLookupError):

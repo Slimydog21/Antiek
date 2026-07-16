@@ -18,7 +18,7 @@ import tempfile
 import threading
 import time
 from array import array
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager, suppress
 from dataclasses import dataclass, field
 from multiprocessing.connection import Connection
@@ -133,6 +133,13 @@ _RecoveryFaultBoundary = Literal[
     "prepare_after_rename",
     "prepare_after_parent_fsync",
     "prepare_after_reread",
+    "barrier_after_intent",
+    "barrier_after_root_rename",
+    "barrier_after_root_fsync",
+    "barrier_after_root_reread",
+    "barrier_after_journal_rename",
+    "barrier_after_journal_parent_fsync",
+    "barrier_after_journal_reread",
 ]
 _SUPPORT_PIN_STATE = "external-pin-state-v1.json"
 _CHILD_ROLES = (
@@ -143,6 +150,16 @@ _CHILD_ROLES = (
 
 _ISSUER_MAX_PACKET = 131_072
 _ISSUER_WITNESS_SOCKET_NAME = "issuer-v1.sock"
+
+
+class _InjectedRecoveryFault(RuntimeError):
+    completion_document: bytes | None
+
+    def __init__(self, message: str, *, completion_document: bytes | None = None) -> None:
+        super().__init__(message)
+        self.completion_document = completion_document
+
+
 _ISSUER_SESSION_FRAME_MAGIC = b"ARS1"
 _ISSUER_CANDIDATE_FIELDS = frozenset(SignedMigrationLifecycleStateV1.model_fields) - {
     "issuer_key_id",
@@ -491,14 +508,18 @@ def _issuer_authenticate_schema_recovery_root(
     }
     if (
         record["inventory_sha256"] != hashlib.sha256(_canonical_json(inventory)).hexdigest()
-        or record["root_manifest_sha256"]
-        != hashlib.sha256(_canonical_json(manifest)).hexdigest()
+        or record["root_manifest_sha256"] != hashlib.sha256(_canonical_json(manifest)).hexdigest()
     ):
         raise ValueError("issuer recovery inventory hash")
     return record
 
 
-def _issuer_durable_write_root_record(root_fd: int, record: dict[str, object]) -> None:
+def _issuer_durable_write_root_record(
+    root_fd: int,
+    record: dict[str, object],
+    *,
+    fault_hook: Callable[[Literal["after_rename", "after_parent_fsync"]], None] | None = None,
+) -> None:
     root_info = os.fstat(root_fd)
     if (
         not stat.S_ISDIR(root_info.st_mode)
@@ -532,7 +553,11 @@ def _issuer_durable_write_root_record(root_fd: int, record: dict[str, object]) -
             dst_dir_fd=root_fd,
         )
         renamed = True
+        if fault_hook is not None:
+            fault_hook("after_rename")
         os.fsync(root_fd)
+        if fault_hook is not None:
+            fault_hook("after_parent_fsync")
     finally:
         os.close(descriptor)
         if not renamed:
@@ -541,7 +566,10 @@ def _issuer_durable_write_root_record(root_fd: int, record: dict[str, object]) -
 
 
 def _issuer_barrier_material_for_schema_recovery(
-    record: dict[str, object], *, root_ahead: bool
+    record: dict[str, object],
+    *,
+    root_ahead: bool,
+    cached_barrier: tuple[str, str] | None = None,
 ) -> tuple[str, str, bool]:
     if root_ahead:
         barrier_id = record.get("barrier_id")
@@ -573,8 +601,13 @@ def _issuer_barrier_material_for_schema_recovery(
         or record.get("transition_evidence") != []
     ):
         raise ValueError("issuer recovery schema root state")
-    freeze_nonce = secrets.token_hex(32)
-    barrier_id = _migration_barrier_id(freeze_nonce)
+    if cached_barrier is None:
+        freeze_nonce = secrets.token_hex(32)
+        barrier_id = _migration_barrier_id(freeze_nonce)
+    else:
+        barrier_id, freeze_nonce = cached_barrier
+        if barrier_id != _migration_barrier_id(freeze_nonce):
+            raise ValueError("issuer recovery cached barrier identity")
     created_at_ms = record.get("created_at_ms")
     if type(created_at_ms) is not int:
         raise ValueError("issuer recovery root creation timestamp")
@@ -1134,12 +1167,48 @@ def _fixture_migration_lifecycle_issuer_main(
         nonlocal pending_recovery_fault
         if pending_recovery_fault == boundary:
             pending_recovery_fault = None
-            raise RuntimeError(f"injected issuer recovery fault: {boundary}")
+            completion_document = None
+            if (
+                boundary.startswith("barrier_")
+                and recovery_barrier_acquisition_completion is not None
+            ):
+                completion_document = _issuer_recovery_barrier_acquisition_completion_document(
+                    recovery_barrier_acquisition_completion
+                )
+            raise _InjectedRecoveryFault(
+                f"injected issuer recovery fault: {boundary}",
+                completion_document=completion_document,
+            )
 
     def inject_prepare_persistence_fault(
         boundary: Literal["after_rename", "after_parent_fsync", "after_reread"],
     ) -> None:
         mapped: _RecoveryFaultBoundary = cast(_RecoveryFaultBoundary, f"prepare_{boundary}")
+        inject_recovery_fault(mapped)
+
+    def inject_barrier_root_persistence_fault(
+        boundary: Literal["after_rename", "after_parent_fsync"],
+    ) -> None:
+        mapped = cast(
+            _RecoveryFaultBoundary,
+            {
+                "after_rename": "barrier_after_root_rename",
+                "after_parent_fsync": "barrier_after_root_fsync",
+            }[boundary],
+        )
+        inject_recovery_fault(mapped)
+
+    def inject_barrier_journal_persistence_fault(
+        boundary: Literal["after_rename", "after_parent_fsync", "after_reread"],
+    ) -> None:
+        mapped = cast(
+            _RecoveryFaultBoundary,
+            {
+                "after_rename": "barrier_after_journal_rename",
+                "after_parent_fsync": "barrier_after_journal_parent_fsync",
+                "after_reread": "barrier_after_journal_reread",
+            }[boundary],
+        )
         inject_recovery_fault(mapped)
 
     def recover_schema_only_to_barrier_acquired(
@@ -1175,6 +1244,7 @@ def _fixture_migration_lifecycle_issuer_main(
                     expected_state=recovery_barrier_acquisition_completion.barrier_acquired_state,
                     verification_key=verification_key,
                 )
+                os.fsync(session_root_fd)
                 root_record = _issuer_authenticate_schema_recovery_root(
                     session_root_fd,
                     expected_root_id=expected_pins.root_id,
@@ -1204,8 +1274,7 @@ def _fixture_migration_lifecycle_issuer_main(
                 expected_root_manifest_sha256=schema_only.root_manifest_sha256,
             )
             root_ahead = (
-                root_record.get("state") == "quiesced"
-                and root_record.get("barrier_id") is not None
+                root_record.get("state") == "quiesced" and root_record.get("barrier_id") is not None
             )
             if root_ahead and root_record.get("state") != "quiesced":
                 raise ValueError("issuer recovery schema root-ahead state")
@@ -1215,6 +1284,20 @@ def _fixture_migration_lifecycle_issuer_main(
             barrier_id, freeze_nonce, mutate_root = _issuer_barrier_material_for_schema_recovery(
                 working_root,
                 root_ahead=root_ahead,
+                cached_barrier=(
+                    (
+                        cast(
+                            str,
+                            recovery_barrier_acquisition_completion.barrier_acquired_state.barrier_id,
+                        ),
+                        cast(
+                            str,
+                            recovery_barrier_acquisition_completion.barrier_acquired_state.freeze_nonce,
+                        ),
+                    )
+                    if recovery_barrier_acquisition_completion is not None and not root_ahead
+                    else None
+                ),
             )
             witness_sha256 = _issuer_witness_sha256(
                 root_record=working_root,
@@ -1235,7 +1318,9 @@ def _fixture_migration_lifecycle_issuer_main(
                         "lifecycle_phase": "barrier_acquired",
                         "phase_version": 1,
                         "issuer_sequence": 1,
-                        "updated_at_ms": max(schema_only.updated_at_ms, time.time_ns() // 1_000_000),
+                        "updated_at_ms": max(
+                            schema_only.updated_at_ms, time.time_ns() // 1_000_000
+                        ),
                         "previous_state_sha256": schema_only.state_sha256,
                         "barrier_id": barrier_id,
                         "freeze_nonce": freeze_nonce,
@@ -1249,9 +1334,11 @@ def _fixture_migration_lifecycle_issuer_main(
                     _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
                 )
                 barrier_acquired = SignedMigrationLifecycleStateV1.model_validate(material)
-                recovery_barrier_acquisition_completion = Epoch0RecoveryBarrierAcquisitionCompletionV1(
-                    schema_only_state=schema_only,
-                    barrier_acquired_state=barrier_acquired,
+                recovery_barrier_acquisition_completion = (
+                    Epoch0RecoveryBarrierAcquisitionCompletionV1(
+                        schema_only_state=schema_only,
+                        barrier_acquired_state=barrier_acquired,
+                    )
                 )
             else:
                 if (
@@ -1270,8 +1357,13 @@ def _fixture_migration_lifecycle_issuer_main(
                 issuer_verification_key=verification_key,
                 expected_schema_only_pins=expected_pins,
             )
+            inject_recovery_fault("barrier_after_intent")
             if mutate_root:
-                _issuer_durable_write_root_record(session_root_fd, working_root)
+                _issuer_durable_write_root_record(
+                    session_root_fd,
+                    working_root,
+                    fault_hook=inject_barrier_root_persistence_fault,
+                )
                 reread_root = _issuer_authenticate_schema_recovery_root(
                     session_root_fd,
                     expected_root_id=schema_only.root_id,
@@ -1284,11 +1376,22 @@ def _fixture_migration_lifecycle_issuer_main(
                     or len(cast(list[object], reread_root.get("transition_evidence"))) != 1
                 ):
                     raise ValueError("issuer recovery barrier root reread")
+                inject_recovery_fault("barrier_after_root_reread")
+            else:
+                os.fsync(session_root_fd)
+                reread_root = _issuer_authenticate_schema_recovery_root(
+                    session_root_fd,
+                    expected_root_id=schema_only.root_id,
+                    expected_root_manifest_sha256=schema_only.root_manifest_sha256,
+                )
+                if reread_root != working_root:
+                    raise ValueError("issuer recovery barrier root durability adoption")
             _persist_signed_migration_lifecycle_state(
                 parent_fd=session_parent_fd,
                 state=barrier_acquired,
                 verification_key=verification_key,
                 expected_prior_state_sha256=schema_only.state_sha256,
+                _fault_hook=inject_barrier_journal_persistence_fault,
             )
             reread = _read_signed_migration_lifecycle_state(
                 parent_fd=session_parent_fd,
@@ -2088,8 +2191,7 @@ def _fixture_migration_lifecycle_issuer_main(
                                     "expected_sources_sealed_state_sha256"
                                 }
                             elif (
-                                session_command
-                                == "session_recover_schema_only_to_barrier_acquired"
+                                session_command == "session_recover_schema_only_to_barrier_acquired"
                             ):
                                 expected_fields = common_fields | {
                                     "expected_schema_only_state_sha256"
@@ -2161,10 +2263,7 @@ def _fixture_migration_lifecycle_issuer_main(
                                     )
                                 )
                                 continue
-                            if (
-                                session_command
-                                == "session_recover_schema_only_to_barrier_acquired"
-                            ):
+                            if session_command == "session_recover_schema_only_to_barrier_acquired":
                                 expected_schema_only_state_sha256 = session_request.get(
                                     "expected_schema_only_state_sha256"
                                 )
@@ -2194,6 +2293,13 @@ def _fixture_migration_lifecycle_issuer_main(
                                     )
                                     if supervisor_exited() or recovery_peer_exited:
                                         return
+                                except _InjectedRecoveryFault as error:
+                                    connection.sendall(
+                                        _issuer_session_frame(
+                                            b"E" + (error.completion_document or b"")
+                                        )
+                                    )
+                                    continue
                                 except Exception:
                                     connection.sendall(_issuer_session_frame(b"E"))
                                     continue
@@ -2225,14 +2331,16 @@ def _fixture_migration_lifecycle_issuer_main(
                                         verification_key=verification_key,
                                         raw_pins=effective_descriptor_pins.model_dump(mode="json"),
                                     )
-                                    preparation_completion = recover_sources_sealed_to_copy_prepared(
-                                        session_root_fd=session_root_fd,
-                                        session_parent_fd=session_parent_fd,
-                                        session_target_fd=session_target_fd,
-                                        expected_sources_sealed_state_sha256=(
-                                            expected_sealed_state_sha256
-                                        ),
-                                        expected_pins=recovery_admission.authority_pins,
+                                    preparation_completion = (
+                                        recover_sources_sealed_to_copy_prepared(
+                                            session_root_fd=session_root_fd,
+                                            session_parent_fd=session_parent_fd,
+                                            session_target_fd=session_target_fd,
+                                            expected_sources_sealed_state_sha256=(
+                                                expected_sealed_state_sha256
+                                            ),
+                                            expected_pins=recovery_admission.authority_pins,
+                                        )
                                     )
                                     if supervisor_exited() or recovery_peer_exited:
                                         return
@@ -2991,7 +3099,27 @@ class FixtureMigrationRecoverySessionV1:
             except Exception:
                 self._close_local()
                 raise
-            if response == b"E":
+            if response[:1] == b"E":
+                try:
+                    if response[1:]:
+                        fault_completion = (
+                            _parse_issuer_recovery_barrier_acquisition_completion_document(
+                                response[1:]
+                            )
+                        )
+                        _verify_epoch0_recovery_barrier_acquisition_completion_v1(
+                            fault_completion,
+                            issuer_verification_key=self._verification_key,
+                            expected_schema_only_pins=schema_pins,
+                        )
+                        object.__setattr__(
+                            self,
+                            "_barrier_acquisition_completion",
+                            fault_completion,
+                        )
+                except Exception:
+                    self._close_local()
+                    raise
                 raise ValueError("fixture recovery barrier acquisition rejected")
             try:
                 if response[:1] != b"Y":
@@ -3186,6 +3314,13 @@ class FixtureMigrationLifecycleIssuerV1:
             "prepare_after_rename",
             "prepare_after_parent_fsync",
             "prepare_after_reread",
+            "barrier_after_intent",
+            "barrier_after_root_rename",
+            "barrier_after_root_fsync",
+            "barrier_after_root_reread",
+            "barrier_after_journal_rename",
+            "barrier_after_journal_parent_fsync",
+            "barrier_after_journal_reread",
         }:
             raise ValueError("issuer recovery fault boundary")
         context = multiprocessing.get_context("spawn")
