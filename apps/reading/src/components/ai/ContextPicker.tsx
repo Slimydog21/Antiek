@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { emitWernerExperience } from "../../werner/reactionBus";
+
 import {
   ApiError,
   composeContext,
@@ -59,12 +61,14 @@ export default function ContextPicker({ onContextChange }: ContextPickerProps) {
       setWithheld(data.withheld);
       setMissing(data.missing);
       onContextChange(data.system_context);
+      emitWernerExperience("note_saved");
     } catch (err) {
       setError(
         err instanceof ApiError
           ? `Compose failed (HTTP ${err.status}).`
           : "Compose failed (network error).",
       );
+      emitWernerExperience("fail");
     } finally {
       setPending(false);
     }
