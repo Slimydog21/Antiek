@@ -72,6 +72,11 @@ def client(env: Path) -> Iterator[TestClient]:
 
 
 def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
+    from runtime.research_runner.provider_route_authority import (
+        ProviderRouteAuthorityResolver,
+    )
+
+    assert isinstance(client.app.state.provider_route_authority, ProviderRouteAuthorityResolver)
     r = client.post("/settings/models/user", json=_ADD_BODY)
     assert r.status_code == 201
     body = r.json()
@@ -82,6 +87,8 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     assert body["route_eligible"] is True
     assert body["pricing_status"] == "unknown"
     assert body["hard_ceiling_eligible"] is False
+    assert body["execution_status"] == "blocked_unknown_pricing"
+    assert body["rate_snapshot"] is None
     assert "api_key" not in body
 
     inv = client.get("/settings/models/user")
@@ -104,6 +111,8 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     assert row["route_eligible"] is True
     assert row["pricing_status"] == "unknown"
     assert row["hard_ceiling_eligible"] is False
+    assert row["execution_status"] == "blocked_unknown_pricing"
+    assert row["rate_snapshot"] is None
     assert row["tier_bindings"] == []
     assert row["notes"] == "registered, but not bound to an active dispatch tier"
 
@@ -136,10 +145,125 @@ def test_exact_choice_resolves_but_execution_remains_hard_ceiling_blocked(
         "model_id": "deepseek-chat",
         "pricing_status": "unknown",
         "hard_ceiling_eligible": False,
-        "execution_status": "blocked_missing_hard_ceiling_adapter",
+        "execution_status": "blocked_unknown_pricing",
+        "rate_snapshot": None,
     }
     assert _SECRET not in response.text
     assert "cred" not in response.text
+
+
+def test_exact_server_execution_authority_projects_identically_across_settings(
+    client: TestClient,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    from runtime.research_runner.cost_projection import CostCatalogEntry, UnitRate
+    from runtime.research_runner.protocol import BillingUnit
+    from runtime.research_runner.provider_gateway import ProviderCapabilities
+    from runtime.research_runner.provider_qualification import (
+        EvidenceStatus,
+        ProviderQualification,
+        QualificationEvidence,
+        QualificationVerdict,
+    )
+    from runtime.research_runner.provider_route_authority import (
+        ProviderRouteAuthorityResolver,
+        ProviderRouteIdentity,
+        RouteAuthorityCatalogEntry,
+    )
+
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    identity = ProviderRouteIdentity(
+        "openai_compat",
+        "deepseek-chat",
+        "https://api.deepseek.com/v1",
+        "user.prompt.generate",
+        "generate",
+    )
+    cost = CostCatalogEntry(
+        seam_id="user.prompt.generate",
+        provider="qualified-family",
+        model="deepseek-chat",
+        operation="generate",
+        rates=(UnitRate(BillingUnit.CALL, Decimal("0.01")),),
+        snapshot="qualified-family-v1",
+        expires_at=datetime.now(UTC) + timedelta(days=1),
+        durable_idempotency=True,
+        authoritative_reconciliation=True,
+        hidden_retries_disabled=True,
+    )
+    evidence = {
+        dimension: QualificationEvidence(
+            EvidenceStatus.PASS,
+            "https://provider.example/contract",
+            "Exact provider contract evidence.",
+        )
+        for dimension in (
+            "pinned_pricing",
+            "durable_idempotency",
+            "hidden_retries_disabled",
+            "authoritative_reconciliation",
+            "stable_provider_evidence",
+        )
+    }
+    qualification = ProviderQualification(
+        "qualified-family",
+        "deepseek-chat",
+        "generate",
+        "2026-07-16",
+        QualificationVerdict.QUALIFIED,
+        evidence,
+        provider_kind="openai_compat",
+        endpoint="https://api.deepseek.com/v1",
+        chargeable_units=frozenset({BillingUnit.CALL}),
+        expires_at=datetime.now(UTC) + timedelta(days=1),
+    )
+
+    class ExactAdapter:
+        provider = "user-my-deepseek"
+        model = "deepseek-chat"
+        capabilities = ProviderCapabilities(True, True, True, frozenset({BillingUnit.CALL}))
+
+        def send_once(self, operation: object, *, provider_idempotency_key: str):
+            raise AssertionError("Settings authority must not send")
+
+        def reconcile(self, *, provider_idempotency_key: str):
+            raise AssertionError("Settings authority must not reconcile")
+
+    adapter = ExactAdapter()
+    resolver = ProviderRouteAuthorityResolver(
+        (
+            RouteAuthorityCatalogEntry(
+                identity,
+                cost,
+                qualification,
+            ),
+        ),
+        adapter_lookup=lambda provider_id: adapter if provider_id == adapter.provider else None,
+    )
+    resolver.register_adapter(identity, adapter.provider, adapter)
+    client.app.state.provider_route_authority = resolver
+
+    user_row = client.get("/settings/models/user").json()["models"][0]
+    generic_row = next(
+        row
+        for row in client.get("/settings/models").json()["models"]
+        if row["provider_id"] == "user-my-deepseek"
+    )
+    resolved = client.post(
+        "/settings/models/user/resolve",
+        json={
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "deepseek-chat",
+        },
+    ).json()
+    for projected in (user_row, generic_row, resolved):
+        assert projected["pricing_status"] == "known"
+        assert projected["hard_ceiling_eligible"] is True
+        assert projected["execution_status"] == "executable"
+        assert projected["rate_snapshot"] == "qualified-family-v1"
 
 
 @pytest.mark.parametrize(
@@ -264,14 +388,17 @@ def test_ciphertext_substitution_revokes_route_and_cannot_reveal_other_key(
 ) -> None:
     assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
     other_secret = "sk-BBBB-other-user-model-key-0987654321"
-    assert client.post(
-        "/settings/models/user",
-        json={
-            **_ADD_BODY,
-            "display_name": "Other Model",
-            "api_key": other_secret,
-        },
-    ).status_code == 201
+    assert (
+        client.post(
+            "/settings/models/user",
+            json={
+                **_ADD_BODY,
+                "display_name": "Other Model",
+                "api_key": other_secret,
+            },
+        ).status_code
+        == 201
+    )
 
     registry = json.loads((env / "settings" / "user_models.json").read_text())
     first_ref = registry["user-my-deepseek"]["cred_ref"]
@@ -662,9 +789,7 @@ def test_boot_migrates_legacy_user_model_without_losing_authority(env: Path) -> 
 
     reset_provider_registry()
     with TestClient(_fresh_app()) as reborn:
-        migrated = json.loads(registry_path.read_text(encoding="utf-8"))[
-            "user-my-deepseek"
-        ]
+        migrated = json.loads(registry_path.read_text(encoding="utf-8"))["user-my-deepseek"]
         assert migrated["cred_ref"] != legacy_ref
         assert len(migrated["cred_fingerprint"]) == 64
         choice = {

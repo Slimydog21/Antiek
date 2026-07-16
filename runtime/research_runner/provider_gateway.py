@@ -30,7 +30,12 @@ from substrate.research_spend import (
 )
 
 from .cost_projection import project_cascade_cost
-from .protocol import CostProjection, CostProjectionRequest, ProjectionDisposition
+from .protocol import (
+    BillingUnit,
+    CostProjection,
+    CostProjectionRequest,
+    ProjectionDisposition,
+)
 
 T = TypeVar("T")
 JsonEvidence = Mapping[str, str | int | bool | None]
@@ -88,6 +93,7 @@ class ProviderCapabilities:
     durable_idempotency: bool
     authoritative_reconciliation: bool
     hidden_retries_disabled: bool
+    billing_units: frozenset[BillingUnit] = frozenset()
 
     @property
     def hard_ceiling_eligible(self) -> bool:
@@ -95,6 +101,7 @@ class ProviderCapabilities:
             self.durable_idempotency
             and self.authoritative_reconciliation
             and self.hidden_retries_disabled
+            and bool(self.billing_units)
         )
 
 
@@ -466,3 +473,6 @@ class ResearchProviderGateway:
             raise DispatchIneligible("adapter route differs from projected route")
         if not adapter.capabilities.hard_ceiling_eligible:
             raise DispatchIneligible("adapter lacks hard-ceiling capabilities")
+        projection_units = frozenset(rate.unit for rate in projection.rates)
+        if adapter.capabilities.billing_units != projection_units:
+            raise DispatchIneligible("adapter billing units differ from projected route")
