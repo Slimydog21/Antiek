@@ -8,8 +8,8 @@ import { listBooks } from "../api/books";
 import type { BookSummary } from "../api/books";
 import type { InvestigationSummary } from "../lib/api";
 import { useInvestigationList } from "../hooks/useInvestigationList";
-import {
 import { emitWernerExperience } from "../werner/reactionBus";
+import {
   WORKFLOWS,
   workflowForPath,
   type Workflow,

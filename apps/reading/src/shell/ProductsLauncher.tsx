@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 
 import { LemonTag } from "../components/lemon/LemonTag";
 import { openWindow, windowKindForRoute } from "../components/windows/openWindow";
-import {
 import { emitWernerExperience } from "../werner/reactionBus";
+import {
   MODE_TAXONOMY,
   WORKFLOWS,
   WORKFLOW_ORDER,

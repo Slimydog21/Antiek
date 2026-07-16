@@ -14,11 +14,11 @@ import { ProductsLauncher } from "./ProductsLauncher";
 import IglooMark from "../brand/werner/marks/IglooMark";
 import { KeyChip } from "../components/hotkeys/KeyChip";
 import {
-import { emitWernerExperience } from "../werner/reactionBus";
   bindingForProduct,
   emitProductActivate,
   BUILTIN_BINDINGS,
 } from "../components/hotkeys/bindings";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 /**
  * NavRail (SPR-04) — the four-workflow content-first rail.

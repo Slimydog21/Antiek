@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 
 import type { PaletteDragPayload } from "../CreationStudio/BlockPalette";
 import { DRAG_MIME } from "../CreationStudio/BlockPalette";
-import {
 import { emitWernerExperience } from "../../werner/reactionBus";
+import {
   listFolders,
   searchRepository,
   type FolderSummary,
