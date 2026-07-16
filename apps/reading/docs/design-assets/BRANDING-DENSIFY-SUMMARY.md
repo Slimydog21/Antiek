@@ -188,3 +188,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | HTML book float invent → ReadingCompanion | `8d331c5e8` | product-map HTML-first Flipbook-feel invent |
 | Notebooks/Documents index densify | `522ab4feb` | create piece_started; filter highlight |
 | AdSlot/OutcomesIndex densify | `e507f5118` | ad click + outcomes open highlight |
+| AssignHotkey living-TV densify | `3d04e6bde` | save note_saved; remove highlight |
