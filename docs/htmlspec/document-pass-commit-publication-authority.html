@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cycle 89 - Document-pass commit and publication authority</title></head>
+<body><main>
+  <header>
+    <p>Antiek Infinite / Cycle 89 / executable specification / 2026-07-16</p>
+    <h1>Publish live note identities only from committed graph state</h1>
+    <p>Replace connection-presence inference with an explicit transaction contract so the live ingest path exposes challengeable graph-backed notes without allowing a caller-owned rollback to leave durable events pointing at nonexistent nodes.</p>
+  </header>
+
+  <section><h2>Observed defect</h2><ul>
+    <li><code>run_document_pass</code> currently writes <code>note.emerged.node_id = null</code> whenever a connection is supplied.</li>
+    <li>The universal research-ingest caller supplies an ordinary autocommit connection. Its graph node is committed before the note event, but the live workstation still receives an unchallengeable note with no node identity.</li>
+    <li>Connection presence does not prove transaction ownership. A caller-owned transaction can roll back after promotion; publishing note or graph events from that path would create false durable authority.</li>
+  </ul></section>
+
+  <section><h2>Contract</h2><ol>
+    <li>No supplied connection means the existing internally owned promotion transaction. The returned node is committed before <code>note.emerged</code> publishes it.</li>
+    <li>Every supplied connection declares exactly one mode: <code>autocommit</code> or <code>caller_owned</code>. Omission or an unsupported value fails before distillation, graph writes, embeddings, or events.</li>
+    <li><code>autocommit</code> permits existing event publication and includes the promoted insight node in <code>note.emerged.node_id</code>.</li>
+    <li><code>caller_owned</code> permits promotion only when both external note events and graph events are disabled. Any publication request fails before distillation or mutation.</li>
+    <li>The caller that owns commit may publish committed effects after commit through its own verified bridge. Cycle 89 does not guess commit success, install callbacks, or emit during rollbackable work.</li>
+  </ol></section>
+
+  <section><h2>Call-site decisions</h2><ul>
+    <li><strong>Universal ingest:</strong> declare <code>autocommit</code>. Its connection has no explicit <code>BEGIN</code>; promotion statements are committed before the live event is emitted.</li>
+    <li><strong>Multimedia twin registration:</strong> declare <code>caller_owned</code>. It already disables both event classes, commits explicitly, and runs a separate post-commit graph-event verifier.</li>
+    <li><strong>Scheduler/direct callers:</strong> supply no connection and retain internally committed behavior.</li>
+  </ul></section>
+
+  <section><h2>Acceptance</h2><ul>
+    <li>Universal ingest emits one <code>note.emerged</code> whose <code>node_id</code> equals a committed insight row and whose observation relation preserves the same local note identity.</li>
+    <li>The emitted live note can be challenged by exact observation identity and appears in authoritative history.</li>
+    <li>A supplied connection without a mode fails before the distiller runs.</li>
+    <li>A <code>caller_owned</code> request with note or graph publication enabled fails before the distiller runs and leaves zero nodes/events.</li>
+    <li>A valid <code>caller_owned</code> request with publication disabled may be rolled back and leaves no graph rows or external events.</li>
+    <li>Multimedia registration behavior and post-commit event recovery remain unchanged.</li>
+    <li>Focused async-note-taker, universal-ingest, multimedia-registration, graph, event-schema, frontend generated-contract, typecheck, build, Ruff, compileall, and diff gates pass.</li>
+  </ul></section>
+
+  <section><h2>Non-goals</h2><p>No generic transaction callback framework, no event schema bump, no question-node identity field, no provider call, no new graph operation, no outbox migration, and no client-side reconstruction. A broader atomic document-pass outbox requires a separate design if a caller later needs note events and graph promotion in one caller-owned transaction.</p></section>
+</main></body></html>

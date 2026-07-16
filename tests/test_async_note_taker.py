@@ -193,6 +193,94 @@ async def test_document_pass_idempotent(env):
         con.close()
 
 
+async def test_supplied_connection_requires_explicit_commit_mode_before_distillation(env):
+    called = False
+
+    class RecordingDistiller(FakeDistiller):
+        def distill(self, text, *, source_event_ids=(), context=""):
+            nonlocal called
+            called = True
+            return super().distill(text, source_event_ids=source_event_ids, context=context)
+
+    con = connect_write(env["db"], purpose="test_missing_commit_mode")
+    try:
+        with pytest.raises(ValueError, match="explicit commit mode"):
+            await run_document_pass(
+                "doc-1", "source", investigation_id="inv-1",
+                distiller=RecordingDistiller(insights=["Must not run."]),
+                con=con, events_dir=env["events"],
+            )
+    finally:
+        con.close()
+    assert not called
+    assert trajectory("inv-1", events_dir=env["events"]) == []
+
+
+async def test_caller_owned_transaction_rejects_external_publication_before_distillation(env):
+    called = False
+
+    class RecordingDistiller(FakeDistiller):
+        def distill(self, text, *, source_event_ids=(), context=""):
+            nonlocal called
+            called = True
+            return super().distill(text, source_event_ids=source_event_ids, context=context)
+
+    con = connect_write(env["db"], purpose="test_caller_owned_publication")
+    try:
+        with pytest.raises(ValueError, match="cannot publish before commit"):
+            await run_document_pass(
+                "doc-1", "source", investigation_id="inv-1",
+                distiller=RecordingDistiller(insights=["Must not run."]),
+                con=con, connection_commit_mode="caller_owned",
+                events_dir=env["events"],
+            )
+    finally:
+        con.close()
+    assert not called
+    assert trajectory("inv-1", events_dir=env["events"]) == []
+    with connect_read(env["db"]) as read:
+        assert read.execute("SELECT count(*) FROM nodes").fetchone()[0] == 0
+
+
+async def test_caller_owned_silent_promotion_can_be_rolled_back_without_external_identity(env):
+    con = connect_write(env["db"], purpose="test_caller_owned_rollback")
+    try:
+        con.execute("BEGIN")
+        result = await run_document_pass(
+            "doc-1", "source", investigation_id="inv-1",
+            distiller=FakeDistiller(insights=["Rollback hypothesis."]),
+            con=con, connection_commit_mode="caller_owned",
+            emit_events=False, emit_graph_events=False, events_dir=env["events"],
+        )
+        assert len(result.insight_node_ids) == 1
+        assert con.execute("SELECT count(*) FROM nodes").fetchone()[0] == 1
+        con.execute("ROLLBACK")
+    finally:
+        con.close()
+    assert trajectory("inv-1", events_dir=env["events"]) == []
+    with connect_read(env["db"]) as read:
+        assert read.execute("SELECT count(*) FROM nodes").fetchone()[0] == 0
+
+
+async def test_question_event_is_not_published_when_promotion_fails(env, monkeypatch):
+    import roles.note_taker.document_pass as document_pass
+
+    def fail_promotion(**_kwargs):
+        raise RuntimeError("injected question promotion failure")
+
+    monkeypatch.setattr(document_pass, "promote_question", fail_promotion)
+    with pytest.raises(RuntimeError, match="injected question promotion failure"):
+        await run_document_pass(
+            "doc-1", "source", investigation_id="inv-1",
+            distiller=FakeDistiller(questions=["Uncommitted question?"]),
+            events_dir=env["events"],
+        )
+    assert [
+        event for event in trajectory("inv-1", events_dir=env["events"])
+        if event["action_type"] == ActionType.QUESTION_IDENTIFIED.value
+    ] == []
+
+
 # --------------------------------------------------------------------------
 # M2 — step pass within-run dedup
 # --------------------------------------------------------------------------
