@@ -225,3 +225,23 @@ def test_master_key_symlink_is_rejected_without_touching_target():
                 key_file=str(key_file),
             )
         assert target.read_bytes() == _TEST_KEY
+
+
+def test_existing_artifact_permissions_are_repaired_and_symlink_is_rejected():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "credentials.enc"
+        store_credential(
+            "artifact-mode",
+            _SECRET,
+            artifact_path=str(artifact),
+            key_bytes=_TEST_KEY,
+        )
+        artifact.chmod(0o644)
+        assert len(list_credentials(artifact_path=str(artifact))) == 1
+        assert stat.S_IMODE(artifact.stat().st_mode) == 0o600
+
+        target = Path(tmp) / "target.enc"
+        artifact.rename(target)
+        artifact.symlink_to(target)
+        with pytest.raises(CredentialIntegrityError, match="regular file"):
+            list_credentials(artifact_path=str(artifact))

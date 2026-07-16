@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import json
 import logging
+import stat
 import traceback
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
+import nacl.secret
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -319,6 +321,23 @@ def test_concurrent_creates_preserve_registry_and_credential_artifact(
     assert all(row["route_eligible"] is True for row in inventory["models"])
 
 
+def test_registry_permissions_are_repaired_and_symlink_is_rejected(
+    client: TestClient,
+    env: Path,
+) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    registry_path = env / "settings" / "user_models.json"
+    registry_path.chmod(0o644)
+    assert client.get("/settings/models/user").status_code == 200
+    assert stat.S_IMODE(registry_path.stat().st_mode) == 0o600
+
+    target = env / "settings" / "registry-target.json"
+    registry_path.rename(target)
+    registry_path.symlink_to(target)
+    with pytest.raises(RuntimeError, match="regular file"):
+        client.get("/settings/models/user")
+
+
 @pytest.mark.parametrize(
     "body",
     [
@@ -617,6 +636,42 @@ def test_boot_time_reload_of_user_providers(env: Path) -> None:
         models = reborn.get("/settings/models").json()["models"]
         row = next(m for m in models if m["provider_id"] == "user-my-deepseek")
         assert row["ready"] is False
+        assert get_provider("user-my-deepseek")._resolve_api_key() == _SECRET  # noqa: SLF001
+    reset_provider_registry()
+
+
+def test_boot_migrates_legacy_user_model_without_losing_authority(env: Path) -> None:
+    with TestClient(_fresh_app()) as first:
+        assert first.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+
+    registry_path = env / "settings" / "user_models.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    record = registry["user-my-deepseek"]
+    legacy_ref = record["cred_ref"]
+    record.pop("cred_fingerprint")
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    artifact_path = env / "byok" / "credentials.enc"
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    master_key = (env / "byok" / "master.key").read_bytes()
+    legacy_sealed = nacl.secret.SecretBox(master_key).encrypt(_SECRET.encode("utf-8"))
+    artifact[legacy_ref].pop("binding_version")
+    artifact[legacy_ref]["ciphertext_hex"] = bytes(legacy_sealed).hex()
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+    reset_provider_registry()
+    with TestClient(_fresh_app()) as reborn:
+        migrated = json.loads(registry_path.read_text(encoding="utf-8"))[
+            "user-my-deepseek"
+        ]
+        assert migrated["cred_ref"] != legacy_ref
+        assert len(migrated["cred_fingerprint"]) == 64
+        choice = {
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "deepseek-chat",
+        }
+        assert reborn.post("/settings/models/user/resolve", json=choice).status_code == 200
         assert get_provider("user-my-deepseek")._resolve_api_key() == _SECRET  # noqa: SLF001
     reset_provider_registry()
 

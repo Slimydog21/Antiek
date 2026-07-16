@@ -84,6 +84,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import threading
 import uuid
 from collections.abc import Iterator
@@ -148,7 +149,7 @@ class UserModelRecord(BaseModel):
     display_name: str
     base_url: str | None = None
     cred_ref: str
-    cred_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    cred_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     enabled: bool = True
 
 
@@ -169,11 +170,35 @@ def _fsync_directory(directory: Path) -> None:
         os.close(fd)
 
 
+def _ensure_directory(directory: Path) -> None:
+    missing: list[Path] = []
+    current = directory
+    while not current.exists():
+        missing.append(current)
+        if current.parent == current:
+            break
+        current = current.parent
+    for item in reversed(missing):
+        item.mkdir(exist_ok=True)
+        _fsync_directory(item)
+        _fsync_directory(item.parent)
+
+
+def _secure_registry_file(path: Path) -> None:
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode):
+        raise RuntimeError("user-model registry must be a regular file")
+    if hasattr(os, "getuid") and info.st_uid != os.getuid():
+        raise PermissionError("user-model registry must be owned by this user")
+    if stat.S_IMODE(info.st_mode) != _PRIVATE_FILE_MODE:
+        os.chmod(path, _PRIVATE_FILE_MODE)
+
+
 @contextmanager
 def _registry_guard(*, exclusive: bool) -> Iterator[None]:
     path = _registry_path()
     lock_path = Path(f"{path}.lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_directory(lock_path.parent)
     with _REGISTRY_LOCK:
         flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(str(lock_path), flags, _PRIVATE_FILE_MODE)
@@ -189,8 +214,11 @@ def _load_registry_unlocked() -> dict[str, UserModelRecord]:
     """Lenient read, mirroring ``store._read_artifact``: a missing or
     corrupt file yields an empty registry rather than a crashed boot."""
     path = _registry_path()
-    if not path.is_file():
+    if not path.exists():
+        if path.is_symlink():
+            raise RuntimeError("user-model registry must be a regular file")
         return {}
+    _secure_registry_file(path)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (ValueError, OSError):
@@ -221,7 +249,7 @@ def _load_registry() -> dict[str, UserModelRecord]:
 
 def _write_registry_unlocked(registry: dict[str, UserModelRecord]) -> None:
     path = _registry_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_directory(path.parent)
     data = {rid: rec.model_dump() for rid, rec in registry.items()}
     temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     fd = os.open(
@@ -339,6 +367,49 @@ def _credential_matches_record(
     )
 
 
+def _migrate_legacy_registry_unlocked(
+    registry: dict[str, UserModelRecord],
+    metadata: dict[str, CredentialMetadata],
+) -> tuple[dict[str, UserModelRecord], bool]:
+    """Re-seal legacy user-model credentials under v2 identity binding."""
+    changed = False
+    migrated = dict(registry)
+    for record_id, record in registry.items():
+        if record.cred_fingerprint is not None:
+            continue
+        legacy = metadata.get(record.cred_ref)
+        if (
+            legacy is None
+            or legacy.binding_version != 1
+            or legacy.pipeline_kind != _PIPELINE_KIND
+            or legacy.account_handle != record.id
+        ):
+            continue
+        plaintext: str | None = None
+        try:
+            plaintext = load_credential(record.cred_ref).reveal()
+            new_ref = store_credential(
+                record.id,
+                plaintext,
+                pipeline_kind=_PIPELINE_KIND,
+            )
+        except (KeyError, CredentialIntegrityError, OSError, ValueError):
+            continue
+        finally:
+            plaintext = None
+        new_metadata = _credential_metadata().get(new_ref)
+        if new_metadata is None or new_metadata.binding_version != 2:
+            continue
+        migrated[record_id] = record.model_copy(
+            update={
+                "cred_ref": new_ref,
+                "cred_fingerprint": new_metadata.artifact_fingerprint,
+            }
+        )
+        changed = True
+    return migrated, changed
+
+
 class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
     """User-added OpenAI-shaped endpoint. The operator supplies the FULL
     base URL including any version prefix (e.g. ``https://api.openai.com/v1``)
@@ -411,8 +482,13 @@ def reload_user_providers(app: FastAPI) -> set[str]:
     that cannot resolve credentials. Default provider names are never
     touched (prefix-guarded).
     """
-    registry = _load_registry()
-    metadata = _credential_metadata()
+    with _registry_guard(exclusive=True):
+        registry = _load_registry_unlocked()
+        metadata = _credential_metadata()
+        registry, migrated = _migrate_legacy_registry_unlocked(registry, metadata)
+        if migrated:
+            _write_registry_unlocked(registry)
+            metadata = _credential_metadata()
     registered: set[str] = set()
     fingerprints: dict[str, str] = {}
     for record_id, record in registry.items():

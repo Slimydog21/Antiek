@@ -164,7 +164,7 @@ def _load_master_key(key_bytes: bytes | None, key_file: str | None) -> bytes:
         return key_bytes
     kf = key_file or _default_key_file()
     path = Path(kf)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_directory(path.parent)
     with _STORE_LOCK, _artifact_lock(str(path), exclusive=True):
         if path.exists() or path.is_symlink():
             info = path.lstat()
@@ -195,7 +195,10 @@ def _load_master_key(key_bytes: bytes | None, key_file: str | None) -> bytes:
 def _read_artifact(artifact_path: str) -> dict:
     p = Path(artifact_path)
     if not p.exists():
+        if p.is_symlink():
+            raise CredentialIntegrityError("credential artifact must be a regular file")
         return {}
+    _secure_private_file(p, label="credential artifact")
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
@@ -211,10 +214,34 @@ def _fsync_directory(directory: Path) -> None:
         os.close(fd)
 
 
+def _ensure_directory(directory: Path) -> None:
+    missing: list[Path] = []
+    current = directory
+    while not current.exists():
+        missing.append(current)
+        if current.parent == current:
+            break
+        current = current.parent
+    for item in reversed(missing):
+        item.mkdir(exist_ok=True)
+        _fsync_directory(item)
+        _fsync_directory(item.parent)
+
+
+def _secure_private_file(path: Path, *, label: str) -> None:
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode):
+        raise CredentialIntegrityError(f"{label} must be a regular file")
+    if hasattr(os, "getuid") and info.st_uid != os.getuid():
+        raise PermissionError(f"{label} must be owned by this user")
+    if stat.S_IMODE(info.st_mode) != _KEY_FILE_MODE:
+        os.chmod(path, _KEY_FILE_MODE)
+
+
 @contextmanager
 def _artifact_lock(artifact_path: str, *, exclusive: bool) -> Iterator[None]:
     lock_path = Path(f"{artifact_path}.lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_directory(lock_path.parent)
     flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(str(lock_path), flags, _KEY_FILE_MODE)
     try:
@@ -227,7 +254,7 @@ def _artifact_lock(artifact_path: str, *, exclusive: bool) -> Iterator[None]:
 
 def _write_artifact(artifact_path: str, data: dict) -> None:
     p = Path(artifact_path)
-    p.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_directory(p.parent)
     temporary = p.with_name(f".{p.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     fd = os.open(
         str(temporary),
@@ -308,6 +335,9 @@ def load_credential(
     NEVER logged / emitted by this function — it is handed back wrapped.
     """
     artifact = artifact_path or _default_artifact_path()
+    artifact_file = Path(artifact)
+    if not artifact_file.exists() and not artifact_file.is_symlink():
+        raise KeyError(f"unknown cred_id: {cred_id}")
     with _STORE_LOCK, _artifact_lock(artifact, exclusive=False):
         data = _read_artifact(artifact)
     rec = data.get(cred_id)
@@ -353,6 +383,9 @@ def list_credentials(
     """List the NON-SECRET metadata for every stored credential. Never decrypts,
     never touches the key — safe to call from a config/listing surface."""
     artifact = artifact_path or _default_artifact_path()
+    artifact_file = Path(artifact)
+    if not artifact_file.exists() and not artifact_file.is_symlink():
+        return []
     with _STORE_LOCK, _artifact_lock(artifact, exclusive=False):
         data = _read_artifact(artifact)
     out: list[CredentialMetadata] = []
