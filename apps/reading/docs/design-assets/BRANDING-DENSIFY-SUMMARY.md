@@ -63,6 +63,7 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | Speak thinking brand | `a5c8b6f44` | `speak-home-werner-brand` session mood |
 | Speak create | `7462661ae` | piece_started happy craft beat |
 | Research absorb | `639ae47b0` | highlight on corpus attach |
+| Home igloo arcade invent | `145cb173f` | scene webp + thinking mark on Home arcade card |
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
 
