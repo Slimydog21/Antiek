@@ -187,6 +187,7 @@ class TwinSegmentationLedger:
 
     def get(self, account_id: str, asset_id: str, parent_source_hash: str) -> SegmentationSnapshot:
         with self._connect() as con:
+            con.execute("BEGIN")
             self._verify_schema(con)
             row = con.execute(
                 "SELECT * FROM segmentation_manifests "

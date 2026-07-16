@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
@@ -186,3 +187,5 @@ def test_live_ledger_rechecks_schema_before_register_and_read(tmp_path, asset):
         ledger.register(manifest, account_id="acct", asset=asset)
     with pytest.raises(TwinSegmentationIntegrityError, match="schema object"):
         ledger.get("acct", asset.asset_id, manifest.parent_source_hash)
+    get_source = inspect.getsource(TwinSegmentationLedger.get)
+    assert get_source.index('con.execute("BEGIN")') < get_source.index("self._verify_schema(con)")
