@@ -5,6 +5,7 @@ import { LemonButton } from "../../components/lemon";
 import { spinResearch } from "../../api/books";
 import { track } from "../../lib/analytics";
 import { notifyResearchStarted } from "../../werner";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * ResearchThis (Read SPR-08) — spin a deep research from the current
@@ -52,6 +53,7 @@ export default function ResearchThis({ documentId, pageIndex, passageText }: Res
       navigate(`/inv/${encodeURIComponent(res.investigation_id)}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+      emitWernerExperience("deep_research_error");
       setBusy(false);
     }
   };

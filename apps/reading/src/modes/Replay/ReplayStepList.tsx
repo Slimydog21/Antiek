@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * ReplayStepList (S10 row 10.14) — docked-left step-pill timeline
