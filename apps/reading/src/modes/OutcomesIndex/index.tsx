@@ -5,6 +5,7 @@ import thinkingArt from "../../brand/werner/poses/session/werner_thinking_sessio
 import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import LemonTable from "../../components/lemon/LemonTable";
 import { apiFetch } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Operator-facing outcomes audit surface (master-spec §13.8).
@@ -141,7 +142,7 @@ export default function OutcomesIndex() {
               rows={rows}
               rowKey={(r) => r.outcome_id}
               onRowClick={(r) =>
-                navigate(`/outcomes/${encodeURIComponent(r.synthesis_id)}`)
+                emitWernerExperience("highlight"); navigate(`/outcomes/${encodeURIComponent(r.synthesis_id)}`)
               }
               columns={[
                 {
