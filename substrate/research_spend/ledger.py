@@ -907,6 +907,20 @@ class ResearchSpendLedger:
         connection.execute("PRAGMA synchronous = FULL")
         return connection
 
+    def _connect_read_only(self) -> sqlite3.Connection:
+        database_uri = Path(self._db_path).expanduser().resolve(strict=True).as_uri()
+        connection = sqlite3.connect(
+            f"{database_uri}?mode=ro",
+            uri=True,
+            timeout=BUSY_TIMEOUT_MS / 1000,
+            isolation_level=None,
+        )
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only = ON")
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+        return connection
+
     @contextlib.contextmanager
     def _write(self, operation: str) -> Generator[sqlite3.Connection]:
         connection = self._connect()
@@ -1349,6 +1363,130 @@ class ResearchSpendLedger:
             if run.binding.owner_id != owner_id:
                 raise LedgerIntegrityError("fallback approval owner binding conflicts")
             return run.binding
+        finally:
+            connection.close()
+
+    def fallback_chain(self, owner_id: str, chain_id: str) -> FallbackChainHistory:
+        """Load and integrity-check one chain through an owner-scoped lookup."""
+        _required_text("owner_id", owner_id)
+        _required_text("chain_id", chain_id)
+        connection = self._connect_read_only()
+        try:
+            row = connection.execute(
+                "SELECT * FROM research_fallback_chains WHERE chain_id=? AND owner_id=?",
+                (chain_id, owner_id),
+            ).fetchone()
+            if row is None:
+                raise RunNotFound(chain_id)
+            return self._fallback_history_row(connection, row, owner_id)
+        finally:
+            connection.close()
+
+    def fallback_hold(
+        self, owner_id: str, chain_id: str, fallback_index: int, hold_id: str
+    ) -> PaidHoldSnapshot:
+        """Load a hold only when every private fallback-route binding matches."""
+        _required_text("owner_id", owner_id)
+        _required_text("chain_id", chain_id)
+        _required_text("hold_id", hold_id)
+        _bounded_int("fallback_index", fallback_index, minimum=0, maximum=15)
+        connection = self._connect_read_only()
+        try:
+            chain_row = connection.execute(
+                "SELECT * FROM research_fallback_chains WHERE chain_id=? AND owner_id=?",
+                (chain_id, owner_id),
+            ).fetchone()
+            if chain_row is None:
+                raise RunNotFound(chain_id)
+            self._fallback_history_row(connection, chain_row, owner_id)
+            route = connection.execute(
+                "SELECT * FROM research_fallback_routes "
+                "WHERE chain_id=? AND fallback_index=?",
+                (chain_id, fallback_index),
+            ).fetchone()
+            hold = self._load_hold(connection, hold_id)
+            intent = hold.intent
+            if route is None or (
+                hold.run_id != str(chain_row["run_id"])
+                or intent.seam_id != str(route["seam_id"])
+                or intent.provider != str(route["provider"])
+                or intent.model != str(route["model"])
+                or intent.operation != str(route["operation"])
+                or intent.operation_digest != str(route["operation_digest"])
+                or intent.projection_digest != str(route["projection_digest"])
+                or intent.rate_snapshot != str(route["rate_snapshot"])
+                or intent.reservation_key != str(route["reservation_key"])
+                or intent.provider_idempotency_key
+                != str(route["provider_idempotency_key"])
+                or intent.route_authority_digest
+                != str(route["route_authority_digest"])
+                or hold.projected_max_cents != int(route["projected_max_cents"])
+            ):
+                raise LedgerIntegrityError("fallback route hold authority conflicts")
+            return hold
+        finally:
+            connection.close()
+
+    def reconciliation_snapshot(
+        self,
+        owner_id: str,
+        run_id: str,
+        chain_id: str,
+        correlations: tuple[tuple[int, str], ...],
+    ) -> tuple[RunSnapshot, FallbackChainHistory, tuple[PaidHoldSnapshot, ...]]:
+        """Read one owner-scoped reconciliation view from one SQLite snapshot."""
+        for name, value in (("owner_id", owner_id), ("run_id", run_id), ("chain_id", chain_id)):
+            _required_text(name, value)
+        if not 1 <= len(correlations) <= 16:
+            raise LedgerIntegrityError("reconciliation hold lineage cardinality conflicts")
+        connection = self._connect_read_only()
+        try:
+            connection.execute("BEGIN")
+            run = self._load_run(connection, run_id)
+            if run.binding.owner_id != owner_id:
+                raise RunNotFound(run_id)
+            chain_row = connection.execute(
+                "SELECT * FROM research_fallback_chains WHERE chain_id=? AND owner_id=?",
+                (chain_id, owner_id),
+            ).fetchone()
+            if chain_row is None or str(chain_row["run_id"]) != run_id:
+                raise RunNotFound(chain_id)
+            chain = self._fallback_history_row(connection, chain_row, owner_id)
+            holds: list[PaidHoldSnapshot] = []
+            for fallback_index, hold_id in correlations:
+                _bounded_int("fallback_index", fallback_index, minimum=0, maximum=15)
+                _required_text("hold_id", hold_id)
+                route = connection.execute(
+                    "SELECT * FROM research_fallback_routes "
+                    "WHERE chain_id=? AND fallback_index=?",
+                    (chain_id, fallback_index),
+                ).fetchone()
+                hold = self._load_hold(connection, hold_id)
+                intent = hold.intent
+                if route is None or (
+                    hold.run_id != run_id
+                    or intent.seam_id != str(route["seam_id"])
+                    or intent.provider != str(route["provider"])
+                    or intent.model != str(route["model"])
+                    or intent.operation != str(route["operation"])
+                    or intent.operation_digest != str(route["operation_digest"])
+                    or intent.projection_digest != str(route["projection_digest"])
+                    or intent.rate_snapshot != str(route["rate_snapshot"])
+                    or intent.reservation_key != str(route["reservation_key"])
+                    or intent.provider_idempotency_key
+                    != str(route["provider_idempotency_key"])
+                    or intent.route_authority_digest
+                    != str(route["route_authority_digest"])
+                    or hold.projected_max_cents != int(route["projected_max_cents"])
+                ):
+                    raise LedgerIntegrityError("fallback route hold authority conflicts")
+                holds.append(hold)
+            connection.execute("COMMIT")
+            return run, chain, tuple(holds)
+        except BaseException:
+            with contextlib.suppress(sqlite3.Error):
+                connection.execute("ROLLBACK")
+            raise
         finally:
             connection.close()
 
@@ -2036,6 +2174,14 @@ class ResearchSpendLedger:
 
     def balance(self, run_id: str) -> RunSnapshot:
         connection = self._connect()
+        try:
+            return self._load_run(connection, run_id)
+        finally:
+            connection.close()
+
+    def balance_read_only(self, run_id: str) -> RunSnapshot:
+        """Load one run through a database-enforced read-only connection."""
+        connection = self._connect_read_only()
         try:
             return self._load_run(connection, run_id)
         finally:

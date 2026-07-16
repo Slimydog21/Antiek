@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_read, connect_write
 from substrate.schemas import DistillationDeliveredPayload
 
 
@@ -55,6 +55,12 @@ class CommandSnapshot:
     manifest_sha256: str | None
     fallback_index: int | None
     hold_id: str | None
+
+
+@dataclass(frozen=True)
+class HoldCorrelation:
+    fallback_index: int
+    hold_id: str
 
 
 _DDL = """
@@ -200,6 +206,15 @@ class DistillationDispatchJournal:
         self.db_path = db_path
         with connect_write(db_path, purpose="distillation-dispatch-init") as connection:
             _ensure_schema(connection)
+
+    @classmethod
+    def open_read_only(cls, db_path: str) -> DistillationDispatchJournal:
+        """Open an existing journal without schema DDL or writer coordination."""
+        if not db_path:
+            raise ValueError("db_path is required")
+        journal = cls.__new__(cls)
+        journal.db_path = db_path
+        return journal
 
     @contextmanager
     def execution_guard(self, request_event_id: str) -> Iterator[None]:
@@ -476,6 +491,73 @@ class DistillationDispatchJournal:
 
     def load(self, request_event_id: str) -> CommandSnapshot:
         with connect_write(self.db_path, purpose="distillation-dispatch-load") as connection:
+            return self._load(connection, request_event_id)
+
+    def hold_correlations(self, request_event_id: str) -> tuple[HoldCorrelation, ...]:
+        _required("request_event_id", request_event_id)
+        with connect_write(
+            self.db_path, purpose="distillation-dispatch-correlations"
+        ) as connection:
+            snapshot = self._load(connection, request_event_id)
+            rows = connection.execute(
+                "SELECT fallback_index,hold_id FROM distillation_dispatch_hold_correlations "
+                "WHERE request_event_id=? ORDER BY fallback_index LIMIT 17",
+                [request_event_id],
+            ).fetchall()
+            correlations = tuple(
+                HoldCorrelation(fallback_index=int(row[0]), hold_id=str(row[1]))
+                for row in rows
+            )
+            if len(correlations) > 16 or tuple(
+                item.fallback_index for item in correlations
+            ) != tuple(range(len(correlations))):
+                raise RuntimeError("distillation hold correlation lineage is not contiguous")
+            if snapshot.fallback_index is None:
+                if correlations:
+                    raise RuntimeError("uncorrelated command has provider hold lineage")
+            elif (
+                len(correlations) != snapshot.fallback_index + 1
+                or not correlations
+                or correlations[-1].hold_id != snapshot.hold_id
+            ):
+                raise RuntimeError("distillation current hold differs from its lineage")
+            return correlations
+
+    def reconciliation_snapshot(
+        self, request_event_id: str
+    ) -> tuple[CommandSnapshot, tuple[HoldCorrelation, ...]]:
+        """Read one command and its bounded hold lineage on one read-only snapshot."""
+        _required("request_event_id", request_event_id)
+        with connect_read(self.db_path) as connection:
+            snapshot = self._load(connection, request_event_id)
+            rows = connection.execute(
+                "SELECT fallback_index,hold_id FROM distillation_dispatch_hold_correlations "
+                "WHERE request_event_id=? ORDER BY fallback_index LIMIT 17",
+                [request_event_id],
+            ).fetchall()
+        correlations = tuple(
+            HoldCorrelation(fallback_index=int(row[0]), hold_id=str(row[1]))
+            for row in rows
+        )
+        if len(correlations) > 16 or tuple(
+            item.fallback_index for item in correlations
+        ) != tuple(range(len(correlations))):
+            raise RuntimeError("distillation hold correlation lineage is not contiguous")
+        if snapshot.fallback_index is None:
+            if correlations:
+                raise RuntimeError("uncorrelated command has provider hold lineage")
+        elif (
+            len(correlations) != snapshot.fallback_index + 1
+            or not correlations
+            or correlations[-1].hold_id != snapshot.hold_id
+        ):
+            raise RuntimeError("distillation current hold differs from its lineage")
+        return snapshot, correlations
+
+    def load_read_only(self, request_event_id: str) -> CommandSnapshot:
+        """Load one existing command without DDL, locks, or observability writes."""
+        _required("request_event_id", request_event_id)
+        with connect_read(self.db_path) as connection:
             return self._load(connection, request_event_id)
 
     def _transition(
