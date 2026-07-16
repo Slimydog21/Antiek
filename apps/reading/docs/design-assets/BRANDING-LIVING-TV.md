@@ -64,6 +64,8 @@ UI-consumed invent strips (not inventory-only):
 - ThoughtPartner + Antiek-bench — `werner_thought_partner_desk_session_v1.webp`
 - LoadingGameHost — game-specific session PNG via `waitHostBrandArt` (default living-TV webp)
 - Midnight Oil panel — living-TV webp
+- ReadingCompanion (in-book glass-box) — thinking mark + living-TV webp
+- ResearchThis page spin — `notifyResearchStarted` → deep_research_start
 
 Cursor model: ice bait instrument (not chase). Station re-home on drag.
 

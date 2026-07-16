@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { useInvestigation } from "../../hooks/useInvestigation";
-import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
 import Thinking from "../../shared/Thinking";
 import { TwinNotesPanel } from "../shared/twinNotes";
+import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
 
 /**
  * ReadingCompanion — the Read glass-box (Read SPR-06 M2).
@@ -76,14 +78,38 @@ export default function ReadingCompanion({
       className="w-80 flex-shrink-0 border-l border-rule dark:border-charcoal-1 overflow-y-auto bg-ice-1 dark:bg-charcoal-2 hidden lg:flex lg:flex-col"
       aria-label="Reading companion"
       data-document-id={documentId}
+      data-testid="reading-companion"
     >
-      <header className="px-4 pt-4 pb-3 border-b border-rule dark:border-charcoal-1">
-        <p className="font-serif text-sm text-ink dark:text-bright">
-          Reading {title ? <span className="italic">{title}</span> : "this book"} with you
-        </p>
-        <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight mt-0.5">
-          Notes and open questions gather here as you read.
-        </p>
+      <header className="px-4 pt-4 pb-3 border-b border-rule dark:border-charcoal-1 space-y-2">
+        <div className="flex items-start gap-2.5">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="reading-companion-werner-brand"
+            className="h-10 w-10 shrink-0 object-contain"
+          />
+          <div className="min-w-0">
+            <p className="font-serif text-sm text-ink dark:text-bright">
+              Reading{" "}
+              {title ? <span className="italic">{title}</span> : "this book"}{" "}
+              with you
+            </p>
+            <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight mt-0.5">
+              Notes and open questions gather here as you read. Werner keeps
+              the home of the penguin on the glass-box rail.
+            </p>
+          </div>
+        </div>
+        <img
+          src={livingTvArt}
+          alt=""
+          aria-hidden="true"
+          data-testid="reading-companion-living-tv-art"
+          className="h-14 w-full rounded-md object-cover object-center"
+          loading="lazy"
+          decoding="async"
+        />
       </header>
 
       {working && (
