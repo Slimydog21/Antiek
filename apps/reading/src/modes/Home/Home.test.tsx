@@ -225,7 +225,7 @@ describe("Home (SPR-12 M1)", () => {
     expect(screen.getByTestId("home-arcade-werner-brand")).toBeTruthy();
     const igloo = screen.getByTestId("home-arcade-igloo-art") as HTMLImageElement;
     expect(igloo.getAttribute("src") ?? "").toMatch(
-      /werner_igloo_arcade_session_v1/,
+      /werner_igloo_minigame_trio_session_v1/,
     );
     fireEvent.click(screen.getByTestId("home-arcade-cta"));
     expect(screen.getByText(/ARCADE SURFACE/)).toBeTruthy();

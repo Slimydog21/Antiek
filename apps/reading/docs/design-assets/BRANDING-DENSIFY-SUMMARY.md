@@ -208,3 +208,6 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | TwinNotes/MidnightOil/Bench/Companion reframe densify | `893e483fa` | invent reframe class on residual invent strips |
 | Global invent reframe via main.tsx | `615beda18` | all *-living-tv-art strips inherit Flipbook motion |
 | Igloo minigame trio invent → ArcadeCabinet | `eb666976f` | ice+clam+zombies unified cabinet banner |
+| Home arcade minigame trio invent | (craft163) | align Home igloo banner with ArcadeCabinet trio |
+| ice_fishing_cursor_bait invent | inventory | superseded by igloo_ice_arcade on product ice cards; retained integrity-only |
+| midnight_oil_session_v1 invent | inventory | superseded by midnight_oil_swarm on MidnightOilPanel; retained integrity-only |
