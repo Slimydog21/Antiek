@@ -64,3 +64,4 @@ Candidates retained as `*_session_candidate_v1.webp` beside refedits.
 | werner_midnight_oil_swarm_refedit_v2c.jpg | **PROMOTED** → poses/session/werner_midnight_oil_swarm_session_v1.webp |
 | werner_arxiv_substack_dens_refedit_v2c.jpg | **PROMOTED** → poses/session/werner_arxiv_substack_dens_session_v1.webp |
 | werner_html_book_float_refedit_v2c.jpg | **PROMOTED** → poses/session/werner_html_book_float_session_v1.webp |
+| werner_collective_merge_refedit_v2c.jpg | **PROMOTED** → poses/session/werner_collective_merge_session_v1.webp |
