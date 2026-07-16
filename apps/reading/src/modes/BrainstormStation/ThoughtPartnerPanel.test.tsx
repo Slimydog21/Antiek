@@ -31,12 +31,13 @@ describe("ThoughtPartnerPanel living-TV brand", () => {
     expect(screen.getByTestId("thought-partner-panel")).toBeTruthy();
     expect(screen.getByTestId("thought-partner-desk-brand")).toBeTruthy();
     const art = screen.getByTestId(
-      "thought-partner-desk-art",
+      "thought-partner-living-tv-art",
     ) as HTMLImageElement;
     expect(art.getAttribute("src")).toBeTruthy();
     expect(art.getAttribute("src") ?? "").toMatch(
       /werner_thought_partner_desk_session_v1/,
     );
+    expect(art.className).toMatch(/antiek-living-tv-invent/);
   });
 
   it("CTA opens sidecar and emits Werner highlight (living-TV)", () => {

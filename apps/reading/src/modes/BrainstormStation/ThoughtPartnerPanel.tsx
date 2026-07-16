@@ -40,8 +40,8 @@ export default function ThoughtPartnerPanel() {
           src={deskArt}
           alt=""
           aria-hidden="true"
-          data-testid="thought-partner-desk-art"
-          className="h-28 w-full object-cover object-center"
+          data-testid="thought-partner-living-tv-art"
+          className="h-28 w-full object-cover object-center antiek-living-tv-invent"
           loading="lazy"
           decoding="async"
         />
