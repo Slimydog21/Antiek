@@ -203,4 +203,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Book marketplace port invent → HouseSlot | `549eb2420` | next-read marketplace/port invent thumb |
 | arXiv/Substack dens invent → Sources | `549eb2420` | knowledge dens product door invent strip |
 | Living-TV ambient episode continuity | `a713819a0` | quiet beat continues last product episode |
-| FloatMenu collective invent product-map | (craft158) | float research windows invent strip |
+| FloatMenu collective invent product-map | `8100985a9` | float research windows invent strip |
