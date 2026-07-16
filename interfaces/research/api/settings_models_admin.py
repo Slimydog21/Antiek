@@ -79,6 +79,7 @@ the explicit follow-up that grants these registered providers route authority.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -88,7 +89,7 @@ from typing import Literal, cast
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from runtime.byok.store import (
     CredentialMetadata,
@@ -99,7 +100,7 @@ from runtime.byok.store import (
 from substrate.dispatch.base import Provider, ProviderError
 from substrate.dispatch.providers.anthropic import AnthropicProvider
 from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
-from substrate.dispatch.router import register_provider
+from substrate.dispatch.router import get_provider, register_provider
 
 _ENV_REGISTRY_PATH = "ANTIEK_USER_MODELS_PATH"
 _ENV_HOME = "ANTIEK_HOME"
@@ -184,9 +185,38 @@ def _write_registry(registry: dict[str, UserModelRecord]) -> None:
     path = _registry_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {rid: rec.model_dump() for rid, rec in registry.items()}
-    path.write_text(
-        json.dumps(data, indent=2, sort_keys=True), encoding="utf-8"
-    )
+    path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _record_fingerprint(record: UserModelRecord) -> str:
+    canonical = json.dumps(record.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _registration_fingerprints(app: FastAPI) -> dict[str, str]:
+    raw = getattr(app.state, "user_model_registration_fingerprints", None)
+    if not isinstance(raw, dict):
+        raw = {}
+        app.state.user_model_registration_fingerprints = raw
+    return raw
+
+
+def _registration_adapters(app: FastAPI) -> dict[str, Provider]:
+    raw = getattr(app.state, "user_model_registration_adapters", None)
+    if not isinstance(raw, dict):
+        raw = {}
+        app.state.user_model_registration_adapters = raw
+    return raw
+
+
+def _live_adapter_matches(app: FastAPI, provider_id: str) -> bool:
+    expected = _registration_adapters(app).get(provider_id)
+    if expected is None:
+        return False
+    try:
+        return get_provider(provider_id) is expected
+    except KeyError:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -220,15 +250,18 @@ class _ByokResolvedKeyMixin:
             raise ProviderError(
                 f"{self.name}: user-added provider was removed, disabled, or "
                 "its credential binding changed; refusing credential resolution.",
-                provider=self.name, model="<unknown>", latency_ms=0,
+                provider=self.name,
+                model="<unknown>",
+                latency_ms=0,
             )
         try:
             secret = load_credential(self._cred_ref)
         except KeyError as exc:
             raise ProviderError(
-                f"{self.name}: stored credential is missing from the BYOK "
-                "artifact.",
-                provider=self.name, model="<unknown>", latency_ms=0,
+                f"{self.name}: stored credential is missing from the BYOK artifact.",
+                provider=self.name,
+                model="<unknown>",
+                latency_ms=0,
             ) from exc
         return secret.reveal()
 
@@ -328,6 +361,8 @@ def reload_user_providers(app: FastAPI) -> set[str]:
     registry = _load_registry()
     metadata = _credential_metadata()
     registered: set[str] = set()
+    fingerprints: dict[str, str] = {}
+    adapters: dict[str, Provider] = {}
     for record_id, record in registry.items():
         # Defense in depth at the authority boundary: even if a future registry
         # reader becomes more permissive, boot reload may only register names
@@ -336,17 +371,21 @@ def reload_user_providers(app: FastAPI) -> set[str]:
             continue
         if not record.enabled or not _credential_matches_record(record, metadata):
             continue
-        register_provider(_make_provider(record))
+        adapter = _make_provider(record)
+        register_provider(adapter)
         registered.add(record.id)
+        fingerprints[record.id] = _record_fingerprint(record)
+        adapters[record.id] = adapter
     seam = _seam_names(app)
     stale = {
         name
         for name in seam
-        if name.startswith(_ID_PREFIX)
-        and not (name in registry and registry[name].enabled)
+        if name.startswith(_ID_PREFIX) and not (name in registry and registry[name].enabled)
     }
     seam.difference_update(stale)
     seam.update(registered)
+    app.state.user_model_registration_fingerprints = fingerprints
+    app.state.user_model_registration_adapters = adapters
     return registered
 
 
@@ -364,6 +403,9 @@ class UserModelRow(BaseModel):
     enabled: bool
     key_present: bool
     registered: bool
+    route_eligible: bool
+    pricing_status: Literal["known", "unknown"] = "unknown"
+    hard_ceiling_eligible: bool = False
 
 
 class UserModelsResponse(BaseModel):
@@ -379,6 +421,90 @@ class UserModelsResponse(BaseModel):
 class UserModelDeleteResponse(BaseModel):
     removed: str
     notes: list[str]
+
+
+class UserModelChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    authority: Literal["user_model"]
+    provider_id: str = Field(min_length=1, max_length=128)
+    model_id: str = Field(min_length=1, max_length=200)
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedUserModelRoute:
+    authority: Literal["user_model"]
+    provider_id: str
+    model_id: str
+    credential_ref: str
+    pricing_status: Literal["unknown"] = "unknown"
+    hard_ceiling_eligible: bool = False
+
+
+class UserModelChoiceUnavailable(ValueError):
+    """The requested route has no current exact server authority."""
+
+
+@dataclass(frozen=True, slots=True)
+class UserModelAuthoritySnapshot:
+    model_id: str
+    route_eligible: bool
+
+
+def user_model_authority_snapshot(
+    app: FastAPI,
+) -> dict[str, UserModelAuthoritySnapshot]:
+    """Return non-secret current authority facts for the shared inventory."""
+    registry = _load_registry()
+    metadata = _credential_metadata()
+    seam = _seam_names(app)
+    fingerprints = _registration_fingerprints(app)
+    return {
+        record.id: UserModelAuthoritySnapshot(
+            model_id=record.model_id,
+            route_eligible=(
+                record.enabled
+                and _credential_matches_record(record, metadata)
+                and record.id in seam
+                and fingerprints.get(record.id) == _record_fingerprint(record)
+                and _live_adapter_matches(app, record.id)
+            ),
+        )
+        for record in registry.values()
+    }
+
+
+def resolve_user_model_choice(app: FastAPI, choice: UserModelChoice) -> ResolvedUserModelRoute:
+    """Resolve one prompt route without decrypting credentials or trusting cache."""
+    validated = UserModelChoice.model_validate(choice.model_dump(mode="json"))
+    record = _load_registry().get(validated.provider_id)
+    metadata = _credential_metadata()
+    fingerprints = _registration_fingerprints(app)
+    if (
+        record is None
+        or not record.enabled
+        or record.id != validated.provider_id
+        or record.model_id != validated.model_id
+        or not _credential_matches_record(record, metadata)
+        or record.id not in _seam_names(app)
+        or fingerprints.get(record.id) != _record_fingerprint(record)
+        or not _live_adapter_matches(app, record.id)
+    ):
+        raise UserModelChoiceUnavailable("user model route is unavailable")
+    return ResolvedUserModelRoute(
+        authority="user_model",
+        provider_id=record.id,
+        model_id=record.model_id,
+        credential_ref=record.cred_ref,
+    )
+
+
+class UserModelRouteResponse(BaseModel):
+    authority: Literal["user_model"]
+    provider_id: str
+    model_id: str
+    pricing_status: Literal["unknown"]
+    hard_ceiling_eligible: Literal[False]
+    execution_status: Literal["blocked_missing_hard_ceiling_adapter"]
 
 
 @dataclass(frozen=True)
@@ -402,9 +528,7 @@ def _parse_create(payload: object) -> _ValidatedCreate:
 
     provider_kind = payload.get("provider_kind")
     if provider_kind not in _PROVIDER_KINDS:
-        raise _reject(
-            "provider_kind must be one of: " + ", ".join(_PROVIDER_KINDS)
-        )
+        raise _reject("provider_kind must be one of: " + ", ".join(_PROVIDER_KINDS))
 
     model_id = payload.get("model_id")
     if (
@@ -443,8 +567,7 @@ def _parse_create(payload: object) -> _ValidatedCreate:
             or any(c.isspace() for c in base_url)
         ):
             raise _reject(
-                "base_url must be an http(s) URL of at most 2048 characters "
-                "without whitespace"
+                "base_url must be an http(s) URL of at most 2048 characters without whitespace"
             )
         # urlsplit raises ValueError on a malformed authority (unclosed IPv6
         # bracket), and .port raises ValueError on a non-numeric port —
@@ -494,8 +617,20 @@ def _slug_id(display_name: str) -> str:
 
 
 def _row(
-    record: UserModelRecord, *, present: set[str], seam: set[str]
+    record: UserModelRecord,
+    *,
+    app: FastAPI,
+    present: set[str],
+    seam: set[str],
+    fingerprints: dict[str, str],
 ) -> UserModelRow:
+    route_eligible = (
+        record.enabled
+        and record.cred_ref in present
+        and record.id in seam
+        and fingerprints.get(record.id) == _record_fingerprint(record)
+        and _live_adapter_matches(app, record.id)
+    )
     return UserModelRow(
         id=record.id,
         provider_kind=record.provider_kind,
@@ -505,6 +640,7 @@ def _row(
         enabled=record.enabled,
         key_present=record.cred_ref in present,
         registered=record.id in seam,
+        route_eligible=route_eligible,
     )
 
 
@@ -525,15 +661,12 @@ def get_user_models(request: Request) -> UserModelsResponse:
         if _credential_matches_record(record, metadata)
     }
     seam = _seam_names(request.app)
+    fingerprints = _registration_fingerprints(request.app)
     rows = [
-        _row(rec, present=present, seam=seam)
+        _row(rec, app=request.app, present=present, seam=seam, fingerprints=fingerprints)
         for rec in sorted(registry.values(), key=lambda r: r.id)
     ]
-    stale = sorted(
-        name
-        for name in seam
-        if name.startswith(_ID_PREFIX) and name not in registry
-    )
+    stale = sorted(name for name in seam if name.startswith(_ID_PREFIX) and name not in registry)
     return UserModelsResponse(models=rows, count=len(rows), stale_registered=stale)
 
 
@@ -560,9 +693,7 @@ async def post_user_model(request: Request) -> UserModelRow:
     # Encrypt-at-rest FIRST (byok SecretBox), then persist the non-secret
     # record referencing the ciphertext. A crash between the two orphans
     # only unreachable ciphertext, never a record with a dangling key.
-    cred_ref = store_credential(
-        record_id, spec.api_key, pipeline_kind=_PIPELINE_KIND
-    )
+    cred_ref = store_credential(record_id, spec.api_key, pipeline_kind=_PIPELINE_KIND)
     record = UserModelRecord(
         id=record_id,
         provider_kind=spec.provider_kind,
@@ -576,15 +707,42 @@ async def post_user_model(request: Request) -> UserModelRow:
     _write_registry(registry)
 
     # Real registration, immediately — same seam as the default bootstrap.
-    register_provider(_make_provider(record))
+    adapter = _make_provider(record)
+    register_provider(adapter)
     seam = _seam_names(request.app)
     seam.add(record_id)
+    _registration_fingerprints(request.app)[record_id] = _record_fingerprint(record)
+    _registration_adapters(request.app)[record_id] = adapter
 
     metadata = _credential_metadata()
-    present = (
-        {record.cred_ref} if _credential_matches_record(record, metadata) else set()
+    present = {record.cred_ref} if _credential_matches_record(record, metadata) else set()
+    return _row(
+        record,
+        app=request.app,
+        present=present,
+        seam=seam,
+        fingerprints=_registration_fingerprints(request.app),
     )
-    return _row(record, present=present, seam=seam)
+
+
+@user_models_router.post("/resolve", response_model=UserModelRouteResponse)
+async def resolve_user_model_route(request: Request) -> UserModelRouteResponse:
+    try:
+        choice = UserModelChoice.model_validate(await request.json())
+    except (ValueError, ValidationError):
+        raise HTTPException(status_code=422, detail="model choice is invalid") from None
+    try:
+        route = resolve_user_model_choice(request.app, choice)
+    except UserModelChoiceUnavailable:
+        raise HTTPException(status_code=409, detail="user model route is unavailable") from None
+    return UserModelRouteResponse(
+        authority=route.authority,
+        provider_id=route.provider_id,
+        model_id=route.model_id,
+        pricing_status=route.pricing_status,
+        hard_ceiling_eligible=False,
+        execution_status="blocked_missing_hard_ceiling_adapter",
+    )
 
 
 @user_models_router.delete("/{user_model_id}", response_model=UserModelDeleteResponse)
@@ -595,6 +753,8 @@ def delete_user_model(user_model_id: str, request: Request) -> UserModelDeleteRe
     del registry[user_model_id]
     _write_registry(registry)
     _seam_names(request.app).discard(user_model_id)
+    _registration_fingerprints(request.app).pop(user_model_id, None)
+    _registration_adapters(request.app).pop(user_model_id, None)
     return UserModelDeleteResponse(
         removed=user_model_id,
         notes=[
@@ -630,10 +790,16 @@ def register_settings_models_admin_routes(app: FastAPI) -> None:
 
 __all__ = [
     "UserModelDeleteResponse",
+    "ResolvedUserModelRoute",
+    "UserModelChoice",
+    "UserModelChoiceUnavailable",
+    "UserModelAuthoritySnapshot",
     "UserModelRecord",
     "UserModelRow",
     "UserModelsResponse",
     "register_settings_models_admin_routes",
+    "resolve_user_model_choice",
+    "user_model_authority_snapshot",
     "reload_user_providers",
     "user_models_router",
 ]

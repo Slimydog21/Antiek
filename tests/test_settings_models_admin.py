@@ -53,12 +53,8 @@ def _fresh_app() -> FastAPI:
 @pytest.fixture
 def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
-    monkeypatch.setenv(
-        "ANTIEK_USER_MODELS_PATH", str(tmp_path / "settings" / "user_models.json")
-    )
-    monkeypatch.setenv(
-        "ANTIEK_BYOK_ARTIFACT", str(tmp_path / "byok" / "credentials.enc")
-    )
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(tmp_path / "settings" / "user_models.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "byok" / "credentials.enc"))
     monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "byok" / "master.key"))
     reset_provider_registry()
     return tmp_path
@@ -79,6 +75,9 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     assert body["key_present"] is True
     assert body["registered"] is True
     assert body["enabled"] is True
+    assert body["route_eligible"] is True
+    assert body["pricing_status"] == "unknown"
+    assert body["hard_ceiling_eligible"] is False
     assert "api_key" not in body
 
     inv = client.get("/settings/models/user")
@@ -86,6 +85,7 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     rows = inv.json()["models"]
     assert [row["id"] for row in rows] == ["user-my-deepseek"]
     assert rows[0]["key_present"] is True
+    assert rows[0]["route_eligible"] is True
 
     # Registration proof through the SAME seam register_default_providers
     # populates: the existing inventory endpoint reads
@@ -93,11 +93,13 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     # provider route-ready until an explicit dispatch tier binds it.
     models = client.get("/settings/models")
     assert models.status_code == 200
-    row = next(
-        m for m in models.json()["models"] if m["provider_id"] == "user-my-deepseek"
-    )
+    row = next(m for m in models.json()["models"] if m["provider_id"] == "user-my-deepseek")
     assert row["registered"] is True
     assert row["ready"] is False
+    assert row["model_id"] == "deepseek-chat"
+    assert row["route_eligible"] is True
+    assert row["pricing_status"] == "unknown"
+    assert row["hard_ceiling_eligible"] is False
     assert row["tier_bindings"] == []
     assert row["notes"] == "registered, but not bound to an active dispatch tier"
 
@@ -108,6 +110,147 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     provider = get_provider("user-my-deepseek")
     assert provider._resolve_api_key() == _SECRET  # noqa: SLF001
     assert provider.base_url == "https://api.deepseek.com/v1"
+
+
+def test_exact_choice_resolves_but_execution_remains_hard_ceiling_blocked(
+    client: TestClient,
+) -> None:
+    created = client.post("/settings/models/user", json=_ADD_BODY)
+    assert created.status_code == 201
+    response = client.post(
+        "/settings/models/user/resolve",
+        json={
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "deepseek-chat",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "authority": "user_model",
+        "provider_id": "user-my-deepseek",
+        "model_id": "deepseek-chat",
+        "pricing_status": "unknown",
+        "hard_ceiling_eligible": False,
+        "execution_status": "blocked_missing_hard_ceiling_adapter",
+    }
+    assert _SECRET not in response.text
+    assert "cred" not in response.text
+
+
+@pytest.mark.parametrize(
+    "choice",
+    [
+        {"authority": "user_model", "provider_id": "user-my-deepseek", "model_id": "other"},
+        {"authority": "user_model", "provider_id": "user-other", "model_id": "deepseek-chat"},
+    ],
+)
+def test_non_exact_choice_fails_value_free(client: TestClient, choice: dict[str, str]) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    response = client.post("/settings/models/user/resolve", json=choice)
+    assert response.status_code == 409
+    assert response.json() == {"detail": "user model route is unavailable"}
+    assert all(value not in response.text for value in choice.values())
+
+
+def test_deleted_stale_and_credential_rebound_routes_fail_closed(
+    client: TestClient,
+    env: Path,
+) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    choice = {
+        "authority": "user_model",
+        "provider_id": "user-my-deepseek",
+        "model_id": "deepseek-chat",
+    }
+    client.app.state.registered_providers.discard("user-my-deepseek")
+    assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
+    stale_row = next(
+        row
+        for row in client.get("/settings/models").json()["models"]
+        if row["provider_id"] == "user-my-deepseek"
+    )
+    assert stale_row["registered"] is False
+    assert stale_row["route_eligible"] is False
+
+    client.app.state.registered_providers.add("user-my-deepseek")
+    path = env / "settings" / "user_models.json"
+    registry = json.loads(path.read_text())
+    registry["user-my-deepseek"]["cred_ref"] = "cred-x-missing"
+    path.write_text(json.dumps(registry))
+    assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
+
+    assert client.delete("/settings/models/user/user-my-deepseek").status_code == 200
+    assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
+
+
+def test_registry_mutation_cannot_borrow_stale_live_adapter(
+    client: TestClient,
+    env: Path,
+) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    path = env / "settings" / "user_models.json"
+    registry = json.loads(path.read_text())
+    registry["user-my-deepseek"]["model_id"] = "mutated-model"
+    registry["user-my-deepseek"]["base_url"] = "https://mutated.invalid/v1"
+    path.write_text(json.dumps(registry))
+    response = client.post(
+        "/settings/models/user/resolve",
+        json={
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "mutated-model",
+        },
+    )
+    assert response.status_code == 409
+    row = next(
+        item
+        for item in client.get("/settings/models").json()["models"]
+        if item["provider_id"] == "user-my-deepseek"
+    )
+    assert row["route_eligible"] is False
+    user_row = client.get("/settings/models/user").json()["models"][0]
+    assert user_row["route_eligible"] is False
+
+
+def test_same_name_adapter_replacement_revokes_route_authority(client: TestClient) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    replacement = OpenAICompatProvider(
+        name="user-my-deepseek",
+        base_url="https://replacement.invalid/v1",
+    )
+    register_provider(replacement)
+
+    choice = {
+        "authority": "user_model",
+        "provider_id": "user-my-deepseek",
+        "model_id": "deepseek-chat",
+    }
+    assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
+    generic_row = next(
+        item
+        for item in client.get("/settings/models").json()["models"]
+        if item["provider_id"] == "user-my-deepseek"
+    )
+    assert generic_row["route_eligible"] is False
+    user_row = client.get("/settings/models/user").json()["models"][0]
+    assert user_row["route_eligible"] is False
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"authority": "curated", "provider_id": "x", "model_id": "y"},
+        {"authority": "user_model", "provider_id": "x", "model_id": "y", "api_key": _SECRET},
+        ["user_model", "x", "y"],
+    ],
+)
+def test_malformed_choice_is_value_free(client: TestClient, body: object) -> None:
+    response = client.post("/settings/models/user/resolve", json=body)
+    assert response.status_code == 422
+    assert response.json() == {"detail": "model choice is invalid"}
+    assert _SECRET not in response.text
 
 
 def test_key_absent_from_responses_artifacts_and_logs(
@@ -238,10 +381,12 @@ def test_untrusted_endpoint_cannot_reflect_key_in_success_response(
             }
         else:
             payload = {
-                "choices": [{
-                    "message": {"content": f"answer {reflected}"},
-                    "finish_reason": "stop",
-                }],
+                "choices": [
+                    {
+                        "message": {"content": f"answer {reflected}"},
+                        "finish_reason": "stop",
+                    }
+                ],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1},
             }
         # Preserve an encoded credential in the raw wire response.  A raw
@@ -475,9 +620,7 @@ def test_credential_bearing_base_url_rejected_value_free(client: TestClient) -> 
         "https://:443/v1",  # empty hostname (truthy netloc, no host)
     ],
 )
-def test_malformed_base_url_is_clean_422_not_500(
-    client: TestClient, bad_url: str
-) -> None:
+def test_malformed_base_url_is_clean_422_not_500(client: TestClient, bad_url: str) -> None:
     # FINDING-1 round-2 regression: a malformed authority must be a clean,
     # value-free 422 — never an uncaught ValueError surfacing as HTTP 500.
     r = client.post("/settings/models/user", json={**_ADD_BODY, "base_url": bad_url})
@@ -517,9 +660,7 @@ def test_over_length_inputs_rejected_value_free(client: TestClient, env: Path) -
     assert not (env / "byok" / "credentials.enc").exists()
 
 
-def test_live_registry_corruption_surfaces_stale_registered(
-    client: TestClient, env: Path
-) -> None:
+def test_live_registry_corruption_surfaces_stale_registered(client: TestClient, env: Path) -> None:
     # FINDING-3 regression (live half): registry corrupted while the process
     # is up -> inventory empties (lenient read must not crash) and the
     # still-registered seam name is SURFACED as stale, not hidden.
@@ -584,10 +725,14 @@ def test_disabled_record_is_not_registered_at_boot(env: Path) -> None:
 
     reset_provider_registry()
     with TestClient(_fresh_app()) as reborn:
-        ids = {
-            m["provider_id"] for m in reborn.get("/settings/models").json()["models"]
-        }
-        assert "user-my-deepseek" not in ids
+        row = next(
+            item
+            for item in reborn.get("/settings/models").json()["models"]
+            if item["provider_id"] == "user-my-deepseek"
+        )
+        assert row["registered"] is False
+        assert row["ready"] is False
+        assert row["route_eligible"] is False
         rows = reborn.get("/settings/models/user").json()["models"]
         assert rows[0]["enabled"] is False
         assert rows[0]["registered"] is False
