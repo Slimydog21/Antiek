@@ -140,6 +140,8 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | CascadeProposal propose/fail | `08fa94dbc` | highlight on propose; DR error on fail |
 | FloatMenu deep-research start | `08fa94dbc` | deep_research_start when spawn text launchable |
 | Igloo ice-arcade invent product-map | `08fa94dbc` | LGH + wait-arcade + cabinet ice card CRT+cursor invent |
+| ActiveListening research prepare | `432431ccf` | listen→research deep_research_start/error |
+| CommandPalette / AISidecar / IdeaDump | craft134 | palette highlight; thought-partner note_saved; brainstorm piece_started |
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
 
