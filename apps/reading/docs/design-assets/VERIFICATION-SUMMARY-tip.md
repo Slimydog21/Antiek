@@ -1,30 +1,32 @@
-# Branding verification summary — tip re-proof 2026-07-16
+# Branding verification tip — shell-launch re-proof
 
-## CI (PR #2416)
-- Tip at densify close: `b4da805ca` (and later commits e857ed5b6 / de93a97e5 / b4da805ca chain) — axe+LP repeatedly green; CF external-pending.
+**Tip:** `062f54e23` (`goal/twin-autoload-session-alpha`, PR #2416)
+**Date:** 2026-07-16
 
-## Shell-launch (tip worktree Vite :5217)
-- File: `shell-launch-result-tip.json`
-- ok=true ×2
-- nonForceClickWorked: peak-left data-last-click ""→"peak-left"
-- center: worksurface TEXTAREA (not hotspot)
-- topbar free of hotspot capture
-- penguinCount: 1
-- Screenshots: shell-launch-tip-pass1.png, shell-launch-tip-pass2.png
+## Shell-launch (plan gate 2)
 
-## Unit pulses
-- branding-doors-pulse.log: 76 tests
-- branding-home-login-pulse.log: 22 tests  
-- choreography-product-emotes.log: 13 tests
-- post-emote-unit-pulse.log: 18 tests
+Harness: `shell-launch-worktree.mjs` (SCRATCH), vite `:5213`, authenticated via stubbed `/auth/me`.
 
-## Product branding densify
-See docs/design-assets/BRANDING-DENSIFY-SUMMARY.md on tip.
+| Pass | lastClick | nonForceClickWorked | penguin | reactionChanged | unexpected errors |
+|---|---|---|---|---|---|
+| 1 | `peak-left` | true | 1 | true | 0 |
+| 2 | `peak-left` | true | 1 | true | 0 |
 
-## Flipbook pure-pixel
-NO-GO at docs/htmlspec/flipbook-ambient/NO-GO.md
+**ok=true ×2** — honest runtime `data-last-click` on `[data-testid=scene-hotspots]` after real `mouse.click` on peak-left; center worksurface + topbar free of hotspots.
 
-## Honest open
-- Operator merge of #2416
-- Clam Catcher invent not alpha-promoted
-- CF Pages often lagging
+### Harness fix (this re-proof)
+
+Broken Krea stubs returned `{art,mood}` without `failures:[]`, crashing `SceneStatusBadge` (`status.failures.at(-1)`). Fixed stubs:
+
+- `/krea/status` → full disabled snapshot with `failures: []`, `gate_verdict: no_key`
+- `/krea/scene` → 503 typed disabled
+
+Evidence: SCRATCH `shell-launch-reproof-fixed-a/b.log`, `shell-launch-result-tip.json`.
+
+## Unit densify pulse (this wave)
+
+- door living-TV complete: 60/60
+- reading surface brand: 9/9
+- talk/voice/bio: 21/21
+- meta-reading brand: 11/11
+- scenery units: 12/12
