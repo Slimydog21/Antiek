@@ -34,6 +34,11 @@ describe("sessionLivingTv Flipbook-feel invent motion", () => {
       "modes/DeepResearchWorkspace/PlanEditor.tsx",
       "modes/DeepResearchWorkspace/ResearchWaitArcade.tsx",
       "arcade/ArcadeCabinet.tsx",
+      // Product invent doors refreshed in invent polish v2c
+      "modes/Multimedia/KnowledgePanel.tsx",
+      "modes/Settings/AntiekBenchPanel.tsx",
+      "components/ModelDecisionBar.tsx",
+      "modes/Settings/modelSelection/MidnightOilPanel.tsx",
     ];
     for (const rel of paths) {
       const src = readFileSync(join(root, rel), "utf8");

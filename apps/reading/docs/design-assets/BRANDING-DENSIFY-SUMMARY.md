@@ -274,3 +274,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2c antiek-bench celebrate | `c614911a4` | AntiekBenchPanel invent refresh on FULL GREEN tip |
 | Imagine invent polish v2c model decision tree | `c614911a4` | ModelDecisionBar invent refresh on FULL GREEN tip |
 | Imagine invent polish v2c CRT living-TV | `df10b0467` | Home + DR compose invent refresh on FULL GREEN tip |
+| sessionLivingTv densify product invent doors v2c | `TBD` | KnowledgePanel/Bench/ModelDecision/MidnightOil invent reframe densify |
