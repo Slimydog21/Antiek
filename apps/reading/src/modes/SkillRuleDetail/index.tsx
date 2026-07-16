@@ -1,19 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import Werner from "../../brand/Werner";
+import environment from "../../brand/werner/skill-rules/skill_rule_conservatory_environment_v1.webp";
 import { apiFetch } from "../../lib/api";
+import "./skill-rule-specimen.css";
 
-/**
- * Skill rule detail page (master-spec §13.2 + §13.9).
- *
- * Operator-facing single-rule view; reads the GET /skill-rules/{id}
- * endpoint. Renders the rule's content-addressed identifier, the
- * full provenance metadata (domain, kind, source_user_count,
- * cumulative ε, confidence, extraction time), and a link back to
- * the rules index.
- */
-
-interface SkillRuleDetail {
+export interface SkillRuleDetailRecord {
   rule_id: string;
   rule_text: string;
   rule_kind: string;
@@ -24,124 +17,315 @@ interface SkillRuleDetail {
   extracted_at: string | null;
 }
 
-export default function SkillRuleDetail() {
-  const { ruleId } = useParams<{ ruleId: string }>();
-  const [rule, setRule] = useState<SkillRuleDetail | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+export type SkillRuleDetailViewProps = {
+  ruleId: string;
+  rule?: SkillRuleDetailRecord | null;
+  state?: "ready" | "loading" | "not-found" | "error";
+  onRetry?: () => void;
+};
 
-  const reload = useCallback(async () => {
-    if (!ruleId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const resp = await apiFetch(
-        `/skill-rules/${encodeURIComponent(ruleId)}`,
-      );
-      if (resp.status === 404) {
-        setRule(null);
-        setError("Rule not found.");
-        return;
-      }
-      if (!resp.ok) {
-        throw new Error(`GET /skill-rules/{id}: HTTP ${resp.status}`);
-      }
-      setRule(await resp.json());
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [ruleId]);
+const safeText = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value : null;
+const safeNumber = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+const isRuleRecord = (value: unknown): value is SkillRuleDetailRecord =>
+  Boolean(value) &&
+  typeof value === "object" &&
+  !Array.isArray(value) &&
+  Boolean(safeText((value as Record<string, unknown>).rule_id));
 
-  useEffect(() => {
-    void reload();
-  }, [reload]);
-
+function When({ value }: { value: unknown }) {
+  const label = safeText(value);
+  if (!label) return <>Time not reported</>;
+  const parsed = Date.parse(label);
+  if (Number.isNaN(parsed)) return <>Time not reported</>;
   return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <Link
-              to="/skill-rules"
-              className="text-xs font-mono text-shadow-1 dark:text-moonlight hover:text-ink dark:text-bright"
-            >
-              ← Back to skill rules
-            </Link>
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Skill rule detail
-            </h1>
-            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-              {ruleId ?? "—"}
-            </p>
-          </header>
+    <time dateTime={label}>
+      {new Intl.DateTimeFormat(undefined, {
+        dateStyle: "long",
+        timeStyle: "short",
+      }).format(parsed)}
+    </time>
+  );
+}
 
-          {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
-          )}
-
-          {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
-              {error}
-            </p>
-          )}
-
-          {rule && (
-            <>
-              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
-                <h2 className="text-base font-serif text-ink dark:text-bright">
-                  Rule text
-                </h2>
-                <p className="text-sm text-ink dark:text-bright leading-relaxed">
-                  {rule.rule_text}
-                </p>
-              </section>
-
-              <section className="grid grid-cols-2 gap-3">
-                <Metric label="Domain" value={rule.domain} />
-                <Metric label="Rule kind" value={rule.rule_kind} />
-                <Metric
-                  label="Distinct contributors"
-                  value={`${rule.source_user_count}`}
-                />
-                <Metric
-                  label="Cumulative ε"
-                  value={rule.epsilon_budget_consumed.toFixed(4)}
-                />
-                <Metric label="Confidence" value={rule.confidence} />
-                <Metric
-                  label="Extracted at"
-                  value={rule.extracted_at ?? "—"}
-                />
-              </section>
-
-              <section className="text-xs font-mono text-shadow-1 dark:text-moonlight leading-relaxed">
-                <p>
-                  Per master-spec §13.2: this rule is the substrate's
-                  cross-user discovery; no individual contributor's
-                  private content is recoverable from this surface
-                  (only the rule text + ε accounting + audit
-                  metadata).
-                </p>
-              </section>
-            </>
-          )}
-        </div>
-      </main>
+function Datum({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{children}</dd>
     </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+export function SkillRuleDetailView({
+  ruleId,
+  rule = null,
+  state = "ready",
+  onRetry,
+}: SkillRuleDetailViewProps) {
+  const validRule = isRuleRecord(rule) ? rule : null;
+  const contributors = safeNumber(validRule?.source_user_count);
+  const epsilon = safeNumber(validRule?.epsilon_budget_consumed);
   return (
-    <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
-      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
-        {label}
-      </p>
-      <p className="text-sm font-mono text-ink dark:text-bright truncate">
-        {value}
-      </p>
-    </div>
+    <main className="srd-shell">
+      <img
+        className="srd-environment"
+        src={environment}
+        alt=""
+        aria-hidden="true"
+      />
+      <div className="srd-veil" aria-hidden="true" />
+      <div className="srd-content">
+        <Link className="srd-back" to="/skill-rules">
+          <span aria-hidden="true">←</span> Skill Rule Conservatory
+        </Link>
+        <header className="srd-hero">
+          <div>
+            <p className="srd-eyebrow">Promotion specimen · shared craft</p>
+            <h1>Rule under glass</h1>
+            <p>
+              Inspect the exact practice and the metadata that accompanied its
+              promotion. This is an audit view, not a universal-truth
+              certificate.
+            </p>
+            <p className="srd-id">Requested rule · {ruleId || "Unavailable"}</p>
+          </div>
+          <Werner
+            mood={
+              state === "loading"
+                ? "thinking"
+                : state === "not-found" || state === "error"
+                  ? "empty"
+                  : "idle"
+            }
+            size={88}
+            label="Werner inspecting a promoted skill rule"
+          />
+        </header>
+        {state === "loading" ? (
+          <section className="srd-state" aria-live="polite">
+            <span className="srd-spinner" aria-hidden="true" />
+            <h2>Opening the specimen record…</h2>
+            <p>Reading the promoted rule and its audit metadata.</p>
+          </section>
+        ) : null}
+        {state === "not-found" ? (
+          <section className="srd-state">
+            <h2>This promoted rule was not found</h2>
+            <p>
+              The identifier may be stale or may never have existed in this
+              substrate.
+            </p>
+            <Link to="/skill-rules">Return to promoted rules</Link>
+          </section>
+        ) : null}
+        {state === "error" ? (
+          <section className="srd-state" role="alert">
+            <h2>The specimen record could not be opened</h2>
+            <p>No rule or promotion metadata was inferred.</p>
+            {onRetry ? (
+              <button type="button" onClick={onRetry}>
+                Try again
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+        {state === "ready" && !validRule ? (
+          <section className="srd-state">
+            <h2>Rule data is unavailable</h2>
+            <p>The response did not contain a usable promoted-rule record.</p>
+          </section>
+        ) : null}
+        {state === "ready" && validRule ? (
+          <>
+            <article className="srd-rule">
+              <p className="srd-eyebrow">Promoted practice</p>
+              <h2>
+                {safeText(validRule.rule_text) ?? "Rule text unavailable"}
+              </h2>
+              <div className="srd-labels">
+                <span>
+                  {safeText(validRule.domain) ?? "Domain not reported"}
+                </span>
+                <span>
+                  {safeText(validRule.rule_kind)?.replaceAll("_", " ") ??
+                    "Rule kind not reported"}
+                </span>
+              </div>
+            </article>
+            <aside
+              className="srd-reading"
+              aria-label="How to interpret this promotion record"
+            >
+              <p className="srd-eyebrow">Reading discipline</p>
+              <p>
+                <strong>
+                  {safeText(validRule.confidence)?.replaceAll("_", " ") ??
+                    "Unlabelled"}{" "}
+                  is the stored confidence label—not a probability.
+                </strong>{" "}
+                Contributor count records independent support for promotion.
+                Cumulative ε records privacy spend, not rule quality.
+              </p>
+            </aside>
+            <section className="srd-metadata" aria-labelledby="srd-metadata">
+              <header>
+                <p className="srd-eyebrow">Promotion record</p>
+                <h2 id="srd-metadata">Measured metadata</h2>
+                <p>
+                  Values below come from the shared-substrate row. Missing or
+                  malformed values remain explicitly unreported.
+                </p>
+              </header>
+              <dl>
+                <Datum label="Stored confidence label">
+                  {safeText(validRule.confidence)?.replaceAll("_", " ") ??
+                    "Not reported"}
+                </Datum>
+                <Datum label="Independent contributors">
+                  {contributors === null
+                    ? "Not reported"
+                    : new Intl.NumberFormat().format(contributors)}
+                </Datum>
+                <Datum label="Cumulative privacy spend">
+                  {epsilon === null
+                    ? "Not reported"
+                    : `ε ${epsilon.toFixed(4)}`}
+                </Datum>
+                <Datum label="Promoted">
+                  <When value={validRule.extracted_at} />
+                </Datum>
+                <Datum label="Domain">
+                  {safeText(validRule.domain) ?? "Not reported"}
+                </Datum>
+                <Datum label="Rule kind">
+                  {safeText(validRule.rule_kind)?.replaceAll("_", " ") ??
+                    "Not reported"}
+                </Datum>
+              </dl>
+            </section>
+            <section
+              className="srd-boundaries"
+              aria-labelledby="srd-boundaries"
+            >
+              <header>
+                <p className="srd-eyebrow">Epistemic boundary</p>
+                <h2 id="srd-boundaries">
+                  What promotion does—and does not—say
+                </h2>
+              </header>
+              <div>
+                <article>
+                  <h3>It records</h3>
+                  <ul>
+                    <li>
+                      A normalized practice reached the substrate’s promotion
+                      gate.
+                    </li>
+                    <li>
+                      Independent support and privacy accounting were stored
+                      with it.
+                    </li>
+                    <li>
+                      The rule can inform future work as a reviewable shared
+                      heuristic.
+                    </li>
+                  </ul>
+                </article>
+                <article>
+                  <h3>It does not establish</h3>
+                  <ul>
+                    <li>
+                      That the practice is universally true or optimal in every
+                      context.
+                    </li>
+                    <li>
+                      That the confidence label is a calibrated probability.
+                    </li>
+                    <li>
+                      Who contributed, or what their private source material
+                      contained.
+                    </li>
+                  </ul>
+                </article>
+              </div>
+            </section>
+            <footer className="srd-footer">
+              <div>
+                <p className="srd-eyebrow">Content-addressed record</p>
+                <p>
+                  {safeText(validRule.rule_id) ?? "Identifier not reported"}
+                </p>
+              </div>
+              <Link to="/skill-rules">
+                Inspect other promoted rules <span aria-hidden="true">→</span>
+              </Link>
+            </footer>
+          </>
+        ) : null}
+      </div>
+    </main>
+  );
+}
+
+export default function SkillRuleDetail() {
+  const { ruleId = "" } = useParams<{ ruleId: string }>();
+  const [rule, setRule] = useState<SkillRuleDetailRecord | null>(null);
+  const [state, setState] = useState<SkillRuleDetailViewProps["state"]>(
+    ruleId ? "loading" : "not-found",
+  );
+  const request = useRef(0);
+  const reload = useCallback(async () => {
+    const token = ++request.current;
+    setRule(null);
+    if (!ruleId) {
+      setState("not-found");
+      return;
+    }
+    setState("loading");
+    try {
+      const response = await apiFetch(
+        `/skill-rules/${encodeURIComponent(ruleId)}`,
+      );
+      if (token !== request.current) return;
+      if (response.status === 404) {
+        setState("not-found");
+        return;
+      }
+      if (!response.ok) throw new Error("rule unavailable");
+      const body: unknown = await response.json();
+      if (token !== request.current) return;
+      if (!isRuleRecord(body)) {
+        setState("ready");
+        return;
+      }
+      setRule(body);
+      setState("ready");
+    } catch {
+      if (token === request.current) setState("error");
+    }
+  }, [ruleId]);
+  useEffect(() => {
+    void reload();
+    return () => {
+      request.current += 1;
+    };
+  }, [reload]);
+  return (
+    <SkillRuleDetailView
+      ruleId={ruleId}
+      rule={rule}
+      state={state}
+      onRetry={() => void reload()}
+    />
   );
 }
