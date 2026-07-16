@@ -432,6 +432,30 @@ def test_primary_success_never_reserves_or_sends_fallback(tmp_path: Path) -> Non
     assert len(gateway.ledger.events("run-1")) == 4
 
 
+def test_fallback_manifest_is_durable_before_first_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gateway = _gateway(tmp_path)
+    adapter = FakeAdapter()
+
+    def fail_before_reservation(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("simulated reserve crash")
+
+    monkeypatch.setattr(gateway.ledger, "reserve_paid", fail_before_reservation)
+    with pytest.raises(RuntimeError, match="simulated reserve crash"):
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(_fallback_route(adapter),),
+        )
+
+    chain = gateway.ledger.fallback_history("owner-1").items[0]
+    assert chain.outcome.value == "unattempted"
+    assert chain.routes[0].state.value == "unattempted"
+    assert adapter.send_calls == []
+
+
 def test_fallback_refuses_without_server_route_authority(tmp_path: Path) -> None:
     gateway = ResearchProviderGateway(
         ResearchSpendLedger(tmp_path / "spend.sqlite3"), projector=_project

@@ -20,15 +20,20 @@ Honesty rules (load-bearing):
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
+import hmac
 import json
 import math
 import os
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from orchestration.continuous.budget import (
@@ -43,6 +48,12 @@ from substrate.dispatch.advisory_decision import (
     DecisionTask,
     rank_model_candidates,
 )
+from substrate.research_spend import (
+    FallbackHistoryCursor,
+    LedgerIntegrityError,
+    ResearchSpendLedger,
+    default_research_spend_db_path,
+)
 
 settings_router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -54,6 +65,7 @@ _MAX_BENCHMARK_AGE = timedelta(days=8)
 _MAX_BENCHMARK_FUTURE_SKEW = timedelta(minutes=5)
 _TEXT_DECISION_TIERS = frozenset({"flash", "pro", "synthesis", "verify"})
 _MAX_FALLBACK_DEPTH = 16
+_FALLBACK_CURSOR_KEY_ENV = "ANTIEK_FALLBACK_CURSOR_SIGNING_KEY"
 SpendBasis = Literal["unknown", "reserved_estimate"]
 
 
@@ -127,6 +139,41 @@ class PromptCostEstimateResponse(BaseModel):
     tier: str | None = None
     provider: str | None = None
     model: str | None = None
+
+
+class FallbackReceiptRouteResponse(BaseModel):
+    fallback_index: int = Field(ge=0, le=15)
+    provider: str
+    model: str
+    seam_id: str
+    operation: str
+    projected_max_cents: int = Field(ge=1)
+    state: Literal[
+        "unattempted",
+        "reserved_not_sent",
+        "dispatch_possible",
+        "unknown",
+        "released",
+        "settled",
+    ]
+    actual_cents: int | None = Field(default=None, ge=0)
+    resolved_at: str | None = None
+    settlement_evidence_sha256: str | None = None
+    settlement_intent_sha256: str | None = None
+
+
+class FallbackReceiptChainResponse(BaseModel):
+    chain_id: str
+    manifest_sha256: str
+    outcome: Literal["unattempted", "in_progress", "ambiguous", "settled", "exhausted"]
+    routes: list[FallbackReceiptRouteResponse] = Field(min_length=1, max_length=16)
+    created_at: str
+
+
+class FallbackReceiptHistoryResponse(BaseModel):
+    authority: Literal["read_only_fallback_receipt_history"] = "read_only_fallback_receipt_history"
+    items: list[FallbackReceiptChainResponse] = Field(max_length=50)
+    next_cursor: str | None = None
 
 
 class BenchmarkMeasurement(BaseModel):
@@ -454,8 +501,7 @@ def _resolve_enforcement_cap(notes: list[str]) -> tuple[float, str | None]:
             )
         except ValueError:
             notes.append(
-                f"{_ENV_DAILY_CAP} must be finite and non-negative; "
-                "enforcement uses default"
+                f"{_ENV_DAILY_CAP} must be finite and non-negative; enforcement uses default"
             )
     return DEFAULT_DAILY_CAP_USD, None
 
@@ -494,9 +540,7 @@ def _read_sidecar_budget() -> tuple[float, float] | None:
     value = float(spent_raw)
     stored_cap = float(cap_raw)
     if not math.isfinite(value) or value < 0.0:
-        raise ValueError(
-            "budget sidecar spent_usd must be a finite non-negative USD amount"
-        )
+        raise ValueError("budget sidecar spent_usd must be a finite non-negative USD amount")
     if not math.isfinite(stored_cap) or stored_cap < 0.0:
         raise ValueError("budget sidecar cap_usd must be finite and non-negative")
     return value, stored_cap
@@ -556,9 +600,7 @@ def read_operator_budget() -> BudgetResponse:
             f" daemon halt uses enforcement; Settings bar uses display"
         )
 
-    over_budget_usd = (
-        max(0.0, reserved - float(daily_cap)) if reserved is not None else None
-    )
+    over_budget_usd = max(0.0, reserved - float(daily_cap)) if reserved is not None else None
 
     return BudgetResponse(
         daily_cap_usd=daily_cap,
@@ -579,7 +621,8 @@ def read_operator_budget() -> BudgetResponse:
 
 
 def _read_benchmark_report(
-    *, now: datetime | None = None,
+    *,
+    now: datetime | None = None,
 ) -> tuple[BenchmarkReport | None, list[str]]:
     raw_path = os.environ.get(_BENCHMARK_REPORT_ENV, "").strip()
     if not raw_path:
@@ -721,8 +764,7 @@ def _model_decision_inputs(
     measured: dict[tuple[DecisionTask, str, str, str], BenchmarkMeasurement] = {}
     if report is not None:
         measured = {
-            (row.task, row.tier, row.provider, row.model): row
-            for row in report.measurements
+            (row.task, row.tier, row.provider, row.model): row for row in report.measurements
         }
 
     candidates: list[DecisionCandidate] = []
@@ -880,9 +922,7 @@ def get_settings_models(request: Request) -> ModelsResponse:
                     user_authority[pid].pricing_status if pid in user_authority else "unknown"
                 ),
                 hard_ceiling_eligible=(
-                    user_authority[pid].hard_ceiling_eligible
-                    if pid in user_authority
-                    else False
+                    user_authority[pid].hard_ceiling_eligible if pid in user_authority else False
                 ),
                 execution_status=(
                     user_authority[pid].execution_status
@@ -940,6 +980,137 @@ def get_weekly_benchmark() -> WeeklyBenchmarkResponse:
         generated_at=generated.isoformat(),
         measurements=report.measurements,
         notes=notes,
+    )
+
+
+def _history_cursor(
+    value: str | None, *, owner_id: str, signing_key: bytes
+) -> FallbackHistoryCursor | None:
+    if value is None:
+        return None
+    if not value or len(value) > 1024:
+        raise HTTPException(status_code=422, detail="fallback history cursor is invalid")
+    try:
+        padding = "=" * (-len(value) % 4)
+        raw = base64.b64decode(value + padding, altchars=b"-_", validate=True)
+        if len(raw) > 512:
+            raise ValueError("cursor exceeds its bound")
+        payload_bytes, supplied_mac = raw.rsplit(b".", 1)
+        expected_mac = hmac.new(signing_key, payload_bytes, hashlib.sha256).hexdigest().encode()
+        if not hmac.compare_digest(supplied_mac, expected_mac):
+            raise ValueError("cursor signature differs")
+        payload = json.loads(payload_bytes)
+        if type(payload) is not dict or set(payload) != {
+            "version",
+            "owner_id",
+            "created_at",
+            "chain_id",
+        }:
+            raise ValueError("cursor shape differs")
+        if (
+            payload["version"] != 1
+            or payload["owner_id"] != owner_id
+            or type(payload["created_at"]) is not str
+            or type(payload["chain_id"]) is not str
+        ):
+            raise TypeError("cursor values differ")
+        return FallbackHistoryCursor(payload["created_at"], payload["chain_id"])
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="fallback history cursor is invalid") from exc
+
+
+def _encode_history_cursor(
+    cursor: FallbackHistoryCursor | None, *, owner_id: str, signing_key: bytes
+) -> str | None:
+    if cursor is None:
+        return None
+    raw = json.dumps(
+        {
+            "chain_id": cursor.chain_id,
+            "created_at": cursor.created_at,
+            "owner_id": owner_id,
+            "version": 1,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    mac = hmac.new(signing_key, raw, hashlib.sha256).hexdigest().encode()
+    return base64.urlsafe_b64encode(raw + b"." + mac).decode("ascii").rstrip("=")
+
+
+def _history_cursor_signing_key() -> bytes:
+    value = os.environ.get(_FALLBACK_CURSOR_KEY_ENV, "").strip().encode()
+    if len(value) < 32:
+        raise RuntimeError("fallback cursor signing key is unavailable")
+    return value
+
+
+@settings_router.get(
+    "/fallback-receipts",
+    response_model=FallbackReceiptHistoryResponse,
+)
+def get_fallback_receipts(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=50),
+    cursor: str | None = Query(default=None, max_length=1024),
+) -> FallbackReceiptHistoryResponse:
+    owner_id = getattr(request.state, "user_id", None)
+    if not isinstance(owner_id, str) or not owner_id.strip():
+        raise HTTPException(status_code=401, detail="operator identity is required")
+    normalized_owner = owner_id.strip()
+    ledger_path = default_research_spend_db_path()
+    if not ledger_path.is_file() or ledger_path.is_symlink():
+        raise HTTPException(status_code=503, detail="fallback receipt history is unavailable")
+    try:
+        signing_key = _history_cursor_signing_key()
+        page = ResearchSpendLedger(ledger_path).fallback_history(
+            normalized_owner,
+            limit=limit,
+            cursor=_history_cursor(cursor, owner_id=normalized_owner, signing_key=signing_key),
+        )
+    except HTTPException:
+        raise
+    except (
+        LedgerIntegrityError,
+        RuntimeError,
+        sqlite3.Error,
+        OSError,
+        ValueError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="fallback receipt history is unavailable",
+        ) from exc
+    return FallbackReceiptHistoryResponse(
+        items=[
+            FallbackReceiptChainResponse(
+                chain_id=chain.chain_id,
+                manifest_sha256=chain.manifest_sha256,
+                outcome=chain.outcome.value,
+                routes=[
+                    FallbackReceiptRouteResponse(
+                        fallback_index=route.fallback_index,
+                        provider=route.provider,
+                        model=route.model,
+                        seam_id=route.seam_id,
+                        operation=route.operation,
+                        projected_max_cents=route.projected_max_cents,
+                        state=route.state.value,
+                        actual_cents=route.actual_cents,
+                        resolved_at=route.resolved_at,
+                        settlement_evidence_sha256=route.settlement_evidence_sha256,
+                        settlement_intent_sha256=route.settlement_intent_sha256,
+                    )
+                    for route in chain.routes
+                ],
+                created_at=chain.created_at,
+            )
+            for chain in page.items
+        ],
+        next_cursor=_encode_history_cursor(
+            page.next_cursor, owner_id=normalized_owner, signing_key=signing_key
+        ),
     )
 
 
