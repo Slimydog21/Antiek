@@ -246,9 +246,9 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2b igloo minigame trio | `616f4556f` | ArcadeCabinet + Home arcade banner invent refresh |
 | Imagine invent polish v2b CRT living-TV | `3b75e1d89` | Home + DR compose invent refresh |
 | Imagine invent polish v2b antiek-bench celebrate | `6f97a4832` | AntiekBenchPanel invent refresh |
-| Imagine invent polish v2b residual thought partner desk | `TBD` | ThoughtPartnerPanel invent refresh |
-| Imagine invent polish v2b residual clam catcher cursor | `TBD` | cabinet/LGH/wait clam invent refresh |
-| Imagine invent polish v2b residual igloo ice arcade cursor | `TBD` | cabinet/LGH/wait ice invent refresh |
-| Imagine invent polish v2b residual CRT igloo cursor TV | `TBD` | LoadingGameHost default invent refresh |
-| Imagine invent polish v2b residual living-TV session | `TBD` | SessionBrandChrome residual invent refresh |
-| Imagine invent polish v2b residual cascade plan | `TBD` | PlanEditor invent refresh |
+| Imagine invent polish v2b residual thought partner desk | `5d3e361e6` | ThoughtPartnerPanel invent refresh |
+| Imagine invent polish v2b residual clam catcher cursor | `5d3e361e6` | cabinet/LGH/wait clam invent refresh |
+| Imagine invent polish v2b residual igloo ice arcade cursor | `5d3e361e6` | cabinet/LGH/wait ice invent refresh |
+| Imagine invent polish v2b residual CRT igloo cursor TV | `5d3e361e6` | LoadingGameHost default invent refresh |
+| Imagine invent polish v2b residual living-TV session | `5d3e361e6` | SessionBrandChrome residual invent refresh |
+| Imagine invent polish v2b residual cascade plan | `5d3e361e6` | PlanEditor invent refresh |
