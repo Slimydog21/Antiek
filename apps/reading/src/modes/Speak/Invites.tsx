@@ -4,6 +4,7 @@ import {
   inviteStatusLabel,
   type InviteStatus,
 } from "../../lib/speakVocab";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Speak SPR-03 M2 — the invitation surface.
@@ -77,8 +78,14 @@ export default function Invites({
   const submit = async () => {
     const trimmed = email.trim();
     if (!trimmed || !onInvite) return;
-    await onInvite(trimmed);
-    setEmail("");
+    try {
+      await onInvite(trimmed);
+      setEmail("");
+      // Living-TV: stakeholder invite sent — noted beat.
+      emitWernerExperience("note_saved");
+    } catch {
+      emitWernerExperience("fail");
+    }
   };
 
   return (

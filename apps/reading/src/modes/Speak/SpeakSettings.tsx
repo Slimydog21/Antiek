@@ -3,6 +3,7 @@ import { useState } from "react";
 import { LemonButton } from "../../components/lemon";
 import type { EconomicsView, PayoutReleaseView } from "../../lib/speakApi";
 import { GATE_PHRASES, PAYOUT_COPY } from "../../lib/speakVocab";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * SpeakSettings — the one calm tap (Product Depth SPR-08 M4).
