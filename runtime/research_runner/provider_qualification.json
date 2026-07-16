@@ -136,6 +136,40 @@
           "finding": "Stored background responses provide provider status and usage when their response ID is known."
         }
       }
+    },
+    {
+      "provider": "aws-bedrock",
+      "model": "async-foundation-model",
+      "operation": "start-async-invoke",
+      "checked_at": "2026-07-16",
+      "verdict": "refused",
+      "evidence": {
+        "pinned_pricing": {
+          "status": "unproven",
+          "source_url": "https://aws.amazon.com/bedrock/pricing/",
+          "finding": "AWS publishes model-, region-, and modality-specific prices, but this generic async route pins no exact model, region, currency snapshot, or complete billing-unit set."
+        },
+        "durable_idempotency": {
+          "status": "pass",
+          "source_url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_StartAsyncInvoke.html",
+          "finding": "StartAsyncInvoke accepts clientRequestToken as the provider idempotency token and returned invocation records retain that token."
+        },
+        "hidden_retries_disabled": {
+          "status": "pass",
+          "source_url": "https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html",
+          "finding": "AWS SDK max attempts can be set to one, disabling automatic retries for the billable create request."
+        },
+        "authoritative_reconciliation": {
+          "status": "fail",
+          "source_url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ListAsyncInvokes.html",
+          "finding": "ListAsyncInvokes returns clientRequestToken but offers no token filter or documented complete-retention boundary; GetAsyncInvoke still requires the generated invocation ARN, so a list miss cannot prove authoritative not-found by Antiek key."
+        },
+        "stable_provider_evidence": {
+          "status": "unproven",
+          "source_url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_GetAsyncInvoke.html",
+          "finding": "GetAsyncInvoke provides provider status and identity when the ARN is known, but the response contract does not provide exact billable usage or charge cents required for settlement."
+        }
+      }
     }
   ]
 }
