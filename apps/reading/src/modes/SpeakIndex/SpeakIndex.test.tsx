@@ -58,6 +58,12 @@ describe("SpeakIndex — the warm door", () => {
     mount();
     await screen.findByText(/who do you want to remember/i);
     expect(screen.getByTestId("speak-home-werner-brand")).toBeTruthy();
+    const livingTv = screen.getByTestId(
+      "speak-home-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
   });
 
   it("naming a person creates a project and lands on it", async () => {
