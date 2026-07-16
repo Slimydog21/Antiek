@@ -36,10 +36,15 @@ export default function ChunkModal({
     void (async () => {
       try {
         const c = await getChunk(chunkId);
-        if (!cancelled) setChunk(c);
+        if (!cancelled) {
+          setChunk(c);
+          // Living-TV: opening a cited chunk is a curious highlight glance.
+          emitWernerExperience("highlight");
+        }
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : String(e));
+          emitWernerExperience("fail");
         }
       } finally {
         if (!cancelled) setLoading(false);
