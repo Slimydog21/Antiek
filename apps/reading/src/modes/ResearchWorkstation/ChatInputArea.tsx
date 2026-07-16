@@ -49,6 +49,8 @@ export default function ChatInputArea({
     }
     setBusy(true);
     setError(null);
+    // Living-TV: docked chat submit is a deep-research start edge.
+    emitWernerExperience("deep_research_start");
     try {
       const resp = await startInvestigation({
         question: q,
@@ -67,6 +69,7 @@ export default function ChatInputArea({
         navigate(`/inv/${resp.investigation_id}`);
       }
     } catch (e) {
+      emitWernerExperience("deep_research_error");
       const msg = e instanceof Error ? e.message : String(e);
       trackException(e instanceof Error ? e : new Error(msg));
       setError(`Submit failed: ${msg}`);
