@@ -9,9 +9,10 @@
  * (merge wall). Replace fixtures via props without rewriting pure compose.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { localHeuristicRecommend } from "../../../settings/notdiamond/shadowRouter";
+import { emitWernerExperience } from "../../../werner/reactionBus";
 import {
   composeSelectionDecision,
   type ModelConfig,
@@ -156,6 +157,19 @@ export function ModelDecisionTreeTab({
           Math.max(0, decision.projection.postProjectionRatio * 100),
         );
 
+  // Living-TV: over-budget projection is a fail beat (operator still consents).
+  useEffect(() => {
+    if (decision.projection?.wouldExceed) {
+      emitWernerExperience("fail");
+    }
+  }, [decision.projection?.wouldExceed, selectedModelId, estimatedTokens]);
+
+  function pickModel(modelId: string) {
+    // Living-TV: model pick is a curious highlight glance.
+    emitWernerExperience("highlight");
+    setSelectedModelId(modelId);
+  }
+
   return (
     <section
       data-testid="model-decision-tree-tab"
@@ -232,7 +246,7 @@ export function ModelDecisionTreeTab({
               type="button"
               data-testid="model-decision-shadow-accept"
               className="rounded bg-sun px-2 py-1 font-mono text-[11px] uppercase text-ink"
-              onClick={() => setSelectedModelId(shadowSuggestion.modelId)}
+              onClick={() => pickModel(shadowSuggestion.modelId)}
             >
               Accept
             </button>
@@ -252,7 +266,7 @@ export function ModelDecisionTreeTab({
                 <button
                   type="button"
                   data-testid={`model-decision-pick-${r.modelId}`}
-                  onClick={() => setSelectedModelId(r.modelId)}
+                  onClick={() => pickModel(r.modelId)}
                   className={
                     "flex w-full items-center gap-3 px-3 py-2 text-left text-[13px] " +
                     (isSelected
