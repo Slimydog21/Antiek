@@ -126,6 +126,19 @@ describe("deriveNotes — the pure reducer (M1 + M3)", () => {
     expect(notes[0].refinements).toBe(1);
   });
 
+  it("folds interleaved observation refinements by the node-global sequence", () => {
+    const notes = deriveNotes([
+      ev("note.emerged", { note_id: "a", note_text: "Shared v0", node_id: "node-1" }),
+      ev("note.emerged", { note_id: "b", note_text: "Shared v0", node_id: "node-1" }),
+      ev("note.refined", { note_id: "node-1", origin_note_id: "a", previous_text: "Shared v0", new_text: "Shared v1", refinement_reason: "challenge_resolved", sequence: 1, previous_sequence: -1, outcome: "applied" }),
+      ev("note.refined", { note_id: "node-1", origin_note_id: "b", previous_text: "Shared v1", new_text: "Shared v2", refinement_reason: "challenge_resolved", sequence: 2, previous_sequence: 1, outcome: "applied" }),
+      ev("note.refined", { note_id: "node-1", origin_note_id: "a", previous_text: "Shared v2", new_text: "Shared v3", refinement_reason: "challenge_resolved", sequence: 3, previous_sequence: 2, outcome: "applied" }),
+    ]);
+    expect(notes.find((note) => note.noteId === "a")?.text).toBe("Shared v3");
+    expect(notes.find((note) => note.noteId === "a")?.lastAppliedSequence).toBe(3);
+    expect(notes.find((note) => note.noteId === "b")?.text).toBe("Shared v2");
+  });
+
   it("never lets a superseded attempt replace the settled note", () => {
     const notes = deriveNotes([
       ev("note.emerged", { note_id: "n1", note_text: "v1", node_id: "node-1" }),
@@ -263,6 +276,7 @@ describe("NotesPanel — living note + challenge (M3 + M4)", () => {
     expect(challengeNoteMock).toHaveBeenCalledWith("node-1", {
       investigation_id: "inv-test",
       idempotency_key: expect.any(String),
+      origin_note_id: "n1",
     });
     // Still one note rendered — mutated in place, not duplicated.
     expect(screen.getAllByText("Acme is mid-sized.")).toHaveLength(1);

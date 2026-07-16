@@ -47,7 +47,7 @@ try:
         promote_question,
         question_node_id,
     )
-    from ...graph.node_membership import membership_for
+    from ...graph.node_membership import membership_for, observation_for
     from ...runtime.db_lock import connect_write
     from ...schemas.events import NoteRefinedPayload, QuestionEscalatedToResearchPayload
     from ...write.event_outbox import (
@@ -67,7 +67,10 @@ except ImportError:  # pragma: no cover — direct-script fallback
         promote_question,
         question_node_id,
     )
-    from substrate.graph.node_membership import membership_for  # type: ignore[no-redef]
+    from substrate.graph.node_membership import (  # type: ignore[no-redef]
+        membership_for,
+        observation_for,
+    )
     from substrate.schemas.events import (  # type: ignore[no-redef]
         NoteRefinedPayload,
         QuestionEscalatedToResearchPayload,
@@ -144,21 +147,26 @@ def _refinement_operation_id(
     reason: str,
     seq: int,
     document_id: str | None,
+    origin_note_id: str | None,
 ) -> str:
-    identity = json.dumps(
-        {
+    identity_fields = {
             "document_id": document_id,
             "investigation_id": investigation_id,
             "new_text": new_text,
             "note_node_id": note_node_id,
             "reason": reason,
             "sequence": seq,
-        },
+    }
+    if origin_note_id is not None:
+        identity_fields["origin_note_id"] = origin_note_id
+    identity = json.dumps(
+        identity_fields,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,
     )
-    return "note-refinement:v1:" + hashlib.sha256(identity.encode()).hexdigest()
+    version = "v2" if origin_note_id is not None else "v1"
+    return f"note-refinement:{version}:" + hashlib.sha256(identity.encode()).hexdigest()
 
 
 def _result_from_outcome(payload: NoteRefinedPayload) -> ChallengeResult:
@@ -179,20 +187,25 @@ def _escalation_operation_id(
     challenge_text: str,
     seq: int,
     document_id: str | None,
+    origin_note_id: str | None,
 ) -> str:
-    identity = json.dumps(
-        {
+    identity_fields = {
             "challenge_text": canonical_text(challenge_text),
             "document_id": document_id,
             "investigation_id": investigation_id,
             "note_node_id": note_node_id,
             "sequence": seq,
-        },
+    }
+    if origin_note_id is not None:
+        identity_fields["origin_note_id"] = origin_note_id
+    identity = json.dumps(
+        identity_fields,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,
     )
-    return "note-escalation:v1:" + hashlib.sha256(identity.encode()).hexdigest()
+    version = "v2" if origin_note_id is not None else "v1"
+    return f"note-escalation:{version}:" + hashlib.sha256(identity.encode()).hexdigest()
 
 
 def _escalation_result(
@@ -209,14 +222,20 @@ def _escalation_result(
 
 
 def _challenge_request_digest(
-    investigation_id: str, note_node_id: str, challenge_text: str
+    investigation_id: str,
+    note_node_id: str,
+    challenge_text: str,
+    origin_note_id: str | None,
 ) -> str:
-    request = json.dumps(
-        {
+    request_fields = {
             "challenge_text": canonical_text(challenge_text),
             "investigation_id": investigation_id,
             "note_node_id": note_node_id,
-        },
+    }
+    if origin_note_id is not None:
+        request_fields["origin_note_id"] = origin_note_id
+    request = json.dumps(
+        request_fields,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,
@@ -243,6 +262,8 @@ def apply_refinement(
     investigation_id: str,
     reason: str = "challenge",
     document_id: str | None = None,
+    origin_note_id: str | None = None,
+    _bind_origin_identity: bool | None = None,
     events_dir: str | None = None,
     con: Any = None,
     _checkpoint: Callable[[str], None] | None = None,
@@ -261,9 +282,21 @@ def apply_refinement(
             if prev_text is None:
                 return result
             membership = _assert_note_scope(c, note_node_id, investigation_id)
+            observation = observation_for(
+                c, note_node_id, investigation_id, origin_note_id
+            )
+            if origin_note_id is not None and observation is None:
+                raise LivingNoteScopeConflict("living note observation does not belong to this investigation")
+            selected_origin = (
+                observation.origin_note_id if observation is not None else membership.origin_note_id
+            )
             # note.refined requires the source document on its envelope. The
             # promoted note carries both source and emerged-note identity.
-            resolved_document_id = document_id or meta.get("source_document_id")
+            resolved_document_id = (
+                document_id
+                or (observation.source_document_id if observation is not None else None)
+                or meta.get("source_document_id")
+            )
             operation_id = _refinement_operation_id(
                 investigation_id=investigation_id,
                 note_node_id=note_node_id,
@@ -271,6 +304,11 @@ def apply_refinement(
                 reason=reason,
                 seq=seq,
                 document_id=resolved_document_id,
+                origin_note_id=(
+                    selected_origin
+                    if (_bind_origin_identity if _bind_origin_identity is not None else origin_note_id is not None)
+                    else None
+                ),
             )
             existing = event_for_operation(c, operation_id)
             if existing is not None:
@@ -284,6 +322,7 @@ def apply_refinement(
                     or payload.new_text != new_text
                     or payload.refinement_reason != reason
                     or payload.sequence != seq
+                    or payload.origin_note_id != selected_origin
                 ):
                     raise RuntimeError("stored refinement operation conflicts with retry")
                 outcome_event = existing
@@ -293,7 +332,7 @@ def apply_refinement(
                 wins = seq > last_seq
                 payload = NoteRefinedPayload(
                     note_id=note_node_id,
-                    origin_note_id=membership.origin_note_id,
+                    origin_note_id=selected_origin,
                     previous_text=prev_text,
                     new_text=new_text,
                     refinement_reason=reason,
@@ -358,6 +397,7 @@ def challenge_note(
     events_dir: str | None = None,
     con: Any = None,
     idempotency_key: str | None = None,
+    origin_note_id: str | None = None,
     unavailable_errors: tuple[type[BaseException], ...] = (),
     _checkpoint: Callable[[str], None] | None = None,
 ) -> ChallengeResult:
@@ -372,12 +412,25 @@ def challenge_note(
         prev_text, _meta = _read_node(c, note_node_id)
         if prev_text is None:
             return ChallengeResult(note_node_id, applied=False)
-        _assert_note_scope(c, note_node_id, investigation_id)
-        document_id = document_id or _meta.get("source_document_id")
+        membership = _assert_note_scope(c, note_node_id, investigation_id)
+        observation = observation_for(c, note_node_id, investigation_id, origin_note_id)
+        if origin_note_id is not None and observation is None:
+            raise LivingNoteScopeConflict("living note observation does not belong to this investigation")
+        selected_origin = (
+            observation.origin_note_id if observation is not None else membership.origin_note_id
+        )
+        document_id = (
+            document_id
+            or (observation.source_document_id if observation is not None else None)
+            or _meta.get("source_document_id")
+        )
         decision: dict[str, Any] | None = None
         if idempotency_key is not None:
             request_sha256 = _challenge_request_digest(
-                investigation_id, note_node_id, challenge_text
+                investigation_id,
+                note_node_id,
+                challenge_text,
+                selected_origin if origin_note_id is not None else None,
             )
             row = c.execute(
                 "SELECT request_sha256, sequence, state, decision_json, response_json "
@@ -440,6 +493,8 @@ def challenge_note(
                 note_node_id, resolved_text.strip(), seq=seq,
                 investigation_id=investigation_id, reason="challenge_resolved",
                 document_id=document_id, events_dir=events_dir, con=c,
+                origin_note_id=selected_origin,
+                _bind_origin_identity=origin_note_id is not None,
                 _checkpoint=_checkpoint,
             )
             if idempotency_key is not None:
@@ -457,6 +512,7 @@ def challenge_note(
             challenge_text=challenge_text,
             seq=seq,
             document_id=document_id,
+            origin_note_id=selected_origin if origin_note_id is not None else None,
         )
         digest = operation_id.rsplit(":", 1)[-1]
         identity_scope = f"challenge:{investigation_id}:{note_node_id}"

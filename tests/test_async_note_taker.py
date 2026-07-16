@@ -31,13 +31,17 @@ from roles.note_taker import (
     notes_for_step,
     run_document_pass,
 )
-from roles.note_taker.living_note import ChallengeRequestInProgress, LivingNoteScopeConflict
+from roles.note_taker.living_note import (
+    ChallengeRequestConflict,
+    ChallengeRequestInProgress,
+    LivingNoteScopeConflict,
+)
 from roles.note_taker.parser import ExtractedNote
-from runtime.db_lock import connect_read
+from runtime.db_lock import connect_read, connect_write
 from substrate.context_pack import build_working_memory_layer
 from substrate.event_log import emit_typed, iter_physical_events, trajectory
 from substrate.graph.insight_question import promote_insight
-from substrate.graph.schema import init_database_at_path
+from substrate.graph.schema import init_database, init_database_at_path
 from substrate.schemas.events import ActionType, DistillationRequestedPayload
 
 
@@ -757,6 +761,122 @@ async def test_shared_node_is_visible_and_challengeable_from_each_member(env):
             investigation_id="inv-c", events_dir=env["events"],
         )
     assert not resolver_called
+
+
+async def test_repeated_node_observations_target_exact_live_note(env):
+    nid = promote_insight(
+        text="Repeated fact.", investigation_id="inv-1",
+        source_document_id="doc-a", metadata={"origin_note_id": "note-a"},
+    )
+    assert promote_insight(
+        text="Repeated fact.", investigation_id="inv-1",
+        source_document_id="doc-b", metadata={"origin_note_id": "note-b"},
+    ) == nid
+    con = connect_read(env["db"])
+    try:
+        assert con.execute(
+            "SELECT origin_note_id, source_document_id "
+            "FROM node_investigation_observations WHERE node_id=? "
+            "ORDER BY origin_note_id",
+            [nid],
+        ).fetchall() == [("note-a", "doc-a"), ("note-b", "doc-b")]
+    finally:
+        con.close()
+
+    result = challenge_note(
+        nid, "sharpen", resolver=lambda _cur, _challenge: "Refined repeated fact.",
+        seq=1, investigation_id="inv-1", origin_note_id="note-b",
+        events_dir=env["events"], idempotency_key="observation-command-0001",
+    )
+    assert result.applied
+    refined = [
+        row for row in trajectory("inv-1", events_dir=env["events"])
+        if row["action_type"] == "note.refined"
+    ][-1]
+    assert refined["document_id"] == "doc-b"
+    assert refined["payload"]["origin_note_id"] == "note-b"
+
+    promote_insight(
+        text="Repeated fact.", investigation_id="inv-2",
+        source_document_id="doc-c", metadata={"origin_note_id": "note-c"},
+    )
+    called = False
+
+    def substituted_resolver(_current, _challenge):
+        nonlocal called
+        called = True
+        return "must not run"
+
+    with pytest.raises(LivingNoteScopeConflict, match="observation"):
+        challenge_note(
+            nid, "foreign observation", resolver=substituted_resolver,
+            seq=2, investigation_id="inv-1", origin_note_id="note-c",
+            events_dir=env["events"], idempotency_key="observation-command-0002",
+        )
+    assert not called
+
+
+async def test_owned_repeated_observations_do_not_redefine_private_node(env):
+    nid = promote_insight(
+        text="Private repeated fact.", investigation_id="inv-1",
+        source_document_id="doc-a", metadata={"origin_note_id": "note-a"},
+        owner_user_id="owner-1", identity_scope="owner-1",
+    )
+    assert promote_insight(
+        text="Private repeated fact.", investigation_id="inv-1",
+        source_document_id="doc-b", metadata={"origin_note_id": "note-b"},
+        owner_user_id="owner-1", identity_scope="owner-1",
+    ) == nid
+    con = connect_read(env["db"])
+    try:
+        assert con.execute(
+            "SELECT COUNT(*) FROM node_investigation_observations WHERE node_id=?",
+            [nid],
+        ).fetchone()[0] == 2
+    finally:
+        con.close()
+
+
+def test_observation_migration_backfills_legacy_membership_idempotently(env):
+    nid = promote_insight(
+        text="Legacy observation.", investigation_id="inv-1",
+        source_document_id="doc-legacy", metadata={"origin_note_id": "note-legacy"},
+    )
+    con = connect_write(env["db"], purpose="test_observation_backfill")
+    try:
+        con.execute("DELETE FROM node_investigation_observations WHERE node_id=?", [nid])
+        init_database(con)
+        init_database(con)
+        assert con.execute(
+            "SELECT origin_note_id, source_document_id "
+            "FROM node_investigation_observations WHERE node_id=?",
+            [nid],
+        ).fetchall() == [("note-legacy", "doc-legacy")]
+    finally:
+        con.close()
+
+
+async def test_challenge_idempotency_key_binds_observation(env):
+    nid = promote_insight(
+        text="One node.", investigation_id="inv-1", source_document_id="doc-a",
+        metadata={"origin_note_id": "note-a"},
+    )
+    promote_insight(
+        text="One node.", investigation_id="inv-1", source_document_id="doc-b",
+        metadata={"origin_note_id": "note-b"},
+    )
+    key = "observation-command-bind-0001"
+    challenge_note(
+        nid, "same command", resolver=lambda _cur, _challenge: "Changed.",
+        seq=1, investigation_id="inv-1", origin_note_id="note-a",
+        events_dir=env["events"], idempotency_key=key,
+    )
+    with pytest.raises(ChallengeRequestConflict, match="another challenge"):
+        challenge_note(
+            nid, "same command", resolver=lambda _cur, _challenge: "Wrong.",
+            seq=2, investigation_id="inv-1", origin_note_id="note-b",
+            events_dir=env["events"], idempotency_key=key,
+        )
 
 
 async def test_distillation_for_reflects_living_note_in_place(env):

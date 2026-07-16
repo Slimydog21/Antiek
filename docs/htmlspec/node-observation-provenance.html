@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Cycle 87 - Node Observation Provenance</title></head>
+<body><main>
+  <h1>Cycle 87: Node Observation Provenance</h1>
+  <p><strong>Status:</strong> executable specification.</p>
+
+  <section><h2>Problem</h2>
+    <p>A global content-addressed node can be observed more than once inside one investigation. Cycle 86 correctly models node membership, but its single local origin field cannot represent repeated observations. It may reject a second valid note and cannot tell a refinement event which live note occurrence the user challenged.</p>
+  </section>
+
+  <section><h2>Model</h2><ul>
+    <li>Membership answers whether an investigation may discover and operate on a global node.</li>
+    <li>Observation answers which investigation-local emerged note and source document witnessed that node.</li>
+    <li>Observation identity is unique on node id, investigation id, and non-empty origin note id.</li>
+    <li>Canonical text, sequence, and authoritative history remain one global node aggregate.</li>
+    <li>Legacy membership origins migrate to observations without inventing absent identities.</li>
+  </ul></section>
+
+  <section><h2>Command Semantics</h2><ul>
+    <li>Promotion records membership and every supplied origin observation in the same transaction, including exact and near-dedup reuse.</li>
+    <li>The challenge API accepts an optional origin note id.</li>
+    <li>A supplied origin must match the exact node and investigation before idempotency claim or resolver invocation.</li>
+    <li>Without a supplied origin, the server deterministically selects the earliest observation; legacy graph metadata is used only when no observation exists.</li>
+    <li>Challenge request and refinement operation identities include the selected origin so retries cannot substitute another live occurrence.</li>
+    <li>The resulting note.refined event carries the selected origin and observation source document.</li>
+  </ul></section>
+
+  <section><h2>Surface Semantics</h2><ul>
+    <li>Live NotesPanel sends its note id as the observation target.</li>
+    <li>Completed DistillView may omit an observation target and receives deterministic server selection.</li>
+    <li>A refinement folds only into the selected live note occurrence; another same-node occurrence remains a distinct observation until its own authoritative event arrives.</li>
+  </ul></section>
+
+  <section><h2>Acceptance Criteria</h2><ol>
+    <li>Two distinct emerged-note ids with identical text in one investigation produce one node, one membership, and two observations without conflict.</li>
+    <li>Challenging the second observation emits its origin id and local document id.</li>
+    <li>An origin belonging to another node or investigation is rejected before resolver and journal mutation.</li>
+    <li>Reusing one idempotency key with a different origin conflicts.</li>
+    <li>An origin-less completed-view challenge remains compatible and deterministic.</li>
+    <li>Fresh install, legacy backfill, repeated initialization, focused backend/UI tests, lint, typecheck, and build pass.</li>
+  </ol></section>
+</main></body></html>
