@@ -69,7 +69,7 @@ export default function AntiekBenchPanel({
           src={thoughtPartnerDeskArt}
           alt=""
           aria-hidden="true"
-          data-testid="antiek-bench-desk-art"
+          data-testid="antiek-bench-living-tv-art"
           className="h-20 w-full rounded-md object-cover object-center antiek-living-tv-invent"
           loading="lazy"
           decoding="async"
