@@ -166,3 +166,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Float research-merge invent → TwinNotes | `4cbd149dc` | recursive note-taker float invent product-mapped |
 | InterviewVoiceCapture living-TV | `a77bb3005` | invitee voice upload note_saved/fail |
 | Write Repository living-TV | `91048db1e` | shelf search highlight/fail |
+| NotebookEditor living-TV autosave | `265511b13` | note_saved on save; fail on conflict |
