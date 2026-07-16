@@ -1,0 +1,57 @@
+{
+  "authorization": {
+    "schema_version": 1,
+    "tenant_id": "tenant-1",
+    "idempotency_key": "op-key-1",
+    "operation_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "route": {
+      "provider_kind": "aws_bedrock",
+      "provider": "aws-bedrock",
+      "model": "model-v1",
+      "operation": "generate",
+      "region": "us-east-1",
+      "endpoint": "https://bedrock-runtime.us-east-1.amazonaws.com",
+      "billing_units": ["input_token", "output_token"]
+    },
+    "bounded_usage": [
+      {"unit": "input_token", "maximum": 1000},
+      {"unit": "output_token", "maximum": 500}
+    ],
+    "maximum_charge_cents": 125,
+    "currency": "USD",
+    "pricing_snapshot": "aws-bedrock-model-v1-us-east-1-2026-07",
+    "issued_at": "2026-07-16T18:00:00Z",
+    "not_before": "2026-07-16T18:00:00Z",
+    "expires_at": "2026-07-17T00:00:00Z"
+  },
+  "authorization_canonical_json": "{\"bounded_usage\":[{\"maximum\":1000,\"unit\":\"input_token\"},{\"maximum\":500,\"unit\":\"output_token\"}],\"currency\":\"USD\",\"expires_at\":\"2026-07-17T00:00:00Z\",\"idempotency_key\":\"op-key-1\",\"issued_at\":\"2026-07-16T18:00:00Z\",\"maximum_charge_cents\":125,\"not_before\":\"2026-07-16T18:00:00Z\",\"operation_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"pricing_snapshot\":\"aws-bedrock-model-v1-us-east-1-2026-07\",\"route\":{\"billing_units\":[\"input_token\",\"output_token\"],\"endpoint\":\"https://bedrock-runtime.us-east-1.amazonaws.com\",\"model\":\"model-v1\",\"operation\":\"generate\",\"provider\":\"aws-bedrock\",\"provider_kind\":\"aws_bedrock\",\"region\":\"us-east-1\"},\"schema_version\":1,\"tenant_id\":\"tenant-1\"}",
+  "route_digest": "84bb4f4324ce1dc04935e1f50644a4077027c2b31a59d0e78b695ac3e3f4d002",
+  "authorization_digest": "c420969682c0ee1aacbc9eaa20eb1f317cfeb5e54aabe7eb97b158293c7316e5",
+  "signed_receipt": {
+    "receipt": {
+      "schema_version": 1,
+      "issuer": "broker.prod",
+      "audience": "antiek-provider-broker",
+      "tenant_id": "tenant-1",
+      "idempotency_key": "op-key-1",
+      "operation_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "route_digest": "84bb4f4324ce1dc04935e1f50644a4077027c2b31a59d0e78b695ac3e3f4d002",
+      "authorization_digest": "c420969682c0ee1aacbc9eaa20eb1f317cfeb5e54aabe7eb97b158293c7316e5",
+      "maximum_charge_cents": 125,
+      "currency": "USD",
+      "pricing_snapshot": "aws-bedrock-model-v1-us-east-1-2026-07",
+      "state": "charged",
+      "charge_cents": 117,
+      "evidence_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "output_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "issued_at": "2026-07-16T18:00:01Z",
+      "not_before": "2026-07-16T18:00:00Z",
+      "expires_at": "2026-07-17T00:00:00Z",
+      "nonce": "nonce-1",
+      "key_id": "broker-key-2026-07",
+      "algorithm": "ed25519-v1"
+    },
+    "signature": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw"
+  },
+  "receipt_signing_json": "{\"algorithm\":\"ed25519-v1\",\"audience\":\"antiek-provider-broker\",\"authorization_digest\":\"c420969682c0ee1aacbc9eaa20eb1f317cfeb5e54aabe7eb97b158293c7316e5\",\"charge_cents\":117,\"currency\":\"USD\",\"evidence_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"expires_at\":\"2026-07-17T00:00:00Z\",\"idempotency_key\":\"op-key-1\",\"issued_at\":\"2026-07-16T18:00:01Z\",\"issuer\":\"broker.prod\",\"key_id\":\"broker-key-2026-07\",\"maximum_charge_cents\":125,\"nonce\":\"nonce-1\",\"not_before\":\"2026-07-16T18:00:00Z\",\"operation_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"output_digest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"pricing_snapshot\":\"aws-bedrock-model-v1-us-east-1-2026-07\",\"route_digest\":\"84bb4f4324ce1dc04935e1f50644a4077027c2b31a59d0e78b695ac3e3f4d002\",\"schema_version\":1,\"state\":\"charged\",\"tenant_id\":\"tenant-1\"}"
+}
