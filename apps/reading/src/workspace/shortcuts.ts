@@ -185,7 +185,7 @@ function toggleProjectTree() {
  *
  *  The custom-event dispatch is kept for backward-compat with any
  *  Storybook stories that listen for the event directly. */
-const AISIDECAR_PANEL_ID = "shortcuts:aisidecar";
+export const AISIDECAR_PANEL_ID = "shortcuts:aisidecar";
 function toggleAISidecar() {
   const ws = useWorkspace.getState();
   if (ws.panels[AISIDECAR_PANEL_ID]) {

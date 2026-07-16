@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { WernerThinking } from "../brand/werner/animated";
 import { useReplyMode } from "../hooks/useReplyMode";
+import { notifyThoughtPartnerReplyReceived } from "../werner";
+import { AISIDECAR_PANEL_ID } from "../workspace/shortcuts";
 import SpokenReply from "./SpokenReply";
 import ContextPicker from "./ai/ContextPicker";
 import {
@@ -74,6 +76,7 @@ export default function AISidecar() {
   const [reply, setReply] = useState<ThoughtPartnerReply | null>(null);
   const [pending, setPending] = useState<boolean>(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const aliveRef = useRef(true);
   // Read SPR-07 — the rabbit hole answers in text OR audio per preference.
   const { mode: replyMode, setMode: setReplyMode } = useReplyMode();
 
@@ -163,8 +166,12 @@ export default function AISidecar() {
   // textarea. Refresh on each mount (the panel system unmounts + remounts
   // when the operator closes + reopens, so this is fresh-on-open).
   useEffect(() => {
+    aliveRef.current = true;
     void reloadContext();
     setTimeout(() => inputRef.current?.focus(), 0);
+    return () => {
+      aliveRef.current = false;
+    };
   }, [reloadContext]);
 
   const sendThoughtPartner = async () => {
@@ -172,6 +179,10 @@ export default function AISidecar() {
     setPending(true);
     setReply(null);
     try {
+      const promptSnapshot = draft;
+      const contextSnapshot = composedContext.trim()
+        ? composedContext
+        : workspaceContextPrompt();
       // S8 WP-8.4 — ship workspace context as part of the request so
       // the assistant can reference what's currently visible to the
       // operator. The substrate's /thought-partner endpoint passes
@@ -183,12 +194,11 @@ export default function AISidecar() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           investigation_id: "__sidecar__",
-          prompt: draft,
-          system_context: composedContext.trim()
-            ? composedContext
-            : workspaceContextPrompt(),
+          prompt: promptSnapshot,
+          system_context: contextSnapshot,
         }),
       });
+      if (!aliveRef.current) return;
       if (!resp.ok) {
         setReply({
           shape: "CHALLENGE",
@@ -197,6 +207,7 @@ export default function AISidecar() {
         return;
       }
       const data = await resp.json();
+      if (!aliveRef.current) return;
       const rawText: string = data.text ?? data.body ?? JSON.stringify(data);
       // S8 WP-8.4 acceptance: "When the AI asks 'open this PDF', it
       // dispatches a workspace open() action." Parse the structured
@@ -207,6 +218,7 @@ export default function AISidecar() {
         shape: data.shape ?? "SYNTHESIS",
         text: prose,
       });
+      notifyThoughtPartnerReplyReceived();
       if (actions.length > 0) {
         // Pass AiActionContext so each dispatched action emits a typed
         // ``ai.action.applied`` event to the substrate event log per
@@ -218,23 +230,41 @@ export default function AISidecar() {
         // substrate's max_length=2000 to avoid validation rejection on
         // long pastes.
         const ctx = {
-          operator_prompt: draft.slice(0, 2000),
+          operator_prompt: promptSnapshot.slice(0, 2000),
           investigation_id: "__sidecar__",
         };
-        const dispatched = actions.map((a) => dispatchAiAction(a, ctx));
-        setAiLog((prev) => [...dispatched, ...prev].slice(0, 20));
+        const dispatched: DispatchedAction[] = [];
+        for (const action of actions) {
+          // A reply may operate on the workspace, but it cannot erase its own
+          // transparency surface before the operator can inspect what arrived.
+          if (action.kind === "close_panel" && action.id === AISIDECAR_PANEL_ID) {
+            continue;
+          }
+          try {
+            dispatched.push(dispatchAiAction(action, ctx));
+          } catch (error) {
+            if (import.meta.env.DEV) {
+              // eslint-disable-next-line no-console
+              console.warn("[ai] action dispatch failed:", error);
+            }
+          }
+        }
+        if (dispatched.length > 0) {
+          setAiLog((prev) => [...dispatched, ...prev].slice(0, 20));
+        }
       }
       if (parseErrors.length > 0 && import.meta.env.DEV) {
         // eslint-disable-next-line no-console
         console.warn("[ai] action parse errors:", parseErrors);
       }
     } catch (e: unknown) {
+      if (!aliveRef.current) return;
       setReply({
         shape: "CHALLENGE",
         text: e instanceof Error ? e.message : String(e),
       });
     } finally {
-      setPending(false);
+      if (aliveRef.current) setPending(false);
     }
   };
 
