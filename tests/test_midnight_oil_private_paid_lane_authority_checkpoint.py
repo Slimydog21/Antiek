@@ -3921,6 +3921,92 @@ class TestMigrationPrerequisites:
         finally:
             connection.close()
 
+    def test_copy_reconciler_zero_data_corpus_materializes_singleton_once(
+        self, tmp_path: Path
+    ) -> None:
+        target = tmp_path / "copy-reconcile-zero-data.sqlite3"
+        _initialize_schema_only_copy_target(target)
+        draft = FrozenPaidLaneMigrationCorpusV1.model_construct(
+            freeze_nonce="33" * 32,
+            quiesced_at_ms=1,
+            drained_at_ms=2,
+            sealed_at_ms=3,
+            source_stores=_empty_migration_source_stores(),
+            source_manifest_sha256="0" * 64,
+        )
+        corpus = FrozenPaidLaneMigrationCorpusV1.model_validate(
+            {
+                **draft.model_dump(mode="python"),
+                "source_manifest_sha256": checkpoint_module._migration_source_manifest_sha256(
+                    draft
+                ),
+            }
+        )
+        intent = checkpoint_module._copy_audit_intent_v1(
+            corpus=corpus,
+            target_store_id=STORE_ID,
+            semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+            contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+            provider_capability_verification_keys=(),
+            provider_revocation_verification_keys=(),
+            source_head_verification_keys=(),
+            provider_revocation_floor_pins=(),
+            source_floor_pins=(),
+        )
+        assert intent.table_row_counts.paid_lane_schema == 1
+        assert sum(intent.table_row_counts.model_dump().values()) == 1
+        audit_sha256 = checkpoint_module._copy_audit_sha256(intent)
+        connection = sqlite3.connect(target, isolation_level=None)
+        try:
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute("PRAGMA busy_timeout=5000")
+            connection.execute("PRAGMA temp_store=MEMORY")
+            connection.execute(f"PRAGMA max_page_count={checkpoint_module.MAX_DB_PAGES}")
+            connection.execute("BEGIN IMMEDIATE")
+            first, inserted = checkpoint_module._reconcile_copy_prepared_target_v1(
+                connection,
+                corpus=corpus,
+                expected_copy_audit_sha256=audit_sha256,
+                target_store_id=STORE_ID,
+                semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+                contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+                provider_capability_verification_keys=(),
+                provider_revocation_verification_keys=(),
+                source_head_verification_keys=(),
+                provider_revocation_floor_pins=(),
+                source_floor_pins=(),
+            )
+            assert first == intent
+            assert inserted is True
+            connection.execute("COMMIT")
+            first_image = connection.serialize()
+
+            connection.execute("BEGIN IMMEDIATE")
+            replayed, classified_empty = checkpoint_module._reconcile_copy_prepared_target_v1(
+                connection,
+                corpus=corpus,
+                expected_copy_audit_sha256=audit_sha256,
+                target_store_id=STORE_ID,
+                semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+                contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+                provider_capability_verification_keys=(),
+                provider_revocation_verification_keys=(),
+                source_head_verification_keys=(),
+                provider_revocation_floor_pins=(),
+                source_floor_pins=(),
+            )
+            assert replayed == intent
+            assert classified_empty is True
+            connection.execute("COMMIT")
+            assert connection.serialize() == first_image
+            assert connection.execute("SELECT count(*) FROM paid_lane_schema").fetchone() == (1,)
+            assert all(
+                connection.execute(f"SELECT count(*) FROM {table_name}").fetchone() == (0,)
+                for table_name in checkpoint_module._COPY_TABLE_ORDER_FIELDS
+            )
+        finally:
+            connection.close()
+
     def test_migration_binary_encoding_and_exact_source_aad(self) -> None:
         assert checkpoint_module._bounded_migration_bytes(b"\x80\xff", bound=20) == (
             b'["blob","80ff"]'
