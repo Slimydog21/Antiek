@@ -43,6 +43,11 @@ from .ledger import (
     TwinSnapshot,
     UniversalityReport,
 )
+from .promotion_writer import (
+    CanonicalTwinPromotionResult,
+    CanonicalTwinPromotionWriterError,
+    materialize_accepted_twin_promotion,
+)
 from .source_registration import (
     TwinSourceCoverage,
     TwinSourceEnvelope,
@@ -65,6 +70,8 @@ __all__ = [
     "CanonicalTwinReader",
     "CanonicalTwinReaderNotFound",
     "CanonicalTwinReaderView",
+    "CanonicalTwinPromotionResult",
+    "CanonicalTwinPromotionWriterError",
     "CanonicalEmbeddingRouteRegistry",
     "CanonicalEmbeddingRouteUnavailable",
     "AcceptedTwinPromotionAuthority",
@@ -79,6 +86,7 @@ __all__ = [
     "TwinPromotionCandidate",
     "TwinPromotionReview",
     "issue_owner_review_authorization",
+    "materialize_accepted_twin_promotion",
     "TwinConflictError",
     "TwinIntegrityError",
     "TwinLedgerError",
