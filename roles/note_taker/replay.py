@@ -238,23 +238,31 @@ class DurableNoteTakerReplay:
                 "AND state='calling'",
                 [investigation_id, CONSUMER_VERSION],
             )
-            for ordinal in range(complete):
-                window = qualifying[ordinal * self.threshold : (ordinal + 1) * self.threshold]
-                ids = [row["event_id"] for row in window]
-                window_id = _window_id(investigation_id, self.threshold, ids)
-                source_json = _canonical(ids)
-                source_digest = _digest(source_json)
-                request = {
-                    "document_id": window[-1].get("document_id"),
-                    "investigation_id": investigation_id,
-                    "prompt": NOTE_TAKER_SYSTEM_PROMPT
-                    + "\n\n"
-                    + "\n".join(map(_render_event, window))
-                    + "\n\nNow produce the JSON object.",
-                    "role": "note_taker",
-                    "source_event_ids": ids,
-                }
-                request_json = _canonical(request)
+        # Historical streams can contain thousands of windows. Never hold the
+        # global DuckDB writer lock across the complete backfill: one bounded
+        # transaction per window lets API writes and deploy verifiers make
+        # progress while preserving deterministic ordinal discovery.
+        for ordinal in range(complete):
+            window = qualifying[ordinal * self.threshold : (ordinal + 1) * self.threshold]
+            ids = [row["event_id"] for row in window]
+            window_id = _window_id(investigation_id, self.threshold, ids)
+            source_json = _canonical(ids)
+            source_digest = _digest(source_json)
+            request = {
+                "document_id": window[-1].get("document_id"),
+                "investigation_id": investigation_id,
+                "prompt": NOTE_TAKER_SYSTEM_PROMPT
+                + "\n\n"
+                + "\n".join(map(_render_event, window))
+                + "\n\nNow produce the JSON object.",
+                "role": "note_taker",
+                "source_event_ids": ids,
+            }
+            request_json = _canonical(request)
+            prepared = False
+            with connect_write(
+                self.db_path, purpose="note_taker/replay_discover_window"
+            ) as con:
                 existing = con.execute(
                     "SELECT window_id, source_event_ids_json, source_digest, request_json, request_sha256, "
                     "provider_idempotency_key FROM note_taker_windows WHERE consumer_version=? "
@@ -294,7 +302,9 @@ class DurableNoteTakerReplay:
                             window_id,
                         ],
                     )
-                    self._check("prepared", window_id)
+                    prepared = True
+            if prepared:
+                self._check("prepared", window_id)
 
         delivered: list[str] = []
         for ordinal in range(complete):

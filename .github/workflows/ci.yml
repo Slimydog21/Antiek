@@ -32,7 +32,10 @@ jobs:
   pytest-suite:
     name: pytest shard ${{ matrix.shard_index }} of 4
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Shards include production-scale DuckDB tests (for example a real-shape
+    # 5,017-chunk merge). Loaded hosted runners can legitimately exceed the
+    # old 30-minute ceiling even when every assertion is making progress.
+    timeout-minutes: 45
     env:
       # Each hosted runner starts with limited free disk. The full ML/PDF
       # dependency set is large; retaining downloaded wheels alongside the
