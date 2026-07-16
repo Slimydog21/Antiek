@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
 
-import { LoadingGameHost } from "./LoadingGameHost";
+import { LoadingGameHost, waitHostBrandArt } from "./LoadingGameHost";
 
 beforeAll(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -46,7 +46,7 @@ describe("LoadingGameHost mount contract", () => {
     expect(screen.getByTestId("loading-game-primary")).toBeTruthy();
   });
 
-  it("renders living-TV session brand strip while host is visible", () => {
+  it("renders game-specific session brand strip while host is visible", () => {
     render(
       <LoadingGameHost
         waiting
@@ -59,8 +59,16 @@ describe("LoadingGameHost mount contract", () => {
     const art = screen.getByTestId(
       "loading-game-living-tv-brand",
     ) as HTMLImageElement;
-    expect(art.getAttribute("src") ?? "").toMatch(
-      /werner_living_tv_session_v1/,
+    expect(art.getAttribute("src") ?? "").toMatch(/werner_zombies_session_v1/);
+    expect(art.getAttribute("data-wait-game")).toBe("zombies");
+  });
+
+  it("maps clam-catcher and ice-fishing wait-host brand art keys", () => {
+    expect(waitHostBrandArt("clam-catcher")).toMatch(
+      /werner_clam_catcher_session_v1/,
+    );
+    expect(waitHostBrandArt("ice-fishing")).toMatch(
+      /werner_ice_fishing_session_v1/,
     );
   });
 

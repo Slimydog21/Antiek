@@ -6,6 +6,9 @@ import {
   type ArcadeGameKind,
 } from "../cartridgeFactory";
 import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
+import iceFishingArt from "../../brand/werner/poses/session/werner_ice_fishing_session_v1.png";
+import zombiesArt from "../../brand/werner/poses/session/werner_zombies_session_v1.png";
+import clamCatcherArt from "../../brand/werner/poses/session/werner_clam_catcher_session_v1.png";
 import { wernerArcade } from "../../werner/iceFishingFlags";
 import { emitWernerExperience } from "../../werner/reactionBus";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
@@ -16,6 +19,20 @@ import {
 } from "./waitHostLogic";
 
 export type WaitGameKind = ArcadeGameKind;
+
+/** Session brand key art for the wait-host strip — game-specific when known. */
+export function waitHostBrandArt(game: WaitGameKind): string {
+  switch (game) {
+    case "ice-fishing":
+      return iceFishingArt;
+    case "zombies":
+      return zombiesArt;
+    case "clam-catcher":
+      return clamCatcherArt;
+    default:
+      return livingTvArt;
+  }
+}
 
 export interface LoadingGameHostProps {
   /** Parent-driven: work still in flight. */
@@ -130,13 +147,14 @@ export function LoadingGameHost({
         </button>
       </div>
 
-      {/* Living-TV brand strip — session invent promoted so wait chrome is
-          Antiek-themed, not inventory-only Imagine. Decorative only. */}
+      {/* Living-TV brand strip — session key art for the offered game (or the
+          living-TV desk invent as default). Decorative only. */}
       <img
-        src={livingTvArt}
+        src={waitHostBrandArt(game)}
         alt=""
         aria-hidden="true"
         data-testid="loading-game-living-tv-brand"
+        data-wait-game={game}
         style={{
           width: "100%",
           height: 64,
