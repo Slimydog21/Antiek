@@ -7,6 +7,7 @@ import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * SuggestedResearch — the §7 compounding flywheel, surfaced (SPR-09).
@@ -229,6 +230,8 @@ function SuggestionCard({
   const [error, setError] = useState<{ reason: string | null } | null>(null);
 
   const chase = useCallback(async () => {
+    // Living-TV: every chase offer spend is a deep-research start beat.
+    emitWernerExperience("deep_research_start");
     // Hand off to the caller's chase gesture when a parent is in context —
     // one launch path, the SPR-04 ChaseThread panel. The caller owns the
     // explicit-click launch + dedupe there; we just mark it chased.
@@ -255,6 +258,7 @@ function SuggestionCard({
       }
       onLaunched(resp.investigation_id);
     } catch (e) {
+      emitWernerExperience("deep_research_error");
       const reason = e instanceof ApiError ? e.body || null : null;
       setError({ reason });
     } finally {
