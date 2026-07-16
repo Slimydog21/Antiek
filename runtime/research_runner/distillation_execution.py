@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import cast
 
 from substrate.research_spend import (
     FallbackHistoryCursor,
@@ -145,6 +144,14 @@ class DistillationSpendGateway:
         if ticket.run_id != self.binding.run_id:
             raise ValueError("distillation ticket run identity changed")
         operation = self._operation(ticket.request_event_id, ticket.prompt)
+        authoritative_preparation = self.gateway.prepare_paid_fallbacks(
+            self.binding,
+            logical_operation_id=ticket.request_event_id,
+            operation=operation,
+            routes=self.routes,
+        )
+        if ticket.preparation != authoritative_preparation:
+            raise ValueError("distillation ticket fallback authority changed")
 
         def correlate_hold(fallback_index: int, hold: PaidHoldSnapshot) -> None:
             if hold.run_id != ticket.run_id:
@@ -203,7 +210,7 @@ class DistillationSpendGateway:
             )
             for chain in page.items:
                 if chain.chain_id == chain_id:
-                    return cast(str | None, chain.approval_id)
+                    return chain.approval_id
             cursor = page.next_cursor
             if cursor is None:
                 return None

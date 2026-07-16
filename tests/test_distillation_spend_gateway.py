@@ -188,6 +188,33 @@ def test_exact_approval_yields_ticket_hold_before_send_and_settlement(tmp_path) 
     ]
 
 
+def test_execute_rejects_substituted_ticket_preparation_before_hold(tmp_path) -> None:
+    authority, adapter = _authority(tmp_path)
+    requirement = authority.prepare("evt-request", "bounded prompt")
+    assert isinstance(requirement, DistillationApprovalRequirement)
+    preparation = authority.gateway.prepare_paid_fallbacks(
+        _binding(),
+        logical_operation_id="evt-request",
+        operation=authority._operation("evt-request", "bounded prompt"),
+        routes=authority.routes,
+    )
+    authority.gateway.approve_paid_fallbacks(
+        "operator-approval-command", _binding(), preparation
+    )
+    ticket = authority.prepare("evt-request", "bounded prompt")
+    assert isinstance(ticket, ApprovedDistillationTicket)
+    substituted = replace(
+        ticket,
+        preparation=replace(ticket.preparation, chain_id="substituted-chain"),
+    )
+
+    with pytest.raises(ValueError, match="fallback authority changed"):
+        authority.execute(substituted, lambda correlation: None)
+
+    assert adapter.send_calls == []
+    assert authority.gateway.ledger.balance("distill-run").held_cents == 0
+
+
 def test_authorization_observer_failure_prevents_provider_send(tmp_path) -> None:
     authority, adapter = _authority(tmp_path)
     requirement = authority.prepare("evt-request", "bounded prompt")
