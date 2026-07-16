@@ -30,6 +30,7 @@ import hashlib
 import os
 import sys
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -49,6 +50,7 @@ from runtime.research_runner.distillation_execution import (  # noqa: E402
     ApprovedDistillationTicket,
     DistillationApprovalRequirement,
     DistillationExecutionResult,
+    DistillationSpendCorrelation,
 )
 from runtime.research_runner.provider_gateway import (  # noqa: E402
     DispatchIneligible,
@@ -62,6 +64,7 @@ from substrate.context_pack import (  # noqa: E402
     build_working_memory_layer,
 )
 from substrate.distillation_dispatch import (  # noqa: E402
+    BindingConflict,
     CommandSnapshot,
     CommandState,
     DistillationDispatchJournal,
@@ -164,7 +167,9 @@ class DistillationExecutionAuthority(Protocol):
     ) -> DistillationApprovalRequirement | ApprovedDistillationTicket: ...
 
     def execute(
-        self, ticket: ApprovedDistillationTicket
+        self,
+        ticket: ApprovedDistillationTicket,
+        authorize_send: Callable[[DistillationSpendCorrelation], None],
     ) -> DistillationExecutionResult: ...
 
 
@@ -660,8 +665,19 @@ def make_distillation_handler(
                     investigation_id=event.investigation_id,
                     document_id=event.document_id,
                 )
-                if command.state is CommandState.SENDING:
-                    command = dispatch_journal.mark_ambiguous(event.event_id)
+                recovering_correlated = (
+                    command.state is CommandState.SENDING
+                    and command.spend_run_id is not None
+                    and command.fallback_chain_id is not None
+                    and command.manifest_sha256 is not None
+                    and command.fallback_index is not None
+                    and command.hold_id is not None
+                    and execution_authority is not None
+                )
+                if command.state is CommandState.SENDING and not recovering_correlated:
+                    command = dispatch_journal.mark_ambiguous(
+                        event.event_id, hold_id=command.hold_id
+                    )
                     await _publish_ambiguous_distillation_notice(command, broadcaster)
                     return
                 if command.state is CommandState.AMBIGUOUS:
@@ -692,6 +708,12 @@ def make_distillation_handler(
                         execution_authority.prepare, event.event_id, full_prompt
                     )
                 except DispatchIneligible:
+                    if recovering_correlated:
+                        command = dispatch_journal.mark_ambiguous(
+                            event.event_id, hold_id=command.hold_id
+                        )
+                        await _publish_ambiguous_distillation_notice(command, broadcaster)
+                        return
                     await _publish_distillation_approval_required(
                         command,
                         DistillationApprovalRequirement(
@@ -707,20 +729,72 @@ def make_distillation_handler(
                     )
                     return
                 if isinstance(prepared, DistillationApprovalRequirement):
+                    if recovering_correlated:
+                        command = dispatch_journal.mark_ambiguous(
+                            event.event_id, hold_id=command.hold_id
+                        )
+                        await _publish_ambiguous_distillation_notice(command, broadcaster)
+                        return
                     await _publish_distillation_approval_required(
                         command, prepared, broadcaster
                     )
                     return
+                if recovering_correlated and (
+                    prepared.run_id != command.spend_run_id
+                    or prepared.preparation.chain_id != command.fallback_chain_id
+                    or prepared.preparation.manifest_sha256 != command.manifest_sha256
+                ):
+                    raise BindingConflict("recovered spend authority changed")
                 _assert_delivery_id_absent(command)
-                dispatch_journal.mark_sending(event.event_id)
+
+                def authorize_send(correlation: DistillationSpendCorrelation) -> None:
+                    if (
+                        correlation.run_id != prepared.run_id
+                        or correlation.chain_id != prepared.preparation.chain_id
+                        or correlation.manifest_sha256
+                        != prepared.preparation.manifest_sha256
+                    ):
+                        raise BindingConflict("execution authority changed approved spend identity")
+                    dispatch_journal.authorize_sending(
+                        event.event_id,
+                        spend_run_id=correlation.run_id,
+                        fallback_chain_id=correlation.chain_id,
+                        manifest_sha256=correlation.manifest_sha256,
+                        fallback_index=correlation.fallback_index,
+                        hold_id=correlation.hold_id,
+                    )
+
                 try:
                     result = await asyncio.to_thread(
-                        execution_authority.execute, prepared
+                        execution_authority.execute, prepared, authorize_send
                     )
-                except (ProviderOutcomeUnknown, DispatchIneligible):
-                    command = dispatch_journal.mark_ambiguous(event.event_id)
+                except ProviderOutcomeUnknown as exc:
+                    command = dispatch_journal.load(event.event_id)
+                    if command.state is not CommandState.SENDING:
+                        raise PhysicalTrajectoryError(
+                            "provider outcome became unknown before spend correlation"
+                        ) from exc
+                    command = dispatch_journal.mark_ambiguous(
+                        event.event_id, hold_id=exc.hold_id
+                    )
                     await _publish_ambiguous_distillation_notice(command, broadcaster)
                     return
+                except DispatchIneligible as exc:
+                    command = dispatch_journal.load(event.event_id)
+                    if command.state is CommandState.SENDING:
+                        command = dispatch_journal.mark_ambiguous(
+                            event.event_id, hold_id=command.hold_id
+                        )
+                        await _publish_ambiguous_distillation_notice(command, broadcaster)
+                        return
+                    raise PhysicalTrajectoryError(
+                        "approved provider capability changed before correlation"
+                    ) from exc
+                command = dispatch_journal.load(event.event_id)
+                if command.state is not CommandState.SENDING or command.hold_id is None:
+                    raise PhysicalTrajectoryError(
+                        "execution returned without pre-send spend correlation"
+                    )
                 claims, rendered_text = _parse_claims_response(
                     result.value.text, region_id=request.region_id
                 )

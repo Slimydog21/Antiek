@@ -49,6 +49,8 @@ Projector = Callable[[CostProjectionRequest], CostProjection]
 FallbackRouteAuthorizer = Callable[
     [CostProjectionRequest, "HardCeilingProviderAdapter[Any]"], "PaidRouteAuthorityIdentity"
 ]
+PaidHoldObserver = Callable[[PaidHoldSnapshot], None]
+PaidFallbackHoldObserver = Callable[[int, PaidHoldSnapshot], None]
 
 # Every SPR-01 inventory seam has one hard-mode disposition. Tests compare the
 # keys to dispatch_inventory.json so a newly reachable call cannot land without
@@ -341,6 +343,7 @@ class ResearchProviderGateway:
         operation: object,
         routes: tuple[PaidFallbackRoute[T], ...],
         approval_id: str | None = None,
+        on_hold_authorized: PaidFallbackHoldObserver | None = None,
     ) -> PaidFallbackResult[T]:
         """Dispatch an exactly approved ordered chain; no implicit authority exists."""
         plan = self._fallback_plan(
@@ -368,6 +371,14 @@ class ResearchProviderGateway:
         for index, (route, projection, authority, route_intent) in enumerate(
             zip(routes, projections, authorities, route_intents, strict=True)
         ):
+            route_observer: PaidHoldObserver | None = None
+            if on_hold_authorized is not None:
+                def observe_route_hold(
+                    hold: PaidHoldSnapshot, fallback_index: int = index
+                ) -> None:
+                    on_hold_authorized(fallback_index, hold)
+
+                route_observer = observe_route_hold
             try:
                 result = self._dispatch_paid_projected(
                     binding,
@@ -380,6 +391,7 @@ class ResearchProviderGateway:
                     provider_route_identity=canonical_digest(authority),
                     precomputed_intent=route_intent,
                     fallback_approval=(approval_id, binding, manifest),
+                    on_hold_authorized=route_observer,
                     adapter=route.adapter,
                 )
             except ProviderOutcomeUnknown as exc:
@@ -585,6 +597,7 @@ class ResearchProviderGateway:
         provider_route_identity: str | None = None,
         precomputed_intent: PaidHoldIntent | None = None,
         fallback_approval: tuple[str, RunBinding, FallbackChainManifest] | None = None,
+        on_hold_authorized: PaidHoldObserver | None = None,
         adapter: HardCeilingProviderAdapter[T],
     ) -> ProviderDispatchResult[T]:
         self._require_eligible(projection, projection_request, adapter)
@@ -636,6 +649,8 @@ class ResearchProviderGateway:
             )
             hold = self.ledger.hold(hold.hold_id)
             if hold.state in (PaidHoldState.SETTLED, PaidHoldState.RELEASED):
+                if on_hold_authorized is not None:
+                    on_hold_authorized(hold)
                 return ProviderDispatchResult(
                     hold=hold, run=self.ledger.balance(hold.run_id), recovered=True
                 )
@@ -648,6 +663,11 @@ class ResearchProviderGateway:
                     expected_digest=provider_route_identity,
                 )
                 authorized_endpoint = authority.endpoint
+            # Caller-owned command authority must be durable before either a
+            # fresh send marker or a provider reconciliation lookup. Raising
+            # here leaves a newly reserved hold provably unsent.
+            if on_hold_authorized is not None:
+                on_hold_authorized(hold)
             if hold.state in (PaidHoldState.DISPATCH_POSSIBLE, PaidHoldState.UNKNOWN):
                 self.ledger.assert_dispatch_identity(database_identity)
                 return self._reconcile(
