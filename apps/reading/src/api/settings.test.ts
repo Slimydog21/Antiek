@@ -92,10 +92,9 @@ describe("fetchFallbackReceiptHistory", () => {
 
     const overCeiling = history();
     overCeiling.items[0].ceiling_cents = 19;
+    overCeiling.items[0].approval_eligible = false;
     mockFetch.mockResolvedValueOnce(response(overCeiling));
-    await expect(fetchFallbackReceiptHistory()).rejects.toThrow(
-      "exposure contradicts its routes",
-    );
+    await expect(fetchFallbackReceiptHistory()).resolves.toEqual(overCeiling);
   });
 
   it("returns a value-free HTTP failure", async () => {

@@ -307,8 +307,7 @@ function validateFallbackReceiptChain(value: unknown): FallbackReceiptChain {
   }
   if (
     chain.maximum_chain_exposure_cents !==
-      Math.max(...routes.map((route) => route.projected_max_cents)) ||
-    (chain.maximum_chain_exposure_cents as number) > (chain.ceiling_cents as number)
+      Math.max(...routes.map((route) => route.projected_max_cents))
   ) {
     throw new Error("fallback receipt exposure contradicts its routes");
   }
@@ -327,7 +326,10 @@ function validateFallbackReceiptChain(value: unknown): FallbackReceiptChain {
   if (chain.outcome !== expected) {
     throw new Error("fallback receipt chain contradicts its routes");
   }
-  const expectedEligible = expected === "unattempted" && chain.approval_id === null;
+  const expectedEligible =
+    expected === "unattempted" &&
+    chain.approval_id === null &&
+    (chain.maximum_chain_exposure_cents as number) <= (chain.ceiling_cents as number);
   if (chain.approval_eligible !== expectedEligible) {
     throw new Error("fallback approval eligibility contradicts chain state");
   }

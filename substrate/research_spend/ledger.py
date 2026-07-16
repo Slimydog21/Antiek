@@ -408,6 +408,7 @@ class FallbackChainHistory:
         expected_eligible = (
             self.outcome is FallbackChainOutcome.UNATTEMPTED
             and self.approval_id is None
+            and self.maximum_chain_exposure_cents <= self.ceiling_cents
         )
         if self.approval_eligible is not expected_eligible:
             raise ValueError("fallback approval eligibility conflicts with chain state")
@@ -2432,7 +2433,10 @@ class ResearchSpendLedger:
                 route.projected_max_cents for route in manifest.routes
             ),
             approval_eligible=(
-                outcome is FallbackChainOutcome.UNATTEMPTED and approval_id is None
+                outcome is FallbackChainOutcome.UNATTEMPTED
+                and approval_id is None
+                and max(route.projected_max_cents for route in manifest.routes)
+                <= run.ceiling_cents
             ),
             approval_id=approval_id,
             approved_at=approved_at,
