@@ -261,6 +261,7 @@ async def register_multimedia_with_twin(
                 emit_graph_events=False,
                 events_dir=events_dir,
                 con=connection,
+                connection_commit_mode="caller_owned",
             )
             connection.execute("COMMIT")
         except Exception:

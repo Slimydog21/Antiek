@@ -16,9 +16,10 @@ import tempfile
 import pytest
 
 from processing.embedding import _reset_default_provider, set_default_embedding_provider
-from roles.note_taker import Distillation, DistilledQuestion
+from roles.note_taker import Distillation, DistilledQuestion, challenge_note
 from roles.note_taker.parser import ExtractedNote
 from runtime.db_lock import connect_read, connect_write
+from substrate.event_log import trajectory
 from substrate.graph.schema import init_database_at_path
 from substrate.research_bridge.detect_external import detect_external_research
 from substrate.research_bridge.extractors import extract_text
@@ -63,6 +64,8 @@ def env(monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", ev)
     import substrate.graph.insight_question as iq
     monkeypatch.setattr(iq, "graph_db_path", lambda: db)
+    import roles.note_taker.living_note as living_note
+    monkeypatch.setattr(living_note, "graph_db_path", lambda: db)
     init_database_at_path(db)
     return {"db": db, "events": ev}
 
@@ -152,8 +155,34 @@ async def test_distill_on_ingest_yields_nodes(env):
     try:
         n = con.execute("SELECT count(*) FROM nodes WHERE node_type IN ('insight','question')").fetchone()[0]
         assert n >= 2
+        emerged = [
+            event for event in trajectory("inv-1", events_dir=env["events"])
+            if event["action_type"] == "note.emerged"
+        ]
+        assert len(emerged) == 1
+        node_id = emerged[0]["payload"]["node_id"]
+        assert node_id == res.insight_node_ids[0]
+        assert con.execute(
+            "SELECT count(*) FROM nodes WHERE node_id=?", [node_id]
+        ).fetchone()[0] == 1
+        assert con.execute(
+            "SELECT origin_note_id FROM node_investigation_observations "
+            "WHERE node_id=? AND investigation_id='inv-1'", [node_id]
+        ).fetchone() == ("n1",)
     finally:
         con.close()
+    refined = challenge_note(
+        node_id, "Verify this imported note",
+        resolver=lambda _current, _challenge: "A verified imported insight.",
+        seq=1, investigation_id="inv-1", origin_note_id="n1",
+        events_dir=env["events"],
+    )
+    assert refined.applied
+    assert [
+        event["payload"]["origin_note_id"]
+        for event in trajectory("inv-1", events_dir=env["events"])
+        if event["action_type"] == "note.refined"
+    ] == ["n1"]
 
 
 # --------------------------------------------------------------------------

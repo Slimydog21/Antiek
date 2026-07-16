@@ -186,7 +186,8 @@ async def distill_ingested_document(
     try:
         return await run_document_pass(
             result.document_id, result.text, investigation_id=investigation_id,
-            distiller=distiller, chunk_ids=result.chunk_ids, events_dir=events_dir, con=con,
+            distiller=distiller, chunk_ids=result.chunk_ids, events_dir=events_dir,
+            con=con, connection_commit_mode="autocommit",
         )
     finally:
         con.close()

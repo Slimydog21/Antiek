@@ -16,7 +16,7 @@ import sys
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 try:
     from ...event_log import emit_typed
@@ -49,6 +49,9 @@ class PassResult:
         return len(self.insight_node_ids) + len(self.question_node_ids)
 
 
+ConnectionCommitMode = Literal["autocommit", "caller_owned"]
+
+
 async def run_document_pass(
     document_id: str,
     text: str,
@@ -65,11 +68,19 @@ async def run_document_pass(
     emit_events: bool = True,
     events_dir: str | None = None,
     con: Any = None,
+    connection_commit_mode: ConnectionCommitMode | None = None,
 ) -> PassResult:
     """Distil + promote a document's insights/questions. A coroutine so the
     caller can schedule it off the ingest critical path (document
     availability never waits on note extraction). The blocking distillation
     runs in a worker thread."""
+    if con is None and connection_commit_mode is not None:
+        raise ValueError("connection_commit_mode requires a supplied connection")
+    if con is not None and connection_commit_mode not in {"autocommit", "caller_owned"}:
+        raise ValueError("a supplied connection requires an explicit commit mode")
+    if connection_commit_mode == "caller_owned" and (emit_events or emit_graph_events):
+        raise ValueError("caller-owned transactions cannot publish before commit")
+
     distillation: Distillation = await asyncio.to_thread(
         distiller.distill, text, source_event_ids=source_event_ids
     )
@@ -105,24 +116,15 @@ async def run_document_pass(
                 NoteEmergedPayload(
                     note_id=note.note_id, note_text=note.text,
                     source_event_ids=list(note.source_event_ids),
-                    # A caller-owned transaction may still roll back after this
-                    # external event write; only publish committed identities.
-                    confidence=note.confidence, node_id=nid if con is None else None,
+                    confidence=note.confidence,
+                    node_id=nid,
                 ),
                 role="note_taker", document_id=document_id, events_dir=events_dir,
             )
         result.insight_node_ids.append(nid)
 
     for q in distillation.questions:
-        if emit_events:
-            emit_typed(
-                investigation_id,
-                QuestionIdentifiedPayload(
-                    question_id="q-" + uuid.uuid4().hex[:12],
-                    question_text=q.text, anchor_region_id=q.anchor_region_id,
-                ),
-                role="note_taker", document_id=document_id, events_dir=events_dir,
-            )
+        question_id = "q-" + uuid.uuid4().hex[:12]
         qid = promote_question(
             text=q.text, investigation_id=investigation_id,
             asks_about=q.asks_about, anchor_region_id=q.anchor_region_id,
@@ -136,6 +138,15 @@ async def run_document_pass(
             owner_user_id=owner_user_id,
             emit_graph_events=emit_graph_events,
         )
+        if emit_events:
+            emit_typed(
+                investigation_id,
+                QuestionIdentifiedPayload(
+                    question_id=question_id,
+                    question_text=q.text, anchor_region_id=q.anchor_region_id,
+                ),
+                role="note_taker", document_id=document_id, events_dir=events_dir,
+            )
         result.question_node_ids.append(qid)
 
     return result
