@@ -22,6 +22,7 @@ import {
 } from "./researchWaitArcadePolicy";
 import "./ResearchWaitArcade.css";
 
+import { emitWernerExperience } from "../../werner/reactionBus";
 const LazyResearchWaitArcadeGame = lazy(
   () => import("./ResearchWaitArcadeGame"),
 );
@@ -223,7 +224,7 @@ export default function ResearchWaitArcade({
               ref={playRef}
               size="sm"
               variant="primary"
-              onClick={() => setOptedIn(true)}
+              onClick={() => { emitWernerExperience("highlight"); setOptedIn(true); }}
             >
               Play while waiting
             </LemonButton>
@@ -242,7 +243,7 @@ export default function ResearchWaitArcade({
                 Research stays live above the game.
               </p>
             </div>
-            <LemonButton size="sm" variant="secondary" onClick={exitGame}>
+            <LemonButton size="sm" variant="secondary" onClick={() => { emitWernerExperience("note_saved"); exitGame(); }}>
               Exit game
             </LemonButton>
           </div>
