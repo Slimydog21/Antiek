@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import { LemonButton } from "../../components/lemon";
 import { corpusSearch } from "../../api/corpusSearch";
 import type { CorpusSearchHit } from "../../api/corpusSearch";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * CorpusSearch — the Library search box over the OWNED corpus (Read SPR-08 M1).
@@ -67,7 +68,10 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
         const res = await corpusSearch(themed);
         setHits(res.hits);
         setSignal(signalLabel);
+        // Living-TV: corpus search is a curious highlight glance.
+        emitWernerExperience("highlight");
       } catch (e: unknown) {
+        emitWernerExperience("fail");
         setError(e instanceof Error ? e.message : String(e));
         setHits(null);
       } finally {
