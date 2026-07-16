@@ -119,6 +119,7 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | AddModelPanel BYOK beats | `312f7e4ba` | model add/remove note_saved/fail |
 | AntiekBench load beats | `4c91ee255` | weekly evidence highlight/fail |
 | Antiek-bench celebrate invent | `3d0efae83` | celebrate invent product-mapped desk strip |
+| NotDiamond toggle living-TV | `6280f9274` | advisor mode note_saved/highlight |
 | PasteIngest absorb beats | `6256fddad` | highlight on absorb; fail on error |
 | VoiceChase transcript beats | `62697398e` | note_saved on transcript; fail on error |
 
