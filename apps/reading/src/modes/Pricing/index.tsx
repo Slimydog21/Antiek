@@ -1,229 +1,372 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
+import plannerEnvironment from "../../brand/werner/pricing/expedition_cost_planner_environment_v1.webp";
 import { track } from "../../lib/analytics";
+import "./expedition-cost-planner.css";
 
-/**
- * Pricing surface (master-spec §13.5 + PostHog Wedge 6 template,
- * §5.6 PostHog design philosophy).
- *
- * Operator-decided pay-as-you-go pricing model, verbatim:
- *   "I will charge people like OpenRouter by allowing people to set
- *   a budget for tokens used, and for private documents I will charge
- *   for token usage on such documents at a 50% margin. I guess I will
- *   charge users for public token consumption at a 10% margin, but
- *   will allow rev share of 70% to them on the ad placement."
- *
- * Calculator-driven page per the PostHog Wedge 6 template:
- * transparent voice, free-tier limits prominent, no card on free.
- */
+export const EXPEDITION_POLICY_EXAMPLE = {
+  publicAllowanceTokens: 5_000_000,
+  privateMarginRate: 0.5,
+  publicMarginRate: 0.1,
+} as const;
+
+export const EXPEDITION_PLANNER_LIMITS = {
+  tokens: 50_000_000,
+  ratePerMillion: 100,
+} as const;
+
+export type ExpeditionPlan = {
+  privateTokens: number;
+  publicTokens: number;
+  assumedRatePerMillion: number;
+  publicTokensWithinAllowance: number;
+  publicTokensAboveAllowance: number;
+  privateRaw: number;
+  privateMargin: number;
+  publicRaw: number;
+  publicMargin: number;
+  estimatedTotal: number;
+};
+
+export function sanitizeNonNegative(value: number): number {
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function clampPlanningInput(value: number, maximum: number): number {
+  return Math.min(sanitizeNonNegative(value), maximum);
+}
+
+export function calculateExpeditionPlan(
+  privateTokensInput: number,
+  publicTokensInput: number,
+  assumedRateInput: number,
+): ExpeditionPlan {
+  const privateTokens = clampPlanningInput(
+    privateTokensInput,
+    EXPEDITION_PLANNER_LIMITS.tokens,
+  );
+  const publicTokens = clampPlanningInput(
+    publicTokensInput,
+    EXPEDITION_PLANNER_LIMITS.tokens,
+  );
+  const assumedRatePerMillion = clampPlanningInput(
+    assumedRateInput,
+    EXPEDITION_PLANNER_LIMITS.ratePerMillion,
+  );
+  const publicTokensWithinAllowance = Math.min(
+    publicTokens,
+    EXPEDITION_POLICY_EXAMPLE.publicAllowanceTokens,
+  );
+  const publicTokensAboveAllowance = Math.max(
+    0,
+    publicTokens - publicTokensWithinAllowance,
+  );
+  const privateRaw = (privateTokens / 1_000_000) * assumedRatePerMillion;
+  const privateMargin =
+    privateRaw * EXPEDITION_POLICY_EXAMPLE.privateMarginRate;
+  const publicRaw =
+    (publicTokensAboveAllowance / 1_000_000) * assumedRatePerMillion;
+  const publicMargin = publicRaw * EXPEDITION_POLICY_EXAMPLE.publicMarginRate;
+
+  return {
+    privateTokens,
+    publicTokens,
+    assumedRatePerMillion,
+    publicTokensWithinAllowance,
+    publicTokensAboveAllowance,
+    privateRaw,
+    privateMargin,
+    publicRaw,
+    publicMargin,
+    estimatedTotal: privateRaw + privateMargin + publicRaw + publicMargin,
+  };
+}
+
+type PlannerProps = {
+  initialPrivateTokens?: number;
+  initialPublicTokens?: number;
+  initialRatePerMillion?: number;
+  visualFixture?: boolean;
+};
+
 export default function PricingPage() {
   useEffect(() => {
     track("pricing_viewed");
   }, []);
-
-  const [privateTokensMonthly, setPrivateTokensMonthly] = useState<number>(1_000_000);
-  const [publicTokensMonthly, setPublicTokensMonthly] = useState<number>(0);
-  const [pricePerMilTokens, setPricePerMilTokens] = useState<number>(5);
-
-  const FREE_CAP = 5_000_000;
-  const publicAboveCap = Math.max(0, publicTokensMonthly - FREE_CAP);
-  const publicFree = Math.min(publicTokensMonthly, FREE_CAP);
-
-  const rawPrivateUsd = useMemo(
-    () => (privateTokensMonthly / 1_000_000) * pricePerMilTokens,
-    [privateTokensMonthly, pricePerMilTokens],
-  );
-  const rawPublicAboveCapUsd = useMemo(
-    () => (publicAboveCap / 1_000_000) * pricePerMilTokens,
-    [publicAboveCap, pricePerMilTokens],
-  );
-  const privateMargin = rawPrivateUsd * 0.5;
-  const publicMargin = rawPublicAboveCapUsd * 0.1;
-  const totalUsd = rawPrivateUsd + privateMargin + rawPublicAboveCapUsd + publicMargin;
-
-  return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-3xl mx-auto px-8 py-10 space-y-10">
-          <header className="space-y-3">
-            <h1 className="text-3xl font-serif text-ink dark:text-bright">Pricing</h1>
-            <p className="text-base text-ink dark:text-bright leading-relaxed">
-              Antiek prices like OpenRouter. You set a token budget;
-              we bill against actual usage with a transparent margin
-              per tier. No flat subscription. No seat fees. No card
-              required for the free tier.
-            </p>
-          </header>
-
-          <section className="space-y-4">
-            <h2 className="text-xl font-serif text-ink dark:text-bright">The three tiers</h2>
-            <TierCard
-              title="Free public tier"
-              caption="Up to 5M tokens / month on DeepSeek-Flash."
-              margin="0% — ad-supported"
-              points={[
-                "Consume public-graph notes and book chunks (licensed publishers only).",
-                "70% of ad revenue routes to the contributing creator.",
-                "Cap auto-converts to Paid Public when you cross 5M tokens.",
-                "No card required.",
-              ]}
-            />
-            <TierCard
-              title="Paid public (above cap)"
-              caption="Pay-as-you-go on tokens beyond the free cap."
-              margin="10% margin"
-              points={[
-                "Any model you pick: DeepSeek-Pro, Claude Sonnet, Opus.",
-                "Ads stay on; creators still earn 70% of ad rev-share.",
-                "Per-call cost = raw provider cost + 10%.",
-                "Same per-query cost transparency as OpenRouter.",
-              ]}
-            />
-            <TierCard
-              title="Paid private use"
-              caption="Brainstorming Workstation, private documents, private graph."
-              margin="50% managed-service margin"
-              points={[
-                "No ads. Content stays in your private partition.",
-                "50% on raw token cost in exchange for substrate value (graph + attribution + voice/style + recursive notes + brainstorming + privacy architecture).",
-                "Per-graph encryption keys; ε-bounded telemetry.",
-                "The surface that justifies the 50% (master-spec §13.5).",
-              ]}
-            />
-          </section>
-
-          <section className="space-y-4">
-            <h2 className="text-xl font-serif text-ink dark:text-bright">Calculator</h2>
-            <p className="text-sm text-ink dark:text-bright leading-relaxed">
-              Estimate your monthly cost. Sliders are token volumes
-              per month; the underlying model price tunes the raw
-              cost. Margins apply per master-spec §13.5.
-            </p>
-            <CalculatorRow
-              label={`Private tokens / month: ${privateTokensMonthly.toLocaleString()}`}
-            >
-              <input
-                type="range"
-                min={0}
-                max={50_000_000}
-                step={100_000}
-                value={privateTokensMonthly}
-                onChange={(e) => setPrivateTokensMonthly(Number(e.target.value))}
-                className="w-full"
-              />
-            </CalculatorRow>
-            <CalculatorRow
-              label={`Public tokens / month: ${publicTokensMonthly.toLocaleString()}${
-                publicFree ? ` (${publicFree.toLocaleString()} free)` : ""
-              }`}
-            >
-              <input
-                type="range"
-                min={0}
-                max={20_000_000}
-                step={100_000}
-                value={publicTokensMonthly}
-                onChange={(e) => setPublicTokensMonthly(Number(e.target.value))}
-                className="w-full"
-              />
-            </CalculatorRow>
-            <CalculatorRow
-              label={`Provider raw cost per million tokens: $${pricePerMilTokens.toFixed(2)}`}
-            >
-              <input
-                type="range"
-                min={1}
-                max={20}
-                step={1}
-                value={pricePerMilTokens}
-                onChange={(e) => setPricePerMilTokens(Number(e.target.value))}
-                className="w-full"
-              />
-            </CalculatorRow>
-
-            <div className="border-t border-rule dark:border-charcoal-1 pt-4 space-y-2">
-              <CostRow label="Private raw" value={rawPrivateUsd} />
-              <CostRow label="Private 50% margin" value={privateMargin} />
-              <CostRow label="Public above-cap raw" value={rawPublicAboveCapUsd} />
-              <CostRow label="Public 10% margin" value={publicMargin} />
-              <div className="border-t border-rule dark:border-charcoal-1 pt-2">
-                <CostRow label="Estimated total / month" value={totalUsd} bold />
-              </div>
-            </div>
-          </section>
-
-          <section className="space-y-3 border-t border-rule dark:border-charcoal-1 pt-6">
-            <h2 className="text-lg font-serif text-ink dark:text-bright">
-              Becoming a creator
-            </h2>
-            <p className="text-sm text-ink dark:text-bright leading-relaxed">
-              Public notes you contribute become first-class IP. When
-              another user's session attributes attention to your
-              content, you earn 70% of the ad revenue from that
-              session. Same architecture as publisher payouts; only
-              the population differs (master-spec §13.9).
-            </p>
-          </section>
-        </div>
-      </main>
-    </div>
-  );
+  return <ExpeditionCostPlanner />;
 }
 
-function TierCard({
-  title,
-  caption,
-  margin,
-  points,
-}: {
-  title: string;
-  caption: string;
-  margin: string;
-  points: string[];
-}) {
-  return (
-    <div className="border border-rule dark:border-charcoal-1 rounded-md px-5 py-4 space-y-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-base font-serif text-ink dark:text-bright">{title}</h3>
-        <span className="text-xs font-mono text-ink dark:text-bright bg-ice-3 dark:bg-charcoal-1 px-2 py-0.5 rounded">
-          {margin}
-        </span>
-      </div>
-      <p className="text-sm text-ink-soft dark:text-starlight">{caption}</p>
-      <ul className="text-sm text-ink dark:text-bright space-y-1 list-disc pl-5">
-        {points.map((p) => (
-          <li key={p}>{p}</li>
-        ))}
-      </ul>
-    </div>
+export function ExpeditionCostPlanner({
+  initialPrivateTokens = 1_000_000,
+  initialPublicTokens = 0,
+  initialRatePerMillion = 5,
+  visualFixture = false,
+}: PlannerProps) {
+  const [privateTokens, setPrivateTokens] = useState(initialPrivateTokens);
+  const [publicTokens, setPublicTokens] = useState(initialPublicTokens);
+  const [assumedRate, setAssumedRate] = useState(initialRatePerMillion);
+  const privateId = useId();
+  const publicId = useId();
+  const rateId = useId();
+  const plan = useMemo(
+    () => calculateExpeditionPlan(privateTokens, publicTokens, assumedRate),
+    [privateTokens, publicTokens, assumedRate],
   );
-}
 
-function CalculatorRow({
-  label,
-  children,
-}: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-mono text-ink dark:text-bright">{label}</p>
-      {children}
-    </div>
-  );
-}
-
-function CostRow({
-  label,
-  value,
-  bold,
-}: { label: string; value: number; bold?: boolean }) {
   return (
     <div
-      className={`flex items-center justify-between text-sm ${
-        bold ? "font-semibold text-ink dark:text-bright" : "text-ink dark:text-bright"
-      }`}
+      className="expedition-planner"
+      data-visual-fixture={visualFixture || undefined}
     >
-      <span>{label}</span>
-      <span className="font-mono">${value.toFixed(2)}</span>
+      <img
+        className="expedition-planner__environment"
+        src={plannerEnvironment}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+      />
+      <div className="expedition-planner__veil" aria-hidden="true" />
+
+      <div className="expedition-planner__content">
+        <header className="expedition-planner__hero">
+          <p className="expedition-planner__eyebrow">
+            Expedition outfitter · planning instrument
+          </p>
+          <h1 id="expedition-planner-title">
+            Chart the cost before you set out.
+          </h1>
+          <p className="expedition-planner__lede">
+            Set an assumed provider rate and sketch a month of public and
+            private work. Antiek shows the arithmetic openly, so an expedition
+            can be resized before any model is called.
+          </p>
+          <p className="expedition-planner__authority" role="note">
+            This illustration reads no account, live provider price, usage
+            ledger, or billing data. It is not a quote or an invoice.
+          </p>
+        </header>
+
+        <section
+          className="expedition-planner__station"
+          aria-labelledby="assumptions-title"
+        >
+          <div className="expedition-planner__section-heading">
+            <p>01 · Pack the assumptions</p>
+            <h2 id="assumptions-title">Your planning figures</h2>
+          </div>
+          <div className="expedition-planner__controls">
+            <PlannerControl
+              id={privateId}
+              label="Private tokens per month"
+              hint="Research over private documents and your private graph."
+              value={privateTokens}
+              max={EXPEDITION_PLANNER_LIMITS.tokens}
+              step={100_000}
+              onChange={setPrivateTokens}
+            />
+            <PlannerControl
+              id={publicId}
+              label="Public tokens per month"
+              hint="Work over sources available to the public research graph."
+              value={publicTokens}
+              max={EXPEDITION_PLANNER_LIMITS.tokens}
+              step={100_000}
+              onChange={setPublicTokens}
+            />
+            <PlannerControl
+              id={rateId}
+              label="Your assumed provider rate"
+              hint="US dollars per million tokens. Check your provider before relying on it."
+              value={assumedRate}
+              max={EXPEDITION_PLANNER_LIMITS.ratePerMillion}
+              step={0.25}
+              onChange={setAssumedRate}
+              unit="$/M"
+            />
+          </div>
+        </section>
+
+        <section
+          className="expedition-planner__station"
+          aria-labelledby="policy-title"
+        >
+          <div className="expedition-planner__section-heading">
+            <p>02 · Inspect the proposal</p>
+            <h2 id="policy-title">Policy example, not active billing</h2>
+          </div>
+          <div className="expedition-planner__policy-grid">
+            <PolicyCard
+              value="5M"
+              label="public-token allowance"
+              detail="each month in this example"
+            />
+            <PolicyCard
+              value="50%"
+              label="private-use margin"
+              detail="on assumed raw provider cost"
+            />
+            <PolicyCard
+              value="10%"
+              label="public margin"
+              detail="only above the example allowance"
+            />
+          </div>
+          <p className="expedition-planner__policy-note">
+            These are proposed policy figures for planning. They do not prove
+            that a tier is active, that a provider or model is available, or
+            that any charge will occur.
+          </p>
+        </section>
+
+        <section
+          className="expedition-planner__station expedition-planner__ledger"
+          aria-labelledby="estimate-title"
+        >
+          <div className="expedition-planner__section-heading">
+            <p>03 · Weigh the supplies</p>
+            <h2 id="estimate-title">Illustrative monthly estimate</h2>
+          </div>
+          <div className="expedition-planner__ledger-grid">
+            <LedgerRow label="Private raw cost" value={plan.privateRaw} />
+            <LedgerRow
+              label="Private example margin"
+              value={plan.privateMargin}
+            />
+            <LedgerRow
+              label="Public tokens inside example allowance"
+              tokenValue={plan.publicTokensWithinAllowance}
+            />
+            <LedgerRow
+              label="Public above-allowance raw cost"
+              value={plan.publicRaw}
+            />
+            <LedgerRow
+              label="Public example margin"
+              value={plan.publicMargin}
+            />
+          </div>
+          <div
+            className="expedition-planner__total"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <span>Estimated planning total</span>
+            <strong>{formatUsd(plan.estimatedTotal)}</strong>
+          </div>
+          <p className="expedition-planner__fineprint">
+            Calculation: visible token assumptions × your assumed rate, then the
+            proposed margins above. Taxes, provider-specific token classes,
+            caching, discounts, reservations, and actual usage are not included.
+          </p>
+        </section>
+      </div>
     </div>
   );
+}
+
+function PlannerControl({
+  id,
+  label,
+  hint,
+  value,
+  max,
+  step,
+  unit,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  hint: string;
+  value: number;
+  max: number;
+  step: number;
+  unit?: string;
+  onChange: (value: number) => void;
+}) {
+  const normalized = clampPlanningInput(value, max);
+  const update = (raw: string) =>
+    onChange(clampPlanningInput(Number(raw), max));
+  return (
+    <div className="expedition-planner__control">
+      <div className="expedition-planner__label-row">
+        <label htmlFor={id}>{label}</label>
+        <span>
+          {unit
+            ? `${formatNumber(normalized)} ${unit}`
+            : formatNumber(normalized)}
+        </span>
+      </div>
+      <p id={`${id}-hint`}>{hint}</p>
+      <input
+        id={id}
+        type="number"
+        min="0"
+        max={max}
+        step={step}
+        value={normalized}
+        aria-describedby={`${id}-hint`}
+        onChange={(event) => update(event.currentTarget.value)}
+      />
+      <input
+        className="expedition-planner__range"
+        type="range"
+        min="0"
+        max={max}
+        step={step}
+        value={Math.min(normalized, max)}
+        aria-label={`${label} slider`}
+        onChange={(event) => update(event.currentTarget.value)}
+      />
+    </div>
+  );
+}
+
+function PolicyCard({
+  value,
+  label,
+  detail,
+}: {
+  value: string;
+  label: string;
+  detail: string;
+}) {
+  return (
+    <article>
+      <strong>{value}</strong>
+      <span>{label}</span>
+      <small>{detail}</small>
+    </article>
+  );
+}
+
+function LedgerRow({
+  label,
+  value,
+  tokenValue,
+}: {
+  label: string;
+  value?: number;
+  tokenValue?: number;
+}) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>
+        {tokenValue === undefined
+          ? formatUsd(value ?? 0)
+          : formatNumber(tokenValue)}
+      </strong>
+    </div>
+  );
+}
+
+function formatNumber(value: number): string {
+  return sanitizeNonNegative(value).toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatUsd(value: number): string {
+  return `$${sanitizeNonNegative(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }

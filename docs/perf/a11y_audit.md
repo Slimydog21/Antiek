@@ -1,7 +1,7 @@
 # axe-core a11y audit
 
-**Run:** 2026-07-16T09:44:05.492Z
-**Stories audited:** 57
+**Run:** 2026-07-16T10:13:50.572Z
+**Stories audited:** 62
 **Serious / critical violations:** 0
 
 **Rule set:** wcag2a + wcag2aa + wcag21a + wcag21aa + best-practice
@@ -64,6 +64,11 @@
 | `modes-igloo-directory--visual-fixture` | 0 | — | — |
 | `modes-igloo-directory--night` | 0 | — | — |
 | `modes-igloo-directory--narrow` | 0 | — | — |
+| `modes-expedition-cost-planner--production` | 0 | — | — |
+| `modes-expedition-cost-planner--visual-fixture` | 0 | — | — |
+| `modes-expedition-cost-planner--cap-crossing` | 0 | — | — |
+| `modes-expedition-cost-planner--night` | 0 | — | — |
+| `modes-expedition-cost-planner--narrow` | 0 | — | — |
 | `loop-1-notebookeditor--blank` | 0 | — | — |
 | `loop-1-notebookeditor--with-sample-content` | 0 | — | — |
 | `workspace-demo--scene` | 0 | — | — |
