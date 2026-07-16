@@ -241,3 +241,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2b model decision tree | `07c30d5db` | ModelDecisionBar invent refresh |
 | Imagine invent polish v2b midnight oil swarm | `b8c26e9f0` | MidnightOilPanel invent refresh |
 | Imagine invent polish v2b knowledge twin | `92bf08ed8` | KnowledgePanel invent refresh |
+| Imagine invent polish v2b float research merge | (next tip) | TwinNotesPanel invent refresh |
