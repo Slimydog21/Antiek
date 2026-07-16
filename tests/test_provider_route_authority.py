@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 
 from runtime.research_runner.cost_projection import CostCatalogEntry, UnitRate
-from runtime.research_runner.protocol import BillingUnit
+from runtime.research_runner.protocol import BillingUnit, BoundedUsage, CostProjectionRequest
 from runtime.research_runner.provider_gateway import ProviderCapabilities
 from runtime.research_runner.provider_qualification import (
     EvidenceStatus,
@@ -137,6 +137,19 @@ def test_exact_server_authorities_make_route_executable_without_dispatch() -> No
     assert result.rate_snapshot == "provider-family-2026-07-16"
     assert result.hard_ceiling_eligible is True
     assert result.execution_status is RouteExecutionStatus.EXECUTABLE
+
+    dispatch_authority = resolver.authorize_dispatch(
+        CostProjectionRequest(
+            seam_id="user.prompt.generate",
+            provider=adapter.provider,
+            model=adapter.model,
+            operation="generate",
+            bounded_usage=(BoundedUsage(BillingUnit.INPUT_TOKEN, 1),),
+        ),
+        adapter,
+    )
+    assert dispatch_authority.endpoint == "https://provider.example/v1"
+    assert dispatch_authority.provider_id == "user-route"
 
 
 def test_missing_endpoint_or_stale_price_remains_unknown() -> None:

@@ -25,6 +25,7 @@ from runtime.research_runner.provider_gateway import (
     PaidFallbackOutcome,
     PaidFallbackOutcomeUnknown,
     PaidFallbackRoute,
+    PaidRouteAuthorityIdentity,
     ProviderCapabilities,
     ProviderNotSent,
     ProviderOutcomeUnknown,
@@ -139,10 +140,27 @@ class FakeAdapter:
 
 def _gateway(tmp_path: Path, *, ceiling: int = 200) -> ResearchProviderGateway:
     gateway = ResearchProviderGateway(
-        ResearchSpendLedger(tmp_path / "spend.sqlite3"), projector=_project
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"),
+        projector=_project,
+        fallback_route_authorizer=_authorize_fallback,
     )
     gateway.create_or_reopen_run(_binding(), ceiling_cents=ceiling)
     return gateway
+
+
+def _authorize_fallback(
+    request: CostProjectionRequest, adapter: FakeAdapter
+) -> PaidRouteAuthorityIdentity:
+    assert (adapter.provider, adapter.model) == (request.provider, request.model)
+    return PaidRouteAuthorityIdentity(
+        provider_kind="test",
+        provider_id=request.provider,
+        endpoint=f"https://{request.provider}.example/v1",
+        model=request.model,
+        seam_id=request.seam_id,
+        operation=request.operation,
+        rate_snapshot="test-authority-v1",
+    )
 
 
 def test_hold_is_durable_before_exactly_one_provider_send(tmp_path: Path) -> None:
@@ -403,6 +421,54 @@ def test_primary_success_never_reserves_or_sends_fallback(tmp_path: Path) -> Non
     assert len(gateway.ledger.events("run-1")) == 4
 
 
+def test_fallback_refuses_without_server_route_authority(tmp_path: Path) -> None:
+    gateway = ResearchProviderGateway(
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"), projector=_project
+    )
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    adapter = FakeAdapter()
+
+    with pytest.raises(DispatchIneligible, match="authority is not configured"):
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(_fallback_route(adapter),),
+        )
+    assert adapter.send_calls == []
+    assert len(gateway.ledger.events("run-1")) == 1
+
+
+def test_changed_endpoint_authority_conflicts_with_existing_lineage(tmp_path: Path) -> None:
+    endpoint = ["https://first.example/v1"]
+
+    def authorize(request, _adapter):
+        return replace(_authorize_fallback(request, _adapter), endpoint=endpoint[0])
+
+    gateway = ResearchProviderGateway(
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"),
+        projector=_project,
+        fallback_route_authorizer=authorize,
+    )
+    gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
+    adapter = FakeAdapter()
+    gateway.dispatch_paid_fallbacks(
+        _binding(),
+        logical_operation_id="op",
+        operation={"prompt": "bounded"},
+        routes=(_fallback_route(adapter),),
+    )
+    endpoint[0] = "https://replacement.example/v1"
+
+    with pytest.raises(IdempotencyConflict):
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(_fallback_route(adapter),),
+        )
+
+
 def test_authoritative_release_uses_separate_fallback_hold_and_key(tmp_path: Path) -> None:
     def project(request: CostProjectionRequest) -> CostProjection:
         cents = 60 if request.provider == "fallback-provider" else 100
@@ -417,7 +483,12 @@ def test_authoritative_release_uses_separate_fallback_hold_and_key(tmp_path: Pat
         )
 
     gateway = ResearchProviderGateway(
-        ResearchSpendLedger(tmp_path / "spend.sqlite3"), projector=project
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"),
+        projector=project,
+        fallback_route_authorizer=lambda request, adapter: replace(
+            _authorize_fallback(request, adapter),
+            rate_snapshot=f"{request.provider}-rates",
+        ),
     )
     gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
     primary = FakeAdapter()
@@ -551,7 +622,9 @@ def test_projection_route_mismatch_is_refused_before_reservation(tmp_path: Path)
         return replace(_project(request), provider="other-provider")
 
     gateway = ResearchProviderGateway(
-        ResearchSpendLedger(tmp_path / "spend.sqlite3"), projector=mismatched
+        ResearchSpendLedger(tmp_path / "spend.sqlite3"),
+        projector=mismatched,
+        fallback_route_authorizer=_authorize_fallback,
     )
     gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
     adapter = FakeAdapter()
@@ -585,7 +658,9 @@ def test_process_death_after_primary_release_replays_into_one_fallback_hold(
             return super().reserve_paid(command_key, binding, intent, projected_max_cents)
 
     ledger = CrashBeforeSecondReserveLedger(db_path)
-    gateway = ResearchProviderGateway(ledger, projector=_project)
+    gateway = ResearchProviderGateway(
+        ledger, projector=_project, fallback_route_authorizer=_authorize_fallback
+    )
     gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
     primary = FakeAdapter()
     primary.send_result = ProviderNotSent("not accepted", evidence={"accepted": False})
@@ -604,7 +679,11 @@ def test_process_death_after_primary_release_replays_into_one_fallback_hold(
     assert fallback.send_calls == []
     assert gateway.ledger.balance("run-1").held_cents == 0
 
-    reopened = ResearchProviderGateway(ResearchSpendLedger(db_path), projector=_project)
+    reopened = ResearchProviderGateway(
+        ResearchSpendLedger(db_path),
+        projector=_project,
+        fallback_route_authorizer=_authorize_fallback,
+    )
     replay = reopened.dispatch_paid_fallbacks(
         _binding(),
         logical_operation_id="op",

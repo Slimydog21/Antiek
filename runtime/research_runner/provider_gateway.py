@@ -42,6 +42,9 @@ from .protocol import (
 T = TypeVar("T")
 JsonEvidence = Mapping[str, str | int | bool | None]
 Projector = Callable[[CostProjectionRequest], CostProjection]
+FallbackRouteAuthorizer = Callable[
+    [CostProjectionRequest, "HardCeilingProviderAdapter[Any]"], "PaidRouteAuthorityIdentity"
+]
 
 # Every SPR-01 inventory seam has one hard-mode disposition. Tests compare the
 # keys to dispatch_inventory.json so a newly reachable call cannot land without
@@ -147,6 +150,23 @@ class ProviderDispatchResult(Generic[T]):  # noqa: UP046 - Antiek supports Pytho
     recovered: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class PaidRouteAuthorityIdentity:
+    """Stable identity returned by the server-owned Cycle 75 authority gate."""
+
+    provider_kind: str
+    provider_id: str
+    endpoint: str
+    model: str
+    seam_id: str
+    operation: str
+    rate_snapshot: str
+
+    def __post_init__(self) -> None:
+        if not all(asdict(self).values()):
+            raise ValueError("paid route authority identity fields must be non-empty")
+
+
 @dataclass(frozen=True)
 class PaidFallbackRoute(Generic[T]):  # noqa: UP046 - Antiek supports Python 3.11
     projection_request: CostProjectionRequest
@@ -247,9 +267,11 @@ class ResearchProviderGateway:
         ledger: ResearchSpendLedger,
         *,
         projector: Projector = project_cascade_cost,
+        fallback_route_authorizer: FallbackRouteAuthorizer | None = None,
     ) -> None:
         self.ledger = ledger
         self._projector = projector
+        self._fallback_route_authorizer = fallback_route_authorizer
 
     def create_or_reopen_run(
         self, binding: RunBinding, *, ceiling_cents: int
@@ -291,19 +313,25 @@ class ResearchProviderGateway:
             raise DispatchIneligible("paid fallback chain must contain 1 to 16 routes")
         if not logical_operation_id:
             raise DispatchIneligible("fallback logical operation id must be non-empty")
-
-        route_keys = [
-            (route.projection_request.provider, route.projection_request.model)
-            for route in routes
-        ]
-        if len(route_keys) != len(set(route_keys)):
-            raise DispatchIneligible("paid fallback routes must be unique")
+        if self._fallback_route_authorizer is None:
+            raise DispatchIneligible("paid fallback route authority is not configured")
 
         projections: list[CostProjection] = []
+        authorities: list[PaidRouteAuthorityIdentity] = []
         workload: tuple[str, str, tuple[object, ...]] | None = None
         for route in routes:
             request = route.projection_request
+            authority = self._fallback_route_authorizer(request, route.adapter)
+            if (
+                authority.provider_id,
+                authority.model,
+                authority.seam_id,
+                authority.operation,
+            ) != (request.provider, request.model, request.seam_id, request.operation):
+                raise DispatchIneligible("route authority differs from requested route")
             projection = self._projector(request)
+            if authority.rate_snapshot != projection.rate_snapshot:
+                raise DispatchIneligible("route authority differs from projected rate snapshot")
             self._require_eligible(projection, request, route.adapter)
             current_workload = (request.seam_id, request.operation, request.bounded_usage)
             if workload is None:
@@ -313,21 +341,31 @@ class ResearchProviderGateway:
                     "paid fallback routes must share seam, operation, and bounded usage"
                 )
             projections.append(projection)
+            authorities.append(authority)
+
+        if len(authorities) != len(set(authorities)):
+            raise DispatchIneligible("paid fallback routes must have unique authority")
 
         chain_identity = {
             "operation": operation,
             "routes": tuple(
                 {
+                    "authority": authority,
                     "projection_request": route.projection_request,
                     "projection": projection,
                 }
-                for route, projection in zip(routes, projections, strict=True)
+                for route, projection, authority in zip(
+                    routes, projections, authorities, strict=True
+                )
             ),
         }
 
         attempts: list[PaidFallbackAttempt] = []
-        requested_provider, requested_model = route_keys[0]
-        for index, (route, projection) in enumerate(zip(routes, projections, strict=True)):
+        requested_provider = authorities[0].provider_id
+        requested_model = authorities[0].model
+        for index, (route, projection, authority) in enumerate(
+            zip(routes, projections, authorities, strict=True)
+        ):
             try:
                 result = self._dispatch_paid_projected(
                     binding,
@@ -341,6 +379,7 @@ class ResearchProviderGateway:
                         logical_operation_id,
                         f"fallback:{index}",
                     ),
+                    provider_route_identity=canonical_digest(authority),
                     adapter=route.adapter,
                 )
             except ProviderOutcomeUnknown as exc:
@@ -396,6 +435,7 @@ class ResearchProviderGateway:
         operation: object,
         identity_payload: object | None = None,
         reservation_identity: tuple[str, ...] | None = None,
+        provider_route_identity: str | None = None,
         adapter: HardCeilingProviderAdapter[T],
     ) -> ProviderDispatchResult[T]:
         self._require_eligible(projection, projection_request, adapter)
@@ -410,7 +450,10 @@ class ResearchProviderGateway:
         )
         reservation_key = deterministic_key("research-reservation", *identity)
         provider_key = deterministic_key(
-            "research-provider", adapter.provider, adapter.model, *identity
+            "research-provider",
+            adapter.provider,
+            adapter.model,
+            *(identity + ((provider_route_identity,) if provider_route_identity else ())),
         )
         intent = PaidHoldIntent(
             reservation_key=reservation_key,
