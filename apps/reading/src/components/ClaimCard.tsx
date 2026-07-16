@@ -83,8 +83,11 @@ export default function ClaimCard({
         role: "user_agent",
       });
       setChallenged(true);
+      // Living-TV: claim challenge raised — thinking chase.
+      emitWernerExperience("deep_research_start");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }
