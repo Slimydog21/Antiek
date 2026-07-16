@@ -207,4 +207,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Flipbook invent reframe CSS | `036391eb0` | soft living imagery motion; reduced-motion safe |
 | TwinNotes/MidnightOil/Bench/Companion reframe densify | `893e483fa` | invent reframe class on residual invent strips |
 | Global invent reframe via main.tsx | `615beda18` | all *-living-tv-art strips inherit Flipbook motion |
-| Igloo minigame trio invent → ArcadeCabinet | (craft162) | ice+clam+zombies unified cabinet banner |
+| Igloo minigame trio invent → ArcadeCabinet | `eb666976f` | ice+clam+zombies unified cabinet banner |
