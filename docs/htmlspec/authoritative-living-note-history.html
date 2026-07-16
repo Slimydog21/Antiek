@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Antiek Cycle 85 - Authoritative living-note history</title></head>
+<body>
+  <h1>Inspectable authoritative living-note history</h1>
+  <p>A researcher must be able to inspect how a living note changed without mistaking an attempted or legacy refinement for current truth.</p>
+  <h2>Sources of truth</h2>
+  <ul>
+    <li>The live graph node supplies current text, investigation ownership, and total applied refinement count.</li>
+    <li>The transactional <code>write_event_outbox</code> supplies immutable refinement outcomes in commit order and is validated against each row's SHA-256 before use.</li>
+    <li>The delivered JSONL stream is a projection for replay and broadcast, not a prerequisite for this read model.</li>
+    <li>Only complete typed <code>note.refined</code> outcomes for the exact investigation and graph node enter history.</li>
+  </ul>
+  <h2>Authority and completeness</h2>
+  <ul>
+    <li>An <code>applied</code> outcome records the authoritative transition from previous text to new text.</li>
+    <li>A <code>superseded</code> outcome is shown as a rejected attempt and never as a historical version of the note.</li>
+    <li>History is complete only when authoritative applied outcomes equal the graph node's durable refinement count.</li>
+    <li>A lower authoritative count is returned and rendered as known-partial history; missing legacy bytes are never reconstructed or guessed.</li>
+    <li>An impossible excess count, digest mismatch, malformed typed event, identity mismatch, or invalid outcome chain fails closed as an integrity error.</li>
+  </ul>
+  <h2>Transport and interaction</h2>
+  <ul>
+    <li><code>GET /research/notes/{node_id}/history?investigation_id=...</code> is read-only and returns current text, counts, completeness, and ordered outcomes.</li>
+    <li>A foreign or missing note returns the same not-found response and leaks no history.</li>
+    <li>The same investigation membership guard also rejects foreign challenge commands before journal claim or resolver dispatch.</li>
+    <li>The completed-research insight row lazily loads history through an explicit disclosure; no background request is made for collapsed history.</li>
+    <li>The compact timeline labels applied changes and superseded attempts distinctly and exposes a retryable failure state.</li>
+  </ul>
+  <h2>Acceptance</h2>
+  <ul>
+    <li>Applied and superseded outcomes are ordered by durable outbox sequence, independent of JSONL delivery state.</li>
+    <li>Corrupt bytes and cross-investigation or cross-node substitutions never reach the response.</li>
+    <li>Legacy count mismatch is visible as incomplete, not silently treated as full history.</li>
+    <li>Opening, closing, and reopening the disclosure does not duplicate entries or mutate graph state.</li>
+    <li>No provider call, graph write, event emission, sequence decision, spend authority, or child research launch is added.</li>
+  </ul>
+</body>
+</html>

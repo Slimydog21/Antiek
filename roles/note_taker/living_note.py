@@ -104,6 +104,15 @@ class ChallengeRequestInProgress(RuntimeError):
     """A prior resolver dispatch has no durable decision yet."""
 
 
+class LivingNoteScopeConflict(RuntimeError):
+    """The requested investigation does not own this living note."""
+
+
+def _assert_note_scope(meta: dict, investigation_id: str) -> None:
+    if meta.get("investigation_id") != investigation_id:
+        raise LivingNoteScopeConflict("living note does not belong to this investigation")
+
+
 def _open(con):
     return con if con is not None else connect_write(graph_db_path(), purpose="living_note")
 
@@ -247,6 +256,7 @@ def apply_refinement(
             prev_text, meta = _read_node(c, note_node_id)
             if prev_text is None:
                 return result
+            _assert_note_scope(meta, investigation_id)
             # note.refined requires the source document on its envelope. The
             # promoted note carries both source and emerged-note identity.
             resolved_document_id = document_id or meta.get("source_document_id")
@@ -358,6 +368,7 @@ def challenge_note(
         prev_text, _meta = _read_node(c, note_node_id)
         if prev_text is None:
             return ChallengeResult(note_node_id, applied=False)
+        _assert_note_scope(_meta, investigation_id)
         document_id = document_id or _meta.get("source_document_id")
         decision: dict[str, Any] | None = None
         if idempotency_key is not None:

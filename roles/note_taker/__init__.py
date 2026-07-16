@@ -39,6 +39,13 @@ from .distill_query import (
     distillation_for,
 )
 from .document_pass import PassResult, run_document_pass
+from .history import (
+    LivingNoteHistory,
+    LivingNoteHistoryEntry,
+    LivingNoteHistoryIntegrityError,
+    LivingNoteHistoryNotFound,
+    living_note_history,
+)
 from .living_note import ChallengeResult, apply_refinement, challenge_note
 from .parser import ExtractedNote, parse_notes_response
 from .prompt import NOTE_TAKER_SYSTEM_PROMPT
@@ -55,6 +62,9 @@ __all__ = [
     "PassResult", "run_document_pass",
     "RunNoteDeduper", "notes_for_step",
     "ChallengeResult", "apply_refinement", "challenge_note",
+    "LivingNoteHistory", "LivingNoteHistoryEntry",
+    "LivingNoteHistoryIntegrityError", "LivingNoteHistoryNotFound",
+    "living_note_history",
     "AsyncNoteScheduler", "SchedulerStats", "DEFAULT_DEBOUNCE_S",
     # SPR-03 read seam (M2)
     "DistilledNode", "DistilledView", "distillation_for",

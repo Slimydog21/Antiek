@@ -1456,6 +1456,50 @@ export interface ChallengeNoteResponse {
   reserved_child_investigation_id?: string | null;
 }
 
+export interface NoteHistoryEntry {
+  event_id: string;
+  sequence: number;
+  previous_sequence: number;
+  previous_text: string;
+  new_text: string;
+  reason: string;
+  outcome: "applied" | "superseded";
+  delivery_state: "pending" | "delivered";
+  emitted_at: string;
+}
+
+export interface NoteHistoryResponse {
+  investigation_id: string;
+  node_id: string;
+  current_text: string;
+  current_sequence: number;
+  refinement_count: number;
+  authoritative_applied_count: number;
+  superseded_count: number;
+  complete: boolean;
+  entries: NoteHistoryEntry[];
+}
+
+/** GET /research/notes/{nodeId}/history — immutable authoritative outcomes.
+ * Pending delivery is still committed truth; integrity failures are surfaced. */
+export async function getNoteHistory(
+  nodeId: string,
+  investigationId: string,
+): Promise<NoteHistoryResponse> {
+  const query = new URLSearchParams({ investigation_id: investigationId });
+  const resp = await apiFetch(
+    `${API_BASE}/research/notes/${encodeURIComponent(nodeId)}/history?${query}`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /research/notes/{id}/history failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 /** POST /research/notes/{nodeId}/challenge — drive the shipped living-note
  *  path. Resolves → mutates in place; declines → escalation (reserved, not
  *  launched). 503 = no model configured (honest no-key); the caller shows
