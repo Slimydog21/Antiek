@@ -115,6 +115,7 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | Outline generate piece_started | `ddae1e6d2` | section draft craft living-TV beat |
 | Wait-arcade ice cursor-bait | `27bfd54e7` | ResearchWaitArcade ice card product-maps invent |
 | ArcadeCabinet ice cursor-bait | `68ac542d8` | cabinet ice card invent aligns LGH/wait-arcade |
+| ModelDecisionTree pick/budget beats | `e2ccf7a9a` | model pick highlight; over-budget fail |
 | PasteIngest absorb beats | `6256fddad` | highlight on absorb; fail on error |
 | VoiceChase transcript beats | `62697398e` | note_saved on transcript; fail on error |
 
