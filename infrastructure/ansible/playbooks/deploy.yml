@@ -594,6 +594,38 @@
           counts remain private before login.
       tags: [verify, auth]
 
+    # A real email click is a top-level browser navigation and therefore sends
+    # Accept: text/html. This exact request shape used to match Caddy's SPA rule
+    # before /auth/*, returning index.html with the secret token still in the
+    # address bar. An invalid token is sufficient (and safe) to prove the route
+    # reached FastAPI: the callback must answer with its closed 302 error.
+    - name: GET magic-link callback with browser navigation headers
+      ansible.builtin.uri:
+        url: "https://{{ api_domain }}/auth/callback?token=deploy-routing-probe&next=%2F"
+        headers:
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        follow_redirects: none
+        status_code: 302
+      register: browser_callback_probe
+      delegate_to: localhost
+      become: false
+      tags: [verify, auth, caddy]
+
+    - name: assert browser magic-link navigation reaches FastAPI
+      ansible.builtin.assert:
+        that:
+          - browser_callback_probe.location is defined
+          - "'/login?error=magic_link_invalid' in browser_callback_probe.location"
+          - "browser_callback_probe.location.startswith('https://antiek.ai/')"
+        fail_msg: |
+          A browser-shaped magic-link callback did not reach FastAPI's token
+          verifier. Caddy may have served the SPA before /auth/*. Got status
+          {{ browser_callback_probe.status | default('unknown') }}, location
+          {{ browser_callback_probe.location | default('missing') }}.
+        success_msg: |
+          Browser-shaped magic-link callbacks reach FastAPI before the SPA.
+      tags: [verify, auth, caddy]
+
     # ── Frontend smoke check ────────────────────────────────────────────
     # GET the root URL through Caddy. Asserts the SPA is served + the
     # response is text/html (i.e. NOT the JSON 404 a reverse-proxy
