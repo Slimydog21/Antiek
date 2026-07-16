@@ -2,8 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ArtifactExport } from "../../components/ArtifactExport";
 import { toast } from "../../components/lemon/LemonToast";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import type {
   CompoundingStat,
   ParsedClaim,
@@ -196,6 +198,11 @@ export default function MasterMdViewer({
 }) {
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
 
+  // Living-TV: completed synthesis view is a deep_research_complete beat (once).
+  useEffect(() => {
+    emitWernerExperience("deep_research_complete");
+  }, [synthesis.synthesisId]);
+
   // HPRJ SPR-05 M5 — the artifact-export affordance lives in the shared
   // <ArtifactExport> (the ONE neutral export affordance; the rights filter is
   // server-side and it surfaces the 403 reason). Rendered below when there's a
@@ -294,6 +301,16 @@ export default function MasterMdViewer({
               {synthesis.question}
             </h1>
           )}
+          {/* Living-TV invent strip — answer surface is product-mapped brand. */}
+          <img
+            src={livingTvArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="master-md-living-tv-art"
+            className="mb-3 h-12 w-full max-w-md rounded-md object-cover object-center"
+            loading="lazy"
+            decoding="async"
+          />
           {synthesisId && (
             <div className="mb-3">
               <ArtifactExport

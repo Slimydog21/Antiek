@@ -99,10 +99,12 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | BookReader open/fail beats | `3d6f97d4a` | highlight on open; fail on load error |
 | NotesPanel + ThinkingStream beats | `d71580cf5` | challenge + status-transition living-TV |
 | SuggestedResearch chase beats | `e746c1588` | flywheel Chase this → deep_research_start |
+| MasterMdViewer invent + complete | `992f51e0f` | answer surface invent + deep_research_complete |
+| Cursor-bait invent inventory | `b50b145f3` | ice-fishing cursor-bait refedit (not product-mapped) |
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
 
-**Honest residuals still open:** pure Flipbook sole UI NO-GO; curious v2 candidate alpha-honest but not product-mapped (reactions are CSS/SVG); invent `living_tv_imagine_v1` superseded by promoted refedit v2; CF Pages external-pending often; operator merge.
+**Honest residuals still open:** pure Flipbook sole UI NO-GO; curious v2 candidate alpha-honest but not product-mapped (reactions are CSS/SVG); invent `living_tv_imagine_v1` superseded by promoted refedit v2; cursor-bait invent inventory-only; CF Pages external-pending often; operator merge; Imagine intermittent 503.
 
 ## Living-TV product-door emotes (choreography)
 
