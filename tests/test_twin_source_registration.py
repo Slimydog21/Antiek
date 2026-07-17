@@ -8,8 +8,13 @@ import duckdb
 import pytest
 
 from runtime.db_lock import connect_write
-from substrate.graph.ops import insert_document, update_document_gate_columns
+from substrate.graph.ops import (
+    insert_document,
+    replace_document_body,
+    update_document_gate_columns,
+)
 from substrate.graph.schema import init_database
+from substrate.rights import T3BodyServeError
 from substrate.twin_note_taker import MAX_CONTENT_CHARS
 from substrate.twin_recursion import (
     TwinRecursionLedger,
@@ -47,6 +52,7 @@ def _insert_body(
         document_type="research",
         title="Canonical title",
         raw_text=body,
+        content_class="personal_reading",
         owner_user_id=owner,
     )
 
@@ -91,6 +97,111 @@ def test_metadata_only_is_explicit_and_not_fabricated_as_eligible(graph):
     assert envelope.source_hash is None
 
 
+def test_restricted_body_cannot_become_model_bound_twin_source(graph):
+    insert_document(
+        graph,
+        document_id="restricted",
+        source_tier=3,
+        document_type="paper",
+        title="Restricted paper",
+        raw_text="Licensed body that must remain behind the serving boundary.",
+        content_class="restricted_pending_opt_in",
+        owner_user_id="acct",
+    )
+    envelope = verify_twin_source_envelopes(graph)[0]
+    assert envelope.status == "metadata_only"
+    assert envelope.source_hash is None
+
+
+def test_rights_failure_precedes_atomic_document_insert(graph):
+    with pytest.raises(T3BodyServeError, match="RIGHTS DRIFT"):
+        insert_document(
+            graph,
+            document_id="rights-drift",
+            source_tier=3,
+            document_type="paper",
+            title="Misclassified paper",
+            raw_text="Body whose immutable license forbids this classification.",
+            metadata={
+                "license_uri": "http://arxiv.org/licenses/nonexclusive-distrib/1.0/",
+                "arxiv_id": "2401.00001",
+            },
+            content_class="source_declared_open",
+            owner_user_id="acct",
+        )
+    assert graph.execute(
+        "SELECT count(*) FROM documents WHERE document_id='rights-drift'",
+    ).fetchone() == (0,)
+
+
+def test_rights_promotion_refreshes_twin_declaration(graph):
+    insert_document(
+        graph,
+        document_id="promoted",
+        source_tier=2,
+        document_type="paper",
+        title="Promoted paper",
+        raw_text="A sufficiently long body with newly established open rights.",
+        content_class="restricted_pending_opt_in",
+        owner_user_id="acct",
+    )
+    assert verify_twin_source_envelopes(graph)[0].status == "metadata_only"
+    update_document_gate_columns(
+        graph,
+        "promoted",
+        content_class="source_declared_open",
+        set_content_class=True,
+    )
+    assert verify_twin_source_envelopes(graph)[0].status == "eligible"
+
+
+def test_reclassification_of_taken_down_book_keeps_metadata_only_envelope(graph):
+    _insert_body(graph, document_id="taken-down")
+    graph.execute(
+        "INSERT INTO book_assets (document_id,taken_down) VALUES ('taken-down',TRUE)"
+    )
+    update_document_gate_columns(
+        graph,
+        "taken-down",
+        content_class="source_declared_open",
+        set_content_class=True,
+    )
+    assert verify_twin_source_envelopes(graph)[0].status == "metadata_only"
+
+
+def test_rejected_rights_promotion_changes_neither_gate_nor_declaration(graph):
+    insert_document(
+        graph,
+        document_id="rejected-promotion",
+        source_tier=3,
+        document_type="paper",
+        title="Restricted paper",
+        raw_text="Body whose immutable license remains restrictive.",
+        metadata={
+            "license_uri": "http://arxiv.org/licenses/nonexclusive-distrib/1.0/",
+            "arxiv_id": "2401.00002",
+        },
+        content_class="restricted_pending_opt_in",
+        owner_user_id="acct",
+    )
+    before = graph.execute(
+        "SELECT content_class,twin_source_envelope FROM documents "
+        "WHERE document_id='rejected-promotion'"
+    ).fetchone()
+    with pytest.raises(T3BodyServeError, match="RIGHTS DRIFT"):
+        update_document_gate_columns(
+            graph,
+            "rejected-promotion",
+            content_class="source_declared_open",
+            set_content_class=True,
+        )
+    after = graph.execute(
+        "SELECT content_class,twin_source_envelope FROM documents "
+        "WHERE document_id='rejected-promotion'"
+    ).fetchone()
+    assert after == before
+
+
 def test_short_nonempty_body_requires_enrichment_not_metadata_exclusion(graph):
     _insert_body(graph, body="short")
     envelope = verify_twin_source_envelopes(graph)[0]
@@ -106,6 +217,7 @@ def test_legacy_multimedia_twin_requires_real_binding_and_never_recurses(graph, 
         document_type="multimedia_twin",
         title="Twin notes",
         raw_text="A legacy twin body that must not recursively request another twin.",
+        content_class="personal_reading",
         owner_user_id="acct",
     )
     envelope = verify_twin_source_envelopes(graph)[0]
@@ -142,8 +254,8 @@ def test_oversized_body_projects_durable_segments_without_false_completion(graph
 
 def test_direct_sql_bypass_is_detected_and_locked_backfill_is_idempotent(graph):
     graph.execute(
-        "INSERT INTO documents (document_id,source_tier,document_type,title,raw_text,owner_user_id) "
-        "VALUES ('bypass',2,'paper','Paper','A body long enough to become a twin source.','acct')"
+        "INSERT INTO documents (document_id,source_tier,document_type,title,raw_text,owner_user_id,content_class) "
+        "VALUES ('bypass',2,'paper','Paper','A body long enough to become a twin source.','acct','personal_reading')"
     )
     with pytest.raises(TwinSourceEnvelopeError, match="lacks"):
         verify_twin_source_envelopes(graph)
@@ -154,8 +266,8 @@ def test_direct_sql_bypass_is_detected_and_locked_backfill_is_idempotent(graph):
 
 def test_v20_initialization_backfills_legacy_rows_before_schema_is_ready(graph):
     graph.execute(
-        "INSERT INTO documents (document_id,source_tier,document_type,title,raw_text,owner_user_id) "
-        "VALUES ('upgrade',2,'paper','Paper','A legacy body that needs migration.','acct')"
+        "INSERT INTO documents (document_id,source_tier,document_type,title,raw_text,owner_user_id,content_class) "
+        "VALUES ('upgrade',2,'paper','Paper','A legacy body that needs migration.','acct','personal_reading')"
     )
     init_database(graph)
     assert verify_twin_source_envelopes(graph)[0].document_id == "upgrade"
@@ -163,13 +275,13 @@ def test_v20_initialization_backfills_legacy_rows_before_schema_is_ready(graph):
 
 def test_backfill_rolls_back_every_row_when_one_legacy_asset_is_invalid(graph):
     graph.execute(
-        "INSERT INTO documents (document_id,source_tier,document_type,title,raw_text,owner_user_id) "
-        "VALUES ('a-valid',2,'paper','Paper','A body long enough to become a twin source.','acct')"
+        "INSERT INTO documents (document_id,source_tier,document_type,title,raw_text,owner_user_id,content_class) "
+        "VALUES ('a-valid',2,'paper','Paper','A body long enough to become a twin source.','acct','personal_reading')"
     )
     invalid_id = "z" * 300
     graph.execute(
-        "INSERT INTO documents (document_id,source_tier,document_type,title,raw_text,owner_user_id) "
-        "VALUES (?,2,'paper','Paper','A body long enough to become a twin source.','acct')",
+        "INSERT INTO documents (document_id,source_tier,document_type,title,raw_text,owner_user_id,content_class) "
+        "VALUES (?,2,'paper','Paper','A body long enough to become a twin source.','acct','personal_reading')",
         [invalid_id],
     )
     with pytest.raises(ValueError, match="asset_id"):
@@ -181,8 +293,8 @@ def test_backfill_rolls_back_every_row_when_one_legacy_asset_is_invalid(graph):
 
 def test_ignore_replay_repairs_legacy_null_from_stored_not_caller_bytes(graph):
     graph.execute(
-        "INSERT INTO documents (document_id,source_tier,document_type,title,raw_text,owner_user_id) "
-        "VALUES ('legacy',2,'paper','Stored','Stored body long enough for exact declaration.','acct')"
+        "INSERT INTO documents (document_id,source_tier,document_type,title,raw_text,owner_user_id,content_class) "
+        "VALUES ('legacy',2,'paper','Stored','Stored body long enough for exact declaration.','acct','personal_reading')"
     )
     insert_document(
         graph,
@@ -199,6 +311,69 @@ def test_ignore_replay_repairs_legacy_null_from_stored_not_caller_bytes(graph):
     assert envelope.title == "Stored"
 
 
+def test_ignore_replay_rejects_forged_non_null_declaration(graph):
+    _insert_body(graph)
+    graph.execute("UPDATE documents SET title='Tampered' WHERE document_id='doc-1'")
+    with pytest.raises(TwinSourceEnvelopeError, match="conflicts"):
+        insert_document(
+            graph,
+            document_id="doc-1",
+            source_tier=2,
+            document_type="research",
+            on_conflict="ignore",
+        )
+
+
+def test_sanctioned_body_replacement_refreshes_declaration_before_replay(graph):
+    _insert_body(graph)
+    replacement = "A legitimate revised body with a different canonical hash."
+    replace_document_body(graph, "doc-1", raw_text=replacement)
+    insert_document(
+        graph,
+        document_id="doc-1",
+        source_tier=2,
+        document_type="research",
+        on_conflict="ignore",
+    )
+    envelope = verify_twin_source_envelopes(graph)[0]
+    assert envelope.status == "eligible"
+    assert envelope.body_sha256 is not None
+
+
+def test_standalone_gate_update_rolls_back_after_post_update_failure(
+    graph, monkeypatch
+):
+    _insert_body(graph)
+    before = graph.execute(
+        "SELECT content_class,twin_source_envelope FROM documents WHERE document_id='doc-1'"
+    ).fetchone()
+    original_execute = graph.execute
+
+    def fail_after_update(query, parameters=None):
+        result = original_execute(query, parameters)
+        if query.startswith("UPDATE documents SET content_class"):
+            raise RuntimeError("synthetic post-update failure")
+        return result
+
+    monkeypatch.setattr(graph, "execute", fail_after_update, raising=False)
+    with pytest.raises(RuntimeError, match="synthetic post-update"):
+        update_document_gate_columns(
+            graph,
+            "doc-1",
+            content_class="source_declared_open",
+            set_content_class=True,
+        )
+    monkeypatch.setattr(graph, "execute", original_execute)
+    after = graph.execute(
+        "SELECT content_class,twin_source_envelope FROM documents WHERE document_id='doc-1'"
+    ).fetchone()
+    assert after == before
+    assert graph.execute(
+        "SELECT count(*) FROM duckdb_indexes() "
+        "WHERE index_name='idx_documents_content_class'"
+    ).fetchone() == (0,)
+
+
 def test_takedown_purges_body_without_leaving_envelope_copy(graph):
     body = "Copyrighted body bytes that must disappear during a legal takedown."
     _insert_body(graph, body=body)
@@ -209,6 +384,22 @@ def test_takedown_purges_body_without_leaving_envelope_copy(graph):
     assert raw_text is None and body not in envelope_json
     envelope = verify_twin_source_envelopes(graph)[0]
     assert envelope.status == "metadata_only" and envelope.body_sha256 is None
+
+
+def test_takedown_class_and_body_change_assigns_envelope_once(graph):
+    _insert_body(graph, body="Body removed by the combined takedown mutation.")
+    update_document_gate_columns(
+        graph,
+        "doc-1",
+        content_class="taken_down",
+        set_content_class=True,
+        null_raw_text=True,
+    )
+    raw_text, content_class = graph.execute(
+        "SELECT raw_text,content_class FROM documents WHERE document_id='doc-1'"
+    ).fetchone()
+    assert raw_text is None and content_class == "taken_down"
+    assert verify_twin_source_envelopes(graph)[0].status == "metadata_only"
 
 
 def test_document_drift_and_canonical_looking_substitution_fail_closed(graph):

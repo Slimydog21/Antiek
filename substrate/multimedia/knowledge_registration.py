@@ -31,6 +31,7 @@ from substrate.schemas.events import (
     GraphEdgeInsertedPayload,
     GraphNodeInsertedPayload,
 )
+from substrate.twin_recursion import TwinSourceEnvelopeError
 
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -188,6 +189,11 @@ class CanonicalMultimediaKnowledgeRegistrar:
                 )
                 _verify_entity(connection, graph_node_id, asset.title, metadata, self.owner_id)
                 connection.execute("COMMIT")
+            except TwinSourceEnvelopeError as exc:
+                connection.execute("ROLLBACK")
+                raise MultimediaKnowledgeRegistrationError(
+                    "multimedia graph document conflicts"
+                ) from exc
             except Exception:
                 connection.execute("ROLLBACK")
                 raise
@@ -1070,6 +1076,11 @@ def _register_twin_document(
             ):
                 raise MultimediaKnowledgeRegistrationError("multimedia twin document conflicts")
             connection.execute("COMMIT")
+        except TwinSourceEnvelopeError as exc:
+            connection.execute("ROLLBACK")
+            raise MultimediaKnowledgeRegistrationError(
+                "multimedia twin document conflicts"
+            ) from exc
         except Exception:
             connection.execute("ROLLBACK")
             raise

@@ -127,7 +127,10 @@ def _asset_commitment_json(asset: AssetContent) -> str:
 
 
 def _asset_commitment(value: str) -> dict[str, object]:
-    data = json.loads(value)
+    decoded = cast(object, json.loads(value))
+    if not isinstance(decoded, dict):
+        raise TwinIntegrityError("source commitment is not an object")
+    data = cast(dict[str, object], decoded)
     if _canonical_json(data) != value or set(data) != {
         "asset_id", "title", "content_class", "source_event_ids",
         "content_hash", "content_length", "source_hash",
@@ -566,13 +569,15 @@ class TwinRecursionLedger:
                 expected_sequence += 1
             for source in con.execute("SELECT * FROM twin_sources"):
                 commitment = _asset_commitment(source["asset_commitment_json"])
+                source_event_ids = commitment["source_event_ids"]
                 if (source["asset_id"] != commitment["asset_id"] or
                         source["source_hash"] != commitment["source_hash"] or
                         source["content_hash"] != commitment["content_hash"] or
                         type(commitment["content_length"]) is not int or
                         not 24 <= int(commitment["content_length"]) <= 200_000 or
-                        type(commitment["source_event_ids"]) is not list or
-                        not commitment["source_event_ids"]):
+                        not isinstance(source_event_ids, list) or
+                        not source_event_ids or
+                        not all(isinstance(item, str) for item in source_event_ids)):
                     raise TwinIntegrityError("source revision identity mismatch")
                 binding = con.execute("SELECT * FROM twin_bindings WHERE account_id=? AND asset_id=? AND source_hash=?",
                                       (source["account_id"], source["asset_id"], source["source_hash"])).fetchone()
@@ -617,14 +622,14 @@ class TwinRecursionLedger:
                             receipt.model_id != binding["model_id"] or
                             receipt.source_content_hash != source["content_hash"] or
                             receipt.source_asset_hash != source["source_hash"] or
-                            list(receipt.source_event_ids) != commitment["source_event_ids"] or
+                            list(receipt.source_event_ids) != source_event_ids or
                             receipt.proposal_payload_hash != binding["proposal_hash"]):
                         raise TwinIntegrityError("receipt binding mismatch")
                     completion_asset = AssetContent(
                         str(commitment["asset_id"]), str(commitment["title"]),
                         "x" * int(commitment["content_length"]),
                         str(commitment["content_class"]),
-                        tuple(commitment["source_event_ids"]),  # type: ignore[arg-type]
+                        tuple(source_event_ids),
                     )
                     if (proposal_receipt_hash(completion_asset, proposal) != binding["proposal_hash"] or
                             _canonical_json(_expected_body(completion_asset, proposal).model_dump(mode="json")) != binding["body_json"]):

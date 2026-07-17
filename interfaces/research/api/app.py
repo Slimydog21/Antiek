@@ -32,6 +32,7 @@ import asyncio
 import contextlib
 import os
 import sys
+import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -6564,6 +6565,7 @@ def create_app(
         }
 
         def run_recovery() -> None:
+            from runtime.db_lock import write_handoff_requested
             from substrate.event_log import PhysicalTrajectoryError
             from substrate.graph.knowledge_event_projector import (
                 EventConsumerCorruption,
@@ -6574,6 +6576,12 @@ def create_app(
             transient_failures = 0
             while not stop_recovery.is_set():
                 try:
+                    # A signalled foreground/deploy writer owns admission.
+                    # Do not enter another recovery transaction until every
+                    # live waiter has either acquired or withdrawn its token.
+                    if write_handoff_requested(db_path):
+                        stop_recovery.wait(0.05)
+                        continue
                     report = recover(
                         db_path=db_path,
                         candidate_limit=100,
@@ -6592,7 +6600,14 @@ def create_app(
                         if stop_recovery.wait(0.5):
                             break
                         continue
-                    stop_recovery.wait(0.05)
+                    # A production-sized DuckDB can make even a bounded page
+                    # expensive. Yield longer only when another process has
+                    # actually reported contention; uncontended catch-up keeps
+                    # its existing throughput.
+                    if write_handoff_requested(db_path):
+                        stop_recovery.wait(0.5)
+                    else:
+                        stop_recovery.wait(0.05)
                 except (
                     EventConsumerCorruption,
                     PhysicalTrajectoryError,
@@ -6650,8 +6665,30 @@ def create_app(
                     "worker_alive": True,
                 }
 
+    def _recover_note_taker_replay() -> None:
+        from substrate.graph import default_db_path
+
+        from .note_taking import start_replay_recovery
+
+        stop = threading.Event()
+        app.state.note_taker_recovery_stop = stop
+        app.state.note_taker_recovery_worker = start_replay_recovery(
+            db_path=default_db_path(),
+            stop_event=stop,
+        )
+
+    def _stop_note_taker_replay() -> None:
+        stop = getattr(app.state, "note_taker_recovery_stop", None)
+        worker = getattr(app.state, "note_taker_recovery_worker", None)
+        if stop is not None:
+            stop.set()
+        if worker is not None:
+            worker.join(timeout=1.0)
+
     app.router.on_startup.append(_recover_knowledge_event_projector)
+    app.router.on_startup.append(_recover_note_taker_replay)
     app.router.on_shutdown.append(_stop_knowledge_event_projector)
+    app.router.on_shutdown.append(_stop_note_taker_replay)
     return app
 
 

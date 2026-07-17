@@ -196,6 +196,7 @@ def insert_document(
     _assert_write_locked(con)
     # Runtime-local to keep graph module initialization independent from the
     # signed twin materializer, which itself uses graph canonicalization.
+    from substrate.books.serve_guard import guard_candidate_full_text
     from substrate.twin_recursion import (
         build_twin_source_envelope,
         stamp_existing_document,
@@ -216,14 +217,17 @@ def insert_document(
     if defaulted_to_personal_reading:
         content_class = PERSONAL_READING_CONTENT_CLASS
 
+    stored_metadata = _maybe_json(metadata)
+    guarded_body = guard_candidate_full_text(
+        raw_text, content_class, stored_metadata, owner=True
+    )
     twin_source_envelope = build_twin_source_envelope(
         document_id=document_id,
         title=title,
-        raw_text=raw_text,
+        raw_text=guarded_body,
         document_type=document_type,
         owner_user_id=owner_user_id,
     ).to_json()
-
     con.execute(
         "INSERT INTO documents "
         "(document_id, source_uri, title, author, published_at, "
@@ -233,7 +237,7 @@ def insert_document(
         [
             document_id, source_uri, title, author, published_at,
             int(source_tier), document_type, investigation_id, raw_text,
-            _maybe_json(metadata), content_class, ip_holder_id, owner_user_id,
+            stored_metadata, content_class, ip_holder_id, owner_user_id,
             twin_source_envelope,
         ],
     )
@@ -257,20 +261,6 @@ def insert_document(
     return document_id
 
 
-# Secondary indexes on the documents gate columns. DuckDB 1.5.2 cannot
-# UPDATE a secondary-indexed column on a row that is the target of a
-# foreign key (chunks + book_assets both reference documents.document_id):
-# it rejects the implied delete-half of its delete+reinsert update path
-# with "key still referenced by a foreign key". Unindexed columns
-# (raw_text, title) update fine. update_document_gate_columns works around
-# this by dropping the affected index(es), running the UPDATE, and
-# recreating them — atomic under the single write lock.
-_GATE_COLUMN_INDEXES: dict[str, str] = {
-    "content_class": "idx_documents_content_class",
-    "ip_holder_id": "idx_documents_ip_holder",
-}
-
-
 def update_document_gate_columns(
     con: LockedConnection,
     document_id: str,
@@ -288,7 +278,8 @@ def update_document_gate_columns(
     the ONLY sanctioned way to change ``content_class`` / ``ip_holder_id``
     on a document that already has chunks or a book_assets row — a raw
     ``UPDATE documents SET content_class=…`` fails on DuckDB 1.5.2 (see the
-    comment above ``_GATE_COLUMN_INDEXES``).
+    schema comment beside the gate columns). Those mutable FK-parent columns
+    deliberately remain unindexed so this update can stay transactional.
 
     ``null_raw_text=True`` additionally nulls ``raw_text`` (the takedown
     purge). raw_text is unindexed, so it doesn't need the index dance, but
@@ -301,52 +292,125 @@ def update_document_gate_columns(
     _assert_write_locked(con)
     sets: list[str] = []
     params: list[Any] = []
-    touched_indexed: list[str] = []
     if set_content_class:
         sets.append("content_class = ?")
         params.append(content_class)
-        touched_indexed.append("content_class")
-    if set_ip_holder_id:
-        sets.append("ip_holder_id = ?")
-        params.append(ip_holder_id)
-        touched_indexed.append("ip_holder_id")
-    if null_raw_text:
-        sets.append("raw_text = NULL")
+        from substrate.books.serve_guard import guard_document_candidate_full_text
         from substrate.twin_recursion import build_twin_source_envelope
 
         source = con.execute(
-            "SELECT title,document_type,owner_user_id FROM documents WHERE document_id=?",
+            "SELECT title,document_type,owner_user_id FROM documents "
+            "WHERE document_id=?",
             [document_id],
         ).fetchone()
         if source is not None:
+            guarded_body = (
+                None
+                if null_raw_text
+                else guard_document_candidate_full_text(
+                    con, document_id, content_class, owner=True
+                )
+            )
             envelope = build_twin_source_envelope(
                 document_id=document_id,
                 title=None if source[0] is None else str(source[0]),
-                raw_text=None,
+                raw_text=guarded_body,
                 document_type=str(source[1]),
                 owner_user_id=str(source[2]),
             ).to_json()
             sets.append("twin_source_envelope = ?")
             params.append(envelope)
+    if set_ip_holder_id:
+        sets.append("ip_holder_id = ?")
+        params.append(ip_holder_id)
+    if null_raw_text:
+        sets.append("raw_text = NULL")
+        if not set_content_class:
+            from substrate.twin_recursion import build_twin_source_envelope
+
+            source = con.execute(
+                "SELECT title,document_type,owner_user_id FROM documents "
+                "WHERE document_id=?",
+                [document_id],
+            ).fetchone()
+            if source is not None:
+                envelope = build_twin_source_envelope(
+                    document_id=document_id,
+                    title=None if source[0] is None else str(source[0]),
+                    raw_text=None,
+                    document_type=str(source[1]),
+                    owner_user_id=str(source[2]),
+                ).to_json()
+                sets.append("twin_source_envelope = ?")
+                params.append(envelope)
     if not sets:
         return
     params.append(document_id)
 
-    indexes = [_GATE_COLUMN_INDEXES[c] for c in touched_indexed]
-    for idx in indexes:
-        con.execute(f"DROP INDEX IF EXISTS {idx}")
+    owns_transaction = False
     try:
+        if not con.in_explicit_transaction:
+            con.execute("BEGIN")
+            owns_transaction = True
         con.execute(
             f"UPDATE documents SET {', '.join(sets)} WHERE document_id = ?",
             params,
         )
-    finally:
-        # Recreate even if the UPDATE raised, so a failed mutation never
-        # leaves the table without its gate indexes.
-        for col, idx in zip(touched_indexed, indexes, strict=True):
-            con.execute(
-                f"CREATE INDEX IF NOT EXISTS {idx} ON documents({col})"
-            )
+        if owns_transaction:
+            con.execute("COMMIT")
+    except Exception:
+        if owns_transaction:
+            con.execute("ROLLBACK")
+        raise
+
+
+def replace_document_body(
+    con: LockedConnection, document_id: str, *, raw_text: str | None
+) -> None:
+    """Atomically replace canonical body bytes and their twin declaration."""
+    _assert_write_locked(con)
+    from substrate.books.serve_guard import guard_candidate_full_text
+    from substrate.twin_recursion import build_twin_source_envelope
+
+    row = con.execute(
+        "SELECT d.title,d.document_type,d.owner_user_id,d.content_class,d.metadata,"
+        "COALESCE(b.taken_down,FALSE) FROM documents d "
+        "LEFT JOIN book_assets b ON d.document_id=b.document_id "
+        "WHERE d.document_id=?",
+        [document_id],
+    ).fetchone()
+    if row is None:
+        raise KeyError(document_id)
+    guarded_body = guard_candidate_full_text(
+        raw_text,
+        None if row[3] is None else str(row[3]),
+        row[4],
+        owner=True,
+        taken_down=bool(row[5]),
+    )
+    envelope = build_twin_source_envelope(
+        document_id=document_id,
+        title=None if row[0] is None else str(row[0]),
+        raw_text=guarded_body,
+        document_type=str(row[1]),
+        owner_user_id=str(row[2]),
+    ).to_json()
+    owns_transaction = False
+    try:
+        if not con.in_explicit_transaction:
+            con.execute("BEGIN")
+            owns_transaction = True
+        con.execute(
+            "UPDATE documents SET raw_text=?,twin_source_envelope=? "
+            "WHERE document_id=?",
+            [raw_text, envelope, document_id],
+        )
+        if owns_transaction:
+            con.execute("COMMIT")
+    except Exception:
+        if owns_transaction:
+            con.execute("ROLLBACK")
+        raise
 
 
 # ---------------------------------------------------------------------------

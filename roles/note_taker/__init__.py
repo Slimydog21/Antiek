@@ -42,6 +42,7 @@ from .document_pass import PassResult, run_document_pass
 from .living_note import ChallengeResult, apply_refinement, challenge_note
 from .parser import ExtractedNote, parse_notes_response
 from .prompt import NOTE_TAKER_SYSTEM_PROMPT
+from .replay import DurableNoteTakerReplay, NoteTakerReplayCorruption
 from .scheduler import DEFAULT_DEBOUNCE_S, AsyncNoteScheduler, SchedulerStats
 from .step_pass import RunNoteDeduper, notes_for_step
 
@@ -57,4 +58,5 @@ __all__ = [
     "AsyncNoteScheduler", "SchedulerStats", "DEFAULT_DEBOUNCE_S",
     # SPR-03 read seam (M2)
     "DistilledNode", "DistilledView", "distillation_for",
+    "DurableNoteTakerReplay", "NoteTakerReplayCorruption",
 ]

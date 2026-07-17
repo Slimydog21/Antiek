@@ -322,6 +322,11 @@ def store_pdf_for_arxiv_row(
 
         promoted_class = resolve_license(license_uri).content_class
 
+        # Every mutation below is one DuckDB transaction. Any exception exits
+        # the connection context with an open transaction, and DuckDB rolls it
+        # back on close; the explicit COMMIT occurs only after indexing,
+        # guarded serve verification, and audit persistence all succeed.
+        con.execute("BEGIN")
         # raw_text is UNINDEXED → a plain UPDATE is safe (the indexed-column
         # dance in update_document_gate_columns is only needed for content_class).
         con.execute(
@@ -332,12 +337,20 @@ def store_pdf_for_arxiv_row(
         # Promote the gate column via the ONLY sanctioned primitive (a raw
         # UPDATE of content_class fails on DuckDB 1.5.2 once chunks reference the
         # row). The class is RE-DERIVED from the immutable license_uri.
-        update_document_gate_columns(
-            con,
-            document_id,
-            content_class=promoted_class,
-            set_content_class=True,
-        )
+        if current_class != promoted_class:
+            update_document_gate_columns(
+                con,
+                document_id,
+                content_class=promoted_class,
+                set_content_class=True,
+            )
+        else:
+            # Re-store keeps the indexed gate column untouched (DuckDB cannot
+            # rewrite a referenced indexed row) but the body may have changed,
+            # so refresh its unindexed dependent declaration in this txn.
+            from substrate.twin_recursion import stamp_existing_document
+
+            stamp_existing_document(con, document_id, refresh=True)
 
         # Additive provenance merge — mirrors SPR-03's enrichment merge. The
         # rights anchors (license_uri / license_basis / rights_tier) are left
@@ -387,6 +400,7 @@ def store_pdf_for_arxiv_row(
         _record_fetch_audit(
             con, arxiv_id=arxiv_id, document_id=document_id, fetched=fetched
         )
+        con.execute("COMMIT")
 
     return StoreOutcome(
         document_id=document_id,

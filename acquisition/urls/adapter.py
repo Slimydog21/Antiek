@@ -51,6 +51,7 @@ from substrate.graph.ops import (  # noqa: E402
     insert_chunk,
     insert_document,
     insert_node,
+    replace_document_body,
 )
 from substrate.rights.register import (  # noqa: E402
     SourceKind,
@@ -356,10 +357,7 @@ def ingest_url(
             # a shrinking edit would otherwise orphan tail rows) and re-inserted
             # below. insert_document is then told "ignore" (the row already
             # exists) so it does not raise; the UPDATE is what persists the edit.
-            con.execute(
-                "UPDATE documents SET raw_text = ? WHERE document_id = ?",
-                [text, document_id],
-            )
+            replace_document_body(con, document_id, raw_text=text)
             con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
             insert_on_conflict = "ignore"
         insert_document(
