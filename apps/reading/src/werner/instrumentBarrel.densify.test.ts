@@ -43,6 +43,9 @@ import {
   SAMPLE_INTERVAL_MS,
   stationInstrumentLeaseCount,
   tipToBaitDistance,
+  activityIdForPathname,
+  getDefaultActivity,
+  listActivities,
   useMouseFollow,
   useStationInstrumentSuspended,
   WERNER_EXPERIENCE_EVENT,
@@ -184,6 +187,19 @@ describe("werner instrument barrel densify", () => {
     // densify: hooks stay public for cursor-is-bait follow + wait-arcade suspend.
     expect(typeof useMouseFollow).toBe("function");
     expect(typeof useStationInstrumentSuspended).toBe("function");
+  });
+
+  it("exports station activity densify for path→instrument selection", () => {
+    // densify: home of the penguin routes map to station instruments (not chase).
+    // Knowledge work (home + research/read) uses research-lens; settings stays ice-fishing.
+    expect(activityIdForPathname("/")).toBe("research-lens");
+    expect(activityIdForPathname("/library")).toBe("research-lens");
+    expect(activityIdForPathname("/settings")).toBe("ice-fishing");
+    expect(activityIdForPathname("/write")).toBe("writing-nib");
+    expect(activityIdForPathname("/speak")).toBe("speaking-resonance");
+    const activities = listActivities();
+    expect(activities.length).toBeGreaterThan(0);
+    expect(getDefaultActivity().id).toBe("ice-fishing");
   });
 
   it("exports mouse-follow densify for cursor-is-bait lag contract", () => {
