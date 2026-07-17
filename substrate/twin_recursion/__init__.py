@@ -16,6 +16,11 @@ from .canonical_reader import (
     CanonicalTwinReaderNotFound,
     CanonicalTwinReaderView,
 )
+from .current_citations import (
+    CanonicalTwinNodeCitationsView,
+    CurrentCanonicalTwinNodeCitations,
+    read_current_canonical_twin_node_citations,
+)
 from .current_node import (
     CanonicalTwinNodeView,
     CurrentCanonicalTwinNode,
@@ -50,6 +55,7 @@ from .ledger import (
     UniversalityReport,
 )
 from .promotion_writer import (
+    CanonicalTwinNodeCitation,
     CanonicalTwinPromotionResult,
     CanonicalTwinPromotionWriterError,
     materialize_accepted_twin_promotion,
@@ -77,6 +83,9 @@ __all__ = [
     "CanonicalTwinReaderNotFound",
     "CanonicalTwinReaderView",
     "CanonicalTwinNodeView",
+    "CanonicalTwinNodeCitationsView",
+    "CanonicalTwinNodeCitation",
+    "CurrentCanonicalTwinNodeCitations",
     "CurrentCanonicalTwinNode",
     "HistoricalCanonicalTwinNodeWithheld",
     "CanonicalTwinPromotionResult",
@@ -97,6 +106,7 @@ __all__ = [
     "issue_owner_review_authorization",
     "materialize_accepted_twin_promotion",
     "read_current_canonical_twin_node",
+    "read_current_canonical_twin_node_citations",
     "TwinConflictError",
     "TwinIntegrityError",
     "TwinLedgerError",
