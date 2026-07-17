@@ -34,7 +34,7 @@ describe("sessionLivingTv Flipbook-feel invent motion", () => {
       "modes/DeepResearchWorkspace/PlanEditor.tsx",
       "modes/DeepResearchWorkspace/ResearchWaitArcade.tsx",
       "arcade/ArcadeCabinet.tsx",
-      // Product invent doors refreshed in invent polish v2c
+      // Product invent doors refreshed in invent polish v2d
       "modes/Multimedia/KnowledgePanel.tsx",
       "modes/Settings/AntiekBenchPanel.tsx",
       "components/ModelDecisionBar.tsx",
