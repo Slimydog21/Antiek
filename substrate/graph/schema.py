@@ -441,8 +441,12 @@ CREATE INDEX IF NOT EXISTS idx_ip_holders_status ON ip_holders(status);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_class TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS ip_holder_id TEXT;
 ALTER TABLE nodes ADD COLUMN IF NOT EXISTS owner_user_id TEXT;
-CREATE INDEX IF NOT EXISTS idx_documents_content_class ON documents(content_class);
-CREATE INDEX IF NOT EXISTS idx_documents_ip_holder ON documents(ip_holder_id);
+-- Do not secondary-index mutable columns on the documents FK parent. DuckDB
+-- cannot update such a column once chunks/book_assets reference the row, even
+-- when the index is dropped inside the surrounding transaction. Older
+-- databases may already carry these indexes, so initialization removes them.
+DROP INDEX IF EXISTS idx_documents_content_class;
+DROP INDEX IF EXISTS idx_documents_ip_holder;
 CREATE INDEX IF NOT EXISTS idx_nodes_owner ON nodes(owner_user_id);
 
 CREATE TABLE IF NOT EXISTS multimedia_twin_runs (

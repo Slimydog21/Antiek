@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 from runtime.db_lock import LockedConnection
+from substrate.books.serve_guard import serve_full_text_guarded
 from substrate.twin_note_taker import MAX_CONTENT_CHARS, MIN_CONTENT_CHARS, AssetContent
 
 from .ledger import SourceRevision, TwinRecursionLedger
@@ -138,31 +139,41 @@ def _asset(document_id: str, title: str, raw_text: str, document_type: str,
     )
 
 
-def _row_envelope(row: tuple[Any, ...]) -> TwinSourceEnvelope:
-    return build_twin_source_envelope(
+def _row_envelope(
+    con: LockedConnection, row: tuple[Any, ...]
+) -> tuple[TwinSourceEnvelope, str | None]:
+    served = serve_full_text_guarded(con, str(row[0]), owner=True)
+    envelope = build_twin_source_envelope(
         document_id=str(row[0]),
         title=None if row[1] is None else str(row[1]),
-        raw_text=None if row[2] is None else str(row[2]),
-        document_type=str(row[3]),
-        owner_user_id=str(row[4]),
+        raw_text=served.full_text,
+        document_type=str(row[2]),
+        owner_user_id=str(row[3]),
     )
+    return envelope, served.full_text
 
 
-def stamp_existing_document(con: LockedConnection, document_id: str) -> None:
-    """Fill one legacy NULL declaration from stored bytes; exact rows are no-ops."""
+def stamp_existing_document(
+    con: LockedConnection, document_id: str, *, refresh: bool = False
+) -> None:
+    """Fill one legacy NULL declaration; reject drift unless refresh is explicit."""
     _require_locked(con)
     row = con.execute(
-        "SELECT document_id,title,raw_text,document_type,owner_user_id,twin_source_envelope "
+        "SELECT document_id,title,document_type,owner_user_id,twin_source_envelope "
         "FROM documents WHERE document_id=?",
         [document_id],
     ).fetchone()
     if row is None:
         raise KeyError(document_id)
-    expected = _row_envelope(tuple(row[:5])).to_json()
-    if row[5] is None:
+    expected = _row_envelope(con, tuple(row[:4]))[0].to_json()
+    if row[4] is not None and row[4] != expected and not refresh:
+        raise TwinSourceEnvelopeError(
+            f"document {document_id!r} twin declaration conflicts with stored bytes"
+        )
+    if row[4] != expected:
         con.execute(
             "UPDATE documents SET twin_source_envelope=? "
-            "WHERE document_id=? AND twin_source_envelope IS NULL",
+            "WHERE document_id=?",
             [expected, document_id],
         )
 
@@ -171,7 +182,7 @@ def backfill_twin_source_envelopes(con: LockedConnection) -> int:
     """Backfill all legacy rows under one caller-held graph write lock."""
     _require_locked(con)
     rows = con.execute(
-        "SELECT document_id,title,raw_text,document_type,owner_user_id "
+        "SELECT document_id,title,document_type,owner_user_id "
         "FROM documents WHERE twin_source_envelope IS NULL ORDER BY document_id"
     ).fetchall()
     con.execute("BEGIN")
@@ -180,7 +191,7 @@ def backfill_twin_source_envelopes(con: LockedConnection) -> int:
             con.execute(
                 "UPDATE documents SET twin_source_envelope=? "
                 "WHERE document_id=? AND twin_source_envelope IS NULL",
-                [_row_envelope(tuple(row)).to_json(), str(row[0])],
+                [_row_envelope(con, tuple(row))[0].to_json(), str(row[0])],
             )
         con.execute("COMMIT")
     except Exception:
@@ -201,7 +212,7 @@ def _verified_rows(
 ) -> list[tuple[TwinSourceEnvelope, AssetContent | None]]:
     _require_locked(con)
     query = (
-        "SELECT document_id,title,raw_text,document_type,owner_user_id,twin_source_envelope "
+        "SELECT document_id,title,document_type,owner_user_id,twin_source_envelope "
         "FROM documents"
     )
     params: list[str] = []
@@ -211,19 +222,22 @@ def _verified_rows(
     rows = con.execute(query + " ORDER BY owner_user_id,document_id", params).fetchall()
     envelopes: list[tuple[TwinSourceEnvelope, AssetContent | None]] = []
     for row in rows:
-        if row[5] is None:
+        if row[4] is None:
             raise TwinSourceEnvelopeError(f"document {row[0]!r} lacks a twin declaration")
-        persisted = TwinSourceEnvelope.from_json(str(row[5]))
-        expected = _row_envelope(tuple(row[:5]))
+        persisted = TwinSourceEnvelope.from_json(str(row[4]))
+        expected, guarded_body = _row_envelope(con, tuple(row[:4]))
         if persisted != expected:
             raise TwinSourceEnvelopeError(
                 f"document {row[0]!r} conflicts with its twin declaration"
             )
         asset = None
         if persisted.status == "eligible":
-            raw_text = str(row[2])
+            if guarded_body is None:
+                raise TwinSourceEnvelopeError(
+                    f"document {row[0]!r} lost owner-readable body authority"
+                )
             asset = _asset(
-                persisted.document_id, persisted.title, raw_text,
+                persisted.document_id, persisted.title, guarded_body,
                 persisted.document_type, persisted.source_event_id,
             )
         envelopes.append((persisted, asset))
