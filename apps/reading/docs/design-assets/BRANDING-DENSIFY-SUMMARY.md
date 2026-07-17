@@ -333,3 +333,4 @@ All 18 product invent doors refreshed via Imagine invent polish v2e and densifie
 densify pack: `npm run test:branding-densify` (37/298) — invent inventory + ice-cursor +
 minigame living-TV beats + invent class product-map. Pure Flipbook sole UI remains NO-GO.
 | Flipbook stream ladder densify | `90765c3b4` | cost-intelligent ladder + pure Flipbook NO-GO honesty densify (38/299) |
+| Imagine invent polish v2f CRT living-TV + paperclip zombies | `TBD` | hero invent refresh on axe-green Flipbook densify tip |
