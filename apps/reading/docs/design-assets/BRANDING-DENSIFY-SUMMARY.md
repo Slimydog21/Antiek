@@ -811,3 +811,9 @@ silently drift. densify pack expected **39/320**. Pure Flipbook sole UI remains 
 
 Unit densify pins pearl-clam spawn roll so pearl-parity craft cannot silently
 drift. densify pack **39/321**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Home arcade CTA product-door densify (craft157+)
+
+| Home arcade CTA product-door densify | `d149f4d1a` | data-product-id=arcade + werner-target |
+
+Home igloo Open arcade CTA is living-TV product-door geometry (curious). densify pack **39/321**. Pure Flipbook sole UI remains **NO-GO**.
