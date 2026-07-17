@@ -609,4 +609,11 @@ Refedit+candidate provenance under `session-20260716/*_v3l.*`. Product webps pro
 All 18 product invent doors refreshed via Imagine invent polish v3m and densified.
 Honesty densify WAVE=`v3m`. densify pack expected **39/303**. Pure Flipbook sole UI remains **NO-GO**.
 Refedit+candidate provenance under `session-20260716/*_v3m.*`. Product webps promoted to `src/brand/werner/poses/session/*_session_v1.webp`.
+| Imagine invent polish v3n full wave (18 invents) | (tip) | invent polish v3n all 18 product invent doors on axe-green invent polish v3m tip |
+
+## Invent polish v3n wave complete
+
+All 18 product invent doors refreshed via Imagine invent polish v3n and densified.
+Honesty densify WAVE=`v3n`. densify pack expected **39/303**. Pure Flipbook sole UI remains **NO-GO**.
+Refedit+candidate provenance under `session-20260716/*_v3n.*`. Product webps promoted to `src/brand/werner/poses/session/*_session_v1.webp`.
 
