@@ -676,7 +676,7 @@ Refedit+candidate provenance under `session-20260716/*_v3p.*`. Product webps pro
 
 ## Clam pearl streak-step densify (craft157+)
 
-| Clam pearl streak-step densify | (pending tip) | pearl +2 streak step; densify 39/312 |
+| Clam pearl streak-step densify | `94de0c172` | pearl +2 streak step; densify 39/312 |
 
 Pearl clam catches jump the Club Penguin streak by two steps (still hard-capped
 at 3× mult). Common clams stay +1. densify pack **39/312**. Pure Flipbook sole UI
