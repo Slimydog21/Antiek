@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `056e048d7` — densify pack **42/356**.
+PR #2416 tip (at close of this note): **`ad3370ca8` — densify pack **42/357**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -891,3 +891,9 @@ Home igloo invent uses living-tv-art testid suffix for invent reframe densify. d
 | Clam reduced-motion catch-streak densify | `056e048d7` | RM start/fire builds streak mult |
 
 Reduced-motion Clam Catcher densify: gentle clicks build CP streak mult (ice/zombies a11y parity). densify pack **42/356**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Factory clam RM progression densify (craft157+)
+
+| Factory clam RM progression densify | `ad3370ca8` | progressCartridge scores under RM |
+
+Shared factory densify asserts clam RM scores on host path. densify pack **42/357**. Pure Flipbook sole UI remains **NO-GO**.
