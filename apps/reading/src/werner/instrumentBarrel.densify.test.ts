@@ -18,6 +18,7 @@ import {
   emoteForExperience,
   emoteForProductDoor,
   emoteFromWernerTargetAttr,
+  EMOTE_DURATION_MS,
   EMOTE_KINDS,
   FOLLOW_EASE,
   installChoreography,
@@ -148,6 +149,20 @@ describe("werner instrument barrel densify", () => {
     expect(emoteDurationMs("curious")).toBe(1200);
     expect(emoteDurationMs("thinking")).toBe(1400);
     expect(emoteDurationMs("sleeping")).toBe(2400);
+  });
+
+  it("exports EMOTE_DURATION_MS densify table aligned with emoteDurationMs", () => {
+    // densify: table is exhaustive over EMOTE_KINDS; helper reads the same map.
+    expect(Object.keys(EMOTE_DURATION_MS).sort()).toEqual(
+      [...EMOTE_KINDS].sort(),
+    );
+    for (const kind of EMOTE_KINDS) {
+      expect(emoteDurationMs(kind)).toBe(EMOTE_DURATION_MS[kind]);
+    }
+    expect(EMOTE_DURATION_MS.happy).toBe(800);
+    expect(EMOTE_DURATION_MS.hit).toBe(800);
+    expect(EMOTE_DURATION_MS.noted).toBe(1000);
+    expect(EMOTE_DURATION_MS.dizzy).toBe(1300);
   });
 
   it("exports mouse-follow densify for cursor-is-bait lag contract", () => {
