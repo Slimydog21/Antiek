@@ -171,6 +171,16 @@ describe("ResearchWaitArcade", () => {
     expect(seen).toContain("zombies");
   });
 
+  it("cartridge picker labels stamp per-game living-TV product doors", () => {
+    render(<Host after={0} />);
+    act(() => vi.runOnlyPendingTimers());
+    for (const id of ["zombies", "ice-fishing", "clam-catcher"] as const) {
+      const label = screen.getByTestId(`research-wait-cartridge-${id}`);
+      expect(label.getAttribute("data-product-id")).toBe(id);
+      expect(label.getAttribute("data-werner-target")).toBe("curious");
+    }
+  });
+
   it("constructs only after explicit Play and does not focus before activation", async () => {
     render(<Host after={0} />);
     act(() => vi.runOnlyPendingTimers());

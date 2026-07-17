@@ -190,6 +190,9 @@ export default function ResearchWaitArcade({
                   key={choice.id}
                   className="research-wait-arcade__cartridge"
                   data-selected={selectedGame === choice.id ? "true" : "false"}
+                  data-product-id={choice.id}
+                  data-werner-target="curious"
+                  data-testid={`research-wait-cartridge-${choice.id}`}
                 >
                   <input
                     type="radio"
