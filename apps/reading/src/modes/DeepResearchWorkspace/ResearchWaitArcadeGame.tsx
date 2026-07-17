@@ -36,12 +36,13 @@ export default function ResearchWaitArcadeGame({
   return (
     <div ref={shellRef} className="research-wait-arcade__cabinet">
       <img
-        className="research-wait-arcade__scene-art"
+        className="research-wait-arcade__scene-art antiek-living-tv-invent"
         src={sceneArtSrc}
         alt=""
         aria-hidden="true"
         decoding="async"
         draggable={false}
+        data-testid="research-wait-playing-living-tv-art"
         style={{ pointerEvents: "none" }}
       />
       <ArcadeMount

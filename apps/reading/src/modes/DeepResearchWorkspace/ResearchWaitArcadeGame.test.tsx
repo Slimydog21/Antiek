@@ -52,6 +52,11 @@ describe("ResearchWaitArcadeGame authored cabinet", () => {
     expect(scene.tabIndex).toBe(-1);
     expect(scene.style.pointerEvents).toBe("none");
     expect(scene.draggable).toBe(false);
+    // Flipbook-feel invent reframe on wait-arcade playing scene art.
+    expect(scene.className).toMatch(/antiek-living-tv-invent/);
+    expect(scene.getAttribute("data-testid")).toBe(
+      "research-wait-playing-living-tv-art",
+    );
     expect(cabinet.className).toBe("research-wait-arcade__cabinet");
     expect(applications).toHaveLength(1);
     expect(applications[0]).toBe(document.activeElement);
