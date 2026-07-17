@@ -619,6 +619,8 @@ Refedit+candidate provenance under `session-20260716/*_v3n.*`. Product webps pro
 
 ## Living-TV curtain-call densify (craft157+)
 
+| Living-TV curtain-call densify | `e9640ba9e` | pride savor → curtain idle → silence; densify 39/305 |
+
 Ambient installer re-arms once after pride savor (`note_saved`) so a second quiet
 window emits curtain `idle` (sleep after pride), then silence. densify pack
 **39/305**. Pure Flipbook sole UI remains **NO-GO**.
