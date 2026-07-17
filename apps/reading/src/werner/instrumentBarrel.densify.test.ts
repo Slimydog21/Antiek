@@ -13,9 +13,11 @@ import {
   catenaryPath,
   DEFAULT_AMBIENT_QUIET_MS,
   emitWernerExperience,
+  emoteDurationMs,
   emoteForExperience,
   emoteForProductDoor,
   emoteFromWernerTargetAttr,
+  EMOTE_KINDS,
   installLivingTvAmbient,
   installReactionBus,
   isProductExperience,
@@ -120,5 +122,17 @@ describe("werner instrument barrel densify", () => {
       ),
     ).toBeNull();
     expect(typeof installLivingTvAmbient).toBe("function");
+  });
+
+  it("exports emote duration densify for living-TV stage beats", () => {
+    // densify: every living-TV emote kind has a positive duration for stage beats.
+    expect(EMOTE_KINDS.length).toBeGreaterThan(0);
+    for (const kind of EMOTE_KINDS) {
+      expect(emoteDurationMs(kind)).toBeGreaterThan(0);
+    }
+    // densify: invent door glances pin known holds (curious/thinking/sleeping).
+    expect(emoteDurationMs("curious")).toBe(1200);
+    expect(emoteDurationMs("thinking")).toBe(1400);
+    expect(emoteDurationMs("sleeping")).toBe(2400);
   });
 });
