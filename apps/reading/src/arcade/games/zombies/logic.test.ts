@@ -172,29 +172,36 @@ describe("paperclip zombies pure logic", () => {
     expect(s.lives).toBe(3);
   });
 
-  it("zombiesWernerBeat maps living-TV edges for start, wave, and gameover", () => {
+  it("zombiesWernerBeat maps living-TV edges for start, wave, kill, and gameover", () => {
     expect(
       zombiesWernerBeat(
-        { phase: "ready", wave: 0, lives: 3 },
-        { phase: "playing", wave: 1, lives: 3 },
+        { phase: "ready", wave: 0, lives: 3, score: 0 },
+        { phase: "playing", wave: 1, lives: 3, score: 0 },
       ),
     ).toBe("highlight");
     expect(
       zombiesWernerBeat(
-        { phase: "playing", wave: 1, lives: 3 },
-        { phase: "playing", wave: 2, lives: 3 },
+        { phase: "playing", wave: 1, lives: 3, score: 10 },
+        { phase: "playing", wave: 2, lives: 3, score: 10 },
+      ),
+    ).toBe("piece_started");
+    // Combo densify: kill score up → happy craft beat mid-run.
+    expect(
+      zombiesWernerBeat(
+        { phase: "playing", wave: 2, lives: 2, score: 10 },
+        { phase: "playing", wave: 2, lives: 2, score: 24 },
       ),
     ).toBe("piece_started");
     expect(
       zombiesWernerBeat(
-        { phase: "playing", wave: 2, lives: 1 },
-        { phase: "gameover", wave: 2, lives: 0 },
+        { phase: "playing", wave: 2, lives: 1, score: 40 },
+        { phase: "gameover", wave: 2, lives: 0, score: 40 },
       ),
     ).toBe("fail");
     expect(
       zombiesWernerBeat(
-        { phase: "playing", wave: 2, lives: 2 },
-        { phase: "playing", wave: 2, lives: 2 },
+        { phase: "playing", wave: 2, lives: 2, score: 10 },
+        { phase: "playing", wave: 2, lives: 2, score: 10 },
       ),
     ).toBeNull();
   });

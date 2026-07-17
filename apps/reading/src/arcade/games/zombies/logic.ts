@@ -249,7 +249,8 @@ export function zombiesCanExit(state: ZombiesState): boolean {
  * the cartridge edge so wait-arcade feels like the penguin TV show.
  *
  * - ready → playing: highlight (curious opt-in)
- * - wave advanced while playing: piece_started (happy craft)
+ * - wave advanced while playing: piece_started (happy craft / fort heal)
+ * - kill score up while playing: piece_started (combo craft densify)
  * - playing → gameover: fail (dizzy)
  */
 export type ZombiesWernerBeat =
@@ -259,8 +260,8 @@ export type ZombiesWernerBeat =
   | null;
 
 export function zombiesWernerBeat(
-  prev: Pick<ZombiesState, "phase" | "wave" | "lives">,
-  next: Pick<ZombiesState, "phase" | "wave" | "lives">,
+  prev: Pick<ZombiesState, "phase" | "wave" | "lives" | "score">,
+  next: Pick<ZombiesState, "phase" | "wave" | "lives" | "score">,
 ): ZombiesWernerBeat {
   if (prev.phase === "ready" && next.phase === "playing") return "highlight";
   if (prev.phase === "playing" && next.phase === "gameover") return "fail";
@@ -268,6 +269,14 @@ export function zombiesWernerBeat(
     prev.phase === "playing" &&
     next.phase === "playing" &&
     next.wave > prev.wave
+  ) {
+    return "piece_started";
+  }
+  // Combo densify: each kill scores → happy craft beat (living-TV mid-run).
+  if (
+    prev.phase === "playing" &&
+    next.phase === "playing" &&
+    next.score > prev.score
   ) {
     return "piece_started";
   }
