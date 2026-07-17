@@ -312,3 +312,9 @@ Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md
 | Imagine invent polish v2d knowledge twin cursor | `5f8851ec0` | KnowledgePanel invent refresh on FULL GREEN tip |
 | Imagine invent polish v2d antiek-bench celebrate | `5f8851ec0` | AntiekBenchPanel invent refresh on FULL GREEN tip |
 | Imagine invent polish v2d model decision tree | `5f8851ec0` | ModelDecisionBar invent refresh on FULL GREEN tip |
+
+## Invent polish v2d wave complete (tip 698184e1e)
+
+Major product invent doors refreshed via Imagine invent polish v2d and densified
+with Flipbook-feel invent reframe. densify pack: `npm run test:branding-densify` (29/250).
+Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md.
