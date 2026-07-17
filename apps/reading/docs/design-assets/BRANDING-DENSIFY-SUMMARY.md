@@ -755,3 +755,11 @@ densify pack **39/313**. Pure Flipbook sole UI remains **NO-GO**.
 Completing a cast that returns the hook to the surface without a catch resets
 the live Club Penguin streak (`maxStreak` retained for BEST brag). densify pack
 expected **39/315**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Zombies fort-heal wave-clear densify (craft157+)
+
+| Zombies fort-heal wave-clear densify | `c8dc04220` | wave clear +1 life, cap startingLives |
+
+Paperclip zombies fort repair densify: clearing a wave restores +1 fort life,
+hard-capped at starting lives (BO1-style fort recovery; does not overheal).
+densify pack expected **39/316**. Pure Flipbook sole UI remains **NO-GO**.
