@@ -13,11 +13,14 @@ import {
   emoteForExperience,
   emoteForProductDoor,
   emoteFromWernerTargetAttr,
+  isProductExperience,
   isStationInstrumentSuspended,
+  PRODUCT_EXPERIENCES,
   productSelector,
   rodBendFromPoints,
   stationInstrumentLeaseCount,
   tipToBaitDistance,
+  WERNER_EXPERIENCE_EVENT,
   WERNER_TARGET_ATTR,
 } from "./index";
 
@@ -73,5 +76,14 @@ describe("werner instrument barrel densify", () => {
     expect(emoteForExperience("fail")).toBe("dizzy");
     expect(emoteForExperience("note_saved")).toBe("noted");
     expect(emoteForExperience("piece_started")).toBe("happy");
+  });
+
+  it("exports reactionBus allowlist densify (event + isProductExperience)", () => {
+    // densify: host inject path stays on a closed allowlist; unknown beats ignore.
+    expect(WERNER_EXPERIENCE_EVENT).toBe("antiek:werner-experience");
+    expect(PRODUCT_EXPERIENCES).toContain("piece_started");
+    expect(PRODUCT_EXPERIENCES.every(isProductExperience)).toBe(true);
+    expect(isProductExperience("recording_started")).toBe(false);
+    expect(isProductExperience("highlight")).toBe(true);
   });
 });
