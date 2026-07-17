@@ -82,14 +82,16 @@ describe("invent class product-map densify", () => {
     expect(summary).toMatch(/Invent polish v3f wave complete/i);
     expect(summary).toMatch(/Invent polish v3g wave complete/i);
     expect(summary).toMatch(/Invent polish v3h wave complete/i);
+    // Latest invent polish honesty densify (held at v3r — no thrash advance).
+    expect(summary).toMatch(/Invent polish v3r wave complete/i);
     // densify pack progression through invent polish honesty densify
     expect(summary).toMatch(
-      /29\/25[01]|32\/268|36\/297|37\/298|38\/299|39\/30[23]/,
+      /29\/25[01]|32\/268|36\/297|37\/298|38\/299|39\/30[23]|42\/3[5-6][0-9]/,
     );
     expect(flipbook).toMatch(
-      /39 files \/ 30[23] tests|38 files \/ 299 tests/,
+      /39 files \/ 30[23] tests|38 files \/ 299 tests|42 files \/ 3[5-6][0-9] tests/,
     );
-    expect(flipbook).toMatch(/Invent polish v2i/);
+    expect(flipbook).toMatch(/Invent polish v2i|Invent polish v3r/i);
     expect(flipbook).toMatch(/NO-GO/);
     expect(flipbook).toMatch(/ice-bait|IceBait|ice-cursor/i);
   });
