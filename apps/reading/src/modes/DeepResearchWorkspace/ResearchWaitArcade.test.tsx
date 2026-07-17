@@ -37,6 +37,10 @@ vi.mock("./ResearchWaitArcadeGame", () => ({
   },
 }));
 
+import {
+  PRODUCT_ACTIVATE_EVENT,
+  type ProductActivateDetail,
+} from "../../components/hotkeys";
 import ResearchWaitArcade from "./ResearchWaitArcade";
 import { isStationInstrumentSuspended } from "../../werner/stationInstrumentSuspension";
 
@@ -148,6 +152,23 @@ describe("ResearchWaitArcade", () => {
     act(() => vi.runOnlyPendingTimers());
     expect(screen.queryByTestId("research-wait-arcade")).toBeNull();
     expect(createCartridge).not.toHaveBeenCalled();
+  });
+
+  it("Play stamps per-game product door and emits PRODUCT_ACTIVATE", () => {
+    const seen: string[] = [];
+    const onActivate = (e: Event) => {
+      const d = (e as CustomEvent<ProductActivateDetail>).detail;
+      if (d?.productId) seen.push(d.productId);
+    };
+    window.addEventListener(PRODUCT_ACTIVATE_EVENT, onActivate);
+    render(<Host after={0} />);
+    act(() => vi.runOnlyPendingTimers());
+    const play = screen.getByRole("button", { name: "Play while waiting" });
+    // Default cartridge is zombies; living-TV product door densify.
+    expect(play.getAttribute("data-product-id")).toBe("zombies");
+    fireEvent.click(play);
+    window.removeEventListener(PRODUCT_ACTIVATE_EVENT, onActivate);
+    expect(seen).toContain("zombies");
   });
 
   it("constructs only after explicit Play and does not focus before activation", async () => {

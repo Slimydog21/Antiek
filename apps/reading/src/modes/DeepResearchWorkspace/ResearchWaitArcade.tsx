@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
+import { emitProductActivate } from "../../components/hotkeys";
 import type { ArcadeGameKind } from "../../arcade/cartridgeFactory";
 // Session brand key art (alpha-gated) unifies wait-arcade with ArcadeCabinet.
 // Igloo ice-arcade invent — CRT TV + cursor-bait ice fishing wait card.
@@ -226,7 +227,15 @@ export default function ResearchWaitArcade({
               ref={playRef}
               size="sm"
               variant="primary"
-              onClick={() => { emitWernerExperience("highlight"); setOptedIn(true); }}
+              data-product-id={selectedGame}
+              data-werner-target="curious"
+              onClick={() => {
+                // Per-game product door densify (cabinet/LGH parity): living-TV
+                // choreography resolves ice-fishing / clam-catcher / zombies.
+                emitProductActivate({ productId: selectedGame, source: "click" });
+                emitWernerExperience("highlight");
+                setOptedIn(true);
+              }}
             >
               Play while waiting
             </LemonButton>
