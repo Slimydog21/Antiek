@@ -244,3 +244,6 @@ Invent polish **v3k** wave complete: all 18 product invent doors re-polished via
 ### Invent polish v3l
 Invent polish **v3l** wave complete: all 18 product invent doors re-polished via Imagine refedit, candidates + product webps promoted. Honesty densify WAVE=`v3l`. densify **39/303**. Pure Flipbook sole UI remains **NO-GO**. Ice-bait / ice-cursor densify gates still hold.
 
+### Invent polish v3m
+Invent polish **v3m** wave complete: all 18 product invent doors re-polished via Imagine refedit, candidates + product webps promoted. Honesty densify WAVE=`v3m`. densify **39/303**. Pure Flipbook sole UI remains **NO-GO**. Ice-bait / ice-cursor densify gates still hold. Axe green on invent polish v3l tip before promote.
+
