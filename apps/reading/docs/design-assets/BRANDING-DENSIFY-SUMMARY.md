@@ -861,3 +861,9 @@ Pearl-clam atlas densify: sun rim marks rare catch (ice golden parity). densify 
 | Product-door underscore alias densify | `698a7e0ac` | ice_fishing etc → curious |
 
 Underscore slug aliases densify living-TV product-door map. densify pack **42/352**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Ice reduced-motion catch-streak densify (craft157+)
+
+| Ice reduced-motion catch-streak densify | `9934ad393` | RM drop builds streak mult |
+
+Reduced-motion ice path densify: simplified catches use streak mult + maxStreak. densify pack **42/353**. Pure Flipbook sole UI remains **NO-GO**.
