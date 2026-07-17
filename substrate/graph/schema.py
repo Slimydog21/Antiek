@@ -441,8 +441,12 @@ CREATE INDEX IF NOT EXISTS idx_ip_holders_status ON ip_holders(status);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_class TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS ip_holder_id TEXT;
 ALTER TABLE nodes ADD COLUMN IF NOT EXISTS owner_user_id TEXT;
-CREATE INDEX IF NOT EXISTS idx_documents_content_class ON documents(content_class);
-CREATE INDEX IF NOT EXISTS idx_documents_ip_holder ON documents(ip_holder_id);
+-- Do not secondary-index mutable columns on the documents FK parent. DuckDB
+-- cannot update such a column once chunks/book_assets reference the row, even
+-- when the index is dropped inside the surrounding transaction. Older
+-- databases may already carry these indexes, so initialization removes them.
+DROP INDEX IF EXISTS idx_documents_content_class;
+DROP INDEX IF EXISTS idx_documents_ip_holder;
 CREATE INDEX IF NOT EXISTS idx_nodes_owner ON nodes(owner_user_id);
 
 CREATE TABLE IF NOT EXISTS multimedia_twin_runs (
@@ -1368,6 +1372,14 @@ _V17_OUTBOX_COLUMNS = {
 }
 
 
+# V20 — one same-row declaration for every canonical document's recursive
+# twin obligation. Existing rows remain NULL until the locked backfill derives
+# declarations from their stored bytes; the completeness verifier rejects NULL.
+ANTIEK_GRAPH_SCHEMA_V20_TWIN_SOURCE_ENVELOPE_SQL = """
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS twin_source_envelope TEXT;
+"""
+
+
 ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL = """
 CREATE TABLE IF NOT EXISTS event_consumer_events (
     consumer_name TEXT NOT NULL,
@@ -2056,6 +2068,10 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL)
     _repair_empty_partial_v20_note_taker(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V20_NOTE_TAKER_REPLAY_SQL)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V20_TWIN_SOURCE_ENVELOPE_SQL)
+    from substrate.twin_recursion import backfill_twin_source_envelopes
+
+    backfill_twin_source_envelopes(con)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -2093,6 +2109,9 @@ def _schema_is_present(db_path: str) -> bool:
             "SELECT (EXISTS (SELECT 1 FROM information_schema.columns "
             "WHERE table_schema='main' AND table_name='nodes' "
             "AND column_name='owner_user_id') AND EXISTS (SELECT 1 FROM "
+            "information_schema.columns WHERE table_schema='main' AND "
+            "table_name='documents' AND column_name='twin_source_envelope') AND "
+            "NOT EXISTS (SELECT 1 FROM documents WHERE twin_source_envelope IS NULL) AND EXISTS (SELECT 1 FROM "
             "information_schema.tables WHERE table_schema='main' "
             "AND table_name='multimedia_twin_runs') AND EXISTS (SELECT 1 FROM "
             "information_schema.tables WHERE table_schema='main' "

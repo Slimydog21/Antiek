@@ -267,6 +267,24 @@ class LockedConnection:
         self._acquired_at = acquired_at or time.monotonic()
         self._error: str | None = None
         self._close_log_max_wait_s = close_log_max_wait_s
+        self._in_explicit_transaction = False
+
+    @property
+    def in_explicit_transaction(self) -> bool:
+        """Whether this wrapper has successfully entered an explicit txn."""
+        return self._in_explicit_transaction
+
+    def execute(
+        self, sql: str, parameters: Sequence[Any] | None = None
+    ) -> Any:
+        """Forward SQL while tracking explicit transaction ownership safely."""
+        result = self._con.execute(sql, parameters)
+        command = sql.lstrip().split(None, 1)[0].upper() if sql.strip() else ""
+        if command == "BEGIN":
+            self._in_explicit_transaction = True
+        elif command in {"COMMIT", "ROLLBACK"}:
+            self._in_explicit_transaction = False
+        return result
 
     def __getattr__(self, name):
         return getattr(self._con, name)

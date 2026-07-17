@@ -83,6 +83,14 @@ def test_registration_is_idempotent_and_complete_asset_is_revision_identity(tmp_
     assert first.state == "pending_authorization" and first.body is None and first.job_id
     changed_title = SourceRevision("acct", replace(revision.asset, title="Changed"))
     assert changed_title.source_hash != revision.source_hash
+    import sqlite3
+    with sqlite3.connect(path) as con:
+        commitment = con.execute(
+            "SELECT asset_commitment_json FROM twin_sources"
+        ).fetchone()[0]
+        columns = {row[1] for row in con.execute("PRAGMA table_info(twin_sources)")}
+    assert revision.asset.content_text not in commitment
+    assert "asset_json" not in columns
 
 
 def test_callers_cannot_fabricate_non_recursive_twin(tmp_path, revision):
