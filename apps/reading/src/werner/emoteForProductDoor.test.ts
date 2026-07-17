@@ -10,9 +10,12 @@ describe("emoteForProductDoor", () => {
     expect(emoteForProductDoor("documents")).toBe("thinking");
     expect(emoteForProductDoor("notebooks")).toBe("thinking");
     expect(emoteForProductDoor("twin-notes")).toBe("thinking");
+    expect(emoteForProductDoor("twin_notes")).toBe("thinking");
     expect(emoteForProductDoor("thought-partner")).toBe("thinking");
+    expect(emoteForProductDoor("thought_partner")).toBe("thinking");
     expect(emoteForProductDoor("brainstorm")).toBe("thinking");
     expect(emoteForProductDoor("cascade-plan")).toBe("thinking");
+    expect(emoteForProductDoor("cascade")).toBe("thinking");
   });
   it("maps read, speak, arcade, sources to curious", () => {
     expect(emoteForProductDoor("read")).toBe("curious");
@@ -29,6 +32,7 @@ describe("emoteForProductDoor", () => {
     expect(emoteForProductDoor("model_decision")).toBe("curious");
     expect(emoteForProductDoor("wait-arcade")).toBe("curious");
     expect(emoteForProductDoor("research-wait")).toBe("curious");
+    expect(emoteForProductDoor("research_wait")).toBe("curious");
     expect(emoteForProductDoor("cabinet")).toBe("curious");
     expect(emoteForProductDoor("arcade-cabinet")).toBe("curious");
     expect(emoteForProductDoor("loading-game-host")).toBe("curious");
