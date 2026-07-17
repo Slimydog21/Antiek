@@ -252,3 +252,8 @@ Invent polish **v3n** wave complete: all 18 product invent doors re-polished via
 
 ### Invent polish v3o
 Invent polish **v3o** wave complete: all 18 product invent doors re-polished via Imagine refedit, candidates + product webps promoted. Honesty densify WAVE=`v3o`. densify **39/307**. Pure Flipbook sole UI remains **NO-GO**. Ice-bait / ice-cursor densify gates still hold. Axe green on zombies combo tip before promote.
+
+### Clam Catcher catch-streak densify
+Club Penguin–style clam/pearl catch-streak multiplier (max 3×) + HUD `xN` on pure
+rules. densify **39/311**. Arcade core free of reaction-bus imports. Pure Flipbook
+sole UI remains **NO-GO**.

@@ -648,3 +648,12 @@ Refedit+candidate provenance under `session-20260716/*_v3o.*`. Product webps pro
 Club Penguin–style consecutive good-catch multiplier (max 3×) on pure ice-fishing
 rules; hazard resets streak. Arcade core stays free of reaction-bus imports.
 densify pack **39/309**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Clam Catcher catch-streak densify (craft157+)
+
+| Clam Catcher catch-streak densify | `4ffdc43b1` | CP streak max 3× + HUD xN; densify 39/311 |
+
+Club Penguin–style consecutive good clam/pearl catch multiplier (max 3×) on pure
+clam-catcher rules; jellyfish catch or missed clam past the floor resets streak.
+HUD shows live `xN`. Arcade core stays free of reaction-bus imports.
+densify pack **39/311**. Pure Flipbook sole UI remains **NO-GO**.
