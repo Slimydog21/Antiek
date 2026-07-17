@@ -97,6 +97,9 @@ export function emoteForProductDoor(productId: string): EmoteKind {
     case "wait-arcade":
     case "research-wait":
     case "research_wait":
+    case "cabinet":
+    case "arcade-cabinet":
+    case "loading-game-host":
       return "curious";
     case "write":
     case "home":

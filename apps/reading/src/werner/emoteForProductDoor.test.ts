@@ -23,6 +23,9 @@ describe("emoteForProductDoor", () => {
     expect(emoteForProductDoor("model-decision")).toBe("curious");
     expect(emoteForProductDoor("wait-arcade")).toBe("curious");
     expect(emoteForProductDoor("research-wait")).toBe("curious");
+    expect(emoteForProductDoor("cabinet")).toBe("curious");
+    expect(emoteForProductDoor("arcade-cabinet")).toBe("curious");
+    expect(emoteForProductDoor("loading-game-host")).toBe("curious");
   });
   it("maps write, home, create to happy", () => {
     expect(emoteForProductDoor("write")).toBe("happy");

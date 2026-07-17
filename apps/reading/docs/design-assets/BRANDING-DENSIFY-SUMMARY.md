@@ -729,3 +729,10 @@ generic hit). densify pack **39/312**. Pure Flipbook sole UI remains **NO-GO**.
 All 18 product invent doors refreshed via Imagine invent polish v3r and densified.
 Honesty densify WAVE=`v3r`. densify pack expected **39/312**. Pure Flipbook sole UI remains **NO-GO**.
 Refedit+candidate provenance under `session-20260716/*_v3r.*`. Product webps promoted to `src/brand/werner/poses/session/*_session_v1.webp`.
+
+## Cabinet product-door emote densify (craft157+)
+
+| Cabinet product-door emote densify | (pending tip) | cabinet/LGH → curious |
+
+Arcade cabinet + LoadingGameHost product ids map to curious living-TV glance.
+densify pack **39/312**. Pure Flipbook sole UI remains **NO-GO**.
