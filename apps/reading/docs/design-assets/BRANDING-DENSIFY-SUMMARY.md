@@ -681,3 +681,12 @@ Refedit+candidate provenance under `session-20260716/*_v3p.*`. Product webps pro
 Pearl clam catches jump the Club Penguin streak by two steps (still hard-capped
 at 3× mult). Common clams stay +1. densify pack **39/312**. Pure Flipbook sole UI
 remains **NO-GO**.
+
+## Product-door emote densify (craft157+)
+
+| Product-door emote densify | (pending tip) | twin/thought/bench/market invent doors |
+
+Living-TV product-door map densifies invent-mapped doors that previously fell
+through to generic `hit`: twin-notes / thought-partner / brainstorm / cascade →
+thinking; marketplace / model-decision → curious; antiek-bench → happy.
+densify pack **39/312**. Pure Flipbook sole UI remains **NO-GO**.

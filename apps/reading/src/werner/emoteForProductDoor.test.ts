@@ -9,17 +9,24 @@ describe("emoteForProductDoor", () => {
     expect(emoteForProductDoor("investigations")).toBe("thinking");
     expect(emoteForProductDoor("documents")).toBe("thinking");
     expect(emoteForProductDoor("notebooks")).toBe("thinking");
+    expect(emoteForProductDoor("twin-notes")).toBe("thinking");
+    expect(emoteForProductDoor("thought-partner")).toBe("thinking");
+    expect(emoteForProductDoor("brainstorm")).toBe("thinking");
+    expect(emoteForProductDoor("cascade-plan")).toBe("thinking");
   });
   it("maps read, speak, arcade, sources to curious", () => {
     expect(emoteForProductDoor("read")).toBe("curious");
     expect(emoteForProductDoor("speak")).toBe("curious");
     expect(emoteForProductDoor("arcade")).toBe("curious");
     expect(emoteForProductDoor("sources")).toBe("curious");
+    expect(emoteForProductDoor("marketplace")).toBe("curious");
+    expect(emoteForProductDoor("model-decision")).toBe("curious");
   });
   it("maps write, home, create to happy", () => {
     expect(emoteForProductDoor("write")).toBe("happy");
     expect(emoteForProductDoor("home")).toBe("happy");
     expect(emoteForProductDoor("create")).toBe("happy");
+    expect(emoteForProductDoor("antiek-bench")).toBe("happy");
   });
   it("maps more/settings/billing/pricing to noted", () => {
     expect(emoteForProductDoor("more")).toBe("noted");

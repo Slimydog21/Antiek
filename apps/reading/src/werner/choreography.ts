@@ -75,15 +75,32 @@ export function emoteForProductDoor(productId: string): EmoteKind {
     case "investigations":
     case "documents":
     case "notebooks":
+    // Living-TV densify: research workstation family doors (twin notes,
+    // thought partner, cascade plan) share the thinking glance.
+    case "twin-notes":
+    case "twin_notes":
+    case "thought-partner":
+    case "thought_partner":
+    case "brainstorm":
+    case "cascade":
+    case "cascade-plan":
       return "thinking";
     case "read":
     case "speak":
     case "arcade":
     case "sources":
+    case "marketplace":
+    case "book-marketplace":
+    case "model-decision":
+    case "model_decision":
       return "curious";
     case "write":
     case "home":
     case "create":
+    // Antiek-bench celebrate invent door — happy craft pride, not generic hit.
+    case "antiek-bench":
+    case "antiek_bench":
+    case "bench":
       return "happy";
     case "more":
     case "settings":
