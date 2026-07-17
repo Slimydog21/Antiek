@@ -772,3 +772,12 @@ Paperclip zombies mid-run combo densify: each scoring kill maps to a living-TV
 `piece_started` beat (happy craft), matching ice/clam score-up TV edges.
 Wave clear still emits piece_started first. densify pack expected **39/316**.
 Pure Flipbook sole UI remains **NO-GO**.
+
+## Wait-host per-game product-door densify (craft157+)
+
+| Wait-host per-game product-door densify | `02541dc09` | LGH opt-in productId = game |
+
+LoadingGameHost offer Play stamps `data-product-id={game}` and emits
+PRODUCT_ACTIVATE (ice-fishing / clam-catcher / zombies → curious), matching
+ArcadeCabinet per-game living-TV geometry. densify pack expected **39/317**.
+Pure Flipbook sole UI remains **NO-GO**.
