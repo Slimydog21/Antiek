@@ -736,3 +736,14 @@ Refedit+candidate provenance under `session-20260716/*_v3r.*`. Product webps pro
 
 Arcade cabinet + LoadingGameHost product ids map to curious living-TV glance.
 densify pack **39/312**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Ice golden fish + per-game cabinet doors (craft157+)
+
+| Ice golden fish streak densify | `9480135e4` | golden +2 streak step; pearl parity |
+| Per-game cabinet product doors | `9480135e4` | ice-fishing / clam-catcher / zombies → curious |
+
+Ice Fishing rare golden fish jumps Club Penguin catch-streak by two steps
+(still hard-capped at 3×; score uses pre-step mult), matching Clam Catcher
+pearl densify. ArcadeCabinet cards stamp per-game `data-product-id` so living-TV
+choreography resolves distinct doors (not a single generic `arcade` stamp).
+densify pack **39/313**. Pure Flipbook sole UI remains **NO-GO**.
