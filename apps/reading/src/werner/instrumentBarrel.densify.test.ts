@@ -8,12 +8,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   acquireStationInstrumentSuspension,
+  ambientExperienceAfterQuiet,
   baitChromeFromFollow,
   catenaryPath,
+  DEFAULT_AMBIENT_QUIET_MS,
   emitWernerExperience,
   emoteForExperience,
   emoteForProductDoor,
   emoteFromWernerTargetAttr,
+  installLivingTvAmbient,
   installReactionBus,
   isProductExperience,
   isStationInstrumentSuspended,
@@ -97,5 +100,25 @@ describe("werner instrument barrel densify", () => {
     const teardown = installReactionBus({ emote });
     expect(typeof teardown).toBe("function");
     teardown();
+  });
+
+  it("exports living-TV ambient densify (quiet policy + installer)", () => {
+    // densify: ambient episode continuity is pure policy + installLivingTvAmbient.
+    expect(DEFAULT_AMBIENT_QUIET_MS).toBe(90_000);
+    expect(
+      ambientExperienceAfterQuiet(
+        DEFAULT_AMBIENT_QUIET_MS,
+        DEFAULT_AMBIENT_QUIET_MS,
+        "deep_research_complete",
+      ),
+    ).toBe("note_saved");
+    expect(
+      ambientExperienceAfterQuiet(
+        DEFAULT_AMBIENT_QUIET_MS,
+        DEFAULT_AMBIENT_QUIET_MS,
+        "idle",
+      ),
+    ).toBeNull();
+    expect(typeof installLivingTvAmbient).toBe("function");
   });
 });
