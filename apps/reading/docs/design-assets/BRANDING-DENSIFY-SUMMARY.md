@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `6c4620794` — densify pack **47/402**.
+PR #2416 tip (at close of this note): `fb608637e` — densify pack **47/403**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1077,3 +1077,9 @@ Instrument barrel densify exports living-TV emote durations. densify pack **47/4
 | mouse-follow lag barrel densify | `6c4620794` | LAG_MS + FOLLOW_EASE + centerLaggedTarget public |
 
 Instrument barrel densify exports mouse-follow lag contract. densify pack **47/402**. Pure Flipbook sole UI remains **NO-GO**.
+
+## follow sample + choreography install densify (craft157+)
+
+| follow sample + choreography install densify | `fb608637e` | SAMPLE_INTERVAL/POINTER_IDLE + installers public |
+
+Instrument barrel densify exports follow sample constants + choreography installers. densify pack **47/403**. Pure Flipbook sole UI remains **NO-GO**.
