@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `c2b20bc52` — densify pack **45/389**.
+PR #2416 tip (at close of this note): `f2f4de7b1` — densify pack **46/391**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1017,3 +1017,9 @@ Living-TV densify: fail installer recover idle then silence. densify pack **45/3
 | Product note_saved ambient installer densify | `c2b20bc52` | note_saved pride→idle→silence |
 
 Living-TV densify: product note_saved pride curtain to idle then silence. densify pack **45/389**. Pure Flipbook sole UI remains **NO-GO**.
+
+## productSelector densify for invent doors (craft157+)
+
+| productSelector densify for invent doors | `f2f4de7b1` | data-product-id contract; pack 46/391 |
+
+Product-selector densify pins invent doors to living-TV choreography resolution. densify pack **46/391**. Pure Flipbook sole UI remains **NO-GO**.
