@@ -643,6 +643,8 @@ Refedit+candidate provenance under `session-20260716/*_v3o.*`. Product webps pro
 
 ## Ice Fishing catch-streak densify (craft157+)
 
+| Ice Fishing catch-streak densify | `5e980e782` | CP streak max 3×; densify 39/309 |
+
 Club Penguin–style consecutive good-catch multiplier (max 3×) on pure ice-fishing
 rules; hazard resets streak. Arcade core stays free of reaction-bus imports.
 densify pack **39/309**. Pure Flipbook sole UI remains **NO-GO**.
