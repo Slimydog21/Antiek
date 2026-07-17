@@ -138,6 +138,14 @@ describe("paperclip zombies pure logic", () => {
     expect(s.zombies.length).toBe(0);
   });
 
+  it("does not fort-heal when beginning wave 1 from start", () => {
+    const s = startZombies(
+      createZombiesState({ width: 320, height: 200, lives: 3 }),
+    );
+    expect(s.wave).toBe(1);
+    expect(s.lives).toBe(3); // beginWave(wave=1) must not +1 overheal
+  });
+
   it("heals fort by one life on wave clear, hard-capped at starting lives", () => {
     let s = {
       ...startZombies(createZombiesState({ width: 320, height: 200 })),
