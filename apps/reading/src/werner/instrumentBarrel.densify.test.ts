@@ -56,11 +56,16 @@ import {
   notifyResearchStarted,
   notifyShellFailure,
   registerActivity,
+  ResearchLensCursor,
   researchLensActivity,
   speakingResonanceActivity,
   useMouseFollow,
   useStationActivity,
   useStationInstrumentSuspended,
+  WernerFishingLayer,
+  WernerIceBait,
+  WernerIceCursorShell,
+  WernerRig,
   writingNibActivity,
   WERNER_EXPERIENCE_EVENT,
   WERNER_TARGET_ATTR,
@@ -272,6 +277,15 @@ describe("werner instrument barrel densify", () => {
     notifyResearchStarted(sessionId);
     expect(consumeLocallyStartedResearchSession(sessionId)).toBe(true);
     expect(consumeLocallyStartedResearchSession(sessionId)).toBe(false);
+  });
+
+  it("exports ice-cursor + fishing shell densify components for fixed-station UX", () => {
+    // densify: ice bait/line/cursor shell + walk-cycle rig + research lens stay public.
+    expect(typeof WernerIceBait).toBe("function");
+    expect(typeof WernerFishingLayer).toBe("function");
+    expect(typeof WernerIceCursorShell).toBe("function");
+    expect(typeof WernerRig).toBe("function");
+    expect(typeof ResearchLensCursor).toBe("function");
   });
 
   it("exports mouse-follow densify for cursor-is-bait lag contract", () => {
