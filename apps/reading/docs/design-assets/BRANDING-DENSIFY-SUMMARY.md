@@ -336,3 +336,4 @@ minigame living-TV beats + invent class product-map. Pure Flipbook sole UI remai
 | Imagine invent polish v2f CRT living-TV + paperclip zombies | `f1df5e875` | hero invent refresh on axe-green Flipbook densify tip |
 | Imagine invent polish v2f igloo trio + ice arcade cursor | `ee2d69b3e` | cabinet/home/LGH invent refresh on FULL GREEN tip |
 | Imagine invent polish v2f clam catcher cursor | `56fc5f540` | cabinet/LGH/wait clam invent refresh on FULL GREEN tip |
+| Imagine invent polish v2f living-TV+thought+midnight | `TBD` | residual invent refresh on FULL GREEN tip |
