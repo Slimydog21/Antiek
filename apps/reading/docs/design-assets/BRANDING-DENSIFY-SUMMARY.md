@@ -303,3 +303,4 @@ Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md
 | Imagine invent polish v2d living-TV session | `52e4830b1` | SessionBrandChrome residual invent refresh on FULL GREEN tip |
 | Imagine invent polish v2d thought partner desk | `3cbf96b87` | ThoughtPartnerPanel invent refresh on FULL GREEN tip |
 | Imagine invent polish v2d cascade plan | `5e8db76e4` | PlanEditor invent refresh on FULL GREEN tip |
+| Imagine invent polish v2d midnight oil swarm | `TBD` | MidnightOilPanel invent refresh on FULL GREEN tip |
