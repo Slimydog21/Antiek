@@ -44,8 +44,12 @@ import {
   stationInstrumentLeaseCount,
   tipToBaitDistance,
   activityIdForPathname,
+  getActivity,
+  getActivityForPathname,
   getDefaultActivity,
+  iceFishingActivity,
   listActivities,
+  researchLensActivity,
   useMouseFollow,
   useStationInstrumentSuspended,
   WERNER_EXPERIENCE_EVENT,
@@ -200,6 +204,15 @@ describe("werner instrument barrel densify", () => {
     const activities = listActivities();
     expect(activities.length).toBeGreaterThan(0);
     expect(getDefaultActivity().id).toBe("ice-fishing");
+  });
+
+  it("exports getActivity densify resolving registered station instruments", () => {
+    // densify: registry resolves path policy ids to the same activity objects.
+    expect(getActivity("ice-fishing")).toBe(iceFishingActivity);
+    expect(getActivity("research-lens")).toBe(researchLensActivity);
+    expect(getActivityForPathname("/library")).toBe(researchLensActivity);
+    expect(getActivityForPathname("/settings")).toBe(iceFishingActivity);
+    expect(getActivity("not-a-real-activity" as never)).toBeUndefined();
   });
 
   it("exports mouse-follow densify for cursor-is-bait lag contract", () => {
