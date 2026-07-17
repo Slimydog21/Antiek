@@ -781,3 +781,11 @@ LoadingGameHost offer Play stamps `data-product-id={game}` and emits
 PRODUCT_ACTIVATE (ice-fishing / clam-catcher / zombies → curious), matching
 ArcadeCabinet per-game living-TV geometry. densify pack expected **39/317**.
 Pure Flipbook sole UI remains **NO-GO**.
+
+## Research-wait per-game product-door densify (craft157+)
+
+| Research-wait per-game product-door densify | `30b2d6f83` | Play while waiting → selectedGame |
+
+Deep-research wait arcade Play stamps `data-product-id={selectedGame}` and emits
+PRODUCT_ACTIVATE so living-TV choreography matches cabinet/LGH per-game doors.
+densify pack expected **39/318**. Pure Flipbook sole UI remains **NO-GO**.
