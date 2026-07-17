@@ -379,7 +379,7 @@ densify pack: `npm run test:branding-densify` (39/302 after invent polish wave h
 | Imagine invent polish v2j hero CRT+zombies+igloo | `618ab5449` | invent polish v2j hero suite on axe-green honesty tip |
 | Imagine invent polish v2j ice+clam cursor invents | `745f24f74` | invent polish v2j arcade suite ice+clam on axe-green tip |
 | Imagine invent polish v2j living-TV+thought+midnight | `54a0b6413` | residual invent refresh on axe-green tip |
-| Imagine invent polish v2j residual product wave | `TBD` | remaining 10 product invent doors on axe-green tip |
+| Imagine invent polish v2j residual product wave | `9d8c12083` | remaining 10 product invent doors on axe-green tip |
 
 
 ## Invent polish v2j wave complete
