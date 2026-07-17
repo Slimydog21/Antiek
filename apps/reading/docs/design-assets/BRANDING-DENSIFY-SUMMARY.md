@@ -732,7 +732,7 @@ Refedit+candidate provenance under `session-20260716/*_v3r.*`. Product webps pro
 
 ## Cabinet product-door emote densify (craft157+)
 
-| Cabinet product-door emote densify | (pending tip) | cabinet/LGH → curious |
+| Cabinet product-door emote densify | `8470b0b10` | cabinet/LGH → curious |
 
 Arcade cabinet + LoadingGameHost product ids map to curious living-TV glance.
 densify pack **39/312**. Pure Flipbook sole UI remains **NO-GO**.
