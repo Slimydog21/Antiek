@@ -288,3 +288,9 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Flipbook note densify pack gate | `896c7f2a5` | document npm run test:branding-densify in Flipbook-feel streaming note |
 | livingTvAmbient Flipbook-feel densify comment | `788ef0af7` | ambient living-TV docs Flipbook-feel HTML + pure Flipbook NO-GO |
 | livingTvAmbient Flipbook densify test | `54bf0f800` | ambient Flipbook-feel + NO-GO honesty densify test; pack 29/250 |
+
+## Invent polish v2c wave complete (FULL GREEN c3fe013f5)
+
+Major product invent doors refreshed via Imagine invent polish v2c and densified
+with Flipbook-feel invent reframe. densify pack: `npm run test:branding-densify` (29/250).
+Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md.
