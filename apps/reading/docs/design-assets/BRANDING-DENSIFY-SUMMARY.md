@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `b13931016` — densify pack **42/360**.
+PR #2416 tip (at close of this note): `f74d6d959` — densify pack **42/362**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -921,3 +921,9 @@ Shared factory densify asserts reduced-motion scores on host path for all three 
 | Invent honesty densify v3r + pack 42/360 | `b13931016` | WAVE v3r + densify gate honesty |
 
 Invent class densify + Flipbook note pin WAVE=v3r and densify pack **42/360**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Ice-bait instrument pure densify (craft157+)
+
+| Ice-bait instrument pure densify | `f74d6d959` | baitChromeFromFollow live pin |
+
+Cursor-is-bait densify: pure chrome helper pins live pointer / hides on tab hide. densify pack **42/362**. Pure Flipbook sole UI remains **NO-GO**.
