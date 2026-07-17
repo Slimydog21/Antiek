@@ -194,7 +194,7 @@ export function Home() {
             src={iglooArcadeArt}
             alt=""
             aria-hidden="true"
-            data-testid="home-arcade-igloo-art"
+            data-testid="home-arcade-living-tv-art"
             className="h-28 w-full object-cover object-center antiek-living-tv-invent"
             loading="lazy"
             decoding="async"

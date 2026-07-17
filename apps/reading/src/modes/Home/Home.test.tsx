@@ -225,7 +225,7 @@ describe("Home (SPR-12 M1)", () => {
     expect(screen.getByTestId("home-arcade")).toBeTruthy();
     // Session thinking brand chrome + igloo invent scene art (not inventory-only).
     expect(screen.getByTestId("home-arcade-werner-brand")).toBeTruthy();
-    const igloo = screen.getByTestId("home-arcade-igloo-art") as HTMLImageElement;
+    const igloo = screen.getByTestId("home-arcade-living-tv-art") as HTMLImageElement;
     expect(igloo.getAttribute("src") ?? "").toMatch(
       /werner_igloo_minigame_trio_session_v1/,
     );
