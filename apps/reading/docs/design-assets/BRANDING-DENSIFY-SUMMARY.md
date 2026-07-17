@@ -722,7 +722,7 @@ Refedit+candidate provenance under `session-20260716/*_v3q.*`. Product webps pro
 Deep-research wait arcade product ids map to curious living-TV glance (not
 generic hit). densify pack **39/312**. Pure Flipbook sole UI remains **NO-GO**.
 
-| Imagine invent polish v3r full wave (18 invents) | (pending tip) | invent polish v3r all 18 product invent doors |
+| Imagine invent polish v3r full wave (18 invents) | `c83cba873` | invent polish v3r all 18 product invent doors |
 
 ## Invent polish v3r wave complete
 
