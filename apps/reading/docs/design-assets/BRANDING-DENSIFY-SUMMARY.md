@@ -440,3 +440,4 @@ All 18 product invent doors refreshed via Imagine invent polish v2o and densifie
 densify pack: `npm run test:branding-densify` (39/303). Pure Flipbook sole UI remains NO-GO.
 | Imagine invent polish v2p CRT living-TV | `b2ddd9770` | invent polish v2p hero CRT on axe-green invent polish v2o tip |
 | Imagine invent polish v2p zombies+igloo+ice+clam | `4b9bcd8e6` | invent polish v2p arcade suite residual on axe-green tip |
+| Imagine invent polish v2p living-TV+thought+midnight | `TBD` | residual invent refresh on axe-green tip |
