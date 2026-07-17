@@ -399,6 +399,7 @@ class TwinRecursionLedger:
         self._before_commit = before_commit
         self._timeout = timeout
         self._read_only = False
+        self._database_identity: tuple[int, int] | None = None
         self._initialize()
 
     @classmethod
@@ -412,21 +413,37 @@ class TwinRecursionLedger:
         ledger._before_commit = None
         ledger._timeout = timeout
         ledger._read_only = True
+        value = resolved.stat(follow_symlinks=False)
+        ledger._database_identity = (value.st_dev, value.st_ino)
         with ledger._connect() as con:
             ledger._verify_schema(con)
         return ledger
 
     def _connect(self) -> sqlite3.Connection:
+        expected = self._database_identity
+        if expected is not None:
+            before = Path(self.path).stat(follow_symlinks=False)
+            if (before.st_dev, before.st_ino) != expected:
+                raise TwinIntegrityError("twin database path changed")
         target = (
             f"{Path(self.path).resolve().as_uri()}?mode=ro" if self._read_only else self.path
         )
         con = sqlite3.connect(
             target, timeout=self._timeout, isolation_level=None, uri=self._read_only
         )
+        if expected is not None:
+            after = Path(self.path).stat(follow_symlinks=False)
+            if (after.st_dev, after.st_ino) != expected:
+                con.close()
+                raise TwinIntegrityError("twin database path changed")
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA foreign_keys=ON")
         con.execute(f"PRAGMA busy_timeout={max(0, int(self._timeout * 1000))}")
         return con
+
+    @property
+    def read_only(self) -> bool:
+        return self._read_only
 
     def _initialize(self) -> None:
         con = self._connect()

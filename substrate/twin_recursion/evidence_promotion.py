@@ -18,7 +18,12 @@ from typing import Literal
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
 
-from runtime.db_lock import LockedConnection, _lock_path_for, is_active_write_connection
+from runtime.db_lock import (
+    LockedConnection,
+    _lock_path_for,
+    is_active_authority_read_connection,
+    is_active_write_connection,
+)
 from substrate.constants import SERVABLE_CONTENT_CLASSES
 from substrate.research_artifact.schema import ResearchArtifactBody
 
@@ -222,7 +227,9 @@ def _candidate_payload(candidate: TwinPromotionCandidate) -> dict[str, object]:
 
 
 def _require_graph_lock(con: LockedConnection) -> None:
-    if not is_active_write_connection(con):
+    if not (
+        is_active_write_connection(con) or is_active_authority_read_connection(con)
+    ):
         raise TwinEvidencePromotionError("active graph write lock is required")
     fd = getattr(con, "_lock_fd", None)
     lock_path = getattr(con, "_lock_path", None)
@@ -293,10 +300,53 @@ class TwinEvidencePromotionLedger:
         if not callable(clock):
             raise TypeError("clock must be callable")
         self._clock = clock
+        self._read_only = False
+        self._database_identity: tuple[int, int] | None = None
         self._initialize()
 
+    @classmethod
+    def open_read_only(
+        cls, path: str | Path, *, owner_id: str, review_verify_key: bytes
+    ) -> TwinEvidencePromotionLedger:
+        resolved = Path(path).expanduser().resolve(strict=True)
+        if not resolved.is_file():
+            raise FileNotFoundError(resolved)
+        ledger = cls.__new__(cls)
+        ledger.path = str(resolved)
+        ledger._owner_id = _text(owner_id, "owner_id")
+        if type(review_verify_key) is not bytes or len(review_verify_key) != 32:
+            raise TwinEvidencePromotionError("review verification key is invalid")
+        ledger._review_key = VerifyKey(review_verify_key)
+        ledger._review_key_id = "review-key-" + hashlib.sha256(review_verify_key).hexdigest()
+        ledger._clock = time.time
+        ledger._read_only = True
+        value = os.stat(resolved, follow_symlinks=False)
+        ledger._database_identity = (value.st_dev, value.st_ino)
+        with ledger._connect() as con:
+            ledger._verify_schema(con)
+        return ledger
+
+    @property
+    def owner_id(self) -> str:
+        return self._owner_id
+
+    @property
+    def read_only(self) -> bool:
+        return self._read_only
+
     def _connect(self) -> sqlite3.Connection:
-        con = sqlite3.connect(self.path, timeout=30, isolation_level=None)
+        expected = self._database_identity
+        if expected is not None:
+            before = os.stat(self.path, follow_symlinks=False)
+            if (before.st_dev, before.st_ino) != expected:
+                raise TwinEvidencePromotionError("promotion database path changed")
+        target = f"{Path(self.path).resolve().as_uri()}?mode=ro" if self._read_only else self.path
+        con = sqlite3.connect(target, timeout=30, isolation_level=None, uri=self._read_only)
+        if expected is not None:
+            after = os.stat(self.path, follow_symlinks=False)
+            if (after.st_dev, after.st_ino) != expected:
+                con.close()
+                raise TwinEvidencePromotionError("promotion database path changed")
         con.execute("PRAGMA foreign_keys=ON")
         con.row_factory = sqlite3.Row
         return con
@@ -544,6 +594,8 @@ class TwinEvidencePromotionLedger:
         text: str,
         evidence: tuple[EvidenceExcerptRequest, ...],
     ) -> TwinPromotionCandidate:
+        if not is_active_write_connection(con):
+            raise TwinEvidencePromotionError("promotion requires active graph write lock")
         owner_id = _text(owner_id, "owner_id")
         if owner_id != self._owner_id:
             raise TwinEvidencePromotionError("promotion ledger owner is unavailable")
@@ -678,6 +730,8 @@ class TwinEvidencePromotionLedger:
         *,
         authorization: OwnerReviewAuthorization,
     ) -> TwinPromotionReview:
+        if not is_active_write_connection(con):
+            raise TwinEvidencePromotionError("promotion requires active graph write lock")
         if type(authorization) is not OwnerReviewAuthorization:
             raise TwinEvidencePromotionError("owner review authorization is required")
         owner_id = _text(authorization.owner_id, "owner_id")
@@ -859,6 +913,11 @@ class TwinEvidencePromotionLedger:
             self.verify_integrity()
             authority = self.accepted(con, twins, owner_id=owner_id, candidate_id=candidate_id)
             database_stat = os.stat(self.path, follow_symlinks=False)
+            if self._database_identity is not None and (
+                database_stat.st_dev,
+                database_stat.st_ino,
+            ) != self._database_identity:
+                raise TwinEvidencePromotionError("accepted promotion snapshot path changed")
             row = db.execute(
                 "SELECT c.candidate_json,c.candidate_digest,r.review_json "
                 "FROM promotion_candidates c JOIN promotion_reviews r USING(candidate_id) "
