@@ -285,4 +285,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | densify-pack script header densify | `c3c6943b4` | pin 28/248 expectation + npm run test:branding-densify invoke |
 | invent class product-map audit clean | `645388189` | all session invent webp UI imports stamp antiek-living-tv-invent |
 | inventClassProductMap densify test | `2ce67a07a` | mechanical invent class stamp audit; densify pack 29/249 |
-| Flipbook note densify pack gate | `TBD` | document npm run test:branding-densify in Flipbook-feel streaming note |
+| Flipbook note densify pack gate | `896c7f2a5` | document npm run test:branding-densify in Flipbook-feel streaming note |
