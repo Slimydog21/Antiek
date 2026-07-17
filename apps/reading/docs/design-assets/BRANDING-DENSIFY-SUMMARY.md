@@ -284,4 +284,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | invent reframe CSS contract densify test | `2d3bb46b0` | sessionLivingTv CSS reduced-motion + NO-GO honesty densify |
 | densify-pack script header densify | `c3c6943b4` | pin 28/248 expectation + npm run test:branding-densify invoke |
 | invent class product-map audit clean | `645388189` | all session invent webp UI imports stamp antiek-living-tv-invent |
-| inventClassProductMap densify test | `TBD` | mechanical invent class stamp audit; densify pack 29/249 |
+| inventClassProductMap densify test | `2ce67a07a` | mechanical invent class stamp audit; densify pack 29/249 |
