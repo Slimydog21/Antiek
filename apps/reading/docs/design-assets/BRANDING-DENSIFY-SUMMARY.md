@@ -640,3 +640,9 @@ densify pack **39/307**. Pure Flipbook sole UI remains **NO-GO**.
 All 18 product invent doors refreshed via Imagine invent polish v3o and densified.
 Honesty densify WAVE=`v3o`. densify pack expected **39/307**. Pure Flipbook sole UI remains **NO-GO**.
 Refedit+candidate provenance under `session-20260716/*_v3o.*`. Product webps promoted to `src/brand/werner/poses/session/*_session_v1.webp`.
+
+## Ice Fishing catch-streak densify (craft157+)
+
+Club Penguin–style consecutive good-catch multiplier (max 3×) on pure ice-fishing
+rules; hazard resets streak. Arcade core stays free of reaction-bus imports.
+densify pack **39/309**. Pure Flipbook sole UI remains **NO-GO**.

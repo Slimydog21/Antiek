@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import { createSeededRng } from "../../engine/rng";
 import {
   createIceFishingState,
+  iceCatchStreakMultiplier,
   iceFishingOverlapsHook,
   iceFishingWernerBeat,
+  ICE_MAX_STREAK,
   startRound,
   stepIceFishing,
   type IceFishingState,
@@ -230,5 +232,103 @@ describe("ice fishing pure logic", () => {
       return state;
     };
     expect(run()).toEqual(run());
+  });
+
+  it("builds Club Penguin–style catch-streak multiplier on consecutive good catches", () => {
+    expect(iceCatchStreakMultiplier(0)).toBe(1);
+    expect(iceCatchStreakMultiplier(1)).toBe(2);
+    expect(iceCatchStreakMultiplier(ICE_MAX_STREAK)).toBe(ICE_MAX_STREAK);
+
+    let s = startRound(createIceFishingState({ width: 200, height: 160 }));
+    s = {
+      ...s,
+      dropping: true,
+      hookX: 50,
+      hookY: 80,
+      spawnTimer: 99,
+      fishes: [
+        {
+          id: 1,
+          x: 45,
+          y: 75,
+          vx: 0,
+          w: 20,
+          h: 12,
+          points: 3,
+          kind: "medium",
+        },
+      ],
+    };
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.streak).toBe(1);
+    expect(s.score).toBe(3); // mult 1×
+    expect(s.maxStreak).toBe(1);
+
+    s = {
+      ...s,
+      dropping: true,
+      hookX: 50,
+      hookY: 80,
+      spawnTimer: 99,
+      fishes: [
+        {
+          id: 2,
+          x: 45,
+          y: 75,
+          vx: 0,
+          w: 20,
+          h: 12,
+          points: 3,
+          kind: "medium",
+        },
+      ],
+    };
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.streak).toBe(2);
+    expect(s.score).toBe(3 + 3 * 2); // second catch 2×
+  });
+
+  it("resets catch streak on hazard", () => {
+    let s = startRound(createIceFishingState({ width: 200, height: 160 }));
+    s = {
+      ...s,
+      dropping: true,
+      hookX: 50,
+      hookY: 80,
+      streak: 2,
+      maxStreak: 2,
+      spawnTimer: 99,
+      fishes: [
+        {
+          id: 9,
+          x: 45,
+          y: 75,
+          vx: 0,
+          w: 20,
+          h: 12,
+          points: -1,
+          kind: "hazard",
+        },
+      ],
+    };
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.streak).toBe(0);
+    expect(s.maxStreak).toBe(2);
+    expect(s.lives).toBeLessThan(3);
   });
 });

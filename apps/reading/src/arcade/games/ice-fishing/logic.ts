@@ -3,9 +3,16 @@
  *
  * Drop line → fish spawn / swim → catch when hook overlaps fish → score.
  * Headless and deterministic under a seeded RNG.
+ *
+ * Catch-streak densify (craft157+): consecutive good catches build a Club
+ * Penguin–style multiplier (max 3×). Hazard catch or empty reel-up without a
+ * catch resets streak. Pure rules only — hosts inject living-TV beats.
  */
 
 export type IcePhase = "ready" | "playing" | "gameover";
+
+/** Max Club Penguin–style catch-streak multiplier (hard to vary). */
+export const ICE_MAX_STREAK = 3;
 
 export interface Fish {
   id: number;
@@ -36,6 +43,10 @@ export interface IceFishingState {
   height: number;
   /** When true, no automatic motion (reduced-motion simplified path). */
   reducedMotion: boolean;
+  /** Consecutive good-catch streak for score multiplier (0 = none). */
+  streak: number;
+  /** Peak streak this run (cabinet densify / brag). */
+  maxStreak: number;
 }
 
 export interface IceFishingConfig {
@@ -66,6 +77,8 @@ export function createIceFishingState(cfg: IceFishingConfig): IceFishingState {
     width,
     height,
     reducedMotion: Boolean(cfg.reducedMotion),
+    streak: 0,
+    maxStreak: 0,
   };
 }
 
@@ -82,7 +95,15 @@ export function startRound(state: IceFishingState): IceFishingState {
     fishes: [],
     spawnTimer: 0,
     elapsed: 0,
+    streak: 0,
+    maxStreak: 0,
   };
+}
+
+/** Catch-streak multiplier from consecutive good catches (1×..ICE_MAX_STREAK). */
+export function iceCatchStreakMultiplier(streak: number): number {
+  if (!Number.isFinite(streak) || streak <= 0) return 1;
+  return Math.min(ICE_MAX_STREAK, 1 + Math.floor(streak));
 }
 
 function aabb(
@@ -216,11 +237,15 @@ export function stepIceFishing(
       caught = true;
       if (f.kind === "hazard") {
         next.lives -= 1;
+        next.streak = 0;
         next.reeling = true;
         next.dropping = false;
         next.hookVy = -200;
       } else {
-        next.score += f.points;
+        const mult = iceCatchStreakMultiplier(next.streak);
+        next.score += f.points * mult;
+        next.streak = Math.min(ICE_MAX_STREAK, next.streak + 1);
+        next.maxStreak = Math.max(next.maxStreak, next.streak);
         next.reeling = true;
         next.dropping = false;
         next.hookVy = -200;
