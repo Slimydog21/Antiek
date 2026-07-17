@@ -20,14 +20,18 @@ import {
   emoteFromWernerTargetAttr,
   EMOTE_KINDS,
   FOLLOW_EASE,
+  installChoreography,
   installLivingTvAmbient,
   installReactionBus,
+  installTargetChoreography,
   isProductExperience,
   isStationInstrumentSuspended,
   LAG_MS,
+  POINTER_IDLE_MS,
   PRODUCT_EXPERIENCES,
   productSelector,
   rodBendFromPoints,
+  SAMPLE_INTERVAL_MS,
   stationInstrumentLeaseCount,
   tipToBaitDistance,
   WERNER_EXPERIENCE_EVENT,
@@ -143,10 +147,30 @@ describe("werner instrument barrel densify", () => {
     // densify: ice-cursor follow lags the pointer; centerLaggedTarget is pure.
     expect(LAG_MS).toBe(500);
     expect(FOLLOW_EASE).toBe(0.75);
+    expect(SAMPLE_INTERVAL_MS).toBe(60);
+    expect(POINTER_IDLE_MS).toBe(2000);
     expect(centerLaggedTarget({ x: 100, y: 200 }, 64)).toEqual({
       x: 68,
       y: 168,
     });
     expect(centerLaggedTarget(null, 64)).toBeNull();
+  });
+
+  it("exports choreography install densify for living-TV product + opt-in paths", () => {
+    // densify: product-activate + data-werner-target installers stay public.
+    expect(typeof installChoreography).toBe("function");
+    expect(typeof installTargetChoreography).toBe("function");
+    const stage = {
+      waddleToEl: () => {},
+      emote: () => {},
+    } as never;
+    const teardownA = installChoreography(stage, { target: null as never });
+    const teardownB = installTargetChoreography(stage, {
+      target: null as never,
+    });
+    expect(typeof teardownA).toBe("function");
+    expect(typeof teardownB).toBe("function");
+    teardownA();
+    teardownB();
   });
 });
