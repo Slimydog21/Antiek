@@ -387,4 +387,4 @@ densify pack: `npm run test:branding-densify` (39/302 after invent polish wave h
 All 18 product invent doors refreshed via Imagine invent polish v2j and densified.
 densify pack: `npm run test:branding-densify` (39/302). Pure Flipbook sole UI remains NO-GO.
 
-| Multi-phase living-TV reframe densify | `TBD` | Flipbook-feel invent strip 16s multi-keyframe reframe densify 39/303 |
+| Multi-phase living-TV reframe densify | `3ec097ad9` | Flipbook-feel invent strip 16s multi-keyframe reframe densify 39/303 |
