@@ -7,7 +7,12 @@ import {
   surface,
   type,
 } from "../../../design/tokens";
-import type { Zombie, ZombiesPhase, ZombiesState } from "./logic";
+import {
+  zombiesComboMultiplier,
+  type Zombie,
+  type ZombiesPhase,
+  type ZombiesState,
+} from "./logic";
 
 const HUD_HEIGHT = 20;
 const STATUS_HEIGHT = 28;
@@ -378,7 +383,7 @@ function drawHud(
   // BO1-style combo densify: show xN only while streak is live.
   if (state.combo > 0) {
     c2d.fillStyle = sun.base;
-    c2d.fillText(`x${Math.min(4, 1 + state.combo)}`, width * 0.62, 14);
+    c2d.fillText(`x${zombiesComboMultiplier(state.combo)}`, width * 0.62, 14);
   }
 
   c2d.fillStyle = surface.night[7];
@@ -415,7 +420,7 @@ function drawStatusPlate(
     c2d.fillStyle = sun.base;
     c2d.font = `600 10px ${type.mono}`;
     c2d.fillText(
-      `BEST x${Math.min(4, 1 + state.maxCombo)}`,
+      `BEST x${zombiesComboMultiplier(state.maxCombo)}`,
       12,
       layout.statusTop + 34,
     );

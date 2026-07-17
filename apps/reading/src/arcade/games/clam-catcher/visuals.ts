@@ -1,7 +1,11 @@
 import visualKitUrl from "../../../brand/werner/arcade/clam-catcher-visual-kit-v1.webp";
 import { accent, aliasFor, sun, surface } from "../../../design/tokens";
 import type { GameContext } from "../../engine/types";
-import type { ClamCatcherState, FallingKind } from "./logic";
+import {
+  clamCatchStreakMultiplier,
+  type ClamCatcherState,
+  type FallingKind,
+} from "./logic";
 
 type AtlasImage = CanvasImageSource & { complete?: boolean };
 
@@ -201,7 +205,7 @@ function drawHud(
   if (state.streak > 0) {
     c2d.fillStyle = sun.base;
     c2d.fillText(
-      `x${Math.min(3, 1 + state.streak)}`,
+      `x${clamCatchStreakMultiplier(state.streak)}`,
       Math.max(96, ctx.width * 0.42),
       18,
     );
@@ -220,7 +224,11 @@ function drawHud(
     if (state.maxStreak > 0) {
       c2d.fillStyle = sun.base;
       c2d.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
-      c2d.fillText(`BEST x${Math.min(3, 1 + state.maxStreak)}`, 10, ctx.height - 32);
+      c2d.fillText(
+        `BEST x${clamCatchStreakMultiplier(state.maxStreak)}`,
+        10,
+        ctx.height - 32,
+      );
     }
   }
 }

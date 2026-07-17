@@ -1,7 +1,11 @@
 import visualKitUrl from "../../../brand/werner/arcade/ice-fishing-visual-kit-v1.webp";
 import { accent, aliasFor, sun, surface } from "../../../design/tokens";
 import type { GameContext } from "../../engine/types";
-import type { Fish, IceFishingState } from "./logic";
+import {
+  iceCatchStreakMultiplier,
+  type Fish,
+  type IceFishingState,
+} from "./logic";
 
 type AtlasImage = CanvasImageSource & { complete?: boolean };
 
@@ -115,7 +119,7 @@ export function renderIceFishing(
     c2d.fillStyle = sun.base;
     c2d.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
     c2d.fillText(
-      `x${Math.min(3, 1 + state.streak)}`,
+      `x${iceCatchStreakMultiplier(state.streak)}`,
       Math.max(96, ctx.width * 0.42),
       16,
     );
@@ -131,7 +135,7 @@ export function renderIceFishing(
       c2d.fillStyle = sun.base;
       c2d.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
       c2d.fillText(
-        `BEST x${Math.min(3, 1 + state.maxStreak)}`,
+        `BEST x${iceCatchStreakMultiplier(state.maxStreak)}`,
         8,
         ctx.height - 28,
       );
