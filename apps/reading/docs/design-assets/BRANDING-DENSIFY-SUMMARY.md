@@ -297,3 +297,4 @@ Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md
 | Imagine invent polish v2d CRT living-TV | `ef623ec5d` | Home + DR compose invent refresh on FULL GREEN tip |
 | Imagine invent polish v2d igloo minigame trio | `8dacdcebb` | ArcadeCabinet + Home arcade banner invent refresh on FULL GREEN tip |
 | Imagine invent polish v2d paperclip zombies | `0c46b907d` | wait-arcade/cabinet/LGH zombies invent refresh on FULL GREEN tip |
+| Imagine invent polish v2d igloo ice arcade cursor | `TBD` | cabinet/LGH/wait ice invent refresh on FULL GREEN tip |
