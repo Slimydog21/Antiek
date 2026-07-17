@@ -867,3 +867,9 @@ Underscore slug aliases densify living-TV product-door map. densify pack **42/35
 | Ice reduced-motion catch-streak densify | `9934ad393` | RM drop builds streak mult |
 
 Reduced-motion ice path densify: simplified catches use streak mult + maxStreak. densify pack **42/353**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Zombies reduced-motion combo densify (craft157+)
+
+| Zombies reduced-motion combo densify | `3fea9b2ff` | RM clicks build combo mult |
+
+Reduced-motion fort defense densify: gentle clicks grow BO1 combo. densify pack **42/354**. Pure Flipbook sole UI remains **NO-GO**.
