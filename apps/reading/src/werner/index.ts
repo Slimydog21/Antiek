@@ -77,6 +77,7 @@ export {
   tipToBaitDistance,
   rodBendFromPoints,
   rodBend,
+  rodLength,
 } from "./fishingLineGeometry";
 
 export {

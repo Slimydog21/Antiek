@@ -32,6 +32,7 @@ import {
   productSelector,
   rodBend,
   rodBendFromPoints,
+  rodLength,
   rodTipFromMascotRect,
   SAMPLE_INTERVAL_MS,
   stationInstrumentLeaseCount,
@@ -202,5 +203,13 @@ describe("werner instrument barrel densify", () => {
     expect(tip).toEqual({ x: 166, y: 205 });
     const tipScaled = rodTipFromMascotRect(rect, 128);
     expect(tipScaled).toEqual({ x: 100 + 66 * 2, y: 200 + 5 * 2 });
+  });
+
+  it("exports rodLength densify for butt→tip rig contract", () => {
+    // densify: rod length is fixed viewBox butt→tip (~36 units; MAX_BEND is ~1/6).
+    const len = rodLength();
+    expect(len).toBeCloseTo(Math.hypot(66 - 45, 5 - 34), 5);
+    expect(len).toBeGreaterThan(30);
+    expect(len).toBeLessThan(40);
   });
 });
