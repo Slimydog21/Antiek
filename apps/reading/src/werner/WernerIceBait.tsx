@@ -1,7 +1,11 @@
 import { useEffect, useRef } from "react";
 
 import { wernerIceFishingCursor } from "./iceFishingFlags";
-import { useMouseFollow, type UseMouseFollowOptions } from "./useMouseFollow";
+import {
+  useMouseFollow,
+  type FollowReading,
+  type UseMouseFollowOptions,
+} from "./useMouseFollow";
 import "./ice-fishing.css";
 
 export interface WernerIceBaitProps {
@@ -9,6 +13,22 @@ export interface WernerIceBaitProps {
   disabled?: boolean;
   /** Injectable clock for tests (forwarded to useMouseFollow). */
   now?: UseMouseFollowOptions["now"];
+}
+
+/**
+ * Pure instrument densify: the cursor IS the bait (fixed-station model — not a
+ * chase pet). Hide when there is no live pointer or the tab is hidden; otherwise
+ * pin chrome to the live client point. Unit-tested without RAF/DOM thrash.
+ */
+export function baitChromeFromFollow(
+  reading: Pick<FollowReading, "live" | "tabHidden">,
+): { display: "none" } | { display: "block"; left: string; top: string } {
+  if (!reading.live || reading.tabHidden) return { display: "none" };
+  return {
+    display: "block",
+    left: `${reading.live.x}px`,
+    top: `${reading.live.y}px`,
+  };
 }
 
 /**
@@ -29,13 +49,11 @@ export function WernerIceBait({ disabled = false, now }: WernerIceBaitProps) {
     const tick = () => {
       const el = elRef.current;
       if (el) {
-        const { live, tabHidden } = follow.read();
-        if (!live || tabHidden) {
-          el.style.display = "none";
-        } else {
-          el.style.display = "block";
-          el.style.left = `${live.x}px`;
-          el.style.top = `${live.y}px`;
+        const chrome = baitChromeFromFollow(follow.read());
+        el.style.display = chrome.display;
+        if (chrome.display === "block") {
+          el.style.left = chrome.left;
+          el.style.top = chrome.top;
         }
       }
       raf = window.requestAnimationFrame(tick);
