@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `07b53a435` — densify pack **43/375**.
+PR #2416 tip (at close of this note): `b771b22c2` — densify pack **43/377**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -939,3 +939,9 @@ Honesty densify pins baitChromeFromFollow in Flipbook densify gate. densify pack
 | Fishing-line catenary densify in pack | `07b53a435` | free end = bait; pack 43/375 |
 
 Catenary densify: line ends at live bait; densify pack **43/375**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Rod tension tip→bait instrument densify (craft157+)
+
+| Rod tension tip→bait instrument densify | `b771b22c2` | tipToBaitDistance + rodBendFromPoints |
+
+Instrument densify: tip→bait distance drives rod bend; densify pack **43/377**. Pure Flipbook sole UI remains **NO-GO**.
