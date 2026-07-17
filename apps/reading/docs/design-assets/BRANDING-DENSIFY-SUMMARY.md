@@ -343,3 +343,4 @@ minigame living-TV beats + invent class product-map. Pure Flipbook sole UI remai
 
 All 18 product invent doors refreshed via Imagine invent polish v2f and densified.
 densify pack: `npm run test:branding-densify` (38/299). Pure Flipbook sole UI remains NO-GO.
+| Imagine invent polish v2g CRT living-TV | `TBD` | Home + DR compose invent refresh on FULL GREEN tip |
