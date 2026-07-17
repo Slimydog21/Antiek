@@ -299,6 +299,29 @@ describe("ice fishing pure logic", () => {
     expect(s.score).toBe(3 + 3 * 2); // second catch 2×
   });
 
+  it("builds catch-streak on reduced-motion simplified catches", () => {
+    let s = startRound(
+      createIceFishingState({ width: 200, height: 160, reducedMotion: true }),
+    );
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: true, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.score).toBe(1);
+    expect(s.streak).toBe(1);
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: true, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.score).toBe(1 + 2); // second catch 2× mult
+    expect(s.streak).toBe(2);
+    expect(s.maxStreak).toBe(2);
+  });
+
   it("spawns rare golden fish in the densify roll band", () => {
     let s = startRound(createIceFishingState({ width: 200, height: 160 }));
     // spawnFish roll: hazard <0.15, golden <0.23 — pin first roll at 0.18.

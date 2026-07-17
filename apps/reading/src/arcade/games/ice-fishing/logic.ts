@@ -289,9 +289,13 @@ export function stepIceFishing(
   }
   next.fishes = remaining;
 
-  // Reduced-motion simplified path: click/start awards a point occasionally
+  // Reduced-motion simplified path: click awards a catch densify (score + streak).
   if (next.reducedMotion && input.drop && !caught) {
-    next.score += 1;
+    const mult = iceCatchStreakMultiplier(next.streak);
+    next.score += 1 * mult;
+    next.streak = Math.min(ICE_MAX_STREAK, next.streak + 1);
+    next.maxStreak = Math.max(next.maxStreak, next.streak);
+    next.castHadCatch = true;
   }
 
   if (next.lives <= 0) {
