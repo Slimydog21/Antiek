@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): **`ad3370ca8` — densify pack **42/357**.
+PR #2416 tip (at close of this note): `ad3370ca8` — densify pack **42/357**.
 
 ## Product surfaces now UI-consuming session brand
 
