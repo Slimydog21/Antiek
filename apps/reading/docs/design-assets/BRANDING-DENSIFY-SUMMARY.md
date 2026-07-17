@@ -346,3 +346,4 @@ densify pack: `npm run test:branding-densify` (38/299). Pure Flipbook sole UI re
 | Imagine invent polish v2g CRT living-TV | `0cbe8b9d5` | Home + DR compose invent refresh on FULL GREEN tip |
 | Imagine invent polish v2g zombies + igloo trio | `328113869` | wait/cabinet/home invent refresh on FULL GREEN tip |
 | Imagine invent polish v2g ice+clam cursor invents | `ec7073dfd` | cabinet/LGH/wait invent refresh on FULL GREEN tip |
+| Imagine invent polish v2g living-TV+thought+midnight | `TBD` | residual invent refresh on FULL GREEN tip |
