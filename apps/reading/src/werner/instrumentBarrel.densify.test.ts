@@ -47,11 +47,14 @@ import {
   getActivity,
   getActivityForPathname,
   getDefaultActivity,
+  EmoteView,
   iceFishingActivity,
   listActivities,
+  registerActivity,
   researchLensActivity,
   speakingResonanceActivity,
   useMouseFollow,
+  useStationActivity,
   useStationInstrumentSuspended,
   writingNibActivity,
   WERNER_EXPERIENCE_EVENT,
@@ -225,6 +228,22 @@ describe("werner instrument barrel densify", () => {
     expect(getActivityForPathname("/speak")).toBe(speakingResonanceActivity);
     expect(writingNibActivity.id).toBe("writing-nib");
     expect(speakingResonanceActivity.id).toBe("speaking-resonance");
+  });
+
+  it("exports registerActivity + listActivities densify for full instrument roster", () => {
+    // densify: station registry lists all four instruments; register is pure API.
+    const ids = listActivities().map((a) => a.id).sort();
+    expect(ids).toEqual(
+      [
+        "ice-fishing",
+        "research-lens",
+        "speaking-resonance",
+        "writing-nib",
+      ].sort(),
+    );
+    expect(typeof registerActivity).toBe("function");
+    expect(typeof EmoteView).toBe("function");
+    expect(typeof useStationActivity).toBe("function");
   });
 
   it("exports mouse-follow densify for cursor-is-bait lag contract", () => {
