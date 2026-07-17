@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import html
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +24,24 @@ class ComposeResult:
     path: Path
     members: list[ComposeMember]
     hash_conflicts: list[tuple[str, str]]
+    composition_id: str
+    composition_version: int = 1
+
+
+def composition_identity(members: list[ComposeMember]) -> str:
+    """Bind a draft basis to exact ordered artifact versions."""
+    payload = {
+        "contract": "research-composition-draft-basis-v1",
+        "members": [
+            {
+                "investigation_id": member.investigation_id,
+                "content_hash": member.content_hash,
+            }
+            for member in members
+        ],
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def compose_artifacts(
@@ -80,4 +100,9 @@ def compose_artifacts(
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(index, encoding="utf-8")
 
-    return ComposeResult(path=out_path, members=members, hash_conflicts=conflicts)
+    return ComposeResult(
+        path=out_path,
+        members=members,
+        hash_conflicts=conflicts,
+        composition_id=composition_identity(members),
+    )

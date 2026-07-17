@@ -9,9 +9,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from substrate.event_log import log_event
 from substrate.graph import ensure_initialized
 from substrate.graph.insight_question import promote_insight
-from substrate.event_log import log_event
 from substrate.schemas import ActionType
 
 
@@ -130,6 +130,8 @@ def test_compose_returns_ordered_path_free_artifact_index(api_env, monkeypatch):
             ],
             hash_conflicts=[("inv-b", "inv-a")],
             path="/secret/index.html",
+            composition_id="c" * 64,
+            composition_version=1,
         ),
     )
     monkeypatch.setattr(
@@ -150,6 +152,8 @@ def test_compose_returns_ordered_path_free_artifact_index(api_env, monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["kind"] == "artifact_index"
+    assert body["composition_id"] == "c" * 64
+    assert body["composition_version"] == 1
     assert [member["investigation_id"] for member in body["members"]] == ["inv-b", "inv-a"]
     assert body["conflicts"] == [{
         "first_investigation_id": "inv-b",
@@ -158,3 +162,21 @@ def test_compose_returns_ordered_path_free_artifact_index(api_env, monkeypatch):
     }]
     assert "secret" not in response.text
     assert "html" not in response.text.lower()
+
+
+def test_composition_identity_binds_order_and_content_hash():
+    from pathlib import Path
+
+    from substrate.research_artifact.compose import ComposeMember, composition_identity
+
+    first = ComposeMember("inv-a", "a" * 64, Path("/unused/a"))
+    second = ComposeMember("inv-b", "b" * 64, Path("/unused/b"))
+
+    identity = composition_identity([first, second])
+    assert len(identity) == 64
+    assert identity == composition_identity([first, second])
+    assert identity != composition_identity([second, first])
+    assert identity != composition_identity([
+        first,
+        ComposeMember("inv-b", "c" * 64, Path("/unused/b")),
+    ])

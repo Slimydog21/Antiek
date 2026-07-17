@@ -14,6 +14,7 @@ _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from substrate.event_log import trajectory  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
     compose_artifacts,
@@ -22,7 +23,6 @@ from substrate.research_artifact import (  # noqa: E402
     list_outline_blocks,
 )
 from substrate.research_artifact.context import problem_question_from_events  # noqa: E402
-from substrate.event_log import trajectory  # noqa: E402
 from substrate.schemas import ActionType  # noqa: E402
 
 artifact_router = APIRouter(prefix="/research", tags=["research-artifact"])
@@ -92,6 +92,8 @@ class ComposeConflictOut(BaseModel):
 
 class ComposeArtifactsOut(BaseModel):
     kind: Literal["artifact_index"] = "artifact_index"
+    composition_id: str
+    composition_version: Literal[1] = 1
     members: list[ComposeMemberOut]
     conflicts: list[ComposeConflictOut]
 
@@ -163,6 +165,7 @@ async def post_compose_artifacts(body: ComposeArtifactsIn) -> ComposeArtifactsOu
             )
         )
     return ComposeArtifactsOut(
+        composition_id=composed.composition_id,
         members=members,
         conflicts=[
             ComposeConflictOut(

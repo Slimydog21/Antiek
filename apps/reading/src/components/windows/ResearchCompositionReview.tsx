@@ -54,6 +54,17 @@ export default function ResearchCompositionReview({
       {!error && !index && <p className="text-sm italic text-shadow-1">Loading…</p>}
       {index && (
         <>
+          <section className="mb-5 border border-rule bg-parchment-1 p-3 dark:border-charcoal-1 dark:bg-ink" aria-label="Draft basis">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 className="font-mono text-[11px] uppercase tracking-wider">Draft basis</h2>
+              <span className="font-mono text-[10px] uppercase text-shadow-1">Version {index.composition_version}</span>
+            </div>
+            <p className="mt-2 text-sm">This fingerprint names the exact ordered inputs shown below.</p>
+            <p className="mt-1 break-all font-mono text-[10px] text-shadow-1" title={index.composition_id}>
+              {index.composition_id}
+            </p>
+            <p className="mt-2 text-xs text-shadow-1">No model, spend approval, synthesis, or merge has run.</p>
+          </section>
           <ol className="divide-y divide-rule border-y border-rule dark:divide-charcoal-1 dark:border-charcoal-1">
             {index.members.map((member, position) => (
               <li key={member.investigation_id} className="grid grid-cols-[2.5rem_1fr] gap-3 py-4">
