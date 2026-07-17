@@ -37,3 +37,11 @@ When product wants *optional* streamed invent motion (not sole UI):
 - Invent stream is decorative or opt-in; fails closed to invent webp + CSS reframe.
 - Budget projection for proposed stream session appears next to model budget bar.
 - densify pack + axe green; LP preferred.
+
+## densify gate
+
+```bash
+cd apps/reading && npm run test:branding-densify
+# 29 files / 249 tests (invent reframe + invent class product-map densify)
+```
+
