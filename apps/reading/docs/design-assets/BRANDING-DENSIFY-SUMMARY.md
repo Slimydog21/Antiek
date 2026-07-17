@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `268bbb085` — axe green; densify pack **42/355**.
+PR #2416 tip (at close of this note): `056e048d7` — densify pack **42/356**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -885,3 +885,9 @@ CSS invent reframe densify asserts wait-playing testid coverage. densify pack **
 | Home arcade invent testid densify | `88ac77688` | home-arcade-living-tv-art |
 
 Home igloo invent uses living-tv-art testid suffix for invent reframe densify. densify pack **42/355**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Clam reduced-motion catch-streak densify (craft157+)
+
+| Clam reduced-motion catch-streak densify | `056e048d7` | RM start/fire builds streak mult |
+
+Reduced-motion Clam Catcher densify: gentle clicks build CP streak mult (ice/zombies a11y parity). densify pack **42/356**. Pure Flipbook sole UI remains **NO-GO**.
