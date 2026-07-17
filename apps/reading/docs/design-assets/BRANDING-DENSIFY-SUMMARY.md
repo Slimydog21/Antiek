@@ -849,3 +849,9 @@ BEST brag, golden/pearl atlas). Pure Flipbook sole UI remains **NO-GO**.
 | Ice golden sun-rim visual densify | `c8f506da7` | authored golden strokeRect sun.base |
 
 Golden fish atlas path densify: sun rim marks rare catch. densify pack **42/351**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Clam pearl sun-rim visual densify (craft157+)
+
+| Clam pearl sun-rim visual densify | `00471f4b2` | pearl atlas strokeRect sun.base |
+
+Pearl-clam atlas densify: sun rim marks rare catch (ice golden parity). densify pack **42/352**. Pure Flipbook sole UI remains **NO-GO**.
