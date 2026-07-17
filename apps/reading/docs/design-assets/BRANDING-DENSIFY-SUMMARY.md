@@ -376,4 +376,4 @@ All 18 product invent doors refreshed via Imagine invent polish v2i and densifie
 densify pack: `npm run test:branding-densify` (39/302 after invent polish wave honesty densify). Pure Flipbook sole UI remains NO-GO.
 
 | Invent polish wave honesty densify | `7ae901f93` | invent polish v2i provenance + Flipbook note densify gate 39/302 |
-| Imagine invent polish v2j hero CRT+zombies+igloo | `TBD` | invent polish v2j hero suite on axe-green honesty tip |
+| Imagine invent polish v2j hero CRT+zombies+igloo | `618ab5449` | invent polish v2j hero suite on axe-green honesty tip |
