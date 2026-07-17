@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `8a05007a2` — densify pack **47/398**.
+PR #2416 tip (at close of this note): `b1c2e7ec0` — densify pack **47/399**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1053,3 +1053,9 @@ Instrument barrel densify exports emoteForExperience reaction map. densify pack 
 | reactionBus allowlist barrel densify | `8a05007a2` | PRODUCT_EXPERIENCES + isProductExperience + event |
 
 Instrument barrel densify exports reactionBus allowlist contracts. densify pack **47/398**. Pure Flipbook sole UI remains **NO-GO**.
+
+## host inject reactionBus barrel densify (craft157+)
+
+| host inject reactionBus barrel densify | `b1c2e7ec0` | emitWernerExperience + installReactionBus public |
+
+Instrument barrel densify exports host inject reactionBus path. densify pack **47/399**. Pure Flipbook sole UI remains **NO-GO**.
