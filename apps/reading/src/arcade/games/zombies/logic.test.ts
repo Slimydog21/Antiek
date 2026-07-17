@@ -6,7 +6,9 @@ import {
   startZombies,
   stepZombies,
   zombiesCanExit,
+  zombiesComboMultiplier,
   zombiesWernerBeat,
+  ZOMBIES_MAX_COMBO,
 } from "./logic";
 
 describe("paperclip zombies pure logic", () => {
@@ -220,5 +222,84 @@ describe("paperclip zombies pure logic", () => {
       return state;
     };
     expect(run()).toEqual(run());
+  });
+
+  it("builds BO1-style combo multiplier on consecutive kills", () => {
+    expect(zombiesComboMultiplier(0)).toBe(1);
+    expect(zombiesComboMultiplier(1)).toBe(2);
+    expect(zombiesComboMultiplier(ZOMBIES_MAX_COMBO)).toBe(ZOMBIES_MAX_COMBO);
+    expect(zombiesComboMultiplier(99)).toBe(ZOMBIES_MAX_COMBO);
+
+    let s = startZombies(createZombiesState({ width: 320, height: 200 }));
+    s = {
+      ...s,
+      spawnRemaining: 0,
+      zombies: [
+        { id: 1, x: 100, y: 50, hp: 1, speed: 0, w: 18, h: 18 },
+        { id: 2, x: 140, y: 50, hp: 1, speed: 0, w: 18, h: 18 },
+      ],
+    };
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: { x: 105, y: 55 }, start: false, exit: false },
+      () => 0.2,
+    );
+    expect(s.combo).toBe(1);
+    expect(s.maxCombo).toBe(1);
+    const afterFirst = s.score;
+    const waveAtSecondKill = s.wave;
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: { x: 145, y: 55 }, start: false, exit: false },
+      () => 0.2,
+    );
+    // Combo grows; wave may advance after clear — score uses pre-clear wave.
+    expect(s.combo).toBe(2);
+    expect(s.score - afterFirst).toBe((10 + waveAtSecondKill) * 2);
+  });
+
+  it("resets combo on miss fire and on fort breach", () => {
+    let s = startZombies(createZombiesState({ width: 320, height: 200 }));
+    s = {
+      ...s,
+      spawnRemaining: 0,
+      combo: 3,
+      maxCombo: 3,
+      zombies: [{ id: 1, x: 100, y: 50, hp: 1, speed: 0, w: 18, h: 18 }],
+    };
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: { x: 1, y: 1 }, start: false, exit: false },
+      () => 0.2,
+    );
+    expect(s.combo).toBe(0);
+    expect(s.maxCombo).toBe(3);
+
+    s = {
+      ...s,
+      combo: 2,
+      spawnRemaining: 0,
+      zombies: [
+        {
+          id: 9,
+          x: s.fortX + 1,
+          y: 40,
+          hp: 1,
+          speed: 500,
+          w: 18,
+          h: 18,
+        },
+      ],
+    };
+    s = stepZombies(
+      s,
+      1 / 30,
+      { fireAt: null, start: false, exit: false },
+      () => 0.5,
+    );
+    expect(s.combo).toBe(0);
   });
 });

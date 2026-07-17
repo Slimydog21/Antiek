@@ -144,11 +144,11 @@ describe("Paperclip Zombies field-station visuals", () => {
     expect(calls).toContainEqual(["strokeRect", 7, 40, 14, 11]);
     expect(calls).toContainEqual(["lineTo", 298, 129]);
     expect(calls.filter(([name]) => name === "ellipse")).toHaveLength(2);
-    expect(calls).toContainEqual(["fillText", "WAVE 04", 120, 14]);
+    expect(calls).toContainEqual(["fillText", "WAVE 04", 480 * 0.22, 14]);
     expect(calls).toContainEqual([
       "fillText",
       "SCORE 0137",
-      230.39999999999998,
+      480 * 0.4,
       14,
     ]);
     expect(calls).toContainEqual(["fillRect", -7, 5.040000000000001, 2, 2]);

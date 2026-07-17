@@ -369,12 +369,17 @@ function drawHud(
   c2d.fillStyle = surface.night[7];
   c2d.fillText("NIGHT FILE", 10, 14);
   c2d.fillStyle = surface.night[9];
-  c2d.fillText(`WAVE ${String(state.wave).padStart(2, "0")}`, width * 0.25, 14);
+  c2d.fillText(`WAVE ${String(state.wave).padStart(2, "0")}`, width * 0.22, 14);
   c2d.fillText(
     `SCORE ${String(state.score).padStart(4, "0")}`,
-    width * 0.48,
+    width * 0.4,
     14,
   );
+  // BO1-style combo densify: show xN only while streak is live.
+  if (state.combo > 0) {
+    c2d.fillStyle = sun.base;
+    c2d.fillText(`x${Math.min(4, 1 + state.combo)}`, width * 0.62, 14);
+  }
 
   c2d.fillStyle = surface.night[7];
   c2d.font = `600 9px ${type.mono}`;

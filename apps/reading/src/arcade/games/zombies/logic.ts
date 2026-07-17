@@ -4,9 +4,16 @@
  * Endless waves of office-supply "zombies" march toward Werner's fort.
  * Click / fire to destroy them. Survive waves; lives deplete on breach.
  * Designed for deep-research wait states — endless loop with explicit exit.
+ *
+ * Combo densify (craft157+): consecutive kills build a BO1-style multiplier
+ * (max 4×). Miss fire or fort breach resets combo. Pure rules only — hosts
+ * inject living-TV beats; no product reaction-bus import in arcade core.
  */
 
 export type ZombiesPhase = "ready" | "playing" | "gameover" | "exited";
+
+/** Max BO1-style combo multiplier (hard to vary). */
+export const ZOMBIES_MAX_COMBO = 4;
 
 export interface Zombie {
   id: number;
@@ -33,6 +40,10 @@ export interface ZombiesState {
   height: number;
   fortX: number;
   reducedMotion: boolean;
+  /** Consecutive kill streak for combo multiplier (0 = none). */
+  combo: number;
+  /** Peak combo reached this run (cabinet brag / densify). */
+  maxCombo: number;
 }
 
 export function createZombiesState(opts: {
@@ -57,6 +68,8 @@ export function createZombiesState(opts: {
     height: Math.max(64, opts.height),
     fortX: 28,
     reducedMotion: Boolean(opts.reducedMotion),
+    combo: 0,
+    maxCombo: 0,
   };
 }
 
@@ -71,9 +84,17 @@ export function startZombies(state: ZombiesState): ZombiesState {
       zombies: [],
       elapsed: 0,
       nextId: 1,
+      combo: 0,
+      maxCombo: 0,
     },
     1,
   );
+}
+
+/** Combo multiplier from consecutive kills (1×..ZOMBIES_MAX_COMBO). */
+export function zombiesComboMultiplier(combo: number): number {
+  if (!Number.isFinite(combo) || combo <= 0) return 1;
+  return Math.min(ZOMBIES_MAX_COMBO, 1 + Math.floor(combo));
 }
 
 function beginWave(state: ZombiesState, wave: number): ZombiesState {
@@ -126,20 +147,32 @@ export function stepZombies(
     const { x, y } = input.fireAt;
     const remaining: Zombie[] = [];
     let scored = false;
+    let kill = false;
     for (const z of next.zombies) {
       if (!scored && hitTest(z, x, y)) {
         z.hp -= 1;
+        scored = true;
         if (z.hp <= 0) {
-          next.score += 10 + next.wave;
-          scored = true;
+          kill = true;
+          const mult = zombiesComboMultiplier(next.combo);
+          next.score += (10 + next.wave) * mult;
+          next.combo = Math.min(ZOMBIES_MAX_COMBO, next.combo + 1);
+          next.maxCombo = Math.max(next.maxCombo, next.combo);
           continue;
         }
       }
       remaining.push(z);
     }
     next.zombies = remaining;
-    // Reduced-motion: each click also grants a point if miss (gentle)
-    if (next.reducedMotion && !scored) next.score += 1;
+    // Miss (or hit without kill that was only a chip): combo resets on full miss.
+    if (!scored) {
+      next.combo = 0;
+      // Reduced-motion: each click also grants a point if miss (gentle)
+      if (next.reducedMotion) next.score += 1;
+    } else if (!kill && !next.reducedMotion) {
+      // Chip hit without kill does not grow combo, but does not hard-reset —
+      // keeps pressure on multi-HP paperclips without punishing aim.
+    }
   }
 
   if (!next.reducedMotion) {
@@ -160,15 +193,19 @@ export function stepZombies(
     }
 
     const still: Zombie[] = [];
+    let breached = false;
     for (const z of next.zombies) {
       z.x -= z.speed * dt;
       if (z.x <= next.fortX) {
         next.lives -= 1;
+        breached = true;
       } else {
         still.push(z);
       }
     }
     next.zombies = still;
+    // Fort breach resets combo (BO1-style run pressure).
+    if (breached) next.combo = 0;
   } else {
     // Static simplified: no march; waves complete on score thresholds
     if (next.score >= next.wave * 20 + 20) {
