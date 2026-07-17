@@ -144,7 +144,7 @@ function drawAuthoredFish(
   image: CanvasImageSource,
   fish: Fish,
 ): void {
-  // Golden reuses medium atlas cell (sun tint applied in fallback path only).
+  // Golden reuses medium atlas cell; sun rim densify marks the rare catch.
   const cell = fish.kind === "golden" ? ATLAS.medium : ATLAS[fish.kind];
   if (fish.kind !== "hazard" && fish.vx < 0) {
     c2d.save();
@@ -152,9 +152,14 @@ function drawAuthoredFish(
     c2d.scale(-1, 1);
     drawAtlasFit(c2d, image, cell, -fish.w / 2, -fish.h / 2, fish.w, fish.h);
     c2d.restore();
-    return;
+  } else {
+    drawAtlasFit(c2d, image, cell, fish.x, fish.y, fish.w, fish.h);
   }
-  drawAtlasFit(c2d, image, cell, fish.x, fish.y, fish.w, fish.h);
+  if (fish.kind === "golden") {
+    c2d.strokeStyle = sun.base;
+    c2d.lineWidth = 1.5;
+    c2d.strokeRect(fish.x + 0.5, fish.y + 0.5, fish.w - 1, fish.h - 1);
+  }
 }
 
 function drawAtlasFit(

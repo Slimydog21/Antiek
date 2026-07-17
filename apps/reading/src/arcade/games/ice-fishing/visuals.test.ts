@@ -21,6 +21,7 @@ function context2d() {
     fill: vi.fn(),
     drawImage: vi.fn(),
     fillText: vi.fn(),
+    strokeRect: vi.fn(),
     save: vi.fn(),
     restore: vi.fn(),
     translate: vi.fn(),
@@ -267,6 +268,34 @@ describe("Ice Fishing authored visuals", () => {
     );
     expect(c2d.fillRect).toHaveBeenCalledWith(20, 90, 18, 10);
     expect(c2d.fillText).toHaveBeenCalledWith("Score 0", 8, 16);
+  });
+
+  it("draws a sun rim around authored golden fish densify", () => {
+    const c2d = context2d();
+    const image = {} as CanvasImageSource;
+    const kit: IceFishingVisualKit = {
+      image,
+      ready: true,
+      load() {},
+      dispose() {},
+    };
+    const state: IceFishingState = {
+      ...createIceFishingState({ width: ctx.width, height: ctx.height }),
+      fishes: [
+        {
+          id: 7,
+          kind: "golden",
+          x: 50,
+          y: 90,
+          vx: 20,
+          w: 28,
+          h: 14,
+          points: 5,
+        },
+      ],
+    };
+    renderIceFishing(c2d, ctx, state, kit);
+    expect(c2d.strokeRect).toHaveBeenCalledWith(50.5, 90.5, 27, 13);
   });
 
   it("paints golden fish fallback with sun.base densify color", () => {
