@@ -830,3 +830,9 @@ reframe class. densify pack **39/321**. Pure Flipbook sole UI remains **NO-GO**.
 | Zombies wave-1 no fort-heal densify assert | `ca0cec888` | start wave 1 keeps lives |
 
 Unit densify pins fort heal only for wave>1 clears. densify pack **39/322**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Ice golden visual + densify pack visuals (craft157+)
+
+| Ice golden visual densify + pack | `3f30cdc2e` | visuals.test in densify pack 40/330 |
+
+Golden fallback sun.base densify + ice visuals suite now in branding densify pack. Pure Flipbook sole UI remains **NO-GO**.
