@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `5b80c33ba` — densify pack **47/408**.
+PR #2416 tip (at close of this note): `029720206` — densify pack **47/409**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1113,3 +1113,9 @@ Instrument barrel densify exports ROD_MAX_BEND + ROD_HALF_BEND_DIST. densify pac
 | ROD_TIP/BUTT local anchors densify | `5b80c33ba` | ROD_TIP_LOCAL + ROD_BUTT_LOCAL public |
 
 Instrument barrel densify exports rod local anchors. densify pack **47/408**. Pure Flipbook sole UI remains **NO-GO**.
+
+## EMOTE_DURATION_MS table densify (craft157+)
+
+| EMOTE_DURATION_MS table densify | `029720206` | table exhaustive + aligned with emoteDurationMs |
+
+Instrument barrel densify exports EMOTE_DURATION_MS table densify. densify pack **47/409**. Pure Flipbook sole UI remains **NO-GO**.
