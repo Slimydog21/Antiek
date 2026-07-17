@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `6844370aa` — densify pack **42/358**.
+PR #2416 tip (at close of this note): `decfc0d8d` — densify pack **42/360**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -909,3 +909,9 @@ Live xN and BEST xN densify via iceCatchStreakMultiplier / clamCatchStreakMultip
 | Home invent reframe + highlight ambient densify | `6844370aa` | home *-living-tv-art; highlight idle no re-arm |
 
 Home invent Flipbook-feel suffix densify + living-TV highlight episode no ambient spam. densify pack **42/358**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Factory trio RM progression densify (craft157+)
+
+| Factory trio RM progression densify | `decfc0d8d` | ice+clam+zombies RM scores via factory |
+
+Shared factory densify asserts reduced-motion scores on host path for all three games. densify pack **42/360**. Pure Flipbook sole UI remains **NO-GO**.
