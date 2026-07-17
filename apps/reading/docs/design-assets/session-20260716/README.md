@@ -72,3 +72,4 @@ Candidates retained as `*_session_candidate_v1.webp` beside refedits.
 | werner_model_decision_tree_refedit_v2c.jpg | **PROMOTED** → poses/session/werner_model_decision_tree_session_v1.webp |
 | werner_crt_living_tv_refedit_v2c.jpg | **PROMOTED** → poses/session/werner_crt_living_tv_session_v1.webp |
 | werner_crt_living_tv_refedit_v2d.jpg | **PROMOTED** → poses/session/werner_crt_living_tv_session_v1.webp |
+| werner_igloo_minigame_trio_refedit_v2d.jpg | **PROMOTED** → poses/session/werner_igloo_minigame_trio_session_v1.webp |
