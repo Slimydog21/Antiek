@@ -72,4 +72,16 @@ describe("sessionLivingTv invent reframe CSS contract", () => {
     expect(css).toMatch(/16s/);
     expect(css).toMatch(/reshape-with-window|Flipbook/i);
   });
+
+  it("covers research-wait playing invent testid via suffix densify", () => {
+    const css = readFileSync(
+      join(process.cwd(), "src/brand/sessionLivingTv.css"),
+      "utf8",
+    );
+    // Global invent testids ending in -living-tv-art match wait playing scene.
+    expect(css).toMatch(/data-testid\$="-living-tv-art"/);
+    expect("research-wait-playing-living-tv-art".endsWith("-living-tv-art")).toBe(
+      true,
+    );
+  });
 });
