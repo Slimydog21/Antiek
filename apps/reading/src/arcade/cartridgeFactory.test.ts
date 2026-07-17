@@ -17,6 +17,14 @@ describe("arcade cartridge factory helpers", () => {
     },
   );
 
+  it("progresses clam-catcher score under reducedMotion via shared factory densify", () => {
+    const cart = createArcadeCartridge("clam-catcher", { reducedMotion: true });
+    expect(cart.id).toBe("clam-catcher");
+    const { score } = progressCartridge(cart, 12, { fire: true, seed: 3 });
+    // RM gentle clicks must score through the host factory path (not re-implemented).
+    expect(score).toBeGreaterThan(0);
+  });
+
   it("tears down the cartridge after a successful simulation", () => {
     const teardown = vi.fn();
     const cart: Cartridge = {
