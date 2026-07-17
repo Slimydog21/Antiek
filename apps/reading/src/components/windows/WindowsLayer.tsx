@@ -20,14 +20,15 @@ import { WorkspaceWindow } from "./WorkspaceWindow";
  * orchestrator/SPR-04 owner wires that one line; SPR-09 keeps AppShell.tsx
  * untouched (hard constraint).
  *
- * Render order follows `order` (last = topmost). AnimatePresence gives the
- * close/open spring (disabled under reduced-motion inside WorkspaceWindow).
+ * Render order follows `order` (last = topmost). The inert empty layer stays
+ * mounted as the authoritative coordinate origin for anchor-aware opens;
+ * pointer-events remain disabled until a child window enables them.
+ * AnimatePresence gives the close/open spring (disabled under reduced-motion
+ * inside WorkspaceWindow).
  */
 export function WindowsLayer() {
   const order = useWindows((s) => s.order);
   const windows = useWindows((s) => s.windows);
-
-  if (order.length === 0) return null;
 
   return (
     <div data-windows-layer className="absolute inset-0 pointer-events-none z-30">

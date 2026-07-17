@@ -29,6 +29,7 @@
  */
 
 import type { DistilledNode } from "../../../lib/api";
+import type { SourceAnchorRect } from "./evidenceWindowPlacement";
 
 export interface BlockCardProps {
   node: DistilledNode;
@@ -38,7 +39,7 @@ export interface BlockCardProps {
   /** Read-source / inspect-provenance affordance. Optional — when absent we
    *  still show the source's *presence* (or absence) honestly, just without a
    *  click target. */
-  onCiteSource?: (node: DistilledNode) => void;
+  onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
 }
 
 const KIND_STYLE = {
@@ -117,7 +118,11 @@ export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCar
           onCiteSource ? (
             <button
               type="button"
-              onClick={() => onCiteSource(node)}
+              onClick={(event) => {
+                const { left, top, right, bottom, width, height } =
+                  event.currentTarget.getBoundingClientRect();
+                onCiteSource(node, { left, top, right, bottom, width, height });
+              }}
               className="font-mono underline decoration-dotted underline-offset-2 hover:text-ink dark:hover:text-bright"
             >
               read source

@@ -42,7 +42,7 @@ export function notifyThoughtPartnerReplyReceived(): void {
   emitWernerExperience("thought_partner_reply_received");
 }
 
-/** A current, servable cited source is committed as readable modal content. */
+/** A current gate-served cited source is committed as readable content. */
 export function notifyEvidenceSourceOpened(): void {
   emitWernerExperience("evidence_source_opened");
 }

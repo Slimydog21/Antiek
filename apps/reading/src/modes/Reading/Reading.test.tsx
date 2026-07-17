@@ -21,6 +21,7 @@ const {
   searchBlocksMock,
   startInvestigationMock,
   apiFetchMock,
+  notifyEvidenceSourceOpenedMock,
 } = vi.hoisted(() => ({
   getBookMock: vi.fn(),
   getFullTextMock: vi.fn(),
@@ -39,7 +40,13 @@ const {
   apiFetchMock: vi.fn((_i: unknown, _init?: unknown) =>
     Promise.resolve(new Response(JSON.stringify({ text: "reply" }), { status: 200 })),
   ),
+  notifyEvidenceSourceOpenedMock: vi.fn(),
 }));
+
+vi.mock("../../werner", async (orig) => {
+  const actual = await orig<typeof import("../../werner")>();
+  return { ...actual, notifyEvidenceSourceOpened: notifyEvidenceSourceOpenedMock };
+});
 
 vi.mock("../../api/books", async (orig) => {
   const actual = await orig<typeof import("../../api/books")>();
@@ -259,13 +266,13 @@ async function renderReader() {
   );
 }
 
-async function renderWindowReader(documentId: string) {
+async function renderWindowReader(documentId: string, evidenceSourceContext = false) {
   listBooksMock.mockResolvedValue({ books: [], count: 0 });
   const { default: BookReader } = await import("./index");
   return render(
     <MemoryRouter initialEntries={["/research"]}>
       <WindowHostProvider value={true}>
-        <BookReader documentId={documentId} />
+        <BookReader documentId={documentId} evidenceSourceContext={evidenceSourceContext} />
       </WindowHostProvider>
     </MemoryRouter>,
   );
@@ -278,6 +285,7 @@ describe("BookReader", () => {
     getFullTextMock.mockReset();
     listBooksMock.mockReset();
     navigateMock.mockReset();
+    notifyEvidenceSourceOpenedMock.mockReset();
     useWorkspace.getState().reset();
     // Default: a calm, empty reading thread (the no-key / nothing-yet case).
     useInvestigationMock.mockReset();
@@ -311,6 +319,103 @@ describe("BookReader", () => {
     expect(root.className).toContain("h-full");
     expect(root.className).toContain("bg-transparent");
     expect(root.className).not.toContain("h-screen");
+  });
+
+  it("brands evidence-window loading and reacts once only after readable gate content commits", async () => {
+    let resolveBook!: (book: BookDetail) => void;
+    let resolveBody!: (body: FullTextResponse) => void;
+    getBookMock.mockReturnValue(new Promise<BookDetail>((resolve) => { resolveBook = resolve; }));
+    getFullTextMock.mockReturnValue(new Promise<FullTextResponse>((resolve) => { resolveBody = resolve; }));
+
+    await renderWindowReader("doc-evidence", true);
+    expect(screen.getByRole("status", { name: "Opening the research source…" })).toBeTruthy();
+    expect(notifyEvidenceSourceOpenedMock).not.toHaveBeenCalled();
+
+    resolveBook(makeDetail({ document_id: "doc-evidence" }));
+    resolveBody(makeBody({ document_id: "doc-evidence" }));
+    await screen.findByTestId("book-reader-root");
+    await waitFor(() => expect(notifyEvidenceSourceOpenedMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not react for route reading, failed evidence, or an unreadable gate response", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    const route = await renderReader();
+    await screen.findByTestId("book-reader-root");
+    expect(notifyEvidenceSourceOpenedMock).not.toHaveBeenCalled();
+    route.unmount();
+
+    getBookMock.mockRejectedValue(new Error("book_not_found"));
+    getFullTextMock.mockRejectedValue(new Error("book_not_found"));
+    const failed = await renderWindowReader("missing", true);
+    await screen.findByText(/isn't in the library/);
+    expect(notifyEvidenceSourceOpenedMock).not.toHaveBeenCalled();
+    failed.unmount();
+
+    getBookMock.mockResolvedValue(
+      makeDetail({
+        document_id: "taken",
+        servability: "taken_down",
+        servable_full_text: false,
+        taken_down: true,
+      }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        document_id: "taken",
+        full_text: "stale bytes that must never authorize a reaction",
+        snippet: "stale preview",
+        servable: false,
+        servability: "taken_down",
+      }),
+    );
+    const taken = await renderWindowReader("taken", true);
+    await screen.findByTestId("book-reader-root");
+    expect(notifyEvidenceSourceOpenedMock).not.toHaveBeenCalled();
+    taken.unmount();
+
+    getBookMock.mockResolvedValue(
+      makeDetail({
+        document_id: "metadata-only",
+        servability: "gated_metadata_only",
+        servable_full_text: false,
+      }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        document_id: "metadata-only",
+        full_text: null,
+        snippet: "A permitted preview is not a fully servable evidence source.",
+        servable: false,
+        servability: "gated_metadata_only",
+      }),
+    );
+    const metadataOnly = await renderWindowReader("metadata-only", true);
+    await screen.findByTestId("book-reader-root");
+    expect(notifyEvidenceSourceOpenedMock).not.toHaveBeenCalled();
+    metadataOnly.unmount();
+
+    getBookMock.mockResolvedValue(
+      makeDetail({
+        document_id: "arxiv-gated",
+        servability: "gated_metadata_only",
+        servable_full_text: false,
+      }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        document_id: "arxiv-gated",
+        tier: "T2",
+        full_text: null,
+        snippet: "residual text that the T2 link-back branch does not render",
+        servable: false,
+        servability: "gated_metadata_only",
+        canonical_url: "https://arxiv.org/abs/1234.5678",
+      }),
+    );
+    await renderWindowReader("arxiv-gated", true);
+    await screen.findByTestId("book-reader-root");
+    expect(notifyEvidenceSourceOpenedMock).not.toHaveBeenCalled();
   });
 
   it("keeps the full-page route contract unchanged", async () => {
