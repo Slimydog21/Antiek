@@ -7,7 +7,7 @@ import { clampRectToViewport } from "../../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 import { WINDOW_Z_BASE, useWindows } from "../../workspace/windowsStore";
 import type { AdFillView } from "../../modes/Reading/AdBorder";
-import { WindowHostProvider } from "./windowHostContext";
+import { WindowHostProvider, WindowInstanceProvider } from "./windowHostContext";
 import { WindowAdBorder } from "./WindowAdBorder";
 import type { WindowAdEdge } from "./WindowAdBorder";
 
@@ -335,7 +335,9 @@ export function WorkspaceWindow({
         style={{ paddingTop: BORDER_INSET, paddingBottom: BORDER_INSET }}
       >
         <div className="absolute inset-0 overflow-auto" style={{ top: BORDER_INSET, bottom: BORDER_INSET }}>
-          <WindowHostProvider value={true}>{children}</WindowHostProvider>
+          <WindowHostProvider value={true}>
+            <WindowInstanceProvider value={id}>{children}</WindowInstanceProvider>
+          </WindowHostProvider>
         </div>
 
         {/* TIMES-SQUARE AD BORDER — parent fills, house fallback, suppression. */}

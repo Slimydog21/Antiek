@@ -103,6 +103,12 @@ export const WINDOW_PAGES: Record<string, { title: string; renderer: WindowPageR
     title: "Source reader",
     renderer: lazy(() => import("../../modes/Reading")),
   },
+  // Window-native companion tool. It reuses the established ChaseThread
+  // launch authority; the window supplies only bounded, expandable chrome.
+  "research-chase": {
+    title: "Follow this passage",
+    renderer: lazy(() => import("./ResearchChaseWindow")),
+  },
 };
 
 export type WindowEligibleKind = keyof typeof WINDOW_PAGES;
@@ -144,6 +150,24 @@ export function openWindow(
   return useWindows.getState().open(kind, payload, {
     title: page?.title ?? kind,
     id: opts.id ?? `win:${kind}`,
+    ...opts,
+  });
+}
+
+/**
+ * Spawn a distinct window even when another window of this kind exists.
+ * Use only for genuinely concurrent instances (for example, two highlighted
+ * passages being researched side-by-side); stable reference pages should use
+ * openWindow() so reopen focuses rather than duplicates.
+ */
+export function openNewWindow(
+  kind: WindowEligibleKind,
+  payload: Record<string, unknown> = {},
+  opts: Omit<OpenWindowOptions, "id"> = {},
+): string {
+  const page = WINDOW_PAGES[kind];
+  return useWindows.getState().open(kind, payload, {
+    title: page?.title ?? kind,
     ...opts,
   });
 }

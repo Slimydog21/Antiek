@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { WorkspaceWindow } from "./WorkspaceWindow";
+import { useWindowInstanceId } from "./windowHostContext";
 import { WINDOW_Z_BASE, useWindows } from "../../workspace/windowsStore";
 
 function stubMatchMedia(reduce: boolean): void {
@@ -48,6 +49,19 @@ function renderWindow(id: string) {
 }
 
 describe("WorkspaceWindow — frame + body", () => {
+  it("supplies the exact presentation host id to window-native content", () => {
+    function Probe() {
+      return <span data-testid="window-instance-id">{useWindowInstanceId() ?? "route"}</span>;
+    }
+    const id = w().open("research-chase", {});
+    render(
+      <WorkspaceWindow id={id}>
+        <Probe />
+      </WorkspaceWindow>,
+    );
+    expect(screen.getByTestId("window-instance-id").textContent).toBe(id);
+  });
+
   it("renders the title bar, hosted child, and a glass body that reveals the scene", () => {
     const id = w().open("library", {}, { title: "Library" });
     const { container } = renderWindow(id);

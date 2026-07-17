@@ -11,7 +11,8 @@ import type {
   SelectionProvenance,
 } from "../shared/FloatMenu/useFloatMenuSelection";
 import ReadingColumn from "../../components/reader/ReadingColumn";
-import { useInWindow } from "../../components/windows/windowHostContext";
+import { useInWindow, useWindowInstanceId } from "../../components/windows/windowHostContext";
+import { openNewWindow } from "../../components/windows/openWindow";
 import { WernerTobogganSpinner } from "../../brand/werner/animated";
 import { notifyEvidenceSourceOpened } from "../../werner";
 import AdBorder from "./AdBorder";
@@ -23,7 +24,11 @@ import ResearchThis from "./ResearchThis";
 import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
-import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { DEFAULT_WINDOW_RECT } from "../../workspace/windowsStore";
+import {
+  anchorRelativeToLayer,
+  chooseAdjacentWindowRect,
+} from "../DeepResearchWorkspace/Canvas/adjacentWindowPlacement";
 import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
@@ -57,8 +62,8 @@ export default function BookReader({
   const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
   const documentId = documentIdProp ?? routeDocumentId;
   const inWindow = useInWindow();
+  const windowInstanceId = useWindowInstanceId();
   const navigate = useNavigate();
-  const openPanel = useWorkspace((s) => s.open);
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [body, setBody] = useState<FullTextResponse | null>(null);
@@ -218,7 +223,8 @@ export default function BookReader({
   // book selection's document + its §9.0 servable flag so the menu's outbound
   // chokepoint can refuse a withheld selection. The in-book highlight→action
   // (the old inline "Go deeper" affordance) is GENERALIZED through this menu:
-  // Deep-research opens the SAME floating ChaseThread panel that Research uses,
+  // Deep-research opens the SAME ChaseThread content that Research uses, now
+  // inside canonical expandable workspace-window chrome for Read,
   // so there is ONE in-book highlight primitive across both surfaces.
   const articleRef = useRef<HTMLElement>(null);
 
@@ -244,21 +250,47 @@ export default function BookReader({
     minLength: 8,
   });
 
-  // Deep-research → the EXISTING workspace ChaseThread floating panel. §9.0:
+  // Deep-research → the EXISTING ChaseThread inside canonical workspace
+  // window chrome. §9.0:
   // `safeSpawnText` is null when the selection crosses a withheld region —
   // refuse rather than spawn on a withheld body (the chokepoint already refuses,
   // so this is null only for a non-servable book; we never chase it).
   const onDeepResearch = useCallback(
-    (safeSpawnText: string | null, _sel: FloatMenuSelection) => {
+    (safeSpawnText: string | null, selected: FloatMenuSelection) => {
       if (safeSpawnText === null) return;
       window.getSelection()?.removeAllRanges(); // collapse so the menu closes
-      openPanel(
-        "ChaseThread",
+      const host = document.querySelector<HTMLElement>("[data-windows-layer]");
+      const hostRect = host?.getBoundingClientRect();
+      const layer = {
+        left: hostRect?.left ?? 0,
+        top: hostRect?.top ?? 0,
+        width: hostRect?.width || window.innerWidth,
+        height: hostRect?.height || window.innerHeight,
+      };
+      const anchor = anchorRelativeToLayer(
+        {
+          ...selected.rect,
+          right: selected.rect.left + selected.rect.width,
+          bottom: selected.rect.top + selected.rect.height,
+        },
+        layer,
+      );
+      const rect = chooseAdjacentWindowRect(anchor, layer, {
+        width: DEFAULT_WINDOW_RECT.width,
+        height: DEFAULT_WINDOW_RECT.height,
+      });
+      openNewWindow(
+        "research-chase",
         { spawnContext: safeSpawnText, parentInvestigationId: readingThreadId },
-        { mode: "floating", title: "Follow this" },
+        {
+          title: "Follow this passage",
+          replaceOldestAtLimit: true,
+          ...(windowInstanceId ? { preserveIdsAtLimit: [windowInstanceId] } : {}),
+          ...(rect ? { rect } : {}),
+        },
       );
     },
-    [openPanel, readingThreadId],
+    [readingThreadId, windowInstanceId],
   );
 
   // Turning the page (or jumping via TOC) collapses a stale selection — the
@@ -402,8 +434,8 @@ export default function BookReader({
           (substrate/graph/insight_question.promote_from_marginalia_event; the
           /events/typed endpoint promotes on emit, backfill is the safety net).
           §9: source_kind "user" is carried onto the node — never conflated with
-          a model-emerged insight. Deep-research opens a floating ChaseThread
-          panel. §9.0: the outbound chokepoint refuses Search/Deep-research
+          a model-emerged insight. Deep-research opens an expandable ChaseThread
+          window. §9.0: the outbound chokepoint refuses Search/Deep-research
           over a non-servable book. */}
       <FloatMenu
         selection={selection}

@@ -45,9 +45,10 @@ import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
 import Canvas from "./Canvas/Canvas";
 import {
-  chooseEvidenceWindowRect,
-  type SourceAnchorRect,
-} from "./Canvas/evidenceWindowPlacement";
+  anchorRelativeToLayer,
+  chooseAdjacentWindowRect,
+  type AnchorRect,
+} from "./Canvas/adjacentWindowPlacement";
 import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
 import { useWernerResearchReactions } from "./useWernerResearchReactions";
@@ -332,25 +333,19 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
     setResultView(null);
   };
 
-  const openEvidenceSource = useCallback((node: DistilledNode, anchor: SourceAnchorRect) => {
+  const openEvidenceSource = useCallback((node: DistilledNode, anchor: AnchorRect) => {
     const documentId = node.source_document_id;
     if (!documentId?.trim()) return;
     const host = document.querySelector<HTMLElement>("[data-windows-layer]");
     const hostRect = host?.getBoundingClientRect();
-    const originLeft = hostRect?.left ?? 0;
-    const originTop = hostRect?.top ?? 0;
-    const viewport = {
+    const layer = {
+      left: hostRect?.left ?? 0,
+      top: hostRect?.top ?? 0,
       width: hostRect?.width || window.innerWidth,
       height: hostRect?.height || window.innerHeight,
     };
-    const relativeAnchor = {
-      ...anchor,
-      left: anchor.left - originLeft,
-      right: anchor.right - originLeft,
-      top: anchor.top - originTop,
-      bottom: anchor.bottom - originTop,
-    };
-    const rect = chooseEvidenceWindowRect(relativeAnchor, viewport, {
+    const relativeAnchor = anchorRelativeToLayer(anchor, layer);
+    const rect = chooseAdjacentWindowRect(relativeAnchor, layer, {
       width: DEFAULT_WINDOW_RECT.width,
       height: DEFAULT_WINDOW_RECT.height,
     });

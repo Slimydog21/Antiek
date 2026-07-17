@@ -7,8 +7,12 @@ import {
   disablePersistence,
   enablePersistence,
 } from "./workspace/WorkspaceStore";
-import { farewellPopout, receivePopoutPanel } from "./workspace/popout";
+import { farewellPopout, handoffPopoutToMain, receivePopoutPanel } from "./workspace/popout";
 import type { PanelDescriptor } from "./workspace/panel.types";
+import {
+  PanelInstanceProvider,
+  PanelMainViewHandoffProvider,
+} from "./workspace/panelInstanceContext";
 
 /**
  * The popout window app. Renders at `/_panel/:panelId` when the
@@ -132,7 +136,13 @@ export default function PanelWindowApp() {
             </div>
           }
         >
-          <Renderer {...descriptor.props} />
+          <PanelInstanceProvider value={descriptor.id}>
+            <PanelMainViewHandoffProvider
+              value={(path) => handoffPopoutToMain(descriptor.id, path)}
+            >
+              <Renderer {...descriptor.props} />
+            </PanelMainViewHandoffProvider>
+          </PanelInstanceProvider>
         </Suspense>
       </div>
       <LemonToastViewport />

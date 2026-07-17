@@ -21,10 +21,17 @@ import { createContext, useContext } from "react";
  * out-of-contract and must be reported, not redesigned (SPR-09 rigor #1).
  */
 export const WindowHostContext = createContext<boolean>(false);
+const WindowInstanceContext = createContext<string | null>(null);
 
 /** True when the calling component tree is rendered inside a WorkspaceWindow. */
 export function useInWindow(): boolean {
   return useContext(WindowHostContext);
 }
 
+/** Exact presentation host id, or null for routes and legacy panels. */
+export function useWindowInstanceId(): string | null {
+  return useContext(WindowInstanceContext);
+}
+
 export const WindowHostProvider = WindowHostContext.Provider;
+export const WindowInstanceProvider = WindowInstanceContext.Provider;

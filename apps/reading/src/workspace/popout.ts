@@ -25,6 +25,8 @@ type Msg =
   | { kind: "popout-init"; panelId: string; descriptor: PanelDescriptor }
   | { kind: "popout-close"; panelId: string }
   | { kind: "popout-ready"; panelId: string }
+  | { kind: "popout-consumed"; panelId: string; path: string }
+  | { kind: "popout-consumed-ack"; panelId: string }
   | { kind: "popout-bye"; panelId: string; rect?: { x: number; y: number; width: number; height: number } };
 
 function makeChannel(): BroadcastChannel | null {
@@ -88,10 +90,59 @@ export function openPopoutFor(panelId: string): void {
         toast.info(`${panel.title} re-docked from popout.`);
         channel.removeEventListener("message", onMessage);
         channel.close();
+      } else if (m.kind === "popout-consumed" && m.panelId === panelId) {
+        // The popout deliberately handed its content to the main product view.
+        // Consume the exact descriptor instead of re-docking it on unload.
+        useWorkspace.getState().close(panelId);
+        window.history.pushState({}, "", m.path);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+        channel.postMessage({ kind: "popout-consumed-ack", panelId } satisfies Msg);
+        channel.removeEventListener("message", onMessage);
+        channel.close();
       }
     };
     channel.addEventListener("message", onMessage);
   }
+}
+
+/**
+ * Hand a popout-owned panel into the main product view. The main tab consumes
+ * the exact descriptor; the OS popout then closes instead of navigating itself
+ * and leaving a hidden `popout` descriptor behind.
+ */
+export function handoffPopoutToMain(panelId: string, path: string): void {
+  const opener = window.opener;
+  const channel = makeChannel();
+  if (opener && !opener.closed && channel) {
+    let settled = false;
+    let fallbackTimer: number | undefined;
+    const closePopout = () => {
+      if (settled) return;
+      settled = true;
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+      channel.close();
+      window.close();
+    };
+    channel.addEventListener("message", (event: MessageEvent<Msg>) => {
+      if (event.data?.kind === "popout-consumed-ack" && event.data.panelId === panelId) {
+        closePopout();
+      }
+    });
+    channel.postMessage({ kind: "popout-consumed", panelId, path } satisfies Msg);
+    // If the main tab disappears between the opener check and delivery, retain
+    // the only usable window and navigate it. Its beforeunload then re-docks the
+    // exact descriptor in any surviving main tab; never close without an ACK.
+    fallbackTimer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      channel.close();
+      window.location.assign(path);
+    }, 1000);
+    return;
+  }
+  // Honest standalone fallback: keep the only live window open and navigate it.
+  channel?.close();
+  window.location.assign(path);
 }
 
 /** Called by the popout window. Hands back the panel + tells main to

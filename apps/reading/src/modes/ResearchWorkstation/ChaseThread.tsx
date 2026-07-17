@@ -8,7 +8,13 @@ import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import { startInvestigation, ApiError } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
+import { useWindowInstanceId } from "../../components/windows/windowHostContext";
+import {
+  usePanelInstanceId,
+  usePanelMainViewHandoff,
+} from "../../workspace/panelInstanceContext";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { useWindows } from "../../workspace/windowsStore";
 import ThinkingStream from "./ThinkingStream";
 import VoiceChaseButton from "./VoiceChaseButton";
 
@@ -17,7 +23,7 @@ import VoiceChaseButton from "./VoiceChaseButton";
  * gesture (SPR-04 M2). The delightful, jargon-free successor to
  * ChaseSlideOver: the reader highlights a passage, refines the question if
  * they like, and clicks "Follow this" — a child research launches and the
- * panel transitions to its live thinking stream.
+ * host transitions to its live thinking stream.
  *
  * Three properties make this hard-to-vary, not just a renamed button:
  *
@@ -74,6 +80,9 @@ export default function ChaseThread({
   const [launchedId, setLaunchedId] = useState<string | null>(null);
   const [error, setError] = useState<{ reason: string | null } | null>(null);
   const navigate = useNavigate();
+  const windowInstanceId = useWindowInstanceId();
+  const panelInstanceId = usePanelInstanceId();
+  const panelMainViewHandoff = usePanelMainViewHandoff();
   const { celebrating, celebrate } = useCelebrate();
 
   // Reopened with a new selection → reset the form.
@@ -123,7 +132,16 @@ export default function ChaseThread({
     return (
       <LaunchedThread
         childId={launchedId}
-        onOpenInMain={() => navigate(`/inv/${launchedId}`)}
+        onOpenInMain={() => {
+          const path = `/inv/${launchedId}`;
+          if (panelMainViewHandoff) {
+            panelMainViewHandoff(path);
+            return;
+          }
+          navigate(path);
+          if (windowInstanceId) useWindows.getState().close(windowInstanceId);
+          else if (panelInstanceId) useWorkspace.getState().close(panelInstanceId);
+        }}
       />
     );
   }
@@ -187,7 +205,7 @@ export default function ChaseThread({
   );
 }
 
-/** The launched child research's live thinking stream, in-panel. The user
+/** The launched child research's live thinking stream, in its current host. The user
  *  can pop it into the main view. Mirrors ChaseSlideOver's SpawnedTrajectory
  *  but without the "spawn" vocabulary. */
 function LaunchedThread({
@@ -198,24 +216,13 @@ function LaunchedThread({
   onOpenInMain: () => void;
 }) {
   const inv = useInvestigation(childId);
-  const getState = useWorkspace.getState;
   return (
     <div className="flex flex-col h-full text-ink dark:text-bright">
       <div className="px-3 py-2 border-b border-rule dark:border-charcoal-1 flex items-center justify-between text-xs font-mono">
         <span className="text-shadow-1 dark:text-moonlight">following the thread…</span>
         <button
           type="button"
-          onClick={() => {
-            onOpenInMain();
-            // Close THIS chase panel after navigating away.
-            const ws = getState();
-            const me = Object.values(ws.panels).find(
-              (p) =>
-                p.kind === "ChaseThread" &&
-                (p.props as { parentInvestigationId?: string }).parentInvestigationId,
-            );
-            if (me) getState().close(me.id);
-          }}
+          onClick={onOpenInMain}
           className="text-ink dark:text-bright hover:underline shrink-0 ml-2"
         >
           open in main view →
