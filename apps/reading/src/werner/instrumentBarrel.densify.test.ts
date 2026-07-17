@@ -21,11 +21,16 @@ import {
   emoteFromWernerTargetAttr,
   EMOTE_DURATION_MS,
   EMOTE_KINDS,
+  FISHING_BEATS,
+  FISHING_CYCLE_MS,
+  fishingStep,
   FOLLOW_EASE,
+  INITIAL_WERNER_STATE,
   installChoreography,
   installLivingTvAmbient,
   installReactionBus,
   installTargetChoreography,
+  isBusy,
   isProductExperience,
   isStationInstrumentSuspended,
   LAG_MS,
@@ -41,6 +46,7 @@ import {
   ROD_MAX_BEND,
   ROD_TIP_LOCAL,
   SAMPLE_INTERVAL_MS,
+  shouldFish,
   stationInstrumentLeaseCount,
   tipToBaitDistance,
   activityIdForPathname,
@@ -62,10 +68,12 @@ import {
   useMouseFollow,
   useStationActivity,
   useStationInstrumentSuspended,
+  WADDLE_MS,
   WernerFishingLayer,
   WernerIceBait,
   WernerIceCursorShell,
   WernerRig,
+  wernerReducer,
   writingNibActivity,
   WERNER_EXPERIENCE_EVENT,
   WERNER_TARGET_ATTR,
@@ -286,6 +294,38 @@ describe("werner instrument barrel densify", () => {
     expect(typeof WernerIceCursorShell).toBe("function");
     expect(typeof WernerRig).toBe("function");
     expect(typeof ResearchLensCursor).toBe("function");
+  });
+
+  it("exports fishing gag densify (shouldFish gate + endless never-caught cycle)", () => {
+    // densify: loop owns Werner only at idle + pointer idle; cycle has no catch.
+    expect(shouldFish(INITIAL_WERNER_STATE, true)).toBe(true);
+    expect(shouldFish(INITIAL_WERNER_STATE, false)).toBe(false);
+    expect(shouldFish({ name: "following", resume: "following" }, true)).toBe(
+      false,
+    );
+    expect(shouldFish({ name: "waddling", resume: "idle" }, true)).toBe(false);
+    expect(shouldFish({ name: "frozen", resume: "idle" }, true)).toBe(false);
+    expect(FISHING_BEATS.length).toBeGreaterThan(0);
+    expect(FISHING_CYCLE_MS).toBe(
+      FISHING_BEATS.reduce((acc, s) => acc + s.holdMs, 0),
+    );
+    expect(FISHING_BEATS.map((b) => b.beat)).not.toContain("caught");
+    expect(fishingStep(0).beat).toBe("cast");
+    expect(fishingStep(FISHING_CYCLE_MS).beat).toBe("cast");
+    expect(fishingStep(FISHING_BEATS[0].holdMs).beat).toBe(FISHING_BEATS[1].beat);
+  });
+
+  it("exports steering densify (isBusy + reducer + waddle period)", () => {
+    // densify: directed actions are busy; freeze is a hard floor; waddle period public.
+    expect(isBusy(INITIAL_WERNER_STATE)).toBe(false);
+    expect(isBusy({ name: "waddling", resume: "idle" })).toBe(true);
+    expect(isBusy({ name: "emoting", resume: "following" })).toBe(true);
+    expect(isBusy({ name: "following", resume: "following" })).toBe(false);
+    const frozen = wernerReducer(INITIAL_WERNER_STATE, { type: "freeze" });
+    expect(frozen.name).toBe("frozen");
+    expect(wernerReducer(frozen, { type: "waddle" }).name).toBe("frozen");
+    expect(wernerReducer(frozen, { type: "unfreeze" }).name).toBe("idle");
+    expect(WADDLE_MS).toBe(1800);
   });
 
   it("exports mouse-follow densify for cursor-is-bait lag contract", () => {

@@ -86,10 +86,10 @@ describe("invent class product-map densify", () => {
     expect(summary).toMatch(/Invent polish v3r wave complete/i);
     // densify pack progression through invent polish honesty densify
     expect(summary).toMatch(
-      /29\/25[01]|32\/268|36\/297|37\/298|38\/299|39\/30[23]|42\/3[5-6][0-9]|43\/37[0-9]|44\/37[0-9]|45\/38[0-9]|46\/39[0-9]|47\/(39[0-9]|40[0-9]|41[0-9])/,
+      /29\/25[01]|32\/268|36\/297|37\/298|38\/299|39\/30[23]|42\/3[5-6][0-9]|43\/37[0-9]|44\/37[0-9]|45\/38[0-9]|46\/39[0-9]|47\/(39[0-9]|4[0-2][0-9])/,
     );
     expect(flipbook).toMatch(
-      /39 files \/ 30[23] tests|38 files \/ 299 tests|42 files \/ 3[5-6][0-9] tests|43 files \/ 37[0-9] tests|44 files \/ 37[0-9] tests|45 files \/ 38[0-9] tests|46 files \/ 39[0-9] tests|47 files \/ (39[0-9]|40[0-9]|41[0-9]) tests/,
+      /39 files \/ 30[23] tests|38 files \/ 299 tests|42 files \/ 3[5-6][0-9] tests|43 files \/ 37[0-9] tests|44 files \/ 37[0-9] tests|45 files \/ 38[0-9] tests|46 files \/ 39[0-9] tests|47 files \/ (39[0-9]|4[0-2][0-9]) tests/,
     );
     // Instrument densify honesty: bait + tip→bait tension + suspension stay named.
     expect(flipbook).toMatch(/baitChromeFromFollow|tipToBaitDistance|rodBendFromPoints/i);
@@ -98,8 +98,8 @@ describe("invent class product-map densify", () => {
     expect(flipbook).toMatch(/data-werner-target densify|productSelector densify/i);
     // reactionBus densify honesty: arcade cores stay free of reactionBus imports.
     expect(flipbook).toMatch(/reactionBus/i);
-    // Fishing-line densify honesty: catenary + tip→bait + rod bend stay named.
-    expect(flipbook).toMatch(/catenary|tipToBaitDistance|rodBend/i);
+    // Fishing densify honesty: catenary + tip→bait + rod bend + gag gate stay named.
+    expect(flipbook).toMatch(/catenary|tipToBaitDistance|rodBend|shouldFish|fishingStep/i);
     expect(flipbook).toMatch(/Invent polish v2i|Invent polish v3r/i);
     expect(flipbook).toMatch(/NO-GO/);
     expect(flipbook).toMatch(/ice-bait|IceBait|ice-cursor|baitChromeFromFollow/i);
