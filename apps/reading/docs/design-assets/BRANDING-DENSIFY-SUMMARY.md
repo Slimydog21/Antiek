@@ -539,7 +539,7 @@ densify pack: `npm run test:branding-densify` (39/303). Pure Flipbook sole UI re
 
 All 18 product invent doors refreshed via Imagine invent polish v3c and densified.
 densify pack: `npm run test:branding-densify` (39/303). Pure Flipbook sole UI remains NO-GO.
-| Imagine invent polish v3d full wave (18 invents) | PLACEHOLDER_V3D_SHA | invent polish v3d all 18 product invent doors on axe-green invent polish v3c tip |
+| Imagine invent polish v3d full wave (18 invents) | `7f63aa24c` | invent polish v3d all 18 product invent doors on axe-green invent polish v3c tip |
 
 
 ## Invent polish v3d wave complete
