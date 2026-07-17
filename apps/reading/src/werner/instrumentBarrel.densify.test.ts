@@ -30,6 +30,7 @@ import {
   POINTER_IDLE_MS,
   PRODUCT_EXPERIENCES,
   productSelector,
+  rodBend,
   rodBendFromPoints,
   SAMPLE_INTERVAL_MS,
   stationInstrumentLeaseCount,
@@ -172,5 +173,13 @@ describe("werner instrument barrel densify", () => {
     expect(typeof teardownB).toBe("function");
     teardownA();
     teardownB();
+  });
+
+  it("exports rodBend densify for instrument tension under tip→bait load", () => {
+    // densify: rod flex is monotone in tip→bait distance; rest is straight.
+    expect(rodBend(0)).toBe(0);
+    expect(rodBend(60)).toBeCloseTo(3, 5); // half bend at half-bend distance
+    expect(rodBend(100)).toBeGreaterThan(rodBend(50));
+    expect(rodBend(1e9)).toBeLessThanOrEqual(6);
   });
 });
