@@ -11,6 +11,9 @@ import type {
   SelectionProvenance,
 } from "../shared/FloatMenu/useFloatMenuSelection";
 import ReadingColumn from "../../components/reader/ReadingColumn";
+import { useInWindow } from "../../components/windows/windowHostContext";
+import { WernerTobogganSpinner } from "../../brand/werner/animated";
+import { notifyEvidenceSourceOpened } from "../../werner";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
 import ArxivFrame from "./ArxivFrame";
@@ -38,8 +41,22 @@ import { emitSourceRead, isRead } from "./sourceRead";
  * does, and this surface honestly reflects it.
  */
 
-export default function BookReader() {
-  const { documentId = "" } = useParams<{ documentId: string }>();
+export interface BookReaderProps {
+  /** Window hosts inject the document identity directly; route mounts keep
+   * resolving `/read/:documentId` exactly as before. */
+  documentId?: string;
+  /** True only for a grounded-evidence workspace window. It affects branded
+   * feedback, never content authority or servability. */
+  evidenceSourceContext?: boolean;
+}
+
+export default function BookReader({
+  documentId: documentIdProp,
+  evidenceSourceContext = false,
+}: BookReaderProps = {}) {
+  const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
+  const documentId = documentIdProp ?? routeDocumentId;
+  const inWindow = useInWindow();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const openTalkOnLoad = searchParams.get("talk") === "1";
@@ -50,6 +67,7 @@ export default function BookReader() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const evidenceReactionDocumentRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +108,40 @@ export default function BookReader() {
     () => paginate(body?.full_text ?? body?.snippet ?? ""),
     [body],
   );
+  const hasCommittedReadableEvidence = Boolean(
+    book &&
+      body &&
+      book.document_id === documentId &&
+      body.document_id === documentId &&
+      book.servable_full_text &&
+      body.servable &&
+      !book.taken_down &&
+      book.servability !== "taken_down" &&
+      body.servability !== "taken_down" &&
+      body.tier !== "T2" &&
+      body.tier !== "T3" &&
+      pages.length > 0,
+  );
+
+  useEffect(() => {
+    if (
+      !inWindow ||
+      !evidenceSourceContext ||
+      loading ||
+      error ||
+      !hasCommittedReadableEvidence
+    ) return;
+    if (evidenceReactionDocumentRef.current === documentId) return;
+    evidenceReactionDocumentRef.current = documentId;
+    notifyEvidenceSourceOpened();
+  }, [
+    documentId,
+    error,
+    evidenceSourceContext,
+    hasCommittedReadableEvidence,
+    inWindow,
+    loading,
+  ]);
   const { pageIndex, setPageIndex } = usePosition(documentId, pages.length);
 
   // Citation → page jump (M2). A talk-to-book / search citation carries a
@@ -308,7 +360,18 @@ export default function BookReader() {
   }, [pageIndex, houseFill, documentId, pages.length, observePage, body?.ad_eligible]);
 
   if (loading) {
-    return <CenterNote>Opening the book…</CenterNote>;
+    return (
+      <CenterNote inWindow={inWindow}>
+        {inWindow && evidenceSourceContext ? (
+          <span className="flex flex-col items-center gap-2">
+            <WernerTobogganSpinner size={64} label="Opening the research source…" />
+            <span aria-hidden="true">Opening the research source…</span>
+          </span>
+        ) : (
+          "Opening the book…"
+        )}
+      </CenterNote>
+    );
   }
   if (error || !book || !body) {
     return (

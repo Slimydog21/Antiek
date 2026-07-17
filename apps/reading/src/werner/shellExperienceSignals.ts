@@ -27,6 +27,10 @@ export function notifyShellFailure(): void {
   emitWernerExperience("fail");
 }
 
+/** A current gate-served cited source is committed as readable content. */
+export function notifyEvidenceSourceOpened(): void {
+  emitWernerExperience("evidence_source_opened");
+}
 export function notifyResearchStarted(sessionId: string): void {
   const startedAt = Date.now();
   locallyStartedResearchSessions.set(sessionId, startedAt);

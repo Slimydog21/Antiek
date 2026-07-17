@@ -1,10 +1,12 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const arcadeRender = vi.hoisted(() => vi.fn());
 const motion = vi.hoisted(() => ({ reduced: false }));
+const track = vi.hoisted(() => vi.fn());
+const openWindowMock = vi.hoisted(() => vi.fn());
 const sessionView = vi.hoisted(() => ({
   current: {
     researches: [
@@ -33,6 +35,39 @@ vi.mock("./ResearchWaitArcade", () => ({
     return <div data-testid="lazy-wait-arcade" />;
   },
 }));
+
+vi.mock("./Canvas/Canvas", () => ({
+  default: ({
+    investigationId,
+    onCiteSource,
+  }: {
+    investigationId: string;
+    onCiteSource?: (
+      node: { source_document_id: string | null },
+      anchor: { left: number; top: number; right: number; bottom: number; width: number; height: number },
+    ) => void;
+  }) => (
+    <div data-testid="selected-organism-canvas">
+      <span data-testid="selected-organism-id">{investigationId}</span>
+      <button onClick={() => onCiteSource?.(
+        { source_document_id: " doc/evidence 1 " },
+        { left: 20, top: 40, right: 100, bottom: 70, width: 80, height: 30 },
+      )}>
+        Read grounded source
+      </button>
+      <button onClick={() => onCiteSource?.(
+        { source_document_id: "   " },
+        { left: 20, top: 40, right: 100, bottom: 70, width: 80, height: 30 },
+      )}>
+        Read ungrounded source
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("../../components/windows/openWindow", () => ({ openWindow: openWindowMock }));
+
+vi.mock("../../lib/analytics", () => ({ track }));
 
 vi.mock("../../workspace/usePrefersReducedMotion", () => ({
   usePrefersReducedMotion: () => motion.reduced,
@@ -69,6 +104,8 @@ const base = {
 afterEach(() => {
   cleanup();
   arcadeRender.mockClear();
+  track.mockClear();
+  openWindowMock.mockClear();
   motion.reduced = false;
   sessionView.current = {
     researches: [
@@ -171,5 +208,44 @@ describe("Deep Research wait arcade gate", () => {
     expect(screen.queryByTestId("lazy-wait-arcade")).toBeNull();
     expect(screen.getByText("Finished evidence")).toBeTruthy();
     expect(screen.getByText("Live evidence")).toBeTruthy();
+  });
+
+  it("opens a grounded Canvas source in one identity-stable reader window without replacing the Canvas", async () => {
+    const windowLayer = document.createElement("div");
+    windowLayer.setAttribute("data-windows-layer", "");
+    windowLayer.getBoundingClientRect = () => ({
+      left: 10,
+      top: 20,
+      right: 1010,
+      bottom: 720,
+      width: 1000,
+      height: 700,
+      x: 10,
+      y: 20,
+      toJSON: () => ({}),
+    });
+    document.body.appendChild(windowLayer);
+    render(
+      <Monitor sessionId="session-source" sessionGeneration={1} busy={false} />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "view as canvas" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Read grounded source" }));
+
+    expect(openWindowMock).toHaveBeenCalledWith(
+      "reader",
+      { documentId: " doc/evidence 1 ", evidenceSourceContext: true },
+      {
+        id: "win:reader:%20doc%2Fevidence%201%20",
+        title: "Research source",
+        replaceOldestAtLimit: true,
+        rect: { x: 106, y: 20, width: 720, height: 520 },
+      },
+    );
+    expect(screen.getByTestId("selected-organism-id").textContent).toBe("done-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Read ungrounded source" }));
+    expect(openWindowMock).toHaveBeenCalledTimes(1);
+    windowLayer.remove();
   });
 });

@@ -88,6 +88,7 @@ export {
 
 export {
   consumeLocallyStartedResearchSession,
+  notifyEvidenceSourceOpened,
   notifyPointerIdleEdge,
   notifyResearchPhaseEdge,
   notifyResearchStarted,
