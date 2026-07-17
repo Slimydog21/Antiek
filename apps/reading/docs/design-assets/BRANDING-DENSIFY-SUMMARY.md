@@ -322,4 +322,4 @@ Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md
 | Ice-cursor densify pack expansion | `35c60931c` | WernerIceBait + useMouseFollow + IceCursorShell in branding densify pack (32/268) |
 | Minigame living-TV beat densify pack | `cd8e1f95b` | ice/clam/zombies logic + zombiesCartridge in densify pack (36/297) |
 | Invent product inventory densify | `e739f02ed` | 18 invent polish v2d product webps exist + non-trivial size (37/298) |
-| Imagine invent polish v2e hero trio (CRT + zombies + igloo) | `TBD` | Home/DR/wait/cabinet invent refresh on densify green tip |
+| Imagine invent polish v2e hero trio (CRT + zombies + igloo) | `f17b8b31c` | Home/DR/wait/cabinet invent refresh on densify green tip |
