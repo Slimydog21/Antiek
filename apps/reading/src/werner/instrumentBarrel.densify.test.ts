@@ -34,8 +34,10 @@ import {
   rodBendFromPoints,
   rodLength,
   rodTipFromMascotRect,
+  ROD_BUTT_LOCAL,
   ROD_HALF_BEND_DIST,
   ROD_MAX_BEND,
+  ROD_TIP_LOCAL,
   SAMPLE_INTERVAL_MS,
   stationInstrumentLeaseCount,
   tipToBaitDistance,
@@ -221,5 +223,18 @@ describe("werner instrument barrel densify", () => {
     expect(ROD_MAX_BEND).toBe(6);
     expect(rodBend(ROD_HALF_BEND_DIST)).toBeCloseTo(ROD_MAX_BEND / 2, 5);
     expect(rodBend(1e9)).toBeLessThanOrEqual(ROD_MAX_BEND);
+  });
+
+  it("exports rod local anchors densify for butt→tip rig geometry", () => {
+    // densify: rod tip/butt are fixed 64-viewBox locals the rig draws against.
+    expect(ROD_TIP_LOCAL).toEqual({ x: 66, y: 5 });
+    expect(ROD_BUTT_LOCAL).toEqual({ x: 45, y: 34 });
+    expect(rodLength()).toBeCloseTo(
+      Math.hypot(
+        ROD_TIP_LOCAL.x - ROD_BUTT_LOCAL.x,
+        ROD_TIP_LOCAL.y - ROD_BUTT_LOCAL.y,
+      ),
+      5,
+    );
   });
 });
