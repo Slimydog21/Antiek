@@ -627,6 +627,8 @@ window emits curtain `idle` (sleep after pride), then silence. densify pack
 
 ## Paperclip Zombies combo densify (craft157+)
 
+| Paperclip Zombies combo densify | `60df44fb1` | BO1 combo max 4× + HUD xN; densify 39/307 |
+
 BO1-style consecutive-kill multiplier (max 4×) on pure zombies rules; miss/breach
 resets combo; HUD shows live `xN`. Arcade core stays free of reaction-bus imports.
 densify pack **39/307**. Pure Flipbook sole UI remains **NO-GO**.
