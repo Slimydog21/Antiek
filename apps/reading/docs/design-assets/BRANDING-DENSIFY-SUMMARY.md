@@ -324,4 +324,4 @@ Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md
 | Invent product inventory densify | `e739f02ed` | 18 invent polish v2d product webps exist + non-trivial size (37/298) |
 | Imagine invent polish v2e hero trio (CRT + zombies + igloo) | `f17b8b31c` | Home/DR/wait/cabinet invent refresh on densify green tip |
 | Imagine invent polish v2e ice+clam cursor invents | `7cb951ecf` | cabinet/LGH/wait ice+clam invent refresh on FULL GREEN tip |
-| Imagine invent polish v2e living-TV+thought partner+midnight oil | `TBD` | residual invent refresh on FULL GREEN tip |
+| Imagine invent polish v2e living-TV+thought partner+midnight oil | `736eb8fab` | residual invent refresh on FULL GREEN tip |
