@@ -86,6 +86,32 @@ describe("ambientExperienceAfterQuiet", () => {
     ).toBe("idle");
   });
 
+  it("recovers fail / deep_research_error episodes as soft idle densify", () => {
+    // Living-TV densify: error beats recover with curtain idle, not pride loop.
+    expect(
+      ambientExperienceAfterQuiet(
+        DEFAULT_AMBIENT_QUIET_MS,
+        DEFAULT_AMBIENT_QUIET_MS,
+        "fail",
+      ),
+    ).toBe("idle");
+    expect(
+      ambientExperienceAfterQuiet(
+        DEFAULT_AMBIENT_QUIET_MS,
+        DEFAULT_AMBIENT_QUIET_MS,
+        "deep_research_error",
+      ),
+    ).toBe("idle");
+    // After ambient idle, silence until a real product beat (no spam).
+    expect(
+      ambientExperienceAfterQuiet(
+        DEFAULT_AMBIENT_QUIET_MS,
+        DEFAULT_AMBIENT_QUIET_MS,
+        "idle",
+      ),
+    ).toBeNull();
+  });
+
   it("curtain-calls note_saved ambient into idle (sleep after pride)", () => {
     // After pride savor, the living-TV episode ends with sleep — not another
     // pride loop, and not silence without the curtain idle first.

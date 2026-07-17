@@ -88,6 +88,9 @@ export function emoteForProductDoor(productId: string): EmoteKind {
     case "read":
     case "speak":
     case "arcade":
+    // Home igloo arcade invent densify: home-arcade is curious (not generic hit).
+    case "home-arcade":
+    case "home_arcade":
     case "sources":
     case "marketplace":
     case "book-marketplace":

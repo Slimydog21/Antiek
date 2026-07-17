@@ -18,6 +18,9 @@ describe("emoteForProductDoor", () => {
     expect(emoteForProductDoor("read")).toBe("curious");
     expect(emoteForProductDoor("speak")).toBe("curious");
     expect(emoteForProductDoor("arcade")).toBe("curious");
+    // Home igloo arcade invent densify (product-door geometry).
+    expect(emoteForProductDoor("home-arcade")).toBe("curious");
+    expect(emoteForProductDoor("home_arcade")).toBe("curious");
     expect(emoteForProductDoor("sources")).toBe("curious");
     expect(emoteForProductDoor("marketplace")).toBe("curious");
     expect(emoteForProductDoor("model-decision")).toBe("curious");
