@@ -747,3 +747,11 @@ Ice Fishing rare golden fish jumps Club Penguin catch-streak by two steps
 pearl densify. ArcadeCabinet cards stamp per-game `data-product-id` so living-TV
 choreography resolves distinct doors (not a single generic `arcade` stamp).
 densify pack **39/313**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Ice empty-cast streak reset densify (craft157+)
+
+| Ice empty-cast streak reset densify | `272f20cb0` | reel-to-surface no catch → streak 0 |
+
+Completing a cast that returns the hook to the surface without a catch resets
+the live Club Penguin streak (`maxStreak` retained for BEST brag). densify pack
+expected **39/315**. Pure Flipbook sole UI remains **NO-GO**.
