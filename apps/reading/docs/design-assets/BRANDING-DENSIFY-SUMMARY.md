@@ -804,3 +804,10 @@ densify pack expected **39/319**. Pure Flipbook sole UI remains **NO-GO**.
 
 Unit densify pins the rare golden spawn roll band so pearl-parity craft cannot
 silently drift. densify pack expected **39/320**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Clam pearl spawn densify assert (craft157+)
+
+| Clam pearl spawn densify assert | `5fc0101b6` | pearl band after jelly chance |
+
+Unit densify pins pearl-clam spawn roll so pearl-parity craft cannot silently
+drift. densify pack **39/321**. Pure Flipbook sole UI remains **NO-GO**.
