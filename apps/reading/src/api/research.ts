@@ -189,6 +189,8 @@ export interface ArtifactIndexConflict {
 
 export interface ArtifactIndexResponse {
   kind: "artifact_index";
+  composition_id: string;
+  composition_version: 1;
   members: ArtifactIndexMember[];
   conflicts: ArtifactIndexConflict[];
 }
