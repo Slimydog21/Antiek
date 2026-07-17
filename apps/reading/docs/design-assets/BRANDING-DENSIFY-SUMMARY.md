@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `b1c2e7ec0` — densify pack **47/399**.
+PR #2416 tip (at close of this note): `5e58bcbe3` — densify pack **47/400**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1059,3 +1059,9 @@ Instrument barrel densify exports reactionBus allowlist contracts. densify pack 
 | host inject reactionBus barrel densify | `b1c2e7ec0` | emitWernerExperience + installReactionBus public |
 
 Instrument barrel densify exports host inject reactionBus path. densify pack **47/399**. Pure Flipbook sole UI remains **NO-GO**.
+
+## living-TV ambient barrel densify (craft157+)
+
+| living-TV ambient barrel densify | `5e58bcbe3` | ambientExperienceAfterQuiet + installer public |
+
+Instrument barrel densify exports living-TV ambient quiet policy. densify pack **47/400**. Pure Flipbook sole UI remains **NO-GO**.
