@@ -693,7 +693,7 @@ densify pack **39/312**. Pure Flipbook sole UI remains **NO-GO**.
 
 ## Peak catch-streak brag HUD densify (craft157+)
 
-| Peak catch-streak brag HUD densify | (pending tip) | ice+clam gameover BEST xN |
+| Peak catch-streak brag HUD densify | `6f824cb67` | ice+clam gameover BEST xN |
 
 Ice + clam gameover HUD brags peak catch-streak (`BEST xN`) using sun accent —
 cabinet/wait craft parity with live combo/streak HUDs. Pure Flipbook sole UI
