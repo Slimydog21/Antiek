@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `8d4a78d46` — densify pack **45/386**.
+PR #2416 tip (at close of this note): `00742ad8b` — densify pack **45/387**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -999,3 +999,9 @@ Product-door densify: research-family underscore aliases map thinking/curious li
 | Complete-research curtain + book_marketplace door densify | `8d4a78d46` | complete pride curtain; book_marketplace |
 
 Living-TV densify: complete research curtain pride→idle→silence; book_marketplace door densify. densify pack **45/386**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Highlight ambient installer densify (craft157+)
+
+| Highlight ambient installer densify | `00742ad8b` | arcade highlight→idle→silence |
+
+Living-TV densify: highlight installer rest idle then silence. densify pack **45/387**. Pure Flipbook sole UI remains **NO-GO**.
