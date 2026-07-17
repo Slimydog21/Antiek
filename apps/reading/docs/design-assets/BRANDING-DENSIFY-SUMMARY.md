@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `b771b22c2` — densify pack **43/377**.
+PR #2416 tip (at close of this note): `ca3146045` — densify pack **44/379**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -945,3 +945,9 @@ Catenary densify: line ends at live bait; densify pack **43/375**. Pure Flipbook
 | Rod tension tip→bait instrument densify | `b771b22c2` | tipToBaitDistance + rodBendFromPoints |
 
 Instrument densify: tip→bait distance drives rod bend; densify pack **43/377**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Instrument barrel densify (craft157+)
+
+| Instrument barrel densify | `ca3146045` | bait+tipToBait+rodBend public; pack 44/379 |
+
+Werner barrel densify exports instrument helpers; densify pack **44/379**. Pure Flipbook sole UI remains **NO-GO**.
