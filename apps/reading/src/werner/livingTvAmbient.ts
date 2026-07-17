@@ -27,9 +27,14 @@ export const DEFAULT_AMBIENT_QUIET_MS = 90_000;
  * Episode continuity (hard to vary):
  * - deep_research_start → idle (sleep while research runs)
  * - deep_research_complete / piece_started → note_saved (soft pride savor)
+ * - note_saved → idle (curtain call: sleep after pride; no ambient spam loop)
  * - fail / deep_research_error → idle (recover)
- * - idle (already ambient) → null (no ambient spam loop)
+ * - idle (already ambient curtain) → null (no ambient spam loop)
  * - default / null → idle
+ *
+ * Living-TV show structure: product beat → pride savor (when earned) →
+ * curtain idle → silence. Cursor never auto-starts games; pure Flipbook sole
+ * UI remains NO-GO (HTML Flipbook-feel invent strips only).
  */
 export function ambientExperienceAfterQuiet(
   quietMs: number,
@@ -128,10 +133,14 @@ export function installLivingTvAmbient(
       lastExperience,
     );
     if (next && armed) {
-      armed = false;
       lastExperience = next;
       emit(next);
       lastBeat = now();
+      // Curtain call densify: after pride savor, re-arm once so a second quiet
+      // window can sleep (idle) and then silence — living-TV episode end credits.
+      // Idle never re-arms (no ambient spam loop). Product beats re-arm via
+      // onExperience.
+      armed = next === "note_saved";
     }
   }, pollMs);
 

@@ -85,6 +85,18 @@ describe("ambientExperienceAfterQuiet", () => {
       ),
     ).toBe("idle");
   });
+
+  it("curtain-calls note_saved ambient into idle (sleep after pride)", () => {
+    // After pride savor, the living-TV episode ends with sleep — not another
+    // pride loop, and not silence without the curtain idle first.
+    expect(
+      ambientExperienceAfterQuiet(
+        DEFAULT_AMBIENT_QUIET_MS,
+        DEFAULT_AMBIENT_QUIET_MS,
+        "note_saved",
+      ),
+    ).toBe("idle");
+  });
 });
 
 describe("installLivingTvAmbient", () => {
@@ -184,6 +196,58 @@ describe("installLivingTvAmbient", () => {
     vi.advanceTimersByTime(200);
     expect(emit).toHaveBeenCalledTimes(1);
     expect(emit).toHaveBeenCalledWith("note_saved");
+
+    teardown();
+  });
+
+  it("curtain-calls pride savor into idle then silence (no ambient spam)", () => {
+    vi.useFakeTimers();
+    const emit = vi.fn();
+    const listeners = new Map<string, Set<EventListener>>();
+    const target = {
+      addEventListener: (type: string, fn: EventListener) => {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type)!.add(fn);
+      },
+      removeEventListener: (type: string, fn: EventListener) => {
+        listeners.get(type)?.delete(fn);
+      },
+    };
+    let now = 0;
+    const teardown = installLivingTvAmbient({
+      quietMs: 1_000,
+      pollMs: 200,
+      emit,
+      now: () => now,
+      setInterval: (fn, ms) => window.setInterval(fn, ms) as unknown as number,
+      clearInterval: (id) => window.clearInterval(id),
+      target,
+    });
+
+    // Product episode: piece started → ambient pride, then curtain idle.
+    for (const fn of listeners.get(WERNER_EXPERIENCE_EVENT) ?? []) {
+      fn(
+        new CustomEvent(WERNER_EXPERIENCE_EVENT, {
+          detail: { experience: "piece_started" },
+        }),
+      );
+    }
+    now = 0;
+    now = 1_100;
+    vi.advanceTimersByTime(200);
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenLastCalledWith("note_saved");
+
+    // Second quiet window → curtain idle (sleep after pride).
+    now = 2_200;
+    vi.advanceTimersByTime(200);
+    expect(emit).toHaveBeenCalledTimes(2);
+    expect(emit).toHaveBeenLastCalledWith("idle");
+
+    // Third quiet window → silence (no ambient spam loop).
+    now = 5_000;
+    vi.advanceTimersByTime(1_000);
+    expect(emit).toHaveBeenCalledTimes(2);
 
     teardown();
   });

@@ -617,3 +617,9 @@ All 18 product invent doors refreshed via Imagine invent polish v3n and densifie
 Honesty densify WAVE=`v3n`. densify pack expected **39/303**. Pure Flipbook sole UI remains **NO-GO**.
 Refedit+candidate provenance under `session-20260716/*_v3n.*`. Product webps promoted to `src/brand/werner/poses/session/*_session_v1.webp`.
 
+## Living-TV curtain-call densify (craft157+)
+
+Ambient installer re-arms once after pride savor (`note_saved`) so a second quiet
+window emits curtain `idle` (sleep after pride), then silence. densify pack
+**39/305**. Pure Flipbook sole UI remains **NO-GO**.
+

@@ -120,6 +120,13 @@ episode of the asynchronous TV show:
 | deep_research_start, fail, deep_research_error, highlight, note_saved, null | `idle` (sleep / recover) |
 | idle (already ambient) | silent (no ambient spam loop) |
 
+### Curtain call densify (craft157+)
+
+After ambient pride savor (`note_saved`), the installer re-arms once so a
+second quiet window emits curtain `idle` (sleep after pride), then silence.
+Episode shape: product beat → pride savor (when earned) → curtain idle →
+silence. No ambient spam loop; cursor never auto-starts games.
+
 ## SessionBrandChrome (densify hard-to-vary)
 
 `src/brand/SessionBrandChrome.tsx` is the load-bearing header pattern for

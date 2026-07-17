@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Branding densify pack — invent reframe + living-TV + arcade + product invent doors.
-# Expectation (tip invent polish v2j + multi-phase living-TV reframe densify): 39 files / 303 tests. Exit non-zero on any failure.
+# Expectation (invent polish v3n + living-TV curtain-call densify): 39 files / 305 tests. Exit non-zero on any failure.
 # Invoke: npm run test:branding-densify   (from apps/reading)
 #         or bash scripts/branding-densify-pack.sh
 set -euo pipefail
