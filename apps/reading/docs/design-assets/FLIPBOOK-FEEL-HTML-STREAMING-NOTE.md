@@ -260,3 +260,7 @@ sole UI remains **NO-GO**.
 
 ### Invent polish v3p
 Invent polish **v3p** wave complete: all 18 product invent doors re-polished via Imagine refedit, candidates + product webps promoted. Honesty densify WAVE=`v3p`. densify **39/311**. Pure Flipbook sole UI remains **NO-GO**. Ice-bait / ice-cursor densify gates still hold. Axe green preferred on prior craft tip before promote.
+
+### Clam pearl streak-step densify
+Pearl catches jump CP streak by two (capped). densify **39/312**. Pure Flipbook
+sole UI remains **NO-GO**.

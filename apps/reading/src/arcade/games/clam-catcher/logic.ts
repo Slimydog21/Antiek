@@ -2,8 +2,10 @@
  * Pure, fixed-step rules for Clam Catcher. Rendering and input sampling live elsewhere.
  *
  * Catch-streak densify (craft157+): consecutive good clam/pearl catches build a Club
- * Penguin–style multiplier (max 3×). Jellyfish catch or missed clam (falls past
- * the floor) resets streak. Pure rules only — hosts inject living-TV beats.
+ * Penguin–style multiplier (max 3×). Pearl catches jump the streak by two steps
+ * (still capped) so the rare clam feels like a CP table reward. Jellyfish catch
+ * or missed clam (falls past the floor) resets streak. Pure rules only — hosts
+ * inject living-TV beats.
  */
 
 export const CLAM_CATCHER_TUNING = Object.freeze({
@@ -180,7 +182,9 @@ export function stepClamCatcher(
       } else {
         const mult = clamCatchStreakMultiplier(streak);
         score += entity.points * mult;
-        streak = Math.min(CLAM_MAX_STREAK, streak + 1);
+        // Pearl densify: rare clam jumps streak by two (still hard-capped).
+        const step = entity.kind === "pearl-clam" ? 2 : 1;
+        streak = Math.min(CLAM_MAX_STREAK, streak + step);
         maxStreak = Math.max(maxStreak, streak);
       }
     } else if (entity.y - entity.radius <= next.height) {

@@ -207,9 +207,51 @@ describe("Clam Catcher rules", () => {
       ],
     };
     s = stepClamCatcher(s, 0, idle, () => 0.9);
-    expect(s.streak).toBe(2);
-    expect(s.score).toBe(1 + 4 * 2); // second catch 2×
+    // Pearl jumps streak by two: 1 → 3 (cap), score still uses pre-step mult 2×.
+    expect(s.streak).toBe(CLAM_MAX_STREAK);
+    expect(s.score).toBe(1 + 4 * 2);
+    expect(s.maxStreak).toBe(CLAM_MAX_STREAK);
+  });
+
+  it("pearl catch jumps streak by two without breaking the mult order", () => {
+    const base = startClamCatcher(createClamCatcherState(320, 200));
+    const bucketY = base.height - 34;
+    let s: ClamCatcherState = {
+      ...base,
+      spawnTimer: 99,
+      entities: [
+        {
+          id: 1,
+          kind: "pearl-clam",
+          x: base.bucketX,
+          y: bucketY,
+          radius: 10,
+          points: 4,
+        },
+      ],
+    };
+    s = stepClamCatcher(s, 0, idle, () => 0.9);
+    expect(s.score).toBe(4); // mult 1× on first pearl
+    expect(s.streak).toBe(2); // pearl step +2
     expect(s.maxStreak).toBe(2);
+
+    s = {
+      ...s,
+      spawnTimer: 99,
+      entities: [
+        {
+          id: 2,
+          kind: "common-clam",
+          x: s.bucketX,
+          y: bucketY,
+          radius: 9,
+          points: 1,
+        },
+      ],
+    };
+    s = stepClamCatcher(s, 0, idle, () => 0.9);
+    expect(s.score).toBe(4 + 1 * 3); // mult 3× from streak 2
+    expect(s.streak).toBe(CLAM_MAX_STREAK);
   });
 
   it("resets catch streak on jellyfish and on missed clam", () => {

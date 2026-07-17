@@ -673,3 +673,11 @@ unchanged (rules already gated). Pure Flipbook sole UI remains **NO-GO**.
 All 18 product invent doors refreshed via Imagine invent polish v3p and densified.
 Honesty densify WAVE=`v3p`. densify pack expected **39/311**. Pure Flipbook sole UI remains **NO-GO**.
 Refedit+candidate provenance under `session-20260716/*_v3p.*`. Product webps promoted to `src/brand/werner/poses/session/*_session_v1.webp`.
+
+## Clam pearl streak-step densify (craft157+)
+
+| Clam pearl streak-step densify | (pending tip) | pearl +2 streak step; densify 39/312 |
+
+Pearl clam catches jump the Club Penguin streak by two steps (still hard-capped
+at 3× mult). Common clams stay +1. densify pack **39/312**. Pure Flipbook sole UI
+remains **NO-GO**.
