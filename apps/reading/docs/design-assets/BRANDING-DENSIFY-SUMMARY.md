@@ -388,4 +388,4 @@ All 18 product invent doors refreshed via Imagine invent polish v2j and densifie
 densify pack: `npm run test:branding-densify` (39/302). Pure Flipbook sole UI remains NO-GO.
 
 | Multi-phase living-TV reframe densify | `3ec097ad9` | Flipbook-feel invent strip 16s multi-keyframe reframe densify 39/303 |
-| Imagine invent polish v2k hero CRT+zombies+igloo | `TBD` | invent polish v2k hero suite on axe-green reframe tip |
+| Imagine invent polish v2k hero CRT+zombies+igloo | `d44410601` | invent polish v2k hero suite on axe-green reframe tip |
