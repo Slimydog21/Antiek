@@ -349,15 +349,9 @@ def update_document_gate_columns(
 
     owns_transaction = False
     try:
-        try:
+        if not con.in_explicit_transaction:
             con.execute("BEGIN")
             owns_transaction = True
-        except Exception as exc:
-            # DuckDB has no savepoints. An existing caller transaction already
-            # supplies the required atomic boundary; every other BEGIN failure
-            # is real and must not be hidden.
-            if "cannot start a transaction within a transaction" not in str(exc).lower():
-                raise
         con.execute(
             f"UPDATE documents SET {', '.join(sets)} WHERE document_id = ?",
             params,
@@ -403,12 +397,9 @@ def replace_document_body(
     ).to_json()
     owns_transaction = False
     try:
-        try:
+        if not con.in_explicit_transaction:
             con.execute("BEGIN")
             owns_transaction = True
-        except Exception as exc:
-            if "cannot start a transaction within a transaction" not in str(exc).lower():
-                raise
         con.execute(
             "UPDATE documents SET raw_text=?,twin_source_envelope=? "
             "WHERE document_id=?",
