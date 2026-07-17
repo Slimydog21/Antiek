@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { createSeededRng } from "../../engine/rng";
 import {
   clamCatcherWernerBeat,
+  clamCatchStreakMultiplier,
   CLAM_CATCHER_TUNING,
+  CLAM_MAX_STREAK,
   createClamCatcherState,
   startClamCatcher,
   stepClamCatcher,
@@ -162,5 +164,99 @@ describe("Clam Catcher rules", () => {
       20 + CLAM_CATCHER_TUNING.maximumFallSpeed / 60,
     );
     expect(CLAM_CATCHER_TUNING.maximumFallSpeed / 60).toBeLessThan(9);
+  });
+
+  it("builds Club Penguin–style catch-streak multiplier on consecutive good catches", () => {
+    expect(clamCatchStreakMultiplier(0)).toBe(1);
+    expect(clamCatchStreakMultiplier(1)).toBe(2);
+    expect(clamCatchStreakMultiplier(CLAM_MAX_STREAK)).toBe(CLAM_MAX_STREAK);
+
+    const base = startClamCatcher(createClamCatcherState(320, 200));
+    const bucketY = base.height - 34;
+    let s: ClamCatcherState = {
+      ...base,
+      spawnTimer: 99,
+      entities: [
+        {
+          id: 1,
+          kind: "common-clam",
+          x: base.bucketX,
+          y: bucketY,
+          radius: 9,
+          points: 1,
+        },
+      ],
+    };
+    s = stepClamCatcher(s, 0, idle, () => 0.9);
+    expect(s.streak).toBe(1);
+    expect(s.score).toBe(1); // mult 1×
+    expect(s.maxStreak).toBe(1);
+
+    s = {
+      ...s,
+      spawnTimer: 99,
+      entities: [
+        {
+          id: 2,
+          kind: "pearl-clam",
+          x: s.bucketX,
+          y: bucketY,
+          radius: 10,
+          points: 4,
+        },
+      ],
+    };
+    s = stepClamCatcher(s, 0, idle, () => 0.9);
+    expect(s.streak).toBe(2);
+    expect(s.score).toBe(1 + 4 * 2); // second catch 2×
+    expect(s.maxStreak).toBe(2);
+  });
+
+  it("resets catch streak on jellyfish and on missed clam", () => {
+    const base = startClamCatcher(createClamCatcherState(320, 200));
+    const bucketY = base.height - 34;
+
+    let s: ClamCatcherState = {
+      ...base,
+      streak: 2,
+      maxStreak: 2,
+      spawnTimer: 99,
+      entities: [
+        {
+          id: 9,
+          kind: "jellyfish",
+          x: base.bucketX,
+          y: bucketY,
+          radius: 13,
+          points: 0,
+        },
+      ],
+    };
+    s = stepClamCatcher(s, 0, idle, () => 0.9);
+    expect(s.streak).toBe(0);
+    expect(s.maxStreak).toBe(2);
+    expect(s.lives).toBe(2);
+
+    s = {
+      ...s,
+      streak: 3,
+      maxStreak: 3,
+      spawnTimer: 99,
+      // Clam already past the floor (missed).
+      entities: [
+        {
+          id: 10,
+          kind: "common-clam",
+          x: 40,
+          y: s.height + 40,
+          radius: 9,
+          points: 1,
+        },
+      ],
+    };
+    s = stepClamCatcher(s, 0, idle, () => 0.9);
+    expect(s.streak).toBe(0);
+    expect(s.maxStreak).toBe(3);
+    expect(s.entities).toEqual([]);
   });
 });

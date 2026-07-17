@@ -1,4 +1,10 @@
-/** Pure, fixed-step rules for Clam Catcher. Rendering and input sampling live elsewhere. */
+/**
+ * Pure, fixed-step rules for Clam Catcher. Rendering and input sampling live elsewhere.
+ *
+ * Catch-streak densify (craft157+): consecutive good clam/pearl catches build a Club
+ * Penguin–style multiplier (max 3×). Jellyfish catch or missed clam (falls past
+ * the floor) resets streak. Pure rules only — hosts inject living-TV beats.
+ */
 
 export const CLAM_CATCHER_TUNING = Object.freeze({
   startingLives: 3,
@@ -20,6 +26,9 @@ export const CLAM_CATCHER_TUNING = Object.freeze({
   jellyfishChance: 0.2,
   pearlChance: 0.2,
 } as const);
+
+/** Max Club Penguin–style catch-streak multiplier (hard to vary). */
+export const CLAM_MAX_STREAK = 3;
 
 export type CatcherPhase = "ready" | "playing" | "gameover";
 export type FallingKind = "common-clam" | "pearl-clam" | "jellyfish";
@@ -44,12 +53,22 @@ export interface ClamCatcherState {
   nextEntityId: number;
   width: number;
   height: number;
+  /** Consecutive good-catch streak for score multiplier (0 = none). */
+  streak: number;
+  /** Peak streak this run (cabinet densify / brag). */
+  maxStreak: number;
 }
 
 export interface CatcherInput {
   targetX: number | null;
   horizontal: -1 | 0 | 1;
   start: boolean;
+}
+
+/** Catch-streak multiplier from consecutive good catches (1×..CLAM_MAX_STREAK). */
+export function clamCatchStreakMultiplier(streak: number): number {
+  if (!Number.isFinite(streak) || streak <= 0) return 1;
+  return Math.min(CLAM_MAX_STREAK, 1 + Math.floor(streak));
 }
 
 export function createClamCatcherState(
@@ -69,6 +88,8 @@ export function createClamCatcherState(
     nextEntityId: 1,
     width: safeWidth,
     height: safeHeight,
+    streak: 0,
+    maxStreak: 0,
   };
 }
 
@@ -82,6 +103,8 @@ export function startClamCatcher(state: ClamCatcherState): ClamCatcherState {
     entities: [],
     elapsed: 0,
     spawnTimer: 0,
+    streak: 0,
+    maxStreak: 0,
   };
 }
 
@@ -136,6 +159,8 @@ export function stepClamCatcher(
   const remaining: FallingEntity[] = [];
   let score = next.score;
   let lives = next.lives;
+  let streak = next.streak;
+  let maxStreak = next.maxStreak;
 
   // Entity ids encode spawn order. Sorting makes simultaneous contacts explicit
   // and stable even if a future renderer changes array construction order.
@@ -148,10 +173,21 @@ export function stepClamCatcher(
       entity.x - entity.radius <= bucketX + halfBucket;
 
     if (caught) {
-      if (entity.kind === "jellyfish") lives -= 1;
-      else score += entity.points;
+      if (entity.kind === "jellyfish") {
+        lives -= 1;
+        // Hazard catch resets Club Penguin catch-streak (hard to vary).
+        streak = 0;
+      } else {
+        const mult = clamCatchStreakMultiplier(streak);
+        score += entity.points * mult;
+        streak = Math.min(CLAM_MAX_STREAK, streak + 1);
+        maxStreak = Math.max(maxStreak, streak);
+      }
     } else if (entity.y - entity.radius <= next.height) {
       remaining.push(entity);
+    } else if (entity.kind !== "jellyfish") {
+      // Missed clam/pearl past the floor resets streak; dodged jelly does not.
+      streak = 0;
     }
   }
 
@@ -159,6 +195,8 @@ export function stepClamCatcher(
     ...next,
     score,
     lives,
+    streak,
+    maxStreak,
     entities: lives <= 0 ? [] : remaining,
     phase: lives <= 0 ? "gameover" : "playing",
   };

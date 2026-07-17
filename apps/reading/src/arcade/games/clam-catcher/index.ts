@@ -1,6 +1,8 @@
 export { createClamCatcherCartridge } from "./clamCatcherCartridge";
 export {
   CLAM_CATCHER_TUNING,
+  CLAM_MAX_STREAK,
+  clamCatchStreakMultiplier,
   createClamCatcherState,
   startClamCatcher,
   stepClamCatcher,

@@ -197,6 +197,16 @@ function drawHud(
   c2d.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
   c2d.fillText(`SCORE ${state.score}`, 10, 18);
   c2d.fillText(`LIVES ${state.lives}`, 10, 35);
+  // Club Penguin catch-streak densify: show xN only while streak is live.
+  if (state.streak > 0) {
+    c2d.fillStyle = sun.base;
+    c2d.fillText(
+      `x${Math.min(3, 1 + state.streak)}`,
+      Math.max(96, ctx.width * 0.42),
+      18,
+    );
+  }
+  c2d.fillStyle = textColor;
   c2d.font = "12px system-ui, sans-serif";
   if (state.phase === "ready") {
     c2d.fillText(
