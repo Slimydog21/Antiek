@@ -26,6 +26,7 @@ describe("emoteForProductDoor", () => {
     // Book marketplace invent densify (product-door geometry).
     expect(emoteForProductDoor("book-marketplace")).toBe("curious");
     expect(emoteForProductDoor("model-decision")).toBe("curious");
+    expect(emoteForProductDoor("model_decision")).toBe("curious");
     expect(emoteForProductDoor("wait-arcade")).toBe("curious");
     expect(emoteForProductDoor("research-wait")).toBe("curious");
     expect(emoteForProductDoor("cabinet")).toBe("curious");
@@ -46,6 +47,8 @@ describe("emoteForProductDoor", () => {
     expect(emoteForProductDoor("home")).toBe("happy");
     expect(emoteForProductDoor("create")).toBe("happy");
     expect(emoteForProductDoor("antiek-bench")).toBe("happy");
+    expect(emoteForProductDoor("antiek_bench")).toBe("happy");
+    expect(emoteForProductDoor("bench")).toBe("happy");
   });
   it("maps more/settings/billing/pricing to noted", () => {
     expect(emoteForProductDoor("more")).toBe("noted");
