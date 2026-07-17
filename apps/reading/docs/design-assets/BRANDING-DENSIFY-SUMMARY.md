@@ -836,3 +836,10 @@ Unit densify pins fort heal only for wave>1 clears. densify pack **39/322**. Pur
 | Ice golden visual densify + pack | `3f30cdc2e` | visuals.test in densify pack 40/330 |
 
 Golden fallback sun.base densify + ice visuals suite now in branding densify pack. Pure Flipbook sole UI remains **NO-GO**.
+
+## Densify pack visuals trio densify (craft157+)
+
+| Densify pack visuals trio densify | `fb1309fba` | ice+clam+zombies visuals; 42/350 |
+
+Branding densify pack now gates ice/clam/zombies visual HUD densify (live xN,
+BEST brag, golden/pearl atlas). Pure Flipbook sole UI remains **NO-GO**.
