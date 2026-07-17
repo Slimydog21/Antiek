@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `ad3370ca8` — densify pack **42/357**.
+PR #2416 tip (at close of this note): `bc756751d` — densify pack **42/357**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -897,3 +897,9 @@ Reduced-motion Clam Catcher densify: gentle clicks build CP streak mult (ice/zom
 | Factory clam RM progression densify | `ad3370ca8` | progressCartridge scores under RM |
 
 Shared factory densify asserts clam RM scores on host path. densify pack **42/357**. Pure Flipbook sole UI remains **NO-GO**.
+
+## HUD mult pure-helper densify (craft157+)
+
+| HUD mult pure-helper densify | `bc756751d` | ice/clam/zombies HUD use pure mult |
+
+Live xN and BEST xN densify via iceCatchStreakMultiplier / clamCatchStreakMultiplier / zombiesComboMultiplier. densify pack **42/357**. Pure Flipbook sole UI remains **NO-GO**.
