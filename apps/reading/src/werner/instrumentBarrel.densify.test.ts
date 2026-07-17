@@ -50,6 +50,10 @@ import {
   EmoteView,
   iceFishingActivity,
   listActivities,
+  notifyPointerIdleEdge,
+  notifyResearchPhaseEdge,
+  notifyResearchStarted,
+  notifyShellFailure,
   registerActivity,
   researchLensActivity,
   speakingResonanceActivity,
@@ -244,6 +248,20 @@ describe("werner instrument barrel densify", () => {
     expect(typeof registerActivity).toBe("function");
     expect(typeof EmoteView).toBe("function");
     expect(typeof useStationActivity).toBe("function");
+  });
+
+  it("exports shell experience signal densify for living-TV host inject edges", () => {
+    // densify: pointer idle / research phase edges are pure host inject policy.
+    expect(notifyPointerIdleEdge(false, false)).toBe(false);
+    expect(notifyPointerIdleEdge(false, true)).toBe(true);
+    expect(notifyPointerIdleEdge(true, true)).toBe(false);
+    expect(notifyPointerIdleEdge(false, true, false)).toBe(false);
+    expect(notifyResearchPhaseEdge("idle", "running")).toBe(false);
+    expect(notifyResearchPhaseEdge("running", "complete")).toBe(true);
+    expect(notifyResearchPhaseEdge("running", "error")).toBe(true);
+    expect(notifyResearchPhaseEdge("complete", "idle")).toBe(false);
+    expect(typeof notifyResearchStarted).toBe("function");
+    expect(typeof notifyShellFailure).toBe("function");
   });
 
   it("exports mouse-follow densify for cursor-is-bait lag contract", () => {
