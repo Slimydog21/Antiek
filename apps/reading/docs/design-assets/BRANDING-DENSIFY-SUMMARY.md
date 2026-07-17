@@ -763,3 +763,12 @@ expected **39/315**. Pure Flipbook sole UI remains **NO-GO**.
 Paperclip zombies fort repair densify: clearing a wave restores +1 fort life,
 hard-capped at starting lives (BO1-style fort recovery; does not overheal).
 densify pack expected **39/316**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Zombies kill living-TV beat densify (craft157+)
+
+| Zombies kill living-TV beat densify | `a0ff4f984` | score-up kill → piece_started |
+
+Paperclip zombies mid-run combo densify: each scoring kill maps to a living-TV
+`piece_started` beat (happy craft), matching ice/clam score-up TV edges.
+Wave clear still emits piece_started first. densify pack expected **39/316**.
+Pure Flipbook sole UI remains **NO-GO**.
