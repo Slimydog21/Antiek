@@ -296,3 +296,4 @@ with Flipbook-feel invent reframe. densify pack: `npm run test:branding-densify`
 Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md.
 | Imagine invent polish v2d CRT living-TV | `ef623ec5d` | Home + DR compose invent refresh on FULL GREEN tip |
 | Imagine invent polish v2d igloo minigame trio | `8dacdcebb` | ArcadeCabinet + Home arcade banner invent refresh on FULL GREEN tip |
+| Imagine invent polish v2d paperclip zombies | `TBD` | wait-arcade/cabinet/LGH zombies invent refresh on FULL GREEN tip |
