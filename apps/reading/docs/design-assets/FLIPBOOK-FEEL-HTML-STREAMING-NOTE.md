@@ -235,3 +235,6 @@ Pure Flipbook sole UI remains **NO-GO**.
 ### Invent polish v3i
 Invent polish **v3i** wave complete: all 18 product invent doors re-polished via Imagine refedit, candidates + product webps promoted. Honesty densify WAVE=`v3i`. densify **39/303**. Pure Flipbook sole UI remains **NO-GO**. Ice-bait / ice-cursor densify gates still hold.
 
+### Invent polish v3j
+Invent polish **v3j** wave complete: all 18 product invent doors re-polished via Imagine refedit, candidates + product webps promoted. Honesty densify WAVE=`v3j`. densify **39/303**. Pure Flipbook sole UI remains **NO-GO**. Ice-bait / ice-cursor densify gates still hold.
+
