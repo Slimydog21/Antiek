@@ -370,6 +370,58 @@ def update_document_gate_columns(
         raise
 
 
+def replace_document_body(
+    con: LockedConnection, document_id: str, *, raw_text: str | None
+) -> None:
+    """Atomically replace canonical body bytes and their twin declaration."""
+    _assert_write_locked(con)
+    from substrate.books.serve_guard import guard_candidate_full_text
+    from substrate.twin_recursion import build_twin_source_envelope
+
+    row = con.execute(
+        "SELECT d.title,d.document_type,d.owner_user_id,d.content_class,d.metadata,"
+        "COALESCE(b.taken_down,FALSE) FROM documents d "
+        "LEFT JOIN book_assets b ON d.document_id=b.document_id "
+        "WHERE d.document_id=?",
+        [document_id],
+    ).fetchone()
+    if row is None:
+        raise KeyError(document_id)
+    guarded_body = guard_candidate_full_text(
+        raw_text,
+        None if row[3] is None else str(row[3]),
+        row[4],
+        owner=True,
+        taken_down=bool(row[5]),
+    )
+    envelope = build_twin_source_envelope(
+        document_id=document_id,
+        title=None if row[0] is None else str(row[0]),
+        raw_text=guarded_body,
+        document_type=str(row[1]),
+        owner_user_id=str(row[2]),
+    ).to_json()
+    owns_transaction = False
+    try:
+        try:
+            con.execute("BEGIN")
+            owns_transaction = True
+        except Exception as exc:
+            if "cannot start a transaction within a transaction" not in str(exc).lower():
+                raise
+        con.execute(
+            "UPDATE documents SET raw_text=?,twin_source_envelope=? "
+            "WHERE document_id=?",
+            [raw_text, envelope, document_id],
+        )
+        if owns_transaction:
+            con.execute("COMMIT")
+    except Exception:
+        if owns_transaction:
+            con.execute("ROLLBACK")
+        raise
+
+
 # ---------------------------------------------------------------------------
 # Chunks
 # ---------------------------------------------------------------------------

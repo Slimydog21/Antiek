@@ -7,7 +7,11 @@ import duckdb
 import pytest
 
 from runtime.db_lock import connect_write
-from substrate.graph.ops import insert_document, update_document_gate_columns
+from substrate.graph.ops import (
+    insert_document,
+    replace_document_body,
+    update_document_gate_columns,
+)
 from substrate.graph.schema import init_database
 from substrate.rights import T3BodyServeError
 from substrate.twin_note_taker import MAX_CONTENT_CHARS
@@ -289,6 +293,22 @@ def test_ignore_replay_rejects_forged_non_null_declaration(graph):
             document_type="research",
             on_conflict="ignore",
         )
+
+
+def test_sanctioned_body_replacement_refreshes_declaration_before_replay(graph):
+    _insert_body(graph)
+    replacement = "A legitimate revised body with a different canonical hash."
+    replace_document_body(graph, "doc-1", raw_text=replacement)
+    insert_document(
+        graph,
+        document_id="doc-1",
+        source_tier=2,
+        document_type="research",
+        on_conflict="ignore",
+    )
+    envelope = verify_twin_source_envelopes(graph)[0]
+    assert envelope.status == "eligible"
+    assert envelope.body_sha256 is not None
 
 
 def test_standalone_gate_update_rolls_back_after_post_update_failure(
