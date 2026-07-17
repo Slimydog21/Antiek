@@ -633,3 +633,10 @@ BO1-style consecutive-kill multiplier (max 4×) on pure zombies rules; miss/brea
 resets combo; HUD shows live `xN`. Arcade core stays free of reaction-bus imports.
 densify pack **39/307**. Pure Flipbook sole UI remains **NO-GO**.
 
+| Imagine invent polish v3o full wave (18 invents) | (tip) | invent polish v3o all 18 product invent doors on axe-green zombies combo tip |
+
+## Invent polish v3o wave complete
+
+All 18 product invent doors refreshed via Imagine invent polish v3o and densified.
+Honesty densify WAVE=`v3o`. densify pack expected **39/307**. Pure Flipbook sole UI remains **NO-GO**.
+Refedit+candidate provenance under `session-20260716/*_v3o.*`. Product webps promoted to `src/brand/werner/poses/session/*_session_v1.webp`.
