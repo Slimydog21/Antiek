@@ -1,7 +1,8 @@
 /**
  * Living-TV ambient — quiet-period episode continuity for Werner.
  *
- * Antiek is the home of the penguin: when the product is quiet for a while,
+ * Antiek is the home of the penguin (Flipbook-feel invent strips live in HTML;
+ * pure Flipbook sole UI is NO-GO): when the product is quiet for a while,
  * the asynchronous TV show takes a soft ambient glance that continues the
  * last product "episode" (not a generic always-idle loop). Never chases
  * the cursor; never auto-starts games. Pure policy is unit-tested; the
