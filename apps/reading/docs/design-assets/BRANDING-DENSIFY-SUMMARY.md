@@ -401,7 +401,7 @@ densify pack: `npm run test:branding-densify` (39/303). Pure Flipbook sole UI re
 | Imagine invent polish v2l CRT living-TV | `07ee143bc` | invent polish v2l hero CRT on axe-green invent polish v2k tip |
 | Imagine invent polish v2l zombies+igloo+ice+clam | `b0d2a3e47` | invent polish v2l arcade suite residual on axe-green tip |
 | Imagine invent polish v2l living-TV+thought+midnight | `8277ae26a` | residual invent refresh on axe-green tip |
-| Imagine invent polish v2l residual product wave | `TBD` | remaining 10 product invent doors on axe-green tip |
+| Imagine invent polish v2l residual product wave | `7c1a47591` | remaining 10 product invent doors on axe-green tip |
 
 
 ## Invent polish v2l wave complete
