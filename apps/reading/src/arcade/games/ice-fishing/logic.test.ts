@@ -6,6 +6,7 @@ import {
   iceCatchStreakMultiplier,
   iceFishingOverlapsHook,
   iceFishingWernerBeat,
+  ICE_GOLDEN_POINTS,
   ICE_MAX_STREAK,
   startRound,
   stepIceFishing,
@@ -296,6 +297,66 @@ describe("ice fishing pure logic", () => {
     );
     expect(s.streak).toBe(2);
     expect(s.score).toBe(3 + 3 * 2); // second catch 2×
+  });
+
+  it("golden catch jumps streak by two without breaking the mult order", () => {
+    let s = startRound(createIceFishingState({ width: 200, height: 160 }));
+    s = {
+      ...s,
+      dropping: true,
+      hookX: 50,
+      hookY: 80,
+      spawnTimer: 99,
+      fishes: [
+        {
+          id: 1,
+          x: 45,
+          y: 75,
+          vx: 0,
+          w: 28,
+          h: 14,
+          points: ICE_GOLDEN_POINTS,
+          kind: "golden",
+        },
+      ],
+    };
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.score).toBe(ICE_GOLDEN_POINTS); // mult 1× on first golden
+    expect(s.streak).toBe(2); // golden step +2
+    expect(s.maxStreak).toBe(2);
+
+    s = {
+      ...s,
+      dropping: true,
+      hookX: 50,
+      hookY: 80,
+      spawnTimer: 99,
+      fishes: [
+        {
+          id: 2,
+          x: 45,
+          y: 75,
+          vx: 0,
+          w: 20,
+          h: 12,
+          points: 1,
+          kind: "small",
+        },
+      ],
+    };
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.score).toBe(ICE_GOLDEN_POINTS + 1 * 3); // mult 3× from streak 2
+    expect(s.streak).toBe(ICE_MAX_STREAK);
   });
 
   it("resets catch streak on hazard", () => {

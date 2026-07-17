@@ -5,14 +5,18 @@
  * Headless and deterministic under a seeded RNG.
  *
  * Catch-streak densify (craft157+): consecutive good catches build a Club
- * Penguin–style multiplier (max 3×). Hazard catch or empty reel-up without a
- * catch resets streak. Pure rules only — hosts inject living-TV beats.
+ * Penguin–style multiplier (max 3×). Golden fish jump the streak by two steps
+ * (clam pearl parity). Hazard catch resets streak. Pure rules only — hosts
+ * inject living-TV beats.
  */
 
 export type IcePhase = "ready" | "playing" | "gameover";
 
 /** Max Club Penguin–style catch-streak multiplier (hard to vary). */
 export const ICE_MAX_STREAK = 3;
+
+/** Rare golden fish base points (pre-streak mult). */
+export const ICE_GOLDEN_POINTS = 5;
 
 export interface Fish {
   id: number;
@@ -22,7 +26,7 @@ export interface Fish {
   w: number;
   h: number;
   points: number;
-  kind: "small" | "medium" | "hazard";
+  kind: "small" | "medium" | "golden" | "hazard";
 }
 
 export interface IceFishingState {
@@ -121,14 +125,28 @@ function aabb(
 
 function spawnFish(state: IceFishingState, rng: () => number): IceFishingState {
   const roll = rng();
+  // Densify: rare golden (~8%) for pearl-parity streak step; hazard ~15%.
   const kind: Fish["kind"] =
-    roll < 0.15 ? "hazard" : roll < 0.55 ? "small" : "medium";
+    roll < 0.15
+      ? "hazard"
+      : roll < 0.23
+        ? "golden"
+        : roll < 0.55
+          ? "small"
+          : "medium";
   const fromLeft = rng() < 0.5;
   const y = 70 + rng() * (state.height - 110);
   const speed = 40 + rng() * 50 + Math.min(40, state.elapsed * 2);
-  const w = kind === "medium" ? 28 : 18;
-  const h = kind === "medium" ? 14 : 10;
-  const points = kind === "hazard" ? -1 : kind === "medium" ? 3 : 1;
+  const w = kind === "medium" || kind === "golden" ? 28 : 18;
+  const h = kind === "medium" || kind === "golden" ? 14 : 10;
+  const points =
+    kind === "hazard"
+      ? -1
+      : kind === "golden"
+        ? ICE_GOLDEN_POINTS
+        : kind === "medium"
+          ? 3
+          : 1;
   const fish: Fish = {
     id: state.nextFishId,
     x: fromLeft ? -w : state.width + w,
@@ -244,7 +262,9 @@ export function stepIceFishing(
       } else {
         const mult = iceCatchStreakMultiplier(next.streak);
         next.score += f.points * mult;
-        next.streak = Math.min(ICE_MAX_STREAK, next.streak + 1);
+        // Golden densify: rare fish jumps streak by two (clam pearl parity).
+        const step = f.kind === "golden" ? 2 : 1;
+        next.streak = Math.min(ICE_MAX_STREAK, next.streak + step);
         next.maxStreak = Math.max(next.maxStreak, next.streak);
         next.reeling = true;
         next.dropping = false;

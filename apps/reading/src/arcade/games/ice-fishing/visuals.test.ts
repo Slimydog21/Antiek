@@ -111,6 +111,16 @@ describe("Ice Fishing authored visuals", () => {
         },
         {
           id: 3,
+          kind: "golden",
+          x: 120,
+          y: 100,
+          vx: 40,
+          w: 28,
+          h: 14,
+          points: 5,
+        },
+        {
+          id: 4,
           kind: "hazard",
           x: 160,
           y: 130,
@@ -124,18 +134,21 @@ describe("Ice Fishing authored visuals", () => {
     const before = structuredClone(state);
     renderIceFishing(c2d, ctx, state, kit);
     expect(state).toEqual(before);
-    expect(c2d.drawImage).toHaveBeenCalledTimes(4);
+    // hook + small + medium + golden(reuses medium atlas) + hazard
+    expect(c2d.drawImage).toHaveBeenCalledTimes(5);
     const calls = vi.mocked(c2d.drawImage).mock.calls;
     expect(calls.map((call) => call.slice(1, 5))).toEqual([
       [824, 793, 183, 258],
       [62, 228, 486, 196],
       [632, 168, 569, 332],
+      [632, 168, 569, 332], // golden → medium cell
       [94, 776, 466, 258],
     ]);
     const hitboxes = [
       { x: 115, y: 75, w: 10, h: 10 },
       { x: 20, y: 90, w: 18, h: 10 },
       { x: 80, y: 110, w: 28, h: 14 },
+      { x: 120, y: 100, w: 28, h: 14 },
       { x: 160, y: 130, w: 18, h: 10 },
     ];
     calls.forEach((call, index) => {

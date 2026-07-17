@@ -26,6 +26,10 @@ describe("emoteForProductDoor", () => {
     expect(emoteForProductDoor("cabinet")).toBe("curious");
     expect(emoteForProductDoor("arcade-cabinet")).toBe("curious");
     expect(emoteForProductDoor("loading-game-host")).toBe("curious");
+    expect(emoteForProductDoor("ice-fishing")).toBe("curious");
+    expect(emoteForProductDoor("clam-catcher")).toBe("curious");
+    expect(emoteForProductDoor("zombies")).toBe("curious");
+    expect(emoteForProductDoor("paperclip-zombies")).toBe("curious");
   });
   it("maps write, home, create to happy", () => {
     expect(emoteForProductDoor("write")).toBe("happy");

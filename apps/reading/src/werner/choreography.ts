@@ -100,6 +100,11 @@ export function emoteForProductDoor(productId: string): EmoteKind {
     case "cabinet":
     case "arcade-cabinet":
     case "loading-game-host":
+    // Per-game cabinet densify: each minigame card is a curious living-TV door.
+    case "ice-fishing":
+    case "clam-catcher":
+    case "zombies":
+    case "paperclip-zombies":
       return "curious";
     case "write":
     case "home":

@@ -144,7 +144,8 @@ function drawAuthoredFish(
   image: CanvasImageSource,
   fish: Fish,
 ): void {
-  const cell = ATLAS[fish.kind];
+  // Golden reuses medium atlas cell (sun tint applied in fallback path only).
+  const cell = fish.kind === "golden" ? ATLAS.medium : ATLAS[fish.kind];
   if (fish.kind !== "hazard" && fish.vx < 0) {
     c2d.save();
     c2d.translate(fish.x + fish.w / 2, fish.y + fish.h / 2);
@@ -185,8 +186,10 @@ function drawFallbackFish(c2d: CanvasRenderingContext2D, fish: Fish): void {
   c2d.fillStyle =
     fish.kind === "hazard"
       ? accent.emperor.day
-      : fish.kind === "medium"
-        ? sun.glow.day
-        : accent.aurora.day;
+      : fish.kind === "golden"
+        ? sun.base
+        : fish.kind === "medium"
+          ? sun.glow.day
+          : accent.aurora.day;
   c2d.fillRect(fish.x, fish.y, fish.w, fish.h);
 }

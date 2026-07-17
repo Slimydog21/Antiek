@@ -44,8 +44,9 @@ export function ArcadeCabinet() {
   );
 
   function playGame(game: CabinetGame) {
-    // Living-TV: product-activate choreography (arcade → curious) + experience.
-    emitProductActivate({ productId: "arcade", source: "click" });
+    // Living-TV: per-game product door (ice-fishing / clam-catcher / zombies →
+    // curious) so cabinet cards resolve as distinct living-TV geometry.
+    emitProductActivate({ productId: game, source: "click" });
     emitLivingTvHostBeat("highlight");
     setActive(game);
   }
@@ -106,6 +107,7 @@ export function ArcadeCabinet() {
           title="Ice Fishing"
           blurb="Drop the line. Catch fish. Avoid the boot."
           art={iceFishingArt}
+          productId="ice-fishing"
           selected={active === "ice-fishing"}
           onPlay={() => playGame("ice-fishing")}
           testId="cabinet-ice-fishing"
@@ -114,6 +116,7 @@ export function ArcadeCabinet() {
           title="Clam Catcher"
           blurb="Scoop clams on the tide. Club Penguin energy."
           art={clamCatcherArt}
+          productId="clam-catcher"
           selected={active === "clam-catcher"}
           onPlay={() => playGame("clam-catcher")}
           testId="cabinet-clam-catcher"
@@ -122,6 +125,7 @@ export function ArcadeCabinet() {
           title="Paperclip Zombies"
           blurb="Defend the fort while research runs."
           art={zombiesArt}
+          productId="zombies"
           selected={active === "zombies"}
           onPlay={() => playGame("zombies")}
           testId="cabinet-zombies"
@@ -161,6 +165,7 @@ function CabinetCard({
   title,
   blurb,
   art,
+  productId,
   selected,
   onPlay,
   testId,
@@ -168,6 +173,7 @@ function CabinetCard({
   title: string;
   blurb: string;
   art: string;
+  productId: CabinetGame;
   selected: boolean;
   onPlay: () => void;
   testId: string;
@@ -176,7 +182,7 @@ function CabinetCard({
     <button
       type="button"
       data-testid={testId}
-      data-product-id="arcade"
+      data-product-id={productId}
       data-werner-target="curious"
       onClick={onPlay}
       className={
