@@ -1668,9 +1668,14 @@ def create_app(
     from .canonical_twin_embedding_routes import register_canonical_twin_embedding_routes
 
     register_canonical_twin_embedding_routes(app)
+    from .current_twin_promotion_config import (
+        current_twin_promotion_runtime_from_environment,
+    )
     from .current_twin_promotion_routes import register_current_twin_promotion_routes
 
-    register_current_twin_promotion_routes(app)
+    register_current_twin_promotion_routes(
+        app, runtime=current_twin_promotion_runtime_from_environment()
+    )
     # Book acquisition — authorized, bytes-only EPUB port into the
     # personal-reading corpus.  Requires a dedicated signing key
     # (ANTIEK_BOOK_ACQUISITION_SIGNING_KEY) that is NEVER the

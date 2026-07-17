@@ -9,11 +9,11 @@ import sqlite3
 import stat
 import time
 import unicodedata
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
@@ -36,6 +36,7 @@ SCHEMA_VERSION = 1
 MAX_CANDIDATE_CHARS = 8_000
 MAX_EXCERPT_CHARS = 2_000
 MAX_EXCERPTS = 16
+MAX_SOURCE_PROMOTIONS = 32
 CandidateKind = Literal["insight", "question"]
 Decision = Literal["accepted", "rejected"]
 
@@ -299,7 +300,7 @@ class TwinEvidencePromotionLedger:
         self._review_key_id = "review-key-" + hashlib.sha256(review_verify_key).hexdigest()
         if not callable(clock):
             raise TypeError("clock must be callable")
-        self._clock = clock
+        self._clock: Callable[[], float] = cast(Callable[[], float], clock)
         self._read_only = False
         self._database_identity: tuple[int, int] | None = None
         self._initialize()
@@ -890,6 +891,65 @@ class TwinEvidencePromotionLedger:
             self._revalidate(con, twins, candidate)
             db.execute("COMMIT")
             return AcceptedTwinPromotionAuthority(candidate, review)
+        except Exception:
+            db.execute("ROLLBACK")
+            raise
+        finally:
+            db.close()
+
+    def accepted_authorities_for_source(
+        self,
+        con: LockedConnection,
+        twins: TwinRecursionLedger,
+        *,
+        owner_id: str,
+        source_asset_id: str,
+        source_hash: str,
+    ) -> tuple[AcceptedTwinPromotionAuthority, ...]:
+        """Return one bounded, verified authority set for an exact revision."""
+        owner_id = _text(owner_id, "owner_id")
+        source_asset_id = _text(source_asset_id, "source_asset_id")
+        source_hash = _text(source_hash, "source_hash")
+        if owner_id != self._owner_id:
+            raise TwinEvidencePromotionError("promotion ledger owner is unavailable")
+        db = self._connect()
+        try:
+            db.execute("BEGIN")
+            self._verify_schema(db)
+            self.verify_integrity()
+            rows = db.execute(
+                "SELECT c.candidate_id,c.candidate_json,r.review_json "
+                "FROM promotion_candidates c JOIN promotion_reviews r USING(candidate_id) "
+                "WHERE c.owner_id=? AND r.owner_id=? AND r.decision='accepted' "
+                "AND json_extract(c.candidate_json,'$.source_asset_id')=? "
+                "AND json_extract(c.candidate_json,'$.source_hash')=? "
+                "ORDER BY c.candidate_id LIMIT ?",
+                [owner_id, owner_id, source_asset_id, source_hash, MAX_SOURCE_PROMOTIONS + 1],
+            ).fetchall()
+            if len(rows) > MAX_SOURCE_PROMOTIONS:
+                raise TwinEvidencePromotionError("source promotion collection exceeds bound")
+            result: list[AcceptedTwinPromotionAuthority] = []
+            for row in rows:
+                candidate = _candidate_from_json(row["candidate_json"])
+                try:
+                    review = TwinPromotionReview(**json.loads(row["review_json"]))
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise TwinEvidencePromotionError("stored promotion review is malformed") from exc
+                if (
+                    candidate.candidate_id != row["candidate_id"]
+                    or candidate.owner_id != owner_id
+                    or candidate.source_asset_id != source_asset_id
+                    or candidate.source_hash != source_hash
+                    or review.candidate_id != candidate.candidate_id
+                    or review.owner_id != owner_id
+                    or review.decision != "accepted"
+                ):
+                    raise TwinEvidencePromotionError("source promotion collection conflicts")
+                self._verify_signed_review(review)
+                self._revalidate(con, twins, candidate)
+                result.append(AcceptedTwinPromotionAuthority(candidate, review))
+            db.execute("COMMIT")
+            return tuple(result)
         except Exception:
             db.execute("ROLLBACK")
             raise
