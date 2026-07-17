@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `c314ac493` — densify pack **47/401**.
+PR #2416 tip (at close of this note): `6c4620794` — densify pack **47/402**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1071,3 +1071,9 @@ Instrument barrel densify exports living-TV ambient quiet policy. densify pack *
 | living-TV emote duration barrel densify | `c314ac493` | EMOTE_KINDS + emoteDurationMs public |
 
 Instrument barrel densify exports living-TV emote durations. densify pack **47/401**. Pure Flipbook sole UI remains **NO-GO**.
+
+## mouse-follow lag barrel densify (craft157+)
+
+| mouse-follow lag barrel densify | `6c4620794` | LAG_MS + FOLLOW_EASE + centerLaggedTarget public |
+
+Instrument barrel densify exports mouse-follow lag contract. densify pack **47/402**. Pure Flipbook sole UI remains **NO-GO**.
