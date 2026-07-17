@@ -21,6 +21,8 @@ describe("emoteForProductDoor", () => {
     expect(emoteForProductDoor("sources")).toBe("curious");
     expect(emoteForProductDoor("marketplace")).toBe("curious");
     expect(emoteForProductDoor("model-decision")).toBe("curious");
+    expect(emoteForProductDoor("wait-arcade")).toBe("curious");
+    expect(emoteForProductDoor("research-wait")).toBe("curious");
   });
   it("maps write, home, create to happy", () => {
     expect(emoteForProductDoor("write")).toBe("happy");
