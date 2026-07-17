@@ -633,7 +633,7 @@ BO1-style consecutive-kill multiplier (max 4×) on pure zombies rules; miss/brea
 resets combo; HUD shows live `xN`. Arcade core stays free of reaction-bus imports.
 densify pack **39/307**. Pure Flipbook sole UI remains **NO-GO**.
 
-| Imagine invent polish v3o full wave (18 invents) | (tip) | invent polish v3o all 18 product invent doors on axe-green zombies combo tip |
+| Imagine invent polish v3o full wave (18 invents) | `a9fd792dc` | invent polish v3o all 18 product invent doors on axe-green zombies combo tip |
 
 ## Invent polish v3o wave complete
 
