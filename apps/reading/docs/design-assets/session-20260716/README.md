@@ -203,3 +203,6 @@ Candidates retained as `*_session_candidate_v1.webp` beside refedits.
 | werner_igloo_minigame_trio_refedit_v2k.jpg | **PROMOTED** → poses/session/werner_igloo_minigame_trio_session_v1.webp |
 | werner_igloo_ice_arcade_cursor_refedit_v2k.jpg | **PROMOTED** → poses/session/werner_igloo_ice_arcade_cursor_session_v1.webp |
 | werner_clam_catcher_cursor_refedit_v2k.jpg | **PROMOTED** → poses/session/werner_clam_catcher_cursor_session_v1.webp |
+| werner_living_tv_refedit_v2k.jpg | **PROMOTED** → poses/session/werner_living_tv_session_v1.webp |
+| werner_thought_partner_desk_refedit_v2k.jpg | **PROMOTED** → poses/session/werner_thought_partner_desk_session_v1.webp |
+| werner_midnight_oil_swarm_refedit_v2k.jpg | **PROMOTED** → poses/session/werner_midnight_oil_swarm_session_v1.webp |
