@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `0a46c85ef` — densify pack **47/397**.
+PR #2416 tip (at close of this note): `8a05007a2` — densify pack **47/398**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1047,3 +1047,9 @@ Instrument barrel densify exports data-werner-target helpers. densify pack **47/
 | emoteForExperience barrel densify | `0a46c85ef` | living-TV product reaction map public |
 
 Instrument barrel densify exports emoteForExperience reaction map. densify pack **47/397**. Pure Flipbook sole UI remains **NO-GO**.
+
+## reactionBus allowlist barrel densify (craft157+)
+
+| reactionBus allowlist barrel densify | `8a05007a2` | PRODUCT_EXPERIENCES + isProductExperience + event |
+
+Instrument barrel densify exports reactionBus allowlist contracts. densify pack **47/398**. Pure Flipbook sole UI remains **NO-GO**.
