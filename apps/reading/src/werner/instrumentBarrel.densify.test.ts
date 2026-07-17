@@ -10,9 +10,11 @@ import {
   acquireStationInstrumentSuspension,
   baitChromeFromFollow,
   catenaryPath,
+  emitWernerExperience,
   emoteForExperience,
   emoteForProductDoor,
   emoteFromWernerTargetAttr,
+  installReactionBus,
   isProductExperience,
   isStationInstrumentSuspended,
   PRODUCT_EXPERIENCES,
@@ -85,5 +87,15 @@ describe("werner instrument barrel densify", () => {
     expect(PRODUCT_EXPERIENCES.every(isProductExperience)).toBe(true);
     expect(isProductExperience("recording_started")).toBe(false);
     expect(isProductExperience("highlight")).toBe(true);
+  });
+
+  it("exports emitWernerExperience + installReactionBus densify for host inject", () => {
+    // densify: hosts inject living-TV beats; arcade cores stay reactionBus-free.
+    expect(typeof emitWernerExperience).toBe("function");
+    expect(typeof installReactionBus).toBe("function");
+    const emote = () => {};
+    const teardown = installReactionBus({ emote });
+    expect(typeof teardown).toBe("function");
+    teardown();
   });
 });
