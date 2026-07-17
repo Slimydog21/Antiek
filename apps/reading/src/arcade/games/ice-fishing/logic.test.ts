@@ -299,6 +299,28 @@ describe("ice fishing pure logic", () => {
     expect(s.score).toBe(3 + 3 * 2); // second catch 2×
   });
 
+  it("spawns rare golden fish in the densify roll band", () => {
+    let s = startRound(createIceFishingState({ width: 200, height: 160 }));
+    // spawnFish roll: hazard <0.15, golden <0.23 — pin first roll at 0.18.
+    const rolls = [0.18, 0.2, 0.3];
+    let i = 0;
+    const rng = () => rolls[i++] ?? 0.5;
+    s = {
+      ...s,
+      spawnTimer: 0,
+      fishes: [],
+    };
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 100, drop: false, reel: false, start: false },
+      rng,
+    );
+    expect(s.fishes.some((f) => f.kind === "golden")).toBe(true);
+    const golden = s.fishes.find((f) => f.kind === "golden");
+    expect(golden?.points).toBe(ICE_GOLDEN_POINTS);
+  });
+
   it("golden catch jumps streak by two without breaking the mult order", () => {
     let s = startRound(createIceFishingState({ width: 200, height: 160 }));
     s = {
