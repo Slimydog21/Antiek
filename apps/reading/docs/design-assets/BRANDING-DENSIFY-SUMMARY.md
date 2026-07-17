@@ -666,7 +666,7 @@ Ice catch-streak already pure-rules densified; HUD now shows live `xN` while
 streak is hot (sun accent), matching clam + zombies cabinet craft. densify pack
 unchanged (rules already gated). Pure Flipbook sole UI remains **NO-GO**.
 
-| Imagine invent polish v3p full wave (18 invents) | (pending tip) | invent polish v3p all 18 product invent doors |
+| Imagine invent polish v3p full wave (18 invents) | `ba3f276ec` | invent polish v3p all 18 product invent doors |
 
 ## Invent polish v3p wave complete
 
