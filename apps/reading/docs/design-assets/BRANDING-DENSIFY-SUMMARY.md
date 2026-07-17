@@ -707,7 +707,7 @@ Paperclip zombies gameover status plate brags peak BO1 combo (`BEST xN`) for
 cabinet/wait craft parity with ice+clam peak-streak brag. densify pack holds.
 Pure Flipbook sole UI remains **NO-GO**.
 
-| Imagine invent polish v3q full wave (18 invents) | (pending tip) | invent polish v3q all 18 product invent doors |
+| Imagine invent polish v3q full wave (18 invents) | `90ba6a605` | invent polish v3q all 18 product invent doors |
 
 ## Invent polish v3q wave complete
 
