@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `decfc0d8d` — densify pack **42/360**.
+PR #2416 tip (at close of this note): `b13931016` — densify pack **42/360**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -915,3 +915,9 @@ Home invent Flipbook-feel suffix densify + living-TV highlight episode no ambien
 | Factory trio RM progression densify | `decfc0d8d` | ice+clam+zombies RM scores via factory |
 
 Shared factory densify asserts reduced-motion scores on host path for all three games. densify pack **42/360**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Invent honesty densify v3r + pack 42/360 (craft157+)
+
+| Invent honesty densify v3r + pack 42/360 | `b13931016` | WAVE v3r + densify gate honesty |
+
+Invent class densify + Flipbook note pin WAVE=v3r and densify pack **42/360**. Pure Flipbook sole UI remains **NO-GO**.
