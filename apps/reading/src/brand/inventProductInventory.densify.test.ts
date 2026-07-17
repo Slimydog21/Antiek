@@ -1,6 +1,8 @@
 /**
- * densify: invent polish v2d product inventory — every product-mapped invent webp
+ * densify: invent polish product inventory — every product-mapped invent webp
  * exists with non-trivial size so Flipbook-feel invent reframe has real art.
+ * Wave letter advances with invent polish (currently v2i); honesty densify
+ * gates refedit/candidate provenance per wave.
  */
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -8,7 +10,7 @@ import { describe, expect, it } from "vitest";
 
 const POSES = join(process.cwd(), "src/brand/werner/poses/session");
 
-/** Product invent doors refreshed through invent polish v2d. */
+/** Product invent doors refreshed through invent polish waves (v2d→v2i). */
 const PRODUCT_INVENT_WEBP = [
   "werner_crt_living_tv_session_v1.webp",
   "werner_igloo_minigame_trio_session_v1.webp",
@@ -31,7 +33,7 @@ const PRODUCT_INVENT_WEBP = [
 ] as const;
 
 describe("invent product inventory densify", () => {
-  it("all 18 invent polish v2d product invent webps exist with non-trivial size", () => {
+  it("all 18 invent polish product invent webps exist with non-trivial size", () => {
     expect(PRODUCT_INVENT_WEBP).toHaveLength(18);
     const missing: string[] = [];
     const tiny: string[] = [];

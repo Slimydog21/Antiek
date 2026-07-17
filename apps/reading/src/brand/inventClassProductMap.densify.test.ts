@@ -42,7 +42,7 @@ describe("invent class product-map densify", () => {
     expect(offenders, offenders.join(", ")).toEqual([]);
   });
 
-  it("invent polish v2d complete note pins densify gate + Flipbook NO-GO honesty", () => {
+  it("invent polish wave complete note pins densify gate + Flipbook NO-GO honesty", () => {
     const summary = readFileSync(
       join(process.cwd(), "docs/design-assets/BRANDING-DENSIFY-SUMMARY.md"),
       "utf8",
@@ -56,9 +56,13 @@ describe("invent class product-map densify", () => {
     expect(summary).toMatch(/Invent polish v2f wave complete/i);
     expect(summary).toMatch(/Invent polish v2g wave complete/i);
     expect(summary).toMatch(/Invent polish v2h wave complete/i);
-    expect(summary).toMatch(/29\/25[01]|32\/268|36\/297|37\/298|38\/299/); // densify pack progression
-    expect(flipbook).toMatch(/38 files \/ 299 tests/);
-    expect(flipbook).toMatch(/Invent polish v2d/);
+    expect(summary).toMatch(/Invent polish v2i wave complete/i);
+    // densify pack progression through invent polish honesty densify
+    expect(summary).toMatch(
+      /29\/25[01]|32\/268|36\/297|37\/298|38\/299|39\/302/,
+    );
+    expect(flipbook).toMatch(/39 files \/ 302 tests|38 files \/ 299 tests/);
+    expect(flipbook).toMatch(/Invent polish v2i/);
     expect(flipbook).toMatch(/NO-GO/);
     expect(flipbook).toMatch(/ice-bait|IceBait|ice-cursor/i);
   });

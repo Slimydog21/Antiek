@@ -373,4 +373,6 @@ densify pack: `npm run test:branding-densify` (38/299). Pure Flipbook sole UI re
 ## Invent polish v2i wave complete
 
 All 18 product invent doors refreshed via Imagine invent polish v2i and densified.
-densify pack: `npm run test:branding-densify` (38/299). Pure Flipbook sole UI remains NO-GO.
+densify pack: `npm run test:branding-densify` (39/302 after invent polish wave honesty densify). Pure Flipbook sole UI remains NO-GO.
+
+| Invent polish wave honesty densify | `TBD` | invent polish v2i provenance + Flipbook note densify gate 39/302 |
