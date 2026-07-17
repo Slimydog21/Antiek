@@ -6,6 +6,10 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import {
+  PRODUCT_ACTIVATE_EVENT,
+  type ProductActivateDetail,
+} from "../../components/hotkeys";
+import {
   createArcadeCartridge,
   progressCartridge,
 } from "../cartridgeFactory";
@@ -91,5 +95,35 @@ describe("LoadingGameHost playing mode (host entry)", () => {
     const softProg = progressCartridge(soft, 30, { fire: true, seed: 1 });
     expect(softProg.score).toBeGreaterThanOrEqual(1);
     expect(score).toBeGreaterThanOrEqual(0);
+  });
+
+  it("opt-in play stamps per-game product door and emits PRODUCT_ACTIVATE", async () => {
+    vi.useFakeTimers();
+    const seen: string[] = [];
+    const onActivate = (e: Event) => {
+      const d = (e as CustomEvent<ProductActivateDetail>).detail;
+      if (d?.productId) seen.push(d.productId);
+    };
+    window.addEventListener(PRODUCT_ACTIVATE_EVENT, onActivate);
+    render(
+      <LoadingGameHost
+        waiting
+        ready={false}
+        game="ice-fishing"
+        arcadeEnabled
+        offerAfterMs={0}
+      />,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(250);
+    });
+    const play = screen.getByTestId("game-offer-play");
+    expect(play.getAttribute("data-product-id")).toBe("ice-fishing");
+    fireEvent.click(play);
+    window.removeEventListener(PRODUCT_ACTIVATE_EVENT, onActivate);
+    expect(seen).toContain("ice-fishing");
+    expect(
+      screen.getByTestId("loading-game-host").getAttribute("data-host-mode"),
+    ).toBe("playing");
   });
 });

@@ -5,6 +5,7 @@ import {
   createArcadeCartridge,
   type ArcadeGameKind,
 } from "../cartridgeFactory";
+import { emitProductActivate } from "../../components/hotkeys";
 // CRT igloo + cursor invent — Flipbook-feel default living-TV wait strip.
 import livingTvArt from "../../brand/werner/poses/session/werner_crt_igloo_cursor_tv_session_v1.webp";
 // Igloo ice-arcade invent — CRT + cursor-bait ice fishing wait strip.
@@ -204,8 +205,12 @@ export function LoadingGameHost({
           <button
             type="button"
             data-testid="game-offer-play"
+            data-product-id={game}
+            data-werner-target="curious"
             onClick={() => {
-              // Living-TV: opting into wait-game is a curious glance from Werner.
+              // Living-TV: per-game product door (parity with ArcadeCabinet) +
+              // highlight beat so wait-host opt-in reaches the same TV path.
+              emitProductActivate({ productId: game, source: "click" });
               emitLivingTvHostBeat("highlight");
               setOptedIn(true);
             }}
