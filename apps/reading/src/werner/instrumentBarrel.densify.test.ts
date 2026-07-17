@@ -1,7 +1,7 @@
 /**
- * densify: instrument helpers (bait chrome + tip→bait tension + suspension)
- * stay public on the werner barrel so product shells share the fixed-station
- * contract (cursor is bait/instrument, not a chase pet).
+ * densify: instrument helpers (bait chrome + tip→bait tension + suspension +
+ * productSelector) stay public on the werner barrel so product shells share the
+ * fixed-station contract (cursor is bait/instrument, not a chase pet).
  */
 import { describe, expect, it } from "vitest";
 
@@ -9,7 +9,9 @@ import {
   acquireStationInstrumentSuspension,
   baitChromeFromFollow,
   catenaryPath,
+  emoteForProductDoor,
   isStationInstrumentSuspended,
+  productSelector,
   rodBendFromPoints,
   stationInstrumentLeaseCount,
   tipToBaitDistance,
@@ -37,5 +39,16 @@ describe("werner instrument barrel densify", () => {
     expect(stationInstrumentLeaseCount()).toBeGreaterThan(0);
     release();
     expect(isStationInstrumentSuspended()).toBe(false);
+  });
+
+  it("exports productSelector + emoteForProductDoor for living-TV door densify", () => {
+    // Product shells stamp data-product-id; barrel densify keeps the selector
+    // + emote map public so invent doors resolve without chasing a pet.
+    expect(productSelector({ productId: "home-arcade", source: "click" })).toBe(
+      '[data-product-id="home-arcade"]',
+    );
+    expect(emoteForProductDoor("home-arcade")).toBe("curious");
+    expect(emoteForProductDoor("research")).toBe("thinking");
+    expect(emoteForProductDoor("midnight-oil")).toBe("sleeping");
   });
 });
