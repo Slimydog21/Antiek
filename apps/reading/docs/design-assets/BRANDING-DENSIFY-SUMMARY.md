@@ -568,9 +568,17 @@ densify pack: `npm run test:branding-densify` (39/303). Pure Flipbook sole UI re
 All 18 product invent doors refreshed via Imagine invent polish v3g and densified.
 densify pack: `npm run test:branding-densify` (39/303). Pure Flipbook sole UI remains NO-GO.
 | Imagine invent polish v3h full wave (18 invents) | `8cfcc8411` | invent polish v3h all 18 product invent doors on axe-green invent polish v3g tip |
+| Imagine invent polish v3i full wave (18 invents) | `PENDING` | invent polish v3i all 18 product invent doors on axe-green invent polish v3h tip |
 
 
 ## Invent polish v3h wave complete
 
 All 18 product invent doors refreshed via Imagine invent polish v3h and densified.
 densify pack: `npm run test:branding-densify` (39/303). Pure Flipbook sole UI remains NO-GO.
+
+## Invent polish v3i wave complete
+
+All 18 product invent doors refreshed via Imagine invent polish v3i and densified.
+Honesty densify WAVE=`v3i`. densify pack expected **39/303**. Pure Flipbook sole UI remains **NO-GO**.
+Refedit+candidate provenance under `session-20260716/*_v3i.*`. Product webps promoted to `src/brand/werner/poses/session/*_session_v1.webp`.
+
