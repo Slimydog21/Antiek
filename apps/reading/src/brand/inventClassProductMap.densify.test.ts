@@ -93,6 +93,6 @@ describe("invent class product-map densify", () => {
     );
     expect(flipbook).toMatch(/Invent polish v2i|Invent polish v3r/i);
     expect(flipbook).toMatch(/NO-GO/);
-    expect(flipbook).toMatch(/ice-bait|IceBait|ice-cursor/i);
+    expect(flipbook).toMatch(/ice-bait|IceBait|ice-cursor|baitChromeFromFollow/i);
   });
 });
