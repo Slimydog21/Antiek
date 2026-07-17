@@ -873,3 +873,9 @@ Reduced-motion ice path densify: simplified catches use streak mult + maxStreak.
 | Zombies reduced-motion combo densify | `3fea9b2ff` | RM clicks build combo mult |
 
 Reduced-motion fort defense densify: gentle clicks grow BO1 combo. densify pack **42/354**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Invent reframe wait-playing testid densify (craft157+)
+
+| Invent reframe wait-playing testid densify | `fc597ce46` | -living-tv-art suffix contract |
+
+CSS invent reframe densify asserts wait-playing testid coverage. densify pack **42/355**. Pure Flipbook sole UI remains **NO-GO**.
