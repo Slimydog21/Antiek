@@ -19,7 +19,10 @@ function context2d() {
     fill: vi.fn(),
     drawImage: vi.fn(),
     fillText: vi.fn(),
+    strokeRect: vi.fn(),
     fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 0,
     font: "",
   } as unknown as CanvasRenderingContext2D;
 }
@@ -70,6 +73,31 @@ describe("Clam Catcher authored visuals", () => {
     kit.load();
     expect(createImage).toHaveBeenCalledTimes(2);
     expect(kit.image).toBe(second);
+  });
+
+  it("draws a sun rim around authored pearl-clam densify", () => {
+    const c2d = context2d();
+    const kit: ClamCatcherVisualKit = {
+      image: {} as CanvasImageSource,
+      ready: true,
+      load: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const state: ClamCatcherState = {
+      ...createClamCatcherState(ctx.width, ctx.height),
+      phase: "playing",
+      entities: [
+        { id: 2, kind: "pearl-clam", x: 160, y: 100, radius: 10, points: 4 },
+      ],
+    };
+    renderClamCatcher(c2d, ctx, state, kit);
+    // ENTITY_SIZE pearl is 18×19; top-left = center - half size.
+    expect(c2d.strokeRect).toHaveBeenCalledWith(
+      160 - 18 / 2 + 0.5,
+      100 - 19 / 2 + 0.5,
+      17,
+      18,
+    );
   });
 
   it("draws every entity kind and the bucket from stable atlas cells", () => {

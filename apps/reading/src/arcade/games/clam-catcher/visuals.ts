@@ -143,15 +143,15 @@ function drawAtlasEntity(
         ? ATLAS.pearl
         : ATLAS.common;
   const size = ENTITY_SIZE[kind];
-  drawAtlasCell(
-    c2d,
-    image,
-    cell,
-    x - size.width / 2,
-    y - size.height / 2,
-    size.width,
-    size.height,
-  );
+  const dx = x - size.width / 2;
+  const dy = y - size.height / 2;
+  drawAtlasCell(c2d, image, cell, dx, dy, size.width, size.height);
+  // Pearl densify: sun rim marks rare clam (parity with ice golden rim).
+  if (kind === "pearl-clam") {
+    c2d.strokeStyle = sun.base;
+    c2d.lineWidth = 1.5;
+    c2d.strokeRect(dx + 0.5, dy + 0.5, size.width - 1, size.height - 1);
+  }
 }
 
 function drawAtlasCell(
