@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `87d57a0ed` — densify pack **45/382**.
+PR #2416 tip (at close of this note): `7826fe271` — densify pack **45/383**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -969,3 +969,9 @@ Instrument barrel densify exports station suspension; densify pack **45/382**. P
 | Station suspension honesty densify | `87d57a0ed` | invent class pin station instrument suspension |
 
 Honesty densify pins station instrument suspension in Flipbook densify gate. densify pack **45/382**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Living-TV fail recover + home-arcade door densify (craft157+)
+
+| Living-TV fail recover + home-arcade door densify | `7826fe271` | error→idle; home-arcade curious |
+
+Living-TV densify: fail/error recover idle; home-arcade product door densify. densify pack **45/383**. Pure Flipbook sole UI remains **NO-GO**.
