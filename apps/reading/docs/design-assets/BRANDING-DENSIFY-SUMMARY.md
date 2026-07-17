@@ -304,3 +304,11 @@ Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md
 | Imagine invent polish v2d thought partner desk | `3cbf96b87` | ThoughtPartnerPanel invent refresh on FULL GREEN tip |
 | Imagine invent polish v2d cascade plan | `5e8db76e4` | PlanEditor invent refresh on FULL GREEN tip |
 | Imagine invent polish v2d midnight oil swarm | `89cf96f93` | MidnightOilPanel invent refresh on FULL GREEN tip |
+| Imagine invent polish v2d arxiv dens | `TBD` | Sources invent refresh on FULL GREEN tip |
+| Imagine invent polish v2d html book float | `TBD` | ReadingCompanion invent refresh on FULL GREEN tip |
+| Imagine invent polish v2d collective merge | `TBD` | SubAgentProposal + FloatMenu invent refresh on FULL GREEN tip |
+| Imagine invent polish v2d book marketplace port | `TBD` | HouseSlot invent refresh on FULL GREEN tip |
+| Imagine invent polish v2d float research merge | `TBD` | TwinNotes float-merge invent refresh on FULL GREEN tip |
+| Imagine invent polish v2d knowledge twin cursor | `TBD` | KnowledgePanel invent refresh on FULL GREEN tip |
+| Imagine invent polish v2d antiek-bench celebrate | `TBD` | AntiekBenchPanel invent refresh on FULL GREEN tip |
+| Imagine invent polish v2d model decision tree | `TBD` | ModelDecisionBar invent refresh on FULL GREEN tip |
