@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `2c2e92869` — densify pack **47/395**.
+PR #2416 tip (at close of this note): `8b853b01c` — densify pack **47/396**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1035,3 +1035,9 @@ Instrument barrel densify exports productSelector + door emotes. densify pack **
 | data-werner-target densify | `2c2e92869` | emoteFromWernerTargetAttr; pack 47/395 |
 
 Opt-in living-TV target densify: pure attr→emote mapping + pack gate. densify pack **47/395**. Pure Flipbook sole UI remains **NO-GO**.
+
+## data-werner-target barrel densify (craft157+)
+
+| data-werner-target barrel densify | `8b853b01c` | WERNER_TARGET_ATTR + emoteFromWernerTargetAttr public |
+
+Instrument barrel densify exports data-werner-target helpers. densify pack **47/396**. Pure Flipbook sole UI remains **NO-GO**.
