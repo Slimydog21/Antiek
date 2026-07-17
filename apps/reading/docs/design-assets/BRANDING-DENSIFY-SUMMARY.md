@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `f2f4de7b1` — densify pack **46/391**.
+PR #2416 tip (at close of this note): `1c87b9ce2` — densify pack **46/392**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1023,3 +1023,9 @@ Living-TV densify: product note_saved pride curtain to idle then silence. densif
 | productSelector densify for invent doors | `f2f4de7b1` | data-product-id contract; pack 46/391 |
 
 Product-selector densify pins invent doors to living-TV choreography resolution. densify pack **46/391**. Pure Flipbook sole UI remains **NO-GO**.
+
+## productSelector barrel densify (craft157+)
+
+| productSelector barrel densify | `1c87b9ce2` | productSelector+emoteForProductDoor public |
+
+Instrument barrel densify exports productSelector + door emotes. densify pack **46/392**. Pure Flipbook sole UI remains **NO-GO**.
