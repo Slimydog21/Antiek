@@ -368,6 +368,7 @@ describe("ice fishing pure logic", () => {
       hookY: 80,
       streak: 2,
       maxStreak: 2,
+      castHadCatch: false,
       spawnTimer: 99,
       fishes: [
         {
@@ -391,5 +392,59 @@ describe("ice fishing pure logic", () => {
     expect(s.streak).toBe(0);
     expect(s.maxStreak).toBe(2);
     expect(s.lives).toBeLessThan(3);
+  });
+
+  it("resets catch streak on empty cast returning to surface", () => {
+    let s = startRound(createIceFishingState({ width: 200, height: 160 }));
+    s = {
+      ...s,
+      reeling: true,
+      dropping: false,
+      hookX: 50,
+      hookY: 40,
+      hookVy: -180,
+      streak: 2,
+      maxStreak: 2,
+      castHadCatch: false,
+      spawnTimer: 99,
+      fishes: [],
+    };
+    // One large step reels past the surface without a catch.
+    s = stepIceFishing(
+      s,
+      0.1,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.hookY).toBe(36);
+    expect(s.reeling).toBe(false);
+    expect(s.streak).toBe(0);
+    expect(s.maxStreak).toBe(2); // peak brag retained
+  });
+
+  it("keeps catch streak when a cast that caught returns to surface", () => {
+    let s = startRound(createIceFishingState({ width: 200, height: 160 }));
+    s = {
+      ...s,
+      reeling: true,
+      dropping: false,
+      hookX: 50,
+      hookY: 40,
+      hookVy: -180,
+      streak: 2,
+      maxStreak: 2,
+      castHadCatch: true,
+      spawnTimer: 99,
+      fishes: [],
+    };
+    s = stepIceFishing(
+      s,
+      0.1,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.hookY).toBe(36);
+    expect(s.streak).toBe(2);
+    expect(s.maxStreak).toBe(2);
   });
 });

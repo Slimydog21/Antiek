@@ -6,8 +6,8 @@
  *
  * Catch-streak densify (craft157+): consecutive good catches build a Club
  * Penguin–style multiplier (max 3×). Golden fish jump the streak by two steps
- * (clam pearl parity). Hazard catch resets streak. Pure rules only — hosts
- * inject living-TV beats.
+ * (clam pearl parity). Hazard catch or empty cast (reel to surface without a
+ * catch) resets streak. Pure rules only — hosts inject living-TV beats.
  */
 
 export type IcePhase = "ready" | "playing" | "gameover";
@@ -51,6 +51,8 @@ export interface IceFishingState {
   streak: number;
   /** Peak streak this run (cabinet densify / brag). */
   maxStreak: number;
+  /** True once this cast hooked anything (empty cast resets streak). */
+  castHadCatch: boolean;
 }
 
 export interface IceFishingConfig {
@@ -83,6 +85,7 @@ export function createIceFishingState(cfg: IceFishingConfig): IceFishingState {
     reducedMotion: Boolean(cfg.reducedMotion),
     streak: 0,
     maxStreak: 0,
+    castHadCatch: false,
   };
 }
 
@@ -101,6 +104,7 @@ export function startRound(state: IceFishingState): IceFishingState {
     elapsed: 0,
     streak: 0,
     maxStreak: 0,
+    castHadCatch: false,
   };
 }
 
@@ -204,6 +208,8 @@ export function stepIceFishing(
     if (input.drop && !next.dropping && !next.reeling) {
       next.dropping = true;
       next.hookVy = 140;
+      // New cast: empty-cast densify tracks whether this drop hooked anything.
+      next.castHadCatch = false;
     }
     if (input.reel && (next.dropping || next.hookY > 36)) {
       next.reeling = true;
@@ -211,8 +217,14 @@ export function stepIceFishing(
       next.hookVy = -180;
     }
 
+    const wasCasting = next.dropping || next.reeling;
     next.hookY += next.hookVy * dt;
     if (next.hookY <= 36) {
+      // Empty cast densify: reel/drop returning to surface without a catch
+      // breaks the Club Penguin streak (maxStreak retained for brag).
+      if (wasCasting && !next.castHadCatch) {
+        next.streak = 0;
+      }
       next.hookY = 36;
       next.hookVy = 0;
       next.dropping = false;
@@ -253,6 +265,7 @@ export function stepIceFishing(
     );
     if (hit && (next.dropping || next.reeling || next.reducedMotion)) {
       caught = true;
+      next.castHadCatch = true;
       if (f.kind === "hazard") {
         next.lives -= 1;
         next.streak = 0;
