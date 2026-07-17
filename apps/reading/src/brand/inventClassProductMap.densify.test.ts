@@ -94,6 +94,8 @@ describe("invent class product-map densify", () => {
     // Instrument densify honesty: bait + tip→bait tension + suspension stay named.
     expect(flipbook).toMatch(/baitChromeFromFollow|tipToBaitDistance|rodBendFromPoints/i);
     expect(flipbook).toMatch(/station instrument suspension/i);
+    // Opt-in living-TV densify honesty: data-werner-target + productSelector stay named.
+    expect(flipbook).toMatch(/data-werner-target densify|productSelector densify/i);
     expect(flipbook).toMatch(/Invent polish v2i|Invent polish v3r/i);
     expect(flipbook).toMatch(/NO-GO/);
     expect(flipbook).toMatch(/ice-bait|IceBait|ice-cursor|baitChromeFromFollow/i);
