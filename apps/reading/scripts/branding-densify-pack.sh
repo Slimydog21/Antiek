@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Branding densify pack — invent reframe + living-TV + arcade + product invent doors.
-# Expectation (tip d325ec7bf): 28 files / 248 tests. Exit non-zero on any failure.
+# Expectation (tip d325ec7bf): 29 files / 249 tests. Exit non-zero on any failure.
 # Invoke: npm run test:branding-densify   (from apps/reading)
 #         or bash scripts/branding-densify-pack.sh
 set -euo pipefail
@@ -34,4 +34,5 @@ exec npm test -- --run \
   src/arcade/cartridgeFactory.test.ts \
   src/werner/emoteForProductDoor.test.ts \
   src/modes/DeepResearchWorkspace/researchWaitArcadePolicy.test.ts \
-  src/modes/Settings/AntiekBenchPanel.test.tsx
+  src/modes/Settings/AntiekBenchPanel.test.tsx \
+  src/brand/inventClassProductMap.densify.test.ts
