@@ -701,7 +701,7 @@ remains **NO-GO**.
 
 ## Zombies peak combo brag HUD densify (craft157+)
 
-| Zombies peak combo brag HUD densify | (pending tip) | gameover BEST xN fort-fallen |
+| Zombies peak combo brag HUD densify | `f43928f86` | gameover BEST xN fort-fallen |
 
 Paperclip zombies gameover status plate brags peak BO1 combo (`BEST xN`) for
 cabinet/wait craft parity with ice+clam peak-streak brag. densify pack holds.
