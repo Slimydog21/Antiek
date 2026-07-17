@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `95e8d99d3` — densify pack **42/362**.
+PR #2416 tip (at close of this note): `07b53a435` — densify pack **43/375**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -933,3 +933,9 @@ Cursor-is-bait densify: pure chrome helper pins live pointer / hides on tab hide
 | Ice-bait honesty densify | `95e8d99d3` | Flipbook + invent class pin baitChromeFromFollow |
 
 Honesty densify pins baitChromeFromFollow in Flipbook densify gate. densify pack **42/362**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Fishing-line catenary densify in pack (craft157+)
+
+| Fishing-line catenary densify in pack | `07b53a435` | free end = bait; pack 43/375 |
+
+Catenary densify: line ends at live bait; densify pack **43/375**. Pure Flipbook sole UI remains **NO-GO**.
