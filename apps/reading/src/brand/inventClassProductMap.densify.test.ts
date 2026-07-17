@@ -98,6 +98,8 @@ describe("invent class product-map densify", () => {
     expect(flipbook).toMatch(/data-werner-target densify|productSelector densify/i);
     // reactionBus densify honesty: arcade cores stay free of reactionBus imports.
     expect(flipbook).toMatch(/reactionBus/i);
+    // Fishing-line densify honesty: catenary + tip→bait + rod bend stay named.
+    expect(flipbook).toMatch(/catenary|tipToBaitDistance|rodBend/i);
     expect(flipbook).toMatch(/Invent polish v2i|Invent polish v3r/i);
     expect(flipbook).toMatch(/NO-GO/);
     expect(flipbook).toMatch(/ice-bait|IceBait|ice-cursor|baitChromeFromFollow/i);

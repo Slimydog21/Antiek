@@ -43,6 +43,8 @@ import {
   SAMPLE_INTERVAL_MS,
   stationInstrumentLeaseCount,
   tipToBaitDistance,
+  useMouseFollow,
+  useStationInstrumentSuspended,
   WERNER_EXPERIENCE_EVENT,
   WERNER_TARGET_ATTR,
 } from "./index";
@@ -176,6 +178,12 @@ describe("werner instrument barrel densify", () => {
     expect(long.startsWith("M 0 0")).toBe(true);
     expect(long).toContain(" Q ");
     expect(long.endsWith(" 100 0")).toBe(true);
+  });
+
+  it("exports useMouseFollow + useStationInstrumentSuspended densify hooks", () => {
+    // densify: hooks stay public for cursor-is-bait follow + wait-arcade suspend.
+    expect(typeof useMouseFollow).toBe("function");
+    expect(typeof useStationInstrumentSuspended).toBe("function");
   });
 
   it("exports mouse-follow densify for cursor-is-bait lag contract", () => {
