@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `1f4ce1307` — densify pack **47/415**.
+PR #2416 tip (at close of this note): `48ecc1b9f` — densify pack **47/416**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1155,3 +1155,9 @@ Instrument barrel densify exports writing-nib + speaking-resonance instruments. 
 | full station instrument roster densify | `1f4ce1307` | four instruments + register/EmoteView/useStationActivity |
 
 Instrument barrel densify exports full station instrument roster. densify pack **47/415**. Pure Flipbook sole UI remains **NO-GO**.
+
+## shell experience signal densify (craft157+)
+
+| shell experience signal densify | `48ecc1b9f` | pointer idle + research phase edges public |
+
+Instrument barrel densify exports shell experience living-TV inject edges. densify pack **47/416**. Pure Flipbook sole UI remains **NO-GO**.
