@@ -6,8 +6,10 @@
  * Designed for deep-research wait states — endless loop with explicit exit.
  *
  * Combo densify (craft157+): consecutive kills build a BO1-style multiplier
- * (max 4×). Miss fire or fort breach resets combo. Pure rules only — hosts
- * inject living-TV beats; no product reaction-bus import in arcade core.
+ * (max 4×). Miss fire or fort breach resets combo. Wave-clear fort heal densify
+ * (craft157+): clearing a wave restores +1 fort life, hard-capped at starting
+ * lives (BO1-style fort repair). Pure rules only — hosts inject living-TV
+ * beats; no product reaction-bus import in arcade core.
  */
 
 export type ZombiesPhase = "ready" | "playing" | "gameover" | "exited";
@@ -99,9 +101,15 @@ export function zombiesComboMultiplier(combo: number): number {
 
 function beginWave(state: ZombiesState, wave: number): ZombiesState {
   const count = 4 + wave * 2;
+  // Fort heal densify: wave clears after wave 1 restore +1 life (cap at start).
+  const lives =
+    wave > 1
+      ? Math.min(state.startingLives, state.lives + 1)
+      : state.lives;
   return {
     ...state,
     wave,
+    lives,
     spawnRemaining: count,
     spawnTimer: 0.2,
     zombies: [],

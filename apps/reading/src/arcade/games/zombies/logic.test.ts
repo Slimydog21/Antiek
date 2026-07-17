@@ -138,6 +138,40 @@ describe("paperclip zombies pure logic", () => {
     expect(s.zombies.length).toBe(0);
   });
 
+  it("heals fort by one life on wave clear, hard-capped at starting lives", () => {
+    let s = {
+      ...startZombies(createZombiesState({ width: 320, height: 200 })),
+      wave: 1,
+      lives: 2,
+      startingLives: 3,
+      spawnRemaining: 0,
+      zombies: [],
+    };
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: null, start: false, exit: false },
+      () => 0.2,
+    );
+    expect(s.wave).toBe(2);
+    expect(s.lives).toBe(3); // +1 fort heal
+
+    // Full fort does not overheal past starting lives.
+    s = {
+      ...s,
+      spawnRemaining: 0,
+      zombies: [],
+    };
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: null, start: false, exit: false },
+      () => 0.2,
+    );
+    expect(s.wave).toBe(3);
+    expect(s.lives).toBe(3);
+  });
+
   it("zombiesWernerBeat maps living-TV edges for start, wave, and gameover", () => {
     expect(
       zombiesWernerBeat(
