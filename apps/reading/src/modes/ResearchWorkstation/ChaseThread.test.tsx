@@ -65,12 +65,21 @@ vi.mock("./VoiceChaseButton", () => ({ default: () => null }));
 
 import ChaseThread from "./ChaseThread";
 import { ApiError } from "../../lib/api";
+import { WindowInstanceProvider } from "../../components/windows/windowHostContext";
+import { useWindows } from "../../workspace/windowsStore";
+import {
+  PanelInstanceProvider,
+  PanelMainViewHandoffProvider,
+} from "../../workspace/panelInstanceContext";
+import { useWorkspace } from "../../workspace/WorkspaceStore";
 
 afterEach(() => {
   cleanup();
   startInvestigationMock.mockReset();
   navigateMock.mockReset();
   recordSpawnMock.mockReset();
+  useWindows.getState().reset();
+  useWorkspace.getState().reset();
 });
 
 function renderChase(props: {
@@ -157,5 +166,79 @@ describe("ChaseThread — honest no-key (M4)", () => {
     );
     // Did NOT transition to a launched child.
     expect(screen.queryByText(/following the thread/)).toBeNull();
+  });
+});
+
+describe("ChaseThread — exact workspace-window handoff", () => {
+  it("closes only its own host after opening the launched research in main", async () => {
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: "inv-window-child",
+      status: "in_progress",
+      start_event_id: "e-window",
+    });
+    const mine = useWindows.getState().open("research-chase", {}, { id: "chase:mine" });
+    const other = useWindows.getState().open("research-chase", {}, { id: "chase:other" });
+    render(
+      <MemoryRouter>
+        <WindowInstanceProvider value={mine}>
+          <ChaseThread spawnContext="window passage" parentInvestigationId="read-doc" />
+        </WindowInstanceProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByText("Follow this"));
+    await screen.findByText(/following the thread/);
+    fireEvent.click(screen.getByRole("button", { name: /open in main view/ }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/inv/inv-window-child");
+    expect(useWindows.getState().windows[mine]).toBeUndefined();
+    expect(useWindows.getState().windows[other]).toBeDefined();
+  });
+
+  it("closes only its exact legacy panel when simultaneous chases exist", async () => {
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: "inv-panel-child",
+      status: "in_progress",
+      start_event_id: "e-panel",
+    });
+    const first = useWorkspace.getState().open("ChaseThread", {}, { id: "panel:first" });
+    const mine = useWorkspace.getState().open("ChaseThread", {}, { id: "panel:mine" });
+    render(
+      <MemoryRouter>
+        <PanelInstanceProvider value={mine}>
+          <ChaseThread spawnContext="panel passage" parentInvestigationId="read-doc" />
+        </PanelInstanceProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("Follow this"));
+    await screen.findByText(/following the thread/);
+    fireEvent.click(screen.getByRole("button", { name: /open in main view/ }));
+
+    expect(useWorkspace.getState().panels[first]).toBeDefined();
+    expect(useWorkspace.getState().panels[mine]).toBeUndefined();
+  });
+
+  it("delegates a popout handoff to its exact cross-window host", async () => {
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: "inv-popout-child",
+      status: "in_progress",
+      start_event_id: "e-popout",
+    });
+    const handoff = vi.fn();
+    render(
+      <MemoryRouter>
+        <PanelInstanceProvider value="panel:popout">
+          <PanelMainViewHandoffProvider value={handoff}>
+            <ChaseThread spawnContext="popout passage" parentInvestigationId="read-doc" />
+          </PanelMainViewHandoffProvider>
+        </PanelInstanceProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("Follow this"));
+    await screen.findByText(/following the thread/);
+    fireEvent.click(screen.getByRole("button", { name: /open in main view/ }));
+
+    expect(handoff).toHaveBeenCalledWith("/inv/inv-popout-child");
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });

@@ -29,7 +29,7 @@
  */
 
 import type { DistilledNode } from "../../../lib/api";
-import type { SourceAnchorRect } from "./evidenceWindowPlacement";
+import type { AnchorRect } from "./adjacentWindowPlacement";
 
 export interface BlockCardProps {
   node: DistilledNode;
@@ -39,7 +39,7 @@ export interface BlockCardProps {
   /** Read-source / inspect-provenance affordance. Optional — when absent we
    *  still show the source's *presence* (or absence) honestly, just without a
    *  click target. */
-  onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
+  onCiteSource?: (node: DistilledNode, anchor: AnchorRect) => void;
 }
 
 const KIND_STYLE = {

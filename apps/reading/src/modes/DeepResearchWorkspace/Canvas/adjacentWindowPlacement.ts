@@ -1,6 +1,6 @@
 import type { WindowRect } from "../../../workspace/windowsStore";
 
-export interface SourceAnchorRect {
+export interface AnchorRect {
   left: number;
   top: number;
   right: number;
@@ -14,24 +14,40 @@ export interface PlacementViewport {
   height: number;
 }
 
-export interface EvidenceWindowSize {
+export interface WindowSize {
   width: number;
   height: number;
 }
 
-export const EVIDENCE_WINDOW_GUTTER_PX = 16;
+export interface LayerRect extends PlacementViewport {
+  left: number;
+  top: number;
+}
+
+export const ADJACENT_WINDOW_GUTTER_PX = 16;
+
+/** Translate a viewport-relative anchor into the workspace layer's coordinates. */
+export function anchorRelativeToLayer(anchor: AnchorRect, layer: LayerRect): AnchorRect {
+  return {
+    ...anchor,
+    left: anchor.left - layer.left,
+    right: anchor.right - layer.left,
+    top: anchor.top - layer.top,
+    bottom: anchor.bottom - layer.top,
+  };
+}
 
 /**
- * Choose a whole-window placement beside the source control. Right and left
- * preserve the reading line first; below and above are honest fallbacks. When
- * no candidate fits entirely inside the host, return undefined so the existing
- * window cascade owns placement instead of fabricating non-overlap.
+ * Choose a whole-window placement beside an anchor. Right and left preserve
+ * the reading line first; below and above are honest fallbacks. When no
+ * candidate fits entirely inside the host, return undefined so the existing
+ * cascade owns placement instead of fabricating non-overlap.
  */
-export function chooseEvidenceWindowRect(
-  anchor: SourceAnchorRect,
+export function chooseAdjacentWindowRect(
+  anchor: AnchorRect,
   viewport: PlacementViewport,
-  size: EvidenceWindowSize,
-  gutter = EVIDENCE_WINDOW_GUTTER_PX,
+  size: WindowSize,
+  gutter = ADJACENT_WINDOW_GUTTER_PX,
 ): WindowRect | undefined {
   if (
     viewport.width <= 0 ||

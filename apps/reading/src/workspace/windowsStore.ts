@@ -115,6 +115,9 @@ export type OpenWindowOptions = {
    * exact-identity open to an unrelated surface. Opt-in because replacement
    * is appropriate only when showing the requested asset is load-bearing. */
   replaceOldestAtLimit?: boolean;
+  /** Window ids that cap replacement must not evict (for example, the reader
+   * currently initiating a child research window). */
+  preserveIdsAtLimit?: readonly string[];
 };
 
 export type WindowsActions = {
@@ -206,8 +209,14 @@ export const useWindows = create<Store>()((set, get) => ({
       return oldest ?? id;
     }
     if (get().order.length >= MAX_WINDOWS) {
-      const oldest = get().order[0];
-      if (oldest) get().close(oldest);
+      const preserved = new Set(opts.preserveIdsAtLimit ?? []);
+      const oldestReplaceable = get().order.find((existingId) => !preserved.has(existingId));
+      if (!oldestReplaceable) {
+        const oldest = get().order[0];
+        if (oldest) get().focus(oldest);
+        return oldest ?? id;
+      }
+      get().close(oldestReplaceable);
     }
     set((s) => {
       const z = s.zCounter + 1;

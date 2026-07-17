@@ -7,6 +7,7 @@ import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { useWindows } from "../../workspace/windowsStore";
 import { WindowHostProvider } from "../../components/windows/windowHostContext";
 
 const {
@@ -287,6 +288,7 @@ describe("BookReader", () => {
     navigateMock.mockReset();
     notifyEvidenceSourceOpenedMock.mockReset();
     useWorkspace.getState().reset();
+    useWindows.getState().reset();
     // Default: a calm, empty reading thread (the no-key / nothing-yet case).
     useInvestigationMock.mockReset();
     useInvestigationMock.mockReturnValue({
@@ -555,26 +557,34 @@ describe("BookReader", () => {
     expect(env.payload.note_text).toBe("a thought while reading");
   });
 
-  it("Deep-research in-book opens a floating ChaseThread seeded with the passage (generalized rabbit-hole, M2/M3)", async () => {
+  it("Deep-research in-book opens an adjacent expandable ChaseThread window seeded with the passage", async () => {
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());
     await renderReader();
+    const layer = document.createElement("div");
+    layer.dataset.windowsLayer = "";
+    layer.getBoundingClientRect = () =>
+      ({ left: 10, top: 20, width: 1200, height: 800 }) as DOMRect;
+    document.body.appendChild(layer);
     const para = await screen.findByText("The opening of the book.");
     selectTextIn(para, "The opening of the book.");
 
     const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Deep-research" }));
 
-    const panel = Object.values(useWorkspace.getState().panels).find((p) => p.kind === "ChaseThread");
-    expect(panel).toBeTruthy();
-    expect(panel?.mode).toBe("floating");
-    expect(panel?.title).toBe("Follow this");
-    expect(panel?.props).toMatchObject({
+    const chase = Object.values(useWindows.getState().windows).find((w) => w.kind === "research-chase");
+    expect(chase).toBeTruthy();
+    expect(chase?.mode).toBe("floating");
+    expect(chase?.title).toBe("Follow this passage");
+    expect(chase?.payload).toMatchObject({
       spawnContext: "The opening of the book.",
       parentInvestigationId: "read-doc-1",
     });
-    // The reader stays in place while the research panel floats in workspace chrome.
+    expect(chase?.rect).toEqual({ x: 186, y: 180, width: 720, height: 520 });
+    expect(Object.values(useWorkspace.getState().panels)).toHaveLength(0);
+    // The reader stays in place while the research window floats over it.
     expect(screen.getByRole("complementary", { name: /Reading companion/ })).toBeTruthy();
+    layer.remove();
   });
 
   it("a taken-down (restricted) book renders no body — nothing to read, highlight, or chase (servable-corpus honesty, §9.0)", async () => {

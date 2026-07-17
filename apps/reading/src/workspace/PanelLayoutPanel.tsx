@@ -6,6 +6,7 @@ import { opaquePanelShadowClasses } from "../design/elevation";
 
 import { PanelHandle } from "./PanelHandle";
 import { PanelRegistry } from "./PanelRegistry";
+import { PanelInstanceProvider } from "./panelInstanceContext";
 import { useWorkspace } from "./WorkspaceStore";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
@@ -177,7 +178,9 @@ export function PanelLayoutPanel({ id }: Props) {
         <PanelHandle id={id} draggable resizable />
         <div className="flex-1 min-h-0 overflow-auto">
           <Suspense fallback={<PanelLoading />}>
-            <Renderer {...panel.props} />
+            <PanelInstanceProvider value={id}>
+              <Renderer {...panel.props} />
+            </PanelInstanceProvider>
           </Suspense>
         </div>
       </motion.div>
@@ -205,7 +208,9 @@ export function PanelLayoutPanel({ id }: Props) {
       <PanelHandle id={id} draggable={false} resizable={false} />
       <div className="flex-1 min-h-0 overflow-auto">
         <Suspense fallback={<PanelLoading />}>
-          <Renderer {...panel.props} />
+          <PanelInstanceProvider value={id}>
+            <Renderer {...panel.props} />
+          </PanelInstanceProvider>
         </Suspense>
       </div>
     </div>
