@@ -817,3 +817,10 @@ drift. densify pack **39/321**. Pure Flipbook sole UI remains **NO-GO**.
 | Home arcade CTA product-door densify | `d149f4d1a` | data-product-id=arcade + werner-target |
 
 Home igloo Open arcade CTA is living-TV product-door geometry (curious). densify pack **39/321**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Research-wait playing invent reframe densify (craft157+)
+
+| Research-wait playing invent reframe densify | `df7790092` | scene art antiek-living-tv-invent |
+
+Deep-research wait playing cabinet scene art carries Flipbook-feel invent
+reframe class. densify pack **39/321**. Pure Flipbook sole UI remains **NO-GO**.
