@@ -52,6 +52,7 @@ describe("invent class product-map densify", () => {
       "utf8",
     );
     expect(summary).toMatch(/Invent polish v2d wave complete/i);
+    expect(summary).toMatch(/Invent polish v2e wave complete/i);
     expect(summary).toMatch(/29\/25[01]|32\/268|36\/297|37\/298/); // densify pack progression
     expect(flipbook).toMatch(/37 files \/ 298 tests/);
     expect(flipbook).toMatch(/Invent polish v2d/);
