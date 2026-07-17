@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `a626be9d8` — axe+LP green.
+PR #2416 tip (at close of this note): `268bbb085` — axe green; densify pack **42/355**.
 
 ## Product surfaces now UI-consuming session brand
 
