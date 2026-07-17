@@ -843,3 +843,9 @@ Golden fallback sun.base densify + ice visuals suite now in branding densify pac
 
 Branding densify pack now gates ice/clam/zombies visual HUD densify (live xN,
 BEST brag, golden/pearl atlas). Pure Flipbook sole UI remains **NO-GO**.
+
+## Ice golden sun-rim visual densify (craft157+)
+
+| Ice golden sun-rim visual densify | `c8f506da7` | authored golden strokeRect sun.base |
+
+Golden fish atlas path densify: sun rim marks rare catch. densify pack **42/351**. Pure Flipbook sole UI remains **NO-GO**.
