@@ -13,6 +13,7 @@ import {
   catenaryPath,
   centerLaggedTarget,
   DEFAULT_AMBIENT_QUIET_MS,
+  DEFAULT_EMOTE_DURATION_MS,
   emitWernerExperience,
   emoteDurationMs,
   emoteForExperience,
@@ -163,6 +164,18 @@ describe("werner instrument barrel densify", () => {
     expect(EMOTE_DURATION_MS.hit).toBe(800);
     expect(EMOTE_DURATION_MS.noted).toBe(1000);
     expect(EMOTE_DURATION_MS.dizzy).toBe(1300);
+  });
+
+  it("exports DEFAULT_EMOTE_DURATION_MS + catenaryPath densify for line geometry", () => {
+    // densify: unknown emote kinds fall back to 1000ms; catenary short path is L.
+    expect(DEFAULT_EMOTE_DURATION_MS).toBe(1000);
+    const short = catenaryPath({ x: 0, y: 0 }, { x: 4, y: 0 });
+    expect(short.startsWith("M 0 0")).toBe(true);
+    expect(short).toContain(" L ");
+    const long = catenaryPath({ x: 0, y: 0 }, { x: 100, y: 0 });
+    expect(long.startsWith("M 0 0")).toBe(true);
+    expect(long).toContain(" Q ");
+    expect(long.endsWith(" 100 0")).toBe(true);
   });
 
   it("exports mouse-follow densify for cursor-is-bait lag contract", () => {

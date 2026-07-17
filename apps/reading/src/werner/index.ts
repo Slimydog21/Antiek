@@ -88,6 +88,7 @@ export {
   EmoteView,
   EMOTE_KINDS,
   EMOTE_DURATION_MS,
+  DEFAULT_EMOTE_DURATION_MS,
   emoteDurationMs,
   type EmoteKind,
 } from "./emotes";
