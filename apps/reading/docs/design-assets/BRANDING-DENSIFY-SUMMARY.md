@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `ca3146045` — densify pack **44/379**.
+PR #2416 tip (at close of this note): `d6322fdb0` — densify pack **45/381**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -951,3 +951,9 @@ Instrument densify: tip→bait distance drives rod bend; densify pack **43/377**
 | Instrument barrel densify | `ca3146045` | bait+tipToBait+rodBend public; pack 44/379 |
 
 Werner barrel densify exports instrument helpers; densify pack **44/379**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Station instrument suspension densify (craft157+)
+
+| Station instrument suspension densify | `d6322fdb0` | wait-arcade lease + leaseCount; pack 45/381 |
+
+Pointer-authority densify: wait-arcade suspends route instrument; densify pack **45/381**. Pure Flipbook sole UI remains **NO-GO**.
