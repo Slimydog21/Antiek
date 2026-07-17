@@ -1,6 +1,8 @@
 /**
  * livingTvAmbient.test.ts — pure policy + installer re-arm + episode continuity.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -186,3 +188,15 @@ describe("installLivingTvAmbient", () => {
     teardown();
   });
 });
+
+describe("livingTvAmbient Flipbook-feel honesty", () => {
+  it("documents Flipbook-feel invent strips and pure Flipbook sole UI NO-GO", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/werner/livingTvAmbient.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/Flipbook-feel invent strips/);
+    expect(src).toMatch(/NO-GO/);
+  });
+});
+
