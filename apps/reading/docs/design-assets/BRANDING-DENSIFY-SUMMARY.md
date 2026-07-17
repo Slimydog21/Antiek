@@ -337,4 +337,9 @@ minigame living-TV beats + invent class product-map. Pure Flipbook sole UI remai
 | Imagine invent polish v2f igloo trio + ice arcade cursor | `ee2d69b3e` | cabinet/home/LGH invent refresh on FULL GREEN tip |
 | Imagine invent polish v2f clam catcher cursor | `56fc5f540` | cabinet/LGH/wait clam invent refresh on FULL GREEN tip |
 | Imagine invent polish v2f living-TV+thought+midnight | `9805ceff3` | residual invent refresh on FULL GREEN tip |
-| Imagine invent polish v2f residual product invent wave | `TBD` | remaining product invent doors refresh on FULL GREEN tip |
+| Imagine invent polish v2f residual product invent wave | `8ba06e773` | remaining product invent doors refresh on FULL GREEN tip |
+
+## Invent polish v2f wave complete
+
+All 18 product invent doors refreshed via Imagine invent polish v2f and densified.
+densify pack: `npm run test:branding-densify` (38/299). Pure Flipbook sole UI remains NO-GO.
