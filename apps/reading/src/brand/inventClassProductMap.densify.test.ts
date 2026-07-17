@@ -70,6 +70,7 @@ describe("invent class product-map densify", () => {
     expect(summary).toMatch(/Invent polish v2t wave complete/i);
     expect(summary).toMatch(/Invent polish v2u wave complete/i);
     expect(summary).toMatch(/Invent polish v2v wave complete/i);
+    expect(summary).toMatch(/Invent polish v2w wave complete/i);
     // densify pack progression through invent polish honesty densify
     expect(summary).toMatch(
       /29\/25[01]|32\/268|36\/297|37\/298|38\/299|39\/30[23]/,
