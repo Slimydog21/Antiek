@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `d65baea25` — densify pack **47/404**.
+PR #2416 tip (at close of this note): `0a074c3aa` — densify pack **47/405**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1089,3 +1089,9 @@ Instrument barrel densify exports follow sample constants + choreography install
 | rodBend instrument tension densify | `d65baea25` | rodBend pure tension under tip→bait load |
 
 Instrument barrel densify exports rodBend instrument tension. densify pack **47/404**. Pure Flipbook sole UI remains **NO-GO**.
+
+## rodTipFromMascotRect line attach densify (craft157+)
+
+| rodTipFromMascotRect line attach densify | `0a074c3aa` | line attach at real rod tip screen space |
+
+Instrument barrel densify exports rodTipFromMascotRect line attach. densify pack **47/405**. Pure Flipbook sole UI remains **NO-GO**.
