@@ -32,6 +32,7 @@ import PayoutsAudit from "./modes/PayoutsAudit";
 import PricingPage from "./modes/Pricing";
 import PrivacyDashboard from "./modes/PrivacyDashboard";
 import BookReader from "./modes/Reading";
+import CanonicalTwinReader from "./modes/Reading/CanonicalTwinReader";
 import MetaReading from "./modes/Reading/MetaReading";
 import PersonalSpace from "./modes/Reading/PersonalSpace";
 import Replay from "./modes/Replay";
@@ -159,6 +160,7 @@ function AuthenticatedRoutes() {
         {/* SPR-13 M4 — the meta-docs tab: the same personal space filtered to
             created deliverables, after the Library in the Read nav. */}
         <Route path="/meta-readings" element={<PersonalSpace metaDocsOnly />} />
+        <Route path="/read/twin/:sourceAssetId" element={<CanonicalTwinReader />} />
         <Route path="/read/:documentId" element={<BookReader />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/stats" element={<Stats />} />

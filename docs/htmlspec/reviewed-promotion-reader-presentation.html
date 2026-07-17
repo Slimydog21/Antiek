@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cycle 120 - Reviewed promotion reader presentation</title>
+  <style>
+    body{max-width:78rem;margin:2rem auto;padding:0 1.25rem;font:16px/1.55 system-ui;color:#17202a;background:#f7f9fb}
+    h1,h2{line-height:1.2} code{background:#e8edf2;padding:.1rem .3rem} section{border-top:1px solid #8896a5;padding:1rem 0}
+    table{width:100%;border-collapse:collapse} th,td{padding:.55rem;text-align:left;vertical-align:top;border-bottom:1px solid #ccd4dc}
+    .must{font-weight:700}.no{color:#8f2418}
+  </style>
+</head>
+<body>
+  <header>
+    <p>Antiek Infinite / Cycle 120</p>
+    <h1>Owner-private reviewed insight and evidence reader</h1>
+    <p>Executable presentation contract stacked on Cycle 119 commit <code>634a0aa81</code>. This sprint turns verified canonical twin HTML and current reviewed promotion APIs into one usable reading surface without granting the browser authority.</p>
+  </header>
+
+  <section>
+    <h2>Outcome</h2>
+    <p>An authenticated owner opens <code>/read/twin/:sourceAssetId?revision=:sourceHash</code>, reads the exact server-sanitized advisory HTML, scans current owner-reviewed insights and questions, and expands exact ordered citation proof on demand. The surface is read-only and revision-exact.</p>
+  </section>
+
+  <section>
+    <h2>Authority chain</h2>
+    <table>
+      <thead><tr><th>Step</th><th>Browser input</th><th>Required server authority</th><th>Failure</th></tr></thead>
+      <tbody>
+        <tr><td>Open twin</td><td>Bounded route source ID and revision</td><td>Cycle 113 canonical twin reader</td><td>Whole surface unavailable</td></tr>
+        <tr><td>Discover notes</td><td>Follow <code>reviewed_promotions_href</code> verbatim</td><td>Cycle 119 complete exact-revision collection</td><td>Whole surface unavailable</td></tr>
+        <tr><td>Expand proof</td><td>Follow item <code>href</code> verbatim</td><td>Cycle 118 current node and ordered citations</td><td>That item's evidence withheld</td></tr>
+      </tbody>
+    </table>
+    <p class="must">The client MUST reject cross-origin, malformed, or non-canonical private hrefs. It MUST compare source/revision and summary/detail identities before rendering. It MUST NOT derive owner IDs, candidate IDs, review IDs, paths, keys, graph rows, citation rows, or confidence.</p>
+  </section>
+
+  <section>
+    <h2>Interaction states</h2>
+    <ul>
+      <li>Missing revision: no network request; direct instruction to use an exact canonical link.</li>
+      <li>Loading: one quiet status; no stale prior revision remains visible.</li>
+      <li>Ready with notes: sanitized HTML plus reviewed margin.</li>
+      <li>Ready empty: explicit zero reviewed notes for this exact revision.</li>
+      <li>Collection unavailable or contradictory: no document or partial collection disclosure.</li>
+      <li>Detail unavailable, stale, reordered, or contradictory: summary remains, proof is withheld.</li>
+      <li>Retry: reloads canonical twin and complete collection together.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Presentation</h2>
+    <p>Desktop uses a calm reading plane and fixed-width proof margin separated by a structural rule. The proof margin uses insight/question icons and one ordinal citation spine. At 860px and below it becomes a full-width section after the document. Text wraps at arbitrary identifiers; buttons retain stable dimensions and visible focus. Motion is limited to the disclosure chevron and disabled under reduced motion.</p>
+  </section>
+
+  <section>
+    <h2>Acceptance</h2>
+    <ol>
+      <li>Typed API tests prove URL encoding, credential inclusion, and strict same-origin private href following.</li>
+      <li>Component tests prove ready, empty, missing-revision, unavailable/retry, lazy detail, identity conflict, and citation-order conflict behavior.</li>
+      <li>TypeScript, focused Vitest, production build, token/type lint, and diff check pass.</li>
+      <li>Deterministic Storybook states cover reviewed, expanded proof, empty, loading, and unavailable behavior without live network; rendered audits exercise desktop and narrow layouts.</li>
+      <li>Rendered desktop and mobile audits show no overlap or horizontal overflow; keyboard expansion and focus are operable.</li>
+      <li>HardenX reports no unwaived real finding and independent hostile review returns no actionable finding.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Non-goals</h2>
+    <p class="no">No review mutation, graph mutation, evidence excerpt bytes, arbitrary document navigation, public sharing, browser authority, embedding/provider qualification, live spend, production data mutation, merge, or deployment.</p>
+  </section>
+
+  <section>
+    <h2>Next seam</h2>
+    <p>After this view is proven, add a server-derived route link from the source asset and research workstation so users never manually construct source IDs or revision hashes. That discovery change must reuse canonical source-registration authority rather than expose document metadata wholesale.</p>
+  </section>
+</body>
+</html>

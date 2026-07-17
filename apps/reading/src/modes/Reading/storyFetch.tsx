@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, type ReactNode } from "react";
 import type { Decorator } from "@storybook/react";
 
 type FetchHandler = (
@@ -20,8 +20,8 @@ export function httpError(status: number): Response {
 }
 
 export function stubFetch(handler: FetchHandler): Decorator {
-  const Decorated: Decorator = (Story) => {
-    useEffect(() => {
+  function FetchStub({ children }: { children: ReactNode }) {
+    useLayoutEffect(() => {
       const original = window.fetch;
       window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
         const url =
@@ -36,8 +36,9 @@ export function stubFetch(handler: FetchHandler): Decorator {
         window.fetch = original;
       };
     }, []);
-    return <Story />;
-  };
+    return children;
+  }
+  const Decorated: Decorator = (Story) => <FetchStub><Story /></FetchStub>;
   return Decorated;
 }
 
