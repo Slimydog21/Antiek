@@ -64,3 +64,9 @@ All 18 product invent doors refreshed via Imagine invent polish v2f
 (tip `c33df35b3` / residual batch `8ba06e773`). densify pack 38/299.
 Pure Flipbook sole UI remains **NO-GO**.
 
+## Invent polish v2g
+
+All 18 product invent doors refreshed via Imagine invent polish v2g
+(tip `af77583eb` / residual batch `b44e93e46`). densify pack 38/299.
+Pure Flipbook sole UI remains **NO-GO**.
+
