@@ -325,4 +325,4 @@ Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md
 | Imagine invent polish v2e hero trio (CRT + zombies + igloo) | `f17b8b31c` | Home/DR/wait/cabinet invent refresh on densify green tip |
 | Imagine invent polish v2e ice+clam cursor invents | `7cb951ecf` | cabinet/LGH/wait ice+clam invent refresh on FULL GREEN tip |
 | Imagine invent polish v2e living-TV+thought partner+midnight oil | `736eb8fab` | residual invent refresh on FULL GREEN tip |
-| Imagine invent polish v2e residual product invent wave | `TBD` | remaining product invent doors refresh on FULL GREEN tip |
+| Imagine invent polish v2e residual product invent wave | `0b6680c8e` | remaining product invent doors refresh on FULL GREEN tip |
