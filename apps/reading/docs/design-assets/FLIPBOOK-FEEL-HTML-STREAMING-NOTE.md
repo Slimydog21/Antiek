@@ -42,19 +42,19 @@ When product wants *optional* streamed invent motion (not sole UI):
 
 ```bash
 cd apps/reading && npm run test:branding-densify
-# 37 files / 298 tests (invent reframe + invent class + v2d honesty + ice-cursor + minigame living-TV + invent inventory)
+# 38 files / 299 tests (invent reframe + invent class + v2d/v2e honesty + ice-cursor + minigame living-TV + invent inventory + Flipbook stream ladder)
 ```
 
 ## Invent polish v2d
 
 All major product invent doors refreshed via Imagine invent polish v2d
-(tip `3fadc274f` / residual batch `5f8851ec0`). densify pack 37/298 with cursor ice-bait densify, minigame living-TV beats,
-and invent product inventory densify (18 invent polish v2d product webps).
+(tip `3fadc274f` / residual batch `5f8851ec0`). densify pack 38/299 with cursor ice-bait densify, minigame living-TV beats,
+invent product inventory densify, and Flipbook stream ladder densify.
 Pure Flipbook sole UI remains **NO-GO**.
 
 ## Invent polish v2e
 
 All 18 product invent doors refreshed via Imagine invent polish v2e
-(tip `33f3f3b93` / residual batch `0b6680c8e`). densify pack 37/298.
+(tip `33f3f3b93` / residual batch `0b6680c8e`). densify pack 38/299.
 Pure Flipbook sole UI remains **NO-GO**.
 

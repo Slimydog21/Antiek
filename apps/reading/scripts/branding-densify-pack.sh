@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Branding densify pack — invent reframe + living-TV + arcade + product invent doors.
-# Expectation (tip invent inventory densify pack): 37 files / 298 tests. Exit non-zero on any failure.
+# Expectation (tip Flipbook stream ladder densify pack): 38 files / 299 tests. Exit non-zero on any failure.
 # Invoke: npm run test:branding-densify   (from apps/reading)
 #         or bash scripts/branding-densify-pack.sh
 set -euo pipefail
@@ -42,5 +42,6 @@ exec npm test -- --run \
   src/werner/WernerIceBait.test.tsx \
   src/werner/useMouseFollow.test.ts \
   src/werner/WernerIceCursorShell.transition.test.tsx \
+  src/brand/flipbookStreamLadder.densify.test.ts \
   src/brand/inventProductInventory.densify.test.ts \
   src/brand/inventClassProductMap.densify.test.ts
