@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Branding densify pack — invent reframe + living-TV + arcade + product invent doors.
-# Expectation (tip ice-cursor densify pack): 32 files / 268 tests. Exit non-zero on any failure.
+# Expectation (tip minigame living-TV densify pack): 36 files / 297 tests. Exit non-zero on any failure.
 # Invoke: npm run test:branding-densify   (from apps/reading)
 #         or bash scripts/branding-densify-pack.sh
 set -euo pipefail
@@ -35,6 +35,10 @@ exec npm test -- --run \
   src/werner/emoteForProductDoor.test.ts \
   src/modes/DeepResearchWorkspace/researchWaitArcadePolicy.test.ts \
   src/modes/Settings/AntiekBenchPanel.test.tsx \
+  src/arcade/games/ice-fishing/logic.test.ts \
+  src/arcade/games/clam-catcher/logic.test.ts \
+  src/arcade/games/zombies/logic.test.ts \
+  src/arcade/games/zombies/zombiesCartridge.test.ts \
   src/werner/WernerIceBait.test.tsx \
   src/werner/useMouseFollow.test.ts \
   src/werner/WernerIceCursorShell.transition.test.tsx \

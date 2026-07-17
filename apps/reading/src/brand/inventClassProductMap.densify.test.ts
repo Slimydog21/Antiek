@@ -52,8 +52,8 @@ describe("invent class product-map densify", () => {
       "utf8",
     );
     expect(summary).toMatch(/Invent polish v2d wave complete/i);
-    expect(summary).toMatch(/29\/25[01]|32\/268/); // wave close → honesty → ice-cursor pack
-    expect(flipbook).toMatch(/32 files \/ 268 tests/);
+    expect(summary).toMatch(/29\/25[01]|32\/268|36\/297/); // wave → honesty → ice-cursor → minigame pack
+    expect(flipbook).toMatch(/36 files \/ 297 tests/);
     expect(flipbook).toMatch(/Invent polish v2d/);
     expect(flipbook).toMatch(/NO-GO/);
     expect(flipbook).toMatch(/ice-bait|IceBait|ice-cursor/i);
