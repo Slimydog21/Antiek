@@ -62,10 +62,16 @@ export {
   wernerIceFishingCursor,
   wernerArcade,
 } from "./iceFishingFlags";
-export { WernerIceBait } from "./WernerIceBait";
+export { WernerIceBait, baitChromeFromFollow } from "./WernerIceBait";
 export { WernerFishingLayer } from "./WernerFishingLayer";
 export { WernerIceCursorShell } from "./WernerIceCursorShell";
-export { catenaryPath, rodTipFromMascotRect } from "./fishingLineGeometry";
+export {
+  catenaryPath,
+  rodTipFromMascotRect,
+  tipToBaitDistance,
+  rodBendFromPoints,
+  rodBend,
+} from "./fishingLineGeometry";
 
 export {
   EmoteView,
