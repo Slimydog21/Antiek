@@ -200,6 +200,10 @@ def test_http_surface_requires_authenticated_owner_and_is_private(completed_pare
         assert response.status_code == 200
         assert response.json()["authority"] == "advisory"
         assert response.json()["shareable"] is False
+        assert response.json()["reviewed_promotions_href"] == (
+            f"/reader/sources/{asset.asset_id}/reviewed-promotions"
+            f"?source_hash={snapshot.source_hash}"
+        )
         assert response.headers["cache-control"] == "private, no-store"
         assert response.headers["x-content-type-options"] == "nosniff"
         method_denied = TestClient(authenticated_app).post(

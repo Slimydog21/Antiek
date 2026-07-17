@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
@@ -38,6 +39,7 @@ class CanonicalTwinReaderResponse(BaseModel):
     authority: str
     authority_label: str
     shareable: bool
+    reviewed_promotions_href: str
 
 
 @dataclass(frozen=True)
@@ -124,7 +126,16 @@ def read_canonical_twin(
     except (CanonicalTwinReaderNotFound, ValueError) as exc:
         raise HTTPException(status_code=404, detail="canonical twin not found") from exc
     response.headers.update(_PRIVATE_HEADERS)
-    return CanonicalTwinReaderResponse.model_validate(view.__dict__)
+    result: CanonicalTwinReaderResponse = CanonicalTwinReaderResponse.model_validate(
+        {
+            **view.__dict__,
+            "reviewed_promotions_href": (
+                f"/reader/sources/{quote(view.source_asset_id, safe='')}/reviewed-promotions"
+                f"?source_hash={quote(view.source_hash, safe='')}"
+            ),
+        }
+    )
+    return result
 
 
 __all__ = [

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Response
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -14,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from runtime.db_lock import connect_authority_read
 from substrate.twin_recursion.current_citations import (
     CurrentCanonicalTwinNodeCitations,
+    current_canonical_twin_node_citations_for_authority,
     read_current_canonical_twin_node_citations,
 )
 from substrate.twin_recursion.read_routes import (
@@ -98,6 +100,24 @@ class CurrentPromotionResponse(_Response):
     authority: str
 
 
+class CurrentPromotionSummaryResponse(_Response):
+    candidate_id: str
+    node_id: str
+    review_id: str
+    kind: str
+    text: str
+    evidence_count: int
+    href: str
+
+
+class CurrentSourcePromotionsResponse(_Response):
+    source_asset_id: str
+    source_hash: str
+    items: tuple[CurrentPromotionSummaryResponse, ...]
+    complete: bool
+    authority: str
+
+
 @dataclass(frozen=True)
 class CurrentTwinPromotionRouteRuntime:
     registry: CurrentTwinPromotionReadRegistry
@@ -122,8 +142,13 @@ def register_current_twin_promotion_routes(
     @app.middleware("http")
     async def current_promotion_private_headers(request, call_next):  # type: ignore[no-untyped-def]
         result = await call_next(request)
-        if request.url.path == "/reader/promotions" or request.url.path.startswith(
-            "/reader/promotions/"
+        if (
+            request.url.path == "/reader/promotions"
+            or request.url.path.startswith("/reader/promotions/")
+            or (
+                request.url.path.startswith("/reader/sources/")
+                and "/reviewed-promotions" in request.url.path
+            )
         ):
             result.headers.update(_PRIVATE_HEADERS)
         return result
@@ -172,13 +197,80 @@ def read_current_twin_promotion(
     return result
 
 
+@current_twin_promotion_router.get(
+    "/reader/sources/{source_asset_id}/reviewed-promotions",
+    response_model=CurrentSourcePromotionsResponse,
+)
+def read_current_source_promotions(
+    source_asset_id: Annotated[str, Path(min_length=1, max_length=512)],
+    response: Response,
+    source_hash: str = Query(min_length=1, max_length=512),
+    owner_id: str = Depends(authenticated_canonical_embedding_operator),
+    runtime: CurrentTwinPromotionRouteRuntime = Depends(get_current_twin_promotion_runtime),
+) -> CurrentSourcePromotionsResponse:
+    try:
+        route = runtime.registry.resolve(owner_id)
+        promotions, twins = route.open_readers()
+        with connect_authority_read(
+            route.graph_db_path,
+            expected_db_identity=route.graph_identity,
+            expected_lock_identity=route.lock_identity,
+        ) as con:
+            authorities = promotions.accepted_authorities_for_source(
+                con,
+                twins,
+                owner_id=owner_id,
+                source_asset_id=source_asset_id,
+                source_hash=source_hash,
+            )
+            items: list[CurrentPromotionSummaryResponse] = []
+            for authority in authorities:
+                view = current_canonical_twin_node_citations_for_authority(
+                    con,
+                    authority,
+                    owner_id=owner_id,
+                )
+                if type(view) is not CurrentCanonicalTwinNodeCitations:
+                    raise RuntimeError("source promotion current authority is incomplete")
+                evidence_count = sum(
+                    citation.citation_kind == "evidence" for citation in view.citations
+                )
+                items.append(
+                    CurrentPromotionSummaryResponse(
+                        candidate_id=view.node.candidate_id,
+                        node_id=view.node.node_id,
+                        review_id=view.node.review_id,
+                        kind=view.node.kind,
+                        text=view.node.text,
+                        evidence_count=evidence_count,
+                        href=f"/reader/promotions/{view.node.candidate_id}",
+                    )
+                )
+            route.require_current()
+    except CurrentTwinPromotionReadUnavailable as exc:
+        raise HTTPException(status_code=404, detail="current twin promotions not found") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="current twin promotions unavailable") from exc
+    response.headers.update(_PRIVATE_HEADERS)
+    return CurrentSourcePromotionsResponse(
+        source_asset_id=source_asset_id,
+        source_hash=source_hash,
+        items=tuple(items),
+        complete=True,
+        authority="current_owner_reviewed_source_promotions_v1",
+    )
+
+
 __all__ = [
     "CurrentCitationResponse",
     "CurrentNodeResponse",
     "CurrentPromotionResponse",
+    "CurrentPromotionSummaryResponse",
+    "CurrentSourcePromotionsResponse",
     "CurrentTwinPromotionRouteRuntime",
     "current_twin_promotion_router",
     "get_current_twin_promotion_runtime",
     "read_current_twin_promotion",
+    "read_current_source_promotions",
     "register_current_twin_promotion_routes",
 ]
