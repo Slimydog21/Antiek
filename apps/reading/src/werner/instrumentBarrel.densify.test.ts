@@ -11,6 +11,7 @@ import {
   ambientExperienceAfterQuiet,
   baitChromeFromFollow,
   catenaryPath,
+  centerLaggedTarget,
   DEFAULT_AMBIENT_QUIET_MS,
   emitWernerExperience,
   emoteDurationMs,
@@ -18,10 +19,12 @@ import {
   emoteForProductDoor,
   emoteFromWernerTargetAttr,
   EMOTE_KINDS,
+  FOLLOW_EASE,
   installLivingTvAmbient,
   installReactionBus,
   isProductExperience,
   isStationInstrumentSuspended,
+  LAG_MS,
   PRODUCT_EXPERIENCES,
   productSelector,
   rodBendFromPoints,
@@ -134,5 +137,16 @@ describe("werner instrument barrel densify", () => {
     expect(emoteDurationMs("curious")).toBe(1200);
     expect(emoteDurationMs("thinking")).toBe(1400);
     expect(emoteDurationMs("sleeping")).toBe(2400);
+  });
+
+  it("exports mouse-follow densify for cursor-is-bait lag contract", () => {
+    // densify: ice-cursor follow lags the pointer; centerLaggedTarget is pure.
+    expect(LAG_MS).toBe(500);
+    expect(FOLLOW_EASE).toBe(0.75);
+    expect(centerLaggedTarget({ x: 100, y: 200 }, 64)).toEqual({
+      x: 68,
+      y: 168,
+    });
+    expect(centerLaggedTarget(null, 64)).toBeNull();
   });
 });
