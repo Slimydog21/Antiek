@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `922987815` — densify pack **47/410**.
+PR #2416 tip (at close of this note): `d3ec6b069` — densify pack **47/411**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1125,3 +1125,9 @@ Instrument barrel densify exports EMOTE_DURATION_MS table densify. densify pack 
 | DEFAULT_EMOTE + catenary path densify | `922987815` | DEFAULT_EMOTE 1000; catenary L vs Q |
 
 Instrument barrel densify exports DEFAULT_EMOTE_DURATION_MS + catenary short/long path densify. densify pack **47/410**. Pure Flipbook sole UI remains **NO-GO**.
+
+## useMouseFollow + station suspend hook densify (craft157+)
+
+| useMouseFollow + station suspend hook densify | `d3ec6b069` | hooks public for bait follow + wait-arcade |
+
+Instrument barrel densify exports useMouseFollow + useStationInstrumentSuspended. densify pack **47/411**. Pure Flipbook sole UI remains **NO-GO**.
