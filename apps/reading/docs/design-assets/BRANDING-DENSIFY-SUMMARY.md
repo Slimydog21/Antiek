@@ -879,3 +879,9 @@ Reduced-motion fort defense densify: gentle clicks grow BO1 combo. densify pack 
 | Invent reframe wait-playing testid densify | `fc597ce46` | -living-tv-art suffix contract |
 
 CSS invent reframe densify asserts wait-playing testid coverage. densify pack **42/355**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Home arcade invent testid densify (craft157+)
+
+| Home arcade invent testid densify | `88ac77688` | home-arcade-living-tv-art |
+
+Home igloo invent uses living-tv-art testid suffix for invent reframe densify. densify pack **42/355**. Pure Flipbook sole UI remains **NO-GO**.
