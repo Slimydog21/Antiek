@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `9b34a98e0` — densify pack **47/417**.
+PR #2416 tip (at close of this note): `612d732c3` — densify pack **47/418**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1167,3 +1167,9 @@ Instrument barrel densify exports shell experience living-TV inject edges. densi
 | one-shot research launch provenance densify | `9b34a98e0` | consumeLocallyStartedResearchSession one-shot |
 
 Instrument barrel densify exports one-shot research launch provenance. densify pack **47/417**. Pure Flipbook sole UI remains **NO-GO**.
+
+## ice-cursor + fishing shell component densify (craft157+)
+
+| ice-cursor + fishing shell component densify | `612d732c3` | IceBait/FishingLayer/CursorShell/Rig/ResearchLens public |
+
+Instrument barrel densify exports ice-cursor + fishing shell components. densify pack **47/418**. Pure Flipbook sole UI remains **NO-GO**.
