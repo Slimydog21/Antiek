@@ -94,6 +94,7 @@ export function emoteForProductDoor(productId: string): EmoteKind {
     case "sources":
     case "marketplace":
     case "book-marketplace":
+    case "book_marketplace":
     case "model-decision":
     case "model_decision":
     // Wait/cabinet densify: deep-research wait arcade is a curious glance door.

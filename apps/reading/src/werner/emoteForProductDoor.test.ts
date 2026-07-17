@@ -28,6 +28,7 @@ describe("emoteForProductDoor", () => {
     expect(emoteForProductDoor("marketplace")).toBe("curious");
     // Book marketplace invent densify (product-door geometry).
     expect(emoteForProductDoor("book-marketplace")).toBe("curious");
+    expect(emoteForProductDoor("book_marketplace")).toBe("curious");
     expect(emoteForProductDoor("model-decision")).toBe("curious");
     expect(emoteForProductDoor("model_decision")).toBe("curious");
     expect(emoteForProductDoor("wait-arcade")).toBe("curious");

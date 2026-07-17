@@ -232,6 +232,58 @@ describe("installLivingTvAmbient", () => {
     teardown();
   });
 
+  it("curtain-calls deep_research_complete installer densify (pride → idle → silence)", () => {
+    // Living-TV densify: complete research pride re-arms once for curtain idle.
+    vi.useFakeTimers();
+    const emit = vi.fn();
+    const listeners = new Map<string, Set<EventListener>>();
+    const target = {
+      addEventListener: (type: string, fn: EventListener) => {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type)!.add(fn);
+      },
+      removeEventListener: (type: string, fn: EventListener) => {
+        listeners.get(type)?.delete(fn);
+      },
+    };
+    let now = 0;
+    const teardown = installLivingTvAmbient({
+      quietMs: 1_000,
+      pollMs: 200,
+      emit,
+      now: () => now,
+      setInterval: (fn, ms) => window.setInterval(fn, ms) as unknown as number,
+      clearInterval: (id) => window.clearInterval(id),
+      target,
+    });
+
+    for (const fn of listeners.get(WERNER_EXPERIENCE_EVENT) ?? []) {
+      fn(
+        new CustomEvent(WERNER_EXPERIENCE_EVENT, {
+          detail: { experience: "deep_research_complete" },
+        }),
+      );
+    }
+    now = 0;
+    now = 1_100;
+    vi.advanceTimersByTime(200);
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenLastCalledWith("note_saved");
+
+    // Curtain densify: second quiet → idle sleep after pride.
+    now = 2_200;
+    vi.advanceTimersByTime(200);
+    expect(emit).toHaveBeenCalledTimes(2);
+    expect(emit).toHaveBeenLastCalledWith("idle");
+
+    // Silence densify: third quiet → no ambient spam.
+    now = 5_000;
+    vi.advanceTimersByTime(1_000);
+    expect(emit).toHaveBeenCalledTimes(2);
+
+    teardown();
+  });
+
   it("curtain-calls pride savor into idle then silence (no ambient spam)", () => {
     vi.useFakeTimers();
     const emit = vi.fn();
