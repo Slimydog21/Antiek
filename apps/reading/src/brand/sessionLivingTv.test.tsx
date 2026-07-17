@@ -60,4 +60,16 @@ describe("sessionLivingTv invent reframe CSS contract", () => {
     // Pure Flipbook sole UI remains NO-GO — CSS comment is load-bearing honesty.
     expect(css).toMatch(/NO-GO/i);
   });
+
+  it("multi-phase reframe keeps soft ambient living-TV motion (not thrash)", () => {
+    const css = readFileSync(
+      join(process.cwd(), "src/brand/sessionLivingTv.css"),
+      "utf8",
+    );
+    // Multi-keyframe reframe densify after invent polish v2j craft pass.
+    expect(css).toMatch(/33%/);
+    expect(css).toMatch(/66%/);
+    expect(css).toMatch(/16s/);
+    expect(css).toMatch(/reshape-with-window|Flipbook/i);
+  });
 });

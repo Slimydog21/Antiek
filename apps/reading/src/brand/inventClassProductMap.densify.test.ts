@@ -60,9 +60,11 @@ describe("invent class product-map densify", () => {
     expect(summary).toMatch(/Invent polish v2j wave complete/i);
     // densify pack progression through invent polish honesty densify
     expect(summary).toMatch(
-      /29\/25[01]|32\/268|36\/297|37\/298|38\/299|39\/302/,
+      /29\/25[01]|32\/268|36\/297|37\/298|38\/299|39\/30[23]/,
     );
-    expect(flipbook).toMatch(/39 files \/ 302 tests|38 files \/ 299 tests/);
+    expect(flipbook).toMatch(
+      /39 files \/ 30[23] tests|38 files \/ 299 tests/,
+    );
     expect(flipbook).toMatch(/Invent polish v2i/);
     expect(flipbook).toMatch(/NO-GO/);
     expect(flipbook).toMatch(/ice-bait|IceBait|ice-cursor/i);
