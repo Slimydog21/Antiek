@@ -287,4 +287,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | inventClassProductMap densify test | `2ce67a07a` | mechanical invent class stamp audit; densify pack 29/249 |
 | Flipbook note densify pack gate | `896c7f2a5` | document npm run test:branding-densify in Flipbook-feel streaming note |
 | livingTvAmbient Flipbook-feel densify comment | `788ef0af7` | ambient living-TV docs Flipbook-feel HTML + pure Flipbook NO-GO |
-| livingTvAmbient Flipbook densify test | `TBD` | ambient Flipbook-feel + NO-GO honesty densify test; pack 29/250 |
+| livingTvAmbient Flipbook densify test | `54bf0f800` | ambient Flipbook-feel + NO-GO honesty densify test; pack 29/250 |
