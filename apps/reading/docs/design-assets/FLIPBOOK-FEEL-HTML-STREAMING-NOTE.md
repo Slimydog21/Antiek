@@ -117,3 +117,9 @@ Pure Flipbook sole UI remains **NO-GO**.
 All 18 product invent doors refreshed via Imagine invent polish v2o
 (tip after residual product wave). densify pack 39/303.
 Pure Flipbook sole UI remains **NO-GO**.
+
+## Invent polish v2p
+
+All 18 product invent doors refreshed via Imagine invent polish v2p
+(tip after residual product wave). densify pack 39/303.
+Pure Flipbook sole UI remains **NO-GO**.
