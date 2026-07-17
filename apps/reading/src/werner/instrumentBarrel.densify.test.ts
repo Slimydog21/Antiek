@@ -47,6 +47,7 @@ import {
   getActivity,
   getActivityForPathname,
   getDefaultActivity,
+  consumeLocallyStartedResearchSession,
   EmoteView,
   iceFishingActivity,
   listActivities,
@@ -262,6 +263,15 @@ describe("werner instrument barrel densify", () => {
     expect(notifyResearchPhaseEdge("complete", "idle")).toBe(false);
     expect(typeof notifyResearchStarted).toBe("function");
     expect(typeof notifyShellFailure).toBe("function");
+  });
+
+  it("exports consumeLocallyStartedResearchSession densify (one-shot launch provenance)", () => {
+    // densify: local launch is one-shot; historical reopen must not replay start.
+    const sessionId = "barrel-densify-research-session";
+    expect(consumeLocallyStartedResearchSession(sessionId)).toBe(false);
+    notifyResearchStarted(sessionId);
+    expect(consumeLocallyStartedResearchSession(sessionId)).toBe(true);
+    expect(consumeLocallyStartedResearchSession(sessionId)).toBe(false);
   });
 
   it("exports mouse-follow densify for cursor-is-bait lag contract", () => {
