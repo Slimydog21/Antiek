@@ -213,6 +213,19 @@ describe("Clam Catcher rules", () => {
     expect(s.maxStreak).toBe(CLAM_MAX_STREAK);
   });
 
+  it("spawns pearl clam in the densify roll band after jellyfish chance", () => {
+    // jellyfish <0.2, pearl <0.2+0.2=0.4 — pin first roll at 0.30 for pearl.
+    const rolls = [0.3, 0.5];
+    let i = 0;
+    const rng = () => rolls[i++] ?? 0.5;
+    let s = startClamCatcher(createClamCatcherState(320, 200));
+    s = { ...s, spawnTimer: 0, entities: [] };
+    s = stepClamCatcher(s, 1 / 60, idle, rng);
+    expect(s.entities.some((e) => e.kind === "pearl-clam")).toBe(true);
+    const pearl = s.entities.find((e) => e.kind === "pearl-clam");
+    expect(pearl?.points).toBe(CLAM_CATCHER_TUNING.pearlPoints);
+  });
+
   it("pearl catch jumps streak by two without breaking the mult order", () => {
     const base = startClamCatcher(createClamCatcherState(320, 200));
     const bucketY = base.height - 34;
