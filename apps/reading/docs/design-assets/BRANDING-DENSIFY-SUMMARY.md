@@ -326,3 +326,9 @@ Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md
 | Imagine invent polish v2e ice+clam cursor invents | `7cb951ecf` | cabinet/LGH/wait ice+clam invent refresh on FULL GREEN tip |
 | Imagine invent polish v2e living-TV+thought partner+midnight oil | `736eb8fab` | residual invent refresh on FULL GREEN tip |
 | Imagine invent polish v2e residual product invent wave | `0b6680c8e` | remaining product invent doors refresh on FULL GREEN tip |
+
+## Invent polish v2e wave complete (tip b7ca6ef32)
+
+All 18 product invent doors refreshed via Imagine invent polish v2e and densified.
+densify pack: `npm run test:branding-densify` (37/298) — invent inventory + ice-cursor +
+minigame living-TV beats + invent class product-map. Pure Flipbook sole UI remains NO-GO.
