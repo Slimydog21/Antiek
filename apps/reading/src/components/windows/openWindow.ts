@@ -109,6 +109,10 @@ export const WINDOW_PAGES: Record<string, { title: string; renderer: WindowPageR
     title: "Follow this passage",
     renderer: lazy(() => import("./ResearchChaseWindow")),
   },
+  "research-composition-review": {
+    title: "Research composition review",
+    renderer: lazy(() => import("./ResearchCompositionReview")),
+  },
 };
 
 export type WindowEligibleKind = keyof typeof WINDOW_PAGES;

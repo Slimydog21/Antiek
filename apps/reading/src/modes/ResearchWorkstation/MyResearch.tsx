@@ -39,6 +39,7 @@ import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from
 import { Link, useNavigate } from "react-router-dom";
 
 import { getBudgetDefaults, type BudgetDefaults } from "../../api/research";
+import { openWindow } from "../../components/windows/openWindow";
 import { useAuth } from "../../lib/auth";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import type { InvestigationSummary } from "../../lib/api";
@@ -284,6 +285,15 @@ export default function MyResearch({
   }, []);
 
   const agg = useMemo(() => aggregate(investigations), [investigations]);
+  const [compositionIds, setCompositionIds] = useState<string[]>([]);
+  useEffect(() => {
+    const completed = new Set(
+      investigations
+        .filter((item) => item.status === "completed")
+        .map((item) => item.investigation_id),
+    );
+    setCompositionIds((current) => current.filter((id) => completed.has(id)).slice(0, 8));
+  }, [investigations]);
 
   // Honest "N running, M queued": the host-local runner multiplexes browse
   // loops under a bounded semaphore (the contract's max_concurrency). More
@@ -395,7 +405,45 @@ export default function MyResearch({
         </p>
       )}
 
-      <ResearchLineageBoard investigations={investigations} />
+      <ResearchLineageBoard
+        investigations={investigations}
+        selectedInvestigationIds={compositionIds}
+        onSelectionChange={setCompositionIds}
+      />
+      {compositionIds.length > 0 && (
+        <aside className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-rule p-4 dark:border-charcoal-1" aria-label="Research composition selection">
+          <p className="text-sm text-shadow-1 dark:text-moonlight">
+            {compositionIds.length} selected in collection order
+          </p>
+          <div className="flex items-center gap-2">
+            <LemonButton
+              variant="secondary"
+              size="md"
+              onClick={() => setCompositionIds([])}
+            >
+              Clear
+            </LemonButton>
+            <LemonButton
+              variant="primary"
+              size="md"
+              disabled={compositionIds.length < 2}
+              onClick={() =>
+                openWindow(
+                  "research-composition-review",
+                  { investigationIds: compositionIds },
+                  {
+                    title: "Collected research",
+                    refreshExistingPayload: true,
+                    replaceOldestAtLimit: true,
+                  },
+                )
+              }
+            >
+              Review {compositionIds.length} researches
+            </LemonButton>
+          </div>
+        </aside>
+      )}
     </>
   );
 
@@ -512,23 +560,43 @@ function LaunchBar({
 export function ResearchLineageBoard({
   investigations,
   nowMs = Date.now(),
+  selectedInvestigationIds,
+  onSelectionChange,
 }: {
   investigations: InvestigationSummary[];
   /** Fixed by visual fixtures; production naturally uses the current time. */
   nowMs?: number;
+  selectedInvestigationIds?: readonly string[];
+  onSelectionChange?: (ids: string[]) => void;
 }) {
   const tree = useMemo(() => buildLineageTree(investigations), [investigations]);
   if (tree.length === 0) return null;
   return (
     <div className="research-lineage-board" aria-label="Research lineages">
       {tree.map((node) => (
-        <FamilyCard key={node.summary.investigation_id} node={node} nowMs={nowMs} />
+        <FamilyCard
+          key={node.summary.investigation_id}
+          node={node}
+          nowMs={nowMs}
+          selectedInvestigationIds={selectedInvestigationIds}
+          onSelectionChange={onSelectionChange}
+        />
       ))}
     </div>
   );
 }
 
-function FamilyCard({ node, nowMs }: { node: TreeNode; nowMs: number }) {
+function FamilyCard({
+  node,
+  nowMs,
+  selectedInvestigationIds,
+  onSelectionChange,
+}: {
+  node: TreeNode;
+  nowMs: number;
+  selectedInvestigationIds?: readonly string[];
+  onSelectionChange?: (ids: string[]) => void;
+}) {
   // A node with children is a cascade/chase family; without children it is a
   // standalone research. The header names the family by the root's question.
   const isFamily = node.children.length > 0;
@@ -566,6 +634,8 @@ function FamilyCard({ node, nowMs }: { node: TreeNode; nowMs: number }) {
           branchNumber={null}
           depth={0}
           nowMs={nowMs}
+          selectedInvestigationIds={selectedInvestigationIds}
+          onSelectionChange={onSelectionChange}
         />
         {node.children.map((child, index) => (
           <LineageBranch
@@ -574,6 +644,8 @@ function FamilyCard({ node, nowMs }: { node: TreeNode; nowMs: number }) {
             index={index + 1}
             depth={1}
             nowMs={nowMs}
+            selectedInvestigationIds={selectedInvestigationIds}
+            onSelectionChange={onSelectionChange}
           />
         ))}
       </ol>
@@ -586,11 +658,15 @@ function LineageBranch({
   index,
   depth,
   nowMs,
+  selectedInvestigationIds,
+  onSelectionChange,
 }: {
   node: TreeNode;
   index: number;
   depth: number;
   nowMs: number;
+  selectedInvestigationIds?: readonly string[];
+  onSelectionChange?: (ids: string[]) => void;
 }) {
   return (
     <>
@@ -600,6 +676,8 @@ function LineageBranch({
         branchNumber={index}
         depth={depth}
         nowMs={nowMs}
+        selectedInvestigationIds={selectedInvestigationIds}
+        onSelectionChange={onSelectionChange}
       />
       {node.children.map((child, childIndex) => (
         <LineageBranch
@@ -608,6 +686,8 @@ function LineageBranch({
           index={childIndex + 1}
           depth={depth + 1}
           nowMs={nowMs}
+          selectedInvestigationIds={selectedInvestigationIds}
+          onSelectionChange={onSelectionChange}
         />
       ))}
     </>
@@ -620,14 +700,20 @@ function ResearchRow({
   branchNumber,
   depth,
   nowMs,
+  selectedInvestigationIds,
+  onSelectionChange,
 }: {
   summary: InvestigationSummary;
   role: "origin" | "branch" | "standalone";
   branchNumber: number | null;
   depth: number;
   nowMs: number;
+  selectedInvestigationIds?: readonly string[];
+  onSelectionChange?: (ids: string[]) => void;
 }) {
   const ps = plainStatus(summary.status);
+  const selected = selectedInvestigationIds?.includes(summary.investigation_id) ?? false;
+  const selectionEnabled = selectedInvestigationIds !== undefined && onSelectionChange !== undefined;
   return (
     <li
       className="research-lineage__member"
@@ -637,6 +723,22 @@ function ResearchRow({
     >
       <article className="research-lineage__research">
         <div className="research-lineage__marker" aria-hidden="true" />
+        {selectionEnabled && summary.status === "completed" && (
+          <input
+            className="research-lineage__composition-select"
+            type="checkbox"
+            checked={selected}
+            disabled={!selected && selectedInvestigationIds.length >= 8}
+            aria-label={`Select ${summary.question ?? "Untitled research"} for composition`}
+            onChange={() => {
+              onSelectionChange(
+                selected
+                  ? selectedInvestigationIds.filter((id) => id !== summary.investigation_id)
+                  : [...selectedInvestigationIds, summary.investigation_id],
+              );
+            }}
+          />
+        )}
         <div className="research-lineage__body">
           {role !== "standalone" && (
             <p className="research-lineage__role">

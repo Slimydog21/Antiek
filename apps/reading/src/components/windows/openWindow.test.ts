@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { isWindowEligible, openNewWindow } from "./openWindow";
+import { isWindowEligible, openNewWindow, openWindow } from "./openWindow";
 import { MAX_WINDOWS, useWindows } from "../../workspace/windowsStore";
 
 describe("openNewWindow", () => {
@@ -16,6 +16,39 @@ describe("openNewWindow", () => {
     expect(useWindows.getState().windows[second].payload).toEqual({ spawnContext: "second", parentInvestigationId: "read-a" });
     expect(first).not.toContain("first");
     expect(second).not.toContain("second");
+  });
+
+  it("keeps one stable composition review and refreshes its ID-only payload", () => {
+    expect(isWindowEligible("research-composition-review")).toBe(true);
+    const first = openWindow("research-composition-review", { investigationIds: ["a", "b"] });
+    const second = openWindow(
+      "research-composition-review",
+      { investigationIds: ["c", "d"] },
+      { refreshExistingPayload: true },
+    );
+    expect(second).toBe(first);
+    expect(useWindows.getState().order).toEqual([first]);
+    expect(useWindows.getState().windows[first].payload).toEqual({ investigationIds: ["c", "d"] });
+  });
+
+  it("does not erase a stable reference window payload on an ordinary reopen", () => {
+    const first = openWindow("reader", { documentId: "doc-a" });
+    openWindow("reader");
+    expect(useWindows.getState().windows[first].payload).toEqual({ documentId: "doc-a" });
+  });
+
+  it("replaces the oldest window when an exact composition review opens at the cap", () => {
+    for (let i = 0; i < MAX_WINDOWS; i += 1) {
+      useWindows.getState().open("library", { i }, { id: `existing:${i}` });
+    }
+    const id = openWindow(
+      "research-composition-review",
+      { investigationIds: ["a", "b"] },
+      { replaceOldestAtLimit: true },
+    );
+    expect(useWindows.getState().windows["existing:0"]).toBeUndefined();
+    expect(useWindows.getState().windows[id].payload).toEqual({ investigationIds: ["a", "b"] });
+    expect(useWindows.getState().order).toHaveLength(MAX_WINDOWS);
   });
 
   it("can replace the oldest at the shared cap for an exact requested chase", () => {

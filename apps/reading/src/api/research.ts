@@ -167,6 +167,32 @@ export interface SuggestionsResponse {
   suggestions: Suggestion[];
 }
 
+export interface ArtifactIndexBlock {
+  node_id: string;
+  kind: string;
+  label: string;
+  investigation_id: string;
+}
+
+export interface ArtifactIndexMember {
+  investigation_id: string;
+  question: string;
+  content_hash: string;
+  blocks: ArtifactIndexBlock[];
+}
+
+export interface ArtifactIndexConflict {
+  first_investigation_id: string;
+  second_investigation_id: string;
+  content_hash: string;
+}
+
+export interface ArtifactIndexResponse {
+  kind: "artifact_index";
+  members: ArtifactIndexMember[];
+  conflicts: ArtifactIndexConflict[];
+}
+
 // ── Request helpers ─────────────────────────────────────────────────────
 
 async function jsonOrThrow<T>(resp: Response, what: string): Promise<T> {
@@ -200,6 +226,14 @@ export function getBudgetDefaults(): Promise<BudgetDefaults> {
  * here. `limit` bounds the displayed count (rank + cap, never a flood). */
 export function getSuggestions(limit = 8): Promise<SuggestionsResponse> {
   return get(`/research/suggestions?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export function composeResearchArtifacts(
+  investigationIds: readonly string[],
+): Promise<ArtifactIndexResponse> {
+  return post("/research/artifacts/compose", {
+    investigation_ids: investigationIds,
+  });
 }
 
 export function createPlan(req: {

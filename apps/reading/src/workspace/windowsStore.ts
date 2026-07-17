@@ -111,6 +111,10 @@ export type OpenWindowOptions = {
   rect?: Partial<WindowRect>;
   /** Open already expanded to full. */
   mode?: WindowMode;
+  /** Replace the payload when reopening this exact stable window. Reference
+   * windows normally retain their original identity payload; mutable review
+   * baskets opt in explicitly. */
+  refreshExistingPayload?: boolean;
   /** At the hard cap, replace the oldest window instead of redirecting this
    * exact-identity open to an unrelated surface. Opt-in because replacement
    * is appropriate only when showing the requested asset is load-bearing. */
@@ -198,6 +202,19 @@ export const useWindows = create<Store>()((set, get) => ({
     // Re-opening an existing id focuses instead of duplicating (stable
     // per-instance windows, e.g. one window per documentId).
     if (get().windows[id]) {
+      if (opts.refreshExistingPayload) {
+        set((s) => ({
+          ...s,
+          windows: {
+            ...s.windows,
+            [id]: {
+              ...s.windows[id],
+              payload,
+              title: opts.title ?? s.windows[id].title,
+            },
+          },
+        }));
+      }
       get().focus(id);
       return id;
     }
