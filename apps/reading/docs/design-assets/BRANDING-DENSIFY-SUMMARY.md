@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `891469885` — densify pack **45/382**.
+PR #2416 tip (at close of this note): `87d57a0ed` — densify pack **45/382**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -963,3 +963,9 @@ Pointer-authority densify: wait-arcade suspends route instrument; densify pack *
 | Station suspension barrel densify | `891469885` | acquire+leaseCount public; pack 45/382 |
 
 Instrument barrel densify exports station suspension; densify pack **45/382**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Station suspension honesty densify (craft157+)
+
+| Station suspension honesty densify | `87d57a0ed` | invent class pin station instrument suspension |
+
+Honesty densify pins station instrument suspension in Flipbook densify gate. densify pack **45/382**. Pure Flipbook sole UI remains **NO-GO**.
