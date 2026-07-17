@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Branding densify pack — invent reframe + living-TV + arcade + product invent doors.
-# Expectation (product-door + mini-game densify wave): 45 files / 381 tests. Exit non-zero on any failure.
+# Expectation (product-door + mini-game densify wave): 45 files / 382 tests. Exit non-zero on any failure.
 # Invoke: npm run test:branding-densify   (from apps/reading)
 #         or bash scripts/branding-densify-pack.sh
 set -euo pipefail

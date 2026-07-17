@@ -1,13 +1,17 @@
 /**
- * densify: instrument helpers (bait chrome + tip→bait tension) stay public on
- * the werner barrel so product shells can share the fixed-station contract.
+ * densify: instrument helpers (bait chrome + tip→bait tension + suspension)
+ * stay public on the werner barrel so product shells share the fixed-station
+ * contract (cursor is bait/instrument, not a chase pet).
  */
 import { describe, expect, it } from "vitest";
 
 import {
+  acquireStationInstrumentSuspension,
   baitChromeFromFollow,
   catenaryPath,
+  isStationInstrumentSuspended,
   rodBendFromPoints,
+  stationInstrumentLeaseCount,
   tipToBaitDistance,
 } from "./index";
 
@@ -24,5 +28,14 @@ describe("werner instrument barrel densify", () => {
     expect(tipToBaitDistance(rod, bait)).toBe(50);
     expect(rodBendFromPoints(rod, bait)).toBeGreaterThan(0);
     expect(catenaryPath(rod, bait).endsWith(" 30 40")).toBe(true);
+  });
+
+  it("exports station instrument suspension for wait-arcade pointer densify", () => {
+    expect(isStationInstrumentSuspended()).toBe(false);
+    const release = acquireStationInstrumentSuspension("wait-arcade");
+    expect(isStationInstrumentSuspended()).toBe(true);
+    expect(stationInstrumentLeaseCount()).toBeGreaterThan(0);
+    release();
+    expect(isStationInstrumentSuspended()).toBe(false);
   });
 });

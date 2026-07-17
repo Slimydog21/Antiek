@@ -66,6 +66,12 @@ export { WernerIceBait, baitChromeFromFollow } from "./WernerIceBait";
 export { WernerFishingLayer } from "./WernerFishingLayer";
 export { WernerIceCursorShell } from "./WernerIceCursorShell";
 export {
+  acquireStationInstrumentSuspension,
+  isStationInstrumentSuspended,
+  stationInstrumentLeaseCount,
+  useStationInstrumentSuspended,
+} from "./stationInstrumentSuspension";
+export {
   catenaryPath,
   rodTipFromMascotRect,
   tipToBaitDistance,
