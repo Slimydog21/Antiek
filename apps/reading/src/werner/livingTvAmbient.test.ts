@@ -156,6 +156,12 @@ describe("installLivingTvAmbient", () => {
     expect(emit).toHaveBeenCalledTimes(2);
     expect(emit).toHaveBeenLastCalledWith("idle");
 
+    // Highlight ambient densify: idle does not re-arm — no ambient spam loop
+    // until the next product beat (cursor never auto-starts games).
+    now = 8_000;
+    vi.advanceTimersByTime(1_000);
+    expect(emit).toHaveBeenCalledTimes(2);
+
     teardown();
   });
 

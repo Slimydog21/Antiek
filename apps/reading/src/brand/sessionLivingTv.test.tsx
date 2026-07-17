@@ -84,4 +84,19 @@ describe("sessionLivingTv invent reframe CSS contract", () => {
       true,
     );
   });
+
+  it("covers home invent living-tv testids via suffix densify", () => {
+    const css = readFileSync(
+      join(process.cwd(), "src/brand/sessionLivingTv.css"),
+      "utf8",
+    );
+    expect(css).toMatch(/data-testid\$="-living-tv-art"/);
+    // Home door invent + igloo arcade invent use the Flipbook-feel suffix.
+    for (const id of [
+      "home-living-tv-art",
+      "home-arcade-living-tv-art",
+    ] as const) {
+      expect(id.endsWith("-living-tv-art")).toBe(true);
+    }
+  });
 });
