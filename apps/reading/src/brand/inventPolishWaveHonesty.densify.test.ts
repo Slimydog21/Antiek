@@ -16,7 +16,7 @@ const FLIPBOOK = join(DOCS, "FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md");
 const POSES = join(process.cwd(), "src/brand/werner/poses/session");
 
 /** Latest complete invent polish wave letter (advance with each wave). */
-const WAVE = "v3a";
+const WAVE = "v3b";
 
 /** 18 product invent doors (matches inventProductInventory.densify). */
 const PRODUCT_STEMS = [
