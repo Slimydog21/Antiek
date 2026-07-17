@@ -320,4 +320,4 @@ with Flipbook-feel invent reframe. densify pack: `npm run test:branding-densify`
 Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md.
 | Invent polish v2d honesty densify | `8ceabb689` | Flipbook note densify gate 251 + invent v2d complete honesty |
 | Ice-cursor densify pack expansion | `35c60931c` | WernerIceBait + useMouseFollow + IceCursorShell in branding densify pack (32/268) |
-| Minigame living-TV beat densify pack | `TBD` | ice/clam/zombies logic + zombiesCartridge in densify pack (36/297) |
+| Minigame living-TV beat densify pack | `cd8e1f95b` | ice/clam/zombies logic + zombiesCartridge in densify pack (36/297) |
