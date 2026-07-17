@@ -230,7 +230,11 @@ describe("Home (SPR-12 M1)", () => {
       /werner_igloo_minigame_trio_session_v1/,
     );
     expect(igloo.className).toMatch(/antiek-living-tv-invent/);
-    fireEvent.click(screen.getByTestId("home-arcade-cta"));
+    const cta = screen.getByTestId("home-arcade-cta");
+    // Living-TV product-door densify: arcade CTA is resolvable geometry.
+    expect(cta.getAttribute("data-product-id")).toBe("arcade");
+    expect(cta.getAttribute("data-werner-target")).toBe("curious");
+    fireEvent.click(cta);
     expect(screen.getByText(/ARCADE SURFACE/)).toBeTruthy();
     expect(seen).toContain("highlight");
     window.removeEventListener("antiek:werner-experience", onExp);

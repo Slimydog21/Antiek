@@ -218,6 +218,8 @@ export function Home() {
               <button
                 type="button"
                 data-testid="home-arcade-cta"
+                data-product-id="arcade"
+                data-werner-target="curious"
                 onClick={() => {
                   // Living-TV: arcade door product-activate (curious emote) + highlight.
                   emitProductActivate({ productId: "arcade", source: "click" });
