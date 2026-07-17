@@ -319,3 +319,4 @@ Major product invent doors refreshed via Imagine invent polish v2d and densified
 with Flipbook-feel invent reframe. densify pack: `npm run test:branding-densify` (29/251 after honesty densify).
 Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md.
 | Invent polish v2d honesty densify | `8ceabb689` | Flipbook note densify gate 251 + invent v2d complete honesty |
+| Ice-cursor densify pack expansion | `TBD` | WernerIceBait + useMouseFollow + IceCursorShell in branding densify pack (32/268) |

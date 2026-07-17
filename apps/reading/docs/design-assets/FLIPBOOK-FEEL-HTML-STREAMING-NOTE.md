@@ -42,12 +42,13 @@ When product wants *optional* streamed invent motion (not sole UI):
 
 ```bash
 cd apps/reading && npm run test:branding-densify
-# 29 files / 251 tests (invent reframe + invent class product-map + v2d honesty densify)
+# 32 files / 268 tests (invent reframe + invent class product-map + v2d honesty + ice-cursor densify)
 ```
 
 ## Invent polish v2d
 
 All major product invent doors refreshed via Imagine invent polish v2d
-(tip `3fadc274f` / residual batch `5f8851ec0`). densify pack 29/251.
+(tip `3fadc274f` / residual batch `5f8851ec0`). densify pack 32/268 with
+cursor ice-bait densify (WernerIceBait + useMouseFollow + IceCursorShell).
 Pure Flipbook sole UI remains **NO-GO**.
 
