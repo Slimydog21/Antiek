@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `865337441` — densify pack **45/385**.
+PR #2416 tip (at close of this note): `8d4a78d46` — densify pack **45/386**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -993,3 +993,9 @@ Living-TV densify: research-start installer sleep idle; product-door alias densi
 | Research-family product-door alias densify | `865337441` | twin_notes/thought_partner/cascade/research_wait |
 
 Product-door densify: research-family underscore aliases map thinking/curious living-TV glances. densify pack **45/385**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Complete-research curtain + book_marketplace door densify (craft157+)
+
+| Complete-research curtain + book_marketplace door densify | `8d4a78d46` | complete pride curtain; book_marketplace |
+
+Living-TV densify: complete research curtain pride→idle→silence; book_marketplace door densify. densify pack **45/386**. Pure Flipbook sole UI remains **NO-GO**.
