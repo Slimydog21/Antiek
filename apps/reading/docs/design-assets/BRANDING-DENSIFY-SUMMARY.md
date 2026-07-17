@@ -824,3 +824,9 @@ Home igloo Open arcade CTA is living-TV product-door geometry (curious). densify
 
 Deep-research wait playing cabinet scene art carries Flipbook-feel invent
 reframe class. densify pack **39/321**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Zombies wave-1 no fort-heal densify assert (craft157+)
+
+| Zombies wave-1 no fort-heal densify assert | `ca0cec888` | start wave 1 keeps lives |
+
+Unit densify pins fort heal only for wave>1 clears. densify pack **39/322**. Pure Flipbook sole UI remains **NO-GO**.
