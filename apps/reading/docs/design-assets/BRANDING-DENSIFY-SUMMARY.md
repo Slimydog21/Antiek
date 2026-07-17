@@ -789,3 +789,11 @@ Pure Flipbook sole UI remains **NO-GO**.
 Deep-research wait arcade Play stamps `data-product-id={selectedGame}` and emits
 PRODUCT_ACTIVATE so living-TV choreography matches cabinet/LGH per-game doors.
 densify pack expected **39/318**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Research-wait cartridge picker densify (craft157+)
+
+| Research-wait cartridge picker densify | `e61f5d3c5` | labels data-product-id + werner-target |
+
+Cartridge picker labels stamp per-game `data-product-id` + `data-werner-target=
+curious` so choosing ice/clam/zombies is living-TV geometry (opt-in waddle).
+densify pack expected **39/319**. Pure Flipbook sole UI remains **NO-GO**.
