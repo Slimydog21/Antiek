@@ -660,7 +660,7 @@ densify pack **39/311**. Pure Flipbook sole UI remains **NO-GO**.
 
 ## Ice Fishing streak HUD densify (craft157+)
 
-| Ice Fishing streak HUD densify | (pending tip) | HUD xN parity with clam/zombies |
+| Ice Fishing streak HUD densify | `e1d76147d` | HUD xN parity with clam/zombies |
 
 Ice catch-streak already pure-rules densified; HUD now shows live `xN` while
 streak is hot (sun accent), matching clam + zombies cabinet craft. densify pack
