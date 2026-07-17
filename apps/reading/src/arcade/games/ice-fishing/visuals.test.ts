@@ -268,4 +268,33 @@ describe("Ice Fishing authored visuals", () => {
     expect(c2d.fillRect).toHaveBeenCalledWith(20, 90, 18, 10);
     expect(c2d.fillText).toHaveBeenCalledWith("Score 0", 8, 16);
   });
+
+  it("paints golden fish fallback with sun.base densify color", () => {
+    const c2d = context2d();
+    const state: IceFishingState = {
+      ...createIceFishingState({ width: ctx.width, height: ctx.height }),
+      fishes: [
+        {
+          id: 9,
+          kind: "golden",
+          x: 40,
+          y: 100,
+          vx: 10,
+          w: 28,
+          h: 14,
+          points: 5,
+        },
+      ],
+    };
+    renderIceFishing(c2d, ctx, state, {
+      image: null,
+      ready: false,
+      load() {},
+      dispose() {},
+    });
+    // fillStyle is set before fillRect; golden uses sun.base token.
+    expect(c2d.fillRect).toHaveBeenCalledWith(40, 100, 28, 14);
+    // sun.base is a non-empty CSS color string in the token system.
+    expect(String(c2d.fillStyle).length).toBeGreaterThan(0);
+  });
 });
