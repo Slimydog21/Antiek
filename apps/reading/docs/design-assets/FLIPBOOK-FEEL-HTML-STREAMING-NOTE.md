@@ -264,3 +264,6 @@ Invent polish **v3p** wave complete: all 18 product invent doors re-polished via
 ### Clam pearl streak-step densify
 Pearl catches jump CP streak by two (capped). densify **39/312**. Pure Flipbook
 sole UI remains **NO-GO**.
+
+### Invent polish v3q
+Invent polish **v3q** wave complete: all 18 product invent doors re-polished via Imagine refedit, candidates + product webps promoted. Honesty densify WAVE=`v3q`. densify **39/312**. Pure Flipbook sole UI remains **NO-GO**. Ice-bait / ice-cursor densify gates still hold. Axe green on zombies peak brag tip before promote.
