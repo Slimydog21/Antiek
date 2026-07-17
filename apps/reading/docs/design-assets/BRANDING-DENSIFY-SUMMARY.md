@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `1186cb1db` — densify pack **47/407**.
+PR #2416 tip (at close of this note): `5b80c33ba` — densify pack **47/408**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1107,3 +1107,9 @@ Instrument barrel densify exports rodLength butt→tip rig contract. densify pac
 | ROD_MAX_BEND / HALF_BEND_DIST densify | `1186cb1db` | saturating tension constants public |
 
 Instrument barrel densify exports ROD_MAX_BEND + ROD_HALF_BEND_DIST. densify pack **47/407**. Pure Flipbook sole UI remains **NO-GO**.
+
+## ROD_TIP/BUTT local anchors densify (craft157+)
+
+| ROD_TIP/BUTT local anchors densify | `5b80c33ba` | ROD_TIP_LOCAL + ROD_BUTT_LOCAL public |
+
+Instrument barrel densify exports rod local anchors. densify pack **47/408**. Pure Flipbook sole UI remains **NO-GO**.
