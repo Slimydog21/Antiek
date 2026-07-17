@@ -106,6 +106,21 @@ export function rodBend(tipToBaitDistance: number): number {
   return (ROD_MAX_BEND * d) / (d + ROD_HALF_BEND_DIST);
 }
 
+/**
+ * Instrument densify: line-out length is tip→live bait (cursor IS the bait).
+ * Pure helper so tension/bend consumers share one distance read with the line.
+ */
+export function tipToBaitDistance(rod: Point, bait: Point): number {
+  return Math.hypot(bait.x - rod.x, bait.y - rod.y);
+}
+
+/**
+ * Rod flex under instrument load from tip→bait geometry (fixed-station densify).
+ */
+export function rodBendFromPoints(rod: Point, bait: Point): number {
+  return rodBend(tipToBaitDistance(rod, bait));
+}
+
 /** Total rod length (butt→tip) in viewBox units — the contract the rig draws. */
 export function rodLength(): number {
   return Math.hypot(

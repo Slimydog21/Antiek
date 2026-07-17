@@ -91,6 +91,8 @@ describe("invent class product-map densify", () => {
     expect(flipbook).toMatch(
       /39 files \/ 30[23] tests|38 files \/ 299 tests|42 files \/ 3[5-6][0-9] tests|43 files \/ 37[0-9] tests/,
     );
+    // Instrument densify honesty: bait + tip→bait tension helpers stay named.
+    expect(flipbook).toMatch(/baitChromeFromFollow|tipToBaitDistance|rodBendFromPoints/i);
     expect(flipbook).toMatch(/Invent polish v2i|Invent polish v3r/i);
     expect(flipbook).toMatch(/NO-GO/);
     expect(flipbook).toMatch(/ice-bait|IceBait|ice-cursor|baitChromeFromFollow/i);

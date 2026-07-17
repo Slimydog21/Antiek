@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   ROD_BUTT_LOCAL,
+  ROD_MAX_BEND,
   ROD_TIP_LOCAL,
   catenaryPath,
   rodBend,
+  rodBendFromPoints,
   rodLength,
   rodTipFromMascotRect,
+  tipToBaitDistance,
 } from "./fishingLineGeometry";
 
 describe("catenaryPath", () => {
@@ -126,5 +129,19 @@ describe("rodBend (tension model, SPR-04 M2)", () => {
   it("negative/garbage distance clamps to a straight rod (no NaN)", () => {
     expect(rodBend(-50)).toBe(0);
     expect(Number.isFinite(rodBend(0))).toBe(true);
+  });
+
+  it("tipToBaitDistance is the live instrument line-out (cursor is bait densify)", () => {
+    expect(tipToBaitDistance({ x: 0, y: 0 }, { x: 30, y: 40 })).toBe(50);
+    expect(tipToBaitDistance({ x: 10, y: 10 }, { x: 10, y: 10 })).toBe(0);
+  });
+
+  it("rodBendFromPoints composes tip→bait distance into tension bend densify", () => {
+    const rod = { x: 0, y: 0 };
+    const near = { x: 10, y: 0 };
+    const far = { x: 200, y: 0 };
+    expect(rodBendFromPoints(rod, near)).toBe(rodBend(tipToBaitDistance(rod, near)));
+    expect(rodBendFromPoints(rod, far)).toBeGreaterThan(rodBendFromPoints(rod, near));
+    expect(rodBendFromPoints(rod, far)).toBeLessThanOrEqual(ROD_MAX_BEND);
   });
 });
