@@ -203,6 +203,24 @@ describe("Ice Fishing authored visuals", () => {
     expect(c2d.fillText).toHaveBeenCalledWith("x3", Math.max(96, ctx.width * 0.42), 16);
   });
 
+  it("brags peak catch-streak on gameover HUD", () => {
+    const c2d = context2d();
+    const emptyKit: IceFishingVisualKit = {
+      image: null,
+      ready: false,
+      load() {},
+      dispose() {},
+    };
+    const cold = createIceFishingState({ width: ctx.width, height: ctx.height });
+    renderIceFishing(
+      c2d,
+      ctx,
+      { ...cold, phase: "gameover", maxStreak: 3, score: 12, lives: 0 },
+      emptyKit,
+    );
+    expect(c2d.fillText).toHaveBeenCalledWith("BEST x3", 8, ctx.height - 28);
+  });
+
   it("keeps the original token fallback before the atlas is ready", () => {
     const c2d = context2d();
     const state: IceFishingState = {

@@ -126,6 +126,16 @@ export function renderIceFishing(
     c2d.fillText("Click / Space to fish", 8, ctx.height - 12);
   } else if (state.phase === "gameover") {
     c2d.fillText("Game over — Enter to retry", 8, ctx.height - 12);
+    // Peak catch-streak brag densify (cabinet/wait craft).
+    if (state.maxStreak > 0) {
+      c2d.fillStyle = sun.base;
+      c2d.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
+      c2d.fillText(
+        `BEST x${Math.min(3, 1 + state.maxStreak)}`,
+        8,
+        ctx.height - 28,
+      );
+    }
   }
 }
 

@@ -157,4 +157,22 @@ describe("Clam Catcher authored visuals", () => {
       18,
     );
   });
+
+  it("brags peak catch-streak on gameover HUD", () => {
+    const c2d = context2d();
+    const emptyKit = {
+      image: null,
+      ready: false,
+      load() {},
+      dispose() {},
+    };
+    const cold = createClamCatcherState(ctx.width, ctx.height);
+    renderClamCatcher(
+      c2d,
+      ctx,
+      { ...cold, phase: "gameover", maxStreak: 3, score: 12, lives: 0 },
+      emptyKit,
+    );
+    expect(c2d.fillText).toHaveBeenCalledWith("BEST x3", 10, ctx.height - 32);
+  });
 });

@@ -216,5 +216,11 @@ function drawHud(
     );
   } else if (state.phase === "gameover") {
     c2d.fillText("Shift over — Enter to retry", 10, ctx.height - 50);
+    // Peak catch-streak brag densify (cabinet/wait craft).
+    if (state.maxStreak > 0) {
+      c2d.fillStyle = sun.base;
+      c2d.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
+      c2d.fillText(`BEST x${Math.min(3, 1 + state.maxStreak)}`, 10, ctx.height - 32);
+    }
   }
 }
