@@ -1,8 +1,8 @@
 /**
  * densify: instrument helpers (bait chrome + tip→bait tension + suspension +
- * productSelector + data-werner-target) stay public on the werner barrel so
- * product shells share the fixed-station contract (cursor is bait/instrument,
- * not a chase pet).
+ * productSelector + data-werner-target + reactionBus experience map) stay public
+ * on the werner barrel so product shells share the fixed-station contract
+ * (cursor is bait/instrument, not a chase pet).
  */
 import { describe, expect, it } from "vitest";
 
@@ -10,6 +10,7 @@ import {
   acquireStationInstrumentSuspension,
   baitChromeFromFollow,
   catenaryPath,
+  emoteForExperience,
   emoteForProductDoor,
   emoteFromWernerTargetAttr,
   isStationInstrumentSuspended,
@@ -59,5 +60,18 @@ describe("werner instrument barrel densify", () => {
     expect(WERNER_TARGET_ATTR).toBe("data-werner-target");
     expect(emoteFromWernerTargetAttr("curious")).toBe("curious");
     expect(emoteFromWernerTargetAttr(null)).toBe("hit");
+  });
+
+  it("exports emoteForExperience densify for living-TV product reaction map", () => {
+    // Host-beat inject densify: product experiences map to living-TV emotes
+    // (arcade cores stay reactionBus-free; hosts inject).
+    expect(emoteForExperience("highlight")).toBe("curious");
+    expect(emoteForExperience("deep_research_start")).toBe("thinking");
+    expect(emoteForExperience("deep_research_complete")).toBe("happy");
+    expect(emoteForExperience("deep_research_error")).toBe("dizzy");
+    expect(emoteForExperience("idle")).toBe("sleeping");
+    expect(emoteForExperience("fail")).toBe("dizzy");
+    expect(emoteForExperience("note_saved")).toBe("noted");
+    expect(emoteForExperience("piece_started")).toBe("happy");
   });
 });

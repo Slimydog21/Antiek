@@ -96,6 +96,8 @@ describe("invent class product-map densify", () => {
     expect(flipbook).toMatch(/station instrument suspension/i);
     // Opt-in living-TV densify honesty: data-werner-target + productSelector stay named.
     expect(flipbook).toMatch(/data-werner-target densify|productSelector densify/i);
+    // reactionBus densify honesty: arcade cores stay free of reactionBus imports.
+    expect(flipbook).toMatch(/reactionBus/i);
     expect(flipbook).toMatch(/Invent polish v2i|Invent polish v3r/i);
     expect(flipbook).toMatch(/NO-GO/);
     expect(flipbook).toMatch(/ice-bait|IceBait|ice-cursor|baitChromeFromFollow/i);
