@@ -155,6 +155,14 @@ describe("Paperclip Zombies field-station visuals", () => {
     expect(calls).toContainEqual(["fillRect", 5, 5.040000000000001, 2, 2]);
   });
 
+  it("brags peak BO1 combo on gameover status plate", () => {
+    const { context, calls } = recordingContext();
+    const over = { ...scene("gameover"), maxCombo: 3, score: 40, lives: 0 };
+    drawZombiesScene(context, over, 480, 300);
+    // statusTop = height - STATUS_HEIGHT (28) → 272; brag sits at +34.
+    expect(calls).toContainEqual(["fillText", "BEST x4", 12, 306]);
+  });
+
   it("keeps all structural bands inside compact canvas bounds", () => {
     expect(zombiesVisualLayout(96, 80)).toEqual({
       fieldTop: 20,

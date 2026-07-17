@@ -125,7 +125,7 @@ export function drawZombiesScene(
   drawEvidenceTraces(c2d, state, width, layout);
   drawFort(c2d, state, layout, kit);
   drawHud(c2d, state, width);
-  drawStatusPlate(c2d, state.phase, width, height, layout);
+  drawStatusPlate(c2d, state, width, height, layout);
   // Targets render above chrome because their authoritative hitboxes may enter
   // the HUD/status bands; visual position must never drift from hit-testing.
   for (const zombie of state.zombies) drawPaperclip(c2d, zombie, kit);
@@ -392,11 +392,12 @@ function drawHud(
 
 function drawStatusPlate(
   c2d: CanvasRenderingContext2D,
-  phase: ZombiesPhase,
+  state: Pick<ZombiesState, "phase" | "maxCombo">,
   width: number,
   height: number,
   layout: ZombiesVisualLayout,
 ): void {
+  const phase = state.phase;
   c2d.fillStyle = surface.night[4];
   c2d.fillRect(0, layout.statusTop, width, height - layout.statusTop);
   c2d.fillStyle = phase === "gameover" ? accent.emperor.night : sun.base;
@@ -409,4 +410,14 @@ function drawStatusPlate(
     compact ? 7 : 12,
     layout.statusTop + 18,
   );
+  // Peak BO1 combo brag densify on fort-fallen (parity with ice/clam BEST xN).
+  if (phase === "gameover" && state.maxCombo > 0 && !compact) {
+    c2d.fillStyle = sun.base;
+    c2d.font = `600 10px ${type.mono}`;
+    c2d.fillText(
+      `BEST x${Math.min(4, 1 + state.maxCombo)}`,
+      12,
+      layout.statusTop + 34,
+    );
+  }
 }

@@ -698,3 +698,11 @@ densify pack **39/312**. Pure Flipbook sole UI remains **NO-GO**.
 Ice + clam gameover HUD brags peak catch-streak (`BEST xN`) using sun accent —
 cabinet/wait craft parity with live combo/streak HUDs. Pure Flipbook sole UI
 remains **NO-GO**.
+
+## Zombies peak combo brag HUD densify (craft157+)
+
+| Zombies peak combo brag HUD densify | (pending tip) | gameover BEST xN fort-fallen |
+
+Paperclip zombies gameover status plate brags peak BO1 combo (`BEST xN`) for
+cabinet/wait craft parity with ice+clam peak-streak brag. densify pack holds.
+Pure Flipbook sole UI remains **NO-GO**.
