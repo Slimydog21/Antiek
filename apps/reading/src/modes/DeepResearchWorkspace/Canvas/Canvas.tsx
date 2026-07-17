@@ -40,6 +40,7 @@ import {
   postTypedEvent,
 } from "../../../lib/api";
 import type { DistilledNode } from "../../../lib/api";
+import type { SourceAnchorRect } from "./evidenceWindowPlacement";
 import type { Event } from "../../../generated/types";
 import AIActionFailure from "../../../shared/AIActionFailure";
 import Thinking from "../../../shared/Thinking";
@@ -61,7 +62,7 @@ export interface CanvasProps {
    *  Optional. */
   onOpenDetail?: (node: DistilledNode) => void;
   /** Opens the exact source document in the host's canonical reader. */
-  onCiteSource?: (node: DistilledNode) => void;
+  onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
 }
 
 type LoadState =
@@ -151,7 +152,7 @@ function LoadedCanvas({
   questions: DistilledNode[];
   initialPositions: Map<string, BlockPosition>;
   onOpenDetail?: (node: DistilledNode) => void;
-  onCiteSource?: (node: DistilledNode) => void;
+  onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
 }) {
   const nodes = useMemo(() => [...insights, ...questions], [insights, questions]);
   // Position state seeds from the replayed events, then tracks live drags.
@@ -249,7 +250,7 @@ function DraggableBlock({
   pos: BlockPosition;
   investigationId: string;
   onOpenDetail?: (node: DistilledNode) => void;
-  onCiteSource?: (node: DistilledNode) => void;
+  onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
   onCommit: (next: BlockPosition) => void;
 }) {
   // Live drag state lives in refs (no re-render churn mid-drag) + a local
