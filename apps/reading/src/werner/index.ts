@@ -78,6 +78,8 @@ export {
   rodBendFromPoints,
   rodBend,
   rodLength,
+  ROD_MAX_BEND,
+  ROD_HALF_BEND_DIST,
 } from "./fishingLineGeometry";
 
 export {

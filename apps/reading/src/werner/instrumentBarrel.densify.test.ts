@@ -34,6 +34,8 @@ import {
   rodBendFromPoints,
   rodLength,
   rodTipFromMascotRect,
+  ROD_HALF_BEND_DIST,
+  ROD_MAX_BEND,
   SAMPLE_INTERVAL_MS,
   stationInstrumentLeaseCount,
   tipToBaitDistance,
@@ -211,5 +213,13 @@ describe("werner instrument barrel densify", () => {
     expect(len).toBeCloseTo(Math.hypot(66 - 45, 5 - 34), 5);
     expect(len).toBeGreaterThan(30);
     expect(len).toBeLessThan(40);
+  });
+
+  it("exports rod bend constants densify for saturating tension curve", () => {
+    // densify: HALF_BEND_DIST = 60 mid-cast; MAX_BEND = 6 asymptotic bow.
+    expect(ROD_HALF_BEND_DIST).toBe(60);
+    expect(ROD_MAX_BEND).toBe(6);
+    expect(rodBend(ROD_HALF_BEND_DIST)).toBeCloseTo(ROD_MAX_BEND / 2, 5);
+    expect(rodBend(1e9)).toBeLessThanOrEqual(ROD_MAX_BEND);
   });
 });
