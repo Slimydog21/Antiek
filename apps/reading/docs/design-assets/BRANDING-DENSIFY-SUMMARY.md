@@ -299,3 +299,4 @@ Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md
 | Imagine invent polish v2d paperclip zombies | `0c46b907d` | wait-arcade/cabinet/LGH zombies invent refresh on FULL GREEN tip |
 | Imagine invent polish v2d igloo ice arcade cursor | `336a2aa71` | cabinet/LGH/wait ice invent refresh on FULL GREEN tip |
 | Imagine invent polish v2d clam catcher cursor | `8246e9ceb` | cabinet/LGH/wait clam invent refresh on FULL GREEN tip |
+| Imagine invent polish v2d CRT igloo cursor TV | `TBD` | LoadingGameHost default living-TV invent refresh on FULL GREEN tip |
