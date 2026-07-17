@@ -1,0 +1,279 @@
+.twin-reader-shell {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+  background: var(--page);
+  color: var(--text);
+}
+
+.twin-reader-document {
+  min-width: 0;
+  padding: 2.5rem clamp(1.5rem, 5vw, 5rem) 5rem;
+}
+
+.twin-reader-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--ink);
+}
+
+.twin-reader-header h1,
+.twin-reader-margin h2,
+.twin-reader-state h1 {
+  margin: 0;
+  font-family: var(--serif);
+  letter-spacing: 0;
+}
+
+.twin-reader-header h1 {
+  max-width: 34rem;
+  font-size: 2rem;
+  line-height: 1.12;
+}
+
+.twin-reader-kicker {
+  margin: 0 0 0.35rem;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.twin-reader-authority {
+  max-width: 48rem;
+  margin: 0.8rem auto 2.5rem;
+  color: var(--text-muted);
+  font: 0.75rem/1.5 var(--mono);
+}
+
+.twin-reader-prose {
+  max-width: 43rem;
+  margin: 0 auto;
+  font: 1.02rem/1.78 var(--serif);
+}
+
+.twin-reader-prose h1,
+.twin-reader-prose h2,
+.twin-reader-prose h3 {
+  margin: 2rem 0 0.7rem;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.twin-reader-prose p,
+.twin-reader-prose ul,
+.twin-reader-prose ol {
+  margin: 0 0 1rem;
+}
+
+.twin-reader-margin {
+  min-width: 0;
+  padding: 2.5rem 1.25rem 4rem;
+  border-left: 1px solid var(--border);
+  background: var(--card-soft);
+  overflow-y: auto;
+}
+
+.twin-reader-margin > header {
+  padding: 0 0.5rem 1.2rem;
+  border-bottom: 1px solid var(--divider);
+}
+
+.twin-reader-margin h2 {
+  font-size: 1.2rem;
+}
+
+.twin-reader-margin > header > p:last-child,
+.twin-reader-empty {
+  color: var(--text-muted);
+  font: 0.78rem/1.5 var(--sans);
+}
+
+.twin-reader-notes,
+.twin-citation-spine {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.twin-reader-notes > li {
+  border-bottom: 1px solid var(--divider);
+}
+
+.twin-reviewed-note {
+  padding: 1rem 0.5rem;
+}
+
+.twin-reviewed-note-heading {
+  display: grid;
+  grid-template-columns: 1.1rem minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: start;
+}
+
+.twin-reviewed-note-heading svg {
+  margin-top: 0.2rem;
+  color: var(--sun-deep);
+}
+
+.twin-reviewed-note-heading p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font: 0.92rem/1.55 var(--serif);
+}
+
+.twin-evidence-toggle {
+  width: 100%;
+  min-height: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.65rem;
+  padding: 0 0 0 1.65rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: 0.7rem var(--mono);
+  text-align: left;
+}
+
+.twin-evidence-toggle:hover,
+.twin-evidence-toggle:focus-visible {
+  color: var(--text);
+}
+
+.twin-evidence-toggle:focus-visible {
+  outline: 2px solid var(--sun-deep);
+  outline-offset: 2px;
+}
+
+.twin-evidence-toggle svg {
+  transition: transform var(--motion-base) var(--ease-standard);
+}
+
+.twin-evidence-toggle svg.is-open {
+  transform: rotate(180deg);
+}
+
+.twin-citation-spine {
+  position: relative;
+  margin: 0.4rem 0 0 1.7rem;
+}
+
+.twin-citation-spine::before {
+  content: "";
+  position: absolute;
+  left: 0.65rem;
+  top: 0.8rem;
+  bottom: 0.8rem;
+  width: 1px;
+  background: var(--rule);
+}
+
+.twin-citation-spine li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.35rem minmax(0, 1fr);
+  gap: 0.6rem;
+  padding: 0.45rem 0;
+}
+
+.twin-citation-spine li > span {
+  z-index: 1;
+  width: 1.35rem;
+  height: 1.35rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: var(--card-soft);
+  font: 0.62rem var(--mono);
+}
+
+.twin-citation-spine strong,
+.twin-citation-spine p {
+  display: block;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.twin-citation-spine strong {
+  font: 0.72rem/1.4 var(--sans);
+}
+
+.twin-citation-spine p,
+.twin-evidence-withheld {
+  color: var(--text-muted);
+  font: 0.67rem/1.45 var(--mono);
+}
+
+.twin-evidence-withheld {
+  margin: 0.4rem 0 0 1.65rem;
+}
+
+.twin-reader-empty {
+  padding: 1.25rem 0.5rem;
+}
+
+.twin-reader-state {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background: var(--page);
+  color: var(--text);
+}
+
+.twin-reader-state > div {
+  width: min(100%, 28rem);
+  padding-left: 1.25rem;
+  border-left: 3px solid var(--sun-deep);
+}
+
+.twin-reader-state h1 {
+  font-size: 1.5rem;
+}
+
+.twin-reader-state p:not(.twin-reader-kicker) {
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+@media (max-width: 860px) {
+  .twin-reader-shell {
+    display: block;
+  }
+
+  .twin-reader-document {
+    padding: 1.5rem 1.1rem 3rem;
+  }
+
+  .twin-reader-header {
+    display: block;
+  }
+
+  .twin-reader-header h1 {
+    margin-bottom: 0.8rem;
+    font-size: 1.7rem;
+  }
+
+  .twin-reader-margin {
+    padding: 1.5rem 1rem 3rem;
+    border-top: 2px solid var(--ink);
+    border-left: 0;
+    overflow: visible;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .twin-evidence-toggle svg {
+    transition: none;
+  }
+}
