@@ -855,3 +855,9 @@ Golden fish atlas path densify: sun rim marks rare catch. densify pack **42/351*
 | Clam pearl sun-rim visual densify | `00471f4b2` | pearl atlas strokeRect sun.base |
 
 Pearl-clam atlas densify: sun rim marks rare catch (ice golden parity). densify pack **42/352**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Product-door underscore alias densify (craft157+)
+
+| Product-door underscore alias densify | `698a7e0ac` | ice_fishing etc → curious |
+
+Underscore slug aliases densify living-TV product-door map. densify pack **42/352**. Pure Flipbook sole UI remains **NO-GO**.
