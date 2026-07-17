@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `ca890ac61` — densify pack **47/412**.
+PR #2416 tip (at close of this note): `3a9ccb512` — densify pack **47/413**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1137,3 +1137,9 @@ Instrument barrel densify exports useMouseFollow + useStationInstrumentSuspended
 | station activity path→instrument densify | `ca890ac61` | path→instrument map + default ice-fishing |
 
 Instrument barrel densify exports station activity path→instrument selection. densify pack **47/412**. Pure Flipbook sole UI remains **NO-GO**.
+
+## getActivity registry densify (craft157+)
+
+| getActivity registry densify | `3a9ccb512` | getActivity + getActivityForPathname public |
+
+Instrument barrel densify exports getActivity registry resolution. densify pack **47/413**. Pure Flipbook sole UI remains **NO-GO**.
