@@ -717,7 +717,7 @@ Refedit+candidate provenance under `session-20260716/*_v3q.*`. Product webps pro
 
 ## Wait-arcade product-door emote densify (craft157+)
 
-| Wait-arcade product-door emote densify | (pending tip) | wait-arcade/research-wait → curious |
+| Wait-arcade product-door emote densify | `785277f22` | wait-arcade/research-wait → curious |
 
 Deep-research wait arcade product ids map to curious living-TV glance (not
 generic hit). densify pack **39/312**. Pure Flipbook sole UI remains **NO-GO**.
