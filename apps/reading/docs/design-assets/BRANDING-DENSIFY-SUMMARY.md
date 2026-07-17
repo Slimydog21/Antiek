@@ -294,3 +294,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 Major product invent doors refreshed via Imagine invent polish v2c and densified
 with Flipbook-feel invent reframe. densify pack: `npm run test:branding-densify` (29/250).
 Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md.
+| Imagine invent polish v2d CRT living-TV | `TBD` | Home + DR compose invent refresh on FULL GREEN tip |
