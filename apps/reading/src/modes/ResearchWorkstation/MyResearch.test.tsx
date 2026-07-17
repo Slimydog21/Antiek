@@ -17,10 +17,11 @@
  * boundaries, so this is a true unit of the monitor (no network, no socket).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import type { InvestigationSummary } from "../../lib/api";
+import { useWindows } from "../../workspace/windowsStore";
 
 const { listState, budgetState, authState, navigateMock } = vi.hoisted(() => ({
   listState: {
@@ -114,10 +115,59 @@ beforeEach(() => {
   };
   authState.current = { status: "authenticated" };
   navigateMock.mockReset();
+  useWindows.getState().reset();
 });
 afterEach(() => cleanup());
 
 describe("MyResearch — one monitor, plain language (M1)", () => {
+  it("opens the stable review with only the ordered selected IDs and can clear the basket", async () => {
+    listState.current.investigations = [
+      inv({ investigation_id: "done-a", question: "Alpha" }),
+      inv({ investigation_id: "done-b", question: "Beta" }),
+    ];
+    renderMonitor();
+
+    fireEvent.click(await screen.findByLabelText("Select Alpha for composition"));
+    fireEvent.click(screen.getByLabelText("Select Beta for composition"));
+    fireEvent.click(screen.getByRole("button", { name: "Review 2 researches" }));
+
+    const review = useWindows.getState().windows["win:research-composition-review"];
+    expect(review.title).toBe("Collected research");
+    expect(review.payload).toEqual({ investigationIds: ["done-a", "done-b"] });
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.queryByLabelText("Research composition selection")).toBeNull();
+  });
+
+  it("offers ordered controlled selection only for completed rows and caps it at eight", () => {
+    const completed = Array.from({ length: 9 }, (_, index) => inv({
+      investigation_id: `done-${index}`,
+      question: `Done ${index}`,
+    }));
+    const onSelectionChange = vi.fn();
+    const view = render(
+      <MemoryRouter>
+        <ResearchLineageBoard
+          investigations={[...completed, inv({ investigation_id: "running", question: "Running", status: "in_progress" })]}
+          selectedInvestigationIds={completed.slice(0, 8).map((item) => item.investigation_id)}
+          onSelectionChange={onSelectionChange}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByLabelText("Select Running for composition")).toBeNull();
+    expect(
+      (screen.getByLabelText("Select Done 8 for composition") as HTMLInputElement).disabled,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByLabelText("Select Done 0 for composition"));
+    expect(onSelectionChange).toHaveBeenLastCalledWith(completed.slice(1, 8).map((item) => item.investigation_id));
+    view.rerender(
+      <MemoryRouter>
+        <ResearchLineageBoard investigations={completed} selectedInvestigationIds={["done-1"]} onSelectionChange={onSelectionChange} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByLabelText("Select Done 0 for composition"));
+    expect(onSelectionChange).toHaveBeenLastCalledWith(["done-1", "done-0"]);
+  });
   it("shows plain-language status, never the raw state enum", async () => {
     listState.current.investigations = [
       inv({
