@@ -25,6 +25,14 @@ describe("catenaryPath", () => {
     expect(cy).toBeGreaterThan(0);
   });
 
+  it("ends at the live bait instrument point (cursor is bait densify)", () => {
+    // Fixed-station densify: free end of the line is the cursor/bait, not a chase.
+    const bait = { x: 300, y: 400 };
+    const d = catenaryPath({ x: 10, y: 20 }, bait);
+    expect(d.startsWith("M 10 20 ")).toBe(true);
+    expect(d.endsWith(" 300 400")).toBe(true);
+  });
+
   it("degenerates to a straight segment when span < 8px", () => {
     expect(catenaryPath({ x: 0, y: 0 }, { x: 4, y: 0 })).toBe("M 0 0 L 4 0");
   });
