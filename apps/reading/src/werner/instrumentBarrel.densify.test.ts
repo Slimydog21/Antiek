@@ -50,8 +50,10 @@ import {
   iceFishingActivity,
   listActivities,
   researchLensActivity,
+  speakingResonanceActivity,
   useMouseFollow,
   useStationInstrumentSuspended,
+  writingNibActivity,
   WERNER_EXPERIENCE_EVENT,
   WERNER_TARGET_ATTR,
 } from "./index";
@@ -213,6 +215,16 @@ describe("werner instrument barrel densify", () => {
     expect(getActivityForPathname("/library")).toBe(researchLensActivity);
     expect(getActivityForPathname("/settings")).toBe(iceFishingActivity);
     expect(getActivity("not-a-real-activity" as never)).toBeUndefined();
+  });
+
+  it("exports write/speak station instruments densify for path policy", () => {
+    // densify: write/speak surfaces resolve registered nib + resonance instruments.
+    expect(getActivity("writing-nib")).toBe(writingNibActivity);
+    expect(getActivity("speaking-resonance")).toBe(speakingResonanceActivity);
+    expect(getActivityForPathname("/write")).toBe(writingNibActivity);
+    expect(getActivityForPathname("/speak")).toBe(speakingResonanceActivity);
+    expect(writingNibActivity.id).toBe("writing-nib");
+    expect(speakingResonanceActivity.id).toBe("speaking-resonance");
   });
 
   it("exports mouse-follow densify for cursor-is-bait lag contract", () => {

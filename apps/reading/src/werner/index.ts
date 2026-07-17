@@ -145,6 +145,8 @@ export {
   getDefaultActivity,
   iceFishingActivity,
   researchLensActivity,
+  writingNibActivity,
+  speakingResonanceActivity,
   activityIdForPathname,
   getActivityForPathname,
   type ActivityId,
