@@ -301,4 +301,4 @@ Pure Flipbook sole UI remains NO-GO — see FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md
 | Imagine invent polish v2d clam catcher cursor | `8246e9ceb` | cabinet/LGH/wait clam invent refresh on FULL GREEN tip |
 | Imagine invent polish v2d CRT igloo cursor TV | `93628492f` | LoadingGameHost default living-TV invent refresh on FULL GREEN tip |
 | Imagine invent polish v2d living-TV session | `52e4830b1` | SessionBrandChrome residual invent refresh on FULL GREEN tip |
-| Imagine invent polish v2d thought partner desk | `TBD` | ThoughtPartnerPanel invent refresh on FULL GREEN tip |
+| Imagine invent polish v2d thought partner desk | `3cbf96b87` | ThoughtPartnerPanel invent refresh on FULL GREEN tip |
