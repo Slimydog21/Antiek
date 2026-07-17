@@ -138,6 +138,40 @@ describe("paperclip zombies pure logic", () => {
     expect(s.zombies.length).toBe(0);
   });
 
+  it("builds BO1 combo on reduced-motion gentle clicks densify", () => {
+    let s = {
+      ...startZombies(
+        createZombiesState({
+          width: 320,
+          height: 200,
+          reducedMotion: true,
+        }),
+      ),
+      spawnRemaining: 0,
+      zombies: [],
+      combo: 0,
+      maxCombo: 0,
+      score: 0,
+    };
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: { x: 1, y: 1 }, start: false, exit: false },
+      () => 0.2,
+    );
+    expect(s.score).toBe(1); // mult 1×
+    expect(s.combo).toBe(1);
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: { x: 2, y: 2 }, start: false, exit: false },
+      () => 0.2,
+    );
+    expect(s.score).toBe(1 + 2); // second gentle click 2×
+    expect(s.combo).toBe(2);
+    expect(s.maxCombo).toBe(2);
+  });
+
   it("does not fort-heal when beginning wave 1 from start", () => {
     const s = startZombies(
       createZombiesState({ width: 320, height: 200, lives: 3 }),

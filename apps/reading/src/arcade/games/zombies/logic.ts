@@ -174,9 +174,15 @@ export function stepZombies(
     next.zombies = remaining;
     // Miss (or hit without kill that was only a chip): combo resets on full miss.
     if (!scored) {
-      next.combo = 0;
-      // Reduced-motion: each click also grants a point if miss (gentle)
-      if (next.reducedMotion) next.score += 1;
+      if (next.reducedMotion) {
+        // Reduced-motion densify: gentle clicks build BO1 combo mult (a11y craft).
+        const mult = zombiesComboMultiplier(next.combo);
+        next.score += mult;
+        next.combo = Math.min(ZOMBIES_MAX_COMBO, next.combo + 1);
+        next.maxCombo = Math.max(next.maxCombo, next.combo);
+      } else {
+        next.combo = 0;
+      }
     } else if (!kill && !next.reducedMotion) {
       // Chip hit without kill does not grow combo, but does not hard-reset —
       // keeps pressure on multi-HP paperclips without punishing aim.
