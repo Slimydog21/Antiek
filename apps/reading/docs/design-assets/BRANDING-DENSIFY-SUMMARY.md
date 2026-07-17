@@ -391,3 +391,10 @@ densify pack: `npm run test:branding-densify` (39/302). Pure Flipbook sole UI re
 | Imagine invent polish v2k hero CRT+zombies+igloo | `d44410601` | invent polish v2k hero suite on axe-green reframe tip |
 | Imagine invent polish v2k ice+clam cursor invents | `fd2f83f62` | invent polish v2k arcade suite ice+clam on axe-green tip |
 | Imagine invent polish v2k living-TV+thought+midnight | `59206081d` | residual invent refresh on axe-green tip |
+| Imagine invent polish v2k residual product wave | `TBD` | remaining 10 product invent doors on axe-green tip |
+
+
+## Invent polish v2k wave complete
+
+All 18 product invent doors refreshed via Imagine invent polish v2k and densified.
+densify pack: `npm run test:branding-densify` (39/303). Pure Flipbook sole UI remains NO-GO.
