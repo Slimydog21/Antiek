@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `612d732c3` — densify pack **47/418**.
+PR #2416 tip (at close of this note): `6606fbbd7` — densify pack **47/420**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1173,3 +1173,9 @@ Instrument barrel densify exports one-shot research launch provenance. densify p
 | ice-cursor + fishing shell component densify | `612d732c3` | IceBait/FishingLayer/CursorShell/Rig/ResearchLens public |
 
 Instrument barrel densify exports ice-cursor + fishing shell components. densify pack **47/418**. Pure Flipbook sole UI remains **NO-GO**.
+
+## fishing gag + steering densify (craft157+)
+
+| fishing gag + steering densify | `6606fbbd7` | shouldFish/fishingStep + isBusy/reducer/WADDLE_MS |
+
+Instrument barrel densify exports fishing gag + steering pure core. densify pack **47/420**. Pure Flipbook sole UI remains **NO-GO**.
