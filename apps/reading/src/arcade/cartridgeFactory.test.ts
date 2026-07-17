@@ -17,13 +17,20 @@ describe("arcade cartridge factory helpers", () => {
     },
   );
 
-  it("progresses clam-catcher score under reducedMotion via shared factory densify", () => {
-    const cart = createArcadeCartridge("clam-catcher", { reducedMotion: true });
-    expect(cart.id).toBe("clam-catcher");
-    const { score } = progressCartridge(cart, 12, { fire: true, seed: 3 });
-    // RM gentle clicks must score through the host factory path (not re-implemented).
-    expect(score).toBeGreaterThan(0);
-  });
+  it.each([
+    ["clam-catcher", "clam-catcher"],
+    ["ice-fishing", "ice-fishing"],
+    ["zombies", "paperclip-zombies"],
+  ] as const)(
+    "progresses %s score under reducedMotion via shared factory densify",
+    (kind, id) => {
+      const cart = createArcadeCartridge(kind, { reducedMotion: true });
+      expect(cart.id).toBe(id);
+      // RM a11y densify: host factory path scores without re-implementing rules.
+      const { score } = progressCartridge(cart, 12, { fire: true, seed: 3 });
+      expect(score).toBeGreaterThan(0);
+    },
+  );
 
   it("tears down the cartridge after a successful simulation", () => {
     const teardown = vi.fn();
