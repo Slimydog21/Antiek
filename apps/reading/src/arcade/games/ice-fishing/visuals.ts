@@ -110,6 +110,18 @@ export function renderIceFishing(
   c2d.font = "12px system-ui, sans-serif";
   c2d.fillText(`Score ${state.score}`, 8, 16);
   c2d.fillText(`Lives ${state.lives}`, 8, 32);
+  // Club Penguin catch-streak densify: show xN only while streak is live.
+  if (state.streak > 0) {
+    c2d.fillStyle = sun.base;
+    c2d.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
+    c2d.fillText(
+      `x${Math.min(3, 1 + state.streak)}`,
+      Math.max(96, ctx.width * 0.42),
+      16,
+    );
+  }
+  c2d.fillStyle = day.text;
+  c2d.font = "12px system-ui, sans-serif";
   if (state.phase === "ready") {
     c2d.fillText("Click / Space to fish", 8, ctx.height - 12);
   } else if (state.phase === "gameover") {

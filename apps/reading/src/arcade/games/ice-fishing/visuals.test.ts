@@ -177,6 +177,32 @@ describe("Ice Fishing authored visuals", () => {
     expect(c2d.restore).toHaveBeenCalledTimes(1);
   });
 
+  it("draws Club Penguin catch-streak HUD only while streak is live", () => {
+    const c2d = context2d();
+    const emptyKit: IceFishingVisualKit = {
+      image: null,
+      ready: false,
+      load() {},
+      dispose() {},
+    };
+    const cold = createIceFishingState({ width: ctx.width, height: ctx.height });
+    renderIceFishing(c2d, ctx, cold, emptyKit);
+    expect(c2d.fillText).toHaveBeenCalledWith("Score 0", 8, 16);
+    expect(
+      vi.mocked(c2d.fillText).mock.calls.some((call) =>
+        String(call[0]).startsWith("x"),
+      ),
+    ).toBe(false);
+
+    renderIceFishing(
+      c2d,
+      ctx,
+      { ...cold, streak: 2, score: 6 },
+      emptyKit,
+    );
+    expect(c2d.fillText).toHaveBeenCalledWith("x3", Math.max(96, ctx.width * 0.42), 16);
+  });
+
   it("keeps the original token fallback before the atlas is ready", () => {
     const c2d = context2d();
     const state: IceFishingState = {

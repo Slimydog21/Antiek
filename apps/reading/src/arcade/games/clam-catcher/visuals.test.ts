@@ -128,4 +128,33 @@ describe("Clam Catcher authored visuals", () => {
     expect(c2d.arc).toHaveBeenCalledTimes(1);
     expect(c2d.fillText).toHaveBeenCalledWith("SCORE 0", 10, 18);
   });
+
+  it("draws Club Penguin catch-streak HUD only while streak is live", () => {
+    const c2d = context2d();
+    const emptyKit = {
+      image: null,
+      ready: false,
+      load() {},
+      dispose() {},
+    };
+    const cold = createClamCatcherState(ctx.width, ctx.height);
+    renderClamCatcher(c2d, ctx, cold, emptyKit);
+    expect(
+      vi.mocked(c2d.fillText).mock.calls.some((call) =>
+        String(call[0]).startsWith("x"),
+      ),
+    ).toBe(false);
+
+    renderClamCatcher(
+      c2d,
+      ctx,
+      { ...cold, streak: 2, score: 5 },
+      emptyKit,
+    );
+    expect(c2d.fillText).toHaveBeenCalledWith(
+      "x3",
+      Math.max(96, ctx.width * 0.42),
+      18,
+    );
+  });
 });

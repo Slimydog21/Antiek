@@ -657,3 +657,11 @@ Club Penguin–style consecutive good clam/pearl catch multiplier (max 3×) on p
 clam-catcher rules; jellyfish catch or missed clam past the floor resets streak.
 HUD shows live `xN`. Arcade core stays free of reaction-bus imports.
 densify pack **39/311**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Ice Fishing streak HUD densify (craft157+)
+
+| Ice Fishing streak HUD densify | (pending tip) | HUD xN parity with clam/zombies |
+
+Ice catch-streak already pure-rules densified; HUD now shows live `xN` while
+streak is hot (sun accent), matching clam + zombies cabinet craft. densify pack
+unchanged (rules already gated). Pure Flipbook sole UI remains **NO-GO**.
