@@ -283,6 +283,52 @@ describe("installLivingTvAmbient", () => {
 
     teardown();
   });
+
+  it("recovers deep_research_error installer densify with soft idle then silence", () => {
+    // Living-TV densify: error beats re-arm quiet, emit recover idle, then silence.
+    vi.useFakeTimers();
+    const emit = vi.fn();
+    const listeners = new Map<string, Set<EventListener>>();
+    const target = {
+      addEventListener: (type: string, fn: EventListener) => {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type)!.add(fn);
+      },
+      removeEventListener: (type: string, fn: EventListener) => {
+        listeners.get(type)?.delete(fn);
+      },
+    };
+    let now = 0;
+    const teardown = installLivingTvAmbient({
+      quietMs: 1_000,
+      pollMs: 200,
+      emit,
+      now: () => now,
+      setInterval: (fn, ms) => window.setInterval(fn, ms) as unknown as number,
+      clearInterval: (id) => window.clearInterval(id),
+      target,
+    });
+
+    for (const fn of listeners.get(WERNER_EXPERIENCE_EVENT) ?? []) {
+      fn(
+        new CustomEvent(WERNER_EXPERIENCE_EVENT, {
+          detail: { experience: "deep_research_error" },
+        }),
+      );
+    }
+    now = 0;
+    now = 1_100;
+    vi.advanceTimersByTime(200);
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenLastCalledWith("idle");
+
+    // Idle does not re-arm — no ambient spam after error recover.
+    now = 3_000;
+    vi.advanceTimersByTime(1_000);
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    teardown();
+  });
 });
 
 describe("livingTvAmbient Flipbook-feel honesty", () => {
