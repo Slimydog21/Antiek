@@ -571,6 +571,7 @@ densify pack: `npm run test:branding-densify` (39/303). Pure Flipbook sole UI re
 | Imagine invent polish v3i full wave (18 invents) | `8e2ebe7f6` | invent polish v3i all 18 product invent doors on axe-green invent polish v3h tip |
 | Imagine invent polish v3j full wave (18 invents) | `1bfb35e32` | invent polish v3j all 18 product invent doors on axe-green invent polish v3i tip |
 | Imagine invent polish v3k full wave (18 invents) | `18c7220a3` | invent polish v3k all 18 product invent doors on invent polish v3j tip |
+| Imagine invent polish v3l full wave (18 invents) | `PENDING` | invent polish v3l all 18 product invent doors on invent polish v3k tip |
 
 
 ## Invent polish v3h wave complete
@@ -595,4 +596,10 @@ Refedit+candidate provenance under `session-20260716/*_v3j.*`. Product webps pro
 All 18 product invent doors refreshed via Imagine invent polish v3k and densified.
 Honesty densify WAVE=`v3k`. densify pack expected **39/303**. Pure Flipbook sole UI remains **NO-GO**.
 Refedit+candidate provenance under `session-20260716/*_v3k.*`. Product webps promoted to `src/brand/werner/poses/session/*_session_v1.webp`.
+
+## Invent polish v3l wave complete
+
+All 18 product invent doors refreshed via Imagine invent polish v3l and densified.
+Honesty densify WAVE=`v3l`. densify pack expected **39/303**. Pure Flipbook sole UI remains **NO-GO**.
+Refedit+candidate provenance under `session-20260716/*_v3l.*`. Product webps promoted to `src/brand/werner/poses/session/*_session_v1.webp`.
 
