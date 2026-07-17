@@ -684,7 +684,7 @@ remains **NO-GO**.
 
 ## Product-door emote densify (craft157+)
 
-| Product-door emote densify | (pending tip) | twin/thought/bench/market invent doors |
+| Product-door emote densify | `a176be12a` | twin/thought/bench/market invent doors |
 
 Living-TV product-door map densifies invent-mapped doors that previously fell
 through to generic `hit`: twin-notes / thought-partner / brainstorm / cascade →
