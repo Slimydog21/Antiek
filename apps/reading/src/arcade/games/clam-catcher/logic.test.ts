@@ -213,6 +213,34 @@ describe("Clam Catcher rules", () => {
     expect(s.maxStreak).toBe(CLAM_MAX_STREAK);
   });
 
+  it("builds catch-streak on reduced-motion gentle start densify", () => {
+    let s = startClamCatcher(
+      createClamCatcherState(320, 200, { reducedMotion: true }),
+    );
+    s = {
+      ...s,
+      spawnTimer: 99,
+      entities: [],
+    };
+    s = stepClamCatcher(
+      s,
+      1 / 60,
+      { targetX: null, horizontal: 0, start: true },
+      () => 0.9,
+    );
+    expect(s.score).toBe(CLAM_CATCHER_TUNING.commonPoints); // mult 1×
+    expect(s.streak).toBe(1);
+    s = stepClamCatcher(
+      s,
+      1 / 60,
+      { targetX: null, horizontal: 0, start: true },
+      () => 0.9,
+    );
+    expect(s.score).toBe(CLAM_CATCHER_TUNING.commonPoints + 2); // second 2×
+    expect(s.streak).toBe(2);
+    expect(s.maxStreak).toBe(2);
+  });
+
   it("spawns pearl clam in the densify roll band after jellyfish chance", () => {
     // jellyfish <0.2, pearl <0.2+0.2=0.4 — pin first roll at 0.30 for pearl.
     const rolls = [0.3, 0.5];

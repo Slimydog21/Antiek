@@ -12,6 +12,7 @@ import {
 } from "./visuals";
 
 export function createClamCatcherCartridge(options?: {
+  reducedMotion?: boolean;
   visualKit?: ClamCatcherVisualKit;
   /**
    * Living-TV beat sink. Default no-op — product hosts inject the reaction
@@ -23,6 +24,7 @@ export function createClamCatcherCartridge(options?: {
 }): Cartridge {
   let state: ClamCatcherState | null = null;
   let terminalReported = false;
+  const reduced = Boolean(options?.reducedMotion);
   const visualKit = options?.visualKit ?? createClamCatcherVisualKit();
   const onWernerBeat = options?.onWernerBeat ?? (() => {});
 
@@ -35,7 +37,9 @@ export function createClamCatcherCartridge(options?: {
     },
     init(ctx: GameContext) {
       visualKit.load();
-      state = createClamCatcherState(ctx.width, ctx.height);
+      state = createClamCatcherState(ctx.width, ctx.height, {
+        reducedMotion: reduced,
+      });
       terminalReported = false;
     },
     update(dtSec, input: InputState, ctx: GameContext) {

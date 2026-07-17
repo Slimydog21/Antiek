@@ -4,8 +4,9 @@
  * Catch-streak densify (craft157+): consecutive good clam/pearl catches build a Club
  * Penguin–style multiplier (max 3×). Pearl catches jump the streak by two steps
  * (still capped) so the rare clam feels like a CP table reward. Jellyfish catch
- * or missed clam (falls past the floor) resets streak. Pure rules only — hosts
- * inject living-TV beats.
+ * or missed clam (falls past the floor) resets streak. Reduced-motion densify:
+ * gentle start/fire clicks build the same streak mult (a11y craft parity with
+ * ice fishing). Pure rules only — hosts inject living-TV beats.
  */
 
 export const CLAM_CATCHER_TUNING = Object.freeze({
@@ -59,6 +60,8 @@ export interface ClamCatcherState {
   streak: number;
   /** Peak streak this run (cabinet densify / brag). */
   maxStreak: number;
+  /** When true, gentle start/fire builds streak without full fall sim pressure. */
+  reducedMotion: boolean;
 }
 
 export interface CatcherInput {
@@ -76,6 +79,7 @@ export function clamCatchStreakMultiplier(streak: number): number {
 export function createClamCatcherState(
   width: number,
   height: number,
+  opts?: { reducedMotion?: boolean },
 ): ClamCatcherState {
   const safeWidth = Math.max(120, width);
   const safeHeight = Math.max(120, height);
@@ -92,6 +96,7 @@ export function createClamCatcherState(
     height: safeHeight,
     streak: 0,
     maxStreak: 0,
+    reducedMotion: Boolean(opts?.reducedMotion),
   };
 }
 
@@ -193,6 +198,15 @@ export function stepClamCatcher(
       // Missed clam/pearl past the floor resets streak; dodged jelly does not.
       streak = 0;
     }
+  }
+
+  // Reduced-motion densify: gentle start/fire builds Club Penguin streak mult
+  // when the frame did not already score from a physical catch.
+  if (state.reducedMotion && input.start && score === state.score) {
+    const mult = clamCatchStreakMultiplier(streak);
+    score += CLAM_CATCHER_TUNING.commonPoints * mult;
+    streak = Math.min(CLAM_MAX_STREAK, streak + 1);
+    maxStreak = Math.max(maxStreak, streak);
   }
 
   return {

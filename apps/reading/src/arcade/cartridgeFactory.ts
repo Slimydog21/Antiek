@@ -28,7 +28,10 @@ export function createArcadeCartridge(
 ): Cartridge {
   const onWernerBeat = options?.onWernerBeat;
   if (game === "clam-catcher") {
-    return createClamCatcherCartridge({ onWernerBeat });
+    return createClamCatcherCartridge({
+      reducedMotion: Boolean(options?.reducedMotion),
+      onWernerBeat,
+    });
   }
   if (game === "ice-fishing") {
     return createIceFishingCartridge({
