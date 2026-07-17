@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `7826fe271` — densify pack **45/383**.
+PR #2416 tip (at close of this note): `8f9ba4c59` — densify pack **45/384**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -975,3 +975,9 @@ Honesty densify pins station instrument suspension in Flipbook densify gate. den
 | Living-TV fail recover + home-arcade door densify | `7826fe271` | error→idle; home-arcade curious |
 
 Living-TV densify: fail/error recover idle; home-arcade product door densify. densify pack **45/383**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Error ambient installer + book-marketplace door densify (craft157+)
+
+| Error ambient installer + book-marketplace door densify | `8f9ba4c59` | error installer idle; book-marketplace curious |
+
+Living-TV densify: error installer recover idle then silence; book-marketplace door densify. densify pack **45/384**. Pure Flipbook sole UI remains **NO-GO**.
