@@ -177,7 +177,11 @@ export function installChoreography(
  */
 export const WERNER_TARGET_ATTR = "data-werner-target";
 
-function emoteFromAttr(raw: string | null): EmoteKind {
+/**
+ * densify: pure mapping of `data-werner-target` attribute value → emote kind.
+ * Named valid emotes win; bare presence / unknown / null fall back to "hit".
+ */
+export function emoteFromWernerTargetAttr(raw: string | null): EmoteKind {
   return raw && (EMOTE_KINDS as readonly string[]).includes(raw)
     ? (raw as EmoteKind)
     : "hit";
@@ -214,7 +218,10 @@ export function installTargetChoreography(
     if (!(start instanceof Element)) return;
     const el = start.closest(`[${WERNER_TARGET_ATTR}]`);
     if (!el) return;
-    stage.waddleToEl(el, emoteFromAttr(el.getAttribute(WERNER_TARGET_ATTR)));
+    stage.waddleToEl(
+      el,
+      emoteFromWernerTargetAttr(el.getAttribute(WERNER_TARGET_ATTR)),
+    );
   };
 
   doc.addEventListener("click", onClick as EventListener, true);

@@ -92,6 +92,7 @@ export {
   installTargetChoreography,
   productSelector,
   emoteForProductDoor,
+  emoteFromWernerTargetAttr,
   WERNER_TARGET_ATTR,
   type ChoreographyOptions,
   type TargetChoreographyOptions,
