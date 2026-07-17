@@ -32,6 +32,7 @@ import {
   productSelector,
   rodBend,
   rodBendFromPoints,
+  rodTipFromMascotRect,
   SAMPLE_INTERVAL_MS,
   stationInstrumentLeaseCount,
   tipToBaitDistance,
@@ -181,5 +182,25 @@ describe("werner instrument barrel densify", () => {
     expect(rodBend(60)).toBeCloseTo(3, 5); // half bend at half-bend distance
     expect(rodBend(100)).toBeGreaterThan(rodBend(50));
     expect(rodBend(1e9)).toBeLessThanOrEqual(6);
+  });
+
+  it("exports rodTipFromMascotRect densify for line attach at rod tip", () => {
+    // densify: fishing line leaves the real rod tip in screen space (64 viewBox).
+    const rect = {
+      left: 100,
+      top: 200,
+      width: 64,
+      height: 64,
+      right: 164,
+      bottom: 264,
+      x: 100,
+      y: 200,
+      toJSON: () => ({}),
+    } as DOMRect;
+    const tip = rodTipFromMascotRect(rect, 64);
+    // Default local tip is ROD_TIP_LOCAL {x:66,y:5} at scale 1.
+    expect(tip).toEqual({ x: 166, y: 205 });
+    const tipScaled = rodTipFromMascotRect(rect, 128);
+    expect(tipScaled).toEqual({ x: 100 + 66 * 2, y: 200 + 5 * 2 });
   });
 });
