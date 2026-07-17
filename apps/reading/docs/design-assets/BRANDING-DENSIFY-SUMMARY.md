@@ -665,3 +665,11 @@ densify pack **39/311**. Pure Flipbook sole UI remains **NO-GO**.
 Ice catch-streak already pure-rules densified; HUD now shows live `xN` while
 streak is hot (sun accent), matching clam + zombies cabinet craft. densify pack
 unchanged (rules already gated). Pure Flipbook sole UI remains **NO-GO**.
+
+| Imagine invent polish v3p full wave (18 invents) | (pending tip) | invent polish v3p all 18 product invent doors |
+
+## Invent polish v3p wave complete
+
+All 18 product invent doors refreshed via Imagine invent polish v3p and densified.
+Honesty densify WAVE=`v3p`. densify pack expected **39/311**. Pure Flipbook sole UI remains **NO-GO**.
+Refedit+candidate provenance under `session-20260716/*_v3p.*`. Product webps promoted to `src/brand/werner/poses/session/*_session_v1.webp`.
