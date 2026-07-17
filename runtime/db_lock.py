@@ -175,6 +175,8 @@ class LockedConnection:
         purpose: str = "",
         acquired_at: float = 0.0,
         close_log_max_wait_s: float = 5.0,
+        suppress_write_log: bool = False,
+        authority_read_only: bool = False,
     ):
         self._con = con
         self._lock_fd = lock_fd
@@ -185,6 +187,8 @@ class LockedConnection:
         self._acquired_at = acquired_at or time.monotonic()
         self._error: str | None = None
         self._close_log_max_wait_s = close_log_max_wait_s
+        self._suppress_write_log = suppress_write_log
+        self._authority_read_only = authority_read_only
 
     def __getattr__(self, name):
         return getattr(self._con, name)
@@ -216,7 +220,7 @@ class LockedConnection:
                     pass
         # Log AFTER the lock is released, on a fresh connection (briefly
         # re-locked). The main pipeline never blocks on this.
-        if self._db_path:
+        if self._db_path and not self._suppress_write_log:
             duration = max(0.0, time.monotonic() - self._acquired_at)
             _log_write_event(
                 self._db_path,
@@ -233,7 +237,35 @@ _COORDINATOR_CONNECTIONS: weakref.WeakSet[LockedConnection] = weakref.WeakSet()
 
 def is_active_write_connection(con: object) -> bool:
     """Return whether connect_write issued this connection and still owns its flock."""
-    if type(con) is not LockedConnection or con not in _COORDINATOR_CONNECTIONS or con._closed:
+    if (
+        type(con) is not LockedConnection
+        or con not in _COORDINATOR_CONNECTIONS
+        or con._closed
+        or con._authority_read_only
+    ):
+        return False
+    probe_fd: int | None = None
+    try:
+        probe_fd = os.open(con._lock_path, os.O_WRONLY)
+        fcntl.flock(probe_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        return exc.errno in (errno.EWOULDBLOCK, errno.EAGAIN)
+    else:
+        fcntl.flock(probe_fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        if probe_fd is not None:
+            os.close(probe_fd)
+
+
+def is_active_authority_read_connection(con: object) -> bool:
+    """Return whether a live coordinator connection is verification-only."""
+    if (
+        type(con) is not LockedConnection
+        or con not in _COORDINATOR_CONNECTIONS
+        or con._closed
+        or not con._authority_read_only
+    ):
         return False
     probe_fd: int | None = None
     try:
@@ -357,6 +389,85 @@ def connect_read(db_path: str) -> duckdb.DuckDBPyConnection:
     Read-only connections can run concurrently with an active writer.
     """
     return duckdb.connect(db_path, read_only=True)
+
+
+def connect_authority_read(
+    db_path: str,
+    *,
+    expected_db_identity: tuple[int, int],
+    expected_lock_identity: tuple[int, int],
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+    poll_interval_s: float = 0.25,
+) -> LockedConnection:
+    """Hold the canonical coordinator lock while opening DuckDB read-only.
+
+    Current-authority readers require an active coordinator connection to make
+    their multi-store checks atomic. This variant neither stamps the lock file
+    nor emits a write-log event, so an HTTP GET cannot mutate the graph store.
+    The sidecar must already exist; reads never create deployment state.
+    """
+    canonical = os.path.realpath(os.path.abspath(db_path))
+    lock_path = _lock_path_for(canonical)
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(lock_path, os.O_WRONLY | nofollow)
+    graph_fd: int | None = None
+    con: duckdb.DuckDBPyConnection | None = None
+    deadline = time.monotonic() + timeout_s
+    try:
+        lock_stat = os.fstat(fd)
+        if (lock_stat.st_dev, lock_stat.st_ino) != expected_lock_identity:
+            raise RuntimeError("authority read lock identity changed")
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as exc:
+                if exc.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
+                    raise
+                if time.monotonic() >= deadline:
+                    raise WriteLockTimeout(
+                        f"Could not acquire authority read lock on {lock_path} within {timeout_s}s."
+                    ) from exc
+                time.sleep(min(poll_interval_s, max(0.0, deadline - time.monotonic())))
+        current_lock = os.stat(lock_path, follow_symlinks=False)
+        if (current_lock.st_dev, current_lock.st_ino) != expected_lock_identity:
+            raise RuntimeError("authority read lock path changed")
+        graph_fd = os.open(canonical, os.O_RDONLY | nofollow)
+        graph_stat = os.fstat(graph_fd)
+        if (graph_stat.st_dev, graph_stat.st_ino) != expected_db_identity:
+            raise RuntimeError("authority graph identity changed")
+        con = duckdb.connect(canonical, read_only=True)
+        current_graph = os.stat(canonical, follow_symlinks=False)
+        current_lock = os.stat(lock_path, follow_symlinks=False)
+        if (current_graph.st_dev, current_graph.st_ino) != expected_db_identity or (
+            current_lock.st_dev,
+            current_lock.st_ino,
+        ) != expected_lock_identity:
+            raise RuntimeError("authority read paths changed while opening")
+    except Exception:
+        if con is not None:
+            con.close()
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+        raise
+    finally:
+        if graph_fd is not None:
+            os.close(graph_fd)
+    if con is None:  # Defensive narrowing; every successful path opened it.
+        raise RuntimeError("authority read connection unavailable")
+    locked = LockedConnection(
+        con,
+        fd,
+        lock_path,
+        db_path=canonical,
+        purpose="authority_read",
+        suppress_write_log=True,
+        authority_read_only=True,
+    )
+    _COORDINATOR_CONNECTIONS.add(locked)
+    return locked
 
 
 def connect_write_retrying(
