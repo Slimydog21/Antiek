@@ -27,9 +27,14 @@ describe("emoteForProductDoor", () => {
     expect(emoteForProductDoor("arcade-cabinet")).toBe("curious");
     expect(emoteForProductDoor("loading-game-host")).toBe("curious");
     expect(emoteForProductDoor("ice-fishing")).toBe("curious");
+    expect(emoteForProductDoor("ice_fishing")).toBe("curious");
     expect(emoteForProductDoor("clam-catcher")).toBe("curious");
+    expect(emoteForProductDoor("clam_catcher")).toBe("curious");
     expect(emoteForProductDoor("zombies")).toBe("curious");
     expect(emoteForProductDoor("paperclip-zombies")).toBe("curious");
+    expect(emoteForProductDoor("paperclip_zombies")).toBe("curious");
+    expect(emoteForProductDoor("wait_arcade")).toBe("curious");
+    expect(emoteForProductDoor("loading_game_host")).toBe("curious");
   });
   it("maps write, home, create to happy", () => {
     expect(emoteForProductDoor("write")).toBe("happy");

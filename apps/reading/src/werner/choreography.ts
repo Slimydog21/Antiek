@@ -95,16 +95,21 @@ export function emoteForProductDoor(productId: string): EmoteKind {
     case "model_decision":
     // Wait/cabinet densify: deep-research wait arcade is a curious glance door.
     case "wait-arcade":
+    case "wait_arcade":
     case "research-wait":
     case "research_wait":
     case "cabinet":
     case "arcade-cabinet":
     case "loading-game-host":
+    case "loading_game_host":
     // Per-game cabinet densify: each minigame card is a curious living-TV door.
     case "ice-fishing":
+    case "ice_fishing":
     case "clam-catcher":
+    case "clam_catcher":
     case "zombies":
     case "paperclip-zombies":
+    case "paperclip_zombies":
       return "curious";
     case "write":
     case "home":
