@@ -797,3 +797,10 @@ densify pack expected **39/318**. Pure Flipbook sole UI remains **NO-GO**.
 Cartridge picker labels stamp per-game `data-product-id` + `data-werner-target=
 curious` so choosing ice/clam/zombies is living-TV geometry (opt-in waddle).
 densify pack expected **39/319**. Pure Flipbook sole UI remains **NO-GO**.
+
+## Ice golden spawn densify assert (craft157+)
+
+| Ice golden spawn densify assert | `926ffafd8` | RNG band 0.15–0.23 → golden |
+
+Unit densify pins the rare golden spawn roll band so pearl-parity craft cannot
+silently drift. densify pack expected **39/320**. Pure Flipbook sole UI remains **NO-GO**.
