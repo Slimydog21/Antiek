@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `27440743f` — densify pack **47/429**.
+PR #2416 tip (at close of this note): `0720a61c4` — densify pack **47/432**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1209,3 +1209,9 @@ Ambient installer densify + wait-arcade offer clock densify. densify pack **47/4
 | fishingStep full beat + frozen waddleToEl densify | `27440743f` | full beat order + frozen still-emote densify |
 
 FishingStep full never-caught beat densify + frozen waddleToEl densify. densify pack **47/429**. Pure Flipbook sole UI remains **NO-GO**.
+
+## nested lease + productSelector + moveTo densify (craft157+)
+
+| nested lease + productSelector + moveTo densify | `0720a61c4` | lease stacking + selector escape + moveTo walk densify |
+
+Nested instrument lease densify + productSelector keyboard densify + moveTo densify. densify pack **47/432**. Pure Flipbook sole UI remains **NO-GO**.
