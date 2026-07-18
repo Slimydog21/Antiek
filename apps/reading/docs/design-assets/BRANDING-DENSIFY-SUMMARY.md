@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `f98bbf7e5` — densify pack **47/448**.
+PR #2416 tip (at close of this note): `bd6405ebf` — densify pack **47/449**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1269,3 +1269,9 @@ CreateWernerStage moveThenEmote chain densify. densify pack **47/447**. Pure Fli
 | off-screen waddle densify | `f98bbf7e5` | off-viewport waddleToEl no-op densify |
 
 CreateWernerStage off-screen waddle densify. densify pack **47/448**. Pure Flipbook sole UI remains **NO-GO**.
+
+## missing resolveTarget choreography densify (craft163+)
+
+| missing resolveTarget densify | `bd6405ebf` | null door still maps product emote densify |
+
+InstallChoreography missing-target densify. densify pack **47/449**. Pure Flipbook sole UI remains **NO-GO**.
