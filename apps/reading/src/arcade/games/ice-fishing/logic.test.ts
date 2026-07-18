@@ -224,6 +224,36 @@ describe("ice fishing pure logic", () => {
     ).toBe("fail");
   });
 
+  it("iceFishingWernerBeat densify stays silent on non-edge frames", () => {
+    // densify: Club Penguin ice-fishing living-TV only beats on start/catch/fail.
+    expect(
+      iceFishingWernerBeat(
+        { phase: "playing", score: 3, lives: 2 },
+        { phase: "playing", score: 3, lives: 2 },
+      ),
+    ).toBeNull();
+    expect(
+      iceFishingWernerBeat(
+        { phase: "ready", score: 0, lives: 3 },
+        { phase: "ready", score: 0, lives: 3 },
+      ),
+    ).toBeNull();
+    // Life loss without gameover is silent densify (hosts do not spam dizzy).
+    expect(
+      iceFishingWernerBeat(
+        { phase: "playing", score: 3, lives: 2 },
+        { phase: "playing", score: 3, lives: 1 },
+      ),
+    ).toBeNull();
+    // Score drop is not a catch beat densify.
+    expect(
+      iceFishingWernerBeat(
+        { phase: "playing", score: 5, lives: 2 },
+        { phase: "playing", score: 3, lives: 2 },
+      ),
+    ).toBeNull();
+  });
+
   it("preserves configured lives across game-over restart", () => {
     const gameOver = {
       ...startRound(
