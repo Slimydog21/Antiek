@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `fe41bcc1d` — densify pack **47/436**.
+PR #2416 tip (at close of this note): `7699489c2` — densify pack **47/439**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1227,3 +1227,9 @@ InstallChoreography densify + installTargetChoreography densify residual. densif
 | reactionBus emit + stage follow densify | `fe41bcc1d` | experience→emote bus densify + follow ambient densify |
 
 InstallReactionBus emit densify + createWernerStage follow densify. densify pack **47/436**. Pure Flipbook sole UI remains **NO-GO**.
+
+## bait chrome hide + mid-beat + live waddle densify (craft157+)
+
+| bait chrome hide + mid-beat + live waddle densify | `7699489c2` | hide chrome densify + mid-beat phase + live waddle center densify |
+
+Bait chrome hide densify + fishingStep mid-beat densify + live waddleToEl densify. densify pack **47/439**. Pure Flipbook sole UI remains **NO-GO**.
