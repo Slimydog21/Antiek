@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `b797844bd` — densify pack **47/434**.
+PR #2416 tip (at close of this note): `fe41bcc1d` — densify pack **47/436**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1221,3 +1221,9 @@ Nested instrument lease densify + productSelector keyboard densify + moveTo dens
 | choreography install densify residual | `b797844bd` | product-activate door emotes + data-werner-target clicks |
 
 InstallChoreography densify + installTargetChoreography densify residual. densify pack **47/434**. Pure Flipbook sole UI remains **NO-GO**.
+
+## reactionBus emit + stage follow densify (craft157+)
+
+| reactionBus emit + stage follow densify | `fe41bcc1d` | experience→emote bus densify + follow ambient densify |
+
+InstallReactionBus emit densify + createWernerStage follow densify. densify pack **47/436**. Pure Flipbook sole UI remains **NO-GO**.
