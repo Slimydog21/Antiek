@@ -121,6 +121,31 @@ describe("paperclip zombies pure logic", () => {
     expect(s.zombies).toEqual([]);
   });
 
+  it("zombiesCanExit densify allows exit only while playing or gameover", () => {
+    // densify: endless-loop contract — ready/exited cannot leave via exit affordance.
+    const ready = createZombiesState({ width: 320, height: 200 });
+    expect(ready.phase).toBe("ready");
+    expect(zombiesCanExit(ready)).toBe(false);
+    const playing = startZombies(ready);
+    expect(playing.phase).toBe("playing");
+    expect(zombiesCanExit(playing)).toBe(true);
+    const gameover = {
+      ...playing,
+      phase: "gameover" as const,
+      lives: 0,
+      zombies: [],
+    };
+    expect(zombiesCanExit(gameover)).toBe(true);
+    const exited = stepZombies(
+      playing,
+      1 / 60,
+      { fireAt: null, start: false, exit: true },
+      () => 0.1,
+    );
+    expect(exited.phase).toBe("exited");
+    expect(zombiesCanExit(exited)).toBe(false);
+  });
+
   it("firing a zombie scores points", () => {
     let s = startZombies(createZombiesState({ width: 320, height: 200 }));
     s = {
