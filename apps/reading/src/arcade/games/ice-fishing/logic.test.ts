@@ -14,6 +14,22 @@ import {
 } from "./logic";
 
 describe("ice fishing pure logic", () => {
+  it("createSeededRng densify is deterministic and seed-sensitive", () => {
+    // densify: arcade pure helpers share Mulberry32 — same seed → same stream.
+    const a = createSeededRng(7);
+    const b = createSeededRng(7);
+    const c = createSeededRng(8);
+    const seqA = [a(), a(), a()];
+    const seqB = [b(), b(), b()];
+    const seqC = [c(), c(), c()];
+    expect(seqA).toEqual(seqB);
+    expect(seqA).not.toEqual(seqC);
+    for (const n of seqA) {
+      expect(n).toBeGreaterThanOrEqual(0);
+      expect(n).toBeLessThan(1);
+    }
+  });
+
   it("starts a round from ready on drop/start", () => {
     const s0 = createIceFishingState({ width: 200, height: 160 });
     expect(s0.phase).toBe("ready");
