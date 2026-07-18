@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `0e93a5d30` — densify pack **47/427**.
+PR #2416 tip (at close of this note): `27440743f` — densify pack **47/429**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1203,3 +1203,9 @@ Residual invent door emote densify + wait-arcade opt-in densify. densify pack **
 | ambient installer + wait offer clock densify | `0e93a5d30` | installLivingTvAmbient inject densify + 8s offer clock |
 
 Ambient installer densify + wait-arcade offer clock densify. densify pack **47/427**. Pure Flipbook sole UI remains **NO-GO**.
+
+## fishingStep full beat + frozen waddleToEl densify (craft157+)
+
+| fishingStep full beat + frozen waddleToEl densify | `27440743f` | full beat order + frozen still-emote densify |
+
+FishingStep full never-caught beat densify + frozen waddleToEl densify. densify pack **47/429**. Pure Flipbook sole UI remains **NO-GO**.
