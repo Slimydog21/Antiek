@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `021972910` — densify pack **47/451**.
+PR #2416 tip (at close of this note): `cc8d7b2bd` — densify pack **47/452**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1287,3 +1287,9 @@ Arcade pure PRNG densify for ice/clam/zombies shared determinism. densify pack *
 | iceFishingOverlapsHook densify | `021972910` | hook AABB hit/miss densify |
 
 Ice-fishing pure catch decision densify. densify pack **47/451**. Pure Flipbook sole UI remains **NO-GO**.
+
+## zombiesCanExit densify (craft166+)
+
+| zombiesCanExit densify | `cc8d7b2bd` | playing/gameover exit densify; ready/exited deny densify |
+
+Paperclip Zombies endless-loop exit contract densify. densify pack **47/452**. Pure Flipbook sole UI remains **NO-GO**.
