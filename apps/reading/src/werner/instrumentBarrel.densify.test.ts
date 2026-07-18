@@ -331,6 +331,63 @@ describe("werner instrument barrel densify", () => {
     expect(WADDLE_MS).toBe(1800);
   });
 
+  it("exports reducer densify for follow/waddle/emote latest-wins + resume ambient", () => {
+    // densify: follow only moves ambient floor; directed actions keep resume ambient.
+    const following = wernerReducer(INITIAL_WERNER_STATE, {
+      type: "follow",
+      on: true,
+    });
+    expect(following).toEqual({ name: "following", resume: "following" });
+    const idleAgain = wernerReducer(following, { type: "follow", on: false });
+    expect(idleAgain).toEqual({ name: "idle", resume: "idle" });
+    const waddling = wernerReducer(following, { type: "waddle" });
+    expect(waddling).toEqual({ name: "waddling", resume: "following" });
+    // Mid-waddle follow does not interrupt; only updates resume.
+    expect(
+      wernerReducer(waddling, { type: "follow", on: false }),
+    ).toEqual({ name: "waddling", resume: "idle" });
+    expect(wernerReducer(waddling, { type: "arrived" })).toEqual({
+      name: "following",
+      resume: "following",
+    });
+    // Stale arrival while not waddling is ignored.
+    expect(wernerReducer(following, { type: "arrived" })).toEqual(following);
+    const emoting = wernerReducer(following, { type: "emote" });
+    expect(emoting).toEqual({ name: "emoting", resume: "following" });
+    expect(wernerReducer(emoting, { type: "emoteDone" })).toEqual({
+      name: "following",
+      resume: "following",
+    });
+    expect(wernerReducer(emoting, { type: "idle" })).toEqual({
+      name: "idle",
+      resume: "idle",
+    });
+  });
+
+  it("exports ambientExperienceAfterQuiet densify for living-TV episode continuity", () => {
+    // densify: product beat → pride savor (when earned) → curtain idle → silence.
+    const q = DEFAULT_AMBIENT_QUIET_MS;
+    expect(ambientExperienceAfterQuiet(q - 1, q, null)).toBeNull();
+    expect(ambientExperienceAfterQuiet(-1, q, null)).toBeNull();
+    expect(ambientExperienceAfterQuiet(q, q, null)).toBe("idle");
+    expect(ambientExperienceAfterQuiet(q, q, "deep_research_start")).toBe(
+      "idle",
+    );
+    expect(ambientExperienceAfterQuiet(q, q, "deep_research_complete")).toBe(
+      "note_saved",
+    );
+    expect(ambientExperienceAfterQuiet(q, q, "piece_started")).toBe(
+      "note_saved",
+    );
+    expect(ambientExperienceAfterQuiet(q, q, "note_saved")).toBe("idle");
+    expect(ambientExperienceAfterQuiet(q, q, "fail")).toBe("idle");
+    expect(ambientExperienceAfterQuiet(q, q, "deep_research_error")).toBe(
+      "idle",
+    );
+    expect(ambientExperienceAfterQuiet(q, q, "highlight")).toBe("idle");
+    expect(ambientExperienceAfterQuiet(q, q, "idle")).toBeNull();
+  });
+
   it("exports createWernerStage densify + ice/arcade feature flags", () => {
     // densify: stage factory is pure over host + timers; flags default on unless VITE_*=0.
     expect(typeof createWernerStage).toBe("function");
