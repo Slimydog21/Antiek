@@ -90,6 +90,19 @@ describe("werner instrument barrel densify", () => {
     ).toEqual({ display: "block", left: "5px", top: "9px" });
   });
 
+  it("exports baitChromeFromFollow densify for hidden tab + missing live pointer", () => {
+    // densify: cursor is bait only while the pointer is live and the tab is visible.
+    expect(baitChromeFromFollow({ live: null, tabHidden: false })).toEqual({
+      display: "none",
+    });
+    expect(
+      baitChromeFromFollow({ live: { x: 1, y: 2 }, tabHidden: true }),
+    ).toEqual({ display: "none" });
+    expect(baitChromeFromFollow({ live: null, tabHidden: true })).toEqual({
+      display: "none",
+    });
+  });
+
   it("exports tip→bait geometry shared with the fishing line densify", () => {
     const rod = { x: 0, y: 0 };
     const bait = { x: 30, y: 40 };
@@ -476,6 +489,16 @@ describe("werner instrument barrel densify", () => {
     expect(fishingStep(-10).beat).toBe("cast");
   });
 
+  it("exports fishingStep densify for mid-beat phase interpolation", () => {
+    // densify: mid-hold phase is 0.5; last ms of cycle is reset; +1 loops to cast.
+    const cast = FISHING_BEATS[0];
+    expect(fishingStep(0).beatPhase).toBe(0);
+    expect(fishingStep(cast.holdMs / 2).beatPhase).toBeCloseTo(0.5, 5);
+    expect(fishingStep(cast.holdMs / 2).beat).toBe("cast");
+    expect(fishingStep(FISHING_CYCLE_MS - 1).beat).toBe("reset");
+    expect(fishingStep(FISHING_CYCLE_MS + 1).beat).toBe("cast");
+  });
+
   it("exports steering densify (isBusy + reducer + waddle period)", () => {
     // densify: directed actions are busy; freeze is a hard floor; waddle period public.
     expect(isBusy(INITIAL_WERNER_STATE)).toBe(false);
@@ -673,6 +696,48 @@ describe("werner instrument barrel densify", () => {
     const before = walks.length;
     stage.waddleToEl(zero, "hit");
     expect(walks.length).toBe(before);
+    stage.dispose();
+  });
+
+  it("exports createWernerStage densify for live waddleToEl center walk", () => {
+    // densify: on-screen targets waddle to element center at WADDLE_MS.
+    let walks: Array<{ x: number; y: number; ms: number }> = [];
+    let roamPaused: boolean[] = [];
+    const host = {
+      walkTo: (x: number, y: number, durationMs: number) => {
+        walks.push({ x, y, ms: durationMs });
+      },
+      getPos: () => ({ x: 10, y: 10 }),
+      setEmote: () => {},
+      setFollowing: () => {},
+      setRoamPaused: (p: boolean) => {
+        roamPaused.push(p);
+      },
+    };
+    const stage = createWernerStage(host, {
+      setTimeout: (fn, _ms) => {
+        void fn;
+        return 9;
+      },
+      clearTimeout: () => {},
+    });
+    const el = {
+      getBoundingClientRect: () => ({
+        left: 100,
+        top: 200,
+        width: 40,
+        height: 20,
+        right: 140,
+        bottom: 220,
+        x: 100,
+        y: 200,
+        toJSON: () => ({}),
+      }),
+    } as Element;
+    stage.waddleToEl(el, "hit");
+    expect(walks).toEqual([{ x: 120, y: 210, ms: WADDLE_MS }]);
+    expect(roamPaused).toContain(true);
+    expect(stage.getState().name).toBe("waddling");
     stage.dispose();
   });
 
