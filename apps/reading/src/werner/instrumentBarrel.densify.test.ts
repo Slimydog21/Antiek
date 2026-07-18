@@ -896,6 +896,43 @@ describe("werner instrument barrel densify", () => {
     stage.dispose();
   });
 
+  it("exports createWernerStage densify for frozen emote still-pose acknowledgment", () => {
+    // densify: reduced-motion emote flashes still pose without leaving frozen.
+    const emotes: Array<string | null> = [];
+    let pending: (() => void) | null = null;
+    const stage = createWernerStage(
+      {
+        walkTo: () => {},
+        getPos: () => ({ x: 0, y: 0 }),
+        setEmote: (k) => {
+          emotes.push(k);
+        },
+        setFollowing: () => {},
+        setRoamPaused: () => {},
+      },
+      {
+        setTimeout: (fn, _ms) => {
+          pending = fn as () => void;
+          return 5;
+        },
+        clearTimeout: () => {
+          pending = null;
+        },
+      },
+    );
+    stage.freeze();
+    // freeze densify clears any prior emote (null).
+    expect(emotes.at(-1)).toBeNull();
+    stage.emote("happy");
+    expect(stage.getState().name).toBe("frozen");
+    expect(emotes.at(-1)).toBe("happy");
+    expect(pending).not.toBeNull();
+    pending?.();
+    expect(emotes.at(-1)).toBeNull();
+    expect(stage.getState().name).toBe("frozen");
+    stage.dispose();
+  });
+
   it("exports createWernerStage densify for follow ambient + frozen follow no-op", () => {
     // densify: follow toggles ambient floor; frozen swallows follow (hard floor).
     const following: boolean[] = [];
@@ -1007,6 +1044,26 @@ describe("werner instrument barrel densify", () => {
     teardown();
     target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(waddleToEl).toHaveBeenCalledTimes(2);
+    root.remove();
+  });
+
+  it("exports installTargetChoreography densify for nested click closest target", () => {
+    // densify: click on a child resolves closest data-werner-target ancestor.
+    const waddleToEl = vi.fn();
+    const stage = { waddleToEl, emote: vi.fn() } as never;
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const door = document.createElement("button");
+    door.setAttribute(WERNER_TARGET_ATTR, "thinking");
+    const label = document.createElement("span");
+    label.textContent = "Research";
+    door.appendChild(label);
+    root.appendChild(door);
+    const teardown = installTargetChoreography(stage, { target: document });
+    label.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(waddleToEl).toHaveBeenCalledTimes(1);
+    expect(waddleToEl.mock.calls[0]).toEqual([door, "thinking"]);
+    teardown();
     root.remove();
   });
 
