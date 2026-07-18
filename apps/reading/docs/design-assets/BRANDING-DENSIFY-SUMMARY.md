@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `1562b5863` — densify pack **47/450**.
+PR #2416 tip (at close of this note): `021972910` — densify pack **47/451**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1281,3 +1281,9 @@ InstallChoreography missing-target densify. densify pack **47/449**. Pure Flipbo
 | createSeededRng densify | `1562b5863` | Mulberry32 same-seed densify + seed-sensitive densify |
 
 Arcade pure PRNG densify for ice/clam/zombies shared determinism. densify pack **47/450**. Pure Flipbook sole UI remains **NO-GO**.
+
+## iceFishingOverlapsHook densify (craft165+)
+
+| iceFishingOverlapsHook densify | `021972910` | hook AABB hit/miss densify |
+
+Ice-fishing pure catch decision densify. densify pack **47/451**. Pure Flipbook sole UI remains **NO-GO**.
