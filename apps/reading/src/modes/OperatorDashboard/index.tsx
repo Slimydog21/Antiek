@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { apiFetch } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 interface PublisherSummary {
   ip_holder_id: string;
@@ -119,8 +122,11 @@ export default function OperatorDashboard() {
       if (!resp.ok) {
         throw new Error(`POST notify failed: HTTP ${resp.status}`);
       }
+      // Living-TV: mark-notified is a noted beat (operator bookkeeping).
+      emitWernerExperience("note_saved");
       await reload();
     } catch (e: unknown) {
+      emitWernerExperience("fail");
       setError(e instanceof Error ? e.message : String(e));
     }
   };
@@ -137,9 +143,27 @@ export default function OperatorDashboard() {
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Operator dashboard
-            </h1>
+            <div className="flex items-center gap-3">
+              <img
+                src={thinkingArt}
+                alt=""
+                aria-hidden="true"
+                data-testid="operator-dashboard-werner-brand"
+                className="h-12 w-12 shrink-0 object-contain"
+              />
+              <h1 className="text-2xl font-serif text-ink dark:text-bright">
+                Operator dashboard
+              </h1>
+            </div>
+            <img
+              src={livingTvArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="operator-dashboard-living-tv-art"
+              className="h-16 w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent"
+              loading="lazy"
+              decoding="async"
+            />
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Composite operator surface — substrate snapshot,
               pre-onboarded IP holder escrow review, recent payouts,

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 import { useSpeech } from "../hooks/useSpeech";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 /**
  * SpokenReply (Read SPR-07) — the audio half of the conversational
@@ -34,7 +35,15 @@ export default function SpokenReply({ text, voice, autoPlay }: SpokenReplyProps)
     <div className="inline-flex items-center gap-2">
       <button
         type="button"
-        onClick={() => (playing ? stop() : void speak(text, voice))}
+        onClick={() => {
+          if (playing) {
+            stop();
+          } else {
+            // Living-TV: listen to reply — curious glance.
+            emitWernerExperience("highlight");
+            void speak(text, voice);
+          }
+        }}
         disabled={loading}
         aria-label={playing ? "Stop audio reply" : "Listen to reply"}
         className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-1 rounded-md border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-ice-3 dark:hover:bg-charcoal-1 disabled:opacity-50"

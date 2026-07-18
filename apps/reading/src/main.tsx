@@ -5,6 +5,8 @@ import "./index.css";
 import "./design/tokens.css";
 import "./design/feel-focus.css";
 import "./design/motion.css";
+// Flipbook-feel invent reframe — global living-TV densify strips (HTML path).
+import "./brand/sessionLivingTv.css";
 import App from "./App";
 import AppLegacy from "./AppLegacy";
 import { PostHogRoot } from "./lib/PostHogRoot";

@@ -144,15 +144,23 @@ describe("Paperclip Zombies field-station visuals", () => {
     expect(calls).toContainEqual(["strokeRect", 7, 40, 14, 11]);
     expect(calls).toContainEqual(["lineTo", 298, 129]);
     expect(calls.filter(([name]) => name === "ellipse")).toHaveLength(2);
-    expect(calls).toContainEqual(["fillText", "WAVE 04", 120, 14]);
+    expect(calls).toContainEqual(["fillText", "WAVE 04", 480 * 0.22, 14]);
     expect(calls).toContainEqual([
       "fillText",
       "SCORE 0137",
-      230.39999999999998,
+      480 * 0.4,
       14,
     ]);
     expect(calls).toContainEqual(["fillRect", -7, 5.040000000000001, 2, 2]);
     expect(calls).toContainEqual(["fillRect", 5, 5.040000000000001, 2, 2]);
+  });
+
+  it("brags peak BO1 combo on gameover status plate", () => {
+    const { context, calls } = recordingContext();
+    const over = { ...scene("gameover"), maxCombo: 3, score: 40, lives: 0 };
+    drawZombiesScene(context, over, 480, 300);
+    // statusTop = height - STATUS_HEIGHT (28) → 272; brag sits at +34.
+    expect(calls).toContainEqual(["fillText", "BEST x4", 12, 306]);
   });
 
   it("keeps all structural bands inside compact canvas bounds", () => {

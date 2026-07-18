@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { apiFetch } from "../../lib/api";
 import { PanelHost } from "../../workspace/PanelHost";
 
@@ -130,16 +131,13 @@ export default function Outcomes() {
     <PanelHost>
       <main className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-8">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Outcomes
-            </h1>
+          <SessionBrandChrome testIdPrefix="outcomes-detail" title="Outcomes">
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Grade the synthesis page below. Outcomes feed the
               Phase 8 skill-growth gate (compounding/skill_growth/gate.py).
-              Per master-spec §13.8: 'without operator-graded outcomes,
+              Per master-spec §13.8: &lsquo;without operator-graded outcomes,
               accept/reject verdicts on candidate skill patches degrade
-              into vibes.'
+              into vibes.&rsquo;
             </p>
             <p className="text-xs font-mono text-shadow-1 dark:text-moonlight flex items-center gap-2 flex-wrap">
               <span>synthesis_id = {synthesisId ?? "—"}</span>
@@ -152,7 +150,7 @@ export default function Outcomes() {
                 </Link>
               )}
             </p>
-          </header>
+          </SessionBrandChrome>
 
           {error && (
             <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">

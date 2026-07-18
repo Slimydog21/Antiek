@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { ArtifactExport } from "../../components/ArtifactExport";
 import { PanelHost } from "../../workspace/PanelHost";
 import {
@@ -16,6 +17,7 @@ import {
   type ExportFormatName,
   type SectionResponse,
 } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import {
   DRAG_MIME,
   type PaletteDragPayload,
@@ -142,16 +144,18 @@ function DeliverableDetail() {
 
   return (
     <section className="overflow-y-auto pr-2">
-      <header className="mb-6 flex items-baseline justify-between gap-4">
-        <div>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <SessionBrandChrome
+          testIdPrefix="creation-studio"
+          title={detail.title}
+          titleClassName="text-2xl font-semibold tracking-tight text-ink dark:text-bright"
+        >
           <p className="text-xs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
-            {DELIVERABLE_KIND_LABELS[detail.deliverable_kind] ?? detail.deliverable_kind}
+            {DELIVERABLE_KIND_LABELS[detail.deliverable_kind] ??
+              detail.deliverable_kind}
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink dark:text-bright">
-            {detail.title}
-          </h1>
-        </div>
-        <div className="flex flex-col items-end gap-2">
+        </SessionBrandChrome>
+        <div className="flex shrink-0 flex-col items-end gap-2">
           <ExportButton deliverableId={detail.deliverable_id} />
           {/* The portable SIGNED artifact (projection / .antiek container /
               single-file) — distinct from ExportButton's markdown/html/json
@@ -162,7 +166,7 @@ function DeliverableDetail() {
             label="Artifact:"
           />
         </div>
-      </header>
+      </div>
 
       <ul className="space-y-4">
         {detail.sections.map((s) => (
@@ -203,6 +207,10 @@ function ExportButton({ deliverableId }: { deliverableId: string }) {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       setOpen(false);
+      // Living-TV: HTML/MD export complete — happy craft.
+      emitWernerExperience("piece_started");
+    } catch {
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }
@@ -361,6 +369,10 @@ function ProseEditor({
       setLastStatus(r.status);
       setEditing(false);
       await onSaved();
+      // Living-TV: prose saved (optionally promoted) — noted.
+      emitWernerExperience("note_saved");
+    } catch {
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }
@@ -470,6 +482,10 @@ function NewSectionForm({
       });
       setTitle("");
       await onCreated();
+      // Living-TV: new section scaffolded — happy craft.
+      emitWernerExperience("piece_started");
+    } catch {
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }

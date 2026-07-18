@@ -6,6 +6,7 @@ import { stringAttr } from "./attrHelpers";
 import LemonCard from "../../../components/lemon/LemonCard";
 import { openClaimInspector } from "../../../workspace/actions";
 
+import { emitWernerExperience } from "../../../werner/reactionBus";
 /**
  * Claim-card block — references a substrate claim by id. Renders a
  * LemonCard with the claim id + a "Inspect" affordance that opens the
@@ -38,7 +39,7 @@ function ClaimCardNodeView({ node, deleteNode }: NodeViewProps) {
               </button>
               <button
                 type="button"
-                onClick={() => deleteNode()}
+                onClick={() => { emitWernerExperience("note_saved"); deleteNode(); }}
                 aria-label="Remove block"
                 className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor"
               >

@@ -24,6 +24,7 @@ import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
+import { emitWernerExperience, notifyResearchStarted } from "../../werner";
 import { emitSourceRead, isRead } from "./sourceRead";
 
 /**
@@ -62,6 +63,8 @@ export default function BookReader() {
         if (cancelled) return;
         setBook(detail);
         setBody(full);
+        // Living-TV: opening a book is a curious highlight glance.
+        emitWernerExperience("highlight");
         // House-state candidates for the zero-buyer ad border.
         try {
           const servable = await listBooks("servable");
@@ -70,7 +73,10 @@ export default function BookReader() {
           /* house pool is best-effort; a neutral house card is fine */
         }
       } catch (e: unknown) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) {
+          emitWernerExperience("fail");
+          setError(e instanceof Error ? e.message : String(e));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -200,6 +206,13 @@ export default function BookReader() {
     (safeSpawnText: string | null, _sel: FloatMenuSelection) => {
       if (safeSpawnText === null) return;
       window.getSelection()?.removeAllRanges(); // collapse so the menu closes
+      // Living Werner: highlight → deep-research is a real product launch edge.
+      // Deterministic per passage+thread so remount monitors can claim provenance
+      // without inventing a second mascot.
+      // Same launch boundary DR workspace uses — Werner goes thinking.
+      notifyResearchStarted(
+        `float-chase:${readingThreadId}:${safeSpawnText.slice(0, 96)}`,
+      );
       openPanel(
         "ChaseThread",
         { spawnContext: safeSpawnText, parentInvestigationId: readingThreadId },

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import thinkingArt from "../../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { LemonButton, LemonTag } from "../../../components/lemon";
 import {
   getFileSuggestion,
@@ -13,6 +15,7 @@ import type {
   ProjectMatch,
 } from "../../../api/books";
 import { acceptFiling, suggestFiling } from "../../../lib/researchSuggestion";
+import { emitWernerExperience } from "../../../werner/reactionBus";
 
 /**
  * PersonalSpace — the reader's "personal bed of information that labels itself"
@@ -121,9 +124,27 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              {metaDocsOnly ? "Meta-docs" : "Your readings"}
-            </h1>
+            <div className="flex items-center gap-3">
+              <img
+                src={thinkingArt}
+                alt=""
+                aria-hidden="true"
+                data-testid="personal-space-werner-brand"
+                className="h-12 w-12 shrink-0 object-contain"
+              />
+              <h1 className="text-2xl font-serif text-ink dark:text-bright">
+                {metaDocsOnly ? "Meta-docs" : "Your readings"}
+              </h1>
+            </div>
+            <img
+              src={livingTvArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="personal-space-living-tv-art"
+              className="h-16 w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent"
+              loading="lazy"
+              decoding="async"
+            />
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               {metaDocsOnly
                 ? "The readings you’ve created from your books — distinct from the source books themselves."
@@ -166,11 +187,11 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
               </p>
               <p className="text-[13px] text-shadow-1 dark:text-moonlight">
                 Read a book in your{" "}
-                <button type="button" className="underline" onClick={() => navigate("/library")}>
+                <button type="button" className="underline" onClick={() => { emitWernerExperience("highlight"); navigate("/library"); }}>
                   library
                 </button>
                 , or{" "}
-                <button type="button" className="underline" onClick={() => navigate("/read/meta-reading")}>
+                <button type="button" className="underline" onClick={() => { emitWernerExperience("highlight"); navigate("/read/meta-reading"); }}>
                   make a reading
                 </button>{" "}
                 across your corpus — they’ll collect here and organize themselves.
@@ -305,7 +326,7 @@ function AssetRow({
                 variant="secondary"
                 size="sm"
                 disabled={filing}
-                onClick={() => void onAccept(m)}
+                onClick={() => { emitWernerExperience("note_saved"); void onAccept(m); }}
               >
                 {filing ? "Filing…" : `File into “${truncate(m.question)}”`}
               </LemonButton>

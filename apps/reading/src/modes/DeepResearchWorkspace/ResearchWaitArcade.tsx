@@ -9,10 +9,13 @@ import {
 } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
+import { emitProductActivate } from "../../components/hotkeys";
 import type { ArcadeGameKind } from "../../arcade/cartridgeFactory";
-import iceFishingArt from "../../brand/werner/arcade/ice-fishing-station-key-art-v1.webp";
-import paperclipArt from "../../brand/werner/arcade/paperclip-archive-key-art-v1.webp";
-import clamCatcherArt from "../../brand/werner/arcade/clam-catcher-station-key-art-v1.webp";
+// Session brand key art (alpha-gated) unifies wait-arcade with ArcadeCabinet.
+// Igloo ice-arcade invent — CRT TV + cursor-bait ice fishing wait card.
+import iceFishingArt from "../../brand/werner/poses/session/werner_igloo_ice_arcade_cursor_session_v1.webp";
+import paperclipArt from "../../brand/werner/poses/session/werner_paperclip_zombies_arcade_session_v1.webp";
+import clamCatcherArt from "../../brand/werner/poses/session/werner_clam_catcher_cursor_session_v1.webp";
 import { acquireStationInstrumentSuspension } from "../../werner/stationInstrumentSuspension";
 import {
   RESEARCH_WAIT_ARCADE_OFFER_AFTER_MS,
@@ -20,6 +23,7 @@ import {
 } from "./researchWaitArcadePolicy";
 import "./ResearchWaitArcade.css";
 
+import { emitWernerExperience } from "../../werner/reactionBus";
 const LazyResearchWaitArcadeGame = lazy(
   () => import("./ResearchWaitArcadeGame"),
 );
@@ -186,6 +190,9 @@ export default function ResearchWaitArcade({
                   key={choice.id}
                   className="research-wait-arcade__cartridge"
                   data-selected={selectedGame === choice.id ? "true" : "false"}
+                  data-product-id={choice.id}
+                  data-werner-target="curious"
+                  data-testid={`research-wait-cartridge-${choice.id}`}
                 >
                   <input
                     type="radio"
@@ -199,6 +206,8 @@ export default function ResearchWaitArcade({
                     alt=""
                     aria-hidden="true"
                     decoding="async"
+                    data-testid={`research-wait-${choice.id}-living-tv-art`}
+                    className="antiek-living-tv-invent"
                   />
                   <span className="research-wait-arcade__cartridge-copy">
                     <span className="font-serif text-sm font-semibold text-ink dark:text-bright">
@@ -221,7 +230,15 @@ export default function ResearchWaitArcade({
               ref={playRef}
               size="sm"
               variant="primary"
-              onClick={() => setOptedIn(true)}
+              data-product-id={selectedGame}
+              data-werner-target="curious"
+              onClick={() => {
+                // Per-game product door densify (cabinet/LGH parity): living-TV
+                // choreography resolves ice-fishing / clam-catcher / zombies.
+                emitProductActivate({ productId: selectedGame, source: "click" });
+                emitWernerExperience("highlight");
+                setOptedIn(true);
+              }}
             >
               Play while waiting
             </LemonButton>
@@ -240,7 +257,7 @@ export default function ResearchWaitArcade({
                 Research stays live above the game.
               </p>
             </div>
-            <LemonButton size="sm" variant="secondary" onClick={exitGame}>
+            <LemonButton size="sm" variant="secondary" onClick={() => { emitWernerExperience("note_saved"); exitGame(); }}>
               Exit game
             </LemonButton>
           </div>

@@ -410,6 +410,12 @@ describe("BookReader", () => {
   it("Deep-research in-book opens a floating ChaseThread seeded with the passage (generalized rabbit-hole, M2/M3)", async () => {
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());
+    const experiences: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) experiences.push(d);
+    };
+    window.addEventListener("antiek:werner-experience", onExp);
     await renderReader();
     const para = await screen.findByText("The opening of the book.");
     selectTextIn(para, "The opening of the book.");
@@ -425,6 +431,9 @@ describe("BookReader", () => {
       spawnContext: "The opening of the book.",
       parentInvestigationId: "read-doc-1",
     });
+    // Living Werner: product launch edge fires thinking (deep_research_start).
+    expect(experiences).toContain("deep_research_start");
+    window.removeEventListener("antiek:werner-experience", onExp);
     // The reader stays in place while the research panel floats in workspace chrome.
     expect(screen.getByRole("complementary", { name: /Reading companion/ })).toBeTruthy();
   });

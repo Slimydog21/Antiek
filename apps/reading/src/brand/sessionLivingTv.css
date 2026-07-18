@@ -1,0 +1,58 @@
+/**
+ * Flipbook-feel invent strip motion — illustrations softly reframe with time,
+ * like Flipbook's reshape-with-window living imagery, while remaining HTML
+ * (pure Flipbook sole UI is NO-GO). See design-assets/FLIPBOOK-FEEL-HTML-STREAMING-NOTE.md
+ * for cost-intelligent optional streaming ladder (CDN → Krea → Modal).
+ *
+ * Applied via:
+ *   - explicit class `.antiek-living-tv-invent`
+ *   - global invent testids ending in `-living-tv-art` / `-living-tv-brand`
+ *
+ * Motion collapses under prefers-reduced-motion.
+ * Gate: apps/reading/scripts/branding-densify-pack.sh
+ */
+
+/**
+ * Multi-phase reframe — invent strips slowly "stream" framing like Flipbook's
+ * reshape-with-window feel, while remaining pure CSS on HTML (not GPU stream).
+ * 16s cycle keeps motion soft enough for ambient living-TV, not arcade thrash.
+ */
+@keyframes antiek-living-tv-reframe {
+  0% {
+    object-position: 48% 46%;
+    transform: scale(1);
+  }
+  33% {
+    object-position: 53% 52%;
+    transform: scale(1.018);
+  }
+  66% {
+    object-position: 47% 55%;
+    transform: scale(1.025);
+  }
+  100% {
+    object-position: 50% 48%;
+    transform: scale(1.01);
+  }
+}
+
+.antiek-living-tv-invent,
+img[data-testid$="-living-tv-art"],
+img[data-testid$="-living-tv-brand"],
+img[data-testid="loading-game-living-tv-brand"] {
+  object-fit: cover;
+  will-change: object-position, transform;
+  animation: antiek-living-tv-reframe 16s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .antiek-living-tv-invent,
+  img[data-testid$="-living-tv-art"],
+  img[data-testid$="-living-tv-brand"],
+  img[data-testid="loading-game-living-tv-brand"] {
+    animation: none;
+    transform: none;
+    object-position: center;
+    will-change: auto;
+  }
+}

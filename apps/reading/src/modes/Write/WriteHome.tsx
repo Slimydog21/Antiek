@@ -10,6 +10,9 @@ import {
   type DeliverableSummary,
 } from "../../lib/api";
 import GlassSurface from "../../shell/GlassSurface";
+import celebrateArt from "../../brand/werner/poses/session/werner_celebrate_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
 import BlockRepository from "./BlockRepository";
 import ConnectResearch from "./ConnectResearch";
@@ -138,6 +141,8 @@ export default function WriteHome() {
         // investigation_root_id; reused, not a new column — see decision D-1).
         investigation_root_id: resolved.investigationId,
       });
+      // Living-TV: starting a piece is a happy craft beat at the home of the penguin.
+      emitWernerExperience("piece_started");
       navigate(`/write/${d.deliverable_id}`);
     } finally {
       setStarting(false);
@@ -154,12 +159,31 @@ export default function WriteHome() {
       // so the scene reads behind it instead of an ice wall.
       <GlassSurface className="mx-auto h-full max-w-3xl overflow-y-auto px-6 py-8">
         <header className="mb-6">
-          <h1 className="font-serif text-2xl font-semibold text-ink dark:text-bright">
-            Write a piece
-          </h1>
+          <div className="flex items-center gap-3">
+            <img
+              src={celebrateArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="write-home-werner-brand"
+              className="h-12 w-12 shrink-0 object-contain"
+            />
+            <h1 className="font-serif text-2xl font-semibold text-ink dark:text-bright">
+              Write a piece
+            </h1>
+          </div>
+          <img
+            src={livingTvArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="write-home-living-tv-art"
+            className="mt-3 h-16 w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent"
+            loading="lazy"
+            decoding="async"
+          />
           <p className="mt-1 text-sm text-ink-soft dark:text-moonlight">
             Pull your research notes into an outline, generate a first draft
-            from them, then edit. Or dump a raw idea and let the blocks fall out.
+            from them, then edit. Or dump a raw idea and let the blocks fall
+            out. Werner celebrates the craft of making the page.
           </p>
         </header>
 

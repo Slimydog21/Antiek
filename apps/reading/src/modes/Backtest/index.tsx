@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import LemonCard from "../../components/lemon/LemonCard";
 import { apiFetch } from "../../lib/api";
 
@@ -68,10 +69,10 @@ export default function Backtest() {
     <div className="flex flex-col h-screen">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Backtest report
-            </h1>
+          <SessionBrandChrome
+            testIdPrefix="backtest-home"
+            title="Backtest report"
+          >
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               How has the substrate changed under this synthesis since
               it landed? Per master-spec §13.8 — replay first, then
@@ -80,7 +81,7 @@ export default function Backtest() {
             <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
               synthesis_id = {synthesisId ?? "—"}
             </p>
-          </header>
+          </SessionBrandChrome>
 
           {loading && (
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>

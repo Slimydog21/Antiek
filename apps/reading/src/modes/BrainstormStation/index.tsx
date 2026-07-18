@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { PanelHost } from "../../workspace/PanelHost";
 import { track } from "../../lib/analytics";
 import {
@@ -8,6 +10,7 @@ import {
   listWatchForLater,
   type ParkedQuestionEntry,
 } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import ParkedQuestion from "./ParkedQuestion";
 import WatchForLaterFolder from "./WatchForLaterFolder";
 
@@ -62,6 +65,8 @@ export default function BrainstormStation() {
       try {
         const handle = await launchParkedQuestion(q.question_id);
         track("brainstorm_question_launched");
+        // Living-TV: launching a parked question starts deep research.
+        emitWernerExperience("deep_research_start");
         // The folder reloads to hide this question (now sharpened);
         // operator follows the launched investigation in Mode A.
         await reload();
@@ -131,6 +136,24 @@ function EmptyState({ parkedCount }: { parkedCount: number }) {
   return (
     <div className="flex-1 flex items-center justify-center p-8">
       <div className="max-w-md text-center space-y-3">
+        <div className="flex flex-col items-center gap-2">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="brainstorm-empty-werner-brand"
+            className="h-14 w-14 object-contain"
+          />
+          <img
+            src={livingTvArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="brainstorm-empty-living-tv-art"
+            className="h-14 w-full max-w-sm rounded-md object-cover object-center antiek-living-tv-invent"
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
         <h2 className="text-lg font-serif text-ink dark:text-bright">
           The watch-for-later folder
         </h2>

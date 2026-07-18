@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import type { PaletteDragPayload } from "../../CreationStudio/BlockPalette";
 import { parsePaletteDrag } from "../Repository/dragToOutline";
+import { emitWernerExperience } from "../../../werner/reactionBus";
 import { generateSection, promoteContext, type GenerationResult } from "../writeApi";
 import {
   contextToPromoteRequest,
@@ -61,8 +62,11 @@ export function ContextWindow({ className }: ContextWindowProps) {
       const promoted = await promoteContext(contextToPromoteRequest(state));
       const gen = await generateSection(promoted.section_id);
       setResult(gen);
+      // Living-TV: outline-optional generate completed — happy craft.
+      emitWernerExperience("piece_started");
     } catch (e) {
       setError(String(e));
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }
@@ -73,8 +77,11 @@ export function ContextWindow({ className }: ContextWindowProps) {
     setError(null);
     try {
       await promoteContext(contextToPromoteRequest(state));
+      // Living-TV: context promoted to structured outline — noted.
+      emitWernerExperience("note_saved");
     } catch (e) {
       setError(String(e));
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }

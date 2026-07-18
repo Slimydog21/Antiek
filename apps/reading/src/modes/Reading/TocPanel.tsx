@@ -1,4 +1,5 @@
 import type { TocItem } from "../../api/books";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Table-of-contents navigation (Read SPR-03 M-TOC). Each entry jumps to
@@ -31,7 +32,12 @@ export default function TocPanel({ toc, currentPageIndex, onJump }: TocPanelProp
             key={`${entry.title}-${i}`}
             type="button"
             disabled={!resolvable}
-            onClick={() => resolvable && onJump(entry.page_index as number)}
+            onClick={() => {
+              if (!resolvable) return;
+              // Living-TV: TOC jump is a curious highlight glance.
+              emitWernerExperience("highlight");
+              onJump(entry.page_index as number);
+            }}
             style={{ paddingLeft: `${8 + entry.level * 14}px` }}
             className={`w-full text-left pr-2 py-1 rounded text-[13px] font-serif truncate transition-colors ${
               active

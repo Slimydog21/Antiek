@@ -8,6 +8,7 @@ import { openNotebook } from "../workspace/actions";
 import { usePanelSizeStable } from "../workspace/PanelLayoutPanel";
 import LemonButton from "./lemon/LemonButton";
 import { toast } from "./lemon/LemonToast";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 // One-time worker registration. pdf.js requires this before any
 // getDocument call.
@@ -229,6 +230,7 @@ export default function PdfViewer({
             size="sm"
             variant="secondary"
             onClick={() => {
+              emitWernerExperience("note_saved");
               // S7 acceptance — "Add to notebook" from PdfViewer.
               // Opens the notebook editor; the operator inserts a
               // region-embed block via the slash menu referencing the

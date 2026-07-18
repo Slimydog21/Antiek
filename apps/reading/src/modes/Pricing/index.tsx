@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { track } from "../../lib/analytics";
 
 /**
@@ -45,15 +46,18 @@ export default function PricingPage() {
     <div className="flex flex-col h-screen">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-10">
-          <header className="space-y-3">
-            <h1 className="text-3xl font-serif text-ink dark:text-bright">Pricing</h1>
+          <SessionBrandChrome
+            testIdPrefix="pricing-home"
+            title="Pricing"
+            titleClassName="text-3xl font-serif text-ink dark:text-bright"
+          >
             <p className="text-base text-ink dark:text-bright leading-relaxed">
               Antiek prices like OpenRouter. You set a token budget;
               we bill against actual usage with a transparent margin
               per tier. No flat subscription. No seat fees. No card
               required for the free tier.
             </p>
-          </header>
+          </SessionBrandChrome>
 
           <section className="space-y-4">
             <h2 className="text-xl font-serif text-ink dark:text-bright">The three tiers</h2>

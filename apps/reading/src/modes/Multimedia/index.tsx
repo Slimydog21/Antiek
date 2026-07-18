@@ -35,6 +35,7 @@ import type {
   MultimediaSteeringPreview,
   MultimediaSteeringRequest,
 } from "../../api/multimedia";
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
 import { ReconciliationPanel } from "./ReconciliationPanel";
 import { KnowledgePanel, retainCurrentMultimediaSelection } from "./KnowledgePanel";
@@ -837,17 +838,19 @@ export default function Multimedia() {
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-5 py-5 xl:grid-cols-[360px_minmax(0,1fr)_320px]">
           <section className="space-y-4 rounded-md border border-rule bg-ice-1 p-4 dark:border-charcoal-1 dark:bg-charcoal-2">
-            <header>
+            <SessionBrandChrome
+              testIdPrefix="multimedia-home"
+              title="Generate information media"
+              titleClassName="font-serif text-2xl text-ink dark:text-bright"
+              inventHeightClass="h-14"
+            >
               <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">
                 Multimedia
               </p>
-              <h1 className="font-serif text-2xl text-ink dark:text-bright">
-                Generate information media
-              </h1>
               <p className="mt-1 text-[13px] leading-relaxed text-shadow-1 dark:text-moonlight">
                 Plan a grounded explainer, audio brief, or documentary-style reel before spending on media generation.
               </p>
-            </header>
+            </SessionBrandChrome>
 
             <Labeled label="Topic" htmlFor="multimedia-topic">
               <LemonTextarea

@@ -15,6 +15,7 @@ import type {
   MultimediaLocalPreparedSet,
 } from "../../api/multimedia";
 import { LemonButton } from "../../components/lemon";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 type Pending = "capability" | "prepare" | "attest" | "produce" | "recover" | null;
 
@@ -66,10 +67,22 @@ export function LocalProductionPanel({
       const result = await operation();
       if (version !== requestVersion.current) return;
       setPrepared(result);
-      if (result.status === "registered") await onRegistered();
+      if (result.status === "registered") {
+        await onRegistered();
+        // Living-TV: local documentary registered for playback.
+        emitWernerExperience("piece_started");
+      } else if (kind === "attest") {
+        // Living-TV: operator attested a source card — noted.
+        emitWernerExperience("note_saved");
+      } else if (kind === "prepare") {
+        emitWernerExperience("highlight");
+      } else if (kind === "recover") {
+        emitWernerExperience("note_saved");
+      }
     } catch {
       if (version === requestVersion.current) {
         setError("Local production authority changed. Refresh the current revision.");
+        emitWernerExperience("fail");
       }
     } finally {
       if (version === requestVersion.current) setPending(null);

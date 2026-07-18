@@ -15,6 +15,10 @@ import {
   type SearchResult,
 } from "./floatMenuActions";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
+// Collective multi-agent float invent — highlight → float windows product door.
+import collectiveMergeArt from "../../../brand/werner/poses/session/werner_collective_merge_session_v1.webp";
+import "../../../brand/sessionLivingTv.css";
+import { emitWernerExperience } from "../../../werner/reactionBus";
 
 /**
  * FloatMenu — THE shared highlight → float-window interaction primitive
@@ -189,6 +193,16 @@ export default function FloatMenu({
     >
       {view.kind === "menu" && (
         <div className="flex flex-col">
+          {/* Living-TV invent — float research windows product door. */}
+          <img
+            src={collectiveMergeArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="float-menu-living-tv-art"
+            className="h-8 w-full object-cover object-center rounded-t-md opacity-90 antiek-living-tv-invent"
+            loading="lazy"
+            decoding="async"
+          />
           <div className="flex items-stretch divide-x divide-charcoal-2">
             <MenuButton label="Note" onClick={() => setView({ kind: "note" })} />
             <MenuButton label="Dialogue" onClick={() => setView({ kind: "dialogue" })} />
@@ -200,7 +214,10 @@ export default function FloatMenu({
                 // ChaseThread + startInvestigation). §9.0: hand the host the
                 // guarded outbound text (null ⇒ withheld) so a withheld body
                 // never becomes a child investigation's spawn_context.
-                onDeepResearch(outboundText(selection), selection);
+                const safeText = outboundText(selection);
+                // Living-TV: only beat when spawn text is actually launchable.
+                if (safeText) emitWernerExperience("deep_research_start");
+                onDeepResearch(safeText, selection);
               }}
             />
           </div>

@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { createSeededRng } from "../../engine/rng";
 import {
+  clamCatcherWernerBeat,
+  clamCatchStreakMultiplier,
   CLAM_CATCHER_TUNING,
+  CLAM_MAX_STREAK,
   createClamCatcherState,
   startClamCatcher,
   stepClamCatcher,
@@ -26,6 +29,58 @@ function run(seed: number): ClamCatcherState {
 }
 
 describe("Clam Catcher rules", () => {
+  it("clamCatcherWernerBeat maps start, catch, and gameover living-TV edges", () => {
+    expect(
+      clamCatcherWernerBeat(
+        { phase: "ready", score: 0, lives: 3 },
+        { phase: "playing", score: 0, lives: 3 },
+      ),
+    ).toBe("highlight");
+    expect(
+      clamCatcherWernerBeat(
+        { phase: "playing", score: 0, lives: 3 },
+        { phase: "playing", score: 4, lives: 3 },
+      ),
+    ).toBe("piece_started");
+    expect(
+      clamCatcherWernerBeat(
+        { phase: "playing", score: 4, lives: 1 },
+        { phase: "gameover", score: 4, lives: 0 },
+      ),
+    ).toBe("fail");
+  });
+
+  it("clamCatcherWernerBeat densify stays silent on non-edge frames + pins tuning freeze", () => {
+    // densify: no living-TV beat for idle score/life churn or ready idle.
+    expect(
+      clamCatcherWernerBeat(
+        { phase: "playing", score: 4, lives: 2 },
+        { phase: "playing", score: 4, lives: 2 },
+      ),
+    ).toBeNull();
+    expect(
+      clamCatcherWernerBeat(
+        { phase: "ready", score: 0, lives: 3 },
+        { phase: "ready", score: 0, lives: 3 },
+      ),
+    ).toBeNull();
+    expect(
+      clamCatcherWernerBeat(
+        { phase: "playing", score: 4, lives: 2 },
+        { phase: "playing", score: 4, lives: 1 },
+      ),
+    ).toBeNull(); // life loss without gameover is silent densify
+    // densify: Club Penguin catcher tuning is a frozen craft contract.
+    expect(Object.isFrozen(CLAM_CATCHER_TUNING)).toBe(true);
+    expect(CLAM_CATCHER_TUNING.startingLives).toBe(3);
+    expect(CLAM_CATCHER_TUNING.jellyfishChance).toBeGreaterThan(0);
+    expect(CLAM_CATCHER_TUNING.pearlChance).toBeGreaterThan(0);
+    expect(CLAM_CATCHER_TUNING.maximumFallSpeed).toBeGreaterThan(
+      CLAM_CATCHER_TUNING.openingFallSpeed,
+    );
+    expect(CLAM_MAX_STREAK).toBe(3);
+  });
+
   it("is deterministic for a seed and scripted input", () => {
     expect(run(17)).toEqual(run(17));
     expect(run(17)).not.toEqual(run(18));
@@ -140,5 +195,182 @@ describe("Clam Catcher rules", () => {
       20 + CLAM_CATCHER_TUNING.maximumFallSpeed / 60,
     );
     expect(CLAM_CATCHER_TUNING.maximumFallSpeed / 60).toBeLessThan(9);
+  });
+
+  it("builds Club Penguin–style catch-streak multiplier on consecutive good catches", () => {
+    expect(clamCatchStreakMultiplier(0)).toBe(1);
+    expect(clamCatchStreakMultiplier(1)).toBe(2);
+    expect(clamCatchStreakMultiplier(CLAM_MAX_STREAK)).toBe(CLAM_MAX_STREAK);
+
+    const base = startClamCatcher(createClamCatcherState(320, 200));
+    const bucketY = base.height - 34;
+    let s: ClamCatcherState = {
+      ...base,
+      spawnTimer: 99,
+      entities: [
+        {
+          id: 1,
+          kind: "common-clam",
+          x: base.bucketX,
+          y: bucketY,
+          radius: 9,
+          points: 1,
+        },
+      ],
+    };
+    s = stepClamCatcher(s, 0, idle, () => 0.9);
+    expect(s.streak).toBe(1);
+    expect(s.score).toBe(1); // mult 1×
+    expect(s.maxStreak).toBe(1);
+
+    s = {
+      ...s,
+      spawnTimer: 99,
+      entities: [
+        {
+          id: 2,
+          kind: "pearl-clam",
+          x: s.bucketX,
+          y: bucketY,
+          radius: 10,
+          points: 4,
+        },
+      ],
+    };
+    s = stepClamCatcher(s, 0, idle, () => 0.9);
+    // Pearl jumps streak by two: 1 → 3 (cap), score still uses pre-step mult 2×.
+    expect(s.streak).toBe(CLAM_MAX_STREAK);
+    expect(s.score).toBe(1 + 4 * 2);
+    expect(s.maxStreak).toBe(CLAM_MAX_STREAK);
+  });
+
+  it("builds catch-streak on reduced-motion gentle start densify", () => {
+    let s = startClamCatcher(
+      createClamCatcherState(320, 200, { reducedMotion: true }),
+    );
+    s = {
+      ...s,
+      spawnTimer: 99,
+      entities: [],
+    };
+    s = stepClamCatcher(
+      s,
+      1 / 60,
+      { targetX: null, horizontal: 0, start: true },
+      () => 0.9,
+    );
+    expect(s.score).toBe(CLAM_CATCHER_TUNING.commonPoints); // mult 1×
+    expect(s.streak).toBe(1);
+    s = stepClamCatcher(
+      s,
+      1 / 60,
+      { targetX: null, horizontal: 0, start: true },
+      () => 0.9,
+    );
+    expect(s.score).toBe(CLAM_CATCHER_TUNING.commonPoints + 2); // second 2×
+    expect(s.streak).toBe(2);
+    expect(s.maxStreak).toBe(2);
+  });
+
+  it("spawns pearl clam in the densify roll band after jellyfish chance", () => {
+    // jellyfish <0.2, pearl <0.2+0.2=0.4 — pin first roll at 0.30 for pearl.
+    const rolls = [0.3, 0.5];
+    let i = 0;
+    const rng = () => rolls[i++] ?? 0.5;
+    let s = startClamCatcher(createClamCatcherState(320, 200));
+    s = { ...s, spawnTimer: 0, entities: [] };
+    s = stepClamCatcher(s, 1 / 60, idle, rng);
+    expect(s.entities.some((e) => e.kind === "pearl-clam")).toBe(true);
+    const pearl = s.entities.find((e) => e.kind === "pearl-clam");
+    expect(pearl?.points).toBe(CLAM_CATCHER_TUNING.pearlPoints);
+  });
+
+  it("pearl catch jumps streak by two without breaking the mult order", () => {
+    const base = startClamCatcher(createClamCatcherState(320, 200));
+    const bucketY = base.height - 34;
+    let s: ClamCatcherState = {
+      ...base,
+      spawnTimer: 99,
+      entities: [
+        {
+          id: 1,
+          kind: "pearl-clam",
+          x: base.bucketX,
+          y: bucketY,
+          radius: 10,
+          points: 4,
+        },
+      ],
+    };
+    s = stepClamCatcher(s, 0, idle, () => 0.9);
+    expect(s.score).toBe(4); // mult 1× on first pearl
+    expect(s.streak).toBe(2); // pearl step +2
+    expect(s.maxStreak).toBe(2);
+
+    s = {
+      ...s,
+      spawnTimer: 99,
+      entities: [
+        {
+          id: 2,
+          kind: "common-clam",
+          x: s.bucketX,
+          y: bucketY,
+          radius: 9,
+          points: 1,
+        },
+      ],
+    };
+    s = stepClamCatcher(s, 0, idle, () => 0.9);
+    expect(s.score).toBe(4 + 1 * 3); // mult 3× from streak 2
+    expect(s.streak).toBe(CLAM_MAX_STREAK);
+  });
+
+  it("resets catch streak on jellyfish and on missed clam", () => {
+    const base = startClamCatcher(createClamCatcherState(320, 200));
+    const bucketY = base.height - 34;
+
+    let s: ClamCatcherState = {
+      ...base,
+      streak: 2,
+      maxStreak: 2,
+      spawnTimer: 99,
+      entities: [
+        {
+          id: 9,
+          kind: "jellyfish",
+          x: base.bucketX,
+          y: bucketY,
+          radius: 13,
+          points: 0,
+        },
+      ],
+    };
+    s = stepClamCatcher(s, 0, idle, () => 0.9);
+    expect(s.streak).toBe(0);
+    expect(s.maxStreak).toBe(2);
+    expect(s.lives).toBe(2);
+
+    s = {
+      ...s,
+      streak: 3,
+      maxStreak: 3,
+      spawnTimer: 99,
+      // Clam already past the floor (missed).
+      entities: [
+        {
+          id: 10,
+          kind: "common-clam",
+          x: 40,
+          y: s.height + 40,
+          radius: 9,
+          points: 1,
+        },
+      ],
+    };
+    s = stepClamCatcher(s, 0, idle, () => 0.9);
+    expect(s.streak).toBe(0);
+    expect(s.maxStreak).toBe(3);
+    expect(s.entities).toEqual([]);
   });
 });

@@ -11,6 +11,9 @@
 
 import { useState } from "react";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import cascadePlanArt from "../../brand/werner/poses/session/werner_cascade_plan_session_v1.webp";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import LemonButton from "../../components/lemon/LemonButton";
 import type { PlanNode, PlanTree } from "../../api/research";
 
@@ -31,29 +34,64 @@ export default function PlanEditor({ tree, launchable, busy, onEdit, onApprove, 
   const leafCount = countLeaves(tree.root);
   return (
     <div className="flex h-full flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-ink dark:text-bright">Cascade plan</h2>
-          <p className="text-[11px] text-shadow-1 dark:text-moonlight">
-            {leafCount} focused {leafCount === 1 ? "research" : "researches"} ·{" "}
-            {tree.approval.state === "approved" ? "approved" : "draft (edit, then approve)"}
-          </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="plan-editor-werner-brand"
+            className="mt-0.5 h-8 w-8 shrink-0 object-contain"
+          />
+          <div>
+            <h2 className="text-sm font-semibold text-ink dark:text-bright">
+              Cascade plan
+            </h2>
+            <p className="text-[11px] text-shadow-1 dark:text-moonlight">
+              {leafCount} focused {leafCount === 1 ? "research" : "researches"} ·{" "}
+              {tree.approval.state === "approved"
+                ? "approved"
+                : "draft (edit, then approve)"}
+            </p>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <LemonButton size="sm" variant="secondary" disabled={busy} onClick={onApprove}>
+        <div className="flex shrink-0 gap-2">
+          <LemonButton
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => {
+              // Living-TV: plan approve is a noted honesty beat.
+              emitWernerExperience("note_saved");
+              onApprove();
+            }}
+          >
             {tree.approval.state === "approved" ? "Re-approve" : "Approve"}
           </LemonButton>
           <LemonButton
             size="sm"
             variant="primary"
             disabled={busy || !launchable}
-            onClick={onLaunch}
+            onClick={() => {
+              // Living-TV: cascade launch is a deep-research start.
+              emitWernerExperience("deep_research_start");
+              onLaunch();
+            }}
             title={launchable ? `Launch ${leafCount} researches` : "Approve the plan to launch"}
           >
             Launch {leafCount}
           </LemonButton>
         </div>
       </div>
+      <img
+        src={cascadePlanArt}
+        alt=""
+        aria-hidden="true"
+        data-testid="plan-editor-living-tv-art"
+        className="h-14 w-full max-w-lg rounded-md object-cover object-center antiek-living-tv-invent"
+        loading="lazy"
+        decoding="async"
+      />
 
       <div className="flex-1 overflow-auto rounded-md border-2 border-sun bg-ice-0 p-2 dark:bg-charcoal-2">
         <PlanNodeRow node={tree.root} depth={0} isRoot busy={busy} onEdit={onEdit} />

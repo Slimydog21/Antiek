@@ -125,6 +125,14 @@ describe("Library", () => {
     );
     const surface = container.querySelector("[data-glass-surface]");
     expect(surface, "the full-page Library must render through GlassSurface").toBeTruthy();
+    // Session brand mark is UI-consumed on the Read door (not inventory-only).
+    expect(screen.getByTestId("library-werner-brand")).toBeTruthy();
+    const livingTv = screen.getByTestId(
+      "library-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
     expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
 
     cleanup();
@@ -158,6 +166,23 @@ describe("Library", () => {
     expect(listBooksMock).toHaveBeenCalledWith("servable");
     fireEvent.click(screen.getByRole("button", { name: /Open Meditations/ }));
     expect(navigateMock).toHaveBeenCalledWith("/read/doc-pd");
+  });
+
+  it("emits living-TV highlight when opening a book from the shelf", async () => {
+    listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener("antiek:werner-experience", onExp);
+    renderLibrary();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Open Meditations/ })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Open Meditations/ }));
+    window.removeEventListener("antiek:werner-experience", onExp);
+    expect(seen).toContain("highlight");
   });
 
   it("switching to Preview reloads the gated set", async () => {

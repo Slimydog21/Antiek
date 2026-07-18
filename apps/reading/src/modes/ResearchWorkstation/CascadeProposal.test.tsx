@@ -386,10 +386,12 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
       }),
     );
     await waitFor(() => expect(onLaunched).toHaveBeenCalledWith("session-q-pn-root"));
-    expect(reaction).toHaveBeenCalledTimes(1);
-    expect((reaction.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
-      experience: "deep_research_start",
-    });
+    // Propose emits highlight; launch emits deep_research_start via notifyResearchStarted.
+    const experiences = reaction.mock.calls.map(
+      (c) => (c[0] as CustomEvent).detail?.experience,
+    );
+    expect(experiences).toContain("highlight");
+    expect(experiences).toContain("deep_research_start");
     window.removeEventListener(WERNER_EXPERIENCE_EVENT, reaction);
   });
 

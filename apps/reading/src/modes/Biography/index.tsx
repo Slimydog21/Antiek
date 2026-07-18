@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Werner from "../../brand/Werner";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { LemonButton } from "../../components/lemon";
 import { startInvestigation } from "../../lib/api";
 import {
@@ -10,6 +11,7 @@ import {
   type BiographyComposition,
 } from "../../lib/speakApi";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Biography — the dedicated landing for the biography TEMPLATE (SPR-11).
@@ -65,8 +67,10 @@ export default function Biography() {
         subjectName: trimmed,
       });
       setComposed(comp);
+      emitWernerExperience("piece_started");
     } catch {
       setFailed(true);
+      emitWernerExperience("fail");
     } finally {
       setSubmitting(false);
     }
@@ -87,18 +91,31 @@ export default function Biography() {
   return (
     <div className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
       <div className="mx-auto max-w-2xl px-6 py-12">
-        <header className="mb-8 flex items-start gap-3">
-          <Werner mood="idle" size={52} label="" />
-          <div>
-            <h1 className="font-serif text-3xl font-semibold text-ink dark:text-bright">
-              Write someone&rsquo;s biography
-            </h1>
-            <p className="mt-2 font-serif text-[15px] leading-relaxed text-shadow-1 dark:text-moonlight">
-              A biography brings together everything you can find, write, and
-              remember about a person — in one place, so each part feeds the
-              others. Name someone to begin.
-            </p>
+        <header className="mb-8 space-y-3">
+          <div className="flex items-start gap-3">
+            <span data-testid="biography-werner-brand">
+              <Werner mood="thinking" size={52} label="Biography" />
+            </span>
+            <div>
+              <h1 className="font-serif text-3xl font-semibold text-ink dark:text-bright">
+                Write someone&rsquo;s biography
+              </h1>
+              <p className="mt-2 font-serif text-[15px] leading-relaxed text-shadow-1 dark:text-moonlight">
+                A biography brings together everything you can find, write, and
+                remember about a person — in one place, so each part feeds the
+                others. Name someone to begin.
+              </p>
+            </div>
           </div>
+          <img
+            src={livingTvArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="biography-living-tv-art"
+            className="h-16 w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent"
+            loading="lazy"
+            decoding="async"
+          />
         </header>
 
         {/* The steps — what "start a biography" actually sets up. Three
@@ -213,8 +230,10 @@ function BiographyOnboarding({
     try {
       const link = await makeShareLink(composition.projectId);
       setInviteLink(link);
+      emitWernerExperience("note_saved");
     } catch {
       setInviteFailed(true);
+      emitWernerExperience("fail");
     } finally {
       setInviting(false);
     }
@@ -258,21 +277,21 @@ function BiographyOnboarding({
             title="A place to gather what is known"
             body="Your research folder. Empty for now — add records, articles, or notes whenever you like."
             cta="Open it"
-            onClick={onOpenResearch}
+            onClick={() => { emitWernerExperience("highlight"); onOpenResearch(); }}
           />
           <SurfaceCard
             testid="biography-open-write"
             title="A draft of the story"
             body="It fills in from what you gather and what people share. Nothing is invented; every line is traceable to who said it."
             cta="Open it"
-            onClick={onOpenWrite}
+            onClick={() => { emitWernerExperience("highlight"); onOpenWrite(); }}
           />
           <SurfaceCard
             testid="biography-open-speak"
             title="The voices of the people who knew them"
             body="No voices yet. Invite friends and family below — each shares a memory in their own words."
             cta="Open it"
-            onClick={onOpenSpeak}
+            onClick={() => { emitWernerExperience("highlight"); onOpenSpeak(); }}
           />
         </section>
 

@@ -71,6 +71,19 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     expect(useInvestigationMock).toHaveBeenCalledWith("read-doc-1");
   });
 
+  it("renders session thinking brand + living-TV invent chrome (not inventory-only)", () => {
+    useInvestigationMock.mockReturnValue(state({}));
+    renderCompanion();
+    expect(screen.getByTestId("reading-companion")).toBeTruthy();
+    expect(screen.getByTestId("reading-companion-werner-brand")).toBeTruthy();
+    const livingTv = screen.getByTestId(
+      "reading-companion-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_html_book_float_session_v1/,
+    );
+  });
+
   it("shows the book's notes + open questions, grounded in the thread events", () => {
     useInvestigationMock.mockReturnValue(
       state({

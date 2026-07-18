@@ -58,16 +58,37 @@ export {
   type UseMouseFollowOptions,
 } from "./useMouseFollow";
 
-export { wernerIceFishingCursor } from "./iceFishingFlags";
-export { WernerIceBait } from "./WernerIceBait";
+export {
+  wernerIceFishingCursor,
+  wernerArcade,
+} from "./iceFishingFlags";
+export { WernerIceBait, baitChromeFromFollow } from "./WernerIceBait";
 export { WernerFishingLayer } from "./WernerFishingLayer";
 export { WernerIceCursorShell } from "./WernerIceCursorShell";
-export { catenaryPath, rodTipFromMascotRect } from "./fishingLineGeometry";
+export {
+  acquireStationInstrumentSuspension,
+  isStationInstrumentSuspended,
+  stationInstrumentLeaseCount,
+  useStationInstrumentSuspended,
+} from "./stationInstrumentSuspension";
+export {
+  catenaryPath,
+  rodTipFromMascotRect,
+  tipToBaitDistance,
+  rodBendFromPoints,
+  rodBend,
+  rodLength,
+  ROD_MAX_BEND,
+  ROD_HALF_BEND_DIST,
+  ROD_TIP_LOCAL,
+  ROD_BUTT_LOCAL,
+} from "./fishingLineGeometry";
 
 export {
   EmoteView,
   EMOTE_KINDS,
   EMOTE_DURATION_MS,
+  DEFAULT_EMOTE_DURATION_MS,
   emoteDurationMs,
   type EmoteKind,
 } from "./emotes";
@@ -76,6 +97,8 @@ export {
   installChoreography,
   installTargetChoreography,
   productSelector,
+  emoteForProductDoor,
+  emoteFromWernerTargetAttr,
   WERNER_TARGET_ATTR,
   type ChoreographyOptions,
   type TargetChoreographyOptions,
@@ -92,6 +115,13 @@ export {
   type ReactionBusOptions,
   type WernerExperienceDetail,
 } from "./reactionBus";
+
+export {
+  ambientExperienceAfterQuiet,
+  DEFAULT_AMBIENT_QUIET_MS,
+  installLivingTvAmbient,
+  type LivingTvAmbientOptions,
+} from "./livingTvAmbient";
 
 export {
   consumeLocallyStartedResearchSession,
@@ -115,6 +145,8 @@ export {
   getDefaultActivity,
   iceFishingActivity,
   researchLensActivity,
+  writingNibActivity,
+  speakingResonanceActivity,
   activityIdForPathname,
   getActivityForPathname,
   type ActivityId,

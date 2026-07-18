@@ -83,6 +83,36 @@ describe("VoiceNote", () => {
     await waitFor(() => expect(screen.getByText(/2 notes distilled/)).toBeTruthy());
   });
 
+  it("emits living-TV note_saved after a confirmed voice note save", async () => {
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener("antiek:werner-experience", onExp);
+    transcribeMock.mockResolvedValue({ transcript: "hello" });
+    saveMock.mockResolvedValue({
+      voice_note_id: "vnote-2",
+      document_id: "doc-1",
+      page_index: 1,
+      note_count: 1,
+      notes: ["insight"],
+      emitted_event_ids: ["e1"],
+    });
+    recorderState.state = "stopped";
+    recorderState.blob = new Blob(["audio"], { type: "audio/webm" });
+    render(
+      <VoiceNote documentId="doc-1" pageIndex={1} investigationId="read-doc-1" />,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("Voice note transcript (editable)")).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save note" }));
+    await waitFor(() => expect(saveMock).toHaveBeenCalled());
+    window.removeEventListener("antiek:werner-experience", onExp);
+    expect(seen).toContain("note_saved");
+  });
+
   it("falls back to manual typing when transcription is unavailable", async () => {
     transcribeMock.mockRejectedValue(new Error("Transcription isn’t available right now."));
     recorderState.state = "stopped";

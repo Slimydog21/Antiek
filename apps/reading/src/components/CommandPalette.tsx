@@ -21,6 +21,7 @@ import {
   entryWorkflow as facetEntryWorkflow,
   rankEntries as facetRankEntries,
 } from "../shell/paletteFacet";
+import { emitWernerExperience } from "../werner/reactionBus";
 import LemonButton from "./lemon/LemonButton";
 import { LemonModal } from "./lemon/LemonModal";
 import { toast } from "./lemon/LemonToast";
@@ -648,6 +649,8 @@ export default function CommandPalette() {
   );
 
   const choose = (entry: PaletteEntry) => {
+    // Living-TV: palette jump — curious glance as operator teleports.
+    emitWernerExperience("highlight");
     if (entry.kind === "action") {
       entry.run();
     } else {

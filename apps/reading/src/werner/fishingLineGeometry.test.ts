@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   ROD_BUTT_LOCAL,
+  ROD_MAX_BEND,
   ROD_TIP_LOCAL,
   catenaryPath,
   rodBend,
+  rodBendFromPoints,
   rodLength,
   rodTipFromMascotRect,
+  tipToBaitDistance,
 } from "./fishingLineGeometry";
 
 describe("catenaryPath", () => {
@@ -23,6 +26,14 @@ describe("catenaryPath", () => {
     const d = catenaryPath({ x: 0, y: 0 }, { x: 200, y: 0 });
     const cy = Number(d.match(/Q 100 ([\d.]+) 200/)![1]);
     expect(cy).toBeGreaterThan(0);
+  });
+
+  it("ends at the live bait instrument point (cursor is bait densify)", () => {
+    // Fixed-station densify: free end of the line is the cursor/bait, not a chase.
+    const bait = { x: 300, y: 400 };
+    const d = catenaryPath({ x: 10, y: 20 }, bait);
+    expect(d.startsWith("M 10 20 ")).toBe(true);
+    expect(d.endsWith(" 300 400")).toBe(true);
   });
 
   it("degenerates to a straight segment when span < 8px", () => {
@@ -118,5 +129,19 @@ describe("rodBend (tension model, SPR-04 M2)", () => {
   it("negative/garbage distance clamps to a straight rod (no NaN)", () => {
     expect(rodBend(-50)).toBe(0);
     expect(Number.isFinite(rodBend(0))).toBe(true);
+  });
+
+  it("tipToBaitDistance is the live instrument line-out (cursor is bait densify)", () => {
+    expect(tipToBaitDistance({ x: 0, y: 0 }, { x: 30, y: 40 })).toBe(50);
+    expect(tipToBaitDistance({ x: 10, y: 10 }, { x: 10, y: 10 })).toBe(0);
+  });
+
+  it("rodBendFromPoints composes tip→bait distance into tension bend densify", () => {
+    const rod = { x: 0, y: 0 };
+    const near = { x: 10, y: 0 };
+    const far = { x: 200, y: 0 };
+    expect(rodBendFromPoints(rod, near)).toBe(rodBend(tipToBaitDistance(rod, near)));
+    expect(rodBendFromPoints(rod, far)).toBeGreaterThan(rodBendFromPoints(rod, near));
+    expect(rodBendFromPoints(rod, far)).toBeLessThanOrEqual(ROD_MAX_BEND);
   });
 });

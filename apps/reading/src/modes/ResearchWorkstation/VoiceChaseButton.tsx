@@ -4,6 +4,7 @@ import LemonButton from "../../components/lemon/LemonButton";
 import { transcribeAudio, ApiError } from "../../lib/api";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * VoiceChaseButton — drive a chase by voice (SPR-04 M4).
@@ -46,6 +47,8 @@ export default function VoiceChaseButton({ onTranscript, disabled }: Props) {
         const res = await transcribeAudio(recorder.blob as Blob);
         if (cancelled) return;
         onTranscript(res.transcript);
+        // Living-TV: voice chase transcript landed — noted beat.
+        emitWernerExperience("note_saved");
         setPhase("idle");
         recorder.reset();
       } catch (e) {
@@ -62,6 +65,7 @@ export default function VoiceChaseButton({ onTranscript, disabled }: Props) {
               : String(e);
         setFailure({ reason });
         setPhase("error");
+        emitWernerExperience("fail");
       }
     })();
     return () => {

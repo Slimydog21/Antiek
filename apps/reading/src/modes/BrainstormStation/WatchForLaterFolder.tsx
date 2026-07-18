@@ -1,4 +1,5 @@
 import type { ParkedQuestionEntry } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 interface Props {
   questions: ParkedQuestionEntry[];
@@ -59,7 +60,11 @@ export default function WatchForLaterFolder({
             <li key={q.question_id}>
               <button
                 type="button"
-                onClick={() => onSelect(q)}
+                onClick={() => {
+                  // Living-TV: selecting a parked question is a curious glance.
+                  emitWernerExperience("highlight");
+                  onSelect(q);
+                }}
                 className={`w-full text-left px-4 py-2 transition-colors ${
                   isSelected
                     ? "bg-ice-0 dark:bg-charcoal-2 shadow-sm border-l-2 border-ink dark:border-bright"

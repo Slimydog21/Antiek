@@ -54,6 +54,18 @@ describe("SpeakIndex — the warm door", () => {
     expect(screen.queryByText(/subject status|publish intent/i)).toBeNull();
   });
 
+  it("renders session thinking brand mark on the Speak door (living-TV densify)", async () => {
+    mount();
+    await screen.findByText(/who do you want to remember/i);
+    expect(screen.getByTestId("speak-home-werner-brand")).toBeTruthy();
+    const livingTv = screen.getByTestId(
+      "speak-home-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
+  });
+
   it("naming a person creates a project and lands on it", async () => {
     createPersonMock.mockResolvedValue("proj-abc");
     mount();
@@ -62,6 +74,23 @@ describe("SpeakIndex — the warm door", () => {
     fireEvent.click(screen.getByRole("button", { name: /start their story/i }));
     await waitFor(() => expect(screen.getByText("PROJECT PAGE")).toBeTruthy());
     expect(createPersonMock).toHaveBeenCalledWith("my grandmother");
+  });
+
+  it("emits living-TV piece_started when a remembrance project is created", async () => {
+    createPersonMock.mockResolvedValue("proj-abc");
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener("antiek:werner-experience", onExp);
+    mount();
+    const input = await screen.findByLabelText(/who do you want to remember/i);
+    fireEvent.change(input, { target: { value: "my grandmother" } });
+    fireEvent.click(screen.getByRole("button", { name: /start their story/i }));
+    await waitFor(() => expect(screen.getByText("PROJECT PAGE")).toBeTruthy());
+    window.removeEventListener("antiek:werner-experience", onExp);
+    expect(seen).toContain("piece_started");
   });
 
   it("shows an honest failure (no fake landing) when create fails", async () => {

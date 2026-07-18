@@ -2,6 +2,7 @@ import { LemonTag } from "../../components/lemon";
 import { cardLift } from "../../design/motion";
 import type { BookSummary } from "../../api/books";
 import { servabilityLabel } from "../../api/books";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * One book on the Library shelf. Cover-forward: a real cover when the
@@ -33,7 +34,11 @@ export default function BookCard({ book, onOpen }: BookCardProps) {
   return (
     <button
       type="button"
-      onClick={() => onOpen?.(book.document_id)}
+      onClick={() => {
+        // Living-TV: opening a shelf book is a curious highlight glance.
+        emitWernerExperience("highlight");
+        onOpen?.(book.document_id);
+      }}
       className="group flex flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sun rounded-hog"
       aria-label={`Open ${title}${book.author ? ` by ${book.author}` : ""}`}
     >

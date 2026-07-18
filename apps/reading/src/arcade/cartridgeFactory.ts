@@ -13,20 +13,35 @@ import { createZombiesCartridge } from "./games/zombies";
 
 export type ArcadeGameKind = "clam-catcher" | "ice-fishing" | "zombies";
 
+export type ArcadeCartridgeOptions = {
+  reducedMotion?: boolean;
+  /**
+   * Living-TV beat sink injected by product hosts. Cartridges default to
+   * no-op so arcade core never imports the reaction bus.
+   */
+  onWernerBeat?: (beat: string) => void;
+};
+
 export function createArcadeCartridge(
   game: ArcadeGameKind,
-  options?: { reducedMotion?: boolean },
+  options?: ArcadeCartridgeOptions,
 ): Cartridge {
+  const onWernerBeat = options?.onWernerBeat;
   if (game === "clam-catcher") {
-    return createClamCatcherCartridge();
+    return createClamCatcherCartridge({
+      reducedMotion: Boolean(options?.reducedMotion),
+      onWernerBeat,
+    });
   }
   if (game === "ice-fishing") {
     return createIceFishingCartridge({
       reducedMotion: Boolean(options?.reducedMotion),
+      onWernerBeat,
     });
   }
   return createZombiesCartridge({
     reducedMotion: Boolean(options?.reducedMotion),
+    onWernerBeat,
   });
 }
 

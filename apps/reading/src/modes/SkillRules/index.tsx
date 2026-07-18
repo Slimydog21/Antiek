@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -76,10 +77,10 @@ export default function SkillRules() {
     <div className="flex flex-col h-screen">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Shared substrate skill rules
-            </h1>
+          <SessionBrandChrome
+            testIdPrefix="skill-rules-home"
+            title="Shared substrate skill rules"
+          >
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Cross-user discovered rules that cleared the §13.9
               promotion gate. Each rule is content-addressed —
@@ -88,7 +89,7 @@ export default function SkillRules() {
               in its partition; only the rule + ε accounting + audit
               metadata propagate.
             </p>
-          </header>
+          </SessionBrandChrome>
 
           <section className="grid grid-cols-3 gap-3">
             {CONFIDENCE_ORDER.map((c) => (

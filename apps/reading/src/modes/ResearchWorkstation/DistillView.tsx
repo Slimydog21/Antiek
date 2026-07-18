@@ -9,6 +9,7 @@ import type { DistilledNode } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
 import distillationEmpty from "../../brand/werner/research/distillation-empty-v1.webp";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import ArtifactOutlineShelf from "./ArtifactOutlineShelf";
 import "./distillation-field-ledger.css";
 
@@ -75,11 +76,20 @@ export default function DistillView({
     try {
       const res = await loadDistillation(investigationId);
       setState({ kind: "loaded", insights: res.insights, questions: res.questions });
+      // Living-TV: completed distill with product is a happy craft beat;
+      // still-running partial stays quiet (partial product, not a finale).
+      if (
+        !running &&
+        (res.insights.length > 0 || res.questions.length > 0)
+      ) {
+        emitWernerExperience("deep_research_complete");
+      }
     } catch (e) {
       const reason = e instanceof ApiError ? e.body || null : null;
       setState({ kind: "error", reason });
+      emitWernerExperience("fail");
     }
-  }, [investigationId, loadDistillation]);
+  }, [investigationId, loadDistillation, running]);
 
   useEffect(() => {
     void load();
@@ -301,7 +311,21 @@ function InsightRow({
   );
 }
 
-function QuestionRow({ node, index, onChase }: { node: DistilledNode; index: number; onChase?: (q: DistilledNode) => void }) {
+function QuestionRow({
+  node,
+  index,
+  onChase,
+}: {
+  node: DistilledNode;
+  index: number;
+  onChase?: (q: DistilledNode) => void;
+}) {
+  const handleChase = () => {
+    if (!onChase) return;
+    // Living-TV: chase-from-distill is a deep-research start edge.
+    emitWernerExperience("deep_research_start");
+    onChase(node);
+  };
   return (
     <li className="distillation-ledger__row">
       <span className="distillation-ledger__index" aria-hidden="true">Q{String(index).padStart(2, "0")}</span>
@@ -314,7 +338,7 @@ function QuestionRow({ node, index, onChase }: { node: DistilledNode; index: num
           {onChase && (
             <button
               type="button"
-              onClick={() => onChase(node)}
+              onClick={handleChase}
               className="font-mono underline decoration-dotted underline-offset-2 transition-colors hover:text-ink dark:hover:text-bright"
             >
               chase this

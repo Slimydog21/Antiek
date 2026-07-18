@@ -3,9 +3,20 @@
  *
  * Drop line → fish spawn / swim → catch when hook overlaps fish → score.
  * Headless and deterministic under a seeded RNG.
+ *
+ * Catch-streak densify (craft157+): consecutive good catches build a Club
+ * Penguin–style multiplier (max 3×). Golden fish jump the streak by two steps
+ * (clam pearl parity). Hazard catch or empty cast (reel to surface without a
+ * catch) resets streak. Pure rules only — hosts inject living-TV beats.
  */
 
 export type IcePhase = "ready" | "playing" | "gameover";
+
+/** Max Club Penguin–style catch-streak multiplier (hard to vary). */
+export const ICE_MAX_STREAK = 3;
+
+/** Rare golden fish base points (pre-streak mult). */
+export const ICE_GOLDEN_POINTS = 5;
 
 export interface Fish {
   id: number;
@@ -15,7 +26,7 @@ export interface Fish {
   w: number;
   h: number;
   points: number;
-  kind: "small" | "medium" | "hazard";
+  kind: "small" | "medium" | "golden" | "hazard";
 }
 
 export interface IceFishingState {
@@ -36,6 +47,12 @@ export interface IceFishingState {
   height: number;
   /** When true, no automatic motion (reduced-motion simplified path). */
   reducedMotion: boolean;
+  /** Consecutive good-catch streak for score multiplier (0 = none). */
+  streak: number;
+  /** Peak streak this run (cabinet densify / brag). */
+  maxStreak: number;
+  /** True once this cast hooked anything (empty cast resets streak). */
+  castHadCatch: boolean;
 }
 
 export interface IceFishingConfig {
@@ -66,6 +83,9 @@ export function createIceFishingState(cfg: IceFishingConfig): IceFishingState {
     width,
     height,
     reducedMotion: Boolean(cfg.reducedMotion),
+    streak: 0,
+    maxStreak: 0,
+    castHadCatch: false,
   };
 }
 
@@ -82,7 +102,16 @@ export function startRound(state: IceFishingState): IceFishingState {
     fishes: [],
     spawnTimer: 0,
     elapsed: 0,
+    streak: 0,
+    maxStreak: 0,
+    castHadCatch: false,
   };
+}
+
+/** Catch-streak multiplier from consecutive good catches (1×..ICE_MAX_STREAK). */
+export function iceCatchStreakMultiplier(streak: number): number {
+  if (!Number.isFinite(streak) || streak <= 0) return 1;
+  return Math.min(ICE_MAX_STREAK, 1 + Math.floor(streak));
 }
 
 function aabb(
@@ -100,14 +129,28 @@ function aabb(
 
 function spawnFish(state: IceFishingState, rng: () => number): IceFishingState {
   const roll = rng();
+  // Densify: rare golden (~8%) for pearl-parity streak step; hazard ~15%.
   const kind: Fish["kind"] =
-    roll < 0.15 ? "hazard" : roll < 0.55 ? "small" : "medium";
+    roll < 0.15
+      ? "hazard"
+      : roll < 0.23
+        ? "golden"
+        : roll < 0.55
+          ? "small"
+          : "medium";
   const fromLeft = rng() < 0.5;
   const y = 70 + rng() * (state.height - 110);
   const speed = 40 + rng() * 50 + Math.min(40, state.elapsed * 2);
-  const w = kind === "medium" ? 28 : 18;
-  const h = kind === "medium" ? 14 : 10;
-  const points = kind === "hazard" ? -1 : kind === "medium" ? 3 : 1;
+  const w = kind === "medium" || kind === "golden" ? 28 : 18;
+  const h = kind === "medium" || kind === "golden" ? 14 : 10;
+  const points =
+    kind === "hazard"
+      ? -1
+      : kind === "golden"
+        ? ICE_GOLDEN_POINTS
+        : kind === "medium"
+          ? 3
+          : 1;
   const fish: Fish = {
     id: state.nextFishId,
     x: fromLeft ? -w : state.width + w,
@@ -165,6 +208,8 @@ export function stepIceFishing(
     if (input.drop && !next.dropping && !next.reeling) {
       next.dropping = true;
       next.hookVy = 140;
+      // New cast: empty-cast densify tracks whether this drop hooked anything.
+      next.castHadCatch = false;
     }
     if (input.reel && (next.dropping || next.hookY > 36)) {
       next.reeling = true;
@@ -172,8 +217,14 @@ export function stepIceFishing(
       next.hookVy = -180;
     }
 
+    const wasCasting = next.dropping || next.reeling;
     next.hookY += next.hookVy * dt;
     if (next.hookY <= 36) {
+      // Empty cast densify: reel/drop returning to surface without a catch
+      // breaks the Club Penguin streak (maxStreak retained for brag).
+      if (wasCasting && !next.castHadCatch) {
+        next.streak = 0;
+      }
       next.hookY = 36;
       next.hookVy = 0;
       next.dropping = false;
@@ -214,13 +265,20 @@ export function stepIceFishing(
     );
     if (hit && (next.dropping || next.reeling || next.reducedMotion)) {
       caught = true;
+      next.castHadCatch = true;
       if (f.kind === "hazard") {
         next.lives -= 1;
+        next.streak = 0;
         next.reeling = true;
         next.dropping = false;
         next.hookVy = -200;
       } else {
-        next.score += f.points;
+        const mult = iceCatchStreakMultiplier(next.streak);
+        next.score += f.points * mult;
+        // Golden densify: rare fish jumps streak by two (clam pearl parity).
+        const step = f.kind === "golden" ? 2 : 1;
+        next.streak = Math.min(ICE_MAX_STREAK, next.streak + step);
+        next.maxStreak = Math.max(next.maxStreak, next.streak);
         next.reeling = true;
         next.dropping = false;
         next.hookVy = -200;
@@ -231,9 +289,13 @@ export function stepIceFishing(
   }
   next.fishes = remaining;
 
-  // Reduced-motion simplified path: click/start awards a point occasionally
+  // Reduced-motion simplified path: click awards a catch densify (score + streak).
   if (next.reducedMotion && input.drop && !caught) {
-    next.score += 1;
+    const mult = iceCatchStreakMultiplier(next.streak);
+    next.score += 1 * mult;
+    next.streak = Math.min(ICE_MAX_STREAK, next.streak + 1);
+    next.maxStreak = Math.max(next.maxStreak, next.streak);
+    next.castHadCatch = true;
   }
 
   if (next.lives <= 0) {
@@ -244,6 +306,32 @@ export function stepIceFishing(
   }
 
   return next;
+}
+
+/**
+ * Living-TV beat for ice fishing (Club Penguin wait game).
+ * start → highlight; score up while playing → piece_started; gameover → fail.
+ */
+export type IceFishingWernerBeat =
+  | "highlight"
+  | "piece_started"
+  | "fail"
+  | null;
+
+export function iceFishingWernerBeat(
+  prev: Pick<IceFishingState, "phase" | "score" | "lives">,
+  next: Pick<IceFishingState, "phase" | "score" | "lives">,
+): IceFishingWernerBeat {
+  if (prev.phase === "ready" && next.phase === "playing") return "highlight";
+  if (prev.phase === "playing" && next.phase === "gameover") return "fail";
+  if (
+    prev.phase === "playing" &&
+    next.phase === "playing" &&
+    next.score > prev.score
+  ) {
+    return "piece_started";
+  }
+  return null;
 }
 
 export function iceFishingOverlapsHook(

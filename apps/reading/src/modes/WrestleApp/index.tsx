@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import LemonButton from "../../components/lemon/LemonButton";
 import PdfViewer from "../../components/PdfViewer";
 import type { DocumentLoadedPayload } from "../../generated/types";
@@ -164,6 +166,26 @@ function EmptyState({
   return (
     <div className="h-full flex items-center justify-center bg-ice-2 dark:bg-space-2">
       <div className="max-w-md text-center px-6 text-ink dark:text-bright">
+        {/* Session brand densify — Wrestle empty state is a product door;
+            living-TV invent + thinking mark so wait/load is home of the penguin. */}
+        <div className="mb-4 flex flex-col items-center gap-2">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="wrestle-empty-werner-brand"
+            className="h-14 w-14 object-contain"
+          />
+          <img
+            src={livingTvArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="wrestle-empty-living-tv-art"
+            className="h-14 w-full max-w-sm rounded-md object-cover object-center antiek-living-tv-invent"
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
         <h1 className="text-2xl font-serif mb-3">Load a PDF to wrestle.</h1>
         <p className="text-sm text-shadow-1 dark:text-moonlight font-serif leading-relaxed mb-5">
           Drop the PDF. Highlight any passage to capture it as a region.

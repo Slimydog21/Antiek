@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { LemonButton, LemonInput } from "../../components/lemon";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Prompt-to-curate input (Read SPR-04). The reader describes what they
@@ -22,7 +23,10 @@ export default function CuratePrompt({ onCurate, onClear, active, busy }: Curate
 
   const submit = () => {
     const p = value.trim();
-    if (p) onCurate(p);
+    if (!p) return;
+    // Living-TV: prompt-to-curate is a curious highlight glance.
+    emitWernerExperience("highlight");
+    onCurate(p);
   };
 
   return (

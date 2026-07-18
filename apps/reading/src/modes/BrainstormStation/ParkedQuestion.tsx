@@ -1,4 +1,5 @@
 import type { ParkedQuestionEntry } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 interface Props {
   question: ParkedQuestionEntry;
@@ -59,7 +60,11 @@ export default function ParkedQuestion({
       <section className="pt-2">
         <button
           type="button"
-          onClick={onLaunch}
+          onClick={() => {
+            // Living-TV: launching a parked question is a deep-research start.
+            emitWernerExperience("deep_research_start");
+            onLaunch();
+          }}
           disabled={launching}
           className="px-4 py-2 rounded-md bg-ink text-white text-sm font-medium hover:bg-shadow-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >

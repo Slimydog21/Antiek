@@ -11,6 +11,7 @@
 
 import { useState } from "react";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import LemonButton from "../../components/lemon/LemonButton";
 import {
   TERMINAL_STATES,
@@ -18,6 +19,7 @@ import {
   type ResearchStatus,
   type SteerKind,
 } from "../../api/research";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 const STATE_LABEL: Record<ResearchRunState, string> = {
   pending: "queued",
@@ -55,13 +57,32 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
   const isPaused = research.state === "paused";
   const isRunning = research.state === "running" || research.state === "stopping";
 
+  function steer(kind: SteerKind, payload?: Record<string, unknown>) {
+    // Living-TV: steer edges map to product experiences.
+    if (kind === "stop") emitWernerExperience("fail");
+    else if (kind === "deepen" || kind === "redirect") emitWernerExperience("deep_research_start");
+    else emitWernerExperience("highlight");
+    onSteer(kind, payload);
+  }
+
   return (
     <section
       className="flex flex-col gap-2 rounded-md border-2 border-sun bg-ice-0 p-3 dark:bg-charcoal-2"
       aria-label={`research ${research.investigation_id}`}
     >
       <header className="flex items-start justify-between gap-2">
-        <p className="line-clamp-3 text-sm text-ink dark:text-bright">{research.sub_question}</p>
+        <div className="flex min-w-0 items-start gap-2">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="research-panel-werner-brand"
+            className="mt-0.5 h-7 w-7 shrink-0 object-contain"
+          />
+          <p className="line-clamp-3 text-sm text-ink dark:text-bright">
+            {research.sub_question}
+          </p>
+        </div>
         <span
           className={`shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] ${STATE_CLASS[research.state]}`}
           aria-label="research state"
@@ -79,17 +100,17 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
         <div className="flex flex-wrap gap-1.5">
           {isPaused ? (
             <LemonButton size="sm" variant="secondary" disabled={busy}
-              onClick={() => onSteer("resume")}>Resume</LemonButton>
+              onClick={() => steer("resume")}>Resume</LemonButton>
           ) : (
             <LemonButton size="sm" variant="secondary" disabled={busy || !isRunning}
-              onClick={() => onSteer("pause")}>Pause</LemonButton>
+              onClick={() => steer("pause")}>Pause</LemonButton>
           )}
           <LemonButton size="sm" variant="danger" disabled={busy}
-            onClick={() => onSteer("stop")}>Stop</LemonButton>
+            onClick={() => steer("stop")}>Stop</LemonButton>
           <LemonButton size="sm" variant="tertiary" disabled={busy}
             onClick={() => setRedirectOpen((v) => !v)}>Redirect</LemonButton>
           <LemonButton size="sm" variant="tertiary" disabled={busy}
-            onClick={() => onSteer("deepen", { extra_budget_usd: 0.25 })}>Deepen</LemonButton>
+            onClick={() => steer("deepen", { extra_budget_usd: 0.25 })}>Deepen</LemonButton>
         </div>
       )}
 
@@ -100,7 +121,7 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
             e.preventDefault();
             const q = redirectText.trim();
             if (!q) return;
-            onSteer("redirect", { sub_question: q });
+            steer("redirect", { sub_question: q });
             setRedirectText("");
             setRedirectOpen(false);
           }}

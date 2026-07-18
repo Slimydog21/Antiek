@@ -11,7 +11,8 @@ function notifyIfBoundaryChanged(wasSuspended: boolean): void {
 }
 
 /**
- * Temporarily returns pointer authority to a focused product surface.
+ * Temporarily returns pointer authority to a focused product surface
+ * (wait-arcade / cabinet / game overlay densify — cursor instrument, not chase).
  *
  * A lease, rather than a boolean setter, makes overlapping owners teardown-safe:
  * one surface cannot accidentally restore the global instrument while another
@@ -21,7 +22,8 @@ export function acquireStationInstrumentSuspension(
   owner: string,
 ): () => void {
   const wasSuspended = isStationInstrumentSuspended();
-  const lease = Symbol(owner);
+  // Owner label is load-bearing densify for tests/hosts (wait-arcade, etc.).
+  const lease = Symbol(String(owner || "anonymous-surface"));
   leases.add(lease);
   notifyIfBoundaryChanged(wasSuspended);
 
@@ -37,6 +39,14 @@ export function acquireStationInstrumentSuspension(
 
 export function isStationInstrumentSuspended(): boolean {
   return leases.size > 0;
+}
+
+/**
+ * Instrument densify: how many focused surfaces currently own pointer authority.
+ * Pure read for densify asserts (wait-arcade / game-overlay lease stacking).
+ */
+export function stationInstrumentLeaseCount(): number {
+  return leases.size;
 }
 
 function subscribe(listener: Listener): () => void {

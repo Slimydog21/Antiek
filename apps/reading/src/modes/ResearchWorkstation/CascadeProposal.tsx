@@ -24,6 +24,7 @@ import {
   type SpendPreview,
 } from "../../api/research";
 import { notifyResearchStarted } from "../../werner";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * CascadeProposal — the Research door's "break this into sub-questions" mode
@@ -139,11 +140,14 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       const r = await createPlan({ problem });
       setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: false });
       setPhase("ready");
+      // Living-TV: cascade sub-questions proposed — curious glance.
+      emitWernerExperience("highlight");
     } catch (e) {
       // Classify the backend envelope (or network throw) — never collapse to
       // setFailed("") which masked every failure as "no provider configured".
       setFailure(classifyClientError(e));
       setPhase("ready");
+      emitWernerExperience("deep_research_error");
     }
   }, [problem]);
 
@@ -261,6 +265,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       setFailureStage(approvalCompleted ? "launch" : "approval");
       setFailure(classifyClientError(e));
       setPhase("ready");
+      emitWernerExperience("deep_research_error");
     }
   }, [authorityDigest, ceilingApproved, onLaunched, phase, plan, planMutationPending, priceCeiling, spendMode]);
 

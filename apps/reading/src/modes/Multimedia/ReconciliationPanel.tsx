@@ -13,6 +13,7 @@ import type {
   TtsReconciliationAction,
 } from "../../api/multimedia";
 import { LemonButton, LemonTag } from "../../components/lemon";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 const ACTION_LABELS: Record<TtsReconciliationAction, string> = {
   quarantine_send: "Quarantine stale send",
@@ -88,10 +89,13 @@ export function ReconciliationPanel({ assetId }: { assetId: string | null }) {
         ),
       });
       setError(null);
+      // Living-TV: operator recovered TTS reconciliation state.
+      emitWernerExperience("note_saved");
     } catch (caught) {
       if (requestGeneration.current !== generation) return;
       setChapter(null);
       setError(errorMessage(caught));
+      emitWernerExperience("fail");
     } finally {
       if (requestGeneration.current === generation) setPending(false);
     }

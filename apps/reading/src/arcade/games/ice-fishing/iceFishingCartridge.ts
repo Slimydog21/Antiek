@@ -1,6 +1,7 @@
 import type { Cartridge, GameContext, InputState } from "../../engine/types";
 import {
   createIceFishingState,
+  iceFishingWernerBeat,
   stepIceFishing,
   type IceFishingState,
 } from "./logic";
@@ -15,11 +16,19 @@ export function createIceFishingCartridge(options?: {
   reducedMotion?: boolean;
   lives?: number;
   visualKit?: IceFishingVisualKit;
+  /**
+   * Living-TV beat sink. Default is a no-op so arcade core stays free of the
+   * product reaction bus (hosts inject emitWernerExperience outside arcade/).
+   */
+  onWernerBeat?: (
+    beat: NonNullable<ReturnType<typeof iceFishingWernerBeat>>,
+  ) => void;
 }): Cartridge {
   let state: IceFishingState | null = null;
   const reduced = Boolean(options?.reducedMotion);
   let terminalReported = false;
   const visualKit = options?.visualKit ?? createIceFishingVisualKit();
+  const onWernerBeat = options?.onWernerBeat ?? (() => {});
 
   return {
     id: "ice-fishing",
@@ -49,7 +58,14 @@ export function createIceFishingCartridge(options?: {
         input.keysPressed.has("ArrowUp") || input.keysPressed.has("w");
       const start =
         input.keysPressed.has("Enter") || input.keysPressed.has(" ");
+      const prev = {
+        phase: state.phase,
+        score: state.score,
+        lives: state.lives,
+      };
       state = stepIceFishing(state, dt, { aimX, drop, reel, start }, ctx.rng);
+      const beat = iceFishingWernerBeat(prev, state);
+      if (beat) onWernerBeat(beat);
       if (state.phase === "gameover" && !terminalReported) {
         ctx.saveBestScore(state.score);
         terminalReported = true;

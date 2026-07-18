@@ -8,6 +8,7 @@ import {
   type ProviderKind,
   type UserModelRow,
 } from "../../api/settingsModels";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * AddModelPanel — user-added model providers (BYOK).
@@ -77,8 +78,11 @@ export default function AddModelPanel() {
       setModelId("");
       setBaseUrl("");
       setMessage("Model added. Its key is stored encrypted and will not be shown again.");
+      // Living-TV: BYOK model add is a noted bookkeeping beat.
+      emitWernerExperience("note_saved");
       await refresh();
     } catch (e) {
+      emitWernerExperience("fail");
       setMessage(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
@@ -94,8 +98,10 @@ export default function AddModelPanel() {
     try {
       await removeUserModel(row.id);
       setMessage("Model removed.");
+      emitWernerExperience("note_saved");
       await refresh();
     } catch (e) {
+      emitWernerExperience("fail");
       setMessage(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);

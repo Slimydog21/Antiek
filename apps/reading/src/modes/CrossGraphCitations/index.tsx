@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -96,13 +97,13 @@ export default function CrossGraphCitations() {
     <div className="flex flex-col h-screen">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Cross-graph citations
-            </h1>
+          <SessionBrandChrome
+            testIdPrefix="cross-graph-home"
+            title="Cross-graph citations"
+          >
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Record a citation from one user's investigation to
-              another user's public note. Per master-spec §13.9
+              Record a citation from one user&rsquo;s investigation to
+              another user&rsquo;s public note. Per master-spec §13.9
               Phase 3: the attribution pipeline picks this up and
               routes 70% of any attached ad revenue to the
               referenced user.
@@ -114,7 +115,7 @@ export default function CrossGraphCitations() {
               </Link>{" "}
               must allow-list the partner substrate first.
             </p>
-          </header>
+          </SessionBrandChrome>
 
           {error && (
             <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">

@@ -19,7 +19,10 @@ function context2d() {
     fill: vi.fn(),
     drawImage: vi.fn(),
     fillText: vi.fn(),
+    strokeRect: vi.fn(),
     fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 0,
     font: "",
   } as unknown as CanvasRenderingContext2D;
 }
@@ -70,6 +73,31 @@ describe("Clam Catcher authored visuals", () => {
     kit.load();
     expect(createImage).toHaveBeenCalledTimes(2);
     expect(kit.image).toBe(second);
+  });
+
+  it("draws a sun rim around authored pearl-clam densify", () => {
+    const c2d = context2d();
+    const kit: ClamCatcherVisualKit = {
+      image: {} as CanvasImageSource,
+      ready: true,
+      load: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const state: ClamCatcherState = {
+      ...createClamCatcherState(ctx.width, ctx.height),
+      phase: "playing",
+      entities: [
+        { id: 2, kind: "pearl-clam", x: 160, y: 100, radius: 10, points: 4 },
+      ],
+    };
+    renderClamCatcher(c2d, ctx, state, kit);
+    // ENTITY_SIZE pearl is 18×19; top-left = center - half size.
+    expect(c2d.strokeRect).toHaveBeenCalledWith(
+      160 - 18 / 2 + 0.5,
+      100 - 19 / 2 + 0.5,
+      17,
+      18,
+    );
   });
 
   it("draws every entity kind and the bucket from stable atlas cells", () => {
@@ -127,5 +155,52 @@ describe("Clam Catcher authored visuals", () => {
     expect(c2d.drawImage).not.toHaveBeenCalled();
     expect(c2d.arc).toHaveBeenCalledTimes(1);
     expect(c2d.fillText).toHaveBeenCalledWith("SCORE 0", 10, 18);
+  });
+
+  it("draws Club Penguin catch-streak HUD only while streak is live", () => {
+    const c2d = context2d();
+    const emptyKit = {
+      image: null,
+      ready: false,
+      load() {},
+      dispose() {},
+    };
+    const cold = createClamCatcherState(ctx.width, ctx.height);
+    renderClamCatcher(c2d, ctx, cold, emptyKit);
+    expect(
+      vi.mocked(c2d.fillText).mock.calls.some((call) =>
+        String(call[0]).startsWith("x"),
+      ),
+    ).toBe(false);
+
+    renderClamCatcher(
+      c2d,
+      ctx,
+      { ...cold, streak: 2, score: 5 },
+      emptyKit,
+    );
+    expect(c2d.fillText).toHaveBeenCalledWith(
+      "x3",
+      Math.max(96, ctx.width * 0.42),
+      18,
+    );
+  });
+
+  it("brags peak catch-streak on gameover HUD", () => {
+    const c2d = context2d();
+    const emptyKit = {
+      image: null,
+      ready: false,
+      load() {},
+      dispose() {},
+    };
+    const cold = createClamCatcherState(ctx.width, ctx.height);
+    renderClamCatcher(
+      c2d,
+      ctx,
+      { ...cold, phase: "gameover", maxStreak: 3, score: 12, lives: 0 },
+      emptyKit,
+    );
+    expect(c2d.fillText).toHaveBeenCalledWith("BEST x3", 10, ctx.height - 32);
   });
 });

@@ -73,6 +73,35 @@ vi.mock("react-router-dom", async (orig) => {
 
 import MyResearch from "./MyResearch";
 
+describe("MyResearch — living-TV brand densify", () => {
+  beforeEach(() => {
+    listState.current = {
+      investigations: [],
+      loading: false,
+      error: null,
+      refetch: () => {},
+    };
+    authState.current = { status: "authenticated" };
+  });
+
+  it("renders session living-TV invent on standalone monitor", async () => {
+    render(
+      <MemoryRouter>
+        <MyResearch />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("my-research-werner-brand")).toBeTruthy(),
+    );
+    const livingTv = screen.getByTestId(
+      "my-research-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
+  });
+});
+
 function inv(over: Partial<InvestigationSummary> & { investigation_id: string }): InvestigationSummary {
   return {
     question: "A question",

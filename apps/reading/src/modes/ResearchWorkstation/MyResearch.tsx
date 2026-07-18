@@ -42,9 +42,11 @@ import { getBudgetDefaults, type BudgetDefaults } from "../../api/research";
 import { useAuth } from "../../lib/auth";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import type { InvestigationSummary } from "../../lib/api";
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import SuggestedResearch from "./SuggestedResearch";
 
 // ── Status → plain language (SPR-02 narration vocabulary) ─────────────────
@@ -229,34 +231,42 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
     <div className={outerClass}>
       <div className={innerClass}>
         <header className="space-y-2">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h1
-                className={
-                  embedded
-                    ? "text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight"
-                    : "text-2xl font-serif text-ink dark:text-bright"
-                }
-              >
-                {embedded ? "Your research" : "My research"}
+          {embedded ? (
+            <div className="flex items-start justify-between gap-4">
+              <h1 className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                Your research
               </h1>
-              {!embedded && (
+              <button
+                type="button"
+                onClick={refetch}
+                aria-label="Refresh"
+                className="shrink-0 text-shadow-1 transition-colors hover:text-ink dark:text-moonlight dark:hover:text-bright"
+              >
+                ⟳
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-start justify-between gap-4">
+              <SessionBrandChrome
+                testIdPrefix="my-research"
+                title="My research"
+              >
                 <p className="max-w-2xl text-sm leading-relaxed text-shadow-1 dark:text-moonlight">
                   Every research you have running and finished, in one place. Each
                   shows what it is doing in plain language; open any one for the
                   full view. Launch several at once and watch them here together.
                 </p>
-              )}
+              </SessionBrandChrome>
+              <button
+                type="button"
+                onClick={refetch}
+                aria-label="Refresh"
+                className="shrink-0 text-shadow-1 transition-colors hover:text-ink dark:text-moonlight dark:hover:text-bright"
+              >
+                ⟳
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={refetch}
-              aria-label="Refresh"
-              className="shrink-0 text-shadow-1 transition-colors hover:text-ink dark:text-moonlight dark:hover:text-bright"
-            >
-              ⟳
-            </button>
-          </div>
+          )}
           <ConcurrencyBar
             running={runningActive}
             queued={queued}
@@ -277,8 +287,14 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
         {!embedded && (
           <LaunchBar
             disabled={auth.status !== "authenticated"}
-            onStartOne={() => navigate("/")}
-            onLaunchSeveral={() => navigate("/")}
+            onStartOne={() => {
+              emitWernerExperience("deep_research_start");
+              navigate("/");
+            }}
+            onLaunchSeveral={() => {
+              emitWernerExperience("deep_research_start");
+              navigate("/");
+            }}
           />
         )}
 

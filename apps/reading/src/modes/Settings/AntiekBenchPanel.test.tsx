@@ -37,6 +37,15 @@ describe("AntiekBenchPanel", () => {
       (await screen.findByTestId("antiek-bench-measured")).textContent,
     ).toMatch(/reading.*fast.*0\.900.*n=20/i);
     expect(fetchFn).toHaveBeenCalledWith();
+    // Living-TV densify: session desk invent + Werner mark are UI-consumed.
+    const desk = screen.getByTestId(
+      "antiek-bench-living-tv-art",
+    ) as HTMLImageElement;
+    expect(desk.getAttribute("src") ?? "").toMatch(
+      /werner_antiek_bench_celebrate_session_v1/,
+    );
+    expect(desk.className).toMatch(/antiek-living-tv-invent/);
+    expect(screen.getByTestId("antiek-bench-werner")).toBeTruthy();
   });
 
   it("states unavailable evidence as not measured, never zero", async () => {

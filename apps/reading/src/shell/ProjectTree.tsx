@@ -8,6 +8,7 @@ import { listBooks } from "../api/books";
 import type { BookSummary } from "../api/books";
 import type { InvestigationSummary } from "../lib/api";
 import { useInvestigationList } from "../hooks/useInvestigationList";
+import { emitWernerExperience } from "../werner/reactionBus";
 import {
   WORKFLOWS,
   workflowForPath,
@@ -182,6 +183,7 @@ export function ProjectTree({
   });
 
   const onItemClick = (n: TreeNode, e: React.MouseEvent) => {
+    emitWernerExperience("highlight");
     if (e.metaKey || e.ctrlKey) {
       e.preventDefault();
       openPanel(panelKindForNode(n), { id: n.id }, { mode: "floating", title: n.title });
@@ -272,7 +274,7 @@ export function ProjectTree({
           <button
             key={l.to}
             type="button"
-            onClick={() => navigate(l.to)}
+            onClick={() => { emitWernerExperience("highlight"); navigate(l.to); }}
             className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-sun/20 dark:hover:bg-sun/10 text-left"
           >
             <span className="opacity-50">›</span>

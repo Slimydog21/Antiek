@@ -72,6 +72,16 @@ describe("ModelDecisionBar", () => {
   // stale DOM from prior tests (getMultipleElementsFoundError).
   afterEach(cleanup);
 
+  it("product-maps model decision tree invent strip (not inventory-only)", () => {
+    render(<ModelDecisionBar projection={baseProjection()} />);
+    const invent = screen.getByTestId(
+      "model-decision-bar-living-tv-art",
+    ) as HTMLImageElement;
+    expect(invent.getAttribute("src") ?? "").toMatch(
+      /werner_model_decision_tree_session_v1/,
+    );
+  });
+
   it("renders the model selector with ranked candidates", () => {
     render(<ModelDecisionBar projection={baseProjection()} />);
     const select = screen.getByTestId(

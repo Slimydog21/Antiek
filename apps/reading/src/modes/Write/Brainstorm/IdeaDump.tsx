@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { emitWernerExperience } from "../../../werner/reactionBus";
 import { emitBrainstormBlocks, type BrainstormEmitResult } from "../writeApi";
 import { canAskMore, initClarify, recordTurn, type ClarifyState } from "./clarifyLoop";
 
@@ -55,8 +56,11 @@ export function IdeaDump({ sectionId, deliverableId, className }: IdeaDumpProps)
         data_points: lines(data),
       });
       setResult(r);
+      // Living-TV: brainstorm drivers became lego blocks — happy craft.
+      emitWernerExperience("piece_started");
     } catch (e) {
       setError(String(e));
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }

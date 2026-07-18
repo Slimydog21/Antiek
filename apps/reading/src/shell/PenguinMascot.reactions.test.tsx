@@ -2,6 +2,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { emitLivingTvHostBeat } from "../arcade/host/livingTvHostEmit";
 import { emitWernerExperience, WERNER_EXPERIENCE_EVENT } from "../werner";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { PenguinMascot } from "./PenguinMascot";
@@ -116,6 +117,24 @@ describe("PenguinMascot product reactions", () => {
     expect(mascot.getAttribute("data-werner-emote")).toBe("curious");
 
     act(() => emitWernerExperience("deep_research_complete"));
+    expect(mascot.getAttribute("data-werner-emote")).toBe("happy");
+  });
+
+  it("receives arcade living-TV host beats on the same stage path as product bus", () => {
+    // Arcade hosts inject emitLivingTvHostBeat without importing reactionBus.
+    // The mascot must still animate as the asynchronous TV show at Antiek.
+    render(
+      <MemoryRouter initialEntries={["/brainstorm"]}>
+        <PenguinMascot />
+      </MemoryRouter>,
+    );
+    const mascot = screen.getByTestId("penguin-mascot");
+    expect(mascot.getAttribute("data-werner-emote")).toBe("none");
+
+    act(() => emitLivingTvHostBeat("highlight"));
+    expect(mascot.getAttribute("data-werner-emote")).toBe("curious");
+
+    act(() => emitLivingTvHostBeat("piece_started"));
     expect(mascot.getAttribute("data-werner-emote")).toBe("happy");
   });
 

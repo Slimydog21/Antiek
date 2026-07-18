@@ -3,6 +3,7 @@ import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
 import { stringAttr } from "./attrHelpers";
 
+import { emitWernerExperience } from "../../../werner/reactionBus";
 /**
  * Question-card block — captures an emergent question that the
  * literate analysis surfaced. Substrate-ref by parked_question id;
@@ -64,7 +65,7 @@ function QuestionCardNodeView({ node, deleteNode }: NodeViewProps) {
         )}
         <button
           type="button"
-          onClick={() => deleteNode()}
+          onClick={() => { emitWernerExperience("note_saved"); deleteNode(); }}
           aria-label="Remove question"
           className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor leading-none mt-1"
         >

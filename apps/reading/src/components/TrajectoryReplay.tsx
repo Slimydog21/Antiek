@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Event } from "../generated/types";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 interface Props {
   events: Event[];
@@ -94,14 +95,23 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
       <div className="flex items-center gap-3">
         <button
           type="button"
-          onClick={() => setPlaying((p) => !p)}
+          onClick={() => {
+            setPlaying((p) => {
+              // Living-TV: replay play starts thinking beat; pause is quiet.
+              if (!p) emitWernerExperience("deep_research_start");
+              return !p;
+            });
+          }}
           className="px-2.5 py-1 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors"
         >
           {playing ? "Pause" : "Play"}
         </button>
         <button
           type="button"
-          onClick={() => setCurrentIndex(0)}
+          onClick={() => {
+            setCurrentIndex(0);
+            emitWernerExperience("highlight");
+          }}
           className="text-xs text-shadow-1 dark:text-moonlight hover:text-ink dark:text-bright"
         >
           ⏮ Restart

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { LemonButton, LemonTextarea } from "../../components/lemon";
 import { saveVoiceNote, transcribeAudio } from "../../api/books";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * VoiceNote (Read SPR-06) — capture a spoken note about the current page,
@@ -67,6 +68,8 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
       });
       setSavedCount(res.note_count);
       setPhase("saved");
+      // Living-TV: a confirmed voice note is a noted craft beat.
+      emitWernerExperience("note_saved");
       onSaved?.(res.note_count);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));

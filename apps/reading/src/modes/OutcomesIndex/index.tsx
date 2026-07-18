@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import LemonTable from "../../components/lemon/LemonTable";
 import { apiFetch } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Operator-facing outcomes audit surface (master-spec §13.8).
@@ -62,9 +65,30 @@ export default function OutcomesIndex() {
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Outcomes audit
-            </h1>
+            <div className="flex items-center gap-3">
+              {/* Session thinking mark — densify Outcomes door with living-TV
+                  brand chrome so the audit surface consumes session Imagine
+                  assets, not inventory-only. */}
+              <img
+                src={thinkingArt}
+                alt=""
+                aria-hidden="true"
+                data-testid="outcomes-home-werner-brand"
+                className="h-12 w-12 shrink-0 object-contain"
+              />
+              <h1 className="text-2xl font-serif text-ink dark:text-bright">
+                Outcomes audit
+              </h1>
+            </div>
+            <img
+              src={livingTvArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="outcomes-home-living-tv-art"
+              className="h-16 w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent"
+              loading="lazy"
+              decoding="async"
+            />
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Cross-investigation grading history. Per master-spec
               §13.8: outcomes are first-class signals that feed the
@@ -117,9 +141,10 @@ export default function OutcomesIndex() {
             <LemonTable
               rows={rows}
               rowKey={(r) => r.outcome_id}
-              onRowClick={(r) =>
-                navigate(`/outcomes/${encodeURIComponent(r.synthesis_id)}`)
-              }
+              onRowClick={(r) => {
+                emitWernerExperience("highlight");
+                navigate(`/outcomes/${encodeURIComponent(r.synthesis_id)}`);
+              }}
               columns={[
                 {
                   key: "synthesis",

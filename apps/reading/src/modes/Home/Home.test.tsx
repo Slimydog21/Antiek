@@ -59,6 +59,7 @@ function mount() {
         <Route path="/write" element={<div>WRITE SURFACE</div>} />
         <Route path="/speak" element={<div>SPEAK SURFACE</div>} />
         <Route path="/biography" element={<div>BIOGRAPHY SURFACE</div>} />
+        <Route path="/arcade" element={<div>ARCADE SURFACE</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -118,6 +119,15 @@ describe("Home (SPR-12 M1)", () => {
     expect(
       screen.getByText(/One workspace for everything you read/i),
     ).toBeTruthy();
+    // Hero Werner — home of the penguin (UI-consumed, not inventory-only).
+    expect(screen.getByTestId("home-werner-hero")).toBeTruthy();
+    // Living-TV invent strip densifies the front door (not inventory-only).
+    const livingTv = screen.getByTestId("home-living-tv-art") as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_crt_living_tv_session_v1/,
+    );
+    // Flipbook-feel invent reframe class is load-bearing on product doors.
+    expect(livingTv.className).toMatch(/antiek-living-tv-invent/);
     // Four equal door cards.
     const cards = screen.getByTestId("home-workflow-cards");
     expect(cards.querySelectorAll("button").length).toBe(WORKFLOW_ORDER.length);
@@ -160,6 +170,28 @@ describe("Home (SPR-12 M1)", () => {
     }
   });
 
+  it("emits PRODUCT_ACTIVATE living-TV choreography before navigating each door", () => {
+    const seen: string[] = [];
+    const onAct = (e: Event) => {
+      const id = (e as CustomEvent<{ productId?: string }>).detail?.productId;
+      if (id) seen.push(id);
+    };
+    window.addEventListener("antiek:product:activate", onAct);
+    for (const wf of WORKFLOW_ORDER) {
+      cleanup();
+      const { container } = mount();
+      const card = container.querySelector<HTMLButtonElement>(
+        `button[data-workflow="${wf}"]`,
+      );
+      expect(card?.getAttribute("data-product-id")).toBe(wf);
+      fireEvent.click(card!);
+    }
+    window.removeEventListener("antiek:product:activate", onAct);
+    for (const wf of WORKFLOW_ORDER) {
+      expect(seen).toContain(wf);
+    }
+  });
+
   it("features biographies and opens the dedicated /biography landing (SPR-11)", () => {
     mount();
     const bio = screen.getByTestId("home-biographies");
@@ -168,4 +200,44 @@ describe("Home (SPR-12 M1)", () => {
     fireEvent.click(screen.getByTestId("home-biographies-cta"));
     expect(screen.getByText(/BIOGRAPHY SURFACE/)).toBeTruthy();
   });
+
+  it("emits living-TV piece_started when starting a biography", () => {
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener("antiek:werner-experience", onExp);
+    mount();
+    fireEvent.click(screen.getByTestId("home-biographies-cta"));
+    window.removeEventListener("antiek:werner-experience", onExp);
+    expect(seen).toContain("piece_started");
+  });
+
+  it("features Werner's arcade and opens /arcade in one click (opt-in mini-games)", () => {
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener("antiek:werner-experience", onExp);
+    mount();
+    expect(screen.getByTestId("home-arcade")).toBeTruthy();
+    // Session thinking brand chrome + igloo invent scene art (not inventory-only).
+    expect(screen.getByTestId("home-arcade-werner-brand")).toBeTruthy();
+    const igloo = screen.getByTestId("home-arcade-living-tv-art") as HTMLImageElement;
+    expect(igloo.getAttribute("src") ?? "").toMatch(
+      /werner_igloo_minigame_trio_session_v1/,
+    );
+    expect(igloo.className).toMatch(/antiek-living-tv-invent/);
+    const cta = screen.getByTestId("home-arcade-cta");
+    // Living-TV product-door densify: arcade CTA is resolvable geometry.
+    expect(cta.getAttribute("data-product-id")).toBe("arcade");
+    expect(cta.getAttribute("data-werner-target")).toBe("curious");
+    fireEvent.click(cta);
+    expect(screen.getByText(/ARCADE SURFACE/)).toBeTruthy();
+    expect(seen).toContain("highlight");
+    window.removeEventListener("antiek:werner-experience", onExp);
+  });
 });
+

@@ -18,6 +18,7 @@ import {
   emitProductActivate,
   BUILTIN_BINDINGS,
 } from "../components/hotkeys/bindings";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 /**
  * NavRail (SPR-04) — the four-workflow content-first rail.
@@ -342,7 +343,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       icon={<I d={UTIL_ICONS.search} size={15} />}
       label="Search"
       title="Search · ⌘K"
-      onClick={openSearch}
+      onClick={() => { emitWernerExperience("highlight"); openSearch(); }}
       variant="utility"
       orientation={orientation}
       // SPR-07 M3 — Search opens the command palette, whose canonical binding

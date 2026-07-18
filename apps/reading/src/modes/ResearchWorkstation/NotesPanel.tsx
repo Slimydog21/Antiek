@@ -4,6 +4,7 @@ import type { Event } from "../../generated/types";
 import type { InvestigationState } from "../../hooks/useInvestigation";
 import { challengeNote, ApiError } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * NotesPanel — auto-notes appearing as the research runs (SPR-03 M1 + M3).
@@ -217,10 +218,15 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
       const res = await challengeNote(note.nodeId, { investigation_id: investigationId });
       if (res.applied && res.new_text) {
         setChallenge({ kind: "changed", newText: res.new_text });
+        // Living-TV: successful challenge refines the living note.
+        emitWernerExperience("note_saved");
       } else if (res.escalated) {
         setChallenge({ kind: "escalated" });
+        // Escalation opens a chase thread — deep research start beat.
+        emitWernerExperience("deep_research_start");
       } else if (res.superseded) {
         setChallenge({ kind: "unchanged" });
+        emitWernerExperience("highlight");
       } else {
         setChallenge({ kind: "idle" });
       }
@@ -228,8 +234,10 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
       // 503 = no model configured → the honest no-key state, not an error blob.
       if (e instanceof ApiError && e.status === 503) {
         setChallenge({ kind: "noModel" });
+        emitWernerExperience("fail");
       } else {
         setChallenge({ kind: "error", detail: e instanceof Error ? e.message : "unknown" });
+        emitWernerExperience("fail");
       }
     }
   };

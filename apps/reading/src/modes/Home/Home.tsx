@@ -1,7 +1,12 @@
 import { useNavigate } from "react-router-dom";
 
 import Werner from "../../brand/Werner";
+import { emitProductActivate } from "../../components/hotkeys";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import homeEnvironment from "../../brand/werner/home/antiek-knowledge-home-v1.webp";
+// Igloo minigame trio invent — ice + clam + paperclip zombies (align ArcadeCabinet).
+import iglooArcadeArt from "../../brand/werner/poses/session/werner_igloo_minigame_trio_session_v1.webp";
+import livingTvArt from "../../brand/werner/poses/session/werner_crt_living_tv_session_v1.webp";
 import GlassSurface from "../../shell/GlassSurface";
 import { WORKFLOWS, WORKFLOW_ORDER } from "../../shell/workflowTaxonomy";
 
@@ -75,7 +80,18 @@ export function Home() {
         <div className="mx-auto max-w-3xl px-6 py-14">
           {/* Brand statement — what Antiek is, in its own voice. */}
           <header className="mb-10 flex flex-col items-center text-center">
-            <Werner mood="idle" size={72} label="Antiek" />
+            <span data-testid="home-werner-hero">
+              <Werner mood="idle" size={72} label="Antiek" />
+            </span>
+            <img
+              src={livingTvArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="home-living-tv-art"
+              className="mt-3 h-16 w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent"
+              loading="lazy"
+              decoding="async"
+            />
             <h1 className="mt-4 font-serif text-3xl font-semibold text-ink dark:text-bright">
               One workspace for everything you read, research, and write.
             </h1>
@@ -100,7 +116,14 @@ export function Home() {
                   key={wf}
                   type="button"
                   data-workflow={wf}
-                  onClick={() => navigate(meta.defaultRoute)}
+                  data-product-id={wf}
+                  data-werner-target="curious"
+                  onClick={() => {
+                    // Living-TV: home doors share the product-activate choreography
+                    // (distinct emote per door via emoteForProductDoor) before route.
+                    emitProductActivate({ productId: wf, source: "click" });
+                    navigate(meta.defaultRoute);
+                  }}
                   className={
                     "group flex flex-col items-start rounded-hog border-edge border-sun " +
                     "bg-ice-0 p-5 text-left shadow-z1 transition " +
@@ -144,7 +167,11 @@ export function Home() {
                 <button
                   type="button"
                   data-testid="home-biographies-cta"
-                  onClick={() => navigate("/biography")}
+                  onClick={() => {
+                    // Living-TV: biography is a craft start — happy penguin beat.
+                    emitWernerExperience("piece_started");
+                    navigate("/biography");
+                  }}
                   className={
                     "mt-3 inline-flex items-center rounded-hog border-edge border-sun " +
                     "bg-sun px-3 py-1.5 text-[13px] font-semibold text-ink shadow-z1 transition " +
@@ -157,6 +184,62 @@ export function Home() {
               </div>
             </div>
           </section>
+
+        <section
+          aria-label="Werner arcade"
+          data-testid="home-arcade"
+          className="mt-6 overflow-hidden rounded-hog border-edge border-rule bg-ice-0/90 dark:border-charcoal-1 dark:bg-charcoal-2/90"
+        >
+          <img
+            src={iglooArcadeArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="home-arcade-living-tv-art"
+            className="h-28 w-full object-cover object-center antiek-living-tv-invent"
+            loading="lazy"
+            decoding="async"
+          />
+          <div className="flex items-start gap-4 p-5">
+            {/* Session thinking mark — arcade is Werner's home; densify with
+                living-TV chrome (same path as Library/Research doors). */}
+            <span data-testid="home-arcade-werner-brand">
+              <Werner mood="thinking" size={48} label="Arcade" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="font-serif text-lg font-semibold text-ink dark:text-bright">
+                Play in Werner&rsquo;s igloo
+              </h2>
+              <p className="mt-1 text-[13.5px] leading-relaxed text-shadow-1 dark:text-moonlight">
+                Ice Fishing, Clam Catcher, and Paperclip Zombies live in the
+                arcade —
+                Club Penguin–inspired mini-games for when you want a break, or
+                while deep research is running. Always opt-in; never blocks work.
+              </p>
+              <button
+                type="button"
+                data-testid="home-arcade-cta"
+                data-product-id="arcade"
+                data-werner-target="curious"
+                onClick={() => {
+                  // Living-TV: arcade door product-activate (curious emote) + highlight.
+                  emitProductActivate({ productId: "arcade", source: "click" });
+                  emitWernerExperience("highlight");
+                  navigate("/arcade");
+                }}
+                className={
+                  "mt-3 inline-flex items-center rounded-hog border-edge border-sun " +
+                  "bg-ice-1 px-3 py-1.5 text-[13px] font-semibold text-ink shadow-z1 transition " +
+                  "hover:bg-sun/30 hover:shadow-z2 focus-visible:outline focus-visible:outline-2 " +
+                  "focus-visible:outline-offset-2 focus-visible:outline-sun " +
+                  "dark:bg-charcoal-1 dark:text-bright"
+                }
+              >
+                Open the arcade
+              </button>
+            </div>
+          </div>
+        </section>
+
         </div>
       </GlassSurface>
     </div>

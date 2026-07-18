@@ -1,4 +1,8 @@
 import { LemonTag } from "../../components/lemon";
+// Book marketplace port invent — zero-buyer house next-read is the marketplace door.
+import bookMarketplaceArt from "../../brand/werner/poses/session/werner_book_marketplace_port_session_v1.webp";
+import "../../brand/sessionLivingTv.css";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * The zero-buyer house state (Read SPR-05 M3). v1 ships with no ad
@@ -44,10 +48,24 @@ export default function HouseSlot({ promo, onOpen }: HouseSlotProps) {
   return (
     <button
       type="button"
-      onClick={() => onOpen?.(promo.documentId)}
+      onClick={() => {
+        // Living-TV: next-read house promo is a curious highlight glance.
+        emitWernerExperience("highlight");
+        onOpen?.(promo.documentId);
+      }}
       className="flex items-center gap-3 w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sun rounded-md px-2 py-1"
       aria-label={`Next read from the library: ${promo.title}`}
     >
+      {/* Living-TV invent — marketplace port / next-read product door. */}
+      <img
+        src={bookMarketplaceArt}
+        alt=""
+        aria-hidden="true"
+        data-testid="house-slot-living-tv-art"
+        className="h-9 w-14 shrink-0 rounded object-cover object-center antiek-living-tv-invent"
+        loading="lazy"
+        decoding="async"
+      />
       <LemonTag colour="aurora">Next read</LemonTag>
       <span className="min-w-0">
         <span className="font-serif text-sm text-ink dark:text-bright truncate block">

@@ -3,13 +3,48 @@ import { describe, expect, it } from "vitest";
 import { createSeededRng } from "../../engine/rng";
 import {
   createIceFishingState,
+  iceCatchStreakMultiplier,
   iceFishingOverlapsHook,
+  iceFishingWernerBeat,
+  ICE_GOLDEN_POINTS,
+  ICE_MAX_STREAK,
   startRound,
   stepIceFishing,
   type IceFishingState,
 } from "./logic";
 
 describe("ice fishing pure logic", () => {
+  it("createSeededRng densify is deterministic and seed-sensitive", () => {
+    // densify: arcade pure helpers share Mulberry32 — same seed → same stream.
+    const a = createSeededRng(7);
+    const b = createSeededRng(7);
+    const c = createSeededRng(8);
+    const seqA = [a(), a(), a()];
+    const seqB = [b(), b(), b()];
+    const seqC = [c(), c(), c()];
+    expect(seqA).toEqual(seqB);
+    expect(seqA).not.toEqual(seqC);
+    for (const n of seqA) {
+      expect(n).toBeGreaterThanOrEqual(0);
+      expect(n).toBeLessThan(1);
+    }
+  });
+
+  it("iceFishingOverlapsHook densify hits and misses on AABB hook vs fish", () => {
+    // densify: pure hook AABB is the Club Penguin catch decision surface.
+    const base = createIceFishingState({ width: 200, height: 160 });
+    const state = {
+      ...base,
+      phase: "playing" as const,
+      hookX: 100,
+      hookY: 80,
+    };
+    const hit = { id: 1, x: 96, y: 76, w: 12, h: 10, vx: 0, kind: "good" as const };
+    const miss = { id: 2, x: 140, y: 120, w: 12, h: 10, vx: 0, kind: "good" as const };
+    expect(iceFishingOverlapsHook(state, hit)).toBe(true);
+    expect(iceFishingOverlapsHook(state, miss)).toBe(false);
+  });
+
   it("starts a round from ready on drop/start", () => {
     const s0 = createIceFishingState({ width: 200, height: 160 });
     expect(s0.phase).toBe("ready");
@@ -168,6 +203,57 @@ describe("ice fishing pure logic", () => {
     expect(state.score).toBe(0);
   });
 
+  it("iceFishingWernerBeat maps start, catch, and gameover living-TV edges", () => {
+    expect(
+      iceFishingWernerBeat(
+        { phase: "ready", score: 0, lives: 3 },
+        { phase: "playing", score: 0, lives: 3 },
+      ),
+    ).toBe("highlight");
+    expect(
+      iceFishingWernerBeat(
+        { phase: "playing", score: 0, lives: 3 },
+        { phase: "playing", score: 3, lives: 3 },
+      ),
+    ).toBe("piece_started");
+    expect(
+      iceFishingWernerBeat(
+        { phase: "playing", score: 3, lives: 1 },
+        { phase: "gameover", score: 3, lives: 0 },
+      ),
+    ).toBe("fail");
+  });
+
+  it("iceFishingWernerBeat densify stays silent on non-edge frames", () => {
+    // densify: Club Penguin ice-fishing living-TV only beats on start/catch/fail.
+    expect(
+      iceFishingWernerBeat(
+        { phase: "playing", score: 3, lives: 2 },
+        { phase: "playing", score: 3, lives: 2 },
+      ),
+    ).toBeNull();
+    expect(
+      iceFishingWernerBeat(
+        { phase: "ready", score: 0, lives: 3 },
+        { phase: "ready", score: 0, lives: 3 },
+      ),
+    ).toBeNull();
+    // Life loss without gameover is silent densify (hosts do not spam dizzy).
+    expect(
+      iceFishingWernerBeat(
+        { phase: "playing", score: 3, lives: 2 },
+        { phase: "playing", score: 3, lives: 1 },
+      ),
+    ).toBeNull();
+    // Score drop is not a catch beat densify.
+    expect(
+      iceFishingWernerBeat(
+        { phase: "playing", score: 5, lives: 2 },
+        { phase: "playing", score: 3, lives: 2 },
+      ),
+    ).toBeNull();
+  });
+
   it("preserves configured lives across game-over restart", () => {
     const gameOver = {
       ...startRound(
@@ -208,5 +294,263 @@ describe("ice fishing pure logic", () => {
       return state;
     };
     expect(run()).toEqual(run());
+  });
+
+  it("builds Club Penguin–style catch-streak multiplier on consecutive good catches", () => {
+    expect(iceCatchStreakMultiplier(0)).toBe(1);
+    expect(iceCatchStreakMultiplier(1)).toBe(2);
+    expect(iceCatchStreakMultiplier(ICE_MAX_STREAK)).toBe(ICE_MAX_STREAK);
+
+    let s = startRound(createIceFishingState({ width: 200, height: 160 }));
+    s = {
+      ...s,
+      dropping: true,
+      hookX: 50,
+      hookY: 80,
+      spawnTimer: 99,
+      fishes: [
+        {
+          id: 1,
+          x: 45,
+          y: 75,
+          vx: 0,
+          w: 20,
+          h: 12,
+          points: 3,
+          kind: "medium",
+        },
+      ],
+    };
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.streak).toBe(1);
+    expect(s.score).toBe(3); // mult 1×
+    expect(s.maxStreak).toBe(1);
+
+    s = {
+      ...s,
+      dropping: true,
+      hookX: 50,
+      hookY: 80,
+      spawnTimer: 99,
+      fishes: [
+        {
+          id: 2,
+          x: 45,
+          y: 75,
+          vx: 0,
+          w: 20,
+          h: 12,
+          points: 3,
+          kind: "medium",
+        },
+      ],
+    };
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.streak).toBe(2);
+    expect(s.score).toBe(3 + 3 * 2); // second catch 2×
+  });
+
+  it("builds catch-streak on reduced-motion simplified catches", () => {
+    let s = startRound(
+      createIceFishingState({ width: 200, height: 160, reducedMotion: true }),
+    );
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: true, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.score).toBe(1);
+    expect(s.streak).toBe(1);
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: true, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.score).toBe(1 + 2); // second catch 2× mult
+    expect(s.streak).toBe(2);
+    expect(s.maxStreak).toBe(2);
+  });
+
+  it("spawns rare golden fish in the densify roll band", () => {
+    let s = startRound(createIceFishingState({ width: 200, height: 160 }));
+    // spawnFish roll: hazard <0.15, golden <0.23 — pin first roll at 0.18.
+    const rolls = [0.18, 0.2, 0.3];
+    let i = 0;
+    const rng = () => rolls[i++] ?? 0.5;
+    s = {
+      ...s,
+      spawnTimer: 0,
+      fishes: [],
+    };
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 100, drop: false, reel: false, start: false },
+      rng,
+    );
+    expect(s.fishes.some((f) => f.kind === "golden")).toBe(true);
+    const golden = s.fishes.find((f) => f.kind === "golden");
+    expect(golden?.points).toBe(ICE_GOLDEN_POINTS);
+  });
+
+  it("golden catch jumps streak by two without breaking the mult order", () => {
+    let s = startRound(createIceFishingState({ width: 200, height: 160 }));
+    s = {
+      ...s,
+      dropping: true,
+      hookX: 50,
+      hookY: 80,
+      spawnTimer: 99,
+      fishes: [
+        {
+          id: 1,
+          x: 45,
+          y: 75,
+          vx: 0,
+          w: 28,
+          h: 14,
+          points: ICE_GOLDEN_POINTS,
+          kind: "golden",
+        },
+      ],
+    };
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.score).toBe(ICE_GOLDEN_POINTS); // mult 1× on first golden
+    expect(s.streak).toBe(2); // golden step +2
+    expect(s.maxStreak).toBe(2);
+
+    s = {
+      ...s,
+      dropping: true,
+      hookX: 50,
+      hookY: 80,
+      spawnTimer: 99,
+      fishes: [
+        {
+          id: 2,
+          x: 45,
+          y: 75,
+          vx: 0,
+          w: 20,
+          h: 12,
+          points: 1,
+          kind: "small",
+        },
+      ],
+    };
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.score).toBe(ICE_GOLDEN_POINTS + 1 * 3); // mult 3× from streak 2
+    expect(s.streak).toBe(ICE_MAX_STREAK);
+  });
+
+  it("resets catch streak on hazard", () => {
+    let s = startRound(createIceFishingState({ width: 200, height: 160 }));
+    s = {
+      ...s,
+      dropping: true,
+      hookX: 50,
+      hookY: 80,
+      streak: 2,
+      maxStreak: 2,
+      castHadCatch: false,
+      spawnTimer: 99,
+      fishes: [
+        {
+          id: 9,
+          x: 45,
+          y: 75,
+          vx: 0,
+          w: 20,
+          h: 12,
+          points: -1,
+          kind: "hazard",
+        },
+      ],
+    };
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.streak).toBe(0);
+    expect(s.maxStreak).toBe(2);
+    expect(s.lives).toBeLessThan(3);
+  });
+
+  it("resets catch streak on empty cast returning to surface", () => {
+    let s = startRound(createIceFishingState({ width: 200, height: 160 }));
+    s = {
+      ...s,
+      reeling: true,
+      dropping: false,
+      hookX: 50,
+      hookY: 40,
+      hookVy: -180,
+      streak: 2,
+      maxStreak: 2,
+      castHadCatch: false,
+      spawnTimer: 99,
+      fishes: [],
+    };
+    // One large step reels past the surface without a catch.
+    s = stepIceFishing(
+      s,
+      0.1,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.hookY).toBe(36);
+    expect(s.reeling).toBe(false);
+    expect(s.streak).toBe(0);
+    expect(s.maxStreak).toBe(2); // peak brag retained
+  });
+
+  it("keeps catch streak when a cast that caught returns to surface", () => {
+    let s = startRound(createIceFishingState({ width: 200, height: 160 }));
+    s = {
+      ...s,
+      reeling: true,
+      dropping: false,
+      hookX: 50,
+      hookY: 40,
+      hookVy: -180,
+      streak: 2,
+      maxStreak: 2,
+      castHadCatch: true,
+      spawnTimer: 99,
+      fishes: [],
+    };
+    s = stepIceFishing(
+      s,
+      0.1,
+      { aimX: 50, drop: false, reel: false, start: false },
+      () => 0.2,
+    );
+    expect(s.hookY).toBe(36);
+    expect(s.streak).toBe(2);
+    expect(s.maxStreak).toBe(2);
   });
 });

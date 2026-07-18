@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { LemonDropdown, LemonMenuItem } from "../lemon/LemonDropdown";
 import LemonButton from "../lemon/LemonButton";
 
+import { emitWernerExperience } from "../../werner/reactionBus";
 /**
  * Topbar — slim (44 px) horizontal bar that sits above the dock row.
  *
@@ -118,10 +119,10 @@ export function Topbar() {
       >
         {({ close }) => (
           <>
-            <LemonMenuItem onClick={close}>Profile</LemonMenuItem>
-            <LemonMenuItem onClick={close}>Settings</LemonMenuItem>
+            <LemonMenuItem onClick={() => { emitWernerExperience("highlight"); close(); }}>Profile</LemonMenuItem>
+            <LemonMenuItem onClick={() => { emitWernerExperience("highlight"); close(); }}>Settings</LemonMenuItem>
             <div className="my-1 border-t border-rule dark:border-charcoal-1" />
-            <LemonMenuItem onClick={close}>Sign out</LemonMenuItem>
+            <LemonMenuItem onClick={() => { emitWernerExperience("note_saved"); close(); }}>Sign out</LemonMenuItem>
           </>
         )}
       </LemonDropdown>

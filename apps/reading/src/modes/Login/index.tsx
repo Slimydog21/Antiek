@@ -18,6 +18,9 @@ import {
 } from "../../lib/auth";
 import type { AuthDiagnosticCode } from "../../lib/authDiagnosticCodes";
 import { track, trackException } from "../../lib/analytics";
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 import "./Login.css";
 
@@ -162,6 +165,8 @@ export default function Login() {
       await finishPasskeyLogin(ceremony_id, credential);
       await refresh();
       track("passkey_login_succeeded");
+      // Living-TV: welcome beat as Antiek unlocks.
+      emitWernerExperience("highlight");
       navigate(nextPath, { replace: true });
     } catch (error) {
       if (isPasskeyCancellation(error)) {
@@ -172,6 +177,7 @@ export default function Login() {
       setErrorMsg(message);
       setErrorHint("Try again, use a nearby device, or recover with email.");
       setPasskeyState("error");
+      emitWernerExperience("fail");
       trackException(error instanceof Error ? error : new Error(message));
     }
   }
@@ -186,6 +192,7 @@ export default function Login() {
       await finishPasskeyRegistration(ceremony_id, credential, deviceLabel());
       track("passkey_registered");
       setPasskeyState("ready");
+      emitWernerExperience("highlight");
       navigate(nextPath, { replace: true });
     } catch (error) {
       if (isPasskeyCancellation(error)) {
@@ -276,8 +283,36 @@ export default function Login() {
       <div className="antiek-login__grain" aria-hidden="true" />
       <section className="antiek-login__desk" aria-label="Antiek sign in">
         <header className="antiek-login__brand">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="login-werner-brand"
+            className="antiek-login__werner"
+            width={56}
+            height={56}
+          />
           <span className="antiek-login__wordmark">Antiek</span>
           <span className="antiek-login__edition">Private research workstation</span>
+          <img
+            src={livingTvArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="login-living-tv-art"
+            className="antiek-login__living-tv antiek-living-tv-invent"
+            style={{
+              width: "100%",
+              maxWidth: 280,
+              height: 72,
+              objectFit: "cover",
+              objectPosition: "center top",
+              borderRadius: 8,
+              marginTop: 12,
+              display: "block",
+            }}
+            loading="lazy"
+            decoding="async"
+          />
         </header>
 
         <div className="antiek-login__card">

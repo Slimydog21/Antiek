@@ -1,7 +1,11 @@
 import visualKitUrl from "../../../brand/werner/arcade/clam-catcher-visual-kit-v1.webp";
 import { accent, aliasFor, sun, surface } from "../../../design/tokens";
 import type { GameContext } from "../../engine/types";
-import type { ClamCatcherState, FallingKind } from "./logic";
+import {
+  clamCatchStreakMultiplier,
+  type ClamCatcherState,
+  type FallingKind,
+} from "./logic";
 
 type AtlasImage = CanvasImageSource & { complete?: boolean };
 
@@ -143,15 +147,15 @@ function drawAtlasEntity(
         ? ATLAS.pearl
         : ATLAS.common;
   const size = ENTITY_SIZE[kind];
-  drawAtlasCell(
-    c2d,
-    image,
-    cell,
-    x - size.width / 2,
-    y - size.height / 2,
-    size.width,
-    size.height,
-  );
+  const dx = x - size.width / 2;
+  const dy = y - size.height / 2;
+  drawAtlasCell(c2d, image, cell, dx, dy, size.width, size.height);
+  // Pearl densify: sun rim marks rare clam (parity with ice golden rim).
+  if (kind === "pearl-clam") {
+    c2d.strokeStyle = sun.base;
+    c2d.lineWidth = 1.5;
+    c2d.strokeRect(dx + 0.5, dy + 0.5, size.width - 1, size.height - 1);
+  }
 }
 
 function drawAtlasCell(
@@ -197,6 +201,16 @@ function drawHud(
   c2d.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
   c2d.fillText(`SCORE ${state.score}`, 10, 18);
   c2d.fillText(`LIVES ${state.lives}`, 10, 35);
+  // Club Penguin catch-streak densify: show xN only while streak is live.
+  if (state.streak > 0) {
+    c2d.fillStyle = sun.base;
+    c2d.fillText(
+      `x${clamCatchStreakMultiplier(state.streak)}`,
+      Math.max(96, ctx.width * 0.42),
+      18,
+    );
+  }
+  c2d.fillStyle = textColor;
   c2d.font = "12px system-ui, sans-serif";
   if (state.phase === "ready") {
     c2d.fillText(
@@ -206,5 +220,15 @@ function drawHud(
     );
   } else if (state.phase === "gameover") {
     c2d.fillText("Shift over — Enter to retry", 10, ctx.height - 50);
+    // Peak catch-streak brag densify (cabinet/wait craft).
+    if (state.maxStreak > 0) {
+      c2d.fillStyle = sun.base;
+      c2d.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
+      c2d.fillText(
+        `BEST x${clamCatchStreakMultiplier(state.maxStreak)}`,
+        10,
+        ctx.height - 32,
+      );
+    }
   }
 }

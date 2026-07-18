@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { getTraceTarget, type OutlineBlockView } from "./writeApi";
 
 /**
@@ -88,6 +89,15 @@ export default function Xray({
   const paragraphs = useMemo(() => splitParagraphs(proseText), [proseText]);
   const [selectedParagraph, setSelectedParagraph] = useState<number | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
+
+  const handleRegenerate = useCallback(
+    (idx: number) => {
+      // Living-TV: rewrite craft is a happy piece_started beat.
+      emitWernerExperience("piece_started");
+      void onRegenerateParagraph?.(idx);
+    },
+    [onRegenerateParagraph],
+  );
   // The trace chain for the block the user opened (chunk → document).
   const [trace, setTrace] = useState<
     { blockId: string; documentTitle: string | null; detail: string | null } | null
@@ -229,7 +239,7 @@ export default function Xray({
                             // handle + a direct affordance so the gesture is
                             // reachable by both pointer + keyboard.
                             draggable={!!onRegenerateParagraph}
-                            onDragEnd={() => void onRegenerateParagraph?.(idx)}
+                            onDragEnd={() => handleRegenerate(idx)}
                             onClick={() => void openTrace(bid)}
                             className="flex-1 cursor-grab rounded border-l-2 border-ocean/50 bg-ocean/5 px-2 py-1 text-left text-[12px] text-ink dark:text-bright active:cursor-grabbing"
                             title="Click to trace to source · drag to re-draft this section"
@@ -243,7 +253,7 @@ export default function Xray({
                   {onRegenerateParagraph && ids.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => void onRegenerateParagraph(idx)}
+                      onClick={() => handleRegenerate(idx)}
                       className="text-[11px] text-ocean underline"
                     >
                       regenerate this section

@@ -14,6 +14,7 @@ import { WorkflowStub } from "./WorkflowStub";
 import { ThreadBreadcrumb } from "./ThreadBreadcrumb";
 import type { Thread, ThreadHop } from "./threadModel";
 
+import { emitWernerExperience } from "../werner/reactionBus";
 /**
  * SceneChrome (SPR-04 zone 3) — the per-workflow scene wrapper.
  *
@@ -191,7 +192,7 @@ export function SceneChrome({
                 <button
                   key={a.id}
                   type="button"
-                  onClick={() => runAction(a)}
+                  onClick={() => { emitWernerExperience("highlight"); runAction(a); }}
                   disabled={busy}
                   aria-busy={busy || undefined}
                   className={
@@ -219,7 +220,7 @@ export function SceneChrome({
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => navigate(t.to)}
+                  onClick={() => { emitWernerExperience("highlight"); navigate(t.to); }}
                   aria-current={active ? "page" : undefined}
                   className={
                     "px-3 py-1.5 text-[12.5px] border-b-2 " +

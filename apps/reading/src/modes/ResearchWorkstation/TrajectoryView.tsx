@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import type { Event } from "../../generated/types";
 import type { InvestigationState } from "../../hooks/useInvestigation";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import PhaseRow from "./PhaseRow";
 
 /**
@@ -25,6 +27,20 @@ export default function TrajectoryView({
 }) {
   const [showDispatches, setShowDispatches] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastStatusBeat = useRef<string | null>(null);
+
+  // Living-TV: terminal status transitions on the raw trajectory surface.
+  useEffect(() => {
+    const status = investigation.status;
+    if (status === lastStatusBeat.current) return;
+    if (status === "completed") {
+      lastStatusBeat.current = status;
+      emitWernerExperience("deep_research_complete");
+    } else if (status === "failed" || status === "not_found") {
+      lastStatusBeat.current = status;
+      emitWernerExperience("deep_research_error");
+    }
+  }, [investigation.status]);
 
   const filteredEvents = useMemo(() => {
     if (showDispatches) return investigation.events;
@@ -45,6 +61,15 @@ export default function TrajectoryView({
         investigation={investigation}
         showDispatches={showDispatches}
         onToggleDispatches={() => setShowDispatches((v) => !v)}
+      />
+      <img
+        src={livingTvArt}
+        alt=""
+        aria-hidden="true"
+        data-testid="trajectory-living-tv-art"
+        className="mx-4 mt-2 h-10 max-w-xs rounded object-cover object-center antiek-living-tv-invent"
+        loading="lazy"
+        decoding="async"
       />
       <div
         ref={scrollRef}

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
 import { shadowForStackDepth } from "../../design/elevation";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { clampRectToViewport } from "../../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 import { WINDOW_Z_BASE, useWindows } from "../../workspace/windowsStore";
@@ -298,7 +299,10 @@ export function WorkspaceWindow({
           type="button"
           data-window-action="toggle"
           onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => toggleMode(id)}
+          onClick={() => {
+            emitWernerExperience("highlight");
+            toggleMode(id);
+          }}
           aria-label={isFull ? "Restore window to floating" : "Expand window to full"}
           className="px-1.5 leading-none text-[13px] text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
         >
@@ -308,7 +312,10 @@ export function WorkspaceWindow({
           type="button"
           data-window-action="close"
           onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => close(id)}
+          onClick={() => {
+            emitWernerExperience("note_saved");
+            close(id);
+          }}
           aria-label="Close window"
           className="px-1.5 leading-none text-[13px] text-shadow-1 dark:text-moonlight hover:text-emperor"
         >

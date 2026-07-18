@@ -7,7 +7,12 @@ import {
   surface,
   type,
 } from "../../../design/tokens";
-import type { Zombie, ZombiesPhase, ZombiesState } from "./logic";
+import {
+  zombiesComboMultiplier,
+  type Zombie,
+  type ZombiesPhase,
+  type ZombiesState,
+} from "./logic";
 
 const HUD_HEIGHT = 20;
 const STATUS_HEIGHT = 28;
@@ -125,7 +130,7 @@ export function drawZombiesScene(
   drawEvidenceTraces(c2d, state, width, layout);
   drawFort(c2d, state, layout, kit);
   drawHud(c2d, state, width);
-  drawStatusPlate(c2d, state.phase, width, height, layout);
+  drawStatusPlate(c2d, state, width, height, layout);
   // Targets render above chrome because their authoritative hitboxes may enter
   // the HUD/status bands; visual position must never drift from hit-testing.
   for (const zombie of state.zombies) drawPaperclip(c2d, zombie, kit);
@@ -369,12 +374,17 @@ function drawHud(
   c2d.fillStyle = surface.night[7];
   c2d.fillText("NIGHT FILE", 10, 14);
   c2d.fillStyle = surface.night[9];
-  c2d.fillText(`WAVE ${String(state.wave).padStart(2, "0")}`, width * 0.25, 14);
+  c2d.fillText(`WAVE ${String(state.wave).padStart(2, "0")}`, width * 0.22, 14);
   c2d.fillText(
     `SCORE ${String(state.score).padStart(4, "0")}`,
-    width * 0.48,
+    width * 0.4,
     14,
   );
+  // BO1-style combo densify: show xN only while streak is live.
+  if (state.combo > 0) {
+    c2d.fillStyle = sun.base;
+    c2d.fillText(`x${zombiesComboMultiplier(state.combo)}`, width * 0.62, 14);
+  }
 
   c2d.fillStyle = surface.night[7];
   c2d.font = `600 9px ${type.mono}`;
@@ -387,11 +397,12 @@ function drawHud(
 
 function drawStatusPlate(
   c2d: CanvasRenderingContext2D,
-  phase: ZombiesPhase,
+  state: Pick<ZombiesState, "phase" | "maxCombo">,
   width: number,
   height: number,
   layout: ZombiesVisualLayout,
 ): void {
+  const phase = state.phase;
   c2d.fillStyle = surface.night[4];
   c2d.fillRect(0, layout.statusTop, width, height - layout.statusTop);
   c2d.fillStyle = phase === "gameover" ? accent.emperor.night : sun.base;
@@ -404,4 +415,14 @@ function drawStatusPlate(
     compact ? 7 : 12,
     layout.statusTop + 18,
   );
+  // Peak BO1 combo brag densify on fort-fallen (parity with ice/clam BEST xN).
+  if (phase === "gameover" && state.maxCombo > 0 && !compact) {
+    c2d.fillStyle = sun.base;
+    c2d.font = `600 10px ${type.mono}`;
+    c2d.fillText(
+      `BEST x${zombiesComboMultiplier(state.maxCombo)}`,
+      12,
+      layout.statusTop + 34,
+    );
+  }
 }

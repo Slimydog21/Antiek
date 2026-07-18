@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { LemonTag } from "../components/lemon/LemonTag";
 import { openWindow, windowKindForRoute } from "../components/windows/openWindow";
+import { emitWernerExperience } from "../werner/reactionBus";
 import {
   MODE_TAXONOMY,
   WORKFLOWS,
@@ -243,6 +244,7 @@ export function ProductsLauncher({
               type="button"
               data-testid="launcher-home"
               onClick={() => {
+                emitWernerExperience("highlight");
                 navigate("/home");
                 onClose();
               }}
@@ -277,7 +279,7 @@ export function ProductsLauncher({
                           <button
                             type="button"
                             data-product-window={g.workflow}
-                            onClick={() => openProductWindow(g.workflow as Workflow)}
+                            onClick={() => { emitWernerExperience("highlight"); openProductWindow(g.workflow as Workflow); }}
                             title={`Open ${g.label} — its sub-actions, in a window over the scene`}
                             // The product-activation (sub-action) window and the
                             // eligible-mode ⊞ "open in window" affordance share an
@@ -308,7 +310,7 @@ export function ProductsLauncher({
                               <button
                                 type="button"
                                 disabled={!m.built}
-                                onClick={() => openMode(m)}
+                                onClick={() => { emitWernerExperience("highlight"); openMode(m); }}
                                 title={m.blurb}
                                 data-mode-id={m.id}
                                 className={
@@ -332,7 +334,7 @@ export function ProductsLauncher({
                                 <button
                                   type="button"
                                   data-mode-window={m.id}
-                                  onClick={() => openModeInWindow(m)}
+                                  onClick={() => { emitWernerExperience("highlight"); openModeInWindow(m); }}
                                   title={`Open ${m.label} in a floating window over the scene`}
                                   aria-label={`Open ${m.label} in a window`}
                                   className="shrink-0 px-1.5 py-1 rounded text-[12px] text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright"
@@ -360,7 +362,7 @@ export function ProductsLauncher({
                         <button
                           type="button"
                           disabled={!m.built}
-                          onClick={() => openMode(m)}
+                          onClick={() => { emitWernerExperience("highlight"); openMode(m); }}
                           title={m.blurb}
                           data-mode-id={m.id}
                           className={
@@ -384,7 +386,7 @@ export function ProductsLauncher({
                           <button
                             type="button"
                             data-mode-window={m.id}
-                            onClick={() => openModeInWindow(m)}
+                            onClick={() => { emitWernerExperience("highlight"); openModeInWindow(m); }}
                             title={`Open ${m.label} in a floating window over the scene`}
                             aria-label={`Open ${m.label} in a window`}
                             className="shrink-0 px-1.5 py-1 rounded text-[12px] text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright"

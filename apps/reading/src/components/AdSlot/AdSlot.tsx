@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * AdSlot — Sprint 23-24 + 25+ page-border banner.
@@ -89,7 +90,7 @@ export default function AdSlot({
               href={ad.creative_url}
               target="_blank"
               rel="noreferrer noopener sponsored"
-              onClick={() => onClick?.(ad.campaign_id)}
+              onClick={() => { emitWernerExperience("highlight"); onClick?.(ad.campaign_id); }}
               className="text-sm font-serif text-ink dark:text-bright hover:text-ink dark:text-bright underline-offset-2 hover:underline"
             >
               {ad.creative_headline}
@@ -118,7 +119,7 @@ export default function AdSlot({
           href={ad.creative_url}
           target="_blank"
           rel="noreferrer noopener sponsored"
-          onClick={() => onClick?.(ad.campaign_id)}
+          onClick={() => { emitWernerExperience("highlight"); onClick?.(ad.campaign_id); }}
           className="text-ink dark:text-bright hover:text-ink dark:text-bright underline-offset-2 hover:underline"
         >
           {ad.creative_headline}

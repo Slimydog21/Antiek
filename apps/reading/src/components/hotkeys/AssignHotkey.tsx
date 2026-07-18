@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import LemonButton from "../lemon/LemonButton";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import LemonModal from "../lemon/LemonModal";
 import type { PersistedCustomHotkey } from "../../workspace/persistence";
 import { KeyChip } from "./KeyChip";
@@ -61,7 +62,7 @@ export function AssignHotkey({
             type="button"
             className="antiek-assign-hotkey__clear"
             aria-label={`Remove hotkey for ${label}`}
-            onClick={() => hk.removeForEntity(entityId)}
+            onClick={() => { emitWernerExperience("highlight"); hk.removeForEntity(entityId); }}
           >
             Remove
           </button>
@@ -174,7 +175,7 @@ function CaptureDialog({ label, onClose, onSave, checkConflict }: CaptureDialogP
               variant="primary"
               size="sm"
               disabled={!captured || blocking}
-              onClick={() => onSave(captured, overridable)}
+              onClick={() => { emitWernerExperience("note_saved"); onSave(captured, overridable); }}
             >
               {overridable ? "Reassign anyway" : "Save hotkey"}
             </LemonButton>

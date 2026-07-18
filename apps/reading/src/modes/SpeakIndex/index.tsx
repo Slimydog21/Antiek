@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Werner from "../../brand/Werner";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { LemonButton } from "../../components/lemon";
 import { track } from "../../lib/analytics";
 import {
@@ -14,6 +15,7 @@ import {
 import PublicLane from "../Speak/lanes/PublicLane";
 import YoursLane from "../Speak/lanes/YoursLane";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Speak home — the warm one-door entry (Product Depth SPR-08 M1).
@@ -104,6 +106,8 @@ export default function SpeakIndex() {
     try {
       const id = await createPerson(name);
       track("speak_project_created");
+      // Living-TV: starting a remembrance is a happy craft beat.
+      emitWernerExperience("piece_started");
       navigate(`/speak/${id}`);
     } catch {
       setCreateFailed(true);
@@ -115,18 +119,34 @@ export default function SpeakIndex() {
   return (
     <div className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
       <div className="mx-auto max-w-2xl px-6 py-10">
-        <header className="mb-7 flex items-start gap-3">
-          <Werner mood="idle" size={44} />
-          <div>
-            <h1 className="font-serif text-2xl font-semibold text-ink dark:text-bright">
-              Who do you want to remember?
-            </h1>
-            <p className="mt-1 text-sm text-ink-soft dark:text-moonlight">
-              Name someone, then invite the people who knew them. Each records
-              their memories — in their own voice, on their own time — and
-              their story comes together from what everyone shares.
-            </p>
+        <header className="mb-7 space-y-3">
+          <div className="flex items-start gap-3">
+            {/* Session thinking mark — densify Speak door with the same living-TV
+                brand chrome as Library / Research / Write (idle→thinking so the
+                product path consumes session Imagine PNGs, not inventory-only). */}
+            <span data-testid="speak-home-werner-brand">
+              <Werner mood="thinking" size={44} label="Speak" />
+            </span>
+            <div>
+              <h1 className="font-serif text-2xl font-semibold text-ink dark:text-bright">
+                Who do you want to remember?
+              </h1>
+              <p className="mt-1 text-sm text-ink-soft dark:text-moonlight">
+                Name someone, then invite the people who knew them. Each records
+                their memories — in their own voice, on their own time — and
+                their story comes together from what everyone shares.
+              </p>
+            </div>
           </div>
+          <img
+            src={livingTvArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="speak-home-living-tv-art"
+            className="h-16 w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent"
+            loading="lazy"
+            decoding="async"
+          />
         </header>
 
         <form

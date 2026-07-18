@@ -4,6 +4,7 @@ import type { NodeViewProps } from "@tiptap/react";
 import { stringAttr } from "./attrHelpers";
 import { useState } from "react";
 
+import { emitWernerExperience } from "../../../werner/reactionBus";
 /**
  * LaTeX block — math source rendered as monospace (raw) until the
  * operator opts in to a KaTeX render. KaTeX is intentionally NOT
@@ -65,7 +66,7 @@ function LatexNodeView({ node, deleteNode, updateAttributes }: NodeViewProps) {
             )}
             <button
               type="button"
-              onClick={() => deleteNode()}
+              onClick={() => { emitWernerExperience("note_saved"); deleteNode(); }}
               aria-label="Remove block"
               className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor"
             >

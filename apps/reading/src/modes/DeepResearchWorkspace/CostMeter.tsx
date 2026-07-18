@@ -7,14 +7,54 @@
  * (the point at which the backend blocks further launches).
  */
 
+import { useEffect, useRef } from "react";
+
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import type { SessionCost } from "../../api/research";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 const WARN_FRACTION = 0.8;
 
+/** Pure policy: budget bar living-TV beat for a spend snapshot. */
+export function costMeterWernerBeat(input: {
+  spent: number;
+  cap: number;
+  warnFraction?: number;
+}): "fail" | "highlight" | null {
+  const { spent, cap, warnFraction = WARN_FRACTION } = input;
+  if (!(cap > 0) || !Number.isFinite(spent) || !Number.isFinite(cap)) return null;
+  if (spent >= cap) return "fail";
+  if (spent / cap >= warnFraction) return "highlight";
+  return null;
+}
+
 export default function CostMeter({ cost }: { cost: SessionCost | null }) {
+  const lastBeat = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!cost) return;
+    const beat = costMeterWernerBeat({
+      spent: cost.aggregate_spent_usd,
+      cap: cost.aggregate_cap_usd,
+    });
+    if (!beat || beat === lastBeat.current) return;
+    lastBeat.current = beat;
+    emitWernerExperience(beat);
+  }, [cost]);
+
   if (!cost) {
     return (
-      <div className="text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
+      <div
+        className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight"
+        data-testid="cost-meter-awaiting"
+      >
+        <img
+          src={thinkingArt}
+          alt=""
+          aria-hidden="true"
+          data-testid="cost-meter-werner-brand"
+          className="h-5 w-5 object-contain opacity-80"
+        />
         cost · awaiting session
       </div>
     );
@@ -31,9 +71,22 @@ export default function CostMeter({ cost }: { cost: SessionCost | null }) {
       : "bg-aurora";
 
   return (
-    <div className="flex flex-col gap-1" aria-label="session cost meter">
+    <div
+      className="flex flex-col gap-1"
+      aria-label="session cost meter"
+      data-testid="cost-meter"
+      data-at-cap={atCap ? "true" : "false"}
+      data-warn={warn ? "true" : "false"}
+    >
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
+        <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="cost-meter-werner-brand"
+            className="h-5 w-5 object-contain"
+          />
           session cost
         </span>
         <span className="font-mono text-sm text-ink dark:text-bright">

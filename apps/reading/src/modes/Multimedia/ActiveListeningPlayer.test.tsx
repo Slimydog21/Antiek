@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MultimediaLocalAudiblePlayback } from "../../api/multimedia";
+import { WERNER_EXPERIENCE_EVENT } from "../../werner";
 import { ActiveListeningPlayer } from "./ActiveListeningPlayer";
 
 vi.mock("../../api/multimedia", async (importOriginal) => {
@@ -168,6 +169,21 @@ describe("ActiveListeningPlayer", () => {
       expect.any(String),
     );
     expect(screen.getByText(/Plan review is the next step/)).toBeTruthy();
+  });
+
+  it("emits deep_research_start living-TV beat when research prepares", async () => {
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+    render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    fireEvent.click(screen.getByRole("button", { name: "Review learned claims" }));
+    fireEvent.click(screen.getByRole("button", { name: "Research this" }));
+    fireEvent.click(screen.getByRole("button", { name: "Prepare research" }));
+    await waitFor(() => expect(seen).toContain("deep_research_start"));
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, onExp);
   });
 
   it("locks claim and question changes until research preparation resolves", async () => {

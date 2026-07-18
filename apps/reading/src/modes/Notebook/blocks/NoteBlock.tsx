@@ -4,6 +4,7 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { stringAttr } from "./attrHelpers";
 
+import { emitWernerExperience } from "../../../werner/reactionBus";
 /** Inline note block — a single note from the operator or the agent. */
 function NoteNodeView({ node, deleteNode }: NodeViewProps) {
   const text = (node.attrs.text as string | null) ?? "";
@@ -22,7 +23,7 @@ function NoteNodeView({ node, deleteNode }: NodeViewProps) {
         </p>
         <button
           type="button"
-          onClick={() => deleteNode()}
+          onClick={() => { emitWernerExperience("note_saved"); deleteNode(); }}
           aria-label="Remove note"
           className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor leading-none mt-1"
         >

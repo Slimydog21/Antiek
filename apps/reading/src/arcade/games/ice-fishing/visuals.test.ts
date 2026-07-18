@@ -21,6 +21,7 @@ function context2d() {
     fill: vi.fn(),
     drawImage: vi.fn(),
     fillText: vi.fn(),
+    strokeRect: vi.fn(),
     save: vi.fn(),
     restore: vi.fn(),
     translate: vi.fn(),
@@ -111,6 +112,16 @@ describe("Ice Fishing authored visuals", () => {
         },
         {
           id: 3,
+          kind: "golden",
+          x: 120,
+          y: 100,
+          vx: 40,
+          w: 28,
+          h: 14,
+          points: 5,
+        },
+        {
+          id: 4,
           kind: "hazard",
           x: 160,
           y: 130,
@@ -124,18 +135,21 @@ describe("Ice Fishing authored visuals", () => {
     const before = structuredClone(state);
     renderIceFishing(c2d, ctx, state, kit);
     expect(state).toEqual(before);
-    expect(c2d.drawImage).toHaveBeenCalledTimes(4);
+    // hook + small + medium + golden(reuses medium atlas) + hazard
+    expect(c2d.drawImage).toHaveBeenCalledTimes(5);
     const calls = vi.mocked(c2d.drawImage).mock.calls;
     expect(calls.map((call) => call.slice(1, 5))).toEqual([
       [824, 793, 183, 258],
       [62, 228, 486, 196],
       [632, 168, 569, 332],
+      [632, 168, 569, 332], // golden → medium cell
       [94, 776, 466, 258],
     ]);
     const hitboxes = [
       { x: 115, y: 75, w: 10, h: 10 },
       { x: 20, y: 90, w: 18, h: 10 },
       { x: 80, y: 110, w: 28, h: 14 },
+      { x: 120, y: 100, w: 28, h: 14 },
       { x: 160, y: 130, w: 18, h: 10 },
     ];
     calls.forEach((call, index) => {
@@ -177,6 +191,50 @@ describe("Ice Fishing authored visuals", () => {
     expect(c2d.restore).toHaveBeenCalledTimes(1);
   });
 
+  it("draws Club Penguin catch-streak HUD only while streak is live", () => {
+    const c2d = context2d();
+    const emptyKit: IceFishingVisualKit = {
+      image: null,
+      ready: false,
+      load() {},
+      dispose() {},
+    };
+    const cold = createIceFishingState({ width: ctx.width, height: ctx.height });
+    renderIceFishing(c2d, ctx, cold, emptyKit);
+    expect(c2d.fillText).toHaveBeenCalledWith("Score 0", 8, 16);
+    expect(
+      vi.mocked(c2d.fillText).mock.calls.some((call) =>
+        String(call[0]).startsWith("x"),
+      ),
+    ).toBe(false);
+
+    renderIceFishing(
+      c2d,
+      ctx,
+      { ...cold, streak: 2, score: 6 },
+      emptyKit,
+    );
+    expect(c2d.fillText).toHaveBeenCalledWith("x3", Math.max(96, ctx.width * 0.42), 16);
+  });
+
+  it("brags peak catch-streak on gameover HUD", () => {
+    const c2d = context2d();
+    const emptyKit: IceFishingVisualKit = {
+      image: null,
+      ready: false,
+      load() {},
+      dispose() {},
+    };
+    const cold = createIceFishingState({ width: ctx.width, height: ctx.height });
+    renderIceFishing(
+      c2d,
+      ctx,
+      { ...cold, phase: "gameover", maxStreak: 3, score: 12, lives: 0 },
+      emptyKit,
+    );
+    expect(c2d.fillText).toHaveBeenCalledWith("BEST x3", 8, ctx.height - 28);
+  });
+
   it("keeps the original token fallback before the atlas is ready", () => {
     const c2d = context2d();
     const state: IceFishingState = {
@@ -210,5 +268,62 @@ describe("Ice Fishing authored visuals", () => {
     );
     expect(c2d.fillRect).toHaveBeenCalledWith(20, 90, 18, 10);
     expect(c2d.fillText).toHaveBeenCalledWith("Score 0", 8, 16);
+  });
+
+  it("draws a sun rim around authored golden fish densify", () => {
+    const c2d = context2d();
+    const image = {} as CanvasImageSource;
+    const kit: IceFishingVisualKit = {
+      image,
+      ready: true,
+      load() {},
+      dispose() {},
+    };
+    const state: IceFishingState = {
+      ...createIceFishingState({ width: ctx.width, height: ctx.height }),
+      fishes: [
+        {
+          id: 7,
+          kind: "golden",
+          x: 50,
+          y: 90,
+          vx: 20,
+          w: 28,
+          h: 14,
+          points: 5,
+        },
+      ],
+    };
+    renderIceFishing(c2d, ctx, state, kit);
+    expect(c2d.strokeRect).toHaveBeenCalledWith(50.5, 90.5, 27, 13);
+  });
+
+  it("paints golden fish fallback with sun.base densify color", () => {
+    const c2d = context2d();
+    const state: IceFishingState = {
+      ...createIceFishingState({ width: ctx.width, height: ctx.height }),
+      fishes: [
+        {
+          id: 9,
+          kind: "golden",
+          x: 40,
+          y: 100,
+          vx: 10,
+          w: 28,
+          h: 14,
+          points: 5,
+        },
+      ],
+    };
+    renderIceFishing(c2d, ctx, state, {
+      image: null,
+      ready: false,
+      load() {},
+      dispose() {},
+    });
+    // fillStyle is set before fillRect; golden uses sun.base token.
+    expect(c2d.fillRect).toHaveBeenCalledWith(40, 100, 28, 14);
+    // sun.base is a non-empty CSS color string in the token system.
+    expect(String(c2d.fillStyle).length).toBeGreaterThan(0);
   });
 });

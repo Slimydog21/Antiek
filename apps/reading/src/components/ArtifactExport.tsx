@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { API_BASE, apiFetch } from "../lib/api";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 /**
  * The export formats, presented with EQUAL prominence + neutral copy (SPR-08
@@ -52,10 +53,12 @@ export function ArtifactExport({
           | { reason?: string }
           | null;
         setError(body?.reason ?? "Export refused under the source's rights.");
+        emitWernerExperience("fail");
         return;
       }
       if (!resp.ok) {
         setError(`Export failed (HTTP ${resp.status}).`);
+        emitWernerExperience("fail");
         return;
       }
       const blob = await resp.blob();
@@ -65,8 +68,11 @@ export function ArtifactExport({
       anchor.download = `${filenamePrefix}.${ext}`;
       anchor.click();
       URL.revokeObjectURL(url);
+      // Living-TV: HTML-first artifact export — happy craft (HTML vision).
+      emitWernerExperience("piece_started");
     } catch {
       setError("Export failed — the server could not be reached.");
+      emitWernerExperience("fail");
     } finally {
       setExporting(false);
     }

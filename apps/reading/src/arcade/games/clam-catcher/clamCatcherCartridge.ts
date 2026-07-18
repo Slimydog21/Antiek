@@ -1,5 +1,6 @@
 import type { Cartridge, GameContext, InputState } from "../../engine/types";
 import {
+  clamCatcherWernerBeat,
   createClamCatcherState,
   stepClamCatcher,
   type ClamCatcherState,
@@ -11,11 +12,21 @@ import {
 } from "./visuals";
 
 export function createClamCatcherCartridge(options?: {
+  reducedMotion?: boolean;
   visualKit?: ClamCatcherVisualKit;
+  /**
+   * Living-TV beat sink. Default no-op — product hosts inject the reaction
+   * bus outside the arcade core boundary.
+   */
+  onWernerBeat?: (
+    beat: NonNullable<ReturnType<typeof clamCatcherWernerBeat>>,
+  ) => void;
 }): Cartridge {
   let state: ClamCatcherState | null = null;
   let terminalReported = false;
+  const reduced = Boolean(options?.reducedMotion);
   const visualKit = options?.visualKit ?? createClamCatcherVisualKit();
+  const onWernerBeat = options?.onWernerBeat ?? (() => {});
 
   return {
     id: "clam-catcher",
@@ -26,7 +37,9 @@ export function createClamCatcherCartridge(options?: {
     },
     init(ctx: GameContext) {
       visualKit.load();
-      state = createClamCatcherState(ctx.width, ctx.height);
+      state = createClamCatcherState(ctx.width, ctx.height, {
+        reducedMotion: reduced,
+      });
       terminalReported = false;
     },
     update(dtSec, input: InputState, ctx: GameContext) {
@@ -34,6 +47,11 @@ export function createClamCatcherCartridge(options?: {
       const left = input.keysDown.has("ArrowLeft");
       const right = input.keysDown.has("ArrowRight");
       const horizontal = left === right ? 0 : left ? -1 : 1;
+      const prev = {
+        phase: state.phase,
+        score: state.score,
+        lives: state.lives,
+      };
       state = stepClamCatcher(
         state,
         dtSec,
@@ -49,6 +67,8 @@ export function createClamCatcherCartridge(options?: {
         },
         ctx.rng,
       );
+      const beat = clamCatcherWernerBeat(prev, state);
+      if (beat) onWernerBeat(beat);
       if (state.phase === "gameover" && !terminalReported) {
         ctx.saveBestScore(state.score);
         terminalReported = true;

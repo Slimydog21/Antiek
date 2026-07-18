@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import type { PaletteDragPayload } from "../CreationStudio/BlockPalette";
 import { DRAG_MIME } from "../CreationStudio/BlockPalette";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import {
   listFolders,
   searchRepository,
@@ -106,14 +107,14 @@ export default function BlockRepository({
           <FolderChip
             label="All"
             active={activeFolder === null}
-            onClick={() => setActiveFolder(null)}
+            onClick={() => { emitWernerExperience("highlight"); setActiveFolder(null); }}
           />
           {folders.map((f) => (
             <FolderChip
               key={f.folder_id}
               label={`${f.name} · ${f.member_count}`}
               active={activeFolder === f.folder_id}
-              onClick={() => setActiveFolder(f.folder_id)}
+              onClick={() => { emitWernerExperience("highlight"); setActiveFolder(f.folder_id); }}
             />
           ))}
         </div>
@@ -127,7 +128,7 @@ export default function BlockRepository({
             <button
               type="button"
               draggable
-              onClick={() => onAdd(hit)}
+              onClick={() => { emitWernerExperience("highlight"); onAdd(hit); }}
               onDragStart={(e) => {
                 // Keep drag: the same envelope the shipped outline drop reads.
                 const payload: PaletteDragPayload = {

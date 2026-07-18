@@ -6,6 +6,7 @@ import { stringAttr, intAttr } from "./attrHelpers";
 import LemonCard from "../../../components/lemon/LemonCard";
 import { openPdfPanel } from "../../../workspace/actions";
 
+import { emitWernerExperience } from "../../../werner/reactionBus";
 /**
  * Region-embed block — references a PDF region by document_id + page.
  * Renders a placeholder card with an "Open at page" affordance that
@@ -39,7 +40,7 @@ function RegionEmbedNodeView({ node, deleteNode }: NodeViewProps) {
               )}
               <button
                 type="button"
-                onClick={() => deleteNode()}
+                onClick={() => { emitWernerExperience("note_saved"); deleteNode(); }}
                 aria-label="Remove block"
                 className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor"
               >

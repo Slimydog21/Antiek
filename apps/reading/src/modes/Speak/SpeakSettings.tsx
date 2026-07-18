@@ -3,6 +3,7 @@ import { useState } from "react";
 import { LemonButton } from "../../components/lemon";
 import type { EconomicsView, PayoutReleaseView } from "../../lib/speakApi";
 import { GATE_PHRASES, PAYOUT_COPY } from "../../lib/speakVocab";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * SpeakSettings — the one calm tap (Product Depth SPR-08 M4).
@@ -96,8 +97,11 @@ export default function SpeakSettings({
           perInterviewCapUsd: cap.trim() || "0",
         }),
       );
+      // Living-TV: payout release path engaged — noted (gated honesty).
+      emitWernerExperience("note_saved");
     } catch (e: unknown) {
       setReleaseErr(e instanceof Error ? e.message : String(e));
+      emitWernerExperience("fail");
     } finally {
       setReleaseBusy(false);
     }

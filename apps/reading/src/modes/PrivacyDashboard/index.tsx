@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { apiFetch } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Privacy Dashboard (master-spec §13.3 — first-class product surface).
@@ -95,8 +98,11 @@ export default function PrivacyDashboard() {
       if (!resp.ok) {
         throw new Error(`POST deletion request: HTTP ${resp.status}`);
       }
+      // Living-TV: delete-everything request is a noted honesty beat.
+      emitWernerExperience("note_saved");
       await reload();
     } catch (e: unknown) {
+      emitWernerExperience("fail");
       setError(e instanceof Error ? e.message : String(e));
     }
   };
@@ -111,8 +117,10 @@ export default function PrivacyDashboard() {
       if (!resp.ok) {
         throw new Error(`Cancel deletion: HTTP ${resp.status}`);
       }
+      emitWernerExperience("highlight");
       await reload();
     } catch (e: unknown) {
+      emitWernerExperience("fail");
       setError(e instanceof Error ? e.message : String(e));
     }
   };
@@ -129,9 +137,27 @@ export default function PrivacyDashboard() {
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Privacy dashboard
-            </h1>
+            <div className="flex items-center gap-3">
+              <img
+                src={thinkingArt}
+                alt=""
+                aria-hidden="true"
+                data-testid="privacy-dashboard-werner-brand"
+                className="h-12 w-12 shrink-0 object-contain"
+              />
+              <h1 className="text-2xl font-serif text-ink dark:text-bright">
+                Privacy dashboard
+              </h1>
+            </div>
+            <img
+              src={livingTvArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="privacy-dashboard-living-tv-art"
+              className="h-16 w-full max-w-md rounded-md object-cover object-center antiek-living-tv-invent"
+              loading="lazy"
+              decoding="async"
+            />
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Every telemetry signal Antiek collects from your private
               graph is listed below with its live ε budget pulled from

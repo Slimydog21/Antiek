@@ -6,6 +6,10 @@ import {
   type WeeklyBenchViewResponse,
 } from "../../api/antiekBench";
 import { LemonButton, LemonCard } from "../../components/lemon";
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import "../../brand/sessionLivingTv.css";
+import antiekBenchCelebrateArt from "../../brand/werner/poses/session/werner_antiek_bench_celebrate_session_v1.webp";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 export interface AntiekBenchPanelProps {
   fetchFn?: typeof fetchWeeklyBenchView;
@@ -23,9 +27,12 @@ export default function AntiekBenchPanel({
     setError(null);
     try {
       setView(await fetchFn());
+      // Living-TV: weekly bench evidence landed — curious highlight glance.
+      emitWernerExperience("highlight");
     } catch (caught) {
       setView(null);
       setError(caught instanceof Error ? caught.message : String(caught));
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }
@@ -58,10 +65,29 @@ export default function AntiekBenchPanel({
   return (
     <LemonCard title="Antiek-bench · weekly evidence" elevation="z1">
       <div className="p-4 space-y-3" data-testid="antiek-bench-panel">
-        <p className="text-sm text-ink-soft dark:text-starlight">
-          Advisory measurements from the latest validated server-owned report.
-          This view never dispatches a model.
-        </p>
+        <img
+          src={antiekBenchCelebrateArt}
+          alt=""
+          aria-hidden="true"
+          data-testid="antiek-bench-living-tv-art"
+          className="h-20 w-full rounded-md object-cover object-center antiek-living-tv-invent"
+          loading="lazy"
+          decoding="async"
+        />
+        <div className="flex items-start gap-3">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="antiek-bench-werner"
+            className="h-12 w-12 shrink-0 object-contain"
+          />
+          <p className="text-sm text-ink-soft dark:text-starlight">
+            Advisory measurements from the latest validated server-owned report.
+            This view never dispatches a model. Werner keeps score from the
+            sidelines — living TV in Settings.
+          </p>
+        </div>
         {busy && <p role="status">Loading benchmark evidence…</p>}
         {error && (
           <div role="alert" className="space-y-2">

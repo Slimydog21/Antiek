@@ -1,0 +1,79 @@
+{
+  "mode": "authenticated-shell-edge-hotspots",
+  "tree": "goal-twin-autoload-session-alpha",
+  "tip": "062f54e23",
+  "pass1": {
+    "pass": 1,
+    "penguinCount": 1,
+    "shellFrame": true,
+    "bodyLen": 1505,
+    "painted": true,
+    "edgeHit": {
+      "tag": "BUTTON",
+      "testid": "scene-hotspot-peak-left",
+      "hotspotId": "peak-left",
+      "pe": "auto"
+    },
+    "elementFromPointIsHotspot": true,
+    "lastClickBefore": "",
+    "lastClick": "peak-left",
+    "nonForceClickWorked": true,
+    "centerHit": {
+      "isHotspot": false,
+      "primaryChrome": "worksurface",
+      "tag": "P"
+    },
+    "centerNotHotspot": true,
+    "topbarHit": {
+      "isHotspot": false,
+      "tag": "HEADER",
+      "primaryChrome": "topbar"
+    },
+    "topbarNotHotspot": true,
+    "emoteBefore": "curious",
+    "emoteAfter": "happy",
+    "reactionChanged": true,
+    "errors": [],
+    "pageErrors": [],
+    "rawConsoleErrorCount": 6,
+    "tree": "Antiek/apps/reading"
+  },
+  "pass2": {
+    "pass": 2,
+    "penguinCount": 1,
+    "shellFrame": true,
+    "bodyLen": 1505,
+    "painted": true,
+    "edgeHit": {
+      "tag": "BUTTON",
+      "testid": "scene-hotspot-peak-left",
+      "hotspotId": "peak-left",
+      "pe": "auto"
+    },
+    "elementFromPointIsHotspot": true,
+    "lastClickBefore": "",
+    "lastClick": "peak-left",
+    "nonForceClickWorked": true,
+    "centerHit": {
+      "isHotspot": false,
+      "primaryChrome": "worksurface",
+      "tag": "P"
+    },
+    "centerNotHotspot": true,
+    "topbarHit": {
+      "isHotspot": false,
+      "tag": "HEADER",
+      "primaryChrome": "topbar"
+    },
+    "topbarNotHotspot": true,
+    "emoteBefore": "curious",
+    "emoteAfter": "happy",
+    "reactionChanged": true,
+    "errors": [],
+    "pageErrors": [],
+    "rawConsoleErrorCount": 6,
+    "tree": "Antiek/apps/reading"
+  },
+  "ok": true,
+  "honesty": "nonForceClickWorked := data-last-click on [data-testid=scene-hotspots] === peak-left after real mouse.click"
+}

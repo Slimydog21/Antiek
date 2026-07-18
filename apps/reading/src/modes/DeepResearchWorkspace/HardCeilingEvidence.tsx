@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import {
   reconcileSessionSpend,
   type HardCeilingSnapshot,
 } from "../../api/research";
 import LemonButton from "../../components/lemon/LemonButton";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 function usd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -30,8 +32,11 @@ export default function HardCeilingEvidence({
       const response = await reconcileSessionSpend(sessionId);
       setCurrent(response.hard_ceiling);
       setMessage(response.message);
+      // Living-TV: ceiling reconcile — noted.
+      emitWernerExperience("note_saved");
     } catch {
       setMessage("Provider status could not be refreshed. The existing holds remain unchanged.");
+      emitWernerExperience("fail");
     } finally {
       setChecking(false);
     }
@@ -50,13 +55,22 @@ export default function HardCeilingEvidence({
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="flex min-w-0 items-start gap-2">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="hard-ceiling-werner-brand"
+            className="mt-0.5 h-7 w-7 shrink-0 object-contain"
+          />
+          <div>
           <p className="text-[11px] font-mono uppercase text-shadow-1 dark:text-moonlight">
             Hard authorized-spend ceiling · {current.run_state.replaceAll("_", " ")}
           </p>
           <p className="mt-1 text-xs text-ink-mute dark:text-moonlight">
             Server balances in USD cents. Observed provider billing is tracked separately from what Antiek authorized.
           </p>
+          </div>
         </div>
         {unresolved && (
           <LemonButton variant="secondary" size="sm" disabled={checking} onClick={() => void checkStatus()}>

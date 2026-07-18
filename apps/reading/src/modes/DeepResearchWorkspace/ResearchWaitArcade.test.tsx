@@ -37,6 +37,10 @@ vi.mock("./ResearchWaitArcadeGame", () => ({
   },
 }));
 
+import {
+  PRODUCT_ACTIVATE_EVENT,
+  type ProductActivateDetail,
+} from "../../components/hotkeys";
 import ResearchWaitArcade from "./ResearchWaitArcade";
 import { isStationInstrumentSuspended } from "../../werner/stationInstrumentSuspension";
 
@@ -150,6 +154,33 @@ describe("ResearchWaitArcade", () => {
     expect(createCartridge).not.toHaveBeenCalled();
   });
 
+  it("Play stamps per-game product door and emits PRODUCT_ACTIVATE", () => {
+    const seen: string[] = [];
+    const onActivate = (e: Event) => {
+      const d = (e as CustomEvent<ProductActivateDetail>).detail;
+      if (d?.productId) seen.push(d.productId);
+    };
+    window.addEventListener(PRODUCT_ACTIVATE_EVENT, onActivate);
+    render(<Host after={0} />);
+    act(() => vi.runOnlyPendingTimers());
+    const play = screen.getByRole("button", { name: "Play while waiting" });
+    // Default cartridge is zombies; living-TV product door densify.
+    expect(play.getAttribute("data-product-id")).toBe("zombies");
+    fireEvent.click(play);
+    window.removeEventListener(PRODUCT_ACTIVATE_EVENT, onActivate);
+    expect(seen).toContain("zombies");
+  });
+
+  it("cartridge picker labels stamp per-game living-TV product doors", () => {
+    render(<Host after={0} />);
+    act(() => vi.runOnlyPendingTimers());
+    for (const id of ["zombies", "ice-fishing", "clam-catcher"] as const) {
+      const label = screen.getByTestId(`research-wait-cartridge-${id}`);
+      expect(label.getAttribute("data-product-id")).toBe(id);
+      expect(label.getAttribute("data-werner-target")).toBe("curious");
+    }
+  });
+
   it("constructs only after explicit Play and does not focus before activation", async () => {
     render(<Host after={0} />);
     act(() => vi.runOnlyPendingTimers());
@@ -163,6 +194,18 @@ describe("ResearchWaitArcade", () => {
     expect(createCartridge).toHaveBeenCalledWith("zombies");
     expect(canvas).toBe(document.activeElement);
     expect(isStationInstrumentSuspended()).toBe(true);
+  });
+
+  it("stamps Flipbook invent reframe on wait-arcade cartridge invent art", () => {
+    render(<Host after={0} />);
+    act(() => vi.runOnlyPendingTimers());
+    for (const id of ["ice-fishing", "clam-catcher", "zombies"] as const) {
+      const art = screen.getByTestId(
+        `research-wait-${id}-living-tv-art`,
+      ) as HTMLImageElement;
+      expect(art.className).toMatch(/antiek-living-tv-invent/);
+      expect(art.getAttribute("src")).toBeTruthy();
+    }
   });
 
   it("offers all cartridges without constructing any and launches the explicit choice", async () => {
@@ -294,8 +337,30 @@ describe("ResearchWaitArcade", () => {
       images.every((image) => image.getAttribute("aria-hidden") === "true"),
     ).toBe(true);
     expect(
-      images.every((image) =>
-        image.getAttribute("src")?.startsWith("/src/brand/werner/arcade/"),
+      images.every((image) => {
+        const src = image.getAttribute("src") ?? "";
+        // All three wait-arcade cards use session brand PNGs (alpha-gated).
+        return src.startsWith("/src/brand/werner/poses/session/");
+      }),
+    ).toBe(true);
+    // Session product key art for all Club-Penguin-style wait games + zombies.
+    expect(
+      images.some((image) =>
+        (image.getAttribute("src") ?? "").includes(
+          "werner_igloo_ice_arcade_cursor_session_v1",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      images.some((image) =>
+        (image.getAttribute("src") ?? "").includes("werner_paperclip_zombies_arcade_session_v1"),
+      ),
+    ).toBe(true);
+    expect(
+      images.some((image) =>
+        (image.getAttribute("src") ?? "").includes(
+          "werner_clam_catcher_cursor_session_v1",
+        ),
       ),
     ).toBe(true);
   });
@@ -310,6 +375,8 @@ describe("ResearchWaitArcade", () => {
       );
     });
     expect(receivedSceneArt).toHaveBeenCalledTimes(1);
-    expect(receivedSceneArt.mock.calls[0]?.[0]).toContain("ice-fishing");
+    expect(receivedSceneArt.mock.calls[0]?.[0]).toContain(
+      "werner_igloo_ice_arcade_cursor_session_v1",
+    );
   });
 });

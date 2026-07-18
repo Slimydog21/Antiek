@@ -7,6 +7,7 @@ import {
   ApiError,
 } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * PasteIngest — drop or paste a file / URL / passage into a research and
@@ -81,9 +82,12 @@ export default function PasteIngest({
           title: r.title ?? title,
           oversize: exceedsContext(text),
         });
+        // Living-TV: corpus absorb is a curious highlight glance.
+        emitWernerExperience("highlight");
       } catch (e) {
         const reason = e instanceof ApiError ? e.body || null : null;
         setOutcome({ kind: "failed", reason });
+        emitWernerExperience("fail");
       }
     },
     [investigationId, exceedsContext],
@@ -96,6 +100,7 @@ export default function PasteIngest({
         const r = await ingestSource({ url, investigation_id: investigationId });
         if (r.status === "error") {
           setOutcome({ kind: "failed", reason: r.error_message });
+          emitWernerExperience("fail");
           return;
         }
         setOutcome({
@@ -103,9 +108,11 @@ export default function PasteIngest({
           title: r.title ?? url,
           oversize: false,
         });
+        emitWernerExperience("highlight");
       } catch (e) {
         const reason = e instanceof ApiError ? e.body || null : null;
         setOutcome({ kind: "failed", reason });
+        emitWernerExperience("fail");
       }
     },
     [investigationId],

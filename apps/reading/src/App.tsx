@@ -15,7 +15,8 @@ import CreationStudio from "./modes/CreationStudio";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
 import DocumentsIndex from "./modes/DocumentsIndex";
 import Federation from "./modes/Federation";
-import Home from "./modes/Home/Home";
+import Home from "./modes/Home/Home"
+import { ArcadeCabinet } from "./arcade/ArcadeCabinet";
 import Library from "./modes/Library";
 import LibraryView from "./components/library/LibraryView";
 import Login from "./modes/Login";
@@ -104,6 +105,7 @@ function AuthenticatedRoutes() {
             (StartResearch already serves it); see modes/Home/Home.tsx for
             the recorded, reversible routing decision. */}
         <Route path="/home" element={<Home />} />
+        <Route path="/arcade" element={<ArcadeCabinet />} />
         <Route path="/" element={<ResearchWorkstation />} />
         <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
         {/* DRW SPR-09 — the glass-box N-research monitor (deep-research-workspace).

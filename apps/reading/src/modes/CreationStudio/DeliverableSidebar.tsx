@@ -7,6 +7,7 @@ import {
   type DeliverableKind,
   type DeliverableSummary,
 } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { VoiceNoteCapture } from "./VoiceNoteCapture";
 
 const DELIVERABLE_KIND_LABELS: Record<DeliverableKind, string> = {
@@ -59,7 +60,11 @@ export default function DeliverableSidebar() {
       });
       setNewTitle("");
       await refresh();
+      // Living-TV: new deliverable started — happy craft beat.
+      emitWernerExperience("piece_started");
       navigate(`/create/${d.deliverable_id}`);
+    } catch {
+      emitWernerExperience("fail");
     } finally {
       setCreating(false);
     }

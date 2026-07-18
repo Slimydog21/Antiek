@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import type { PaletteDragPayload } from "../../CreationStudio/BlockPalette";
 import { DRAG_MIME } from "../../CreationStudio/BlockPalette";
+import { emitWernerExperience } from "../../../werner/reactionBus";
 import {
   listFolders,
   searchRepository,
@@ -49,10 +50,17 @@ export function Repository({ initialFolderId = null, className }: RepositoryProp
     setError(null);
     searchRepository({ q: query, folderId: activeFolder ?? undefined, limit: 50 })
       .then((h) => {
-        if (!cancelled) setHits(h);
+        if (!cancelled) {
+          setHits(h);
+          // Living-TV: repository shelf refreshed — curious glance once.
+          emitWernerExperience("highlight");
+        }
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) {
+          setError(String(e));
+          emitWernerExperience("fail");
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

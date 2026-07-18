@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { LemonCard, LemonTable, LemonTag } from "../../components/lemon";
 import type { LemonColumn } from "../../components/lemon";
 import { apiFetch } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * CostConsent — one operator view of money + permissions across the four
@@ -431,8 +432,10 @@ export default function CostConsent() {
       }
       setCost((await costResp.json()) as CostView);
       setConsent((await consentResp.json()) as ConsentView);
+      emitWernerExperience("highlight");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+      emitWernerExperience("fail");
     } finally {
       setLoading(false);
     }

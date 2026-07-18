@@ -6,6 +6,9 @@ import {
   startZombies,
   stepZombies,
   zombiesCanExit,
+  zombiesComboMultiplier,
+  zombiesWernerBeat,
+  ZOMBIES_MAX_COMBO,
 } from "./logic";
 
 describe("paperclip zombies pure logic", () => {
@@ -118,6 +121,31 @@ describe("paperclip zombies pure logic", () => {
     expect(s.zombies).toEqual([]);
   });
 
+  it("zombiesCanExit densify allows exit only while playing or gameover", () => {
+    // densify: endless-loop contract — ready/exited cannot leave via exit affordance.
+    const ready = createZombiesState({ width: 320, height: 200 });
+    expect(ready.phase).toBe("ready");
+    expect(zombiesCanExit(ready)).toBe(false);
+    const playing = startZombies(ready);
+    expect(playing.phase).toBe("playing");
+    expect(zombiesCanExit(playing)).toBe(true);
+    const gameover = {
+      ...playing,
+      phase: "gameover" as const,
+      lives: 0,
+      zombies: [],
+    };
+    expect(zombiesCanExit(gameover)).toBe(true);
+    const exited = stepZombies(
+      playing,
+      1 / 60,
+      { fireAt: null, start: false, exit: true },
+      () => 0.1,
+    );
+    expect(exited.phase).toBe("exited");
+    expect(zombiesCanExit(exited)).toBe(false);
+  });
+
   it("firing a zombie scores points", () => {
     let s = startZombies(createZombiesState({ width: 320, height: 200 }));
     s = {
@@ -133,6 +161,116 @@ describe("paperclip zombies pure logic", () => {
     );
     expect(s.score).toBeGreaterThan(0);
     expect(s.zombies.length).toBe(0);
+  });
+
+  it("builds BO1 combo on reduced-motion gentle clicks densify", () => {
+    let s = {
+      ...startZombies(
+        createZombiesState({
+          width: 320,
+          height: 200,
+          reducedMotion: true,
+        }),
+      ),
+      spawnRemaining: 0,
+      zombies: [],
+      combo: 0,
+      maxCombo: 0,
+      score: 0,
+    };
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: { x: 1, y: 1 }, start: false, exit: false },
+      () => 0.2,
+    );
+    expect(s.score).toBe(1); // mult 1×
+    expect(s.combo).toBe(1);
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: { x: 2, y: 2 }, start: false, exit: false },
+      () => 0.2,
+    );
+    expect(s.score).toBe(1 + 2); // second gentle click 2×
+    expect(s.combo).toBe(2);
+    expect(s.maxCombo).toBe(2);
+  });
+
+  it("does not fort-heal when beginning wave 1 from start", () => {
+    const s = startZombies(
+      createZombiesState({ width: 320, height: 200, lives: 3 }),
+    );
+    expect(s.wave).toBe(1);
+    expect(s.lives).toBe(3); // beginWave(wave=1) must not +1 overheal
+  });
+
+  it("heals fort by one life on wave clear, hard-capped at starting lives", () => {
+    let s = {
+      ...startZombies(createZombiesState({ width: 320, height: 200 })),
+      wave: 1,
+      lives: 2,
+      startingLives: 3,
+      spawnRemaining: 0,
+      zombies: [],
+    };
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: null, start: false, exit: false },
+      () => 0.2,
+    );
+    expect(s.wave).toBe(2);
+    expect(s.lives).toBe(3); // +1 fort heal
+
+    // Full fort does not overheal past starting lives.
+    s = {
+      ...s,
+      spawnRemaining: 0,
+      zombies: [],
+    };
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: null, start: false, exit: false },
+      () => 0.2,
+    );
+    expect(s.wave).toBe(3);
+    expect(s.lives).toBe(3);
+  });
+
+  it("zombiesWernerBeat maps living-TV edges for start, wave, kill, and gameover", () => {
+    expect(
+      zombiesWernerBeat(
+        { phase: "ready", wave: 0, lives: 3, score: 0 },
+        { phase: "playing", wave: 1, lives: 3, score: 0 },
+      ),
+    ).toBe("highlight");
+    expect(
+      zombiesWernerBeat(
+        { phase: "playing", wave: 1, lives: 3, score: 10 },
+        { phase: "playing", wave: 2, lives: 3, score: 10 },
+      ),
+    ).toBe("piece_started");
+    // Combo densify: kill score up → happy craft beat mid-run.
+    expect(
+      zombiesWernerBeat(
+        { phase: "playing", wave: 2, lives: 2, score: 10 },
+        { phase: "playing", wave: 2, lives: 2, score: 24 },
+      ),
+    ).toBe("piece_started");
+    expect(
+      zombiesWernerBeat(
+        { phase: "playing", wave: 2, lives: 1, score: 40 },
+        { phase: "gameover", wave: 2, lives: 0, score: 40 },
+      ),
+    ).toBe("fail");
+    expect(
+      zombiesWernerBeat(
+        { phase: "playing", wave: 2, lives: 2, score: 10 },
+        { phase: "playing", wave: 2, lives: 2, score: 10 },
+      ),
+    ).toBeNull();
   });
 
   it("preserves configured lives across start and restart", () => {
@@ -192,5 +330,84 @@ describe("paperclip zombies pure logic", () => {
       return state;
     };
     expect(run()).toEqual(run());
+  });
+
+  it("builds BO1-style combo multiplier on consecutive kills", () => {
+    expect(zombiesComboMultiplier(0)).toBe(1);
+    expect(zombiesComboMultiplier(1)).toBe(2);
+    expect(zombiesComboMultiplier(ZOMBIES_MAX_COMBO)).toBe(ZOMBIES_MAX_COMBO);
+    expect(zombiesComboMultiplier(99)).toBe(ZOMBIES_MAX_COMBO);
+
+    let s = startZombies(createZombiesState({ width: 320, height: 200 }));
+    s = {
+      ...s,
+      spawnRemaining: 0,
+      zombies: [
+        { id: 1, x: 100, y: 50, hp: 1, speed: 0, w: 18, h: 18 },
+        { id: 2, x: 140, y: 50, hp: 1, speed: 0, w: 18, h: 18 },
+      ],
+    };
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: { x: 105, y: 55 }, start: false, exit: false },
+      () => 0.2,
+    );
+    expect(s.combo).toBe(1);
+    expect(s.maxCombo).toBe(1);
+    const afterFirst = s.score;
+    const waveAtSecondKill = s.wave;
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: { x: 145, y: 55 }, start: false, exit: false },
+      () => 0.2,
+    );
+    // Combo grows; wave may advance after clear — score uses pre-clear wave.
+    expect(s.combo).toBe(2);
+    expect(s.score - afterFirst).toBe((10 + waveAtSecondKill) * 2);
+  });
+
+  it("resets combo on miss fire and on fort breach", () => {
+    let s = startZombies(createZombiesState({ width: 320, height: 200 }));
+    s = {
+      ...s,
+      spawnRemaining: 0,
+      combo: 3,
+      maxCombo: 3,
+      zombies: [{ id: 1, x: 100, y: 50, hp: 1, speed: 0, w: 18, h: 18 }],
+    };
+    s = stepZombies(
+      s,
+      1 / 60,
+      { fireAt: { x: 1, y: 1 }, start: false, exit: false },
+      () => 0.2,
+    );
+    expect(s.combo).toBe(0);
+    expect(s.maxCombo).toBe(3);
+
+    s = {
+      ...s,
+      combo: 2,
+      spawnRemaining: 0,
+      zombies: [
+        {
+          id: 9,
+          x: s.fortX + 1,
+          y: 40,
+          hp: 1,
+          speed: 500,
+          w: 18,
+          h: 18,
+        },
+      ],
+    };
+    s = stepZombies(
+      s,
+      1 / 30,
+      { fireAt: null, start: false, exit: false },
+      () => 0.5,
+    );
+    expect(s.combo).toBe(0);
   });
 });

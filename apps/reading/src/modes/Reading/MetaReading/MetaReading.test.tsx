@@ -97,6 +97,17 @@ describe("MetaReading (M4)", () => {
     expect(banner.textContent?.toLowerCase()).toContain("owned");
   });
 
+  it("renders living-TV brand chrome on the meta-read landing", () => {
+    render(<MetaReading />);
+    expect(screen.getByTestId("meta-reading-werner-brand")).toBeTruthy();
+    const livingTv = screen.getByTestId(
+      "meta-reading-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
+  });
+
   it("a cited passage opens the SPR-07 reader at the resolved page", async () => {
     await generate();
     fireEvent.click(screen.getByRole("button", { name: "open at p.12" }));

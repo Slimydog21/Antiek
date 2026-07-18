@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { fetchModelDecision, type ModelDecisionResponse } from "../../api/settings";
+import {
+  estimatePromptCost,
+  fetchModelDecision,
+  type ModelDecisionResponse,
+} from "../../api/settings";
+import { WERNER_EXPERIENCE_EVENT } from "../../werner/reactionBus";
 import Settings from "./index";
 
 vi.mock("../../workspace/useViewportTier", () => ({
@@ -109,6 +114,18 @@ describe("Settings SPR-01", () => {
     expect(screen.queryByText("Spent today")).toBeNull();
   });
 
+  it("renders session thinking + living-TV brand chrome on Settings door", async () => {
+    render(<Settings />);
+    await waitFor(() => expect(screen.getByText("Operator settings")).toBeTruthy());
+    expect(screen.getByTestId("settings-home-werner-brand")).toBeTruthy();
+    const livingTv = screen.getByTestId(
+      "settings-home-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
+  });
+
   it("projects cost and shows honest unknown pricing", async () => {
     const user = userEvent.setup();
     render(<Settings />);
@@ -122,6 +139,36 @@ describe("Settings SPR-01", () => {
         screen.getByText(/tier pricing is 0\.0 placeholder/i),
       ).toBeTruthy();
     });
+  });
+
+  it("emits Werner fail when projection would exceed budget", async () => {
+    vi.mocked(estimatePromptCost).mockResolvedValueOnce({
+      estimated_usd_low: 4,
+      estimated_usd_high: 6,
+      would_exceed_budget: true,
+      pricing_known: true,
+      notes: ["would exceed"],
+      assumed_input_tokens: 500,
+      assumed_output_tokens: 500,
+      tier: "pro",
+      provider: "zai",
+      model: "glm-5.2",
+    });
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (d?.experience) seen.push(d.experience);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+    const user = userEvent.setup();
+    render(<Settings />);
+    await waitFor(() => expect(screen.getByText("zai")).toBeTruthy());
+    const project = screen
+      .getAllByRole("button")
+      .find((b) => /project cost/i.test(b.textContent ?? ""));
+    await user.click(project!);
+    await waitFor(() => expect(seen).toContain("fail"));
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, onExp);
   });
 
   it("compares server-owned model candidates in the decision tree tab", async () => {

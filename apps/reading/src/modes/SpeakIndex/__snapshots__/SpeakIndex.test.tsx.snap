@@ -9,37 +9,54 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
       class="mx-auto max-w-2xl px-6 py-10"
     >
       <header
-        class="mb-7 flex items-start gap-3"
+        class="mb-7 space-y-3"
       >
-        <span
-          aria-label="Werner idle"
-          class="inline-block align-middle"
-          role="img"
-          style="width: 44px; height: 44px;"
+        <div
+          class="flex items-start gap-3"
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            class="werner-idle"
-            draggable="false"
-            height="44"
-            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
-            style="display: block; width: 44px; height: 44px; object-fit: contain;"
-            width="44"
-          />
-        </span>
-        <div>
-          <h1
-            class="font-serif text-2xl font-semibold text-ink dark:text-bright"
+          <span
+            data-testid="speak-home-werner-brand"
           >
-            Who do you want to remember?
-          </h1>
-          <p
-            class="mt-1 text-sm text-ink-soft dark:text-moonlight"
-          >
-            Name someone, then invite the people who knew them. Each records their memories — in their own voice, on their own time — and their story comes together from what everyone shares.
-          </p>
+            <span
+              aria-label="Speak"
+              class="inline-block align-middle"
+              role="img"
+              style="width: 44px; height: 44px;"
+            >
+              <img
+                alt=""
+                aria-hidden="true"
+                class=""
+                draggable="false"
+                height="44"
+                src="/src/brand/werner/poses/session/werner_thinking_session_v1.png"
+                style="display: block; width: 44px; height: 44px; object-fit: contain;"
+                width="44"
+              />
+            </span>
+          </span>
+          <div>
+            <h1
+              class="font-serif text-2xl font-semibold text-ink dark:text-bright"
+            >
+              Who do you want to remember?
+            </h1>
+            <p
+              class="mt-1 text-sm text-ink-soft dark:text-moonlight"
+            >
+              Name someone, then invite the people who knew them. Each records their memories — in their own voice, on their own time — and their story comes together from what everyone shares.
+            </p>
+          </div>
         </div>
+        <img
+          alt=""
+          aria-hidden="true"
+          class="h-16 w-full max-w-md rounded-md object-cover object-center"
+          data-testid="speak-home-living-tv-art"
+          decoding="async"
+          loading="lazy"
+          src="/src/brand/werner/poses/session/werner_living_tv_session_v1.webp"
+        />
       </header>
       <form
         class="mb-8 flex flex-wrap items-center gap-2 rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
@@ -169,37 +186,54 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
       class="mx-auto max-w-2xl px-6 py-10"
     >
       <header
-        class="mb-7 flex items-start gap-3"
+        class="mb-7 space-y-3"
       >
-        <span
-          aria-label="Werner idle"
-          class="inline-block align-middle"
-          role="img"
-          style="width: 44px; height: 44px;"
+        <div
+          class="flex items-start gap-3"
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            class="werner-idle"
-            draggable="false"
-            height="44"
-            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
-            style="display: block; width: 44px; height: 44px; object-fit: contain;"
-            width="44"
-          />
-        </span>
-        <div>
-          <h1
-            class="font-serif text-2xl font-semibold text-ink dark:text-bright"
+          <span
+            data-testid="speak-home-werner-brand"
           >
-            Who do you want to remember?
-          </h1>
-          <p
-            class="mt-1 text-sm text-ink-soft dark:text-moonlight"
-          >
-            Name someone, then invite the people who knew them. Each records their memories — in their own voice, on their own time — and their story comes together from what everyone shares.
-          </p>
+            <span
+              aria-label="Speak"
+              class="inline-block align-middle"
+              role="img"
+              style="width: 44px; height: 44px;"
+            >
+              <img
+                alt=""
+                aria-hidden="true"
+                class=""
+                draggable="false"
+                height="44"
+                src="/src/brand/werner/poses/session/werner_thinking_session_v1.png"
+                style="display: block; width: 44px; height: 44px; object-fit: contain;"
+                width="44"
+              />
+            </span>
+          </span>
+          <div>
+            <h1
+              class="font-serif text-2xl font-semibold text-ink dark:text-bright"
+            >
+              Who do you want to remember?
+            </h1>
+            <p
+              class="mt-1 text-sm text-ink-soft dark:text-moonlight"
+            >
+              Name someone, then invite the people who knew them. Each records their memories — in their own voice, on their own time — and their story comes together from what everyone shares.
+            </p>
+          </div>
         </div>
+        <img
+          alt=""
+          aria-hidden="true"
+          class="h-16 w-full max-w-md rounded-md object-cover object-center"
+          data-testid="speak-home-living-tv-art"
+          decoding="async"
+          loading="lazy"
+          src="/src/brand/werner/poses/session/werner_living_tv_session_v1.webp"
+        />
       </header>
       <form
         class="mb-8 flex flex-wrap items-center gap-2 rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
@@ -258,37 +292,54 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
       class="mx-auto max-w-2xl px-6 py-10"
     >
       <header
-        class="mb-7 flex items-start gap-3"
+        class="mb-7 space-y-3"
       >
-        <span
-          aria-label="Werner idle"
-          class="inline-block align-middle"
-          role="img"
-          style="width: 44px; height: 44px;"
+        <div
+          class="flex items-start gap-3"
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            class="werner-idle"
-            draggable="false"
-            height="44"
-            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
-            style="display: block; width: 44px; height: 44px; object-fit: contain;"
-            width="44"
-          />
-        </span>
-        <div>
-          <h1
-            class="font-serif text-2xl font-semibold text-ink dark:text-bright"
+          <span
+            data-testid="speak-home-werner-brand"
           >
-            Who do you want to remember?
-          </h1>
-          <p
-            class="mt-1 text-sm text-ink-soft dark:text-moonlight"
-          >
-            Name someone, then invite the people who knew them. Each records their memories — in their own voice, on their own time — and their story comes together from what everyone shares.
-          </p>
+            <span
+              aria-label="Speak"
+              class="inline-block align-middle"
+              role="img"
+              style="width: 44px; height: 44px;"
+            >
+              <img
+                alt=""
+                aria-hidden="true"
+                class=""
+                draggable="false"
+                height="44"
+                src="/src/brand/werner/poses/session/werner_thinking_session_v1.png"
+                style="display: block; width: 44px; height: 44px; object-fit: contain;"
+                width="44"
+              />
+            </span>
+          </span>
+          <div>
+            <h1
+              class="font-serif text-2xl font-semibold text-ink dark:text-bright"
+            >
+              Who do you want to remember?
+            </h1>
+            <p
+              class="mt-1 text-sm text-ink-soft dark:text-moonlight"
+            >
+              Name someone, then invite the people who knew them. Each records their memories — in their own voice, on their own time — and their story comes together from what everyone shares.
+            </p>
+          </div>
         </div>
+        <img
+          alt=""
+          aria-hidden="true"
+          class="h-16 w-full max-w-md rounded-md object-cover object-center"
+          data-testid="speak-home-living-tv-art"
+          decoding="async"
+          loading="lazy"
+          src="/src/brand/werner/poses/session/werner_living_tv_session_v1.webp"
+        />
       </header>
       <form
         class="mb-8 flex flex-wrap items-center gap-2 rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"

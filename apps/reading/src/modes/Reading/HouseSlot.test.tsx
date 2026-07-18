@@ -53,6 +53,18 @@ describe("HouseSlot SPR-07 — single provenance + never blank", () => {
     expect(screen.getByText("Next read")).toBeTruthy();
   });
 
+  it("product-maps book marketplace port invent on promo card (not inventory-only)", () => {
+    render(
+      <HouseSlot
+        promo={{ documentId: "doc-4", title: "Antiek Shelf", author: "Werner" }}
+      />,
+    );
+    const invent = screen.getByTestId("house-slot-living-tv-art") as HTMLImageElement;
+    expect(invent.getAttribute("src") ?? "").toMatch(
+      /werner_book_marketplace_port_session_v1/,
+    );
+  });
+
   it("falls back to 'Unknown author' rather than blank when the author is null", () => {
     render(<HouseSlot promo={{ documentId: "doc-3", title: "Fragments", author: null }} />);
     expect(screen.getByText("Unknown author")).toBeTruthy();

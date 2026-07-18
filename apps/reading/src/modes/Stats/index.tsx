@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import LemonCard from "../../components/lemon/LemonCard";
 import { useInWindow } from "../../components/windows/windowHostContext";
 import { apiFetch } from "../../lib/api";
@@ -81,26 +82,26 @@ export default function Stats() {
         className={`flex-1 overflow-y-auto ${inWindow ? "bg-transparent" : "bg-ice-0 dark:bg-charcoal-2"}`}
       >
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
-          <header className="flex items-baseline justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-serif text-ink dark:text-bright">
-                Substrate stats
-              </h1>
+          <div className="flex items-start justify-between gap-3">
+            <SessionBrandChrome
+              testIdPrefix="stats-home"
+              title="Substrate stats"
+            >
               <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
                 Cardinality across every load-bearing table. Per
-                master-spec §13.7: this is the 'what does the
-                substrate look like right now' surface before grading
+                master-spec §13.7: this is the &lsquo;what does the
+                substrate look like right now&rsquo; surface before grading
                 outcomes or running the Phase 8 gate.
               </p>
-            </div>
+            </SessionBrandChrome>
             <button
               type="button"
               onClick={() => void reload()}
-              className="text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 px-2 py-1 rounded hover:bg-ice-1 dark:bg-charcoal-2"
+              className="mt-1 shrink-0 text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 px-2 py-1 rounded hover:bg-ice-1 dark:bg-charcoal-2"
             >
               Refresh
             </button>
-          </header>
+          </div>
 
           {error && (
             <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">

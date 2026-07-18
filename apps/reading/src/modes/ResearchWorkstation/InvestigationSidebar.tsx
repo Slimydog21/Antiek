@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { NavLink, useParams } from "react-router-dom";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import { useInvestigationTree } from "../../hooks/useInvestigationTree";
 import type { TreeNode } from "../../hooks/useInvestigationTree";
 import type { InvestigationSummary } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Left sidebar showing past investigations as a tree. Each node carries
@@ -24,8 +26,17 @@ export default function InvestigationSidebar() {
   return (
     <div className="p-3 text-xs text-ink dark:text-bright">
       <div className="flex items-center justify-between mb-3">
-        <div className="font-mono text-shadow-1 dark:text-moonlight font-semibold uppercase tracking-wider">
-          Investigations
+        <div className="flex min-w-0 items-center gap-2">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="investigation-sidebar-werner-brand"
+            className="h-6 w-6 shrink-0 object-contain"
+          />
+          <div className="font-mono text-shadow-1 dark:text-moonlight font-semibold uppercase tracking-wider">
+            Investigations
+          </div>
         </div>
         <button
           onClick={refetch}
@@ -83,6 +94,7 @@ function TreeRow({
         )}
         <NavLink
           to={`/inv/${node.investigationId}`}
+          onClick={() => emitWernerExperience("highlight")}
           className={`flex-1 min-w-0 py-1 px-1.5 rounded transition-colors relative ${
             isActive
               ? "bg-sun text-ink"

@@ -87,6 +87,10 @@ describe("Biography landing (SPR-11 M1)", () => {
     expect(steps.querySelectorAll("li").length).toBe(3);
     // The start CTA exists.
     expect(screen.getByRole("button", { name: /start a biography/i })).toBeTruthy();
+    // Living-TV densify: session thinking brand mark + invent strip.
+    expect(screen.getByTestId("biography-living-tv-art")).toBeTruthy();
+    // Living-TV densify: session thinking brand mark (not inventory-only idle).
+    expect(screen.getByTestId("biography-werner-brand")).toBeTruthy();
   });
 
   it("the landing copy obeys §5 voice discipline (no substrate jargon)", () => {

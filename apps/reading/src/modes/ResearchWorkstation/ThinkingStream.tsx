@@ -4,6 +4,7 @@ import Thinking from "../../shared/Thinking";
 import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import type { InvestigationState } from "../../hooks/useInvestigation";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { narrateEvent } from "./narrateEvent";
 import type { Narration } from "./narrateEvent";
 import TrajectoryView from "./TrajectoryView";
@@ -87,6 +88,24 @@ const TONE_STYLE: Record<Narration["tone"], { dot: string; text: string }> = {
 export default function ThinkingStream({ investigation, steer, onRetry }: ThinkingStreamProps) {
   const [showRaw, setShowRaw] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Living-TV: emit once per terminal status transition (not every re-render).
+  const lastStatusBeat = useRef<string | null>(null);
+
+  useEffect(() => {
+    const status = investigation.status;
+    if (status === lastStatusBeat.current) return;
+    if (status === "completed") {
+      lastStatusBeat.current = status;
+      emitWernerExperience("deep_research_complete");
+    } else if (status === "failed" || status === "not_found") {
+      lastStatusBeat.current = status;
+      emitWernerExperience("deep_research_error");
+    } else if (status === "in_progress") {
+      lastStatusBeat.current = status;
+      // In-progress is ambient thinking — highlight is the curious TV glance.
+      emitWernerExperience("highlight");
+    }
+  }, [investigation.status]);
 
   // Derive the narrated story from the (already-deduped) events. The local
   // event_id dedupe makes the derivation correct even if handed a raw list.

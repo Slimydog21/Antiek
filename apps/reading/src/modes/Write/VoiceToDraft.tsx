@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import { useVoiceCapture } from "../../hooks/useVoiceCapture";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { placeBlock } from "./writeApi";
 
 /**
@@ -80,8 +81,11 @@ export default function VoiceToDraft({
           deliverable_id: deliverableId,
         });
         setSaved(true);
+        // Living-TV: user-sourced voice draft saved — noted beat.
+        emitWernerExperience("note_saved");
         await onDrafted();
       } catch (e) {
+        emitWernerExperience("fail");
         setError(e instanceof Error ? e.message : "Couldn't save your spoken draft.");
       } finally {
         setPersisting(false);

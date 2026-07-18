@@ -48,20 +48,101 @@ export interface ChoreographyOptions {
   target?: Pick<Window, "addEventListener" | "removeEventListener">;
 }
 
+/**
+ * Escape a productId for a double-quoted CSS attribute selector.
+ * Prefers platform CSS.escape; falls back so SSR / older runtimes still
+ * produce a querySelector-safe densify contract for living-TV doors.
+ */
+export function escapeProductIdForSelector(productId: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(productId);
+  }
+  // Fallback densify: keep [attr="..."] valid without CSS.escape.
+  return productId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 /** Build the selector for a product's on-bar control. Exported so a test (or
  *  the concurrent NavRail sprint) can assert the exact attribute contract. */
 export function productSelector(detail: ProductActivateDetail): string {
-  // CSS.escape guards against an exotic productId breaking the selector.
-  const id =
-    typeof CSS !== "undefined" && typeof CSS.escape === "function"
-      ? CSS.escape(detail.productId)
-      : detail.productId;
+  const id = escapeProductIdForSelector(detail.productId);
   return `[data-product-id="${id}"]`;
 }
 
 function defaultResolveTarget(detail: ProductActivateDetail): Element | null {
   if (typeof document === "undefined") return null;
   return document.querySelector(productSelector(detail));
+}
+
+/**
+ * Distinct living-TV emotes per product door (Antiek is the home of the penguin).
+ * Unknown products keep the classic Tom-&-Jerry "hit" bump.
+ */
+export function emoteForProductDoor(productId: string): EmoteKind {
+  switch (productId) {
+    case "research":
+    case "library":
+    case "investigations":
+    case "documents":
+    case "notebooks":
+    // Living-TV densify: research workstation family doors (twin notes,
+    // thought partner, cascade plan) share the thinking glance.
+    case "twin-notes":
+    case "twin_notes":
+    case "thought-partner":
+    case "thought_partner":
+    case "brainstorm":
+    case "cascade":
+    case "cascade-plan":
+      return "thinking";
+    case "read":
+    case "speak":
+    case "arcade":
+    // Home igloo arcade invent densify: home-arcade is curious (not generic hit).
+    case "home-arcade":
+    case "home_arcade":
+    case "sources":
+    case "marketplace":
+    case "book-marketplace":
+    case "book_marketplace":
+    case "model-decision":
+    case "model_decision":
+    // Wait/cabinet densify: deep-research wait arcade is a curious glance door.
+    case "wait-arcade":
+    case "wait_arcade":
+    case "research-wait":
+    case "research_wait":
+    case "cabinet":
+    case "arcade-cabinet":
+    case "loading-game-host":
+    case "loading_game_host":
+    // Per-game cabinet densify: each minigame card is a curious living-TV door.
+    case "ice-fishing":
+    case "ice_fishing":
+    case "clam-catcher":
+    case "clam_catcher":
+    case "zombies":
+    case "paperclip-zombies":
+    case "paperclip_zombies":
+      return "curious";
+    case "write":
+    case "home":
+    case "create":
+    // Antiek-bench celebrate invent door — happy craft pride, not generic hit.
+    case "antiek-bench":
+    case "antiek_bench":
+    case "bench":
+      return "happy";
+    case "more":
+    case "settings":
+    case "billing":
+    case "pricing":
+      return "noted";
+    case "midnight-oil":
+    case "midnight_oil":
+      return "sleeping";
+    default:
+      return "hit";
+  }
 }
 
 /**
@@ -81,11 +162,11 @@ export function installChoreography(
     const detail = (event as CustomEvent<ProductActivateDetail>).detail;
     if (!detail || !detail.productId) return;
     const el = resolve(detail);
-    // waddleToEl is the single decision point: it no-ops on a missing /
-    // off-screen target and downshifts to an in-place emote under reduced
-    // motion. Latest-wins interruption is the stage's job. Click and hotkey
-    // both land here with the same detail shape → identical reaction.
-    stage.waddleToEl(el, "hit");
+    // Living-TV: product doors get distinct emotes (not a generic hit for all).
+    // waddleToEl no-ops on missing/off-screen targets and downshifts under
+    // reduced-motion. Latest-wins interruption is the stage's job.
+    const emote = emoteForProductDoor(detail.productId);
+    stage.waddleToEl(el, emote);
   };
 
   win.addEventListener(PRODUCT_ACTIVATE_EVENT, onActivate as EventListener);
@@ -105,7 +186,11 @@ export function installChoreography(
  */
 export const WERNER_TARGET_ATTR = "data-werner-target";
 
-function emoteFromAttr(raw: string | null): EmoteKind {
+/**
+ * densify: pure mapping of `data-werner-target` attribute value → emote kind.
+ * Named valid emotes win; bare presence / unknown / null fall back to "hit".
+ */
+export function emoteFromWernerTargetAttr(raw: string | null): EmoteKind {
   return raw && (EMOTE_KINDS as readonly string[]).includes(raw)
     ? (raw as EmoteKind)
     : "hit";
@@ -142,7 +227,10 @@ export function installTargetChoreography(
     if (!(start instanceof Element)) return;
     const el = start.closest(`[${WERNER_TARGET_ATTR}]`);
     if (!el) return;
-    stage.waddleToEl(el, emoteFromAttr(el.getAttribute(WERNER_TARGET_ATTR)));
+    stage.waddleToEl(
+      el,
+      emoteFromWernerTargetAttr(el.getAttribute(WERNER_TARGET_ATTR)),
+    );
   };
 
   doc.addEventListener("click", onClick as EventListener, true);

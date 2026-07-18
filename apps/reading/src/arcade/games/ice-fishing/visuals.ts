@@ -1,7 +1,11 @@
 import visualKitUrl from "../../../brand/werner/arcade/ice-fishing-visual-kit-v1.webp";
 import { accent, aliasFor, sun, surface } from "../../../design/tokens";
 import type { GameContext } from "../../engine/types";
-import type { Fish, IceFishingState } from "./logic";
+import {
+  iceCatchStreakMultiplier,
+  type Fish,
+  type IceFishingState,
+} from "./logic";
 
 type AtlasImage = CanvasImageSource & { complete?: boolean };
 
@@ -110,10 +114,32 @@ export function renderIceFishing(
   c2d.font = "12px system-ui, sans-serif";
   c2d.fillText(`Score ${state.score}`, 8, 16);
   c2d.fillText(`Lives ${state.lives}`, 8, 32);
+  // Club Penguin catch-streak densify: show xN only while streak is live.
+  if (state.streak > 0) {
+    c2d.fillStyle = sun.base;
+    c2d.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
+    c2d.fillText(
+      `x${iceCatchStreakMultiplier(state.streak)}`,
+      Math.max(96, ctx.width * 0.42),
+      16,
+    );
+  }
+  c2d.fillStyle = day.text;
+  c2d.font = "12px system-ui, sans-serif";
   if (state.phase === "ready") {
     c2d.fillText("Click / Space to fish", 8, ctx.height - 12);
   } else if (state.phase === "gameover") {
     c2d.fillText("Game over — Enter to retry", 8, ctx.height - 12);
+    // Peak catch-streak brag densify (cabinet/wait craft).
+    if (state.maxStreak > 0) {
+      c2d.fillStyle = sun.base;
+      c2d.font = "600 12px ui-monospace, SFMono-Regular, Menlo, monospace";
+      c2d.fillText(
+        `BEST x${iceCatchStreakMultiplier(state.maxStreak)}`,
+        8,
+        ctx.height - 28,
+      );
+    }
   }
 }
 
@@ -122,16 +148,22 @@ function drawAuthoredFish(
   image: CanvasImageSource,
   fish: Fish,
 ): void {
-  const cell = ATLAS[fish.kind];
+  // Golden reuses medium atlas cell; sun rim densify marks the rare catch.
+  const cell = fish.kind === "golden" ? ATLAS.medium : ATLAS[fish.kind];
   if (fish.kind !== "hazard" && fish.vx < 0) {
     c2d.save();
     c2d.translate(fish.x + fish.w / 2, fish.y + fish.h / 2);
     c2d.scale(-1, 1);
     drawAtlasFit(c2d, image, cell, -fish.w / 2, -fish.h / 2, fish.w, fish.h);
     c2d.restore();
-    return;
+  } else {
+    drawAtlasFit(c2d, image, cell, fish.x, fish.y, fish.w, fish.h);
   }
-  drawAtlasFit(c2d, image, cell, fish.x, fish.y, fish.w, fish.h);
+  if (fish.kind === "golden") {
+    c2d.strokeStyle = sun.base;
+    c2d.lineWidth = 1.5;
+    c2d.strokeRect(fish.x + 0.5, fish.y + 0.5, fish.w - 1, fish.h - 1);
+  }
 }
 
 function drawAtlasFit(
@@ -163,8 +195,10 @@ function drawFallbackFish(c2d: CanvasRenderingContext2D, fish: Fish): void {
   c2d.fillStyle =
     fish.kind === "hazard"
       ? accent.emperor.day
-      : fish.kind === "medium"
-        ? sun.glow.day
-        : accent.aurora.day;
+      : fish.kind === "golden"
+        ? sun.base
+        : fish.kind === "medium"
+          ? sun.glow.day
+          : accent.aurora.day;
   c2d.fillRect(fish.x, fish.y, fish.w, fish.h);
 }

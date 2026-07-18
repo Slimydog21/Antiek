@@ -6,6 +6,7 @@ import type {
   ConfidenceLevel,
 } from "../generated/types";
 import { postTypedEvent } from "../lib/api";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 /**
  * The derived grounding state for a single Claim, computed by the
@@ -82,8 +83,11 @@ export default function ClaimCard({
         role: "user_agent",
       });
       setChallenged(true);
+      // Living-TV: claim challenge raised — thinking chase.
+      emitWernerExperience("deep_research_start");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }
