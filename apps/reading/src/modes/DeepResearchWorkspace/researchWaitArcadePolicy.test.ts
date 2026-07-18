@@ -52,4 +52,16 @@ describe("deriveResearchWaitArcadeMode", () => {
       }),
     ).toBe("hidden");
   });
+
+  it("opted-in densify plays even before offerReady (explicit opt-in owns mode)", () => {
+    // densify: once the operator opts in, wait arcade is playing without
+    // requiring the offer clock — terminal/hidden gates still win above.
+    expect(
+      deriveResearchWaitArcadeMode({
+        ...ELIGIBLE,
+        offerReady: false,
+        optedIn: true,
+      }),
+    ).toBe("playing");
+  });
 });

@@ -117,6 +117,36 @@ describe("werner instrument barrel densify", () => {
     expect(emoteForProductDoor("midnight-oil")).toBe("sleeping");
   });
 
+  it("exports emoteForProductDoor densify for residual invent door families + aliases", () => {
+    // densify: every invent door family maps to a living-TV emote; aliases share it.
+    // thinking family — research workstation
+    expect(emoteForProductDoor("twin-notes")).toBe("thinking");
+    expect(emoteForProductDoor("twin_notes")).toBe("thinking");
+    expect(emoteForProductDoor("thought-partner")).toBe("thinking");
+    expect(emoteForProductDoor("cascade-plan")).toBe("thinking");
+    // curious family — arcade/wait/cabinet/marketplace
+    expect(emoteForProductDoor("wait-arcade")).toBe("curious");
+    expect(emoteForProductDoor("wait_arcade")).toBe("curious");
+    expect(emoteForProductDoor("book-marketplace")).toBe("curious");
+    expect(emoteForProductDoor("book_marketplace")).toBe("curious");
+    expect(emoteForProductDoor("ice-fishing")).toBe("curious");
+    expect(emoteForProductDoor("zombies")).toBe("curious");
+    expect(emoteForProductDoor("paperclip_zombies")).toBe("curious");
+    expect(emoteForProductDoor("loading-game-host")).toBe("curious");
+    // happy family — craft/pride
+    expect(emoteForProductDoor("write")).toBe("happy");
+    expect(emoteForProductDoor("antiek-bench")).toBe("happy");
+    expect(emoteForProductDoor("antiek_bench")).toBe("happy");
+    // noted family — settings/billing
+    expect(emoteForProductDoor("settings")).toBe("noted");
+    expect(emoteForProductDoor("billing")).toBe("noted");
+    expect(emoteForProductDoor("pricing")).toBe("noted");
+    // sleeping family
+    expect(emoteForProductDoor("midnight_oil")).toBe("sleeping");
+    // unknown → classic hit bump
+    expect(emoteForProductDoor("does-not-exist")).toBe("hit");
+  });
+
   it("exports data-werner-target densify helpers for opt-in living-TV clicks", () => {
     expect(WERNER_TARGET_ATTR).toBe("data-werner-target");
     expect(emoteFromWernerTargetAttr("curious")).toBe("curious");
