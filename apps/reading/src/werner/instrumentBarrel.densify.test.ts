@@ -4,8 +4,9 @@
  * on the werner barrel so product shells share the fixed-station contract
  * (cursor is bait/instrument, not a chase pet).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { emitProductActivate } from "../components/hotkeys";
 import {
   acquireStationInstrumentSuspension,
   ambientExperienceAfterQuiet,
@@ -678,6 +679,51 @@ describe("werner instrument barrel densify", () => {
     expect(typeof teardownB).toBe("function");
     teardownA();
     teardownB();
+  });
+
+  it("exports installChoreography densify driving product-activate → door emote", () => {
+    // densify: single PRODUCT_ACTIVATE path maps invent doors to living-TV emotes.
+    const el = document.createElement("button");
+    const waddleToEl = vi.fn();
+    const stage = { waddleToEl, emote: vi.fn() } as never;
+    const teardown = installChoreography(stage, {
+      resolveTarget: () => el,
+    });
+    emitProductActivate({ productId: "research", source: "click" });
+    emitProductActivate({ productId: "write", source: "hotkey" });
+    emitProductActivate({ productId: "home-arcade", source: "click" });
+    expect(waddleToEl).toHaveBeenCalledTimes(3);
+    expect(waddleToEl.mock.calls[0]).toEqual([el, "thinking"]);
+    expect(waddleToEl.mock.calls[1]).toEqual([el, "happy"]);
+    expect(waddleToEl.mock.calls[2]).toEqual([el, "curious"]);
+    // Teardown densify: no further reactions after remove.
+    teardown();
+    emitProductActivate({ productId: "settings", source: "click" });
+    expect(waddleToEl).toHaveBeenCalledTimes(3);
+  });
+
+  it("exports installTargetChoreography densify for data-werner-target clicks", () => {
+    // densify: opt-in attribute path uses emoteFromWernerTargetAttr; bare → hit.
+    const waddleToEl = vi.fn();
+    const stage = { waddleToEl, emote: vi.fn() } as never;
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const target = document.createElement("button");
+    target.setAttribute(WERNER_TARGET_ATTR, "curious");
+    root.appendChild(target);
+    const bare = document.createElement("button");
+    bare.setAttribute(WERNER_TARGET_ATTR, "");
+    root.appendChild(bare);
+    const teardown = installTargetChoreography(stage, { target: document });
+    target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    bare.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(waddleToEl).toHaveBeenCalledTimes(2);
+    expect(waddleToEl.mock.calls[0]).toEqual([target, "curious"]);
+    expect(waddleToEl.mock.calls[1]).toEqual([bare, "hit"]);
+    teardown();
+    target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(waddleToEl).toHaveBeenCalledTimes(2);
+    root.remove();
   });
 
   it("exports rodBend densify for instrument tension under tip→bait load", () => {

@@ -42,7 +42,7 @@ When product wants *optional* streamed invent motion (not sole UI):
 
 ```bash
 cd apps/reading && npm run test:branding-densify
-# 47 files / 432 tests (invent reframe multi-phase + invent class + wave honesty + ice-cursor baitChromeFromFollow + fishing-line catenary/tipToBaitDistance/rodBendFromPoints + fishing gag shouldFish/fishingStep full beat order + waddleToEl frozen densify + createWernerStage/ice-arcade flags + reducer resume densify + ambientExperienceAfterQuiet + installLivingTvAmbient densify + RESEARCH_WAIT_ARCADE_OFFER_AFTER_MS + station instrument suspension nested lease densify + productSelector keyboard/escape densify + moveTo walk densify + productSelector densify + emoteForProductDoor residual families + wait-arcade opt-in densify + data-werner-target densify + minigame living-TV + invent inventory + Flipbook stream ladder + RM factory densify)
+# 47 files / 434 tests (invent reframe multi-phase + invent class + wave honesty + ice-cursor baitChromeFromFollow + fishing-line catenary/tipToBaitDistance/rodBendFromPoints + fishing gag shouldFish/fishingStep full beat order + waddleToEl frozen densify + createWernerStage/ice-arcade flags + reducer resume densify + ambientExperienceAfterQuiet + installLivingTvAmbient densify + RESEARCH_WAIT_ARCADE_OFFER_AFTER_MS + station instrument suspension nested lease densify + productSelector keyboard/escape densify + moveTo walk densify + productSelector densify + installChoreography product-activate densify + installTargetChoreography click densify + emoteForProductDoor residual families + wait-arcade opt-in densify + data-werner-target densify + minigame living-TV + invent inventory + Flipbook stream ladder + RM factory densify)
 ```
 
 ## Invent polish v2d
