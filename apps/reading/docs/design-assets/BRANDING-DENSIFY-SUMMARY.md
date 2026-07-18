@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `d8c210e85` — densify pack **47/453**.
+PR #2416 tip (at close of this note): `71a959454` — densify pack **47/454**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1299,3 +1299,9 @@ Paperclip Zombies endless-loop exit contract densify. densify pack **47/452**. P
 | clamCatcher silent beat + tuning densify | `d8c210e85` | WernerBeat null densify + CLAM_CATCHER_TUNING freeze densify |
 
 Clam Catcher living-TV silent edges + frozen tuning densify. densify pack **47/453**. Pure Flipbook sole UI remains **NO-GO**.
+
+## iceFishingWernerBeat silent densify (craft168+)
+
+| iceFishingWernerBeat silent densify | `71a959454` | non-edge null densify for idle/life-loss/score-drop |
+
+Ice-fishing living-TV silent edges densify. densify pack **47/454**. Pure Flipbook sole UI remains **NO-GO**.
