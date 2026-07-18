@@ -988,6 +988,46 @@ describe("werner instrument barrel densify", () => {
     stage.dispose();
   });
 
+  it("exports createWernerStage densify for off-screen waddleToEl no-op", () => {
+    // densify: center off viewport → no walk, no machine transition.
+    let walks = 0;
+    const stage = createWernerStage(
+      {
+        walkTo: () => {
+          walks += 1;
+        },
+        getPos: () => ({ x: 0, y: 0 }),
+        setEmote: () => {},
+        setFollowing: () => {},
+        setRoamPaused: () => {},
+      },
+      {
+        setTimeout: (fn, _ms) => {
+          void fn;
+          return 1;
+        },
+        clearTimeout: () => {},
+      },
+    );
+    const off = {
+      getBoundingClientRect: () => ({
+        left: -200,
+        top: -100,
+        width: 40,
+        height: 40,
+        right: -160,
+        bottom: -60,
+        x: -200,
+        y: -100,
+        toJSON: () => ({}),
+      }),
+    } as Element;
+    stage.waddleToEl(off, "hit");
+    expect(walks).toBe(0);
+    expect(stage.getState().name).toBe("idle");
+    stage.dispose();
+  });
+
   it("exports createWernerStage densify for follow ambient + frozen follow no-op", () => {
     // densify: follow toggles ambient floor; frozen swallows follow (hard floor).
     const following: boolean[] = [];
