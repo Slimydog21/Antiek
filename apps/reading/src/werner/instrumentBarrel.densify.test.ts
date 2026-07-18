@@ -817,6 +817,46 @@ describe("werner instrument barrel densify", () => {
     stage.dispose();
   });
 
+  it("exports createWernerStage densify for frozen moveTo no-op + dispose clear", () => {
+    // densify: reduced-motion freezes directed motion; dispose clears pending action.
+    let walks = 0;
+    let cleared = 0;
+    let pending: (() => void) | null = null;
+    const stage = createWernerStage(
+      {
+        walkTo: () => {
+          walks += 1;
+        },
+        getPos: () => ({ x: 0, y: 0 }),
+        setEmote: () => {},
+        setFollowing: () => {},
+        setRoamPaused: () => {},
+      },
+      {
+        setTimeout: (fn, _ms) => {
+          pending = fn as () => void;
+          return 7;
+        },
+        clearTimeout: () => {
+          cleared += 1;
+          pending = null;
+        },
+      },
+    );
+    stage.freeze();
+    stage.moveTo(50, 60);
+    expect(walks).toBe(0);
+    expect(stage.getState().name).toBe("frozen");
+    // Unfreeze, start a walk, then dispose must clear the action timer.
+    stage.unfreeze();
+    stage.moveTo(11, 22);
+    expect(walks).toBe(1);
+    expect(pending).not.toBeNull();
+    stage.dispose();
+    expect(cleared).toBeGreaterThanOrEqual(1);
+    expect(pending).toBeNull();
+  });
+
   it("exports createWernerStage densify for follow ambient + frozen follow no-op", () => {
     // densify: follow toggles ambient floor; frozen swallows follow (hard floor).
     const following: boolean[] = [];
