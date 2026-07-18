@@ -933,6 +933,61 @@ describe("werner instrument barrel densify", () => {
     stage.dispose();
   });
 
+  it("exports createWernerStage densify for moveThenEmote arrival → emote chain", () => {
+    // densify: live waddleToEl arrives then chains into emote; emoteDone resumes roam.
+    const emotes: Array<string | null> = [];
+    const roam: boolean[] = [];
+    const timers: Array<() => void> = [];
+    const stage = createWernerStage(
+      {
+        walkTo: () => {},
+        getPos: () => ({ x: 0, y: 0 }),
+        setEmote: (k) => {
+          emotes.push(k);
+        },
+        setFollowing: () => {},
+        setRoamPaused: (p) => {
+          roam.push(p);
+        },
+      },
+      {
+        setTimeout: (fn, _ms) => {
+          timers.push(fn as () => void);
+          return timers.length;
+        },
+        clearTimeout: () => {},
+      },
+    );
+    const el = {
+      getBoundingClientRect: () => ({
+        left: 80,
+        top: 90,
+        width: 20,
+        height: 20,
+        right: 100,
+        bottom: 110,
+        x: 80,
+        y: 90,
+        toJSON: () => ({}),
+      }),
+    } as Element;
+    stage.waddleToEl(el, "curious");
+    expect(stage.getState().name).toBe("waddling");
+    expect(roam).toContain(true);
+    // Fire waddle arrival timer densify → arrived + emote chain.
+    expect(timers.length).toBe(1);
+    timers[0]!();
+    expect(stage.getState().name).toBe("emoting");
+    expect(emotes.at(-1)).toBe("curious");
+    // Fire emoteDone densify → resume roam.
+    expect(timers.length).toBe(2);
+    timers[1]!();
+    expect(stage.getState().name).toBe("idle");
+    expect(emotes.at(-1)).toBeNull();
+    expect(roam.at(-1)).toBe(false);
+    stage.dispose();
+  });
+
   it("exports createWernerStage densify for follow ambient + frozen follow no-op", () => {
     // densify: follow toggles ambient floor; frozen swallows follow (hard floor).
     const following: boolean[] = [];
