@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `082579444` — densify pack **47/421**.
+PR #2416 tip (at close of this note): `f799b6375` — densify pack **47/423**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1185,3 +1185,9 @@ Instrument barrel densify exports fishing gag + steering pure core. densify pack
 | createWernerStage + ice/arcade flags densify | `082579444` | stage factory + feature flags public |
 
 Instrument barrel densify exports createWernerStage + ice/arcade flags. densify pack **47/421**. Pure Flipbook sole UI remains **NO-GO**.
+
+## reducer resume + ambient episode densify (craft157+)
+
+| reducer resume + ambient episode densify | `f799b6375` | follow/waddle/emote resume + ambientExperienceAfterQuiet |
+
+Instrument barrel densify exports reducer resume + ambient episode policy. densify pack **47/423**. Pure Flipbook sole UI remains **NO-GO**.
