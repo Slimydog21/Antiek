@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `4681afe4c` — densify pack **47/425**.
+PR #2416 tip (at close of this note): `0e93a5d30` — densify pack **47/427**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1197,3 +1197,9 @@ Instrument barrel densify exports reducer resume + ambient episode policy. densi
 | residual product-door + wait-arcade densify | `4681afe4c` | door families/aliases + opted-in playing densify |
 
 Residual invent door emote densify + wait-arcade opt-in densify. densify pack **47/425**. Pure Flipbook sole UI remains **NO-GO**.
+
+## ambient installer + wait offer clock densify (craft157+)
+
+| ambient installer + wait offer clock densify | `0e93a5d30` | installLivingTvAmbient inject densify + 8s offer clock |
+
+Ambient installer densify + wait-arcade offer clock densify. densify pack **47/427**. Pure Flipbook sole UI remains **NO-GO**.
