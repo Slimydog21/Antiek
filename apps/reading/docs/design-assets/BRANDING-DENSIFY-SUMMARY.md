@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `0720a61c4` — densify pack **47/432**.
+PR #2416 tip (at close of this note): `b797844bd` — densify pack **47/434**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1215,3 +1215,9 @@ FishingStep full never-caught beat densify + frozen waddleToEl densify. densify 
 | nested lease + productSelector + moveTo densify | `0720a61c4` | lease stacking + selector escape + moveTo walk densify |
 
 Nested instrument lease densify + productSelector keyboard densify + moveTo densify. densify pack **47/432**. Pure Flipbook sole UI remains **NO-GO**.
+
+## choreography install densify residual (craft157+)
+
+| choreography install densify residual | `b797844bd` | product-activate door emotes + data-werner-target clicks |
+
+InstallChoreography densify + installTargetChoreography densify residual. densify pack **47/434**. Pure Flipbook sole UI remains **NO-GO**.
