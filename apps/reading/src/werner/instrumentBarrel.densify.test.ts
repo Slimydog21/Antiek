@@ -385,6 +385,34 @@ describe("werner instrument barrel densify", () => {
     expect(fishingStep(FISHING_BEATS[0].holdMs).beat).toBe(FISHING_BEATS[1].beat);
   });
 
+  it("exports fishingStep densify walking the full never-caught beat order", () => {
+    // densify: sequential holds land on cast→wait→bob→nibble→yank→miss→slump→reset→cast.
+    const order = FISHING_BEATS.map((b) => b.beat);
+    expect(order).toEqual([
+      "cast",
+      "wait",
+      "bob",
+      "nibble",
+      "yank",
+      "miss",
+      "slump",
+      "reset",
+    ]);
+    let elapsed = 0;
+    for (let i = 0; i < FISHING_BEATS.length; i++) {
+      const frame = fishingStep(elapsed);
+      expect(frame.beat).toBe(FISHING_BEATS[i].beat);
+      expect(frame.index).toBe(i);
+      expect(frame.beatPhase).toBeGreaterThanOrEqual(0);
+      expect(frame.beatPhase).toBeLessThan(1);
+      elapsed += FISHING_BEATS[i].holdMs;
+    }
+    // Full loop wraps to cast without a catch payoff.
+    expect(fishingStep(elapsed).beat).toBe("cast");
+    expect(fishingStep(Number.NaN).beat).toBe("cast");
+    expect(fishingStep(-10).beat).toBe("cast");
+  });
+
   it("exports steering densify (isBusy + reducer + waddle period)", () => {
     // densify: directed actions are busy; freeze is a hard floor; waddle period public.
     expect(isBusy(INITIAL_WERNER_STATE)).toBe(false);
@@ -490,6 +518,57 @@ describe("werner instrument barrel densify", () => {
     expect(stage.getState().name).toBe("frozen");
     stage.unfreeze();
     expect(stage.getState().name).toBe("idle");
+    stage.dispose();
+  });
+
+  it("exports createWernerStage densify for waddleToEl missing/frozen paths", () => {
+    // densify: missing target is graceful no-op; frozen flashes still emote in place.
+    const timers = {
+      setTimeout: (fn: () => void, _ms: number) => {
+        void fn;
+        return 42;
+      },
+      clearTimeout: (_id: number) => {
+        void _id;
+      },
+    };
+    let walks = 0;
+    let emotes: Array<string | null> = [];
+    const host = {
+      walkTo: () => {
+        walks += 1;
+      },
+      getPos: () => ({ x: 50, y: 50 }),
+      setEmote: (k: string | null) => {
+        emotes.push(k);
+      },
+      setFollowing: () => {},
+      setRoamPaused: () => {},
+    };
+    const stage = createWernerStage(host, timers);
+    stage.waddleToEl(null);
+    expect(walks).toBe(0);
+    expect(stage.getState().name).toBe("idle");
+    stage.freeze();
+    // frozen path ignores null short-circuit order: freeze branch runs first.
+    const el = {
+      getBoundingClientRect: () => ({
+        left: 100,
+        top: 100,
+        width: 20,
+        height: 20,
+        right: 120,
+        bottom: 120,
+        x: 100,
+        y: 100,
+        toJSON: () => ({}),
+      }),
+    } as Element;
+    stage.waddleToEl(el, "curious");
+    // frozen: no walk, still-pose emote flash, machine stays frozen (hard floor).
+    expect(walks).toBe(0);
+    expect(emotes).toContain("curious");
+    expect(stage.getState().name).toBe("frozen");
     stage.dispose();
   });
 
