@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   deriveResearchWaitArcadeMode,
+  RESEARCH_WAIT_ARCADE_OFFER_AFTER_MS,
   type ResearchWaitArcadePolicyInput,
 } from "./researchWaitArcadePolicy";
 
@@ -16,6 +17,11 @@ const ELIGIBLE: ResearchWaitArcadePolicyInput = {
 };
 
 describe("deriveResearchWaitArcadeMode", () => {
+  it("pins RESEARCH_WAIT_ARCADE_OFFER_AFTER_MS densify (8s offer clock)", () => {
+    // densify: wait-arcade offer clock is fixed so hosts share one UX contract.
+    expect(RESEARCH_WAIT_ARCADE_OFFER_AFTER_MS).toBe(8_000);
+  });
+
   it.each([
     ["disabled", { featureEnabled: false }],
     ["unobserved", { hasAuthoritativeSnapshot: false }],
