@@ -30,6 +30,21 @@ describe("ice fishing pure logic", () => {
     }
   });
 
+  it("iceFishingOverlapsHook densify hits and misses on AABB hook vs fish", () => {
+    // densify: pure hook AABB is the Club Penguin catch decision surface.
+    const base = createIceFishingState({ width: 200, height: 160 });
+    const state = {
+      ...base,
+      phase: "playing" as const,
+      hookX: 100,
+      hookY: 80,
+    };
+    const hit = { id: 1, x: 96, y: 76, w: 12, h: 10, vx: 0, kind: "good" as const };
+    const miss = { id: 2, x: 140, y: 120, w: 12, h: 10, vx: 0, kind: "good" as const };
+    expect(iceFishingOverlapsHook(state, hit)).toBe(true);
+    expect(iceFishingOverlapsHook(state, miss)).toBe(false);
+  });
+
   it("starts a round from ready on drop/start", () => {
     const s0 = createIceFishingState({ width: 200, height: 160 });
     expect(s0.phase).toBe("ready");
