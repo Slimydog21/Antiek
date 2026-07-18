@@ -222,6 +222,32 @@ describe("werner instrument barrel densify", () => {
     teardown();
   });
 
+  it("exports installReactionBus densify mapping product experiences to stage emotes", () => {
+    // densify: valid experiences map via emoteForExperience; unknown detail is ignored.
+    const emote = vi.fn();
+    const teardown = installReactionBus({ emote });
+    emitWernerExperience("highlight");
+    emitWernerExperience("deep_research_start");
+    emitWernerExperience("deep_research_complete");
+    emitWernerExperience("fail");
+    expect(emote.mock.calls.map((c) => c[0])).toEqual([
+      "curious",
+      "thinking",
+      "happy",
+      "dizzy",
+    ]);
+    // Unknown runtime detail densify: no emote.
+    window.dispatchEvent(
+      new CustomEvent(WERNER_EXPERIENCE_EVENT, {
+        detail: { experience: "not-a-product-experience" },
+      }),
+    );
+    expect(emote).toHaveBeenCalledTimes(4);
+    teardown();
+    emitWernerExperience("note_saved");
+    expect(emote).toHaveBeenCalledTimes(4);
+  });
+
   it("exports living-TV ambient densify (quiet policy + installer)", () => {
     // densify: ambient episode continuity is pure policy + installLivingTvAmbient.
     expect(DEFAULT_AMBIENT_QUIET_MS).toBe(90_000);
@@ -647,6 +673,44 @@ describe("werner instrument barrel densify", () => {
     const before = walks.length;
     stage.waddleToEl(zero, "hit");
     expect(walks.length).toBe(before);
+    stage.dispose();
+  });
+
+  it("exports createWernerStage densify for follow ambient + frozen follow no-op", () => {
+    // densify: follow toggles ambient floor; frozen swallows follow (hard floor).
+    const following: boolean[] = [];
+    const host = {
+      walkTo: () => {},
+      getPos: () => ({ x: 0, y: 0 }),
+      setEmote: () => {},
+      setFollowing: (on: boolean) => {
+        following.push(on);
+      },
+      setRoamPaused: () => {},
+    };
+    const stage = createWernerStage(host, {
+      setTimeout: (fn, _ms) => {
+        void fn;
+        return 1;
+      },
+      clearTimeout: () => {},
+    });
+    stage.follow(true);
+    expect(stage.getState()).toEqual({
+      name: "following",
+      resume: "following",
+    });
+    expect(following).toEqual([true]);
+    stage.follow(false);
+    expect(stage.getState()).toEqual({ name: "idle", resume: "idle" });
+    expect(following).toEqual([true, false]);
+    stage.freeze();
+    // freeze clears host following (false); machine stays frozen on follow(true).
+    expect(following.at(-1)).toBe(false);
+    const callsBefore = following.length;
+    stage.follow(true);
+    expect(stage.getState().name).toBe("frozen");
+    expect(following.length).toBe(callsBefore); // no host follow while frozen
     stage.dispose();
   });
 
