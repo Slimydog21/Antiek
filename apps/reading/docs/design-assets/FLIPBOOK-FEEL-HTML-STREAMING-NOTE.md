@@ -42,7 +42,7 @@ When product wants *optional* streamed invent motion (not sole UI):
 
 ```bash
 cd apps/reading && npm run test:branding-densify
-# 47 files / 420 tests (invent reframe multi-phase + invent class + wave honesty + ice-cursor baitChromeFromFollow + fishing-line catenary/tipToBaitDistance/rodBendFromPoints + fishing gag shouldFish/fishingStep + station instrument suspension + productSelector densify + data-werner-target densify + minigame living-TV + invent inventory + Flipbook stream ladder + RM factory densify)
+# 47 files / 421 tests (invent reframe multi-phase + invent class + wave honesty + ice-cursor baitChromeFromFollow + fishing-line catenary/tipToBaitDistance/rodBendFromPoints + fishing gag shouldFish/fishingStep + createWernerStage/ice-arcade flags + station instrument suspension + productSelector densify + data-werner-target densify + minigame living-TV + invent inventory + Flipbook stream ladder + RM factory densify)
 ```
 
 ## Invent polish v2d

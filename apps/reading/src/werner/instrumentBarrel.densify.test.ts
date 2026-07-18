@@ -54,6 +54,7 @@ import {
   getActivityForPathname,
   getDefaultActivity,
   consumeLocallyStartedResearchSession,
+  createWernerStage,
   EmoteView,
   iceFishingActivity,
   listActivities,
@@ -73,6 +74,8 @@ import {
   WernerIceBait,
   WernerIceCursorShell,
   WernerRig,
+  wernerArcade,
+  wernerIceFishingCursor,
   wernerReducer,
   writingNibActivity,
   WERNER_EXPERIENCE_EVENT,
@@ -326,6 +329,44 @@ describe("werner instrument barrel densify", () => {
     expect(wernerReducer(frozen, { type: "waddle" }).name).toBe("frozen");
     expect(wernerReducer(frozen, { type: "unfreeze" }).name).toBe("idle");
     expect(WADDLE_MS).toBe(1800);
+  });
+
+  it("exports createWernerStage densify + ice/arcade feature flags", () => {
+    // densify: stage factory is pure over host + timers; flags default on unless VITE_*=0.
+    expect(typeof createWernerStage).toBe("function");
+    expect(typeof wernerIceFishingCursor).toBe("boolean");
+    expect(typeof wernerArcade).toBe("boolean");
+    const timers = {
+      setTimeout: (fn: () => void, _ms: number) => {
+        // Do not auto-fire; tests only need latest-wins clear + dispose.
+        void fn;
+        return 1;
+      },
+      clearTimeout: (_id: number) => {
+        void _id;
+      },
+    };
+    let pos = { x: 50, y: 50 };
+    const host = {
+      walkTo: (x: number, y: number) => {
+        pos = { x, y };
+      },
+      getPos: () => pos,
+      setEmote: () => {},
+      setFollowing: () => {},
+      setRoamPaused: () => {},
+    };
+    const stage = createWernerStage(host, timers);
+    expect(stage.getState()).toEqual(INITIAL_WERNER_STATE);
+    stage.emote("curious");
+    expect(stage.getState().name).toBe("emoting");
+    stage.idle();
+    expect(stage.getState().name).toBe("idle");
+    stage.freeze();
+    expect(stage.getState().name).toBe("frozen");
+    stage.unfreeze();
+    expect(stage.getState().name).toBe("idle");
+    stage.dispose();
   });
 
   it("exports mouse-follow densify for cursor-is-bait lag contract", () => {
