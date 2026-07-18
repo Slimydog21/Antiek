@@ -106,6 +106,24 @@ describe("werner instrument barrel densify", () => {
     expect(isStationInstrumentSuspended()).toBe(false);
   });
 
+  it("exports nested station instrument lease densify (overlapping owners teardown-safe)", () => {
+    // densify: one surface cannot restore the global instrument while another owns it.
+    expect(stationInstrumentLeaseCount()).toBe(0);
+    const releaseA = acquireStationInstrumentSuspension("wait-arcade");
+    const releaseB = acquireStationInstrumentSuspension("cabinet");
+    expect(stationInstrumentLeaseCount()).toBe(2);
+    expect(isStationInstrumentSuspended()).toBe(true);
+    releaseA();
+    expect(stationInstrumentLeaseCount()).toBe(1);
+    expect(isStationInstrumentSuspended()).toBe(true);
+    // Idempotent release densify: second call is a no-op.
+    releaseA();
+    expect(stationInstrumentLeaseCount()).toBe(1);
+    releaseB();
+    expect(stationInstrumentLeaseCount()).toBe(0);
+    expect(isStationInstrumentSuspended()).toBe(false);
+  });
+
   it("exports productSelector + emoteForProductDoor for living-TV door densify", () => {
     // Product shells stamp data-product-id; barrel densify keeps the selector
     // + emote map public so invent doors resolve without chasing a pet.
@@ -115,6 +133,24 @@ describe("werner instrument barrel densify", () => {
     expect(emoteForProductDoor("home-arcade")).toBe("curious");
     expect(emoteForProductDoor("research")).toBe("thinking");
     expect(emoteForProductDoor("midnight-oil")).toBe("sleeping");
+  });
+
+  it("exports productSelector densify for keyboard source + exotic productId escape", () => {
+    // densify: source does not change the selector; exotic ids stay query-safe.
+    expect(
+      productSelector({ productId: "model-decision", source: "keyboard" }),
+    ).toBe('[data-product-id="model-decision"]');
+    expect(productSelector({ productId: "a.b", source: "click" })).toBe(
+      '[data-product-id="a.b"]',
+    );
+    // If CSS.escape is available, quotes/specials are escaped.
+    const escaped = productSelector({
+      productId: 'weird"id',
+      source: "click",
+    });
+    expect(escaped.startsWith("[data-product-id=")).toBe(true);
+    expect(escaped.endsWith("]")).toBe(true);
+    expect(escaped).toContain("weird");
   });
 
   it("exports emoteForProductDoor densify for residual invent door families + aliases", () => {
@@ -569,6 +605,47 @@ describe("werner instrument barrel densify", () => {
     expect(walks).toBe(0);
     expect(emotes).toContain("curious");
     expect(stage.getState().name).toBe("frozen");
+    stage.dispose();
+  });
+
+  it("exports createWernerStage densify for moveTo walk + zero-size waddle no-op", () => {
+    // densify: moveTo walks under live motion; zero-size targets never waddle.
+    let walks: Array<{ x: number; y: number; ms: number }> = [];
+    const host = {
+      walkTo: (x: number, y: number, durationMs: number) => {
+        walks.push({ x, y, ms: durationMs });
+      },
+      getPos: () => ({ x: 10, y: 10 }),
+      setEmote: () => {},
+      setFollowing: () => {},
+      setRoamPaused: () => {},
+    };
+    const stage = createWernerStage(host, {
+      setTimeout: (fn, _ms) => {
+        void fn;
+        return 7;
+      },
+      clearTimeout: () => {},
+    });
+    stage.moveTo(200, 300);
+    expect(walks).toEqual([{ x: 200, y: 300, ms: WADDLE_MS }]);
+    expect(stage.getState().name).toBe("waddling");
+    const zero = {
+      getBoundingClientRect: () => ({
+        left: 0,
+        top: 0,
+        width: 0,
+        height: 0,
+        right: 0,
+        bottom: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
+    } as Element;
+    const before = walks.length;
+    stage.waddleToEl(zero, "hit");
+    expect(walks.length).toBe(before);
     stage.dispose();
   });
 
