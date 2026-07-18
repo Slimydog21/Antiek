@@ -50,6 +50,37 @@ describe("Clam Catcher rules", () => {
     ).toBe("fail");
   });
 
+  it("clamCatcherWernerBeat densify stays silent on non-edge frames + pins tuning freeze", () => {
+    // densify: no living-TV beat for idle score/life churn or ready idle.
+    expect(
+      clamCatcherWernerBeat(
+        { phase: "playing", score: 4, lives: 2 },
+        { phase: "playing", score: 4, lives: 2 },
+      ),
+    ).toBeNull();
+    expect(
+      clamCatcherWernerBeat(
+        { phase: "ready", score: 0, lives: 3 },
+        { phase: "ready", score: 0, lives: 3 },
+      ),
+    ).toBeNull();
+    expect(
+      clamCatcherWernerBeat(
+        { phase: "playing", score: 4, lives: 2 },
+        { phase: "playing", score: 4, lives: 1 },
+      ),
+    ).toBeNull(); // life loss without gameover is silent densify
+    // densify: Club Penguin catcher tuning is a frozen craft contract.
+    expect(Object.isFrozen(CLAM_CATCHER_TUNING)).toBe(true);
+    expect(CLAM_CATCHER_TUNING.startingLives).toBe(3);
+    expect(CLAM_CATCHER_TUNING.jellyfishChance).toBeGreaterThan(0);
+    expect(CLAM_CATCHER_TUNING.pearlChance).toBeGreaterThan(0);
+    expect(CLAM_CATCHER_TUNING.maximumFallSpeed).toBeGreaterThan(
+      CLAM_CATCHER_TUNING.openingFallSpeed,
+    );
+    expect(CLAM_MAX_STREAK).toBe(3);
+  });
+
   it("is deterministic for a seed and scripted input", () => {
     expect(run(17)).toEqual(run(17));
     expect(run(17)).not.toEqual(run(18));
