@@ -318,6 +318,44 @@ describe("werner instrument barrel densify", () => {
     teardown();
   });
 
+  it("exports installLivingTvAmbient densify re-arming after product beat pride savor", () => {
+    // densify: product complete → quiet note_saved (re-arm) → quiet idle → silence.
+    const emitted: string[] = [];
+    let t = 0;
+    let tick: (() => void) | null = null;
+    const target = window;
+    const teardown = installLivingTvAmbient({
+      quietMs: 50,
+      pollMs: 10,
+      target,
+      emit: (experience) => {
+        emitted.push(experience);
+      },
+      now: () => t,
+      setInterval: (fn) => {
+        tick = fn;
+        return 1;
+      },
+      clearInterval: () => {},
+    });
+    // Product beat densify: deep_research_complete re-arms and sets last experience.
+    window.dispatchEvent(
+      new CustomEvent(WERNER_EXPERIENCE_EVENT, {
+        detail: { experience: "deep_research_complete" },
+      }),
+    );
+    t = 50;
+    tick?.();
+    expect(emitted).toEqual(["note_saved"]); // pride savor re-arms for curtain
+    t = 100;
+    tick?.();
+    expect(emitted).toEqual(["note_saved", "idle"]); // curtain
+    t = 200;
+    tick?.();
+    expect(emitted).toEqual(["note_saved", "idle"]); // silence after idle
+    teardown();
+  });
+
   it("exports emote duration densify for living-TV stage beats", () => {
     // densify: every living-TV emote kind has a positive duration for stage beats.
     expect(EMOTE_KINDS.length).toBeGreaterThan(0);
@@ -737,6 +775,44 @@ describe("werner instrument barrel densify", () => {
     stage.waddleToEl(el, "hit");
     expect(walks).toEqual([{ x: 120, y: 210, ms: WADDLE_MS }]);
     expect(roamPaused).toContain(true);
+    expect(stage.getState().name).toBe("waddling");
+    stage.dispose();
+  });
+
+  it("exports createWernerStage densify for latest-wins moveTo interruption", () => {
+    // densify: rapid moveTo clears prior timer; only the last walk target sticks.
+    let walks: Array<{ x: number; y: number }> = [];
+    let cleared = 0;
+    let timerId = 0;
+    const stage = createWernerStage(
+      {
+        walkTo: (x, y) => {
+          walks.push({ x, y });
+        },
+        getPos: () => ({ x: 0, y: 0 }),
+        setEmote: () => {},
+        setFollowing: () => {},
+        setRoamPaused: () => {},
+      },
+      {
+        setTimeout: (fn, _ms) => {
+          void fn;
+          timerId += 1;
+          return timerId;
+        },
+        clearTimeout: () => {
+          cleared += 1;
+        },
+      },
+    );
+    stage.moveTo(10, 20);
+    stage.moveTo(90, 100);
+    expect(walks).toEqual([
+      { x: 10, y: 20 },
+      { x: 90, y: 100 },
+    ]);
+    // Second moveTo clears the first action timer (latest-wins densify).
+    expect(cleared).toBeGreaterThanOrEqual(1);
     expect(stage.getState().name).toBe("waddling");
     stage.dispose();
   });
