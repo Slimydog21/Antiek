@@ -1118,6 +1118,21 @@ describe("werner instrument barrel densify", () => {
     expect(waddleToEl).toHaveBeenCalledTimes(3);
   });
 
+  it("exports installChoreography densify for missing resolveTarget still maps emote", () => {
+    // densify: missing door element still routes productId → door emote via waddleToEl(null).
+    const waddleToEl = vi.fn();
+    const stage = { waddleToEl, emote: vi.fn() } as never;
+    const teardown = installChoreography(stage, {
+      resolveTarget: () => null,
+    });
+    emitProductActivate({ productId: "midnight-oil", source: "click" });
+    emitProductActivate({ productId: "settings", source: "hotkey" });
+    expect(waddleToEl).toHaveBeenCalledTimes(2);
+    expect(waddleToEl.mock.calls[0]).toEqual([null, "sleeping"]);
+    expect(waddleToEl.mock.calls[1]).toEqual([null, "noted"]);
+    teardown();
+  });
+
   it("exports installTargetChoreography densify for data-werner-target clicks", () => {
     // densify: opt-in attribute path uses emoteFromWernerTargetAttr; bare → hit.
     const waddleToEl = vi.fn();
