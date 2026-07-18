@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `7b021e4e5` — densify pack **47/444**.
+PR #2416 tip (at close of this note): `2f8b4e236` — densify pack **47/446**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1251,3 +1251,9 @@ CreateWernerStage frozen moveTo densify + dispose densify. densify pack **47/442
 | productSelector escape + idle-after-waddle densify | `7b021e4e5` | escapeProductIdForSelector densify + idle roam-resume densify |
 
 ProductSelector escape densify + createWernerStage idle-after-waddle densify. densify pack **47/444**. Pure Flipbook sole UI remains **NO-GO**.
+
+## frozen emote + nested target densify (craft160+)
+
+| frozen emote + nested target densify | `2f8b4e236` | still-pose densify + closest ancestor densify |
+
+CreateWernerStage frozen emote densify + installTargetChoreography nested densify. densify pack **47/446**. Pure Flipbook sole UI remains **NO-GO**.
