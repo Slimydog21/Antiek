@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `6606fbbd7` — densify pack **47/420**.
+PR #2416 tip (at close of this note): `082579444` — densify pack **47/421**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1179,3 +1179,9 @@ Instrument barrel densify exports ice-cursor + fishing shell components. densify
 | fishing gag + steering densify | `6606fbbd7` | shouldFish/fishingStep + isBusy/reducer/WADDLE_MS |
 
 Instrument barrel densify exports fishing gag + steering pure core. densify pack **47/420**. Pure Flipbook sole UI remains **NO-GO**.
+
+## createWernerStage + ice/arcade flags densify (craft157+)
+
+| createWernerStage + ice/arcade flags densify | `082579444` | stage factory + feature flags public |
+
+Instrument barrel densify exports createWernerStage + ice/arcade flags. densify pack **47/421**. Pure Flipbook sole UI remains **NO-GO**.
