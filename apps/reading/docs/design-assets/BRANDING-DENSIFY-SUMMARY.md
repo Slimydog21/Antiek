@@ -1,6 +1,6 @@
 # Branding densification wave — 2026-07-15/16
 
-PR #2416 tip (at close of this note): `7699489c2` — densify pack **47/439**.
+PR #2416 tip (at close of this note): `4ab72bbc4` — densify pack **47/441**.
 
 ## Product surfaces now UI-consuming session brand
 
@@ -1233,3 +1233,9 @@ InstallReactionBus emit densify + createWernerStage follow densify. densify pack
 | bait chrome hide + mid-beat + live waddle densify | `7699489c2` | hide chrome densify + mid-beat phase + live waddle center densify |
 
 Bait chrome hide densify + fishingStep mid-beat densify + live waddleToEl densify. densify pack **47/439**. Pure Flipbook sole UI remains **NO-GO**.
+
+## ambient product-beat re-arm + latest-wins densify (craft157+)
+
+| ambient product-beat re-arm + latest-wins densify | `4ab72bbc4` | note_saved re-arm densify + latest-wins moveTo densify |
+
+InstallLivingTvAmbient product-beat re-arm densify + createWernerStage latest-wins densify. densify pack **47/441**. Pure Flipbook sole UI remains **NO-GO**.
