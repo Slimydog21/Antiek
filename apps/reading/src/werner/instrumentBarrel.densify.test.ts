@@ -857,6 +857,45 @@ describe("werner instrument barrel densify", () => {
     expect(pending).toBeNull();
   });
 
+  it("exports createWernerStage densify for idle after waddle clearing roam pause", () => {
+    // densify: idle cancels directed motion, clears emote, and resumes roam.
+    const roam: boolean[] = [];
+    const emotes: Array<string | null> = [];
+    let pending: (() => void) | null = null;
+    const stage = createWernerStage(
+      {
+        walkTo: () => {},
+        getPos: () => ({ x: 0, y: 0 }),
+        setEmote: (k) => {
+          emotes.push(k);
+        },
+        setFollowing: () => {},
+        setRoamPaused: (p) => {
+          roam.push(p);
+        },
+      },
+      {
+        setTimeout: (fn, _ms) => {
+          pending = fn as () => void;
+          return 3;
+        },
+        clearTimeout: () => {
+          pending = null;
+        },
+      },
+    );
+    stage.moveTo(40, 50);
+    expect(stage.getState().name).toBe("waddling");
+    expect(roam).toContain(true);
+    expect(pending).not.toBeNull();
+    stage.idle();
+    expect(stage.getState().name).toBe("idle");
+    expect(emotes.at(-1)).toBeNull();
+    expect(roam.at(-1)).toBe(false);
+    expect(pending).toBeNull();
+    stage.dispose();
+  });
+
   it("exports createWernerStage densify for follow ambient + frozen follow no-op", () => {
     // densify: follow toggles ambient floor; frozen swallows follow (hard floor).
     const following: boolean[] = [];

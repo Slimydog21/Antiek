@@ -5,7 +5,10 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { productSelector } from "./choreography";
+import {
+  escapeProductIdForSelector,
+  productSelector,
+} from "./choreography";
 
 describe("productSelector densify", () => {
   it("pins invent product doors to the data-product-id selector contract", () => {
@@ -38,5 +41,22 @@ describe("productSelector densify", () => {
     const hotkey = productSelector({ productId: "research", source: "hotkey" });
     expect(click).toBe(hotkey);
     expect(click).toBe('[data-product-id="research"]');
+  });
+
+  it("escapes exotic productId densify so living-TV selectors stay query-safe", () => {
+    // densify: quotes would break querySelector without escape densify.
+    const id = 'wait-"arcade" door';
+    const escaped = escapeProductIdForSelector(id);
+    expect(escaped).not.toBe(id); // quote must be escaped
+    expect(escaped.includes('"') ? escaped.includes("\\") : true).toBe(true);
+    const sel = productSelector({ productId: id, source: "click" });
+    expect(sel).toBe(`[data-product-id="${escaped}"]`);
+    // Real path: document.querySelector accepts the selector and finds the door.
+    const el = document.createElement("button");
+    el.setAttribute("data-product-id", id);
+    document.body.appendChild(el);
+    expect(() => document.querySelector(sel)).not.toThrow();
+    expect(document.querySelector(sel)).toBe(el);
+    el.remove();
   });
 });

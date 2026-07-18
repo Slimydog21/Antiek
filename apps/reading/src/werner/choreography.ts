@@ -48,14 +48,23 @@ export interface ChoreographyOptions {
   target?: Pick<Window, "addEventListener" | "removeEventListener">;
 }
 
+/**
+ * Escape a productId for a double-quoted CSS attribute selector.
+ * Prefers platform CSS.escape; falls back so SSR / older runtimes still
+ * produce a querySelector-safe densify contract for living-TV doors.
+ */
+export function escapeProductIdForSelector(productId: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(productId);
+  }
+  // Fallback densify: keep [attr="..."] valid without CSS.escape.
+  return productId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 /** Build the selector for a product's on-bar control. Exported so a test (or
  *  the concurrent NavRail sprint) can assert the exact attribute contract. */
 export function productSelector(detail: ProductActivateDetail): string {
-  // CSS.escape guards against an exotic productId breaking the selector.
-  const id =
-    typeof CSS !== "undefined" && typeof CSS.escape === "function"
-      ? CSS.escape(detail.productId)
-      : detail.productId;
+  const id = escapeProductIdForSelector(detail.productId);
   return `[data-product-id="${id}"]`;
 }
 
