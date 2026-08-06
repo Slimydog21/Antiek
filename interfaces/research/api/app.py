@@ -6548,6 +6548,14 @@ def create_app(
     from interfaces.research.api.supersession_routes import supersession_router
     app.include_router(supersession_router)
 
+    # Style wheel HTTP surface (spec §5.5 S2) — GET/POST /styles (fork
+    # management, per-user persistence), DELETE /styles/{name}, and
+    # GET /artifacts/{id}/render (deterministic restyle, no model call).
+    # Same one-line inclusion discipline; the auth middleware attaches the
+    # caller's user_id and the routes key forks by it.
+    from interfaces.research.api.style_routes import style_router
+    app.include_router(style_router)
+
     def _recover_knowledge_event_projector() -> None:
         import threading
 
