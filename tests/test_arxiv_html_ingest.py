@@ -19,7 +19,6 @@ import os
 import sys
 import tempfile
 
-import httpx
 import pytest
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -38,7 +37,6 @@ from substrate.books.html_sanitizer import (  # noqa: E402
     sanitize_book_html,
 )
 from substrate.constants import GATED_DEFAULT_CONTENT_CLASS  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -371,6 +369,7 @@ def test_arxiv_banned_from_fetch_html_propagates(temp_db_and_events):
     """If fetch_html raises ArxivBanned, the exception propagates — the
     caller must pause the batch, never silently swallow."""
     import time
+
     from acquisition.arxiv.throttle import ArxivBanned
 
     def banned_fetch_html(arxiv_id: str) -> FetchedHtml | None:

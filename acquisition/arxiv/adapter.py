@@ -533,7 +533,6 @@ def _ingest_html_with_rights(
         sanitized_html_provenance,
     )
     from substrate.books.ingest import register_book
-    from substrate.books.model import TocItem
 
     sanitized = sanitize_book_html(fetched_html.html)
     provenance_bits = sanitized_html_provenance()
