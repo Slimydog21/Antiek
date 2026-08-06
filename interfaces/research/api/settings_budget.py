@@ -1307,6 +1307,10 @@ def register_settings_budget_routes(app: FastAPI) -> None:
     from .settings_models_admin import register_settings_models_admin_routes
 
     register_settings_models_admin_routes(app)
+    # BYOT per-key usage/balance endpoints (owner-scoped ledger + adapters).
+    from .byot_usage_routes import register_byot_usage_routes
+
+    register_byot_usage_routes(app)
 
 
 __all__ = [
