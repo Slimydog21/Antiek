@@ -244,19 +244,25 @@ class ByotUsageLedger:
     def would_exceed(
         self,
         api_key_id: str,
+        owner_user_id: str,
         projected_cents: int,
     ) -> bool | None:
         """Check whether a projected spend would exceed the key's limit.
 
-        Returns ``None`` if no limit is set, ``True`` if the projection
-        would exceed, ``False`` if it fits within the remaining budget.
+        Scoped to ``(api_key_id, owner_user_id)`` — the table's primary
+        key — so one owner's cap can never be read for another owner who
+        happens to reference the same ``api_key_id``.
+
+        Returns ``None`` if the key is untracked or no limit is set,
+        ``True`` if the projection would exceed, ``False`` if it fits
+        within the remaining budget.
         """
         con = self._connect()
         try:
             r = con.execute(
                 "SELECT used_cents, limit_cents FROM byot_key_usage"
-                " WHERE api_key_id = ?",
-                (api_key_id,),
+                " WHERE api_key_id = ? AND owner_user_id = ?",
+                (api_key_id, owner_user_id),
             ).fetchone()
         finally:
             con.close()

@@ -82,9 +82,9 @@ def test_would_exceed_with_limit(tmp_path: Path) -> None:
     ledger.set_limit("key-1", "user-A", 1000)
 
     # 800 + 100 = 900 <= 1000 → does not exceed
-    assert ledger.would_exceed("key-1", 100) is False
+    assert ledger.would_exceed("key-1", "user-A", 100) is False
     # 800 + 300 = 1100 > 1000 → exceeds
-    assert ledger.would_exceed("key-1", 300) is True
+    assert ledger.would_exceed("key-1", "user-A", 300) is True
 
 
 def test_would_exceed_no_limit_returns_none(tmp_path: Path) -> None:
@@ -92,14 +92,32 @@ def test_would_exceed_no_limit_returns_none(tmp_path: Path) -> None:
     ledger = ByotUsageLedger(db)
 
     ledger.record_settlement("key-1", "user-A", 100, "a" * 64)
-    assert ledger.would_exceed("key-1", 9999) is None
+    assert ledger.would_exceed("key-1", "user-A", 9999) is None
 
 
 def test_would_exceed_unknown_key_returns_none(tmp_path: Path) -> None:
     db = tmp_path / "usage.sqlite3"
     ledger = ByotUsageLedger(db)
 
-    assert ledger.would_exceed("nonexistent", 100) is None
+    assert ledger.would_exceed("nonexistent", "user-A", 100) is None
+
+
+def test_would_exceed_is_scoped_per_owner(tmp_path: Path) -> None:
+    # Same api_key_id, two different owners with different caps.  The
+    # composite primary key allows this; would_exceed must read only the
+    # requesting owner's row, never the other owner's cap.
+    db = tmp_path / "usage.sqlite3"
+    ledger = ByotUsageLedger(db)
+
+    ledger.record_settlement("shared-id", "user-A", 900, "a" * 64)
+    ledger.set_limit("shared-id", "user-A", 1000)  # A: 100 headroom
+    ledger.record_settlement("shared-id", "user-B", 100, "b" * 64)
+    ledger.set_limit("shared-id", "user-B", 5000)  # B: 4900 headroom
+
+    # A projection of 200 exceeds A's cap (900+200 > 1000)…
+    assert ledger.would_exceed("shared-id", "user-A", 200) is True
+    # …but comfortably fits within B's cap (100+200 <= 5000).
+    assert ledger.would_exceed("shared-id", "user-B", 200) is False
 
 
 def test_remaining_cents_property(tmp_path: Path) -> None:
