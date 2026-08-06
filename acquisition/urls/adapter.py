@@ -53,6 +53,7 @@ from substrate.graph.ops import (  # noqa: E402
     insert_node,
     replace_document_body,
 )
+from substrate.reader_html.store import store_reader_html  # noqa: E402
 from substrate.rights.register import (  # noqa: E402
     SourceKind,
     register_source_document,
@@ -396,6 +397,21 @@ def ingest_url(
             document_id=document_id,
             source_kind=SourceKind.WEB,
             content_class=PERSONAL_READING_CONTENT_CLASS,
+        )
+        # Reader-HTML sidecar (doc→HTML S1): the reader snapshot is now stored
+        # TRUSTED — the ISOLATED main-content HTML (never raw ``page.body``;
+        # chrome was stripped in ``html_to_markdown``) passes through the book
+        # allowlist sanitizer inside ``store_reader_html``, which stamps the
+        # exact ``SANITIZER_VERSION`` at the same write. The sidecar is the
+        # only trust carrier for the serve path; ``documents.metadata`` is not
+        # touched (the §5.2 hazard). The legacy env-gated FILE snapshot above
+        # stays untouched for back-compat with tests/test_reader_snapshot.py.
+        store_reader_html(
+            con,
+            document_id=document_id,
+            main_html=md_doc.main_html,
+            source_kind="url",
+            source_url=page.final_url,
         )
         # Spec §14.2 — record the requested_url→document_id alias so
         # future fetches that resolve to a different final_url for
