@@ -45,14 +45,17 @@ silent drop, never a crash).
 from __future__ import annotations
 
 import importlib
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from .styles import ProjectionStyle
 
 from . import tokens
 from .context import RenderContext
 from .contract import contract_for_tiptap_type
 from .escape import escape_attr, escape_text
 from .graph_projection import graph_widget_node
-from .island import embed_island
+from .island import embed_island, extract_island
 from .partials import unsupported as unsupported_partial
 from .partials.prose import render as render_prose
 
@@ -199,7 +202,12 @@ def _render_footer(ctx: RenderContext) -> str:
     return "".join(out)
 
 
-def render(doc_model: dict[str, Any], ctx: RenderContext) -> str:
+def render(
+    doc_model: dict[str, Any],
+    ctx: RenderContext,
+    *,
+    style: ProjectionStyle | str | None = None,
+) -> str:
     """Render a canonical doc-model to self-contained, script-free HTML.
 
     Parameters
@@ -211,6 +219,15 @@ def render(doc_model: dict[str, Any], ctx: RenderContext) -> str:
         embedded verbatim in the data island for round-trip.
     ctx:
         Render context (resolver + provenance + schema version).
+    style:
+        The projection style (the "wheel of styles" choice): ``None`` = the
+        Antiek default, a slug looked up in the default registry, or a
+        :class:`~services.html_projection.styles.ProjectionStyle`. Style is PURE
+        presentation — it swaps only the inlined stylesheet; the block HTML, the
+        provenance footer, and the data island are byte-identical across styles,
+        so the round-trip ``extract_island(render(d, style=X)) == d`` holds for
+        every style. This is what makes "regenerate in a different style" a
+        no-model-call operation (see :func:`render_in_style`).
 
     Returns
     -------
@@ -219,6 +236,9 @@ def render(doc_model: dict[str, Any], ctx: RenderContext) -> str:
         CSS), script-free (gate-verified), with an inert data island and
         a provenance footer.
     """
+    from .styles import resolve_style
+
+    resolved_style = resolve_style(style)
     if not isinstance(doc_model, dict):
         raise TypeError(
             f"render: doc_model must be a dict, got {type(doc_model).__name__}"
@@ -256,7 +276,7 @@ def render(doc_model: dict[str, Any], ctx: RenderContext) -> str:
         '<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f"<title>{escape_attr(str(title) if isinstance(title, str) else 'Antiek document')}</title>\n"
-        f"<style>\n{tokens.TOKENS_CSS}</style>\n"
+        f"<style>\n{resolved_style.stylesheet()}</style>\n"
         "</head>\n"
         '<body>\n'
         '<main class="antiek-doc">\n'
@@ -267,4 +287,25 @@ def render(doc_model: dict[str, Any], ctx: RenderContext) -> str:
     )
 
 
-__all__ = ["render"]
+def restyle_artifact(
+    artifact_html: str,
+    ctx: RenderContext,
+    *,
+    style: ProjectionStyle | str | None,
+) -> str:
+    """Re-render an existing Antiek HTML artifact under a different style.
+
+    This is the "regenerate in this style" wheel action: recover the canonical
+    doc-model from the artifact's inert data island (:func:`extract_island`) and
+    re-project it with the chosen ``style``. It is a PURE presentation transform —
+    NO model call, deterministic — because the doc-model, not the rendered HTML, is
+    the source of truth (the html-projection invariant: HTML is a projection, never
+    imported back as source). ``ctx`` supplies the render-time inputs (resolver +
+    provenance) that live outside the doc-model; a caller regenerating an artifact
+    reuses the artifact's original context.
+    """
+    doc_model = extract_island(artifact_html)
+    return render(doc_model, ctx, style=style)
+
+
+__all__ = ["render", "restyle_artifact"]
