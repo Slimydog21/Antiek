@@ -14,10 +14,11 @@ innerHTML markdown).
 
 Serve gate, two rings, fail-closed (mirrors ``is_trusted_sanitized``):
 
-1. **RIGHTS** — delegate to ``substrate.books.serve.serve_full_text``: if
-   that verdict would not release the text body, the HTML body is not
-   released either (denial reasons pass through; a taken-down document
-   serves nothing at all).
+1. **RIGHTS** — delegate to ``substrate.books.serve_guard.serve_full_text_guarded``
+   (the one sanctioned full-body serve caller, per
+   ``tools/lint/serve_guard_check.py``): if that verdict would not release
+   the text body, the HTML body is not released either (denial reasons pass
+   through; a taken-down document serves nothing at all).
 2. **VERSION** — the sidecar row must exist AND its ``sanitizer_version``
    must equal ``SANITIZER_VERSION`` exactly. A missing or version-stale row
    degrades to the document's existing text/markdown representation with an
@@ -129,11 +130,15 @@ def serve_reader_html(
     Read-only. Two rings, fail-closed:
 
     1. **RIGHTS** — delegates to
-       :func:`substrate.books.serve.serve_full_text(con, id, owner=owner)`.
-       A verdict that would not release the text body (taken down, gated)
-       also withholds the HTML body; the denial reason passes through. A
-       gated document degrades to the same bounded snippet the books serve
-       path would release — never the HTML body.
+       :func:`substrate.books.serve_guard.serve_full_text_guarded(con, id,
+       owner=owner)` — the ONE sanctioned full-body serve caller (the raw
+       ``serve_full_text`` gate is allowlist-linted to it; see
+       ``tools/lint/serve_guard_check.py``). The guard adds the independent
+       license-tier cross-check on top of the content_class gate. A verdict
+       that would not release the text body (taken down, gated) also
+       withholds the HTML body; the denial reason passes through. A gated
+       document degrades to the same bounded snippet the books serve path
+       would release — never the HTML body.
     2. **VERSION** — the sidecar row must exist and carry
        ``sanitizer_version == SANITIZER_VERSION`` exactly. Missing row ⇒
        ``no_reader_html``; version mismatch ⇒ ``sanitizer_version_stale``.
@@ -141,9 +146,14 @@ def serve_reader_html(
        (the reader falls back to its existing markdown representation —
        never an HTML render).
     """
-    from substrate.books.serve import serve_full_text
+    # The sanctioned full-body serve path: serve_full_text_guarded composes
+    # the content_class gate with the independent license-tier cross-check and
+    # returns the same ServeResult shape (serve-decision fields preserved
+    # exactly). Calling the raw serve_full_text here would trip the
+    # serve_guard_check allowlist lint — and bypass the rights drift check.
+    from substrate.books.serve_guard import serve_full_text_guarded
 
-    rights = serve_full_text(con, document_id, owner=owner)
+    rights = serve_full_text_guarded(con, document_id, owner=owner)
 
     if not rights.found:
         return ReaderHtmlResult(
