@@ -1666,6 +1666,12 @@ def create_app(
     # the deny-by-default gate in substrate/books/serve.py.
     from .books import register_book_routes
     register_book_routes(app)
+    # Doc→HTML S1 — reader-HTML serve route: GET /sources/{document_id}/reader-html.
+    # Serves the URL reader snapshot as content_format="html" ONLY when the
+    # sidecar body is exact-version trusted-sanitized (fail-closed gate in
+    # substrate/reader_html/store.py); otherwise degrades to text/markdown.
+    from .reader_html_routes import register_reader_html_routes
+    register_reader_html_routes(app)
     # Book acquisition — authorized, bytes-only EPUB port into the
     # personal-reading corpus.  Requires a dedicated signing key
     # (ANTIEK_BOOK_ACQUISITION_SIGNING_KEY) that is NEVER the

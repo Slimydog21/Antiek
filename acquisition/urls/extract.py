@@ -55,6 +55,11 @@ class MarkdownDoc:
     markdown: str
     word_count: int
     final_url: str | None = None
+    # The ISOLATED main-content HTML (chrome stripped, main root serialized).
+    # Computed by the extractor anyway (the root Tag), carried so the ingest
+    # path can feed the reader-HTML sidecar — sanitize-on-write happens in
+    # substrate.reader_html.store, never here (doc→HTML S1).
+    main_html: str = ""
 
 
 # Tags to strip wholesale — UI chrome that pollutes the article body.
@@ -197,4 +202,5 @@ def html_to_markdown(
         markdown=full,
         word_count=len(full.split()),
         final_url=base_url,
+        main_html=str(root),
     )
