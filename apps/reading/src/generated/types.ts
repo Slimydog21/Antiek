@@ -731,7 +731,7 @@ export interface ReuseGatedPayload {
 
 export interface DocumentLoadedPayload {
   action_type: "document.loaded";
-  media_type: "pdf" | "pasted_text" | "url_extracted" | "markdown";
+  media_type: "pdf" | "pasted_text" | "url_extracted" | "markdown" | "html";
   content_hash: string;
   size_bytes: number;
   title?: string | null;
