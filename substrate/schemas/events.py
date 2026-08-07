@@ -1022,7 +1022,7 @@ class ReuseGatedPayload(_PayloadBase):
 
 class DocumentLoadedPayload(_PayloadBase):
     action_type: Literal[ActionType.DOCUMENT_LOADED] = ActionType.DOCUMENT_LOADED
-    media_type: Literal["pdf", "pasted_text", "url_extracted", "markdown"]
+    media_type: Literal["pdf", "pasted_text", "url_extracted", "markdown", "html"]
     content_hash: str
     size_bytes: int = Field(ge=0)
     title: str | None = None
