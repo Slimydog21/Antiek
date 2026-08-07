@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 33;
+export const EVENT_SCHEMA_VERSION = 34;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -1063,7 +1063,7 @@ export interface GraphNodeInsertedPayload {
   action_type: "graph.node.inserted";
   node_id: string;
   canonical_label: string;
-  node_type: "entity" | "organization" | "person" | "property" | "metric" | "mechanism" | "claim" | "method" | "constraint" | "insight" | "question";
+  node_type: "entity" | "organization" | "person" | "property" | "metric" | "mechanism" | "claim" | "method" | "constraint" | "insight" | "question" | "memory";
   graph_scope: "depth" | "cross_domain" | "constraint";
   has_embedding: boolean;
 }
@@ -1085,6 +1085,7 @@ export interface GraphEdgeInsertedPayload {
   source_tier: number;
   extraction_confidence: number;
   graph_scope: "depth" | "cross_domain" | "constraint";
+  owner_user_id?: string | null;
 }
 
 /**

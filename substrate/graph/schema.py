@@ -101,17 +101,17 @@ CREATE TABLE IF NOT EXISTS chunks (
 CREATE TABLE IF NOT EXISTS nodes (
     node_id          TEXT PRIMARY KEY,
     canonical_label  TEXT NOT NULL,
-    -- DRW SPR-01 adds 'insight' + 'question' (the two atomic units of
-    -- distilled truth). Fresh DBs created from this constant get them
-    -- directly; pre-existing prod DBs are upgraded by
-    -- migrate_v9_insight_question (DuckDB cannot ALTER a CHECK in place,
-    -- so that migration rebuilds the table). Keep this list in lock-step
-    -- with substrate/schemas/events.NodeType and the rebuilt-table CHECK
-    -- in migrate_v9_insight_question._NODES_REBUILD_SQL.
+    -- DRW SPR-01 adds 'insight' + 'question'; account-memory S2a adds
+    -- 'memory'. Fresh DBs created from this constant get all three directly;
+    -- pre-existing databases are upgraded by migrate_v9_insight_question and
+    -- the operator-gated migrate_v10_account_memory respectively. DuckDB cannot
+    -- ALTER a CHECK in place, so both migrations rebuild the table. Keep this
+    -- list in lock-step with substrate/schemas/events.NodeType and the latest
+    -- rebuilt-table CHECK.
     node_type        TEXT NOT NULL CHECK (node_type IN (
         'entity', 'organization', 'person', 'property',
         'metric', 'mechanism', 'claim', 'method', 'constraint',
-        'insight', 'question'
+        'insight', 'question', 'memory'
     )),
     embedding        FLOAT[],
     graph_scope      TEXT NOT NULL CHECK (graph_scope IN (
@@ -145,7 +145,10 @@ CREATE TABLE IF NOT EXISTS edges (
         'depth', 'cross_domain', 'constraint'
     )),
     investigation_id       TEXT,
-    metadata               TEXT
+    metadata               TEXT,
+    -- Account-memory S2a: temporal memory edges are owner-scoped as well as
+    -- their endpoint nodes. Nullable preserves legacy graph rows.
+    owner_user_id          TEXT
 );
 
 -- ============================================================
