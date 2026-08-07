@@ -31,7 +31,7 @@ import yaml
 
 # Package-relative imports with a fall-back for direct-script execution.
 try:
-    from ..event_log import emit_typed
+    from ..event_log import emit_typed, trajectory
     from ..schemas import DispatchCallPayload
     from .base import (
         NormalizedUsage,
@@ -39,6 +39,7 @@ try:
         ProviderError,
     )
     from .breaker import default_breaker
+    from .research_tier import RESEARCH_TIERS, resolve_research_tier
 except ImportError:  # pragma: no cover
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -49,7 +50,14 @@ except ImportError:  # pragma: no cover
         ProviderError,
     )
     from dispatch.breaker import default_breaker  # type: ignore[import-not-found, no-redef]
-    from event_log import emit_typed  # type: ignore[import-not-found, no-redef]
+    from dispatch.research_tier import (  # type: ignore[import-not-found, no-redef]
+        RESEARCH_TIERS,
+        resolve_research_tier,
+    )
+    from event_log import (  # type: ignore[import-not-found, no-redef]
+        emit_typed,
+        trajectory,
+    )
     from schemas import DispatchCallPayload  # type: ignore[import-not-found, no-redef]
 
 
@@ -700,6 +708,45 @@ def _override_primary(
     )
 
 
+# The four Loop 1 roles that mine and structure evidence before synthesis.
+# Synthesis is deliberately absent: its voice has an independent config pin
+# guarded by interfaces.research.api.synthesizer._research_tier_override.
+_RESEARCH_TIER_ROLES = frozenset(
+    {"decomposer", "evidence_retriever", "parameter_extractor", "connector"}
+)
+
+
+def _recorded_research_tier_override(
+    investigation_id: str,
+    role: str,
+) -> tuple[str | None, str | None]:
+    """Resolve an explicit start-event tier for a Loop 1 research role.
+
+    The start event is the durable authority for the operator's choice. No
+    event, a legacy null, a malformed value, or a non-research role leaves the
+    configured route untouched. This helper never invents the default: the
+    API records a tier only when the operator explicitly selected one.
+    """
+    if role not in _RESEARCH_TIER_ROLES:
+        return None, None
+    try:
+        rows = trajectory(investigation_id)
+    except Exception:  # pragma: no cover - event diagnostics never break dispatch
+        return None, None
+    for row in rows:
+        if row.get("action_type") != "investigation.start_requested":
+            continue
+        payload = row.get("payload")
+        if not isinstance(payload, dict):
+            return None, None
+        recorded = payload.get("research_tier")
+        if recorded not in RESEARCH_TIERS:
+            return None, None
+        target = resolve_research_tier(recorded)
+        return target.provider, target.model
+    return None, None
+
+
 def dispatch(
     prompt: str,
     role: str,
@@ -715,6 +762,15 @@ def dispatch(
     model_override: str | None = None,
 ) -> DispatchResult:
     """Evaluate optional ND shadow evidence, then run authoritative dispatch unchanged."""
+    # Explicit call-site overrides remain strongest. Otherwise, Loop 1's
+    # research roles consume the tier persisted by POST /investigations.
+    # This is the missing map→execution wire; it is intentionally centralized
+    # so every role uses one resolver and synthesis cannot accidentally opt in.
+    if provider_override is None and model_override is None:
+        provider_override, model_override = _recorded_research_tier_override(
+            investigation_id,
+            role,
+        )
     if config is None:
         if config_path is None:
             config_path = Path(__file__).parent / "config.yaml"

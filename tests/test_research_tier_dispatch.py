@@ -637,3 +637,120 @@ def test_seam_recorded_tier_provider_unregistered_uses_config_primary(
     assert policy_id == "hermes/grok-4.3"
     assert hermes.calls == ["grok-4.3"]
     assert text == "hermes:grok-4.3"
+
+
+# ── M3 EXECUTION SEAM: recorded tier → Loop 1 research-role dispatch ────
+
+
+def _research_role_config():
+    """Minimal config whose default is visibly different from both tier targets."""
+    from substrate.dispatch import DispatchConfig, TierConfig
+
+    pro = TierConfig(
+        name="pro",
+        provider="hermes",
+        model="grok-4.3",
+        max_tokens=64,
+        temperature=0.2,
+        context_budget_tokens=1000,
+    )
+    synthesis = TierConfig(
+        name="synthesis",
+        provider="hermes",
+        model="grok-4.3",
+        max_tokens=64,
+        temperature=0.2,
+        context_budget_tokens=1000,
+    )
+    return DispatchConfig(
+        role_tiers={"decomposer": "pro", "synthesizer": "synthesis"},
+        tiers={"pro": pro, "synthesis": synthesis},
+    )
+
+
+@pytest.mark.parametrize(
+    "tier,expected_provider",
+    [("fast", "zai"), ("deep", "zai_reasoning")],
+)
+def test_recorded_tier_routes_actual_research_role_dispatch(
+    monkeypatch,
+    _seam_events_dir,
+    tier,
+    expected_provider,
+):
+    """The StartResearch choice must reach a real Loop 1 role call.
+
+    This is the missing seam that map-only tests cannot prove: emit the real
+    start event, call the same central dispatch entry used by decomposer, and
+    assert the selected thinking policy receives the request without the role
+    handler manually passing an override.
+    """
+    from substrate.dispatch import dispatch
+
+    hermes = _NamedStubProvider("hermes")
+    selected = _NamedStubProvider(expected_provider)
+    register_provider(hermes)
+    register_provider(selected)
+    investigation_id = f"inv-research-exec-{tier}"
+    _emit_start_with_tier(investigation_id, tier)
+
+    result = dispatch(
+        "decompose this",
+        "decomposer",
+        investigation_id=investigation_id,
+        config=_research_role_config(),
+    )
+
+    assert result.provider == expected_provider
+    assert result.model == "glm-5.2"
+    assert selected.calls == ["glm-5.2"]
+    assert not hermes.calls
+
+
+def test_recorded_tier_never_displaces_synthesis_dispatch(
+    monkeypatch,
+    _seam_events_dir,
+):
+    """The execution seam is role-scoped: synthesis keeps its independent pin."""
+    from substrate.dispatch import dispatch
+
+    hermes = _NamedStubProvider("hermes")
+    selected = _NamedStubProvider("zai_reasoning")
+    register_provider(hermes)
+    register_provider(selected)
+    _emit_start_with_tier("inv-research-exec-synthesis", "deep")
+
+    result = dispatch(
+        "synthesize this",
+        "synthesizer",
+        investigation_id="inv-research-exec-synthesis",
+        config=_research_role_config(),
+    )
+
+    assert result.provider == "hermes"
+    assert hermes.calls == ["grok-4.3"]
+    assert not selected.calls
+
+
+def test_legacy_investigation_without_recorded_tier_keeps_config_route(
+    monkeypatch,
+    _seam_events_dir,
+):
+    """No start event means no implicit override; legacy behavior stays stable."""
+    from substrate.dispatch import dispatch
+
+    hermes = _NamedStubProvider("hermes")
+    selected = _NamedStubProvider("zai_reasoning")
+    register_provider(hermes)
+    register_provider(selected)
+
+    result = dispatch(
+        "decompose this",
+        "decomposer",
+        investigation_id="inv-without-start-event",
+        config=_research_role_config(),
+    )
+
+    assert result.provider == "hermes"
+    assert hermes.calls == ["grok-4.3"]
+    assert not selected.calls
