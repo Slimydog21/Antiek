@@ -45,7 +45,17 @@ from .island import (
     embed_island,
     extract_island,
 )
-from .renderer import render
+from .renderer import render, restyle_artifact
+from .styles import (
+    BUILTIN_STYLES,
+    DEFAULT_STYLE_NAME,
+    ProjectionStyle,
+    StyleError,
+    StyleRegistry,
+    default_registry,
+    resolve_style,
+    validate_style,
+)
 
 __all__ = [
     "CONTRACT_TABLE",
@@ -64,6 +74,15 @@ __all__ = [
     "contract_for_tiptap_type",
     "embed_island",
     "extract_island",
+    "restyle_artifact",
+    "ProjectionStyle",
+    "StyleRegistry",
+    "StyleError",
+    "validate_style",
+    "default_registry",
+    "resolve_style",
+    "BUILTIN_STYLES",
+    "DEFAULT_STYLE_NAME",
     "gate",
     "known_block_types",
     "known_tiptap_types",
