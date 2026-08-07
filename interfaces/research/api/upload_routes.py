@@ -39,7 +39,7 @@ from __future__ import annotations
 import hashlib
 import io
 import zipfile
-from typing import Literal
+from typing import Literal, cast
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
@@ -68,9 +68,9 @@ _EPUB_409_DETAIL = "EPUB goes through the authorized book-acquisition ceremony"
 # here). These are also the extensions that override the PK-zip→EPUB magic
 # mapping in sniff_kind: every Office/ODF container IS a zip, so a PK-zip
 # upload with one of these names is the anydoc lane, not the ceremony.
-# Deliberately unannotated: mypy infers the literal element types, which is
-# what lets the route narrow ``kind`` against this tuple (same mechanism as
-# the inline ``("pdf", "html", "md", "txt")`` literal below).
+# Deliberately unannotated so the tuple stays the single runtime allowlist.
+# Mypy does not narrow a plain ``str`` through tuple membership, so the route
+# uses an explicit ``UploadKind`` cast only after this allowlist guard passes.
 _OFFICE_EXTENSIONS = (
     "doc",
     "docx",
@@ -372,7 +372,10 @@ def register_upload_routes(app: FastAPI) -> None:
                 # poison row. The markdown goes through the SAME escape-first
                 # md→safe-HTML path as .md uploads (so conversion output can
                 # never introduce live markup into the sidecar).
-                detected_kind = kind
+                # The guard above proved this string is in the exact Office
+                # subset of UploadKind; cast documents that runtime proof for
+                # mypy without weakening the response type to arbitrary str.
+                detected_kind = cast(UploadKind, kind)
                 result = extract_text(file_bytes, filename=file.filename)
                 if not result.ok or result.kind != "markdown":
                     raise HTTPException(
