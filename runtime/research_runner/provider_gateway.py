@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, is_dataclass
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Generic, Protocol, TypeVar
 
+from substrate.byot_usage.ledger import ByotUsageLedger
 from substrate.research_spend import (
     FallbackChainManifest,
     FallbackRouteManifest,
@@ -42,6 +44,8 @@ from .protocol import (
     ProjectionDisposition,
     ProjectionRate,
 )
+
+_log = logging.getLogger(__name__)
 
 T = TypeVar("T")
 JsonEvidence = Mapping[str, str | int | bool | None]
@@ -301,10 +305,16 @@ class ResearchProviderGateway:
         *,
         projector: Projector = project_cascade_cost,
         fallback_route_authorizer: FallbackRouteAuthorizer | None = None,
+        byot_usage_ledger: ByotUsageLedger | None = None,
     ) -> None:
         self.ledger = ledger
         self._projector = projector
         self._fallback_route_authorizer = fallback_route_authorizer
+        self._byot_usage_ledger = byot_usage_ledger
+        # hold_id → (api_key_id, owner_user_id) — parallel map populated by
+        # callers at dispatch time so that the settle path can attribute spend
+        # to a per-key usage ledger.  Keeps the audited core schema untouched.
+        self._hold_key_map: dict[str, tuple[str, str]] = {}
 
     def create_or_reopen_run(
         self, binding: RunBinding, *, ceiling_cents: int
@@ -313,6 +323,21 @@ class ResearchProviderGateway:
         return self.ledger.create_or_reopen_run(
             deterministic_key("research-run", binding.run_id), binding, ceiling_cents
         )
+
+    def register_hold_key(
+        self,
+        hold_id: str,
+        api_key_id: str,
+        owner_user_id: str,
+    ) -> None:
+        """Associate a hold with a BYOT API-key identity for usage tracking.
+
+        Callers invoke this at dispatch time so that the settle path can
+        attribute spend to a per-key usage ledger.  If not called for a
+        given hold, the settle path simply skips the BYOT usage record
+        (the hold is treated as an operator-owned route).
+        """
+        self._hold_key_map[hold_id] = (api_key_id, owner_user_id)
 
     def dispatch_paid(
         self,
@@ -918,7 +943,7 @@ class ResearchProviderGateway:
         evidence: JsonEvidence,
     ) -> RunSnapshot:
         try:
-            return self.ledger.settle(
+            run = self.ledger.settle(
                 command_key,
                 hold.hold_id,
                 actual_cents,
@@ -931,6 +956,44 @@ class ResearchProviderGateway:
             raise ProviderOutcomeUnknown(
                 hold.hold_id, "provider terminal evidence conflicts with resolved hold"
             ) from exc
+        self._record_byot_usage(hold.hold_id, actual_cents, evidence)
+        return run
+
+    def _record_byot_usage(
+        self,
+        hold_id: str,
+        actual_cents: int,
+        evidence: JsonEvidence,
+    ) -> None:
+        """Record per-key BYOT usage after a successful settle.
+
+        Best-effort: if the ledger is not configured, the hold has no
+        registered key mapping, or the write fails, the error is logged
+        and swallowed — the settle path must never break.
+        """
+        if self._byot_usage_ledger is None:
+            return
+        mapping = self._hold_key_map.get(hold_id)
+        if mapping is None:
+            return
+        api_key_id, owner_user_id = mapping
+        try:
+            evidence_sha256 = hashlib.sha256(
+                json.dumps(
+                    dict(evidence), sort_keys=True, ensure_ascii=True
+                ).encode("utf-8")
+            ).hexdigest()
+            self._byot_usage_ledger.record_settlement(
+                api_key_id, owner_user_id, actual_cents, evidence_sha256
+            )
+        except Exception:  # noqa: BLE001 — best-effort audit hook
+            _log.debug(
+                "BYOT usage ledger record_settlement failed for "
+                "hold %s key %s — settle path continues",
+                hold_id,
+                api_key_id,
+                exc_info=True,
+            )
 
     def _retain_unknown(self, hold: PaidHoldSnapshot, evidence: JsonEvidence) -> None:
         current = self.ledger.hold(hold.hold_id)
