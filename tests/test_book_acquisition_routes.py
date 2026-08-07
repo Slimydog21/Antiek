@@ -114,11 +114,12 @@ def test_authenticated_intent_authorization_and_port_round_trip(tmp_path: Path) 
     intent = _intent(client)
     authorization = _authorize(client, str(intent["intent_receipt_id"]))
     assert authorization["purchase_occurred"] is False
+    epub = _epub()
 
     response = client.post(
         f"/book-acquisition/authorizations/{authorization['authorization_receipt_id']}/port",
         headers={**_auth_headers(), "content-type": EPUB_MEDIA_TYPE},
-        content=_epub(),
+        content=epub,
     )
     assert response.status_code == 200, response.text
     port = response.json()
@@ -131,7 +132,7 @@ def test_authenticated_intent_authorization_and_port_round_trip(tmp_path: Path) 
     replay = client.post(
         f"/book-acquisition/authorizations/{authorization['authorization_receipt_id']}/port",
         headers={**_auth_headers(), "content-type": EPUB_MEDIA_TYPE},
-        content=_epub(),
+        content=epub,
     )
     assert replay.status_code == 200
     assert replay.json()["port_receipt_id"] == port["port_receipt_id"]
