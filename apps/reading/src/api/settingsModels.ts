@@ -5,16 +5,24 @@ import { API_BASE, apiFetch } from "../lib/api";
 // rows carry only a key_present flag, never key material.
 
 export type ProviderKind = "openai_compat" | "anthropic";
+export type ProviderCatalogId =
+  "deepseek" | "kimi" | "zhipu_glm" | "mimo" | "xai";
 
 export interface UserModelRow {
   id: string;
   provider_kind: ProviderKind;
+  provider_catalog_id: ProviderCatalogId | null;
   model_id: string;
   display_name: string;
   base_url: string | null;
   enabled: boolean;
   key_present: boolean;
   registered: boolean;
+  route_eligible: boolean;
+  pricing_status: "known" | "unknown";
+  hard_ceiling_eligible: boolean;
+  execution_status: string;
+  rate_snapshot: string | null;
 }
 
 export interface UserModelsResponse {
@@ -28,6 +36,7 @@ export interface UserModelsResponse {
 
 export interface AddUserModelRequest {
   provider_kind: ProviderKind;
+  provider_catalog_id?: ProviderCatalogId;
   model_id: string;
   display_name: string;
   api_key: string;

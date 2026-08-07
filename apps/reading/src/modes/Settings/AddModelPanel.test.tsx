@@ -9,12 +9,18 @@ const SECRET = "sk-test-super-secret-key-000111222";
 const existingRow = {
   id: "user-my-deepseek",
   provider_kind: "openai_compat" as const,
+  provider_catalog_id: "deepseek" as const,
   model_id: "deepseek-chat",
   display_name: "My DeepSeek",
   base_url: "https://api.deepseek.com/v1",
   enabled: true,
   key_present: true,
   registered: true,
+  route_eligible: true,
+  pricing_status: "known" as const,
+  hard_ceiling_eligible: false,
+  execution_status: "blocked_idempotency_unproven",
+  rate_snapshot: "deepseek-v4-flash-2026-08-spec",
 };
 
 vi.mock("../../api/settingsModels", () => ({
@@ -25,7 +31,10 @@ vi.mock("../../api/settingsModels", () => ({
     source: "test",
   })),
   addUserModel: vi.fn(async () => ({ ...existingRow, id: "user-added" })),
-  removeUserModel: vi.fn(async () => ({ removed: "user-my-deepseek", notes: [] })),
+  removeUserModel: vi.fn(async () => ({
+    removed: "user-my-deepseek",
+    notes: [],
+  })),
 }));
 
 describe("AddModelPanel", () => {
@@ -46,22 +55,18 @@ describe("AddModelPanel", () => {
     expect(document.body.textContent).not.toContain("sk-");
   });
 
-  it("submits the form through the client and clears the key field", async () => {
+  it("submits a named provider and pinned variant without a user-entered endpoint", async () => {
     const user = userEvent.setup();
     render(<AddModelPanel />);
     await waitFor(() => expect(screen.getByText("My DeepSeek")).toBeTruthy());
 
     const name = screen.getByPlaceholderText("My DeepSeek");
-    const model = screen.getByPlaceholderText("deepseek-chat");
-    const base = screen.getByPlaceholderText("https://api.deepseek.com/v1");
     const key = screen.getByPlaceholderText("sk-…") as HTMLInputElement;
 
     // The key field is a masked, write-only input.
     expect(key.type).toBe("password");
 
-    await user.type(name, "My OpenAI");
-    await user.type(model, "gpt-5.5");
-    await user.type(base, "https://api.openai.com/v1");
+    await user.type(name, "Research DeepSeek");
     await user.type(key, SECRET);
 
     await user.click(screen.getByRole("button", { name: /add model/i }));
@@ -69,9 +74,9 @@ describe("AddModelPanel", () => {
     await waitFor(() =>
       expect(vi.mocked(addUserModel)).toHaveBeenCalledWith({
         provider_kind: "openai_compat",
-        model_id: "gpt-5.5",
-        display_name: "My OpenAI",
-        base_url: "https://api.openai.com/v1",
+        provider_catalog_id: "deepseek",
+        model_id: "deepseek-reasoner",
+        display_name: "Research DeepSeek",
         api_key: SECRET,
       }),
     );
@@ -91,29 +96,51 @@ describe("AddModelPanel", () => {
     expect(button.hasAttribute("disabled")).toBe(true);
 
     await user.type(screen.getByPlaceholderText("My DeepSeek"), "X");
-    await user.type(screen.getByPlaceholderText("deepseek-chat"), "m");
-    await user.type(
-      screen.getByPlaceholderText("https://api.deepseek.com/v1"),
-      "https://x.test/v1",
-    );
     await user.type(screen.getByPlaceholderText("sk-…"), "k-123456789");
     expect(button.hasAttribute("disabled")).toBe(false);
   });
 
-  it("drops a hidden OpenAI endpoint when switching to Anthropic", async () => {
+  it("switches variants while preserving named-provider authority", async () => {
     const user = userEvent.setup();
     render(<AddModelPanel />);
     await waitFor(() => expect(screen.getByText("My DeepSeek")).toBeTruthy());
 
-    await user.type(screen.getByPlaceholderText("My DeepSeek"), "My Claude");
-    await user.type(screen.getByPlaceholderText("deepseek-chat"), "claude-opus-4-8");
+    const selector = screen.getByRole("combobox", { name: "Model variant" });
+    await user.click(selector.querySelector("button") as HTMLButtonElement);
+    await user.click(screen.getByRole("option", { name: "DeepSeek V4 Flash" }));
+    await user.type(screen.getByPlaceholderText("My DeepSeek"), "My Flash");
+    await user.type(screen.getByPlaceholderText("sk-…"), SECRET);
+    await user.click(screen.getByRole("button", { name: /add model/i }));
+
+    await waitFor(() =>
+      expect(vi.mocked(addUserModel)).toHaveBeenCalledWith({
+        provider_kind: "openai_compat",
+        provider_catalog_id: "deepseek",
+        model_id: "deepseek-chat",
+        display_name: "My Flash",
+        api_key: SECRET,
+      }),
+    );
+  });
+
+  it("does not carry a custom endpoint into Anthropic", async () => {
+    const user = userEvent.setup();
+    render(<AddModelPanel />);
+    await waitFor(() => expect(screen.getByText("My DeepSeek")).toBeTruthy());
+
+    const provider = screen.getByRole("combobox", { name: "Provider" });
+    await user.click(provider.querySelector("button") as HTMLButtonElement);
+    await user.click(
+      screen.getByRole("option", { name: "Custom OpenAI-compatible" }),
+    );
     await user.type(
-      screen.getByPlaceholderText("https://api.deepseek.com/v1"),
+      screen.getByPlaceholderText("https://provider.example/v1"),
       "https://stale.example/v1",
     );
-    const selector = screen.getByRole("combobox", { name: "Provider kind" });
-    await user.click(selector.querySelector("button") as HTMLButtonElement);
+    await user.click(provider.querySelector("button") as HTMLButtonElement);
     await user.click(screen.getByRole("option", { name: "Anthropic" }));
+    await user.type(screen.getByPlaceholderText("My Anthropic"), "My Claude");
+    await user.type(screen.getByPlaceholderText("model-id"), "claude-opus-4-8");
     await user.type(screen.getByPlaceholderText("sk-…"), SECRET);
     await user.click(screen.getByRole("button", { name: /add model/i }));
 
