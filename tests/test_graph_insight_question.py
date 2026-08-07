@@ -39,6 +39,9 @@ from substrate.graph.migrate_v9_insight_question import (
     migrate,
     migrate_at_path,
 )
+from substrate.graph.migrate_v10_account_memory import (
+    migrate_at_path as migrate_account_memory_at_path,
+)
 from substrate.graph.schema import init_database, init_database_at_path
 from substrate.schemas.events import NoteEmergedPayload, QuestionIdentifiedPayload
 
@@ -224,6 +227,7 @@ def test_migration_preserves_column_parity_with_fresh(tmp_path):
     fresh = str(tmp_path / "fresh.duckdb")
     _build_legacy_db(legacy)
     migrate_at_path(legacy)
+    migrate_account_memory_at_path(legacy)
     init_database_at_path(fresh)
 
     def cols(path, table):

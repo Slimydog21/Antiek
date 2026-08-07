@@ -544,6 +544,7 @@ def insert_edge(
     parent_event_id: str | None = None,
     on_conflict: OnConflict = "error",
     emit_event: bool = True,
+    owner_user_id: str | None = None,
 ) -> str:
     """Insert one edge row AND emit GRAPH_EDGE_INSERTED. Returns the
     edge_id.
@@ -564,28 +565,29 @@ def insert_edge(
         "INSERT INTO edges "
         "(edge_id, source_node_id, target_node_id, relation, chunk_id, "
         " source_document_id, source_tier, extraction_confidence, valid_from, "
-        " graph_scope, investigation_id, metadata) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " graph_scope, investigation_id, metadata, owner_user_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             eid, source_node_id, target_node_id, relation, chunk_id,
             source_document_id, int(source_tier), float(extraction_confidence),
             valid_from or datetime(1970, 1, 1),
-            graph_scope, investigation_id, _maybe_json(metadata),
+            graph_scope, investigation_id, _maybe_json(metadata), owner_user_id,
         ],
     )
     if emit_event:
         emit_typed(
             investigation_id,
             GraphEdgeInsertedPayload(
-            edge_id=eid,
-            source_node_id=source_node_id,
-            target_node_id=target_node_id,
-            relation=relation,
-            source_document_id=source_document_id,
-            chunk_id=chunk_id,
-            source_tier=int(source_tier),
-            extraction_confidence=float(extraction_confidence),
-            graph_scope=graph_scope,  # type: ignore[arg-type]
+                edge_id=eid,
+                source_node_id=source_node_id,
+                target_node_id=target_node_id,
+                relation=relation,
+                source_document_id=source_document_id,
+                chunk_id=chunk_id,
+                source_tier=int(source_tier),
+                extraction_confidence=float(extraction_confidence),
+                graph_scope=graph_scope,  # type: ignore[arg-type]
+                owner_user_id=owner_user_id,
             ),
             parent_event_id=parent_event_id,
             role="connector",

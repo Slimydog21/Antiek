@@ -756,7 +756,10 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 #     needed for the JSONL/Parquet event log: all fields are nullable/defaulted,
 #     and historical rows validate by schema-on-read defaults. ND remains
 #     advisory only; dispatch is still the authoritative router.
-EVENT_SCHEMA_VERSION: int = 33
+# v34: Account-memory S2a — graph node events admit the new ``memory`` node
+#     type and graph edge events carry nullable ``owner_user_id`` so the typed
+#     event remains reconstructable with the owner-scoped edge row.
+EVENT_SCHEMA_VERSION: int = 34
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -1463,6 +1466,7 @@ NodeType = Literal[
     "constraint",
     "insight",
     "question",
+    "memory",
 ]
 
 # Closed graph_scope taxonomy. Determines which traversal algorithms
@@ -1501,6 +1505,7 @@ class GraphEdgeInsertedPayload(_PayloadBase):
     source_tier: int = Field(ge=1, le=5)
     extraction_confidence: float = Field(ge=0.0, le=1.0)
     graph_scope: GraphScope
+    owner_user_id: str | None = None
 
 
 # ── Middleware: constraint_check (architecture_notes §4) ─────────────
