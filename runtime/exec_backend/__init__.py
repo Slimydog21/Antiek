@@ -32,6 +32,7 @@ Importing this package touches no network and loads no provider SDK.
 
 from __future__ import annotations
 
+from .docker_backend import DockerBackend
 from .factory import BACKEND_ENV, build_execution_backend
 from .interface import (
     ALLOW_ALL,
@@ -73,6 +74,8 @@ __all__ = [
     "ExecutionBackend",
     # stage-0 backend
     "LocalProcessBackend",
+    # stage-1 backend
+    "DockerBackend",
     # factory
     "build_execution_backend",
     "BACKEND_ENV",
