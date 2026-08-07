@@ -65,6 +65,7 @@ from roles.cascade_planner import (
 from roles.cascade_planner.planner import DispatchDecomposer
 from roles.cascade_planner.tree_contract import PlanTree
 from runtime.db_lock import connect_write
+from runtime.exec_backend.factory import BACKEND_ENV, build_execution_backend
 from runtime.research_runner import (
     BillingUnit,
     BoundedUsage,
@@ -1258,6 +1259,19 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
         seal_on_complete=False,
         retrieval_substrate=reuse_substrate,
     )
+    # Exec-backend seam: when ANTIEK_EXEC_BACKEND is set, plumb the
+    # ExecutionBackend abstraction so it is reachable from the cascade.
+    # Default (unset) path is unchanged — HostLocalRunner above.
+    if os.environ.get(BACKEND_ENV):
+        _exec_backend = build_execution_backend(
+            seal_on_complete=False,
+            retrieval_substrate=reuse_substrate,
+        )
+        logger.info(
+            "ExecutionBackend wired: %s (runner remains %s)",
+            _exec_backend.name,
+            type(runner).__name__,
+        )
     session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
     if gateway is not None:
         _HARD_CEILING_LAUNCHING.add(session_id)
