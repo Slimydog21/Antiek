@@ -20,7 +20,10 @@ dependencies = [
   "pydantic>=2.7",
   "pydantic-settings>=2.3",
   "fastapi>=0.115",
-  "python-multipart>=0.0.9",  # FastAPI Form/File endpoints (POST /sources/upload etc.)
+  # Upload routes are registered when the API app is imported. FastAPI
+  # validates multipart support at route-registration time, so this is a core
+  # runtime dependency rather than a test-only extra.
+  "python-multipart>=0.0.20",
   "uvicorn[standard]>=0.30",
   "httpx>=0.27",
   "tenacity>=9.0",
