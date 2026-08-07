@@ -5,7 +5,14 @@ Acceptance for the lane (brief, no live network):
 - uploading a small PDF fixture → stored + served as sanitized
   ``content_format="html"``;
 - uploading ``.epub`` / a PK-zip body → ``409`` pointing at the authorized
-  book-acquisition ceremony (magic bytes win over extension);
+  book-acquisition ceremony (magic bytes win over extension; an EPUB container
+  renamed to a ``.docx`` name still 409s — container truth beats extension);
+- Office/ODF/RTF/CSV uploads route through ``extract_text`` with the anydoc
+  binding MOCKED (operator gate G1 — no real wheel install): a ``.docx``
+  converts to canned GFM → stored + served as sanitized ``content_format=
+  "html"``; a binding ImportError (G1 state) → typed 422 with the install
+  hint; a conversion whose markdown carries a ``<script>`` seed → the script
+  never reaches the stored body (red-proof);
 - an uploaded HTML body carrying a ``<script>`` / ``onerror=`` payload → the
   STORED sidecar body is sanitized (red-proof, same posture as
   ``test_book_html_sanitizer.py``);
@@ -22,6 +29,8 @@ import io
 import os
 import sys
 import tempfile
+import zipfile
+from types import ModuleType
 
 import pytest
 from fastapi.testclient import TestClient
@@ -35,6 +44,7 @@ from interfaces.research.api.app import create_app  # noqa: E402
 from interfaces.research.api.upload_routes import sniff_kind  # noqa: E402
 from runtime.db_lock import connect_write  # noqa: E402
 from substrate.books.html_sanitizer import SANITIZER_VERSION  # noqa: E402
+from substrate.research_bridge import extractors  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures — same substrate/app harness as test_reader_html_api.py
@@ -115,6 +125,79 @@ def _make_pdf_bytes() -> bytes:
 
 
 # ---------------------------------------------------------------------------
+# anydoc binding fixtures (MOCKED — operator gate G1, no real wheel install)
+# Same pattern as tests/test_universal_ingest.py: a fake module is injected
+# into sys.modules["anydoc"] so extract_text's importlib lookup resolves it.
+# ---------------------------------------------------------------------------
+
+
+def _make_docx_bytes() -> bytes:
+    """A minimal OOXML .docx container (real PK-zip magic bytes, empty doc)."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types/>')
+        zf.writestr("_rels/.rels", '<?xml version="1.0"?><Relationships/>')
+        zf.writestr("word/document.xml", '<?xml version="1.0"?><w:document/>')
+    return buf.getvalue()
+
+
+def _make_epub_bytes() -> bytes:
+    """A minimal EPUB container: a zip whose entries include the EPUB-required
+    ``META-INF/container.xml`` (the container-truth signal)."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("mimetype", "application/epub+zip")
+        zf.writestr(
+            "META-INF/container.xml",
+            '<?xml version="1.0"?><container version="1.0"/>',
+        )
+        zf.writestr("OEBPS/content.opf", '<?xml version="1.0"?><package/>')
+    return buf.getvalue()
+
+
+_ANYDOC_GFM = """# Quarterly Report
+
+A first paragraph that survives conversion.
+
+## Findings
+
+A second block with clean markdown structure.
+"""
+
+
+class _FakeAnydoc(ModuleType):
+    """Drop-in replacement for the anydoc binding module."""
+
+    def __init__(self, markdown: str = _ANYDOC_GFM, *, error: Exception | None = None):
+        super().__init__("anydoc")
+        self.markdown = markdown
+        self.error = error
+        self.calls: list[tuple[bytes | bytearray, str | None]] = []
+
+    def to_markdown_bytes(
+        self,
+        data: bytes | bytearray,
+        format: str | None = None,
+    ) -> str:
+        self.calls.append((data, format))
+        if self.error is not None:
+            raise self.error
+        return self.markdown
+
+
+def _install_fake_anydoc(monkeypatch, fake: _FakeAnydoc | None = None) -> _FakeAnydoc:
+    binding = fake or _FakeAnydoc()
+    monkeypatch.setitem(sys.modules, "anydoc", binding)
+    return binding
+
+
+def _missing_anydoc_import(name: str):
+    """Simulate the G1 state: the firecrawl-anydoc wheel is not installed."""
+    assert name == "anydoc"
+    raise ImportError(name)
+
+
+# ---------------------------------------------------------------------------
 # Magic-byte sniffing — pinned independently of the HTTP path
 # ---------------------------------------------------------------------------
 
@@ -138,6 +221,34 @@ def test_sniff_extension_fallback():
 def test_sniff_unknown_is_none():
     assert sniff_kind(b"\x00\x01\x02 binary junk", "blob.bin") is None
     assert sniff_kind(b"no magic and no ext", None) is None
+
+
+def test_sniff_office_extensions_by_extension():
+    """Office/ODF/RTF/CSV kinds resolve by extension (no zip magic needed —
+    the anydoc binding gets non-container formats like RTF/CSV too)."""
+    assert sniff_kind(b"plain csv row", "data.csv") == "csv"
+    assert sniff_kind(b"{\\rtf1\\ansi", "book.rtf") == "rtf"
+    assert sniff_kind(b"some bytes", "deck.pptx") == "pptx"
+    assert sniff_kind(b"some bytes", "notes.odt") == "odt"
+    assert sniff_kind(b"some bytes", "macro.docm") == "docm"
+
+
+def test_sniff_pk_zip_docx_container_is_office_not_epub():
+    """A genuine Office zip is NOT the EPUB ceremony — its extension kind wins
+    (Office/ODF containers start with the same PK-zip magic as EPUBs)."""
+    assert sniff_kind(_make_docx_bytes(), "report.docx") == "docx"
+
+
+def test_sniff_epub_container_wins_over_docx_extension():
+    """Container truth beats extension: an EPUB renamed to .docx still sniffs
+    as epub → the 409 ceremony, never the anydoc lane."""
+    assert sniff_kind(_make_epub_bytes(), "sneaky.docx") == "epub"
+
+
+def test_sniff_pk_zip_non_office_extension_still_epub():
+    """A PK-zip body with a NON-office extension (or none) still 409s."""
+    assert sniff_kind(b"PK\x03\x04" + b"\x00" * 40, "archive.zip") == "epub"
+    assert sniff_kind(b"PK\x03\x04" + b"\x00" * 40, None) == "epub"
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +333,146 @@ def test_upload_pk_zip_magic_returns_409(temp_substrate, client):
     )
     assert resp.status_code == 409
     assert "book-acquisition ceremony" in resp.json()["detail"]
+
+
+def test_upload_epub_container_renamed_docx_returns_409(temp_substrate, client):
+    """Container truth beats extension: an EPUB (META-INF/container.xml)
+    uploaded under a .docx name still hits the 409 ceremony — it never reaches
+    the anydoc lane (the "EPUB/PK-zip stays 409" guardrail holds)."""
+    resp = client.post(
+        "/sources/upload",
+        files={"file": ("sneaky.docx", _make_epub_bytes(), "application/octet-stream")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "EPUB goes through the authorized book-acquisition ceremony"
+
+
+# ---------------------------------------------------------------------------
+# Acceptance: Office/ODF/RTF/CSV → anydoc (MOCKED) → sanitized html
+# ---------------------------------------------------------------------------
+
+
+def test_upload_docx_stored_and_served_as_sanitized_html(
+    temp_substrate, client, monkeypatch
+):
+    """The anydoc binding (MOCKED) converts the .docx to GFM; the upload stores
+    the markdown→safe-HTML body through the same trusted sidecar path as every
+    other format (version-provenance stamped) and serves it as
+    content_format="html"."""
+    binding = _install_fake_anydoc(monkeypatch)
+    resp = client.post(
+        "/sources/upload",
+        files={"file": ("report.docx", _make_docx_bytes(),
+                        "application/vnd.openxmlformats-officedocument."
+                        "wordprocessingml.document")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["detected_kind"] == "docx"
+    assert body["reader_html_available"] is True
+    assert body["chunk_count"] == 0
+    document_id = body["document_id"]
+    assert document_id.startswith("doc-upload-")
+
+    # The route really went through the anydoc binding with the right format
+    # hint (no stub-theater): the upload bytes + "docx".
+    assert len(binding.calls) == 1
+    assert binding.calls[0][1] == "docx"
+
+    # The STORED sidecar is the converted GFM rendered to safe HTML, stamped
+    # with the current sanitizer version.
+    stored = _sidecar_body(temp_substrate["db_path"], document_id)
+    assert stored is not None
+    assert "<h1>Quarterly Report</h1>" in stored
+    assert "<h2>Findings</h2>" in stored
+    assert "A first paragraph that survives conversion." in stored
+
+    # Served as html to the owner (personal_reading is owner-only).
+    _as_owner(monkeypatch)
+    served = client.get(f"/sources/{document_id}/reader-html")
+    assert served.status_code == 200
+    sbody = served.json()
+    assert sbody["content_format"] == "html"
+    assert sbody["available"] is True
+    assert sbody["reason"] == "ok"
+    assert sbody["source_kind"] == "upload_office"
+    assert "<h1>Quarterly Report</h1>" in sbody["body"]
+
+
+def test_upload_docx_without_anydoc_returns_422_with_install_hint(
+    temp_substrate, client, monkeypatch
+):
+    """G1 state: the firecrawl-anydoc wheel is not installed → extract_text
+    returns ok=False and the upload answers a typed 422 carrying the install
+    hint — no crash, no poison row."""
+    monkeypatch.setattr(extractors, "import_module", _missing_anydoc_import)
+    resp = client.post(
+        "/sources/upload",
+        files={"file": ("report.docx", _make_docx_bytes(),
+                        "application/octet-stream")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert "could not convert upload:" in detail
+    assert "install the 'docs' extra (firecrawl-anydoc)" in detail
+
+
+def test_upload_docx_conversion_failure_returns_422(temp_substrate, client, monkeypatch):
+    """anydoc installed but the file is corrupt → typed 422 with the reason,
+    surfaced from the ExtractionResult (never an unhandled exception)."""
+    _install_fake_anydoc(monkeypatch, _FakeAnydoc(error=ValueError("corrupt document")))
+    resp = client.post(
+        "/sources/upload",
+        files={"file": ("report.docx", b"not a real docx", "application/octet-stream")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert resp.status_code == 422
+    assert (
+        resp.json()["detail"]
+        == "could not convert upload: anydoc could not convert .docx: ValueError"
+    )
+
+
+_XSS_DOCX_GFM = """# Infected Upload
+
+A clean paragraph that must survive.
+
+<script>alert('xss')</script>
+
+<img src="x" onerror="steal()">
+"""
+
+
+def test_uploaded_docx_script_seed_stripped_in_storage(
+    temp_substrate, client, monkeypatch
+):
+    """Red-proof for the anydoc lane: conversion output carrying a <script>
+    element never reaches the STORED sidecar as live markup. The markdown is
+    html-escaped before it becomes HTML and the sidecar store sanitizes again
+    + stamps SANITIZER_VERSION — the script dies before storage, the benign
+    content survives."""
+    _install_fake_anydoc(monkeypatch, _FakeAnydoc(_XSS_DOCX_GFM))
+    resp = client.post(
+        "/sources/upload",
+        files={"file": ("infected.docx", _make_docx_bytes(),
+                        "application/octet-stream")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert resp.status_code == 201, resp.text
+    document_id = resp.json()["document_id"]
+
+    stored = _sidecar_body(temp_substrate["db_path"], document_id)
+    assert stored is not None
+    # The benign converted content survives …
+    assert "<h1>Infected Upload</h1>" in stored
+    assert "A clean paragraph that must survive." in stored
+    # … and the script/img elements are gone from the stored body — escaped
+    # to inert text at most, never a live tag.
+    assert "<script" not in stored.lower()
+    assert "<img" not in stored.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -452,9 +703,13 @@ def test_uploaded_doc_books_fulltext_still_text(temp_substrate, client, monkeypa
 
 
 def test_upload_unsupported_type_returns_415(temp_substrate, client):
+    """A genuinely unsupported extension (no magic, not in any supported set)
+    is still a typed 415. NOTE: .docx no longer lives here — Office/ODF/RTF/CSV
+    are supported via the anydoc lane (see the office section above)."""
     resp = client.post(
         "/sources/upload",
-        files={"file": ("file.docx", b"fake docx bytes", "application/octet-stream")},
+        files={"file": ("blob.bin", b"\x00\x01\x02 binary junk",
+                        "application/octet-stream")},
         data={"acquisition_attestation": "personal_reading"},
     )
     assert resp.status_code == 415
