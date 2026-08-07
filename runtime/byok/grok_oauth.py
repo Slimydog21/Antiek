@@ -100,12 +100,25 @@ class DeviceCodeGrant:
 
 @dataclass(frozen=True)
 class XaiTokens:
-    """Token set returned by device-code poll or refresh."""
+    """Token set returned by device-code poll or refresh.
+
+    ``__repr__``/``__str__`` REDACT the access, refresh and id token material so
+    the secret is never spilled into a log line, an exception traceback frame
+    local, or an f-string.  Plaintext egress happens only through explicit field
+    access on the way into the SecretBox-encrypted store.
+    """
 
     access_token: str
     refresh_token: str
     id_token: str | None
     expires_at: float  # unix timestamp (from JWT exp, not expires_in)
+
+    def __repr__(self) -> str:  # secret hygiene — never echo token material
+        return (
+            "XaiTokens(access_token=<redacted>, refresh_token=<redacted>, "
+            f"id_token={'<redacted>' if self.id_token is not None else None}, "
+            f"expires_at={self.expires_at!r})"
+        )
 
 
 # ─── Origin-pin validators ──────────────────────────────────────────────────

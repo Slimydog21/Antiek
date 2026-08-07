@@ -470,6 +470,45 @@ class TestStoreIntegration:
         assert find_grok_cred_id("user-b", artifact_path=artifact) == cred_b
 
 
+# ─── Secret hygiene — token material never echoed ───────────────────────────
+
+
+class TestSecretHygiene:
+    def test_tokens_redacted_in_repr_and_str(self) -> None:
+        """XaiTokens repr/str must NEVER contain plaintext token material."""
+        tokens = XaiTokens(
+            access_token="SECRET-ACCESS-abc",
+            refresh_token="SECRET-REFRESH-xyz",
+            id_token="SECRET-ID-tok",
+            expires_at=1.0,
+        )
+        for rendered in (repr(tokens), str(tokens), f"{tokens}"):
+            assert "SECRET-ACCESS-abc" not in rendered
+            assert "SECRET-REFRESH-xyz" not in rendered
+            assert "SECRET-ID-tok" not in rendered
+            assert "<redacted>" in rendered
+
+    def test_repr_preserves_non_secret_shape(self) -> None:
+        """None id_token stays visibly None; expiry is not a secret."""
+        tokens = XaiTokens(
+            access_token="a", refresh_token="b", id_token=None, expires_at=42.0
+        )
+        rendered = repr(tokens)
+        assert "id_token=None" in rendered
+        assert "42.0" in rendered
+
+    def test_auth_error_str_carries_only_server_detail(self) -> None:
+        """GrokAuthError message is built from the server response, not tokens."""
+        transport = _mock_handler(
+            [(401, {"error": "invalid_grant", "error_description": "server-said-revoked"})]
+        )
+        with httpx.Client(transport=transport) as client, pytest.raises(GrokAuthError) as exc_info:
+            refresh_grok_token("SECRET-REFRESH-must-not-leak", client=client)
+        message = str(exc_info.value)
+        assert "server-said-revoked" in message
+        assert "SECRET-REFRESH-must-not-leak" not in message
+
+
 # ─── Failure taxonomy completeness ──────────────────────────────────────────
 
 
