@@ -33,6 +33,7 @@ import {
 import AddModelPanel from "./AddModelPanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
 import ByotUsagePanel from "./ByotUsagePanel";
+import CertifiedProviderKeysPanel from "./CertifiedProviderKeysPanel";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
@@ -436,6 +437,8 @@ export default function Settings() {
             )}
           </div>
         </LemonCard>
+
+        <CertifiedProviderKeysPanel />
 
         <AddModelPanel />
 

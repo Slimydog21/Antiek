@@ -81,6 +81,31 @@ export interface KeyBalanceResponse {
   note: string | null;
 }
 
+export type CertifiedProviderHandle =
+  | "anthropic"
+  | "deepseek"
+  | "hermes"
+  | "openrouter"
+  | "xiaomi"
+  | "zai";
+
+export interface CertifiedProviderCredentialRow {
+  provider_handle: CertifiedProviderHandle;
+  key_present: boolean;
+}
+
+export interface CertifiedProviderCredentialInventory {
+  providers: CertifiedProviderCredentialRow[];
+  byot_only: boolean;
+}
+
+export interface CertifiedProviderCredentialResult {
+  provider_handle: CertifiedProviderHandle;
+  key_present: true;
+  registered_providers: string[];
+  source: "encrypted_byok_store";
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
@@ -127,4 +152,28 @@ export async function fetchKeyBalance(
     `${API_BASE}/settings/balance/${encodeURIComponent(apiKeyId)}`,
   );
   return readJson<KeyBalanceResponse>(res);
+}
+
+/** Null means this signed-in account is not the configured operator. */
+export async function fetchCertifiedProviderCredentials(): Promise<
+  CertifiedProviderCredentialInventory | null
+> {
+  const res = await apiFetch(`${API_BASE}/settings/providers/certified`);
+  if (res.status === 403) return null;
+  return readJson<CertifiedProviderCredentialInventory>(res);
+}
+
+export async function putCertifiedProviderCredential(
+  providerHandle: CertifiedProviderHandle,
+  apiKey: string,
+): Promise<CertifiedProviderCredentialResult> {
+  const res = await apiFetch(
+    `${API_BASE}/settings/providers/certified/${encodeURIComponent(providerHandle)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: apiKey }),
+    },
+  );
+  return readJson<CertifiedProviderCredentialResult>(res);
 }
