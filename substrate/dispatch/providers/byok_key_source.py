@@ -67,20 +67,30 @@ def _lookup_byok_key(provider_handle: str) -> str | None:
         return None
 
     want = f"{_PROVIDER_PIPELINE_PREFIX}{provider_handle}"
+    configured_owner = os.environ.get("ANTIEK_OPERATOR_USER_ID")
     try:
         matches = [
             meta
             for meta in byok_store.list_credentials()
             if meta.pipeline_kind == want
+            and (configured_owner is None or meta.owner_user_id == configured_owner)
         ]
     except Exception:
         # No artifact yet, unreadable store, permission error → env fallback.
         return None
     if not matches:
         return None
-    # Deterministic pick if the operator somehow stored more than one for a
-    # provider: the most-recently written wins (last in the artifact order).
-    chosen = matches[-1]
+    # Credential metadata is ordered by opaque random id, not creation time.
+    # Picking first/last would therefore make authority random after a duplicate
+    # write. Fail closed until the operator-scoped Settings replacement route
+    # establishes exactly one record.
+    if len(matches) != 1:
+        logger.warning(
+            "provider %s has ambiguous BYOK credentials; refusing stored-key authority",
+            provider_handle,
+        )
+        return None
+    chosen = matches[0]
     try:
         secret = byok_store.load_credential(chosen.cred_id)
     except Exception:

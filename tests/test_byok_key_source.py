@@ -25,6 +25,7 @@ def _clean_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     # Default posture in every test: BYOT-only OFF (env fallback active) unless
     # a test opts in explicitly.
     monkeypatch.delenv("ANTIEK_BYOT_ONLY", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_USER_ID", raising=False)
 
 
 def test_env_fallback_when_no_byok(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -34,12 +35,8 @@ def test_env_fallback_when_no_byok(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_byok_wins_over_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        byok_store, "list_credentials", lambda **k: [_meta("provider:deepseek")]
-    )
-    monkeypatch.setattr(
-        byok_store, "load_credential", lambda cred_id, **k: SecretStr("byok-key")
-    )
+    monkeypatch.setattr(byok_store, "list_credentials", lambda **k: [_meta("provider:deepseek")])
+    monkeypatch.setattr(byok_store, "load_credential", lambda cred_id, **k: SecretStr("byok-key"))
     monkeypatch.setenv("DEEPSEEK_API_KEY", "env-key")
     assert ks.resolve_provider_key("deepseek", "DEEPSEEK_API_KEY") == "byok-key"
 
@@ -54,12 +51,8 @@ def test_byot_only_no_byok_refuses_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_byot_only_uses_byok(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        byok_store, "list_credentials", lambda **k: [_meta("provider:deepseek")]
-    )
-    monkeypatch.setattr(
-        byok_store, "load_credential", lambda cred_id, **k: SecretStr("byok-key")
-    )
+    monkeypatch.setattr(byok_store, "list_credentials", lambda **k: [_meta("provider:deepseek")])
+    monkeypatch.setattr(byok_store, "load_credential", lambda cred_id, **k: SecretStr("byok-key"))
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.setenv("ANTIEK_BYOT_ONLY", "true")
     assert ks.resolve_provider_key("deepseek", "DEEPSEEK_API_KEY") == "byok-key"
@@ -69,11 +62,56 @@ def test_handle_namespacing_ignores_other_providers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # A stored credential for a DIFFERENT provider must not leak into deepseek.
+    monkeypatch.setattr(byok_store, "list_credentials", lambda **k: [_meta("provider:anthropic")])
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "env-key")
+    assert ks.resolve_provider_key("deepseek", "DEEPSEEK_API_KEY") == "env-key"
+
+
+def test_configured_operator_owner_excludes_other_users(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTIEK_OPERATOR_USER_ID", "operator-1")
     monkeypatch.setattr(
-        byok_store, "list_credentials", lambda **k: [_meta("provider:anthropic")]
+        byok_store,
+        "list_credentials",
+        lambda **k: [
+            byok_store.CredentialMetadata(
+                cred_id="friend-key",
+                account_handle="friend",
+                pipeline_kind="provider:deepseek",
+                owner_user_id="friend-2",
+            ),
+            byok_store.CredentialMetadata(
+                cred_id="operator-key",
+                account_handle="operator",
+                pipeline_kind="provider:deepseek",
+                owner_user_id="operator-1",
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        byok_store,
+        "load_credential",
+        lambda cred_id, **k: SecretStr(f"resolved-{cred_id}"),
+    )
+    assert ks.resolve_provider_key("deepseek", "DEEPSEEK_API_KEY") == "resolved-operator-key"
+
+
+def test_duplicate_scoped_credentials_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        byok_store,
+        "list_credentials",
+        lambda **k: [
+            _meta("provider:deepseek", "random-a"),
+            _meta("provider:deepseek", "random-b"),
+        ],
     )
     monkeypatch.setenv("DEEPSEEK_API_KEY", "env-key")
     assert ks.resolve_provider_key("deepseek", "DEEPSEEK_API_KEY") == "env-key"
+    monkeypatch.setenv("ANTIEK_BYOT_ONLY", "1")
+    assert ks.resolve_provider_key("deepseek", "DEEPSEEK_API_KEY") is None
 
 
 def test_non_provider_pipeline_kinds_ignored(
@@ -102,9 +140,7 @@ def test_unreadable_store_degrades_to_env(monkeypatch: pytest.MonkeyPatch) -> No
 def test_undecryptable_credential_degrades_to_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        byok_store, "list_credentials", lambda **k: [_meta("provider:deepseek")]
-    )
+    monkeypatch.setattr(byok_store, "list_credentials", lambda **k: [_meta("provider:deepseek")])
 
     def boom(cred_id, **k):
         raise ValueError("master key missing / rotated")
