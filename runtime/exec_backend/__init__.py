@@ -32,6 +32,7 @@ Importing this package touches no network and loads no provider SDK.
 
 from __future__ import annotations
 
+from .docker_backend import DockerBackend
 from .interface import (
     ALLOW_ALL,
     DENY_ALL,
@@ -72,4 +73,6 @@ __all__ = [
     "ExecutionBackend",
     # stage-0 backend
     "LocalProcessBackend",
+    # stage-1 backend
+    "DockerBackend",
 ]
