@@ -173,11 +173,21 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
         RouteAuthorityCatalogEntry,
     )
 
-    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    assert (
+        client.post(
+            "/settings/models/user",
+            json={
+                **_ADD_BODY,
+                "provider_catalog_id": "deepseek",
+                "base_url": "https://api.deepseek.com",
+            },
+        ).status_code
+        == 201
+    )
     identity = ProviderRouteIdentity(
         "openai_compat",
         "deepseek-chat",
-        "https://api.deepseek.com/v1",
+        "https://api.deepseek.com",
         "user.prompt.generate",
         "generate",
     )
@@ -215,7 +225,7 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
         QualificationVerdict.QUALIFIED,
         evidence,
         provider_kind="openai_compat",
-        endpoint="https://api.deepseek.com/v1",
+        endpoint="https://api.deepseek.com",
         chargeable_units=frozenset({BillingUnit.CALL}),
         expires_at=datetime.now(UTC) + timedelta(days=1),
     )
@@ -223,7 +233,7 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
     class ExactAdapter:
         provider = "user-my-deepseek"
         model = "deepseek-chat"
-        endpoint = "https://api.deepseek.com/v1"
+        endpoint = "https://api.deepseek.com"
         capabilities = ProviderCapabilities(True, True, True, frozenset({BillingUnit.CALL}))
 
         def send_once(
@@ -510,7 +520,7 @@ def test_key_absent_from_responses_artifacts_and_logs(
 
     artifact_bytes = (env / "byok" / "credentials.enc").read_bytes()
     assert _SECRET.encode("utf-8") not in artifact_bytes
-    assert b"ciphertext_hex" in artifact_bytes  # encrypted, not omitted
+    assert json.loads(artifact_bytes) == {}  # DELETE removes ciphertext too
 
     assert _SECRET not in caplog.text
     captured = capsys.readouterr()

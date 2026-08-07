@@ -1530,11 +1530,16 @@ def create_app(
         # are still safe; they fall through to the static operator
         # identity when state is absent.)
         def _attach_operator(
-            req: Request, *, method: str, email: str | None = None
+            req: Request,
+            *,
+            method: str,
+            email: str | None = None,
+            user_id: str | None = None,
         ) -> None:
             from substrate.multi_user.auth import operator_claims as _oc
+
             claims = _oc()
-            req.state.user_id = claims.user_id
+            req.state.user_id = user_id or claims.user_id
             req.state.scopes = frozenset(claims.scopes)
             req.state.auth_method = method
             req.state.user_email = email
@@ -1560,6 +1565,7 @@ def create_app(
                             request,
                             method="antiek_session_cookie",
                             email=cookie_claims.email,
+                            user_id=cookie_claims.user_id,
                         )
                         return await call_next(request)
 
