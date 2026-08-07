@@ -48,6 +48,39 @@ export interface UserModelDeleteResponse {
   notes: string[];
 }
 
+export interface KeyUsageEntry {
+  api_key_id: string;
+  used_cents: number;
+  limit_cents: number | null;
+  remaining_cents: number | null;
+}
+
+export interface UsageSnapshotResponse {
+  keys: KeyUsageEntry[];
+  count: number;
+}
+
+export type BalanceKind =
+  | "balance_native"
+  | "spend_history"
+  | "quota_pct"
+  | "meter_only"
+  | "unavailable";
+
+export interface KeyBalanceResponse {
+  api_key_id: string;
+  catalog_id: string;
+  kind: BalanceKind;
+  balance_usd: number | null;
+  granted_usd: number | null;
+  spend_usd: number | null;
+  budget_usd: number | null;
+  utilization: number | null;
+  window_label: string | null;
+  resets_at: number | null;
+  note: string | null;
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
@@ -80,4 +113,18 @@ export async function removeUserModel(
     { method: "DELETE" },
   );
   return readJson<UserModelDeleteResponse>(res);
+}
+
+export async function fetchKeyUsage(): Promise<UsageSnapshotResponse> {
+  const res = await apiFetch(`${API_BASE}/settings/usage`);
+  return readJson<UsageSnapshotResponse>(res);
+}
+
+export async function fetchKeyBalance(
+  apiKeyId: string,
+): Promise<KeyBalanceResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/settings/balance/${encodeURIComponent(apiKeyId)}`,
+  );
+  return readJson<KeyBalanceResponse>(res);
 }

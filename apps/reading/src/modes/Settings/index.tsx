@@ -32,6 +32,7 @@ import {
 } from "../../api/composerProjection";
 import AddModelPanel from "./AddModelPanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
+import ByotUsagePanel from "./ByotUsagePanel";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
@@ -437,6 +438,8 @@ export default function Settings() {
         </LemonCard>
 
         <AddModelPanel />
+
+        <ByotUsagePanel />
 
         <AntiekBenchPanel />
 
