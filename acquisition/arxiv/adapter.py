@@ -95,6 +95,7 @@ from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 from .client import ArxivPaper  # noqa: E402  # sys.path bootstrap
 from .html_fetch import FetchedHtml  # noqa: E402  # sys.path bootstrap
 from .licenses import (  # noqa: E402  # sys.path bootstrap
+    LicenseResolution,
     license_basis_string,
     resolve_license,
 )
@@ -508,7 +509,7 @@ def _ingest_html_with_rights(
     *,
     fetched_html: FetchedHtml,
     investigation_id: str,
-    resolution: object,          # LicenseResolution — avoids import cycle
+    resolution: LicenseResolution,
     basis: str,
     source_tier: int,
     db_path: str | None,
@@ -569,7 +570,7 @@ def _ingest_html_with_rights(
         # serve-side ``is_trusted_sanitized`` gate recognizes this body as
         # safe-to-render-as-HTML.  The metadata also carries arxiv-specific
         # provenance for the fetch audit trail.
-        doc_metadata: dict = {
+        doc_metadata: dict[str, object] = {
             "arxiv_id": paper.arxiv_id,
             "version": paper.version,
             "categories": list(paper.categories),
@@ -749,7 +750,10 @@ def ingest_paper_with_rights(
             "has no PDF"
         )
 
-    result = ingest_servable_book(
+    # Distinct name from the early-return HTML path's ``result``
+    # (IngestPaperWithRightsResult) — this is an IngestServableBookResult, so
+    # reusing the name would be a mypy assignment conflict.
+    book_result = ingest_servable_book(
         pdf_bytes,
         investigation_id=investigation_id,
         # None content_class would deny-by-default in ingest_servable_book,
@@ -772,21 +776,21 @@ def ingest_paper_with_rights(
     # gated attempt — mirroring the store path's "refused → no fetch leg" guard.
     # Defensively isolated so a hook failure can never break the fetch/ingest;
     # §9.0 records provenance refs only.
-    if result.servable_full_text:
+    if book_result.servable_full_text:
         _record_fetch_audit(
             db_path=db_path,
             arxiv_id=paper.arxiv_id,
-            document_id=result.document_id,
+            document_id=book_result.document_id,
             source_url=paper.pdf_url,
             pdf_bytes=pdf_bytes,
         )
 
     return IngestPaperWithRightsResult(
-        document_id=result.document_id,
+        document_id=book_result.document_id,
         content_class=resolution.content_class,
         redistributable=resolution.redistributable,
-        servability=result.servability,
-        servable_full_text=result.servable_full_text,
+        servability=book_result.servability,
+        servable_full_text=book_result.servable_full_text,
         license_uri=paper.license_uri,
         license_basis=basis,
     )

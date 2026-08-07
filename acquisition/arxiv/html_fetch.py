@@ -139,9 +139,11 @@ def fetch_html(
     )
 
     owns_client = client is None
-    if owns_client:
+    if client is None:
         # REDIRECT-SAFE: arxiv.org/html/<id> 302-redirects to the versioned HTML;
         # the hook governs each arXiv redirect hop on the caller's throttle.
+        # (Narrow on ``client is None`` — not ``owns_client`` — so mypy proves
+        # ``client`` is non-None for the send/close below.)
         client = arxiv_governed_client(throttle=throttle)
     else:
         install_arxiv_request_hook(client, throttle=throttle)
