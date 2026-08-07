@@ -208,6 +208,14 @@ def test_create_app_register_providers_false_skips(monkeypatch):
 
 
 def test_health_endpoint_reports_registered_providers(monkeypatch):
+    # Clear the other providers' keys so the assertion is deterministic on a
+    # machine (or shell) that has the operator's live keys exported — otherwise
+    # they register and the exact-list assertion breaks. Mirrors the delenv
+    # hygiene the sibling tests above already apply. ANTIEK_BYOT_ONLY off so the
+    # env keys below are honoured.
+    for k in ("OPENROUTER_API_KEY", "XIAOMI_API_KEY", "HERMES_API_KEY", "Z_AI_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.delenv("ANTIEK_BYOT_ONLY", raising=False)
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-fake-1")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake-1")
     from fastapi.testclient import TestClient
