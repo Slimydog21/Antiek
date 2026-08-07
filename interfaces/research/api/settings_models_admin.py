@@ -1104,6 +1104,11 @@ def register_settings_models_admin_routes(app: FastAPI) -> None:
     a startup handler because ``create_app`` assigns
     ``app.state.registered_providers`` after route registration."""
     app.include_router(user_models_router)
+    from .certified_provider_credentials import (
+        register_certified_provider_credential_routes,
+    )
+
+    register_certified_provider_credential_routes(app)
     # Production begins with no qualified paid route. Future provider-specific
     # bootstrap code must install exact catalog and adapter authorities here;
     # generic BYOK registration never mutates this execution authority.
