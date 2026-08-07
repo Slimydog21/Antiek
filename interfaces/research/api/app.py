@@ -1672,6 +1672,14 @@ def create_app(
     # substrate/reader_html/store.py); otherwise degrades to text/markdown.
     from .reader_html_routes import register_reader_html_routes
     register_reader_html_routes(app)
+    # Doc→HTML S4 — POST /sources/upload: ingests an UPLOADED document (PDF /
+    # HTML / Markdown / text) and stores it as sanitized reader-HTML through the
+    # same version-provenance sidecar. Sniffs magic bytes first; EPUB / PK-zip
+    # is refused with a typed 409 (the authorized book-acquisition ceremony owns
+    # that lane). Never stores raw uploaded HTML — storage goes only through
+    # store_reader_html, which sanitizes inside the write.
+    from .upload_routes import register_upload_routes
+    register_upload_routes(app)
     # Book acquisition — authorized, bytes-only EPUB port into the
     # personal-reading corpus.  Requires a dedicated signing key
     # (ANTIEK_BOOK_ACQUISITION_SIGNING_KEY) that is NEVER the
