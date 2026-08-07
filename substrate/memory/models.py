@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
@@ -64,7 +66,41 @@ class MemoryItem(BaseModel):
             _is_reference(key, candidate) for key, candidate in value.items()
         ):
             raise ValueError("memory provenance must carry a source reference")
+        if not _json_numbers_are_finite(value):
+            raise ValueError("memory provenance numbers must be finite")
         return value
+
+
+MemoryAction = Literal["ADD", "UPDATE", "SUPERSEDE", "NOOP"]
+
+
+class MemoryDecision(BaseModel):
+    """A deterministic reconciliation verdict for one candidate memory."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    action: MemoryAction
+    candidate: MemoryItem
+    matched_item: MemoryItem | None = None
+    reason: str = Field(min_length=1)
+
+    @field_validator("reason")
+    @classmethod
+    def _strip_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("memory decision reason cannot be blank")
+        return normalized
+
+
+def _json_numbers_are_finite(value: JsonValue) -> bool:
+    if isinstance(value, float):
+        return math.isfinite(value)
+    if isinstance(value, list):
+        return all(_json_numbers_are_finite(item) for item in value)
+    if isinstance(value, dict):
+        return all(_json_numbers_are_finite(item) for item in value.values())
+    return True
 
 
 def _is_reference(key: str, value: JsonValue) -> bool:
@@ -76,4 +112,4 @@ def _is_reference(key: str, value: JsonValue) -> bool:
     )
 
 
-__all__ = ["MemoryItem"]
+__all__ = ["MemoryAction", "MemoryDecision", "MemoryItem"]
