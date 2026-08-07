@@ -26,15 +26,49 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from acquisition.arxiv.ids import looks_like_error_feed, split_id_version
+
 if TYPE_CHECKING:
     from acquisition.arxiv.throttle import ArxivThrottle
+
+
+class ArxivErrorFeed(ValueError):
+    """arXiv returned its Atom error feed (a malformed/invalid query), not papers.
+
+    Subclasses ``ValueError`` so existing callers that already treat a parse
+    failure as a per-request error catch it for free, while a caller that wants to
+    distinguish "the query was rejected" from "the XML was malformed" can branch
+    on this type.
+    """
 
 _ATOM_NS = {"a": "http://www.w3.org/2005/Atom"}
 _OPENSEARCH_NS = "{http://a9.com/-/spec/opensearch/1.1/}"
 
 DEFAULT_BASE_URL = "https://export.arxiv.org/api/query"
-DEFAULT_USER_AGENT = "Antiek/0.1 (acquisition.arxiv)"
 DEFAULT_TIMEOUT_S = 15.0
+
+# arXiv's rate policy asks clients to carry a contact so the operator can be
+# reached BEFORE the whole source IP is banned (the exact failure that has bitten
+# this box). The contact is env-configurable — never a hardcoded personal address
+# in a shared codebase — and defaults to the project contact page when unset. The
+# ``~/.claude/skills/arxiv`` port carries the same polite-pool discipline.
+_DEFAULT_CONTACT = "+https://antiek.ai/contact"
+
+
+def default_user_agent() -> str:
+    """The arXiv User-Agent, including a reachable contact per arXiv policy.
+
+    Reads ``ANTIEK_ARXIV_CONTACT`` (e.g. ``mailto:ops@antiek.ai``) so a deployment
+    can advertise a real inbox; falls back to the project contact URL. Computed
+    per call so a test or a re-configured process picks up the current env.
+    """
+    contact = os.environ.get("ANTIEK_ARXIV_CONTACT", "").strip() or _DEFAULT_CONTACT
+    return f"Antiek/0.1 ({contact}; acquisition.arxiv)"
+
+
+# Backward-compatible module constant (importers such as ``pdf_fetch`` read this).
+# Bound at import from the current env; ``default_user_agent()`` is the live seam.
+DEFAULT_USER_AGENT = default_user_agent()
 
 # arXiv rate-limits: one query / 3s. This export SEARCH API
 # (``export.arxiv.org``) is the endpoint that historically IP-banned the box
@@ -158,11 +192,20 @@ def _parse_entry(entry: ET.Element) -> ArxivPaper:
         raise ValueError("arXiv entry missing required fields")
 
     raw_id = (id_el.text or "").strip()
+    # Error-feed trap: a malformed query returns a 200 Atom feed whose single
+    # entry's <id> is arXiv's ``…/api/errors#…`` sentinel. Parsing it would mint a
+    # garbage ArxivPaper; reject the whole response instead (SPR-arxiv-clean).
+    if looks_like_error_feed(raw_id):
+        raise ArxivErrorFeed(
+            f"arXiv returned an error-feed entry ({raw_id!r}); the query was "
+            "rejected upstream — not a paper record.",
+        )
     full_id = (
         raw_id.split("/abs/")[-1] if "/abs/" in raw_id else raw_id
     )
-    base_id = full_id.split("v")[0] if "v" in full_id else full_id
-    version = full_id[len(base_id):] if full_id != base_id else ""
+    # Robust version split anchored to a trailing ``vN`` — replaces the fragile
+    # ``full_id.split("v")[0]`` (which partitions on the first ``v`` anywhere).
+    base_id, version = split_id_version(full_id)
 
     authors = [
         (name_el.text or "").strip()
