@@ -17,18 +17,18 @@ function handleFetch(url: string, init?: RequestInit): Response {
   if (url.endsWith("/settings/models/user")) return json(models);
   if (url.endsWith("/settings/usage")) {
     return json({ keys: [
-      { api_key_id: "user-deepseek", used_cents: 1842, limit_cents: 5000, remaining_cents: 3158 },
-      { api_key_id: "user-kimi", used_cents: 625, limit_cents: null, remaining_cents: null },
+      { api_key_id: "user-deepseek", used_cents: 1842, limit_cents: 5000, remaining_cents: 3158, held_cents: 950, available_cents: 2208 },
+      { api_key_id: "user-kimi", used_cents: 625, limit_cents: null, remaining_cents: null, held_cents: 125, available_cents: null },
     ], count: 2 });
   }
   if (url.includes("/settings/balance/user-deepseek")) {
-    return json({ api_key_id: "user-deepseek", catalog_id: "deepseek", kind: "balance_native", balance_usd: 37.21, granted_usd: 50, spend_usd: null, budget_usd: null, utilization: null, window_label: null, resets_at: null, note: null });
+    return json({ api_key_id: "user-deepseek", catalog_id: "deepseek", kind: "balance_native", balance_usd: 37.21, granted_usd: 50, spend_usd: null, budget_usd: null, utilization: null, window_label: null, resets_at: null, note: null, held_cents: 950, available_cents: 2208 });
   }
   if (url.includes("/settings/balance/user-kimi")) {
-    return json({ api_key_id: "user-kimi", catalog_id: "kimi", kind: "unavailable", balance_usd: null, granted_usd: null, spend_usd: null, budget_usd: null, utilization: null, window_label: null, resets_at: null, note: "provider unavailable" });
+    return json({ api_key_id: "user-kimi", catalog_id: "kimi", kind: "unavailable", balance_usd: null, granted_usd: null, spend_usd: null, budget_usd: null, utilization: null, window_label: null, resets_at: null, note: "provider unavailable", held_cents: 125, available_cents: null });
   }
   if (url.includes("/settings/usage/") && url.endsWith("/limit") && init?.method === "POST") {
-    return json({ api_key_id: "user-deepseek", used_cents: 1842, limit_cents: 5000, remaining_cents: 3158 });
+    return json({ api_key_id: "user-deepseek", used_cents: 1842, limit_cents: 5000, remaining_cents: 3158, held_cents: 950, available_cents: 2208 });
   }
   return json({ detail: "not found" }, 404);
 }

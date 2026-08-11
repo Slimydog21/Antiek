@@ -23,7 +23,7 @@ const models = [{
   key_present: true,
   registered: true,
 }];
-const usage = { api_key_id: "user-model-1", used_cents: 125, limit_cents: 500, remaining_cents: 375 };
+const usage = { api_key_id: "user-model-1", used_cents: 125, limit_cents: 500, remaining_cents: 375, held_cents: 75, available_cents: 300 };
 const balance = {
   api_key_id: "user-model-1",
   catalog_id: "deepseek",
@@ -36,6 +36,8 @@ const balance = {
   window_label: null,
   resets_at: null,
   note: null,
+  held_cents: 75,
+  available_cents: 300,
 };
 
 describe("ByotUsagePanel", () => {
@@ -53,9 +55,13 @@ describe("ByotUsagePanel", () => {
     const row = (await screen.findByText("My DeepSeek")).closest("li")!;
     expect(within(row).getByText("$1.25")).toBeTruthy();
     expect(within(row).getByText("Antiek measured")).toBeTruthy();
+    expect(within(row).getByText("$0.75")).toBeTruthy();
+    expect(within(row).getByText("Held for in-flight work")).toBeTruthy();
+    expect(within(row).getByText("$3.00")).toBeTruthy();
+    expect(within(row).getByText("Available to authorize")).toBeTruthy();
     expect(within(row).getByText("$23.50 available")).toBeTruthy();
     expect(within(row).getByText("Provider balance")).toBeTruthy();
-    expect(within(row).getByRole("meter").getAttribute("value")).toBe("0.25");
+    expect(within(row).getByRole("meter").getAttribute("value")).toBe("0.4");
   });
 
   it("shows a newly stored key even before its first ledger row", async () => {
@@ -148,12 +154,12 @@ describe("ByotUsagePanel", () => {
     const input = within(row).getByLabelText("Spending limit (USD)");
     await user.clear(input);
     await user.type(input, "12.34");
-    vi.mocked(setKeyLimit).mockResolvedValueOnce({ ...usage, limit_cents: 1234, remaining_cents: 1109 });
+    vi.mocked(setKeyLimit).mockResolvedValueOnce({ ...usage, limit_cents: 1234, remaining_cents: 1109, available_cents: 1034 });
     await user.click(within(row).getByRole("button", { name: "Save limit" }));
-    await waitFor(() => expect(within(row).getByText("$11.09")).toBeTruthy());
-    release({ keys: [{ ...usage, limit_cents: 500, remaining_cents: 375 }], count: 1 });
+    await waitFor(() => expect(within(row).getByText("$10.34")).toBeTruthy());
+    release({ keys: [{ ...usage, limit_cents: 500, remaining_cents: 375, available_cents: 300 }], count: 1 });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(within(row).getByText("$11.09")).toBeTruthy();
+    expect(within(row).getByText("$10.34")).toBeTruthy();
   });
 
   it("globally locks limit editors while a save is in flight", async () => {
@@ -175,7 +181,7 @@ describe("ByotUsagePanel", () => {
     await user.click(within(firstRow).getByRole("button", { name: "Save limit" }));
     expect((within(secondRow).getByRole("button", { name: "Change limit" }) as HTMLButtonElement).disabled).toBe(true);
     expect((within(firstRow).getByRole("button", { name: "Saving…" }) as HTMLButtonElement).disabled).toBe(true);
-    release({ ...usage, limit_cents: 1234, remaining_cents: 1109 });
+    release({ ...usage, limit_cents: 1234, remaining_cents: 1109, available_cents: 1034 });
     await waitFor(() => expect((within(secondRow).getByRole("button", { name: "Change limit" }) as HTMLButtonElement).disabled).toBe(false));
   });
 

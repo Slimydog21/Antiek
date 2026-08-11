@@ -5,6 +5,8 @@ export interface KeyUsageEntry {
   used_cents: number;
   limit_cents: number | null;
   remaining_cents: number | null;
+  held_cents: number;
+  available_cents: number | null;
 }
 
 export interface UsageSnapshot {
@@ -31,6 +33,8 @@ export interface KeyBalance {
   window_label: string | null;
   resets_at: number | null;
   note: string | null;
+  held_cents: number;
+  available_cents: number | null;
 }
 
 const BALANCE_KINDS = new Set<BalanceKind>([
@@ -85,20 +89,25 @@ function textOrNull(value: unknown, context: string): string | null {
 
 function parseUsageEntry(value: unknown): KeyUsageEntry {
   const row = record(value, "usage API");
-  exactKeys(row, ["api_key_id", "used_cents", "limit_cents", "remaining_cents"], "usage API");
+  exactKeys(row, ["api_key_id", "used_cents", "limit_cents", "remaining_cents", "held_cents", "available_cents"], "usage API");
   if (typeof row.api_key_id !== "string" || row.api_key_id.length === 0) {
     throw new Error("usage API returned an invalid response");
   }
   const used = integer(row.used_cents, "usage API", false) as number;
   const limit = integer(row.limit_cents, "usage API");
   const remaining = integer(row.remaining_cents, "usage API");
-  if ((limit === null) !== (remaining === null)) {
+  const held = integer(row.held_cents, "usage API", false) as number;
+  const available = integer(row.available_cents, "usage API");
+  if ((limit === null) !== (remaining === null) || (limit === null) !== (available === null)) {
     throw new Error("usage API returned an invalid response");
   }
   if (limit !== null && remaining !== Math.max(0, limit - used)) {
     throw new Error("usage API returned an invalid response");
   }
-  return { api_key_id: row.api_key_id, used_cents: used, limit_cents: limit, remaining_cents: remaining };
+  if (remaining !== null && (held > remaining || available !== remaining - held)) {
+    throw new Error("usage API returned an invalid response");
+  }
+  return { api_key_id: row.api_key_id, used_cents: used, limit_cents: limit, remaining_cents: remaining, held_cents: held, available_cents: available };
 }
 
 function parseUsage(value: unknown): UsageSnapshot {
@@ -110,8 +119,14 @@ function parseUsage(value: unknown): UsageSnapshot {
   if (count !== keys.length || new Set(keys.map((key) => key.api_key_id)).size !== keys.length) {
     throw new Error("usage API returned an invalid response");
   }
-  if (keys.reduce((sum, key) => sum + BigInt(key.used_cents), 0n) > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error("usage API returned an invalid response");
+  for (const values of [
+    keys.map((key) => key.used_cents),
+    keys.map((key) => key.held_cents),
+    keys.flatMap((key) => key.available_cents === null ? [] : [key.available_cents]),
+  ]) {
+    if (values.reduce((sum, cents) => sum + BigInt(cents), 0n) > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error("usage API returned an invalid response");
+    }
   }
   return { keys, count };
 }
@@ -120,7 +135,7 @@ function parseBalance(value: unknown): KeyBalance {
   const payload = record(value, "balance API");
   exactKeys(payload, [
     "api_key_id", "catalog_id", "kind", "balance_usd", "granted_usd", "spend_usd",
-    "budget_usd", "utilization", "window_label", "resets_at", "note",
+    "budget_usd", "utilization", "window_label", "resets_at", "note", "held_cents", "available_cents",
   ], "balance API");
   if (typeof payload.api_key_id !== "string" || payload.api_key_id.length === 0 ||
       typeof payload.catalog_id !== "string" || payload.catalog_id.length === 0 ||
@@ -145,6 +160,8 @@ function parseBalance(value: unknown): KeyBalance {
     window_label: textOrNull(payload.window_label, "balance API"),
     resets_at: resetsAt,
     note: textOrNull(payload.note, "balance API"),
+    held_cents: integer(payload.held_cents, "balance API", false) as number,
+    available_cents: integer(payload.available_cents, "balance API"),
   };
   const noNative = parsed.balance_usd === null && parsed.granted_usd === null;
   const noSpend = parsed.spend_usd === null && parsed.budget_usd === null;

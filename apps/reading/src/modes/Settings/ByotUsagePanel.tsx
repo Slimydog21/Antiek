@@ -193,9 +193,9 @@ export default function ByotUsagePanel() {
           <ul className="divide-y divide-ink/10 dark:divide-bright/10">
             {rows.map((row) => {
               const capped = row.usage?.limit_cents != null;
-              const exhausted = capped && row.usage?.remaining_cents === 0;
+              const exhausted = capped && row.usage?.available_cents === 0;
               const progress = capped && row.usage!.limit_cents! > 0
-                ? Math.min(1, row.usage!.used_cents / row.usage!.limit_cents!)
+                ? Math.min(1, (row.usage!.used_cents + row.usage!.held_cents) / row.usage!.limit_cents!)
                 : null;
               const reported = balancePresentation(row.balance, row.balanceError);
               return (
@@ -205,16 +205,17 @@ export default function ByotUsagePanel() {
                       <h3 className="truncate font-semibold text-ink dark:text-bright">{row.model.display_name}</h3>
                       <p className="truncate font-mono text-xs text-ink-soft dark:text-starlight">{row.model.model_id} · {row.model.provider_kind}</p>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-5 gap-y-1 text-left sm:text-right">
+                    <div className="grid grid-cols-3 gap-x-5 gap-y-1 text-left sm:text-right">
                       <div><span className="block font-mono text-sm font-semibold">{row.usage ? dollars(row.usage.used_cents) : "Not measured yet"}</span><span className="text-[11px] text-ink-soft dark:text-starlight">{row.usage ? "Antiek measured" : "No ledger observation"}</span></div>
-                      <div><span className={`block text-sm font-semibold ${exhausted ? "text-emperor" : "text-ink dark:text-bright"}`}>{capped ? dollars(row.usage!.remaining_cents ?? 0) : "No limit"}</span><span className="text-[11px] text-ink-soft dark:text-starlight">{capped ? "Limit remaining" : "Antiek ceiling"}</span></div>
+                      <div><span className="block font-mono text-sm font-semibold">{row.usage ? dollars(row.usage.held_cents) : "—"}</span><span className="text-[11px] text-ink-soft dark:text-starlight">Held for in-flight work</span></div>
+                      <div><span className={`block text-sm font-semibold ${exhausted ? "text-emperor" : "text-ink dark:text-bright"}`}>{capped ? dollars(row.usage!.available_cents ?? 0) : "No limit"}</span><span className="text-[11px] text-ink-soft dark:text-starlight">{capped ? "Available to authorize" : "Antiek ceiling"}</span></div>
                     </div>
                   </div>
 
                   {progress !== null && (
                     <div className="space-y-1" aria-label={`${row.model.display_name} Antiek spending limit`}>
                       <div className="flex justify-between gap-3 text-[11px] text-ink-soft dark:text-starlight">
-                        <span>Antiek limit used</span>
+                        <span>Antiek limit committed (settled + held)</span>
                         <span className="font-mono">{Math.round(progress * 100)}%</span>
                       </div>
                       <meter className="h-2 w-full" min={0} max={1} value={progress} aria-label={`${row.model.display_name} spending limit used`} />

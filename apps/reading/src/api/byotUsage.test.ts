@@ -8,7 +8,7 @@ function response(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-const usage = { api_key_id: "user-model-1", used_cents: 125, limit_cents: 500, remaining_cents: 375 };
+const usage = { api_key_id: "user-model-1", used_cents: 125, limit_cents: 500, remaining_cents: 375, held_cents: 75, available_cents: 300 };
 const balance = {
   api_key_id: "user-model-1",
   catalog_id: "deepseek",
@@ -21,6 +21,8 @@ const balance = {
   window_label: null,
   resets_at: null,
   note: null,
+  held_cents: 75,
+  available_cents: 300,
 };
 
 describe("BYOT usage API", () => {
@@ -63,6 +65,8 @@ describe("BYOT usage API", () => {
   it.each([
     { keys: [{ ...usage, api_key: "secret" }], count: 1 },
     { keys: [{ ...usage, remaining_cents: 499 }], count: 1 },
+    { keys: [{ ...usage, available_cents: 375 }], count: 1 },
+    { keys: [{ ...usage, held_cents: 376, available_cents: 0 }], count: 1 },
     { keys: [{ ...usage, used_cents: Number.POSITIVE_INFINITY }], count: 1 },
     { keys: [usage], count: 2 },
   ])("rejects contradictory or secret-shaped usage payloads", async (body) => {
@@ -76,6 +80,8 @@ describe("BYOT usage API", () => {
     { ...balance, balance_usd: -1 },
     { ...balance, kind: "invented" },
     { ...balance, resets_at: 1.5 },
+    { ...balance, held_cents: -1 },
+    { ...balance, available_cents: Number.MAX_SAFE_INTEGER + 1 },
   ])("rejects unsafe balance metadata", async (body) => {
     vi.mocked(apiFetch).mockResolvedValueOnce(response(body));
     await expect(fetchKeyBalance("user-model-1")).rejects.toThrow("balance API returned an invalid response");
@@ -126,8 +132,8 @@ describe("BYOT usage API", () => {
   it("rejects a snapshot whose aggregate cents are not exact", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce(response({
       keys: [
-        { ...usage, api_key_id: "a", used_cents: Number.MAX_SAFE_INTEGER, limit_cents: null, remaining_cents: null },
-        { ...usage, api_key_id: "b", used_cents: 1, limit_cents: null, remaining_cents: null },
+        { ...usage, api_key_id: "a", used_cents: Number.MAX_SAFE_INTEGER, limit_cents: null, remaining_cents: null, held_cents: 0, available_cents: null },
+        { ...usage, api_key_id: "b", used_cents: 1, limit_cents: null, remaining_cents: null, held_cents: 0, available_cents: null },
       ],
       count: 2,
     }));
