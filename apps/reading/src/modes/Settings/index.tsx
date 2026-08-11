@@ -32,6 +32,7 @@ import {
 } from "../../api/composerProjection";
 import AddModelPanel from "./AddModelPanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
+import ByotUsagePanel from "./ByotUsagePanel";
 import ToolConnectionsPanel from "./ToolConnectionsPanel";
 
 /**
@@ -440,6 +441,8 @@ export default function Settings() {
         <AddModelPanel />
 
         <ToolConnectionsPanel />
+
+        <ByotUsagePanel />
 
         <AntiekBenchPanel />
 

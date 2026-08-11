@@ -9,6 +9,8 @@ export type ProviderKind = "openai_compat" | "anthropic";
 export interface UserModelRow {
   id: string;
   provider_kind: ProviderKind;
+  /** Server-qualified provider preset, or null for an unqualified custom row. */
+  provider_catalog_id: string | null;
   model_id: string;
   display_name: string;
   base_url: string | null;
