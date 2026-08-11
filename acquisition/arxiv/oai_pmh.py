@@ -3,7 +3,7 @@ license channel.
 
 WHY this and not the export SEARCH API: the search API got the box IP-banned
 (project_researchmaxx_arxiv.md, 2026-05-17). OAI-PMH at
-``export.arxiv.org/oai2`` is arXiv's DESIGNATED bulk channel
+``oaipmh.arxiv.org/oai`` is arXiv's DESIGNATED bulk channel
 (https://info.arxiv.org/help/oa/index.html) and, with ``metadataPrefix=arXiv``,
 the only interface carrying the per-paper ``<license>`` element — the rights
 source of truth for the census.
@@ -48,7 +48,7 @@ from substrate.schemas.documents import (
     _TierTally,  # package-internal accumulator
 )
 
-DEFAULT_OAI_BASE_URL = "https://export.arxiv.org/oai2"
+DEFAULT_OAI_BASE_URL = "https://oaipmh.arxiv.org/oai"
 DEFAULT_METADATA_PREFIX = "arXiv"
 DEFAULT_USER_AGENT = "Antiek/0.1 (acquisition.arxiv.oai_pmh)"
 DEFAULT_TIMEOUT_S = 30.0

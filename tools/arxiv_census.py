@@ -43,7 +43,7 @@ Usage:
     # regenerate the committed report from the seeded census (deterministic)
     python -m tools.arxiv_census --seed --out reports/arxiv_census.md
 
-    # OPERATOR ONLY — the real backfill against export.arxiv.org/oai2 (M5);
+    # OPERATOR ONLY — the real backfill against oaipmh.arxiv.org/oai (M5);
     # the true TAM. Requires --live to arm the network path.
     python -m tools.arxiv_census --live --from 2024-01-01 --until 2024-12-31 \\
         --out reports/arxiv_census.md
@@ -288,7 +288,7 @@ def _tier_for_key(key: str) -> RightsTier:
 # the real backfill (M5). It exercises every tier boundary + the deny-by-default
 # cases, and pages across a resumption token so the seeded path is the SAME code
 # path the live backfill uses (only the client differs). The shape mirrors the
-# real export.arxiv.org/oai2 ListRecords envelope (see tests/test_arxiv_oai_records.py).
+# real oaipmh.arxiv.org/oai ListRecords envelope (see tests/test_arxiv_oai_records.py).
 _SEED_FROM = "2024-01-01"
 _SEED_UNTIL = "2024-01-31"
 _SEED_HARVESTED_AT = datetime(2026, 5, 29, 0, 0, 0, tzinfo=UTC)
@@ -430,7 +430,7 @@ def live_census(
     until_date: str | None,
     base_url: str | None = None,
 ) -> CensusResult:
-    """OPERATOR-ONLY (M5): harvest the real export.arxiv.org/oai2 and census it.
+    """OPERATOR-ONLY (M5): harvest the real oaipmh.arxiv.org/oai and census it.
 
     A real ``httpx.Client`` (built inside the harvester) routed through the
     PR#23 persisted ``ArxivThrottle`` — >=3s spacing + the 429 ban sentinel —
@@ -468,7 +468,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--live",
         action="store_true",
         help=(
-            "OPERATOR ONLY: harvest the real export.arxiv.org/oai2 (M5). "
+            "OPERATOR ONLY: harvest the real oaipmh.arxiv.org/oai (M5). "
             "Routes through the persisted throttle."
         ),
     )

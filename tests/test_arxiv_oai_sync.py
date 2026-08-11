@@ -3,7 +3,7 @@
 NO live network: the harvester's ``httpx.Client`` is an ``httpx.MockTransport``
 serving recorded multi-page resumption sequences (the same convention as
 ``tests/test_open_access_ingest.py`` and ``tests/test_arxiv_oai_pmh.py``). Nothing
-here touches export.arxiv.org.
+here touches the live arXiv OAI-PMH endpoint.
 
 What this driver adds on top of the harvester (which is already tested for paging
 / throttle / mid-harvest crash-resume) is the ACROSS-run high-water mark:
@@ -35,7 +35,10 @@ if _REPO not in sys.path:
 import duckdb  # noqa: E402
 
 from acquisition.arxiv.adapter import arxiv_doc_id  # noqa: E402
-from acquisition.arxiv.oai_pmh import OaiPmhHarvester  # noqa: E402
+from acquisition.arxiv.oai_pmh import (  # noqa: E402
+    DEFAULT_OAI_BASE_URL,
+    OaiPmhHarvester,
+)
 from acquisition.arxiv.throttle import ArxivBanned, ArxivThrottle  # noqa: E402
 from substrate.constants import GATED_DEFAULT_CONTENT_CLASS  # noqa: E402
 from tools.arxiv_oai_sync import (  # noqa: E402
@@ -162,6 +165,28 @@ def _harvester(tmp_path, clock, handler, *, name="harvest.json") -> OaiPmhHarves
 
 
 _AT = datetime(2026, 5, 29, tzinfo=UTC)
+
+
+def test_harvester_defaults_to_current_arxiv_oai_endpoint(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTIEK_ARXIV_OAI_BASE_URL", raising=False)
+    harvester = OaiPmhHarvester(
+        throttle=_throttle(tmp_path, _FakeClock()),
+        state_path=str(tmp_path / "harvest.json"),
+    )
+
+    assert DEFAULT_OAI_BASE_URL == "https://oaipmh.arxiv.org/oai"
+    assert harvester._base_url == DEFAULT_OAI_BASE_URL
+
+
+def test_harvester_preserves_explicit_oai_endpoint_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_ARXIV_OAI_BASE_URL", "https://env.test/oai")
+    harvester = OaiPmhHarvester(
+        throttle=_throttle(tmp_path, _FakeClock()),
+        base_url="https://explicit.test/oai",
+        state_path=str(tmp_path / "harvest.json"),
+    )
+
+    assert harvester._base_url == "https://explicit.test/oai"
 
 
 # A three-page corpus: 3 CC-BY (T1), 1 arxiv-default (T3), 1 absent (T3 + amb).

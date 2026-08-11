@@ -397,7 +397,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--base-url",
-        help="OAI-PMH base URL (default export.arxiv.org/oai2 via the harvester)",
+        help="OAI-PMH base URL (default oaipmh.arxiv.org/oai via the harvester)",
     )
     p.add_argument(
         "--no-resume", action="store_true",
