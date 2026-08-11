@@ -51,7 +51,7 @@ import secrets
 import stat
 import threading
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from typing import Any, Protocol, runtime_checkable
 
 import duckdb
@@ -444,6 +444,79 @@ def connect_read(db_path: str) -> duckdb.DuckDBPyConnection:
     Read-only connections can run concurrently with an active writer.
     """
     return duckdb.connect(db_path, read_only=True)
+
+
+@contextlib.contextmanager
+def authority_handoff_guard(
+    db_path: str,
+    *,
+    timeout_s: float = 5.0,
+    poll_interval_s: float = 0.05,
+    purpose: str = "authority-handoff",
+) -> Iterator[None]:
+    """Bounded exclusive writer-flock guard without opening DuckDB for write.
+
+    Intended for a short authorization handoff that must serialize with every
+    ``connect_write`` mutation while an already-open read connection supplies
+    the authority facts. It uses the same permanent inode, waiter registry,
+    timeout, diagnostic stamp, and best-effort write-log path as writers. Never
+    hold this guard over network I/O.
+    """
+    if timeout_s <= 0 or poll_interval_s <= 0:
+        raise ValueError("timeout and poll interval must be positive")
+    lock_path = _lock_path_for(db_path)
+    parent = os.path.dirname(lock_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o600)
+    started = time.monotonic()
+    deadline = started + timeout_s
+    waiter: tuple[int, str] | None = None
+    acquired = False
+    try:
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except OSError as exc:
+                if exc.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
+                    raise
+                if waiter is None:
+                    waiter = _register_write_waiter(db_path)
+                if time.monotonic() >= deadline:
+                    elapsed = time.monotonic() - started
+                    _log_write_event(
+                        db_path, purpose, elapsed, success=False,
+                        error=f"WriteLockTimeout after {timeout_s}s", max_wait_s=0.0,
+                    )
+                    raise WriteLockTimeout(
+                        f"Could not acquire authority handoff lock on {lock_path} "
+                        f"within {timeout_s}s; inspect with `lsof {lock_path}`."
+                    ) from None
+                time.sleep(min(poll_interval_s, max(0.0, deadline - time.monotonic())))
+        _unregister_write_waiter(waiter)
+        waiter = None
+        try:
+            os.ftruncate(fd, 0)
+            stamp = (
+                f"{os.getpid()} {purpose} "
+                f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n"
+            )
+            os.write(fd, stamp.encode())
+        except OSError:
+            pass
+        yield None
+    finally:
+        _unregister_write_waiter(waiter)
+        if acquired:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+        if acquired:
+            _log_write_event(
+                db_path, purpose, time.monotonic() - started,
+                success=True, error=None, max_wait_s=0.0,
+            )
 
 
 def connect_write_retrying(

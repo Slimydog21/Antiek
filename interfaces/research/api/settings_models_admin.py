@@ -649,6 +649,50 @@ class UserModelChoiceUnavailable(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class OwnerModelAuthority:
+    """Immutable, non-secret execution facts re-read from durable authority."""
+
+    record: UserModelRecord
+    credential_id: str
+    credential_fingerprint: str
+    registration_fingerprint: str
+
+
+def resolve_owner_model_authority(
+    app: FastAPI, choice: UserModelChoice, *, owner_user_id: str,
+) -> OwnerModelAuthority:
+    """Resolve and revalidate an owner route without decrypting its credential."""
+    validated = UserModelChoice.model_validate(choice.model_dump(mode="json"))
+    registry = _load_registry()
+    matches = [
+        item for item in registry.values()
+        if item.id == validated.provider_id and item.model_id == validated.model_id
+    ]
+    record = matches[0] if len(matches) == 1 else None
+    metadata = _credential_metadata()
+    credential = metadata.get(record.cred_ref) if record is not None else None
+    registration = _registration_fingerprints(app).get(validated.provider_id)
+    if (
+        record is None or credential is None or registration is None
+        or record.owner_user_id != owner_user_id or not record.enabled
+        or credential.binding_version != 3
+        or credential.owner_user_id != owner_user_id
+        or credential.pipeline_kind != _PIPELINE_KIND
+        or credential.account_handle != record.id
+        or credential.artifact_fingerprint != record.cred_fingerprint
+        or registration != _record_fingerprint(record)
+        or not _live_adapter_matches(app, record.id)
+    ):
+        raise UserModelChoiceUnavailable("user model route is unavailable")
+    return OwnerModelAuthority(
+        record=record.model_copy(deep=True),
+        credential_id=credential.cred_id,
+        credential_fingerprint=credential.artifact_fingerprint or "",
+        registration_fingerprint=registration,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class UserModelAuthoritySnapshot:
     model_id: str
     route_eligible: bool
@@ -1126,6 +1170,7 @@ def register_settings_models_admin_routes(app: FastAPI) -> None:
 
 
 __all__ = [
+    "OwnerModelAuthority",
     "UserModelDeleteResponse",
     "ResolvedUserModelRoute",
     "UserModelChoice",
@@ -1138,6 +1183,7 @@ __all__ = [
     "register_settings_models_admin_routes",
     "request_owner_user_id",
     "resolve_user_model_choice",
+    "resolve_owner_model_authority",
     "user_model_authority_snapshot",
     "reload_user_providers",
     "user_models_router",
