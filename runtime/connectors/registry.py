@@ -171,10 +171,11 @@ _CATALOG: dict[ToolVendor, ToolDefinition] = {
         quota_kind="rate_ceiling",
     ),
 }
+_VENDOR_ORDER: tuple[ToolVendor, ...] = ("youtube", "polygon", "fmp", "edgar")
 
 
 def tool_catalog() -> tuple[ToolDefinition, ...]:
-    return tuple(_CATALOG[vendor] for vendor in ("youtube", "polygon", "fmp", "edgar"))
+    return tuple(_CATALOG[vendor] for vendor in _VENDOR_ORDER)
 
 
 def _definition(vendor: str) -> ToolDefinition:
@@ -255,7 +256,7 @@ def _parse_record(key: str, value: object) -> ToolConnectionRecord:
         not isinstance(value[name], str) for name in _RECORD_FIELDS - {"record_version"}
     ):
         raise ToolConnectionIntegrityError("tool connection registry entry has invalid types")
-    record = ToolConnectionRecord(**value)  # type: ignore[arg-type]
+    record = ToolConnectionRecord(**value)
     definition = _definition(record.vendor)
     try:
         updated = datetime.fromisoformat(record.updated_at)
@@ -280,7 +281,7 @@ def _parse_pending(value: object) -> PendingDeletion:
         not isinstance(value[name], str) for name in _PENDING_FIELDS
     ):
         raise ToolConnectionIntegrityError("tool connection pending deletion is invalid")
-    item = PendingDeletion(**value)  # type: ignore[arg-type]
+    item = PendingDeletion(**value)
     _definition(item.vendor)
     if (
         _CRED_ID.fullmatch(item.cred_id) is None
