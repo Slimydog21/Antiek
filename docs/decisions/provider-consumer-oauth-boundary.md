@@ -1,6 +1,6 @@
 # Provider consumer OAuth boundary
 
-**Decision date:** 2026-08-12  
+**Decision date:** 2026-08-12
 **Status:** Ratified for v1
 
 Antiek v1 supports provider API keys for server-side inference. It does not import, copy, scrape, or directly use ChatGPT, Claude, or Grok consumer-subscription credentials.
