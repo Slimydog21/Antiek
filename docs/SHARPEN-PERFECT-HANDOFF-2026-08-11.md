@@ -156,10 +156,15 @@ single-writer), run Python analysis (exec_backend), and fetch sources. Gaps:
   + `~/.prime/agent/skills/frontend-craft/SKILL.md` — the design bar.
 
 **GAPS (DO-NOW):**
-1. **Wheel-of-styles UI**: a `StyleWheel` component in the reading/artifact
-   view: (a) buttons to pick a style for generating/re-generating an artifact,
-   (b) fork + edit a style, (c) save new styles into the wheel. Backend style
-   registry exists — surface it (check `substrate/html_projection/` merge).
+1. **Wheel-of-styles UI**: the backend API is COMPLETE (verified on main):
+   `GET /styles` (wheel = builtins + user forks), `POST /styles` (fork/create,
+   builtin names 409), `DELETE /styles/{name}`, `GET /artifacts/{id}/render`
+   (deterministic restyle, no model call) — `interfaces/research/api/style_routes.py`,
+   `substrate/styles/store.py`, `services/html_projection/`. The FRONTEND has
+   ZERO consumers (verified). Build a `StyleWheel` component in the
+   reading/artifact view: (a) buttons to pick a style for
+   generating/re-generating an artifact, (b) fork + edit a style, (c) save new
+   styles into the wheel (POST /styles).
 2. **Universal asset→HTML**: extend the doc→HTML lane to *every* ingestable
    asset (URL, PDF, Office docs via AnyDoc, EPUB via acquisition ceremony,
    arxiv papers) so the reader can open ANYTHING as sanitized HTML with
