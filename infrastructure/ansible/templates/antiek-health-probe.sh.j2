@@ -12,7 +12,7 @@
 set -euo pipefail
 
 set -a
-source /etc/antiek/secrets.env
+source "{{ antiek_secrets_file }}"
 set +a
 
-exec /opt/antiek/tools/ops/health_probe.sh "$@"
+exec "{{ antiek_install_dir }}/tools/ops/health_probe.sh" "$@"
