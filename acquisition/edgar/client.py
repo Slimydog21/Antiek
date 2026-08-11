@@ -46,6 +46,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from runtime.byok.store import CredentialIntegrityError, load_credential
 from runtime.connectors.base import (
     ConnectorDescriptor,
     ConnectorError,
@@ -199,6 +200,10 @@ class EdgarConnector(PasteKeyConnector):
         self,
         *,
         contact: str | None = None,
+        contact_cred_id: str | None = None,
+        artifact_path: str | None = None,
+        key_bytes: bytes | None = None,
+        key_file: str | None = None,
         client: httpx.Client | None = None,
         governor: VendorRateGovernor | None = None,
         state_dir: str | None = None,
@@ -208,13 +213,17 @@ class EdgarConnector(PasteKeyConnector):
     ) -> None:
         super().__init__(cred_id=None)  # keyless — always
         resolved = contact if contact is not None else os.environ.get(_ENV_CONTACT, "")
-        if not resolved.strip():
+        if not resolved.strip() and contact_cred_id is None:
             raise EdgarContactRequired(
                 "SEC EDGAR requires a descriptive User-Agent with contact info. "
                 f"Set {_ENV_CONTACT} (an email) or pass contact=... — refusing "
                 "to send without one."
             )
-        self._contact = resolved.strip()
+        self._contact = resolved.strip() or None
+        self._contact_cred_id = contact_cred_id
+        self._contact_artifact_path = artifact_path
+        self._contact_key_bytes = key_bytes
+        self._contact_key_file = key_file
         self._owns_client = client is None
         self._client = client if client is not None else httpx.Client(timeout=timeout_s)
         if governor is not None:
@@ -232,7 +241,22 @@ class EdgarConnector(PasteKeyConnector):
     @property
     def user_agent(self) -> str:
         """The SEC-mandated descriptive UA — ``Antiek/1 {contact}`` (spec §5.7)."""
-        return f"Antiek/1 {self._contact}"
+        contact = self._contact
+        if contact is None and self._contact_cred_id is not None:
+            try:
+                contact = load_credential(
+                    self._contact_cred_id,
+                    artifact_path=self._contact_artifact_path,
+                    key_bytes=self._contact_key_bytes,
+                    key_file=self._contact_key_file,
+                ).reveal()
+            except (KeyError, CredentialIntegrityError) as exc:
+                raise EdgarContactRequired(
+                    "SEC EDGAR contact credential is unavailable; refusing to send"
+                ) from exc
+        if not contact:
+            raise EdgarContactRequired("SEC EDGAR contact is unavailable; refusing to send")
+        return f"Antiek/1 {contact}"
 
     @property
     def governor(self) -> VendorRateGovernor:

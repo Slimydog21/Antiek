@@ -38,6 +38,7 @@ from acquisition.edgar.client import (  # noqa: E402
     EdgarContactRequired,
     parse_search_response,
 )
+from runtime.byok.store import delete_credential, store_credential  # noqa: E402
 from runtime.connectors.base import KeyShapeError, RateSpec  # noqa: E402
 from runtime.connectors.rate_governor import (  # noqa: E402
     VendorBanned,
@@ -171,6 +172,28 @@ def test_user_agent_header_on_the_request(tmp_path: Path) -> None:
     ua = requests[0].headers["user-agent"]
     assert ua == f"Antiek/1 {_CONTACT}"
     assert "Antiek" in ua and _CONTACT in ua  # descriptive, per SEC's mandate
+
+
+def test_credential_backed_contact_is_lazy_and_disconnect_refuses_send(tmp_path: Path) -> None:
+    artifact = str(tmp_path / "credentials.enc")
+    key = b"e" * 32
+    cred_id = store_credential(
+        "edgar-contact", _CONTACT, pipeline_kind="connector_edgar",
+        owner_user_id="user-a", artifact_path=artifact, key_bytes=key,
+    )
+    requests: list[httpx.Request] = []
+    connector = EdgarConnector(
+        contact_cred_id=cred_id, artifact_path=artifact, key_bytes=key,
+        client=httpx.Client(transport=httpx.MockTransport(
+            lambda request: (requests.append(request) or httpx.Response(200, json={"hits": {"hits": []}}))
+        )),
+        governor=VendorRateGovernor("edgar", RateSpec(8, 1.0), state_dir=str(tmp_path / "rate")),
+    )
+    assert requests == []
+    delete_credential(cred_id, artifact_path=artifact)
+    with pytest.raises(EdgarContactRequired):
+        connector.search("liquidity")
+    assert requests == []
 
 
 # ── (a) URL construction ──────────────────────────────────────────────────

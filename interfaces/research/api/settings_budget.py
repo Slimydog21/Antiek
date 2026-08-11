@@ -1311,6 +1311,10 @@ def register_settings_budget_routes(app: FastAPI) -> None:
     from .byot_usage_routes import register_byot_usage_routes
 
     register_byot_usage_routes(app)
+    # Owner-scoped BYO data tools (YouTube, Polygon, FMP, EDGAR).
+    from .settings_tool_connections import register_settings_tool_connection_routes
+
+    register_settings_tool_connection_routes(app)
 
 
 __all__ = [
