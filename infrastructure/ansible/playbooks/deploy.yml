@@ -81,7 +81,9 @@
     # unconditionally is fine.
     - name: refresh editable install + extras
       ansible.builtin.pip:
-        name: "{{ antiek_install_dir }}[pdf,urls,embedding]"
+        # docs: firecrawl-anydoc binding (Office/ODF/RTF/CSV ingest); pdf also
+# carries pypdfium2 (DeepSeek-OCR-2 scanned-PDF rasterization).
+name: "{{ antiek_install_dir }}[pdf,urls,embedding,docs]"
         editable: true
         virtualenv: "{{ antiek_install_dir }}/.venv"
       become_user: "{{ antiek_user }}"

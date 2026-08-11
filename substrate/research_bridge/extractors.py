@@ -4,10 +4,14 @@ Honest supported-type matrix:
 
     .txt / .md      plain UTF-8 decode                 — clean
     .html / .htm    html2text (falls back to bs4)      — clean
-    .pdf            pypdf text layer                   — clean for text PDFs;
-                                                          scanned/image PDFs
-                                                          yield little/no text
-                                                          (degrades, flagged)
+    .pdf            pypdf text layer, then DeepSeek-OCR-2   — text PDFs clean;
+                    fallback for scanned/image PDFs (no     OCR flagged degraded
+                    text layer) when the local OCR service
+                    is reachable
+    .png/.jpg/.jpeg/
+    .webp/.bmp/.tif/
+    .tiff/.gif      DeepSeek-OCR-2 local VLM (image OCR)    — clean for scans,
+                                                              photos, handwriting
     Office / ODF /
     RTF / CSV       optional firecrawl-anydoc binding  — clean GFM markdown
     other / binary  UNSUPPORTED                         — fails loudly
@@ -50,6 +54,18 @@ _ANYDOC_FORMAT_BY_EXTENSION = {
     "csv": "csv",
 }
 
+# Image inputs are OCR'd by the local DeepSeek-OCR-2 VLM (substrate.research_bridge.ocr).
+_IMAGE_EXTENSIONS = ("png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif")
+
+_IMAGE_CONTENT_TYPES = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/bmp": "bmp",
+    "image/tiff": "tif",
+    "image/gif": "gif",
+}
+
 _CONTENT_TYPE_EXTENSIONS = {
     "application/msword": "doc",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
@@ -70,6 +86,7 @@ _CONTENT_TYPE_EXTENSIONS = {
     "text/rtf": "rtf",
     "text/csv": "csv",
     "application/csv": "csv",
+    **_IMAGE_CONTENT_TYPES,
     # EPUB is intentionally recognized only so it fails closed instead of
     # reaching UTF-8 sniffing; its authorized acquisition path owns conversion.
     "application/epub+zip": "epub",
@@ -83,10 +100,11 @@ SUPPORTED_EXTENSIONS = (
     "html",
     "htm",
     "pdf",
+    *_IMAGE_EXTENSIONS,
     *_ANYDOC_FORMAT_BY_EXTENSION,
 )
 # Documented as degrading rather than clean — surfaced in the result.
-DEGRADING_EXTENSIONS = ("pdf",)
+DEGRADING_EXTENSIONS = ("pdf", *_IMAGE_EXTENSIONS)
 
 
 class _AnydocBinding(Protocol):
@@ -155,6 +173,8 @@ def extract_text(
         return _extract_html(data)
     if ext == "pdf":
         return _extract_pdf(data)
+    if ext in _IMAGE_EXTENSIONS:
+        return _extract_image(data, filename=filename, content_type=content_type)
     if ext in _ANYDOC_FORMAT_BY_EXTENSION:
         return _extract_via_anydoc(data, filename=filename, content_type=content_type)
     if not ext:
@@ -288,14 +308,10 @@ def _extract_pdf(data: str | bytes | bytearray) -> ExtractionResult:
         return ExtractionResult(ok=False, reason=f"PDF parse failed: {type(exc).__name__}")
     text = "\n\n".join(p for p in parts if p.strip())
     if not text.strip():
-        # Scanned/image PDF with no text layer — honest about the degrade.
-        return ExtractionResult(
-            ok=False,
-            kind="pdf",
-            extractor="pypdf",
-            degraded=True,
-            reason="PDF has no extractable text layer (scanned/image PDF; OCR is out of scope)",
-        )
+        # Scanned/image PDF with no text layer — escalate to the local
+        # DeepSeek-OCR-2 service when it is reachable, otherwise stay
+        # honest about the degrade (never pretend OCR happened).
+        return _ocr_scanned_pdf(data)
     return ExtractionResult(
         ok=True,
         text=text,
@@ -303,3 +319,110 @@ def _extract_pdf(data: str | bytes | bytearray) -> ExtractionResult:
         extractor="pypdf",
         degraded=True,
     )  # text PDFs can still drop layout/tables
+
+
+def _ocr_scanned_pdf(data: str | bytes | bytearray) -> ExtractionResult:
+    """Scanned/image-only PDF → DeepSeek-OCR-2 (rasterize + OCR every page).
+
+    Opportunistic: when the local OCR service is unreachable the result is
+    the historical honest failure (augmented with the actionable reason),
+    never a silent no-op and never a fake success.
+    """
+    from substrate.research_bridge import ocr
+
+    if not ocr.ocr_available():
+        return ExtractionResult(
+            ok=False,
+            kind="pdf",
+            extractor="pypdf",
+            degraded=True,
+            reason=(
+                "PDF has no extractable text layer (scanned/image PDF) and the "
+                f"DeepSeek-OCR-2 service is unavailable at {ocr.base_url()} "
+                "(start the OCR server, set ANTIEK_OCR_BASE_URL, or disable OCR "
+                "with ANTIEK_OCR_ENABLED=0)"
+            ),
+        )
+    payload = data if isinstance(data, (bytes, bytearray)) else data.encode("utf-8")
+    try:
+        markdown = ocr.ocr_pdf(payload)
+    except ocr.OcrError as exc:
+        return ExtractionResult(
+            ok=False,
+            kind="pdf",
+            extractor="deepseek-ocr2",
+            converter_version=ocr.CONVERTER_VERSION_OCR,
+            degraded=True,
+            reason=f"scanned PDF OCR failed: {exc}",
+        )
+    if not markdown.strip():
+        return ExtractionResult(
+            ok=False,
+            kind="pdf",
+            extractor="deepseek-ocr2",
+            converter_version=ocr.CONVERTER_VERSION_OCR,
+            degraded=True,
+            reason="scanned PDF OCR returned empty markdown",
+        )
+    return ExtractionResult(
+        ok=True,
+        text=markdown,
+        kind="pdf",
+        extractor="deepseek-ocr2",
+        converter_version=ocr.CONVERTER_VERSION_OCR,
+        degraded=True,
+    )  # OCR can drop layout/hallucinate — flagged honest
+
+
+def _extract_image(
+    data: str | bytes | bytearray,
+    *,
+    filename: str | None,
+    content_type: str | None,
+) -> ExtractionResult:
+    """Image (scan/photo/screenshot) → DeepSeek-OCR-2 VLM → Markdown."""
+    from substrate.research_bridge import ocr
+
+    ext = _ext_of(filename, content_type)
+    mime = ocr.IMAGE_MIME.get(ext, "image/png")
+    if not ocr.ocr_available():
+        return ExtractionResult(
+            ok=False,
+            kind="markdown",
+            extractor="deepseek-ocr2",
+            degraded=True,
+            reason=(
+                f"image OCR unavailable: no DeepSeek-OCR-2 service at {ocr.base_url()} "
+                "(start the OCR server, set ANTIEK_OCR_BASE_URL, or disable OCR "
+                "with ANTIEK_OCR_ENABLED=0)"
+            ),
+        )
+    payload = data if isinstance(data, (bytes, bytearray)) else data.encode("utf-8")
+    try:
+        markdown = ocr.ocr_image(payload, mime=mime)
+    except ocr.OcrError as exc:
+        return ExtractionResult(
+            ok=False,
+            kind="markdown",
+            extractor="deepseek-ocr2",
+            converter_version=ocr.CONVERTER_VERSION_OCR,
+            degraded=True,
+            reason=f"image OCR failed: {exc}",
+        )
+    if not markdown.strip():
+        return ExtractionResult(
+            ok=False,
+            kind="markdown",
+            extractor="deepseek-ocr2",
+            converter_version=ocr.CONVERTER_VERSION_OCR,
+            degraded=True,
+            reason="image OCR returned empty markdown",
+        )
+    return ExtractionResult(
+        ok=True,
+        text=markdown,
+        kind="markdown",
+        extractor="deepseek-ocr2",
+        converter_version=ocr.CONVERTER_VERSION_OCR,
+        degraded=True,
+    )  # OCR can drop layout/hallucinate — flagged honest
