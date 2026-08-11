@@ -4,9 +4,13 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from interfaces.research.api.settings_tool_connections import (
+    register_settings_tool_connection_routes,
+)
 from runtime.byok.store import list_credentials
 from substrate.auth.magic_link import mint_session_cookie
 
@@ -97,6 +101,37 @@ def test_unauthenticated_and_spoofed_headers_refuse(client) -> None:
         headers={"X-User-Id": "user-a", "X-Auth-Method": "antiek_session_cookie"},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "auth_method",
+    ["cloudflare_access_email", "cloudflare_service_token", "bearer_token"],
+)
+def test_shared_operator_auth_cannot_claim_owner_scoped_tools(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    auth_method: str,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_TOOL_CONNECTIONS_PATH", str(tmp_path / "tools.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "credentials.enc"))
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "master.key"))
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _shared_operator_identity(request: Request, call_next):
+        request.state.user_id = "__operator__"
+        request.state.auth_method = auth_method
+        return await call_next(request)
+
+    register_settings_tool_connection_routes(app)
+    with TestClient(app) as shared_client:
+        assert shared_client.get("/settings/tools").status_code == 401
+        assert shared_client.put(
+            "/settings/tools/youtube", json={"credential": SECRET}
+        ).status_code == 401
+        assert shared_client.delete("/settings/tools/youtube").status_code == 401
+    assert list_credentials(artifact_path=str(tmp_path / "credentials.enc")) == []
 
 
 @pytest.mark.parametrize(

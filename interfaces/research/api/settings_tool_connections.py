@@ -30,6 +30,9 @@ _AUTHENTICATED_METHODS = frozenset(
         "bearer_token",
     }
 )
+_SHARED_OPERATOR_METHODS = frozenset(
+    {"cloudflare_access_email", "cloudflare_service_token", "bearer_token"}
+)
 
 
 class ToolQuotaResponse(BaseModel):
@@ -69,14 +72,18 @@ class ToolDisconnectResponse(BaseModel):
 def _owner(request: Request) -> str:
     owner_user_id = getattr(request.state, "user_id", None)
     auth_method = getattr(request.state, "auth_method", None)
+    normalized_owner = owner_user_id.strip() if isinstance(owner_user_id, str) else ""
     if (
-        not isinstance(owner_user_id, str)
-        or not owner_user_id.strip()
-        or len(owner_user_id) > 256
+        not normalized_owner
+        or len(normalized_owner) > 256
         or auth_method not in _AUTHENTICATED_METHODS
+        or (
+            normalized_owner == "__operator__"
+            and auth_method in _SHARED_OPERATOR_METHODS
+        )
     ):
         raise HTTPException(status_code=401, detail="authenticated user identity required")
-    return owner_user_id.strip()
+    return normalized_owner
 
 
 def _quota(snapshot: ToolConnectionSnapshot) -> ToolQuotaResponse:
