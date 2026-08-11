@@ -101,6 +101,7 @@ from runtime.byok.store import (
     store_credential,
 )
 from runtime.research_runner.byot_provider_catalog import (
+    BYOT_PROVIDER_PRESETS,
     ProviderCatalogId,
     canonical_catalog_id,
     get_model_variant,
@@ -488,13 +489,19 @@ class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
     base URL including any version prefix (e.g. ``https://api.openai.com/v1``)
     and the adapter appends ``/chat/completions`` — the dominant house
     pattern (openrouter/hermes/xiaomi/zai) that avoids the double-``/v1``
-    404 class documented in bootstrap.py."""
+    404 class documented in bootstrap.py. Server-owned presets instead use
+    their exact catalog-pinned base/path pair (OpenAI is root + ``/v1``)."""
 
     def __init__(self, record: UserModelRecord) -> None:
+        chat_completions_path = "/chat/completions"
+        if record.provider_catalog_id is not None:
+            chat_completions_path = get_provider_preset(
+                record.provider_catalog_id
+            ).chat_completions_path
         super().__init__(
             name=record.id,
             base_url=record.base_url or "",
-            chat_completions_path="/chat/completions",
+            chat_completions_path=chat_completions_path,
             # This endpoint is operator-supplied and therefore untrusted. It
             # can reflect Authorization in a response; upstream body text must
             # never enter ProviderError, which callers may expose or persist.
@@ -618,6 +625,26 @@ class UserModelsResponse(BaseModel):
     # up). They cannot resolve keys and clear at the next boot reconcile.
     stale_registered: list[str] = Field(default_factory=list)
     source: str = "settings user-model registry + byok credential store"
+
+
+class ProviderCatalogModelRow(BaseModel):
+    id: str
+    label: str
+    snapshot: str
+
+
+class ProviderCatalogRow(BaseModel):
+    catalog_id: ProviderCatalogId
+    display: str
+    provider_kind: ProviderKind
+    default_base_url: str
+    models: list[ProviderCatalogModelRow]
+    pricing_source: str
+
+
+class ProviderCatalogResponse(BaseModel):
+    providers: list[ProviderCatalogRow]
+    count: int
 
 
 class UserModelDeleteResponse(BaseModel):
@@ -998,7 +1025,33 @@ def _row(
 # Routes
 # ---------------------------------------------------------------------------
 
+models_catalog_router = APIRouter(prefix="/settings/models", tags=["settings"])
 user_models_router = APIRouter(prefix="/settings/models/user", tags=["settings"])
+
+
+@models_catalog_router.get("/catalog", response_model=ProviderCatalogResponse)
+def get_provider_catalog(request: Request) -> ProviderCatalogResponse:
+    """Return the stable, non-secret server-owned model onboarding catalog."""
+    request_owner_user_id(request)
+    providers = [
+        ProviderCatalogRow(
+            catalog_id=preset.catalog_id,
+            display=preset.display,
+            provider_kind=preset.adapter_kind,
+            default_base_url=preset.default_base_url,
+            models=[
+                ProviderCatalogModelRow(
+                    id=model.model_id,
+                    label=model.label,
+                    snapshot=model.snapshot,
+                )
+                for model in preset.models
+            ],
+            pricing_source=preset.pricing_source,
+        )
+        for preset in BYOT_PROVIDER_PRESETS
+    ]
+    return ProviderCatalogResponse(providers=providers, count=len(providers))
 
 
 @user_models_router.get("", response_model=UserModelsResponse)
@@ -1147,6 +1200,7 @@ def register_settings_models_admin_routes(app: FastAPI) -> None:
     settings-local mount seam; app.py stays untouched. The reload runs as
     a startup handler because ``create_app`` assigns
     ``app.state.registered_providers`` after route registration."""
+    app.include_router(models_catalog_router)
     app.include_router(user_models_router)
     # Production begins with no qualified paid route. Future provider-specific
     # bootstrap code must install exact catalog and adapter authorities here;
