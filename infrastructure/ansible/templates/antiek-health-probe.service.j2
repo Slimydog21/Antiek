@@ -11,6 +11,8 @@ Documentation=https://github.com/Slimydog21/Antiek/blob/main/tools/ops/health_pr
 
 [Service]
 Type=oneshot
+User={{ antiek_user }}
+Group={{ antiek_group }}
 ExecStart=/usr/local/bin/antiek-health-probe
 StandardOutput=journal
 StandardError=journal

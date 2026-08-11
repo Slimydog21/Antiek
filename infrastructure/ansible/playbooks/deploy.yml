@@ -130,6 +130,35 @@
       register: antiek_arxiv_oai_sync_timer
       tags: [systemd, arxiv_oai]
 
+    - name: re-render Antiek health-probe wrapper
+      ansible.builtin.template:
+        src: ../templates/antiek-health-probe.sh.j2
+        dest: /usr/local/bin/antiek-health-probe
+        owner: root
+        group: "{{ antiek_group }}"
+        mode: "0750"
+      tags: [systemd, health_probe]
+
+    - name: re-render antiek-health-probe.service
+      ansible.builtin.template:
+        src: ../templates/antiek-health-probe.service.j2
+        dest: /etc/systemd/system/antiek-health-probe.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_health_probe_unit
+      tags: [systemd, health_probe]
+
+    - name: re-render antiek-health-probe.timer
+      ansible.builtin.template:
+        src: ../templates/antiek-health-probe.timer.j2
+        dest: /etc/systemd/system/antiek-health-probe.timer
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_health_probe_timer
+      tags: [systemd, health_probe]
+
     - name: re-render antiek-backup.service
       ansible.builtin.template:
         src: ../templates/antiek-backup.service.j2
@@ -191,8 +220,18 @@
     - name: systemd daemon-reload if any unit changed
       ansible.builtin.systemd:
         daemon_reload: true
-      when: antiek_unit.changed or antiek_continuous_unit.changed or antiek_arxiv_oai_sync_unit.changed or antiek_arxiv_oai_sync_timer.changed or antiek_backup_unit.changed or antiek_backup_timer.changed or antiek_backup_freshness_unit.changed or antiek_backup_freshness_timer.changed
-      tags: [systemd]
+      when: (antiek_unit.changed | default(false)) or (antiek_continuous_unit.changed | default(false)) or (antiek_arxiv_oai_sync_unit.changed | default(false)) or (antiek_arxiv_oai_sync_timer.changed | default(false)) or (antiek_health_probe_unit.changed | default(false)) or (antiek_health_probe_timer.changed | default(false)) or (antiek_backup_unit.changed | default(false)) or (antiek_backup_timer.changed | default(false)) or (antiek_backup_freshness_unit.changed | default(false)) or (antiek_backup_freshness_timer.changed | default(false))
+      tags: [systemd, continuous, arxiv_oai, health_probe, backup]
+
+    - name: verify Antiek health-probe systemd units
+      ansible.builtin.command:
+        argv:
+          - systemd-analyze
+          - verify
+          - /etc/systemd/system/antiek-health-probe.service
+          - /etc/systemd/system/antiek-health-probe.timer
+      changed_when: false
+      tags: [systemd, health_probe]
 
     - name: enable antiek-continuous-research.service
       ansible.builtin.systemd:
@@ -213,6 +252,32 @@
         enabled: true
         state: started
       tags: [systemd, arxiv_oai]
+
+    - name: enable and start antiek-health-probe.timer
+      ansible.builtin.systemd:
+        name: antiek-health-probe.timer
+        enabled: true
+        state: started
+      tags: [systemd, health_probe]
+
+    - name: re-arm antiek-health-probe.timer after timer unit changes
+      ansible.builtin.systemd:
+        name: antiek-health-probe.timer
+        state: restarted
+      when: antiek_health_probe_timer.changed
+      tags: [systemd, health_probe]
+
+    - name: verify antiek-health-probe.timer is enabled
+      ansible.builtin.command:
+        argv: [systemctl, is-enabled, --quiet, antiek-health-probe.timer]
+      changed_when: false
+      tags: [systemd, health_probe]
+
+    - name: verify antiek-health-probe.timer is active
+      ansible.builtin.command:
+        argv: [systemctl, is-active, --quiet, antiek-health-probe.timer]
+      changed_when: false
+      tags: [systemd, health_probe]
 
     - name: remove legacy backup cron job
       ansible.builtin.file:
