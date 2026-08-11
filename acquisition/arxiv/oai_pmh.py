@@ -3,7 +3,8 @@ license channel.
 
 WHY this and not the export SEARCH API: the search API got the box IP-banned
 (project_researchmaxx_arxiv.md, 2026-05-17). OAI-PMH at
-``export.arxiv.org/oai2`` is arXiv's DESIGNATED bulk channel
+``oaipmh.arxiv.org/oai`` is arXiv's DESIGNATED bulk channel (moved from
+``export.arxiv.org/oai2``, which 301s, in 2026-08)
 (https://info.arxiv.org/help/oa/index.html) and, with ``metadataPrefix=arXiv``,
 the only interface carrying the per-paper ``<license>`` element — the rights
 source of truth for the census.
@@ -41,6 +42,7 @@ from pathlib import Path
 import httpx
 
 from acquisition.arxiv.oai_records import parse_records
+from acquisition.arxiv.rate_governor import arxiv_governed_client
 from acquisition.arxiv.throttle import ArxivThrottle
 from substrate.schemas.documents import (
     ArxivOaiRecord,
@@ -48,7 +50,12 @@ from substrate.schemas.documents import (
     _TierTally,  # package-internal accumulator
 )
 
-DEFAULT_OAI_BASE_URL = "https://export.arxiv.org/oai2"
+# Canonical endpoint since 2026-08: arXiv moved the OAI-PMH service from
+# export.arxiv.org/oai2 (now a 301) to oaipmh.arxiv.org/oai. The harvester
+# ALSO follows redirects defensively (a stale env override or a future move
+# must not silently kill the nightly sync), but this is the endpoint the
+# production client targets directly.
+DEFAULT_OAI_BASE_URL = "https://oaipmh.arxiv.org/oai"
 DEFAULT_METADATA_PREFIX = "arXiv"
 DEFAULT_USER_AGENT = "Antiek/0.1 (acquisition.arxiv.oai_pmh)"
 DEFAULT_TIMEOUT_S = 30.0
@@ -244,10 +251,14 @@ class OaiPmhHarvester:
                 return self._client.get(
                     url, headers=headers, timeout=self._timeout_s
                 )
-            with httpx.Client(
-                timeout=self._timeout_s,  # instance default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S
+            # Redirect-safe governed client: follows 301s (export.arxiv.org/oai2
+            # → oaipmh.arxiv.org/oai, 2026-08) AND applies the host-global
+            # per-hop arXiv gate to every hop — the initial hop is claimed by the
+            # outer governed_request below, the redirect hop(s) by the hook.
+            with arxiv_governed_client(
+                throttle=self._throttle, follow_redirects=True, timeout=self._timeout_s
             ) as c:
-                return c.get(url, headers=headers, timeout=self._timeout_s)
+                return c.get(url, headers=headers)
 
         resp = governed_request(send, throttle=self._throttle)
         resp.raise_for_status()
