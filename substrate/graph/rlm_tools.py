@@ -813,7 +813,7 @@ def equipped_llm_batch(
                         f"\n\n{PRIME_EVIDENCE_LABEL}\n{outcome.evidence.text}"
                     )
 
-    def _run_one(index: int, task: dict) -> str:
+    def _run_one(index: int, task: dict[str, Any]) -> str:
         sub = _build_sub()
         sub.register_builtins(task.get("tools", []))
         return sub.run(effective_prompts[index])
