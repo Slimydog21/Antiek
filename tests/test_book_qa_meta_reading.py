@@ -252,10 +252,14 @@ def test_talk_to_book_no_extractable_text_fails_gracefully(db):
     provider = register_fake("should never be called")
     con = connect_read(db)
     try:
+        def _must_not_dispatch(_prompt: str):
+            raise AssertionError("no-context owner selection must not dispatch")
+
         result = answer_book_question(
             con, document_id="doc-scanned", question="what is this about?",
             model=StubEmbedding(), investigation_id="read-doc-scanned",
             config=_config_for("user_agent"),
+            authorized_dispatch=_must_not_dispatch,
         )
     finally:
         con.close()

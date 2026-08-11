@@ -45,12 +45,14 @@ __all__ = [
 
 
 class KeyUsageEntry(BaseModel):
-    """One key's usage state."""
+    """One key's usage state; legacy remaining stays settled-only."""
 
     api_key_id: str
     used_cents: int
     limit_cents: int | None
     remaining_cents: int | None
+    held_cents: int
+    available_cents: int | None
 
 
 class UsageSnapshotResponse(BaseModel):
@@ -77,6 +79,8 @@ class SetLimitResponse(BaseModel):
     limit_cents: int | None
     used_cents: int
     remaining_cents: int | None
+    held_cents: int
+    available_cents: int | None
 
 
 BalanceKind = Literal[
@@ -107,6 +111,8 @@ class BalanceResponse(BaseModel):
     window_label: str | None = None
     resets_at: int | None = None
     note: str | None = None
+    held_cents: int = 0
+    available_cents: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +218,8 @@ def get_usage(request: Request) -> UsageSnapshotResponse:
                 used_cents=row.used_cents,
                 limit_cents=row.limit_cents,
                 remaining_cents=row.remaining_cents,
+                held_cents=row.held_cents,
+                available_cents=row.available_cents,
             )
             for row in rows
         ],
@@ -247,12 +255,16 @@ def set_usage_limit(
             limit_cents=payload.limit_cents,
             used_cents=0,
             remaining_cents=payload.limit_cents,
+            held_cents=0,
+            available_cents=payload.limit_cents,
         )
     return SetLimitResponse(
         api_key_id=row.api_key_id,
         limit_cents=row.limit_cents,
         used_cents=row.used_cents,
         remaining_cents=row.remaining_cents,
+        held_cents=row.held_cents,
+        available_cents=row.available_cents,
     )
 
 
@@ -274,6 +286,7 @@ def get_balance(api_key_id: str, request: Request) -> BalanceResponse:
     catalog_id: str = record.provider_catalog_id or "unknown"
     base_url: str = record.base_url or ""
     ledger = _get_ledger()
+    usage = ledger.key_usage(api_key_id, owner_user_id)
 
     # Load the decrypted credential for the adapter call.
     try:
@@ -284,6 +297,8 @@ def get_balance(api_key_id: str, request: Request) -> BalanceResponse:
             catalog_id=catalog_id,
             kind="unavailable",
             note=f"credential load failed: {type(exc).__name__}: {exc}",
+            held_cents=usage.held_cents if usage is not None else 0,
+            available_cents=usage.available_cents if usage is not None else None,
         )
 
     snapshot: BalanceSnapshot = _fetch_balance(
@@ -294,7 +309,6 @@ def get_balance(api_key_id: str, request: Request) -> BalanceResponse:
         api_key_id=api_key_id,
         owner_user_id=owner_user_id,
     )
-
     return BalanceResponse(
         api_key_id=api_key_id,
         catalog_id=snapshot.catalog_id,
@@ -307,6 +321,8 @@ def get_balance(api_key_id: str, request: Request) -> BalanceResponse:
         window_label=snapshot.window_label,
         resets_at=snapshot.resets_at,
         note=snapshot.note,
+        held_cents=usage.held_cents if usage is not None else 0,
+        available_cents=usage.available_cents if usage is not None else None,
     )
 
 
