@@ -75,7 +75,10 @@ dependencies = [
 [project.optional-dependencies]
 # Acquisition-path-specific dependencies. Pull these in only where needed.
 arxiv = ["arxiv>=2.1"]
-pdf = ["pypdf>=4.3", "pdfplumber>=0.11"]
+# pypdfium2: PDF page rasterization for the DeepSeek-OCR-2 scanned-PDF
+# fallback (substrate/research_bridge/ocr.py); self-contained wheel, no
+# poppler dependency.
+pdf = ["pypdf>=4.3", "pdfplumber>=0.11", "pypdfium2>=5.11"]
 docs = ["firecrawl-anydoc>=0.1.6,<0.2"]
 urls = ["html2text>=2024.2", "beautifulsoup4>=4.12"]
 embedding = ["sentence-transformers>=3.0", "numpy>=1.26"]

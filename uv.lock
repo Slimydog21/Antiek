@@ -202,6 +202,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pynacl" },
     { name = "python-dateutil" },
+    { name = "python-multipart" },
     { name = "pyyaml" },
     { name = "reportlab" },
     { name = "requests" },
@@ -252,6 +253,7 @@ notdiamond = [
 pdf = [
     { name = "pdfplumber" },
     { name = "pypdf" },
+    { name = "pypdfium2" },
 ]
 remote-exec = [
     { name = "daytona-sdk" },
@@ -297,11 +299,13 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.3" },
     { name = "pynacl", specifier = ">=1.5" },
     { name = "pypdf", marker = "extra == 'pdf'", specifier = ">=4.3" },
+    { name = "pypdfium2", marker = "extra == 'pdf'", specifier = ">=5.11" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.6" },
     { name = "python-dateutil", specifier = ">=2.9" },
+    { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "reportlab", specifier = ">=4.0" },
     { name = "requests", specifier = ">=2.31" },
