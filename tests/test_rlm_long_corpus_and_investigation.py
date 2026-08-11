@@ -5,11 +5,40 @@ from __future__ import annotations
 from decimal import Decimal
 
 from orchestration.rlm.long_corpus import LongCorpusBatch, synthesize_long_corpus
+from orchestration.rlm.prime_agent_backend import (
+    PrimeAgentEvidence,
+    PrimeAgentOutcome,
+    PrimeAgentReceipt,
+    PrimeAgentTerminalState,
+)
 from orchestration.rlm.rlm_investigation import (
     RLMInvestigationConfig,
     RLMIterationOutcome,
     run_rlm_investigation,
 )
+
+
+class _PrimeStub:
+    def __init__(self, *, evidence: str | None):
+        self.evidence = evidence
+        self.requests = []
+
+    def run(self, request):
+        self.requests.append(request)
+        state = (
+            PrimeAgentTerminalState.SUCCESS
+            if self.evidence is not None
+            else PrimeAgentTerminalState.FAILED
+        )
+        return PrimeAgentOutcome(
+            request=request,
+            evidence=(
+                PrimeAgentEvidence(self.evidence)
+                if self.evidence is not None
+                else None
+            ),
+            receipt=PrimeAgentReceipt(state, (), 0, 1, 0),
+        )
 
 # ── RLM-2 long-corpus synthesizer ────────────────────────────────────
 
@@ -58,6 +87,54 @@ def test_long_corpus_session_completes(monkeypatch):
         reduce_batch_outputs_fn=lambda outputs: ("final", Decimal("0.05")),
     )
     assert session.state.status == "completed"
+
+
+def test_long_corpus_prime_disabled_preserves_inputs_and_calls(monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    seen = []
+    final, _ = synthesize_long_corpus(
+        corpus_chunk_ids=["c-1"], chunk_token_counts={"c-1": 1},
+        target_batch_token_budget=10, investigation_id="inv-default",
+        synthesize_batch_fn=lambda batch: ("canonical", Decimal("0")),
+        reduce_batch_outputs_fn=lambda outputs: (seen.extend(outputs) or "final", Decimal("0")),
+    )
+    assert final == "final"
+    assert seen == ["canonical"]
+
+
+def test_long_corpus_prime_success_is_labeled_and_receipted(monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    prime = _PrimeStub(evidence="prime clue")
+    receipts = []
+    seen = []
+    synthesize_long_corpus(
+        corpus_chunk_ids=["c-1"], chunk_token_counts={"c-1": 1},
+        target_batch_token_budget=10, investigation_id="inv-prime",
+        synthesize_batch_fn=lambda batch: ("canonical", Decimal("0")),
+        reduce_batch_outputs_fn=lambda outputs: (seen.extend(outputs) or "final", Decimal("0")),
+        prime_backend=prime, prime_outcome_sink=receipts.append,
+    )
+    assert seen[0] == "canonical"
+    assert "Supplemental Prime Agent evidence; non-canonical" in seen[1]
+    assert "prime clue" in seen[1]
+    assert len(prime.requests) == len(receipts) == 1
+    assert receipts[0].request == prime.requests[0]
+
+
+def test_long_corpus_prime_failure_preserves_canonical_inputs(monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    prime = _PrimeStub(evidence=None)
+    seen = []
+    receipts = []
+    synthesize_long_corpus(
+        corpus_chunk_ids=["c-1"], chunk_token_counts={"c-1": 1},
+        target_batch_token_budget=10, investigation_id="inv-fail",
+        synthesize_batch_fn=lambda batch: ("canonical", Decimal("0")),
+        reduce_batch_outputs_fn=lambda outputs: (seen.extend(outputs) or "final", Decimal("0")),
+        prime_backend=prime, prime_outcome_sink=receipts.append,
+    )
+    assert seen == ["canonical"]
+    assert receipts[0].receipt.state is PrimeAgentTerminalState.FAILED
 
 
 # ── RLM-3 investigation orchestrator ─────────────────────────────────
@@ -126,3 +203,28 @@ def test_rlm_investigation_stops_at_max_iterations(monkeypatch):
     # plan_iteration runs max_iterations times + 1 final = 3
     # But session completes via session.complete(), not max.
     assert session.state.status == "completed"
+
+
+def test_investigation_prime_success_and_failure_at_final_boundary(monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+
+    def plan(state, questions):
+        return RLMIterationOutcome(1, "done", (), Decimal("0"), False)
+
+    for evidence, expected_count in (("prime clue", 2), (None, 1)):
+        prime = _PrimeStub(evidence=evidence)
+        seen = []
+
+        def synthesize(inputs, *, target=seen):
+            target.extend(inputs)
+            return "final", Decimal("0")
+
+        run_rlm_investigation(
+            RLMInvestigationConfig("inv", "question", max_iterations=1),
+            plan_iteration_fn=plan,
+            final_synthesis_fn=synthesize,
+            prime_backend=prime,
+        )
+        assert len(seen) == expected_count
+        if evidence is not None:
+            assert "non-canonical" in seen[-1]

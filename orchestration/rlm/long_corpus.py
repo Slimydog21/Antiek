@@ -15,14 +15,22 @@ RLM-1 but for synthesis instead of wrestling.
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from decimal import Decimal
 
+from .prime_agent_backend import (
+    PrimeAgentOutcome,
+    PrimeAgentRequest,
+    PrimeAgentRLMBackend,
+)
 from .session import (
     RLMSession,
     create_session,
     iterate_session,
 )
+
+PRIME_EVIDENCE_LABEL = "[Supplemental Prime Agent evidence; non-canonical]"
 
 
 @dataclass(frozen=True)
@@ -42,6 +50,8 @@ def synthesize_long_corpus(
     investigation_id: str,
     synthesize_batch_fn: Callable[[LongCorpusBatch], tuple[str, Decimal]],
     reduce_batch_outputs_fn: Callable[[list[str]], tuple[str, Decimal]],
+    prime_backend: PrimeAgentRLMBackend | None = None,
+    prime_outcome_sink: Callable[[PrimeAgentOutcome], None] | None = None,
 ) -> tuple[str, RLMSession]:
     """Synthesize across a long corpus via RLM batched mode.
 
@@ -94,6 +104,26 @@ def synthesize_long_corpus(
         iterate_session(session, summary=f"Synthesized {batch.batch_id}", cost_usd=cost)
         batch_outputs.append(output)
 
-    final, reduce_cost = reduce_batch_outputs_fn(batch_outputs)
+    reduction_inputs = list(batch_outputs)
+    if prime_backend is not None:
+        with suppress(Exception):
+            outcome = prime_backend.run(PrimeAgentRequest(
+                prompt="\n\n".join(batch_outputs),
+                workflow="rlm-long-corpus",
+                request_id=f"{investigation_id}:long-corpus:reduce",
+            ))
+            if prime_outcome_sink is not None:
+                with suppress(Exception):
+                    prime_outcome_sink(outcome)
+            if (
+                outcome.receipt.state.value == "success"
+                and outcome.evidence is not None
+                and outcome.evidence.supplemental
+            ):
+                reduction_inputs.append(
+                    f"{PRIME_EVIDENCE_LABEL}\n{outcome.evidence.text}"
+                )
+
+    final, reduce_cost = reduce_batch_outputs_fn(reduction_inputs)
     session.complete(final_summary=final)
     return (final, session)

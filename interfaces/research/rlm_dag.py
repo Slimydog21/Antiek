@@ -38,7 +38,13 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from orchestration.rlm.prime_agent_backend import (
+        PrimeAgentOutcome,
+        PrimeAgentRLMBackend,
+    )
 
 # Ensure repo root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -209,7 +215,7 @@ def _parse_json(text: str) -> Any:
                     continue
         raise ValueError(
             f"Could not parse JSON from planner response: {text[:500]}"
-        )
+        ) from None
 
 
 def plan_dag(
@@ -219,6 +225,8 @@ def plan_dag(
     context: str = "",
     decomposition_examples: list[dict] | None = None,
     model: str = "deepseek/deepseek-v4-pro",
+    prime_backend: PrimeAgentRLMBackend | None = None,
+    evidence_sink: Callable[[PrimeAgentOutcome], None] | None = None,
 ) -> Dag:
     """Dispatch the DAG planning sub-LLM. Returns a parsed ``Dag``.
 
@@ -244,6 +252,15 @@ def plan_dag(
     user_text = "\n".join(user_parts)
     prompt = DAG_PLANNER_SYSTEM_PROMPT + "\n\n" + user_text
 
+    from interfaces.research.rlm_repl import _with_prime_evidence
+
+    prompt = _with_prime_evidence(
+        prompt,
+        workflow="rlm_dag.plan",
+        invocation_key="plan",
+        backend=prime_backend,
+        evidence_sink=evidence_sink,
+    )
     raw = llm_query_fn(prompt)
     parsed = _parse_json(raw)
     return Dag.from_plan_json(
@@ -282,6 +299,8 @@ def execute_dag(
     verify_fn: Callable[..., Any] | None = None,
     *,
     max_retries_per_node: int = 2,
+    prime_backend: PrimeAgentRLMBackend | None = None,
+    evidence_sink: Callable[[PrimeAgentOutcome], None] | None = None,
 ) -> DagExecutionResult:
     """Execute a DAG layer by layer with verification at each layer.
 
@@ -332,11 +351,27 @@ def execute_dag(
             )
             prompts.append(prompt)
 
+        from interfaces.research.rlm_repl import _with_prime_evidence
+
+        prompts = [
+            _with_prime_evidence(
+                prompt,
+                workflow="rlm_dag.node",
+                invocation_key=node_id,
+                backend=prime_backend,
+                evidence_sink=evidence_sink,
+            )
+            for node_id, prompt in zip(
+                node_ids_this_layer, prompts, strict=True
+            )
+        ]
         batch_results = llm_batch_fn(prompts)
         total_calls += len(prompts)
         layer_answers: dict[str, str] = {
             nid: result
-            for nid, result in zip(node_ids_this_layer, batch_results)
+            for nid, result in zip(
+                node_ids_this_layer, batch_results, strict=False
+            )
         }
 
         for node in layer:
