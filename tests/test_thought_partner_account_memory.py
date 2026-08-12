@@ -34,12 +34,14 @@ class _CapturingProvider:
         self.calls: list[dict[str, Any]] = []
 
     def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
-        self.calls.append({
-            "model": model,
-            "prompt": prompt,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        })
+        self.calls.append(
+            {
+                "model": model,
+                "prompt": prompt,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+        )
         return RawProviderResponse(
             text='{"shape":"synthesis","synthesis_text":"ok"}',
             raw_usage={},
@@ -80,7 +82,11 @@ def _cookie(owner: str) -> dict[str, str]:
 
 
 def _seed(
-    db_path: str, *, owner: str, marker: str, predicate: str = "prefers",
+    db_path: str,
+    *,
+    owner: str,
+    marker: str,
+    predicate: str = "prefers",
 ) -> None:
     with connect_write(db_path, purpose="seed-thought-partner-memory") as con:
         write_memory_item(
@@ -147,7 +153,11 @@ def test_shared_or_forged_identity_gets_exact_no_memory_prompt(app_client) -> No
         "/thought-partner",
         cookies=_cookie("owner-b"),
         headers={"X-Owner-User-Id": "owner-a"},
-        json={"prompt": "help me choose", "system_context": "workspace", "owner_user_id": "owner-a"},
+        json={
+            "prompt": "help me choose",
+            "system_context": "workspace",
+            "owner_user_id": "owner-a",
+        },
     )
     assert forged.status_code == 200
     assert marker not in shared
@@ -155,14 +165,29 @@ def test_shared_or_forged_identity_gets_exact_no_memory_prompt(app_client) -> No
     assert shared == forged_provider.calls[0]["prompt"]
 
 
+@pytest.mark.parametrize("owner", ["__operator__", "__OPERATOR__", " shared ", "SERVICE", "Local"])
+def test_every_nondistinct_signed_owner_is_excluded_from_provider_memory(
+    app_client,
+    owner: str,
+) -> None:
+    client, db_path = app_client
+    marker = "NON DISTINCT OWNER PRIVATE MARKER"
+    _seed(db_path, owner=owner.strip(), marker=marker)
+    prompt = _post(client, _CapturingProvider(), owner=owner)
+    assert marker not in prompt
+
+
 def test_unauthenticated_local_uses_frozen_pre_feature_prompt(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db_path = str(tmp_path / "local.duckdb")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
     for name in (
-        "ANTIEK_AUTH_SECRET", "ANTIEK_OPERATOR_EMAIL", "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_AUTH_SECRET",
+        "ANTIEK_OPERATOR_EMAIL",
+        "ANTIEK_OPERATOR_TOKEN",
         "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -175,9 +200,13 @@ def test_unauthenticated_local_uses_frozen_pre_feature_prompt(
     )
 
     monkeypatch.setattr(app_module, "_retrieve_thought_partner_context", lambda *a, **k: [])
-    client = TestClient(app_module.create_app(
-        register_wrestling=False, register_providers=False, cors_origins=[],
-    ))
+    client = TestClient(
+        app_module.create_app(
+            register_wrestling=False,
+            register_providers=False,
+            cors_origins=[],
+        )
+    )
     provider = _CapturingProvider()
     register_provider(provider)
     response = client.post(
@@ -189,7 +218,8 @@ def test_unauthenticated_local_uses_frozen_pre_feature_prompt(
         THOUGHT_PARTNER_SYSTEM_PROMPT
         + "\n\nSYSTEM CONTEXT:\nbaseline workspace\n\n"
         + compose_thought_partner_prompt(
-            user_prompt="baseline question", selected_notes=[],
+            user_prompt="baseline question",
+            selected_notes=[],
         )
     )
     assert provider.calls[0]["prompt"] == frozen_pre_feature
@@ -197,7 +227,8 @@ def test_unauthenticated_local_uses_frozen_pre_feature_prompt(
 
 
 def test_provider_failure_cannot_reflect_memory_or_log_it(
-    app_client, caplog: pytest.LogCaptureFixture,
+    app_client,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     client, db_path = app_client
     marker = "DO NOT LEAK THIS MEMORY"
@@ -207,12 +238,17 @@ def test_provider_failure_cannot_reflect_memory_or_log_it(
         def call(self, **kwargs: Any) -> RawProviderResponse:
             prompt = str(kwargs["prompt"])
             raise ProviderError(
-                prompt, provider="zai", model=str(kwargs["model"]), latency_ms=1,
+                prompt,
+                provider="zai",
+                model=str(kwargs["model"]),
+                latency_ms=1,
             )
 
     register_provider(_AdversarialProvider())
     response = client.post(
-        "/thought-partner", cookies=_cookie("owner-a"), json={"prompt": "q"},
+        "/thought-partner",
+        cookies=_cookie("owner-a"),
+        json={"prompt": "q"},
     )
     assert response.status_code == 503
     assert response.json() == {"detail": "thought_partner_unavailable"}
@@ -221,7 +257,8 @@ def test_provider_failure_cannot_reflect_memory_or_log_it(
 
 
 def test_catalog_failure_is_not_misreported_as_availability_miss(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     blank_path = str(tmp_path / "blank.duckdb")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", blank_path)
@@ -237,7 +274,9 @@ def test_catalog_failure_is_not_misreported_as_availability_miss(
 
 
 def test_empty_and_unavailable_recall_preserve_exact_prompt(
-    app_client, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    app_client,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     client, _ = app_client
     empty = _post(client, _CapturingProvider(), owner="owner-a")
@@ -246,7 +285,8 @@ def test_empty_and_unavailable_recall_preserve_exact_prompt(
         raise WriteLockTimeout("test-only-sensitive-detail")
 
     monkeypatch.setattr(
-        "interfaces.research.api.account_memory_context.connect_write", _unavailable,
+        "interfaces.research.api.account_memory_context.connect_write",
+        _unavailable,
     )
     failed = _post(client, _CapturingProvider(), owner="owner-a")
     assert failed == empty
@@ -255,7 +295,8 @@ def test_empty_and_unavailable_recall_preserve_exact_prompt(
 
 
 def test_memory_lock_is_closed_before_provider_dispatch(
-    app_client, monkeypatch: pytest.MonkeyPatch,
+    app_client,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client, db_path = app_client
     _seed(db_path, owner="owner-a", marker="LOCK MARKER")
@@ -287,13 +328,16 @@ def test_memory_lock_is_closed_before_provider_dispatch(
 
 
 def test_recall_is_deterministically_max_eight_and_preserves_role_prompt(
-    app_client, monkeypatch: pytest.MonkeyPatch,
+    app_client,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client, db_path = app_client
     markers = [f"LARGE-{index}-" + (chr(65 + index) * 1_200) for index in range(10)]
     for index, marker in enumerate(markers):
         _seed(
-            db_path, owner="owner-a", marker=marker,
+            db_path,
+            owner="owner-a",
+            marker=marker,
             predicate=f"large_fact_{index}",
         )
 
@@ -318,9 +362,13 @@ def test_recall_is_deterministically_max_eight_and_preserves_role_prompt(
     memory_json = first.split(prefix, 1)[1].split("\n\nSYSTEM CONTEXT:", 1)[0]
     payload = json.loads(memory_json)
     assert len(payload["items"]) == 8
-    assert memory_json == second.split(prefix, 1)[1].split(
-        "\n\nSYSTEM CONTEXT:", 1,
-    )[0]
+    assert (
+        memory_json
+        == second.split(prefix, 1)[1].split(
+            "\n\nSYSTEM CONTEXT:",
+            1,
+        )[0]
+    )
     from substrate.context_pack.knowledge_reuse import reuse_token_budget
 
     # Reuse the context-pack substrate's established deterministic ceil(chars/4)
@@ -328,17 +376,17 @@ def test_recall_is_deterministically_max_eight_and_preserves_role_prompt(
     # selected before rendering, so the bounded result remains canonical JSON.
     assert (len(memory_json) + 3) // 4 <= reuse_token_budget("thought_partner")
     expected_role_prompt = compose_thought_partner_prompt(
-        user_prompt="help me choose", selected_notes=[],
+        user_prompt="help me choose",
+        selected_notes=[],
     )
     assert first.endswith(expected_role_prompt)
     assert captured_roles == ["thought_partner", "thought_partner"]
     assert set(first_provider.calls[0]) == {
-        "model", "prompt", "max_tokens", "temperature",
+        "model",
+        "prompt",
+        "max_tokens",
+        "temperature",
     }
     assert {
-        key: first_provider.calls[0][key]
-        for key in ("model", "max_tokens", "temperature")
-    } == {
-        key: second_provider.calls[0][key]
-        for key in ("model", "max_tokens", "temperature")
-    }
+        key: first_provider.calls[0][key] for key in ("model", "max_tokens", "temperature")
+    } == {key: second_provider.calls[0][key] for key in ("model", "max_tokens", "temperature")}
