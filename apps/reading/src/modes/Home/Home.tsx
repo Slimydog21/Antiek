@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 
-import Werner from "../../brand/Werner";
+import BrainMascot from "../../brand/BrainMascot";
 import GlassSurface from "../../shell/GlassSurface";
 import {
   WORKFLOWS,
@@ -62,7 +62,7 @@ export function Home() {
       <div className="mx-auto max-w-3xl px-6 py-14">
         {/* Brand statement — what Antiek is, in its own voice. */}
         <header className="mb-10 flex flex-col items-center text-center">
-          <Werner mood="idle" size={72} label="Antiek" />
+          <BrainMascot mood="idle" size={72} label="Antiek" />
           <h1 className="mt-4 font-serif text-3xl font-semibold text-ink dark:text-bright">
             One workspace for everything you read, research, and write.
           </h1>
@@ -117,7 +117,7 @@ export function Home() {
           className="mt-8 rounded-hog border-edge border-sun bg-sun/10 p-5 dark:bg-sun/5"
         >
           <div className="flex items-start gap-4">
-            <Werner mood="celebrate" size={48} label="" />
+            <BrainMascot mood="celebrate" size={48} label="" />
             <div className="min-w-0">
               <h2 className="font-serif text-lg font-semibold text-ink dark:text-bright">
                 Write someone&rsquo;s biography

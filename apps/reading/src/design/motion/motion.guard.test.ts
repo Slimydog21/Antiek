@@ -51,6 +51,10 @@ const BASELINE = join(HERE, "motion_guard_baseline.json");
  * keyframe anywhere else is the sprawl signal.
  */
 const SANCTIONED = new Set<string>([
+  // The brain mascot's living presence (blink overlay + breathing sway) —
+  // the U-02 slot's brain edition; same kind of dedicated motion home as
+  // animations.css. See brand/BrainMascot.tsx + brand/README.md.
+  "src/brand/mascot-brain/brainMascot.css",
   "src/brand/werner/animated/animations.css",
   // Semantic reactions are a single, token-driven Werner motion home. Keep
   // their seven one-shot beats consolidated here instead of baselining them

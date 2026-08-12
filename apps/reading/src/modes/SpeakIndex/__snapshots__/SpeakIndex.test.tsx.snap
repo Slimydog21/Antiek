@@ -12,21 +12,32 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         class="mb-7 flex items-start gap-3"
       >
         <span
-          aria-label="Werner idle"
-          class="inline-block align-middle"
+          aria-label="Antiek idle"
+          class="inline-block align-middle brain-idle "
           role="img"
-          style="width: 44px; height: 44px;"
+          style="width: 44px; height: 44px; position: relative; perspective: 600px;"
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            class="werner-idle"
-            draggable="false"
-            height="44"
-            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
-            style="display: block; width: 44px; height: 44px; object-fit: contain;"
-            width="44"
-          />
+          <span
+            class="brain-tilt"
+            style="display: block; width: 100%; height: 100%; transform-style: preserve-3d; transform: none;"
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              class="brain-pose"
+              draggable="false"
+              src="/src/brand/mascot-brain/01_hero_front_transparent.png"
+              style="display: block; width: 100%; height: 100%; object-fit: contain;"
+            />
+            <img
+              alt=""
+              aria-hidden="true"
+              class="brain-blink "
+              draggable="false"
+              src="/src/brand/mascot-brain/blink_closed_transparent.png"
+              style="display: block; width: 100%; height: 100%; object-fit: contain;"
+            />
+          </span>
         </span>
         <div>
           <h1
@@ -172,21 +183,32 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         class="mb-7 flex items-start gap-3"
       >
         <span
-          aria-label="Werner idle"
-          class="inline-block align-middle"
+          aria-label="Antiek idle"
+          class="inline-block align-middle brain-idle "
           role="img"
-          style="width: 44px; height: 44px;"
+          style="width: 44px; height: 44px; position: relative; perspective: 600px;"
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            class="werner-idle"
-            draggable="false"
-            height="44"
-            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
-            style="display: block; width: 44px; height: 44px; object-fit: contain;"
-            width="44"
-          />
+          <span
+            class="brain-tilt"
+            style="display: block; width: 100%; height: 100%; transform-style: preserve-3d; transform: none;"
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              class="brain-pose"
+              draggable="false"
+              src="/src/brand/mascot-brain/01_hero_front_transparent.png"
+              style="display: block; width: 100%; height: 100%; object-fit: contain;"
+            />
+            <img
+              alt=""
+              aria-hidden="true"
+              class="brain-blink "
+              draggable="false"
+              src="/src/brand/mascot-brain/blink_closed_transparent.png"
+              style="display: block; width: 100%; height: 100%; object-fit: contain;"
+            />
+          </span>
         </span>
         <div>
           <h1
@@ -261,21 +283,32 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         class="mb-7 flex items-start gap-3"
       >
         <span
-          aria-label="Werner idle"
-          class="inline-block align-middle"
+          aria-label="Antiek idle"
+          class="inline-block align-middle brain-idle "
           role="img"
-          style="width: 44px; height: 44px;"
+          style="width: 44px; height: 44px; position: relative; perspective: 600px;"
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            class="werner-idle"
-            draggable="false"
-            height="44"
-            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
-            style="display: block; width: 44px; height: 44px; object-fit: contain;"
-            width="44"
-          />
+          <span
+            class="brain-tilt"
+            style="display: block; width: 100%; height: 100%; transform-style: preserve-3d; transform: none;"
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              class="brain-pose"
+              draggable="false"
+              src="/src/brand/mascot-brain/01_hero_front_transparent.png"
+              style="display: block; width: 100%; height: 100%; object-fit: contain;"
+            />
+            <img
+              alt=""
+              aria-hidden="true"
+              class="brain-blink "
+              draggable="false"
+              src="/src/brand/mascot-brain/blink_closed_transparent.png"
+              style="display: block; width: 100%; height: 100%; object-fit: contain;"
+            />
+          </span>
         </span>
         <div>
           <h1

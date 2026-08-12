@@ -1,5 +1,5 @@
 import "./animations.css";
-import Werner from "../../Werner";
+import BrainMascot from "../../BrainMascot";
 
 /**
  * Werner the penguin, thinking — used as the AISidecar "thinking…"
@@ -10,7 +10,7 @@ import Werner from "../../Werner";
  *
  * Sizes target 24 / 40 / 64; 40 is the default (sidecar header).
  *
- * Core mark delegated to <Werner mood="thinking" /> + --werner-* tokens
+ * Core mark delegated to <BrainMascot mood="thinking" /> + --werner-* tokens
  * for any remaining accents. No more parallel geometry fork.
  */
 type Props = { size?: number; label?: string };
@@ -27,7 +27,7 @@ export default function WernerThinking({
     >
       {/* The canonical thinking pose carries the semantic state; the four
           external aurora dots make ongoing work legible even at 20–24 px. */}
-      <Werner mood="thinking" size={size} />
+      <BrainMascot mood="thinking" size={size} />
       <span className="inline-flex items-center gap-1.5">
         <span
           className="block werner-thinking-dot-1 rounded-full"
