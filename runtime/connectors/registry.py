@@ -35,7 +35,7 @@ from runtime.connectors.base import (
     validate_key_shape,
 )
 
-ToolVendor = Literal["youtube", "polygon", "fmp", "edgar"]
+ToolVendor = Literal["youtube", "polygon", "fmp", "edgar", "x"]
 CredentialKind = Literal["api_key", "contact"]
 ConnectionStatus = Literal["unconfigured", "configured_unverified", "degraded"]
 
@@ -170,8 +170,22 @@ _CATALOG: dict[ToolVendor, ToolDefinition] = {
         ),
         quota_kind="rate_ceiling",
     ),
+    "x": ToolDefinition(
+        vendor="x",
+        display_name="X API",
+        credential_kind="api_key",
+        descriptor=ConnectorDescriptor(
+            vendor="x",
+            chassis="paste_key",
+            auth="bearer_token",
+            key_shape=KeyShape(min_len=20),
+            rate=RateSpec(max_calls=25, window_s=900.0),
+            docs_url="https://developer.x.com/en/portal/dashboard",
+        ),
+        quota_kind="rate_ceiling",
+    ),
 }
-_VENDOR_ORDER: tuple[ToolVendor, ...] = ("youtube", "polygon", "fmp", "edgar")
+_VENDOR_ORDER: tuple[ToolVendor, ...] = ("youtube", "polygon", "fmp", "edgar", "x")
 
 
 def tool_catalog() -> tuple[ToolDefinition, ...]:
@@ -587,6 +601,7 @@ def resolve_tool_connection(
         "youtube": ("acquisition.youtube.data_api", "YouTubeConnector"),
         "polygon": ("acquisition.polygon.client", "PolygonConnector"),
         "fmp": ("acquisition.fmp.client", "FmpConnector"),
+        "x": ("acquisition.twitter.api_client", "XApiClient"),
     }
     module_name, class_name = connector_types[definition.vendor]
     from importlib import import_module

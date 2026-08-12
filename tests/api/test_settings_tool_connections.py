@@ -47,7 +47,7 @@ def test_inventory_connect_replace_disconnect_and_no_secret_echo(client, tmp_pat
     assert initial.status_code == 200
     assert initial.headers["cache-control"] == "private, no-store"
     assert [item["vendor"] for item in initial.json()["connections"]] == [
-        "youtube", "polygon", "fmp", "edgar",
+        "youtube", "polygon", "fmp", "edgar", "x",
     ]
 
     created = client.put(

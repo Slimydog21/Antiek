@@ -36,24 +36,22 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from acquisition.twitter.adapter import Tweet, TwitterThread
-from runtime.byok.secret_str import SecretStr
-from runtime.byok.store import load_credential
+from runtime.connectors.base import ConnectorDescriptor, KeyShape, PasteKeyConnector, RateSpec
+from runtime.connectors.rate_governor import VendorRateGovernor
 
 _API_BASE = "https://api.twitter.com/2"
 
-# Page-size + max-pages defaults. X API v2 recent-search caps ``max_results`` at
-# 100 per page (10 minimum); 100 is the documented per-page max, so we request it
-# and let the CALLER's own key tier bound the total volume. ``max_pages`` is a
-# conservative ceiling so a single operator-invoked run cannot fan out unbounded
-# (§16) — it is NOT a fabricated quota; the real rate-limit is the key's tier,
-# surfaced as a 429 the runner stops on. These are tunable per call.
-_DEFAULT_PAGE_SIZE = 100
+# Product-level bounds for the research-tool surface. Even if X permits a larger
+# page for a particular tier, one call can request at most 25 results and one page
+# by default, preventing an operator invocation from fanning out unexpectedly.
+_DEFAULT_PAGE_SIZE = 25
 _DEFAULT_MAX_PAGES = 1
+_MAX_RECENT_SEARCH_RESULTS = 25
+X_RATE = RateSpec(max_calls=25, window_s=900.0)
 
 
 class XApiError(RuntimeError):
@@ -61,8 +59,7 @@ class XApiError(RuntimeError):
     status code + a short reason — so a surfaced error cannot leak the bearer."""
 
 
-@dataclass(frozen=True)
-class XApiClient:
+class XApiClient(PasteKeyConnector):
     """A BYOK X API v2 client bound to a single stored credential.
 
     Construct with the ``cred_id`` of a credential in the encrypted store (plus
@@ -71,23 +68,43 @@ class XApiClient:
     :class:`SecretStr` whose ``.reveal()`` is read ONLY to build the auth header.
     """
 
-    cred_id: str
-    artifact_path: str | None = None
-    key_bytes: bytes | None = None
-    key_file: str | None = None
-    page_size: int = _DEFAULT_PAGE_SIZE
-    max_pages: int = _DEFAULT_MAX_PAGES
+    descriptor = ConnectorDescriptor(
+        vendor="x",
+        chassis="paste_key",
+        auth="bearer_token",
+        key_shape=KeyShape(min_len=20),
+        rate=X_RATE,
+        docs_url="https://developer.x.com/en/portal/dashboard",
+    )
 
-    def _bearer(self) -> SecretStr:
-        # Decrypt in-process; returned wrapped so it cannot be accidentally
-        # logged. The ONLY caller is _http_get, which reveals it solely to set
-        # the Authorization header.
-        return load_credential(
-            self.cred_id,
-            artifact_path=self.artifact_path,
-            key_bytes=self.key_bytes,
-            key_file=self.key_file,
+    def __init__(
+        self,
+        *,
+        cred_id: str | None = None,
+        artifact_path: str | None = None,
+        key_bytes: bytes | None = None,
+        key_file: str | None = None,
+        page_size: int = _DEFAULT_PAGE_SIZE,
+        max_pages: int = _DEFAULT_MAX_PAGES,
+        governor: VendorRateGovernor | None = None,
+        state_dir: str | None = None,
+        clock: Any = None,
+        sleeper: Any = None,
+    ) -> None:
+        super().__init__(
+            cred_id=cred_id,
+            artifact_path=artifact_path,
+            key_bytes=key_bytes,
+            key_file=key_file,
         )
+        self.page_size = min(max(1, int(page_size)), _MAX_RECENT_SEARCH_RESULTS)
+        self.max_pages = max(1, int(max_pages))
+        kwargs: dict[str, Any] = {"state_dir": state_dir}
+        if clock is not None:
+            kwargs["clock"] = clock
+        if sleeper is not None:
+            kwargs["sleeper"] = sleeper
+        self._governor = governor or VendorRateGovernor("x", X_RATE, **kwargs)
 
     def _http_get(self, path: str, params: dict[str, Any]) -> dict:
         """LIVE, fixture-validated-only edge. Issues a GET with the BYOK bearer.
@@ -99,7 +116,9 @@ class XApiClient:
         url = f"{_API_BASE}{path}"
         if params:
             url = f"{url}?{urllib.parse.urlencode(params)}"
-        bearer = self._bearer()
+        bearer = self._resolve_key()
+        if bearer is None:
+            raise XApiError("X connector has no key attached")
         req = urllib.request.Request(url, method="GET")
         # .reveal() is the single intentional egress of the plaintext, scoped to
         # this header line; the SecretStr goes out of scope at function return.
@@ -116,29 +135,49 @@ class XApiClient:
         # re-open the hole.
         from acquisition.arxiv.rate_governor import govern_if_arxiv
 
-        def _send() -> str:
-            with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-                return resp.read().decode("utf-8")
+        class _Response:
+            def __init__(self, status_code: int, headers: Any, body: str) -> None:
+                self.status_code = status_code
+                self.headers = headers
+                self.body = body
+
+        def _send() -> _Response:
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+                    return _Response(resp.status, resp.headers, resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                return _Response(exc.code, exc.headers, "")
 
         try:
-            body = govern_if_arxiv(url, _send)
-            return json.loads(body)
-        except urllib.error.HTTPError as e:  # 401 / 429 / 4xx / 5xx
-            # NEVER include the key or the full URL: only the numeric status.
-            raise XApiError(f"X API HTTP {e.code}") from None
+            response = self._governor.governed_send(
+                lambda: govern_if_arxiv(url, _send)
+            )
+            if response.status_code < 200 or response.status_code >= 300:
+                raise XApiError(f"X API HTTP {response.status_code}")
+            try:
+                payload = json.loads(response.body)
+            except (TypeError, ValueError):
+                raise XApiError("X API returned an invalid response") from None
+            if not isinstance(payload, dict):
+                raise XApiError("X API returned an invalid response")
+            return payload
         except urllib.error.URLError as e:
             raise XApiError(f"X API network error: {e.reason}") from None
 
     # ── live fetch surfaces (live-unverified; covered by fixtures via parse_*) ──
-    def recent_search(self, query: str) -> list[dict]:
+    def recent_search(
+        self, query: str, *, max_results: int = _DEFAULT_PAGE_SIZE
+    ) -> list[dict[str, Any]]:
         """Recent-search: return the raw tweet objects across up to ``max_pages``.
 
-        Bounded by ``max_pages`` so an operator-invoked run cannot fan out
-        unbounded (§16); the real volume cap is the key's own tier (a 429 stops
-        the loop)."""
+        ``max_results`` is a hard product ceiling of 25; the key's own tier may
+        impose a lower effective limit (a 429 stops the loop)."""
+        if not 1 <= max_results <= _MAX_RECENT_SEARCH_RESULTS:
+            raise ValueError("max_results must be between 1 and 25")
         return self._paged(
             "/tweets/search/recent",
-            {"query": query, "max_results": self.page_size},
+            {"query": query, "max_results": max(10, min(max_results, self.page_size))},
+            result_limit=max_results,
         )
 
     def user_timeline(self, user_id: str) -> list[dict]:
@@ -158,8 +197,10 @@ class XApiClient:
             },
         )
 
-    def _paged(self, path: str, base_params: dict[str, Any]) -> list[dict]:
-        out: list[dict] = []
+    def _paged(
+        self, path: str, base_params: dict[str, Any], *, result_limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
         params = dict(base_params)
         # X API v2 fields we ask for so the parser has author handle + timestamps.
         params.setdefault(
@@ -174,6 +215,8 @@ class XApiClient:
                 p["pagination_token"] = token
             page = self._http_get(path, p)
             out.extend(parse_search_response(page))
+            if result_limit is not None and len(out) >= result_limit:
+                return out[:result_limit]
             token = (page.get("meta") or {}).get("next_token")
             if not token:
                 break
