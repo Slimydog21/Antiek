@@ -444,7 +444,7 @@ def _terminate_converter(process: subprocess.Popen[bytes]) -> None:
     process.wait()
 
 
-def _extract_office_bounded(file_bytes: bytes, filename: str | None):
+def _extract_office_bounded(file_bytes: bytes, filename: str | None) -> str:
     """Run anydoc in a fresh interpreter with one receive/exit deadline."""
     deadline = time.monotonic() + ANYDOC_CONVERSION_TIMEOUT_SECONDS
     with tempfile.TemporaryDirectory(prefix="antiek-anydoc-") as tmpdir:
