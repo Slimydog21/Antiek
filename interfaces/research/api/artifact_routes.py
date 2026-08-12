@@ -6,10 +6,12 @@ import os
 import sys
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+_PKG_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
@@ -43,6 +45,7 @@ class BlocksOut(BaseModel):
 
 
 class ExportOut(BaseModel):
+    artifact_id: str
     investigation_id: str
     path: str
     content_hash: str
@@ -62,12 +65,14 @@ class ImportNotesOut(BaseModel):
 
 
 @artifact_router.post("/{investigation_id}/artifact/export", response_model=ExportOut)
-async def post_export_artifact(investigation_id: str) -> ExportOut:
+async def post_export_artifact(investigation_id: str, request: Request) -> ExportOut:
     try:
-        res = export_research_artifact(investigation_id, db_path=_db())
+        owner_user_id = str(getattr(request.state, "user_id", None) or "__operator__")
+        res = export_research_artifact(investigation_id, db_path=_db(), owner_user_id=owner_user_id)
     except Exception as exc:  # pragma: no cover — surface as 500 with message
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return ExportOut(
+        artifact_id=res.artifact_id,
         investigation_id=res.investigation_id,
         path=str(res.path),
         content_hash=res.content_hash,
@@ -76,16 +81,10 @@ async def post_export_artifact(investigation_id: str) -> ExportOut:
     )
 
 
-@artifact_router.post(
-    "/{investigation_id}/artifact/import-notes", response_model=ImportNotesOut
-)
-async def post_import_notes(
-    investigation_id: str, body: ImportNotesIn
-) -> ImportNotesOut:
+@artifact_router.post("/{investigation_id}/artifact/import-notes", response_model=ImportNotesOut)
+async def post_import_notes(investigation_id: str, body: ImportNotesIn) -> ImportNotesOut:
     try:
-        res = import_agent_notes(
-            Path(body.path), investigation_id=investigation_id
-        )
+        res = import_agent_notes(Path(body.path), investigation_id=investigation_id)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return ImportNotesOut(
