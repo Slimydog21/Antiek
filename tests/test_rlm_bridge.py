@@ -13,6 +13,7 @@ from orchestration.rlm.bridge import (
     is_ratified,
     maybe_escalate_to_rlm,
 )
+from orchestration.rlm.prime_agent_backend import PrimeAgentRLMBackend
 
 # ── Token estimator ──────────────────────────────────────────────────
 
@@ -119,3 +120,36 @@ def test_threshold_override_respected(monkeypatch):
     )
     assert below.above_threshold is False
     assert above.above_threshold is True
+
+
+
+def test_above_threshold_ratified_prime_backend_switches_root_executor(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    monkeypatch.setenv("ANTIEK_PRIME_AGENT_RLM_ENABLED", "1")
+    backend = PrimeAgentRLMBackend(enabled=True, cwd=tmp_path)
+
+    captured = {}
+
+    class _SessionStub:
+        class _State:
+            session_id = "rlm-stub"
+
+        state = _State()
+
+    def _fake_create_session(**kwargs):
+        captured.update(kwargs)
+        return _SessionStub()
+
+    monkeypatch.setattr("orchestration.rlm.bridge.create_session", _fake_create_session)
+
+    d = maybe_escalate_to_rlm(
+        document_id="doc-long-prime",
+        investigation_id="inv-prime",
+        estimated_tokens=128_000,
+        prime_backend=backend,
+    )
+
+    assert d.escalated is True
+    assert d.session_id == "rlm-stub"
+    assert captured["root_executor"] == "prime_agent"
+    assert captured["prime_goal_brief"] is not None
