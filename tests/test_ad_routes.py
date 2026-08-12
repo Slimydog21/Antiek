@@ -100,7 +100,9 @@ def _mint_value(monkeypatch, cents):
     from interfaces.research.api import ad_routes
 
     monkeypatch.setattr(
-        ad_routes, "resolve_window_value_cents", lambda _window_id: cents
+        ad_routes,
+        "resolve_window_value_cents",
+        lambda *, owner_user_id, window_id: cents,
     )
 
 
@@ -187,6 +189,58 @@ def test_frame_telemetry_ignores_client_supplied_value(isolated_db):
     assert body["contributor_cents"] == 0
     # Escrow did NOT move on a forged value.
     assert _escrow_of(isolated_db, holder) == before
+
+
+def test_frame_telemetry_value_lookup_is_owner_scoped_same_window(
+    isolated_db, monkeypatch
+):
+    """Two owners may reuse a window id; valuation receives both identities.
+
+    The public telemetry body remains owner-free. Identity comes exclusively
+    from authenticated request state, and the default resolver still returns
+    zero for each owner (no cross-owner or invented price).
+    """
+    from interfaces.research.api import ad_routes
+
+    seen: list[tuple[str, str]] = []
+
+    def capture(*, owner_user_id: str, window_id: str) -> int:
+        seen.append((owner_user_id, window_id))
+        return 0
+
+    monkeypatch.setattr(ad_routes, "resolve_window_value_cents", capture)
+    from substrate.multi_user import auth
+    from substrate.multi_user.auth import UserClaims
+
+    owners = iter(("owner-a", "owner-b"))
+
+    def claims() -> UserClaims:
+        return UserClaims(
+            user_id=next(owners),
+            email=None,
+            scopes=frozenset({"operator"}),
+            issued_at="2026-08-12T00:00:00Z",
+        )
+
+    monkeypatch.setattr(auth, "operator_claims", claims)
+    client = TestClient(
+        create_app(register_wrestling=False, register_providers=False)
+    )
+    for _owner in ("owner-a", "owner-b"):
+        response = client.post(
+            "/api/ad/frame-telemetry",
+                json={
+                "window_id": "shared-window",
+                "schema_version": FRAME_TELEMETRY_SCHEMA_VERSION,
+                "seconds": [],
+            },
+        )
+        assert response.status_code == 202, response.text
+        assert response.json()["total_ad_value_cents"] == 0
+    assert seen == [
+        ("owner-a", "shared-window"),
+        ("owner-b", "shared-window"),
+    ]
 
 
 def test_frame_telemetry_v1_batch_rejected(isolated_db):

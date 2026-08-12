@@ -22,6 +22,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/health": API_TARGET,
+      "/api": API_TARGET,
       "/events": API_TARGET,
       "/trajectory": API_TARGET,
       // The cascade plan/launch/session surface (cascade_routes.py, prefix
