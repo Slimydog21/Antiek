@@ -10,6 +10,7 @@ import {
   type SettingsModelCatalogProvider,
   type UserModelRow,
 } from "../../api/settingsModels";
+import { fetchSettingsUsage, type SettingsUsageKeyEntry } from "../../api/settingsUsage";
 
 /**
  * AddModelPanel — user-added model providers (BYOK).
@@ -35,8 +36,13 @@ const EXECUTION_LABELS: Record<UserModelRow["execution_status"], string> = {
   blocked_hard_ceiling_adapter_mismatch: "Blocked: adapter mismatch",
 };
 
+function formatCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
 export default function AddModelPanel() {
   const [models, setModels] = useState<UserModelRow[] | null>(null);
+  const [usageByKey, setUsageByKey] = useState<Record<string, SettingsUsageKeyEntry>>({});
   const [staleRegistered, setStaleRegistered] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<SettingsModelCatalogProvider[] | null>(
@@ -76,11 +82,28 @@ export default function AddModelPanel() {
 
   async function refresh(): Promise<UserModelRow[] | null> {
     try {
-      const res = await fetchUserModels();
+      const [modelsResult, usageResult] = await Promise.allSettled([
+        fetchUserModels(),
+        fetchSettingsUsage(),
+      ]);
       if (!mountedRef.current) return null;
+      if (modelsResult.status === "rejected") {
+        setLoadError("Can't load saved models. Try again.");
+        return null;
+      }
+      const res = modelsResult.value;
       setModels(res.models);
       setStaleRegistered(res.stale_registered ?? []);
       setLoadError(null);
+      if (usageResult.status === "fulfilled") {
+        setUsageByKey(
+          Object.fromEntries(
+            usageResult.value.keys.map((key) => [key.api_key_id, key]),
+          ),
+        );
+      } else {
+        setUsageByKey({});
+      }
       return res.models;
     } catch {
       if (!mountedRef.current) return null;
@@ -308,6 +331,11 @@ export default function AddModelPanel() {
                   <span className="break-words">
                     {EXECUTION_LABELS[m.execution_status]}
                   </span>
+                  {usageByKey[m.id]?.remaining_cents != null && (
+                    <span className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                      remaining {formatCents(usageByKey[m.id].remaining_cents!)}
+                    </span>
+                  )}
                   <button
                     ref={(element) => {
                       if (element) removeButtonRefs.current.set(m.id, element);

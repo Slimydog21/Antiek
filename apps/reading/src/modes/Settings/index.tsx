@@ -30,9 +30,14 @@ import {
   type ComposerChoice,
   type ComposerModelProjection,
 } from "../../api/composerProjection";
+import {
+  fetchSettingsUsage,
+  type SettingsUsageKeyEntry,
+} from "../../api/settingsUsage";
 import AddModelPanel from "./AddModelPanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
 import ToolConnectionsPanel from "./ToolConnectionsPanel";
+import UsagePanel from "./UsagePanel";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
@@ -41,6 +46,16 @@ import ToolConnectionsPanel from "./ToolConnectionsPanel";
  * ledger or rate table is unset. Add-model securely registers BYOK providers;
  * granting one dispatch-route authority remains a separate, explicit sprint.
  */
+function formatCents(value: number): string {
+  return `$${(value / 100).toFixed(2)}`;
+}
+
+function usageBalanceChip(usage: SettingsUsageKeyEntry): string {
+  if (usage.remaining_cents != null) return formatCents(usage.remaining_cents);
+  if (usage.available_cents != null) return formatCents(usage.available_cents);
+  return "";
+}
+
 export default function Settings() {
   const tier = useViewportTier();
   const isDark =
@@ -64,6 +79,9 @@ export default function Settings() {
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "decision">("overview");
+  const [usageByProvider, setUsageByProvider] = useState<
+    Record<string, SettingsUsageKeyEntry>
+  >({});
 
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     const tabs = ["overview", "decision"] as const;
@@ -84,18 +102,58 @@ export default function Settings() {
     let cancelled = false;
     (async () => {
       try {
-        const m = await fetchSettingsModels();
-        if (!cancelled) setModels(m.models);
+        const [settingsModelsResult, budgetResult, usageResult] =
+          await Promise.allSettled([
+            fetchSettingsModels(),
+            fetchSettingsBudget(),
+            fetchSettingsUsage(),
+          ]);
+        if (cancelled) return;
+
+        if (settingsModelsResult.status === "fulfilled") {
+          const modelRows = settingsModelsResult.value.models;
+          setModels(modelRows);
+          if (usageResult.status === "fulfilled") {
+            const modelIds = new Set(modelRows.map((row) => row.provider_id));
+            setUsageByProvider(
+              Object.fromEntries(
+                usageResult.value.keys
+                  .map((entry) => {
+                    if (!modelIds.has(entry.api_key_id)) return null;
+                    return [entry.api_key_id, entry] as const;
+                  })
+                  .filter(
+                    (
+                      item,
+                    ): item is readonly [string, SettingsUsageKeyEntry] =>
+                      item !== null,
+                  ),
+              ),
+            );
+          } else {
+            setUsageByProvider({});
+          }
+        } else {
+          setModelsError(
+            settingsModelsResult.reason instanceof Error
+              ? settingsModelsResult.reason.message
+              : String(settingsModelsResult.reason),
+          );
+        }
+
+        if (budgetResult.status === "fulfilled") {
+          setBudget(budgetResult.value);
+        } else {
+          setBudgetError(
+            budgetResult.reason instanceof Error
+              ? budgetResult.reason.message
+              : String(budgetResult.reason),
+          );
+        }
       } catch (e) {
-        if (!cancelled)
+        if (!cancelled) {
           setModelsError(e instanceof Error ? e.message : String(e));
-      }
-      try {
-        const b = await fetchSettingsBudget();
-        if (!cancelled) setBudget(b);
-      } catch (e) {
-        if (!cancelled)
-          setBudgetError(e instanceof Error ? e.message : String(e));
+        }
       }
     })();
     return () => {
@@ -439,6 +497,8 @@ export default function Settings() {
 
         <AddModelPanel />
 
+        <UsagePanel />
+
         <ToolConnectionsPanel />
 
         <AntiekBenchPanel />
@@ -463,6 +523,7 @@ export default function Settings() {
               setInputChars={setInputChars}
               outputTokens={outTokens}
               setOutputTokens={setOutTokens}
+              usageByProvider={usageByProvider}
             />
           </div>
         )}
@@ -485,11 +546,13 @@ function DecisionTreePanel({
   setInputChars,
   outputTokens,
   setOutputTokens,
+  usageByProvider,
 }: {
   inputChars: number;
   setInputChars: (value: number) => void;
   outputTokens: number;
   setOutputTokens: (value: number) => void;
+  usageByProvider: Record<string, SettingsUsageKeyEntry>;
 }) {
   const [task, setTask] = useState<ModelDecisionTask>("deep_research");
   const [decision, setDecision] = useState<ModelDecisionResponse | null>(null);
@@ -507,6 +570,15 @@ function DecisionTreePanel({
   const approvalRequestVersion = useRef(0);
   const [approvingChainId, setApprovingChainId] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<{ chainId: string; message: string } | null>(null);
+
+  const selectedProviderBalance = useMemo(() => {
+    const provider = selected?.provider ?? projection?.chosen_provider ?? null;
+    if (!provider) return null;
+    const usage = usageByProvider[provider];
+    if (!usage) return null;
+    const chip = usageBalanceChip(usage);
+    return chip || null;
+  }, [projection, selected, usageByProvider]);
 
   useEffect(() => {
     const version = receiptRequestVersion.current + 1;
@@ -696,6 +768,7 @@ function DecisionTreePanel({
         projection={projection}
         loading={loading && decision !== null}
         selected={selected}
+        selectedProviderBalance={selectedProviderBalance}
         onSelect={(provider, model) => void selectModel(provider, model)}
       />
       {decision && (
