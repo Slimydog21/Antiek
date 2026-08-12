@@ -38,23 +38,43 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
+import os
+import signal
+import subprocess
+import sys
+import tempfile
+import time
 import zipfile
+from math import ceil
 from typing import Literal, cast
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from acquisition.books.reader import ReadResult, read_pdf
 from acquisition.snapshot.reader_html import markdown_to_safe_html
 from runtime.db_lock import connect_write
 from substrate.books.html_sanitizer import sanitize_book_html, strip_trust_markers
 from substrate.reader_html.store import store_reader_html
-from substrate.research_bridge.extractors import extract_text
 
 # Reuse the books-lane upload ceiling as the bounded-read cap (mirrors
 # book_acquisition_routes.DEFAULT_MAX_EPUB_BYTES). General documents are not
 # larger than EPUBs in practice; the cap is a DoS guard, not a format limit.
 DEFAULT_MAX_UPLOAD_BYTES = 64 * 1024 * 1024
+ANYDOC_CONVERSION_TIMEOUT_SECONDS = 30.0
+MAX_CONVERTED_MARKDOWN_BYTES = 16 * 1024 * 1024
+MAX_OFFICE_ZIP_ENTRIES = 10_000
+MAX_OFFICE_ZIP_MEMBER_BYTES = 64 * 1024 * 1024
+MAX_OFFICE_ZIP_TOTAL_BYTES = 256 * 1024 * 1024
+MAX_OFFICE_ZIP_EXPANSION_RATIO = 200
+CONVERTER_ADDRESS_SPACE_BYTES = 4 * 1024 * 1024 * 1024
+CONVERTER_FILE_SIZE_BYTES = MAX_CONVERTED_MARKDOWN_BYTES + 1024 * 1024
+_CONVERSION_ERROR = {"code": "upload_conversion_failed"}
+_CONVERSION_TIMEOUT_ERROR = {"code": "upload_conversion_timeout"}
+_CROSS_ORIGIN_ERROR = {"code": "cross_origin_request"}
 
 # The Bartz lawful-acquisition receipt values. Stored verbatim in document
 # metadata; drive the deny-by-default content_class.
@@ -179,6 +199,45 @@ def _is_epub_container(data: bytes) -> bool:
     return "META-INF/container.xml" in names
 
 
+def _is_plausible_office_container(data: bytes, ext: str) -> bool:
+    """Reject arbitrary/corrupt ZIPs merely renamed to an Office extension.
+
+    This is structural screening, not a claim that the document is valid.
+    The converter remains responsible for full format validation.
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            entries = zf.infolist()
+            if len(entries) > MAX_OFFICE_ZIP_ENTRIES:
+                return False
+            names = {entry.filename for entry in entries}
+            total_size = 0
+            total_compressed = 0
+            for entry in entries:
+                if entry.file_size > MAX_OFFICE_ZIP_MEMBER_BYTES:
+                    return False
+                total_size += entry.file_size
+                total_compressed += entry.compress_size
+                if total_size > MAX_OFFICE_ZIP_TOTAL_BYTES:
+                    return False
+            if total_size and (
+                total_compressed == 0
+                or total_size > total_compressed * MAX_OFFICE_ZIP_EXPANSION_RATIO
+            ):
+                return False
+    except (zipfile.BadZipFile, OSError, RuntimeError):
+        return False
+    if ext in {"docx", "docm"}:
+        return "[Content_Types].xml" in names and "word/document.xml" in names
+    if ext in {"pptx", "pptm", "ppsx", "ppsm"}:
+        return "[Content_Types].xml" in names and "ppt/presentation.xml" in names
+    if ext in {"xlsx", "xlsm", "xlsb"}:
+        return "[Content_Types].xml" in names and "xl/workbook.xml" in names
+    if ext in {"odt", "ods", "odp"}:
+        return "META-INF/manifest.xml" in names or "mimetype" in names
+    return True
+
+
 def sniff_kind(data: bytes, filename: str | None) -> str | None:
     """Detect the upload kind by MAGIC BYTES first, extension second.
 
@@ -203,7 +262,7 @@ def sniff_kind(data: bytes, filename: str | None) -> str | None:
     if data[:4] == b"PK\x03\x04":
         ext = _ext_of(filename)
         if ext in _OFFICE_EXTENSIONS and not _is_epub_container(data):
-            return ext
+            return ext if _is_plausible_office_container(data, ext) else None
         return "epub"
     if data.lstrip()[:1] == b"<":
         return "html"
@@ -307,6 +366,142 @@ def _convert_html(raw_html: str) -> tuple[str, str]:
     return sanitized, sanitized
 
 
+def _trusted_browser_origins() -> frozenset[str]:
+    configured = os.environ.get("ANTIEK_CORS_ORIGINS", "").strip()
+    values = configured.split(",") if configured else (
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://antiek.ai",
+    )
+    return frozenset(value.strip().rstrip("/") for value in values if value.strip())
+
+
+def _request_origin(request: Request) -> str | None:
+    origin = request.headers.get("origin", "").strip()
+    if origin:
+        return origin.rstrip("/")
+    referer = request.headers.get("referer", "").strip()
+    if not referer:
+        return None
+    parsed = urlsplit(referer)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+
+
+def _enforce_cookie_mutation_origin(request: Request) -> None:
+    """Cookie auth needs a trusted browser provenance header (CSRF defense)."""
+    if getattr(request.state, "auth_method", None) != "antiek_session_cookie":
+        return
+    if _request_origin(request) not in _trusted_browser_origins():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_CROSS_ORIGIN_ERROR)
+
+
+_EXTRACT_SUBPROCESS = """
+import json, os, sys
+from pathlib import Path
+if os.name == 'posix':
+    import resource
+    def cap(which, requested):
+        _, hard = resource.getrlimit(which)
+        value = requested if hard == resource.RLIM_INFINITY else min(requested, hard)
+        try:
+            resource.setrlimit(which, (value, value))
+        except (OSError, ValueError):
+            pass
+    cap(resource.RLIMIT_AS, int(sys.argv[5]))
+    cap(resource.RLIMIT_CPU, int(sys.argv[6]))
+    cap(resource.RLIMIT_NOFILE, 64)
+    cap(resource.RLIMIT_FSIZE, int(sys.argv[7]))
+from substrate.research_bridge.extractors import extract_text
+source, output, filename, cap = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+result = extract_text(Path(source).read_bytes(), filename=filename or None)
+payload = result.text.encode('utf-8')
+record = {'ok': result.ok, 'kind': result.kind, 'text': result.text}
+if len(payload) > cap:
+    record = {'ok': False, 'kind': '', 'text': '', 'oversize': True}
+Path(output).write_text(json.dumps(record), encoding='utf-8')
+"""
+
+
+def _converter_environment() -> dict[str, str]:
+    """Minimal child environment; credentials are deliberately not inherited."""
+    environment: dict[str, str] = {}
+    for name in ("PATH", "PYTHONPATH", "LANG", "LC_ALL", "SYSTEMROOT"):
+        value = os.environ.get(name)
+        if value:
+            environment[name] = value
+    environment["PYTHONNOUSERSITE"] = "1"
+    return environment
+
+
+def _terminate_converter(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is None:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            process.kill()
+    process.wait()
+
+
+def _extract_office_bounded(file_bytes: bytes, filename: str | None):
+    """Run anydoc in a fresh interpreter with one receive/exit deadline."""
+    deadline = time.monotonic() + ANYDOC_CONVERSION_TIMEOUT_SECONDS
+    with tempfile.TemporaryDirectory(prefix="antiek-anydoc-") as tmpdir:
+        source_path = os.path.join(tmpdir, "source")
+        output_path = os.path.join(tmpdir, "result.json")
+        with open(source_path, "wb") as source:
+            source.write(file_bytes)
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                _EXTRACT_SUBPROCESS,
+                source_path,
+                output_path,
+                filename or "",
+                str(MAX_CONVERTED_MARKDOWN_BYTES),
+                str(CONVERTER_ADDRESS_SPACE_BYTES),
+                str(max(1, ceil(ANYDOC_CONVERSION_TIMEOUT_SECONDS))),
+                str(CONVERTER_FILE_SIZE_BYTES),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            cwd=tmpdir,
+            env=_converter_environment(),
+        )
+        try:
+            process.wait(timeout=max(0.0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired as exc:
+            _terminate_converter(process)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=_CONVERSION_TIMEOUT_ERROR,
+            ) from exc
+        if process.returncode != 0 or time.monotonic() > deadline:
+            _terminate_converter(process)
+            raise HTTPException(status_code=422, detail=_CONVERSION_ERROR)
+        try:
+            with open(output_path, "rb") as output:
+                encoded = output.read(MAX_CONVERTED_MARKDOWN_BYTES + 1024)
+            if time.monotonic() > deadline:
+                raise ValueError
+            record = json.loads(encoded)
+            text = record["text"]
+            if (
+                record.get("oversize")
+                or not record["ok"]
+                or record["kind"] != "markdown"
+                or len(text.encode("utf-8")) > MAX_CONVERTED_MARKDOWN_BYTES
+            ):
+                raise ValueError
+            return text
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=422, detail=_CONVERSION_ERROR) from exc
+
+
 def register_upload_routes(app: FastAPI) -> None:
     """Mount ``POST /sources/upload``. Mirrors ``register_reader_html_routes`` —
     one call from ``create_app``."""
@@ -318,11 +513,13 @@ def register_upload_routes(app: FastAPI) -> None:
         tags=["sources"],
     )
     async def upload_source(
+        request: Request,
         file: UploadFile = File(...),
         acquisition_attestation: str = Form(...),
         title: str | None = Form(None),
         source_url: str | None = Form(None),
     ) -> UploadResponse:
+        _enforce_cookie_mutation_origin(request)
         if acquisition_attestation not in _ATTESTATIONS:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -376,16 +573,10 @@ def register_upload_routes(app: FastAPI) -> None:
                 # subset of UploadKind; cast documents that runtime proof for
                 # mypy without weakening the response type to arbitrary str.
                 detected_kind = cast(UploadKind, kind)
-                result = extract_text(file_bytes, filename=file.filename)
-                if not result.ok or result.kind != "markdown":
-                    raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                        detail=(
-                            "could not convert upload: "
-                            + (result.reason or "extraction produced no markdown")
-                        ),
-                    )
-                raw_text, html_body = _convert_markdown(result.text)
+                markdown = await run_in_threadpool(
+                    _extract_office_bounded, file_bytes, file.filename
+                )
+                raw_text, html_body = _convert_markdown(markdown)
             elif kind == "pdf":
                 detected_kind = "pdf"
                 raw_text, html_body, pdf_title, author = _convert_pdf(file_bytes)
@@ -409,7 +600,7 @@ def register_upload_routes(app: FastAPI) -> None:
         except Exception as exc:  # corrupt PDF / decode failure → honest 422
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"could not convert upload: {type(exc).__name__}",
+                detail=_CONVERSION_ERROR,
             ) from exc
 
         document_id = upload_doc_id(file_bytes)
