@@ -29,7 +29,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, cast, Protocol
+from typing import Any, Protocol, cast
 
 from .extraction_prompt import make_extraction_prompt
 from .keywords import classify_domains
@@ -262,10 +262,10 @@ def default_llm_call_factory(*, investigation_id: str) -> LLMCall:
         self.domain_index = domain_index
         self.attempt = attempt
 
-      def for_domain(self, domain: str, domain_index: int) -> "_OwnerAwareCall":
+      def for_domain(self, domain: str, domain_index: int) -> _OwnerAwareCall:
         return _OwnerAwareCall(domain, domain_index)
 
-      def with_attempt(self, attempt: int) -> "_OwnerAwareCall":
+      def with_attempt(self, attempt: int) -> _OwnerAwareCall:
         return _OwnerAwareCall(self.domain, self.domain_index, attempt)
 
       def __call__(self, *, system: str, user: str) -> str:
