@@ -197,10 +197,15 @@ def test_overwrite_with_flag(tmp_path: Path) -> None:
         if m.pipeline_kind == _pipeline_kind("deepseek")
     ]
     assert len(creds) == 2  # old + new
-    # The latest one (last in list) should have the new key
-    latest = creds[-1]
-    plaintext = load_credential(latest.cred_id, artifact_path=artifact, key_bytes=_KEY).reveal()
-    assert plaintext == "sk-new"
+    # Overwrite ADDS a new credential (documented: add, not delete-then-add).
+    # list_credentials ordering is not insertion-ordered (cred_id is random),
+    # so assert the new key is present anywhere, not at a list position.
+    plaintexts = [
+        load_credential(m.cred_id, artifact_path=artifact, key_bytes=_KEY).reveal()
+        for m in creds
+    ]
+    assert "sk-new" in plaintexts
+    assert "sk-old" in plaintexts
 
 
 # ── unrecognized env vars are reported ──────────────────────────────────
