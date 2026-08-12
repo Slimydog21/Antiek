@@ -3,6 +3,7 @@ import { apiFetch } from "../lib/api";
 import {
   fetchSettingsModelCatalog,
   parseSettingsModelCatalog,
+  parseUserModelsResponse,
 } from "./settingsModels";
 
 vi.mock("../lib/api", () => ({ API_BASE: "", apiFetch: vi.fn() }));
@@ -20,6 +21,34 @@ const provider = (catalogId: string, modelId: string) => ({
     },
   ],
   pricing_source: `https://${catalogId}.example/pricing`,
+});
+
+describe("parseUserModelsResponse", () => {
+  const executable = {
+    id: "user-1", provider_kind: "anthropic", provider_catalog_id: "anthropic",
+    model_id: "claude", display_name: "Claude", base_url: null, enabled: true,
+    key_present: true, registered: true, route_eligible: true, pricing_status: "known",
+    hard_ceiling_eligible: true, execution_status: "executable", rate_snapshot: "rates-1",
+  };
+
+  it("accepts the strict non-secret inventory contract", () => {
+    expect(parseUserModelsResponse({ models: [executable], count: 1, stale_registered: [], source: "server" }).models[0]).toEqual(executable);
+  });
+
+  it.each([
+    { models: [executable], count: 0, stale_registered: [], source: "server" },
+    { models: [{ ...executable, execution_status: "maybe" }], count: 1, stale_registered: [], source: "server" },
+    { models: [{ ...executable, key_present: "yes" }], count: 1, stale_registered: [], source: "server" },
+    { models: [executable], count: 1, stale_registered: [], source: "server", api_key: "sk-secret" },
+    { models: [{ ...executable, credential: "sk-secret" }], count: 1, stale_registered: [], source: "server" },
+    { models: [executable, { ...executable }], count: 2, stale_registered: [], source: "server" },
+    { models: [{ ...executable, rate_snapshot: 4 }], count: 1, stale_registered: [], source: "server" },
+  ])("rejects malformed inventory", (body) => {
+    let message = "";
+    try { parseUserModelsResponse(body); } catch (error) { message = error instanceof Error ? error.message : String(error); }
+    expect(message).toBe("Invalid user model inventory response.");
+    expect(message).not.toContain("sk-");
+  });
 });
 
 describe("parseSettingsModelCatalog", () => {

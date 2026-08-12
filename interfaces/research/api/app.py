@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
+import json
 import os
 import sys
 import threading
@@ -59,7 +61,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 # Ensure package root on path for direct uvicorn invocation.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -309,6 +311,9 @@ class InvestigationStartRequest(BaseModel):
     # window closes (Sprint 20 verdict landed), the operator may restore a
     # "deep" default if deep-synthesizer routing is then desired.
     research_tier: Literal["fast", "deep"] | None = None
+    # Parsed manually: validation errors must never reflect provider/model values.
+    model_choice: object | None = None
+    operation_id: object | None = None
 
 
 # ── Sprint 11 additions ────────────────────────────────────────────────
@@ -433,6 +438,8 @@ class InvestigationStartResponse(BaseModel):
     investigation_id: str
     status: str  # "started"
     start_event_id: str
+    operation_id: str | None = None
+    owner_model_status: str | None = None
 
 
 class RubricScore(BaseModel):
@@ -1849,6 +1856,9 @@ def create_app(
         # paraphrase-guarded (one-regen-max) decomposer dispatch. Loop 1
         # starts here — the first orchestrate.py role extracted.
         from .decomposer import register_handlers as _register_decomposer
+        # The broadcaster owns the detached Loop One tasks; retain only the
+        # in-process app registry needed to revalidate credential authority.
+        bus._owner_model_app = app
         _register_decomposer(bus, embedder=wrestling_embedder)
         # Evidence Retriever bridge (Sprint 7 day 1). Subscribes to
         # evidence.retrieve.requested → flash-tier dispatch → parse
@@ -2243,10 +2253,12 @@ def create_app(
     @app.post(
         "/investigations",
         response_model=InvestigationStartResponse,
+        response_model_exclude_none=True,
         status_code=202,  # accepted; orchestrator runs async
     )
     async def post_investigation(
         req: InvestigationStartRequest,
+        request: Request,
     ) -> InvestigationStartResponse:
         """Cold-question entry point. Emits
         ``INVESTIGATION_START_REQUESTED`` into the trajectory; the
@@ -2265,11 +2277,70 @@ def create_app(
             InvestigationStartRequestedPayload,
         )
 
-        investigation_id = (
-            req.investigation_id or f"inv-{_uuid.uuid4().hex[:12]}"
+        owner_user_id: str | None = None
+        parsed_choices: dict[str, dict[str, str]] | None = None
+        operation_id: str | None = None
+        if (req.model_choice is None) != (req.operation_id is None):
+            raise HTTPException(status_code=422, detail="model_selection_invalid")
+        launch_digest: str | None = None
+        if req.model_choice is not None:
+            from .owner_byot_dispatch import (
+                OwnerByotDispatchUnavailable,
+                authenticated_distinct_owner,
+            )
+            from .research_owner_dispatch import PAID_LOOP_ONE_ROLES
+            from .settings_models_admin import UserModelChoice
+            if (not isinstance(req.operation_id, str) or not req.operation_id.strip()
+                    or len(req.operation_id) > 128):
+                raise HTTPException(status_code=422, detail="model_selection_invalid")
+            try:
+                owner_user_id = authenticated_distinct_owner(request)
+                selected = UserModelChoice.model_validate(req.model_choice).model_dump(mode="json")
+                parsed_choices = {role: selected for role in PAID_LOOP_ONE_ROLES}
+            except (ValidationError, OwnerByotDispatchUnavailable, KeyError, TypeError):
+                raise HTTPException(status_code=422, detail="model_selection_invalid") from None
+            operation_id = req.operation_id.strip()
+            # Owner-paid launches are roots and always single-shot. Cascade
+            # and chase remain separate, explicitly launched operations.
+            if req.parent_investigation_id is not None or req.spawn_context is not None:
+                raise HTTPException(status_code=422, detail="owner_model_root_required")
+            launch_digest = hashlib.sha256(json.dumps({
+                "question": req.question, "context": req.context,
+                "topic_slug": req.topic_slug, "max_sub_questions": req.max_sub_questions,
+                "parent_investigation_id": req.parent_investigation_id,
+                "spawn_context": req.spawn_context, "research_tier": req.research_tier,
+                "model_choice": selected,
+            }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+        canonical_owner_id = (
+            "inv-" + hashlib.sha256(f"owner-launch:{operation_id}".encode()).hexdigest()[:12]
+            if operation_id is not None else None
         )
+        if canonical_owner_id is not None and req.investigation_id not in (None, canonical_owner_id):
+            raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
+        investigation_id = req.investigation_id or canonical_owner_id or f"inv-{_uuid.uuid4().hex[:12]}"
+        replay_event_id: str | None = None
+        if operation_id is not None:
+            from .research_owner_dispatch import OwnerLaunchConflict, claim_owner_launch
+            try:
+                investigation_id, _claim_replay, owner_start_event_id = claim_owner_launch(
+                    operation_id=operation_id, owner_user_id=owner_user_id or "",
+                    launch_digest=launch_digest or "", investigation_id=investigation_id,
+                )
+            except OwnerLaunchConflict:
+                raise HTTPException(status_code=409, detail="owner_model_operation_conflict") from None
+            prior = trajectory(investigation_id)
+            for row in prior:
+                payload = row.get("payload")
+                if row.get("action_type") == "investigation.start_requested" and isinstance(payload, dict):
+                    if (payload.get("owner_user_id") == owner_user_id
+                            and payload.get("owner_operation_id") == operation_id
+                            and payload.get("owner_launch_digest") == launch_digest):
+                        replay_event_id = str(row["event_id"])
+                        break
+                    raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
         try:
-            event_id = emit_typed(
+            event_id = replay_event_id or emit_typed(
                 investigation_id,
                 InvestigationStartRequestedPayload(
                     question=req.question,
@@ -2282,18 +2353,35 @@ def create_app(
                     # start event (queryable after the fact). The payload
                     # field is the same CLOSED set.
                     research_tier=req.research_tier,
+                    owner_user_id=owner_user_id,
+                    owner_operation_id=operation_id,
+                    owner_model_choices=parsed_choices,
+                    owner_launch_digest=launch_digest,
+                    owner_launch_version=1 if operation_id is not None else None,
                 ),
                 role="operator",
                 policy_id="operator-cli",
+                event_id=owner_start_event_id if operation_id is not None else None,
+                idempotent=operation_id is not None,
+                strict_write=operation_id is not None,
             )
-        except Exception as exc:  # Pydantic ValidationError
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except ValidationError:
+            raise HTTPException(status_code=422, detail="model_selection_invalid") from None
+        except Exception:
+            if operation_id is not None:
+                raise HTTPException(status_code=503, detail="owner_model_start_pending") from None
+            raise
 
         if event_id is None:
             raise HTTPException(
                 status_code=503,
                 detail="Event log is disabled (ANTIEK_EVENTS_DISABLED).",
             )
+
+        if operation_id is not None:
+            from .research_owner_dispatch import advance_owner_launch, owner_launch_state
+            if owner_launch_state(operation_id) == "claimed":
+                advance_owner_launch(operation_id, "claimed", "appended")
 
         # Sprint 11: emit the spawn-lineage event when parent provided.
         # Non-fatal if it fails; the start event already encodes the
@@ -2311,21 +2399,38 @@ def create_app(
                     parent_event_id=event_id,
                 )
 
+        # Broadcast only a fresh or append-only launch. Once the durable
+        # journal says broadcast, an exact HTTP replay must not start a second
+        # paid run.
+        should_broadcast = operation_id is None
+        if operation_id is not None:
+            from .research_owner_dispatch import claim_owner_broadcast
+            should_broadcast = claim_owner_broadcast(operation_id)
         # Broadcast the start event so the orchestrator handler
         # subscribed to it spawns the per-investigation coroutine.
-        for row in reversed(trajectory(investigation_id)):
+        for row in reversed(trajectory(investigation_id)) if should_broadcast else ():
             if row.get("event_id") == event_id:
                 try:
                     event = Event.model_validate(row)
                     await bus.broadcast(event)
-                except Exception:  # pragma: no cover — diagnostic
-                    pass
+                    if operation_id is not None:
+                        advance_owner_launch(operation_id, "broadcasting", "broadcast")
+                except Exception:
+                    if operation_id is not None:
+                        advance_owner_launch(operation_id, "broadcasting", "appended")
+                        raise HTTPException(status_code=503, detail="owner_model_start_pending") from None
                 break
 
         return InvestigationStartResponse(
             investigation_id=investigation_id,
             status="started",
             start_event_id=event_id,
+            operation_id=operation_id,
+            # Credentials, live rates, budget envelope, and dispatch authority
+            # freeze at each role's execution seam. The start endpoint only
+            # durably queues the launch, so do not call this "accepted".
+            owner_model_status=("replayed" if replay_event_id is not None else "queued")
+            if operation_id is not None else None,
         )
 
     @app.get(

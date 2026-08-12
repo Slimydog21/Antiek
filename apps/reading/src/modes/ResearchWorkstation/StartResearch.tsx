@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { cardLift } from "../../design/motion";
 import GlassSurface from "../../shell/GlassSurface";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
+import LemonSelect from "../../components/lemon/LemonSelect";
 import Thinking from "../../shared/Thinking";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
-import type { ResearchTier } from "../../lib/api";
+import type { ResearchTier, UserModelChoice } from "../../lib/api";
+import { fetchUserModels, type UserModelRow } from "../../api/settingsModels";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
@@ -74,27 +76,42 @@ const EXAMPLE_PROMPTS: readonly string[] = [
   "Where do these authors disagree, and which side has the better-grounded claims?",
 ];
 
-/** Cost line shared with ChatInputArea — kept in sync intentionally. */
-const COST_ESTIMATE = "~$0.08-$0.16 / investigation";
+const OWNER_LAUNCH_KEY = "antiek.research.pending-owner-launch.session.v1";
+const modelKey = (providerId: string, modelId: string) => `${providerId}\u0000${modelId}`;
+const isExecutable = (model: UserModelRow) =>
+  model.enabled && model.key_present && model.registered && model.route_eligible &&
+  model.pricing_status === "known" && model.hard_ceiling_eligible &&
+  model.execution_status === "executable";
 
-/**
- * SPR-01 M3 — the curated research tiers. This is the WHOLE set the entry
- * offers: two values, no raw model dropdown, no BYO-model. The label +
- * one-line "what it's for" are the operator-facing framing; the tier→provider
- * map ("fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro) lives server-side in
- * substrate/dispatch/research_tier.py and is never exposed to the client.
- * Default is "deep" (mirrors DEFAULT_RESEARCH_TIER): a cold research question
- * is the high-value case; the operator opts DOWN to fast for cheap asks.
- */
-const RESEARCH_TIER_OPTIONS: ReadonlyArray<{
-  value: ResearchTier;
-  label: string;
-  hint: string;
-}> = [
-  { value: "fast", label: "Fast", hint: "cheaper, lower-latency" },
-  { value: "deep", label: "Deep", hint: "reasoning-heavier" },
+const RESEARCH_TIER_OPTIONS: ReadonlyArray<{ value: ResearchTier; label: string; hint: string }> = [
+  { value: "fast", label: "Fast", hint: "lower-latency established route" },
+  { value: "deep", label: "Deep", hint: "reasoning-heavier established route" },
 ];
-const DEFAULT_TIER: ResearchTier = "deep";
+
+interface PendingOwnerLaunch {
+  question: string;
+  modelChoice: UserModelChoice;
+  operationId: string;
+}
+
+function readPendingOwnerLaunch(): PendingOwnerLaunch | null {
+  try {
+    const raw = window.sessionStorage.getItem(OWNER_LAUNCH_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<PendingOwnerLaunch>;
+    if (
+      typeof value.question !== "string" ||
+      typeof value.operationId !== "string" ||
+      value.operationId.length === 0 ||
+      value.modelChoice?.authority !== "user_model" ||
+      typeof value.modelChoice.provider_id !== "string" ||
+      typeof value.modelChoice.model_id !== "string"
+    ) return null;
+    return value as PendingOwnerLaunch;
+  } catch {
+    return null;
+  }
+}
 
 /** Grace period before navigating even if no event has streamed yet, so a
  *  slow WS connection doesn't strand the operator on the start surface. */
@@ -131,10 +148,17 @@ type AttachState =
 export default function StartResearch({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const start = useStartInvestigation();
-  const [question, setQuestion] = useState("");
-  // SPR-01 M3: the curated fast/deep tier. Closed set; defaults to deep.
-  // Recorded on the investigation server-side so it's queryable after.
-  const [tier, setTier] = useState<ResearchTier>(DEFAULT_TIER);
+  const restoredLaunch = useMemo(readPendingOwnerLaunch, []);
+  const [question, setQuestion] = useState(restoredLaunch?.question ?? "");
+  const [tier, setTier] = useState<ResearchTier>("deep");
+  const [models, setModels] = useState<UserModelRow[]>([]);
+  const [modelsState, setModelsState] = useState<"loading" | "ready" | "error">("loading");
+  const [modelChoice, setModelChoice] = useState<UserModelChoice | null>(
+    restoredLaunch?.modelChoice ?? null,
+  );
+  const [operationId, setOperationId] = useState(
+    restoredLaunch?.operationId ?? `research-${crypto.randomUUID()}`,
+  );
   // Two entry actions on one composer: Ask (one-shot, the shipped fast lane,
   // default) and Break-into-sub-questions (cascade). Cascade swaps the
   // composer for the proposal surface IN PLACE — no navigation away (M1). The
@@ -166,10 +190,48 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
     reset,
   } = start;
 
+  const refreshModels = useCallback(async () => {
+    setModelsState("loading");
+    try {
+      const inventory = await fetchUserModels();
+      setModels(inventory.models.filter(isExecutable));
+      setModelsState("ready");
+    } catch {
+      setModels([]);
+      setModelsState("error");
+    }
+  }, []);
+
+  useEffect(() => { void refreshModels(); }, [refreshModels]);
+
+  const selectedModel = modelChoice
+    ? models.find((model) => model.id === modelChoice.provider_id && model.model_id === modelChoice.model_id)
+    : null;
+
+  useEffect(() => {
+    if (modelsState === "ready" && modelChoice && !selectedModel) setModelChoice(null);
+  }, [modelsState, modelChoice, selectedModel]);
+
   const onSubmit = useCallback(async () => {
-    const id = await submit({ question, researchTier: tier });
-    if (id) setQuestion("");
-  }, [submit, question, tier]);
+    const pending = modelChoice && selectedModel
+      ? { question, modelChoice, operationId } satisfies PendingOwnerLaunch
+      : null;
+    if (pending) window.sessionStorage.setItem(OWNER_LAUNCH_KEY, JSON.stringify(pending));
+    const id = await submit(modelChoice && selectedModel
+      ? { question, modelChoice, operationId }
+      : { question, researchTier: tier });
+    if (id) {
+      window.sessionStorage.removeItem(OWNER_LAUNCH_KEY);
+      setQuestion("");
+    }
+  }, [submit, question, modelChoice, operationId, selectedModel, tier]);
+
+  const selectModel = useCallback((value: string) => {
+    const model = models.find((row) => modelKey(row.id, row.model_id) === value);
+    if (!model) return;
+    setModelChoice({ authority: "user_model", provider_id: model.id, model_id: model.model_id });
+    setOperationId(`research-${crypto.randomUUID()}`);
+  }, [models]);
 
   const fillExample = useCallback((prompt: string) => {
     setQuestion(prompt);
@@ -577,47 +639,66 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             <div className="text-xs font-mono text-emperor">{error}</div>
           )}
 
-          {/* SPR-01 M3 — the curated fast/deep tier selector. A closed
-              two-value segmented control (NOT a model dropdown). Selecting
-              a tier changes which provider Hermes routes to server-side
-              ("fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro); the chosen
-              value rides on the start request and is recorded on the
-              investigation. Lives ONLY here, at the research entry. */}
-          <div
-            className="flex items-center gap-2"
-            role="radiogroup"
-            aria-label="Research depth"
-          >
-            <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
-              Depth
-            </span>
-            <div className="inline-flex rounded-hog border border-rule dark:border-charcoal-1 overflow-hidden">
-              {RESEARCH_TIER_OPTIONS.map((opt) => {
-                const active = tier === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    onClick={() => setTier(opt.value)}
-                    disabled={busy}
-                    title={opt.hint}
-                    className={
-                      "px-3 py-1 text-[12px] font-mono transition-colors disabled:opacity-50 disabled:pointer-events-none " +
-                      (active
-                        ? "bg-sun text-ink"
-                        : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright hover:bg-sun/10")
-                    }
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
+          <div className="rounded-hog border border-rule dark:border-charcoal-1 bg-ice-1/80 dark:bg-charcoal-1/40 p-3 space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <label className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight" id="research-model-label">
+                Model for Ask
+              </label>
+              <LemonSelect
+                value={modelChoice ? modelKey(modelChoice.provider_id, modelChoice.model_id) : "established"}
+                onChange={(value) => value === "established" ? setModelChoice(null) : selectModel(value)}
+                options={[{
+                  value: "established",
+                  label: `Established ${tier} route`,
+                }, ...models.map((model) => ({
+                  value: modelKey(model.id, model.model_id),
+                  label: `${model.display_name} · ${model.model_id}`,
+                }))]}
+                placeholder={
+                  modelsState === "loading"
+                    ? "Checking executable models…"
+                    : models.length === 0
+                      ? "No executable model available"
+                      : "Choose an executable model"
+                }
+                aria-label="Model for Ask investigation"
+                fullWidth
+              />
             </div>
-            <span className="text-[11px] font-serif text-ink-mute dark:text-moonlight">
-              {RESEARCH_TIER_OPTIONS.find((o) => o.value === tier)?.hint}
-            </span>
+            {modelsState === "error" ? (
+              <p className="text-[11px] font-mono text-emperor" role="alert">
+                Can’t load executable models. Check Settings, then retry inventory.
+              </p>
+            ) : selectedModel ? (
+              <div className="space-y-1" aria-live="polite">
+                <p className="text-[11px] font-serif text-ink dark:text-bright">
+                  Ask uses this model for the root investigation’s paid Loop One roles. Later chases choose their own route.
+                </p>
+                <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight break-all">
+                  Pricing authority: {selectedModel.rate_snapshot ?? "server-verified executable route"}
+                </p>
+              </div>
+            ) : (
+              <p className="text-[11px] font-serif text-ink-mute dark:text-moonlight">
+                Only routes the server reports as eligible and executable appear here.
+              </p>
+            )}
+            {!modelChoice && (
+              <div className="flex items-center gap-2" role="radiogroup" aria-label="Established research depth">
+                {RESEARCH_TIER_OPTIONS.map((option) => (
+                  <button key={option.value} type="button" role="radio" aria-checked={tier === option.value}
+                    title={option.hint} onClick={() => setTier(option.value)}
+                    className={`px-3 py-1 rounded-hog text-[11px] font-mono border border-rule ${tier === option.value ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {modelsState !== "loading" && (
+              <button type="button" onClick={() => void refreshModels()} className="text-[11px] font-mono underline text-ink dark:text-bright">
+                Retry inventory
+              </button>
+            )}
           </div>
 
           <div className="flex items-center justify-between gap-3">
@@ -625,7 +706,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-[10px] font-mono bg-ice-0 dark:bg-charcoal-1 shadow-z1 dark:shadow-z1-night mr-1.5">
                 ⌘ ↵
               </kbd>
-              to ask · {COST_ESTIMATE}
+              to ask · charges follow the selected model’s server pricing authority
             </div>
             <div className="flex items-center gap-2">
               {/* SPR-05 M2 — the OPTIONAL "plan it first" path (operator
@@ -647,7 +728,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 variant="primary"
                 size="lg"
                 onClick={() => void onSubmit()}
-                disabled={busy || question.trim().length < 3}
+                disabled={busy || question.trim().length < 3 || Boolean(modelChoice && !selectedModel)}
               >
                 {busy ? "Starting…" : "Ask"}
               </LemonButton>

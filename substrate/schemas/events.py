@@ -2218,6 +2218,11 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # meaning for the research-runner lane is UNCHANGED — see
     # substrate/dispatch/research_tier.py.
     research_tier: Literal["fast", "deep"] | None = None
+    owner_user_id: str | None = None
+    owner_operation_id: str | None = None
+    owner_model_choices: dict[str, dict[str, str]] | None = None
+    owner_launch_digest: str | None = None
+    owner_launch_version: int | None = Field(default=None, ge=1)
 
 
 class InvestigationChaseHaltedPayload(_PayloadBase):
@@ -2541,6 +2546,7 @@ class EvidenceRetrieveRequestedPayload(_PayloadBase):
     top_k: int = Field(default=5, ge=0)
     chunks_block: str
     subgraph_block: str
+    owner_semantic_call_id: str | None = None
 
 
 class EvidenceRetrieveDeliveredPayload(_PayloadBase):
