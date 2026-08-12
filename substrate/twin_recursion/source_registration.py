@@ -9,15 +9,15 @@ from typing import Any, Literal
 
 from runtime.db_lock import LockedConnection
 from substrate.books.servability import is_servable_full_text, servability_of
-from substrate.constants import (
-    PERSONAL_READABLE_CONTENT_CLASSES,
-    PERSONAL_READING_CONTENT_CLASS,
-    SERVABLE_CONTENT_CLASSES,
-)
 from substrate.books.serve_guard import (
     LinkBackMissingError,
     _rights_context_from_metadata,
     serve_full_text_guarded,
+)
+from substrate.constants import (
+    PERSONAL_READABLE_CONTENT_CLASSES,
+    PERSONAL_READING_CONTENT_CLASS,
+    SERVABLE_CONTENT_CLASSES,
 )
 from substrate.rights import T3BodyServeError, body_servable
 from substrate.twin_note_taker import MAX_CONTENT_CHARS, MIN_CONTENT_CHARS, AssetContent
