@@ -17,7 +17,6 @@ All offline: byok artifact/key-file redirected to tmp, httpx over
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -30,6 +29,12 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from runtime.connectors.registry import (  # noqa: E402
+    connect_tool,
+    disconnect_tool,
+    list_tool_connections,
+    resolve_tool_connection,
+)
 from runtime.connectors.x_twitter import (  # noqa: E402
     XTwitterConnector,
     XTwitterError,
@@ -39,12 +44,6 @@ from runtime.connectors.youtube import (  # noqa: E402
     YouTubeDataConnector,
     YouTubeError,
     YouTubeKeyRequired,
-)
-from runtime.connectors.registry import (  # noqa: E402
-    connect_tool,
-    disconnect_tool,
-    list_tool_connections,
-    resolve_tool_connection,
 )
 
 _TEST_KEY_BYTES = b"0" * nacl.secret.SecretBox.KEY_SIZE
@@ -321,9 +320,10 @@ def test_registry_disconnect(registry_paths) -> None:
 
 def _fake_governor(tmp_dir: str):
     """Build a VendorRateGovernor with a temp state dir."""
-    from runtime.connectors.rate_governor import VendorRateGovernor
-    from runtime.connectors.base import RateSpec
     import tempfile
+
+    from runtime.connectors.base import RateSpec
+    from runtime.connectors.rate_governor import VendorRateGovernor
     real_tmp = tempfile.mkdtemp()
     return VendorRateGovernor("x", RateSpec(max_calls=25, window_s=900.0), state_dir=real_tmp)
 

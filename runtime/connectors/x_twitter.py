@@ -33,7 +33,6 @@ from runtime.connectors.base import (
     ConnectorDescriptor,
     ConnectorError,
     KeyShape,
-    KeyShapeError,
     PasteKeyConnector,
     RateSpec,
 )

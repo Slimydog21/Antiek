@@ -30,10 +30,8 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from interfaces.research.api.oauth_routes import (  # noqa: E402
-    _state_store,
     register_oauth_routes,
 )
-
 
 # ---------------------------------------------------------------------------
 # App + fixtures
@@ -49,8 +47,7 @@ def _fresh_app() -> FastAPI:
     @app.middleware("http")
     async def _set_test_owner(request: Request, call_next):
         request.state.user_id = request.headers.get("X-Test-Owner", "__operator__")
-        response = await call_next(request)
-        return response
+        return await call_next(request)
 
     register_oauth_routes(app)
     return app
@@ -404,6 +401,7 @@ def test_no_token_material_in_any_response(configured_client: TestClient, monkey
 
 def test_state_store_expiry(monkeypatch) -> None:
     import time as _time
+
     from interfaces.research.api.oauth_routes import _OAuthStateStore
 
     store = _OAuthStateStore()

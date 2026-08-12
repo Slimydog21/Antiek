@@ -38,7 +38,6 @@ from runtime.connectors.base import (
 )
 from runtime.connectors.quota_meter import (
     YOUTUBE_UNIT_COSTS,
-    QuotaExhausted,
     QuotaMeter,
     QuotaSnapshot,
 )
