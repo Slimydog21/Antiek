@@ -29,7 +29,10 @@ import io
 import os
 import sys
 import tempfile
+import time
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from types import ModuleType
 
 import pytest
@@ -40,9 +43,11 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from interfaces.research.api import books as books_api  # noqa: E402
+from interfaces.research.api import upload_routes  # noqa: E402
 from interfaces.research.api.app import create_app  # noqa: E402
 from interfaces.research.api.upload_routes import sniff_kind  # noqa: E402
 from runtime.db_lock import connect_write  # noqa: E402
+from substrate.auth import mint_session_cookie  # noqa: E402
 from substrate.books.html_sanitizer import SANITIZER_VERSION  # noqa: E402
 from substrate.research_bridge import extractors  # noqa: E402
 
@@ -188,6 +193,13 @@ class _FakeAnydoc(ModuleType):
 def _install_fake_anydoc(monkeypatch, fake: _FakeAnydoc | None = None) -> _FakeAnydoc:
     binding = fake or _FakeAnydoc()
     monkeypatch.setitem(sys.modules, "anydoc", binding)
+    def convert(data: bytes, filename: str | None) -> str:
+        result = extractors.extract_text(data, filename=filename)
+        if not result.ok or result.kind != "markdown":
+            from fastapi import HTTPException
+            raise HTTPException(422, {"code": "upload_conversion_failed"})
+        return result.text
+    monkeypatch.setattr(upload_routes, "_extract_office_bounded", convert)
     return binding
 
 
@@ -195,6 +207,16 @@ def _missing_anydoc_import(name: str):
     """Simulate the G1 state: the firecrawl-anydoc wheel is not installed."""
     assert name == "anydoc"
     raise ImportError(name)
+
+
+def _install_child_anydoc(tmp_path: Path, monkeypatch, body: str) -> None:
+    module_dir = tmp_path / "child-modules"
+    module_dir.mkdir()
+    (module_dir / "anydoc.py").write_text(body, encoding="utf-8")
+    existing = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv(
+        "PYTHONPATH", os.pathsep.join(filter(None, (str(module_dir), _REPO, existing)))
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +271,20 @@ def test_sniff_pk_zip_non_office_extension_still_epub():
     """A PK-zip body with a NON-office extension (or none) still 409s."""
     assert sniff_kind(b"PK\x03\x04" + b"\x00" * 40, "archive.zip") == "epub"
     assert sniff_kind(b"PK\x03\x04" + b"\x00" * 40, None) == "epub"
+
+
+def test_sniff_corrupt_arbitrary_zip_renamed_docx_is_not_office():
+    assert sniff_kind(b"PK\x03\x04" + b"\x00" * 40, "not-office.docx") is None
+
+
+def test_sniff_high_expansion_docx_uses_central_directory_only(monkeypatch):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", b"x" * 2_000_000)
+        zf.writestr("word/document.xml", b"x" * 2_000_000)
+    monkeypatch.setattr(zipfile.ZipFile, "open", lambda *a, **k: pytest.fail("decompressed"))
+    monkeypatch.setattr(zipfile.ZipFile, "read", lambda *a, **k: pytest.fail("decompressed"))
+    assert sniff_kind(buf.getvalue(), "bomb.docx") is None
 
 
 # ---------------------------------------------------------------------------
@@ -360,7 +396,7 @@ def test_upload_docx_stored_and_served_as_sanitized_html(
     the markdown→safe-HTML body through the same trusted sidecar path as every
     other format (version-provenance stamped) and serves it as
     content_format="html"."""
-    binding = _install_fake_anydoc(monkeypatch)
+    _install_fake_anydoc(monkeypatch)
     resp = client.post(
         "/sources/upload",
         files={"file": ("report.docx", _make_docx_bytes(),
@@ -376,10 +412,8 @@ def test_upload_docx_stored_and_served_as_sanitized_html(
     document_id = body["document_id"]
     assert document_id.startswith("doc-upload-")
 
-    # The route really went through the anydoc binding with the right format
-    # hint (no stub-theater): the upload bytes + "docx".
-    assert len(binding.calls) == 1
-    assert binding.calls[0][1] == "docx"
+    # Conversion runs in an isolated process so a wedged native converter can
+    # be killed; the successful markdown below proves the binding was used.
 
     # The STORED sidecar is the converted GFM rendered to safe HTML, stamped
     # with the current sanitizer version.
@@ -401,12 +435,11 @@ def test_upload_docx_stored_and_served_as_sanitized_html(
     assert "<h1>Quarterly Report</h1>" in sbody["body"]
 
 
-def test_upload_docx_without_anydoc_returns_422_with_install_hint(
+def test_upload_docx_without_anydoc_returns_stable_422(
     temp_substrate, client, monkeypatch
 ):
-    """G1 state: the firecrawl-anydoc wheel is not installed → extract_text
-    returns ok=False and the upload answers a typed 422 carrying the install
-    hint — no crash, no poison row."""
+    """G1 state: a missing anydoc binding returns a stable public code — no
+    dependency details, crash, or poison row."""
     monkeypatch.setattr(extractors, "import_module", _missing_anydoc_import)
     resp = client.post(
         "/sources/upload",
@@ -415,9 +448,7 @@ def test_upload_docx_without_anydoc_returns_422_with_install_hint(
         data={"acquisition_attestation": "personal_reading"},
     )
     assert resp.status_code == 422
-    detail = resp.json()["detail"]
-    assert "could not convert upload:" in detail
-    assert "install the 'docs' extra (firecrawl-anydoc)" in detail
+    assert resp.json()["detail"] == {"code": "upload_conversion_failed"}
 
 
 def test_upload_docx_conversion_failure_returns_422(temp_substrate, client, monkeypatch):
@@ -430,10 +461,117 @@ def test_upload_docx_conversion_failure_returns_422(temp_substrate, client, monk
         data={"acquisition_attestation": "personal_reading"},
     )
     assert resp.status_code == 422
-    assert (
-        resp.json()["detail"]
-        == "could not convert upload: anydoc could not convert .docx: ValueError"
+    assert resp.json()["detail"] == {"code": "upload_conversion_failed"}
+
+
+def test_upload_docx_conversion_timeout_is_stable_and_reaped(
+    temp_substrate, client, monkeypatch
+):
+    monkeypatch.setattr(upload_routes, "ANYDOC_CONVERSION_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(upload_routes, "_EXTRACT_SUBPROCESS", "import time; time.sleep(2)")
+    resp = client.post(
+        "/sources/upload",
+        files={"file": ("report.docx", _make_docx_bytes(), "application/octet-stream")},
+        data={"acquisition_attestation": "personal_reading"},
     )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == {"code": "upload_conversion_timeout"}
+
+
+@pytest.mark.parametrize(
+    "worker",
+    [
+        "from pathlib import Path; import sys; Path(sys.argv[2]).write_text('{')",
+        (
+            "from pathlib import Path; import json,sys; "
+            "Path(sys.argv[2]).write_text(json.dumps({'ok':False,'kind':'',"
+            "'text':'','oversize':True}))"
+        ),
+    ],
+)
+def test_upload_docx_partial_or_oversize_converter_result_is_stable(
+    temp_substrate, client, monkeypatch, worker
+):
+    monkeypatch.setattr(upload_routes, "_EXTRACT_SUBPROCESS", worker)
+    resp = client.post(
+        "/sources/upload",
+        files={"file": ("report.docx", _make_docx_bytes(), "application/octet-stream")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == {"code": "upload_conversion_failed"}
+
+
+def test_real_converter_protocol_sanitizes_env_and_cleans_tempdir(
+    temp_substrate, client, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("ANTIEK_OPERATOR_TOKEN", "must-not-reach-child")
+    monkeypatch.setenv("OPENAI_API_KEY", "must-not-reach-child")
+    _install_child_anydoc(
+        tmp_path,
+        monkeypatch,
+        """import os
+def to_markdown_bytes(data, format=None):
+    assert 'ANTIEK_OPERATOR_TOKEN' not in os.environ
+    assert 'OPENAI_API_KEY' not in os.environ
+    assert os.path.basename(os.getcwd()).startswith('antiek-anydoc-')
+    return '# Sanitized child environment'
+""",
+    )
+    before = set(Path(tempfile.gettempdir()).glob("antiek-anydoc-*"))
+    resp = client.post(
+        "/sources/upload",
+        headers={"Authorization": "Bearer must-not-reach-child"},
+        files={"file": ("report.docx", _make_docx_bytes(), "application/octet-stream")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert resp.status_code == 201, resp.text
+    assert set(Path(tempfile.gettempdir()).glob("antiek-anydoc-*")) == before
+
+
+def test_converter_resource_limit_failure_is_stable(
+    temp_substrate, client, monkeypatch, tmp_path
+):
+    _install_child_anydoc(
+        tmp_path, monkeypatch, "def to_markdown_bytes(data, format=None): return '# ok'"
+    )
+    monkeypatch.setattr(upload_routes, "CONVERTER_FILE_SIZE_BYTES", 1)
+    resp = client.post(
+        "/sources/upload",
+        files={"file": ("report.docx", _make_docx_bytes(), "application/octet-stream")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == {"code": "upload_conversion_failed"}
+
+
+def test_slow_office_conversion_does_not_block_health(
+    temp_substrate, client, monkeypatch, tmp_path
+):
+    _install_child_anydoc(
+        tmp_path,
+        monkeypatch,
+        """import time
+def to_markdown_bytes(data, format=None):
+    time.sleep(0.5)
+    return '# slow but bounded'
+""",
+    )
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        upload = pool.submit(
+            client.post,
+            "/sources/upload",
+            files={"file": ("report.docx", _make_docx_bytes(), "application/octet-stream")},
+            data={"acquisition_attestation": "personal_reading"},
+        )
+        # The converter itself sleeps for 500 ms.  Waiting long enough for the
+        # request to enter that window makes the assertion about ordering, not
+        # scheduler speed: health must finish while conversion is still live.
+        time.sleep(0.1)
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert not upload.done()
+        assert upload.result().status_code == 201
 
 
 _XSS_DOCX_GFM = """# Infected Upload
@@ -626,6 +764,111 @@ def test_upload_missing_file_returns_4xx(temp_substrate, client):
         data={"acquisition_attestation": "personal_reading"},
     )
     assert 400 <= resp.status_code < 500
+
+
+def test_upload_exact_64_mib_boundary_and_plus_one(temp_substrate, client):
+    at_limit = b"x" * upload_routes.DEFAULT_MAX_UPLOAD_BYTES
+    accepted = client.post(
+        "/sources/upload",
+        files={"file": ("limit.txt", at_limit, "text/plain")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert accepted.status_code == 201
+    rejected = client.post(
+        "/sources/upload",
+        files={"file": ("over.txt", at_limit + b"x", "text/plain")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert rejected.status_code == 413
+
+
+def test_upload_auth_required_and_signed_cookie_origin_policy(temp_substrate, monkeypatch):
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "test-auth-secret-that-is-at-least-thirty-two-bytes")
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "owner@example.test")
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    protected = TestClient(app)
+    payload = {
+        "files": {"file": ("note.txt", b"authenticated", "text/plain")},
+        "data": {"acquisition_attestation": "personal_reading"},
+    }
+    assert protected.post("/sources/upload", **payload).status_code == 401
+
+    cookie = mint_session_cookie(user_id="owner", email="owner@example.test")
+    protected.cookies.set("ANTIEK_SESSION", cookie)
+    missing_provenance = protected.post("/sources/upload", **payload)
+    assert missing_provenance.status_code == 403
+    cross_origin = protected.post(
+        "/sources/upload", headers={"Origin": "https://evil.example"}, **payload
+    )
+    assert cross_origin.status_code == 403
+    assert cross_origin.json()["detail"] == {"code": "cross_origin_request"}
+    assert "evil.example" not in cross_origin.text
+
+    accepted = protected.post(
+        "/sources/upload", headers={"Origin": "https://antiek.ai"}, **payload
+    )
+    assert accepted.status_code == 201
+    accepted_referer = protected.post(
+        "/sources/upload",
+        headers={"Referer": "https://antiek.ai/library/upload"},
+        **payload,
+    )
+    assert accepted_referer.status_code == 201
+
+
+def test_upload_bearer_auth_does_not_require_browser_origin(temp_substrate, monkeypatch):
+    monkeypatch.setenv("ANTIEK_OPERATOR_TOKEN", "machine-upload-token")
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    protected = TestClient(app)
+    response = protected.post(
+        "/sources/upload",
+        headers={"Authorization": "Bearer machine-upload-token"},
+        files={"file": ("note.txt", b"machine upload", "text/plain")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert response.status_code == 201
+
+
+def test_upload_cf_service_token_does_not_require_browser_origin(temp_substrate, monkeypatch):
+    monkeypatch.setenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", "service-client")
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    response = TestClient(app).post(
+        "/sources/upload",
+        headers={"Cf-Access-Client-Id": "service-client"},
+        files={"file": ("note.txt", b"service upload", "text/plain")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert response.status_code == 201
+
+
+def test_upload_unauthenticated_local_does_not_require_origin(temp_substrate):
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    response = TestClient(app).post(
+        "/sources/upload",
+        files={"file": ("note.txt", b"local upload", "text/plain")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert response.status_code == 201
+
+
+def test_upload_cookie_accepts_normalized_configured_origin(temp_substrate, monkeypatch):
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "test-auth-secret-that-is-at-least-thirty-two-bytes")
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "owner@example.test")
+    monkeypatch.setenv(
+        "ANTIEK_CORS_ORIGINS", "  https://custom.example/ , http://localhost:9911/  "
+    )
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    protected = TestClient(app)
+    protected.cookies.set(
+        "ANTIEK_SESSION", mint_session_cookie(user_id="owner", email="owner@example.test")
+    )
+    response = protected.post(
+        "/sources/upload",
+        headers={"Origin": "https://custom.example"},
+        files={"file": ("note.txt", b"configured origin", "text/plain")},
+        data={"acquisition_attestation": "personal_reading"},
+    )
+    assert response.status_code == 201
 
 
 # ---------------------------------------------------------------------------
