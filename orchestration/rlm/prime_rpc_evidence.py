@@ -212,6 +212,8 @@ def invoke_prime_rpc_evidence(
         receipt = ledger.succeed(authorization.request_id, now_ms=clock())
         if receipt.state is not PrimeCallState.SUCCEEDED:
             return PrimeRPCOutcome(None, receipt, argv, "settlement failed")
+        if usage is None:
+            return PrimeRPCOutcome(None, receipt, argv, "missing usage on successful run")
         evidence = PrimeRPCEvidence(text, usage.provider, usage.model, usage.prime_version)
         return PrimeRPCOutcome(evidence, receipt, argv)
     except BaseException as exc:
