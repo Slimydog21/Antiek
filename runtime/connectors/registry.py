@@ -598,10 +598,10 @@ def resolve_tool_connection(
             **connector_kwargs,
         )
     connector_types: dict[str, tuple[str, str]] = {
-        "youtube": ("acquisition.youtube.data_api", "YouTubeConnector"),
+        "youtube": ("runtime.connectors.youtube", "YouTubeDataConnector"),
         "polygon": ("acquisition.polygon.client", "PolygonConnector"),
         "fmp": ("acquisition.fmp.client", "FmpConnector"),
-        "x": ("acquisition.twitter.api_client", "XApiClient"),
+        "x": ("runtime.connectors.x_twitter", "XTwitterConnector"),
     }
     module_name, class_name = connector_types[definition.vendor]
     from importlib import import_module
