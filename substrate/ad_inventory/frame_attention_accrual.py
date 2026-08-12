@@ -147,6 +147,32 @@ def ensure_tables(con: Any) -> None:
             "CREATE INDEX IF NOT EXISTS idx_house_seconds_window "
             "ON house_seconds(window_id)"
         )
+        # Ad-pipeline gap S1 (frame-telemetry-v3): the client-hint ledger. A
+        # client-supplied ``ad_value_usd_cents`` is accepted on the wire as an
+        # IGNORED HINT and logged here for auditability (fraud investigation:
+        # what the client CLAIMED vs what the server minted). It NEVER feeds
+        # the accrual — ``WindowFrameBatch.ad_value_usd_cents`` is minted
+        # server-side only. Append-only; keyed by (batch_ref, hint) so an
+        # exact retry collapses to one row while a retry that CHANGES its
+        # claim appends (the changing claim is itself the interesting event).
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS frame_telemetry_client_hints (
+                hint_id                         TEXT PRIMARY KEY,
+                window_id                       TEXT NOT NULL,
+                batch_ref                       TEXT NOT NULL,
+                client_hint_ad_value_usd_cents  INTEGER NOT NULL
+                    CHECK (client_hint_ad_value_usd_cents >= 0),
+                telemetry_version               TEXT NOT NULL,
+                received_at                     TIMESTAMP NOT NULL
+                    DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        con.execute(
+            "CREATE INDEX IF NOT EXISTS idx_frame_client_hints_window "
+            "ON frame_telemetry_client_hints(window_id)"
+        )
     except Exception:
         pass
 
@@ -540,6 +566,51 @@ def accrue_window(
     return result
 
 
+def record_client_hint(
+    con: Any,
+    *,
+    window_id: str,
+    batch_ref: str,
+    client_hint_ad_value_usd_cents: int,
+    telemetry_version: str,
+) -> str:
+    """Append one client-supplied ad-value HINT to the audit ledger
+    (ad-pipeline gap S1, frame-telemetry-v3).
+
+    The wire shape re-accepts ``ad_value_usd_cents`` as an IGNORED HINT: it is
+    logged here (``client_hint``) for auditability/fraud investigation and
+    NEVER feeds the accrual — the server mints the value itself from its own
+    fill/pricing record (``ad_routes.resolve_window_value_cents``), and a hint
+    row has no economic effect whatsoever.
+
+    Append-only + idempotent: rows are keyed by a deterministic id derived from
+    (batch_ref, hint), so an exact retry collapses to one row (INSERT OR
+    IGNORE) while a retry that CHANGES its claim appends a second row — a
+    client that revises its claimed price is itself the audit event. The
+    caller MUST hold the single-writer connection (the route calls this inside
+    ``connect_write``, right after ``accrue_window``).
+    """
+    ensure_tables(con)
+    hint_key = f"{batch_ref}\x00{client_hint_ad_value_usd_cents}".encode()
+    hint_id = f"hint-{hashlib.sha256(hint_key).hexdigest()[:20]}"
+    con.execute(
+        """
+        INSERT OR IGNORE INTO frame_telemetry_client_hints (
+            hint_id, window_id, batch_ref, client_hint_ad_value_usd_cents,
+            telemetry_version
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        [
+            hint_id,
+            window_id,
+            batch_ref,
+            client_hint_ad_value_usd_cents,
+            telemetry_version,
+        ],
+    )
+    return hint_id
+
+
 def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
     """Reconstruct a persisted WindowAccrual from its stored rows (the read
     surface the idempotent path returns)."""
@@ -718,6 +789,7 @@ __all__ = [
     "WindowAccrual",
     "aggregate_window",
     "accrue_window",
+    "record_client_hint",
     "replay",
     "FrameReplayResult",
     "window_reconciliation",
