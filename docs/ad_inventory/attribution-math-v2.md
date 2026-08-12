@@ -146,3 +146,88 @@ window-level conservation identity:
 ```
 Σ asset cents + house cents == window ad value cents
 ```
+
+---
+
+## AFA-S6 addendum — monthly close + Merkle month root
+
+**Module:** `substrate/ad_inventory/monthly_close.py`  
+**Merkle:** `substrate/ad_inventory/merkle.py` (`merkle-leaf-v1`)  
+**Offline verifier:** `substrate/ad_inventory/verify_statement.py` (stdlib only)  
+**CLI:** `python -m tools.afa_month_close`  
+**Versions:** `month-close-v1` · `statement-v1` · `merkle-leaf-v1`
+
+### What a close produces
+
+For a calendar month `YYYY-MM` the close job:
+
+1. Reads `frame_attention_accruals` + `house_seconds` whose `accrued_at` falls
+   in the half-open interval `[YYYY-MM-01, next-month-01)`.
+2. Aggregates per **payee** (`ip_holder_id`) into a canonical-JSON statement:
+   total cents, per-window aggregates (window_id, batch_ref, amount_cents,
+   asset_ids, n_seconds, summed_weight), formula/version ids, and **full
+   denominators** (month pool, house reasons, excluded-second counts,
+   unmapped residue, payee share in integer basis points).
+3. Builds a stdlib Merkle tree over the statements sorted by `payee_id`.
+   Leaf payload = canonical JSON of the statement
+   (`json.dumps(..., sort_keys=True, separators=(",", ":"))`, UTF-8).
+4. Emits inclusion proofs (sibling path + L/R directions) and writes artifacts:
+   `root.txt`, `manifest.json`, `statements/<payee>.json`, `proofs/<payee>.json`.
+5. Persists `afa_month_closes` + `afa_month_statements` (schema V22).
+
+### Root format (`merkle-leaf-v1`)
+
+```
+leaf_hash(payload) = sha256( 0x00 || payload )
+node_hash(L, R)    = sha256( 0x01 || L || R )
+```
+
+Odd levels promote the unpaired node unchanged (no self-hash). A single-leaf
+tree has `root == leaf_hash`. The serialization version is stamped on every
+close record and every proof.
+
+### Conservation at close
+
+```
+Σ statement.total_cents  +  house_cents  +  unmapped_cents
+    ==  Σ window ad-value cents
+```
+
+Integer-exact. Unmapped (no `ip_holder_id`) is disclosed, never dropped.
+
+### Re-close policy
+
+**Idempotent when the statements digest matches** (same ledger → same root;
+artifacts rewritten, row reused). If the ledger under a closed period has
+changed, re-close is **refused** — no silent history rewrite. Clawback /
+recompute of past closes is a future lane.
+
+### How to verify (offline, no DB)
+
+```bash
+python -m tools.afa_month_close close --month 2026-07
+python -m tools.afa_month_close root  --month 2026-07
+python -m tools.afa_month_close verify \
+    --root data/afa_month_closes/2026-07/root.txt \
+    --statement data/afa_month_closes/2026-07/statements/<payee>.json \
+    --proof data/afa_month_closes/2026-07/proofs/<payee>.json
+```
+
+Or hand a third party only the three files + the verifier module:
+
+```bash
+python -m substrate.ad_inventory.verify_statement \
+    statement.json proof.json root.txt
+# → VALID  or  INVALID: <reason>
+```
+
+The verifier imports **only the Python standard library** (json, hashlib,
+sys, pathlib, argparse, typing). Its import-isolation is tested.
+
+### What S6 is not
+
+- Not a disbursement. Accrual ≠ payout stays.
+- Not a public transparency page (pre-G2/G3; root lives in the close artifact).
+- Not a change to split math, caps, or thresholds — it **publishes** what S5
+  stamped.
+- Not clawback / recompute workflows for past closes.
