@@ -192,7 +192,7 @@ class YouTubeDataConnector(PasteKeyConnector):
                 status_code=resp.status_code,
             )
         try:
-            payload = resp.json()
+            payload: dict[str, Any] = resp.json()
         except ValueError as exc:
             self._meter.record_actual(-units)
             raise YouTubeError("YouTube API returned a non-JSON body") from exc
