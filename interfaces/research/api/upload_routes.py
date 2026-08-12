@@ -444,7 +444,7 @@ def _terminate_converter(process: subprocess.Popen[bytes]) -> None:
     process.wait()
 
 
-def _extract_office_bounded(file_bytes: bytes, filename: str | None):
+def _extract_office_bounded(file_bytes: bytes, filename: str | None) -> str:
     """Run anydoc in a fresh interpreter with one receive/exit deadline."""
     deadline = time.monotonic() + ANYDOC_CONVERSION_TIMEOUT_SECONDS
     with tempfile.TemporaryDirectory(prefix="antiek-anydoc-") as tmpdir:
@@ -491,7 +491,8 @@ def _extract_office_bounded(file_bytes: bytes, filename: str | None):
             record = json.loads(encoded)
             text = record["text"]
             if (
-                record.get("oversize")
+                not isinstance(text, str)
+                or record.get("oversize")
                 or not record["ok"]
                 or record["kind"] != "markdown"
                 or len(text.encode("utf-8")) > MAX_CONVERTED_MARKDOWN_BYTES
