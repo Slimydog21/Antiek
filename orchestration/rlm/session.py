@@ -75,6 +75,8 @@ class RLMSessionState:
     investigation_id: str
     root_role: str  # the role that triggered the RLM session (synthesizer | wrestler)
     document_id: str | None
+    root_executor: str = "dispatch"
+    prime_goal_brief: str | None = None
     iteration_count: int = 0
     cost_usd_accumulated: Decimal = Decimal("0.00")
     started_at: str = field(default_factory=_now_iso)
@@ -149,6 +151,8 @@ def create_session(
     investigation_id: str,
     root_role: str,
     document_id: str | None = None,
+    root_executor: str = "dispatch",
+    prime_goal_brief: str | None = None,
 ) -> RLMSession:
     """Create an RLM session. Refuses to run if §6 ratification is
     not set."""
@@ -158,6 +162,8 @@ def create_session(
         investigation_id=investigation_id,
         root_role=root_role,
         document_id=document_id,
+        root_executor=root_executor,
+        prime_goal_brief=prime_goal_brief,
     ))
 
 

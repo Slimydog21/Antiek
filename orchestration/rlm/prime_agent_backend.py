@@ -27,6 +27,9 @@ _OUTPUT_ENV = "ANTIEK_PRIME_AGENT_RLM_MAX_OUTPUT_BYTES"
 _DEFAULT_TIMEOUT_SECONDS = 120.0
 _DEFAULT_MAX_OUTPUT_BYTES = 256_000
 _MAX_PROMPT_BYTES = 1_000_000
+_READ_CHUNK_BYTES = 16_384
+_SESSION_POLL_INTERVAL_SECONDS = 0.05
+_PASSTHROUGH_ENV = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
 
 
 class PrimeAgentTerminalState(StrEnum):
@@ -45,6 +48,20 @@ class PrimeAgentRequest:
     """One request for non-canonical evidence."""
 
     prompt: str
+    workflow: str
+    request_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class PrimeAgentSessionRequest:
+    """One Prime Agent session-mode request.
+
+    ``goal_brief`` is stable across iterations for one investigation.
+    ``iteration_prompt`` is the per-iteration payload the backend sends.
+    """
+
+    goal_brief: str
+    iteration_prompt: str
     workflow: str
     request_id: str
 
@@ -218,6 +235,75 @@ class PrimeAgentRLMBackend:
         )
         return PrimeAgentOutcome(request, PrimeAgentEvidence(text), receipt)
 
+    def run_session(self, request: PrimeAgentSessionRequest) -> PrimeAgentOutcome:
+        """Run one bounded file-handoff session call and return file output.
+
+        Session mode keeps the same least-privilege subprocess envelope but asks
+        Prime Agent to write its final answer to an output file. The backend then
+        polls that file and extracts the answer text.
+        """
+        canonical = PrimeAgentRequest(
+            prompt=request.iteration_prompt,
+            workflow=request.workflow,
+            request_id=request.request_id,
+        )
+        if (
+            not request.goal_brief.strip()
+            or not request.iteration_prompt.strip()
+            or not request.workflow.strip()
+            or not request.request_id.strip()
+        ):
+            return self._outcome(
+                canonical,
+                PrimeAgentTerminalState.MALFORMED,
+                self._argv(canonical),
+                detail="session request fields must be non-empty",
+            )
+
+        with tempfile.TemporaryDirectory(dir=self._cwd) as tmp:
+            output_path = Path(tmp) / "prime_agent_session_answer.txt"
+            session_prompt = (
+                f"{request.goal_brief.strip()}\n\n"
+                "You are in Antiek RLM session mode. Use the iteration payload "
+                "below, write ONLY the final answer to the required output path, "
+                "and print a short completion line.\n\n"
+                f"Iteration payload:\n{request.iteration_prompt}\n\n"
+                f"Write final answer to exactly: {output_path}\n"
+                f"When done, print exactly: done: {output_path}"
+            )
+            bootstrap = self.run(PrimeAgentRequest(
+                prompt=session_prompt,
+                workflow=request.workflow,
+                request_id=request.request_id,
+            ))
+            if bootstrap.receipt.state is not PrimeAgentTerminalState.SUCCESS:
+                return PrimeAgentOutcome(canonical, None, bootstrap.receipt)
+
+            text, state, detail = self._poll_session_output(output_path)
+            if state is not None:
+                return self._outcome(
+                    canonical,
+                    state,
+                    bootstrap.receipt.argv,
+                    exit_code=bootstrap.receipt.exit_code,
+                    duration_ms=bootstrap.receipt.duration_ms,
+                    output_bytes=0,
+                    detail=detail,
+                )
+            assert text is not None
+            encoded = text.encode("utf-8")
+            return PrimeAgentOutcome(
+                canonical,
+                PrimeAgentEvidence(text=text, source="prime-agent-session"),
+                PrimeAgentReceipt(
+                    state=PrimeAgentTerminalState.SUCCESS,
+                    argv=bootstrap.receipt.argv,
+                    exit_code=bootstrap.receipt.exit_code,
+                    duration_ms=bootstrap.receipt.duration_ms,
+                    output_bytes=min(len(encoded), self._max_output_bytes),
+                ),
+            )
+
     def _argv(self, request: PrimeAgentRequest) -> tuple[str, ...]:
         return (
             self._executable,
@@ -234,6 +320,106 @@ class PrimeAgentRLMBackend:
             "-p",
         )
 
+<<<<<<< HEAD
+||||||| parent of 7e9c6cbe2 (Embed prime-agent mode into RLM repl and investigation flows)
+    def _read_bounded(
+        self, process: subprocess.Popen[bytes], started: float
+    ) -> tuple[bytes, PrimeAgentTerminalState | None]:
+        assert process.stdout is not None
+        output = bytearray()
+        os.set_blocking(process.stdout.fileno(), False)
+        selector = selectors.DefaultSelector()
+        selector.register(process.stdout, selectors.EVENT_READ)
+        try:
+            while selector.get_map():
+                remaining = self._timeout_seconds - (time.monotonic() - started)
+                if remaining <= 0:
+                    _terminate_process_group(process)
+                    return bytes(output), PrimeAgentTerminalState.TIMEOUT
+                for key, _ in selector.select(min(remaining, 0.1)):
+                    chunk = os.read(key.fd, _READ_CHUNK_BYTES)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    output.extend(chunk)
+                    if len(output) > self._max_output_bytes:
+                        del output[self._max_output_bytes :]
+                        _terminate_process_group(process)
+                        return bytes(output), PrimeAgentTerminalState.FAILED
+            remaining = self._timeout_seconds - (time.monotonic() - started)
+            if remaining <= 0:
+                _terminate_process_group(process)
+                return bytes(output), PrimeAgentTerminalState.TIMEOUT
+            process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            _terminate_process_group(process)
+            return bytes(output), PrimeAgentTerminalState.TIMEOUT
+        finally:
+            selector.close()
+            process.stdout.close()
+        return bytes(output), None
+
+=======
+    def _poll_session_output(
+        self,
+        output_path: Path,
+    ) -> tuple[str | None, PrimeAgentTerminalState | None, str | None]:
+        """Poll ``output_path`` and decode bounded UTF-8 session output."""
+        deadline = time.monotonic() + self._timeout_seconds
+        while time.monotonic() <= deadline:
+            if output_path.is_file() and output_path.stat().st_size > 0:
+                raw = output_path.read_bytes()
+                if len(raw) > self._max_output_bytes:
+                    raw = raw[: self._max_output_bytes]
+                    return None, PrimeAgentTerminalState.FAILED, "output limit exceeded"
+                try:
+                    text = raw.decode("utf-8", errors="strict").strip()
+                except UnicodeDecodeError:
+                    return None, PrimeAgentTerminalState.MALFORMED, "output file was not UTF-8"
+                if not text:
+                    return None, PrimeAgentTerminalState.MALFORMED, "output file was empty"
+                return text, None, None
+            time.sleep(_SESSION_POLL_INTERVAL_SECONDS)
+        return None, PrimeAgentTerminalState.TIMEOUT, "session output file missing"
+
+    def _read_bounded(
+        self, process: subprocess.Popen[bytes], started: float
+    ) -> tuple[bytes, PrimeAgentTerminalState | None]:
+        assert process.stdout is not None
+        output = bytearray()
+        os.set_blocking(process.stdout.fileno(), False)
+        selector = selectors.DefaultSelector()
+        selector.register(process.stdout, selectors.EVENT_READ)
+        try:
+            while selector.get_map():
+                remaining = self._timeout_seconds - (time.monotonic() - started)
+                if remaining <= 0:
+                    _terminate_process_group(process)
+                    return bytes(output), PrimeAgentTerminalState.TIMEOUT
+                for key, _ in selector.select(min(remaining, 0.1)):
+                    chunk = os.read(key.fd, _READ_CHUNK_BYTES)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    output.extend(chunk)
+                    if len(output) > self._max_output_bytes:
+                        del output[self._max_output_bytes :]
+                        _terminate_process_group(process)
+                        return bytes(output), PrimeAgentTerminalState.FAILED
+            remaining = self._timeout_seconds - (time.monotonic() - started)
+            if remaining <= 0:
+                _terminate_process_group(process)
+                return bytes(output), PrimeAgentTerminalState.TIMEOUT
+            process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            _terminate_process_group(process)
+            return bytes(output), PrimeAgentTerminalState.TIMEOUT
+        finally:
+            selector.close()
+            process.stdout.close()
+        return bytes(output), None
+
+>>>>>>> 7e9c6cbe2 (Embed prime-agent mode into RLM repl and investigation flows)
     @staticmethod
     def _outcome(
         request: PrimeAgentRequest,

@@ -436,6 +436,62 @@ def rlm_loop(
 # ---------------------------------------------------------------------------
 
 
+def _resolve_prime_backend(
+    *,
+    prime_backend: PrimeAgentRLMBackend | None,
+    prime_agent_backend: PrimeAgentRLMBackend | None,
+) -> PrimeAgentRLMBackend | None:
+    """Resolve legacy/new Prime backend parameter names.
+
+    ``prime_agent_backend`` is the explicit name used by the RLM embedding
+    integration. ``prime_backend`` remains accepted for backwards
+    compatibility with existing callers and tests.
+    """
+    if (
+        prime_backend is not None
+        and prime_agent_backend is not None
+        and prime_backend is not prime_agent_backend
+    ):
+        raise ValueError(
+            "prime_backend and prime_agent_backend refer to different backends"
+        )
+    return prime_agent_backend if prime_agent_backend is not None else prime_backend
+
+
+class RLMAgent:
+    """Thin binding layer exposing REPL-compatible ``llm_query`` / ``llm_batch``.
+
+    The default path routes directly to ``llm_caller``. When a Prime backend is
+    supplied, each sub-call can include supplemental Prime evidence before the
+    canonical dispatch.
+    """
+
+    def __init__(
+        self,
+        llm_caller: Callable[[str], str],
+        *,
+        max_parallel: int = 6,
+        prime_agent_backend: PrimeAgentRLMBackend | None = None,
+        prime_backend: PrimeAgentRLMBackend | None = None,
+        evidence_sink: Callable[[PrimeAgentOutcome], None] | None = None,
+    ):
+        backend = _resolve_prime_backend(
+            prime_backend=prime_backend,
+            prime_agent_backend=prime_agent_backend,
+        )
+        self.llm_query = make_llm_query(
+            llm_caller,
+            prime_backend=backend,
+            evidence_sink=evidence_sink,
+        )
+        self.llm_batch = make_llm_batch(
+            llm_caller,
+            max_parallel=max_parallel,
+            prime_backend=backend,
+            evidence_sink=evidence_sink,
+        )
+
+
 def _with_prime_evidence(
     prompt: str,
     *,
@@ -489,6 +545,7 @@ def make_llm_query(
     llm_caller: Callable[[str], str],
     *,
     prime_backend: PrimeAgentRLMBackend | None = None,
+    prime_agent_backend: PrimeAgentRLMBackend | None = None,
     evidence_sink: Callable[[PrimeAgentOutcome], None] | None = None,
 ) -> Callable[[str], str]:
     """Wrap a raw LLM caller into the REPL signature::
@@ -499,13 +556,17 @@ def make_llm_query(
     returned string (which may be further sliced in Python before
     the orchestrator revisits it)."""
     invocation_counter = itertools.count()
+    backend = _resolve_prime_backend(
+        prime_backend=prime_backend,
+        prime_agent_backend=prime_agent_backend,
+    )
 
     def _llm_query(prompt: str) -> str:
         enriched = _with_prime_evidence(
             prompt,
             workflow="rlm_repl.query",
             invocation_key=str(next(invocation_counter)),
-            backend=prime_backend,
+            backend=backend,
             evidence_sink=evidence_sink,
         )
         return llm_caller(enriched)
@@ -517,6 +578,7 @@ def make_llm_batch(
     *,
     max_parallel: int = 6,
     prime_backend: PrimeAgentRLMBackend | None = None,
+    prime_agent_backend: PrimeAgentRLMBackend | None = None,
     evidence_sink: Callable[[PrimeAgentOutcome], None] | None = None,
 ) -> Callable[[list[str]], list[str]]:
     """Wrap a raw LLM caller into the batched signature::
@@ -527,6 +589,10 @@ def make_llm_batch(
     by ``max_parallel``. Each prompt is an independent LLM call."""
 
     batch_counter = itertools.count()
+    backend = _resolve_prime_backend(
+        prime_backend=prime_backend,
+        prime_agent_backend=prime_agent_backend,
+    )
 
     def _llm_batch(prompts: list[str]) -> list[str]:
         batch_ordinal = next(batch_counter)
@@ -535,7 +601,7 @@ def make_llm_batch(
                 prompt,
                 workflow="rlm_repl.batch",
                 invocation_key=f"{batch_ordinal}:{index}",
-                backend=prime_backend,
+                backend=backend,
                 evidence_sink=evidence_sink,
             )
             for index, prompt in enumerate(prompts)
