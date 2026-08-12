@@ -19,19 +19,14 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
-import textwrap
-import threading
-import time
 from pathlib import Path
 
 import duckdb
 import pytest
 
 from substrate.graph.schema import init_database_at_path
-
 
 # ── helpers ──────────────────────────────────────────────────────────
 

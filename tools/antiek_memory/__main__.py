@@ -11,18 +11,16 @@ against the real substrate, and serves JSON-RPC over stdio.
 from __future__ import annotations
 
 import json
-import os
-import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from runtime.db_lock import connect_read, connect_write
-from substrate.graph.schema import init_database_at_path
 from substrate.graph import default_db_path
+from substrate.graph.schema import init_database_at_path
 
 from .server import (
-    AntiekMemoryServer,
     CANONICAL_TOOLS,
+    AntiekMemoryServer,
     ResourceContent,
     ToolResult,
     serve_stdio,
@@ -146,7 +144,6 @@ def _make_handlers(db_path: str):
         investigation_id = args["investigation_id"]
         dwell = args.get("session_dwell_seconds", 0)
         audit_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
         con = connect_write(db_path, purpose="mcp_record_attribution")
         try:
             con.execute(
