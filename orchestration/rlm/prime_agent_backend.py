@@ -7,6 +7,7 @@ Antiek model call, execute a remote worker, or write canonical state.
 from __future__ import annotations
 
 import os
+import tempfile
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -320,46 +321,6 @@ class PrimeAgentRLMBackend:
             "-p",
         )
 
-<<<<<<< HEAD
-||||||| parent of 7e9c6cbe2 (Embed prime-agent mode into RLM repl and investigation flows)
-    def _read_bounded(
-        self, process: subprocess.Popen[bytes], started: float
-    ) -> tuple[bytes, PrimeAgentTerminalState | None]:
-        assert process.stdout is not None
-        output = bytearray()
-        os.set_blocking(process.stdout.fileno(), False)
-        selector = selectors.DefaultSelector()
-        selector.register(process.stdout, selectors.EVENT_READ)
-        try:
-            while selector.get_map():
-                remaining = self._timeout_seconds - (time.monotonic() - started)
-                if remaining <= 0:
-                    _terminate_process_group(process)
-                    return bytes(output), PrimeAgentTerminalState.TIMEOUT
-                for key, _ in selector.select(min(remaining, 0.1)):
-                    chunk = os.read(key.fd, _READ_CHUNK_BYTES)
-                    if not chunk:
-                        selector.unregister(key.fileobj)
-                        continue
-                    output.extend(chunk)
-                    if len(output) > self._max_output_bytes:
-                        del output[self._max_output_bytes :]
-                        _terminate_process_group(process)
-                        return bytes(output), PrimeAgentTerminalState.FAILED
-            remaining = self._timeout_seconds - (time.monotonic() - started)
-            if remaining <= 0:
-                _terminate_process_group(process)
-                return bytes(output), PrimeAgentTerminalState.TIMEOUT
-            process.wait(timeout=remaining)
-        except subprocess.TimeoutExpired:
-            _terminate_process_group(process)
-            return bytes(output), PrimeAgentTerminalState.TIMEOUT
-        finally:
-            selector.close()
-            process.stdout.close()
-        return bytes(output), None
-
-=======
     def _poll_session_output(
         self,
         output_path: Path,
@@ -382,44 +343,6 @@ class PrimeAgentRLMBackend:
             time.sleep(_SESSION_POLL_INTERVAL_SECONDS)
         return None, PrimeAgentTerminalState.TIMEOUT, "session output file missing"
 
-    def _read_bounded(
-        self, process: subprocess.Popen[bytes], started: float
-    ) -> tuple[bytes, PrimeAgentTerminalState | None]:
-        assert process.stdout is not None
-        output = bytearray()
-        os.set_blocking(process.stdout.fileno(), False)
-        selector = selectors.DefaultSelector()
-        selector.register(process.stdout, selectors.EVENT_READ)
-        try:
-            while selector.get_map():
-                remaining = self._timeout_seconds - (time.monotonic() - started)
-                if remaining <= 0:
-                    _terminate_process_group(process)
-                    return bytes(output), PrimeAgentTerminalState.TIMEOUT
-                for key, _ in selector.select(min(remaining, 0.1)):
-                    chunk = os.read(key.fd, _READ_CHUNK_BYTES)
-                    if not chunk:
-                        selector.unregister(key.fileobj)
-                        continue
-                    output.extend(chunk)
-                    if len(output) > self._max_output_bytes:
-                        del output[self._max_output_bytes :]
-                        _terminate_process_group(process)
-                        return bytes(output), PrimeAgentTerminalState.FAILED
-            remaining = self._timeout_seconds - (time.monotonic() - started)
-            if remaining <= 0:
-                _terminate_process_group(process)
-                return bytes(output), PrimeAgentTerminalState.TIMEOUT
-            process.wait(timeout=remaining)
-        except subprocess.TimeoutExpired:
-            _terminate_process_group(process)
-            return bytes(output), PrimeAgentTerminalState.TIMEOUT
-        finally:
-            selector.close()
-            process.stdout.close()
-        return bytes(output), None
-
->>>>>>> 7e9c6cbe2 (Embed prime-agent mode into RLM repl and investigation flows)
     @staticmethod
     def _outcome(
         request: PrimeAgentRequest,

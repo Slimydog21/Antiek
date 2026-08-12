@@ -31,12 +31,12 @@ except ImportError:  # pragma: no cover
 
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from dispatch.base import (  # type: ignore[no-redef]
+    from dispatch.base import (  # type: ignore[no-redef, import-not-found]
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
     )
-    from dispatch.router import register_provider  # type: ignore[no-redef]
+    from dispatch.router import register_provider  # type: ignore[no-redef, import-not-found]
 
 
 _ENABLED_ENV = "ANTIEK_PRIME_AGENT_RLM_ENABLED"
