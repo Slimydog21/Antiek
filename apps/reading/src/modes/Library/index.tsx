@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import type { BookSummary, CorpusStatus } from "../../api/books";
-import { curateBooks, listBooks } from "../../api/books";
+import { curateBooks } from "../../api/books";
+import { fetchLibraryCatalog } from "../../api/libraryCatalog";
 import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import { useInWindow } from "../../components/windows/windowHostContext";
@@ -37,6 +38,7 @@ const FILTERS: { key: CorpusStatus; label: string; hint: string }[] = [
   { key: "gated", label: "Preview", hint: "Metadata + snippet only" },
   { key: "all", label: "All", hint: "Everything, flagged" },
 ];
+const PAGE_SIZE = 20;
 
 export default function Library() {
   const navigate = useNavigate();
@@ -46,6 +48,12 @@ export default function Library() {
   const inWindow = useInWindow();
   const [status, setStatus] = useState<CorpusStatus>("servable");
   const [books, setBooks] = useState<BookSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [search, setSearch] = useState("");
+  const requestGeneration = useRef(0);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // Active research, the signal documentsByTheme ranks the shelf to (M1).
   // Best-effort: a failed/empty fetch falls the feed back to recency, honestly.
   const [investigations, setInvestigations] = useState<InvestigationSummary[]>([]);
@@ -59,38 +67,53 @@ export default function Library() {
   const [curatePrompt, setCuratePrompt] = useState<string>("");
   const [curateBusy, setCurateBusy] = useState(false);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (signal: AbortSignal) => {
+    const generation = ++requestGeneration.current;
     setLoading(true);
     setError(null);
+    setBooks([]);
     try {
-      const data = await listBooks(status);
-      setBooks(data.books);
+      const data = await fetchLibraryCatalog(
+        { filter: status, search, page, page_size: PAGE_SIZE }, signal,
+      );
+      if (generation !== requestGeneration.current || signal.aborted) return;
+      const lastPage = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+      if (page > lastPage) {
+        setPage(lastPage);
+        return;
+      }
+      setBooks(data.works);
+      setTotal(data.total);
       // Pull active research themes only for the default servable shelf — the
       // theme-ranked feed is the Read DOOR's first view. Best-effort: if the
       // research list is unavailable, the feed falls back to recency (the empty
       // investigations set → documentsByTheme returns ordering "recency").
       if (status === "servable") {
-        try {
-          const inv = await listInvestigations({ status: "in_progress" });
-          setInvestigations(inv.investigations);
-        } catch {
-          setInvestigations([]); // thin signal → recency fallback, honestly
-        }
+        void listInvestigations({ status: "in_progress" }).then((inv) => {
+          if (generation === requestGeneration.current && !signal.aborted) {
+            setInvestigations(inv.investigations);
+          }
+        }).catch(() => {
+          if (generation === requestGeneration.current && !signal.aborted) setInvestigations([]);
+        });
       } else {
         setInvestigations([]);
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (generation !== requestGeneration.current || signal.aborted) return;
+      setError("The library catalog is unavailable. Try again.");
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current && !signal.aborted) setLoading(false);
     }
-  }, [status]);
+  }, [page, search, status]);
 
   useEffect(() => {
-    void reload();
+    const controller = new AbortController();
+    void reload(controller.signal);
     // Switching shelves clears any active curation.
     setCuratedOrder(null);
     setCuratePrompt("");
+    return () => controller.abort();
   }, [reload]);
 
   const onCurate = useCallback(async (prompt: string) => {
@@ -100,8 +123,8 @@ export default function Library() {
       const res = await curateBooks(prompt);
       setCuratedOrder(res.books.map((b) => b.document_id));
       setCuratePrompt(prompt);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+    } catch {
+      setError("Library curation is unavailable. Try again.");
     } finally {
       setCurateBusy(false);
     }
@@ -167,10 +190,10 @@ export default function Library() {
 
   const subtitle = useMemo(() => {
     if (loading) return "Loading the shelf…";
-    if (status === "servable") return `${books.length} books readable in full`;
-    if (status === "gated") return `${books.length} preview-only titles`;
-    return `${books.length} titles`;
-  }, [loading, status, books.length]);
+    if (status === "servable") return `${total} books readable in full`;
+    if (status === "gated") return `${total} preview-only titles`;
+    return `${total} titles`;
+  }, [loading, status, total]);
 
   // The Library shelf body. Two surfaces:
   //  - inWindow (SPR-09 contract): a WorkspaceWindow already owns the glass, so
@@ -180,7 +203,7 @@ export default function Library() {
   //    instead of the old opaque bg-ice-0 dark:bg-charcoal-2 wall; the scrim
   //    keeps the shelf header + body text legible (WCAG-AA owned by the glass).
   const shelfBody = (
-    <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
+    <div className="max-w-5xl mx-auto px-4 py-8 space-y-6 sm:px-8 sm:py-10">
           <header className="space-y-2">
             <div className="flex items-start justify-between gap-4">
               <h1 className="text-2xl font-serif text-ink dark:text-bright">Library</h1>
@@ -222,15 +245,28 @@ export default function Library() {
             aria-label="Corpus filter"
             className="flex items-center gap-2"
           >
-            {FILTERS.map((f) => (
+            {FILTERS.map((f, index) => (
               <button
                 key={f.key}
                 role="tab"
+                id={`library-tab-${f.key}`}
+                aria-controls="library-catalog-panel"
                 aria-selected={status === f.key}
+                tabIndex={status === f.key ? 0 : -1}
+                ref={(node) => { tabRefs.current[index] = node; }}
                 type="button"
                 title={f.hint}
-                onClick={() => setStatus(f.key)}
-                className={`px-3 py-1 rounded-md text-xs font-mono transition-colors ${
+                onClick={() => { setStatus(f.key); setPage(1); }}
+                onKeyDown={(event) => {
+                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const next = event.key === "Home" ? 0 : event.key === "End" ? FILTERS.length - 1 :
+                    (index + (event.key === "ArrowRight" ? 1 : -1) + FILTERS.length) % FILTERS.length;
+                  setStatus(FILTERS[next].key);
+                  setPage(1);
+                  tabRefs.current[next]?.focus();
+                }}
+                className={`min-h-11 px-3 py-1 rounded-md text-xs font-mono transition-colors ${
                   status === f.key
                     ? "bg-ink text-white"
                     : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4"
@@ -240,6 +276,30 @@ export default function Library() {
               </button>
             ))}
           </div>
+
+          <form
+            role="search"
+            className="flex flex-col gap-2 sm:flex-row sm:items-end"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setSearch(searchDraft.trim());
+              setPage(1);
+            }}
+          >
+            <label className="min-w-0 flex-1 text-xs font-medium text-ink dark:text-bright">
+              Search catalog by title or author
+              <input
+                type="search"
+                value={searchDraft}
+                maxLength={256}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                className="mt-1 min-h-11 w-full rounded-md border border-rule bg-ice-0 px-3 text-sm text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+              />
+            </label>
+            <button type="submit" className="min-h-11 rounded-md bg-ink px-4 text-sm font-medium text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean">
+              Search catalog
+            </button>
+          </form>
 
           {/* M1: search the OWNED corpus — typed query OR file-drop bias.
               Theme-context (the active research themes) is folded into the
@@ -303,6 +363,7 @@ export default function Library() {
             </p>
           )}
 
+          <div id="library-catalog-panel" role="tabpanel" aria-labelledby={`library-tab-${status}`}>
           {error && (
             <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
               {error}
@@ -334,6 +395,25 @@ export default function Library() {
               ))}
             </section>
           )}
+
+          {!loading && !error && total > 0 && curatedOrder === null && (
+            <nav aria-label="Catalog pages" className="flex flex-wrap items-center justify-between gap-3 border-t border-rule pt-4 dark:border-charcoal-1">
+              <p className="text-xs text-shadow-1 dark:text-moonlight" aria-live="polite">
+                Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))} · {total} titles
+              </p>
+              <div className="flex gap-2">
+                <button type="button" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}
+                  className="min-h-11 rounded-md border border-rule px-4 text-sm disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean dark:border-charcoal-1">
+                  Previous
+                </button>
+                <button type="button" disabled={page * PAGE_SIZE >= total} onClick={() => setPage((value) => value + 1)}
+                  className="min-h-11 rounded-md border border-rule px-4 text-sm disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean dark:border-charcoal-1">
+                  Next
+                </button>
+              </div>
+            </nav>
+          )}
+          </div>
     </div>
   );
 

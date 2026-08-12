@@ -29,13 +29,16 @@ export default function BookCard({ book, onOpen }: BookCardProps) {
   const { label, colour } = servabilityLabel(book.servability);
   const title = book.title ?? book.document_id;
   const hue = placeholderHue(book.document_id);
+  const unavailable = book.taken_down;
+  const action = unavailable ? "Unavailable" : book.servable_full_text ? "Open" : "Preview";
 
   return (
     <button
       type="button"
-      onClick={() => onOpen?.(book.document_id)}
+      onClick={() => { if (!unavailable) onOpen?.(book.document_id); }}
+      disabled={unavailable}
       className="group flex flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sun rounded-hog"
-      aria-label={`Open ${title}${book.author ? ` by ${book.author}` : ""}`}
+      aria-label={`${action} ${title}${book.author ? ` by ${book.author}` : ""}`}
     >
       <div
         className={`relative aspect-[2/3] w-full rounded-hog border-edge border-sun overflow-hidden shadow-z1 dark:shadow-z1-night ${cardLift}`}
@@ -74,6 +77,7 @@ export default function BookCard({ book, onOpen }: BookCardProps) {
         {book.author ?? "Unknown author"}
         {book.page_count > 0 && <> · {book.page_count}p</>}
       </p>
+      <span className="mt-1 text-[11px] font-mono text-shadow-1 dark:text-moonlight">{action}</span>
     </button>
   );
 }
