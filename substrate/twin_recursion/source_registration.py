@@ -8,7 +8,19 @@ from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 from runtime.db_lock import LockedConnection
-from substrate.books.serve_guard import serve_full_text_guarded
+from substrate.books.serve import (
+    PERSONAL_READABLE_CONTENT_CLASSES,
+    PERSONAL_READING_CONTENT_CLASS,
+    SERVABLE_CONTENT_CLASSES,
+    is_servable_full_text,
+    servability_of,
+)
+from substrate.books.serve_guard import (
+    LinkBackMissingError,
+    _rights_context_from_metadata,
+    serve_full_text_guarded,
+)
+from substrate.rights import T3BodyServeError, body_servable
 from substrate.twin_note_taker import MAX_CONTENT_CHARS, MIN_CONTENT_CHARS, AssetContent
 
 from .ledger import SourceRevision, TwinRecursionLedger
@@ -142,15 +154,38 @@ def _asset(document_id: str, title: str, raw_text: str, document_type: str,
 def _row_envelope(
     con: LockedConnection, row: tuple[Any, ...]
 ) -> tuple[TwinSourceEnvelope, str | None]:
-    served = serve_full_text_guarded(con, str(row[0]), owner=True)
+    """Derive the twin declaration from a document row's current bytes.
+
+    The served body is resolved through the same serve gate the twin
+    projection consumes (``serve_full_text_guarded(owner=True)``). A body the
+    serve gate REFUSES (taken-down, gated, or a rights-drift / link-back
+    denial) is not an error for the DECLARATION: the envelope falls back to
+    ``metadata_only`` with ``raw_text=None`` so the row stays verifiable
+    (``verify_twin_source_envelopes`` recomputes through the same helper and
+    only requires a body for ``eligible`` envelopes).
+    """
+    try:
+        served = serve_full_text_guarded(con, str(row[0]), owner=True)
+        raw_text = served.full_text
+    except (T3BodyServeError, LinkBackMissingError):
+        # Serve gate refuses this body (rights drift / missing link-back).
+        # The declaration survives as metadata-only; the serve path still
+        # refuses loudly — this is the envelope, not a serve.
+        raw_text = None
+    return _envelope_from_served(row, raw_text)
+
+
+def _envelope_from_served(
+    row: tuple[Any, ...], raw_text: str | None
+) -> tuple[TwinSourceEnvelope, str | None]:
     envelope = build_twin_source_envelope(
         document_id=str(row[0]),
         title=None if row[1] is None else str(row[1]),
-        raw_text=served.full_text,
+        raw_text=raw_text,
         document_type=str(row[2]),
         owner_user_id=str(row[3]),
     )
-    return envelope, served.full_text
+    return envelope, raw_text
 
 
 def stamp_existing_document(
@@ -178,26 +213,114 @@ def stamp_existing_document(
         )
 
 
+# Envelope backfill batch size. Committed per batch so a killed deploy (e.g.
+# systemd TimeoutStartSec) never loses a whole corpus pass and never holds the
+# DuckDB write transaction for the full backfill. 500 rows keeps a batch's
+# UPDATE well under a second even on a multi-hundred-MB store.
+_BACKFILL_BATCH_SIZE = 500
+
+
 def backfill_twin_source_envelopes(con: LockedConnection) -> int:
-    """Backfill all legacy rows under one caller-held graph write lock."""
+    """Backfill all legacy rows under one caller-held graph write lock.
+
+    Fast path: the serve fields (content_class, raw_text, metadata, taken_down)
+    are preloaded in ONE query and the serve decision is replicated in pure
+    Python via the same serve.py predicates, so the pass is O(n) queries total
+    instead of ~3 queries per row (the previous implementation took ~50 minutes
+    at ~26.5k documents on prod and held one write transaction the whole time).
+
+    Updates commit in bounded batches; a crash mid-pass resumes on the next
+    run because already-stamped rows are skipped (``IS NULL``).
+    """
     _require_locked(con)
     rows = con.execute(
-        "SELECT document_id,title,document_type,owner_user_id "
-        "FROM documents WHERE twin_source_envelope IS NULL ORDER BY document_id"
+        """
+        SELECT d.document_id, d.title, d.document_type, d.owner_user_id,
+               d.raw_text, d.content_class, d.metadata,
+               COALESCE(b.taken_down, FALSE) AS taken_down
+        FROM documents d
+        LEFT JOIN book_assets b ON d.document_id = b.document_id
+        WHERE d.twin_source_envelope IS NULL
+        ORDER BY d.document_id
+        """
     ).fetchall()
-    con.execute("BEGIN")
-    try:
-        for row in rows:
-            con.execute(
-                "UPDATE documents SET twin_source_envelope=? "
-                "WHERE document_id=? AND twin_source_envelope IS NULL",
-                [_row_envelope(con, tuple(row))[0].to_json(), str(row[0])],
-            )
-        con.execute("COMMIT")
-    except Exception:
-        con.execute("ROLLBACK")
-        raise
-    return len(rows)
+    if not rows:
+        return 0
+
+    stamped = 0
+    for start in range(0, len(rows), _BACKFILL_BATCH_SIZE):
+        batch = rows[start : start + _BACKFILL_BATCH_SIZE]
+        con.execute("BEGIN")
+        try:
+            for row in batch:
+                envelope, _body = _envelope_from_served_fields(row)
+                con.execute(
+                    "UPDATE documents SET twin_source_envelope=? "
+                    "WHERE document_id=? AND twin_source_envelope IS NULL",
+                    [envelope.to_json(), str(row[0])],
+                )
+            con.execute("COMMIT")
+        except Exception:
+            con.execute("ROLLBACK")
+            raise
+        stamped += len(batch)
+    return stamped
+
+
+def _envelope_from_served_fields(
+    row: tuple[Any, ...],
+) -> tuple[TwinSourceEnvelope, str | None]:
+    """Replicate ``serve_full_text_guarded(owner=True)`` over a preloaded row.
+
+    Row layout (must match the backfill SELECT):
+      document_id, title, document_type, owner_user_id,
+      raw_text, content_class, metadata, taken_down
+
+    Mirrors serve.py's owner path + serve_guard's rights arm using the SAME
+    predicates/constants, so a preloaded pass and the per-row gate cannot
+    drift apart: taken-down wins, owner-personal-reading admits the body,
+    servable admits the body, everything else yields ``metadata_only``; a
+    body that fails the rights tier or the link-back invariant is also
+    ``metadata_only`` (the serve gate still refuses it loudly — this is the
+    declaration, not a serve). ``verify_twin_source_envelopes`` recomputes
+    through ``_row_envelope`` and proves equality, so any future divergence
+    between this fast path and the gate fails the audit loudly.
+    """
+    document_id = str(row[0])
+    title = None if row[1] is None else str(row[1])
+    document_type = str(row[2])
+    owner_user_id = str(row[3])
+    raw_text = row[4]
+    content_class = row[5]
+    metadata = row[6]
+    taken_down = bool(row[7])
+
+    body: str | None = None
+    if not taken_down:
+        status = servability_of(content_class, taken_down=taken_down)
+        if (
+            content_class == PERSONAL_READING_CONTENT_CLASS
+            and content_class in PERSONAL_READABLE_CONTENT_CLASSES
+        ) or is_servable_full_text(status) and content_class in SERVABLE_CONTENT_CLASSES:
+            body = raw_text if isinstance(raw_text, str) else None
+        # gated / denied classes: no body (metadata_only)
+        if body is not None:
+            ctx = _rights_context_from_metadata(metadata)
+            if ctx.tier is not None and (
+                not body_servable(ctx.tier)
+                or ctx.arxiv_id is None
+                or ctx.license_uri is None
+            ):
+                body = None
+
+    envelope = build_twin_source_envelope(
+        document_id=document_id,
+        title=title,
+        raw_text=body,
+        document_type=document_type,
+        owner_user_id=owner_user_id,
+    )
+    return envelope, body
 
 
 def verify_twin_source_envelopes(
