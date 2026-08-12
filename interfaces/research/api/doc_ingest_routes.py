@@ -19,7 +19,35 @@ import httpx
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
 
+from acquisition.doc_to_html.ssrf import _MAX_REDIRECTS, SsrfError, validate_public_http_url
+
 from .account_memory_identity import distinct_signed_owner
+
+
+async def _download_public(url: str) -> bytes:
+    """Download a public http(s) URL with per-hop SSRF validation.
+
+    Redirects are followed manually (max {_MAX_REDIRECTS}) and each hop is
+    re-validated — a redirect to loopback/internal is refused, not followed.
+    """
+    current = url
+    for _ in range(_MAX_REDIRECTS + 1):
+        validate_public_http_url(current)
+        async with httpx.AsyncClient(
+            timeout=_DOWNLOAD_TIMEOUT_SECONDS,
+            follow_redirects=False,
+        ) as client:
+            resp = await client.get(current)
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("location")
+            if not location:
+                raise httpx.HTTPError("redirect without location")
+            current = str(httpx.URL(current).join(location))
+            continue
+        resp.raise_for_status()
+        return resp.content
+    raise httpx.HTTPError("too many redirects")
+
 
 doc_ingest_router = APIRouter(prefix="/ingest", tags=["ingest"])
 
@@ -127,7 +155,7 @@ async def ingest_asset_route(
 
     Accepts EITHER:
     - A multipart file upload (file parameter)
-    - A source_url (JSON body or form field)
+    - A source_url (multipart form field)
 
     The fair_use_class must be set explicitly (public|licensed|personal).
     """
@@ -184,7 +212,7 @@ async def ingest_asset_route(
             )
 
         elif source_url is not None:
-            # URL download mode
+            # URL download mode (form field)
             source_url = source_url.strip()
             if not source_url:
                 raise HTTPException(
@@ -205,15 +233,14 @@ async def ingest_asset_route(
                     detail=str(exc),
                 ) from exc
 
-            # Download the file
+            # Download the file — every hop SSRF-validated (CWE-918)
             try:
-                async with httpx.AsyncClient(
-                    timeout=_DOWNLOAD_TIMEOUT_SECONDS,
-                    follow_redirects=True,
-                ) as client:
-                    resp = await client.get(source_url)
-                    resp.raise_for_status()
-                    file_bytes = resp.content
+                file_bytes = await _download_public(source_url)
+            except SsrfError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=str(exc),
+                ) from exc
             except httpx.HTTPError as exc:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

@@ -13,6 +13,7 @@ All network and subprocess calls are mocked.
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -813,3 +814,69 @@ def test_extract_domain_handles_edge_cases():
     assert _extract_domain("not-a-url") is None
     # ftp is not http/https, so domain is not extracted
     assert _extract_domain("ftp://server/file") is None
+
+
+# ---------------------------------------------------------------------------
+# SSRF guard (CWE-918) — validate_public_http_url
+# ---------------------------------------------------------------------------
+
+
+def _fake_resolver(*addrs: str):
+    """Resolver stub returning the given address strings for any host."""
+
+    def resolver(host: str, port: int | None = None, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (addr, port or 80)) for addr in addrs]
+
+    return resolver
+
+
+def test_ssrf_rejects_non_http_schemes():
+    from acquisition.doc_to_html.ssrf import SsrfError, validate_public_http_url
+    for bad in ["file:///etc/passwd", "ftp://example.com/x", "gopher://example.com/", "dict://example.com/"]:
+        with pytest.raises(SsrfError):
+            validate_public_http_url(bad, resolver=_fake_resolver("8.8.8.8"))
+
+
+def test_ssrf_rejects_credentials_in_url():
+    from acquisition.doc_to_html.ssrf import SsrfError, validate_public_http_url
+    with pytest.raises(SsrfError):
+        validate_public_http_url("https://user:pass@example.com/x", resolver=_fake_resolver("8.8.8.8"))
+
+
+def test_ssrf_rejects_loopback_and_private_literals():
+    from acquisition.doc_to_html.ssrf import SsrfError, validate_public_http_url
+    for bad in ["http://127.0.0.1:8001/health", "http://localhost/x", "http://169.254.169.254/latest/meta-data/",
+                "http://10.0.0.1/x", "http://192.168.1.1/x", "http://[::1]/x", "http://172.16.0.1/x"]:
+        with pytest.raises(SsrfError):
+            validate_public_http_url(bad)
+
+
+def test_ssrf_rejects_hosts_resolving_to_private():
+    from acquisition.doc_to_html.ssrf import SsrfError, validate_public_http_url
+    with pytest.raises(SsrfError):
+        validate_public_http_url("http://internal.example.com/x", resolver=_fake_resolver("10.0.0.5"))
+    with pytest.raises(SsrfError):
+        validate_public_http_url("https://evil.example/x", resolver=_fake_resolver("127.0.0.1", "8.8.8.8"))
+
+
+def test_ssrf_rejects_special_suffix_hosts():
+    from acquisition.doc_to_html.ssrf import SsrfError, validate_public_http_url
+    for bad in ["http://db.internal/x", "http://router.local/x", "http://host.localdomain/x"]:
+        with pytest.raises(SsrfError):
+            validate_public_http_url(bad, resolver=_fake_resolver("8.8.8.8"))
+
+
+def test_ssrf_accepts_public_urls():
+    from acquisition.doc_to_html.ssrf import validate_public_http_url
+    ok = validate_public_http_url("https://example.com/paper.pdf", resolver=_fake_resolver("93.184.216.34"))
+    assert ok == "https://example.com/paper.pdf"
+    ok2 = validate_public_http_url("http://8.8.8.8/x", resolver=_fake_resolver("8.8.8.8"))
+    assert ok2 == "http://8.8.8.8/x"
+
+
+def test_ssrf_route_rejects_loopback_source_url(api_env: dict, api_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    """End-to-end: POST /ingest/asset with an internal URL is refused."""
+    _as_owner(monkeypatch)
+    resp = api_client.post("/ingest/asset", data={"source_url": "http://127.0.0.1:8001/health", "fair_use_class": "public"})
+    assert resp.status_code == 422
+    assert "non-public" in resp.text or "loopback" in resp.text or "not allowed" in resp.text or "public" in resp.text
