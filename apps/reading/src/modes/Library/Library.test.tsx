@@ -9,8 +9,8 @@ import Library from "./index";
 import { WindowHostProvider } from "../../components/windows/windowHostContext";
 
 // Hoisted mocks so the static `import Library` above binds to them.
-const { listBooksMock, curateBooksMock, listInvestigationsMock, navigateMock } = vi.hoisted(() => ({
-  listBooksMock: vi.fn(),
+const { fetchLibraryCatalogMock, curateBooksMock, listInvestigationsMock, navigateMock } = vi.hoisted(() => ({
+  fetchLibraryCatalogMock: vi.fn(),
   curateBooksMock: vi.fn(),
   // M1: the active-research signal documentsByTheme ranks the shelf to.
   // Default: no active research → the feed falls back to recency.
@@ -22,8 +22,12 @@ const { listBooksMock, curateBooksMock, listInvestigationsMock, navigateMock } =
 
 vi.mock("../../api/books", async (orig) => {
   const actual = await orig<typeof import("../../api/books")>();
-  return { ...actual, listBooks: listBooksMock, curateBooks: curateBooksMock };
+  return { ...actual, curateBooks: curateBooksMock };
 });
+
+vi.mock("../../api/libraryCatalog", () => ({
+  fetchLibraryCatalog: fetchLibraryCatalogMock,
+}));
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
@@ -57,7 +61,7 @@ const gatedBook: BookSummary = {
 };
 
 beforeEach(() => {
-  listBooksMock.mockReset();
+  fetchLibraryCatalogMock.mockReset();
   curateBooksMock.mockReset();
   listInvestigationsMock.mockReset();
   listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
@@ -103,6 +107,16 @@ describe("BookCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /Open Meditations/ }));
     expect(onOpen).toHaveBeenCalledWith("doc-pd");
   });
+
+  it("makes taken-down works unavailable and gated works previews", () => {
+    const onOpen = vi.fn();
+    const { rerender } = render(<BookCard book={gatedBook} onOpen={onOpen} />);
+    fireEvent.click(screen.getByRole("button", { name: /Preview A Licensed Title/ }));
+    expect(onOpen).toHaveBeenCalledWith("doc-gated");
+    rerender(<BookCard book={{ ...gatedBook, servability: "taken_down", taken_down: true }} onOpen={onOpen} />);
+    const unavailable = screen.getByRole("button", { name: /Unavailable A Licensed Title/ });
+    expect((unavailable as HTMLButtonElement).disabled).toBe(true);
+  });
 });
 
 describe("Library", () => {
@@ -115,7 +129,7 @@ describe("Library", () => {
   }
 
   it("full-page Read door is LANDING-GLASS; the inWindow branch stays bg-transparent (SPR-03 + SPR-09 contracts)", async () => {
-    listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
+    fetchLibraryCatalogMock.mockResolvedValue({ works: [servableBook], total: 1, page: 1, page_size: 20 });
     // Full-page (default useInWindow=false): the Read-door landing renders through
     // GlassSurface so the scene shows through (audit §3 item 4). A refactor back
     // to an opaque body / variant=solid would re-occlude the mountain (rigor #5).
@@ -150,33 +164,133 @@ describe("Library", () => {
   });
 
   it("loads the servable shelf and routes to the reader on open", async () => {
-    listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
+    fetchLibraryCatalogMock.mockResolvedValue({ works: [servableBook], total: 1, page: 1, page_size: 20 });
     renderLibrary();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Open Meditations/ })).toBeTruthy(),
     );
-    expect(listBooksMock).toHaveBeenCalledWith("servable");
+    expect(fetchLibraryCatalogMock).toHaveBeenCalledWith(expect.objectContaining({ filter: "servable" }), expect.any(AbortSignal));
     fireEvent.click(screen.getByRole("button", { name: /Open Meditations/ }));
     expect(navigateMock).toHaveBeenCalledWith("/read/doc-pd");
   });
 
   it("switching to Preview reloads the gated set", async () => {
-    listBooksMock
-      .mockResolvedValueOnce({ books: [servableBook], count: 1 })
-      .mockResolvedValueOnce({ books: [gatedBook], count: 1 });
+    fetchLibraryCatalogMock
+      .mockResolvedValueOnce({ works: [servableBook], total: 1, page: 1, page_size: 20 })
+      .mockResolvedValueOnce({ works: [gatedBook], total: 1, page: 1, page_size: 20 });
     renderLibrary();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Open Meditations/ })).toBeTruthy(),
     );
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Open A Licensed Title/ })).toBeTruthy(),
+      expect(screen.getByRole("button", { name: /Preview A Licensed Title/ })).toBeTruthy(),
     );
-    expect(listBooksMock).toHaveBeenLastCalledWith("gated");
+    expect(fetchLibraryCatalogMock).toHaveBeenLastCalledWith(expect.objectContaining({ filter: "gated", page: 1 }), expect.any(AbortSignal));
+  });
+
+  it("supports roving keyboard focus across complete catalog tabs", async () => {
+    fetchLibraryCatalogMock.mockResolvedValue({ works: [servableBook], total: 1, page: 1, page_size: 20 });
+    renderLibrary();
+    const shelf = screen.getByRole("tab", { name: "Shelf" });
+    shelf.focus();
+    fireEvent.keyDown(shelf, { key: "ArrowRight" });
+    const preview = screen.getByRole("tab", { name: "Preview" });
+    expect(document.activeElement).toBe(preview);
+    expect(preview.getAttribute("aria-controls")).toBe("library-catalog-panel");
+    expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe("library-tab-gated");
+    fireEvent.keyDown(preview, { key: "End" });
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "All" }));
+    expect(shelf.className).toContain("min-h-11");
+    expect(screen.getByRole("search").className).toContain("flex-col");
+  });
+
+  it("searches title/author explicitly and resets pagination", async () => {
+    fetchLibraryCatalogMock.mockResolvedValue({ works: [servableBook], total: 41, page: 1, page_size: 20 });
+    renderLibrary();
+    await screen.findByRole("button", { name: /Open Meditations/ });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(fetchLibraryCatalogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 2 }), expect.any(AbortSignal),
+    ));
+    fireEvent.change(screen.getByRole("searchbox", { name: /title or author/i }), {
+      target: { value: "  Aurelius  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search catalog" }));
+    await waitFor(() => expect(fetchLibraryCatalogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "Aurelius", page: 1, page_size: 20 }), expect.any(AbortSignal),
+    ));
+  });
+
+  it("recovers once to the last valid page when the catalog shrinks", async () => {
+    fetchLibraryCatalogMock
+      .mockResolvedValueOnce({ works: [servableBook], total: 21, page: 1, page_size: 20 })
+      .mockResolvedValueOnce({ works: [], total: 1, page: 2, page_size: 20 })
+      .mockResolvedValueOnce({ works: [servableBook], total: 1, page: 1, page_size: 20 });
+    renderLibrary();
+    await screen.findByRole("button", { name: /Open Meditations/ });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(fetchLibraryCatalogMock).toHaveBeenCalledTimes(3));
+    expect(fetchLibraryCatalogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 1 }), expect.any(AbortSignal),
+    );
+    await screen.findByText("Page 1 of 1 · 1 titles");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(fetchLibraryCatalogMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("contains a late ancillary rejection after supersession without stale mutation", async () => {
+    let rejectResearch!: (reason?: unknown) => void;
+    listInvestigationsMock.mockReturnValueOnce(new Promise((_resolve, reject) => {
+      rejectResearch = reject;
+    }));
+    fetchLibraryCatalogMock
+      .mockResolvedValueOnce({ works: [servableBook], total: 1, page: 1, page_size: 20 })
+      .mockResolvedValueOnce({ works: [gatedBook], total: 1, page: 1, page_size: 20 });
+    renderLibrary();
+    await screen.findByRole("button", { name: /Open Meditations/ });
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await screen.findByRole("button", { name: /Preview A Licensed Title/ });
+    rejectResearch(new Error("private late failure"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByText(/private late failure/)).toBeNull();
+    expect(fetchLibraryCatalogMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("contains a late ancillary rejection after unmount", async () => {
+    let rejectResearch!: (reason?: unknown) => void;
+    listInvestigationsMock.mockReturnValueOnce(new Promise((_resolve, reject) => {
+      rejectResearch = reject;
+    }));
+    fetchLibraryCatalogMock.mockResolvedValueOnce({
+      works: [servableBook], total: 1, page: 1, page_size: 20,
+    });
+    const view = renderLibrary();
+    await screen.findByRole("button", { name: /Open Meditations/ });
+    view.unmount();
+    rejectResearch(new Error("private post-unmount failure"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchLibraryCatalogMock).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).not.toContain("private post-unmount failure");
+  });
+
+  it("aborts superseded requests and ignores stale results", async () => {
+    let resolveFirst!: (value: { works: BookSummary[]; total: number; page: number; page_size: number }) => void;
+    fetchLibraryCatalogMock.mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }));
+    fetchLibraryCatalogMock.mockResolvedValueOnce({ works: [gatedBook], total: 1, page: 1, page_size: 20 });
+    renderLibrary();
+    const firstSignal = fetchLibraryCatalogMock.mock.calls[0][1] as AbortSignal;
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    expect(firstSignal.aborted).toBe(true);
+    await screen.findByRole("button", { name: /Preview A Licensed Title/ });
+    resolveFirst({ works: [servableBook], total: 1, page: 1, page_size: 20 });
+    await Promise.resolve();
+    expect(screen.queryByRole("button", { name: /Open Meditations/ })).toBeNull();
   });
 
   it("shows an honest empty-state (what's available to read, not an uploader)", async () => {
-    listBooksMock.mockResolvedValue({ books: [], count: 0 });
+    fetchLibraryCatalogMock.mockResolvedValue({ works: [], total: 0, page: 1, page_size: 20 });
     renderLibrary();
     // Read SPR-06: an empty shelf is honest about the servable corpus — it
     // points to Preview / bring-your-own, never prompts an operator ingest.
@@ -191,7 +305,7 @@ describe("Library", () => {
   it("ranks the servable shelf to active research themes and SAYS so (M1 theme ordering)", async () => {
     const stoic = { ...servableBook, document_id: "doc-stoic", title: "A Guide to Stoicism", author: "Anon" };
     const novel = { ...servableBook, document_id: "doc-novel", title: "War and Peace", author: "Tolstoy" };
-    listBooksMock.mockResolvedValue({ books: [novel, stoic], count: 2 });
+    fetchLibraryCatalogMock.mockResolvedValue({ works: [novel, stoic], total: 2, page: 1, page_size: 20 });
     const activeInv: InvestigationSummary = {
       investigation_id: "inv-1",
       question: "How does Stoicism shape resilience?",
@@ -212,7 +326,7 @@ describe("Library", () => {
   });
 
   it("falls back to recency with an HONEST label when there is no active research (thin-signal fallback)", async () => {
-    listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
+    fetchLibraryCatalogMock.mockResolvedValue({ works: [servableBook], total: 1, page: 1, page_size: 20 });
     listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
     renderLibrary();
     // It does not fabricate relevance — it admits it is showing recency.
@@ -224,7 +338,7 @@ describe("Library", () => {
 
   it("curates the shelf by prompt, re-ranking to the curated order", async () => {
     const second = { ...servableBook, document_id: "doc-2", title: "Second Book" };
-    listBooksMock.mockResolvedValue({ books: [servableBook, second], count: 2 });
+    fetchLibraryCatalogMock.mockResolvedValue({ works: [servableBook, second], total: 2, page: 1, page_size: 20 });
     // Curate returns the two in REVERSE relevance order.
     curateBooksMock.mockResolvedValue({
       prompt: "stoicism",

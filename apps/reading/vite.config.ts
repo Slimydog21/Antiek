@@ -31,6 +31,9 @@ export default defineConfig({
       "/research": API_TARGET,
       "/styles": API_TARGET,
       "/artifacts": API_TARGET,
+      // Metadata-only Library catalog. Keep this explicit rather than using a
+      // blanket proxy so body-serving routes remain independently reviewed.
+      "/library": API_TARGET,
       // Magic-link auth (H6): both /auth/request/me and the
       // /auth/callback redirect need to be same-origin with the
       // page or the browser drops Set-Cookie.

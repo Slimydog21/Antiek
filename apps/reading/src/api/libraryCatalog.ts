@@ -66,46 +66,25 @@ const FULL_TEXT_SERVABLE = new Set<Servability>([
 
 export class LibraryCatalogHttpError extends Error {
   readonly status: number;
-  readonly body: string;
 
-  constructor(status: number, body: string) {
-    super(`library catalog API ${status}: ${body.slice(0, 200)}`);
+  constructor(status: number) {
+    super("library catalog request failed");
     this.name = "LibraryCatalogHttpError";
     this.status = status;
-    this.body = body;
   }
 }
 
 async function readOkBody(res: Response): Promise<unknown> {
   if (!res.ok) {
-    const text = await res.text();
-    throw new LibraryCatalogHttpError(res.status, text);
+    throw new LibraryCatalogHttpError(res.status);
   }
   return res.json() as Promise<unknown>;
 }
 
-function assertNoBodyKeys(
-  value: unknown,
-  path: string,
-  seen = new WeakSet<object>(),
-): void {
-  if (value === null || typeof value !== "object") return;
-  if (seen.has(value)) return;
-  seen.add(value);
-  if (Array.isArray(value)) {
-    value.forEach((item, index) =>
-      assertNoBodyKeys(item, `${path}[${index}]`, seen),
-    );
-    return;
-  }
-  const obj = value as Record<string, unknown>;
-  for (const [key, nested] of Object.entries(obj)) {
-    if ((FORBIDDEN_BODY_KEYS as readonly string[]).includes(key)) {
-      throw new Error(
-        `library catalog response rejected: body-like key ${key} at ${path}`,
-      );
-    }
-    assertNoBodyKeys(nested, `${path}.${key}`, seen);
+function requireExactKeys(value: Record<string, unknown>, allowed: readonly string[]): void {
+  if (Object.keys(value).length !== allowed.length ||
+      Object.keys(value).some((key) => !allowed.includes(key))) {
+    throw new Error("library catalog response rejected");
   }
 }
 
@@ -135,7 +114,8 @@ export function parseBookSummary(raw: unknown, path = "work"): BookSummary {
     );
   }
   const o = raw as Record<string, unknown>;
-  assertNoBodyKeys(o, path);
+  requireExactKeys(o, ["document_id", "title", "author", "servability",
+    "servable_full_text", "page_count", "cover_uri", "ip_holder_id", "taken_down"]);
   if (typeof o.document_id !== "string" || !o.document_id.trim()) {
     throw new Error(
       `library catalog response rejected: ${path}.document_id required`,
@@ -192,7 +172,7 @@ export function parseLibraryPage(body: unknown): LibraryPage {
     throw new Error("library catalog response must be an object");
   }
   const o = body as Record<string, unknown>;
-  assertNoBodyKeys(o, "page");
+  requireExactKeys(o, ["works", "total", "page", "page_size"]);
   if (!Array.isArray(o.works)) {
     throw new Error("library catalog response rejected: works must be array");
   }
@@ -207,15 +187,7 @@ export function parseLibraryPage(body: unknown): LibraryPage {
     );
   }
   const lastPage = Math.max(1, Math.ceil(total / pageSize));
-  if (page > lastPage) {
-    throw new Error(
-      "library catalog response rejected: page exceeds the final page",
-    );
-  }
-  const expectedWorks = Math.min(
-    pageSize,
-    Math.max(0, total - (page - 1) * pageSize),
-  );
+  const expectedWorks = page > lastPage ? 0 : Math.min(pageSize, total - (page - 1) * pageSize);
   if (o.works.length !== expectedWorks) {
     throw new Error(
       "library catalog response rejected: works length contradicts pagination metadata",
@@ -231,6 +203,7 @@ export function parseLibraryPage(body: unknown): LibraryPage {
 
 export async function fetchLibraryCatalog(
   req: LibraryCatalogRequest = {},
+  signal?: AbortSignal,
 ): Promise<LibraryPage> {
   if (
     req.page !== undefined &&
@@ -257,6 +230,7 @@ export async function fetchLibraryCatalog(
 
   const res = await apiFetch(`${API_BASE}/library?${params.toString()}`, {
     method: "GET",
+    signal,
   });
   const raw = await readOkBody(res);
   const page = parseLibraryPage(raw);

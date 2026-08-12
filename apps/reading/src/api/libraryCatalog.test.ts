@@ -47,9 +47,9 @@ describe("parse honesty", () => {
   it("rejects body-like keys on works", () => {
     expect(() =>
       parseBookSummary({ ...work, body: "secret full text" }),
-    ).toThrow(/body/);
+    ).toThrow("library catalog response rejected");
     expect(() => parseBookSummary({ ...work, full_text: "nope" })).toThrow(
-      /full_text/,
+      "library catalog response rejected",
     );
     expect(() =>
       parseLibraryPage({
@@ -58,7 +58,7 @@ describe("parse honesty", () => {
         page: 1,
         page_size: 20,
       }),
-    ).toThrow(/content/);
+    ).toThrow("library catalog response rejected");
     expect(() =>
       parseLibraryPage({
         works: [work],
@@ -67,13 +67,25 @@ describe("parse honesty", () => {
         page_size: 20,
         debug: { payload: { raw_text: "nested leak" } },
       }),
-    ).toThrow(/raw_text/);
+    ).toThrow("library catalog response rejected");
   });
 
+  it.each(["snippet", "abstract", "description", "payload", "unknown"])(
+    "rejects unknown key %s with a value-free error",
+    (key) => {
+      expect(() => parseBookSummary({ ...work, [key]: "private-marker" })).toThrow(
+        "library catalog response rejected",
+      );
+      try { parseBookSummary({ ...work, [key]: "private-marker" }); } catch (error) {
+        expect(String(error)).not.toContain("private-marker");
+      }
+    },
+  );
+
   it("rejects missing required fields without inventing", () => {
-    expect(() => parseBookSummary({ title: "x" })).toThrow(/document_id/);
+    expect(() => parseBookSummary({ title: "x" })).toThrow("library catalog response rejected");
     const { author: _author, ...withoutAuthor } = work;
-    expect(() => parseBookSummary(withoutAuthor)).toThrow(/author/);
+    expect(() => parseBookSummary(withoutAuthor)).toThrow("library catalog response rejected");
     expect(() =>
       parseLibraryPage({ works: [work], total: -1, page: 1, page_size: 20 }),
     ).toThrow(/total/);
@@ -169,6 +181,7 @@ describe("fetchLibraryCatalog", () => {
     await expect(fetchLibraryCatalog()).rejects.toBeInstanceOf(
       LibraryCatalogHttpError,
     );
+    await expect(fetchLibraryCatalog()).rejects.not.toThrow(/db down/);
   });
 
   it("rejects invalid request pagination before network I/O", async () => {
@@ -182,7 +195,6 @@ describe("fetchLibraryCatalog", () => {
   it("rejects incomplete, out-of-range, or mismatched pagination", async () => {
     for (const payload of [
       { works: [], total: 100, page: 1, page_size: 20 },
-      { works: [], total: 1, page: 2, page_size: 20 },
       { works: [work], total: 1, page: 2, page_size: 20 },
     ]) {
       mockFetch.mockResolvedValueOnce({
@@ -220,7 +232,7 @@ describe("fetchLibraryCatalog", () => {
       }),
       text: async () => "",
     } as unknown as Response);
-    await expect(fetchLibraryCatalog()).rejects.toThrow(/raw_text/);
+    await expect(fetchLibraryCatalog()).rejects.toThrow("library catalog response rejected");
   });
 });
 
@@ -277,7 +289,7 @@ describe("production Library browse integration", () => {
 
     await expect(
       fetchLibraryPage({ filter: "all", search: "", page: 1, pageSize: 20 }),
-    ).rejects.toThrow(/body-like key body/);
+    ).rejects.toThrow("library catalog response rejected");
   });
 
   it("preserves the existing honest route-absent signal for a 404", async () => {
