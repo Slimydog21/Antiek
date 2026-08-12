@@ -25,12 +25,13 @@ from __future__ import annotations
 import ipaddress
 import socket
 from collections.abc import Callable
+from typing import Any
 from urllib.parse import urlsplit
 
 _MAX_REDIRECTS = 3
 _BLOCKED_HOST_SUFFIXES = (".local", ".internal", ".localhost", ".localdomain", ".lan")
 
-Resolver = Callable[[str], list[tuple]]
+Resolver = Callable[..., list[tuple[Any, ...]]]
 
 
 class SsrfError(ValueError):

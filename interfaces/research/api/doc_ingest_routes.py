@@ -16,7 +16,7 @@ import tempfile
 from typing import Literal
 
 import httpx
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
 
 from acquisition.doc_to_html.ssrf import _MAX_REDIRECTS, SsrfError, validate_public_http_url
@@ -305,6 +305,6 @@ async def ingest_asset_route(
 __all__ = ["doc_ingest_router", "register_doc_ingest_routes"]
 
 
-def register_doc_ingest_routes(app) -> None:
+def register_doc_ingest_routes(app: FastAPI) -> None:
     """Mount the doc ingest routes. Mirrors register_reader_html_routes."""
     app.include_router(doc_ingest_router)
