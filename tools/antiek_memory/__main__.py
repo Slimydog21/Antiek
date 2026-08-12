@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime
 
 from runtime.db_lock import connect_read, connect_write
 from substrate.graph import default_db_path
