@@ -24,6 +24,9 @@ import json
 import os
 import sys
 import time
+import urllib.error
+import urllib.request
+import xml.etree.ElementTree as ET
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -121,9 +124,6 @@ class Verdict:
 def _check_endpoint_health(base_url: str, timeout: float = 15.0) -> Check:
     """GET the OAI-PMH Identify verb. Verifies the endpoint is reachable and
     returns valid OAI-PMH XML."""
-    import urllib.request
-    import urllib.error
-    import xml.etree.ElementTree as ET
 
     url = f"{base_url}?verb=Identify"
     try:

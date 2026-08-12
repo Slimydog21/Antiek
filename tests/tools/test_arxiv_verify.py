@@ -19,17 +19,15 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from tools.arxiv_verify import (
-    Check,
+from tools.arxiv_verify import (  # noqa: E402
     Verdict,
-    _check_coverage,
     _check_census_json,
+    _check_coverage,
     _check_endpoint_health,
     _check_rate_governor,
     _check_sync_state,
     run_checks,
 )
-
 
 # ── Fixtures ──
 
