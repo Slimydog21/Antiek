@@ -89,7 +89,7 @@ async function readJson<T>(res: Response): Promise<T> {
 
 export async function fetchUserModels(): Promise<UserModelsResponse> {
   const res = await apiFetch(`${API_BASE}/settings/models/user`);
-  return readJson<UserModelsResponse>(res);
+  return parseUserModelsResponse(await readJson<unknown>(res));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -109,6 +109,58 @@ function hasExactKeys(
     actual.length === expected.length &&
     expected.every((key) => Object.prototype.hasOwnProperty.call(value, key))
   );
+}
+
+export function parseUserModelsResponse(raw: unknown): UserModelsResponse {
+  const topKeys = ["models", "count", "stale_registered", "source"] as const;
+  const rowKeys = [
+    "id", "provider_kind", "provider_catalog_id", "model_id", "display_name",
+    "base_url", "enabled", "key_present", "registered", "route_eligible",
+    "pricing_status", "hard_ceiling_eligible", "execution_status", "rate_snapshot",
+  ] as const;
+  if (!isRecord(raw) || !hasExactKeys(raw, topKeys) ||
+      !Array.isArray(raw.models) || !Array.isArray(raw.stale_registered) ||
+      typeof raw.count !== "number" || !Number.isInteger(raw.count) ||
+      typeof raw.source !== "string") {
+    throw new Error("Invalid user model inventory response.");
+  }
+  const statuses: readonly RouteExecutionStatus[] = [
+    "executable", "blocked_unknown_pricing", "blocked_idempotency_unproven",
+    "blocked_reconciliation_unproven", "blocked_hidden_retries",
+    "blocked_provider_qualification", "blocked_selection_authority",
+    "blocked_no_hard_ceiling_adapter", "blocked_hard_ceiling_adapter_mismatch",
+  ];
+  const models = raw.models.map((value): UserModelRow => {
+    if (!isRecord(value) || !hasExactKeys(value, rowKeys) ||
+        !nonEmptyString(value.id) || !nonEmptyString(value.model_id) ||
+        !nonEmptyString(value.display_name) ||
+        (value.provider_kind !== "openai_compat" && value.provider_kind !== "anthropic") ||
+        !(value.provider_catalog_id === null || nonEmptyString(value.provider_catalog_id)) ||
+        !(value.base_url === null || nonEmptyString(value.base_url)) ||
+        !(value.rate_snapshot === null || nonEmptyString(value.rate_snapshot)) ||
+        !["known", "unknown"].includes(String(value.pricing_status)) ||
+        !statuses.includes(value.execution_status as RouteExecutionStatus) ||
+        ["enabled", "key_present", "registered", "route_eligible", "hard_ceiling_eligible"]
+          .some((key) => typeof value[key] !== "boolean")) {
+      throw new Error("Invalid user model inventory response.");
+    }
+    return {
+      id: value.id, provider_kind: value.provider_kind,
+      provider_catalog_id: value.provider_catalog_id, model_id: value.model_id,
+      display_name: value.display_name, base_url: value.base_url,
+      enabled: value.enabled as boolean, key_present: value.key_present as boolean,
+      registered: value.registered as boolean, route_eligible: value.route_eligible as boolean,
+      pricing_status: value.pricing_status as UserModelRow["pricing_status"],
+      hard_ceiling_eligible: value.hard_ceiling_eligible as boolean,
+      execution_status: value.execution_status as RouteExecutionStatus,
+      rate_snapshot: value.rate_snapshot,
+    };
+  });
+  if (raw.count !== models.length || !raw.stale_registered.every(nonEmptyString) ||
+      new Set(models.map((model) => model.id)).size !== models.length) {
+    throw new Error("Invalid user model inventory response.");
+  }
+  return { models, count: raw.count, stale_registered: raw.stale_registered, source: raw.source };
 }
 
 export function parseSettingsModelCatalog(

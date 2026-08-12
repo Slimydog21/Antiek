@@ -20,6 +20,7 @@ from runtime.research_runner.byot_provider_catalog import (
 )
 from runtime.research_runner.provider_route_authority import canonical_provider_endpoint
 from substrate.byot_usage.ledger import ByotUsageLedger, OperationConflict
+from substrate.dispatch.base import NormalizedUsage
 from substrate.dispatch.request_authority import (
     DispatchAuthority,
     DispatchAuthorityRefused,
@@ -84,6 +85,8 @@ def dispatch_talk_to_book_byot(
     resource_authority_guard: Callable[[], AbstractContextManager[str]] | None = None,
     config: DispatchConfig | None = None,
     usage_ledger: ByotUsageLedger | None = None,
+    role: str = "user_agent",
+    action: str = _ACTION,
 ) -> tuple[DispatchResult, DispatchAuthority]:
     """Revalidate, freeze, and execute exactly one owner-paid model rung."""
     try:
@@ -97,11 +100,25 @@ def dispatch_talk_to_book_byot(
             logical_operation_id=logical_operation_id,
             resource_authority_digest=resource_authority_digest,
             config=config,
+            role=role,
+            action=action,
         )
         rung = authority.fallback_manifest[0]
         if not isinstance(rung.credential, OwnerCredentialBinding):
             raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
         ledger = usage_ledger or ByotUsageLedger()
+        existing = ledger.operation(request_owner_user_id, logical_operation_id)
+        if existing is not None:
+            if existing.state == "settled" and existing.authority_digest == authority.digest():
+                return DispatchResult(
+                    text=existing.result_text or "", usage=NormalizedUsage(0, 0),
+                    cost_usd=float(existing.actual_cents or 0) / 100.0,
+                    latency_ms=0, provider=existing.provider_id or rung.provider_id,
+                    model=existing.model_id or rung.model_id, tier="owner-replay",
+                    finish_reason="replayed", fallback_chain_index=0,
+                    event_id=existing.dispatch_event_id or "owner-replay",
+                ), authority
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
         try:
             ledger.prepare_operation(
                 rung.credential.user_model_id, request_owner_user_id,
@@ -142,7 +159,7 @@ def dispatch_talk_to_book_byot(
         try:
             result = dispatch(
                 prompt,
-                role="user_agent",
+                role=role,
                 investigation_id=investigation_id,
                 config=exact_config,
             )
@@ -176,7 +193,7 @@ def dispatch_talk_to_book_byot(
                 request_owner_user_id, logical_operation_id,
                 actual_cents=actual_cents, evidence_sha256=evidence,
                 dispatch_event_id=result.event_id, provider_id=result.provider,
-                model_id=result.model,
+                model_id=result.model, result_text=result.text,
             )
             ledger.settle_operation(
                 request_owner_user_id, logical_operation_id, actual_cents, evidence,
@@ -207,6 +224,8 @@ def _freeze_current_authority(
     logical_operation_id: str,
     resource_authority_digest: str | None,
     config: DispatchConfig | None,
+    role: str = "user_agent",
+    action: str = _ACTION,
 ) -> tuple[DispatchAuthority, DispatchConfig, models_admin.OwnerModelAuthority]:
     validated = models_admin.UserModelChoice.model_validate(choice.model_dump(mode="json"))
     try:
@@ -225,7 +244,7 @@ def _freeze_current_authority(
 
     projected_cents, budget_digest, exact_config = _budget_and_exact_config(
         record=record,
-        prompt=prompt,
+        prompt=prompt, role=role,
         config=config,
     )
     if resource_authority_digest is not None:
@@ -249,7 +268,7 @@ def _freeze_current_authority(
             authenticated_owner_user_id=request_owner_user_id,
             resource_owner_user_id=resource_owner_user_id,
             resource_id=document_id,
-            action=_ACTION,
+            action=action,
             logical_operation_id=logical_operation_id,
             requested_model=RequestedModel(validated.provider_id, validated.model_id),
             payer_policy=PayerPolicy.BYOT_ONLY,
@@ -268,7 +287,8 @@ def _freeze_current_authority(
 
 
 def _budget_and_exact_config(
-    *, record: models_admin.UserModelRecord | None, prompt: str, config: DispatchConfig | None,
+    *, record: models_admin.UserModelRecord | None, prompt: str,
+    config: DispatchConfig | None, role: str = "user_agent",
 ) -> tuple[int, str, DispatchConfig]:
     if record is None or record.provider_catalog_id is None:
         raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
@@ -284,7 +304,7 @@ def _budget_and_exact_config(
     loaded = config or DispatchConfig.from_yaml(
         Path(__file__).parents[3] / "substrate/dispatch/config.yaml"
     )
-    tier_name = loaded.role_tiers["user_agent"]
+    tier_name = loaded.role_tiers[role]
     base = loaded.tiers[tier_name]
     # Conservative local reservation: one input token per UTF-8 byte. This is
     # a local spend ceiling, not a claim about the provider's hard token limit.

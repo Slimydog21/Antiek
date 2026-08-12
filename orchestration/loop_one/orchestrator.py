@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -683,7 +684,7 @@ async def _run_phase_2(
         sem = asyncio.Semaphore(PHASE_2_MAX_CONCURRENCY)
         delivered_action = _action_value(ActionType.EVIDENCE_RETRIEVE_DELIVERED)
 
-        async def _retrieve_one(sq: SubQuestion) -> EvidenceRetrieveDeliveredPayload:
+        async def _retrieve_one(index: int, sq: SubQuestion) -> EvidenceRetrieveDeliveredPayload:
             async with sem:
                 chunks_block = _render_chunks_block_for_sub_question(
                     sq.sub_question, top_k=5, policy_tag=research_policy_tag,
@@ -701,6 +702,11 @@ async def _run_phase_2(
                         top_k=5,
                         chunks_block=chunks_block,
                         subgraph_block=subgraph_block,
+                        owner_semantic_call_id=(
+                            f"phase2:{index}:" + hashlib.sha256(
+                                sq.sub_question.encode("utf-8")
+                            ).hexdigest()[:16]
+                        ),
                     ),
                     role="orchestrator",
                     policy_id="orchestrator-deterministic",
@@ -721,7 +727,9 @@ async def _run_phase_2(
                     )
                 return delivered.payload
 
-        results = await asyncio.gather(*(_retrieve_one(sq) for sq in sub_qs))
+        results = await asyncio.gather(*(
+            _retrieve_one(index, sq) for index, sq in enumerate(sub_qs)
+        ))
         ctx.evidence.extend(results)
         # Write the three round-1 dimension markers so the file-
         # artifact postcondition for Phase 2 passes. The markers
@@ -1910,7 +1918,73 @@ def make_loop_one_handler(
         )
 
         async def run_and_maybe_chase() -> None:
-            await _run_investigation(ctx, broadcaster, coordinator)
+            token = None
+            if req.owner_model_choices is not None:
+                from interfaces.research.api.research_owner_dispatch import (
+                    PAID_LOOP_ONE_ROLES,
+                    ResearchOwnerManifest,
+                    install_manifest,
+                    reset_manifest,
+                )
+                from interfaces.research.api.settings_models_admin import UserModelChoice
+                app = getattr(broadcaster, "_owner_model_app", None)
+                if app is None or req.owner_user_id is None or req.owner_operation_id is None:
+                    ctx.failed_phase = 0
+                    ctx.fail_reason = "owner_model_unavailable"
+                    await broadcast_emit(
+                        broadcaster, ctx.investigation_id,
+                        InvestigationFailedPayload(
+                            phase=0, reason=ctx.fail_reason,
+                            last_completed_phase=None,
+                        ), role="orchestrator", policy_id="owner-model-terminal",
+                    )
+                    return
+                try:
+                    choices = {
+                        role: UserModelChoice.model_validate(req.owner_model_choices[role])
+                        for role in PAID_LOOP_ONE_ROLES
+                    }
+                except Exception:
+                    ctx.failed_phase = 0
+                    ctx.fail_reason = "owner_model_unavailable"
+                    await broadcast_emit(
+                        broadcaster, ctx.investigation_id,
+                        InvestigationFailedPayload(
+                            phase=0, reason=ctx.fail_reason,
+                            last_completed_phase=None,
+                        ), role="orchestrator", policy_id="owner-model-terminal",
+                    )
+                    return
+                token = install_manifest(ResearchOwnerManifest(
+                    app, req.owner_user_id, event.investigation_id,
+                    req.owner_operation_id, choices,
+                ))
+            try:
+                try:
+                    await _run_investigation(ctx, broadcaster, coordinator)
+                except Exception as exc:
+                    from interfaces.research.api.owner_byot_dispatch import (
+                        OwnerByotDispatchUnavailable,
+                        OwnerByotOutcomeUnknown,
+                    )
+                    if not isinstance(exc, OwnerByotDispatchUnavailable):
+                        raise
+                    ctx.failed_phase = min(ctx.last_completed_phase + 1, 9)
+                    ctx.fail_reason = (
+                        "owner_model_outcome_unknown"
+                        if isinstance(exc, OwnerByotOutcomeUnknown)
+                        else "owner_model_unavailable"
+                    )
+                    await broadcast_emit(
+                        broadcaster, ctx.investigation_id,
+                        InvestigationFailedPayload(
+                            phase=ctx.failed_phase, reason=ctx.fail_reason,
+                            last_completed_phase=(ctx.last_completed_phase or None),
+                        ), role="orchestrator", policy_id="owner-model-terminal",
+                    )
+            finally:
+                if token is not None:
+                    reset_manifest(token)
             # Only spawn a chase child if the investigation reached a
             # terminal state we can build on (we don't chase failures).
             if ctx.synthesis is not None and ctx.failed_phase is None:

@@ -83,6 +83,7 @@ class OperationRow:
     provider_id: str | None
     model_id: str | None
     dispatch_event_id: str | None
+    result_text: str | None
     created_at: str
     updated_at: str
 
@@ -151,7 +152,7 @@ class ByotUsageLedger:
                 " operation_id TEXT NOT NULL, state TEXT NOT NULL,"
                 " reserved_cents INTEGER NOT NULL, actual_cents INTEGER,"
                 " authority_digest TEXT NOT NULL, evidence_sha256 TEXT,"
-                " provider_id TEXT, model_id TEXT, dispatch_event_id TEXT,"
+                " provider_id TEXT, model_id TEXT, dispatch_event_id TEXT, result_text TEXT,"
                 " created_at TEXT NOT NULL, updated_at TEXT NOT NULL,"
                 " PRIMARY KEY (owner_user_id, operation_id)"
                 ")"
@@ -159,7 +160,7 @@ class ByotUsageLedger:
             columns = {row[1] for row in con.execute(
                 "PRAGMA table_info(byot_operation_journal)"
             ).fetchall()}
-            for name in ("provider_id", "model_id", "dispatch_event_id"):
+            for name in ("provider_id", "model_id", "dispatch_event_id", "result_text"):
                 if name not in columns:
                     con.execute(f"ALTER TABLE byot_operation_journal ADD COLUMN {name} TEXT")
             con.execute(
@@ -249,7 +250,7 @@ class ByotUsageLedger:
             row = con.execute(
                 "SELECT api_key_id, owner_user_id, operation_id, state, reserved_cents,"
                 " actual_cents, authority_digest, evidence_sha256, provider_id, model_id,"
-                " dispatch_event_id, created_at, updated_at"
+                " dispatch_event_id, result_text, created_at, updated_at"
                 " FROM byot_operation_journal WHERE owner_user_id = ? AND operation_id = ?",
                 (owner_user_id, operation_id),
             ).fetchone()
@@ -433,6 +434,7 @@ class ByotUsageLedger:
     def record_operation_result(
         self, owner_user_id: str, operation_id: str, *, actual_cents: int,
         evidence_sha256: str, dispatch_event_id: str, provider_id: str, model_id: str,
+        result_text: str = "",
     ) -> None:
         """Persist non-secret provider result facts before settlement bookkeeping."""
         if actual_cents < 0 or not all(
@@ -445,10 +447,10 @@ class ByotUsageLedger:
             changed = con.execute(
                 "UPDATE byot_operation_journal SET state = 'settlement_pending',"
                 " actual_cents = ?, evidence_sha256 = ?, dispatch_event_id = ?,"
-                " provider_id = ?, model_id = ?, updated_at = ?"
+                " provider_id = ?, model_id = ?, result_text = ?, updated_at = ?"
                 " WHERE owner_user_id = ? AND operation_id = ? AND state = 'sent'",
                 (actual_cents, evidence_sha256, dispatch_event_id, provider_id, model_id,
-                 _now_iso(), owner_user_id, operation_id),
+                 result_text, _now_iso(), owner_user_id, operation_id),
             ).rowcount
             if changed != 1:
                 raise OperationConflict("operation result is not recordable")

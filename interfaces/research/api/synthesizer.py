@@ -376,14 +376,16 @@ def _research_tier_override(
     return None, None
 
 
-def _dispatch_once(prompt: str, event: Event) -> tuple[str | None, str]:
+def _dispatch_once(prompt: str, event: Event, *, attempt: int = 0) -> tuple[str | None, str]:
     """One dispatch attempt. Returns (response_text, policy_id) or
     (None, fallback_policy_id) on ProviderError / KeyError."""
     provider_override, model_override = _research_tier_override(
         event.investigation_id,
     )
     try:
-        result = dispatch(
+        from .research_owner_dispatch import dispatch_loop_one
+        result = dispatch_loop_one(prompt, "synthesizer", investigation_id=event.investigation_id,
+                                   semantic_call_id="phase6", attempt=attempt) or dispatch(
             prompt,
             "synthesizer",
             investigation_id=event.investigation_id,
@@ -425,7 +427,7 @@ def _dispatch_and_parse(
     the original prompt — adequate for the parse-failure case where
     the model needs to see what was structurally wrong with its
     previous attempt."""
-    response_text, policy_id = _dispatch_once(prompt, event)
+    response_text, policy_id = _dispatch_once(prompt, event, attempt=0)
     if response_text is None:
         return None, policy_id
 
@@ -464,7 +466,7 @@ def _dispatch_and_parse(
     else:
         retry_prompt = repair_prefix + prompt
 
-    retry_text, retry_policy = _dispatch_once(retry_prompt, event)
+    retry_text, retry_policy = _dispatch_once(retry_prompt, event, attempt=1)
     if retry_text is None:
         return None, retry_policy
 

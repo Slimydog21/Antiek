@@ -24,6 +24,7 @@ matches the parser discipline in ``roles/decomposer/parser.py``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -116,7 +117,8 @@ def extract_findings(
     system_prompt, user_prompt = make_extraction_prompt(question, thesis, domain)
 
     try:
-        raw_first = llm_call(system=system_prompt, user=user_prompt)
+        first_call = llm_call.with_attempt(0) if getattr(llm_call, "with_attempt", None) else llm_call
+        raw_first = first_call(system=system_prompt, user=user_prompt)
     except Exception as e:  # transport / API failure
         print(
             f"skills.domain.extract[{domain}]: LLM call failed: {e!r}",
@@ -139,7 +141,8 @@ def extract_findings(
     # ── One-shot repair retry ──
     repair_user = _repair_prefix(parse_err) + "\n\n" + user_prompt
     try:
-        raw_second = llm_call(system=system_prompt, user=repair_user)
+        repair_call = llm_call.with_attempt(1) if getattr(llm_call, "with_attempt", None) else llm_call
+        raw_second = repair_call(system=system_prompt, user=repair_user)
     except Exception as e:
         print(
             f"skills.domain.extract[{domain}]: repair-retry transport "
@@ -223,10 +226,13 @@ def extract_and_patch(
     if llm_call is None:
         llm_call = default_llm_call_factory(investigation_id=investigation_id)
 
-    for domain in domains:
+    for domain_index, domain in enumerate(domains):
+        active_llm_call = llm_call
+        if getattr(llm_call, "for_domain", None) is not None:
+            active_llm_call = llm_call.for_domain(domain, domain_index)  # type: ignore[attr-defined]
         findings = extract_findings(
             question=question, thesis=thesis, domain=domain,
-            llm_call=llm_call,
+            llm_call=active_llm_call,
         )
         if findings is None:
             continue
@@ -250,13 +256,26 @@ def default_llm_call_factory(*, investigation_id: str) -> LLMCall:
     """
     from substrate.dispatch import dispatch
 
-    def _call(*, system: str, user: str) -> str:
+    class _OwnerAwareCall:
+      def __init__(self, domain: str = "legacy", domain_index: int = 0, attempt: int = 0):
+        self.domain = domain
+        self.domain_index = domain_index
+        self.attempt = attempt
+
+      def for_domain(self, domain: str, domain_index: int):
+        return _OwnerAwareCall(domain, domain_index)
+
+      def with_attempt(self, attempt: int):
+        return _OwnerAwareCall(self.domain, self.domain_index, attempt)
+
+      def __call__(self, *, system: str, user: str) -> str:
         prompt = system + "\n\n" + user
-        result = dispatch(
-            prompt,
-            "knowledge_extractor",
-            investigation_id=investigation_id,
-        )
+        from interfaces.research.api.research_owner_dispatch import dispatch_loop_one
+        domain_digest = hashlib.sha256(self.domain.encode()).hexdigest()[:16]
+        result = dispatch_loop_one(
+            prompt, "knowledge_extractor", investigation_id=investigation_id,
+            semantic_call_id=f"phase8:{self.domain_index}:{domain_digest}", attempt=self.attempt,
+        ) or dispatch(prompt, "knowledge_extractor", investigation_id=investigation_id)
         return result.text
 
-    return _call
+    return _OwnerAwareCall()
