@@ -122,6 +122,13 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+
+async function openModelPicker() {
+  const trigger = screen.getByRole("button", { name: "Model for this answer" });
+  await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
+  fireEvent.click(trigger);
+}
+
 async function openAndAsk(
   jump = vi.fn(),
   question = "what is on page seven?",
@@ -142,7 +149,7 @@ describe("TalkToBook (M2)", () => {
     askBookMock.mockResolvedValue(answer());
     await openAndAsk();
 
-    expect(screen.getByText("Default · deep tier")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Model for this answer" }).textContent).toContain("Default");
     expect(askBookMock.mock.calls[0][2]).toEqual({ history: [], researchTier: "deep" });
     expect(screen.getByTestId("talk-model-receipt").textContent).toBe(
       "Used system-provider · system-model",
@@ -180,8 +187,8 @@ describe("TalkToBook (M2)", () => {
     render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
     await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("combobox").querySelector("button") as HTMLButtonElement);
-    fireEvent.click(await screen.findByRole("option", { name: "My model · model-a" }));
+    await openModelPicker();
+    fireEvent.click(await screen.findByRole("menuitem", { name: /My model/ }));
     fireEvent.change(screen.getByPlaceholderText("Ask about this book…"), { target: { value: "question" } });
     fireEvent.click(screen.getByRole("button", { name: "Ask" }));
     await screen.findByText("Page seven discusses entanglement.");
@@ -222,10 +229,10 @@ describe("TalkToBook (M2)", () => {
     render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
     await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("combobox").querySelector("button") as HTMLButtonElement);
-    const option = await screen.findByRole("option", { name: "Old model · unavailable" });
+    await openModelPicker();
+    const option = await screen.findByRole("menuitem", { name: /Old model/ });
     fireEvent.click(option);
-    expect(screen.getAllByText("Default · deep tier").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Model for this answer" }).textContent).toContain("Default");
     expect(screen.queryByText(/Requested:/)).toBeNull();
   });
 
@@ -252,7 +259,9 @@ describe("TalkToBook (M2)", () => {
     const question = screen.getByRole("textbox", { name: "Question for this book" });
     expect(document.activeElement).toBe(question);
     await user.tab({ shift: true });
-    await user.keyboard("{Enter}{ArrowDown}{Enter}");
+    // Keyboard contract (LemonDropdown): Enter toggles, ArrowDown moves through
+    // menu items (Default row first), Enter activates.
+    await user.keyboard("{Enter}{ArrowDown}{ArrowDown}{Enter}");
     expect(await screen.findByText("Requested: Keyboard model · keyboard-model")).toBeTruthy();
   });
 
@@ -275,8 +284,8 @@ describe("TalkToBook (M2)", () => {
     render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
     await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole("combobox").querySelector("button") as HTMLButtonElement);
-    fireEvent.click(await screen.findByRole("option", { name: "Gone model · gone-model" }));
+    await openModelPicker();
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Gone model/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "Question for this book" }), {
       target: { value: "question" },
     });
@@ -284,9 +293,9 @@ describe("TalkToBook (M2)", () => {
 
     expect((await screen.findByRole("alert")).textContent).toContain("no longer available");
     await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole("combobox").textContent).toContain("Default · deep tier");
+    expect(screen.getByRole("button", { name: "Model for this answer" }).textContent).toContain("Default");
     await waitFor(() => expect(document.activeElement).toBe(
-      screen.getByRole("combobox").querySelector("button"),
+      screen.getByRole("button", { name: "Model for this answer" }),
     ));
   });
 
@@ -301,8 +310,8 @@ describe("TalkToBook (M2)", () => {
     );
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
     await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("combobox").querySelector("button") as HTMLButtonElement);
-    fireEvent.click(await screen.findByRole("option", { name: /Reconcile model/ }));
+    await openModelPicker();
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Reconcile model/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "Question for this book" }), {
       target: { value: "lost question" },
     });
@@ -318,8 +327,8 @@ describe("TalkToBook (M2)", () => {
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
     expect(await screen.findByText(/provider outcome is not confirmed/i)).toBeTruthy();
     await waitFor(() => expect(fetchUserModelsMock.mock.calls.length).toBeGreaterThan(1));
-    fireEvent.click(screen.getByRole("combobox").querySelector("button") as HTMLButtonElement);
-    fireEvent.click(await screen.findByRole("option", { name: /Reconcile model/ }));
+    await openModelPicker();
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Reconcile model/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "Question for this book" }), {
       target: { value: "must not dispatch" },
     });
@@ -337,8 +346,8 @@ describe("TalkToBook (M2)", () => {
     render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
     await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("combobox").querySelector("button") as HTMLButtonElement);
-    fireEvent.click(await screen.findByRole("option", { name: /Reconcile model/ }));
+    await openModelPicker();
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Reconcile model/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "Question for this book" }), {
       target: { value: "settlement question" },
     });
@@ -360,8 +369,8 @@ describe("TalkToBook (M2)", () => {
     render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
     await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("combobox").querySelector("button") as HTMLButtonElement);
-    fireEvent.click(await screen.findByRole("option", { name: /Reconcile model/ }));
+    await openModelPicker();
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Reconcile model/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "Question for this book" }), {
       target: { value: "prepared question" },
     });
@@ -386,8 +395,8 @@ describe("TalkToBook (M2)", () => {
     render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
     await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("combobox").querySelector("button") as HTMLButtonElement);
-    fireEvent.click(await screen.findByRole("option", { name: /Reconcile model/ }));
+    await openModelPicker();
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Reconcile model/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "Question for this book" }), {
       target: { value: "never arrived" },
     });
@@ -429,8 +438,8 @@ describe("TalkToBook (M2)", () => {
     render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
     await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("combobox").querySelector("button") as HTMLButtonElement);
-    fireEvent.click(await screen.findByRole("option", { name: /Reconcile model/ }));
+    await openModelPicker();
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Reconcile model/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "Question for this book" }), {
       target: { value: "sent question" },
     });

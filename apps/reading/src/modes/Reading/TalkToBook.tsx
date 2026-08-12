@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { LemonButton, LemonSelect } from "../../components/lemon";
+import { LemonButton } from "../../components/lemon";
+import ModelUsagePicker from "../../components/ai/ModelUsagePicker";
 import {
   askBook,
   BookModelOperationNotFoundError,
@@ -174,30 +175,6 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
       )
     : null;
   const selectedModelEligible = selectedModel ? isRouteEligible(selectedModel) : modelChoice === null;
-  const modelOptions = useMemo(() => {
-    const options = [
-      { value: "default", label: "Default · deep tier" },
-      ...models.map((model) => {
-        const eligible = isRouteEligible(model);
-        return {
-          value: modelKey(model.id, model.model_id),
-          label: eligible
-            ? `${model.display_name} · ${model.model_id}`
-            : `${model.display_name} · unavailable`,
-          disabled: !eligible,
-        };
-      }),
-    ];
-    if (modelChoice && !selectedModel) {
-      options.push({
-        value: modelKey(modelChoice.provider_id, modelChoice.model_id),
-        label: `${modelChoice.model_id} · no longer available`,
-        disabled: true,
-      });
-    }
-    return options;
-  }, [models, modelChoice, selectedModel]);
-
   const selectModel = (value: string) => {
     if (value === "default") {
       setModelChoice(null);
@@ -421,14 +398,39 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
           <label className="mb-1 block text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
             Model for this answer
           </label>
-          <LemonSelect<string>
-            value={modelChoice ? modelKey(modelChoice.provider_id, modelChoice.model_id) : "default"}
-            onChange={selectModel}
-            options={modelOptions}
-            sizing="sm"
-            fullWidth
+          <ModelUsagePicker
+            models={models}
+            triggerAriaLabel="Model for this answer"
+            value={
+              modelChoice
+                ? (models.find(
+                    (m) =>
+                      m.id === modelChoice.provider_id &&
+                      m.model_id === modelChoice.model_id,
+                  )?.id ?? null)
+                : null
+            }
+            onChange={(rowId) => {
+              if (rowId === "") {
+                selectModel("default");
+                return;
+              }
+              const row = models.find((m) => m.id === rowId);
+              if (row) selectModel(modelKey(row.id, row.model_id));
+            }}
+            includeDefault
+            defaultLabel="Default (house route)"
+            triggerLabel={
+              modelChoice
+                ? (models.find(
+                    (m) =>
+                      m.id === modelChoice.provider_id &&
+                      m.model_id === modelChoice.model_id,
+                  )?.display_name ?? "Model")
+                : "Default"
+            }
+            size="sm"
             className="[&_button]:min-h-11 sm:[&_button]:min-h-7"
-            aria-label="Model for this answer"
           />
           <p className="mt-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight" aria-live="polite">
             {modelsState === "loading" && "Loading your models…"}
