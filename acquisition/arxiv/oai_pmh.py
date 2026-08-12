@@ -19,8 +19,11 @@ The harvester:
     ``banned_until`` honored) under an exclusive ``fcntl.flock`` so the gate holds
     across ALL arXiv jobs on this box, not merely per-process. Rate-limiting is
     NOT re-implemented here — re-implementing it is the bug that banned the box;
-  * persists the resumption token + last datestamp after each page so a crash
-    mid-harvest resumes from the last completed page rather than restarting.
+  * persists the resumption token + last datestamp + progress bookkeeping
+    (skip counter, last-completed-page timestamp) in a VERSIONED schema
+    (``schema_version: 2``) after each page, so a crash mid-harvest resumes
+    from the last completed page rather than restarting, and an operator can
+    read how far a multi-night backfill has gotten.
 
 NO live network in this module's tests: the ``httpx.Client`` is injectable, so a
 ``MockTransport`` serves a multi-page resumption-token sequence. The live full
@@ -32,6 +35,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
@@ -41,6 +45,7 @@ from pathlib import Path
 
 import httpx
 
+from acquisition.arxiv.client import default_user_agent
 from acquisition.arxiv.oai_records import parse_records
 from acquisition.arxiv.rate_governor import arxiv_governed_client
 from acquisition.arxiv.throttle import ArxivThrottle
@@ -57,8 +62,29 @@ from substrate.schemas.documents import (
 # production client targets directly.
 DEFAULT_OAI_BASE_URL = "https://oaipmh.arxiv.org/oai"
 DEFAULT_METADATA_PREFIX = "arXiv"
-DEFAULT_USER_AGENT = "Antiek/0.1 (acquisition.arxiv.oai_pmh)"
+# Contact-carrying User-Agent per arXiv policy (the skill standard): derived
+# from the shared ``acquisition.arxiv.client`` seam so a deployment can
+# advertise ``ANTIEK_ARXIV_CONTACT`` (mailto:) on the OAI channel too — the
+# busiest and most ban-prone egress. The previous static string carried NO
+# contact (audit 2026-08-12, docs/arxiv-skill-compliance-2026-08-12.md §6).
+DEFAULT_USER_AGENT = default_user_agent()
 DEFAULT_TIMEOUT_S = 30.0
+
+# HarvestState file schema. v1 (pre-2026-08-12): {"resumption_token",
+# "last_datestamp"}. v2 adds the progress bookkeeping (skip_count,
+# last_page_at) + the version key itself. Loads are versioned: v1 files
+# migrate transparently, an unknown FUTURE version reads as fresh (degrade,
+# don't crash — the repo's state-file discipline) with a warning.
+SCHEMA_VERSION = 2
+
+logger = logging.getLogger("antiek.acquisition.arxiv.oai_pmh")
+
+
+def _now_iso() -> str:
+    """Wall-clock of the last completed page (UTC, ISO-8601): lets an operator
+    see how stale a mid-harvest cursor is. Module-level so tests can pin it
+    (the harvester has no clock param — timing is the throttle's job)."""
+    return datetime.now(UTC).isoformat()
 
 _OAI_NS = "{http://www.openarchives.org/OAI/2.0/}"
 
@@ -92,21 +118,43 @@ class HarvestState:
     (often older) pages, so it seeds its high-water tracker from this persisted
     max to stay monotonic with what was actually consumed pre-crash. It is also
     the fallback incremental ``from`` if a token ever expires.
+
+    Schema v2 adds operator observability: ``skip_count`` is the cumulative
+    number of records consumed so far in this harvest (across crash
+    boundaries — it never resets on resume), and ``last_page_at`` is the
+    wall-clock (UTC ISO-8601) of the last COMPLETED page, so an operator can
+    tell how far a multi-night backfill has gotten and how stale the cursor is.
+    Neither drives resume logic (OAI-PMH tokens cannot skip records), they are
+    progress bookkeeping + defensibility. ``schema_version`` is the state-file
+    schema version (v1 files load without it and migrate in place on the next
+    write; an unknown FUTURE version reads as fresh — see ``_read_state``).
     """
 
     resumption_token: str | None = None
     last_datestamp: str | None = None
+    skip_count: int = 0
+    last_page_at: str | None = None
+    schema_version: int = SCHEMA_VERSION
 
-    def to_dict(self) -> dict[str, str | None]:
+    def to_dict(self) -> dict[str, str | int | None]:
         return {
+            "schema_version": self.schema_version,
             "resumption_token": self.resumption_token,
             "last_datestamp": self.last_datestamp,
+            "skip_count": self.skip_count,
+            "last_page_at": self.last_page_at,
         }
 
     @classmethod
     def from_dict(cls, d: dict[str, object]) -> HarvestState:
+        """Tolerant load: a v1 file (no ``schema_version``) reads as version 1
+        with zeroed bookkeeping; malformed cells degrade to their defaults
+        rather than crashing the nightly (the repo's state-file discipline)."""
         resumption_token = d.get("resumption_token")
         last_datestamp = d.get("last_datestamp")
+        schema_version = d.get("schema_version")
+        skip_count = d.get("skip_count")
+        last_page_at = d.get("last_page_at")
         return cls(
             resumption_token=resumption_token
             if isinstance(resumption_token, str)
@@ -114,6 +162,13 @@ class HarvestState:
             last_datestamp=last_datestamp
             if isinstance(last_datestamp, str)
             else None,
+            schema_version=schema_version
+            if isinstance(schema_version, int) and not isinstance(schema_version, bool)
+            else 1,
+            skip_count=skip_count
+            if isinstance(skip_count, int) and not isinstance(skip_count, bool)
+            else 0,
+            last_page_at=last_page_at if isinstance(last_page_at, str) else None,
         )
 
 
@@ -163,9 +218,32 @@ class OaiPmhHarvester:
         except (FileNotFoundError, OSError):
             return HarvestState()
         try:
-            return HarvestState.from_dict(json.loads(raw))
+            parsed = json.loads(raw)
         except (json.JSONDecodeError, ValueError, TypeError):
             return HarvestState()
+        if not isinstance(parsed, dict):
+            # A JSON array / string / number is not a state object — a torn or
+            # hand-edited file must read as fresh, not crash the nightly.
+            logger.warning(
+                "arxiv OAI harvest state %s is not a JSON object; starting fresh",
+                self._state_path,
+            )
+            return HarvestState()
+        version = parsed.get("schema_version")
+        if isinstance(version, int) and not isinstance(version, bool) and version > SCHEMA_VERSION:
+            # A NEWER schema than this binary understands: do not guess at its
+            # fields (resuming on a misread cursor is worse than re-walking the
+            # window). Degrade to fresh like a corrupt file; the operator can
+            # decide whether to --reset-state.
+            logger.warning(
+                "arxiv OAI harvest state %s is schema v%s (this build reads "
+                "<= v%s); starting fresh",
+                self._state_path,
+                version,
+                SCHEMA_VERSION,
+            )
+            return HarvestState()
+        return HarvestState.from_dict(parsed)
 
     def _write_state(self, state: HarvestState) -> None:
         self._state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -290,6 +368,10 @@ class OaiPmhHarvester:
         """
         state = self._read_state() if resume else HarvestState()
         token = state.resumption_token
+        # Cumulative progress across crash boundaries: a resumed harvest keeps
+        # counting from where the interrupted one stopped, so an operator can
+        # always read "records consumed so far" off the state file.
+        skip_count = state.skip_count
 
         while True:
             url = self._page_url(
@@ -309,12 +391,16 @@ class OaiPmhHarvester:
                     max_datestamp is None or record.datestamp > max_datestamp
                 ):
                     max_datestamp = record.datestamp
+                skip_count += 1
                 yield record
 
             token = page.resumption_token
             if token:
                 state = HarvestState(
-                    resumption_token=token, last_datestamp=max_datestamp
+                    resumption_token=token,
+                    last_datestamp=max_datestamp,
+                    skip_count=skip_count,
+                    last_page_at=_now_iso(),
                 )
                 self._write_state(state)
             else:

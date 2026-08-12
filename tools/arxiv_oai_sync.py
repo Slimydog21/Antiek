@@ -37,6 +37,10 @@ Usage:
     # full backfill code path (LIVE run is operator-only; this is the same path)
     python -m tools.arxiv_oai_sync backfill --until 2024-12-31
 
+    # operator recovery after a wedged cursor / schema mismatch: clear BOTH
+    # checkpoint files, then run fresh (throttle/ban state untouched)
+    python -m tools.arxiv_oai_sync incremental --reset-state
+
 The census is emitted to stdout (human) and, with ``--census-json PATH``, as a
 machine-readable record stamping the exact reproducing query (metadataPrefix +
 from/until window + harvest timestamp), per the reproducibility bar.
@@ -45,6 +49,7 @@ from/until window + harvest timestamp), per the reproducibility bar.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import os
@@ -59,6 +64,7 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from acquisition.arxiv import ArxivBanned, ArxivThrottle, OaiPmhHarvester  # noqa: E402
+from acquisition.arxiv.oai_pmh import default_harvest_state_path  # noqa: E402
 from acquisition.arxiv.oai_persist import (  # noqa: E402
     OaiPersistResult,
     persist_oai_record,
@@ -139,6 +145,37 @@ def write_checkpoint(path: str, checkpoint: SyncCheckpoint) -> None:
     tmp = p.with_suffix(p.suffix + ".tmp")
     tmp.write_text(json.dumps(checkpoint.to_dict()), encoding="utf-8")
     os.replace(tmp, p)
+
+
+def reset_state_files(
+    *,
+    harvest_state_path: str | None = None,
+    sync_state_path: str | None = None,
+) -> tuple[Path, ...]:
+    """Operator recovery: delete the mid-harvest cursor AND the across-run
+    high-water mark so the next run starts as a fresh first-run backfill (an
+    ``incremental`` run with no mark behaves like a backfill until a new mark
+    exists).
+
+    The THROTTLE state (``~/.antiek/arxiv_throttle.json``) is deliberately NOT
+    touched: a live ``banned_until`` sentinel must survive a reset, because
+    clearing it re-opens the re-hit-a-banned-endpoint bug that IP-banned the
+    box. If only one of the two files exists (e.g. a crash between the harvest
+    completing and the sync checkpoint writing), the other is removed
+    independently.
+
+    Paths honor the same env overrides as the defaults
+    (``ANTIEK_ARXIV_OAI_STATE_PATH`` / ``ANTIEK_ARXIV_OAI_SYNC_PATH``).
+    Returns the paths actually removed (empty when neither file existed)."""
+    removed: list[Path] = []
+    for p in (
+        Path(harvest_state_path or default_harvest_state_path()),
+        Path(sync_state_path or default_sync_state_path()),
+    ):
+        with contextlib.suppress(FileNotFoundError):
+            p.unlink()
+            removed.append(p)
+    return tuple(removed)
 
 
 def _track_high_water(
@@ -404,6 +441,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="ignore any persisted mid-harvest cursor and start the window fresh",
     )
     p.add_argument(
+        "--reset-state", action="store_true",
+        help="operator recovery: delete BOTH the mid-harvest cursor and the "
+             "sync high-water mark so the next run starts as a fresh backfill "
+             "(the throttle/ban state is deliberately untouched)",
+    )
+    p.add_argument(
         "--census-json",
         help="write the machine-readable census record to this path",
     )
@@ -418,6 +461,17 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
+
+    if args.reset_state:
+        # Operator recovery: clear both checkpoint files BEFORE this run so the
+        # same invocation then starts as a fresh backfill. Distinct from
+        # --no-resume, which ignores only the mid-harvest cursor and keeps the
+        # high-water mark.
+        removed = reset_state_files()
+        for p in removed:
+            print(f"reset: removed {p}")
+        if not removed:
+            print("reset: no state files present (nothing to reset)")
 
     harvester = OaiPmhHarvester(
         throttle=ArxivThrottle(),
