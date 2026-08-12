@@ -55,7 +55,8 @@ def _load_dispatch_config() -> dict[str, Any] | None:
     if not _DISPATCH_CONFIG_PATH.exists():
         return None
     with open(_DISPATCH_CONFIG_PATH, encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
+        loaded = yaml.safe_load(fh)
+        return loaded if isinstance(loaded, dict) else None
 
 
 def _pricing_is_placeholder(tiers: dict[str, Any] | None) -> bool:

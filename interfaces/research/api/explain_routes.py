@@ -64,7 +64,7 @@ def _iso(value: Any) -> str | None:
     if isinstance(value, str):
         return value
     try:
-        return value.isoformat()
+        return str(value.isoformat())
     except AttributeError:
         return str(value)
 
