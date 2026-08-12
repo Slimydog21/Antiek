@@ -1,11 +1,19 @@
 """POST /sources/upload — uploaded-document → sanitized reader-HTML (doc→HTML S4).
 
 The upload lane: a user drops a document they already hold (PDF / HTML /
-Markdown / text) and it becomes viewable in the reader as sanitized HTML — the
-same trusted version-provenance sidecar the URL lane writes. It is the
-Bartz-lawful-acquisition twin of URL ingest: instead of fetching, the caller
-attests they lawfully hold the file (``acquisition_attestation``) and supplies
-the bytes.
+Markdown / text / Office / ODF / RTF / CSV) and it becomes viewable in the
+reader as sanitized HTML — the same trusted version-provenance sidecar the URL
+lane writes. It is the Bartz-lawful-acquisition twin of URL ingest: instead of
+fetching, the caller attests they lawfully hold the file
+(``acquisition_attestation``) and supplies the bytes.
+
+Office/ODF/RTF/CSV uploads route through
+``substrate.research_bridge.extractors.extract_text`` (the anydoc binding →
+GFM markdown) and then the exact same markdown→safe-HTML→sanitized-sidecar
+path as the other formats. The binding is operator-gate G1: when the
+``docs`` extra is not installed, ``extract_text`` returns ``ok=False`` with
+the install hint and the endpoint answers a typed 422 carrying that hint —
+never a crash.
 
 CRITICAL invariant (the whole point of this lane — spec §3, FLEET-ALERT
 compose-xss-recurring): the served body MUST pass the trusted allowlist
@@ -19,14 +27,19 @@ store client HTML any other way, that is a BLOCKED, not a shortcut.
 
 EPUB is refused with a typed 409 pointing at the authorized book-acquisition
 ceremony — this lane does NOT fork that marketplace/transport decision (spec §3,
-Bartz row 16). A PK-zip magic header is treated as EPUB for this purpose (magic
-bytes win over extension).
+Bartz row 16). A PK-zip magic header is treated as EPUB for this purpose, with
+one deliberate exception: Office/ODF containers ARE zips, so a PK-zip payload
+with a known office extension is the anydoc lane — unless the container is an
+EPUB (``META-INF/container.xml``), in which case the 409 stands (container
+truth beats extension; see ``sniff_kind``).
 """
 
 from __future__ import annotations
 
 import hashlib
-from typing import Literal
+import io
+import zipfile
+from typing import Literal, cast
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
@@ -36,6 +49,7 @@ from acquisition.snapshot.reader_html import markdown_to_safe_html
 from runtime.db_lock import connect_write
 from substrate.books.html_sanitizer import sanitize_book_html, strip_trust_markers
 from substrate.reader_html.store import store_reader_html
+from substrate.research_bridge.extractors import extract_text
 
 # Reuse the books-lane upload ceiling as the bounded-read cap (mirrors
 # book_acquisition_routes.DEFAULT_MAX_EPUB_BYTES). General documents are not
@@ -48,18 +62,84 @@ _ATTESTATIONS: tuple[str, ...] = ("user_owned", "personal_reading")
 
 _EPUB_409_DETAIL = "EPUB goes through the authorized book-acquisition ceremony"
 
+# Office/ODF/RTF/CSV extensions routed through the anydoc binding. Mirrors
+# substrate.research_bridge.extractors._ANYDOC_FORMAT_BY_EXTENSION (the two
+# MUST stay in sync — a format extract_text can convert should be routable
+# here). These are also the extensions that override the PK-zip→EPUB magic
+# mapping in sniff_kind: every Office/ODF container IS a zip, so a PK-zip
+# upload with one of these names is the anydoc lane, not the ceremony.
+# Deliberately unannotated so the tuple stays the single runtime allowlist.
+# Mypy does not narrow a plain ``str`` through tuple membership, so the route
+# uses an explicit ``UploadKind`` cast only after this allowlist guard passes.
+_OFFICE_EXTENSIONS = (
+    "doc",
+    "docx",
+    "docm",
+    "ppt",
+    "pps",
+    "pot",
+    "pptx",
+    "pptm",
+    "ppsx",
+    "ppsm",
+    "xlsx",
+    "xls",
+    "xlsm",
+    "xlsb",
+    "odt",
+    "ods",
+    "odp",
+    "rtf",
+    "csv",
+)
+
+# The kinds the endpoint can detect and convert. The office members mirror
+# _OFFICE_EXTENSIONS exactly (the response reports the concrete format).
+UploadKind = Literal[
+    "pdf",
+    "html",
+    "md",
+    "txt",
+    "doc",
+    "docx",
+    "docm",
+    "ppt",
+    "pps",
+    "pot",
+    "pptx",
+    "pptm",
+    "ppsx",
+    "ppsm",
+    "xlsx",
+    "xls",
+    "xlsm",
+    "xlsb",
+    "odt",
+    "ods",
+    "odp",
+    "rtf",
+    "csv",
+]
+
 # document_reader_html.source_kind per upload kind — the spec's vocabulary
-# ('upload_html' | 'upload_md' | 'upload_txt' | 'upload_pdf').
+# ('upload_html' | 'upload_md' | 'upload_txt' | 'upload_pdf'). The anydoc lane
+# shares one coarse 'upload_office' label: the concrete format is recorded in
+# documents.metadata["upload_kind"] (e.g. "docx").
 _SOURCE_KIND: dict[str, str] = {
     "pdf": "upload_pdf",
     "html": "upload_html",
     "md": "upload_md",
     "txt": "upload_txt",
+    **{ext: "upload_office" for ext in _OFFICE_EXTENSIONS},
 }
 
 
 class UploadResponse(BaseModel):
     """What ``POST /sources/upload`` returns.
+
+    ``detected_kind`` is the format the magic-byte/extension sniff resolved —
+    for the anydoc lane the concrete Office/ODF/RTF/CSV extension (``docx``,
+    ``xlsx``, …).
 
     ``reader_html_available`` is True iff the sanitized sidecar was written
     with the exact current ``SANITIZER_VERSION`` — the reader-html serve gate
@@ -70,7 +150,7 @@ class UploadResponse(BaseModel):
     """
 
     document_id: str
-    detected_kind: Literal["pdf", "html", "md", "txt"]
+    detected_kind: UploadKind
     reader_html_available: bool
     chunk_count: int
 
@@ -81,19 +161,49 @@ def _ext_of(filename: str | None) -> str:
     return ""
 
 
+def _is_epub_container(data: bytes) -> bool:
+    """True when a PK-zip payload is an EPUB container.
+
+    The EPUB spec requires ``META-INF/container.xml``; OOXML/ODF containers
+    never carry it (they use ``[Content_Types].xml`` / ``META-INF/manifest.xml``).
+    This is what keeps the EPUB-ceremony rule true even when an EPUB is renamed
+    to a ``.docx``/``.odt`` name: the container truth beats the filename. A
+    truncated/corrupt zip (central directory unreadable) reports False and the
+    caller falls back to the extension rule.
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            names = set(zf.namelist())
+    except (zipfile.BadZipFile, OSError):
+        return False
+    return "META-INF/container.xml" in names
+
+
 def sniff_kind(data: bytes, filename: str | None) -> str | None:
     """Detect the upload kind by MAGIC BYTES first, extension second.
 
-    Returns one of ``'pdf' | 'html' | 'md' | 'txt' | 'epub'`` — ``'epub'`` is the
+    Returns one of ``'pdf' | 'html' | 'md' | 'txt' | 'epub'`` or a concrete
+    Office/ODF/RTF/CSV kind (``'docx' | 'xlsx' | …``) — ``'epub'`` is the
     PK-zip/EPUB signal the caller turns into the 409 ceremony redirect — or
     ``None`` when the type is unsupported. Exposed for unit tests so the
     magic-over-extension order is pinned independently of the HTTP path.
+
+    PK-zip payloads need one container peek: Office/ODF formats ARE zip
+    containers (``PK\\x03\\x04`` magic), so a PK-zip upload with a known office
+    extension routes to that kind UNLESS the container is an EPUB
+    (``META-INF/container.xml`` — container truth wins, so a renamed EPUB still
+    hits the 409 ceremony). Any other PK-zip payload (no office extension) is
+    treated as EPUB for the ceremony rule.
     """
     # Magic bytes first. %PDF- → pdf; the PK-zip local-file header → EPUB
-    # ceremony (409); a leading '<' (after leading whitespace) → HTML.
+    # ceremony (409) unless the payload is a genuine Office/ODF container; a
+    # leading '<' (after leading whitespace) → HTML.
     if data[:5].startswith(b"%PDF-"):
         return "pdf"
     if data[:4] == b"PK\x03\x04":
+        ext = _ext_of(filename)
+        if ext in _OFFICE_EXTENSIONS and not _is_epub_container(data):
+            return ext
         return "epub"
     if data.lstrip()[:1] == b"<":
         return "html"
@@ -109,6 +219,8 @@ def sniff_kind(data: bytes, filename: str | None) -> str | None:
         return "txt"
     if ext == "epub":
         return "epub"
+    if ext in _OFFICE_EXTENSIONS:
+        return ext
     return None
 
 
@@ -232,21 +344,49 @@ def register_upload_routes(app: FastAPI) -> None:
         if kind is None:
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail="unsupported file type; upload PDF, HTML, Markdown, or text",
+                detail=(
+                    "unsupported file type; upload PDF, HTML, Markdown, text, "
+                    "or an Office/ODF/RTF/CSV document"
+                ),
             )
-        if kind not in ("pdf", "html", "md", "txt"):
+        if kind not in ("pdf", "html", "md", "txt") and kind not in _OFFICE_EXTENSIONS:
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail="unsupported file type; upload PDF, HTML, Markdown, or text",
+                detail=(
+                    "unsupported file type; upload PDF, HTML, Markdown, text, "
+                    "or an Office/ODF/RTF/CSV document"
+                ),
             )
-        # Here kind is narrowed to Literal["pdf", "html", "md", "txt"].
+        # Here kind is narrowed to the supported upload kinds.
 
         raw_text: str
         html_body: str
-        detected_kind: Literal["pdf", "html", "md", "txt"]
+        detected_kind: UploadKind
         author: str | None = None
         try:
-            if kind == "pdf":
+            if kind in _OFFICE_EXTENSIONS:
+                # Office/ODF/RTF/CSV → anydoc → GFM markdown. The binding is
+                # operator-gate G1: when the 'docs' extra is not installed,
+                # extract_text returns ok=False carrying the install hint and
+                # we surface it as a typed 422 — never a crash, never a
+                # poison row. The markdown goes through the SAME escape-first
+                # md→safe-HTML path as .md uploads (so conversion output can
+                # never introduce live markup into the sidecar).
+                # The guard above proved this string is in the exact Office
+                # subset of UploadKind; cast documents that runtime proof for
+                # mypy without weakening the response type to arbitrary str.
+                detected_kind = cast(UploadKind, kind)
+                result = extract_text(file_bytes, filename=file.filename)
+                if not result.ok or result.kind != "markdown":
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                        detail=(
+                            "could not convert upload: "
+                            + (result.reason or "extraction produced no markdown")
+                        ),
+                    )
+                raw_text, html_body = _convert_markdown(result.text)
+            elif kind == "pdf":
                 detected_kind = "pdf"
                 raw_text, html_body, pdf_title, author = _convert_pdf(file_bytes)
                 title = title or pdf_title
@@ -262,6 +402,10 @@ def register_upload_routes(app: FastAPI) -> None:
                 detected_kind = "html"
                 decoded = file_bytes.decode("utf-8", errors="replace")
                 raw_text, html_body = _convert_html(decoded)
+        except HTTPException:
+            # The office branch raises its own typed 4xx (install hint /
+            # conversion reason) — do not re-wrap it as a generic 422.
+            raise
         except Exception as exc:  # corrupt PDF / decode failure → honest 422
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -329,6 +473,7 @@ def register_upload_routes(app: FastAPI) -> None:
 
 __all__ = [
     "DEFAULT_MAX_UPLOAD_BYTES",
+    "UploadKind",
     "UploadResponse",
     "register_upload_routes",
     "sniff_kind",
