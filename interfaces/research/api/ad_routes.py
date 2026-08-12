@@ -230,7 +230,9 @@ def resolve_window_value_cents(
 
 
 def _resolve_from_fill_record(
-    con: duckdb.DuckDBPyConnection, owner_user_id: str, window_id: str
+    con: duckdb.DuckDBPyConnection | LockedConnection,
+    owner_user_id: str,
+    window_id: str,
 ) -> int:
     """The actual (owner_user_id, window_id) → settled-cents join. Kept
     separate so both connection paths (caller-supplied vs self-opened) share
