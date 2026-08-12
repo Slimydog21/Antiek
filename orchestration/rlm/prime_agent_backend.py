@@ -7,27 +7,26 @@ Antiek model call, execute a remote worker, or write canonical state.
 from __future__ import annotations
 
 import os
-import selectors
-import shutil
-import signal
-import subprocess
-import tempfile
 import time
 from collections.abc import Mapping
-from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from runtime.prime_agent.installation import (
+    PRIME_AGENT_BINARY_ENV,
+    PrimeAgentUnavailable,
+    resolve_prime_agent_binary,
+    verify_prime_agent_installation,
+)
+from runtime.prime_agent.process import PrimeAgentProcessConfig, run_prime_agent_process
+
 _ENABLED_ENV = "ANTIEK_PRIME_AGENT_RLM_ENABLED"
 _TIMEOUT_ENV = "ANTIEK_PRIME_AGENT_RLM_TIMEOUT_SECONDS"
 _OUTPUT_ENV = "ANTIEK_PRIME_AGENT_RLM_MAX_OUTPUT_BYTES"
-_EXECUTABLE_ENV = "ANTIEK_PRIME_AGENT_RLM_EXECUTABLE"
 _DEFAULT_TIMEOUT_SECONDS = 120.0
 _DEFAULT_MAX_OUTPUT_BYTES = 256_000
 _MAX_PROMPT_BYTES = 1_000_000
-_READ_CHUNK_BYTES = 16_384
-_PASSTHROUGH_ENV = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
 
 
 class PrimeAgentTerminalState(StrEnum):
@@ -100,8 +99,8 @@ class PrimeAgentRLMBackend:
             raise ValueError("Prime Agent timeout must be positive")
         if max_output_bytes <= 0:
             raise ValueError("Prime Agent output limit must be positive")
-        if not executable or Path(executable).name != executable:
-            raise ValueError("Prime Agent executable must be a bare command name")
+        if not executable:
+            raise ValueError("Prime Agent executable must not be empty")
 
         self._enabled = enabled
         self._executable = executable
@@ -109,9 +108,7 @@ class PrimeAgentRLMBackend:
         self._timeout_seconds = timeout_seconds
         self._max_output_bytes = max_output_bytes
         source_env = os.environ if environ is None else environ
-        self._environment = {
-            key: source_env[key] for key in _PASSTHROUGH_ENV if source_env.get(key)
-        }
+        self._environment = dict(source_env)
 
     def run(self, request: PrimeAgentRequest) -> PrimeAgentOutcome:
         """Return supplemental evidence without mutating caller-owned state."""
@@ -133,31 +130,33 @@ class PrimeAgentRLMBackend:
                 argv,
                 detail="prompt exceeds input limit",
             )
-        if shutil.which(self._executable, path=self._environment.get("PATH")) is None:
+        try:
+            binary = resolve_prime_agent_binary(self._environment, binary=self._executable)
+            installation = verify_prime_agent_installation(binary, environ=self._environment)
+        except PrimeAgentUnavailable as exc:
             return self._outcome(
                 request,
                 PrimeAgentTerminalState.UNAVAILABLE,
                 argv,
-                detail="prime-agent executable not found",
+                detail=str(exc),
             )
+        argv = (str(binary), *argv[1:])
 
         started = time.monotonic()
-        # The stream must outlive Popen and closes in both launch and run paths.
-        prompt_stream = tempfile.TemporaryFile()  # noqa: SIM115
-        prompt_stream.write(prompt_bytes)
-        prompt_stream.seek(0)
         try:
-            process = subprocess.Popen(
-                list(argv),
-                cwd=self._cwd,
-                env=self._environment,
-                stdin=prompt_stream,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
+            result = run_prime_agent_process(
+                PrimeAgentProcessConfig(
+                    installation=installation,
+                    cwd=self._cwd,
+                    timeout_seconds=self._timeout_seconds,
+                    max_stdout_bytes=self._max_output_bytes,
+                    max_stderr_bytes=self._max_output_bytes,
+                    environ=self._environment,
+                ),
+                argv[1:],
+                stdin=prompt_bytes,
             )
         except OSError as exc:
-            prompt_stream.close()
             return self._outcome(
                 request,
                 PrimeAgentTerminalState.UNAVAILABLE,
@@ -166,36 +165,33 @@ class PrimeAgentRLMBackend:
                 detail=type(exc).__name__,
             )
 
-        try:
-            output, terminal_state = self._read_bounded(process, started)
-        except BaseException:
-            _terminate_process_group(process)
-            raise
-        finally:
-            prompt_stream.close()
-
-        duration_ms = _elapsed_ms(started)
-        if terminal_state is not None:
+        output = result.stdout
+        if result.timed_out or result.stdout_limit_exceeded or result.stderr_limit_exceeded:
+            terminal_state = (
+                PrimeAgentTerminalState.TIMEOUT
+                if result.timed_out
+                else PrimeAgentTerminalState.FAILED
+            )
             return self._outcome(
                 request,
                 terminal_state,
                 argv,
-                exit_code=process.returncode,
-                duration_ms=duration_ms,
+                exit_code=result.exit_code,
+                duration_ms=result.duration_ms,
                 output_bytes=len(output),
                 detail=(
-                    "output limit exceeded"
-                    if terminal_state is PrimeAgentTerminalState.FAILED
-                    else "execution timed out"
+                    "execution timed out"
+                    if terminal_state is PrimeAgentTerminalState.TIMEOUT
+                    else "output limit exceeded"
                 ),
             )
-        if process.returncode != 0:
+        if result.exit_code != 0:
             return self._outcome(
                 request,
                 PrimeAgentTerminalState.FAILED,
                 argv,
-                exit_code=process.returncode,
-                duration_ms=duration_ms,
+                exit_code=result.exit_code,
+                duration_ms=result.duration_ms,
                 output_bytes=len(output),
                 detail="prime-agent exited nonzero",
             )
@@ -208,16 +204,16 @@ class PrimeAgentRLMBackend:
                 request,
                 PrimeAgentTerminalState.MALFORMED,
                 argv,
-                exit_code=process.returncode,
-                duration_ms=duration_ms,
+                exit_code=result.exit_code,
+                duration_ms=result.duration_ms,
                 output_bytes=len(output),
                 detail="output was empty or not UTF-8",
             )
         receipt = PrimeAgentReceipt(
             state=PrimeAgentTerminalState.SUCCESS,
             argv=argv,
-            exit_code=process.returncode,
-            duration_ms=duration_ms,
+            exit_code=result.exit_code,
+            duration_ms=result.duration_ms,
             output_bytes=len(output),
         )
         return PrimeAgentOutcome(request, PrimeAgentEvidence(text), receipt)
@@ -237,43 +233,6 @@ class PrimeAgentRLMBackend:
             str(self._cwd),
             "-p",
         )
-
-    def _read_bounded(
-        self, process: subprocess.Popen[bytes], started: float
-    ) -> tuple[bytes, PrimeAgentTerminalState | None]:
-        assert process.stdout is not None
-        output = bytearray()
-        os.set_blocking(process.stdout.fileno(), False)
-        selector = selectors.DefaultSelector()
-        selector.register(process.stdout, selectors.EVENT_READ)
-        try:
-            while selector.get_map():
-                remaining = self._timeout_seconds - (time.monotonic() - started)
-                if remaining <= 0:
-                    _terminate_process_group(process)
-                    return bytes(output), PrimeAgentTerminalState.TIMEOUT
-                for key, _ in selector.select(min(remaining, 0.1)):
-                    chunk = os.read(key.fd, _READ_CHUNK_BYTES)
-                    if not chunk:
-                        selector.unregister(key.fileobj)
-                        continue
-                    output.extend(chunk)
-                    if len(output) > self._max_output_bytes:
-                        del output[self._max_output_bytes :]
-                        _terminate_process_group(process)
-                        return bytes(output), PrimeAgentTerminalState.FAILED
-            remaining = self._timeout_seconds - (time.monotonic() - started)
-            if remaining <= 0:
-                _terminate_process_group(process)
-                return bytes(output), PrimeAgentTerminalState.TIMEOUT
-            process.wait(timeout=remaining)
-        except subprocess.TimeoutExpired:
-            _terminate_process_group(process)
-            return bytes(output), PrimeAgentTerminalState.TIMEOUT
-        finally:
-            selector.close()
-            process.stdout.close()
-        return bytes(output), None
 
     @staticmethod
     def _outcome(
@@ -302,7 +261,7 @@ def prime_agent_backend_from_environment(
     values = os.environ if environ is None else environ
     return PrimeAgentRLMBackend(
         enabled=values.get(_ENABLED_ENV, "").strip().lower() in {"1", "true", "yes"},
-        executable=values.get(_EXECUTABLE_ENV, "prime-agent"),
+        executable=values.get(PRIME_AGENT_BINARY_ENV, "prime-agent"),
         cwd=Path.cwd() if cwd is None else cwd,
         timeout_seconds=_positive_float(values.get(_TIMEOUT_ENV), _DEFAULT_TIMEOUT_SECONDS),
         max_output_bytes=_positive_int(values.get(_OUTPUT_ENV), _DEFAULT_MAX_OUTPUT_BYTES),
@@ -330,11 +289,3 @@ def _positive_int(raw: str | None, default: int) -> int:
 
 def _elapsed_ms(started: float) -> int:
     return max(0, round((time.monotonic() - started) * 1000))
-
-
-def _terminate_process_group(process: subprocess.Popen[bytes]) -> None:
-    if process.poll() is not None:
-        return
-    with suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGKILL)
-    process.wait()
