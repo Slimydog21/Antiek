@@ -17,9 +17,9 @@ from substrate.context_pack.knowledge_reuse import reuse_token_budget
 from substrate.graph import default_db_path
 from substrate.memory import MemoryItem, format_memory_for_prompt, recall_memory
 
+from .account_memory_identity import distinct_signed_owner
+
 _LOG = logging.getLogger(__name__)
-_SESSION_AUTH_METHOD = "antiek_session_cookie"
-_SHARED_OWNER_ID = "__operator__"
 
 
 def _select_whole_items_within_budget(items: list[MemoryItem]) -> list[MemoryItem]:
@@ -48,15 +48,8 @@ def account_memory_context(request: Request, query: str) -> str:
     Operational unavailability is availability-first and value-free in logs;
     validation and memory-integrity exceptions are not swallowed.
     """
-    state = getattr(request, "state", None)
-    auth_method = getattr(state, "auth_method", None)
-    owner_user_id = getattr(state, "user_id", None)
-    if auth_method != _SESSION_AUTH_METHOD:
-        return ""
-    if not isinstance(owner_user_id, str):
-        return ""
-    owner_user_id = owner_user_id.strip()
-    if not owner_user_id or owner_user_id == _SHARED_OWNER_ID:
+    owner_user_id = distinct_signed_owner(request)
+    if owner_user_id is None:
         return ""
 
     try:

@@ -6587,6 +6587,9 @@ def create_app(
     from interfaces.research.api.style_routes import style_router
     app.include_router(style_router)
 
+    from interfaces.research.api.account_memory_routes import account_memory_router
+    app.include_router(account_memory_router)
+
     def _recover_knowledge_event_projector() -> None:
         import threading
 
