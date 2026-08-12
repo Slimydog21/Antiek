@@ -45,6 +45,15 @@ def _cookie(user_id: str) -> dict[str, str]:
     return {"ANTIEK_SESSION": value}
 
 
+def test_model_onboarding_catalog_requires_settings_auth(client: TestClient) -> None:
+    unauthenticated = client.get("/settings/models/catalog")
+    assert unauthenticated.status_code == 401
+
+    authenticated = client.get("/settings/models/catalog", cookies=_cookie("user-a"))
+    assert authenticated.status_code == 200
+    assert authenticated.json()["count"] > 0
+
+
 def test_two_sessions_cannot_list_resolve_or_delete_each_others_models(
     client: TestClient,
     tmp_path: Path,

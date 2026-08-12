@@ -23,13 +23,21 @@ from .provider_qualification import (
 )
 from .provider_route_authority import ProviderRouteIdentity, RouteAuthorityCatalogEntry
 
-ProviderCatalogId = Literal["deepseek", "kimi", "zhipu_glm", "mimo", "xai"]
-AdapterKind = Literal["openai_compat"]
+ProviderCatalogId = Literal[
+    "openai",
+    "anthropic",
+    "deepseek",
+    "kimi",
+    "zhipu_glm",
+    "mimo",
+    "xai",
+]
+AdapterKind = Literal["openai_compat", "anthropic"]
 
 _SEAM_ID = "user.prompt.generate"
 _OPERATION = "generate"
 _CATALOG_EXPIRES_AT = datetime(2027, 1, 1, tzinfo=UTC)
-_CHECKED_AT = "2026-08-06T00:00:00+00:00"
+_CHECKED_AT = "2026-08-12T00:00:00+00:00"
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +68,62 @@ def _rates(input_per_million: str, output_per_million: str) -> tuple[UnitRate, .
 
 
 BYOT_PROVIDER_PRESETS: tuple[ByotProviderPreset, ...] = (
+    ByotProviderPreset(
+        catalog_id="openai",
+        display="OpenAI",
+        adapter_kind="openai_compat",
+        default_base_url="https://api.openai.com",
+        chat_completions_path="/v1/chat/completions",
+        models=(
+            ByotModelVariant(
+                "gpt-5.6-sol",
+                "GPT-5.6 Sol",
+                _rates("5.00", "30.00"),
+                "openai-gpt-5.6-sol-2026-08-12",
+            ),
+            ByotModelVariant(
+                "gpt-5.6-terra",
+                "GPT-5.6 Terra",
+                _rates("2.00", "12.00"),
+                "openai-gpt-5.6-terra-2026-08-12",
+            ),
+            ByotModelVariant(
+                "gpt-5.6-luna",
+                "GPT-5.6 Luna",
+                _rates("0.20", "1.20"),
+                "openai-gpt-5.6-luna-2026-08-12",
+            ),
+        ),
+        pricing_source="https://developers.openai.com/api/docs/models",
+    ),
+    ByotProviderPreset(
+        catalog_id="anthropic",
+        display="Anthropic",
+        adapter_kind="anthropic",
+        default_base_url="https://api.anthropic.com",
+        chat_completions_path="/v1/messages",
+        models=(
+            ByotModelVariant(
+                "claude-opus-5",
+                "Claude Opus 5",
+                _rates("5.00", "25.00"),
+                "anthropic-claude-opus-5-2026-08-12",
+            ),
+            ByotModelVariant(
+                "claude-sonnet-5",
+                "Claude Sonnet 5",
+                _rates("2.00", "10.00"),
+                "anthropic-claude-sonnet-5-2026-08-12",
+            ),
+            ByotModelVariant(
+                "claude-haiku-4-5-20251001",
+                "Claude Haiku 4.5",
+                _rates("1.00", "5.00"),
+                "anthropic-claude-haiku-4-5-20251001-2026-08-12",
+            ),
+        ),
+        pricing_source="https://platform.claude.com/docs/en/about-claude/models/overview",
+    ),
     ByotProviderPreset(
         catalog_id="deepseek",
         display="DeepSeek",
@@ -150,6 +214,9 @@ BYOT_PROVIDER_PRESETS: tuple[ByotProviderPreset, ...] = (
 
 _PRESETS_BY_ID = {preset.catalog_id: preset for preset in BYOT_PROVIDER_PRESETS}
 _ALIASES: dict[str, ProviderCatalogId] = {
+    "openai": "openai",
+    "anthropic": "anthropic",
+    "claude": "anthropic",
     "deepseek": "deepseek",
     "kimi": "kimi",
     "moonshot": "kimi",
