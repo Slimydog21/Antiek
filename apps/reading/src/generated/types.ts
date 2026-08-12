@@ -1433,6 +1433,7 @@ export interface EvidenceRetrieveRequestedPayload {
   top_k?: number;
   chunks_block: string;
   subgraph_block: string;
+  owner_semantic_call_id?: string | null;
 }
 
 /**
@@ -1599,6 +1600,11 @@ export interface InvestigationStartRequestedPayload {
   chase_value?: number;
   chase_budget_usd?: number;
   research_tier?: "fast" | "deep" | null;
+  owner_user_id?: string | null;
+  owner_operation_id?: string | null;
+  owner_model_choices?: Record<string, Record<string, string>> | null;
+  owner_launch_digest?: string | null;
+  owner_launch_version?: number | null;
 }
 
 /**
