@@ -170,6 +170,8 @@ def dispatch_talk_to_book_byot(
                     separators=(",", ":"),
                 ).encode()
             ).hexdigest()
+            if result.event_id is None:
+                raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown")
             ledger.record_operation_result(
                 request_owner_user_id, logical_operation_id,
                 actual_cents=actual_cents, evidence_sha256=evidence,

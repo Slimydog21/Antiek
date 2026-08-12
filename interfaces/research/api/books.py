@@ -29,6 +29,7 @@ import hashlib
 import json
 import logging
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any, Literal, cast
 
@@ -1097,7 +1098,7 @@ def register_book_routes(app: FastAPI) -> None:
                 selected_owner = authenticated_distinct_owner(request)
             except OwnerByotDispatchUnavailable:
                 raise HTTPException(status_code=409, detail="owner_model_unavailable") from None
-            def _dispatch_selected(prompt: str):
+            def _dispatch_selected(prompt: str) -> Any:
                 # Re-read the resource authority at the last execution seam;
                 # the earlier read was existence/UX only and grants nothing.
                 owner_con = connect_read(db)
@@ -1121,7 +1122,7 @@ def register_book_routes(app: FastAPI) -> None:
                     ).encode("utf-8")
                 ).hexdigest()
                 @contextmanager
-                def _resource_authority_guard():
+                def _resource_authority_guard() -> Iterator[str]:
                     from runtime.db_lock import authority_handoff_guard
                     with authority_handoff_guard(
                         db, purpose="talk-to-book-authority-handoff",
@@ -1277,7 +1278,7 @@ def register_book_routes(app: FastAPI) -> None:
         except OwnerByotDispatchUnavailable:
             raise HTTPException(status_code=401, detail="authentication_required") from None
 
-    def _operation_context(request: Request, operation_id: str):
+    def _operation_context(request: Request, operation_id: str) -> tuple[str, Any, Any]:
         from substrate.byot_usage.ledger import ByotUsageLedger
         owner = _operation_owner(request)
         ledger = ByotUsageLedger()
