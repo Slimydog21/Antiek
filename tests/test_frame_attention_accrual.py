@@ -139,12 +139,16 @@ def test_accrual_feeds_escrow_via_sanctioned_writer(con):
     )
     bal1 = ip_holders.get(con, h1).escrow_balance_usd
     bal2 = ip_holders.get(con, h2).escrow_balance_usd
-    # equal assets, equal split: each got 400c = $4.00
-    assert bal1 == Decimal("4.000000")
-    assert bal2 == Decimal("4.000000")
-    # escrow total equals contributor accrual total
+    # AFA-S5: 70/30 at pool boundary. Equal assets over 800c → creator pool
+    # 560c, each holder 280c = $2.80 (was 400c pre-S5; sanctioned pin edit).
+    assert bal1 == Decimal("2.800000")
+    assert bal2 == Decimal("2.800000")
+    assert result.creator_pool_cents == 560
+    assert result.platform_cut_cents == 240
+    # escrow total equals contributor accrual total (creator pool only)
     cents_total = sum(line.amount_cents for line in result.asset_lines)
     assert (bal1 + bal2) == Decimal(cents_total) / Decimal(100)
+    assert result.reconciles()
 
 
 def test_preonboarded_holder_accrues(con):
@@ -156,7 +160,8 @@ def test_preonboarded_holder_accrues(con):
     accrue_window(con, batch, asset_to_ip_holder={"doc-a": h})
     holder = ip_holders.get(con, h)
     assert holder.status == "pre_onboarded"  # still shadow
-    assert holder.escrow_balance_usd == Decimal("5.000000")  # but accrued
+    # AFA-S5: 70% of 500c = 350c = $3.50 (was $5.00 pre-S5; sanctioned pin).
+    assert holder.escrow_balance_usd == Decimal("3.500000")  # but accrued
 
 
 def test_idempotent_no_double_escrow(con):

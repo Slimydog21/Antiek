@@ -1,4 +1,4 @@
-"""Per-second frame-attention accrual + house-second rule (SPR-05 M4/M5).
+"""Per-second frame-attention accrual + house-second rule (SPR-05 M4/M5 + AFA-S5).
 
 Turns a window's per-second frame-attention batch (the
 :class:`~substrate.ad_inventory.frame_attention.WindowFrameBatch` contract) into
@@ -9,7 +9,19 @@ as HOUSE SECONDS the platform pockets — so a window reconciles EXACTLY:
 
 This module ACCRUES; it never disburses (disbursement is operator-gated G2/G3 —
 see ``ip_holders.accrue_escrow`` / ``speak/contributor.attempt_disbursement``).
-The 70/30 split (``payout.py``) and Stripe Connect are untouched.
+Stripe Connect is untouched.
+
+SEMANTIC CHANGE (AFA-S5 / PR #118 §7.1-S5 — authorized):
+Before S5 this pipeline conserved 100% of eligible-second value to contributors
+and only pocketed true house-seconds (no eligible asset in frame); the 70/30
+creator/platform cut lived solely on the impression path in ``payout.py`` and
+was deliberately deferred here (historical comment at the old L12). After S5
+the published split order in ``attribution_math`` (``attribution-math-v2``)
+runs at the pool boundary: 70% of post-filter eligible value is the creator
+pool (apportioned across assets), 30% joins house alongside house-seconds and
+fully-filtered windows. Accrual remains escrow-only (``disbursable=False``).
+The cut is at the pool boundary — not at disbursement — so statements (AFA-S6)
+can show each payee's true effective rate without interim overstatement.
 
 PERSISTENCE CHOICE (justified — rigor #4):
 A per-second frame accrual is keyed by (window, asset) over a window's seconds,
@@ -48,6 +60,10 @@ from substrate import ip_holders
 from substrate.anti_gaming.frame_ivt import classify_batch
 from substrate.anti_gaming.verdict import FraudVerdictKind
 
+from .attribution_math import (
+    ATTRIBUTION_MATH_VERSION,
+    stage_platform_cut,
+)
 from .frame_attention import (
     FRAME_WEIGHTING_VERSION,
     WindowFrameBatch,
@@ -98,6 +114,7 @@ def ensure_tables(con: Any) -> None:
                 n_seconds          INTEGER NOT NULL DEFAULT 0,
                 telemetry_version  TEXT NOT NULL,
                 weighting_version  TEXT NOT NULL,
+                attribution_math_version TEXT NOT NULL DEFAULT 'attribution-math-v2',
                 inputs_json        TEXT NOT NULL,
                 accrued_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -122,6 +139,7 @@ def ensure_tables(con: Any) -> None:
                 reason               TEXT NOT NULL,
                 telemetry_version    TEXT NOT NULL,
                 weighting_version    TEXT NOT NULL,
+                attribution_math_version TEXT NOT NULL DEFAULT 'attribution-math-v2',
                 inputs_json          TEXT NOT NULL,
                 fraud_verdict        TEXT NOT NULL DEFAULT 'pass',
                 excluded_counts_json TEXT NOT NULL DEFAULT '[]',
@@ -142,6 +160,18 @@ def ensure_tables(con: Any) -> None:
         )
         con.execute(
             "ALTER TABLE house_seconds ADD COLUMN IF NOT EXISTS excluded_counts_json TEXT"
+        )
+        # AFA-S5: additive version stamp for the published split order. Nullable
+        # on ALTER (DuckDB forbids constraints on ADD COLUMN); new INSERTs always
+        # write the concrete ATTRIBUTION_MATH_VERSION. Pre-S5 rows read NULL and
+        # are treated as the pre-v2 era by era-separation tests.
+        con.execute(
+            "ALTER TABLE frame_attention_accruals "
+            "ADD COLUMN IF NOT EXISTS attribution_math_version TEXT"
+        )
+        con.execute(
+            "ALTER TABLE house_seconds "
+            "ADD COLUMN IF NOT EXISTS attribution_math_version TEXT"
         )
         con.execute(
             "CREATE INDEX IF NOT EXISTS idx_house_seconds_window "
@@ -175,6 +205,72 @@ def ensure_tables(con: Any) -> None:
         )
     except Exception:
         pass
+
+
+
+# ---------------------------------------------------------------------------
+# AFA-S5 — apply the published 70/30 split at the pool boundary
+# ---------------------------------------------------------------------------
+
+
+def _apply_published_split(
+    asset_lines: tuple[FrameAccrualLine, ...],
+    house: HouseLine,
+    total: int,
+) -> tuple[tuple[FrameAccrualLine, ...], HouseLine, int, int]:
+    """Apply attribution-math-v2 platform cut to a pre-split aggregation.
+
+    The per-second engine first conserves the full window across eligible
+    assets + house-seconds (filter-before-allocate). This function then takes
+    the 70/30 cut on the *contributor pool* only (sum of asset lines) — house
+    seconds are already the platform's and are not cut again. Creator-pool
+    cents are re-apportioned across assets by their pre-cut amounts (weights),
+    conserved to the cent via ``apportion_cents``. The platform's 30% is added
+    to the house line (reason annotated). Returns
+    (new_asset_lines, new_house, creator_pool_cents, platform_cut_cents).
+    """
+    contributor_total = sum(line.amount_cents for line in asset_lines)
+    if contributor_total <= 0 or not asset_lines:
+        # Nothing to cut — fully house (block / filtered / empty). Platform
+        # cut is zero; creator pool is zero.
+        return asset_lines, house, 0, 0
+
+    creator_pool, platform, _lines, _trace = stage_platform_cut(contributor_total)
+    # Re-apportion the creator pool across assets by their pre-cut amounts.
+    weights = {line.asset_id: float(line.amount_cents) for line in asset_lines}
+    split = apportion_cents(weights, creator_pool)
+    new_assets = tuple(
+        FrameAccrualLine(
+            window_id=line.window_id,
+            asset_id=line.asset_id,
+            chunk_id=line.chunk_id,
+            ip_holder_id=line.ip_holder_id,
+            summed_weight=line.summed_weight,
+            amount_cents=split.get(line.asset_id, 0),
+            n_seconds=line.n_seconds,
+        )
+        for line in asset_lines
+    )
+    # Keep only positive lines so the write path does not insert empty rows.
+    new_assets = tuple(line for line in new_assets if line.amount_cents > 0)
+
+    # House absorbs the platform cut. Annotate reason.
+    cut_reason = "platform_cut_30"
+    if house.reason and house.reason != "none":
+        new_reason = f"{house.reason};{cut_reason}"
+    else:
+        new_reason = cut_reason
+    new_house = HouseLine(
+        window_id=house.window_id,
+        n_seconds=house.n_seconds,
+        amount_cents=house.amount_cents + platform,
+        reason=new_reason,
+    )
+    # Conservation check (defensive — largest-remainder + integer cut guarantee).
+    assert (
+        sum(line.amount_cents for line in new_assets) + new_house.amount_cents == total
+    ), "published split broke window conservation"
+    return new_assets, new_house, creator_pool, platform
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +325,13 @@ class WindowAccrual:
     # "review" window still accrues (to escrow, operator queue); a "block" window
     # routes its whole value to house.
     fraud_verdict: str = FraudVerdictKind.PASS.value
+    # AFA-S5: composed published-split-order version id (attribution-math-v2).
+    # Stamped on every new accrual + house row. Pre-S5 rows load as "" (era
+    # separation: replay under the old 100%-to-contributors meaning).
+    attribution_math_version: str = ATTRIBUTION_MATH_VERSION
+    # Creator-pool cents after the 70/30 cut (audit surface for statements).
+    creator_pool_cents: int = 0
+    platform_cut_cents: int = 0
 
     def reconciles(self) -> bool:
         """Σ asset cents + house cents == total ad value cents (the invariant)."""
@@ -281,6 +384,9 @@ def aggregate_window(
             ),
             telemetry_version=batch.schema_version,
             weighting_version=FRAME_WEIGHTING_VERSION,
+            attribution_math_version=ATTRIBUTION_MATH_VERSION,
+            creator_pool_cents=0,
+            platform_cut_cents=0,
         )
 
     # AFA-S2 M5 — filter-before-allocate. Classify the batch; invalid seconds are
@@ -366,6 +472,13 @@ def aggregate_window(
         reason=";".join(sorted(house_reasons)) if house_reasons else "none",
     )
 
+    # AFA-S5: apply the published 70/30 split at the pool boundary so
+    # contributor lines carry creator-pool cents and house absorbs the
+    # platform cut (plus any house-seconds already tallied above).
+    asset_lines, house, creator_pool, platform = _apply_published_split(
+        asset_lines, house, total,
+    )
+
     return WindowAccrual(
         batch_ref="",
         window_id=batch.window_id,
@@ -376,6 +489,9 @@ def aggregate_window(
         weighting_version=FRAME_WEIGHTING_VERSION,
         excluded_second_counts=excluded,
         fraud_verdict=verdict_kind.value,
+        attribution_math_version=ATTRIBUTION_MATH_VERSION,
+        creator_pool_cents=creator_pool,
+        platform_cut_cents=platform,
     )
 
 
@@ -407,6 +523,9 @@ def _house_only_window(
         weighting_version=FRAME_WEIGHTING_VERSION,
         excluded_second_counts=excluded,
         fraud_verdict=verdict_kind.value,
+        attribution_math_version=ATTRIBUTION_MATH_VERSION,
+        creator_pool_cents=0,
+        platform_cut_cents=0,
     )
 
 
@@ -527,14 +646,15 @@ def accrue_window(
             INSERT INTO frame_attention_accruals (
                 accrual_id, batch_ref, window_id, asset_id, chunk_id,
                 ip_holder_id, summed_weight, amount_usd, amount_cents,
-                n_seconds, telemetry_version, weighting_version, inputs_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                n_seconds, telemetry_version, weighting_version,
+                attribution_math_version, inputs_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 accrual_id, batch_ref, line.window_id, line.asset_id, line.chunk_id,
                 line.ip_holder_id, line.summed_weight, amount_usd, line.amount_cents,
                 line.n_seconds, result.telemetry_version, result.weighting_version,
-                inputs_json,
+                result.attribution_math_version, inputs_json,
             ],
         )
         # Route into escrow via the ONE sanctioned writer (pre-onboarded
@@ -550,14 +670,16 @@ def accrue_window(
         """
         INSERT INTO house_seconds (
             house_id, batch_ref, window_id, n_seconds, amount_cents,
-            reason, telemetry_version, weighting_version, inputs_json,
+            reason, telemetry_version, weighting_version,
+            attribution_math_version, inputs_json,
             fraud_verdict, excluded_counts_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             house_id, batch_ref, result.window_id, result.house.n_seconds,
             result.house.amount_cents, result.house.reason,
-            result.telemetry_version, result.weighting_version, inputs_json,
+            result.telemetry_version, result.weighting_version,
+            result.attribution_math_version, inputs_json,
             result.fraud_verdict,
             _canonical_json([[r, c] for r, c in result.excluded_second_counts]),
         ],
@@ -618,7 +740,8 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
     arows = con.execute(
         """
         SELECT window_id, asset_id, chunk_id, ip_holder_id, summed_weight,
-               amount_cents, n_seconds, telemetry_version, weighting_version
+               amount_cents, n_seconds, telemetry_version, weighting_version,
+               attribution_math_version
         FROM frame_attention_accruals WHERE batch_ref = ?
         ORDER BY asset_id
         """,
@@ -628,7 +751,8 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
         """
         SELECT window_id, n_seconds, amount_cents, reason,
                telemetry_version, weighting_version,
-               fraud_verdict, excluded_counts_json
+               fraud_verdict, excluded_counts_json,
+               attribution_math_version
         FROM house_seconds WHERE batch_ref = ?
         """,
         [batch_ref],
@@ -659,6 +783,18 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
     excluded_second_counts = tuple(
         (str(r), int(c)) for r, c in json.loads(hrow[7] or "[]")
     )
+    # AFA-S5 version stamp — coalesce NULL (pre-S5 rows) to "" so era
+    # separation is explicit: empty means pre-v2 math.
+    math_ver = ""
+    if arows and len(arows[0]) > 9 and arows[0][9] is not None:
+        math_ver = str(arows[0][9])
+    elif hrow is not None and len(hrow) > 8 and hrow[8] is not None:
+        math_ver = str(hrow[8])
+    # Reconstruct creator_pool / platform_cut from the persisted amounts so
+    # the reload surface matches a fresh accrual (creator_pool = Σ assets;
+    # platform_cut is not separately stored — leave 0 on reload; the money
+    # outcome is fully captured by asset + house cents).
+    creator_pool = sum(line.amount_cents for line in asset_lines)
     return WindowAccrual(
         batch_ref=batch_ref,
         window_id=window_id,
@@ -669,6 +805,9 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
         weighting_version=weighting_version,
         excluded_second_counts=excluded_second_counts,
         fraud_verdict=str(hrow[6]) if hrow[6] is not None else "pass",
+        attribution_math_version=math_ver or ATTRIBUTION_MATH_VERSION,
+        creator_pool_cents=creator_pool,
+        platform_cut_cents=0,
     )
 
 
@@ -793,4 +932,5 @@ __all__ = [
     "replay",
     "FrameReplayResult",
     "window_reconciliation",
+    "ATTRIBUTION_MATH_VERSION",
 ]
