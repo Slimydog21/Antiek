@@ -4,6 +4,9 @@ import type {
   BookCitation,
   BookModelOperationState,
   BookModelReceipt,
+  DeepBookOperationStatus,
+  PrimeReceipt,
+  TalkTurn,
   UserModelChoice,
 } from "../../api/books";
 
@@ -50,6 +53,16 @@ export interface TalkMessage {
   model_receipt?: BookModelReceipt | null;
   model_choice?: UserModelChoice;
   model_operation_state?: BookModelOperationState | "requesting";
+  mode?: "ask" | "deep";
+  prime_receipt?: PrimeReceipt | null;
+  /** Exact safe request inputs required to resume the same paid operation. */
+  deep_request?: {
+    history: TalkTurn[];
+    max_cost_micro_usd?: number;
+    prime_operation_id?: string;
+    prime_model_choice?: UserModelChoice;
+  };
+  deep_operation_status?: DeepBookOperationStatus;
   operation_not_found_checks?: number;
   operation_first_not_found_at?: number;
 }
@@ -109,7 +122,7 @@ export interface UseTalkThread {
   activeBranchId: string;
   /** Append a user question (answer pending) to the active branch; returns the
    * new message id so the caller can fill in the reply. */
-  startTurn: (question: string, operationId?: string, modelChoice?: UserModelChoice) => string;
+  startTurn: (question: string, operationId?: string, modelChoice?: UserModelChoice, mode?: "ask" | "deep", deepRequest?: TalkMessage["deep_request"]) => string;
   /** Fill in a turn's model reply + citations once the answer lands. */
   completeTurn: (
     messageId: string,
@@ -119,8 +132,11 @@ export interface UseTalkThread {
     answerId: string | null,
     captureStatus: "captured" | "unavailable",
     modelReceipt?: BookModelReceipt | null,
+    primeReceipt?: PrimeReceipt | null,
   ) => void;
   setModelOperationState: (messageId: string, state: BookModelOperationState) => void;
+  setPrimeOperationReceipt: (messageId: string, receipt: PrimeReceipt) => void;
+  setDeepOperationStatus: (messageId: string, status: DeepBookOperationStatus) => void;
   markModelOperationNotFound: (messageId: string) => void;
   abandonMissingModelOperation: (messageId: string) => void;
   setJudgment: (messageId: string, verdict: "good" | "bad") => void;
@@ -165,7 +181,7 @@ export function useTalkThread(documentId: string): UseTalkThread {
   );
 
   const startTurn = useCallback(
-    (question: string, operationId?: string, modelChoice?: UserModelChoice): string => {
+    (question: string, operationId?: string, modelChoice?: UserModelChoice, mode: "ask" | "deep" = "ask", deepRequest?: TalkMessage["deep_request"]): string => {
       const id = genId("turn");
       const message: TalkMessage = {
         id,
@@ -173,6 +189,16 @@ export function useTalkThread(documentId: string): UseTalkThread {
         answer: null,
         citations: [],
         grounded: false,
+        mode,
+        ...(deepRequest ? { deep_request: {
+          history: deepRequest.history.map((turn) => ({ ...turn })),
+          ...(deepRequest.max_cost_micro_usd !== undefined
+            ? { max_cost_micro_usd: deepRequest.max_cost_micro_usd } : {}),
+          ...(deepRequest.prime_operation_id
+            ? { prime_operation_id: deepRequest.prime_operation_id } : {}),
+          ...(deepRequest.prime_model_choice
+            ? { prime_model_choice: { ...deepRequest.prime_model_choice } } : {}),
+        } } : {}),
         ...(operationId ? { operation_id: operationId } : {}),
         ...(modelChoice ? {
           model_choice: { ...modelChoice },
@@ -205,6 +231,7 @@ export function useTalkThread(documentId: string): UseTalkThread {
       answerId: string | null,
       captureStatus: "captured" | "unavailable",
       modelReceipt?: BookModelReceipt | null,
+      primeReceipt?: PrimeReceipt | null,
     ) => {
       mutateActive((msgs) =>
         msgs.map((m) => (m.id === messageId ? {
@@ -221,8 +248,9 @@ export function useTalkThread(documentId: string): UseTalkThread {
             requested_model_id: modelReceipt.requested_model_id,
             actual_provider_id: modelReceipt.actual_provider_id,
             actual_model_id: modelReceipt.actual_model_id,
-            authority_digest: modelReceipt.authority_digest,
+            authority_digest: null,
           } : null,
+          prime_receipt: primeReceipt ? { ...primeReceipt } : null,
         } : m)),
       );
     },
@@ -231,20 +259,74 @@ export function useTalkThread(documentId: string): UseTalkThread {
 
   const setModelOperationState = useCallback(
     (messageId: string, operationState: BookModelOperationState) => {
-      setState((prev) => ({
-        ...prev,
-        branches: prev.branches.map((branch) => ({
+      setState((prev) => {
+        const current = prev.branches.flatMap((branch) => branch.messages)
+          .find((message) => message.id === messageId);
+        if (!current || current.answer !== null || current.model_operation_state === operationState) {
+          return prev;
+        }
+        return {
+          ...prev,
+          branches: prev.branches.map((branch) => ({
           ...branch,
           messages: branch.messages.map((message) =>
-            message.id === messageId && message.model_operation_state !== operationState
+            message.id === messageId && message.answer === null
               ? { ...message, model_operation_state: operationState }
               : message,
           ),
-        })),
-      }));
+          })),
+        };
+      });
     },
     [],
   );
+
+  const setPrimeOperationReceipt = useCallback((messageId: string, receipt: PrimeReceipt) => {
+    const mapped: BookModelOperationState = receipt.state === "authorized" ? "prepared"
+      : receipt.state === "cancelled" ? "cancelled"
+        : receipt.state === "unknown" ? "unknown" : "settlement_pending";
+    setState((prev) => {
+      const current = prev.branches.flatMap((branch) => branch.messages)
+        .find((message) => message.id === messageId);
+      if (!current || current.answer !== null) return prev;
+      const prior = current?.prime_receipt;
+      if (current?.model_operation_state === mapped && prior &&
+        prior.state === receipt.state && prior.updated_at_ms === receipt.updated_at_ms &&
+        prior.held_micro_usd === receipt.held_micro_usd &&
+        prior.charged_micro_usd === receipt.charged_micro_usd) return prev;
+      return {
+        ...prev,
+        branches: prev.branches.map((branch) => ({
+        ...branch,
+        messages: branch.messages.map((message) => {
+          if (message.id !== messageId) return message;
+          return { ...message, prime_receipt: { ...receipt }, model_operation_state: mapped };
+        }),
+        })),
+      };
+    });
+  }, []);
+
+  const setDeepOperationStatus = useCallback((messageId: string, status: DeepBookOperationStatus) => {
+    setState((prev) => {
+      const current = prev.branches.flatMap((branch) => branch.messages)
+        .find((message) => message.id === messageId);
+      if (!current || current.answer !== null ||
+        (current.deep_operation_status?.state === status.state &&
+          current.deep_operation_status.updated_at_ms === status.updated_at_ms &&
+          current.deep_operation_status.lease_expires_at_ms === status.lease_expires_at_ms &&
+          current.deep_operation_status.resumable === status.resumable)) return prev;
+      return {
+        ...prev,
+        branches: prev.branches.map((branch) => ({
+          ...branch,
+          messages: branch.messages.map((message) => message.id === messageId
+            ? { ...message, deep_operation_status: { ...status } }
+            : message),
+        })),
+      };
+    });
+  }, []);
 
   const markModelOperationNotFound = useCallback((messageId: string) => {
     setState((prev) => ({
@@ -338,6 +420,8 @@ export function useTalkThread(documentId: string): UseTalkThread {
     startTurn,
     completeTurn,
     setModelOperationState,
+    setPrimeOperationReceipt,
+    setDeepOperationStatus,
     markModelOperationNotFound,
     abandonMissingModelOperation,
     setJudgment,

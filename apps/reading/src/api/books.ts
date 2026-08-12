@@ -296,6 +296,24 @@ export interface AskBookResponse {
   grounded: boolean;
   context_chunk_count: number;
   model_receipt?: BookModelReceipt | null;
+  mode?: "deep";
+  prime_receipt?: PrimeReceipt | null;
+}
+
+/** Sanitized metering/provenance only. Prompt, credentials and authority
+ * digests are deliberately not part of the browser contract. */
+export interface PrimeReceipt {
+  operation_id: string;
+  state: "authorized" | "started" | "usage_observed" | "succeeded" | "failed" | "cancelled" | "unknown";
+  held_micro_usd: number;
+  charged_micro_usd: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  observed_cost_micro_usd: number | null;
+  provider_id: string;
+  model_id: string;
+  prime_version?: string | null;
+  updated_at_ms: number;
 }
 
 export type BookModelOperationState =
@@ -347,6 +365,17 @@ export class BookModelOperationNotFoundError extends Error {
   }
 }
 
+export class DeepBookOperationPendingError extends Error {
+  constructor(public readonly reason: "in_progress" | "deep_unknown" | "prime_unresolved" | "prime_unknown") {
+    super(reason === "in_progress"
+      ? "This Deep operation is already in progress. Check its status; do not retry with a new ID."
+      : reason === "deep_unknown"
+        ? "The Deep operation outcome is unknown. Keep this operation ID and check its status."
+      : "The Prime operation is unresolved. Check or reconcile it before any new paid attempt.");
+    this.name = "DeepBookOperationPendingError";
+  }
+}
+
 type AskBookOptions = {
   history?: TalkTurn[];
   researchTier?: "fast" | "deep";
@@ -354,6 +383,64 @@ type AskBookOptions = {
   | { modelChoice?: undefined; operationId?: never }
   | { modelChoice: UserModelChoice; operationId: string }
 );
+
+export interface AskBookDeepOptions {
+  history?: TalkTurn[];
+  operationId: string;
+  modelChoice: UserModelChoice;
+  prime?: {
+    operationId: string;
+    modelChoice: UserModelChoice;
+    maxCostMicroUsd: number;
+  };
+}
+
+/** Genuine recursive deep reading. Prime is an optional, separately metered
+ * evidence source and is never enabled implicitly. */
+export async function askBookDeep(
+  documentId: string,
+  question: string,
+  opts: AskBookDeepOptions,
+): Promise<AskBookResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question,
+      history: opts.history ?? [],
+      research_tier: "deep",
+      mode: "deep",
+      operation_id: opts.operationId,
+      model_choice: opts.modelChoice,
+      ...(opts.prime ? {
+        prime: {
+          enabled: true,
+          operation_id: opts.prime.operationId,
+          model_choice: opts.prime.modelChoice,
+          max_cost_micro_usd: opts.prime.maxCostMicroUsd,
+        },
+      } : {}),
+    }),
+  });
+  if (resp.status === 404) throw new Error("book_not_found");
+  if (resp.status === 409) {
+    let detail: unknown;
+    try { detail = (await resp.clone().json() as { detail?: unknown }).detail; } catch { /* conflict */ }
+    if (detail === "deep_operation_in_progress") throw new DeepBookOperationPendingError("in_progress");
+    if (detail === "deep_operation_unknown") throw new DeepBookOperationPendingError("deep_unknown");
+    if (detail === "deep_operation_conflict") throw new Error("Deep operation identity conflicts with its original request.");
+    throw new SelectedBookModelUnavailableError();
+  }
+  if (resp.status === 503 && opts.prime) {
+    let detail: unknown;
+    try { detail = (await resp.clone().json() as { detail?: unknown }).detail; } catch { /* unknown */ }
+    if (detail === "prime_outcome_unknown") throw new DeepBookOperationPendingError("prime_unknown");
+    if (detail === "prime_operation_unresolved") throw new DeepBookOperationPendingError("prime_unresolved");
+  }
+  if (resp.status === 503) throw new Error("Deep talk isn’t available right now.");
+  if (!resp.ok) throw new Error(`POST /books/{id}/ask: HTTP ${resp.status}`);
+  return (await resp.json()) as AskBookResponse;
+}
 
 /** Ask one talk-to-book turn (Read SPR-08 M2). Answers CITE pages; a withheld
  * region can never be cited (backend §9.0 gate). 503 when no model provider is
@@ -405,6 +492,7 @@ async function modelOperationRequest(
     `${API_BASE}/books/model-operations/${encodeURIComponent(operationId)}${suffix}`,
     action ? { method: "POST" } : undefined,
   );
+  if (resp.status === 401) throw new Error("Sign in again to recover this model operation.");
   if (resp.status === 404) throw new BookModelOperationNotFoundError();
   if (!resp.ok) throw new Error("Model operation status is temporarily unavailable.");
   return (await resp.json()) as BookModelOperationStatus;
@@ -416,6 +504,46 @@ export const reconcileBookModelOperation = (operationId: string) =>
   modelOperationRequest(operationId, "reconcile");
 export const cancelBookModelOperation = (operationId: string) =>
   modelOperationRequest(operationId, "cancel");
+
+async function primeOperationRequest(
+  operationId: string,
+  action?: "reconcile" | "cancel",
+): Promise<PrimeReceipt> {
+  const suffix = action ? `/${action}` : "";
+  const resp = await apiFetch(
+    `${API_BASE}/books/prime-operations/${encodeURIComponent(operationId)}${suffix}`,
+    action ? { method: "POST" } : undefined,
+  );
+  if (resp.status === 401) throw new Error("Sign in again to recover this Prime operation.");
+  if (resp.status === 403) throw new Error("Only an operator can submit Prime reconciliation evidence.");
+  if (resp.status === 404) throw new BookModelOperationNotFoundError();
+  if (!resp.ok) throw new Error("Prime operation status is temporarily unavailable.");
+  return (await resp.json()) as PrimeReceipt;
+}
+
+export const getPrimeOperation = (operationId: string) => primeOperationRequest(operationId);
+export const reconcilePrimeOperation = (operationId: string) => primeOperationRequest(operationId, "reconcile");
+export const cancelPrimeOperation = (operationId: string) => primeOperationRequest(operationId, "cancel");
+
+export interface DeepBookOperationStatus {
+  operation_id: string;
+  state: "claimed" | "canonical_complete" | "completed" | "unknown";
+  created_at_ms: number;
+  updated_at_ms: number;
+  checkpoint_phase: null | "canonical_complete";
+  lease_expires_at_ms: number | null;
+  /** Server-owned safety decision. Never infer resumability from phase/time. */
+  resumable: boolean;
+  response?: AskBookResponse | null;
+}
+
+export async function getDeepBookOperation(operationId: string): Promise<DeepBookOperationStatus> {
+  const resp = await apiFetch(`${API_BASE}/books/deep-operations/${encodeURIComponent(operationId)}`);
+  if (resp.status === 401) throw new Error("Sign in again to recover this Deep operation.");
+  if (resp.status === 404) throw new BookModelOperationNotFoundError();
+  if (!resp.ok) throw new Error("Deep operation status is temporarily unavailable.");
+  return (await resp.json()) as DeepBookOperationStatus;
+}
 
 export async function judgeBookAnswer(
   documentId: string,

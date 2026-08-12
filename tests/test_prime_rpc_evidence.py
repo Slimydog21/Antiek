@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -284,7 +285,6 @@ def test_provider_credential_is_bounded_injected_and_not_reported(tmp_path: Path
         {"credential_id": "same-provider-other-key"},
         {"credential_fingerprint": "1" * 64},
         {"env_name": "OPENAI_API_KEY"},
-        {"secret": "other-owner-secret"},
     ],
 )
 def test_hostile_credential_resolution_never_claims_launches_or_leaks(
@@ -304,6 +304,33 @@ def test_hostile_credential_resolution_never_claims_launches_or_leaks(
     assert not (tmp_path / "received.bin").exists()
     assert "other-owner-secret" not in repr(outcome)
     assert [event.state for event in ledger.events("request")] == [PrimeCallState.AUTHORIZED]
+
+
+def test_resource_guard_refuses_before_decrypt_or_spawn(tmp_path: Path) -> None:
+    prompt = "guarded"
+    binary = _binary(tmp_path, _events())
+    installation = verify_prime_agent_installation(binary, environ={"PATH": os.environ["PATH"]})
+    ledger = PrimeLedger(tmp_path / "ledger.sqlite3")
+    resolves = 0
+
+    class Resolver:
+        def resolve(self, _authorization):
+            nonlocal resolves
+            resolves += 1
+            raise AssertionError("credential resolver must remain untouched")
+
+    @contextmanager
+    def changed():
+        yield False
+
+    outcome = invoke_prime_rpc_evidence(
+        prompt=prompt, authorization=_request(prompt), ledger=ledger,
+        installation=installation, credential_resolver=Resolver(), cwd=tmp_path,
+        pre_start_guard=changed, now_ms=lambda: 101,
+    )
+    assert resolves == 0
+    assert outcome.receipt.state is PrimeCallState.AUTHORIZED
+    assert ledger.events("request")[-1].state is PrimeCallState.AUTHORIZED
 
 
 def test_self_consistent_wrong_provider_environment_is_refused_before_authority(

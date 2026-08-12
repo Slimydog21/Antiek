@@ -31,6 +31,7 @@ import logging
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from decimal import Decimal
 from typing import Any, Literal, cast
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -473,6 +474,50 @@ class AskBookRequest(BaseModel):
     # provider/model values in a validation response.
     model_choice: object | None = None
     operation_id: object | None = None
+    # Omitted means the original one-shot Ask path, unchanged. Deep is an
+    # explicit recursive RLM workflow; Prime is separately explicit consent.
+    mode: Literal["deep"] | None = None
+    prime: object | None = None
+
+
+class PrimeTalkRequest(BaseModel):
+    enabled: Literal[True]
+    operation_id: str = Field(
+        min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/@+\-]*$",
+    )
+    model_choice: UserModelChoice
+    max_cost_micro_usd: Literal[5_000_000]
+
+
+class PrimeTalkReceipt(BaseModel):
+    operation_id: str
+    state: Literal[
+        "authorized", "started", "usage_observed", "succeeded", "failed", "cancelled", "unknown",
+    ]
+    held_micro_usd: int
+    charged_micro_usd: int
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    observed_cost_micro_usd: int | None = None
+    provider_id: str
+    model_id: str
+    prime_version: str
+    updated_at_ms: int
+
+
+class PrimeReconcileRequest(BaseModel):
+    owner_id: str = Field(min_length=1, max_length=256)
+    resolution: Literal["confirmed_no_charge", "exact_usage"]
+    evidence_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    cache_read_tokens: int = Field(default=0, ge=0)
+    cache_write_tokens: int = Field(default=0, ge=0)
+    cost_micro_usd: int | None = Field(default=None, ge=0)
+    observed_at_ms: int | None = Field(default=None, ge=0)
+    stop_reason: str = Field(default="operator_reconciled", min_length=1, max_length=128)
+    provider_request_id: str = Field(default="operator_reconciled", min_length=1, max_length=256)
+    provider_event_id: str = Field(default="operator_reconciled", min_length=1, max_length=256)
 
 
 class CitationResponse(BaseModel):
@@ -506,6 +551,19 @@ class AskBookResponse(BaseModel):
     grounded: bool
     context_chunk_count: int
     model_receipt: ModelReceipt | None = None
+    mode: Literal["deep"] | None = None
+    prime_receipt: PrimeTalkReceipt | None = None
+
+
+class DeepTalkOperationStatus(BaseModel):
+    operation_id: str
+    state: Literal["claimed", "canonical_complete", "completed", "unknown"]
+    created_at_ms: int
+    updated_at_ms: int
+    checkpoint_phase: Literal["canonical_complete"] | None = None
+    lease_expires_at_ms: int | None = None
+    response: AskBookResponse | None = None
+    resumable: bool
 
 
 class ModelOperationStatus(BaseModel):
@@ -1039,7 +1097,7 @@ def register_book_routes(app: FastAPI) -> None:
         try:
             asset = get_book_asset(con, document_id)
             owner_row = con.execute(
-                "SELECT owner_user_id FROM documents WHERE document_id = ?",
+                "SELECT owner_user_id, acquired_at FROM documents WHERE document_id = ?",
                 [document_id],
             ).fetchone()
         finally:
@@ -1050,6 +1108,60 @@ def register_book_routes(app: FastAPI) -> None:
         authorized_dispatch = None
         selected_choice: UserModelChoice | None = None
         operation_id: str | None = None
+        prime_backend = None
+        prime_outcomes: list[object] = []
+        prime_request: PrimeTalkRequest | None = None
+        if req.mode == "deep" and (req.model_choice is None or req.operation_id is None):
+            raise HTTPException(status_code=422, detail="deep_owner_model_required")
+        if req.mode is None and req.prime is not None:
+            raise HTTPException(status_code=422, detail="deep_mode_required")
+        if req.mode == "deep" and req.prime is not None:
+            try:
+                prime_request = PrimeTalkRequest.model_validate(req.prime)
+            except ValidationError:
+                raise HTTPException(status_code=422, detail="prime_selection_invalid") from None
+            if owner_row is None or not isinstance(owner_row[0], str):
+                raise HTTPException(status_code=409, detail="owner_model_unavailable")
+            try:
+                from interfaces.research.api.owner_byot_dispatch import authenticated_distinct_owner
+                from interfaces.research.api.prime_talk import MeteredPrimeTalkBackend
+                prime_owner = authenticated_distinct_owner(request)
+            except Exception:
+                raise HTTPException(status_code=409, detail="owner_model_unavailable") from None
+            snapshot = hashlib.sha256(json.dumps(
+                {"document_id": document_id, "owner_user_id": owner_row[0],
+                 "version": str(owner_row[1])},
+                sort_keys=True, separators=(",", ":"),
+            ).encode()).hexdigest()
+
+            def _prime_resource_current() -> bool:
+                fact_con = connect_read(db)
+                try:
+                    fact = fact_con.execute(
+                        "SELECT owner_user_id, acquired_at FROM documents WHERE document_id = ?", [document_id],
+                    ).fetchone()
+                    return (
+                        fact is not None and fact[0] == prime_owner == owner_row[0]
+                        and str(fact[1]) == str(owner_row[1])
+                    )
+                finally:
+                    fact_con.close()
+
+            @contextmanager
+            def _prime_resource_guard():
+                from runtime.db_lock import authority_handoff_guard
+                with authority_handoff_guard(db, purpose="prime-talk-authority-handoff"):
+                    yield _prime_resource_current()
+
+            try:
+                prime_backend = MeteredPrimeTalkBackend(
+                    app=request.app, choice=prime_request.model_choice,
+                    owner_id=prime_owner, operation_id=prime_request.operation_id,
+                    document_digest=snapshot, resource_revalidator=_prime_resource_current,
+                    resource_authority_guard=_prime_resource_guard,
+                )
+            except Exception:
+                raise HTTPException(status_code=503, detail="prime_unavailable") from None
         if (req.model_choice is None) != (req.operation_id is None):
             raise HTTPException(status_code=422, detail="model_selection_invalid")
         if req.model_choice is not None:
@@ -1070,7 +1182,10 @@ def register_book_routes(app: FastAPI) -> None:
                 selected_owner = authenticated_distinct_owner(request)
             except OwnerByotDispatchUnavailable:
                 raise HTTPException(status_code=409, detail="owner_model_unavailable") from None
+            deep_dispatch_index = 0
+
             def _dispatch_selected(prompt: str) -> Any:
+                nonlocal deep_dispatch_index
                 # Re-read the resource authority at the last execution seam;
                 # the earlier read was existence/UX only and grants nothing.
                 owner_con = connect_read(db)
@@ -1116,6 +1231,15 @@ def register_book_routes(app: FastAPI) -> None:
                         finally:
                             fact_con.close()
                 assert selected_choice is not None and operation_id is not None
+                dispatch_operation_id = operation_id
+                if req.mode == "deep":
+                    # Every canonical recursive call owns a deterministic,
+                    # replay-stable journal identity. Reusing the parent id for
+                    # several provider calls would conflate settlement facts.
+                    dispatch_operation_id = hashlib.sha256(
+                        f"{operation_id}:canonical:{deep_dispatch_index}".encode()
+                    ).hexdigest()
+                    deep_dispatch_index += 1
                 try:
                     result, authority = dispatch_talk_to_book_byot(
                         app=request.app,
@@ -1125,7 +1249,7 @@ def register_book_routes(app: FastAPI) -> None:
                         choice=selected_choice,
                         prompt=prompt,
                         investigation_id=f"read-{document_id}",
-                        logical_operation_id=operation_id,
+                        logical_operation_id=dispatch_operation_id,
                         resource_authority_digest=resource_fact_digest,
                         resource_authority_guard=_resource_authority_guard,
                     )
@@ -1140,6 +1264,81 @@ def register_book_routes(app: FastAPI) -> None:
                 return result, authority.digest()
 
             authorized_dispatch = _dispatch_selected
+
+        deep_journal = None
+        deep_owner: str | None = None
+        deep_operation_id: str | None = None
+        deep_lease_token: str | None = None
+        deep_resume_outputs: list[str] | None = None
+        if req.mode == "deep" and (operation_id is not None or prime_request is not None):
+            from interfaces.research.api.deep_talk_journal import (
+                DeepOperationConflict,
+                deep_talk_journal,
+            )
+            deep_owner = _reader_owner_id(request)
+            deep_operation_id = operation_id or cast(PrimeTalkRequest, prime_request).operation_id
+            deep_digest = hashlib.sha256(json.dumps(
+                {
+                    "document_id": document_id, "document_owner": owner_row[0],
+                    "document_version": str(owner_row[1]),
+                    "question": req.question,
+                    "history": [item.model_dump() for item in req.history],
+                    "research_tier": req.research_tier,
+                    "model_choice": req.model_choice, "prime": req.prime,
+                }, sort_keys=True, separators=(",", ":"),
+            ).encode()).hexdigest()
+            deep_journal = deep_talk_journal()
+            try:
+                claimed = deep_journal.claim(deep_owner, deep_operation_id, deep_digest)
+            except DeepOperationConflict:
+                raise HTTPException(status_code=409, detail="deep_operation_conflict") from None
+            if claimed.state == "completed" and claimed.response is not None:
+                return AskBookResponse.model_validate(claimed.response)
+            if claimed.state not in {"new", "resumed"}:
+                detail = (
+                    "deep_operation_unknown" if claimed.state == "unknown"
+                    else "deep_operation_in_progress"
+                )
+                raise HTTPException(status_code=409, detail=detail)
+            deep_lease_token = claimed.lease_token
+            if prime_backend is not None:
+                prime_backend.child_journal = deep_journal
+                prime_backend.child_owner = deep_owner
+                prime_backend.child_parent_id = deep_operation_id
+                prime_backend.child_lease_token = deep_lease_token
+            if claimed.checkpoint is not None:
+                saved = claimed.checkpoint.get("batch_outputs")
+                if isinstance(saved, list) and all(isinstance(item, str) for item in saved):
+                    deep_resume_outputs = cast(list[str], saved)
+
+        def _checkpoint_deep_canonical(outputs: list[str]) -> None:
+            if (
+                deep_journal is not None and deep_owner is not None
+                and deep_operation_id is not None and deep_lease_token is not None
+            ):
+                deep_journal.checkpoint_canonical(
+                    deep_owner, deep_operation_id, deep_lease_token,
+                    {"batch_outputs": outputs},
+                )
+
+        def _execute_deep_child(phase: str, index: int, prompt: str, execute):
+            if (
+                deep_journal is None or deep_owner is None or deep_operation_id is None
+                or deep_lease_token is None
+            ):
+                return execute()
+            digest = hashlib.sha256(prompt.encode()).hexdigest()
+            cached = deep_journal.claim_child(
+                deep_owner, deep_operation_id, deep_lease_token, phase, index, digest,
+            )
+            if cached is not None:
+                return str(cached["text"]), Decimal(str(cached["cost_usd"]))
+            text, cost = execute()
+            deep_journal.complete_child(
+                deep_owner, deep_operation_id, deep_lease_token, phase, index, digest,
+                {"text": text, "cost_usd": str(cost)},
+            )
+            return text, cost
 
         try:
             model = SentenceTransformerEmbedding()
@@ -1161,12 +1360,26 @@ def register_book_routes(app: FastAPI) -> None:
                     # server-side); non-owner / unauth callers stay gated.
                     policy_tag=_owner_read_policy_tag(request),
                     authorized_dispatch=authorized_dispatch,
+                    deep=req.mode == "deep",
+                    prime_backend=prime_backend,
+                    prime_outcome_sink=prime_outcomes.append,
+                    canonical_checkpoint_sink=_checkpoint_deep_canonical,
+                    resume_batch_outputs=deep_resume_outputs,
+                    canonical_child_executor=_execute_deep_child,
                 )
             except HTTPException:
+                if deep_journal is not None and deep_owner is not None and deep_operation_id is not None:
+                    deep_journal.unknown(deep_owner, deep_operation_id, deep_lease_token)
                 raise
             except ProviderError:
                 # No keyed provider — honest 503, never a fabricated answer.
+                if deep_journal is not None and deep_owner is not None and deep_operation_id is not None:
+                    deep_journal.unknown(deep_owner, deep_operation_id, deep_lease_token)
                 raise HTTPException(status_code=503, detail="dispatch_unavailable") from None
+            except Exception:
+                if deep_journal is not None and deep_owner is not None and deep_operation_id is not None:
+                    deep_journal.unknown(deep_owner, deep_operation_id, deep_lease_token)
+                raise HTTPException(status_code=503, detail="deep_operation_unknown") from None
         finally:
             con.close()
 
@@ -1178,8 +1391,21 @@ def register_book_routes(app: FastAPI) -> None:
                     page_resolved=c.page_resolved,
                     snippet=c.snippet,
                 )
-                for c in result.citations
-            ]
+            for c in result.citations
+        ]
+        if prime_outcomes and getattr(prime_outcomes[-1].receipt.state, "value", None) == "unknown":
+            # The durable ledger retains the full $5 hold. The client must use
+            # the stable operation id and status/reconcile endpoint; returning
+            # an ordinary successful turn here would invite a blind retry.
+            if deep_journal is not None and deep_owner is not None and deep_operation_id is not None:
+                deep_journal.unknown(deep_owner, deep_operation_id, deep_lease_token)
+            raise HTTPException(status_code=503, detail="prime_outcome_unknown")
+        if prime_outcomes and getattr(prime_outcomes[-1].receipt.state, "value", None) in {
+            "authorized", "started", "usage_observed",
+        }:
+            if deep_journal is not None and deep_owner is not None and deep_operation_id is not None:
+                deep_journal.unknown(deep_owner, deep_operation_id, deep_lease_token)
+            raise HTTPException(status_code=503, detail="prime_operation_unresolved")
         from substrate.event_log import emit_typed
         from substrate.schemas import BookAnswerCitation, ReadBookAnsweredPayload
 
@@ -1235,9 +1461,28 @@ def register_book_routes(app: FastAPI) -> None:
                 )
                 if selected_choice is not None and dispatch_result is not None else None
             ),
+            mode=req.mode,
+            prime_receipt=(
+                PrimeTalkReceipt.model_validate(
+                    __import__(
+                        "interfaces.research.api.prime_talk", fromlist=["sanitized_receipt"]
+                    ).sanitized_receipt(prime_outcomes[-1])
+                ) if prime_outcomes else None
+            ),
         )
         if selected_choice is None:
             response.model_fields_set.discard("model_receipt")
+        if req.mode is None:
+            response.model_fields_set.discard("mode")
+            response.model_fields_set.discard("prime_receipt")
+        elif prime_request is None:
+            response.model_fields_set.discard("prime_receipt")
+        if deep_journal is not None and deep_owner is not None and deep_operation_id is not None:
+            deep_journal.complete(
+                deep_owner, deep_operation_id,
+                response.model_dump(mode="json", exclude_unset=True),
+                deep_lease_token,
+            )
         return response
 
     def _operation_owner(request: Request) -> str:
@@ -1320,6 +1565,120 @@ def register_book_routes(app: FastAPI) -> None:
         )
         return ModelOperationCleanupResponse(
             cancelled_count=count, max_age_seconds=max_age_seconds,
+        )
+
+    def _prime_operation_receipt(request: Request, operation_id: str) -> PrimeTalkReceipt:
+        from interfaces.research.api.prime_talk import (
+            prime_talk_ledger,
+            sanitized_prime_receipt,
+        )
+        owner = _operation_owner(request)
+        try:
+            receipt = prime_talk_ledger().receipt(operation_id)
+        except Exception:
+            raise HTTPException(status_code=404, detail="prime_operation_not_found") from None
+        if receipt.authorization.owner_id != owner:
+            raise HTTPException(status_code=404, detail="prime_operation_not_found")
+        return PrimeTalkReceipt.model_validate(sanitized_prime_receipt(receipt))
+
+    @app.get(
+        "/books/prime-operations/{operation_id}", response_model=PrimeTalkReceipt,
+    )
+    async def get_prime_operation(operation_id: str, request: Request) -> PrimeTalkReceipt:
+        return _prime_operation_receipt(request, operation_id)
+
+    @app.post(
+        "/books/prime-operations/{operation_id}/reconcile", response_model=PrimeTalkReceipt,
+    )
+    async def reconcile_prime_operation(
+        operation_id: str, request: Request, body: PrimeReconcileRequest | None = None,
+    ) -> PrimeTalkReceipt:
+        if body is None:
+            return _prime_operation_receipt(request, operation_id)
+        if getattr(request.state, "auth_method", None) not in {
+            "bearer_token", "cloudflare_service_token",
+        }:
+            raise HTTPException(status_code=403, detail="operator_authentication_required")
+        from interfaces.research.api.prime_talk import prime_talk_ledger, sanitized_prime_receipt
+        from orchestration.rlm.prime_authority import PrimeUsage
+        ledger = prime_talk_ledger()
+        try:
+            raw_receipt = ledger.receipt(operation_id)
+        except Exception:
+            raise HTTPException(status_code=404, detail="prime_operation_not_found") from None
+        if raw_receipt.authorization.owner_id != body.owner_id:
+            raise HTTPException(status_code=404, detail="prime_operation_not_found")
+        current = PrimeTalkReceipt.model_validate(sanitized_prime_receipt(raw_receipt))
+        try:
+            if body.resolution == "confirmed_no_charge":
+                ledger.reconcile_unknown_no_charge(
+                    operation_id, evidence_digest=body.evidence_digest,
+                )
+            else:
+                required = (
+                    body.input_tokens, body.output_tokens, body.cost_micro_usd,
+                    body.observed_at_ms,
+                )
+                if any(value is None for value in required):
+                    raise HTTPException(status_code=422, detail="exact_usage_incomplete")
+                ledger.reconcile_unknown_usage(
+                    operation_id,
+                    PrimeUsage(
+                        provider=current.provider_id, model=current.model_id,
+                        prime_version=current.prime_version,
+                        input_tokens=cast(int, body.input_tokens),
+                        output_tokens=cast(int, body.output_tokens),
+                        cache_read_tokens=body.cache_read_tokens,
+                        cache_write_tokens=body.cache_write_tokens,
+                        cost_micro_usd=cast(int, body.cost_micro_usd),
+                        observed_at_ms=cast(int, body.observed_at_ms),
+                        stop_reason=body.stop_reason,
+                        evidence_digest=body.evidence_digest,
+                        output_digest=body.evidence_digest,
+                        provider_request_id=body.provider_request_id,
+                        provider_event_id=body.provider_event_id,
+                    ), evidence_digest=body.evidence_digest,
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=409, detail="prime_reconciliation_refused") from None
+        return PrimeTalkReceipt.model_validate(
+            sanitized_prime_receipt(ledger.receipt(operation_id))
+        )
+
+    @app.post(
+        "/books/prime-operations/{operation_id}/cancel", response_model=PrimeTalkReceipt,
+    )
+    async def cancel_prime_operation(operation_id: str, request: Request) -> PrimeTalkReceipt:
+        from interfaces.research.api.prime_talk import prime_talk_ledger
+        current = _prime_operation_receipt(request, operation_id)
+        if current.state != "authorized":
+            raise HTTPException(status_code=409, detail="prime_operation_not_cancellable")
+        try:
+            prime_talk_ledger().cancel(operation_id)
+        except Exception:
+            raise HTTPException(status_code=409, detail="prime_operation_not_cancellable") from None
+        return _prime_operation_receipt(request, operation_id)
+
+    @app.get(
+        "/books/deep-operations/{operation_id}", response_model=DeepTalkOperationStatus,
+    )
+    async def get_deep_operation(
+        operation_id: str, request: Request,
+    ) -> DeepTalkOperationStatus:
+        from interfaces.research.api.deep_talk_journal import deep_talk_journal
+        journal = deep_talk_journal()
+        row = journal.get(_operation_owner(request), operation_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="deep_operation_not_found")
+        return DeepTalkOperationStatus(
+            operation_id=row.operation_id, state=cast(Any, row.state),
+            created_at_ms=row.created_at_ms, updated_at_ms=row.updated_at_ms,
+            checkpoint_phase=("canonical_complete" if row.checkpoint is not None else None),
+            lease_expires_at_ms=row.lease_expires_at_ms,
+            response=(AskBookResponse.model_validate(row.response) if row.response else None),
+            resumable=journal.resumable(row),
         )
 
     @app.post(

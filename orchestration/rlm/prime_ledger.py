@@ -387,6 +387,73 @@ class PrimeLedger:
 
     get_receipt = receipt
 
+    def reconcile_unknown_no_charge(
+        self, request_id: str, *, evidence_digest: str, now_ms: int | None = None,
+    ) -> PrimeReceipt:
+        """Operator-confirmed provider billing evidence that no charge occurred."""
+        now = _now_ms() if now_ms is None else now_ms
+        _validate_now(now)
+        if len(evidence_digest) != 64 or any(c not in "0123456789abcdef" for c in evidence_digest):
+            raise PrimeAuthorizationRefused("billing evidence digest is invalid")
+        with self._transaction() as connection:
+            row = self._row(connection, request_id)
+            if PrimeCallState(row["state"]) not in {
+                PrimeCallState.AUTHORIZED, PrimeCallState.STARTED, PrimeCallState.UNKNOWN,
+            }:
+                raise PrimeAuthorizationRefused("operation is not reconcilable")
+            changed = connection.execute(
+                "UPDATE authorizations SET state=?,held_micro_usd=0,charged_micro_usd=0,"
+                "terminal_at_ms=?,updated_at_ms=? WHERE request_id=?",
+                (PrimeCallState.CANCELLED, now, now, request_id),
+            ).rowcount
+            if changed != 1:
+                raise PrimeLedgerCorrupt("reconcile update failed")
+            self._event(connection, request_id, PrimeCallState.CANCELLED, now,
+                        f"operator_confirmed_no_charge:{evidence_digest}")
+            return self._get(connection, request_id)
+
+    def reconcile_unknown_usage(
+        self, request_id: str, usage: PrimeUsage, *, evidence_digest: str,
+        now_ms: int | None = None,
+    ) -> PrimeReceipt:
+        """Settle exact trusted provider-billing usage, retaining overruns."""
+        now = _now_ms() if now_ms is None else now_ms
+        _validate_now(now)
+        if len(evidence_digest) != 64 or any(c not in "0123456789abcdef" for c in evidence_digest):
+            raise PrimeAuthorizationRefused("billing evidence digest is invalid")
+        with self._transaction() as connection:
+            row = self._row(connection, request_id)
+            if PrimeCallState(row["state"]) not in {
+                PrimeCallState.STARTED, PrimeCallState.USAGE_OBSERVED, PrimeCallState.UNKNOWN,
+            }:
+                raise PrimeAuthorizationRefused("operation is not reconcilable")
+            if not _usage_authorized(row, usage):
+                # Identity mismatch is never trusted. A cost overrun with exact
+                # identity is retained as UNKNOWN with the full observed charge.
+                identity = (
+                    usage.provider == row["provider"] and usage.model == row["model"]
+                    and usage.prime_version == row["prime_version"]
+                )
+                if not identity:
+                    raise PrimeAuthorizationRefused("billing identity mismatch")
+            self._store_usage(connection, request_id, usage)
+            terminal = (
+                PrimeCallState.SUCCEEDED
+                if usage.cost_micro_usd <= row["max_cost_micro_usd"]
+                else PrimeCallState.UNKNOWN
+            )
+            held = 0 if terminal is PrimeCallState.SUCCEEDED else row["held_micro_usd"]
+            changed = connection.execute(
+                "UPDATE authorizations SET state=?,charged_micro_usd=?,held_micro_usd=?,"
+                "terminal_at_ms=?,updated_at_ms=? WHERE request_id=?",
+                (terminal, usage.cost_micro_usd, held, now, now, request_id),
+            ).rowcount
+            if changed != 1:
+                raise PrimeLedgerCorrupt("reconcile update failed")
+            self._event(connection, request_id, terminal, now,
+                        f"operator_billing_reconciled:{evidence_digest}")
+            return self._get(connection, request_id)
+
     def events(self, request_id: str) -> tuple[PrimeEvent, ...]:
         with self._connect() as connection:
             rows = connection.execute(

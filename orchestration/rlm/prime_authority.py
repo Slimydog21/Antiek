@@ -62,6 +62,8 @@ class PrimeAuthorizationRequest:
     prompt_digest: str
     provider: str
     credential_id: str
+    # Durable encrypted-artifact/version fingerprint. This is deliberately not
+    # SHA-256(secret): plaintext is unavailable until the final resolver seam.
     credential_fingerprint: str
     credential_env_name: str
     model: str

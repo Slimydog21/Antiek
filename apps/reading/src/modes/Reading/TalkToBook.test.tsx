@@ -14,6 +14,7 @@ import userEvent from "@testing-library/user-event";
 
 import {
   BookModelOperationNotFoundError,
+  DeepBookOperationPendingError,
   SelectedBookModelUnavailableError,
 } from "../../api/books";
 import type { AskBookResponse, BookCitation } from "../../api/books";
@@ -21,18 +22,28 @@ import TalkToBook from "./TalkToBook";
 
 const {
   askBookMock,
+  askBookDeepMock,
   judgeBookAnswerMock,
   fetchUserModelsMock,
   getBookModelOperationMock,
   reconcileBookModelOperationMock,
   cancelBookModelOperationMock,
+  getPrimeOperationMock,
+  reconcilePrimeOperationMock,
+  cancelPrimeOperationMock,
+  getDeepBookOperationMock,
 } = vi.hoisted(() => ({
   askBookMock: vi.fn(),
+  askBookDeepMock: vi.fn(),
   judgeBookAnswerMock: vi.fn(),
   fetchUserModelsMock: vi.fn(),
   getBookModelOperationMock: vi.fn(),
   reconcileBookModelOperationMock: vi.fn(),
   cancelBookModelOperationMock: vi.fn(),
+  getPrimeOperationMock: vi.fn(),
+  reconcilePrimeOperationMock: vi.fn(),
+  cancelPrimeOperationMock: vi.fn(),
+  getDeepBookOperationMock: vi.fn(),
 }));
 
 vi.mock("../../api/books", async (orig) => {
@@ -40,10 +51,15 @@ vi.mock("../../api/books", async (orig) => {
   return {
     ...actual,
     askBook: askBookMock,
+    askBookDeep: askBookDeepMock,
     judgeBookAnswer: judgeBookAnswerMock,
     getBookModelOperation: getBookModelOperationMock,
     reconcileBookModelOperation: reconcileBookModelOperationMock,
     cancelBookModelOperation: cancelBookModelOperationMock,
+    getPrimeOperation: getPrimeOperationMock,
+    reconcilePrimeOperation: reconcilePrimeOperationMock,
+    cancelPrimeOperation: cancelPrimeOperationMock,
+    getDeepBookOperation: getDeepBookOperationMock,
   };
 });
 
@@ -101,16 +117,43 @@ function answer(over: Partial<AskBookResponse> = {}): AskBookResponse {
   };
 }
 
+const primeReceipt = (state: "authorized" | "started" | "usage_observed" | "succeeded" | "failed" | "cancelled" | "unknown") => ({
+  operation_id: "prime-op",
+  state,
+  held_micro_usd: state === "cancelled" ? 0 : 5_000_000,
+  charged_micro_usd: state === "succeeded" ? 1_250_000 : 0,
+  input_tokens: null,
+  output_tokens: null,
+  observed_cost_micro_usd: null,
+  provider_id: "prime",
+  model_id: "p-1",
+  prime_version: "1.2.3",
+  updated_at_ms: 1,
+});
+
 beforeEach(() => {
   askBookMock.mockReset();
+  askBookDeepMock.mockReset();
   judgeBookAnswerMock.mockReset();
   fetchUserModelsMock.mockReset();
   getBookModelOperationMock.mockReset();
   reconcileBookModelOperationMock.mockReset();
   cancelBookModelOperationMock.mockReset();
+  getPrimeOperationMock.mockReset();
+  reconcilePrimeOperationMock.mockReset();
+  cancelPrimeOperationMock.mockReset();
+  getDeepBookOperationMock.mockReset();
   getBookModelOperationMock.mockResolvedValue({ state: "unknown" });
   reconcileBookModelOperationMock.mockResolvedValue({ state: "unknown" });
   cancelBookModelOperationMock.mockResolvedValue({ state: "cancelled" });
+  getPrimeOperationMock.mockResolvedValue({ state: "unknown" });
+  reconcilePrimeOperationMock.mockResolvedValue({ state: "unknown" });
+  cancelPrimeOperationMock.mockResolvedValue({ state: "cancelled" });
+  getDeepBookOperationMock.mockResolvedValue({
+    operation_id: "prime-op", state: "claimed", checkpoint_phase: null,
+    lease_expires_at_ms: Date.now() + 60_000, resumable: false,
+    created_at_ms: 1, updated_at_ms: 1,
+  });
   fetchUserModelsMock.mockResolvedValue({ models: [], count: 0, stale_registered: [], source: "test" });
   judgeBookAnswerMock.mockResolvedValue({
     answer_id: "evt-answer-1",
@@ -138,6 +181,181 @@ async function openAndAsk(
 }
 
 describe("TalkToBook (M2)", () => {
+  async function startPrimeWithKeyboard(question: string) {
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("talk-to-book-bookmark"));
+    await user.click(screen.getByRole("button", { name: "Use Deep mode" }));
+    await user.click(screen.getByLabelText(/Add metered Prime/));
+    await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalled());
+    const comboButton = screen.getByRole("combobox").querySelector("button") as HTMLButtonElement;
+    comboButton.focus();
+    await user.keyboard("{Enter}{ArrowDown}{Enter}");
+    await user.click(screen.getByLabelText(/I approve this separate metered call/));
+    await user.type(screen.getByRole("textbox", { name: "Question for this book" }), question);
+    await user.keyboard("{Enter}");
+    return user;
+  }
+
+  it.each(["authorized", "started", "usage_observed", "unknown"] as const)(
+    "holds, polls, and blocks reset/new paid work for Prime %s",
+    async (state) => {
+      fetchUserModelsMock.mockResolvedValue({ models: [eligibleModel], count: 1, stale_registered: [], source: "test" });
+      askBookDeepMock.mockResolvedValue(answer({ mode: "deep", prime_receipt: primeReceipt(state) }));
+      getPrimeOperationMock.mockResolvedValue(primeReceipt(state));
+      render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+      await startPrimeWithKeyboard(`state ${state}`);
+      expect(await screen.findByText(/Prime is still unresolved/)).toBeTruthy();
+      await waitFor(() => expect(getPrimeOperationMock).toHaveBeenCalled());
+      expect(screen.getByText("clear").hasAttribute("disabled")).toBe(true);
+      expect(screen.getByRole("button", { name: "Run Deep" }).hasAttribute("disabled")).toBe(true);
+      const stored = JSON.parse(window.sessionStorage.getItem("antiek.read.talk.doc-x") ?? "{}");
+      expect(stored.branches[0].messages[0].operation_id).toMatch(/^talk-/);
+      expect(stored.branches[0].messages[0].answer).toBeNull();
+      expect(askBookDeepMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("reloads an unresolved paid turn and recovers the stored response without another provider call", async () => {
+    fetchUserModelsMock.mockResolvedValue({ models: [eligibleModel], count: 1, stale_registered: [], source: "test" });
+    askBookDeepMock.mockRejectedValue(new DeepBookOperationPendingError("prime_unresolved"));
+    getPrimeOperationMock.mockResolvedValue(primeReceipt("unknown"));
+    const first = render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+    await startPrimeWithKeyboard("reload me");
+    await screen.findByText(/Prime operation is unresolved/i);
+    first.unmount();
+
+    getPrimeOperationMock.mockResolvedValue(primeReceipt("succeeded"));
+    getDeepBookOperationMock.mockResolvedValue({
+      operation_id: "prime-op", state: "completed", checkpoint_phase: "canonical_complete",
+      lease_expires_at_ms: null, resumable: false, created_at_ms: 1, updated_at_ms: 2,
+      response: answer({ mode: "deep", prime_receipt: primeReceipt("succeeded") }),
+    });
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+    await userEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    expect(await screen.findByText("Page seven discusses entanglement.")).toBeTruthy();
+    expect(askBookDeepMock).toHaveBeenCalledTimes(1);
+    expect(getDeepBookOperationMock).toHaveBeenCalled();
+  });
+
+  it("waits for the real lease checkpoint before resuming with the exact persisted payload", async () => {
+    fetchUserModelsMock.mockResolvedValue({ models: [eligibleModel], count: 1, stale_registered: [], source: "test" });
+    askBookDeepMock
+      .mockRejectedValueOnce(new DeepBookOperationPendingError("prime_unknown"))
+      .mockResolvedValueOnce(answer({ mode: "deep", prime_receipt: primeReceipt("succeeded") }));
+    getPrimeOperationMock.mockResolvedValue(primeReceipt("unknown"));
+    reconcilePrimeOperationMock.mockResolvedValue(primeReceipt("succeeded"));
+    getDeepBookOperationMock.mockResolvedValue({
+      operation_id: "prime-op", state: "canonical_complete", checkpoint_phase: "canonical_complete",
+      lease_expires_at_ms: Date.now() - 1, resumable: true, created_at_ms: 1, updated_at_ms: 2,
+    });
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+    const user = await startPrimeWithKeyboard("exact replay");
+    await screen.findByText(/Prime operation is unresolved/i);
+    await user.click(screen.getByRole("button", { name: "Refresh reconciliation" }));
+    expect(askBookDeepMock).toHaveBeenCalledTimes(1);
+    await user.click(await screen.findByRole("button", { name: "Resume Deep safely" }));
+    await screen.findByText("Page seven discusses entanglement.");
+    expect(askBookDeepMock).toHaveBeenCalledTimes(2);
+    expect(askBookDeepMock.mock.calls[1][1]).toBe(askBookDeepMock.mock.calls[0][1]);
+    expect(askBookDeepMock.mock.calls[1][2]).toEqual(askBookDeepMock.mock.calls[0][2]);
+  });
+
+  it("never offers takeover for ambiguous Deep unknown without server approval", async () => {
+    fetchUserModelsMock.mockResolvedValue({ models: [eligibleModel], count: 1, stale_registered: [], source: "test" });
+    askBookDeepMock
+      .mockRejectedValueOnce(new DeepBookOperationPendingError("deep_unknown"))
+      .mockResolvedValueOnce(answer({ mode: "deep", prime_receipt: primeReceipt("succeeded") }));
+    getPrimeOperationMock.mockResolvedValue(primeReceipt("unknown"));
+    getDeepBookOperationMock.mockResolvedValue({
+      operation_id: "prime-op", state: "unknown", checkpoint_phase: "canonical_complete",
+      lease_expires_at_ms: null, resumable: false, created_at_ms: 1, updated_at_ms: 2, response: null,
+    });
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+    await startPrimeWithKeyboard("unknown takeover");
+    await waitFor(() => expect(getDeepBookOperationMock).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: "Resume Deep safely" })).toBeNull();
+    expect(askBookDeepMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows keyboard cancellation only for an authorized Prime hold", async () => {
+    fetchUserModelsMock.mockResolvedValue({ models: [eligibleModel], count: 1, stale_registered: [], source: "test" });
+    askBookDeepMock.mockRejectedValue(new DeepBookOperationPendingError("prime_unresolved"));
+    getPrimeOperationMock.mockResolvedValue(primeReceipt("authorized"));
+    cancelPrimeOperationMock.mockResolvedValue(primeReceipt("cancelled"));
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+    const user = await startPrimeWithKeyboard("cancel me");
+    const release = await screen.findByRole("button", { name: "Release reservation" });
+    release.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(screen.queryByText("cancel me")).toBeNull());
+    expect(cancelPrimeOperationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers explicit Deep RLM while leaving ordinary Ask on the original request", async () => {
+    askBookMock.mockResolvedValue(answer());
+    await openAndAsk();
+    expect(askBookMock).toHaveBeenCalledTimes(1);
+    expect(askBookDeepMock).not.toHaveBeenCalled();
+
+    cleanup();
+    window.sessionStorage.clear();
+    fetchUserModelsMock.mockResolvedValue({ models: [eligibleModel], count: 1, stale_registered: [], source: "test" });
+    askBookDeepMock.mockResolvedValue(answer({ mode: "deep" }));
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    fireEvent.click(screen.getByRole("button", { name: "Use Deep mode" }));
+    await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("combobox").querySelector("button") as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole("option", { name: /Reconcile model/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Question for this book" }), { target: { value: "inspect deeply" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Deep" }));
+    await screen.findByText("Page seven discusses entanglement.");
+    const deepOptions = askBookDeepMock.mock.calls[0][2];
+    expect(deepOptions.history).toEqual([]);
+    expect(deepOptions.operationId).toMatch(/^talk-/);
+    expect(deepOptions.modelChoice).toEqual({
+      authority: "user_model", provider_id: "user-reconcile", model_id: "reconcile-model",
+    });
+  });
+
+  it("requires separate Prime consent and persists its stable paid-operation identity", async () => {
+    fetchUserModelsMock.mockResolvedValue({ models: [eligibleModel], count: 1, stale_registered: [], source: "test" });
+    askBookDeepMock.mockResolvedValue(answer({ mode: "deep", prime_receipt: {
+      operation_id: "server-operation",
+      state: "succeeded",
+      held_micro_usd: 5_000_000,
+      charged_micro_usd: 1_250_000,
+      input_tokens: 100,
+      output_tokens: 20,
+      observed_cost_micro_usd: 1_250_000,
+      provider_id: "prime",
+      model_id: "p-1",
+      updated_at_ms: 1,
+    } }));
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    fireEvent.click(screen.getByRole("button", { name: "Use Deep mode" }));
+    fireEvent.click(screen.getByLabelText(/Add metered Prime/));
+    await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("combobox").querySelector("button") as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole("option", { name: /Reconcile model/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Question for this book" }), { target: { value: "prime evidence" } });
+    expect(screen.getByRole("button", { name: "Run Deep" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByLabelText(/I approve this separate metered call/));
+    fireEvent.click(screen.getByRole("button", { name: "Run Deep" }));
+    await screen.findByTestId("talk-prime-receipt");
+    const prime = askBookDeepMock.mock.calls[0][2].prime;
+    const canonicalOperation = askBookDeepMock.mock.calls[0][2].operationId;
+    expect(prime.operationId).toMatch(/^prime-/);
+    expect(canonicalOperation).toMatch(/^talk-/);
+    expect(prime.operationId).not.toBe(canonicalOperation);
+    expect(prime.maxCostMicroUsd).toBe(5_000_000);
+    const stored = JSON.parse(window.sessionStorage.getItem("antiek.read.talk.doc-x") ?? "{}");
+    expect(stored.branches[0].messages[0].operation_id).toBe(canonicalOperation);
+    expect(stored.branches[0].messages[0].deep_request.prime_operation_id).toBe(prime.operationId);
+    expect(screen.getByTestId("talk-prime-receipt").textContent).toContain("supplemental evidence");
+  });
+
   it("keeps the explicit deep-tier default and sends no model choice when untouched", async () => {
     askBookMock.mockResolvedValue(answer());
     await openAndAsk();

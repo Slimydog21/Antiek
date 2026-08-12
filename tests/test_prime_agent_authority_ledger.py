@@ -47,6 +47,30 @@ def _usage(cost: int = 400_000) -> PrimeUsage:
     return PrimeUsage("anthropic", "prime-model", "1.2.3", 100, 20, cost, 300)
 
 
+def test_operator_reconcile_unknown_exact_usage_and_confirmed_no_charge(tmp_path: Path) -> None:
+    ledger = PrimeLedger(tmp_path / "prime.sqlite3")
+    first = _request(1)
+    ledger.authorize(first, now_ms=200)
+    ledger.mark_started(first.request_id, now_ms=210)
+    ledger.mark_unknown(first.request_id, now_ms=220)
+    settled = ledger.reconcile_unknown_usage(
+        first.request_id, _usage(), evidence_digest="e" * 64, now_ms=400,
+    )
+    assert settled.state is PrimeCallState.SUCCEEDED
+    assert settled.held_micro_usd == 0
+    assert settled.charged_micro_usd == 400_000
+
+    second = _request(2)
+    ledger.authorize(second, now_ms=200)
+    ledger.mark_started(second.request_id, now_ms=210)
+    ledger.mark_unknown(second.request_id, now_ms=220)
+    cancelled = ledger.reconcile_unknown_no_charge(
+        second.request_id, evidence_digest="f" * 64, now_ms=400,
+    )
+    assert cancelled.state is PrimeCallState.CANCELLED
+    assert cancelled.held_micro_usd == 0
+
+
 def test_exact_idempotent_replay_and_identity_tamper_refused(tmp_path: Path) -> None:
     ledger = PrimeLedger(tmp_path / "prime.sqlite3")
     request = _request()

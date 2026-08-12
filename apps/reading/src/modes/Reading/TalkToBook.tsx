@@ -3,11 +3,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LemonButton, LemonSelect } from "../../components/lemon";
 import {
   askBook,
+  askBookDeep,
   BookModelOperationNotFoundError,
+  DeepBookOperationPendingError,
   cancelBookModelOperation,
   getBookModelOperation,
+  getPrimeOperation,
+  getDeepBookOperation,
   judgeBookAnswer,
   reconcileBookModelOperation,
+  reconcilePrimeOperation,
+  cancelPrimeOperation,
   SelectedBookModelUnavailableError,
 } from "../../api/books";
 import type { BookCitation, BookModelReceipt, UserModelChoice } from "../../api/books";
@@ -67,6 +73,10 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
   const [models, setModels] = useState<UserModelRow[]>([]);
   const [modelsState, setModelsState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
   const [modelChoice, setModelChoice] = useState<UserModelChoice | null>(null);
+  const [talkMode, setTalkMode] = useState<"ask" | "deep">("ask");
+  const [primeEnabled, setPrimeEnabled] = useState(false);
+  const [primeConsent, setPrimeConsent] = useState(false);
+  const primeCapUsd = "5.00";
   const [operationError, setOperationError] = useState<string | null>(null);
   const modelRequestRef = useRef(0);
   const selectorRef = useRef<HTMLDivElement>(null);
@@ -83,9 +93,19 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
     );
   const selectedDispatchBlocked = unresolvedOperations.length > 0;
   const setModelOperationState = thread.setModelOperationState;
+  const setPrimeOperationReceipt = thread.setPrimeOperationReceipt;
+  const setDeepOperationStatus = thread.setDeepOperationStatus;
   const markModelOperationNotFound = thread.markModelOperationNotFound;
   const abandonMissingModelOperation = thread.abandonMissingModelOperation;
   const failTurn = thread.failTurn;
+  const completeTurn = thread.completeTurn;
+
+  const completeResponse = useCallback((messageId: string, res: import("../../api/books").AskBookResponse) => {
+    completeTurn(
+      messageId, res.answer, res.citations, res.grounded, res.answer_id,
+      res.capture_status, res.model_receipt, res.prime_receipt,
+    );
+  }, [completeTurn]);
 
   const refreshModels = useCallback(async () => {
     const request = ++modelRequestRef.current;
@@ -107,11 +127,28 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
     if (!message.operation_id) return;
     setOperationError(null);
     try {
-      const status = action === "reconcile"
-        ? await reconcileBookModelOperation(message.operation_id)
-        : action === "cancel"
-          ? await cancelBookModelOperation(message.operation_id)
-          : await getBookModelOperation(message.operation_id);
+      if (message.mode === "deep") {
+        const primeId = message.deep_request?.prime_operation_id;
+        if (primeId) {
+          const primeStatus = action === "reconcile" ? await reconcilePrimeOperation(primeId)
+            : action === "cancel" ? await cancelPrimeOperation(primeId)
+              : await getPrimeOperation(primeId);
+          setPrimeOperationReceipt(message.id, primeStatus);
+          if (primeStatus.state === "cancelled") {
+            failTurn(message.id);
+            setModelChoice(null);
+            void refreshModels();
+            return;
+          }
+        }
+        const parent = await getDeepBookOperation(message.operation_id);
+        setDeepOperationStatus(message.id, parent);
+        if (parent.state === "completed" && parent.response) completeResponse(message.id, parent.response);
+        return;
+      }
+      const status = action === "reconcile" ? await reconcileBookModelOperation(message.operation_id)
+          : action === "cancel" ? await cancelBookModelOperation(message.operation_id)
+            : await getBookModelOperation(message.operation_id);
       setModelOperationState(message.id, status.state);
       if (status.state === "cancelled") {
         failTurn(message.id);
@@ -130,7 +167,32 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
           : "Operation status is temporarily unavailable. Do not retry the selected model yet.");
       }
     }
-  }, [failTurn, markModelOperationNotFound, refreshModels, setModelOperationState]);
+  }, [completeResponse, failTurn, markModelOperationNotFound, refreshModels, setDeepOperationStatus, setModelOperationState, setPrimeOperationReceipt]);
+
+  const resumeDeep = useCallback(async (message: TalkMessage) => {
+    if (!message.operation_id || !message.model_choice || !message.deep_request) return;
+    const status = message.deep_operation_status;
+    if (!status?.resumable) return;
+    setOperationError(null);
+    try {
+      const recovered = await askBookDeep(documentId, message.question, {
+        history: message.deep_request.history,
+        operationId: message.operation_id,
+        modelChoice: message.model_choice,
+        ...(message.deep_request.prime_operation_id &&
+          message.deep_request.prime_model_choice &&
+          message.deep_request.max_cost_micro_usd !== undefined ? { prime: {
+            operationId: message.deep_request.prime_operation_id,
+            modelChoice: message.deep_request.prime_model_choice,
+            maxCostMicroUsd: message.deep_request.max_cost_micro_usd,
+          } } : {}),
+      });
+      completeResponse(message.id, recovered);
+    } catch (resumeError) {
+      setOperationError(resumeError instanceof Error ? resumeError.message : "Deep resume is unavailable.");
+      void checkOperation(message);
+    }
+  }, [checkOperation, completeResponse, documentId]);
 
   const abandonMissingOperation = useCallback((message: TalkMessage) => {
     if ((message.operation_not_found_checks ?? 0) < 2) return;
@@ -167,6 +229,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
   // The compact key prevents a fresh interval for unrelated thread renders.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, unresolvedKey, checkOperation]);
+
 
   const selectedModel = modelChoice
     ? models.find(
@@ -218,30 +281,64 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
     const history = thread.messages
       .filter((m): m is TalkMessage & { answer: string } => m.answer !== null)
       .map((m) => ({ question: m.question, answer: m.answer }));
-    const operationId = modelChoice ? `talk-${crypto.randomUUID()}` : undefined;
-    const messageId = thread.startTurn(q, operationId, modelChoice ?? undefined);
+    const usingPrime = talkMode === "deep" && primeEnabled;
+    const operationId = (talkMode === "ask" && modelChoice) || talkMode === "deep"
+      ? `talk-${crypto.randomUUID()}`
+      : undefined;
+    const primeOperationId = usingPrime ? `prime-${crypto.randomUUID()}` : undefined;
+    const capMicroUsd = Math.round(Number(primeCapUsd) * 1_000_000);
+    if (talkMode === "deep" && !modelChoice) {
+      setError("Choose an owner model for canonical Deep analysis.");
+      return;
+    }
+    if (usingPrime && (!primeConsent || !Number.isSafeInteger(capMicroUsd) || capMicroUsd < 1)) {
+      setError("Set a positive cap and consent to the supplemental Prime charge.");
+      return;
+    }
+    const operationModelChoice = talkMode === "ask" || usingPrime ? modelChoice ?? undefined : undefined;
+    const messageId = thread.startTurn(
+      q, operationId, operationModelChoice, talkMode,
+      talkMode === "deep" ? {
+        history,
+        ...(usingPrime && primeOperationId && modelChoice ? {
+          max_cost_micro_usd: capMicroUsd,
+          prime_operation_id: primeOperationId,
+          prime_model_choice: modelChoice,
+        } : {}),
+      } : undefined,
+    );
     setPending(true);
     try {
-      if (!selectedModelEligible) {
+      if ((talkMode === "ask" || usingPrime) && !selectedModelEligible) {
         throw new Error("That model is no longer available. Choose another model or use Default.");
       }
-      const res = modelChoice && operationId
-        ? await askBook(documentId, q, {
+      const res = talkMode === "deep"
+        ? await askBookDeep(documentId, q, {
+            history,
+            operationId: operationId as string,
+            modelChoice: modelChoice as UserModelChoice,
+            ...(usingPrime && modelChoice && primeOperationId ? { prime: {
+              operationId: primeOperationId,
+              modelChoice,
+              maxCostMicroUsd: capMicroUsd,
+            } } : {}),
+          })
+        : modelChoice && operationId
+          ? await askBook(documentId, q, {
             history,
             researchTier: "deep",
             modelChoice,
             operationId,
           })
         : await askBook(documentId, q, { history, researchTier: "deep" });
-      thread.completeTurn(
-        messageId,
-        res.answer,
-        res.citations,
-        res.grounded,
-        res.answer_id,
-        res.capture_status,
-        res.model_receipt,
-      );
+      const nonterminalPrime = usingPrime && res.prime_receipt &&
+        ["authorized", "started", "usage_observed", "unknown"].includes(res.prime_receipt.state);
+      if (nonterminalPrime && res.prime_receipt) {
+        thread.setPrimeOperationReceipt(messageId, res.prime_receipt);
+        setError("Prime is still unresolved. This exact operation is held; do not start another paid attempt.");
+        return;
+      }
+      completeResponse(messageId, res);
     } catch (e: unknown) {
       if (e instanceof SelectedBookModelUnavailableError) {
         thread.failTurn(messageId);
@@ -251,7 +348,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
         window.setTimeout(() => {
           selectorRef.current?.querySelector("button")?.focus();
         }, 0);
-      } else if (modelChoice) {
+      } else if (e instanceof DeepBookOperationPendingError || (talkMode === "ask" && modelChoice) || usingPrime) {
         thread.setModelOperationState(messageId, "unknown");
       } else {
         thread.failTurn(messageId);
@@ -260,7 +357,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
     } finally {
       setPending(false);
     }
-  }, [draft, pending, thread, documentId, modelChoice, selectedModelEligible, refreshModels]);
+  }, [draft, pending, thread, documentId, modelChoice, selectedModelEligible, refreshModels, talkMode, primeEnabled, primeConsent, primeCapUsd, completeResponse]);
 
   if (!open) {
     return (
@@ -376,7 +473,12 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
                     </LemonButton>
                   ) : m.model_operation_state !== "settled" && (
                     <LemonButton size="sm" className="min-h-11 sm:min-h-7" onClick={() => void checkOperation(m, "reconcile")}>
-                      Reconcile
+                      {m.mode === "deep" ? "Refresh reconciliation" : "Reconcile"}
+                    </LemonButton>
+                  )}
+                  {m.mode === "deep" && m.deep_operation_status?.resumable === true && (
+                    <LemonButton size="sm" className="min-h-11 sm:min-h-7" onClick={() => void resumeDeep(m)}>
+                      Resume Deep safely
                     </LemonButton>
                   )}
                   {(m.operation_not_found_checks ?? 0) >= 2 &&
@@ -417,9 +519,41 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
         }}
         className="flex flex-col gap-2 border-t border-rule px-3 py-2 dark:border-charcoal-1"
       >
+        <fieldset className="grid grid-cols-2 gap-2" aria-label="Answer depth">
+          <LemonButton type="button" size="sm" variant={talkMode === "ask" ? "primary" : "secondary"} aria-label="Use Ask mode" aria-pressed={talkMode === "ask"} onClick={() => setTalkMode("ask")}>Ask</LemonButton>
+          <LemonButton type="button" size="sm" variant={talkMode === "deep" ? "primary" : "secondary"} aria-label="Use Deep mode" aria-pressed={talkMode === "deep"} onClick={() => setTalkMode("deep")}>Deep</LemonButton>
+        </fieldset>
+        {talkMode === "deep" && (
+          <div className="rounded-md border border-rule p-2 dark:border-charcoal-1">
+            <p className="text-[11px] text-ink dark:text-bright">
+              Deep uses recursive language-model analysis. It can take longer than Ask.
+            </p>
+            <label className="mt-2 flex min-h-11 items-center gap-2 text-[12px] text-ink dark:text-bright">
+              <input type="checkbox" checked={primeEnabled} onChange={(event) => {
+                setPrimeEnabled(event.target.checked);
+                setPrimeConsent(false);
+              }} />
+              Add metered Prime as supplemental, non-canonical evidence
+            </label>
+            {primeEnabled && (
+              <div className="mt-1 grid gap-2">
+                <label className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                  Prime maximum charge (USD)
+                  <input aria-label="Prime maximum charge in USD" value={primeCapUsd} readOnly className="mt-1 min-h-11 w-full rounded border border-rule bg-ice-1 px-2 text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright" />
+                </label>
+                <label className="flex min-h-11 items-center gap-2 text-[11px] text-ink dark:text-bright">
+                  <input type="checkbox" checked={primeConsent} onChange={(event) => setPrimeConsent(event.target.checked)} />
+                  I approve this separate metered call, capped at ${Number(primeCapUsd || 0).toFixed(2)}.
+                </label>
+              </div>
+            )}
+          </div>
+        )}
         <div ref={selectorRef}>
           <label className="mb-1 block text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
-            Model for this answer
+            {talkMode === "deep"
+              ? primeEnabled ? "Canonical Deep + Prime evidence model" : "Canonical Deep model"
+              : "Model for this answer"}
           </label>
           <LemonSelect<string>
             value={modelChoice ? modelKey(modelChoice.provider_id, modelChoice.model_id) : "default"}
@@ -455,8 +589,8 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
               }
             }}
           />
-          <LemonButton className="min-h-11 sm:min-h-7" type="submit" size="sm" variant="primary" disabled={pending || !draft.trim() || !selectedModelEligible || Boolean(modelChoice && selectedDispatchBlocked)}>
-            Ask
+          <LemonButton className="min-h-11 sm:min-h-7" type="submit" size="sm" variant="primary" disabled={pending || !draft.trim() || Boolean((talkMode === "ask" || talkMode === "deep") && !selectedModelEligible) || Boolean(modelChoice && selectedDispatchBlocked) || Boolean(talkMode === "deep" && (!modelChoice || (primeEnabled && !primeConsent)))}>
+            {talkMode === "deep" ? "Run Deep" : "Ask"}
           </LemonButton>
         </div>
       </form>
@@ -518,6 +652,23 @@ function TalkMessageView({
             <p className="mt-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight" data-testid="talk-model-receipt">
               Used {modelReceipt.actual_provider_id} · {modelReceipt.actual_model_id}
             </p>
+          )}
+          {message.mode === "deep" && (
+            <p className="mt-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight">
+              Deep · recursive analysis
+            </p>
+          )}
+          {message.prime_receipt && (
+            <div className="mt-1 rounded border border-rule px-2 py-1 text-[10px] font-mono text-shadow-1 dark:border-charcoal-1 dark:text-moonlight" data-testid="talk-prime-receipt">
+              <span className="block">Prime supplemental evidence · {message.prime_receipt.state}</span>
+              {message.prime_receipt.provider_id && message.prime_receipt.model_id && (
+                <span className="block">{message.prime_receipt.provider_id} · {message.prime_receipt.model_id}{message.prime_receipt.prime_version ? ` · ${message.prime_receipt.prime_version}` : ""}</span>
+              )}
+              <span className="block">
+                Held ${(message.prime_receipt.held_micro_usd / 1_000_000).toFixed(2)}
+                {message.prime_receipt.charged_micro_usd !== null ? ` · charged $${(message.prime_receipt.charged_micro_usd / 1_000_000).toFixed(2)}` : ""}
+              </span>
+            </div>
           )}
 
           {message.answer_id && (

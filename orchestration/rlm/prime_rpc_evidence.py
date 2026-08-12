@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from decimal import Decimal
 from hashlib import sha256
@@ -68,6 +69,7 @@ def invoke_prime_rpc_evidence(
     environ: Mapping[str, str] | None = None,
     cancelled: Callable[[], bool] | None = None,
     now_ms: Callable[[], int] | None = None,
+    pre_start_guard: Callable[[], AbstractContextManager[bool]] | None = None,
 ) -> PrimeRPCOutcome:
     """Execute one already-authorized call; every ambiguous outcome retains its hold."""
     if not prompt or sha256(prompt.encode("utf-8")).hexdigest() != authorization.prompt_digest:
@@ -83,24 +85,25 @@ def invoke_prime_rpc_evidence(
     if replay.state is not PrimeCallState.AUTHORIZED:
         return PrimeRPCOutcome(None, replay, argv, "launch already claimed")
     try:
-        resolved = credential_resolver.resolve(authorization)
-        if not isinstance(resolved, ResolvedPrimeCredential) or not resolved.matches(authorization):
-            raise ValueError("resolved credential binding mismatch")
-        secret = resolved.secret.reveal()
-        if len(secret.encode("utf-8")) > 16_384 or "\x00" in secret:
-            raise ValueError("resolved credential value is invalid")
-        if sha256(secret.encode("utf-8")).hexdigest() != authorization.credential_fingerprint:
-            raise ValueError("resolved credential fingerprint mismatch")
-        credential_environment = {authorization.credential_env_name: secret}
+        guard = pre_start_guard() if pre_start_guard is not None else nullcontext(True)
+        with guard as authority_current:
+            if authority_current is not True:
+                raise ValueError("resource authority changed")
+            resolved = credential_resolver.resolve(authorization)
+            if not isinstance(resolved, ResolvedPrimeCredential) or not resolved.matches(authorization):
+                raise ValueError("resolved credential binding mismatch")
+            secret = resolved.secret.reveal()
+            if len(secret.encode("utf-8")) > 16_384 or "\x00" in secret:
+                raise ValueError("resolved credential value is invalid")
+            credential_environment = {authorization.credential_env_name: secret}
+            if not ledger.mark_started(authorization.request_id, now_ms=clock()):
+                return PrimeRPCOutcome(
+                    None, ledger.receipt(authorization.request_id), argv, "launch already claimed"
+                )
     except BaseException as exc:
         if isinstance(exc, (KeyboardInterrupt, SystemExit)):
             raise
         return PrimeRPCOutcome(None, replay, argv, "credential resolution failed")
-    if not ledger.mark_started(
-        authorization.request_id, now_ms=clock()
-    ):
-        return PrimeRPCOutcome(None, ledger.receipt(authorization.request_id), argv, "launch already claimed")
-
     from runtime.prime_agent.process import PrimeAgentProcessConfig, spawn_prime_agent_managed
 
     process = None

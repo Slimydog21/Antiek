@@ -52,6 +52,8 @@ def synthesize_long_corpus(
     reduce_batch_outputs_fn: Callable[[list[str]], tuple[str, Decimal]],
     prime_backend: PrimeAgentRLMBackend | None = None,
     prime_outcome_sink: Callable[[PrimeAgentOutcome], None] | None = None,
+    canonical_checkpoint_sink: Callable[[list[str]], None] | None = None,
+    resume_batch_outputs: list[str] | None = None,
 ) -> tuple[str, RLMSession]:
     """Synthesize across a long corpus via RLM batched mode.
 
@@ -96,17 +98,20 @@ def synthesize_long_corpus(
             batch_token_count=current_tokens,
         ))
 
-    batch_outputs: list[str] = []
-    for batch in batches:
-        output, cost = synthesize_batch_fn(batch)
-        if session.state.status == "cost_capped":
-            break
-        iterate_session(session, summary=f"Synthesized {batch.batch_id}", cost_usd=cost)
-        batch_outputs.append(output)
+    batch_outputs: list[str] = list(resume_batch_outputs or [])
+    if resume_batch_outputs is None:
+        for batch in batches:
+            output, cost = synthesize_batch_fn(batch)
+            if session.state.status == "cost_capped":
+                break
+            iterate_session(session, summary=f"Synthesized {batch.batch_id}", cost_usd=cost)
+            batch_outputs.append(output)
+        if canonical_checkpoint_sink is not None:
+            canonical_checkpoint_sink(list(batch_outputs))
 
     reduction_inputs = list(batch_outputs)
     if prime_backend is not None:
-        with suppress(Exception):
+        try:
             outcome = prime_backend.run(PrimeAgentRequest(
                 prompt="\n\n".join(batch_outputs),
                 workflow="rlm-long-corpus",
@@ -116,13 +121,16 @@ def synthesize_long_corpus(
                 with suppress(Exception):
                     prime_outcome_sink(outcome)
             if (
-                outcome.receipt.state.value == "success"
+                outcome.receipt.state.value in {"success", "succeeded"}
                 and outcome.evidence is not None
                 and outcome.evidence.supplemental
             ):
                 reduction_inputs.append(
                     f"{PRIME_EVIDENCE_LABEL}\n{outcome.evidence.text}"
                 )
+        except Exception:
+            if getattr(prime_backend, "fail_closed", False):
+                raise
 
     final, reduce_cost = reduce_batch_outputs_fn(reduction_inputs)
     session.complete(final_summary=final)

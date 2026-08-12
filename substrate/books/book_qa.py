@@ -45,6 +45,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 from substrate.dispatch.research_tier import resolve_research_tier
@@ -172,6 +173,14 @@ def answer_book_question(
     config: Any | None = None,
     policy_tag: str = "attribution_eligible",
     authorized_dispatch: Callable[[str], tuple[DispatchResult, str]] | None = None,
+    deep: bool = False,
+    prime_backend: Any | None = None,
+    prime_outcome_sink: Callable[[Any], None] | None = None,
+    canonical_checkpoint_sink: Callable[[list[str]], None] | None = None,
+    resume_batch_outputs: list[str] | None = None,
+    canonical_child_executor: Callable[
+        [str, int, str, Callable[[], tuple[str, Decimal]]], tuple[str, Decimal]
+    ] | None = None,
 ) -> BookAnswer:
     """Answer one talk-to-book turn, page-cited, gate-safe.
 
@@ -234,6 +243,67 @@ def answer_book_question(
         context_chunks=context_chunks,
     )
     authority_digest: str | None = None
+    if deep:
+        # Deep Talk is deliberately the genuine recursive RLM workflow.  Prime,
+        # when supplied, is merely the supplemental reduction input supported
+        # by long_corpus; it can never replace these canonical batch calls.
+        from orchestration.rlm.long_corpus import LongCorpusBatch, synthesize_long_corpus
+
+        chunks = {str(ch.get("chunk_id", "")): ch for ch in context_chunks}
+
+        def _run(text: str, phase: str, index: int) -> tuple[str, Decimal]:
+            nonlocal authority_digest
+            def execute() -> tuple[str, Decimal]:
+                nonlocal authority_digest
+                if authorized_dispatch is None:
+                    target = resolve_research_tier(research_tier)
+                    dispatched = dispatch(
+                        text, role="user_agent", investigation_id=investigation_id,
+                        provider_override=target.provider, model_override=target.model, config=config,
+                    )
+                else:
+                    dispatched, authority_digest = authorized_dispatch(text)
+                return dispatched.text, Decimal(str(dispatched.cost_usd))
+            if canonical_child_executor is not None:
+                return canonical_child_executor(phase, index, text, execute)
+            return execute()
+
+        def _batch(batch: LongCorpusBatch) -> tuple[str, Decimal]:
+            selected = [chunks[item] for item in batch.corpus_chunk_ids]
+            return _run(_build_prompt(
+                book_title=None, question=question, history=history,
+                context_chunks=selected,
+            ), "canonical_batch", int(batch.batch_id.rsplit("-", 1)[-1]))
+
+        def _reduce(outputs: list[str]) -> tuple[str, Decimal]:
+            return _run(
+                "Synthesize a final, grounded answer to the reader's question. "
+                "Treat any section explicitly labelled supplemental Prime evidence as "
+                "non-canonical and do not let it override the book-grounded analyses.\n\n"
+                f"Question: {question}\n\n" + "\n\n".join(outputs),
+                "final_reduce", 0,
+            )
+
+        answer, _session = synthesize_long_corpus(
+            corpus_chunk_ids=list(chunks),
+            chunk_token_counts={key: max(1, len(str(value.get("chunk_text", ""))) // 4)
+                                for key, value in chunks.items()},
+            target_batch_token_budget=8_000,
+            investigation_id=investigation_id,
+            synthesize_batch_fn=_batch,
+            reduce_batch_outputs_fn=_reduce,
+            prime_backend=prime_backend,
+            prime_outcome_sink=prime_outcome_sink,
+            canonical_checkpoint_sink=canonical_checkpoint_sink,
+            resume_batch_outputs=resume_batch_outputs,
+        )
+        # A recursive turn contains several dispatch receipts.  The final text
+        # is canonical, but no single DispatchResult truthfully represents the
+        # whole workflow, so do not fabricate aggregate provider usage here.
+        return BookAnswer(
+            answer=answer, citations=_citations_from_chunks(context_chunks), grounded=True,
+            context_chunk_count=len(context_chunks), authority_digest=authority_digest,
+        )
     if authorized_dispatch is None:
         target = resolve_research_tier(research_tier)
         result = dispatch(

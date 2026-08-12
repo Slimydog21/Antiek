@@ -45,7 +45,10 @@ _PRINT_FLAGS = frozenset(
     }
 )
 _RPC_FLAGS = frozenset({"--mode", "rpc"})
-_PROBE_TIMEOUT_SECONDS = 5.0
+# A cold npm bundle snapshot can exceed five seconds on APFS even though the
+# cached execution path is comfortably below that bound. Capability probes are
+# harmless but must still allow the first verified snapshot to finish.
+_PROBE_TIMEOUT_SECONDS = 15.0
 _PROBE_OUTPUT_BYTES = 128_000
 
 

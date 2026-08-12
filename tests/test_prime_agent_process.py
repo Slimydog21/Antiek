@@ -250,7 +250,10 @@ def test_real_local_prime_bundle_harmless_probes() -> None:
         binary, environ={"PATH": os.environ["PATH"]}
     )
     assert (0, 7, 0) <= installation.version < (0, 8, 0)
-    assert time.monotonic() - started < 10
+    # Cold verification hashes and privately stages the full npm bundle.  Keep
+    # this as a generous regression guard; the separate warm-path assertion is
+    # the user-visible latency contract.
+    assert time.monotonic() - started < 20
     warm_started = time.monotonic()
     warm = run_prime_agent_process(
         PrimeAgentProcessConfig(
