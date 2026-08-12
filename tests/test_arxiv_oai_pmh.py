@@ -418,3 +418,52 @@ def test_harvest_census_pages_and_partitions(tmp_path):
     assert census.metadata_prefix == "arXiv"
     assert census.from_date == "2024-01-01"
     assert census.t1 + census.t2 + census.t3 == census.total
+
+
+# ---------------------------------------------------------------------------
+# 2026-08 upstream endpoint move: export.arxiv.org/oai2 → oaipmh.arxiv.org/oai
+# ---------------------------------------------------------------------------
+
+
+def test_default_oai_base_url_is_canonical_oaipmh():
+    from acquisition.arxiv import oai_pmh
+
+    assert oai_pmh.DEFAULT_OAI_BASE_URL == "https://oaipmh.arxiv.org/oai"
+
+
+def test_harvest_follows_301_redirect_to_oaipmh(tmp_path):
+    """The nightly sync must survive arXiv's 301 from export.arxiv.org/oai2
+    (the historical default) to oaipmh.arxiv.org/oai — a stale base_url or a
+    future upstream move must not silently kill the harvest."""
+    clock = _FakeClock()
+    seen: list[str] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        url = str(req.url)
+        seen.append(url)
+        if "export.arxiv.org" in url:
+            new_url = url.replace("export.arxiv.org/oai2", "oaipmh.arxiv.org/oai")
+            return httpx.Response(301, headers={"Location": new_url}, request=req)
+        if "resumptionToken=TOK1" in url:
+            return httpx.Response(200, content=_PAGE_3.encode())
+        return httpx.Response(200, content=_PAGE_1.encode())
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        timeout=5.0,
+        follow_redirects=True,
+    )
+    h = OaiPmhHarvester(
+        throttle=_throttle(tmp_path, clock),
+        client=client,
+        base_url="https://export.arxiv.org/oai2",
+        state_path=str(tmp_path / "harvest.json"),
+    )
+    records = list(h.harvest(from_date="2024-01-01", until_date="2024-01-31"))
+
+    assert [r.arxiv_id for r in records] == ["2401.0001", "2401.0002", "2401.0005"]
+    # Every page request was 301-redirected from the legacy host to the
+    # canonical oaipmh host (4 hops: 2 pages × initial + redirect target).
+    assert len(seen) == 4
+    assert "export.arxiv.org/oai2" in seen[0] and "oaipmh.arxiv.org/oai" in seen[1]
+    assert "export.arxiv.org/oai2" in seen[2] and "oaipmh.arxiv.org/oai" in seen[3]
