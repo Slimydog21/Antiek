@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import LemonCard from "../../components/lemon/LemonCard";
 import ConnectedToolSearch from "./ConnectedToolSearch";
@@ -7,6 +8,14 @@ import {
   type IngestSourceResponse,
   type SourceKind,
 } from "../../lib/api";
+import {
+  SOURCE_UPLOAD_EXTENSIONS,
+  SOURCE_UPLOAD_MAX_LABEL,
+  SourceUploadError,
+  type SourceUploadResponse,
+  uploadSource,
+  validateSourceUpload,
+} from "../../lib/sourceUploadApi";
 
 type Status = "idle" | "ingesting" | "done";
 
@@ -85,12 +94,69 @@ function StatusBadge({ row }: { row: IngestRow }) {
  * concern.
  */
 export default function Sources() {
+  const navigate = useNavigate();
   const [urlInput, setUrlInput] = useState("");
   const [kindOverride, setKindOverride] = useState<SourceKind | "auto">("auto");
   const [investigationId, setInvestigationId] = useState("__operator__");
   const [maxEpisodes, setMaxEpisodes] = useState(10);
   const [status, setStatus] = useState<Status>("idle");
   const [rows, setRows] = useState<IngestRow[]>([]);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [attested, setAttested] = useState(false);
+  const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done">("idle");
+  const [uploadResult, setUploadResult] = useState<SourceUploadResponse | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => uploadAbortRef.current?.abort(), []);
+
+  const uploadErrorCopy: Record<string, string> = {
+    too_large: `Choose a file no larger than ${SOURCE_UPLOAD_MAX_LABEL}.`,
+    unsupported: "Choose a supported document type.",
+    book_ceremony: "EPUB files use the book acquisition flow.",
+    conversion_failed: "This document could not be converted.",
+    cancelled: "Upload cancelled. The file was not added.",
+    unavailable: "The upload service is unavailable. Try again.",
+  };
+
+  function chooseFile(file: File | null) {
+    if (uploadState === "uploading") return;
+    setUploadResult(null);
+    setUploadState("idle");
+    setUploadFile(null);
+    setAttested(false);
+    if (!file) return;
+    const validationError = validateSourceUpload(file);
+    setUploadError(validationError ? uploadErrorCopy[validationError] : null);
+    setUploadFile(validationError ? null : file);
+  }
+
+  async function handleUpload(e: React.FormEvent) {
+    e.preventDefault();
+    if (!uploadFile || !attested || uploadState === "uploading") return;
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+    setUploadState("uploading");
+    setUploadError(null);
+    try {
+      const result = await uploadSource(uploadFile, "personal_reading", controller.signal);
+      if (controller.signal.aborted) {
+        setUploadError(uploadErrorCopy.cancelled);
+        setUploadState("idle");
+        return;
+      }
+      setUploadResult(result);
+      setUploadState("done");
+    } catch (error) {
+      const code = error instanceof SourceUploadError ? error.code : "unavailable";
+      setUploadError(uploadErrorCopy[code]);
+      setUploadState("idle");
+    } finally {
+      if (uploadAbortRef.current === controller) uploadAbortRef.current = null;
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -154,6 +220,84 @@ export default function Sources() {
             URL into the substrate graph. Auto-detects source kind from
             the URL.
           </p>
+
+          <section aria-labelledby="upload-heading" className="mt-6">
+            <div className="mb-3">
+              <h2 id="upload-heading" className="text-base font-semibold text-ink dark:text-bright">
+                Add a document you hold
+              </h2>
+              <p className="mt-1 text-sm text-ink-soft dark:text-starlight">
+                Antiek converts the document to sanitized HTML, then opens it in the reader. Nothing uploads until you confirm below.
+              </p>
+            </div>
+            <form onSubmit={handleUpload} className="rounded-lg border border-rule bg-ice-0 p-5 dark:border-charcoal-1 dark:bg-charcoal-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="sr-only"
+                accept={SOURCE_UPLOAD_EXTENSIONS.join(",")}
+                onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
+              />
+              <button
+                type="button"
+                disabled={uploadState === "uploading"}
+                onClick={() => fileInputRef.current?.click()}
+                onDragEnter={(event) => { event.preventDefault(); if (uploadState !== "uploading") setDragActive(true); }}
+                onDragOver={(event) => event.preventDefault()}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDragActive(false);
+                  if (uploadState === "uploading") return;
+                  chooseFile(event.dataTransfer.files[0] ?? null);
+                }}
+                className={`flex min-h-32 w-full flex-col items-center justify-center rounded-md border-2 border-dashed px-5 py-6 text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-sun disabled:cursor-wait disabled:opacity-60 ${dragActive ? "border-sun bg-sun/10" : "border-rule bg-ice-1 dark:border-charcoal-1 dark:bg-charcoal-3"}`}
+                aria-describedby="upload-types"
+              >
+                <span className="text-sm font-semibold text-ink dark:text-bright">
+                  {uploadFile ? "Document selected" : "Choose a document or drop it here"}
+                </span>
+                <span id="upload-types" className="mt-2 max-w-xl text-xs text-shadow-1 dark:text-moonlight">
+                  PDF, HTML, Markdown, text, Office, OpenDocument, RTF, or CSV · up to {SOURCE_UPLOAD_MAX_LABEL}. EPUB uses book acquisition.
+                </span>
+              </button>
+
+              {uploadFile && (
+                <p className="mt-3 text-sm text-ink dark:text-bright" role="status">
+                  Ready: <span className="break-all font-mono">{uploadFile.name}</span> · {uploadFile.size < 1024 * 1024 ? `${Math.max(1, Math.ceil(uploadFile.size / 1024))} KiB` : `${(uploadFile.size / (1024 * 1024)).toFixed(1)} MiB`}
+                </p>
+              )}
+
+              <fieldset className="mt-5" disabled={uploadState === "uploading"}>
+                <legend className="text-sm font-semibold text-ink dark:text-bright">Confirm how you may use this document</legend>
+                <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm text-ink dark:text-bright">
+                  <input type="checkbox" checked={attested} onChange={(event) => setAttested(event.target.checked)} className="mt-0.5" />
+                  <span>I lawfully hold this copy and am adding it for my personal reading. Its reader content stays owner-only.</span>
+                </label>
+              </fieldset>
+
+              {uploadError && <p className="mt-4 text-sm text-emperor" role="alert">{uploadError}</p>}
+              {uploadState === "uploading" && <p className="mt-4 text-sm text-ink-soft dark:text-starlight" role="status">Uploading and converting…</p>}
+
+              <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
+                {uploadState === "uploading" ? (
+                  <div className="text-right">
+                    <button type="button" onClick={() => uploadAbortRef.current?.abort()} className="rounded px-4 py-2 text-sm font-medium text-ink underline focus:outline-none focus-visible:ring-2 focus-visible:ring-sun dark:text-bright">Cancel upload</button>
+                    <p className="mt-1 max-w-sm text-xs text-shadow-1 dark:text-moonlight">This stops the browser request. Server conversion may already have started.</p>
+                  </div>
+                ) : (
+                  <button type="submit" disabled={!uploadFile || !attested} title={!uploadFile ? "Choose a document first" : !attested ? "Confirm how you may use this document" : undefined} className="rounded bg-ink px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-1">Upload and convert</button>
+                )}
+              </div>
+
+              {uploadResult && (
+                <div className="mt-5 flex flex-col gap-3 rounded-md border border-rule bg-ice-1 p-4 dark:border-charcoal-1 dark:bg-charcoal-3" role="status">
+                  <p className="text-sm text-ink dark:text-bright">Converted from {uploadResult.detected_kind.toUpperCase()} to sanitized reader HTML.</p>
+                  <button type="button" onClick={() => navigate(`/read/${encodeURIComponent(uploadResult.document_id)}`)} className="self-start rounded bg-ink px-4 py-2 text-sm font-medium text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sun dark:bg-slate-1">Open in reader</button>
+                </div>
+              )}
+            </form>
+          </section>
 
           <form
             onSubmit={handleSubmit}
