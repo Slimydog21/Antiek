@@ -183,7 +183,7 @@ export function parseSettingsBalance(raw: unknown): SettingsBalanceResponse {
   return {
     api_key_id: raw.api_key_id,
     catalog_id: raw.catalog_id,
-    kind: raw.kind,
+    kind: raw.kind as SettingsBalanceKind,
     balance_usd: raw.balance_usd,
     granted_usd: raw.granted_usd,
     spend_usd: raw.spend_usd,

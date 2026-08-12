@@ -333,7 +333,7 @@ export default function AddModelPanel() {
                   </span>
                   {usageByKey[m.id]?.remaining_cents != null && (
                     <span className="text-[11px] text-emerald-700 dark:text-emerald-300">
-                      remaining {formatCents(usageByKey[m.id].remaining_cents)}
+                      remaining {formatCents(usageByKey[m.id].remaining_cents!)}
                     </span>
                   )}
                   <button
