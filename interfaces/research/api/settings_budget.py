@@ -1315,6 +1315,10 @@ def register_settings_budget_routes(app: FastAPI) -> None:
     from .settings_tool_connections import register_settings_tool_connection_routes
 
     register_settings_tool_connection_routes(app)
+    # OAuth onboarding for first-party model providers (OpenAI, Anthropic, Grok).
+    from .oauth_routes import register_oauth_routes
+
+    register_oauth_routes(app)
 
 
 __all__ = [
