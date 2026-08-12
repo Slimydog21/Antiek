@@ -693,3 +693,188 @@ def test_source_replacement_fails_stably_without_rebinding_hash(api_env):
     assert first.status_code == second.status_code == 422
     assert first.json()["detail"] == second.json()["detail"] == "artifact source hash mismatch"
     assert store.get("inv-corrupt-source").source_hash == before.source_hash
+
+
+
+# ── style provenance: parent field ───────────────────────────────────────
+# A fork records the slug it was derived from (a builtin or one of the
+# caller's own forks), so the wheel can render "forked from X" durably
+# across sessions instead of the frontend's fragile session-local tracking.
+
+
+def test_fork_of_builtin_records_parent(api_env):
+    """POST /styles with a builtin parent records and returns it; the GET
+    listing carries the same parent so the frontend can render provenance."""
+    client = _client()
+    fork = {
+        "name": "warm-serif",
+        "label": "Warm serif",
+        "theme_css": ".antiek-doc { font-family: Georgia, serif; }",
+        "parent": "academic-paper",
+    }
+    resp = client.post("/styles", json=fork)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["parent"] == "academic-paper"
+
+    listing = client.get("/styles").json()["styles"]
+    forked = next(s for s in listing if s["name"] == "warm-serif")
+    assert forked["parent"] == "academic-paper"
+
+
+def test_fork_without_parent_is_null(api_env):
+    """An omitted parent is a legitimate 'declares no provenance' fork — the
+    response and listing carry parent: null."""
+    client = _client()
+    resp = client.post(
+        "/styles",
+        json={"name": "from-scratch", "label": "Scratch", "theme_css": ""},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["parent"] is None
+    forked = next(
+        s for s in client.get("/styles").json()["styles"] if s["name"] == "from-scratch"
+    )
+    assert forked["parent"] is None
+
+
+def test_builtins_carry_null_parent(api_env):
+    """Builtins have no parent (origin = the house); the GET listing reflects
+    that so a frontend can distinguish 'forked from X' from the anchors."""
+    client = _client()
+    for s in client.get("/styles").json()["styles"]:
+        assert s["builtin"] is True
+        assert s["parent"] is None
+
+
+def test_unknown_parent_is_422(api_env):
+    """A parent that is neither a builtin nor one of the caller's forks is
+    rejected with 422 (no invented provenance, no dangling reference)."""
+    client = _client()
+    resp = client.post(
+        "/styles",
+        json={
+            "name": "bad-parent",
+            "label": "Bad",
+            "theme_css": "",
+            "parent": "no-such-style",
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    assert "unknown parent" in resp.json()["detail"]
+    assert "bad-parent" not in [s["name"] for s in client.get("/styles").json()["styles"]]
+
+
+def test_self_parent_is_422(api_env):
+    """A fork cannot name itself as its parent (trivial provenance cycle)."""
+    client = _client()
+    resp = client.post(
+        "/styles",
+        json={"name": "ouroboros", "label": "Self", "theme_css": "", "parent": "ouroboros"},
+    )
+    assert resp.status_code == 422, resp.text
+    assert "itself" in resp.json()["detail"]
+
+
+def test_fork_of_own_fork_records_chain(api_env):
+    """A fork whose parent is the caller's OWN existing fork is accepted —
+    provenance can chain (builtin -> fork A -> fork B)."""
+    client = _client()
+    assert (
+        client.post(
+            "/styles",
+            json={
+                "name": "line-a",
+                "label": "Line A",
+                "theme_css": ".antiek-doc { color: #222; }",
+                "parent": "book",
+            },
+        ).status_code
+        == 201
+    )
+    resp = client.post(
+        "/styles",
+        json={
+            "name": "line-b",
+            "label": "Line B",
+            "theme_css": ".antiek-doc { color: #111; }",
+            "parent": "line-a",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["parent"] == "line-a"
+    forked = next(
+        s for s in client.get("/styles").json()["styles"] if s["name"] == "line-b"
+    )
+    assert forked["parent"] == "line-a"
+
+
+def test_parent_pointing_at_another_users_fork_is_422(api_env, monkeypatch):
+    """Provenance is user-scoped: a fork owned by ANOTHER identity is not a
+    valid parent (it is not in the caller's wheel)."""
+    client = _client()
+    assert (
+        client.post(
+            "/styles",
+            json={"name": "alice-style", "label": "Alice", "theme_css": "", "parent": "blog"},
+        ).status_code
+        == 201
+    )
+    _as_user("user-b", monkeypatch)
+    resp = client.post(
+        "/styles",
+        json={
+            "name": "bob-style",
+            "label": "Bob",
+            "theme_css": "",
+            "parent": "alice-style",  # exists, but not on bob's wheel
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    assert "unknown parent" in resp.json()["detail"]
+
+
+def test_repost_fork_updates_parent(api_env):
+    """Replacing a fork updates its provenance in place (the parent is real
+    stored data, not frozen at first creation)."""
+    client = _client()
+    base = {
+        "name": "editable",
+        "label": "Editable",
+        "theme_css": ".antiek-doc { color: #222; }",
+        "parent": "blog",
+    }
+    assert client.post("/styles", json=base).status_code == 201
+    updated = dict(base, parent="book", label="Editable v2")
+    resp = client.post("/styles", json=updated)
+    assert resp.status_code == 201
+    assert resp.json()["parent"] == "book"
+    forked = next(
+        s for s in client.get("/styles").json()["styles"] if s["name"] == "editable"
+    )
+    assert forked["parent"] == "book"
+    assert forked["label"] == "Editable v2"
+
+
+def test_parent_survives_reload_across_sessions(api_env, monkeypatch):
+    """The core fix: provenance is durable. A fork created with a parent,
+    reloaded in a fresh client/registry, still carries 'forked from X' — no
+    more session-local-only parent tracking."""
+    client = _client()
+    assert (
+        client.post(
+            "/styles",
+            json={
+                "name": "durable-fork",
+                "label": "Durable",
+                "theme_css": ".antiek-doc { color: #333; }",
+                "parent": "slate",
+            },
+        ).status_code
+        == 201
+    )
+    # A brand-new client (no in-memory wheel) reloads from the store.
+    fresh = _client()
+    forked = next(
+        s for s in fresh.get("/styles").json()["styles"] if s["name"] == "durable-fork"
+    )
+    assert forked["parent"] == "slate"

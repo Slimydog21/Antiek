@@ -111,6 +111,7 @@ class StyleOut(BaseModel):
     builtin: bool
     source_fidelity: bool
     theme_css: str
+    parent: str | None
 
 
 class StyleIn(BaseModel):
@@ -119,6 +120,10 @@ class StyleIn(BaseModel):
     description: str = Field(default="", max_length=2048)
     theme_css: str = Field(default="", max_length=100_000)
     source_fidelity: bool = False
+    # Optional slug of the style this fork is derived from. Validated against
+    # the caller's merged wheel (builtins + their own forks); None means the
+    # fork declares no provenance.
+    parent: str | None = Field(default=None, max_length=64)
 
 
 class StyleListOut(BaseModel):
@@ -133,6 +138,7 @@ def _to_out(style: ProjectionStyle) -> StyleOut:
         builtin=style.builtin,
         source_fidelity=style.source_fidelity,
         theme_css=style.theme_css,
+        parent=style.parent,
     )
 
 
@@ -163,6 +169,25 @@ async def post_style(body: StyleIn, request: Request) -> StyleOut:
             status_code=409,
             detail=(f"cannot override builtin style {body.name!r}; fork it under a new name"),
         )
+    # Provenance validation: a declared parent must be a style the caller can
+    # already see — a builtin or one of their own forks. This is checked BEFORE
+    # the new fork exists, so it can only point at an established style (never
+    # at itself or a fork created in the same request). A self-reference
+    # (parent == name) is rejected outright to avoid a trivial provenance cycle.
+    if body.parent is not None:
+        if body.parent == body.name:
+            raise HTTPException(
+                status_code=422,
+                detail=(f"style {body.name!r} cannot name itself as its parent"),
+            )
+        if not registry.has(body.parent):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"unknown parent style {body.parent!r}; a fork's parent must be "
+                    "a builtin or one of your own existing styles"
+                ),
+            )
     style = ProjectionStyle(
         name=body.name,
         label=body.label,
@@ -170,6 +195,7 @@ async def post_style(body: StyleIn, request: Request) -> StyleOut:
         theme_css=body.theme_css,
         source_fidelity=body.source_fidelity,
         builtin=False,
+        parent=body.parent,
     )
     try:
         validate_style(style)

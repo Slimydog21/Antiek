@@ -44,6 +44,12 @@ class ProjectionStyle:
     source medium (academic paper, book, blog) versus the pure Antiek house look.
     ``builtin`` distinguishes shipped styles from user-forked ones (a forked style
     can be removed from the wheel; a builtin cannot).
+
+    ``parent`` is the slug of the style a fork was derived from, so provenance
+    survives across sessions (``None`` for builtins and for forks created before
+    the provenance column existed). It is metadata for the wheel's "forked from X"
+    rendering; it is never read by the renderer, so a style's bytes stay a pure
+    function of everything *except* ``parent``.
     """
 
     name: str  # slug: [a-z0-9-], the stable id used in URLs / persistence
@@ -52,6 +58,7 @@ class ProjectionStyle:
     theme_css: str = ""  # override layer appended after the Antiek base
     source_fidelity: bool = False
     builtin: bool = True
+    parent: str | None = None  # slug of the style this fork came from (builtins/legacy -> None)
 
     def stylesheet(self) -> str:
         """The complete inlined stylesheet for this style: Antiek base + theme."""

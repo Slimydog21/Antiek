@@ -41,12 +41,27 @@ CREATE TABLE IF NOT EXISTS user_styles (
   description     VARCHAR NOT NULL DEFAULT '',
   theme_css       VARCHAR NOT NULL DEFAULT '',
   source_fidelity BOOLEAN NOT NULL DEFAULT FALSE,
+  parent          VARCHAR,
   created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (user_id, name)
 )
 """
 
-_SELECT_COLS = "name, label, description, theme_css, source_fidelity"
+# Forward-compat for a user_styles table created before the provenance column
+# existed (a pre-provenance DB). No-op on a fresh table that already has it.
+# DuckDB's ALTER ... ADD COLUMN accepts IF NOT EXISTS but NOT column constraints,
+# so ``parent`` is added NULLABLE — existing rows read NULL, which is the honest
+# "origin untracked" for legacy forks. New rows always INSERT a concrete value
+# (NULL only when a fork deliberately declares no parent).
+_ADD_PARENT_COLUMN = "ALTER TABLE user_styles ADD COLUMN IF NOT EXISTS parent VARCHAR"
+
+# Columns read back for a fork. ``parent`` is last so the row tuple index is
+# stable for the ProjectionStyle constructor below.
+_SELECT_COLS = "name, label, description, theme_css, source_fidelity, parent"
+
+# Legacy column list (pre-provenance table, not yet migrated by a write). Used
+# only as a read-time fallback so a GET on an unmigrated DB never 500s.
+_SELECT_COLS_LEGACY = "name, label, description, theme_css, source_fidelity"
 
 
 class UserStyleStore:
@@ -72,14 +87,17 @@ class UserStyleStore:
         coordinator = FlockWriteCoordinator(self._db_path)
         with coordinator.acquire_write_context("styles.store") as ctx:
             ctx.execute(_DDL)
+            ctx.execute(_ADD_PARENT_COLUMN)
             ctx.execute(
                 "INSERT INTO user_styles "
-                "(user_id, name, label, description, theme_css, source_fidelity) "
-                "VALUES (?, ?, ?, ?, ?, ?) "
+                "(user_id, name, label, description, theme_css, source_fidelity, "
+                "parent) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (user_id, name) DO UPDATE SET "
                 "label = excluded.label, description = excluded.description, "
                 "theme_css = excluded.theme_css, "
-                "source_fidelity = excluded.source_fidelity",
+                "source_fidelity = excluded.source_fidelity, "
+                "parent = excluded.parent",
                 [
                     user_id,
                     style.name,
@@ -87,6 +105,7 @@ class UserStyleStore:
                     style.description,
                     style.theme_css,
                     style.source_fidelity,
+                    style.parent,
                 ],
             )
         return style
@@ -101,6 +120,7 @@ class UserStyleStore:
         coordinator = FlockWriteCoordinator(self._db_path)
         with coordinator.acquire_write_context("styles.store") as ctx:
             ctx.execute(_DDL)
+            ctx.execute(_ADD_PARENT_COLUMN)
             existed = ctx.execute(
                 "SELECT 1 FROM user_styles WHERE user_id = ? AND name = ?",
                 [user_id, name],
@@ -129,9 +149,32 @@ class UserStyleStore:
                     "WHERE user_id = ? ORDER BY created_at, name",
                     [user_id],
                 ).fetchall()
-            except Exception as exc:  # noqa: BLE001 — missing table == no forks
-                if "does not exist" in str(exc):
+            except Exception as exc:  # noqa: BLE001 — missing table/column == degraded wheel
+                msg = str(exc)
+                if "does not exist" in msg:
+                    # No table on this DB yet: the wheel is just the builtins.
                     return []
+                if "parent" in msg and "not found" in msg:
+                    # A pre-provenance table that no write has migrated yet.
+                    # Read the legacy columns; provenance is NULL for every
+                    # legacy fork (the honest "origin untracked").
+                    rows = con.execute(
+                        f"SELECT {_SELECT_COLS_LEGACY} FROM user_styles "
+                        "WHERE user_id = ? ORDER BY created_at, name",
+                        [user_id],
+                    ).fetchall()
+                    return [
+                        ProjectionStyle(
+                            name=str(r[0]),
+                            label=str(r[1]),
+                            description=str(r[2]),
+                            theme_css=str(r[3]),
+                            source_fidelity=bool(r[4]),
+                            builtin=False,
+                            parent=None,
+                        )
+                        for r in rows
+                    ]
                 raise
             return [
                 ProjectionStyle(
@@ -141,6 +184,7 @@ class UserStyleStore:
                     theme_css=str(r[3]),
                     source_fidelity=bool(r[4]),
                     builtin=False,
+                    parent=(str(r[5]) if r[5] is not None else None),
                 )
                 for r in rows
             ]
