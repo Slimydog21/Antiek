@@ -6,7 +6,7 @@ vi.mock("../lib/api", async () => {
   return { ...actual, API_BASE: "", apiFetch: apiFetchMock };
 });
 
-import { artifactVersionUrl, getArtifactStatus, renderArtifact } from "./styles";
+import { artifactVersionUrl, deleteStyle, getArtifactStatus, renderArtifact } from "./styles";
 
 const HASH = "9".repeat(64);
 function response(headers: Record<string, string>) {
@@ -48,5 +48,22 @@ describe("style artifact receipt contract", () => {
     await expect(getArtifactStatus("inv-1")).resolves.toMatchObject({ artifact_id: "artifact-real", selected_style: "folio", latest_version: 4 });
     apiFetchMock.mockResolvedValueOnce(new Response("", { status: 404 }));
     await expect(getArtifactStatus("inv-missing")).resolves.toBeNull();
+  });
+
+  it("deletes a fork via DELETE /styles/{name} and surfaces HTTP errors", async () => {
+    apiFetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    await expect(deleteStyle("field-notes")).resolves.toBeUndefined();
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      "/styles/field-notes",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "cannot remove builtin style 'antiek'" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await expect(deleteStyle("antiek")).rejects.toThrow("cannot remove builtin");
   });
 });

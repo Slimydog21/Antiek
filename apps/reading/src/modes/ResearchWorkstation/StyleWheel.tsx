@@ -11,14 +11,17 @@ import {
 
 import {
   artifactVersionUrl,
+  deleteStyle,
   listStyles,
   renderArtifact,
   saveStyle,
   type ProjectionStyle,
   type RenderedArtifact,
+  type StyleDraft,
 } from "../../api/styles";
 import { apiFetch } from "../../lib/api";
 import LemonButton from "../../components/lemon/LemonButton";
+import LemonTag from "../../components/lemon/LemonTag";
 import "./StyleWheel.css";
 
 export interface StyleWheelProps {
@@ -26,14 +29,46 @@ export interface StyleWheelProps {
   initialStyle?: string | null;
 }
 
+/** Session-local provenance: which wheel entry a fork was seeded from. */
+type ForkProvenance = Record<string, string>;
+
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : "The style service is unavailable.";
+}
+
+function slugifyLabel(label: string): string {
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
+function draftFromStyle(base: ProjectionStyle | undefined, nameHint: string): StyleDraft {
+  if (!base) {
+    return {
+      name: nameHint,
+      label: "",
+      description: "",
+      theme_css: "",
+      source_fidelity: false,
+    };
+  }
+  const seedName = nameHint || `${base.name}-fork`;
+  return {
+    name: seedName,
+    label: base.builtin ? `${base.label} (fork)` : base.label,
+    description: base.description,
+    theme_css: base.theme_css,
+    source_fidelity: base.source_fidelity,
+  };
 }
 
 export default function StyleWheel({ artifactId, initialStyle }: StyleWheelProps) {
   const [styles, setStyles] = useState<ProjectionStyle[]>([]);
   const [selected, setSelected] = useState("");
-  const [status, setStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "unavailable" | "empty">("loading");
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -41,8 +76,19 @@ export default function StyleWheel({ artifactId, initialStyle }: StyleWheelProps
   const [receipt, setReceipt] = useState<RenderedArtifact | null>(null);
   const [showFork, setShowFork] = useState(false);
   const [savingFork, setSavingFork] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [railActive, setRailActive] = useState(false);
-  const [draft, setDraft] = useState({ name: "", label: "", description: "", theme_css: "", source_fidelity: false });
+  const [draft, setDraft] = useState<StyleDraft>({
+    name: "",
+    label: "",
+    description: "",
+    theme_css: "",
+    source_fidelity: false,
+  });
+  /** name → parent style name (session-local; backend has no parent field) */
+  const [provenance, setProvenance] = useState<ForkProvenance>({});
+  const [forkParent, setForkParent] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const previewRun = useRef(0);
   const applyRun = useRef(0);
@@ -58,6 +104,12 @@ export default function StyleWheel({ artifactId, initialStyle }: StyleWheelProps
         const loaded = await listStyles(controller.signal);
         if (controller.signal.aborted) return;
         setStyles(loaded);
+        if (!loaded.length) {
+          setSelected("");
+          setStatus("empty");
+          setError("No compatible styles are available for this artifact.");
+          return;
+        }
         let restored = loaded[0]?.name ?? "";
         if (restored) {
           try {
@@ -78,7 +130,6 @@ export default function StyleWheel({ artifactId, initialStyle }: StyleWheelProps
         }
         setSelected(restored);
         setStatus("ready");
-        if (!loaded.length) setError("No compatible styles are available for this artifact.");
       } catch (cause) {
         if (controller.signal.aborted) return;
         setStatus("unavailable");
@@ -94,6 +145,7 @@ export default function StyleWheel({ artifactId, initialStyle }: StyleWheelProps
     applyController.current = null;
     setApplying(false);
     setReceipt(null);
+    setConfirmDelete(false);
   }, [artifactId, selected]);
 
   useEffect(() => () => {
@@ -150,23 +202,84 @@ export default function StyleWheel({ artifactId, initialStyle }: StyleWheelProps
     event.currentTarget.scrollLeft += event.deltaY;
   };
 
+  const openForkEditor = (fromName?: string) => {
+    const baseName = fromName ?? selected;
+    const base = styles.find((s) => s.name === baseName);
+    const hint = base ? `${base.name}-fork` : "my-style";
+    setDraft(draftFromStyle(base, hint));
+    setForkParent(base?.name ?? null);
+    setShowFork(true);
+    setError(null);
+    setConfirmDelete(false);
+  };
+
+  const closeForkEditor = () => {
+    setShowFork(false);
+    setForkParent(null);
+  };
+
   const onSaveFork = async (event: FormEvent) => {
     event.preventDefault();
     setSavingFork(true);
     setError(null);
     try {
-      const saved = await saveStyle(draft);
+      const payload: StyleDraft = {
+        name: draft.name.trim(),
+        label: draft.label.trim(),
+        description: draft.description,
+        theme_css: draft.theme_css,
+        source_fidelity: draft.source_fidelity,
+      };
+      const saved = await saveStyle(payload);
       setStyles((current) => {
         const at = current.findIndex((style) => style.name === saved.name);
         if (at < 0) return [...current, saved];
-        return current.map((style, index) => index === at ? saved : style);
+        return current.map((style, index) => (index === at ? saved : style));
       });
+      if (forkParent && forkParent !== saved.name) {
+        setProvenance((prev) => ({ ...prev, [saved.name]: forkParent }));
+      }
       setSelected(saved.name);
+      setStatus("ready");
       setShowFork(false);
+      setForkParent(null);
     } catch (cause) {
       setError(messageOf(cause));
     } finally {
       setSavingFork(false);
+    }
+  };
+
+  const onDeleteFork = async () => {
+    const active = styles.find((s) => s.name === selected);
+    if (!active || active.builtin) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteStyle(active.name);
+      setStyles((current) => {
+        const next = current.filter((s) => s.name !== active.name);
+        const fallback = next[0]?.name ?? "";
+        setSelected(fallback);
+        if (!next.length) setStatus("empty");
+        return next;
+      });
+      setProvenance((prev) => {
+        const copy = { ...prev };
+        delete copy[active.name];
+        return copy;
+      });
+      setConfirmDelete(false);
+      setShowFork(false);
+    } catch (cause) {
+      setError(messageOf(cause));
+      setConfirmDelete(false);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -206,10 +319,27 @@ export default function StyleWheel({ artifactId, initialStyle }: StyleWheelProps
     }
   };
 
-  if (status === "loading") return <p className="style-wheel__state" role="status">Loading style wheel…</p>;
-  if (status === "unavailable") return <p className="style-wheel__state style-wheel__state--error" role="alert">Styles unavailable · {error}</p>;
+  if (status === "loading") {
+    return (
+      <p className="style-wheel__state" role="status">
+        Loading style wheel…
+      </p>
+    );
+  }
+
+  if (status === "unavailable") {
+    return (
+      <p className="style-wheel__state style-wheel__state--error" role="alert">
+        Styles unavailable · {error}
+      </p>
+    );
+  }
 
   const active = styles.find((style) => style.name === selected);
+  const parentName = active ? provenance[active.name] : undefined;
+  const parentStyle = parentName ? styles.find((s) => s.name === parentName) : undefined;
+  const forkParentStyle = forkParent ? styles.find((s) => s.name === forkParent) : undefined;
+
   return (
     <section className="style-wheel" aria-labelledby={headingId}>
       <div className="style-wheel__header">
@@ -217,75 +347,311 @@ export default function StyleWheel({ artifactId, initialStyle }: StyleWheelProps
           <p className="style-wheel__eyebrow">Research artifact</p>
           <h3 id={headingId}>Choose its reading style</h3>
         </div>
-        <button type="button" className="style-wheel__fork-toggle" onClick={() => setShowFork((value) => !value)} aria-expanded={showFork}>
-          {showFork ? "Close style editor" : "Fork a style"}
-        </button>
-      </div>
-
-      <div
-        className="style-wheel__rail"
-        ref={listRef}
-        role="listbox"
-        aria-label="Artifact styles"
-        aria-orientation="horizontal"
-        onWheel={onWheel}
-        onMouseEnter={() => setRailActive(true)}
-        onMouseLeave={() => setRailActive(false)}
-        onFocusCapture={() => setRailActive(true)}
-        onBlurCapture={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget)) setRailActive(false);
-        }}
-      >
-        {styles.map((style, index) => (
+        <div className="style-wheel__header-actions">
           <button
-            id={`style-${style.name}`}
-            key={style.name}
             type="button"
-            role="option"
-            aria-selected={style.name === selected}
-            tabIndex={style.name === selected ? 0 : -1}
-            className="style-wheel__option"
-            onClick={() => setSelected(style.name)}
-            onKeyDown={(event) => onKeyDown(event, index)}
+            className="style-wheel__fork-toggle"
+            onClick={() => (showFork ? closeForkEditor() : openForkEditor())}
+            aria-expanded={showFork}
           >
-            <span className="style-wheel__swatch" style={{ "--style-theme": style.source_fidelity ? "var(--ocean)" : "var(--sun-deep)" } as CSSProperties} aria-hidden="true" />
-            <strong>{style.label}</strong>
-            <span>{style.builtin ? "Built in" : "Your fork"}{style.source_fidelity ? " · source-first" : ""}</span>
+            {showFork ? "Close style editor" : "Fork a style"}
           </button>
-        ))}
+        </div>
       </div>
 
-      {active ? <p className="style-wheel__description"><strong>{active.label}.</strong> {active.description || "No description provided."}</p> : null}
+      {status === "empty" ? (
+        <div className="style-wheel__empty" role="status">
+          <p>
+            <strong>Empty wheel.</strong> No builtins or forks loaded for this session.
+          </p>
+          <p className="style-wheel__empty-hint">
+            The style service returned an empty list. Create a fork to put something on the rail,
+            or check that the projection styles package is registered.
+          </p>
+          <LemonButton size="sm" onClick={() => openForkEditor()}>
+            Create a style
+          </LemonButton>
+        </div>
+      ) : (
+        <div
+          className="style-wheel__rail"
+          ref={listRef}
+          role="listbox"
+          aria-label="Artifact styles"
+          aria-orientation="horizontal"
+          onWheel={onWheel}
+          onMouseEnter={() => setRailActive(true)}
+          onMouseLeave={() => setRailActive(false)}
+          onFocusCapture={() => setRailActive(true)}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setRailActive(false);
+          }}
+        >
+          {styles.map((style, index) => {
+            const derivedFrom = provenance[style.name];
+            const derivedLabel = derivedFrom
+              ? styles.find((s) => s.name === derivedFrom)?.label ?? derivedFrom
+              : null;
+            return (
+              <button
+                id={`style-${style.name}`}
+                key={style.name}
+                type="button"
+                role="option"
+                aria-selected={style.name === selected}
+                tabIndex={style.name === selected ? 0 : -1}
+                className="style-wheel__option"
+                onClick={() => setSelected(style.name)}
+                onKeyDown={(event) => onKeyDown(event, index)}
+              >
+                <span
+                  className="style-wheel__swatch"
+                  style={
+                    {
+                      "--style-theme": style.source_fidelity
+                        ? "var(--ocean)"
+                        : "var(--sun-deep)",
+                    } as CSSProperties
+                  }
+                  aria-hidden="true"
+                />
+                <strong>{style.label}</strong>
+                <span className="style-wheel__option-meta">
+                  {style.builtin ? "Built in" : "Your fork"}
+                  {style.source_fidelity ? " · source-first" : ""}
+                  {derivedLabel ? ` · from ${derivedLabel}` : ""}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {active ? (
+        <div className="style-wheel__active-meta">
+          <p className="style-wheel__description">
+            <strong>{active.label}.</strong>{" "}
+            {active.description || "No description provided."}
+          </p>
+          <div className="style-wheel__chips" aria-label="Style provenance">
+            <LemonTag colour={active.builtin ? "sun" : "aurora"} dot>
+              {active.builtin ? "builtin" : "fork"}
+            </LemonTag>
+            {active.source_fidelity ? (
+              <LemonTag colour="default">source-first</LemonTag>
+            ) : (
+              <LemonTag colour="muted">house chrome</LemonTag>
+            )}
+            {parentStyle ? (
+              <LemonTag colour="default">forked from {parentStyle.label}</LemonTag>
+            ) : !active.builtin ? (
+              <LemonTag colour="muted">origin untracked</LemonTag>
+            ) : null}
+            <span className="style-wheel__slug" title="Style slug">
+              {active.name}
+            </span>
+          </div>
+          {!active.builtin ? (
+            <div className="style-wheel__fork-actions">
+              <LemonButton
+                size="sm"
+                variant="tertiary"
+                onClick={() => openForkEditor(active.name)}
+              >
+                Edit fork
+              </LemonButton>
+              <LemonButton
+                size="sm"
+                variant={confirmDelete ? "danger" : "tertiary"}
+                disabled={deleting}
+                onClick={() => void onDeleteFork()}
+                aria-label={
+                  confirmDelete
+                    ? `Confirm delete ${active.label}`
+                    : `Delete fork ${active.label}`
+                }
+              >
+                {deleting
+                  ? "Deleting…"
+                  : confirmDelete
+                    ? `Confirm delete “${active.label}”`
+                    : "Delete fork"}
+              </LemonButton>
+              {confirmDelete && !deleting ? (
+                <button
+                  type="button"
+                  className="style-wheel__fork-toggle"
+                  onClick={() => setConfirmDelete(false)}
+                >
+                  Cancel
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="style-wheel__fork-actions">
+              <LemonButton size="sm" variant="tertiary" onClick={() => openForkEditor(active.name)}>
+                Fork “{active.label}”
+              </LemonButton>
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {showFork ? (
         <form className="style-wheel__form" onSubmit={onSaveFork}>
-          <label>Slug <input required maxLength={64} pattern="[a-z0-9][a-z0-9_-]*" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="field-notes" /></label>
-          <label>Label <input required maxLength={128} value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} placeholder="Field notes" /></label>
-          <label className="style-wheel__wide">Description <input maxLength={2048} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></label>
-          <label className="style-wheel__wide">Theme CSS <textarea maxLength={100000} rows={6} value={draft.theme_css} onChange={(e) => setDraft({ ...draft, theme_css: e.target.value })} placeholder=":root { --antiek-accent: var(--ocean); }" /></label>
-          <label className="style-wheel__check"><input type="checkbox" checked={draft.source_fidelity} onChange={(e) => setDraft({ ...draft, source_fidelity: e.target.checked })} /> Preserve source-first treatment</label>
-          <div><LemonButton size="sm" disabled={savingFork} type="submit">{savingFork ? "Saving…" : "Save fork"}</LemonButton></div>
+          <div className="style-wheel__form-banner style-wheel__wide">
+            <strong>Create style</strong>
+            {forkParentStyle ? (
+              <span>
+                {" "}
+                · seeded from <em>{forkParentStyle.label}</em> ({forkParentStyle.name})
+              </span>
+            ) : (
+              <span> · blank fork</span>
+            )}
+            <p className="style-wheel__form-hint">
+              Builtins cannot be overwritten. Pick a new slug; theme CSS is appended after the
+              Antiek structural base and must stay script-free and self-contained.
+            </p>
+          </div>
+          <label>
+            Slug{" "}
+            <input
+              required
+              maxLength={64}
+              pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              placeholder="field-notes"
+              title="Lowercase slug: letters, digits, single hyphens"
+            />
+          </label>
+          <label>
+            Label{" "}
+            <input
+              required
+              maxLength={128}
+              value={draft.label}
+              onChange={(e) => {
+                const label = e.target.value;
+                setDraft((d) => ({
+                  ...d,
+                  label,
+                  // Auto-suggest slug only while it still looks generated
+                  name:
+                    !d.name || d.name.endsWith("-fork") || d.name === slugifyLabel(d.label)
+                      ? slugifyLabel(label) || d.name
+                      : d.name,
+                }));
+              }}
+              placeholder="Field notes"
+            />
+          </label>
+          <label className="style-wheel__wide">
+            Description{" "}
+            <input
+              maxLength={2048}
+              value={draft.description}
+              onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+            />
+          </label>
+          <label className="style-wheel__wide">
+            Theme CSS{" "}
+            <textarea
+              maxLength={100000}
+              rows={6}
+              value={draft.theme_css}
+              onChange={(e) => setDraft({ ...draft, theme_css: e.target.value })}
+              placeholder=":root { --antiek-accent: var(--ocean); }"
+              spellCheck={false}
+            />
+          </label>
+          <label className="style-wheel__check">
+            <input
+              type="checkbox"
+              checked={draft.source_fidelity}
+              onChange={(e) => setDraft({ ...draft, source_fidelity: e.target.checked })}
+            />{" "}
+            Preserve source-first treatment
+          </label>
+          <div className="style-wheel__form-actions style-wheel__wide">
+            <LemonButton size="sm" disabled={savingFork} type="submit">
+              {savingFork ? "Saving…" : "Save fork"}
+            </LemonButton>
+            <LemonButton
+              size="sm"
+              variant="tertiary"
+              type="button"
+              disabled={savingFork}
+              onClick={closeForkEditor}
+            >
+              Cancel
+            </LemonButton>
+          </div>
         </form>
       ) : null}
 
-      {error ? <p className="style-wheel__error" role="alert">{error}</p> : null}
-      <div className="style-wheel__preview-shell" aria-busy={previewing}>
-        {previewUrl ? <iframe title={`${active?.label ?? "Style"} artifact preview`} sandbox="" src={previewUrl} /> : <p>{previewing ? "Building a script-free preview…" : "Preview unavailable for this artifact."}</p>}
-      </div>
-      <div className="style-wheel__actions">
-        <LemonButton disabled={!selected || applying || previewing} onClick={() => void apply()}>{applying ? "Applying…" : `Apply ${active?.label ?? "style"}`}</LemonButton>
-        <span>Preview is temporary. Apply creates a durable version.</span>
-      </div>
+      {error ? (
+        <p className="style-wheel__error" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      {status === "ready" ? (
+        <>
+          <div className="style-wheel__preview-shell" aria-busy={previewing}>
+            {previewUrl ? (
+              <iframe
+                title={`${active?.label ?? "Style"} artifact preview`}
+                sandbox=""
+                src={previewUrl}
+              />
+            ) : (
+              <p>
+                {previewing
+                  ? "Building a script-free preview…"
+                  : "Preview unavailable for this artifact."}
+              </p>
+            )}
+          </div>
+          <div className="style-wheel__actions">
+            <LemonButton
+              disabled={!selected || applying || previewing}
+              onClick={() => void apply()}
+            >
+              {applying ? "Applying…" : `Apply ${active?.label ?? "style"}`}
+            </LemonButton>
+            <span>Preview is temporary. Apply creates a durable version.</span>
+          </div>
+        </>
+      ) : null}
 
       {receipt ? (
         <aside className="style-wheel__receipt" aria-live="polite">
           <strong>Version {receipt.version} saved</strong>
-          <dl><div><dt>Style</dt><dd>{receipt.style}</dd></div><div><dt>SHA-256</dt><dd title={receipt.hash}>{receipt.hash}</dd></div></dl>
+          <dl>
+            <div>
+              <dt>Style</dt>
+              <dd>{receipt.style}</dd>
+            </div>
+            <div>
+              <dt>SHA-256</dt>
+              <dd title={receipt.hash}>{receipt.hash}</dd>
+            </div>
+          </dl>
           <div className="style-wheel__receipt-actions">
-            <button type="button" onClick={() => openVersion(receipt.version)}>Open version {receipt.version}</button>
-            <button type="button" onClick={() => void downloadVersion(receipt.version)}>Download version {receipt.version}</button>
-            <button type="button" onClick={() => openVersion()}>Open latest</button>
-            <button type="button" onClick={() => void downloadVersion()}>Download latest</button>
+            <button type="button" onClick={() => openVersion(receipt.version)}>
+              Open version {receipt.version}
+            </button>
+            <button type="button" onClick={() => void downloadVersion(receipt.version)}>
+              Download version {receipt.version}
+            </button>
+            <button type="button" onClick={() => openVersion()}>
+              Open latest
+            </button>
+            <button type="button" onClick={() => void downloadVersion()}>
+              Download latest
+            </button>
           </div>
         </aside>
       ) : null}
