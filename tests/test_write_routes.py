@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import sys
 
+import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
@@ -27,6 +28,7 @@ if _REPO not in sys.path:
 
 from interfaces.research.api import create_app
 from runtime.db_lock import connect_write
+from substrate.auth.magic_link import mint_session_cookie
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.ops import (
     insert_chunk,
@@ -47,9 +49,21 @@ def _isolated_db(tmp_path, monkeypatch):
     return db
 
 
+def _cookie(user_id: str) -> dict[str, str]:
+    value = mint_session_cookie(user_id=user_id, email=f"{user_id}@example.test")
+    return {"ANTIEK_SESSION": value}
+
+
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(create_app())
+def client(monkeypatch) -> TestClient:
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "write-route-test-secret-at-least-32-bytes")
+    monkeypatch.setenv(
+        "ANTIEK_OPERATOR_EMAIL",
+        "__operator__@example.test,user-alice@example.test",
+    )
+    test_client = TestClient(create_app())
+    test_client.cookies.update(_cookie("__operator__"))
+    return test_client
 
 
 @pytest.fixture
@@ -253,6 +267,44 @@ def test_context_promote(client, seed):
     assert len(body["block_ids"]) == 2
     blocks = client.get(f"/write/sections/{body['section_id']}/blocks").json()
     assert blocks["count"] == 2
+    with duckdb.connect(default_db_path(), read_only=True) as con:
+        owner = con.execute(
+            "SELECT owner_user_id FROM deliverables WHERE deliverable_id = ?",
+            [body["deliverable_id"]],
+        ).fetchone()[0]
+    assert owner == "__operator__"
+
+
+def test_context_promote_binds_authenticated_owner_not_body_claim(client):
+    client.cookies.update(_cookie("user-alice"))
+    response = client.post("/write/context/promote", json={
+        "title": "Owned context",
+        "owner_user_id": "attacker",
+        "blocks": [],
+    })
+    assert response.status_code == 201, response.text
+    result = response.json()
+    with duckdb.connect(default_db_path(), read_only=True) as con:
+        owner = con.execute(
+            "SELECT owner_user_id FROM deliverables WHERE deliverable_id = ?",
+            [result["deliverable_id"]],
+        ).fetchone()[0]
+    assert owner == "user-alice"
+
+
+def test_context_promote_rejects_unauthenticated_and_spoofed_owner(client):
+    client.cookies.clear()
+    with duckdb.connect(default_db_path(), read_only=True) as con:
+        before = con.execute("SELECT COUNT(*) FROM deliverables").fetchone()[0]
+    response = client.post(
+        "/write/context/promote",
+        json={"title": "Must not exist", "owner_user_id": "user-alice"},
+        headers={"X-User-Id": "user-alice", "X-Auth-Method": "antiek_session_cookie"},
+    )
+    assert response.status_code == 401
+    with duckdb.connect(default_db_path(), read_only=True) as con:
+        after = con.execute("SELECT COUNT(*) FROM deliverables").fetchone()[0]
+    assert after == before
 
 
 # ── SPR-06 — generation no-blocks → gap (no model) ─────────────────
