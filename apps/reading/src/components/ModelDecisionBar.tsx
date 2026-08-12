@@ -32,6 +32,8 @@ export interface ModelDecisionBarProps {
   onSelect?: (provider: string, model: string) => void;
   /** The currently selected provider+model, if any (curated default when null). */
   selected?: { provider: string; model: string } | null;
+  /** Remaining balance/usage chip for the selected provider key, when available. */
+  selectedProviderBalance?: string | null;
 }
 
 function formatUsd(value: number): string {
@@ -148,6 +150,7 @@ export default function ModelDecisionBar({
   error = null,
   onSelect,
   selected = null,
+  selectedProviderBalance = null,
 }: ModelDecisionBarProps) {
   const budgetPct = useMemo(
     () => (projection ? budgetPercent(projection) : null),
@@ -244,6 +247,14 @@ export default function ModelDecisionBar({
             </option>
           ))}
         </select>
+        {selectedProviderBalance && (
+          <span
+            data-testid="selected-provider-balance"
+            className="rounded-full bg-ice-2 px-2 py-0.5 text-[11px] text-emerald-700 dark:bg-charcoal-1 dark:text-emerald-300"
+          >
+            key remaining {selectedProviderBalance}
+          </span>
+        )}
       </div>
 
       {projection.pricing_status === "unknown" && (
