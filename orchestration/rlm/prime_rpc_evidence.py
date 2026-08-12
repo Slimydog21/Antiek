@@ -274,6 +274,7 @@ def _turn(event: Mapping[str, Any], auth: PrimeAuthorizationRequest, installatio
     if not isinstance(raw, dict) or not isinstance(raw.get("cost"), dict):
         raise ValueError("turn_end missing usage")
     provider, model = message.get("provider"), message.get("model")
+    stop_reason_raw = message.get("stopReason")
     version = ".".join(map(str, installation.version))
     if provider != auth.provider or model != auth.model or version != auth.prime_version:
         raise ValueError("actual inference identity differs from authorization")
@@ -292,7 +293,7 @@ def _turn(event: Mapping[str, Any], auth: PrimeAuthorizationRequest, installatio
         cache_read_tokens=_integer(raw.get("cacheRead"), "cacheRead"),
         cache_write_tokens=_integer(raw.get("cacheWrite"), "cacheWrite"),
         cost_micro_usd=int(micro), observed_at_ms=at,
-        stop_reason=message.get("stopReason") if isinstance(message.get("stopReason"), str) else "unknown",
+        stop_reason=stop_reason_raw if isinstance(stop_reason_raw, str) else "unknown",
         evidence_digest=digest, output_digest=digest,
         provider_request_id=str(message.get("requestId") or "unknown"),
         provider_event_id=str(event.get("id") or "unknown"),
