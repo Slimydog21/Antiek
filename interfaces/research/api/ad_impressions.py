@@ -2,7 +2,7 @@
 
 Two endpoints:
 
-  POST /ad-impressions       — record a served ad; emit RevShareDecisions
+  POST /ad-impressions       — retired client-priced revenue path (410)
   GET  /ad-inventory/select  — invoke the targeted matcher; return chosen ad
 
 This is the substrate's served-ad emission surface. The reading
@@ -26,12 +26,9 @@ from pydantic import BaseModel, Field
 from substrate.ad_inventory import (
     AdInventoryItem,
     PageContext,
-    PayoutRouter,
     TargetedInventoryItem,
-    distribute_session_ad_revenue,
     select_targeted_ad,
 )
-from substrate.ad_inventory.payout import RevShareKind
 
 # ── Pydantic shapes ────────────────────────────────────────────────
 
@@ -170,50 +167,13 @@ def register_ad_impression_routes(app: FastAPI) -> None:
     async def post_impression(
         req: AdImpressionRequest,
     ) -> AdImpressionResponse:
-        # Validate attribution shares sum ≤ 1.0.
-        total_share = sum(req.attribution_shares.values())
-        if total_share > 1.0001:  # epsilon
-            raise _refuse(
-                422, "invalid_shares",
-                f"attribution_shares sum to {total_share:.4f}; must be ≤ 1.0",
-            )
-        # Map the recipient-kind string into the enum.
-        recipient_map: dict[str, tuple[RevShareKind, str, bool]] = {}
-        for doc_id, (kind_str, recipient_ref, requires_escrow) in (
-            req.document_to_recipient.items()
-        ):
-            try:
-                kind = RevShareKind(kind_str)
-            except ValueError:
-                raise _refuse(
-                    422, "invalid_kind",
-                    f"unknown RevShareKind {kind_str!r}",
-                )
-            recipient_map[doc_id] = (kind, recipient_ref, bool(requires_escrow))
-
-        router = PayoutRouter()
-        decisions = distribute_session_ad_revenue(
-            router,
-            impression_id=req.impression_id,
-            ad_revenue_usd_cents=req.revenue_usd_cents,
-            attribution_shares=req.attribution_shares,
-            document_to_recipient=recipient_map,
-        )
-        return AdImpressionResponse(
-            impression_id=req.impression_id,
-            decisions=[
-                RevShareDecisionResponse(
-                    decision_id=d.decision_id,
-                    impression_id=d.impression_id,
-                    kind=d.kind.value,
-                    recipient_ref=d.recipient_ref,
-                    amount_usd_cents=d.amount_usd_cents,
-                    document_id=d.document_id,
-                    requires_escrow=d.requires_escrow,
-                    capped_to_daily_limit=d.capped_to_daily_limit,
-                )
-                for d in decisions
-            ],
+        # Tombstoned: this legacy body lets a browser author both the price and
+        # payout recipients.  Fill decisions are now server-owned and unpriced;
+        # accepting this write would invent (or double-credit) money.
+        _ = req
+        raise HTTPException(
+            status_code=410,
+            detail="client_priced_ad_impressions_disabled",
         )
 
 

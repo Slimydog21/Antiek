@@ -875,47 +875,19 @@ def register_book_routes(app: FastAPI) -> None:
     async def record_ad_impressions(
         document_id: str, req: RecordImpressionsRequest
     ) -> RecordImpressionsResponse:
-        """Record reader ad impressions + attention for a session and
-        accrue to the book's rights-holder escrow (Read SPR-05 → SPR-09).
+        """Return 410 for the retired client-priced impression contract.
 
-        The browser flushes a session's slot impressions here. The
-        attention rule (focused dwell ≥ threshold; idle tab excluded) is
-        applied SERVER-SIDE — the client's claimed attention is not
-        trusted. Accrual reuses ``accrue_reading_session`` (dedup by
-        impression_id, zero-buyer-safe, accrual≠disbursement)."""
-        from runtime.db_lock import connect_write
-        from substrate.ad_inventory.reader_impressions import record_raw_impression
-        from substrate.marketplace_metrics.book_escrow import accrue_reading_session
-
-        impressions = [
-            record_raw_impression(
-                session_id=req.session_id,
-                document_id=document_id,
-                slot_id=item.slot_id,
-                page_index=item.page_index,
-                fill_kind=item.fill_kind,
-                revenue_usd_cents=item.revenue_usd_cents,
-                focused_dwell_ms=item.focused_dwell_ms,
-                tab_focused=item.tab_focused,
-            )
-            for item in req.impressions
-        ]
-        db = _resolve_db_path()
-        con = connect_write(db, purpose="read/ad_impressions")
-        try:
-            result = accrue_reading_session(
-                con,
-                document_id=document_id,
-                impressions=impressions,
-                session_id=req.session_id,
-            )
-        finally:
-            con.close()
-        return RecordImpressionsResponse(
-            document_id=document_id,
-            recorded=len(impressions),
-            attention_impressions=result.attention_impressions,
-            accrued_to_escrow_cents=result.accrued_to_escrow_cents,
+        Attention now enters through ``/api/ad/frame-telemetry``. Revenue may
+        enter accrual only from a future authoritative settled fill record;
+        this legacy request cannot write impression, payout, or escrow state.
+        """
+        # Tombstoned: every item carries client-authored revenue.  Attention is
+        # now accepted only by /api/ad/frame-telemetry, while money may flow
+        # only from a future authoritative settled fill record.
+        _ = (document_id, req)
+        raise HTTPException(
+            status_code=410,
+            detail="client_priced_ad_impressions_disabled",
         )
 
     @app.post(
