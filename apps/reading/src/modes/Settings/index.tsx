@@ -36,6 +36,7 @@ import {
 } from "../../api/settingsUsage";
 import AddModelPanel from "./AddModelPanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
+import ByotLineupPanel from "./lineup/ByotLineupPanel";
 import ToolConnectionsPanel from "./ToolConnectionsPanel";
 import UsagePanel from "./UsagePanel";
 
@@ -496,6 +497,8 @@ export default function Settings() {
         </LemonCard>
 
         <AddModelPanel />
+
+        <ByotLineupPanel />
 
         <UsagePanel />
 
