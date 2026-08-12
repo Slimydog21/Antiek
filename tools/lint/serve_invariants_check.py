@@ -116,6 +116,14 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # (e.g. no servable doc with a NULL body); it never serves a body to a
         # client — an internal auditor, like the extractor/versioning above.
         "substrate/corpus_audit.py",
+        # The twin-source-envelope backfill preloads raw_text to DERIVE each
+        # document's twin declaration (owner-path metadata + body hash for the
+        # recursive-twin projection). It never serves a body to a caller — the
+        # envelope is the same owner-path declaration the serve gate's
+        # owner=True branch admits, and every body decision is replicated from
+        # the serve gate's own predicates (drift-guard tested). Mirrors the
+        # extractor/publish internal-reader rationale.
+        "substrate/twin_recursion/source_registration.py",
         # The Paul Graham incremental ingest driver (SPR-05) opens the DB
         # READ-ONLY and reads raw_text for two INTERNAL, non-serving purposes:
         # (1) recompute the stored body's content-hash for change-detection on a
