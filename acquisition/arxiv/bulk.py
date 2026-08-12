@@ -587,7 +587,7 @@ def paper_to_oai_record(paper: ArxivPaper) -> ArxivOaiRecord:
     )
 
 
-def record_dict_to_oai_record(record: dict) -> ArxivOaiRecord:
+def record_dict_to_oai_record(record: dict[str, object]) -> ArxivOaiRecord:
     """Map ONE bulk-snapshot JSON dict directly to ``ArxivOaiRecord`` without
     the intermediate ``ArxivPaper`` (cheaper for the multi-million-line stream
     the nightly bulk mode walks). Raises ``ValueError`` on a missing id.
@@ -611,7 +611,8 @@ def record_dict_to_oai_record(record: dict) -> ArxivOaiRecord:
     if not ds:
         versions = record.get("versions") or []
         if (
-            versions
+            isinstance(versions, list)
+            and versions
             and isinstance(versions[-1], dict)
             and versions[-1].get("created")
         ):
@@ -686,7 +687,7 @@ def open_bulk_snapshot(path: str) -> Iterator[IO[str]]:
     p = Path(path)
     name = p.name.lower()
     if name.endswith((".tar.gz", ".tgz", ".tar")):
-        mode = "r:gz" if name.endswith((".gz", ".tgz")) else "r:"
+        mode: str = "r:gz" if name.endswith((".gz", ".tgz")) else "r:"
         with tarfile.open(path, mode) as tf:
             member = None
             for m in tf.getmembers():
@@ -717,7 +718,7 @@ def open_bulk_snapshot(path: str) -> Iterator[IO[str]]:
         return
     if name.endswith(".gz") and not name.endswith(".tar.gz"):
         with gzip.open(path, "rt", encoding="utf-8") as fh:
-            yield fh  # type: ignore[misc]
+            yield fh
         return
     with open(path, encoding="utf-8") as fh:
         yield fh
