@@ -17,8 +17,8 @@ import {
   type EmoteKind,
   type StageHost,
   type WernerStageController,
-  WernerRig,
-} from "../werner";
+} from "../werner"
+import BrainRig from "../brand/BrainRig";;
 import "../werner/waddle.css";
 
 /**
@@ -666,7 +666,7 @@ export function PenguinMascot() {
             consumes the class signals this bob span carries. Hidden behind the
             emote overlay when one is playing so we don't stack penguins. */}
         <span style={{ visibility: emote ? "hidden" : "visible" }}>
-          <WernerRig size={MASCOT_SIZE} label="Project" />
+          <BrainRig size={MASCOT_SIZE} label="Project" />
         </span>
         {/* The active emote (SPR-05) — an existing animated Werner mark mapped to
             the emote kind, overlaid on the mascot. Keyed by kind so a one-shot
