@@ -43,7 +43,7 @@ override, not a second runtime). No new ASR/LLM/TTS host.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -103,6 +103,7 @@ class BookAnswer:
     context_chunk_count: int = 0
     # None only on the deliberate no-context branch where no model was called.
     dispatch_result: DispatchResult | None = None
+    authority_digest: str | None = None
 
 
 def _build_prompt(
@@ -170,6 +171,7 @@ def answer_book_question(
     top_k: int = DEFAULT_QA_TOP_K,
     config: Any | None = None,
     policy_tag: str = "attribution_eligible",
+    authorized_dispatch: Callable[[str], tuple[DispatchResult, str]] | None = None,
 ) -> BookAnswer:
     """Answer one talk-to-book turn, page-cited, gate-safe.
 
@@ -231,19 +233,24 @@ def answer_book_question(
         history=history,
         context_chunks=context_chunks,
     )
-    target = resolve_research_tier(research_tier)
-    result = dispatch(
-        prompt,
-        role="user_agent",
-        investigation_id=investigation_id,
-        provider_override=target.provider,
-        model_override=target.model,
-        config=config,
-    )
+    authority_digest: str | None = None
+    if authorized_dispatch is None:
+        target = resolve_research_tier(research_tier)
+        result = dispatch(
+            prompt,
+            role="user_agent",
+            investigation_id=investigation_id,
+            provider_override=target.provider,
+            model_override=target.model,
+            config=config,
+        )
+    else:
+        result, authority_digest = authorized_dispatch(prompt)
     return BookAnswer(
         answer=result.text,
         citations=_citations_from_chunks(context_chunks),
         grounded=True,
         context_chunk_count=len(context_chunks),
         dispatch_result=result,
+        authority_digest=authority_digest,
     )

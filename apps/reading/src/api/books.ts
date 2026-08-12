@@ -267,6 +267,25 @@ export interface TalkTurn {
   answer: string;
 }
 
+/** A user-owned model selected for this action. This reference deliberately
+ * contains no owner, payer, credential, or key material. */
+export interface UserModelChoice {
+  authority: "user_model";
+  provider_id: string;
+  model_id: string;
+}
+
+/** What the server actually dispatched. Requested and actual identity remain
+ * separate because routing may fall back or reject a stale choice. */
+export interface BookModelReceipt {
+  authority: "legacy_tier" | "owner_byot";
+  requested_provider_id: string | null;
+  requested_model_id: string | null;
+  actual_provider_id: string;
+  actual_model_id: string;
+  authority_digest: string | null;
+}
+
 export interface AskBookResponse {
   answer_id: string | null;
   capture_status: "captured" | "unavailable";
@@ -276,6 +295,26 @@ export interface AskBookResponse {
    * PDF / fully-withheld) — an honest no-context answer, never a hallucination. */
   grounded: boolean;
   context_chunk_count: number;
+  model_receipt?: BookModelReceipt | null;
+}
+
+export type BookModelOperationState =
+  | "prepared"
+  | "sent"
+  | "settlement_pending"
+  | "settled"
+  | "unknown"
+  | "cancelled";
+
+export interface BookModelOperationStatus {
+  operation_id: string;
+  state: BookModelOperationState;
+  reserved_cents: number;
+  actual_cents: number | null;
+  created_at: string;
+  updated_at: string;
+  provider_id: string | null;
+  model_id: string | null;
 }
 
 export interface BookAnswerJudgmentResponse {
@@ -285,6 +324,37 @@ export interface BookAnswerJudgmentResponse {
   note: string | null;
 }
 
+export class SelectedBookModelUnavailableError extends Error {
+  constructor() {
+    super("That model is no longer available. Choose another model or use Default.");
+    this.name = "SelectedBookModelUnavailableError";
+  }
+}
+
+export class SelectedBookModelOutcomeUnknownError extends Error {
+  constructor(reason: "outcome_unknown" | "unavailable" = "outcome_unknown") {
+    super(reason === "outcome_unknown"
+      ? "The provider outcome is unknown. Reconcile this operation before retrying."
+      : "The selected route became unavailable. Check and release its reservation before retrying.");
+    this.name = "SelectedBookModelOutcomeUnknownError";
+  }
+}
+
+export class BookModelOperationNotFoundError extends Error {
+  constructor() {
+    super("Model operation was not found.");
+    this.name = "BookModelOperationNotFoundError";
+  }
+}
+
+type AskBookOptions = {
+  history?: TalkTurn[];
+  researchTier?: "fast" | "deep";
+} & (
+  | { modelChoice?: undefined; operationId?: never }
+  | { modelChoice: UserModelChoice; operationId: string }
+);
+
 /** Ask one talk-to-book turn (Read SPR-08 M2). Answers CITE pages; a withheld
  * region can never be cited (backend §9.0 gate). 503 when no model provider is
  * configured (no-key) or the embedding model is unavailable. 404 for an
@@ -292,7 +362,7 @@ export interface BookAnswerJudgmentResponse {
 export async function askBook(
   documentId: string,
   question: string,
-  opts?: { history?: TalkTurn[]; researchTier?: "fast" | "deep" },
+  opts?: AskBookOptions,
 ): Promise<AskBookResponse> {
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/ask`, {
     method: "POST",
@@ -301,13 +371,51 @@ export async function askBook(
       question,
       history: opts?.history ?? [],
       research_tier: opts?.researchTier ?? "deep",
+      ...(opts?.modelChoice ? { model_choice: opts.modelChoice } : {}),
+      ...(opts?.modelChoice && opts.operationId ? { operation_id: opts.operationId } : {}),
     }),
   });
   if (resp.status === 404) throw new Error("book_not_found");
+  if (opts?.modelChoice && resp.status === 409) {
+    throw new SelectedBookModelUnavailableError();
+  }
+  if (opts?.modelChoice && resp.status === 503) {
+    let detail: unknown;
+    try {
+      const body = await resp.clone().json() as { detail?: unknown };
+      detail = body.detail;
+    } catch {
+      // A bodyless proxy failure is still potentially post-send; stay held.
+    }
+    throw new SelectedBookModelOutcomeUnknownError(
+      detail === "owner_model_unavailable" ? "unavailable" : "outcome_unknown",
+    );
+  }
   if (resp.status === 503) throw new Error("Talk-to-book isn’t available right now.");
   if (!resp.ok) throw new Error(`POST /books/{id}/ask: HTTP ${resp.status}`);
   return (await resp.json()) as AskBookResponse;
 }
+
+async function modelOperationRequest(
+  operationId: string,
+  action?: "reconcile" | "cancel",
+): Promise<BookModelOperationStatus> {
+  const suffix = action ? `/${action}` : "";
+  const resp = await apiFetch(
+    `${API_BASE}/books/model-operations/${encodeURIComponent(operationId)}${suffix}`,
+    action ? { method: "POST" } : undefined,
+  );
+  if (resp.status === 404) throw new BookModelOperationNotFoundError();
+  if (!resp.ok) throw new Error("Model operation status is temporarily unavailable.");
+  return (await resp.json()) as BookModelOperationStatus;
+}
+
+export const getBookModelOperation = (operationId: string) =>
+  modelOperationRequest(operationId);
+export const reconcileBookModelOperation = (operationId: string) =>
+  modelOperationRequest(operationId, "reconcile");
+export const cancelBookModelOperation = (operationId: string) =>
+  modelOperationRequest(operationId, "cancel");
 
 export async function judgeBookAnswer(
   documentId: string,

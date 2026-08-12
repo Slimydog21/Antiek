@@ -9,9 +9,12 @@ Verifies:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
-from substrate.byot_usage.ledger import ByotUsageLedger
+import pytest
+
+from substrate.byot_usage.ledger import ByotUsageLedger, OperationConflict
 
 
 def test_record_settlement_increments_used_cents(tmp_path: Path) -> None:
@@ -130,6 +133,72 @@ def test_remaining_cents_property(tmp_path: Path) -> None:
     row = ledger.key_usage("key-1", "user-A")
     assert row is not None
     assert row.remaining_cents == 300
+
+
+def test_operation_journal_reserves_and_settles_exactly_once(tmp_path: Path) -> None:
+    ledger = ByotUsageLedger(tmp_path / "usage.sqlite3")
+    ledger.set_limit("key-1", "owner", 10)
+    ledger.prepare_operation("key-1", "owner", "op-1", 8, "a" * 64)
+    with pytest.raises(OperationConflict):
+        ledger.prepare_operation("key-1", "owner", "op-2", 3, "b" * 64)
+    ledger.mark_operation_sent("owner", "op-1")
+    ledger.record_operation_result(
+        "owner", "op-1", actual_cents=2, evidence_sha256="c" * 64,
+        dispatch_event_id="evt-1", provider_id="provider", model_id="model",
+    )
+    ledger.settle_operation("owner", "op-1", 2, "c" * 64)
+    assert ledger.operation("owner", "op-1").state == "settled"  # type: ignore[union-attr]
+    assert ledger.key_usage("key-1", "owner").used_cents == 2  # type: ignore[union-attr]
+    with pytest.raises(OperationConflict):
+        ledger.settle_operation("owner", "op-1", 2, "c" * 64)
+    assert ledger.key_usage("key-1", "owner").used_cents == 2  # type: ignore[union-attr]
+
+
+def test_sent_or_unknown_operation_is_never_blindly_replayed(tmp_path: Path) -> None:
+    ledger = ByotUsageLedger(tmp_path / "usage.sqlite3")
+    ledger.prepare_operation("key-1", "owner", "op-1", 8, "a" * 64)
+    ledger.mark_operation_sent("owner", "op-1")
+    ledger.mark_operation_unknown("owner", "op-1")
+    with pytest.raises(OperationConflict):
+        ledger.prepare_operation("key-1", "owner", "op-1", 8, "a" * 64)
+    assert ledger.operation("owner", "op-1").state == "unknown"  # type: ignore[union-attr]
+
+
+def test_operation_identity_cannot_be_rebound(tmp_path: Path) -> None:
+    ledger = ByotUsageLedger(tmp_path / "usage.sqlite3")
+    ledger.prepare_operation("key-1", "owner", "op-1", 8, "a" * 64)
+    with pytest.raises(OperationConflict):
+        ledger.prepare_operation("key-2", "owner", "op-1", 8, "a" * 64)
+
+
+@pytest.mark.parametrize("state", ["prepared", "sent", "unknown"])
+def test_usage_available_balance_subtracts_durable_holds(
+    tmp_path: Path, state: str,
+) -> None:
+    ledger = ByotUsageLedger(tmp_path / f"{state}.sqlite3")
+    ledger.set_limit("key", "owner", 20)
+    ledger.prepare_operation("key", "owner", "op", 7, "a" * 64)
+    if state != "prepared":
+        ledger.mark_operation_sent("owner", "op")
+    if state == "unknown":
+        ledger.mark_operation_unknown("owner", "op")
+    row = ledger.key_usage("key", "owner")
+    assert row is not None
+    assert row.held_cents == 7
+    assert row.available_cents == 13
+
+
+def test_cancelled_prepared_releases_hold_and_stale_cleanup_is_visible(tmp_path: Path) -> None:
+    ledger = ByotUsageLedger(tmp_path / "usage.sqlite3")
+    ledger.set_limit("key", "owner", 20)
+    ledger.prepare_operation("key", "owner", "op", 7, "a" * 64)
+    assert ledger.cancel_stale_prepared(
+        owner_user_id="owner", now=datetime(9999, 12, 31, tzinfo=UTC),
+    ) == 1
+    operation = ledger.operation("owner", "op")
+    assert operation is not None and operation.state == "cancelled"
+    assert operation.created_at and operation.updated_at
+    assert ledger.key_usage("key", "owner").held_cents == 0  # type: ignore[union-attr]
 
 
 def test_remaining_cents_none_when_no_limit(tmp_path: Path) -> None:

@@ -25,18 +25,23 @@ with the single writer.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import threading
-from typing import Literal, cast
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any, Literal, cast
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
 from substrate.books.serve import ServeResult
 
 from .operator_allowlist import operator_allowlist_from_env
 from .serve_guard import serve_full_text_guarded
+from .settings_models_admin import UserModelChoice
 
 logger = logging.getLogger("antiek.interfaces.books")
 _BOOK_JUDGMENT_LOCK = threading.Lock()
@@ -464,6 +469,10 @@ class AskBookRequest(BaseModel):
     # The recent tail of the running conversation (server bounds it again).
     history: list[TalkTurn] = Field(default_factory=list)
     research_tier: Literal["fast", "deep"] = "deep"
+    # Parsed manually at the endpoint so FastAPI never reflects submitted
+    # provider/model values in a validation response.
+    model_choice: object | None = None
+    operation_id: object | None = None
 
 
 class CitationResponse(BaseModel):
@@ -478,6 +487,15 @@ class CitationResponse(BaseModel):
     snippet: str
 
 
+class ModelReceipt(BaseModel):
+    authority: Literal["legacy_tier", "owner_byot"]
+    requested_provider_id: str | None = None
+    requested_model_id: str | None = None
+    actual_provider_id: str
+    actual_model_id: str
+    authority_digest: str | None = None
+
+
 class AskBookResponse(BaseModel):
     answer_id: str | None
     capture_status: Literal["captured", "unavailable"]
@@ -487,6 +505,25 @@ class AskBookResponse(BaseModel):
     # PDF / fully-withheld) — the honest no-context state, never a hallucination.
     grounded: bool
     context_chunk_count: int
+    model_receipt: ModelReceipt | None = None
+
+
+class ModelOperationStatus(BaseModel):
+    operation_id: str
+    state: Literal[
+        "prepared", "sent", "settlement_pending", "settled", "unknown", "cancelled",
+    ]
+    reserved_cents: int
+    actual_cents: int | None = None
+    created_at: str
+    updated_at: str
+    provider_id: str | None = None
+    model_id: str | None = None
+
+
+class ModelOperationCleanupResponse(BaseModel):
+    cancelled_count: int
+    max_age_seconds: int
 
 
 class BookAnswerJudgmentRequest(BaseModel):
@@ -965,6 +1002,7 @@ def register_book_routes(app: FastAPI) -> None:
     @app.post(
         "/books/{document_id}/ask",
         response_model=AskBookResponse,
+        response_model_exclude_unset=True,
         tags=["books"],
     )
     async def ask_book(
@@ -984,6 +1022,12 @@ def register_book_routes(app: FastAPI) -> None:
         dispatching a model (no hallucination). The model is dispatched through
         the ONE Hermes-routed path (§16); 503 when no provider is keyed.
         """
+        from interfaces.research.api.owner_byot_dispatch import (
+            OwnerByotDispatchUnavailable,
+            OwnerByotOutcomeUnknown,
+            authenticated_distinct_owner,
+            dispatch_talk_to_book_byot,
+        )
         from runtime.db_lock import connect_read
         from substrate.books.book_qa import Turn, answer_book_question
         from substrate.dispatch.base import ProviderError
@@ -994,10 +1038,108 @@ def register_book_routes(app: FastAPI) -> None:
         con = connect_read(db)
         try:
             asset = get_book_asset(con, document_id)
+            owner_row = con.execute(
+                "SELECT owner_user_id FROM documents WHERE document_id = ?",
+                [document_id],
+            ).fetchone()
         finally:
             con.close()
         if asset is None:
             raise HTTPException(status_code=404, detail="book_not_found")
+
+        authorized_dispatch = None
+        selected_choice: UserModelChoice | None = None
+        operation_id: str | None = None
+        if (req.model_choice is None) != (req.operation_id is None):
+            raise HTTPException(status_code=422, detail="model_selection_invalid")
+        if req.model_choice is not None:
+            try:
+                selected_choice = UserModelChoice.model_validate(req.model_choice)
+            except ValidationError:
+                raise HTTPException(status_code=422, detail="model_selection_invalid") from None
+            if (
+                not isinstance(req.operation_id, str)
+                or not req.operation_id.strip()
+                or len(req.operation_id) > 128
+            ):
+                raise HTTPException(status_code=422, detail="model_selection_invalid")
+            operation_id = req.operation_id.strip()
+            if owner_row is None or not isinstance(owner_row[0], str):
+                raise HTTPException(status_code=409, detail="owner_model_unavailable")
+            try:
+                selected_owner = authenticated_distinct_owner(request)
+            except OwnerByotDispatchUnavailable:
+                raise HTTPException(status_code=409, detail="owner_model_unavailable") from None
+            def _dispatch_selected(prompt: str) -> Any:
+                # Re-read the resource authority at the last execution seam;
+                # the earlier read was existence/UX only and grants nothing.
+                owner_con = connect_read(db)
+                try:
+                    current_owner_row = owner_con.execute(
+                        "SELECT owner_user_id, acquired_at FROM documents WHERE document_id = ?",
+                        [document_id],
+                    ).fetchone()
+                finally:
+                    owner_con.close()
+                if current_owner_row is None or not isinstance(current_owner_row[0], str):
+                    raise HTTPException(status_code=503, detail="owner_model_unavailable")
+                resource_fact_digest = hashlib.sha256(
+                    json.dumps(
+                        {
+                            "document_id": document_id,
+                            "owner_user_id": current_owner_row[0],
+                            "version": str(current_owner_row[1]),
+                        },
+                        sort_keys=True, separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()
+                @contextmanager
+                def _resource_authority_guard() -> Iterator[str]:
+                    from runtime.db_lock import authority_handoff_guard
+                    with authority_handoff_guard(
+                        db, purpose="talk-to-book-authority-handoff",
+                    ):
+                        fact_con = connect_read(db)
+                        try:
+                            fact = fact_con.execute(
+                                "SELECT owner_user_id, acquired_at FROM documents"
+                                " WHERE document_id = ?", [document_id],
+                            ).fetchone()
+                            if fact is None or not isinstance(fact[0], str):
+                                yield ""
+                            else:
+                                yield hashlib.sha256(json.dumps(
+                                    {"document_id": document_id, "owner_user_id": fact[0],
+                                     "version": str(fact[1])},
+                                    sort_keys=True, separators=(",", ":"),
+                                ).encode("utf-8")).hexdigest()
+                        finally:
+                            fact_con.close()
+                assert selected_choice is not None and operation_id is not None
+                try:
+                    result, authority = dispatch_talk_to_book_byot(
+                        app=request.app,
+                        request_owner_user_id=selected_owner,
+                        resource_owner_user_id=current_owner_row[0],
+                        document_id=document_id,
+                        choice=selected_choice,
+                        prompt=prompt,
+                        investigation_id=f"read-{document_id}",
+                        logical_operation_id=operation_id,
+                        resource_authority_digest=resource_fact_digest,
+                        resource_authority_guard=_resource_authority_guard,
+                    )
+                except OwnerByotOutcomeUnknown:
+                    raise HTTPException(
+                        status_code=503, detail="owner_model_outcome_unknown",
+                    ) from None
+                except OwnerByotDispatchUnavailable:
+                    raise HTTPException(
+                        status_code=503, detail="owner_model_unavailable",
+                    ) from None
+                return result, authority.digest()
+
+            authorized_dispatch = _dispatch_selected
 
         try:
             model = SentenceTransformerEmbedding()
@@ -1018,10 +1160,13 @@ def register_book_routes(app: FastAPI) -> None:
                     # §9.0: privileged ONLY for the authenticated owner (resolved
                     # server-side); non-owner / unauth callers stay gated.
                     policy_tag=_owner_read_policy_tag(request),
+                    authorized_dispatch=authorized_dispatch,
                 )
-            except ProviderError as exc:
+            except HTTPException:
+                raise
+            except ProviderError:
                 # No keyed provider — honest 503, never a fabricated answer.
-                raise HTTPException(status_code=503, detail=f"dispatch_unavailable: {exc}") from exc
+                raise HTTPException(status_code=503, detail="dispatch_unavailable") from None
         finally:
             con.close()
 
@@ -1072,13 +1217,109 @@ def register_book_routes(app: FastAPI) -> None:
         except Exception:
             logger.exception("talk-to-book answer capture failed after dispatch")
 
-        return AskBookResponse(
+        response = AskBookResponse(
             answer_id=answer_id,
             capture_status="captured" if answer_id is not None else "unavailable",
             answer=result.answer,
             citations=citations,
             grounded=result.grounded,
             context_chunk_count=result.context_chunk_count,
+            model_receipt=(
+                ModelReceipt(
+                    authority="owner_byot",
+                    requested_provider_id=selected_choice.provider_id,
+                    requested_model_id=selected_choice.model_id,
+                    actual_provider_id=dispatch_result.provider,
+                    actual_model_id=dispatch_result.model,
+                    authority_digest=result.authority_digest,
+                )
+                if selected_choice is not None and dispatch_result is not None else None
+            ),
+        )
+        if selected_choice is None:
+            response.model_fields_set.discard("model_receipt")
+        return response
+
+    def _operation_owner(request: Request) -> str:
+        from interfaces.research.api.owner_byot_dispatch import (
+            OwnerByotDispatchUnavailable,
+            authenticated_distinct_owner,
+        )
+        try:
+            return authenticated_distinct_owner(request)
+        except OwnerByotDispatchUnavailable:
+            raise HTTPException(status_code=401, detail="authentication_required") from None
+
+    def _operation_context(request: Request, operation_id: str) -> tuple[str, Any, Any]:
+        from substrate.byot_usage.ledger import ByotUsageLedger
+        owner = _operation_owner(request)
+        ledger = ByotUsageLedger()
+        row = ledger.operation(owner, operation_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="model_operation_not_found")
+        return owner, ledger, row
+
+    def _model_operation_status(request: Request, operation_id: str) -> ModelOperationStatus:
+        _, _, row = _operation_context(request, operation_id)
+        return ModelOperationStatus(
+            operation_id=row.operation_id, state=cast(Any, row.state),
+            reserved_cents=row.reserved_cents, actual_cents=row.actual_cents,
+            created_at=row.created_at, updated_at=row.updated_at,
+            provider_id=row.provider_id, model_id=row.model_id,
+        )
+
+    @app.get("/books/model-operations/{operation_id}", response_model=ModelOperationStatus)
+    async def get_model_operation(operation_id: str, request: Request) -> ModelOperationStatus:
+        return _model_operation_status(request, operation_id)
+
+    @app.post(
+        "/books/model-operations/{operation_id}/reconcile",
+        response_model=ModelOperationStatus,
+    )
+    async def reconcile_model_operation(
+        operation_id: str, request: Request,
+    ) -> ModelOperationStatus:
+        from substrate.byot_usage.ledger import OperationConflict
+        owner, ledger, _ = _operation_context(request, operation_id)
+        try:
+            ledger.reconcile_operation(owner, operation_id)
+        except OperationConflict:
+            raise HTTPException(status_code=404, detail="model_operation_not_found") from None
+        return _model_operation_status(request, operation_id)
+
+    @app.post(
+        "/books/model-operations/{operation_id}/cancel",
+        response_model=ModelOperationStatus,
+    )
+    async def cancel_model_operation(
+        operation_id: str, request: Request,
+    ) -> ModelOperationStatus:
+        from substrate.byot_usage.ledger import OperationConflict
+        owner, ledger, _ = _operation_context(request, operation_id)
+        try:
+            ledger.cancel_prepared_operation(owner, operation_id)
+        except OperationConflict:
+            raise HTTPException(status_code=409, detail="model_operation_not_cancellable") from None
+        return _model_operation_status(request, operation_id)
+
+    @app.post(
+        "/books/model-operations/cleanup-prepared",
+        response_model=ModelOperationCleanupResponse,
+    )
+    async def cleanup_prepared_model_operations(
+        request: Request,
+    ) -> ModelOperationCleanupResponse:
+        # A synthetic lookup is not used here because cleanup has no operation
+        # id. Reuse the same centralized signed-owner mapper, then apply the
+        # fixed 24-hour server policy and return counts only.
+        from substrate.byot_usage.ledger import ByotUsageLedger
+        owner = _operation_owner(request)
+        max_age_seconds = 86_400
+        count = ByotUsageLedger().cancel_stale_prepared(
+            owner_user_id=owner, max_age_seconds=max_age_seconds,
+        )
+        return ModelOperationCleanupResponse(
+            cancelled_count=count, max_age_seconds=max_age_seconds,
         )
 
     @app.post(
