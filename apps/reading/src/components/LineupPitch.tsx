@@ -107,7 +107,7 @@ export default function LineupPitch({
         style={{
           aspectRatio: "4 / 5",
           background:
-            "linear-gradient(160deg, #4c8f4f 0%, #3d7a41 45%, #2f6633 100%)",
+            "linear-gradient(160deg, var(--pitch-base) 0%, var(--pitch-mid) 45%, var(--pitch-deep) 100%)",
         }}
         role="group"
         aria-label="AI role formation pitch"
