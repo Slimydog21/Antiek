@@ -29,7 +29,9 @@ export function AdvancedLineup({
   return (
     <div data-testid="byot-advanced-lineup" className="space-y-5">
       <p className="text-sm text-ink-soft dark:text-starlight">
-        Pin a model to one action. The pin beats the general starter for that
+        Pin a model to one action (thought_partner, user_agent, autocomplete,
+        interviewer, wrestler, rlm_orchestrator, visual, transcription, tts,
+        plus per-role overrides). The pin beats the general starter for that
         action only. Un-pinned extras stay empty; un-pinned pipeline roles
         follow their general slot.
       </p>

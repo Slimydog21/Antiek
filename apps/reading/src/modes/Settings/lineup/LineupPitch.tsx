@@ -3,6 +3,18 @@ import { ModelCard } from "./ModelCard";
 import type { LineupCard, LineupState } from "./lineup";
 import { benchCards, occupant } from "./lineup";
 
+/** Four starting positions — names are the product contract, not CSS labels. */
+const PITCH_POSITIONS: readonly GeneralSlot[] = [
+  "writer",
+  "data miner",
+  "data refinement",
+  "data verification",
+];
+
+if (PITCH_POSITIONS.join("\0") !== GENERAL_SLOTS.join("\0")) {
+  throw new Error("LineupPitch positions drifted from GENERAL_SLOTS");
+}
+
 export type Selection =
   | { kind: "slot"; slot: GeneralSlot }
   | { kind: "card"; cardId: string }
@@ -30,7 +42,7 @@ export function LineupPitch({
       <div className="byot-pitch" data-testid="byot-pitch" aria-label="Starting lineup">
         <div className="byot-pitch-midline" />
         <div className="byot-formation">
-          {GENERAL_SLOTS.map((slot) => {
+          {PITCH_POSITIONS.map((slot) => {
             const card = occupant(state, slot, cards);
             const slotSelected =
               selection?.kind === "slot" && selection.slot === slot;
