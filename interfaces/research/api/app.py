@@ -1681,6 +1681,12 @@ def create_app(
     # store_reader_html, which sanitizes inside the write.
     from .upload_routes import register_upload_routes
     register_upload_routes(app)
+    # Doc→HTML S-D2H — POST /ingest/asset: document asset ingestion pipeline.
+    # Accepts multipart file OR source_url; converts via anydoc→docling,
+    # renders canonical HTML, stores sidecar + provenance, writes memory hook.
+    # Fair-use gate refuses known non-fair-use sources.
+    from .doc_ingest_routes import register_doc_ingest_routes
+    register_doc_ingest_routes(app)
     # Book acquisition — authorized, bytes-only EPUB port into the
     # personal-reading corpus.  Requires a dedicated signing key
     # (ANTIEK_BOOK_ACQUISITION_SIGNING_KEY) that is NEVER the
