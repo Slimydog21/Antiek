@@ -16,6 +16,20 @@ const styles = {
   ],
 };
 
+const stylesWithFork = {
+  styles: [
+    ...styles.styles,
+    {
+      name: "field-notes",
+      label: "Field notes",
+      description: "A personal fork",
+      builtin: false,
+      source_fidelity: true,
+      theme_css: ":root { --x: 1; }",
+    },
+  ],
+};
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
@@ -41,7 +55,25 @@ describe("StyleWheel", () => {
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     apiFetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/styles" && init?.method === "POST") return Promise.resolve(json(styles.styles[1], 201));
+      if (url === "/styles" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return Promise.resolve(
+          json(
+            {
+              name: body.name,
+              label: body.label,
+              description: body.description ?? "",
+              builtin: false,
+              source_fidelity: Boolean(body.source_fidelity),
+              theme_css: body.theme_css ?? "",
+            },
+            201,
+          ),
+        );
+      }
+      if (typeof url === "string" && url.startsWith("/styles/") && init?.method === "DELETE") {
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
       if (url === "/styles") return Promise.resolve(json(styles));
       if (url.includes("/render")) {
         const style = new URL(url, "http://test").searchParams.get("style") ?? "antiek";
@@ -79,13 +111,26 @@ describe("StyleWheel", () => {
     expect(frame.getAttribute("sandbox")).toBe("");
     fireEvent.click(screen.getByRole("button", { name: /Apply Antiek/ }));
     expect((await screen.findByText("Version 3 saved")).textContent).toBe("Version 3 saved");
-    expect(apiFetchMock).toHaveBeenCalledWith(expect.stringContaining("/artifacts/artifact-7/render"), expect.objectContaining({ method: "POST" }));
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/artifacts/artifact-7/render"),
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("shows an honest unavailable state", async () => {
     apiFetchMock.mockRejectedValueOnce(new Error("backend offline"));
     render(<StyleWheel artifactId="artifact-7" />);
     expect((await screen.findByRole("alert")).textContent).toContain("Styles unavailable · backend offline");
+  });
+
+  it("shows an honest empty wheel when no styles load", async () => {
+    apiFetchMock.mockImplementation((input: RequestInfo | URL) => {
+      if (String(input) === "/styles") return Promise.resolve(json({ styles: [] }));
+      return Promise.resolve(html());
+    });
+    render(<StyleWheel artifactId="artifact-7" />);
+    expect((await screen.findByText(/Empty wheel/)).textContent).toContain("Empty wheel");
+    expect(screen.getByRole("button", { name: /Create a style/ })).toBeTruthy();
   });
 
   it("restores the persisted style from the style-less preview", async () => {
@@ -96,7 +141,10 @@ describe("StyleWheel", () => {
     });
     render(<StyleWheel artifactId="artifact-7" />);
     expect((await screen.findByRole("option", { name: /Folio/ })).getAttribute("aria-selected")).toBe("true");
-    expect(apiFetchMock).toHaveBeenCalledWith("/artifacts/artifact-7/render", expect.objectContaining({ method: "GET" }));
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      "/artifacts/artifact-7/render",
+      expect.objectContaining({ method: "GET" }),
+    );
   });
 
   it("keeps fork CSS confined to the style save body", async () => {
@@ -108,12 +156,88 @@ describe("StyleWheel", () => {
     const secretCss = ":root { --private-preview-token: rgb(18 52 86); }";
     fireEvent.change(screen.getByLabelText("Theme CSS"), { target: { value: secretCss } });
     fireEvent.submit(screen.getByRole("button", { name: "Save fork" }).closest("form")!);
-    await waitFor(() => expect(apiFetchMock.mock.calls.some(([url, init]) =>
-      String(url) === "/styles" && init?.method === "POST" && String(init.body).includes(secretCss),
-    )).toBe(true));
+    await waitFor(() =>
+      expect(
+        apiFetchMock.mock.calls.some(
+          ([url, init]) =>
+            String(url) === "/styles" &&
+            init?.method === "POST" &&
+            String(init.body).includes(secretCss),
+        ),
+      ).toBe(true),
+    );
     for (const [url] of apiFetchMock.mock.calls.filter(([url]) => String(url).includes("/render"))) {
       expect(String(url)).not.toContain("private-preview-token");
     }
+  });
+
+  it("seeds the fork form from the selected builtin with provenance", async () => {
+    render(<StyleWheel artifactId="artifact-7" />);
+    await screen.findByRole("option", { name: /Antiek/ });
+    fireEvent.click(screen.getByRole("button", { name: /Fork “Antiek”/ }));
+    expect((screen.getByLabelText("Slug") as HTMLInputElement).value).toBe("antiek-fork");
+    expect((screen.getByLabelText("Label") as HTMLInputElement).value).toContain("fork");
+    expect(screen.getByText(/seeded from/).textContent).toContain("Antiek");
+    fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "field-notes" } });
+    fireEvent.change(screen.getByLabelText("Label"), { target: { value: "Field notes" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Save fork" }).closest("form")!);
+    await screen.findByRole("option", { name: /Field notes/ });
+    expect(screen.getByText(/forked from Antiek/)).toBeTruthy();
+  });
+
+  it("deletes a user fork with confirm and refuses to offer delete on builtins", async () => {
+    apiFetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/styles") return Promise.resolve(json(stylesWithFork));
+      if (url === "/styles/field-notes" && init?.method === "DELETE") {
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      if (url.includes("/render")) {
+        const style = new URL(url, "http://test").searchParams.get("style") ?? "antiek";
+        return Promise.resolve(html("preview", style));
+      }
+      return Promise.resolve(html());
+    });
+    render(<StyleWheel artifactId="artifact-7" />);
+    await screen.findByRole("option", { name: /Field notes/ });
+    // Builtin selected first — no delete affordance
+    expect(screen.queryByRole("button", { name: /Delete fork/ })).toBeNull();
+    fireEvent.click(screen.getByRole("option", { name: /Field notes/ }));
+    const del = await screen.findByRole("button", { name: /Delete fork Field notes/ });
+    fireEvent.click(del);
+    // Two-step confirm
+    fireEvent.click(screen.getByRole("button", { name: /Confirm delete Field notes/ }));
+    await waitFor(() =>
+      expect(
+        apiFetchMock.mock.calls.some(
+          ([url, init]) => String(url) === "/styles/field-notes" && init?.method === "DELETE",
+        ),
+      ).toBe(true),
+    );
+    await waitFor(() => expect(screen.queryByRole("option", { name: /Field notes/ })).toBeNull());
+  });
+
+  it("surfaces delete errors honestly without removing the fork", async () => {
+    apiFetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/styles") return Promise.resolve(json(stylesWithFork));
+      if (url === "/styles/field-notes" && init?.method === "DELETE") {
+        return Promise.resolve(
+          json({ detail: "cannot remove builtin style 'field-notes'" }, 409),
+        );
+      }
+      if (url.includes("/render")) {
+        const style = new URL(url, "http://test").searchParams.get("style") ?? "field-notes";
+        return Promise.resolve(html("preview", style));
+      }
+      return Promise.resolve(html());
+    });
+    render(<StyleWheel artifactId="artifact-7" />);
+    fireEvent.click(await screen.findByRole("option", { name: /Field notes/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Delete fork Field notes/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm delete Field notes/ }));
+    expect((await screen.findByRole("alert")).textContent).toContain("cannot remove builtin");
+    expect(screen.getByRole("option", { name: /Field notes/ })).toBeTruthy();
   });
 
   it("aborts and ignores an old apply when the selected style changes", async () => {
@@ -124,7 +248,9 @@ describe("StyleWheel", () => {
       if (url === "/styles") return Promise.resolve(json(styles));
       if (init?.method === "POST" && url.includes("/render")) {
         applySignal = init.signal ?? undefined;
-        return new Promise<Response>((resolve) => { resolveApply = resolve; });
+        return new Promise<Response>((resolve) => {
+          resolveApply = resolve;
+        });
       }
       const style = new URL(url, "http://test").searchParams.get("style") ?? "antiek";
       return Promise.resolve(html("preview", style));

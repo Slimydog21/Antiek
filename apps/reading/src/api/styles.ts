@@ -108,6 +108,17 @@ export async function saveStyle(draft: StyleDraft): Promise<ProjectionStyle> {
   return response.json();
 }
 
+/** Remove a user fork. Builtins return 409; unknown names return 404. */
+export async function deleteStyle(name: string, signal?: AbortSignal): Promise<void> {
+  await checked(
+    await apiFetch(`${API_BASE}/styles/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+      signal,
+    }),
+    "Deleting style",
+  );
+}
+
 export async function renderArtifact(
   artifactId: string,
   style: string | undefined,
