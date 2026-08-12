@@ -8,12 +8,11 @@ from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 from runtime.db_lock import LockedConnection
-from substrate.books.serve import (
+from substrate.books.servability import is_servable_full_text, servability_of
+from substrate.constants import (
     PERSONAL_READABLE_CONTENT_CLASSES,
     PERSONAL_READING_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
-    is_servable_full_text,
-    servability_of,
 )
 from substrate.books.serve_guard import (
     LinkBackMissingError,
