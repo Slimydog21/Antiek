@@ -155,7 +155,9 @@ def _dispatch_and_parse(
     ``(result, policy_id)`` on success, ``(None, fallback_id)`` on
     failure."""
     try:
-        result = dispatch(
+        from .research_owner_dispatch import dispatch_loop_one
+        result = dispatch_loop_one(prompt, "parameter_extractor", investigation_id=event.investigation_id,
+                                   semantic_call_id="phase3", attempt=0) or dispatch(
             prompt,
             "parameter_extractor",
             investigation_id=event.investigation_id,

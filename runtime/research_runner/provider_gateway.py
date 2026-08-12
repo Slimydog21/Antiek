@@ -67,6 +67,7 @@ HARD_MODE_DISPATCH_POLICY: Mapping[str, str] = {
     "cascade.gather.embedding.bootstrap": "zero_cost_receipt",
     "cascade.tail.synthesizer": "refused_before_dispatch",
     "cascade.tail.knowledge_extractor": "unreachable_when_tail_is_refused",
+    "cascade.synthesis.owner_model": "refused_before_dispatch",
 }
 HARD_MODE_SKIPPED_STAGES = tuple(
     seam_id.rsplit(".", 1)[-1]

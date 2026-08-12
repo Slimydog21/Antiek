@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { startInvestigation } from "../lib/api";
-import type { ResearchTier } from "../lib/api";
+import type { ResearchTier, UserModelChoice } from "../lib/api";
 import type { Event } from "../generated/types";
 import { useEventStream } from "./useEventStream";
 
@@ -73,6 +73,8 @@ export interface StartInvestigationState {
     spawnContext?: string;
     /** SPR-01 M3: curated fast/deep tier from the research entry. */
     researchTier?: ResearchTier;
+    modelChoice?: UserModelChoice;
+    operationId?: string;
   }) => Promise<string | null>;
   /** Reset back to idle (e.g. after the caller has navigated away). */
   reset: () => void;
@@ -138,6 +140,8 @@ export function useStartInvestigation(): StartInvestigationState {
       parentInvestigationId?: string;
       spawnContext?: string;
       researchTier?: ResearchTier;
+      modelChoice?: UserModelChoice;
+      operationId?: string;
     }): Promise<string | null> => {
       const q = input.question.trim();
       if (!q || q.length < 3) {
@@ -153,6 +157,9 @@ export function useStartInvestigation(): StartInvestigationState {
           spawn_context: input.spawnContext,
           // Omitted when undefined → server defaults to "deep".
           research_tier: input.researchTier,
+          ...(input.modelChoice && input.operationId
+            ? { model_choice: input.modelChoice, operation_id: input.operationId }
+            : {}),
         });
         setStartedId(resp.investigation_id);
         return resp.investigation_id;
