@@ -122,6 +122,7 @@ export default function ModelPicker({
         <button
           ref={buttonRef}
           type="button"
+          aria-label="Choose model driver"
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-controls={listboxId}

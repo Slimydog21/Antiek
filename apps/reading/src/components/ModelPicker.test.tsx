@@ -51,7 +51,7 @@ const CANDIDATES: ComposerCandidateView[] = [
 ];
 
 function triggerText(): string {
-  const btn = screen.getByRole("button", { haspopup: "listbox" });
+  const btn = screen.getByRole("button", { name: /choose model driver/i });
   return btn.textContent ?? "";
 }
 
@@ -84,7 +84,7 @@ describe("ModelPicker", () => {
 
   it("renders candidates with honest pricing (unknown for null, ineligible badge)", () => {
     render(<ModelPicker candidates={CANDIDATES} selected={null} onSelect={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { haspopup: "listbox" }));
+    fireEvent.click(screen.getByRole("button", { name: /choose model driver/i }));
     const flash = screen.getByRole("option", { name: /deepseek-v4-flash/i });
     expect(flash.textContent).toContain("measured");
     expect(flash.textContent).toContain("$0.02");
@@ -97,7 +97,7 @@ describe("ModelPicker", () => {
   it("selects a candidate and reports it up", () => {
     const onSelect = vi.fn();
     render(<ModelPicker candidates={CANDIDATES} selected={null} onSelect={onSelect} />);
-    fireEvent.click(screen.getByRole("button", { haspopup: "listbox" }));
+    fireEvent.click(screen.getByRole("button", { name: /choose model driver/i }));
     fireEvent.click(screen.getByRole("option", { name: /deepseek-v4-pro/i }));
     expect(onSelect).toHaveBeenCalledWith(CANDIDATES[1]);
     expect(screen.queryByRole("option")).toBeNull();
