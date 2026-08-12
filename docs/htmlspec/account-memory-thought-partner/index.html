@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Account memory in Thought Partner — Master Spec</title>
+<style>
+:root{--yellow:#f9bd2b;--blue:#1d4aff;--ink:#151515;--muted:#666;--paper:#fafaf7;--card:#fff;--soft:#f3f1ea;--green:#d9efe2;--red:#f7d5cd}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:#2c2c2c;font:15px/1.55 -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif}.page{max-width:1180px;margin:auto;padding:32px 28px 80px}.hero,.block{background:var(--card);border:2px solid var(--ink);border-radius:6px;box-shadow:4px 4px 0 var(--ink);padding:24px;margin-bottom:22px}.eyebrow{font:700 12px ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}h1{font-size:34px;line-height:1.1;margin:6px 0}h2{margin:0 0 8px;font-size:22px}h3{margin:20px 0 8px;font-size:14px;text-transform:uppercase;letter-spacing:.05em}.lede{color:var(--muted)}.tags{display:flex;gap:8px;flex-wrap:wrap}.tag{border:1px solid var(--ink);border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700;background:var(--soft)}.tag.blue{background:#e5ecff}.tag.yellow{background:#fdf1cf}.tag.green{background:var(--green)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}.card{display:block;color:inherit;text-decoration:none;border:2px solid var(--ink);border-radius:6px;box-shadow:2px 2px 0 var(--ink);padding:18px}.card:hover{box-shadow:4px 4px 0 var(--ink)}table{width:100%;border-collapse:collapse}th,td{padding:9px 10px;text-align:left;vertical-align:top;border-bottom:1px solid #ccc}th{font-size:12px;text-transform:uppercase;background:var(--soft);border-bottom:2px solid var(--ink)}code,pre{font-family:ui-monospace,monospace}code{background:var(--soft);padding:1px 5px;border-radius:3px}.flow{white-space:pre-wrap;background:var(--soft);border:1px solid #ccc;border-radius:4px;padding:14px}.callout{border-left:4px solid var(--blue);background:#e5ecff;padding:12px 14px}.danger{border-left-color:#c63d24;background:var(--red)}a{color:var(--blue)}footer{color:var(--muted);font-size:12px;margin-top:30px}@media(max-width:700px){.page{padding:18px 14px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main class="page">
+<header class="hero">
+  <p class="eyebrow">Master spec · AM-TP-01</p>
+  <h1>Account memory in Thought Partner</h1>
+  <p>Make owner-private long-term memory reach a real production model prompt, with exact owner isolation and no-memory byte equivalence.</p>
+  <div class="tags"><span class="tag blue">Status: executable</span><span class="tag yellow">Owner: Codex primary</span><span class="tag">1 sprint · 1 wave</span><span class="tag">2026-08-12</span></div>
+</header>
+
+<section id="spec-lineage" class="block" data-spec-depth="0" data-parent-spec="">
+  <h2>Spec lineage</h2>
+  <p class="lede">Root spec. The operator brief is the interview record; no unresolved user choice changes this bounded implementation.</p>
+  <p><strong>Parent:</strong> <a href="../../byot-request-scoped-authority/index.html">BYOT request authority</a> is adjacent security context, not a dependency.</p>
+  <h3>Child specs</h3><p>None. This is one tightly coupled prompt-boundary sprint; splitting retrieval from dispatch proof would recreate the current false-positive architecture.</p>
+</section>
+
+<section class="block">
+  <h2>Goal</h2>
+  <p>An authenticated owner’s current account-memory facts are recalled under the canonical database lock, rendered by the existing provenance-preserving JSON renderer, and inserted into the exact Thought Partner prompt sent to <code>dispatch</code>. A different owner sees none of them; an empty or unavailable memory store produces the exact pre-feature prompt.</p>
+  <h3>Success criteria</h3>
+  <ul><li>A distinctive owner-A marker appears in the first captured provider prompt for owner A.</li><li>The same marker is absent for owner B, unauthenticated-local requests, responses, logs, and errors.</li><li>Empty memory produces byte-for-byte identical prompt input.</li><li>Memory text stays JSON-escaped data and cannot select tools, models, routes, budgets, or system instructions.</li></ul>
+  <div class="callout danger"><strong>Failure mode:</strong> emitting a “memory recalled” event or constructing a context object that is never consumed. Provider-call capture is the only completion proof.</div>
+</section>
+
+<section class="block">
+  <h2>Architecture</h2>
+  <div class="flow">authenticated request.state.user_id
+  → short connect_write(default_db_path(), purpose="thought-partner:account-memory-recall")
+  → recall_memory(owner, query=user prompt, limit=8)
+  → format_memory_for_prompt(items)
+  → release database lock
+  → append guarded owner-private JSON layer only when non-empty
+  → existing role prompt
+  → dispatch(captured full prompt)</div>
+  <h3>Invariants</h3>
+  <ul><li>Identity comes only from authenticated middleware state. <code>unauthenticated_local</code> and shared <code>__operator__</code> identities do not receive private memory.</li><li>Recall failure degrades to the exact no-memory prompt and a value-free operational warning; cross-owner leakage is never a recoverable relevance miss.</li><li>No raw memory or owner identifier is added to the HTTP response or event payload.</li><li>The database lock closes before provider dispatch.</li></ul>
+</section>
+
+<section class="block">
+  <h2>Sprint roster</h2>
+  <div class="grid"><a class="card" href="sprint-01-owner-memory-prompt.html"><strong>SPR-01 · Owner memory prompt boundary</strong><p>Build a small retrieval helper, wire one production Thought Partner prompt, and prove exact provider receipt plus isolation.</p><div class="tags"><span class="tag blue">Wave 1</span><span class="tag">5 milestones</span><span class="tag yellow">inline</span></div></a></div>
+</section>
+
+<section class="block">
+  <h2>Decision log</h2>
+  <table><thead><tr><th>Decision</th><th>Why</th><th>Would change if</th></tr></thead><tbody>
+  <tr><td>Integrate Thought Partner before ResearchRunner</td><td>Thought Partner owns a real provider call today. The cascade gather path is stub/Exa and can only prove retrieval events, not model receipt.</td><td>A production ResearchRunner loop exposes a tested provider prompt boundary.</td></tr>
+  <tr><td>Use existing canonical JSON renderer</td><td>It includes provenance, trust, and an explicit data-not-instructions guard with deterministic escaping.</td><td>The context-pack substrate gains a dedicated account-memory layer with equivalent trust semantics.</td></tr>
+  <tr><td>Fail private-memory use closed on ambiguous identity</td><td>Shared operator identities collapse principals and would leak account memory.</td><td>Every auth mode supplies a stable distinct owner ID.</td></tr>
+  </tbody></table>
+</section>
+
+<section class="block">
+  <h2>Rejected alternatives</h2>
+  <table><thead><tr><th>Alternative</th><th>Why rejected</th><th>Reconsider if</th></tr></thead><tbody>
+  <tr><td>Wire <code>HostLocalRunner._maybe_reuse_prior_knowledge</code></td><td>It currently discards its pack, and its default loops make no model call. Event-only tests would be theater.</td><td>The returned pack is carried to a provider-owning loop and captured at dispatch.</td></tr>
+  <tr><td>Trust client <code>system_context</code> as memory</td><td>It is caller-controlled and has no owner/provenance authority.</td><td>Never; it remains a separate untrusted input.</td></tr>
+  <tr><td>Add a full account-memory CRUD UI now</td><td>It would make memory visible but still not agent-facing; it also collides with active Settings work.</td><td>Prompt consumption is landed and owner-bound write policy is specified.</td></tr>
+  </tbody></table>
+</section>
+
+<section class="block">
+  <h2>Open questions</h2>
+  <table><thead><tr><th>Question</th><th>Operating assumption</th><th>Resolver</th></tr></thead><tbody>
+  <tr><td>Should memory failures fail the whole Thought Partner request?</td><td>No. Availability failures produce the exact no-memory path; integrity/cross-owner evidence remains a hard defect in tests and monitoring.</td><td>Security review can tighten to fail-closed service error if operational evidence shows silent loss is unsafe.</td></tr>
+  <tr><td>What is the eventual whole-product memory budget?</td><td>This slice uses the existing eight-item recall cap and a bounded rendered-byte cap; product-wide context budgeting is a follow-up.</td><td>Context-pack/account-memory integration sprint.</td></tr>
+  </tbody></table>
+</section>
+
+<section class="block" id="harness-hint-run" data-harness-default-pattern="inline" data-harness-inline-only-sprints="SPR-01">
+  <h2>Execution harness hint</h2><p><code>inline</code>: prompt composition, auth, and provider-capture tests share one boundary. Use an independent adversarial verifier after implementation; do not fan out builders across the same files.</p>
+</section>
+<footer>Source: operator brief at <code>pasted-text-1.txt</code> · Generated 2026-08-12 · Self-contained HTML</footer>
+</main></body></html>
