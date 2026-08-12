@@ -82,7 +82,7 @@ jobs:
           # upload routes eagerly import the PDF reader during collection.
           pip install -c tools/lints/constraints.txt -e ".[dev,pdf]"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
