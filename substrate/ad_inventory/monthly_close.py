@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -546,8 +547,17 @@ def compute_close(
 
 
 def default_artifact_dir(period: str, *, base: str | Path | None = None) -> Path:
-    """Stable artifact path for a period's close files."""
-    root = Path(base) if base is not None else Path("data/afa_month_closes")
+    """Stable artifact path for a period's close files.
+
+    The base is resolved in order: explicit ``base`` argument > the
+    ``ANTIEK_AFA_ARTIFACT_DIR`` env override > ``data/afa_month_closes``
+    (CWD-relative fallback). Production deployments SHOULD set the env var
+    so artifact writes are hermetic and CWD-independent (the pass-9 hazard:
+    a CWD-relative default accumulates stale files across runs/processes).
+    """
+    root = Path(base) if base is not None else Path(
+        os.environ.get("ANTIEK_AFA_ARTIFACT_DIR", "data/afa_month_closes")
+    )
     return root / period
 
 

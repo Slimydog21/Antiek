@@ -21,9 +21,15 @@ def _app(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
     # Hermetic artifacts: redirect the close's default artifact dir into tmp
     # (the default is a CWD-relative data/ dir that accumulates across runs).
-    monthly_close.default_artifact_dir = lambda period, *, base=None: (  # type: ignore[assignment]
-        Path(base) if base is not None else tmp_path / "close-art"
-    ) / period
+    # The env override wins when set (test_artifact_dir_env_override).
+    if "ANTIEK_AFA_ARTIFACT_DIR" not in __import__("os").environ:
+        monkeypatch.setattr(
+            monthly_close,
+            "default_artifact_dir",
+            lambda period, *, base=None: (
+                Path(base) if base is not None else tmp_path / "close-art"
+            ) / period,
+        )
 
     db = default_db_path()
     with connect_write(db, purpose="test/afa/api/schema") as con:
@@ -120,3 +126,22 @@ def test_month_close_api_rejects_bad_period(monkeypatch: pytest.MonkeyPatch, tmp
     app = _app(monkeypatch, tmp_path)
     client = TestClient(app)
     assert client.post("/ops/afa/month-close/not-a-month").status_code == 422
+
+
+def test_artifact_dir_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """ANTIEK_AFA_ARTIFACT_DIR redirects close artifacts (hermetic, CWD-independent)."""
+    from substrate.ad_inventory.monthly_close import default_artifact_dir
+
+    target = tmp_path / "env-artifacts"
+    monkeypatch.setenv("ANTIEK_AFA_ARTIFACT_DIR", str(target))
+    path = default_artifact_dir("2026-07")
+    assert path == target / "2026-07"
+
+    # end-to-end: a close writes into the env dir
+    app = _app(monkeypatch, tmp_path)
+    client = TestClient(app)
+    _seed_accrual(tmp_path)
+    resp = client.post("/ops/afa/month-close/2026-07")
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["artifact_dir"].startswith(str(target))
+    assert (target / "2026-07" / "root.txt").is_file()
