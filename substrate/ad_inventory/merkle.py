@@ -72,10 +72,18 @@ class InclusionProof:
 
     @classmethod
     def from_dict(cls, d: dict[str, object]) -> InclusionProof:
+        """Fail-closed proof parse: a malformed proof must never coerce."""
+        raw_index = d.get("leaf_index")
+        raw_siblings = d.get("siblings")
+        raw_directions = d.get("directions")
+        if not isinstance(raw_index, int):
+            raise ValueError("proof leaf_index must be an int")
+        if not isinstance(raw_siblings, list) or not isinstance(raw_directions, list):
+            raise ValueError("proof siblings/directions must be lists")
         return cls(
-            leaf_index=int(d["leaf_index"]),  # type: ignore[arg-type]
-            siblings=tuple(str(s) for s in d["siblings"]),  # type: ignore[arg-type]
-            directions=tuple(str(x) for x in d["directions"]),  # type: ignore[arg-type]
+            leaf_index=raw_index,
+            siblings=tuple(str(s) for s in raw_siblings),
+            directions=tuple(str(x) for x in raw_directions),
         )
 
 
