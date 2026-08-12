@@ -17,7 +17,7 @@
  * not reach for Daytona.
  */
 
-import { lazy, Suspense, useCallback, useRef, useState, type RefObject } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useParams } from "react-router-dom";
 
 import { PanelHost } from "../../workspace/PanelHost";
@@ -39,6 +39,12 @@ import type { DistilledNode } from "../../lib/api";
 import CostMeter from "./CostMeter";
 import HardCeilingEvidence from "./HardCeilingEvidence";
 import PlanEditor from "./PlanEditor";
+import ModelPicker from "../../components/ModelPicker";
+import {
+  fetchComposerProjection,
+  type ComposerCandidateView,
+  type ComposerModelProjection,
+} from "../../api/composerProjection";
 import ResearchPanel from "./ResearchPanel";
 import Canvas from "./Canvas/Canvas";
 import BlockDetail from "./BlockDetail";
@@ -79,6 +85,9 @@ function Workspace() {
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [projection, setProjection] = useState<ComposerModelProjection | null>(null);
+  const [projectionError, setProjectionError] = useState<string | null>(null);
+  const [modelChoice, setModelChoice] = useState<ComposerCandidateView | null>(null);
 
   const guard = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -120,6 +129,29 @@ function Workspace() {
       setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
     });
 
+  const refreshProjection = useCallback(async () => {
+    try {
+      const r = await fetchComposerProjection({
+        task: "deep_research",
+        bounded_usage: [
+          { unit: "input_token", maximum: 200_000 },
+          { unit: "output_token", maximum: 100_000 },
+        ],
+      });
+      setProjection(r);
+      setProjectionError(null);
+    } catch (e) {
+      setProjectionError(e instanceof Error ? e.message : String(e));
+      setProjection(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (plan) {
+      void refreshProjection();
+    }
+  }, [plan, refreshProjection]);
+
   const handleLaunch = () =>
     guard(async () => {
       if (!plan || !plan.launchable) return;
@@ -140,6 +172,19 @@ function Workspace() {
       <ComposeBar problem={problem} setProblem={setProblem} busy={busy} onCreate={handleCreate} />
       {error && (
         <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-sm text-emperor">{error}</p>
+      )}
+      {plan && projection && (
+        <ModelPicker
+          candidates={projection.ranked_candidates}
+          selected={modelChoice ? { provider: modelChoice.provider, model: modelChoice.model } : null}
+          onSelect={(c) => setModelChoice(c)}
+          error={projectionError}
+          note={
+            modelChoice
+              ? `Advisory — "${modelChoice.provider} / ${modelChoice.model}" recorded for this cascade; the server re-validates budget and eligibility at execution.`
+              : "Advisory — the server re-validates budget and eligibility at execution. Leave Auto for the curated default."
+          }
+        />
       )}
       {plan && (
         <PlanEditor
