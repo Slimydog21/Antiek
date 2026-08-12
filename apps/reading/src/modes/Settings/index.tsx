@@ -38,6 +38,7 @@ import AddModelPanel from "./AddModelPanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
 import ToolConnectionsPanel from "./ToolConnectionsPanel";
 import UsagePanel from "./UsagePanel";
+import LineupPanel from "./LineupPanel";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
@@ -78,13 +79,13 @@ export default function Settings() {
   );
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [estimating, setEstimating] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "decision">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "lineup" | "decision">("overview");
   const [usageByProvider, setUsageByProvider] = useState<
     Record<string, SettingsUsageKeyEntry>
   >({});
 
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    const tabs = ["overview", "decision"] as const;
+    const tabs = ["overview", "lineup", "decision"] as const;
     const current = tabs.indexOf(activeTab);
     let next = current;
     if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
@@ -217,6 +218,19 @@ export default function Settings() {
               className={`px-3 py-2 text-sm font-semibold ${activeTab === "overview" ? "border-b-2 border-ink text-ink dark:border-bright dark:text-bright" : "text-ink-soft dark:text-starlight"}`}
             >
               Overview
+            </button>
+            <button
+              id="settings-lineup-tab"
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "lineup"}
+              aria-controls="settings-lineup-panel"
+              tabIndex={activeTab === "lineup" ? 0 : -1}
+              onClick={() => setActiveTab("lineup")}
+              onKeyDown={onTabKeyDown}
+              className={`px-3 py-2 text-sm font-semibold ${activeTab === "lineup" ? "border-b-2 border-ink text-ink dark:border-bright dark:text-bright" : "text-ink-soft dark:text-starlight"}`}
+            >
+              Lineup
             </button>
             <button
               id="settings-decision-tab"
@@ -510,6 +524,16 @@ export default function Settings() {
             <li>Keyboard map customisation + layout export</li>
           </ul>
         </LemonCard>
+          </div>
+        ) : activeTab === "lineup" ? (
+          <div
+            id="settings-lineup-panel"
+            role="tabpanel"
+            aria-labelledby="settings-lineup-tab"
+            tabIndex={0}
+            className="space-y-6"
+          >
+            <LineupPanel />
           </div>
         ) : (
           <div
