@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import Werner from "../../brand/Werner";
+import BrainMascot from "../../brand/BrainMascot";
 import { LemonButton } from "../../components/lemon";
 import { track } from "../../lib/analytics";
 import {
@@ -116,7 +116,7 @@ export default function SpeakIndex() {
     <div className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
       <div className="mx-auto max-w-2xl px-6 py-10">
         <header className="mb-7 flex items-start gap-3">
-          <Werner mood="idle" size={44} />
+          <BrainMascot mood="idle" size={44} />
           <div>
             <h1 className="font-serif text-2xl font-semibold text-ink dark:text-bright">
               Who do you want to remember?

@@ -2,7 +2,7 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import Werner from "../../brand/Werner";
+import BrainMascot from "../../brand/BrainMascot";
 import { LemonButton, LemonInput } from "../../components/lemon";
 import {
   approveLogin,
@@ -249,7 +249,7 @@ export default function Login() {
     return (
       <ReceiptShell>
         <section className="handoff-receipt" aria-labelledby="handoff-title">
-          <Werner mood="idle" size={92} label="Werner checking the matching code" className="handoff-receipt__werner" />
+          <BrainMascot mood="idle" size={92} label="Antiek checking the matching code" className="handoff-receipt__werner" />
           <div className="antiek-login__eyebrow"><span /> Tiny security check</div>
           <h1 id="handoff-title">Same four digits?</h1>
           <p className="handoff-code" aria-label={`Device code ${approvalCode}`}>{approvalCode}</p>
@@ -277,11 +277,11 @@ export default function Login() {
     return (
       <ReceiptShell>
         <section className="handoff-receipt handoff-receipt--approved" role="status">
-          <Werner mood="idle" size={110} label="Werner celebrating the approved sign-in" className="handoff-receipt__werner" />
+          <BrainMascot mood="idle" size={110} label="Antiek celebrating the approved sign-in" className="handoff-receipt__werner" />
           <span className="handoff-receipt__stamp">Approved</span>
           <div className="antiek-login__eyebrow"><span /> Delivery complete</div>
           <h1>Your other screen is opening.</h1>
-          <p>Werner carried the yes back. You can close this page.</p>
+          <p>The brain carried the yes back. You can close this page.</p>
         </section>
       </ReceiptShell>
     );
@@ -333,7 +333,7 @@ export default function Login() {
             </>
           ) : emailStatus === "sent" ? (
             <div className="antiek-login__sent" role="status">
-              <Eyebrow>Werner is waiting</Eyebrow>
+              <Eyebrow>Antiek is waiting</Eyebrow>
               <h1>Now check your phone.</h1>
               <p className="antiek-login__lede">Open the message sent to <strong>{email}</strong>. Approve it there; this screen will open itself.</p>
               <div className="handoff-code handoff-code--desk" aria-label={`Device code ${handoff?.deviceCode}`}>
@@ -359,12 +359,12 @@ export default function Login() {
         </footer>
       </section>
 
-      <aside className="antiek-login__trail" aria-label="Werner explains the secure device handoff">
+      <aside className="antiek-login__trail" aria-label="Antiek explains the secure device handoff">
         <div className="handoff-world">
           <p className="handoff-world__tag">ANTIEK ACCESS DESK · SIGNAL CLEAR</p>
           <div className="handoff-world__bubble">I’ll carry the yes back.</div>
           <div className="handoff-world__werner" data-waiting={emailStatus === "sent" || undefined}>
-            <Werner mood="idle" size={184} label="Werner, Antiek's penguin guide" />
+            <BrainMascot mood="idle" size={184} label="Antiek's brain guide" />
             <span className="handoff-world__thinking" aria-hidden="true"><i /><i /><i /></span>
             <span className="handoff-world__ticket" aria-hidden="true">YES</span>
           </div>
