@@ -10,12 +10,10 @@ Memory hook: writes one MemoryItem after successful ingest (best-effort).
 
 from __future__ import annotations
 
-import hashlib
-import json
+import contextlib
 import os
 import tempfile
-from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
@@ -81,8 +79,7 @@ class AssetIngestResponse(BaseModel):
 def _detect_kind(filename: str | None, content_type: str | None) -> str:
     """Detect the document kind from filename or content type."""
     if filename and "." in filename:
-        ext = filename.rsplit(".", 1)[1].lower()
-        return ext
+        return filename.rsplit(".", 1)[1].lower()
     if content_type:
         ct = content_type.partition(";")[0].strip().lower()
         mapping = {
@@ -268,10 +265,8 @@ async def ingest_asset_route(
     finally:
         # Clean up temp file
         if tmp_path and os.path.exists(tmp_path):
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
 
     return AssetIngestResponse(
         document_id=result["document_id"],

@@ -12,42 +12,33 @@ All network and subprocess calls are mocked.
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
-import tempfile
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from acquisition.doc_to_html.converter import (
+from acquisition.doc_to_html.converter import (  # noqa: E402
     ANYDOC_BIN,
     BLOCKED_DOMAINS,
-    DOCLING_BIN,
     FairUseError,
-    convert_to_markdown,
-    ingest_asset,
     _check_fair_use,
     _extract_domain,
-    _run_anydoc,
-    _run_docling,
+    convert_to_markdown,
+    ingest_asset,
 )
-from runtime.db_lock import connect_write
-from substrate.books.html_sanitizer import SANITIZER_VERSION
-from substrate.graph.schema import init_database
-from substrate.reader_html.store import serve_reader_html
-
+from runtime.db_lock import connect_write  # noqa: E402
+from substrate.books.html_sanitizer import SANITIZER_VERSION  # noqa: E402
+from substrate.graph.schema import init_database  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -194,9 +185,8 @@ def test_convert_to_markdown_raises_when_both_fail(sample_pdf: Path):
     with patch(
         "acquisition.doc_to_html.converter.subprocess.run",
         side_effect=_mock_subprocess_run_all_fail,
-    ):
-        with pytest.raises(ConversionError, match="both anydoc and docling failed"):
-            convert_to_markdown(sample_pdf)
+    ), pytest.raises(ConversionError, match="both anydoc and docling failed"):
+        convert_to_markdown(sample_pdf)
 
 
 def test_convert_to_markdown_with_format_override(sample_pdf: Path):
@@ -480,14 +470,13 @@ def test_ingest_asset_conversion_failure(db_env: dict, sample_pdf: Path):
     with patch(
         "acquisition.doc_to_html.converter.subprocess.run",
         side_effect=_mock_subprocess_run_all_fail,
-    ):
-        with pytest.raises(ConversionError):
-            ingest_asset(
-                source_uri="https://example.com/paper.pdf",
-                bytes_path=sample_pdf,
-                kind="pdf",
-                provenance={"fair_use_class": "public"},
-            )
+    ), pytest.raises(ConversionError):
+        ingest_asset(
+            source_uri="https://example.com/paper.pdf",
+            bytes_path=sample_pdf,
+            kind="pdf",
+            provenance={"fair_use_class": "public"},
+        )
 
 
 def test_ingest_asset_sanitizer_gate_intact(db_env: dict, sample_pdf: Path):
@@ -585,7 +574,6 @@ def api_client(api_env: dict):
 
 def _as_owner(monkeypatch: pytest.MonkeyPatch) -> None:
     """Grant the privileged owner policy tag for testing."""
-    from interfaces.research.api.account_memory_identity import SESSION_AUTH_METHOD
 
     # Patch distinct_signed_owner to return a test user
     monkeypatch.setattr(

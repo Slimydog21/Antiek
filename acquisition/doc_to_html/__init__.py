@@ -8,8 +8,8 @@ anydoc CLI for conversion with docling as fallback for scanned PDFs.
 from .converter import (
     ANYDOC_BIN,
     BLOCKED_DOMAINS,
-    ConversionError,
     DOCLING_BIN,
+    ConversionError,
     FairUseError,
     convert_to_markdown,
     ingest_asset,

@@ -23,14 +23,14 @@ import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 from urllib.parse import urlsplit
 
 from acquisition.snapshot.reader_html import markdown_to_safe_html
 from runtime.db_lock import connect_write
 from substrate.books.html_sanitizer import sanitize_book_html, strip_trust_markers
 from substrate.graph import default_db_path, ensure_initialized
-from substrate.graph.ops import content_addressed_id, insert_document
+from substrate.graph.ops import insert_document
 from substrate.memory import write_memory_item
 from substrate.reader_html.store import store_reader_html
 
