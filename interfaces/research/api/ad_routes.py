@@ -36,6 +36,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
+from runtime.db_lock import LockedConnection
+
 if TYPE_CHECKING:
     import duckdb
 
@@ -186,7 +188,7 @@ def resolve_window_value_cents(
     *,
     owner_user_id: str,
     window_id: str,
-    con: duckdb.DuckDBPyConnection | None = None,
+    con: duckdb.DuckDBPyConnection | LockedConnection | None = None,
 ) -> int:
     """Mint the window's ad value SERVER-SIDE (ad-pipeline gap S1,
     frame-telemetry-v3).
