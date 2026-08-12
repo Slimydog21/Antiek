@@ -21,6 +21,7 @@ from substrate.research_artifact import (  # noqa: E402
     import_agent_notes,
     list_outline_blocks,
 )
+from substrate.research_artifact.store import ResearchArtifactStore  # noqa: E402
 
 artifact_router = APIRouter(prefix="/research", tags=["research-artifact"])
 
@@ -53,6 +54,13 @@ class ExportOut(BaseModel):
     event_id: str | None = None
 
 
+class ArtifactStatusOut(BaseModel):
+    artifact_id: str
+    investigation_id: str
+    selected_style: str | None
+    latest_version: int
+
+
 class ImportNotesIn(BaseModel):
     path: str
 
@@ -78,6 +86,28 @@ async def post_export_artifact(investigation_id: str, request: Request) -> Expor
         content_hash=res.content_hash,
         size_bytes=res.size_bytes,
         event_id=res.event_id,
+    )
+
+
+@artifact_router.get("/{investigation_id}/artifact", response_model=ArtifactStatusOut)
+async def get_artifact_status(investigation_id: str, request: Request) -> ArtifactStatusOut:
+    """Return the caller-owned durable identity and current style metadata."""
+    owner_user_id = str(getattr(request.state, "user_id", None) or "__operator__")
+    store = ResearchArtifactStore(_db())
+    record = store.get_for_investigation(investigation_id, owner_user_id)
+    # Compatibility for the shipped deterministic identity contract. The
+    # investigation lookup remains authoritative for future non-equal IDs.
+    if record is None:
+        candidate = store.get(investigation_id)
+        if candidate is not None and candidate.owner_user_id == owner_user_id:
+            record = candidate
+    if record is None:
+        raise HTTPException(status_code=404, detail="research artifact not found")
+    return ArtifactStatusOut(
+        artifact_id=record.artifact_id,
+        investigation_id=record.investigation_id,
+        selected_style=record.selected_style,
+        latest_version=record.latest_version,
     )
 
 

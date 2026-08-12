@@ -155,6 +155,30 @@ class ResearchArtifactStore:
         finally:
             con.close()
 
+    def get_for_investigation(
+        self, investigation_id: str, owner_user_id: str
+    ) -> ArtifactRecord | None:
+        """Resolve the durable artifact identity without assuming ID equality."""
+        self._ensure_schema()
+        con = connect_read(self._db_path)
+        try:
+            row = con.execute(
+                "SELECT artifact_id, investigation_id, owner_user_id, source_path, "
+                "source_hash, selected_style, latest_version FROM research_artifacts "
+                "WHERE investigation_id=? AND owner_user_id=? AND state='ready' "
+                "ORDER BY updated_at DESC LIMIT 1",
+                [investigation_id, owner_user_id],
+            ).fetchone()
+            if row is None:
+                return None
+            return ArtifactRecord(
+                str(row[0]), str(row[1]), str(row[2]), Path(str(row[3])),
+                None if row[4] is None else str(row[4]),
+                None if row[5] is None else str(row[5]), int(row[6]),
+            )
+        finally:
+            con.close()
+
     def add_version(
         self,
         artifact_id: str,
