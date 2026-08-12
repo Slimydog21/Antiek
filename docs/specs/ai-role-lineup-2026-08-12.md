@@ -126,9 +126,8 @@ choice), *ai_actions* are UI-mutation plumbing (not a model-driven role),
 
 ### Advanced actions (the tactics board)
 
-27 actions, each bucketed under exactly one general role, each carrying its
-real dispatch_role + default tier (or `none` for non-dispatch surfaces) —
-this makes a future binding vertical mechanical (the mapping is data).
+37 actions, each bucketed under exactly one general role, each carrying its
+real dispatch_role + default tier (or `none` for non-dispatch surfaces).
 
 ## 5. Selector design (as built)
 
@@ -167,17 +166,25 @@ this makes a future binding vertical mechanical (the mapping is data).
 - Every choice is validated against the **live bench** (user models +
   presets + dispatch tiers incl. fallback chains); unknown models are
   rejected value-free. `null` (Auto) always valid.
-- **Scope discipline (house precedent)**: the lineup stores operator
-  intent; it does NOT silently mutate dispatch routing. Binding
-  assignments to dispatch (provider_override per role/action) is the
-  explicit next vertical — same shape as AddModelPanel → route authority.
+- **Binding (implemented 2026-08-12, follow-up commit)**: the dispatch
+  router now consults the lineup registry through
+  `substrate/dispatch/lineup_override.py` — action assignments first,
+  then role assignments, then platform default; caller-explicit overrides
+  always win. The override swaps the tier's PRIMARY and preserves the
+  fallback chain, so a down/unregistered pick falls through (preference,
+  not a single point of failure). Operator-scoped (`__operator__` owner);
+  per-owner BYOT bindings remain on the request-scoped seams. Media /
+  voice / embedding actions have no dispatch role yet — their binding is
+  their own verticals.
 
 ## 6. Verification (all run, all green)
 
-- Backend: `tests/test_settings_lineup.py` 6/6; `test_settings_models_admin.py` +
-  `test_settings_budget_api.py` 98/98 (no regression from the mount); ruff clean;
-  mypy: **zero new errors** vs the 241-file baselined state (2 of my own
-  errors found and fixed — including a real comprehension bug).
+- Backend: `tests/test_settings_lineup.py` 6/6 + `tests/test_dispatch_lineup_override.py`
+  6/6 (binding); `test_settings_models_admin.py` + `test_settings_budget_api.py`
+  98/98 + `test_dispatch.py` + `test_dispatch_fallback_chain.py` 31/31 (no
+  regression from the router hook); ruff clean; mypy: **zero new errors** vs
+  the baselined state (2 of my own errors found and fixed — including a real
+  comprehension bug).
 - Frontend: `LineupPitch.test.tsx` 6/6, `LineupPanel.test.tsx` 5/5,
   Settings.test.tsx updated for the 3-tab reality; **full suite 2,014/2,014**;
   `tsc -b --noEmit` clean.
@@ -186,9 +193,10 @@ this makes a future binding vertical mechanical (the mapping is data).
 
 ## 7. Open items (honest)
 
-- **Binding vertical**: wiring lineup assignments into dispatch
-  (`provider_override` per role/action) + prod-parity coverage for the
-  registry — deliberately next, per house scope discipline.
+- **Done**: dispatch binding (lineup_override.py + router integration,
+  6 tests). Remaining: prod-parity coverage for the registry; media /
+  voice / embedding action binding (no dispatch role exists yet);
+  per-owner BYOT binding stays on request-scoped seams by design.
 - **Config-gap roles** (write_repository/write_composition/write_editor/
   interviewer/attribution/extractor have no explicit role_tiers entry):
   flagged in §3.1, not fixed here.

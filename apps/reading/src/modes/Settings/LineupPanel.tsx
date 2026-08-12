@@ -160,8 +160,9 @@ export default function LineupPanel() {
             deliverables, <span className="font-bold">Data Refinement</span> builds the play,
             <span className="font-bold"> Data Miner</span> does the grunt work, and
             <span className="font-bold"> Data Verification</span> keeps the last line — plus the
-            roles the forensic inventory found missing (NEW SIGNING). Substitutions are advisory:
-            they store your intent; dispatch binding is the explicit next vertical.
+            roles the forensic inventory found missing (NEW SIGNING). Substitutions bind into the
+            dispatch router for every role with a backend dispatch role; the tier's fallback chain
+            is always preserved (a down or unregistered pick falls through, never bricks a call).
           </p>
           <LineupPitch
             roles={lineup.general}

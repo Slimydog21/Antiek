@@ -497,6 +497,18 @@ def _dispatch_authoritative(
         )
 
     prompt_hash = _sha256_prefix(prompt)
+    # AI Role Lineup binding (substrate/dispatch/lineup_override.py): the
+    # operator's lineup registry supplies a per-role model choice when the
+    # caller did not. Explicit caller overrides win; an unregistered
+    # override provider falls through the tier's fallback chain exactly
+    # like any primary failure (preference, not a single point of failure).
+    if provider_override is None or model_override is None:
+        from .lineup_override import effective_override_for_dispatch_role
+
+        lineup = effective_override_for_dispatch_role(role)
+        if lineup is not None:
+            provider_override = lineup.provider_id
+            model_override = lineup.model_id
     tier = _override_primary(
         config.tiers[tier_name], provider_override, model_override
     )
