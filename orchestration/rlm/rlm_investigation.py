@@ -15,14 +15,22 @@ Sprint 19+ (RLM track, ratification-gated)."""
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from decimal import Decimal
 
+from .prime_agent_backend import (
+    PrimeAgentOutcome,
+    PrimeAgentRequest,
+    PrimeAgentRLMBackend,
+)
 from .session import (
     RLMSession,
     create_session,
     iterate_session,
 )
+
+PRIME_EVIDENCE_LABEL = "[Supplemental Prime Agent evidence; non-canonical]"
 
 
 @dataclass(frozen=True)
@@ -51,6 +59,8 @@ def run_rlm_investigation(
     *,
     plan_iteration_fn: Callable[[str, list[str]], RLMIterationOutcome],
     final_synthesis_fn: Callable[[list[str]], tuple[str, Decimal]],
+    prime_backend: PrimeAgentRLMBackend | None = None,
+    prime_outcome_sink: Callable[[PrimeAgentOutcome], None] | None = None,
 ) -> tuple[str, RLMSession]:
     """Drive an RLM-mode investigation.
 
@@ -82,7 +92,27 @@ def run_rlm_investigation(
         if not outcome.should_continue:
             break
 
-    final, final_cost = final_synthesis_fn(accumulated_questions)
+    synthesis_inputs = list(accumulated_questions)
+    if prime_backend is not None:
+        with suppress(Exception):
+            prime_outcome = prime_backend.run(PrimeAgentRequest(
+                prompt="\n".join(accumulated_questions),
+                workflow="rlm-investigation",
+                request_id=f"{config.investigation_id}:investigation:final",
+            ))
+            if prime_outcome_sink is not None:
+                with suppress(Exception):
+                    prime_outcome_sink(prime_outcome)
+            if (
+                prime_outcome.receipt.state.value == "success"
+                and prime_outcome.evidence is not None
+                and prime_outcome.evidence.supplemental
+            ):
+                synthesis_inputs.append(
+                    f"{PRIME_EVIDENCE_LABEL}\n{prime_outcome.evidence.text}"
+                )
+
+    final, final_cost = final_synthesis_fn(synthesis_inputs)
     iterate_session(session, summary="Final synthesis", cost_usd=final_cost)
     session.complete(final_summary=final)
     return (final, session)

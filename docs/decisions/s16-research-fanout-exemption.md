@@ -127,3 +127,18 @@ code change, by construction of the factory + fallback. The exemption text in
   unchanged; the `daytona_gated.py` stub is now superseded by the real
   provider but left in place (its tests still pass; removing it is a
   follow-on cleanup, not this sprint).
+
+## 2026-08-11 amendment — additive Prime Agent RLM evidence
+
+This decision is superseded only narrowly enough to permit an optional Prime
+Agent subprocess beside existing RLM workflows. The lane is default-disabled,
+bounded, and returns labeled supplemental evidence plus an execution receipt;
+the existing callable/Hermes result remains canonical on success and every
+failure path.
+
+This amendment grants no dispatch authority, does not add or replace a
+`RemoteExecProvider`, and permits no DuckDB/graph writes, training, trajectory
+publication, credentials in argv, or production enablement. Those boundaries
+remain separate operator decisions. The implementation is confined to
+`orchestration/rlm/prime_agent_backend.py`; removing it or leaving its enable
+flag unset restores the prior behavior without data migration.

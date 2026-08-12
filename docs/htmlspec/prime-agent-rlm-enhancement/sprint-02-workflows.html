@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SPR-02 Workflows</title>
+    <style>
+      body {
+        font: 16px/1.5 system-ui;
+        background: #fffdf5;
+      }
+      .page {
+        max-width: 950px;
+        margin: auto;
+        padding: 30px;
+      }
+      .block {
+        background: #fff;
+        border: 2px solid #111;
+        box-shadow: 4px 4px #111;
+        padding: 18px;
+        margin: 18px 0;
+      }
+      h1 {
+        color: #1d4aff;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <a href="index.html">← Master</a>
+      <header class="block">
+        <h1>SPR-02 · Workflow integration</h1>
+        <p>Wave 2 · waits on SPR-01 · file-disjoint fan-out</p>
+      </header>
+      <section class="block">
+        <h2>Context and goal</h2>
+        <p>
+          Thread the same optional backend through REPL, DAG, tool batches,
+          long-corpus and iterative investigation while leaving calls and return
+          values unchanged when disabled.
+        </p>
+      </section>
+      <section class="block">
+        <h2>Milestones</h2>
+        <ol>
+          <li>REPL query/batch with unchanged default call counts.</li>
+          <li>DAG planner/layers with deterministic order.</li>
+          <li>Tool batches without graph-write tools.</li>
+          <li>Long-corpus and investigation synthesis boundaries.</li>
+          <li>Labeled receipts/evidence; never unlabeled concatenation.</li>
+        </ol>
+      </section>
+      <section class="block">
+        <h2>Five-values rigor</h2>
+        <p>
+          <b>Honesty:</b> Prime evidence is never called canonical.
+          <b>Fairness:</b> preserve each workflow's injection style.
+          <b>Rigor:</b> disabled/success/failure tests per entrypoint.
+          <b>Diligence:</b> default outputs and call counts remain identical.
+          <b>Defensibility:</b> order and provenance survive batches.
+        </p>
+      </section>
+      <section class="block">
+        <h2>Dependencies, out of scope, gates, handoff</h2>
+        <p>Depends on SPR-01. Out: UI, dispatch, DB persistence.</p>
+        <pre>
+pytest -q tests/test_rlm_repl.py tests/test_rlm_dag.py tests/test_rlm_tools.py tests/test_rlm_long_corpus_and_investigation.py</pre>
+        <p>Handoff entrypoint matrix, compatibility proof and receipt map.</p>
+      </section>
+      <section
+        id="harness-hint"
+        data-harness-pattern="fan-out-and-synthesize"
+        data-harness-fanout-unit="interfaces versus orchestration/substrate"
+        data-harness-verifier-lenses="compatibility; provenance; writer exclusion"
+        data-harness-rounds-floor="2"
+        data-harness-rounds-cap="6"
+      ></section>
+      <footer>2026-08-11 · PA-RLM/SPR-02</footer>
+    </main>
+  </body>
+</html>
