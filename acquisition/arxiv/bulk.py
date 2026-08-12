@@ -27,10 +27,22 @@ re-implement throttling or PDF sniffing.
 
 from __future__ import annotations
 
+import gzip
+import io
 import json
+import logging
+import os
+import tarfile
+import urllib.error
+import urllib.request
 from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import IO, TYPE_CHECKING
+
+from substrate.schemas.documents import ArxivOaiRecord
 
 from .client import ArxivPaper
 
@@ -307,3 +319,405 @@ def fetch_bulk_pdf(
     content = r.content
     assert_pdf(content, content_type=r.headers.get("content-type"), url=url)
     return content
+
+
+
+# ---------------------------------------------------------------------------
+# Bulk metadata feed (GCS / Kaggle snapshot) — OAI-sync throughput path
+# ---------------------------------------------------------------------------
+#
+# The nightly OAI-PMH ListRecords crawl is STRUCTURALLY too slow for a full
+# corpus under arXiv's 1-req/3s rule: ~1000 records/page × 3.5s spacing
+# ≈ 50 min/page → ~22h for a 26K-doc window, well past the 6h systemd
+# TimeoutStartSec. The bulk metadata snapshot is the designated mass path:
+# one free JSON-Lines file (no per-page OAI requests) that carries the same
+# per-paper ``license`` field the OAI ``arXiv`` prefix does.
+#
+# Public free feed (no AWS requester-pays): the Cornell Kaggle mirror on
+# Google Cloud Storage, prefix ``metadata-v5/``. Operators may also point
+# ``--bulk-snapshot`` at a pre-downloaded file (Kaggle download, HuggingFace
+# mirror, etc.). We NEVER re-implement OAI rate-limiting here — bulk is
+# offline/local once the snapshot is on disk.
+
+logger = logging.getLogger("antiek.acquisition.arxiv.bulk")
+
+# Public free metadata snapshot on the arXiv Kaggle GCS mirror. The object is
+# plain JSON-Lines (~4.5 GB, not gzipped at this key). A tar.gz of the same
+# content is also accepted by the stream parser (stdlib tarfile + gzip).
+DEFAULT_BULK_METADATA_URL = (
+    "https://storage.googleapis.com/arxiv-dataset/metadata-v5/arxiv-metadata-oai.json"
+)
+# Alternate keys / mirrors an operator may point at via env / CLI. Kept as a
+# tuple so discovery can try them in order when the primary 404s.
+BULK_METADATA_CANDIDATE_URLS: tuple[str, ...] = (
+    DEFAULT_BULK_METADATA_URL,
+    # Older key name some mirrors still publish:
+    "https://storage.googleapis.com/arxiv-dataset/metadata-v5/"
+    "arxiv-metadata-oai-snapshot.json",
+)
+
+
+def default_bulk_snapshot_path() -> str:
+    """Default on-disk cache for the downloaded snapshot. Honors
+    ``ANTIEK_ARXIV_BULK_SNAPSHOT`` so operators / tests pin a path."""
+    env = os.environ.get("ANTIEK_ARXIV_BULK_SNAPSHOT")
+    if env:
+        return env
+    return str(Path.home() / ".antiek" / "arxiv-metadata-oai-snapshot.json")
+
+
+def default_bulk_cache_dir() -> str:
+    env = os.environ.get("ANTIEK_ARXIV_BULK_CACHE_DIR")
+    if env:
+        return env
+    return str(Path.home() / ".antiek" / "arxiv_bulk")
+
+
+@dataclass
+class BulkFeedInfo:
+    """Discovery result for the bulk metadata feed.
+
+    ``url`` is the absolute HTTP(S) location of the latest snapshot; ``etag`` /
+    ``content_length`` / ``last_modified`` are the response headers when known
+    (used for cache revalidation — a matching local file is reused). ``None``
+    fields mean the HEAD/GET did not supply them (still usable).
+    """
+
+    url: str
+    etag: str | None = None
+    content_length: int | None = None
+    last_modified: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "url": self.url,
+            "etag": self.etag,
+            "content_length": self.content_length,
+            "last_modified": self.last_modified,
+        }
+
+
+def discover_bulk_feed(
+    *,
+    candidate_urls: tuple[str, ...] | list[str] | None = None,
+    opener: object | None = None,
+    timeout_s: float = 30.0,
+) -> BulkFeedInfo:
+    """HEAD the bulk-metadata candidate URLs and return the first live one.
+
+    ``opener`` is an injectable ``urllib.request``-compatible callable
+    ``(Request, timeout=...) -> addinfourl`` (tests pass a mock); production
+    uses ``urllib.request.urlopen``. Raises ``FileNotFoundError`` if no
+    candidate responds 2xx — the sync then falls back to pure OAI rather than
+    crashing the nightly.
+    """
+    urls = (
+        tuple(candidate_urls)
+        if candidate_urls is not None
+        else BULK_METADATA_CANDIDATE_URLS
+    )
+    open_fn = opener if opener is not None else urllib.request.urlopen
+    last_err: Exception | None = None
+    for url in urls:
+        try:
+            req = urllib.request.Request(
+                url,
+                method="HEAD",
+                headers={
+                    "User-Agent": (
+                        "Antiek/0.1 (acquisition.arxiv.bulk; "
+                        "+https://antiek.ai/contact)"
+                    )
+                },
+            )
+            with open_fn(req, timeout=timeout_s) as resp:  # type: ignore[operator]
+                status = getattr(resp, "status", None) or resp.getcode()
+                if int(status) >= 400:
+                    last_err = urllib.error.HTTPError(
+                        url, int(status), f"HEAD {status}", resp.headers, None
+                    )
+                    continue
+                headers = resp.headers
+                length_raw = headers.get("Content-Length") or headers.get(
+                    "content-length"
+                )
+                length = (
+                    int(length_raw)
+                    if length_raw and str(length_raw).isdigit()
+                    else None
+                )
+                return BulkFeedInfo(
+                    url=url,
+                    etag=headers.get("ETag") or headers.get("etag"),
+                    content_length=length,
+                    last_modified=headers.get("Last-Modified")
+                    or headers.get("last-modified"),
+                )
+        except (
+            urllib.error.URLError,
+            urllib.error.HTTPError,
+            TimeoutError,
+            OSError,
+            ValueError,
+        ) as exc:
+            last_err = exc
+            logger.info("bulk feed HEAD failed for %s: %s", url, exc)
+            continue
+    raise FileNotFoundError(
+        f"no bulk metadata feed reachable among {len(urls)} candidates"
+        + (f" (last error: {last_err})" if last_err else "")
+    )
+
+
+def download_bulk_snapshot(
+    dest_path: str,
+    *,
+    url: str | None = None,
+    feed: BulkFeedInfo | None = None,
+    opener: object | None = None,
+    timeout_s: float = 600.0,
+    chunk_size: int = 1 << 20,
+    progress: object | None = None,
+) -> str:
+    """Stream-download the bulk metadata snapshot to ``dest_path`` (atomic).
+
+    Writes to ``dest_path.tmp`` then ``os.replace`` so a crash mid-download
+    never leaves a half-file that a later run would treat as complete. Returns
+    the absolute path written. ``opener`` is injectable for tests (a callable
+    taking a Request and returning a file-like with ``.read(n)`` + headers).
+    ``progress`` if provided is called as ``progress(bytes_so_far, total_or_None)``
+    per chunk (operator observability; ignored when None).
+
+    NO arXiv rate governor is applied: this is a single GET of a public GCS
+    object, not an arXiv-host request (GCS is not in the arXiv IP-ban scope).
+    """
+    target = Path(dest_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    src = url or (feed.url if feed is not None else DEFAULT_BULK_METADATA_URL)
+    open_fn = opener if opener is not None else urllib.request.urlopen
+    req = urllib.request.Request(
+        src,
+        headers={
+            "User-Agent": (
+                "Antiek/0.1 (acquisition.arxiv.bulk; +https://antiek.ai/contact)"
+            )
+        },
+    )
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    total = feed.content_length if feed is not None else None
+    written = 0
+    with open_fn(req, timeout=timeout_s) as resp:  # type: ignore[operator]
+        try:
+            cl = resp.headers.get("Content-Length") or resp.headers.get(
+                "content-length"
+            )
+            if cl and str(cl).isdigit():
+                total = int(cl)
+        except Exception:
+            pass
+        with open(tmp, "wb") as out:
+            while True:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                out.write(chunk)
+                written += len(chunk)
+                if progress is not None:
+                    progress(written, total)  # type: ignore[operator]
+    os.replace(tmp, target)
+    logger.info(
+        "bulk snapshot downloaded: %s (%d bytes) from %s", target, written, src
+    )
+    return str(target.resolve())
+
+
+def ensure_bulk_snapshot(
+    *,
+    snapshot_path: str | None = None,
+    force: bool = False,
+    candidate_urls: tuple[str, ...] | list[str] | None = None,
+    opener: object | None = None,
+    discover_timeout_s: float = 30.0,
+    download_timeout_s: float = 600.0,
+) -> str:
+    """Return a local path to a bulk metadata snapshot, downloading if needed.
+
+    If ``snapshot_path`` already exists and is non-empty and ``force`` is
+    False, it is reused (no network). Otherwise the bulk feed is discovered
+    and streamed to that path. Returns the absolute path.
+    """
+    path = Path(snapshot_path or default_bulk_snapshot_path())
+    if path.exists() and path.stat().st_size > 0 and not force:
+        return str(path.resolve())
+    feed = discover_bulk_feed(
+        candidate_urls=candidate_urls,
+        opener=opener,
+        timeout_s=discover_timeout_s,
+    )
+    return download_bulk_snapshot(
+        str(path),
+        feed=feed,
+        opener=opener,
+        timeout_s=download_timeout_s,
+    )
+
+
+def paper_to_oai_record(paper: ArxivPaper) -> ArxivOaiRecord:
+    """Map a bulk-discovered ``ArxivPaper`` onto the OAI record shape the
+    sync's persist tap + census fold consume.
+
+    ``datestamp`` is the paper's ``updated_at`` (ISO date) — the closest bulk
+    equivalent of the OAI header datestamp, and what the high-water mark
+    advances on. A missing/epoch updated_at falls back to published_at, then
+    to the empty string (which does not advance the mark — safer than inventing
+    a date).
+    """
+    ds = ""
+    for candidate in (paper.updated_at, paper.published_at):
+        if candidate is not None and candidate.year > 1970:
+            ds = candidate.date().isoformat()
+            break
+    return ArxivOaiRecord(
+        arxiv_id=paper.arxiv_id,
+        datestamp=ds,
+        license_uri=paper.license_uri,
+        title=paper.title or None,
+        categories=tuple(paper.categories),
+        deleted=False,
+    )
+
+
+def record_dict_to_oai_record(record: dict) -> ArxivOaiRecord:
+    """Map ONE bulk-snapshot JSON dict directly to ``ArxivOaiRecord`` without
+    the intermediate ``ArxivPaper`` (cheaper for the multi-million-line stream
+    the nightly bulk mode walks). Raises ``ValueError`` on a missing id.
+    """
+    arxiv_id = str(record.get("id") or "").strip()
+    if not arxiv_id:
+        raise ValueError("bulk record has no id")
+    license_uri = record.get("license")
+    license_uri = str(license_uri).strip() if license_uri else None
+    title = " ".join(str(record.get("title") or "").split()) or None
+    categories = tuple(
+        c for c in str(record.get("categories") or "").split() if c
+    )
+    # Datestamp preference: update_date (ISO YYYY-MM-DD) > last versions[].created
+    ds = ""
+    upd = record.get("update_date")
+    if upd:
+        ds = str(upd).strip()[:10]  # tolerate a full ISO datetime
+        if len(ds) != 10 or ds[4] != "-" or ds[7] != "-":
+            ds = ""
+    if not ds:
+        versions = record.get("versions") or []
+        if (
+            versions
+            and isinstance(versions[-1], dict)
+            and versions[-1].get("created")
+        ):
+            parsed = _parse_rfc822(str(versions[-1]["created"]))
+            if parsed is not None:
+                ds = parsed.date().isoformat()
+    return ArxivOaiRecord(
+        arxiv_id=arxiv_id,
+        datestamp=ds,
+        license_uri=license_uri,
+        title=title,
+        categories=categories,
+        deleted=False,
+    )
+
+
+def iter_bulk_oai_records(
+    snapshot: IO[str],
+    *,
+    since: str | None = None,
+    until: str | None = None,
+    category: str | None = None,
+    limit: int | None = None,
+) -> Iterator[ArxivOaiRecord]:
+    """Stream ``ArxivOaiRecord``s from an open JSON-Lines bulk snapshot.
+
+    ``since`` / ``until`` are inclusive ISO date bounds (``YYYY-MM-DD``)
+    applied to each record's datestamp; records with no datestamp pass the
+    filter (better to re-cover than to silently drop). ``category`` and
+    ``limit`` match ``iter_bulk_candidates``. Malformed lines are skipped.
+
+    This is the bulk half of the nightly sync: same record shape the OAI
+    harvester yields, so the persist tap + census + high-water tracker need
+    no bulk-specific branch.
+    """
+    yielded = 0
+    for line in snapshot:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        try:
+            oai = record_dict_to_oai_record(record)
+        except ValueError:
+            continue
+        if category is not None and category not in oai.categories:
+            continue
+        if since is not None and oai.datestamp and oai.datestamp < since:
+            continue
+        if until is not None and oai.datestamp and oai.datestamp > until:
+            continue
+        yield oai
+        yielded += 1
+        if limit is not None and yielded >= limit:
+            return
+
+
+@contextmanager
+def open_bulk_snapshot(path: str) -> Iterator[IO[str]]:
+    """Open a bulk snapshot for streaming, handling plain JSON-Lines, ``.gz``,
+    and ``.tar`` / ``.tar.gz`` wrappers (stdlib only — no new heavy deps).
+
+    A tar archive is expected to contain exactly one JSON/JSON-Lines member
+    (the Kaggle/GCS snapshot layout); the first ``.json`` / ``.jsonl`` member
+    is streamed. Yields a text file object. Always closes underlying handles.
+    """
+    p = Path(path)
+    name = p.name.lower()
+    if name.endswith((".tar.gz", ".tgz", ".tar")):
+        mode = "r:gz" if name.endswith((".gz", ".tgz")) else "r:"
+        with tarfile.open(path, mode) as tf:
+            member = None
+            for m in tf.getmembers():
+                if not m.isfile():
+                    continue
+                lower = m.name.lower()
+                if lower.endswith((".json", ".jsonl", ".json.gz")):
+                    member = m
+                    break
+            if member is None:
+                raise FileNotFoundError(
+                    f"bulk tar {path!r} has no .json/.jsonl member"
+                )
+            raw = tf.extractfile(member)
+            if raw is None:
+                raise FileNotFoundError(
+                    f"bulk tar member {member.name!r} is not readable"
+                )
+            if member.name.lower().endswith(".gz"):
+                gz = gzip.GzipFile(fileobj=raw)
+                text_fh: IO[str] = io.TextIOWrapper(gz, encoding="utf-8")
+            else:
+                text_fh = io.TextIOWrapper(raw, encoding="utf-8")
+            try:
+                yield text_fh
+            finally:
+                text_fh.close()
+        return
+    if name.endswith(".gz") and not name.endswith(".tar.gz"):
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
+            yield fh  # type: ignore[misc]
+        return
+    with open(path, encoding="utf-8") as fh:
+        yield fh
