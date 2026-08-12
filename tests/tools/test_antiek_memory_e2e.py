@@ -148,7 +148,7 @@ def server_proc(memory_db: Path, tmp_path: Path):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=env,
-        cwd="/tmp/antiek-wt-memory-mcp",
+        cwd=str(Path(__file__).resolve().parents[2]),
     )
     yield proc
     proc.stdin.close()
