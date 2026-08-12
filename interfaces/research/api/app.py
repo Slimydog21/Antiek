@@ -1739,6 +1739,17 @@ def create_app(
     register_settings_budget_routes(app)
     from .research_tool_search import register_research_tool_search_routes
     register_research_tool_search_routes(app)
+    # Own Your Mind P0 — trust wedge. Read-only provenance explain surfaces
+    # (D1: /claims/{id}/explain, /syntheses/{id}/explain, /docs/{id}/explain),
+    # the decision-surface objective card (C1a: /ops/objective-card), and the
+    # event-schema signal inventory (L15: /ops/signal-inventory). All GET-only;
+    # docs/own-your-mind/10-p0-implementation-brief.md §1/§3/§4.
+    from .explain_routes import register_explain_routes
+    register_explain_routes(app)
+    from .ops_objective import register_ops_objective_routes
+    register_ops_objective_routes(app)
+    from .ops_signal_inventory import register_ops_signal_inventory_routes
+    register_ops_signal_inventory_routes(app)
     # Model-decision composer Slice B — one advisory decision + exact
     # server-owned cost projection from the same Settings budget snapshot.
     from .composer_projection_routes import register_composer_projection_routes

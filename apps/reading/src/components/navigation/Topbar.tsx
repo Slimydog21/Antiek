@@ -56,6 +56,10 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
     payouts: "Payouts",
     trust: "Trust Center",
     inv: "Investigation",
+    // Own Your Mind P0 — the three read-only surfaces (10-p0-implementation-brief.md).
+    explain: "Explain",
+    objective: "Objective",
+    signals: "Signals",
   };
   const crumbs: Crumb[] = [];
   let acc = "";
