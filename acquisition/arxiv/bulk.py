@@ -40,7 +40,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import IO, TYPE_CHECKING
+from typing import IO, TYPE_CHECKING, Literal
 
 from substrate.schemas.documents import ArxivOaiRecord
 
@@ -687,7 +687,7 @@ def open_bulk_snapshot(path: str) -> Iterator[IO[str]]:
     p = Path(path)
     name = p.name.lower()
     if name.endswith((".tar.gz", ".tgz", ".tar")):
-        mode: str = "r:gz" if name.endswith((".gz", ".tgz")) else "r:"
+        mode: Literal["r:gz", "r:"] = "r:gz" if name.endswith((".gz", ".tgz")) else "r:"
         with tarfile.open(path, mode) as tf:
             member = None
             for m in tf.getmembers():
