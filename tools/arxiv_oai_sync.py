@@ -64,11 +64,11 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from acquisition.arxiv import ArxivBanned, ArxivThrottle, OaiPmhHarvester  # noqa: E402
-from acquisition.arxiv.oai_pmh import default_harvest_state_path  # noqa: E402
 from acquisition.arxiv.oai_persist import (  # noqa: E402
     OaiPersistResult,
     persist_oai_record,
 )
+from acquisition.arxiv.oai_pmh import default_harvest_state_path  # noqa: E402
 from acquisition.arxiv.oai_records import build_census  # noqa: E402
 from runtime.db_lock import connect_write  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402

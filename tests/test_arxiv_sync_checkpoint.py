@@ -42,17 +42,17 @@ from acquisition.arxiv import oai_pmh as oai_pmh_mod  # noqa: E402
 from acquisition.arxiv.oai_pmh import (  # noqa: E402
     DEFAULT_USER_AGENT,
     SCHEMA_VERSION,
+    HarvestState,  # noqa: E402
     OaiPmhHarvester,
 )
-from acquisition.arxiv.oai_pmh import HarvestState  # noqa: E402
 from acquisition.arxiv.throttle import ArxivThrottle  # noqa: E402
 from tools.arxiv_oai_sync import (  # noqa: E402
+    SyncCheckpoint,
     build_parser,
     read_checkpoint,
     reset_state_files,
     run_sync,
     write_checkpoint,
-    SyncCheckpoint,
 )
 
 _NS = 'xmlns="http://www.openarchives.org/OAI/2.0/"'
