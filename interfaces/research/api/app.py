@@ -1730,6 +1730,8 @@ def create_app(
     # cost projection (honest nulls when pricing/spend unknown).
     from .settings_budget import register_settings_budget_routes
     register_settings_budget_routes(app)
+    from .research_tool_search import register_research_tool_search_routes
+    register_research_tool_search_routes(app)
     # Model-decision composer Slice B — one advisory decision + exact
     # server-owned cost projection from the same Settings budget snapshot.
     from .composer_projection_routes import register_composer_projection_routes

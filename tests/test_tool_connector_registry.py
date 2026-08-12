@@ -20,6 +20,7 @@ from runtime.connectors.registry import (
 KEY_BYTES = b"k" * 32
 YOUTUBE_KEY_A = "AIza" + "a" * 24
 YOUTUBE_KEY_B = "AIza" + "b" * 24
+X_BEARER = "x-owner-bearer-" + "z" * 24
 
 
 @pytest.fixture
@@ -97,6 +98,22 @@ def test_same_vendor_is_isolated_between_owners(paths) -> None:
     assert disconnect_tool("user-b", "youtube", artifact_path=artifact) is True
     assert _rows("user-a", artifact)["youtube"].credential_present is True
     assert _rows("user-b", artifact)["youtube"].credential_present is False
+
+
+def test_x_is_owner_scoped_and_resolves_shared_connector(paths) -> None:
+    _, artifact = paths
+    snapshot = connect_tool(
+        "user-a", "x", X_BEARER, artifact_path=artifact, key_bytes=KEY_BYTES
+    )
+    assert snapshot.auth == "bearer_token"
+    connector = resolve_tool_connection(
+        "user-a", "x", artifact_path=artifact, key_bytes=KEY_BYTES
+    )
+    assert connector.descriptor.vendor == "x"
+    assert connector.cred_id is not None
+    assert X_BEARER not in repr(connector)
+    with pytest.raises(ToolConnectionUnavailable):
+        resolve_tool_connection("user-b", "x", artifact_path=artifact)
 
 
 def test_list_and_keyed_resolve_do_not_decrypt(paths, monkeypatch) -> None:

@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import LemonCard from "../../components/lemon/LemonCard";
+import ConnectedToolSearch from "./ConnectedToolSearch";
 import {
   ingestSource,
   type IngestSourceResponse,
@@ -248,6 +249,8 @@ export default function Sources() {
               </button>
             </div>
           </form>
+
+          <ConnectedToolSearch />
 
           {rows.length > 0 && (
             <section className="mt-8">

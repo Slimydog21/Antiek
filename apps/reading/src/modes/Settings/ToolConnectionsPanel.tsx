@@ -187,7 +187,7 @@ export default function ToolConnectionsPanel() {
                       <p className="mt-1 text-sm text-ink-soft dark:text-starlight">
                         <span className="font-medium text-ink dark:text-bright">{statusLabel(row)}</span>
                         <span aria-hidden="true"> · </span>
-                        <span className="font-mono text-xs">{row.credential_kind === "contact" ? "SEC contact" : "API key"}</span>
+                        <span className="font-mono text-xs">{row.credential_kind === "contact" ? "SEC contact" : row.auth === "bearer_token" ? "Bearer token" : "API key"}</span>
                       </p>
                       <p className="mt-1 text-xs text-ink-soft dark:text-starlight">{quotaText(row)}</p>
                       {row.quota.kind === "youtube_units" && row.quota.remaining != null && row.quota.limit != null && (
@@ -242,7 +242,7 @@ export default function ToolConnectionsPanel() {
                       }}
                     >
                       <label htmlFor={inputId} className="block text-xs font-semibold uppercase tracking-wider text-ink-soft dark:text-starlight">
-                        {row.credential_kind === "contact" ? "SEC contact email (write-only)" : "API key (write-only)"}
+                        {row.credential_kind === "contact" ? "SEC contact email (write-only)" : row.auth === "bearer_token" ? "Bearer token (write-only)" : "API key (write-only)"}
                       </label>
                       <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                         <LemonInput
@@ -255,7 +255,7 @@ export default function ToolConnectionsPanel() {
                           maxLength={512}
                           value={credential}
                           onChange={(event) => setCredential(event.target.value)}
-                          placeholder={row.credential_kind === "contact" ? "name@example.com" : "Paste key"}
+                          placeholder={row.credential_kind === "contact" ? "name@example.com" : row.auth === "bearer_token" ? "Paste bearer token" : "Paste key"}
                           wrapperClassName="flex-1"
                         />
                         <LemonButton type="submit" variant="primary" size="lg" className="w-full sm:h-9 sm:w-auto" disabled={isBusy || credential.trim().length === 0}>

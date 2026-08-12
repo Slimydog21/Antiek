@@ -47,7 +47,7 @@ class ToolQuotaResponse(BaseModel):
 
 class ToolConnectionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    vendor: Literal["youtube", "polygon", "fmp", "edgar"]
+    vendor: Literal["youtube", "x", "polygon", "fmp", "edgar"]
     display_name: str
     credential_kind: Literal["api_key", "contact"]
     auth: str
@@ -66,7 +66,7 @@ class ToolConnectionsResponse(BaseModel):
 
 class ToolDisconnectResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    removed: Literal["youtube", "polygon", "fmp", "edgar"]
+    removed: Literal["youtube", "x", "polygon", "fmp", "edgar"]
 
 
 def _owner(request: Request) -> str:
@@ -106,10 +106,12 @@ def _quota(snapshot: ToolConnectionSnapshot) -> ToolQuotaResponse:
             ),
         )
     if snapshot.quota_kind == "rate_ceiling":
+        limit = 25 if snapshot.vendor == "x" else 8
+        window = "15 minutes" if snapshot.vendor == "x" else "second"
         return ToolQuotaResponse(
             kind="rate_ceiling",
-            limit=8,
-            note="Host-global shared ceiling across all owners and keys: 8 requests per second",
+            limit=limit,
+            note=f"Host-global shared ceiling across all owners and keys: {limit} requests per {window}",
         )
     return ToolQuotaResponse(
         kind="unavailable",
