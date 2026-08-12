@@ -5,12 +5,34 @@
       "name": "zero_eligible_all_private",
       "ad_value_usd_cents": 1000,
       "seconds": [
-        {"second_index": 0, "lens": "speak", "samples": [
-          {"asset_id": "priv-1", "content_class": "user_owned", "viewport_area_fraction": 0.8, "prominence": 0.9, "focused_dwell_ms": 1000, "chunk_id": null}
-        ]},
-        {"second_index": 1, "lens": "speak", "samples": [
-          {"asset_id": "priv-1", "content_class": "user_owned", "viewport_area_fraction": 0.8, "prominence": 0.9, "focused_dwell_ms": 1000, "chunk_id": null}
-        ]}
+        {
+          "second_index": 0,
+          "lens": "speak",
+          "samples": [
+            {
+              "asset_id": "priv-1",
+              "content_class": "user_owned",
+              "viewport_area_fraction": 0.8,
+              "prominence": 0.9,
+              "focused_dwell_ms": 1000,
+              "chunk_id": null
+            }
+          ]
+        },
+        {
+          "second_index": 1,
+          "lens": "speak",
+          "samples": [
+            {
+              "asset_id": "priv-1",
+              "content_class": "user_owned",
+              "viewport_area_fraction": 0.8,
+              "prominence": 0.9,
+              "focused_dwell_ms": 1000,
+              "chunk_id": null
+            }
+          ]
+        }
       ],
       "expect_house_cents": 1000,
       "expect_asset_ids": []
@@ -19,44 +41,110 @@
       "name": "single_eligible",
       "ad_value_usd_cents": 333,
       "seconds": [
-        {"second_index": 0, "lens": "read", "samples": [
-          {"asset_id": "doc-a", "content_class": "public_domain", "viewport_area_fraction": 0.5, "prominence": 0.5, "focused_dwell_ms": 500, "chunk_id": "ch-a"}
-        ]}
+        {
+          "second_index": 0,
+          "lens": "read",
+          "samples": [
+            {
+              "asset_id": "doc-a",
+              "content_class": "public_domain",
+              "viewport_area_fraction": 0.5,
+              "prominence": 0.5,
+              "focused_dwell_ms": 500,
+              "chunk_id": "ch-a"
+            }
+          ]
+        }
       ],
-      "expect_house_cents": 0,
-      "expect_asset_ids": ["doc-a"]
+      "expect_house_cents": 100,
+      "expect_asset_ids": [
+        "doc-a"
+      ]
     },
     {
       "name": "ties_three_identical",
       "ad_value_usd_cents": 100,
       "seconds": [
-        {"second_index": 0, "lens": "research", "samples": [
-          {"asset_id": "doc-a", "content_class": "opt_in_licensed", "viewport_area_fraction": 0.4, "prominence": 0.4, "focused_dwell_ms": 400, "chunk_id": "ca"},
-          {"asset_id": "doc-b", "content_class": "opt_in_licensed", "viewport_area_fraction": 0.4, "prominence": 0.4, "focused_dwell_ms": 400, "chunk_id": "cb"},
-          {"asset_id": "doc-c", "content_class": "opt_in_licensed", "viewport_area_fraction": 0.4, "prominence": 0.4, "focused_dwell_ms": 400, "chunk_id": "cc"}
-        ]}
+        {
+          "second_index": 0,
+          "lens": "research",
+          "samples": [
+            {
+              "asset_id": "doc-a",
+              "content_class": "opt_in_licensed",
+              "viewport_area_fraction": 0.4,
+              "prominence": 0.4,
+              "focused_dwell_ms": 400,
+              "chunk_id": "ca"
+            },
+            {
+              "asset_id": "doc-b",
+              "content_class": "opt_in_licensed",
+              "viewport_area_fraction": 0.4,
+              "prominence": 0.4,
+              "focused_dwell_ms": 400,
+              "chunk_id": "cb"
+            },
+            {
+              "asset_id": "doc-c",
+              "content_class": "opt_in_licensed",
+              "viewport_area_fraction": 0.4,
+              "prominence": 0.4,
+              "focused_dwell_ms": 400,
+              "chunk_id": "cc"
+            }
+          ]
+        }
       ],
-      "expect_house_cents": 0,
-      "expect_asset_ids": ["doc-a", "doc-b", "doc-c"]
+      "expect_house_cents": 30,
+      "expect_asset_ids": [
+        "doc-a",
+        "doc-b",
+        "doc-c"
+      ]
     },
     {
       "name": "eligible_with_no_chunk",
       "ad_value_usd_cents": 200,
       "seconds": [
-        {"second_index": 0, "lens": "read", "samples": [
-          {"asset_id": "doc-cover", "content_class": "public_domain", "viewport_area_fraction": 0.9, "prominence": 1.0, "focused_dwell_ms": 1000, "chunk_id": null}
-        ]}
+        {
+          "second_index": 0,
+          "lens": "read",
+          "samples": [
+            {
+              "asset_id": "doc-cover",
+              "content_class": "public_domain",
+              "viewport_area_fraction": 0.9,
+              "prominence": 1.0,
+              "focused_dwell_ms": 1000,
+              "chunk_id": null
+            }
+          ]
+        }
       ],
-      "expect_house_cents": 0,
-      "expect_asset_ids": ["doc-cover"]
+      "expect_house_cents": 60,
+      "expect_asset_ids": [
+        "doc-cover"
+      ]
     },
     {
       "name": "ineligible_only_unknown_class",
       "ad_value_usd_cents": 77,
       "seconds": [
-        {"second_index": 0, "lens": "write", "samples": [
-          {"asset_id": "mystery", "content_class": "not_a_real_class", "viewport_area_fraction": 0.5, "prominence": 0.5, "focused_dwell_ms": 500, "chunk_id": null}
-        ]}
+        {
+          "second_index": 0,
+          "lens": "write",
+          "samples": [
+            {
+              "asset_id": "mystery",
+              "content_class": "not_a_real_class",
+              "viewport_area_fraction": 0.5,
+              "prominence": 0.5,
+              "focused_dwell_ms": 500,
+              "chunk_id": null
+            }
+          ]
+        }
       ],
       "expect_house_cents": 77,
       "expect_asset_ids": []
@@ -65,20 +153,66 @@
       "name": "mixed_eligible_and_house_seconds",
       "ad_value_usd_cents": 400,
       "seconds": [
-        {"second_index": 0, "lens": "read", "samples": [
-          {"asset_id": "doc-a", "content_class": "public_domain", "viewport_area_fraction": 0.6, "prominence": 0.5, "focused_dwell_ms": 600, "chunk_id": "ca"},
-          {"asset_id": "priv", "content_class": "user_owned", "viewport_area_fraction": 0.9, "prominence": 1.0, "focused_dwell_ms": 1000, "chunk_id": null}
-        ]},
-        {"second_index": 1, "lens": "read", "samples": []},
-        {"second_index": 2, "lens": "read", "samples": [
-          {"asset_id": "doc-a", "content_class": "public_domain", "viewport_area_fraction": 0.6, "prominence": 0.5, "focused_dwell_ms": 600, "chunk_id": "ca"}
-        ]},
-        {"second_index": 3, "lens": "read", "samples": [
-          {"asset_id": "priv", "content_class": "user_owned", "viewport_area_fraction": 0.9, "prominence": 1.0, "focused_dwell_ms": 1000, "chunk_id": null}
-        ]}
+        {
+          "second_index": 0,
+          "lens": "read",
+          "samples": [
+            {
+              "asset_id": "doc-a",
+              "content_class": "public_domain",
+              "viewport_area_fraction": 0.6,
+              "prominence": 0.5,
+              "focused_dwell_ms": 600,
+              "chunk_id": "ca"
+            },
+            {
+              "asset_id": "priv",
+              "content_class": "user_owned",
+              "viewport_area_fraction": 0.9,
+              "prominence": 1.0,
+              "focused_dwell_ms": 1000,
+              "chunk_id": null
+            }
+          ]
+        },
+        {
+          "second_index": 1,
+          "lens": "read",
+          "samples": []
+        },
+        {
+          "second_index": 2,
+          "lens": "read",
+          "samples": [
+            {
+              "asset_id": "doc-a",
+              "content_class": "public_domain",
+              "viewport_area_fraction": 0.6,
+              "prominence": 0.5,
+              "focused_dwell_ms": 600,
+              "chunk_id": "ca"
+            }
+          ]
+        },
+        {
+          "second_index": 3,
+          "lens": "read",
+          "samples": [
+            {
+              "asset_id": "priv",
+              "content_class": "user_owned",
+              "viewport_area_fraction": 0.9,
+              "prominence": 1.0,
+              "focused_dwell_ms": 1000,
+              "chunk_id": null
+            }
+          ]
+        }
       ],
-      "expect_house_cents": 200,
-      "expect_asset_ids": ["doc-a"]
+      "expect_house_cents": 260,
+      "expect_asset_ids": [
+        "doc-a"
+      ]
     }
   ]
 }
