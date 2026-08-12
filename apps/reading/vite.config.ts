@@ -28,6 +28,8 @@ export default defineConfig({
       // /research). The Research-entry cascade mode + the DRW monitor both
       // call it; without this proxy a dev drive can't reach the backend.
       "/research": API_TARGET,
+      "/styles": API_TARGET,
+      "/artifacts": API_TARGET,
       // Magic-link auth (H6): both /auth/request/me and the
       // /auth/callback redirect need to be same-origin with the
       // page or the browser drops Set-Cookie.

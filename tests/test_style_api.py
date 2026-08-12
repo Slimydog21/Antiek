@@ -18,11 +18,14 @@ Covers the bounded scope:
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import tempfile
 from dataclasses import replace
+from pathlib import Path
 
+import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
@@ -37,7 +40,8 @@ from services.html_projection.styles import (
 )
 from substrate.graph import ensure_initialized
 from substrate.multi_user.auth import UserClaims
-from substrate.research_artifact.paths import artifact_path_for
+from substrate.research_artifact.paths import artifact_path_for, atomic_write_nofollow
+from substrate.research_artifact.store import ResearchArtifactStore
 
 _BUILTIN_NAMES = [s.name for s in BUILTIN_STYLES]
 
@@ -215,9 +219,7 @@ def test_post_unsafe_css_is_422(api_env, unsafe_css):
 )
 def test_post_bad_slug_is_422(api_env, bad_name):
     client = _client()
-    resp = client.post(
-        "/styles", json={"name": bad_name, "label": "Bad", "theme_css": ""}
-    )
+    resp = client.post("/styles", json={"name": bad_name, "label": "Bad", "theme_css": ""})
     assert resp.status_code == 422, resp.text
 
 
@@ -303,14 +305,17 @@ def test_render_artifact_in_user_fork_style(api_env):
     """A fork created via the API is immediately usable on the render
     endpoint — the wheel's "regenerate in my style" path."""
     client = _client()
-    assert client.post(
-        "/styles",
-        json={
-            "name": "night-owl",
-            "label": "Night owl",
-            "theme_css": ".antiek-doc { background: #101418; color: #e8e4da; }",
-        },
-    ).status_code == 201
+    assert (
+        client.post(
+            "/styles",
+            json={
+                "name": "night-owl",
+                "label": "Night owl",
+                "theme_css": ".antiek-doc { background: #101418; color: #e8e4da; }",
+            },
+        ).status_code
+        == 201
+    )
     stored_html = render(_sample_doc(), RenderContext())
     _seed_artifact("inv-fork", stored_html)
 
@@ -356,10 +361,13 @@ def test_render_artifact_without_island_is_422(api_env):
 
 def test_fork_is_scoped_to_its_user(api_env, monkeypatch):
     client = _client()
-    assert client.post(
-        "/styles",
-        json={"name": "private-style", "label": "Mine", "theme_css": ""},
-    ).status_code == 201
+    assert (
+        client.post(
+            "/styles",
+            json={"name": "private-style", "label": "Mine", "theme_css": ""},
+        ).status_code
+        == 201
+    )
 
     # Another identity's wheel shows only the builtins — the fork does not
     # leak across users.
@@ -377,19 +385,25 @@ def test_fork_is_scoped_to_its_user(api_env, monkeypatch):
 
 def test_users_share_builtins_but_not_forks(api_env, monkeypatch):
     client = _client()
-    assert client.post(
-        "/styles",
-        json={
-            "name": "my-dark",
-            "label": "My dark",
-            "theme_css": ".antiek-doc { background: #000; }",
-        },
-    ).status_code == 201
+    assert (
+        client.post(
+            "/styles",
+            json={
+                "name": "my-dark",
+                "label": "My dark",
+                "theme_css": ".antiek-doc { background: #000; }",
+            },
+        ).status_code
+        == 201
+    )
     _as_user("user-b", monkeypatch)
-    assert client.post(
-        "/styles",
-        json={"name": "my-dark", "label": "B's dark", "theme_css": ".x{}"},
-    ).status_code == 201
+    assert (
+        client.post(
+            "/styles",
+            json={"name": "my-dark", "label": "B's dark", "theme_css": ".x{}"},
+        ).status_code
+        == 201
+    )
 
     # Same fork name, two owners, two wheels — both keep the builtins.
     _as_user("__operator__", monkeypatch)
@@ -411,3 +425,271 @@ def test_user_claims_factory_shape(monkeypatch):
     _as_user("user-b", monkeypatch)
     claims: UserClaims = _auth.operator_claims()
     assert claims.user_id == "user-b"
+
+
+def test_export_then_render_exact_id_persists_owner_scoped_version(api_env, monkeypatch):
+    """Real export -> style render uses one id and durably records the choice."""
+    client = _client()
+    exported = client.post("/research/inv-contract/artifact/export")
+    assert exported.status_code == 200, exported.text
+    assert exported.json()["artifact_id"] == "inv-contract"
+
+    preview = client.get("/artifacts/inv-contract/render", params={"style": "blog"})
+    assert preview.status_code == 200
+    assert preview.headers["X-Artifact-Version"] == "preview"
+    assert ResearchArtifactStore(api_env["db"]).get("inv-contract").latest_version == 0
+    rendered = client.post("/artifacts/inv-contract/render", params={"style": "blog"})
+    assert rendered.status_code == 200, rendered.text
+    assert extract_island(rendered.text)["research_artifact"]["investigation_id"] == "inv-contract"
+    record = ResearchArtifactStore(api_env["db"]).get("inv-contract")
+    assert record is not None
+    assert record.owner_user_id == "__operator__"
+    assert record.selected_style == "blog"
+    assert record.latest_version == 1
+    version_path = (
+        artifact_path_for("inv-contract").parent / "versions" / "inv-contract" / "v1.html"
+    )
+    assert version_path.read_text(encoding="utf-8") == rendered.text
+    latest = client.get("/artifacts/inv-contract/versions/latest")
+    exact = client.get("/artifacts/inv-contract/versions/1")
+    assert latest.text == exact.text == rendered.text
+    assert latest.headers["X-Artifact-ID"] == "inv-contract"
+    assert latest.headers["X-Artifact-Style"] == "blog"
+    assert latest.headers["X-Artifact-Version"] == "1"
+    assert latest.headers["X-Content-SHA256"] == hashlib.sha256(rendered.content).hexdigest()
+
+    # Omitted style reuses the durable selection and identical apply is idempotent.
+    again = client.post("/artifacts/inv-contract/render")
+    assert again.headers["X-Artifact-Version"] == "1"
+    assert ResearchArtifactStore(api_env["db"]).get("inv-contract").latest_version == 1
+
+    _as_user("other-owner", monkeypatch)
+    assert client.get("/artifacts/inv-contract/render").status_code == 404
+    source_path = Path(exported.json()["path"])
+    source_before = source_path.read_bytes()
+    assert client.post("/research/inv-contract/artifact/export").status_code == 500
+    assert source_path.read_bytes() == source_before
+
+
+def test_render_refuses_oversize_and_corrupt_utf8(api_env):
+    client = _client()
+    oversized = artifact_path_for("too-large")
+    oversized.parent.mkdir(parents=True, exist_ok=True)
+    with oversized.open("wb") as handle:
+        handle.truncate(10 * 1024 * 1024 + 1)
+    assert client.get("/artifacts/too-large/render").status_code == 413
+
+    corrupt = artifact_path_for("corrupt")
+    corrupt.write_bytes(b"\xff\xfe")
+    response = client.get("/artifacts/corrupt/render")
+    assert response.status_code == 422
+    assert "UTF-8" in response.json()["detail"]
+
+
+def test_style_input_text_is_bounded(api_env):
+    response = _client().post(
+        "/styles",
+        json={"name": "bounded", "label": "x" * 129, "theme_css": ""},
+    )
+    assert response.status_code == 422
+
+
+def test_version_publish_failure_leaves_metadata_unchanged(api_env, monkeypatch):
+    client = _client()
+    assert client.post("/research/inv-fault/artifact/export").status_code == 200
+    import substrate.research_artifact.store as store_module
+
+    monkeypatch.setattr(
+        store_module,
+        "atomic_write_nofollow",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("disk fault")),
+    )
+    with pytest.raises(OSError, match="disk fault"):
+        ResearchArtifactStore(api_env["db"]).add_version(
+            "inv-fault", "__operator__", "blog", "<html></html>", "0" * 64
+        )
+    record = ResearchArtifactStore(api_env["db"]).get("inv-fault")
+    assert record is not None and record.latest_version == 0
+
+
+def test_orphan_next_version_is_recovered(api_env):
+    client = _client()
+    assert client.post("/research/inv-orphan/artifact/export").status_code == 200
+    orphan = artifact_path_for("inv-orphan").parent / "versions" / "inv-orphan" / "v1.html"
+    orphan.parent.mkdir(parents=True, exist_ok=True)
+    orphan.write_text("orphan", encoding="utf-8")
+    applied = client.post("/artifacts/inv-orphan/render", params={"style": "blog"})
+    assert applied.status_code == 200
+    assert orphan.read_text(encoding="utf-8") == applied.text
+
+
+def test_metadata_failure_removes_published_version(api_env, monkeypatch):
+    client = _client()
+    assert client.post("/research/inv-db-fault/artifact/export").status_code == 200
+    from runtime.db_lock import LockedConnection
+
+    original_execute = LockedConnection.execute
+
+    def fail_version_insert(self, sql, parameters=None):
+        if sql.startswith("INSERT INTO research_artifact_versions"):
+            raise RuntimeError("metadata fault")
+        return original_execute(self, sql, parameters)
+
+    monkeypatch.setattr(LockedConnection, "execute", fail_version_insert)
+    with pytest.raises(RuntimeError, match="metadata fault"):
+        ResearchArtifactStore(api_env["db"]).add_version(
+            "inv-db-fault", "__operator__", "blog", "<html></html>", "1" * 64
+        )
+    version = artifact_path_for("inv-db-fault").parent / "versions" / "inv-db-fault" / "v1.html"
+    assert not version.exists()
+
+
+def test_atomic_publish_failure_cleans_unique_temp(api_env, monkeypatch):
+    target = artifact_path_for("atomic-fault")
+
+    def fail_replace(*args, **kwargs):
+        raise OSError("publish fault")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+    with pytest.raises(OSError, match="publish fault"):
+        atomic_write_nofollow(target, b"payload")
+    assert not target.exists()
+    assert list(target.parent.glob(".atomic-fault.html.*.tmp")) == []
+
+
+def test_legacy_symlink_is_never_adopted(api_env, tmp_path):
+    target = tmp_path / "outside.html"
+    target.write_text(render(_sample_doc(), RenderContext()), encoding="utf-8")
+    link = artifact_path_for("legacy-link")
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(target)
+    assert _client().get("/artifacts/legacy-link/render").status_code == 404
+    assert ResearchArtifactStore(api_env["db"]).get("legacy-link") is None
+
+
+def test_source_publish_crash_leaves_owner_pending_and_retry_recovers(api_env, monkeypatch):
+    import substrate.research_artifact.store as store_module
+
+    with monkeypatch.context() as fault:
+        fault.setattr(
+            store_module,
+            "atomic_write_nofollow",
+            lambda *args, **kwargs: (_ for _ in ()).throw(OSError("publish crash")),
+        )
+        response = _client().post("/research/inv-source-fault/artifact/export")
+        assert response.status_code == 500
+    # Pending claims are deliberately invisible to readers.
+    assert ResearchArtifactStore(api_env["db"]).get("inv-source-fault") is None
+
+    retry = _client().post("/research/inv-source-fault/artifact/export")
+    assert retry.status_code == 200
+    path = Path(retry.json()["path"])
+    assert path.is_file()
+    assert ResearchArtifactStore(api_env["db"]).get("inv-source-fault") is not None
+
+
+def test_pending_claim_blocks_cross_owner_but_same_owner_can_retry(api_env, monkeypatch):
+    import substrate.research_artifact.store as store_module
+
+    with monkeypatch.context() as fault:
+        fault.setattr(
+            store_module,
+            "atomic_write_nofollow",
+            lambda *args, **kwargs: (_ for _ in ()).throw(OSError("crash")),
+        )
+        assert _client().post("/research/inv-pending/artifact/export").status_code == 500
+    _as_user("other-owner", monkeypatch)
+    assert _client().post("/research/inv-pending/artifact/export").status_code == 500
+    _as_user("__operator__", monkeypatch)
+    assert _client().post("/research/inv-pending/artifact/export").status_code == 200
+
+
+def test_anchored_unlink_removes_symlink_not_victim(api_env, tmp_path):
+    from substrate.research_artifact.paths import unlink_anchored
+
+    victim = tmp_path / "victim.txt"
+    victim.write_text("survives", encoding="utf-8")
+    link = artifact_path_for("unlink-link")
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(victim)
+    unlink_anchored(link)
+    assert not link.exists()
+    assert victim.read_text(encoding="utf-8") == "survives"
+
+
+def test_legacy_swap_after_fd_read_copies_validated_bytes(api_env, monkeypatch):
+    import interfaces.research.api.style_routes as routes
+
+    legacy = artifact_path_for("legacy-swap")
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    original = render(
+        {"title": "Original", "content": _sample_doc()["content"]}, RenderContext()
+    )
+    swapped = render(
+        {"title": "Swapped", "content": _sample_doc()["content"]}, RenderContext()
+    )
+    legacy.write_text(original, encoding="utf-8")
+    real_read = routes.read_bounded_nofollow
+    swapped_once = False
+
+    def read_then_swap(path, limit):
+        nonlocal swapped_once
+        data = real_read(path, limit)
+        if not swapped_once and path == legacy:
+            swapped_once = True
+            legacy.write_text(swapped, encoding="utf-8")
+        return data
+
+    monkeypatch.setattr(routes, "read_bounded_nofollow", read_then_swap)
+    response = _client().get("/artifacts/legacy-swap/render")
+    assert response.status_code == 200
+    assert extract_island(response.text)["title"] == "Original"
+    record = ResearchArtifactStore(api_env["db"]).get("legacy-swap")
+    assert record is not None
+    assert record.source_path != legacy
+
+
+def test_direct_legacy_ledger_table_migrates_before_get(api_env):
+    source = artifact_path_for("legacy-ledger")
+    source.parent.mkdir(parents=True, exist_ok=True)
+    html = render(_sample_doc(), RenderContext())
+    source.write_text(html, encoding="utf-8")
+    con = duckdb.connect(api_env["db"])
+    try:
+        con.execute(
+            "CREATE TABLE research_artifacts ("
+            "artifact_id VARCHAR PRIMARY KEY, investigation_id VARCHAR NOT NULL, "
+            "owner_user_id VARCHAR NOT NULL, source_path VARCHAR NOT NULL, "
+            "selected_style VARCHAR, latest_version INTEGER NOT NULL DEFAULT 0, "
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+        )
+        con.execute(
+            "INSERT INTO research_artifacts VALUES "
+            "('legacy-ledger', 'legacy-ledger', '__operator__', ?, NULL, 0, now(), now())",
+            [str(source)],
+        )
+    finally:
+        con.close()
+    response = _client().get("/artifacts/legacy-ledger/render")
+    assert response.status_code == 200
+    record = ResearchArtifactStore(api_env["db"]).get("legacy-ledger")
+    assert record is not None
+    assert record.source_hash == hashlib.sha256(html.encode()).hexdigest()
+
+
+def test_source_replacement_fails_stably_without_rebinding_hash(api_env):
+    exported = _client().post("/research/inv-corrupt-source/artifact/export")
+    assert exported.status_code == 200
+    store = ResearchArtifactStore(api_env["db"])
+    before = store.get("inv-corrupt-source")
+    assert before is not None and before.source_hash is not None
+    replacement = render(
+        {"title": "Replacement", "content": _sample_doc()["content"]}, RenderContext()
+    )
+    before.source_path.write_text(replacement, encoding="utf-8")
+    first = _client().get("/artifacts/inv-corrupt-source/render")
+    second = _client().get("/artifacts/inv-corrupt-source/render")
+    assert first.status_code == second.status_code == 422
+    assert first.json()["detail"] == second.json()["detail"] == "artifact source hash mismatch"
+    assert store.get("inv-corrupt-source").source_hash == before.source_hash

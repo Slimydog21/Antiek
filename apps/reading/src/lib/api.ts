@@ -1171,6 +1171,7 @@ export interface ResearchArtifactBlocksResponse {
 }
 
 export interface ResearchArtifactExportResponse {
+  artifact_id: string;
   investigation_id: string;
   path: string;
   content_hash: string;
