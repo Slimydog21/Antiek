@@ -20,14 +20,11 @@ import pytest
 
 from runtime.byok.openai_oauth import (
     OPENAI_AUTHORIZE_URL,
-    OPENAI_DEFAULT_REDIRECT_PORT,
     OPENAI_OAUTH_CLIENT_ID,
     OPENAI_SCOPE,
-    OPENAI_TOKEN_URL,
     OpenAIAuthError,
     OpenAIAuthFailure,
     OpenAiTokens,
-    PkceCodes,
     build_authorize_url,
     compute_expires_at,
     default_redirect_uri,

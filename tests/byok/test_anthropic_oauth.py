@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import time
 from typing import Any
 
@@ -23,11 +22,9 @@ from runtime.byok.anthropic_oauth import (
     ANTHROPIC_OAUTH_CLIENT_ID,
     ANTHROPIC_REDIRECT_URI,
     ANTHROPIC_SCOPE,
-    ANTHROPIC_TOKEN_URL,
     AnthropicAuthError,
     AnthropicAuthFailure,
     AnthropicTokens,
-    PkceCodes,
     build_authorize_url,
     compute_expires_at,
     delete_anthropic_tokens,
