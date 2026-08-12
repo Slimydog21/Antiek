@@ -319,6 +319,23 @@ def store_credential(
     non-secret metadata land on disk. The plaintext is never logged, never
     emitted, never written to the artifact.
     """
+    return store_credential_with_metadata(
+        account_handle, secret, pipeline_kind=pipeline_kind, owner_user_id=owner_user_id,
+        artifact_path=artifact_path, key_bytes=key_bytes, key_file=key_file,
+    ).cred_id
+
+
+def store_credential_with_metadata(
+    account_handle: str,
+    secret: str,
+    *,
+    pipeline_kind: str | None = None,
+    owner_user_id: str | None = None,
+    artifact_path: str | None = None,
+    key_bytes: bytes | None = None,
+    key_file: str | None = None,
+) -> CredentialMetadata:
+    """Atomically store a credential and return its authenticated non-secret metadata."""
     if not isinstance(secret, str) or secret == "":
         raise ValueError("secret must be a non-empty str")
     if owner_user_id is not None and (not isinstance(owner_user_id, str) or not owner_user_id):
@@ -341,7 +358,7 @@ def store_credential(
 
     with _STORE_LOCK, _artifact_lock(artifact, exclusive=True):
         data = _read_artifact(artifact)
-        data[cred_id] = {
+        record: dict[str, object] = {
             "cred_id": cred_id,
             "account_handle": handle,
             "pipeline_kind": pipeline_kind,
@@ -349,8 +366,16 @@ def store_credential(
             "binding_version": _BOUND_CREDENTIAL_VERSION,
             "ciphertext_hex": bytes(sealed).hex(),
         }
+        data[cred_id] = record
         _write_artifact(artifact, data)
-    return cred_id
+    return CredentialMetadata(
+        cred_id=cred_id,
+        account_handle=handle,
+        pipeline_kind=pipeline_kind,
+        binding_version=_BOUND_CREDENTIAL_VERSION,
+        artifact_fingerprint=_artifact_fingerprint(record),
+        owner_user_id=owner_user_id,
+    )
 
 
 def load_credential(
@@ -486,6 +511,7 @@ __all__ = [
     "CredentialIntegrityError",
     "delete_credential",
     "store_credential",
+    "store_credential_with_metadata",
     "load_credential",
     "list_credentials",
 ]

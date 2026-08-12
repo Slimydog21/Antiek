@@ -107,6 +107,25 @@ class KeyShapeError(ConnectorError, ValueError):
     """
 
 
+def validate_key_shape(descriptor: ConnectorDescriptor, api_key: str) -> None:
+    """Validate one write-only key without storing or rendering its value."""
+    shape = descriptor.key_shape
+    if shape is None:
+        raise KeyShapeError(
+            f"connector {descriptor.vendor!r} is keyless (auth={descriptor.auth!r}); "
+            "there is no key to attach"
+        )
+    if not isinstance(api_key, str) or not (shape.min_len <= len(api_key) <= shape.max_len):
+        raise KeyShapeError(
+            f"api_key for {descriptor.vendor!r} must be "
+            f"{shape.min_len}-{shape.max_len} characters"
+        )
+    if shape.prefix is not None and not api_key.startswith(shape.prefix):
+        raise KeyShapeError(
+            f"api_key for {descriptor.vendor!r} does not match the expected prefix class"
+        )
+
+
 class Connector:
     """The small shared base every BYO-tools connector builds on.
 
@@ -173,21 +192,7 @@ class PasteKeyConnector(Connector):
         touching that module. The store is append-only: a replaced key leaves
         an honestly-orphaned ciphertext, the settings_models_admin posture.
         """
-        shape = self.descriptor.key_shape
-        if shape is None:
-            raise KeyShapeError(
-                f"connector {self.vendor!r} is keyless (auth={self.descriptor.auth!r}); "
-                "there is no key to attach"
-            )
-        if not isinstance(api_key, str) or not (shape.min_len <= len(api_key) <= shape.max_len):
-            raise KeyShapeError(
-                f"api_key for {self.vendor!r} must be "
-                f"{shape.min_len}-{shape.max_len} characters"
-            )
-        if shape.prefix is not None and not api_key.startswith(shape.prefix):
-            raise KeyShapeError(
-                f"api_key for {self.vendor!r} does not match the expected prefix class"
-            )
+        validate_key_shape(self.descriptor, api_key)
         cred_id = store_credential(
             account_handle or f"connector-{self.vendor}",
             api_key,
@@ -243,4 +248,5 @@ __all__ = [
     "KeyShapeError",
     "PasteKeyConnector",
     "RateSpec",
+    "validate_key_shape",
 ]
