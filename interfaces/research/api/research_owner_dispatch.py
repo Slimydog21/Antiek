@@ -8,7 +8,7 @@ import json
 import os
 import sqlite3
 import stat
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -189,7 +189,7 @@ def launch_resource_digest(manifest: ResearchOwnerManifest) -> str:
 
 
 @contextmanager
-def launch_authority_guard(manifest: ResearchOwnerManifest):
+def launch_authority_guard(manifest: ResearchOwnerManifest) -> Iterator[str]:
     from runtime.db_lock import authority_handoff_guard
     path = str(_claim_db_path())
     with authority_handoff_guard(path, purpose="research-owner-authority-handoff"):
@@ -219,7 +219,7 @@ _CURRENT: contextvars.ContextVar[ResearchOwnerManifest | None] = contextvars.Con
 )
 
 
-def install_manifest(manifest: ResearchOwnerManifest):
+def install_manifest(manifest: ResearchOwnerManifest) -> contextvars.Token[ResearchOwnerManifest | None]:
     return _CURRENT.set(manifest)
 
 

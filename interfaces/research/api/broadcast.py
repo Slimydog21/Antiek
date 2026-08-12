@@ -113,6 +113,11 @@ class EventBroadcaster:
     block the broadcast loop or hold up the API POST that triggered the
     event."""
 
+    # Owner-model dispatch registry (set by app.py on startup; consumed by
+    # research_owner_dispatch). Carries the FastAPI app needed to revalidate
+    # credential authority for owner-bound BYOT launches.
+    _owner_model_app: "object | None" = None
+
     def __init__(self) -> None:
         self._subscribers: set[_Subscriber] = set()
         self._handlers: dict[str, list[EventHandler]] = {}

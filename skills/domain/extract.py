@@ -29,7 +29,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, cast, Protocol
 
 from .extraction_prompt import make_extraction_prompt
 from .keywords import classify_domains
@@ -117,7 +117,7 @@ def extract_findings(
     system_prompt, user_prompt = make_extraction_prompt(question, thesis, domain)
 
     try:
-        first_call = llm_call.with_attempt(0) if getattr(llm_call, "with_attempt", None) else llm_call
+        first_call = cast(Any, llm_call).with_attempt(0) if getattr(llm_call, "with_attempt", None) else llm_call
         raw_first = first_call(system=system_prompt, user=user_prompt)
     except Exception as e:  # transport / API failure
         print(
@@ -141,7 +141,7 @@ def extract_findings(
     # ── One-shot repair retry ──
     repair_user = _repair_prefix(parse_err) + "\n\n" + user_prompt
     try:
-        repair_call = llm_call.with_attempt(1) if getattr(llm_call, "with_attempt", None) else llm_call
+        repair_call = cast(Any, llm_call).with_attempt(1) if getattr(llm_call, "with_attempt", None) else llm_call
         raw_second = repair_call(system=system_prompt, user=repair_user)
     except Exception as e:
         print(
@@ -262,10 +262,10 @@ def default_llm_call_factory(*, investigation_id: str) -> LLMCall:
         self.domain_index = domain_index
         self.attempt = attempt
 
-      def for_domain(self, domain: str, domain_index: int):
+      def for_domain(self, domain: str, domain_index: int) -> "_OwnerAwareCall":
         return _OwnerAwareCall(domain, domain_index)
 
-      def with_attempt(self, attempt: int):
+      def with_attempt(self, attempt: int) -> "_OwnerAwareCall":
         return _OwnerAwareCall(self.domain, self.domain_index, attempt)
 
       def __call__(self, *, system: str, user: str) -> str:
