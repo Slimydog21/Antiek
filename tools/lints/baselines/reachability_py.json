@@ -95,12 +95,6 @@
     },
     {
       "col": 0,
-      "kind": "package:unimported:memory",
-      "line": 1,
-      "path": "substrate/memory/__init__.py"
-    },
-    {
-      "col": 0,
       "kind": "package:unimported:multi_user.crdt_scaffold",
       "line": 1,
       "path": "substrate/multi_user/crdt_scaffold/__init__.py"
@@ -209,12 +203,6 @@
     },
     {
       "col": 0,
-      "kind": "package:unimported:quality_gate",
-      "line": 1,
-      "path": "substrate/quality_gate/__init__.py"
-    },
-    {
-      "col": 0,
       "kind": "package:unimported:reading.projection",
       "line": 1,
       "path": "substrate/reading/projection/__init__.py"
@@ -254,12 +242,6 @@
       "kind": "package:unimported:trust_center",
       "line": 1,
       "path": "substrate/trust_center/__init__.py"
-    },
-    {
-      "col": 0,
-      "kind": "package:unimported:twin_note_taker",
-      "line": 1,
-      "path": "substrate/twin_note_taker/__init__.py"
     }
   ]
 }
