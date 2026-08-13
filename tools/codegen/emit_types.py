@@ -144,6 +144,7 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.DispatchCallPayload,
     # antiek-yegge-execute SPR-01 — worker registration (future registry, SPR-04).
     schema_module.WorkerIdentityPayload,
+    schema_module.LinkMonsterDigestedPayload,  # Link Monster — one digest attempt
     schema_module.ContextPackAssembledPayload,
     schema_module.KnowledgeReusedPayload,  # AFF SPR-06 — flywheel reuse half
     schema_module.ReuseGatedPayload,  # AFF SPR-08 — trust gate on reuse

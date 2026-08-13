@@ -1,5 +1,5 @@
 """Own Your Mind P0 L15 — the signal-inventory endpoint + the one new
-event type of the P0 batch (surface.served_impression, v35).
+event types of the P0 batch (surface.served_impression, v35; link.monster.digested, v36).
 
 Two concerns:
 
@@ -11,7 +11,7 @@ Two concerns:
 2. The schema change itself — ``surface.served_impression`` exists as an
    ActionType, its payload is a member of the typed union, and an Event
    envelope carrying it round-trips through the emit → trajectory path
-   with ``schema_version == 35``.
+   with ``schema_version == 36``.
 """
 
 from __future__ import annotations
@@ -65,8 +65,8 @@ def test_signal_inventory_shape_and_floors(client):
         "by_domain",
     }
     assert body["generated_at"]
-    # P0 AC: schema version is the bumped 35 and the vocabulary is large.
-    assert body["schema_version"] == EVENT_SCHEMA_VERSION == 35
+    # P0 AC: schema version is the bumped 36 (35 + link.monster.digested) and the vocabulary is large.
+    assert body["schema_version"] == EVENT_SCHEMA_VERSION == 36
     assert body["count"] >= 100
     assert len(body["signals"]) == body["count"]
 
@@ -160,7 +160,7 @@ def test_served_impression_round_trips_through_event_envelope(tmp_path, monkeypa
         param_version="0.2.0",
         emitted_at=datetime(2026, 8, 12, tzinfo=UTC),
     )
-    assert event.schema_version == 35
+    assert event.schema_version == 36
 
     emitted_id = emit_typed("inv-served", payload)
     assert emitted_id is not None
@@ -168,7 +168,7 @@ def test_served_impression_round_trips_through_event_envelope(tmp_path, monkeypa
     assert len(rows) == 1
     row = rows[0]
     assert row["action_type"] == "surface.served_impression"
-    assert row["schema_version"] == 35
+    assert row["schema_version"] == 36
     assert row["payload"]["surface"] == "personal_space.recommendations"
     assert row["payload"]["item_kind"] == "synthesis"
     assert row["payload"]["item_id"] == "syn-42"
@@ -194,3 +194,13 @@ def test_served_impression_rejects_negative_ranked_position():
             timestamp=datetime(2026, 8, 12, tzinfo=UTC),
             user_id="__operator__",
         )
+
+
+def test_signal_inventory_includes_link_monster_digested(client):
+    body = client.get("/ops/signal-inventory").json()
+    entry = next(
+        s for s in body["signals"] if s["action_type"] == "link.monster.digested"
+    )
+    assert entry["payload_class"] == "LinkMonsterDigestedPayload"
+    assert entry["typed"] is True
+    assert entry["domain"] == "link"

@@ -317,12 +317,25 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   // surfaces worker activity in the stream it moves up to a narration — an
   // additive, visible edit the coverage gate enforces.
   [ActionType.WORKER_IDENTITY]: null,
+
+  // ── Link Monster — what the front door just ate ──
+  [ActionType.LINK_MONSTER_DIGESTED]: (e) => {
+    const p = payload(e);
+    const title = asString(p.title);
+    const what = title ? `“${title.slice(0, 60)}”` : "a link";
+    if (p.outcome === "meal") {
+      return { line: `The Monster ate ${what} and stewed it into the graph`, tone: "milestone" };
+    }
+    return { line: `The Monster nibbled ${what} — metadata only`, tone: "step" };
+  },
+
   // Own Your Mind P0 (docs/own-your-mind/10-p0-implementation-brief.md §5) —
   // the served-impression audit event ("what was shown", decoupled from
   // training). Audit-only telemetry of the surface's own rendering, not a
   // Research thinking-stream beat; suppressed here (still in the log behind
   // the raw-activity toggle). No consumer trains on it in P0.
   [ActionType.SURFACE_SERVED_IMPRESSION]: null,
+
 };
 
 /** The safe generic line for an action_type with no row — only reachable if

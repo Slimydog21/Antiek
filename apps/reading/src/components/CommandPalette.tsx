@@ -290,6 +290,13 @@ const ROUTE_INDEX: PaletteRoute[] = [
     subtitle: "Record citations + rev-share (/cross-graph/citations)",
     path: "/cross-graph/citations",
   },
+  {
+    kind: "route",
+    id: "route:link-monster",
+    title: "Link Monster",
+    subtitle: "Feed any link — it digests into the graph (/link-monster)",
+    path: "/link-monster",
+  },
 ];
 
 /**

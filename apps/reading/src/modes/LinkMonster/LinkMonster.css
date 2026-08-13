@@ -1,0 +1,344 @@
+/* Link Monster — Weirdmageddon incinerator chrome.
+   Palette from docs/specs/link-monster-art-direction.md §2. */
+
+@import url("https://fonts.googleapis.com/css2?family=Bungee+Shade&family=Share+Tech+Mono&display=swap");
+
+.lm-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  font-family: "Share Tech Mono", "Courier New", monospace;
+  color: var(--lm-bone); /* bone white */
+  background: var(--lm-sky-deep); /* apocalypse crimson deep */
+}
+
+.lm-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.lm-stage canvas {
+  display: block;
+}
+
+.lm-header {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  text-align: center;
+  pointer-events: none;
+}
+.lm-title {
+  margin: 0;
+  font-family: "Bungee Shade", Impact, "Arial Black", sans-serif;
+  font-size: clamp(28px, 4.4vw, 58px);
+  letter-spacing: 0.04em;
+  color: var(--lm-bone);
+  text-shadow:
+    0 0 20px var(--lm-magenta),
+    0 0 40px var(--lm-horizon),
+    0 2px 0 var(--lm-void);
+}
+.lm-tagline {
+  margin: 4px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--lm-rune-base);
+  opacity: 0.75;
+}
+
+/* Paste bar = the monster's mouth. */
+.lm-paste {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  width: min(720px, 90vw);
+  text-align: center;
+}
+.lm-paste-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--lm-rune-glow);
+  text-shadow: 0 0 12px var(--lm-rune-glow);
+  margin-bottom: 8px;
+}
+.lm-paste-row {
+  display: flex;
+  gap: 10px;
+  border: 2px solid var(--lm-steel);
+  border-radius: 14px;
+  padding: 8px;
+  background: rgba(10, 10, 18, 0.82);
+  box-shadow:
+    0 0 24px rgba(255, 107, 43, 0.25),
+    inset 0 0 18px rgba(255, 251, 230, 0.06);
+}
+.lm-paste-row:focus-within {
+  border-color: var(--lm-magenta);
+  box-shadow:
+    0 0 30px rgba(255, 0, 255, 0.35),
+    inset 0 0 18px rgba(255, 251, 230, 0.1);
+}
+.lm-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--lm-fire-core);
+  font-family: "Share Tech Mono", monospace;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  padding: 8px 10px;
+}
+.lm-input::placeholder {
+  color: var(--lm-nickel);
+}
+.lm-feed {
+  border: 1px solid var(--lm-horizon);
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--lm-fire-mid), var(--lm-fire-outer));
+  color: var(--lm-fire-core);
+  font-family: "Share Tech Mono", monospace;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  font-size: 13px;
+  padding: 8px 22px;
+  cursor: pointer;
+  text-shadow: 0 1px 0 rgba(10, 10, 18, 0.6);
+}
+.lm-feed:hover:not(:disabled) {
+  filter: brightness(1.15);
+  box-shadow: 0 0 22px rgba(255, 122, 24, 0.6);
+}
+.lm-feed:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.lm-leftover {
+  margin: 10px 0 0;
+  color: var(--lm-fire-mid);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 10px rgba(255, 122, 24, 0.6);
+}
+.lm-hint {
+  margin: 10px 0 0;
+  color: var(--lm-nickel);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+/* Monster Menu rail. */
+.lm-menu {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 7;
+  width: min(330px, 34vw);
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 10, 18, 0.78);
+  border: 1px solid var(--lm-smoke);
+  border-radius: 14px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 0 30px rgba(178, 102, 255, 0.12);
+}
+.lm-menu-title {
+  margin: 0;
+  padding: 14px 16px 8px;
+  font-family: "Bungee Shade", Impact, sans-serif;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: var(--lm-rune-base);
+  border-bottom: 1px solid var(--lm-smoke);
+}
+.lm-menu-count {
+  color: var(--lm-magenta);
+}
+.lm-menu-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lm-empty {
+  color: var(--lm-nickel);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 14px;
+  text-align: center;
+}
+.lm-card {
+  text-align: left;
+  border: 1px solid var(--lm-smoke);
+  border-radius: 10px;
+  background: rgba(26, 10, 15, 0.7);
+  padding: 9px 11px;
+  cursor: pointer;
+  color: var(--lm-bone);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: "Share Tech Mono", monospace;
+}
+.lm-card:hover {
+  border-color: var(--lm-magenta);
+  box-shadow: 0 0 14px rgba(255, 0, 255, 0.25);
+}
+.lm-chip {
+  align-self: flex-start;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+.lm-chip-youtube { color: var(--lm-horizon); }
+.lm-chip-x { color: var(--lm-edge); }
+.lm-chip-instagram { color: var(--lm-magenta); }
+.lm-chip-tiktok { color: var(--lm-rim); }
+.lm-chip-substack { color: var(--lm-rune-glow); }
+.lm-chip-generic { color: var(--lm-node); }
+.lm-card-title {
+  font-size: 12px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lm-card-author {
+  font-size: 10px;
+  color: var(--lm-nickel);
+}
+.lm-card-badges {
+  font-size: 10px;
+  color: var(--lm-ember);
+}
+.lm-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--lm-smoke);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--lm-node);
+}
+
+/* Detail modal. */
+.lm-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(10, 10, 18, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(3px);
+}
+.lm-modal {
+  width: min(560px, 90vw);
+  max-height: 84vh;
+  overflow-y: auto;
+  border: 1px solid var(--lm-magenta);
+  border-radius: 16px;
+  background: rgba(10, 10, 18, 0.96);
+  box-shadow: 0 0 60px rgba(255, 0, 255, 0.3);
+  padding: 20px;
+}
+.lm-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lm-modal-head h2 {
+  margin: 0;
+  font-family: "Bungee Shade", Impact, sans-serif;
+  font-size: 17px;
+  line-height: 1.3;
+  color: var(--lm-fire-core);
+}
+.lm-modal-close {
+  border: 1px solid var(--lm-smoke);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--lm-bone);
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.lm-modal-close:hover {
+  border-color: var(--lm-magenta);
+}
+.lm-modal-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 16px 0;
+  font-size: 12px;
+}
+.lm-modal-facts dt {
+  color: var(--lm-nickel);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 10px;
+  padding-top: 1px;
+}
+.lm-modal-facts dd {
+  margin: 0;
+  color: var(--lm-bone);
+  overflow-wrap: anywhere;
+}
+.lm-modal-thumb {
+  max-width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--lm-smoke);
+  margin-bottom: 12px;
+}
+.lm-modal-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--lm-rune-base);
+  margin: 0 0 14px;
+}
+.lm-modal-artifacts h3 {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--lm-rune-glow);
+  margin: 14px 0 6px;
+}
+.lm-modal-artifacts ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--lm-bone);
+}
+.lm-modal-prov code {
+  color: var(--lm-rim);
+}
+
+@media (max-width: 760px) {
+  .lm-menu {
+    width: min(300px, 70vw);
+  }
+  .lm-header {
+    top: 10px;
+  }
+}

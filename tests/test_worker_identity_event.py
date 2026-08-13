@@ -61,8 +61,8 @@ def test_event_schema_version_bumped():
     gate calibration audit events) -> 32 (multimedia authority events) -> 33
     (NotDiamond DispatchCallPayload attribution fields) -> 34 (owner-scoped
     account-memory graph events) -> 35 (surface.served_impression, Own Your
-    Mind P0)."""
-    assert EVENT_SCHEMA_VERSION == 35
+    Mind P0) -> 36 (link.monster.digested, Link Monster)."""
+    assert EVENT_SCHEMA_VERSION == 36
 
 
 # ── validation (rigor #3: rejects bad input at emit time) ───────────────────
