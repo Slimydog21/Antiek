@@ -193,7 +193,12 @@ def _origins() -> list[str]:
     configured = os.environ.get("ANTIEK_WEBAUTHN_ORIGINS", "").strip()
     if configured:
         return [value.strip().rstrip("/") for value in configured.split(",") if value.strip()]
-    return ["https://antiek.ai"]
+    # Apex + www: Cloudflare Pages serves the same SPA on both, and
+    # WebAuthn verification compares the EXACT page origin, so a
+    # credential registered from either host must verify from both.
+    # rp_id stays "antiek.ai" (a registrable-domain rpId covers its
+    # subdomains, www included).
+    return ["https://antiek.ai", "https://www.antiek.ai"]
 
 
 def _descriptors(credentials: list[PasskeyCredential]) -> list[PublicKeyCredentialDescriptor]:

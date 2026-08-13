@@ -130,7 +130,7 @@ export function useAuth(): AuthContextValue {
 }
 
 export type AuthRequestResult =
-  | { kind: "sent"; attempt_id: string; claim_secret: string; device_code: string; diagnostic_code: null; layer: null }
+  | { kind: "sent"; attempt_id: string; claim_secret: string; diagnostic_code: null; layer: null }
   | {
       kind: "error";
       code: string;
@@ -161,12 +161,14 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
       body: JSON.stringify({ email, next: nextPath }),
     });
     if (r.ok) {
-      const body = (await r.json()) as { attempt_id: string; claim_secret: string; device_code: string };
+      const body = (await r.json()) as { attempt_id: string; claim_secret: string };
+      // The 4-digit code is deliberately NOT in the API response — it
+      // only ever exists inside the delivered email, so typing it into
+      // the browser is real email-possession proof.
       return {
         kind: "sent",
         attempt_id: body.attempt_id,
         claim_secret: body.claim_secret,
-        device_code: body.device_code,
         diagnostic_code: null,
         layer: null,
       };
@@ -197,19 +199,51 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
 export type LoginClaimResult =
   | { status: "pending" }
   | { status: "authenticated"; setup_passkey: boolean; next: string }
+  | { status: "invalid_code"; remaining_attempts: number }
+  | { status: "rate_limited" }
   | { status: "expired" };
 
-export async function claimLogin(attemptId: string, claimSecret: string): Promise<LoginClaimResult> {
+/**
+ * Claim the sign-in session for an attempt.
+ *
+ * With `code` (the 4 digits from the email): the single-device unlock —
+ * the server verifies the code and mints the session immediately.
+ * Without it: the two-device path — 202 until the email-click device
+ * approved via POST /auth/approve.
+ */
+export async function claimLogin(
+  attemptId: string,
+  claimSecret: string,
+  code?: string,
+): Promise<LoginClaimResult> {
   const r = await apiFetch(authUrl("/auth/claim"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ attempt_id: attemptId, claim_secret: claimSecret }),
+    body: JSON.stringify({
+      attempt_id: attemptId,
+      claim_secret: claimSecret,
+      ...(code !== undefined ? { code } : {}),
+    }),
   });
   if (r.status === 202) return { status: "pending" };
   if (r.status === 410) return { status: "expired" };
+  if (r.status === 429) return { status: "rate_limited" };
+  if (r.status === 400) {
+    try {
+      const body = (await r.json()) as {
+        detail?: { code?: string; remaining_attempts?: number };
+      };
+      if (body.detail?.code === "invalid_code") {
+        return { status: "invalid_code", remaining_attempts: body.detail.remaining_attempts ?? 0 };
+      }
+    } catch {
+      // fall through to the generic error
+    }
+    throw new Error("Antiek couldn't finish the device handoff.");
+  }
   if (!r.ok) throw new Error("Antiek couldn't finish the device handoff.");
   const body = (await r.json()) as { setup_passkey: boolean; next: string };
-  return { status: "authenticated", ...body };
+  return { status: "authenticated", setup_passkey: body.setup_passkey, next: body.next };
 }
 
 export async function approveLogin(attemptId: string): Promise<void> {
