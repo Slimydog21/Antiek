@@ -8,6 +8,7 @@
  */
 
 import { vi } from "vitest";
+import { sun } from "../../design/tokens";
 
 export type DrawCall = [string, ...unknown[]];
 
@@ -125,7 +126,7 @@ export function recordingContext(): RecordingContext {
           : prop === "lineCap"
             ? "butt"
             : prop === "fillStyle" || prop === "strokeStyle"
-              ? "#000000"
+              ? `${sun.base}`
               : prop === "font"
                 ? "10px sans-serif"
                 : prop === "textAlign"

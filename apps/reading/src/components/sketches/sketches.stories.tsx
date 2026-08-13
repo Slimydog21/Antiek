@@ -17,7 +17,7 @@ function SketchGrid({
         gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
         gap: 16,
         padding: 16,
-        background: "var(--page, #0D1019)",
+        background: "var(--page)",
       }}
     >
       {SKETCH_NAMES.map((name: SketchName) => {
@@ -26,7 +26,7 @@ function SketchGrid({
           <figure key={name} style={{ margin: 0 }}>
             <figcaption
               style={{
-                color: "var(--text-muted, #6B7585)",
+                color: "var(--text-muted)",
                 fontFamily: "ui-monospace, monospace",
                 fontSize: 12,
                 marginBottom: 8,
