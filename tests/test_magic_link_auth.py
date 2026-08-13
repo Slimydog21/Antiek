@@ -372,10 +372,7 @@ def test_bearer_path_still_works_when_secret_set(monkeypatch):
     assert r.json()["auth_method"] == "bearer_token"
 
 
-def test_cf_access_email_path_still_works(monkeypatch):
-    """The Cloudflare Access path remains active during the cutover
-    window. Operator decommissions CF Access manually per the
-    runbook."""
+def test_cf_access_email_header_cannot_replace_signed_session(monkeypatch):
     monkeypatch.setenv("ANTIEK_AUTH_SECRET", _SECRET)
     monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", _OPERATOR)
     monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
@@ -385,8 +382,7 @@ def test_cf_access_email_path_still_works(monkeypatch):
         "/auth/whoami",
         headers={"Cf-Access-Authenticated-User-Email": _OPERATOR},
     )
-    assert r.status_code == 200
-    assert r.json()["auth_method"] == "cloudflare_access_email"
+    assert r.status_code == 401
 
 
 def test_email_provider_factory_default_mock(monkeypatch):
