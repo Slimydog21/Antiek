@@ -404,13 +404,15 @@ def test_server_minted_settled_value_wins_over_client_hint(isolated_db):
     body = resp.json()
     # SERVER-minted from the settled fill record — not 0, not the forged hint.
     assert body["total_ad_value_cents"] == 4300
-    assert body["contributor_cents"] == 4300
+    # AFA-S5: 70/30 at the pool boundary — contributor 3010, platform cut 1290.
+    assert body["contributor_cents"] == 3010
     assert body["reconciles"] is True
-    # Escrow moved by exactly the server-minted $43.00.
+    # Escrow moved by exactly the creator-pool share ($30.10; the 30% platform
+    # cut accrues to house, never to escrow).
     after = _escrow_of(isolated_db, holder)
     from decimal import Decimal
 
-    assert after - before == Decimal("43.00")
+    assert after - before == Decimal("30.10")
     # The forged claim is on the audit ledger — as a hint, never as money.
     assert _client_hints(isolated_db, "win-1") == [9_999_999]
 
