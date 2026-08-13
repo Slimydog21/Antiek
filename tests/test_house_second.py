@@ -141,11 +141,13 @@ def test_mixed_window_splits_eligible_and_house(con):
                            asset_to_ip_holder={"doc-a": h})
     assert result.house.n_seconds == 2
     assert len(result.asset_lines) == 1
-    # 400c / 4s = 100c/sec; 2 eligible secs → 200c to doc-a; 2 house → 200c
-    assert result.asset_lines[0].amount_cents == 200
-    assert result.house.amount_cents == 200
+    # 400c / 4s = 100c/sec; 2 eligible secs → 200c eligible; AFA-S5 70/30 at
+    # pool boundary → 140c to doc-a, 60c platform cut into house; 2 house secs
+    # → 200c house. Total house = 260c. Conservation exact.
+    assert result.asset_lines[0].amount_cents == 140
+    assert result.house.amount_cents == 260
     assert result.reconciles()
     rec = window_reconciliation(con, "w-mixed")
-    assert rec["contributor_cents"] == 200
-    assert rec["house_cents"] == 200
+    assert rec["contributor_cents"] == 140
+    assert rec["house_cents"] == 260
     assert rec["total_cents"] == 400

@@ -2055,6 +2055,43 @@ def _repair_empty_partial_v19_frontiers(con: LockedConnection) -> None:
     con.execute("DROP TABLE event_consumer_frontiers")
 
 
+
+# AFA-S6 — monthly close records + per-payee statements (replayable, Merkle-
+# rooted). Escrow-only accounting artifact: never disburses. Module:
+# substrate/ad_inventory/monthly_close.py (defensive ensure_tables_close too).
+# Pure idempotent CREATE IF NOT EXISTS; FK-references nothing.
+ANTIEK_GRAPH_SCHEMA_V22_AFA_MONTH_CLOSE_SQL = """
+CREATE TABLE IF NOT EXISTS afa_month_closes (
+    period                    TEXT PRIMARY KEY,
+    month_root_hex            TEXT NOT NULL,
+    statement_count           INTEGER NOT NULL,
+    total_payee_cents         INTEGER NOT NULL,
+    total_house_cents         INTEGER NOT NULL,
+    total_window_cents        INTEGER NOT NULL,
+    attribution_math_version  TEXT NOT NULL,
+    month_close_version       TEXT NOT NULL,
+    merkle_serialization      TEXT NOT NULL,
+    artifact_dir              TEXT NOT NULL,
+    statements_digest         TEXT NOT NULL,
+    closed_at                 TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS afa_month_statements (
+    statement_id       TEXT PRIMARY KEY,
+    period             TEXT NOT NULL,
+    payee_id           TEXT NOT NULL,
+    total_cents        INTEGER NOT NULL,
+    leaf_index         INTEGER NOT NULL,
+    leaf_hash_hex      TEXT NOT NULL,
+    statement_json     TEXT NOT NULL,
+    proof_json         TEXT NOT NULL,
+    statement_path     TEXT,
+    UNIQUE (period, payee_id)
+);
+CREATE INDEX IF NOT EXISTS idx_afa_month_statements_period
+    ON afa_month_statements(period);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -2151,6 +2188,9 @@ def init_database(con: LockedConnection) -> None:
     # trust contract, see the block comment above). Pure idempotent CREATE IF
     # NOT EXISTS; FK-references documents; runs last.
     con.execute(ANTIEK_GRAPH_SCHEMA_V21_READER_HTML_SQL)
+    # AFA-S6 — month-close records + per-payee statements (Merkle root).
+    # Pure idempotent CREATE IF NOT EXISTS; FK-references nothing.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V22_AFA_MONTH_CLOSE_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
