@@ -254,7 +254,10 @@ export default function LineupPanel() {
                           className="max-w-[220px] rounded-md border-2 border-emperor/40 bg-ice-0 px-2 py-1 text-[11px] font-semibold text-ink dark:bg-charcoal-1 dark:text-bright"
                         >
                           <option value="">Auto (follow formation)</option>
-                          {lineup.bench.map((b) => (
+                          {(action.allowed_models
+                            ? lineup.bench.filter((b) => action.allowed_models!.includes(b.model_id))
+                            : lineup.bench
+                          ).map((b) => (
                             <option
                               key={`${b.provider_id}:${b.model_id}`}
                               value={`${b.provider_id}:${b.model_id}`}

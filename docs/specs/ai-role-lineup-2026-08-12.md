@@ -201,5 +201,12 @@ real dispatch_role + default tier (or `none` for non-dispatch surfaces).
   attribution/visual_claims) have no dispatch seam — binding needs new
   seams (documented). Interviewer's missing role_tiers entry was the one
   TRUE config gap and is now fixed (pro, 2026-08-13 catalog-truth pass).
+- **Non-dispatch binding (2026-08-13)**: voice (whisper-1 / gpt-4o-mini-tts),
+  media (krea-*) and embedding (all-MiniLM-L6-v2) actions now carry
+  `allowed_models` — the selector admits only models the surface can
+  serve (PUT rejects others value-free), the bench includes the capability
+  models, and each surface consults the lineup at call time via
+  `effective_model_for_action` (action > role > default; provider family +
+  allowed set must match, else the surface default holds).
 - **Deploy**: PR #3061 merged 2026-08-13 (main `8a256369a7`); prod deploys
   are operator-initiated (prod at `29137f1b` as of the last deploy).

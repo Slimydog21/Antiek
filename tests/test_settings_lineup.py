@@ -182,6 +182,49 @@ def test_catalog_dispatch_roles_resolve_in_config(client: TestClient) -> None:
     assert "interviewer" in configured
 
 
+def test_non_dispatch_actions_carry_allowed_models_and_bench(client: TestClient) -> None:
+    resp = client.get("/settings/lineup")
+    assert resp.status_code == 200
+    data = resp.json()
+    by_id = {a["action_id"]: a for a in data["advanced"]}
+    assert by_id["transcription"]["allowed_models"] == ["whisper-1"]
+    assert by_id["text_to_speech"]["allowed_models"] == ["gpt-4o-mini-tts"]
+    assert "krea-image-standard" in by_id["image_generation"]["allowed_models"]
+    assert by_id["graph_embedding"]["allowed_models"] == ["all-MiniLM-L6-v2"]
+    assert by_id["research_synthesis"]["allowed_models"] is None  # dispatch-bound: any
+    bench = {(b["provider_id"], b["model_id"]) for b in data["bench"]}
+    assert ("krea", "krea-image-standard") in bench
+    assert ("krea", "krea-video-pro") in bench
+    assert ("local_embedding", "all-MiniLM-L6-v2") in bench
+    assert ("openai", "whisper-1") in bench  # from dispatch tiers
+
+
+def test_advanced_assignment_admits_only_allowed_models(client: TestClient) -> None:
+    bad = client.put(
+        "/settings/lineup",
+        json={"advanced": {"transcription": {"provider_id": "openai", "model_id": "gpt-5.6-luna"}}},
+    )
+    assert bad.status_code == 422
+    assert "cannot serve action" in bad.json()["detail"]
+
+    ok = client.put(
+        "/settings/lineup",
+        json={"advanced": {"transcription": {"provider_id": "openai", "model_id": "whisper-1"}}},
+    )
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["assignments"]["advanced"]["transcription"] == {
+        "provider_id": "openai",
+        "model_id": "whisper-1",
+    }
+
+    bad_media = client.put(
+        "/settings/lineup",
+        json={"advanced": {"image_generation": {"provider_id": "krea", "model_id": "krea-video-pro"}}},
+    )
+    assert bad_media.status_code == 422
+    assert "cannot serve action" in bad_media.json()["detail"]
+
+
 def test_default_tiers_are_present_in_catalog(client: TestClient) -> None:
     resp = client.get("/settings/lineup")
     assert resp.status_code == 200

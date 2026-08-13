@@ -106,7 +106,7 @@ class BenchModel:
     provider_id: str
     model_id: str
     label: str
-    source: Literal["user_model", "preset", "dispatch"]
+    source: Literal["user_model", "preset", "dispatch", "capability"]
     default_tier: str | None
 
 
@@ -215,6 +215,32 @@ def _bench_for_request(request: Request) -> list[BenchModel]:
         seen.add(key)
         bench.append(model)
 
+    # 4. Non-dispatch capability models (media + embedding families), so
+    # the advanced selector can name a model these surfaces actually serve.
+    from substrate.dispatch.lineup_catalog import ACTION_BY_ID
+
+    for action in ACTION_BY_ID.values():
+        if action.kind in {"media", "embedding", "voice"}:
+            for model_id in action.allowed_models or ():
+                family = {
+                    "media": "krea",
+                    "embedding": "local_embedding",
+                    "voice": "openai",
+                }[action.kind]
+                key = (family, model_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                bench.append(
+                    BenchModel(
+                        provider_id=family,
+                        model_id=model_id,
+                        label=f"{family}/{model_id}",
+                        source="capability",
+                        default_tier=None,
+                    )
+                )
+
     return bench
 
 
@@ -256,6 +282,7 @@ class ActionView(BaseModel):
     dispatch_role: str | None
     default_tier: str | None
     kind: ActionKind
+    allowed_models: list[str] | None
 
 
 class BenchView(BaseModel):
@@ -317,6 +344,7 @@ def _view(request: Request) -> LineupResponse:
                 dispatch_role=a.dispatch_role,
                 default_tier=a.default_tier,
                 kind=a.kind,
+                allowed_models=list(a.allowed_models) if a.allowed_models else None,
             )
             for role in ROLE_CATALOG
             for a in role.actions
@@ -379,7 +407,30 @@ def put_lineup(request: Request, update: LineupUpdate) -> LineupResponse:
         return clean
 
     general = validate_map(update.general, set(ROLE_BY_ID), "role")
-    advanced = validate_map(update.advanced, set(ACTION_BY_ID), "action")
+
+    def validate_advanced(
+        assignments: dict[str, LineupChoice | None],
+    ) -> dict[str, LineupChoice | None]:
+        clean: dict[str, LineupChoice | None] = {}
+        for action_id, choice in assignments.items():
+            if action_id not in ACTION_BY_ID:
+                raise _reject(f"unknown action slot: {action_id!r}")
+            if choice is None:
+                clean[action_id] = None
+                continue
+            key = (choice.provider_id, choice.model_id)
+            if key not in bench:
+                raise _reject(f"model {choice.provider_id}/{choice.model_id} is not on the bench")
+            action = ACTION_BY_ID[action_id]
+            if action.allowed_models and choice.model_id not in action.allowed_models:
+                raise _reject(
+                    f"model {choice.model_id!r} cannot serve action {action_id!r} "
+                    f"(allowed: {', '.join(action.allowed_models)})"
+                )
+            clean[action_id] = choice
+        return clean
+
+    advanced = validate_advanced(update.advanced)
 
     registry = _load_registry()
     owners = registry.get("owners", {})

@@ -13,7 +13,7 @@ import { API_BASE, apiFetch } from "../lib/api";
 
 export type Position = "gk" | "def" | "mid" | "att";
 export type ActionKind = "llm" | "media" | "voice" | "embedding";
-export type BenchSource = "user_model" | "preset" | "dispatch";
+export type BenchSource = "user_model" | "preset" | "dispatch" | "capability";
 
 export interface LineupChoice {
   provider_id: string;
@@ -36,6 +36,8 @@ export interface ActionView {
   dispatch_role: string | null;
   default_tier: string | null;
   kind: ActionKind;
+  /** Models this action's surface can actually serve; null = any bench model. */
+  allowed_models: string[] | null;
 }
 
 export interface RoleView {

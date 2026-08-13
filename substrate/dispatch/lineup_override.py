@@ -118,3 +118,62 @@ def effective_override_for_dispatch_role(dispatch_role: str) -> DispatchOverride
                         source="role_assignment",
                     )
     return None
+
+
+
+def effective_model_for_action(
+    action_id: str,
+    *,
+    provider_family: str,
+    default: str,
+) -> str:
+    """Operator lineup model for a NON-dispatch surface action.
+
+    Voice/media/embedding surfaces each have exactly one provider family
+    (openai / krea / local_embedding). An assignment is admitted only when
+    it names that family AND a model in the action's allowed set; anything
+    else is ignored so the surface keeps its default (the selector can
+    never name a model the endpoint cannot serve). Precedence mirrors the
+    dispatch binding: action assignment, then the owning role's general
+    assignment, then ``default``.
+    """
+    action = ACTION_BY_ID.get(action_id)
+    if action is None:
+        return default
+    allowed = set(action.allowed_models or ())
+    candidate: tuple[str, str] | None = None
+
+    registry = _load_registry()
+    owners = registry.get("owners", {})
+    owner_map = owners.get(_OPERATOR_OWNER, {}) if isinstance(owners, dict) else {}
+    general: dict[str, object] = owner_map.get("general", {}) if isinstance(owner_map, dict) else {}
+    advanced: dict[str, object] = owner_map.get("advanced", {}) if isinstance(owner_map, dict) else {}
+
+    choice = advanced.get(action_id)
+    if isinstance(choice, dict):
+        pid = choice.get("provider_id")
+        mid = choice.get("model_id")
+        if isinstance(pid, str) and isinstance(mid, str):
+            candidate = (pid, mid)
+
+    if candidate is None:
+        role = next(
+            (r for r in ROLE_BY_ID.values() if any(a.action_id == action_id for a in r.actions)),
+            None,
+        )
+        if role is not None:
+            g = general.get(role.role_id)
+            if isinstance(g, dict):
+                pid = g.get("provider_id")
+                mid = g.get("model_id")
+                if isinstance(pid, str) and isinstance(mid, str):
+                    candidate = (pid, mid)
+
+    if candidate is None:
+        return default
+    pid, mid = candidate
+    if pid != provider_family:
+        return default
+    if allowed and mid not in allowed:
+        return default
+    return mid

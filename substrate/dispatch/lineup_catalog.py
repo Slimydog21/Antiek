@@ -34,6 +34,11 @@ class ActionDef:
     dispatch_role: str | None
     default_tier: str | None
     kind: ActionKind
+    # Non-dispatch surfaces (voice/media/embedding) are single-provider:
+    # an assignment is admitted only when the model is in this set, so the
+    # selector can never name a model the surface cannot serve. None = any
+    # bench model is admissible (dispatch-bound LLM actions).
+    allowed_models: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +83,7 @@ ROLE_CATALOG: tuple[RoleDef, ...] = (
             ActionDef("attribution", "Page attribution", "Compute page/source attribution. Typed-event label only — no dispatch seam exists yet.", None, "flash", "llm"),
             ActionDef("tier_assignment", "Tier assignment", "Rule-based routing tier assignment (LLM only for downward adjustment).", "tier_assigner", "flash", "llm"),
             ActionDef("constraint_checking", "Constraint checking", "Preflight constraint checks on plans.", "constraint_checker", "flash", "llm"),
-            ActionDef("transcription", "Transcription", "Whisper audio→text for voice capture.", None, "transcription", "voice"),
+            ActionDef("transcription", "Transcription", "Whisper audio→text for voice capture.", None, "transcription", "voice", ("whisper-1",)),
         ),
     ),
     RoleDef(
@@ -140,8 +145,8 @@ ROLE_CATALOG: tuple[RoleDef, ...] = (
         blurb="The artist. Generates images/video via the multimedia router (Krea). FOUND MISSING — text roles cannot cover generative media.",
         discovered=True,
         actions=(
-            ActionDef("image_generation", "Image generation", "Text/image-to-image generation.", None, None, "media"),
-            ActionDef("video_generation", "Video generation", "Text-to-video generation.", None, None, "media"),
+            ActionDef("image_generation", "Image generation", "Text/image-to-image generation.", None, None, "media", ("krea-image-standard", "krea-image-pro")),
+            ActionDef("video_generation", "Video generation", "Text-to-video generation.", None, None, "media", ("krea-image-to-video-standard", "krea-image-to-video-pro", "krea-video-standard", "krea-video-pro")),
         ),
     ),
     RoleDef(
@@ -151,7 +156,7 @@ ROLE_CATALOG: tuple[RoleDef, ...] = (
         blurb="The voice. Speech synthesis for Speak-mode audio. FOUND MISSING — transcription is mining, but TTS is a distinct model class.",
         discovered=True,
         actions=(
-            ActionDef("text_to_speech", "Text to speech", "Interviewer responses to informant-facing audio.", None, "tts", "voice"),
+            ActionDef("text_to_speech", "Text to speech", "Interviewer responses to informant-facing audio.", None, "tts", "voice", ("gpt-4o-mini-tts",)),
         ),
     ),
     RoleDef(
@@ -161,8 +166,8 @@ ROLE_CATALOG: tuple[RoleDef, ...] = (
         blurb="The scout. Graph embeddings + retrieval indexing. FOUND MISSING — embedding model choice is a distinct model class from token-based roles.",
         discovered=True,
         actions=(
-            ActionDef("graph_embedding", "Graph embedding", "Embed graph nodes for retrieval.", None, None, "embedding"),
-            ActionDef("retrieval_indexing", "Retrieval indexing", "Index documents into the retrieval store.", None, None, "embedding"),
+            ActionDef("graph_embedding", "Graph embedding", "Embed graph nodes for retrieval.", None, None, "embedding", ("all-MiniLM-L6-v2",)),
+            ActionDef("retrieval_indexing", "Retrieval indexing", "Index documents into the retrieval store.", None, None, "embedding", ("all-MiniLM-L6-v2",)),
         ),
     ),
 )
