@@ -36,21 +36,42 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import logging
 import os
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from decimal import Decimal, DecimalException
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from interfaces.research.api.dispatch_failure import classify_dispatch_failure
+from interfaces.research.api.owner_byot_dispatch import (
+    OwnerByotDispatchUnavailable,
+    authenticated_distinct_owner,
+)
+from interfaces.research.api.research_owner_dispatch import (
+    PAID_LOOP_ONE_ROLES,
+    OwnerLaunchConflict,
+    ResearchOwnerManifest,
+    advance_owner_launch,
+    claim_owner_broadcast,
+    claim_owner_launch,
+    install_manifest,
+    owner_launch_state,
+    reset_manifest,
+)
+from interfaces.research.api.settings_models_admin import (
+    UserModelChoice,
+    UserModelChoiceUnavailable,
+    resolve_owner_model_authority,
+)
 from orchestration.cascade_session import CascadeSession, Leaf, reconstruct_session
 from roles.cascade_planner import (
     PlanNotApproved,
@@ -118,6 +139,14 @@ _SESSIONS: dict[str, CascadeSession] = {}
 _SESSION_TASKS: dict[str, asyncio.Task[None]] = {}
 _HARD_CEILING_RUNS: dict[CascadeSession, tuple[ResearchProviderGateway, RunBinding]] = {}
 _HARD_CEILING_LAUNCHING: set[str] = set()
+
+
+@dataclass(frozen=True)
+class _CascadeOwnerLaunch:
+    manifest: ResearchOwnerManifest
+
+
+_OWNER_CASCADE_LAUNCHES: dict[str, _CascadeOwnerLaunch] = {}
 
 # Optional hook set by ``create_app`` after Loop 1 handlers register.
 # Runs Path A synthesis tail (phases 6–9) once gather + merge finish.
@@ -359,6 +388,7 @@ class LaunchRequest(BaseModel):
     spend_mode: SpendControlMode = SpendControlMode.STOP_LIMIT
     hard_ceiling_usd: Decimal | None = Field(default=None, gt=0, allow_inf_nan=False)
     authority_digest: str | None = Field(default=None, min_length=64, max_length=64)
+    owner_model_choices: dict[str, UserModelChoice] | None = None
 
 
 class SpendPreviewRequest(BaseModel):
@@ -1045,6 +1075,70 @@ async def approve_spend(root_id: str, req: SpendPreviewRequest, request: Request
     }
 
 
+def _owner_choices_digest(
+    *,
+    root_id: str,
+    req: LaunchRequest,
+    tree: PlanTree,
+    choices: Mapping[str, UserModelChoice],
+) -> str:
+    stable = {
+        role: choice.model_dump(mode="json")
+        for role, choice in sorted(choices.items())
+    }
+    payload = {
+        "root_id": root_id,
+        "plan_version": tree.approval.plan_version,
+        "leaves": [
+            {
+                "question": leaf.question,
+                "graph_node_id": leaf.graph_node_id,
+            }
+            for leaf in tree.leaves
+        ],
+        "per_research_budget_usd": req.per_research_budget_usd,
+        "aggregate_budget_usd": req.aggregate_budget_usd,
+        "spend_mode": req.spend_mode.value,
+        "hard_ceiling_usd": None if req.hard_ceiling_usd is None else str(req.hard_ceiling_usd),
+        "authority_digest": req.authority_digest,
+        "owner_model_choices": stable,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _resolve_owner_choices(
+    *,
+    req: LaunchRequest,
+    request: Request,
+) -> tuple[str, dict[str, UserModelChoice]] | None:
+    if req.owner_model_choices is None:
+        return None
+    try:
+        owner_user_id = authenticated_distinct_owner(request)
+    except OwnerByotDispatchUnavailable:
+        raise HTTPException(status_code=401, detail="owner_model_unavailable") from None
+
+    raw = req.owner_model_choices
+    if type(raw) is not dict or set(raw.keys()) != set(PAID_LOOP_ONE_ROLES):
+        raise HTTPException(status_code=422, detail="owner_model_unknown")
+
+    choices: dict[str, UserModelChoice] = {}
+    for role in PAID_LOOP_ONE_ROLES:
+        try:
+            choice = UserModelChoice.model_validate(raw[role])
+            resolve_owner_model_authority(
+                request.app,
+                choice,
+                owner_user_id=owner_user_id,
+            )
+        except (ValidationError, TypeError, UserModelChoiceUnavailable):
+            raise HTTPException(status_code=422, detail="owner_model_unknown") from None
+        choices[role] = choice
+    return owner_user_id, choices
+
+
 @cascade_router.post("/plans/{root_id}/launch")
 async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str, Any]:
     """Launch an approved plan as N parallel researches. Refuses an
@@ -1062,7 +1156,23 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
         if tree is None:
             raise HTTPException(status_code=404, detail=f"no plan {root_id!r}")
 
-    session_id = f"session-{root_id}"
+    owner_selection = _resolve_owner_choices(req=req, request=request)
+
+    owner_user_id: str | None = None
+    owner_choices_seed: dict[str, UserModelChoice] | None = None
+    owner_operation_id_seed: str | None = None
+    if owner_selection is not None:
+        owner_user_id, owner_choices_seed = owner_selection
+        owner_operation_id_seed = deterministic_key(
+            "owner-cascade-launch",
+            root_id,
+        )
+        session_id = "session-" + hashlib.sha256(
+            f"owner-cascade:{owner_operation_id_seed}".encode()
+        ).hexdigest()[:24]
+    else:
+        session_id = f"session-{root_id}"
+
     gateway: ResearchProviderGateway | None = None
     binding: RunBinding | None = None
     existing_durable_run = False
@@ -1103,7 +1213,8 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
             )
         plan_digest = _hard_ceiling_plan_digest(root_id=root_id, tree=tree, request=req)
         authority_suffix = canonical_digest({"owner_id": owner_id, "plan_digest": plan_digest})[:16]
-        session_id = f"session-{root_id}-hard-{authority_suffix}"
+        if owner_selection is None:
+            session_id = f"session-{root_id}-hard-{authority_suffix}"
         binding = _hard_ceiling_binding(
             root_id=root_id,
             session_id=session_id,
@@ -1149,6 +1260,47 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
                 },
             )
 
+    owner_operation_id: str | None = None
+    owner_manifest: ResearchOwnerManifest | None = None
+    owner_claimed_broadcast = False
+    if owner_choices_seed is not None and owner_user_id is not None:
+        launch_digest = _owner_choices_digest(
+            root_id=root_id,
+            req=req,
+            tree=tree,
+            choices=owner_choices_seed,
+        )
+        owner_operation_id = owner_operation_id_seed
+        if owner_operation_id is None:
+            raise RuntimeError("owner operation id missing after owner selection")
+        try:
+            session_id, _claim_replay, _event_id = claim_owner_launch(
+                operation_id=owner_operation_id,
+                owner_user_id=owner_user_id,
+                launch_digest=launch_digest,
+                investigation_id=session_id,
+            )
+        except OwnerLaunchConflict:
+            raise HTTPException(status_code=409, detail="owner_model_operation_conflict") from None
+        except Exception as exc:
+            # Claim-store infrastructure failure (SQLite busy/lock, disk, ...):
+            # the claim was NOT written, so the client can retry the identical
+            # request safely (idempotent launch). Explicit retryable error,
+            # never an ambient fallback.
+            raise HTTPException(
+                status_code=500,
+                detail="owner_launch_claim_failed",
+            ) from exc
+        if owner_launch_state(owner_operation_id) == "claimed":
+            advance_owner_launch(owner_operation_id, "claimed", "appended")
+        owner_manifest = ResearchOwnerManifest(
+            app=request.app,
+            owner_user_id=owner_user_id,
+            investigation_id=session_id,
+            operation_id=owner_operation_id,
+            choices=owner_choices_seed,
+            launch_digest=launch_digest,
+        )
     leaves = [
         Leaf(
             investigation_id=f"{session_id}-leaf-{i}",
@@ -1159,6 +1311,7 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
         for i, leaf in enumerate(tree.leaves)
     ]
     budget = BudgetManager(aggregate_cap_usd=req.aggregate_budget_usd)
+
     launch_receipt = (
         None
         if gateway is None or binding is None
@@ -1188,32 +1341,64 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
             status_code=409,
             detail={"code": "hard_ceiling_launch_failed"},
         )
-    existing_session = _SESSIONS.get(session_id)
-    if gateway is not None and binding is not None and existing_session is not None:
-        existing_hard_run = _HARD_CEILING_RUNS.get(existing_session)
-        if existing_hard_run is None or existing_hard_run[1] != binding:
-            raise HTTPException(status_code=409, detail="session identity is already in use")
-        existing_gateway, _ = existing_hard_run
-        return {
-            "session_id": session_id,
-            "researches": [
-                {
-                    "investigation_id": leaf.investigation_id,
-                    "sub_question": leaf.sub_question,
-                    "question_node_id": leaf.question_node_id,
+
+    if owner_operation_id is not None:
+        owner_claimed_broadcast = claim_owner_broadcast(owner_operation_id)
+        if not owner_claimed_broadcast:
+            existing = _SESSIONS.get(session_id)
+            if existing is not None:
+                replay_response: dict[str, Any] = {
+                    "session_id": session_id,
+                    "researches": [
+                        {
+                            "investigation_id": leaf.investigation_id,
+                            "sub_question": leaf.sub_question,
+                            "question_node_id": leaf.question_node_id,
+                        }
+                        for leaf in leaves
+                    ],
+                    "aggregate_cap_usd": budget.aggregate_cap_usd,
+                    "spend_mode": req.spend_mode.value,
+                    "replayed": True,
+                    "resumed": False,
                 }
-                for leaf in leaves
-            ],
-            "aggregate_cap_usd": budget.aggregate_cap_usd,
-            "spend_mode": req.spend_mode.value,
-            "replayed": True,
-            "hard_ceiling": _safe_hard_ceiling_snapshot(existing_gateway, binding),
-        }
-    resumed = False
-    if gateway is not None and binding is not None and durable_replay:
-        recovered = reconstruct_session(session_id)
-        if recovered.researches and recovered.all_terminal:
-            return {
+                if gateway is not None and binding is not None:
+                    replay_response["hard_ceiling"] = _safe_hard_ceiling_snapshot(gateway, binding)
+                return replay_response
+            recovered = reconstruct_session(session_id)
+            if recovered.researches and recovered.all_terminal:
+                replay_response = {
+                    "session_id": session_id,
+                    "researches": [
+                        {
+                            "investigation_id": leaf.investigation_id,
+                            "sub_question": leaf.sub_question,
+                            "question_node_id": leaf.question_node_id,
+                        }
+                        for leaf in leaves
+                    ],
+                    "aggregate_cap_usd": budget.aggregate_cap_usd,
+                    "spend_mode": req.spend_mode.value,
+                    "replayed": True,
+                    "resumed": False,
+                }
+                if gateway is not None and binding is not None:
+                    replay_response["hard_ceiling"] = _safe_hard_ceiling_snapshot(gateway, binding)
+                return replay_response
+            raise HTTPException(status_code=503, detail="owner_model_start_pending")
+
+    owner_broadcast_committed = False
+    owner_manifest_token = None
+    response: dict[str, Any] | None = None
+
+    try:
+        existing_session = _SESSIONS.get(session_id)
+        if gateway is not None and binding is not None and existing_session is not None:
+            existing_hard_run = _HARD_CEILING_RUNS.get(existing_session)
+            if existing_hard_run is None or existing_hard_run[1] != binding:
+                raise HTTPException(status_code=409, detail="session identity is already in use")
+            existing_gateway, _ = existing_hard_run
+            response = {
                 "session_id": session_id,
                 "researches": [
                     {
@@ -1226,95 +1411,144 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
                 "aggregate_cap_usd": budget.aggregate_cap_usd,
                 "spend_mode": req.spend_mode.value,
                 "replayed": True,
-                "resumed": False,
-                "hard_ceiling": _safe_hard_ceiling_snapshot(gateway, binding),
+                "hard_ceiling": _safe_hard_ceiling_snapshot(existing_gateway, binding),
             }
-        # A completed launch receipt proves acceptance, not terminal execution.
-        # Rebuild the host-local session when durable lifecycle evidence is absent
-        # or nonterminal. Per-leaf receipts make completed work a no-op and resume
-        # only checkpoint-safe zero-cost work; paid unknowns remain held.
-        resumed = True
-    if gateway is not None and session_id in _HARD_CEILING_LAUNCHING:
-        raise HTTPException(status_code=409, detail="hard-ceiling session launch in progress")
-    embedding_provider = (
-        _embedding_provider()
-        if gateway is None or binding is None
-        else _hard_ceiling_embedding_provider(gateway, binding)
-    )
-    funnel = PromotionFunnel(db_path=_db(), embedding_provider=embedding_provider)
-    # Flywheel reuse ON: a §9.0-gated substrate that reads the live graph through
-    # a cursor of a read-write handle SHARING the funnel's DuckDB instance (never
-    # a conflicting connect_read). It opens lazily on the first reuse read inside
-    # launch() and is closed the instant launch() returns, so the read-write
-    # handle never overlaps a connect_read reader. Best-effort: None degrades to
-    # today's no-reuse behaviour, so a launch never breaks. See _reuse_substrate.
-    reuse_substrate = _reuse_substrate(embedding_provider)
-    loop = _research_loop_factory()
-    if gateway is not None and binding is not None:
-        loop = _receipted_hard_ceiling_loop(loop, gateway=gateway, binding=binding)
-    runner = HostLocalRunner(
-        loop,
-        budget=budget,
-        on_emit=funnel.submit,
-        seal_on_complete=False,
-        retrieval_substrate=reuse_substrate,
-    )
-    # Exec-backend seam: when ANTIEK_EXEC_BACKEND is set, plumb the
-    # ExecutionBackend abstraction so it is reachable from the cascade.
-    # Default (unset) path is unchanged — HostLocalRunner above.
-    if os.environ.get(BACKEND_ENV):
-        _exec_backend = build_execution_backend(
-            seal_on_complete=False,
-            retrieval_substrate=reuse_substrate,
-        )
-        logger.info(
-            "ExecutionBackend wired: %s (runner remains %s)",
-            _exec_backend.name,
-            type(runner).__name__,
-        )
-    session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
-    if gateway is not None:
-        _HARD_CEILING_LAUNCHING.add(session_id)
-    try:
-        await session.launch(root_id, leaves)
-        if gateway is not None and launch_receipt is not None:
-            gateway.complete_zero_cost(
-                launch_receipt,
-                outcome={"session_id": session_id, "leaf_count": len(leaves)},
+
+        resumed = False
+        if response is None and gateway is not None and binding is not None and durable_replay:
+            recovered = reconstruct_session(session_id)
+            if recovered.researches and recovered.all_terminal:
+                response = {
+                    "session_id": session_id,
+                    "researches": [
+                        {
+                            "investigation_id": leaf.investigation_id,
+                            "sub_question": leaf.sub_question,
+                            "question_node_id": leaf.question_node_id,
+                        }
+                        for leaf in leaves
+                    ],
+                    "aggregate_cap_usd": budget.aggregate_cap_usd,
+                    "spend_mode": req.spend_mode.value,
+                    "replayed": True,
+                    "resumed": False,
+                    "hard_ceiling": _safe_hard_ceiling_snapshot(gateway, binding),
+                }
+            else:
+                # A completed launch receipt proves acceptance, not terminal execution.
+                # Rebuild the host-local session when durable lifecycle evidence is absent
+                # or nonterminal. Per-leaf receipts make completed work a no-op and resume
+                # only checkpoint-safe zero-cost work; paid unknowns remain held.
+                resumed = True
+
+        if response is None:
+            if gateway is not None and session_id in _HARD_CEILING_LAUNCHING:
+                raise HTTPException(status_code=409, detail="hard-ceiling session launch in progress")
+
+            embedding_provider = (
+                _embedding_provider()
+                if gateway is None or binding is None
+                else _hard_ceiling_embedding_provider(gateway, binding)
             )
-    finally:
-        # The reuse reads happen synchronously during launch(); close the shared
-        # read handle NOW so it never overlaps the connect_read readers that run
-        # during the background/polling phase (a held read-write handle is the
-        # forbidden RO+RW same-file mismatch for every connect_read on the file).
-        # runner.join() will best-effort close it again later — idempotent.
-        if reuse_substrate is not None:
-            with contextlib.suppress(Exception):
-                reuse_substrate.close()
-        _HARD_CEILING_LAUNCHING.discard(session_id)
-    _SESSIONS[session_id] = session
-    if gateway is not None and binding is not None:
-        _HARD_CEILING_RUNS[session] = (gateway, binding)
-    # Drive the fan-out to completion (join + funnel drain + merge) in the
-    # background so the session progresses without a connected stream client.
-    _SESSION_TASKS[session_id] = asyncio.create_task(_run_to_completion(session))
-    response: dict[str, Any] = {
-        "session_id": session_id,
-        "researches": [
-            {
-                "investigation_id": leaf.investigation_id,
-                "sub_question": leaf.sub_question,
-                "question_node_id": leaf.question_node_id,
+            funnel = PromotionFunnel(db_path=_db(), embedding_provider=embedding_provider)
+            # Flywheel reuse ON: a §9.0-gated substrate that reads the live graph through
+            # a cursor of a read-write handle SHARING the funnel's DuckDB instance (never
+            # a conflicting connect_read). It opens lazily on the first reuse read inside
+            # launch() and is closed the instant launch() returns, so the read-write
+            # handle never overlaps a connect_read reader. Best-effort: None degrades to
+            # today's no-reuse behaviour, so a launch never breaks. See _reuse_substrate.
+            reuse_substrate = _reuse_substrate(embedding_provider)
+            loop = _research_loop_factory()
+            if gateway is not None and binding is not None:
+                loop = _receipted_hard_ceiling_loop(loop, gateway=gateway, binding=binding)
+            runner = HostLocalRunner(
+                loop,
+                budget=budget,
+                on_emit=funnel.submit,
+                seal_on_complete=False,
+                retrieval_substrate=reuse_substrate,
+            )
+            # Exec-backend seam: when ANTIEK_EXEC_BACKEND is set, plumb the
+            # ExecutionBackend abstraction so it is reachable from the cascade.
+            # Default (unset) path is unchanged — HostLocalRunner above.
+            if os.environ.get(BACKEND_ENV):
+                _exec_backend = build_execution_backend(
+                    seal_on_complete=False,
+                    retrieval_substrate=reuse_substrate,
+                )
+                logger.info(
+                    "ExecutionBackend wired: %s (runner remains %s)",
+                    _exec_backend.name,
+                    type(runner).__name__,
+                )
+            session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
+            if gateway is not None:
+                _HARD_CEILING_LAUNCHING.add(session_id)
+
+            if owner_manifest is not None and owner_claimed_broadcast:
+                owner_manifest_token = install_manifest(owner_manifest)
+
+            try:
+                await session.launch(root_id, leaves)
+                if gateway is not None and launch_receipt is not None:
+                    gateway.complete_zero_cost(
+                        launch_receipt,
+                        outcome={"session_id": session_id, "leaf_count": len(leaves)},
+                    )
+            finally:
+                # The reuse reads happen synchronously during launch(); close the shared
+                # read handle NOW so it never overlaps the connect_read readers that run
+                # during the background/polling phase (a held read-write handle is the
+                # forbidden RO+RW same-file mismatch for every connect_read on the file).
+                # runner.join() will best-effort close it again later — idempotent.
+                if reuse_substrate is not None:
+                    with contextlib.suppress(Exception):
+                        reuse_substrate.close()
+                _HARD_CEILING_LAUNCHING.discard(session_id)
+
+            _SESSIONS[session_id] = session
+            if owner_manifest is not None and owner_operation_id is not None:
+                _OWNER_CASCADE_LAUNCHES[session_id] = _CascadeOwnerLaunch(
+                    manifest=owner_manifest,
+                )
+            if gateway is not None and binding is not None:
+                _HARD_CEILING_RUNS[session] = (gateway, binding)
+            # Drive the fan-out to completion (join + funnel drain + merge) in the
+            # background so the session progresses without a connected stream client.
+            _SESSION_TASKS[session_id] = asyncio.create_task(_run_to_completion(session))
+            response = {
+                "session_id": session_id,
+                "researches": [
+                    {
+                        "investigation_id": leaf.investigation_id,
+                        "sub_question": leaf.sub_question,
+                        "question_node_id": leaf.question_node_id,
+                    }
+                    for leaf in leaves
+                ],
+                "aggregate_cap_usd": budget.aggregate_cap_usd,
+                "spend_mode": req.spend_mode.value,
+                "replayed": False,
+                "resumed": resumed,
             }
-            for leaf in leaves
-        ],
-        "aggregate_cap_usd": budget.aggregate_cap_usd,
-        "spend_mode": req.spend_mode.value,
-        "replayed": False,
-        "resumed": resumed,
-    }
-    if binding is not None and gateway is not None:
-        response["hard_ceiling"] = _safe_hard_ceiling_snapshot(gateway, binding)
+            if binding is not None and gateway is not None:
+                response["hard_ceiling"] = _safe_hard_ceiling_snapshot(gateway, binding)
+
+        if owner_operation_id is not None and owner_claimed_broadcast:
+            advance_owner_launch(owner_operation_id, "broadcasting", "broadcast")
+            owner_broadcast_committed = True
+
+    except Exception:
+        if owner_operation_id is not None and owner_claimed_broadcast and not owner_broadcast_committed:
+            _OWNER_CASCADE_LAUNCHES.pop(session_id, None)
+            with contextlib.suppress(OwnerLaunchConflict):
+                advance_owner_launch(owner_operation_id, "broadcasting", "appended")
+        raise
+    finally:
+        if owner_manifest_token is not None:
+            reset_manifest(owner_manifest_token)
+
+    assert response is not None
     return response
 
 
@@ -1335,12 +1569,21 @@ async def _run_to_completion(session: CascadeSession) -> None:
         if _SYNTHESIS_TAIL_RUNNER is not None and session not in _HARD_CEILING_RUNS:
             stage = "synthesis_tail"
             pack = session.build_evidence_pack()
-            await _SYNTHESIS_TAIL_RUNNER(session, pack)
+            owner_launch = _OWNER_CASCADE_LAUNCHES.get(session.session_id)
+            token = None
+            try:
+                if owner_launch is not None:
+                    token = install_manifest(owner_launch.manifest)
+                await _SYNTHESIS_TAIL_RUNNER(session, pack)
+            finally:
+                if token is not None:
+                    reset_manifest(token)
     except Exception as exc:
         # Capture, do not swallow: record WITH the failing stage (so a join/merge
         # failure isn't mislabeled as a synthesis-tail one) + audit, stay non-fatal.
         session.record_synthesis_tail_error(exc, stage=stage)
     finally:
+        _OWNER_CASCADE_LAUNCHES.pop(session.session_id, None)
         hard_run = _HARD_CEILING_RUNS.get(session)
         if hard_run is not None:
             gateway, binding = hard_run
