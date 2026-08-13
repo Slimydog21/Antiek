@@ -281,7 +281,7 @@ export type ShadowKey = keyof (typeof shadow)["day"];
    These five drive the canonical <Werner mood="..." /> (U-02). The component renders
    at rail size (28px, mark fidelity) and hero (120px+, character fidelity) from the
    same geometry. Abstract dot rejected: a stranger must call the rail mark "a cute
-   penguin" not "a dot". See brand/README.md for the four-slot restraint rule. */
+   brain" not "a dot". See brand/README.md for the four-slot restraint rule. */
 export const werner = {
   day: {
     coat: "#0F1419",

@@ -13,7 +13,7 @@ import Thinking from "../../shared/Thinking";
  * them:
  *
  *  1. The shared "AI is working" beat (``Thinking`` → SPR-02's
- *     ``WernerThinking``) — the same penguin-and-aurora-dots signal every
+ *     ``WernerThinking``) — the same brain-and-aurora-dots signal every
  *     other door uses, so "the AI is thinking" reads the same in Read as in
  *     Research. Shown only while the book's reading thread is actually
  *     running (a distill / talk-to-book in flight), never as decoration.
