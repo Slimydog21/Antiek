@@ -14,11 +14,15 @@ import {
  * private graph, with toggles per category and a 'delete everything'
  * button that actually deletes everything within 30 days."
  *
- * Since OYM P1 §2 the toggle state is REAL: each section reads its
- * enabled/default_enabled from ``GET /settings/privacy`` (backed by
- * the telemetry-preferences store, the DP shuffler's predicate) and
- * flips it through ``PUT /settings/privacy`` with an optimistic
- * update + rollback on failure. The ε budgets still come from the
+ * Since OYM P1 §2 the toggle state is persisted: each section reads
+ * its enabled/default_enabled from ``GET /settings/privacy`` (the
+ * telemetry-preferences store, intended as the DP shuffler's gating
+ * predicate) and flips it through ``PUT /settings/privacy`` with an
+ * optimistic update + rollback on failure. NOTE: the store is the
+ * designated gate but the telemetry emission path does not yet read
+ * it, so today a toggle records the user's opt-out intent rather
+ * than halting a live stream; the store exists so wiring the gate
+ * requires no further schema changes. The ε budgets still come from the
  * live ``/trust-center`` publication so any future surface that
  * registers with the EpsilonRegistry appears here automatically.
  *
@@ -178,10 +182,13 @@ export default function PrivacyDashboard() {
               Every telemetry signal Antiek collects from your private
               graph is listed below with its live ε budget pulled from
               the substrate's published trust posture. Toggles write
-              straight to your telemetry preferences — the same store
-              the DP shuffler consults before emitting anything. The
-              substrate is architecturally incapable of crossing these
-              boundaries.
+              your preference to the telemetry-preferences store — the
+              store intended as the gate the DP shuffler consults before
+              emitting anything. Wiring the store into the emission
+              path is in progress, so today a toggle records your
+              opt-out intent rather than halting a live data stream; the
+              store exists so the gating can be switched on without
+              further schema changes.
             </p>
             {data && (
               <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
@@ -272,8 +279,8 @@ function TelemetrySection({
         ) : (
           <span className="text-xs font-mono text-ink dark:text-bright bg-ice-3 dark:bg-charcoal-1 px-2 py-1 rounded">
             {surface.enabled
-              ? "collected · noisy aggregate · ε-bounded"
-              : "paused — no telemetry routed"}
+              ? "on — preference recorded"
+              : "off — opt-out recorded"}
           </span>
         )}
         <span

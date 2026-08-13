@@ -150,7 +150,7 @@ describe("PrivacyDashboard", () => {
     // Server row (enabled: false) is adopted on resolve.
     expect(skill.getAttribute("aria-checked")).toBe("false");
     expect(
-      screen.getAllByText("paused — no telemetry routed").length,
+      screen.getAllByText("off — opt-out recorded").length,
     ).toBeGreaterThan(0);
   });
 
