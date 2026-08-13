@@ -52,7 +52,7 @@ import stat
 import threading
 import time
 from collections.abc import Iterable, Iterator, Sequence
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
 
 import duckdb
 
@@ -62,6 +62,43 @@ DEFAULT_TIMEOUT_S = 300  # 5 minutes — long enough for a 200-paper ingest
 # logging. (We do NOT log the log writes themselves; that would be an
 # observability liability without paying for itself.)
 _WRITE_LOG_PURPOSE = "_write_log_internal"
+
+_SAME_FILE_DIFFERENT_CONFIG = (
+    "Can't open a connection to same database file with a different configuration"
+)
+_active_writer_lock = threading.Lock()
+_active_writers: dict[str, tuple[int, int]] = {}
+
+
+def _db_identity(db_path: str) -> str:
+    return os.path.realpath(os.path.abspath(os.fspath(db_path)))
+
+
+def _register_local_writer(db_path: str) -> None:
+    identity = _db_identity(db_path)
+    pid = os.getpid()
+    with _active_writer_lock:
+        registered_pid, count = _active_writers.get(identity, (pid, 0))
+        if registered_pid != pid:
+            count = 0
+        _active_writers[identity] = (pid, count + 1)
+
+
+def _unregister_local_writer(db_path: str) -> None:
+    identity = _db_identity(db_path)
+    pid = os.getpid()
+    with _active_writer_lock:
+        registered_pid, count = _active_writers.get(identity, (pid, 0))
+        if registered_pid != pid or count <= 1:
+            _active_writers.pop(identity, None)
+        else:
+            _active_writers[identity] = (pid, count - 1)
+
+
+def _has_local_writer(db_path: str) -> bool:
+    with _active_writer_lock:
+        registered_pid, count = _active_writers.get(_db_identity(db_path), (os.getpid(), 0))
+    return registered_pid == os.getpid() and count > 0
 
 
 def _lock_path_for(db_path: str) -> str:
@@ -268,6 +305,8 @@ class LockedConnection:
         self._error: str | None = None
         self._close_log_max_wait_s = close_log_max_wait_s
         self._in_explicit_transaction = False
+        if self._db_path:
+            _register_local_writer(self._db_path)
 
     @property
     def in_explicit_transaction(self) -> bool:
@@ -307,6 +346,8 @@ class LockedConnection:
         try:
             self._con.close()
         finally:
+            if self._db_path:
+                _unregister_local_writer(self._db_path)
             try:
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
             finally:
@@ -436,14 +477,97 @@ def connect_write(
     )
 
 
-def connect_read(db_path: str) -> duckdb.DuckDBPyConnection:
+class _ReadOrientedConnection:
+    """Restrict a same-config fallback to SQL that cannot mutate the catalog."""
+
+    _ALLOWED_STATEMENT_NAMES = {
+        "EXPLAIN",
+        "LOAD",
+        "PRAGMA",
+        "SELECT",
+        "SET",
+        "TRANSACTION",
+        "VARIABLE_SET",
+    }
+
+    def __init__(self, con: duckdb.DuckDBPyConnection):
+        self._con = con
+
+    def _reject_mutation(self, sql: str) -> None:
+        statements = self._con.extract_statements(sql)
+        rejected = [
+            statement.type.name
+            for statement in statements
+            if statement.type.name not in self._ALLOWED_STATEMENT_NAMES
+        ]
+        if rejected:
+            raise duckdb.InvalidInputException(
+                "connect_read fallback rejects non-read SQL statement type(s): "
+                + ", ".join(rejected)
+            )
+
+    def execute(self, sql: str, parameters: Sequence[Any] | None = None) -> _ReadOrientedConnection:
+        self._reject_mutation(sql)
+        self._con.execute(sql, parameters)
+        return self
+
+    def executemany(self, sql: str, parameters: Sequence[Sequence[Any]]) -> _ReadOrientedConnection:
+        self._reject_mutation(sql)
+        self._con.executemany(sql, parameters)
+        return self
+
+    def cursor(self) -> _ReadOrientedConnection:
+        return _ReadOrientedConnection(self._con.cursor())
+
+    def query(self, query: str, *, alias: str = "") -> Any:
+        self._reject_mutation(query)
+        return self._con.query(query, alias=alias)
+
+    def sql(self, query: str, *, alias: str = "") -> Any:
+        self._reject_mutation(query)
+        return self._con.sql(query, alias=alias)
+
+    def append(self, *_args: Any, **_kwargs: Any) -> None:
+        raise duckdb.InvalidInputException("connect_read fallback rejects append")
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._con, name)
+
+    def __enter__(self) -> _ReadOrientedConnection:
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> Literal[False]:
+        self.close()
+        return False
+
+    def close(self) -> None:
+        self._con.close()
+
+
+ReadConnection: TypeAlias = (  # noqa: UP040 -- runtime supports Python 3.11
+    duckdb.DuckDBPyConnection | _ReadOrientedConnection
+)
+
+
+def connect_read(
+    db_path: str,
+) -> ReadConnection:
     """Open the DB read-only. Use this instead of raw duckdb.connect(...,
     read_only=True) at read sites so every DB access funnels through one
     module — the future place to add per-purpose observability.
 
-    Read-only connections can run concurrently with an active writer.
+    DuckDB rejects a true read-only connection when this process already has
+    the same file open read-write. In that one proven configuration conflict,
+    a writer created by this module authorizes a same-config connection whose
+    direct SQL mutation surfaces are rejected. Other connection failures stay
+    explicit rather than being retried with broader privileges.
     """
-    return duckdb.connect(db_path, read_only=True)
+    try:
+        return duckdb.connect(db_path, read_only=True)
+    except duckdb.ConnectionException as exc:
+        if _SAME_FILE_DIFFERENT_CONFIG not in str(exc) or not _has_local_writer(db_path):
+            raise
+        return _ReadOrientedConnection(duckdb.connect(db_path, read_only=False))
 
 
 @contextlib.contextmanager
