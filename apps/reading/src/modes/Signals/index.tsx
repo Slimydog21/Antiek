@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { SignalActionView, SignalInventoryResponse } from "../../api/ownYourMind";
 import { getSignalInventory } from "../../api/ownYourMind";
+import { useServedImpression } from "../../lib/servedImpression";
 import { LemonTable } from "../../components/lemon/LemonTable";
 import { LemonTag } from "../../components/lemon/LemonTag";
 
@@ -33,7 +34,9 @@ function matches(row: SignalActionView, q: string): boolean {
 }
 
 export function Signals() {
-  const [data, setData] = useState<SignalInventoryResponse | null>(null);
+  const [data, setData]
+  // P0 §5: audit-only served-impression record.
+  useServedImpression({ surface: "signals", itemKind: "surface", itemId: "/signals" }); = useState<SignalInventoryResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState<string>("");

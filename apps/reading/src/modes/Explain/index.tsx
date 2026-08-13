@@ -21,6 +21,7 @@ import {
   explainDocument,
   explainSynthesis,
 } from "../../api/ownYourMind";
+import { useServedImpression } from "../../lib/servedImpression";
 
 /**
  * Explain — the "why this claim" provenance panel (Own Your Mind P0, D1).
@@ -533,6 +534,12 @@ export function Explain() {
     rawKind === "claim" || rawKind === "synthesis" || rawKind === "document"
       ? rawKind
       : null;
+  // P0 §5: audit-only served-impression record for this provenance render.
+  useServedImpression({
+    surface: "explain",
+    itemKind: kind ?? "unknown",
+    itemId: id ?? "",
+  });
 
   const [data, setData] = useState<
     ClaimExplainResponse | SynthesisExplainResponse | DocumentExplainResponse | null
