@@ -6677,6 +6677,14 @@ def create_app(
     from interfaces.research.api.artifact_routes import artifact_router
     app.include_router(artifact_router)
 
+    # Full-graph export bundle (own-your-mind P1 §6, read half). GET
+    # /export/my-graph streams a zip of the DuckDB EXPORT snapshot + the
+    # event-log parquets/jsonl + manifest.json. Read-only: never opens the
+    # source graph for write (see export_routes module docstring for the
+    # flock rationale). Same one-line inclusion discipline.
+    from interfaces.research.api.export_routes import register_export_routes
+    register_export_routes(app)
+
     # Supersession review surface (GF-5/GF-6 activation). Turns detected
     # contradictions into a review queue — the other half of the detection
     # wired in processing/extraction/extract.py. Same one-line inclusion
