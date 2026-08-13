@@ -30,6 +30,7 @@ vi.mock("../../api/tiers", () => ({
 }));
 
 import { explainClaim } from "../../api/ownYourMind";
+import type { ClaimExplainResponse, TierOverride } from "../../api/ownYourMind";
 import { createTierOverride, getTierOverrides } from "../../api/tiers";
 import Explain from "./index";
 
@@ -67,7 +68,7 @@ const freshOverride = {
   set_at: "2026-08-03T09:00:00Z",
 };
 
-function claimData(overrides: unknown[]) {
+function claimData(overrides: TierOverride[]): ClaimExplainResponse {
   return {
     claim_node: {
       node_id: "claim-1",
