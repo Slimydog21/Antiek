@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import Werner from "../brand/Werner";
+import BrainMascot from "../brand/BrainMascot";
 import { WernerSleeping, WernerThinking } from "../brand/werner/animated";
 import {
   WernerCurious,
@@ -79,14 +79,14 @@ interface EmoteViewProps {
  */
 export function EmoteView({ kind, size, reduced }: EmoteViewProps): ReactNode {
   if (reduced && kind === "thinking") {
-    return <Werner mood="thinking" size={size} label="Werner thinking" />;
+    return <BrainMascot mood="thinking" size={size} label="Antiek thinking" />;
   }
 
   if (reduced && kind === "sleeping") {
     return (
       <WernerSleeping
         size={size}
-        label="Werner sleeping"
+        label="Antiek sleeping"
         reduced
       />
     );
@@ -96,13 +96,13 @@ export function EmoteView({ kind, size, reduced }: EmoteViewProps): ReactNode {
     case "curious":
       return <WernerCurious size={size} reduced={reduced} />;
     case "thinking":
-      return <WernerThinking size={size} label={`Werner ${kind}`} />;
+      return <WernerThinking size={size} label={`Antiek ${kind}`} />;
     case "happy":
       return <WernerHappy size={size} reduced={reduced} />;
     case "hit":
       return <WernerHit size={size} reduced={reduced} />;
     case "sleeping":
-      return <WernerSleeping size={size} label="Werner sleeping" />;
+      return <WernerSleeping size={size} label="Antiek sleeping" />;
     case "dizzy":
       return <WernerDizzy size={size} reduced={reduced} />;
     default:

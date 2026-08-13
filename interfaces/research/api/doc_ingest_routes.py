@@ -37,7 +37,10 @@ async def _download_public(url: str) -> bytes:
             timeout=_DOWNLOAD_TIMEOUT_SECONDS,
             follow_redirects=False,
         ) as client:
-            resp = await client.get(current)
+            # Per-call timeout is load-bearing for the SPR-03 lint (client-
+            # level timeout does not satisfy no_unbounded_external_call) and
+            # semantically per-hop: each redirect hop gets its own 30s bound.
+            resp = await client.get(current, timeout=_DOWNLOAD_TIMEOUT_SECONDS)
         if resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get("location")
             if not location:

@@ -16,7 +16,7 @@ import {
 const semantic = [
   ["curious", WernerCurious, "examines the evidence"],
   ["happy", WernerHappy, "marks the work verified"],
-  ["dizzy", WernerDizzy, "regains his bearings"],
+  ["dizzy", WernerDizzy, "regains its bearings"],
   ["hit", WernerHit, "bumps the control"],
 ] as const;
 
@@ -59,35 +59,30 @@ describe("Werner semantic reactions", () => {
     });
   });
 
-  it("keeps happy free of the fish-bearing celebrate raster", () => {
+  it("keeps happy on the idle anchor, free of the celebrate pose", () => {
     const { container } = render(<WernerHappy size={64} reduced={false} />);
     const src = container.querySelector("img")?.getAttribute("src") ?? "";
-    expect(src).toContain("werner_default");
-    expect(src).not.toContain("caught_a_fish");
+    expect(src).toContain("01_hero_front");
+    expect(src).not.toContain("mood_excited");
   });
 
-  it("uses the authored head tilt only for the public curious/thinking semantic", () => {
+  it("uses the thinking mood for the public curious/thinking semantic", () => {
     const curious = render(<WernerCurious size={64} reduced={false} />);
     const root = curious.container.firstElementChild;
     expect(root?.getAttribute("data-werner-mood")).toBe("thinking");
     expect(root?.getAttribute("data-duration-ms")).toBe("1200");
     expect(
-      curious.container.querySelector(
-        'img[data-werner-authored-pose="headTilt"]',
-      ),
-    ).toBeTruthy();
-    expect(
       curious.container.querySelector("img")?.getAttribute("src"),
-    ).toContain("werner_head_tilt");
+    ).toContain("mood_thinking");
     expect(
       curious.container.querySelector(".werner-semantic__evidence"),
     ).toBeTruthy();
     curious.unmount();
 
     for (const [Reaction, source] of [
-      [WernerHappy, "werner_default"],
-      [WernerDizzy, "werner_lost"],
-      [WernerHit, "werner_default"],
+      [WernerHappy, "01_hero_front"],
+      [WernerDizzy, "mood_sleepy"],
+      [WernerHit, "01_hero_front"],
     ] as const) {
       const other = render(<Reaction size={64} reduced={false} />);
       expect(other.container.querySelector("img")?.getAttribute("src")).toContain(
@@ -100,7 +95,7 @@ describe("Werner semantic reactions", () => {
     }
   });
 
-  it("keeps the head-tilt raster import exclusive to the private pose map", () => {
+  it("keeps the authored-pose rasters private to the authored-pose map", () => {
     expect(
       sourceFiles("src")
         .filter((path) => !/\.(?:test|stories)\.[cm]?[jt]sx?$/.test(path))
@@ -160,6 +155,6 @@ describe("Werner semantic reactions", () => {
     );
     expect(
       [...source.matchAll(/from "([^"]+)"/g)].map((match) => match[1]),
-    ).toEqual(["react", "../../Werner", "../WernerAuthoredPose"]);
+    ).toEqual(["react", "../../BrainMascot", "../../../design/tokens"]);
   });
 });

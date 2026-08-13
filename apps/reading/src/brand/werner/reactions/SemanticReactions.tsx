@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
-import Werner, { type WernerMood } from "../../Werner";
-import WernerAuthoredPose from "../WernerAuthoredPose";
+import BrainMascot from "../../BrainMascot";
+import type { WernerMood } from "../../../design/tokens";
 import "./semantic-reactions.css";
 
 type SemanticReactionKind = "curious" | "happy" | "dizzy" | "hit";
@@ -21,10 +21,10 @@ const MOOD: Record<SemanticReactionKind, WernerMood> = {
 };
 
 const LABEL: Record<SemanticReactionKind, string> = {
-  curious: "Werner examines the evidence",
-  happy: "Werner marks the work verified",
-  dizzy: "Werner regains his bearings",
-  hit: "Werner bumps the control",
+  curious: "The brain examines the evidence",
+  happy: "The brain marks the work verified",
+  dizzy: "The brain regains its bearings",
+  hit: "The brain bumps the control",
 };
 
 type Props = { size: number; reduced: boolean };
@@ -116,11 +116,7 @@ function SemanticReaction({
       style={style}
     >
       <span className="werner-semantic__mark" aria-hidden="true">
-        {kind === "curious" ? (
-          <WernerAuthoredPose pose="headTilt" size={size} />
-        ) : (
-          <Werner mood={MOOD[kind]} size={size} />
-        )}
+        <BrainMascot mood={MOOD[kind]} size={size} />
       </span>
       {CHROME[kind]}
     </span>

@@ -281,7 +281,7 @@ export type ShadowKey = keyof (typeof shadow)["day"];
    These five drive the canonical <Werner mood="..." /> (U-02). The component renders
    at rail size (28px, mark fidelity) and hero (120px+, character fidelity) from the
    same geometry. Abstract dot rejected: a stranger must call the rail mark "a cute
-   penguin" not "a dot". See brand/README.md for the four-slot restraint rule. */
+   brain" not "a dot". See brand/README.md for the four-slot restraint rule. */
 export const werner = {
   day: {
     coat: "#0F1419",
@@ -343,6 +343,15 @@ export const motion = {
 
 export type MotionDuration = keyof typeof motion.duration;
 export type MotionEasing = keyof typeof motion.easing;
+
+/** Pitch family (AI Role Lineup vertical, 2026-08-12) — the formation
+ * field greens. Mirrors tokens.css --pitch-{base,mid,deep} (day) and the
+ * night block; LineupPitch consumes the CSS vars so theme follows
+ * prefers-color-scheme. Day = grass, night = deep turf. */
+export const pitch = {
+  day: { base: "#4C8F4F", mid: "#3D7A41", deep: "#2F6633" },
+  night: { base: "#2E5C33", mid: "#244A29", deep: "#1B3A20" },
+} as const;
 
 export const radius = { sm: "4px", md: "6px", lg: "10px" } as const;
 

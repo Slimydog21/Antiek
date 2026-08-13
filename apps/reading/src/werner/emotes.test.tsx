@@ -45,16 +45,12 @@ describe("EmoteView", () => {
     }
   });
 
-  it("keeps sleeping authored and single-layered when motion is reduced", () => {
+  it("keeps sleeping single-layered when motion is reduced", () => {
     const { getByRole, container } = render(
       <EmoteView kind="sleeping" size={64} reduced />,
     );
-    expect(getByRole("img", { name: "Werner sleeping" })).toBeTruthy();
-    expect(
-      container.querySelectorAll(
-        'img[data-werner-authored-pose="sleeping"]',
-      ),
-    ).toHaveLength(1);
+    expect(getByRole("img", { name: "Antiek sleeping" })).toBeTruthy();
+    expect(container.querySelectorAll("img")).toHaveLength(1);
     expect(container.querySelector(".werner-sleep-still")).toBeTruthy();
     expect(container.querySelector(".werner-pose--empty")).toBeNull();
   });

@@ -5,7 +5,7 @@ import type { SceneMood } from "../mood";
  * unknown").
  *
  * ─── THIS IS SCENERY, NOT THE INTERACTIVE MASCOT ─────────────────────────
- * A small penguin SILHOUETTE that traverses the topography toward the horizon,
+ * A small brain SILHOUETTE that traverses the topography toward the horizon,
  * loops forever, and is purely decorative. It is DELIBERATELY distinct from the
  * interactive <PenguinMascot/> (SPR-05 / SPR-12):
  *
@@ -15,7 +15,7 @@ import type { SceneMood } from "../mood";
  *   | size        | tiny (~26px), far horizon    | large (~MASCOT_SIZE), foreground|
  *   | placement   | walks along the ridge, z-0   | roams the whole viewport      |
  *   | interaction | NONE (pointer-events-none)   | click / double-click / drag   |
- *   | look        | flat token-fill silhouette   | full <Werner> mark, 5 fills   |
+ *   | look        | flat token-fill silhouette   | full <BrainMascot> mark, 5 fills |
  *
  * A maintainer must NOT merge these or wire interactivity here — see the
  * matrix above and the SPR-05 mascot contract. This penguin never reacts; it
@@ -61,20 +61,19 @@ export function PenguinJourney({ mood }: PenguinJourneyProps) {
           className="h-full w-full"
           style={{ animation: "akb-penguin-bob 0.9s ease-in-out infinite" }}
         >
-          {/* A compact penguin silhouette — distinct, simplified, NOT the
-              full Werner mark. Token fills only. */}
+          {/* A compact brain silhouette — distinct, simplified, NOT the
+              full BrainMascot mark. Token fills only. */}
           <svg viewBox="0 0 24 24" className="h-full w-full" focusable="false">
-            {/* body */}
-            <ellipse cx="12" cy="14" rx="6" ry="8" fill={coat} />
-            {/* belly */}
-            <ellipse cx="12" cy="15" rx="3.4" ry="5.6" fill={belly} />
-            {/* head */}
-            <circle cx="12" cy="6" r="4" fill={coat} />
-            {/* bill */}
-            <path d="M12 6 l3 1.4 -3 1.4 z" fill="var(--werner-bill)" />
-            {/* feet */}
-            <path d="M9 21 l-2 1.4 3 0 z" fill="var(--werner-foot)" />
-            <path d="M15 21 l2 1.4 -3 0 z" fill="var(--werner-foot)" />
+            {/* the two hemispheres — one rounded silhouette */}
+            <path
+              d="M12 2.6 C 7.9 1.3, 3.4 4, 4.3 9 C 4.9 12.7, 6.8 14.9, 8 16.9 C 8.8 18.3, 10.3 19.3, 12 18.9 C 13.7 19.3, 15.2 18.3, 16 16.9 C 17.2 14.9, 19.1 12.7, 19.7 9 C 20.6 4, 16.1 1.3, 12 2.6 Z"
+              fill={coat}
+            />
+            {/* central sulcus */}
+            <path d="M12 3.8 C 11.2 8, 12.8 13, 12 17.8" stroke={belly} strokeWidth="1" fill="none" strokeLinecap="round" />
+            {/* two surface folds per hemisphere */}
+            <path d="M6.4 8.4 C 7.7 7.6, 9.1 7.6, 10.3 8.5" stroke={belly} strokeWidth="1" fill="none" strokeLinecap="round" />
+            <path d="M17.6 8.4 C 16.3 7.6, 14.9 7.6, 13.7 8.5" stroke={belly} strokeWidth="1" fill="none" strokeLinecap="round" />
           </svg>
         </div>
       </div>

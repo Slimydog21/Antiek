@@ -508,15 +508,21 @@ describe("Settings SPR-01", () => {
     const user = userEvent.setup();
     render(<Settings />);
     const overview = screen.getByRole("tab", { name: "Overview" });
+    const lineup = screen.getByRole("tab", { name: "Lineup" });
     const decision = screen.getByRole("tab", { name: "Decision tree" });
     expect(overview.getAttribute("aria-controls")).toBe(
       "settings-overview-panel",
     );
     overview.focus();
     await user.keyboard("{ArrowRight}");
+    expect(lineup.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(lineup);
+    let panel = screen.getByRole("tabpanel");
+    expect(panel.getAttribute("aria-labelledby")).toBe("settings-lineup-tab");
+    await user.keyboard("{ArrowRight}");
     expect(decision.getAttribute("aria-selected")).toBe("true");
     expect(document.activeElement).toBe(decision);
-    const panel = screen.getByRole("tabpanel");
+    panel = screen.getByRole("tabpanel");
     expect(panel.getAttribute("aria-labelledby")).toBe("settings-decision-tab");
   });
 

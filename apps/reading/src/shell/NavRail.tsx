@@ -11,7 +11,7 @@ import {
   type Workflow,
 } from "./workflowTaxonomy";
 import { ProductsLauncher } from "./ProductsLauncher";
-import IglooMark from "../brand/werner/marks/IglooMark";
+import BrainMark from "../brand/BrainMark";
 import { KeyChip } from "../components/hotkeys/KeyChip";
 import {
   bindingForProduct,
@@ -31,7 +31,7 @@ import {
  *   Notebooks/Documents/Sources → the content tree (off the rail)
  *
  *   ┌────────┐
- *   │  ⌂     │  Werner mark
+ *   │  ⌂     │  Brain mark
  *   ├────────┤
  *   │  ⌕     │  Search (⌘K)
  *   │  ＋    │  New
@@ -86,12 +86,10 @@ import {
  *       shortcuts, and the roles/labels are identical across orientations;
  *       only the flex axis + the active-accent edge differ.
  *
- *   (2) HOME = IGLOO. The static top-left Werner mark that was the home
- *       button is now an <IglooMark> (the operator's ask: the home penguin
- *       becomes an igloo — Werner LIVES in the igloo, so home reads as
- *       "where Werner lives", and the ONE penguin left in the app is the
- *       autonomous roaming PenguinMascot, no longer competing with a second
- *       static penguin). The control is unchanged otherwise: same /home
+ *   (2) HOME = BRAIN. The static top-left mark that was the home button is
+ *       now a <BrainMark> — the brain IS the brand (mascot and logo), so the
+ *       home control reads as "the brain's home". The control is unchanged
+ *       otherwise: same /home
  *       route, same accessible <button> with aria-label + focus ring.
  */
 
@@ -287,13 +285,13 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     );
   }
 
-  // Igloo home control (SPR-06 M4) — replaces the static Werner home penguin.
+  // Brain home control — replaces the static penguin/igloo mark.
   // Same /home route + accessible <button> (aria-label + visible focus ring);
-  // the mark is the only thing that changed (penguin → igloo). In the bottom
+  // the mark is the only thing that changed (penguin/igloo → brain). In the bottom
   // rail its divider is on the trailing (right) edge instead of the bottom.
   //
-  // SPR-07 M1 + M3 — the igloo was the LAST caption-less bar control (the v1
-  // complaint "the home igloo has no label"). It now stacks a VISIBLE "Home"
+  // SPR-07 M1 + M3 — the home mark was the LAST caption-less bar control (the
+  // v1 complaint "the home mark has no label"). It now stacks a VISIBLE "Home"
   // text caption + the SPR-08 ⌘ hotkey chip (⌘O = bindingForProduct("home"),
   // read from the shared map — never a hand-typed combo, never the stale "g h"
   // chord) under the mark, matching every other bar button. The button keeps
@@ -319,7 +317,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         (isBottom ? "w-16 h-full border-r-edge border-sun" : "h-16 w-full border-b-edge border-sun")
       }
     >
-      <IglooMark size={24} />
+      <BrainMark size={24} />
       <span
         className="text-[10px] leading-[11px] font-medium tracking-tight"
         aria-hidden="true"
@@ -402,7 +400,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   );
 
   // Bottom rail (SPR-06 default): a horizontal bar along the window bottom.
-  // Home (igloo) anchors the leading edge; the four doors sit centred so the
+  // Home (brain mark) anchors the leading edge; the four doors sit centred so the
   // eye lands on them; Search + More cluster on the trailing edge as
   // overflow. The accent border is on TOP (its inner edge, toward the
   // working region) — symmetric with the left rail's right border.

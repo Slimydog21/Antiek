@@ -39,7 +39,7 @@ export const WERNER_MOMENTS: readonly WernerMoment[] = [
     reducedPose: "idle",
     interruptionBudget: "none",
     frequencyCap: ONCE_PER_TRANSITION,
-    copy: "The sky turns dark; Werner notices, then settles.",
+    copy: "The sky turns dark; the brain notices, then settles.",
   },
   {
     id: "daybreak",
@@ -49,7 +49,7 @@ export const WERNER_MOMENTS: readonly WernerMoment[] = [
     reducedPose: "idle",
     interruptionBudget: "none",
     frequencyCap: ONCE_PER_TRANSITION,
-    copy: "The light returns; Werner gives it one small lift.",
+    copy: "The light returns; the brain gives it one small lift.",
   },
   {
     id: "dusk-settle",
@@ -59,7 +59,7 @@ export const WERNER_MOMENTS: readonly WernerMoment[] = [
     reducedPose: "thinking",
     interruptionBudget: "none",
     frequencyCap: ONCE_PER_TRANSITION,
-    copy: "The light starts to fade; Werner moves into the watching tilt.",
+    copy: "The light starts to fade; the brain moves into the watching tilt.",
   },
   {
     id: "fallback-companion",
@@ -69,7 +69,7 @@ export const WERNER_MOMENTS: readonly WernerMoment[] = [
     reducedPose: "idle",
     interruptionBudget: "none",
     frequencyCap: ONCE_PER_SCENE_STATE,
-    copy: "No live art here; Werner stays with the procedural scene.",
+    copy: "No live art here; the brain stays with the procedural scene.",
   },
 ];
 

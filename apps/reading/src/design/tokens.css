@@ -62,6 +62,13 @@
   --ice-0:      #FFFFFF;
   --ice-1:      #FBFCFD;
   --ice-2:      #F4F7FA;
+  /* Pitch family (AI Role Lineup vertical, 2026-08-12) — the formation
+     field. A legitimate new token source: the FUT-style selector needs a
+     football-green field that themes with the app (day = grass, night =
+     deep turf). Kept as vars so LineupPitch consumes tokens, not hex. */
+  --pitch-base: #4C8F4F;
+  --pitch-mid:  #3D7A41;
+  --pitch-deep: #2F6633;
   --ice-3:      #EAEFF4;
   --ice-4:      #DCE5ED;
   --glacial-1:  #C2D1DD;
@@ -226,6 +233,9 @@
     --ice-0:      #1B202A;  /* (re-mapped at night: card surface) */
     --ice-1:      #161B24;
     --ice-2:      #0D1019;
+    --pitch-base: #2E5C33;
+    --pitch-mid:  #244A29;
+    --pitch-deep: #1B3A20;
     --ice-3:      #0A0D14;
     --ice-4:      #080A10;
     --glacial-1:  #252B36;

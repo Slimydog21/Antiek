@@ -412,7 +412,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
           aria-live="polite"
         >
           {/* The beat sits above the working mark and retires on its own;
-              the thinking penguin behind it carries the ongoing state.
+              the thinking brain behind it carries the ongoing state.
               pointer-events-none + absolute so it can't gate the surface. */}
           <div className="relative flex items-center justify-center mb-4">
             {celebrating && (
@@ -425,7 +425,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             {/* The shared <Thinking> (U-04 M3) — the same "AI is working"
                 beat Research, Read, Write, and Speak draw from. Research's
                 live status is the two centered lines below (richer than a
-                single inline string), so we use Thinking for the penguin
+                single inline string), so we use Thinking for the brain
                 mark and pass the live label through; the same accessible
                 name (via WernerThinking) is preserved. */}
             <Thinking
