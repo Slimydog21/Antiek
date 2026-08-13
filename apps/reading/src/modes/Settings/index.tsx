@@ -1,5 +1,6 @@
 import { startRegistration } from "@simplewebauthn/browser";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { isSoundMuted, setSoundMuted } from "../../shared/notifySound";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import { LemonButton } from "../../components/lemon";
@@ -68,6 +69,10 @@ export default function Settings() {
     typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  const [soundMuted, setSoundMutedLocal] = useState<boolean>(() => isSoundMuted());
+  useEffect(() => {
+    setSoundMutedLocal(isSoundMuted());
+  }, []);
   const [models, setModels] = useState<ModelRow[] | null>(null);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [budget, setBudget] = useState<BudgetResponse | null>(null);
@@ -274,6 +279,43 @@ export default function Settings() {
         </LemonCard>
 
         <PasskeySettings />
+
+        <LemonCard title="Attention & sounds" elevation="z1">
+          <div className="p-4 space-y-3 font-mono text-[13px]">
+            <label className="flex items-center justify-between gap-3 cursor-pointer">
+              <span className="text-ink dark:text-bright">
+                Completion + attention sounds
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!soundMuted}
+                onClick={() => {
+                  const next = !soundMuted;
+                  setSoundMuted(next);
+                  setSoundMutedLocal(next);
+                }}
+                className={
+                  "relative w-10 h-5 rounded-full transition-colors " +
+                  (soundMuted ? "bg-ink/25 dark:bg-bright/25" : "bg-aurora")
+                }
+              >
+                <span
+                  aria-hidden="true"
+                  className={
+                    "absolute top-0.5 w-4 h-4 rounded-full bg-ice-1 dark:bg-charcoal-2 transition-all " +
+                    (soundMuted ? "left-0.5" : "left-[22px]")
+                  }
+                />
+              </button>
+            </label>
+            <p className="text-[11px] leading-relaxed text-ink-soft dark:text-starlight">
+              A quiet two-note chime when a research completes or needs
+              attention — suppressed while you are watching that research.
+              Sound is generated locally (Web Audio), never recorded.
+            </p>
+          </div>
+        </LemonCard>
 
         <LemonCard title="Models & providers" elevation="z1">
           <div className="p-4 space-y-3">
