@@ -117,14 +117,20 @@
     encode gzip zstd
 
     # Structured access logs to a rotating file. Keep ~5 weeks of logs;
-    # `journalctl` has the application logs separately.
+    # `journalctl` has the application logs separately. Cloudflare Access
+    # service-token headers are deleted at encoding time because Caddy's
+    # built-in sensitive-header list does not cover these custom names.
     log {
         output file /var/log/caddy/access.log {
             roll_size 100mb
             roll_keep 5
             roll_keep_for 720h
         }
-        format json
+        format filter {
+            request>headers>Cf-Access-Client-Id delete
+            request>headers>Cf-Access-Client-Secret delete
+            wrap json
+        }
     }
 
     # Security headers. Not exhaustive — add full CSP once the SPA's

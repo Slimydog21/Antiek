@@ -1,17 +1,17 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { AdBorderMount } from "./components/ad/AdBorderMount";
 import { NavRail } from "./shell/NavRail";
 import { PenguinMascot } from "./shell/PenguinMascot";
-import { WernerIceCursorShell } from "./werner/WernerIceCursorShell";
 import { Scene } from "./scene/Scene";
 import BrainPresence from "./brand/BrainPresence";
 import { SceneChrome } from "./shell/SceneChrome";
 import { Topbar } from "./components/navigation/Topbar";
-import { LemonToastViewport } from "./components/lemon/LemonToast";
+import { LemonToastViewport, setToastNavigator } from "./components/lemon/LemonToast";
 import { HotkeyHud } from "./components/hotkeys/HotkeyHud";
 import { PanelLayout } from "./workspace/PanelLayout";
+import { useWorkspace } from "./workspace/WorkspaceStore";
 import { WindowsLayer } from "./components/windows/WindowsLayer";
 import { useWorkspaceShortcuts } from "./workspace/shortcuts";
 import { useWorkspaceHydration } from "./workspace/useWorkspaceHydration";
@@ -72,6 +72,25 @@ export function AppShell({ children }: Props) {
   // is editable, so the operator can still type freely.
   const navigate = useNavigate();
   useWorkspaceShortcuts(navigate);
+
+  // herdr transfer P0-4 — toasts become navigation: clicking a targeted
+  // toast jumps to the surface that produced it, then focuses the workspace
+  // panel that lives there (focus is a no-op when the panel isn't in the
+  // layout; starter panels open on route mount, hence the small delay).
+  // The navigator bridge keeps LemonToast dependency-free (popout windows
+  // mount its viewport without a router; they simply don't navigate).
+  useEffect(() => {
+    setToastNavigator((target) => {
+      navigate(target.path);
+      if (target.panelId) {
+        const panelId = target.panelId;
+        window.setTimeout(() => {
+          useWorkspace.getState().focus(panelId);
+        }, 60);
+      }
+    });
+    return () => setToastNavigator(null);
+  }, [navigate]);
 
   // S9 — hydrate the workspace from localStorage + URL ?ws= on every
   // route + investigation change. Layering order: global → route →
@@ -156,9 +175,6 @@ export function AppShell({ children }: Props) {
           roaming the whole window, not a chrome element constrained by the
           ad-border inset.) */}
       <PenguinMascot />
-
-      {/* WERNER-ICE SPR-13 — live bait cursor + html cursor policy (z-59). */}
-      <WernerIceCursorShell />
 
       {/* SPR-07 — the always-on, four-edge "Times-Square" ad border. Mounted
           ONCE here so it wraps every lens — Read / Research / Write / Speak —

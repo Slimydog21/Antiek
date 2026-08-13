@@ -9,11 +9,9 @@
  *
  *   (1) THE PENGUIN DOES NOT FOLLOW THE CURSOR — a pointermove (anywhere, any
  *       distance) leaves Werner's position untouched. This is the whole ask.
- *   (2) THE CURSOR IS THE BAIT — when the pointer goes idle Werner runs his own
- *       -hole never-catch gag (`werner-fishing`); the moment the pointer moves
- *       again the gag stands down (the line to the cursor-bait takes over).
- *
- * Flag mocked ON (the production default) so the ice-fishing experience is live.
+ *   (2) NO CURSOR INSTRUMENT — the fishing rod, the bait line and the
+ *       never-catch gag were REMOVED at the operator's directive (2026-08-13);
+ *       the station stays calm for any pointer state.
  */
 import {
   afterAll,
@@ -32,10 +30,6 @@ import {
   screen,
 } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-
-vi.mock("../werner/iceFishingFlags", () => ({
-  wernerIceFishingCursor: true,
-}));
 
 import { PenguinMascot } from "./PenguinMascot";
 import { useWorkspace } from "../workspace/WorkspaceStore";
@@ -88,9 +82,8 @@ afterAll(() => {
 
 function mount() {
   return render(
-    // This suite pins the ice-fishing station behavior specifically. `/` is
-    // now a knowledge-work route and intentionally selects research-lens, so
-    // use a utility route where ice fishing remains the deterministic default.
+    // This suite pins the calm station behavior. `/` is now a knowledge-work
+    // route and intentionally selects research-lens, so use a utility route.
     <MemoryRouter initialEntries={["/settings"]}>
       <Routes>
         <Route path="*" element={<PenguinMascot />} />
@@ -141,50 +134,34 @@ describe("PenguinMascot — the fixed station (flag on)", () => {
     expect(parseFloat(el.style.top)).toBe(startTop);
   });
 
-  it("runs the own-hole gag when the pointer is idle, and drops it when the pointer moves", () => {
+  it("stays calm for any pointer state (no fishing gag, no bait class)", () => {
     const { container } = mount();
-    const bob = container.querySelector(
-      '[data-testid="penguin-mascot"] > span',
-    );
+    const bob = container.querySelector('[data-testid="penguin-mascot"] > span');
     expect(bob).toBeTruthy();
 
-    // Make one move, then leave the pointer still well past POINTER_IDLE_MS
-    // (2000ms) → the gag takes over (own-hole never-catch, cursor at rest).
     act(() => {
       window.dispatchEvent(
-        new PointerEvent("pointermove", {
-          clientX: 400,
-          clientY: 300,
-          bubbles: true,
-        }),
+        new PointerEvent("pointermove", { clientX: 400, clientY: 300, bubbles: true }),
       );
     });
-    advanceFrames(2600);
-    expect(
-      container.querySelector(".werner-fishing"),
-      "pointer idle → the own-hole fishing gag owns Werner",
-    ).toBeTruthy();
+    act(() => {
+      vi.advanceTimersByTime(20000);
+    });
+    expect(container.querySelector(".werner-fishing")).toBeNull();
+    expect(bob?.className).not.toContain("werner-fishing");
 
-    // Move again → the gag stands down within a frame. (That the cursor-line
-    // then TAKES OVER is a WernerFishingLayer concern, covered directly in
-    // WernerFishingLayer.test.tsx — this suite only owns the mascot's gag gate.)
     act(() => {
       window.dispatchEvent(
-        new PointerEvent("pointermove", {
-          clientX: 405,
-          clientY: 305,
-          bubbles: true,
-        }),
+        new PointerEvent("pointermove", { clientX: 405, clientY: 305, bubbles: true }),
       );
     });
-    advanceFrames(64);
-    expect(
-      container.querySelector(".werner-fishing"),
-      "pointer active → the own-hole gag stands down",
-    ).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(64);
+    });
+    expect(container.querySelector(".werner-fishing")).toBeNull();
   });
 
-  it("does not wander off on its own even with the flag on (fixed station)", () => {
+it("does not wander off on its own (fixed station)", () => {
     mount();
     const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
     const startLeft = parseFloat(el.style.left);

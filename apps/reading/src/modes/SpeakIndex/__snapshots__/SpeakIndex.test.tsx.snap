@@ -19,7 +19,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         >
           <span
             class="brain-tilt"
-            style="display: block; width: 100%; height: 100%; transform-style: preserve-3d; transform: none;"
+            style="display: block; width: 100%; height: 100%;"
           >
             <img
               alt=""
@@ -190,7 +190,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         >
           <span
             class="brain-tilt"
-            style="display: block; width: 100%; height: 100%; transform-style: preserve-3d; transform: none;"
+            style="display: block; width: 100%; height: 100%;"
           >
             <img
               alt=""
@@ -290,7 +290,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         >
           <span
             class="brain-tilt"
-            style="display: block; width: 100%; height: 100%; transform-style: preserve-3d; transform: none;"
+            style="display: block; width: 100%; height: 100%;"
           >
             <img
               alt=""
