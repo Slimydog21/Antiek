@@ -374,28 +374,20 @@
         var: cf_inspect.stdout_lines
       tags: [cloudflared, debug]
 
-    - name: debug — tail caddy access log
-      ansible.builtin.shell: |
-        tail -3 /var/log/caddy/access.log 2>/dev/null || echo "no access log yet"
-      register: caddy_log
-      changed_when: false
-      tags: [caddy, debug]
-
-    - name: debug — print caddy access log
-      ansible.builtin.debug:
-        var: caddy_log.stdout_lines
-      tags: [caddy, debug]
-
-    - name: debug — make a public-side curl + check if it landed in Caddy log
-      ansible.builtin.shell: |
-        sleep 1
-        echo "=== before request, last log line ==="
-        tail -1 /var/log/caddy/access.log 2>/dev/null
-        echo "=== curling api.antiek.ai/ from VM ==="
-        curl -sk -o /dev/null "https://api.antiek.ai/" -w "HTTP %{http_code} type=%{content_type}\n"
-        sleep 1
-        echo "=== after request, last log line ==="
-        tail -1 /var/log/caddy/access.log 2>/dev/null
+    # Never print access-log records during deploys: requests may carry
+    # security-sensitive headers that older Caddy configurations retained.
+    - name: "debug: probe public endpoint without reading access logs"
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --show-error
+          - --insecure
+          - --output
+          - /dev/null
+          - --write-out
+          - "HTTP %{http_code} type=%{content_type}\n"
+          - "https://{{ api_domain }}/"
       register: public_test
       changed_when: false
       tags: [caddy, debug]
