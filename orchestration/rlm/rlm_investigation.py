@@ -280,6 +280,8 @@ def _parse_prime_iteration_outcome(
         cost_usd = Decimal(str(raw_cost))
     except (InvalidOperation, ValueError):
         return None
+    if cost_usd < 0:
+        return None
 
     raw_iteration = payload.get("iteration", fallback_iteration)
     try:
