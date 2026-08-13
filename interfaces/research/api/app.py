@@ -1401,56 +1401,30 @@ def create_app(
         )
 
     # ── H4 + H4.5 + H6: operator auth middleware ──
-    # FOUR complementary auth paths, all opt-in via env vars:
+    # THREE complementary auth paths, all opt-in via env vars:
     #
     # (1) Antiek-issued session cookie (PostHog-style owned auth) —
     #     ANTIEK_SESSION cookie minted at /auth/callback after a
     #     magic-link click. Replaces Cloudflare Access at the auth
     #     layer; CF Tunnel still handles TLS + DNS.
     #
-    # (2) Cloudflare Access (browser users, legacy/cutover path) —
-    #     ANTIEK_OPERATOR_EMAIL set; CF injects
-    #     ``Cf-Access-Authenticated-User-Email``. Kept active during
-    #     the cutover window; retired per the magic-link runbook.
+    # (2) Cloudflare Access service token (machine via CF) —
+    #     CF-Access-Client-Id + CF-Access-Client-Secret match env.
     #
-    # (3) Cloudflare Access service token (machine via CF) —
-    #     CF-Access-Client-Id matches env.
-    #
-    # (4) Bearer token (machine callers) — when
+    # (3) Bearer token (machine callers) — when
     #     ANTIEK_OPERATOR_TOKEN is set, requests carrying
     #     ``Authorization: Bearer <token>`` matching the env pass.
     #     For probes (smoke runs, health checks), ops scripts, any
     #     non-browser client.
     #
-    # When BOTH env vars are unset, enforcement is bypassed and the
-    # API is open (existing tests + local dev unchanged). When one
-    # is set, requests must pass that path or be rejected. When
-    # both are set, either path suffices.
+    # When no operator token, email allowlist, or service-token client
+    # ID is configured, enforcement is bypassed for local development.
+    # Otherwise the request must satisfy one complete credential path.
     #
-    # Why both:
-    # - Cloudflare Access alone leaves the substrate unauth'd for
-    #   ops scripts / health probes / CI smokes. Cloudflare Access
-    #   service tokens exist but are heavier than a static bearer
-    #   for a single-operator deployment.
-    # - Bearer alone forces the token into the web app's JS bundle
-    #   (where it's visible to anyone with view-source — not
-    #   actually private). Routing browser auth through Cloudflare
-    #   Access is the architecturally correct path.
-    #
-    # Multi-tenant trajectory (Sprint 19+): replace the
-    # ANTIEK_OPERATOR_EMAIL match with an email-to-tenant-ID lookup
-    # and add per-tenant bearer tokens. Same middleware shape;
-    # additive change.
-    #
-    # SECURITY NOTE: ``Cf-Access-Authenticated-User-Email`` is a
-    # plain header. A direct caller to the Hetzner IP (bypassing
-    # Cloudflare) could spoof it. This is mitigated by:
-    # (a) Caddy origin restriction to Cloudflare edge IPs (H4.6
-    #     follow-on; not yet implemented).
-    # (b) The bearer path provides credential-based auth that
-    #     can't be spoofed by header injection.
-    # Until (a) lands, treat this as defense-in-depth, not the
-    # sole gate.
+    # ANTIEK_OPERATOR_EMAIL remains the allowlist for signed Antiek
+    # session claims. An injected Cloudflare email header is not an
+    # authentication path: the origin has no cryptographic proof that
+    # Access produced it.
     # Paths the auth middleware never blocks. /health is the
     # ops probe; /auth/request + /auth/callback are the magic-link
     # endpoints that MUST be reachable by a logged-out browser
@@ -1479,8 +1453,9 @@ def create_app(
     _OPERATOR_TOKEN_ENV = "ANTIEK_OPERATOR_TOKEN"
     _OPERATOR_EMAIL_ENV = "ANTIEK_OPERATOR_EMAIL"
     _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV = "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID"
-    _CF_ACCESS_EMAIL_HEADER = "Cf-Access-Authenticated-User-Email"
+    _OPERATOR_SERVICE_TOKEN_CLIENT_SECRET_ENV = "CF_ACCESS_CLIENT_SECRET"
     _CF_ACCESS_CLIENT_ID_HEADER = "Cf-Access-Client-Id"
+    _CF_ACCESS_CLIENT_SECRET_HEADER = "Cf-Access-Client-Secret"
     _SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 
     @app.middleware("http")
@@ -1493,6 +1468,9 @@ def create_app(
         expected_st_client_id = os.environ.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
+        expected_st_client_secret = os.environ.get(
+            _OPERATOR_SERVICE_TOKEN_CLIENT_SECRET_ENV, "",
+        ).strip()
         if request.url.path == "/multimedia/tts-gateway/synthesize":
             declared_length = request.headers.get("Content-Length")
             try:
@@ -1553,8 +1531,7 @@ def create_app(
             req.state.user_email = email
 
         # Path 1: Antiek-issued session cookie (magic-link login).
-        # PostHog-style owned-auth path. Checked BEFORE Cloudflare
-        # Access so a cookie-bearing request always takes our path.
+        # PostHog-style owned-auth path.
         # Allowlist enforcement against the expected email blocks
         # stale cookies after an allowlist change.
         if os.environ.get("ANTIEK_AUTH_SECRET", "").strip():
@@ -1577,38 +1554,29 @@ def create_app(
                         )
                         return await call_next(request)
 
-        # Path 2: Cloudflare Access — browser SSO (email header)
-        if operator_emails:
-            cf_email = request.headers.get(
-                _CF_ACCESS_EMAIL_HEADER, "",
-            ).strip().lower()
-            if cf_email and cf_email in operator_emails:
-                _attach_operator(request, method="cloudflare_access_email")
-                return await call_next(request)
+        # Path 2: Cloudflare Access — Service Token (machine callers)
+        # Validate the complete credential at the application boundary.
+        # The origin cannot infer that a caller traversed an Access policy
+        # merely from a client-controlled identifier header.
+        if expected_st_client_id and expected_st_client_secret:
+            import secrets as _secrets
 
-        # Path 3: Cloudflare Access — Service Token (machine callers)
-        # Cloudflare validates the CF-Access-Client-Id +
-        # CF-Access-Client-Secret pair at the edge before forwarding;
-        # the substrate trusts the Client Id's arrival as
-        # validation-already-happened-by-Cloudflare. We additionally
-        # match it against a configured value so multiple service
-        # tokens (e.g. operator's machine + a future CI token) can be
-        # distinguished by which one is allowed here.
-        #
-        # Note: only the Client Id is checked. The Client Secret is
-        # only visible to Cloudflare; treating Secret absence at this
-        # layer as failure would just duplicate the edge check. Trust
-        # boundary: anything reaching the origin with a Cf-Access-*
-        # header has been validated by Cloudflare's edge.
-        if expected_st_client_id:
             cf_client_id = request.headers.get(
                 _CF_ACCESS_CLIENT_ID_HEADER, "",
             ).strip().lower()
-            if cf_client_id and cf_client_id == expected_st_client_id:
+            cf_client_secret = request.headers.get(
+                _CF_ACCESS_CLIENT_SECRET_HEADER, "",
+            ).strip()
+            if (
+                cf_client_id == expected_st_client_id
+                and _secrets.compare_digest(
+                    cf_client_secret, expected_st_client_secret,
+                )
+            ):
                 _attach_operator(request, method="cloudflare_service_token")
                 return await call_next(request)
 
-        # Path 4: Bearer token (legacy + backstop for direct-to-origin
+        # Path 3: Bearer token (legacy + backstop for direct-to-origin
         # callers that aren't going through Cloudflare Access)
         if expected_token:
             auth = request.headers.get("Authorization", "")
