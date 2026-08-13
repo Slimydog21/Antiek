@@ -8,7 +8,6 @@ import {
   type ActivityId,
   type StationActivity,
 } from "./activities";
-import { wernerIceFishingCursor } from "./iceFishingFlags";
 
 interface AtlasEntry {
   id: ActivityId;
@@ -43,13 +42,6 @@ const entries: readonly AtlasEntry[] = [
     boundary:
       "No microphone, audio, transcript, consent, or network authority.",
   },
-  {
-    id: "ice-fishing",
-    workflow: "Shared + unknown",
-    route: "/settings · unknown fallback",
-    job: "Keep Werner’s original cursor-bait relationship as the safe default.",
-    boundary: "No route, product, network, or mascot-position authority.",
-  },
 ] as const;
 
 function requiredActivity(id: ActivityId): StationActivity {
@@ -64,8 +56,7 @@ export function StationInstrumentAtlas() {
   const activity = requiredActivity(selected);
   const Instrument = activity.instrument.render;
   const reduceMotion = usePrefersReducedMotion();
-  const available = selected !== "ice-fishing" || wernerIceFishingCursor;
-  const active = available && !reduceMotion;
+  const active = !reduceMotion;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -84,7 +75,7 @@ export function StationInstrumentAtlas() {
           Werner stays home. The cursor changes jobs.
         </h1>
         <p className="mt-4 max-w-3xl font-serif text-lg leading-8">
-          One deterministic grammar across Antiek’s four workflows. Select a
+          One deterministic grammar across Antiek’s knowledge workflows. Select a
           station instrument, move it over the real HTML desk, and audit the
           capability it deliberately does not receive.
         </p>
@@ -141,7 +132,7 @@ export function StationInstrumentAtlas() {
       </div>
 
       <PenguinMascot />
-      <Instrument disabled={!active} />
+      {Instrument ? <Instrument disabled={!active} /> : null}
     </main>
   );
 }
@@ -156,4 +147,4 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const FourWorkflowGrammar: Story = {};
+export const KnowledgeWorkflowGrammar: Story = {};

@@ -156,8 +156,6 @@ export function AppShell({ children }: Props) {
           ad-border inset.) */}
       <PenguinMascot />
 
-      {/* WERNER-ICE SPR-13 — live bait cursor + html cursor policy (z-59). */}
-
       {/* SPR-07 — the always-on, four-edge "Times-Square" ad border. Mounted
           ONCE here so it wraps every lens — Read / Research / Write / Speak —
           with ONE code path. Its DOM position inside this frame is irrelevant
