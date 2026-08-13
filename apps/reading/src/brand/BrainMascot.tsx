@@ -26,7 +26,7 @@
  * operator decision and is tracked separately.
  */
 import { useEffect, useState } from "react";
-import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion";
+import { useReducedMotion } from "framer-motion";
 import type { CSSProperties } from "react";
 
 import type { WernerMood } from "../design/tokens";
@@ -115,23 +115,9 @@ export default function BrainMascot({
     };
   }, [reduceMotion, resolvedMood]);
 
-  // Pointer tilt — the brain leans toward the cursor. Springs make it feel
-  // weighted rather than jittery; the listener is passive and viewport-wide.
-  const tiltX = useMotionValue(0);
-  const tiltY = useMotionValue(0);
-  const springX = useSpring(tiltX, { stiffness: 140, damping: 18 });
-  const springY = useSpring(tiltY, { stiffness: 140, damping: 18 });
-  useEffect(() => {
-    if (reduceMotion) return;
-    const onMove = (e: PointerEvent) => {
-      const nx = (e.clientX / window.innerWidth) * 2 - 1;
-      const ny = (e.clientY / window.innerHeight) * 2 - 1;
-      tiltY.set(nx * 5);
-      tiltX.set(-ny * 4);
-    };
-    window.addEventListener("pointermove", onMove, { passive: true });
-    return () => window.removeEventListener("pointermove", onMove);
-  }, [reduceMotion, tiltX, tiltY]);
+  // NOTE: the cursor-tilt was REMOVED at the operator's directive (2026-08-13:
+  // "stop the brain from following the cursor"). The mascot keeps its own
+  // blink, breathing and hover reactions; it no longer leans toward the pointer.
 
   const rootClass = resolvedMood === "idle" ? "brain-idle" : "";
 
@@ -144,22 +130,7 @@ export default function BrainMascot({
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
     >
-      <motion.span
-        className="brain-tilt"
-        style={{
-          display: "block",
-          width: "100%",
-          height: "100%",
-          rotateX: springX,
-          rotateY: springY,
-          transformStyle: "preserve-3d",
-        }}
-        whileHover={
-          reduceMotion
-            ? undefined
-            : { scale: 1.06, rotate: [0, -3, 3, 0], transition: { duration: 0.5 } }
-        }
-      >
+      <span className="brain-tilt" style={{ display: "block", width: "100%", height: "100%" }}>
         <img
           src={POSE[resolvedMood]}
           alt=""
@@ -178,7 +149,7 @@ export default function BrainMascot({
             style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }}
           />
         )}
-      </motion.span>
+      </span>
     </span>
   );
 }

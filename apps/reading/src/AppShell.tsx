@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { AdBorderMount } from "./components/ad/AdBorderMount";
 import { NavRail } from "./shell/NavRail";
 import { PenguinMascot } from "./shell/PenguinMascot";
-import { WernerIceCursorShell } from "./werner/WernerIceCursorShell";
 import { Scene } from "./scene/Scene";
 import BrainPresence from "./brand/BrainPresence";
 import { SceneChrome } from "./shell/SceneChrome";
@@ -158,7 +157,6 @@ export function AppShell({ children }: Props) {
       <PenguinMascot />
 
       {/* WERNER-ICE SPR-13 — live bait cursor + html cursor policy (z-59). */}
-      <WernerIceCursorShell />
 
       {/* SPR-07 — the always-on, four-edge "Times-Square" ad border. Mounted
           ONCE here so it wraps every lens — Read / Research / Write / Speak —

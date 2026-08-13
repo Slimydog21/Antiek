@@ -133,7 +133,7 @@
      weathered-sun family rather than inventing a new hue. */
   --werner-rod:   var(--sun-deep);
   /* werner-fish (SPR-05): Werner's OWN little fish in the endless never-catch
-     loop — NOT the cursor, NOT the ice-fishing bait worm. A brand-aurora teal
+     loop — NOT the cursor, NOT a bait worm. A brand-aurora teal
      so the fish reads as a cool little catch against the warm rod + near-black
      coat, on both themes; it leans on the existing --aurora accent rather than
      inventing a new hue (same restraint as --rod/--foot). */

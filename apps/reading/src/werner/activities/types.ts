@@ -24,7 +24,7 @@ import type { ComponentType } from "react";
 /** The catalogued fixed-station activities. The arcade (SPR-05) and easter egg
  *  (SPR-04) may widen this union later without gaining movement authority. */
 export type ActivityId =
-  "ice-fishing" | "research-lens" | "writing-nib" | "speaking-resonance";
+  "rest" | "research-lens" | "writing-nib" | "speaking-resonance";
 
 /** The useMouseFollow read-seam fields an instrument is allowed to consume.
  *  Note what is ABSENT: any read of the penguin's own whereabouts. An
@@ -40,13 +40,15 @@ export interface CursorInstrumentProps {
 
 /**
  * A cursor-instrument: the React component an activity mounts at the cursor
- * (for ice-fishing, the bait worm + the rod-tip→cursor line), plus a manifest
+ * (for rest: none; for the lens/nib/resonance instruments, their cursor chrome), plus a manifest
  * of which read-seam fields it consumes. The manifest is documentation the
  * type carries: an instrument declares WHICH cursor signals it reads, and is
  * given no such capability through this contract.
  */
 export interface CursorInstrument {
-  readonly render: ComponentType<CursorInstrumentProps>;
+  /** The mounted cursor chrome, or null when the activity carries none
+   *  (rest: the calm default has no cursor instrument). */
+  readonly render: ComponentType<CursorInstrumentProps> | null;
   readonly reads: readonly InstrumentSeamField[];
 }
 
@@ -74,12 +76,12 @@ export interface StationActivity {
   readonly label: string;
   readonly ambient: {
     /** Class toggled while the pointer is ACTIVE, or null when the active
-     *  state carries no ambient class (ice-fishing: the line-to-cursor is the
+     *  state carries no ambient class (rest: the station is simply calm)
      *  instrument's job, so there is none). */
     readonly activeClass: string | null;
     /** Class toggled while the pointer is IDLE, or null when the activity keeps
      *  Werner in his neutral station pose. Ice fishing uses the own-hole
-     *  never-catch gag ("werner-fishing"); research lens uses null. */
+     *  (rest: null — the calm station; instruments may add theirs). */
     readonly idleClass: string | null;
   };
   readonly instrument: CursorInstrument;
