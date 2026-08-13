@@ -18,6 +18,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 import interfaces.research.api.cascade_routes as cr
+from interfaces.research.api.auth import SESSION_COOKIE_NAME
+from substrate.auth import mint_session_cookie
 
 
 class _StubEmbedding:
@@ -852,3 +854,186 @@ def test_prod_research_loop_factory_uses_contract_gather_stub():
     assert "make_contract_gather_stub" in src
     assert "make_demo_loop" not in src
     assert callable(cr._research_loop_factory())
+
+
+# --------------------------------------------------------------------------
+# Owner-model cascade binding (#3075) — dedicated tests
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def owner_client(tmp_path, monkeypatch):
+    """Owner-authenticated cascade client: auth env set BEFORE create_app so
+    session cookies can be minted and the owner-model authority resolves."""
+    from interfaces.research.api.app import create_app
+
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", os.path.join(str(tmp_path), "o.duckdb"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", os.path.join(str(tmp_path), "events"))
+    monkeypatch.setenv("ANTIEK_ALLOW_LOCAL_HARD_CEILING", "1")
+    monkeypatch.setenv("ANTIEK_HOME", os.path.join(str(tmp_path), "home"))
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", os.path.join(str(tmp_path), "home", "settings", "user_models.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", os.path.join(str(tmp_path), "home", "byok", "credentials.enc"))
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", os.path.join(str(tmp_path), "home", "byok", "master.key"))
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", _OWNER_AUTH_SECRET)
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", f"{_OWNER_EMAIL},{_OWNER_EMAIL_ALT}")
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.setattr(cr, "_embedding_provider", lambda: _StubEmbedding())
+    cr._SESSIONS.clear()
+    cr._SESSION_TASKS.clear()
+    cr._HARD_CEILING_RUNS.clear()
+    cr._HARD_CEILING_LAUNCHING.clear()
+    cr._OWNER_CASCADE_LAUNCHES.clear()
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    owner = TestClient(app)
+    owner.cookies.set(
+        SESSION_COOKIE_NAME,
+        mint_session_cookie(user_id=_OWNER_ID, email=_OWNER_EMAIL),
+    )
+    return owner
+
+
+_OWNER_AUTH_SECRET = "cascade-owner-test-" + "x" * 48
+_OWNER_EMAIL = "owner@example.test"
+_OWNER_EMAIL_ALT = "owner-2@example.test"
+_OWNER_ID = "owner-1"
+_OWNER_ID_ALT = "owner-2"
+_OWNER_MODEL_BODY = {
+    "provider_kind": "openai_compat",
+    "provider_catalog_id": "openai",
+    "model_id": "gpt-5.6-luna",
+    "display_name": "Owner Route",
+    "base_url": "https://api.openai.com",
+    "api_key": "sk-owner-route-12345678",
+}
+_OWNER_ROLES = (
+    "decomposer",
+    "evidence_retriever",
+    "parameter_extractor",
+    "connector",
+    "synthesizer",
+    "knowledge_extractor",
+)
+
+
+def _seed_owner_model(owner: TestClient) -> tuple[str, str]:
+    created = owner.post("/settings/models/user", json=_OWNER_MODEL_BODY)
+    assert created.status_code == 201, created.text
+    row = created.json()
+    return row["id"], row["model_id"]
+
+
+def _owner_choices(provider_id: str, model_id: str) -> dict[str, dict[str, str]]:
+    choice = {
+        "authority": "user_model",
+        "provider_id": provider_id,
+        "model_id": model_id,
+    }
+    return {role: dict(choice) for role in _OWNER_ROLES}
+
+
+def test_owner_launch_rejects_unknown_model_choice_with_422(owner_client):
+    root = _make_approved_plan(owner_client, ("a", "b"))
+    unknown = {
+        role: {
+            "authority": "user_model",
+            "provider_id": "missing-provider",
+            "model_id": "missing-model",
+        }
+        for role in _OWNER_ROLES
+    }
+    r = owner_client.post(
+        f"/research/plans/{root}/launch",
+        json={"owner_model_choices": unknown},
+    )
+    assert r.status_code == 422
+    assert r.json() == {"detail": "owner_model_unknown"}
+
+
+def test_owner_launch_without_choices_installs_no_manifest(owner_client, monkeypatch):
+    installed: list[object] = []
+    original_install = cr.install_manifest
+    monkeypatch.setattr(
+        cr,
+        "install_manifest",
+        lambda manifest: (installed.append(manifest), original_install(manifest))[1],
+    )
+    root = _make_approved_plan(owner_client, ("a",))
+    launched = owner_client.post(f"/research/plans/{root}/launch", json={})
+    assert launched.status_code == 200, launched.text
+    assert installed == []
+
+
+def test_owner_launch_installs_manifest_for_bound_dispatch(owner_client, monkeypatch):
+    installed: list[object] = []
+    original_install = cr.install_manifest
+    monkeypatch.setattr(
+        cr,
+        "install_manifest",
+        lambda manifest: (installed.append(manifest), original_install(manifest))[1],
+    )
+    provider_id, model_id = _seed_owner_model(owner_client)
+    root = _make_approved_plan(owner_client, ("alpha",))
+    payload = {"owner_model_choices": _owner_choices(provider_id, model_id)}
+    launched = owner_client.post(f"/research/plans/{root}/launch", json=payload)
+    assert launched.status_code == 200, launched.text
+    assert len(installed) == 1
+
+
+def test_owner_launch_replay_is_idempotent(owner_client):
+    provider_id, model_id = _seed_owner_model(owner_client)
+    root = _make_approved_plan(owner_client, ("alpha", "beta"))
+    payload = {"owner_model_choices": _owner_choices(provider_id, model_id)}
+
+    first = owner_client.post(f"/research/plans/{root}/launch", json=payload)
+    assert first.status_code == 200, first.text
+    sid = first.json()["session_id"]
+
+    second = owner_client.post(f"/research/plans/{root}/launch", json=payload)
+    assert second.status_code == 200, second.text
+    assert second.json().get("replayed") is True
+    assert second.json()["session_id"] == sid
+
+
+def test_owner_launch_cross_owner_replay_is_rejected(owner_client):
+    provider_one, model_one = _seed_owner_model(owner_client)
+    root = _make_approved_plan(owner_client, ("only",))
+    payload = {"owner_model_choices": _owner_choices(provider_one, model_one)}
+
+    first = owner_client.post(f"/research/plans/{root}/launch", json=payload)
+    assert first.status_code == 200, first.text
+
+    owner_two = TestClient(owner_client.app)
+    owner_two.cookies.set(
+        SESSION_COOKIE_NAME,
+        mint_session_cookie(user_id=_OWNER_ID_ALT, email=_OWNER_EMAIL_ALT),
+    )
+    second = owner_two.post(f"/research/plans/{root}/launch", json=payload)
+    # Fail-closed at the model-authority layer (the choice references owner
+    # one's per-owner model): 422 owner_model_unknown, never an ambient
+    # fallback. The claim-level 409 path is covered by same-owner mutations.
+    assert second.status_code == 422
+    assert second.json() == {"detail": "owner_model_unknown"}
+
+
+def test_owner_launch_crash_before_claim_is_retryable(owner_client, monkeypatch):
+    provider_id, model_id = _seed_owner_model(owner_client)
+    root = _make_approved_plan(owner_client, ("x",))
+
+    original_claim = cr.claim_owner_launch
+    calls = {"n": 0}
+
+    def _crash_once(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("simulated claim crash")
+        return original_claim(*args, **kwargs)
+
+    monkeypatch.setattr(cr, "claim_owner_launch", _crash_once)
+
+    payload = {"owner_model_choices": _owner_choices(provider_id, model_id)}
+    failed = owner_client.post(f"/research/plans/{root}/launch", json=payload)
+    assert failed.status_code == 500
+    assert failed.json() == {"detail": "owner_launch_claim_failed"}
+
+    retried = owner_client.post(f"/research/plans/{root}/launch", json=payload)
+    assert retried.status_code == 200, retried.text
