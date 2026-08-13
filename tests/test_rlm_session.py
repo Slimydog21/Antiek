@@ -33,6 +33,8 @@ def test_create_session_with_ratification(monkeypatch):
     assert session.state.session_id.startswith("rlm-")
     assert session.state.investigation_id == "inv-quantum"
     assert session.state.root_role == "synthesizer"
+    assert session.state.root_executor == "dispatch"
+    assert session.state.prime_goal_brief is None
     assert session.state.status == "in_progress"
 
 
@@ -97,3 +99,16 @@ def test_complete_session(monkeypatch):
     session.complete(final_summary="Three theses emerged across the corpus.")
     assert session.state.status == "completed"
     assert session.state.completed_at is not None
+
+
+
+def test_create_session_allows_prime_executor_metadata(monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    session = create_session(
+        investigation_id="inv-prime",
+        root_role="wrestler",
+        root_executor="prime_agent",
+        prime_goal_brief="prime goal",
+    )
+    assert session.state.root_executor == "prime_agent"
+    assert session.state.prime_goal_brief == "prime goal"

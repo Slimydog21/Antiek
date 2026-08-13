@@ -11,6 +11,7 @@ import pytest
 from orchestration.rlm.prime_agent_backend import (
     PrimeAgentRequest,
     PrimeAgentRLMBackend,
+    PrimeAgentSessionRequest,
     PrimeAgentTerminalState,
     prime_agent_backend_from_environment,
 )
@@ -182,3 +183,81 @@ def test_backend_has_no_forbidden_authority_imports() -> None:
     assert all("dispatch" not in name for name in imports)
     assert all("remote_exec" not in name for name in imports)
     assert all("db_lock" not in name for name in imports)
+
+
+
+def test_run_session_reads_file_handoff_output(tmp_path: Path) -> None:
+    backend = _backend(tmp_path)
+
+    captured: dict[str, str] = {}
+
+    def fake_run(request: PrimeAgentRequest):
+        marker = "Write final answer to exactly: "
+        start = request.prompt.index(marker) + len(marker)
+        end = request.prompt.index("\n", start)
+        output_path = Path(request.prompt[start:end].strip())
+        output_path.write_text("session result")
+        captured["workflow"] = request.workflow
+        return backend._outcome(  # type: ignore[attr-defined]
+            request,
+            PrimeAgentTerminalState.SUCCESS,
+            backend._argv(request),  # type: ignore[attr-defined]
+            exit_code=0,
+            duration_ms=5,
+            output_bytes=12,
+        )
+
+    backend.run = fake_run  # type: ignore[method-assign]
+    outcome = backend.run_session(
+        PrimeAgentSessionRequest(
+            goal_brief="goal",
+            iteration_prompt="iteration payload",
+            workflow="rlm-investigation-iteration",
+            request_id="sess-1",
+        )
+    )
+
+    assert captured["workflow"] == "rlm-investigation-iteration"
+    assert outcome.receipt.state is PrimeAgentTerminalState.SUCCESS
+    assert outcome.evidence is not None
+    assert outcome.evidence.text == "session result"
+    assert outcome.evidence.source == "prime-agent-session"
+
+
+def test_run_session_missing_output_times_out(tmp_path: Path) -> None:
+    backend = _backend(tmp_path, timeout_seconds=0.05)
+
+    def fake_run(request: PrimeAgentRequest):
+        return backend._outcome(  # type: ignore[attr-defined]
+            request,
+            PrimeAgentTerminalState.SUCCESS,
+            backend._argv(request),  # type: ignore[attr-defined]
+            exit_code=0,
+            duration_ms=1,
+            output_bytes=0,
+        )
+
+    backend.run = fake_run  # type: ignore[method-assign]
+    outcome = backend.run_session(
+        PrimeAgentSessionRequest(
+            goal_brief="goal",
+            iteration_prompt="payload",
+            workflow="workflow",
+            request_id="id",
+        )
+    )
+
+    assert outcome.receipt.state is PrimeAgentTerminalState.TIMEOUT
+
+
+def test_run_session_invalid_request_is_malformed(tmp_path: Path) -> None:
+    backend = _backend(tmp_path)
+    outcome = backend.run_session(
+        PrimeAgentSessionRequest(
+            goal_brief=" ",
+            iteration_prompt="payload",
+            workflow="workflow",
+            request_id="id",
+        )
+    )
+    assert outcome.receipt.state is PrimeAgentTerminalState.MALFORMED
