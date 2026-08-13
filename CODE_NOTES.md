@@ -281,3 +281,22 @@ a pristine origin/main checkout at /tmp/pristine-reading:
   new files are not in this suite's import graph.
 
 Not modified: test timeouts are a repo-owner decision, out of P0 scope.
+
+## EMISSION (parent, post-child) — surface.served_impression wiring (brief §5)
+
+The P0 children defined the event type but did not emit it anywhere. Parent
+wired the audit-only emission (commit f93dca831):
+
+- apps/reading/src/lib/servedImpression.ts — useServedImpression hook +
+  emitServedImpression: once per mount (StrictMode-safe ref), fire-and-forget
+  (.catch(() => {}) — audit never breaks the UI), investigation_id "system"
+  (reserved non-research namespace), ranked_position 0 / ranked_version ""
+  until a ranked stream exists (L8: audit, never train).
+- Wired into the three P0 surfaces: Explain (itemKind = kind param,
+  itemId = id param), ObjectiveCard ("/objective"), Signals ("/signals").
+- apps/reading/src/lib/servedImpression.test.ts — 3 focused tests: single
+  emission under double effects, envelope shape (system id + typed payload),
+  failure swallowed. All 3 pass; tsc clean; token-parity 6/6; reachability
+  clean (routes unchanged).
+- Note: reading-stream emission deliberately deferred until a ranked stream
+  exists (none today — see docs/own-your-mind/09-objective-card.md).
