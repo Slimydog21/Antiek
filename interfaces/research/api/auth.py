@@ -5,16 +5,25 @@ Access is decommissioned at the runbook level (see
 ``infrastructure/runbooks/magic-link-auth.md``); the substrate
 operates its own session cookies + email-delivered magic links.
 
-Four routes:
+Routes:
 
-- ``POST /auth/request`` — body ``{"email": "..."}`` → mint a
-  magic-link token, send via the configured email provider,
-  return ``{"sent": true}``. Always returns 200 with ``sent: true``
-  even for non-allowlisted addresses, to avoid enumerating valid
-  operators via timing or response shape. The send only actually
-  happens for allowlisted emails.
+- ``POST /auth/request`` — body ``{"email": "..."}`` → mint an
+  attempt, send the 4-digit code via the configured email provider,
+  return ``{"sent": true, attempt_id, claim_secret}``. Always 200
+  with the same shape even for non-allowlisted addresses, to avoid
+  enumerating valid operators. The send (and the code) only ever
+  happen for allowlisted emails; the code is NOT part of the API
+  response, so typing it into the browser is real email-possession
+  proof, not theater. Rate-limited per IP.
 - ``GET /auth/callback?token=...&next=/`` — verify the token, set
   the session cookie, redirect to ``next`` (default ``/``).
+- ``POST /auth/claim`` — body ``{"attempt_id, claim_secret}`` plus
+  the optional ``code`` from the email. With a code: unlocks as soon
+  as the code matches (single-device flow; 5 wrong tries invalidate
+  the attempt; per-IP rate limit). Without a code: returns 202 until
+  a second device approved via ``POST /auth/approve``, then 200.
+- ``POST /auth/approve`` — mark an attempt approved (the device that
+  clicked the email link). Requires an established session.
 - ``POST /auth/logout`` — clear the cookie, 204.
 - ``GET /auth/me`` — return the resolved session
   ``{user_id, email, auth_method}`` or 401 if no valid auth.
@@ -92,17 +101,25 @@ class AuthRequestPayload(BaseModel):
 
 class AuthRequestResponse(BaseModel):
     """``POST /auth/request`` response — always ``sent: true`` to
-    avoid disclosing whether the email is allowlisted."""
+    avoid disclosing whether the email is allowlisted.
+
+    ``device_code`` is deliberately NOT returned: the 4-digit code is
+    the operator's email-possession proof, so it must only ever exist
+    inside the delivered email. The browser learns it by the operator
+    typing it, never from the API."""
 
     sent: bool = True
     attempt_id: str
     claim_secret: str
-    device_code: str
 
 
 class AuthClaimPayload(BaseModel):
     attempt_id: str = Field(..., min_length=16, max_length=200)
     claim_secret: str = Field(..., min_length=16, max_length=200)
+    # The 4-digit code from the email. Omit it to use the two-device
+    # approval path (202 until POST /auth/approve); supply it for the
+    # single-device "type the code" unlock.
+    code: str | None = Field(default=None, min_length=4, max_length=4, pattern=r"^\d{4}$")
 
 
 class AuthApprovePayload(BaseModel):
@@ -140,11 +157,49 @@ class _LoginAttempt:
         self.created_at = time.time()
         self.approved = False
         self.claimed = False
+        self.failed_code_attempts = 0
 
 
 _ATTEMPT_TTL_SECONDS = 15 * 60
+# A 4-digit code is 10,000 possibilities; without a failure cap an
+# attacker who knows the operator's email could grind through them
+# inside the 15-minute TTL. Five wrong tries invalidate the attempt.
+_MAX_CODE_ATTEMPTS = 5
 _attempts: dict[str, _LoginAttempt] = {}
 _attempts_lock = threading.Lock()
+
+# Per-IP sliding-window throttles for the two email-surface routes.
+# In-process state is the honest deployment model here: the FastAPI
+# service is pinned to one worker by the DuckDB single-writer
+# invariant, so a process-local window is complete, not best-effort.
+_REQUEST_RATE_LIMIT = 6    # POST /auth/request per minute per IP
+_CLAIM_RATE_LIMIT = 30     # code-bearing POST /auth/claim per minute per IP
+_THROTTLE_WINDOW_SECONDS = 60.0
+_throttle: dict[str, list[float]] = {}
+_throttle_lock = threading.Lock()
+
+
+def reset_auth_throttles() -> None:
+    """Test seam: clear the in-process rate-limit windows."""
+    with _throttle_lock:
+        _throttle.clear()
+
+
+def _throttled(key: str, limit: int) -> bool:
+    """Record one hit for ``key``; True when the caller is over limit."""
+    now = time.monotonic()
+    with _throttle_lock:
+        hits = [t for t in _throttle.setdefault(key, []) if now - t < _THROTTLE_WINDOW_SECONDS]
+        if len(hits) >= limit:
+            _throttle[key] = hits
+            return True
+        hits.append(now)
+        _throttle[key] = hits
+        return False
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
 
 
 def _digest_claim(secret: str) -> str:
@@ -160,6 +215,12 @@ def _new_attempt(*, email: str, next_path: str) -> tuple[str, str, str]:
         for key, attempt in list(_attempts.items()):
             if now - attempt.created_at > _ATTEMPT_TTL_SECONDS:
                 del _attempts[key]
+        # Bounded registry: a hostile caller cannot grow memory
+        # without bound by minting attempts (each mint is already
+        # per-IP throttled; this caps the aggregate too).
+        while len(_attempts) >= 512:
+            oldest_key = min(_attempts, key=lambda k: _attempts[k].created_at)
+            del _attempts[oldest_key]
         _attempts[attempt_id] = _LoginAttempt(
             email=email,
             claim_hash=_digest_claim(claim_secret),
@@ -282,11 +343,13 @@ def _cookie_kwargs() -> dict[str, Any]:
 
 def _format_magic_link_email(*, email: str, link: str, device_code: str) -> OutboundEmail:
     text = (
-        "Review your Antiek sign-in\n"
+        "Your Antiek sign-in code\n"
         "\n"
-        f"Your matching code is {device_code}.\n"
-        "Open the secure link, confirm the same code on your other screen,\n"
-        "then approve the sign-in. The link expires in 15 minutes.\n"
+        f"  {device_code}\n"
+        "\n"
+        "Type it into the Antiek sign-in screen where you started.\n"
+        "Or open the link below to approve the sign-in from this device\n"
+        "instead. The code and link expire in 15 minutes.\n"
         "\n"
         f"  {link}\n"
         "\n"
@@ -311,13 +374,14 @@ def _format_magic_link_email(*, email: str, link: str, device_code: str) -> Outb
             </tr>
             <tr>
               <td style="padding:30px 24px 12px;">
-                <div style="font-size:13px;color:#667085;margin-bottom:8px;">MATCH THIS CODE</div>
+                <div style="font-size:13px;color:#667085;margin-bottom:8px;">YOUR ANTIEK SIGN-IN CODE</div>
                 <div style="font-family:'Courier New',monospace;font-size:42px;font-weight:700;letter-spacing:10px;color:#172033;">{device_code}</div>
               </td>
             </tr>
             <tr>
               <td style="padding:10px 24px 28px;font-size:16px;line-height:1.55;color:#344054;">
-                Open the sign-in review, confirm that your computer or iPad shows the same four digits, then approve it.
+                Type this code into the Antiek sign-in screen where you started.
+                Prefer approving from here instead? Open the link below on this device.
               </td>
             </tr>
             <tr>
@@ -404,7 +468,12 @@ def register_auth_routes(
         response_model=AuthRequestResponse,
         tags=["auth"],
     )
-    async def auth_request(payload: AuthRequestPayload) -> AuthRequestResponse:
+    async def auth_request(payload: AuthRequestPayload, request: Request) -> AuthRequestResponse:
+        if _throttled(f"request:{_client_ip(request)}", _REQUEST_RATE_LIMIT):
+            raise HTTPException(
+                status_code=429,
+                detail={"code": "rate_limited", "message": "Too many sign-in requests. Wait a minute and try again."},
+            )
         email = payload.email.strip().lower()
         next_path = payload.next if _is_safe_relative(payload.next) else "/"
         allowlist = _resolve_allowlist()
@@ -436,11 +505,12 @@ def register_auth_routes(
         # Non-allowlisted: silently no-op. Constant-time-ish: the
         # branch difference is unavoidable but the response is
         # identical, which is what enumeration protection turns on.
+        # device_code never leaves the server — the email is its only
+        # channel, so typing it is genuine email-possession proof.
         return AuthRequestResponse(
             sent=True,
             attempt_id=attempt_id,
             claim_secret=claim_secret,
-            device_code=device_code,
         )
 
     @app.get("/auth/callback", tags=["auth"])
@@ -510,7 +580,16 @@ def register_auth_routes(
         return Response(status_code=204)
 
     @app.post("/auth/claim", tags=["auth"])
-    async def auth_claim(payload: AuthClaimPayload) -> Response:
+    async def auth_claim(payload: AuthClaimPayload, request: Request) -> Response:
+        # Only code-bearing claims are rate-limited. The two-device
+        # approval poll (claim without a code) is the operator's own
+        # page polling every 1.8s — throttling it would break the
+        # auto-open UX; it also carries no brute-force surface.
+        if payload.code is not None and _throttled(f"claim:{_client_ip(request)}", _CLAIM_RATE_LIMIT):
+            raise HTTPException(
+                status_code=429,
+                detail={"code": "rate_limited", "message": "Too many unlock attempts. Wait a minute and try again."},
+            )
         with _attempts_lock:
             pending = _attempts.get(payload.attempt_id)
             valid_secret = bool(
@@ -519,7 +598,32 @@ def register_auth_routes(
             )
             if not pending or not valid_secret or time.time() - pending.created_at > _ATTEMPT_TTL_SECONDS:
                 raise HTTPException(status_code=410, detail={"code": "login_attempt_expired", "message": "This sign-in request has expired."})
-            if not pending.approved:
+            if payload.code is not None:
+                # Single-device flow: the typed code from the email is
+                # the possession proof. Wrong tries are counted; the
+                # whole attempt dies after five so a 10,000-space code
+                # cannot be ground through inside its 15-minute TTL.
+                code_ok = secrets.compare_digest(payload.code, pending.device_code)
+                if not code_ok:
+                    pending.failed_code_attempts += 1
+                    if pending.failed_code_attempts >= _MAX_CODE_ATTEMPTS:
+                        del _attempts[payload.attempt_id]
+                        raise HTTPException(
+                            status_code=410,
+                            detail={"code": "login_attempt_locked", "message": "Too many wrong codes. Request a new sign-in."},
+                        )
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "code": "invalid_code",
+                            "message": "That code didn't match. Check the email and try again.",
+                            "remaining_attempts": _MAX_CODE_ATTEMPTS - pending.failed_code_attempts,
+                        },
+                    )
+                pending.failed_code_attempts = 0
+            elif not pending.approved:
+                # Two-device flow: keep waiting until the email-click
+                # device approves (POST /auth/approve).
                 return Response(status_code=202)
             if pending.claimed:
                 raise HTTPException(status_code=410, detail={"code": "login_attempt_claimed", "message": "This sign-in request was already used."})

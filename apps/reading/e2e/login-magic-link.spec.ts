@@ -33,7 +33,7 @@ test.describe("login magic-link surface", () => {
     );
   });
 
-  test("B-POLICY-ALLOWLIST-SILENT shows Check your email on 200 sent", async ({
+  test("B-POLICY-ALLOWLIST-SILENT shows the code-entry screen on 200 sent", async ({
     page,
   }) => {
     await page.route("**/auth/claim", (route) => route.fulfill({ status: 202 }));
@@ -45,16 +45,66 @@ test.describe("login magic-link surface", () => {
           sent: true,
           attempt_id: "attempt-1234567890",
           claim_secret: "secret-1234567890",
-          device_code: "4821",
         }),
       }),
     );
     await page.goto("/login");
     await page.getByPlaceholder("you@example.com").fill("not-on-allowlist@example.com");
     await page.getByRole("button", { name: /continue with email/i }).click();
-    await expect(page.getByRole("heading", { name: "Now check your phone." })).toBeVisible();
-    await expect(page.getByText("4821")).toBeVisible();
-    await expect(page.getByText("this screen will open itself", { exact: false })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Type the code from the email." })).toBeVisible();
+    await expect(page.getByLabel("4-digit code from the email")).toBeVisible();
+    // The code is email-only: it must NOT be rendered from the API response.
+    await expect(page.getByText("4821")).toBeHidden();
+    await expect(page.getByText("or open the link in the email", { exact: false })).toBeVisible();
+  });
+
+  test("typing the emailed code unlocks", async ({ page }) => {
+    await page.route("**/auth/request", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          sent: true,
+          attempt_id: "attempt-1234567890",
+          claim_secret: "secret-1234567890",
+        }),
+      }),
+    );
+    await page.route("**/auth/claim", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ authenticated: true, setup_passkey: false, next: "/trust" }),
+      }),
+    );
+    await page.route("**/auth/me", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ user_id: "__operator__", email: "operator@antiek.test", auth_method: "antiek_session_cookie" }),
+      }),
+    );
+    await page.goto("/login?next=/trust");
+    await page.getByPlaceholder("you@example.com").fill("operator@antiek.test");
+    await page.getByRole("button", { name: /continue with email/i }).click();
+
+    const claim = page.waitForRequest((request) => {
+      if (!request.url().endsWith("/auth/claim")) return false;
+      try {
+        return request.postDataJSON()?.code === "4821";
+      } catch {
+        return false;
+      }
+    });
+    await page.getByLabel("4-digit code from the email").fill("4821");
+    await page.getByRole("button", { name: "Unlock", exact: true }).click();
+    const claimRequest = await claim;
+    expect(claimRequest.postDataJSON()).toEqual({
+      attempt_id: "attempt-1234567890",
+      claim_secret: "secret-1234567890",
+      code: "4821",
+    });
+    await expect(page).toHaveURL(/\/trust/);
   });
 
   test("phone approval requires the matching code and leaves a clear receipt", async ({ page }) => {
@@ -81,7 +131,7 @@ test.describe("login magic-link surface", () => {
     );
   });
 
-  test("passkey-first operator sees one obvious unlock action", async ({ page }) => {
+  test("email is the primary unlock; passkey stays available", async ({ page }) => {
     await page.unroute("**/auth/passkey/status");
     await page.route("**/auth/passkey/status", (route) =>
       route.fulfill({
@@ -92,10 +142,11 @@ test.describe("login magic-link surface", () => {
     );
     await page.goto("/login");
 
-    await expect(page.getByRole("heading", { name: "Pick up the thread." })).toBeVisible();
+    // Email first — the code flow is the obvious action.
+    await expect(page.getByPlaceholder("you@example.com")).toBeVisible();
+    await expect(page.getByRole("button", { name: /continue with email/i })).toBeVisible();
+    // Passkey remains reachable as the alternative.
     await expect(page.getByRole("button", { name: /unlock with passkey/i })).toBeVisible();
-    await expect(page.getByPlaceholder("you@example.com")).toBeHidden();
-    await expect(page.getByText("Use email recovery")).toBeVisible();
   });
 
   test("visual review states", async ({ page }) => {
@@ -109,7 +160,6 @@ test.describe("login magic-link surface", () => {
           sent: true,
           attempt_id: "attempt-1234567890",
           claim_secret: "secret-1234567890",
-          device_code: "4821",
         }),
       }),
     );
@@ -118,7 +168,7 @@ test.describe("login magic-link surface", () => {
 
     await page.getByPlaceholder("you@example.com").fill("operator@antiek.test");
     await page.getByRole("button", { name: /continue with email/i }).click();
-    await expect(page.getByText("4821")).toBeVisible();
+    await expect(page.getByLabel("4-digit code from the email")).toBeVisible();
     await page.screenshot({ path: "test-results/login-waiting.png", fullPage: true });
 
     await page.setViewportSize({ width: 390, height: 844 });

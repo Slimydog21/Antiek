@@ -1376,6 +1376,9 @@ def create_app(
             #   wrestle UI; Mode A research workstation)
             # - https://antiek.ai: production web app (canonical apex,
             #   2026-05-18 migration from app.antiek.ai)
+            # - https://www.antiek.ai: Cloudflare Pages serves the same
+            #   bundle on www; the login surface (and WebAuthn, which
+            #   verifies the exact origin) must work there too.
             #
             # The app.antiek.ai deprecation alias was removed from this
             # list after the operator deleted the custom domain on the
@@ -1385,6 +1388,7 @@ def create_app(
                 "http://localhost:5173",
                 "http://127.0.0.1:5173",
                 "https://antiek.ai",
+                "https://www.antiek.ai",
             ]
     if cors_origins:
         # H6 magic-link auth: ``credentials=True`` is required for the
