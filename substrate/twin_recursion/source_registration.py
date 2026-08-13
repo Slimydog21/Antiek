@@ -23,10 +23,15 @@ from substrate.rights import T3BodyServeError, body_servable
 from substrate.twin_note_taker import MAX_CONTENT_CHARS, MIN_CONTENT_CHARS, AssetContent
 
 from .ledger import SourceRevision, TwinRecursionLedger
+from .segmentation import build_segmentation_manifest
+from .segmentation_ledger import TwinSegmentationLedger
 
 ENVELOPE_SCHEMA = "antiek.twin-source-envelope.v1"
 EnvelopeStatus = Literal[
-    "eligible", "metadata_only", "requires_binding", "requires_enrichment",
+    "eligible",
+    "metadata_only",
+    "requires_binding",
+    "requires_enrichment",
     "requires_segmentation",
 ]
 CoverageVerdict = Literal["unknown", "partial", "universal"]
@@ -62,7 +67,10 @@ class TwinSourceEnvelope:
         if envelope.to_json() != value:
             raise TwinSourceEnvelopeError("twin source envelope is not canonical")
         if envelope.schema != ENVELOPE_SCHEMA or envelope.status not in {
-            "eligible", "metadata_only", "requires_binding", "requires_enrichment",
+            "eligible",
+            "metadata_only",
+            "requires_binding",
+            "requires_enrichment",
             "requires_segmentation",
         }:
             raise TwinSourceEnvelopeError("twin source envelope has unsupported semantics")
@@ -81,6 +89,7 @@ class TwinSourceCoverage:
     requires_enrichment: int
     requires_segmentation: int
     registered: int
+    segmentation_registered: int
     verdict: CoverageVerdict
 
 
@@ -110,37 +119,75 @@ def build_twin_source_envelope(
     source_event_id = "evt-twin-source-" + _sha(event_material)[:40]
     if raw_text is None or stripped_length == 0:
         return TwinSourceEnvelope(
-            ENVELOPE_SCHEMA, "metadata_only", owner_user_id, document_id, exact_title,
-            document_type, body_sha, source_event_id, None, "no_substantive_body",
+            ENVELOPE_SCHEMA,
+            "metadata_only",
+            owner_user_id,
+            document_id,
+            exact_title,
+            document_type,
+            body_sha,
+            source_event_id,
+            None,
+            "no_substantive_body",
         )
     if document_type == "multimedia_twin":
         return TwinSourceEnvelope(
-            ENVELOPE_SCHEMA, "requires_binding", owner_user_id, document_id, exact_title,
-            document_type, body_sha, source_event_id, None,
+            ENVELOPE_SCHEMA,
+            "requires_binding",
+            owner_user_id,
+            document_id,
+            exact_title,
+            document_type,
+            body_sha,
+            source_event_id,
+            None,
             "legacy_twin_requires_canonical_binding",
         )
     if stripped_length < MIN_CONTENT_CHARS:
         return TwinSourceEnvelope(
-            ENVELOPE_SCHEMA, "requires_enrichment", owner_user_id, document_id, exact_title,
-            document_type, body_sha, source_event_id, None,
+            ENVELOPE_SCHEMA,
+            "requires_enrichment",
+            owner_user_id,
+            document_id,
+            exact_title,
+            document_type,
+            body_sha,
+            source_event_id,
+            None,
             "body_below_materializer_floor",
         )
     if len(raw_text) > MAX_CONTENT_CHARS:
         return TwinSourceEnvelope(
-            ENVELOPE_SCHEMA, "requires_segmentation", owner_user_id, document_id,
-            exact_title, document_type, body_sha, source_event_id, None,
+            ENVELOPE_SCHEMA,
+            "requires_segmentation",
+            owner_user_id,
+            document_id,
+            exact_title,
+            document_type,
+            body_sha,
+            source_event_id,
+            None,
             "body_exceeds_materializer_limit",
         )
     asset = _asset(document_id, exact_title, raw_text, document_type, source_event_id)
     revision = SourceRevision(owner_user_id, asset)
     return TwinSourceEnvelope(
-        ENVELOPE_SCHEMA, "eligible", owner_user_id, document_id, exact_title,
-        document_type, body_sha, source_event_id, revision.source_hash, None,
+        ENVELOPE_SCHEMA,
+        "eligible",
+        owner_user_id,
+        document_id,
+        exact_title,
+        document_type,
+        body_sha,
+        source_event_id,
+        revision.source_hash,
+        None,
     )
 
 
-def _asset(document_id: str, title: str, raw_text: str, document_type: str,
-           source_event_id: str) -> AssetContent:
+def _asset(
+    document_id: str, title: str, raw_text: str, document_type: str, source_event_id: str
+) -> AssetContent:
     return AssetContent(
         asset_id=document_id,
         title=title,
@@ -371,7 +418,7 @@ def _verified_rows(
                 f"document {row[0]!r} conflicts with its twin declaration"
             )
         asset = None
-        if persisted.status == "eligible":
+        if persisted.status in {"eligible", "requires_segmentation"}:
             if guarded_body is None:
                 raise TwinSourceEnvelopeError(
                     f"document {row[0]!r} lost owner-readable body authority"
@@ -387,6 +434,7 @@ def _verified_rows(
 def project_twin_sources(
     con: LockedConnection,
     ledger: TwinRecursionLedger,
+    segmentation_ledger: TwinSegmentationLedger,
     *,
     account_id: str,
 ) -> TwinSourceCoverage:
@@ -394,10 +442,17 @@ def project_twin_sources(
     selected_rows = _verified_rows(con, account_id)
     selected = [envelope for envelope, _asset_value in selected_rows]
     snapshots = []
+    segmentation_snapshots = []
     for envelope, asset in selected_rows:
         if envelope.status == "eligible":
             assert asset is not None
             snapshots.append(ledger.register_source(SourceRevision(account_id, asset)))
+        elif envelope.status == "requires_segmentation":
+            assert asset is not None
+            manifest = build_segmentation_manifest(account_id=account_id, asset=asset)
+            segmentation_snapshots.append(
+                segmentation_ledger.register(manifest, account_id=account_id, asset=asset)
+            )
     eligible = sum(envelope.status == "eligible" for envelope in selected)
     metadata_only = sum(envelope.status == "metadata_only" for envelope in selected)
     binding = sum(envelope.status == "requires_binding" for envelope in selected)
@@ -408,10 +463,20 @@ def project_twin_sources(
     elif binding or enrichment or segmentation:
         verdict = "partial"
     else:
-        verdict = "universal" if all(snapshot.state == "ready" for snapshot in snapshots) else "partial"
+        verdict = (
+            "universal" if all(snapshot.state == "ready" for snapshot in snapshots) else "partial"
+        )
     return TwinSourceCoverage(
-        account_id, len(selected), eligible, metadata_only, binding, enrichment,
-        segmentation, len(snapshots), verdict,
+        account_id,
+        len(selected),
+        eligible,
+        metadata_only,
+        binding,
+        enrichment,
+        segmentation,
+        len(snapshots),
+        len(segmentation_snapshots),
+        verdict,
     )
 
 
