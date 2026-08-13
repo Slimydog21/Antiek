@@ -63,8 +63,8 @@ export interface WernerRigProps {
  * transform-origin sits there, so a future cast (SPR-05) pivots the whole rod
  * from the hand, not the body centre.
  */
-const ROD_BUTT = ROD_BUTT_LOCAL; // (45,34) — curled into werner-rig-flipper-r
-const ROD_TIP = ROD_TIP_LOCAL; // (66,5) — end of the shaft (past the viewBox; overflow:visible)
+export const ROD_BUTT = ROD_BUTT_LOCAL; // (45,34) — curled into werner-rig-flipper-r
+export const ROD_TIP = ROD_TIP_LOCAL; // (66,5) — end of the shaft (past the viewBox; overflow:visible)
 
 /** Stroke width butt→tip — the rod TAPERS so it reads as a rod, not a stick. */
 const ROD_BUTT_WIDTH = 2.6;
@@ -80,7 +80,7 @@ const ROD_SEGMENTS = 6;
  * straight butt→tip axis by `bend` viewBox units, so `bend=0` is a dead-straight
  * rod and a positive `bend` bows the shaft toward the load (the line side).
  */
-function rodSegments(
+export function rodSegments(
   bend: number,
 ): Array<{ d: string; width: number }> {
   const ax = ROD_TIP.x - ROD_BUTT.x;

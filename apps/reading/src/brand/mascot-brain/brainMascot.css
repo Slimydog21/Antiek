@@ -32,11 +32,28 @@
   opacity: 1;
 }
 
+.brain-presence {
+  animation: brain-presence-float 90s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes brain-presence-float {
+  from {
+    transform: translate3d(-4%, 2%, 0) rotate(-4deg);
+  }
+  to {
+    transform: translate3d(4%, -3%, 0) rotate(5deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .brain-idle {
     animation: none;
   }
   .brain-blink {
     transition: none;
+  }
+  .brain-presence {
+    animation: none;
   }
 }

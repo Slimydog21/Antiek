@@ -6,6 +6,7 @@ import { NavRail } from "./shell/NavRail";
 import { PenguinMascot } from "./shell/PenguinMascot";
 import { WernerIceCursorShell } from "./werner/WernerIceCursorShell";
 import { Scene } from "./scene/Scene";
+import BrainPresence from "./brand/BrainPresence";
 import { SceneChrome } from "./shell/SceneChrome";
 import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport } from "./components/lemon/LemonToast";
@@ -114,6 +115,7 @@ export function AppShell({ children }: Props) {
           on a hidden tab. (It lives INSIDE the seam frame so the ad border's
           reserved band, when SPR-07 lights it up, frames the scene too.) */}
       <Scene />
+      <BrainPresence />
 
       {/* Vertical column: topbar · full-width working region · bottom rail.
           The working region carries NO left gutter — it spans the full
