@@ -34,19 +34,21 @@ Three properties we want, beyond what Cloudflare Access gave us:
    recovery. The server stores public credential material only. Email
    delivery remains pluggable behind `ANTIEK_EMAIL_PROVIDER`.
 
-The two-path middleware (substrate-side, see
+The origin-verifiable middleware (substrate-side, see
 `interfaces/research/api/app.py`) accepts ANY of:
 
 - `ANTIEK_SESSION` cookie minted by `/auth/callback` (browser path)
-- `Cf-Access-Authenticated-User-Email` header (legacy, kept for
-  rollback safety during cutover)
-- `Cf-Access-Client-Id` matching service-token env (legacy)
+- the complete `Cf-Access-Client-Id` + `Cf-Access-Client-Secret`
+  service-token pair matching the server environment
 - `Authorization: Bearer <token>` matching `ANTIEK_OPERATOR_TOKEN`
   (machine path; probes, CI, ansible health-checks)
 
-The order matters: the Antiek cookie is checked FIRST. So once the
-operator signs in via the new flow, every subsequent request takes
-the new path even if Cloudflare Access is still configured.
+`Cf-Access-Authenticated-User-Email` alone is never accepted. It is a
+caller-controlled header at the origin unless an Access JWT is verified,
+which this service does not currently implement.
+
+The Antiek cookie is checked first. Once the operator signs in via the
+owned flow, every subsequent request takes that path.
 
 ---
 

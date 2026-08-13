@@ -222,14 +222,12 @@ def test_options_preflight_passes_without_auth(temp_substrate, monkeypatch):
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 6. Cloudflare Access email path (H4.5)
+# 6. Caller-supplied Cloudflare Access email headers are not proof
 # ─────────────────────────────────────────────────────────────────────
 
 
-def test_cf_access_email_match_passes(temp_substrate, monkeypatch):
-    """When ANTIEK_OPERATOR_EMAIL is set and the request carries a
-    matching ``Cf-Access-Authenticated-User-Email`` header, the
-    request passes without needing a bearer."""
+def test_cf_access_email_match_without_proof_rejected(temp_substrate, monkeypatch):
+    """An allowlisted address alone does not prove Access authenticated it."""
     client = _client_with_token(
         temp_substrate, None, monkeypatch, email="op@antiek.ai",
     )
@@ -237,20 +235,7 @@ def test_cf_access_email_match_passes(temp_substrate, monkeypatch):
         "/investigations",
         headers={"Cf-Access-Authenticated-User-Email": "op@antiek.ai"},
     )
-    assert resp.status_code == 200
-
-
-def test_cf_access_email_case_insensitive(temp_substrate, monkeypatch):
-    """Email comparison is case-insensitive — Cloudflare may send
-    the header in any case."""
-    client = _client_with_token(
-        temp_substrate, None, monkeypatch, email="op@antiek.ai",
-    )
-    resp = client.get(
-        "/investigations",
-        headers={"Cf-Access-Authenticated-User-Email": "OP@ANTIEK.AI"},
-    )
-    assert resp.status_code == 200
+    assert resp.status_code == 401
 
 
 def test_cf_access_email_mismatch_rejected(temp_substrate, monkeypatch):
@@ -276,8 +261,7 @@ def test_cf_access_email_missing_rejected_when_email_required(
     assert resp.status_code == 401
 
 
-def test_both_paths_either_suffices_email(temp_substrate, monkeypatch):
-    """Both env vars set → email path passes without needing bearer."""
+def test_forged_email_does_not_bypass_configured_bearer(temp_substrate, monkeypatch):
     client = _client_with_token(
         temp_substrate, "op_secret", monkeypatch, email="op@antiek.ai",
     )
@@ -285,7 +269,7 @@ def test_both_paths_either_suffices_email(temp_substrate, monkeypatch):
         "/investigations",
         headers={"Cf-Access-Authenticated-User-Email": "op@antiek.ai"},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 401
 
 
 def test_both_paths_either_suffices_bearer(temp_substrate, monkeypatch):
@@ -399,8 +383,9 @@ def test_service_token_client_id_mismatch_rejected(temp_substrate, monkeypatch):
     assert resp.status_code == 401
 
 
-def test_service_token_three_paths_active_email_passes(temp_substrate, monkeypatch):
-    """All three env vars set → any single path matches."""
+def test_forged_email_does_not_bypass_other_configured_paths(
+    temp_substrate, monkeypatch,
+):
     client = _client_with_token(
         temp_substrate, "op_secret", monkeypatch,
         email="op@antiek.ai",
@@ -411,7 +396,7 @@ def test_service_token_three_paths_active_email_passes(temp_substrate, monkeypat
         "/investigations",
         headers={"Cf-Access-Authenticated-User-Email": "op@antiek.ai"},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 401
 
 
 def test_service_token_three_paths_active_service_token_passes(
