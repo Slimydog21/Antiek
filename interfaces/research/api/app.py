@@ -6711,6 +6711,24 @@ def create_app(
     def _recover_knowledge_event_projector() -> None:
         import threading
 
+        # Kill switch for the event-projector recovery worker.
+        #
+        # INCIDENT 2026-08-13: on the production box the worker churns at
+        # ~100% CPU with all three projector tables (frontiers/events/
+        # receipts) empty while write_log accrues ~2 rows per 0.5s pass
+        # (130,887 frontier-snapshot rows accumulated). The per-event
+        # transactions fail in-process (the same DuckDB config-conflict
+        # family as the frame_telemetry 500s) and the retry loop never
+        # converges; the constant checkpointing re-fragments the DuckDB
+        # file (~2 MB/min) and re-wedges the API. The projector has
+        # delivered nothing since at least 2026-08-13 03:00Z (backup
+        # counts: 0/0/0), so disabling the worker loses no function.
+        # Set ANTIEK_DISABLE_EVENT_PROJECTOR_RECOVERY=1 to disable;
+        # unset + redeploy to re-enable once the root cause (in-process
+        # mixed-config connections) is fixed.
+        if os.environ.get("ANTIEK_DISABLE_EVENT_PROJECTOR_RECOVERY", "").strip() == "1":
+            return
+
         # Recovery is a startup reader/consumer, not a migration owner. Route
         # handlers retain their legacy lazy-init seam for now; this worker must
         # wait for deployment to provide the complete schema.
