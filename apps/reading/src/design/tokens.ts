@@ -312,6 +312,22 @@ export const accent = {
 } as const;
 
 /**
+ * Research-state family (herdr transfer P0-1). Mirrors tokens.css: semantic
+ * ALIASES over the palette constants (var() references), so state colour is
+ * a token, never a raw hex in a component. blocked=emperor (needs
+ * attention), done=aurora, working=sun, stopped/muted=shadow-1. The
+ * canonical dot classes live in shared/researchState.ts and consume these
+ * tokens via Tailwind arbitrary values.
+ */
+export const state = {
+  working: "var(--sun)",
+  blocked: "var(--emperor)",
+  done: "var(--aurora)",
+  stopped: "var(--shadow-2)",
+  muted: "var(--shadow-2)",
+} as const;
+
+/**
  * Motion scale (U-05). One small set of durations + easings so motion
  * timing is a token, not a magic number scattered across components.
  *
