@@ -207,7 +207,17 @@ def default_embedding_provider() -> EmbeddingProvider:
         _DEFAULT_PROVIDER = HashEmbedding()
         return _DEFAULT_PROVIDER
 
-    model_name = os.environ.get("ANTIEK_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    model_name = os.environ.get("ANTIEK_EMBEDDING_MODEL") or None
+    if model_name is None:
+        # Lineup binding (indexer actions): the operator's lineup assignment
+        # for `graph_embedding` wins when it names the local embedding family
+        # with an admissible model; otherwise the MiniLM default. The
+        # embedding-metadata layer rejects incompatible query/stored pairs,
+        # so a switch is loud, never silent.
+        from substrate.dispatch.lineup_override import effective_model_for_action
+        model_name = effective_model_for_action(
+            "graph_embedding", provider_family="local_embedding", default="all-MiniLM-L6-v2",
+        )
     try:
         _DEFAULT_PROVIDER = SentenceTransformerEmbedding(model_name)
     except RuntimeError:  # sentence-transformers not installed
