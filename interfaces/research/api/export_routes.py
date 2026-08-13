@@ -247,15 +247,19 @@ def _export_graph(
             table_rows: dict[str, int] = {}
             for t in tables:
                 quoted = '"' + t.replace('"', '""') + '"'
-                table_rows[t] = con.execute(
+                count_row = con.execute(
                     f"SELECT COUNT(*) FROM {quoted}"
-                ).fetchone()[0]
+                ).fetchone()
+                table_rows[t] = int(count_row[0]) if count_row is not None else 0
             # EXPORT DATABASE takes a literal path (no bound parameter —
             # DuckDB rejects '?'), so escape single quotes for the SQL
             # string literal.
             escaped = str(out_dir).replace("'", "''")
             con.execute(f"EXPORT DATABASE '{escaped}' (FORMAT PARQUET);")
-            duckdb_version = con.execute("SELECT version()").fetchone()[0]
+            version_row = con.execute("SELECT version()").fetchone()
+            duckdb_version = (
+                str(version_row[0]) if version_row is not None else "unknown"
+            )
             con.execute("COMMIT")
         finally:
             con.close()
