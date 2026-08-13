@@ -197,10 +197,9 @@ real dispatch_role + default tier (or `none` for non-dispatch surfaces).
   6 tests). Remaining: prod-parity coverage for the registry; media /
   voice / embedding action binding (no dispatch role exists yet);
   per-owner BYOT binding stays on request-scoped seams by design.
-- **Config-gap roles** (write_repository/write_composition/write_editor/
-  interviewer/attribution/extractor have no explicit role_tiers entry):
-  flagged in §3.1, not fixed here.
-- **Deploy**: not deployed. Prod runs `8a26f499` + an uncommitted hotfix;
-  main is `2f14a983b6` with a RED declared-bar (3 NEW mypy violations in
-  acquisition/arxiv/bulk.py). This branch is based on current main; merge +
-  deploy when the bar is green.
+- **Event-label actions** (write_repository/write_composition/write_editor/
+  attribution/visual_claims) have no dispatch seam — binding needs new
+  seams (documented). Interviewer's missing role_tiers entry was the one
+  TRUE config gap and is now fixed (pro, 2026-08-13 catalog-truth pass).
+- **Deploy**: PR #3061 merged 2026-08-13 (main `8a256369a7`); prod deploys
+  are operator-initiated (prod at `29137f1b` as of the last deploy).
