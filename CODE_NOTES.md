@@ -300,3 +300,111 @@ wired the audit-only emission (commit f93dca831):
   clean (routes unchanged).
 - Note: reading-stream emission deliberately deferred until a ranked stream
   exists (none today — see docs/own-your-mind/09-objective-card.md).
+
+
+## P1 §5 — visible tiers, WRITE half (antiek-oym-tiers worktree)
+
+Implemented against a fresh checkout of origin/main @ ea012164c on branch
+feat/own-your-mind-p1-tiers. The read half (tier chips + override badges in
+the Explain panel) already shipped in P0 (PR #3064, merged on main); this is
+the user-settable write half on the EXISTING `chunk_tier_overrides` table
+(zero new tables). No commits, no pushes; writes confined to this worktree.
+
+### Backend
+
+- `interfaces/research/api/settings_tiers.py` (new) — two routes:
+  - `GET /settings/tier-overrides?chunk_id=...` → `{chunk_id,
+    current_original_tier, overrides[]}` (newest first). The chunk's current
+    tier is its source document's `source_tier` (the `chunks` table has NO
+    tier column — the tier lives on `documents`, which is exactly what the
+    Explain panel's tier chips render); resolved via `connect_read`
+    (explain_routes' read discipline: missing store = honest 404, never a
+    creation event).
+  - `POST /settings/tier-overrides` → `{chunk_id, override_tier, reason}`.
+    Body is parsed BY HAND (settings_models_admin precedent) so every 4xx is
+    a value-free 400 with an honest message — pydantic's 422 would echo
+    submitted values. Validations: chunk exists (404), override_tier strict
+    int 1..5 (400; bool/float/string refused — no pydantic coercion),
+    reason non-empty after strip (400: "the audit trail requires a reason"),
+    reason ≤ 2048 chars (400). The chunk's current tier is read on the SAME
+    locked `connect_write` connection that appends the row (no TOCTOU
+    between tier read and record), then
+    `middleware/source_tier/overrides_db.record_chunk_tier_override` runs
+    with `set_by=request_owner_user_id(request)` (the
+    settings_models_admin.py:209 operator-id pattern) and an explicit
+    `set_at` so the created row is read back deterministically. Lock
+    contention → 503 (account_memory_routes' `_unavailable` pattern): the
+    flock wait is bounded at `_LOCK_TIMEOUT_S = 15.0` (ingest cron can hold
+    it for minutes; 15s = settings must answer promptly without 503ing
+    through a normal ingest). Missing store on POST → 404 (a chunk cannot
+    exist without a store; never implicitly create one).
+  - Registered in `interfaces/research/api/app.py` via
+    `register_settings_tiers_routes(app)` right after
+    `register_settings_budget_routes` (mirrors P1 §2 privacy placement).
+- `tests/test_settings_tiers.py` (new) — 15 tests: POST round-trip via GET
+  (set_by == request owner id, original_tier == the chunk's current tier),
+  authenticated owner stamping (monkeypatched `operator_claims` →
+  `user-42`), invalid tier 400 (0/6/-1/1.5/"3" — all refused, no pydantic
+  coercion), empty/whitespace reason 400, overlong reason 400, unknown chunk
+  404 (both verbs), missing-store 404 never creates (both verbs), append-only
+  (two overrides both present, newest first, each with its own
+  reason/owner/original_tier snapshot), lock-timeout → 503 via REAL flock
+  contention on the sidecar file (monkeypatched `_LOCK_TIMEOUT_S` = 0.2s;
+  nothing recorded while blocked), and GET never needs the write lock (200
+  while another fd holds the flock).
+- Optional-deps note: the worktree needed `uv sync --extra dev --extra pdf`
+  (pytest + pypdf for `acquisition.books.reader`), same pattern as P1 §2.
+
+### Frontend (apps/reading)
+
+- `apps/reading/src/api/tiers.ts` (new) — typed client for the two routes
+  (`getTierOverrides`, `createTierOverride`); reuses `TierOverride` from
+  `ownYourMind.ts` (the single typed seam the Explain panel already reads).
+- `apps/reading/src/modes/Explain/index.tsx` — per-chunk `SetTierControl`:
+  a "set tier" button on every chunk row (each row has tier chips) reveals a
+  form (tier select 1..5 + mandatory reason input), POSTs on save, refreshes
+  the chunk's override history from GET, then calls the existing `reload`
+  path so the new override badge appears in the chain. The chunk's override
+  history (set_by / reason / date, newest first) is listed inside the
+  control via `OverrideBadge`. The `onTierChanged` callback threads from
+  `Explain` → Claim/Synthesis/Document panels → `ChunksSection` →
+  `ChunkBlock`, so all three explain surfaces (claim, synthesis pins,
+  document) get the write control. Errors surface inline; the save button
+  is disabled while busy or with an empty reason.
+- `apps/reading/src/modes/Explain/Explain.test.tsx` (new) — 3 tests
+  (PrivacyDashboard-style vi.mock of `../../lib/api` + api modules, wrapped
+  in MemoryRouter): control renders + lists per-chunk override history from
+  GET; submit POSTs `createTierOverride("chunk-1", 5, reason)` and reloads
+  the explain chain (asserted: second `explainClaim` call + the new
+  "tier 2 → 5" badge + reason rendered); POST failure surfaces inline with
+  no reload.
+
+### Verification (project's own env; tails)
+
+- `uv sync --extra dev --extra pdf` (pytest + pypdf needed by the suite).
+- `uv run python -m pytest tests/test_settings_tiers.py -q` →
+  `15 passed` (suite uses `python -m pytest`; a bare `uv run pytest`
+  resolves the system pytest outside the venv).
+- `uv run python -m pytest tests/test_explain_routes.py tests/test_settings_budget_api.py -q` (regression) → `64 passed`.
+- `uv run ruff check interfaces/research/api/settings_tiers.py tests/test_settings_tiers.py interfaces/research/api/app.py` → `All checks passed!`.
+- `cd apps/reading && npm ci && npx tsc --noEmit` → clean (only NO_COLOR/oxc warnings).
+- `cd apps/reading && npx vitest run src/modes/Explain/Explain.test.tsx` → `3 passed`.
+- OpenAPI generation (`app.openapi()`) errors on a PRE-EXISTING pydantic
+  forward-ref (`PublisherClaimRequest` at app.py:4568, present identically
+  on HEAD — unrelated to this change; `git diff --stat` shows the app.py
+  delta is exactly 5 registration lines). The app itself builds and serves
+  both new routes through TestClient.
+
+### Deviations
+
+- POST body is parsed by hand instead of a pydantic model so invalid tiers
+  and empty reasons are honest value-free 400s (task asked for 400; pydantic
+  coerces `"3"` → 3 and echoes submitted values in 422s). Response models
+  remain pydantic.
+- `current_original_tier` on GET is the chunk's DOCUMENT tier, not a
+  `chunks` column — the chunks table has no tier column; document
+  `source_tier` is the sanctioned tier the Explain chips already render.
+- The chunk lookup for POST happens inside the write lock (same connection
+  as the append) rather than on a separate read connection first — removes
+  the read/write race window while still using the sanctioned
+  parameterized-SELECT pattern over `runtime.db_lock` connections.

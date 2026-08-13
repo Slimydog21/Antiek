@@ -1743,6 +1743,11 @@ def create_app(
     # cost projection (honest nulls when pricing/spend unknown).
     from .settings_budget import register_settings_budget_routes
     register_settings_budget_routes(app)
+    # OYM P1 §5 — visible tiers (write half): user-settable chunk tier
+    # overrides (POST /settings/tier-overrides) + per-chunk override
+    # history (GET /settings/tier-overrides?chunk_id=...).
+    from .settings_tiers import register_settings_tiers_routes
+    register_settings_tiers_routes(app)
     # AI Role Lineup — operator model-selection vertical (general formation
     # + advanced tactics board). Registry-only: stores operator intent, no
     # implicit dispatch-tier mutation (mirrors settings_models_admin).
