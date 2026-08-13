@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
@@ -10,6 +10,12 @@ import {
   workflowForPath,
   type Workflow,
 } from "./workflowTaxonomy";
+import { useInvestigationList } from "../hooks/useInvestigationList";
+import {
+  isUnseen,
+  researchStateStyle,
+} from "../shared/researchState";
+import { lastSeenAt } from "../workspace/seen";
 import { ProductsLauncher } from "./ProductsLauncher";
 import BrainMark from "../brand/BrainMark";
 import { KeyChip } from "../components/hotkeys/KeyChip";
@@ -151,6 +157,7 @@ function RailButton({
   orientation = "bottom",
   productId,
   binding,
+  badge,
 }: {
   icon: ReactNode;
   label: string;
@@ -167,6 +174,9 @@ function RailButton({
    *  combo from the shared map (e.g. "mod+e" for Read). Post-SPR-08 there are
    *  NO vim g-chords; the prop is always fed a real `mod+` spec. */
   binding?: string;
+  /** herdr transfer P0-2: attention count chip (blocked + unseen-done).
+   *  Rendered only when > 0 — an absent badge is the calm state. */
+  badge?: number;
 }) {
   const isWorkflow = variant === "workflow";
   const color = active
@@ -208,6 +218,14 @@ function RailButton({
       <span className="leading-none" aria-hidden="true">
         {icon}
       </span>
+      {badge !== undefined && badge > 0 && (
+        <span
+          aria-label={`${badge} need attention`}
+          className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-emperor text-ice-1 text-[9px] font-mono font-bold flex items-center justify-center"
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
       {/* SPR-07 M2 — the visible caption, now on EVERY bar button (was
           workflow-only). aria-hidden so the `.sr-only` span stays the single
           announced name. */}
@@ -250,6 +268,23 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const isMobile = tier === "sm" || tier === "md";
   const showRail = !isMobile || !collapsed;
   const isBottom = orientation === "bottom";
+
+  // herdr transfer P0-2 — the rail badge: how many researches need the
+  // operator right now (blocked + unseen-done). Polled like the rest of the
+  // research surfaces; an absent badge is the calm state.
+  const { investigations } = useInvestigationList({ limit: 200 });
+  const researchSummons = useMemo(
+    () =>
+      investigations.filter((s) => {
+        const style = researchStateStyle(s.status);
+        if (style.state === "blocked") return true;
+        return (
+          style.state === "done" &&
+          isUnseen(s, lastSeenAt(s.investigation_id))
+        );
+      }).length,
+    [investigations],
+  );
 
   // SPR-12 M3 — the project-tree toggle that used to live on the rail is
   // gone; the floating Penguin mascot (shell/PenguinMascot.tsx) now floats
@@ -375,6 +410,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
           orientation={orientation}
           productId={wf}
           binding={bindingForProduct(wf)?.spec}
+          badge={wf === "research" ? researchSummons : undefined}
         />
       ))}
     </nav>

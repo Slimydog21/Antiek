@@ -43,55 +43,21 @@ import { useAuth } from "../../lib/auth";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import type { InvestigationSummary } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { aggregateAttention, hasUnseen } from "../../shared/attention";
+import {
+  isUnseen,
+  researchStateDotClass,
+  researchStateStyle,
+} from "../../shared/researchState";
+import { lastSeenAt } from "../../workspace/seen";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
 import SuggestedResearch from "./SuggestedResearch";
 
-// ── Status → plain language (SPR-02 narration vocabulary) ─────────────────
-//
-// The monitor never shows a raw state (`in_progress`, `failed`). It uses the
-// same human vocabulary the SPR-02 thinking stream uses: working / done /
-// stopped / needs attention. One mapper, so a maintainer adds a state in one
-// place. `not_found` is a list-edge case (a referenced id with no row); it
-// reads as "unavailable" rather than leaking the enum.
-
-type Plain = "working" | "done" | "stopped" | "needs attention" | "unavailable";
-
-interface PlainStatus {
-  label: Plain;
-  /** LemonTag colour — sun=working, aurora=done, muted=stopped, danger=attention. */
-  colour: "sun" | "aurora" | "muted" | "danger";
-  /** Whether this research is still consuming concurrency (a "running" one). */
-  running: boolean;
-}
-
-function plainStatus(status: InvestigationSummary["status"]): PlainStatus {
-  switch (status) {
-    case "in_progress":
-      return { label: "working", colour: "sun", running: true };
-    case "completed":
-      return { label: "done", colour: "aurora", running: false };
-    case "failed":
-      return { label: "needs attention", colour: "danger", running: false };
-    case "stopped":
-      // Stopped/cancelled by the operator, or budget-halted by the runner
-      // (the backend collapses both halted + outcome:stopped/cancelled into
-      // this terminal state — never "working" forever). Not running.
-      return { label: "stopped", colour: "muted", running: false };
-    case "not_found":
-      return { label: "unavailable", colour: "muted", running: false };
-    default:
-      // Exhaustive over the union; a new status is a compile error here.
-      return assertNever(status);
-  }
-}
-
-function assertNever(x: never): never {
-  // A status the union doesn't cover reached here — fail loudly in dev
-  // rather than silently mislabelling. Returns a safe muted fallback shape
-  // only to satisfy the never-return at runtime (unreachable in practice).
-  throw new Error(`unhandled investigation status: ${String(x)}`);
-}
+// ── Status → plain language: now the SHARED registry (herdr transfer P0-1).
+// shared/researchState.ts owns the vocabulary (working / needs attention /
+// done / stopped / unavailable) so every surface — this log, the sidebar,
+// the palette, the rail badge — can never drift. ─────────────────────────
 
 // ── Grouping: a "session" is a parent research + the researches spawned from
 //    it (a cascade's leaves, or a chase's child). Standalone researches with
@@ -155,10 +121,10 @@ function aggregate(items: InvestigationSummary[]): Aggregate {
   let attention = 0;
   let costUsd = 0;
   for (const s of items) {
-    const ps = plainStatus(s.status);
-    if (ps.running) running += 1;
-    else if (ps.label === "done") done += 1;
-    else if (ps.label === "needs attention") attention += 1;
+    const style = researchStateStyle(s.status);
+    if (style.running) running += 1;
+    else if (style.state === "done") done += 1;
+    else if (style.state === "blocked") attention += 1;
     costUsd += s.cost_usd_total ?? 0;
   }
   return { total: items.length, running, done, attention, costUsd };
@@ -408,6 +374,17 @@ function GroupCard({ group }: { group: Group }) {
     group.members[0]?.question ??
     "Research";
 
+  // Attention rollup (herdr transfer P0-2): one blocked child reddens the
+  // whole family header. The dot is the aggregate state; unseen-done gets
+  // the halo when the aggregate lands on done.
+  const memberAttention = group.members.map((s) => ({
+    state: researchStateStyle(s.status).state,
+    unseen: isUnseen(s, lastSeenAt(s.investigation_id)),
+  }));
+  const aggregateState = aggregateAttention(memberAttention);
+  const aggregateUnseen =
+    aggregateState === "done" && hasUnseen(memberAttention);
+
   return (
     <section className="rounded-md border border-rule dark:border-charcoal-1">
       {isFamily && (
@@ -415,8 +392,17 @@ function GroupCard({ group }: { group: Group }) {
           <p className="min-w-0 flex-1 truncate font-serif text-sm text-ink dark:text-bright">
             {headTitle}
           </p>
-          <span className="shrink-0 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
-            {group.members.length} researches
+          <span className="flex shrink-0 items-center gap-2">
+            {aggregateState && (
+              <span
+                aria-label={`needs: ${aggregateState}`}
+                title={`family state: ${aggregateState}`}
+                className={`w-2 h-2 rounded-full ${researchStateDotClass(aggregateState, aggregateUnseen)}`}
+              />
+            )}
+            <span className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+              {group.members.length} researches
+            </span>
           </span>
         </header>
       )}
@@ -436,7 +422,11 @@ function ResearchRow({
   summary: InvestigationSummary;
   indented: boolean;
 }) {
-  const ps = plainStatus(summary.status);
+  // The ONE registry (herdr transfer P0-1): label, colour, running all come
+  // from shared/researchState.ts. Unseen-done (P0-3) bolds the row — the
+  // unread flag turns the log into a to-do list.
+  const style = researchStateStyle(summary.status);
+  const unseen = isUnseen(summary, lastSeenAt(summary.investigation_id));
   return (
     <article
       className={`px-4 py-3 transition-colors hover:bg-ice-1 dark:hover:bg-charcoal-1 ${
@@ -445,7 +435,11 @@ function ResearchRow({
     >
       <div className="flex items-baseline justify-between gap-3">
         <Link to={`/inv/${encodeURIComponent(summary.investigation_id)}`} className="min-w-0 flex-1">
-          <p className="truncate font-serif text-sm text-ink dark:text-bright">
+          <p
+            className={`truncate font-serif text-sm text-ink dark:text-bright ${
+              unseen ? "font-bold" : ""
+            }`}
+          >
             {summary.question ?? "Untitled research"}
           </p>
         </Link>
@@ -459,8 +453,12 @@ function ResearchRow({
               found by the loop
             </LemonTag>
           )}
-          <LemonTag dot colour={ps.colour} className="text-[10px]">
-            {ps.label}
+          <span
+            aria-label={`${style.label}${unseen ? " · unseen" : ""}`}
+            className={`w-2 h-2 rounded-full shrink-0 ${researchStateDotClass(style.state, unseen)}`}
+          />
+          <LemonTag colour={style.colour} className="text-[10px]">
+            {style.label}
           </LemonTag>
           <span className="font-mono text-[10px] text-shadow-1 dark:text-moonlight tabular-nums">
             ${(summary.cost_usd_total ?? 0).toFixed(4)}

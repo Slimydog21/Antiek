@@ -145,6 +145,17 @@
      Reconciled with tokens.ts + tailwind.config.js in SPR-01. */
   --emperor: #CE3623;
 
+  /* Research-state family (herdr transfer P0-1) — SEMANTIC ALIASES, not new
+     hues. Each state token points at an existing palette constant, so state
+     colour can never drift from the brand palette: working=sun, blocked=
+     emperor, done=aurora, stopped/muted=shadow-1. Night values resolve
+     automatically because the night block re-declares the referenced vars. */
+  --state-working: var(--sun);
+  --state-blocked: var(--emperor);
+  --state-done:    var(--aurora);
+  --state-stopped: var(--shadow-1);
+  --state-muted:   var(--shadow-1);
+
   /* chunky offset shadows */
   --shadow-z1:   3px 3px 0 0 var(--ink);
   --shadow-z2:   5px 5px 0 0 var(--ink);

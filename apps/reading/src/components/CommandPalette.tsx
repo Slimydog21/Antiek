@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { apiFetch } from "../lib/api";
+import { apiFetch, type InvestigationSummary } from "../lib/api";
 import { openNotebook } from "../workspace/actions";
 import {
   buildShareableUrl,
@@ -19,8 +19,17 @@ import {
 } from "../shell/workflowTaxonomy";
 import {
   entryWorkflow as facetEntryWorkflow,
+  leadingStateFilter as facetLeadingStateFilter,
   rankEntries as facetRankEntries,
+  STATE_FILTERS,
 } from "../shell/paletteFacet";
+import {
+  researchStateDotClass,
+  researchStateFor,
+  isUnseen as researchIsUnseen,
+  type ResearchState,
+} from "../shared/researchState";
+import { lastSeenAt } from "../workspace/seen";
 import LemonButton from "./lemon/LemonButton";
 import { LemonModal } from "./lemon/LemonModal";
 import { toast } from "./lemon/LemonToast";
@@ -62,6 +71,9 @@ interface PaletteInvestigation {
   title: string;
   subtitle: string;
   path: string;
+  /** herdr transfer P0-5: state facet + unread axis for state: filters. */
+  state?: ResearchState;
+  unseen?: boolean;
 }
 
 interface PaletteDocument {
@@ -359,22 +371,50 @@ export default function CommandPalette() {
         const items: PaletteInvestigation[] = (
           data.investigations ?? []
         ).flatMap(
-          (inv: { investigation_id: string; topic?: string }) => [
-            {
-              kind: "investigation" as const,
-              id: `inv:${inv.investigation_id}`,
-              title: inv.topic ?? inv.investigation_id,
-              subtitle: `Investigation · ${inv.investigation_id.slice(0, 8)}`,
-              path: `/inv/${inv.investigation_id}`,
-            },
-            {
-              kind: "investigation" as const,
-              id: `replay:${inv.investigation_id}`,
-              title: `Replay: ${inv.topic ?? inv.investigation_id}`,
-              subtitle: `Trajectory · ${inv.investigation_id.slice(0, 8)}`,
-              path: `/replay/${inv.investigation_id}`,
-            },
-          ],
+          (inv: {
+            investigation_id: string;
+            topic?: string;
+            status?: string;
+            completed_at?: string | null;
+          }) => {
+            // State facet (P0-5): the palette becomes a triage surface —
+            // "state:blocked" shows what needs the operator. The replay row
+            // shares the source investigation's state.
+            const state =
+              typeof inv.status === "string"
+                ? researchStateFor(inv.status as InvestigationSummary["status"])
+                : undefined;
+            const unseen =
+              state !== undefined && typeof inv.investigation_id === "string"
+                ? researchIsUnseen(
+                    {
+                      status: inv.status as InvestigationSummary["status"],
+                      completed_at: inv.completed_at ?? null,
+                    },
+                    lastSeenAt(inv.investigation_id),
+                  )
+                : false;
+            return [
+              {
+                kind: "investigation" as const,
+                id: `inv:${inv.investigation_id}`,
+                title: inv.topic ?? inv.investigation_id,
+                subtitle: `Investigation · ${inv.investigation_id.slice(0, 8)}`,
+                path: `/inv/${inv.investigation_id}`,
+                state,
+                unseen,
+              },
+              {
+                kind: "investigation" as const,
+                id: `replay:${inv.investigation_id}`,
+                title: `Replay: ${inv.topic ?? inv.investigation_id}`,
+                subtitle: `Trajectory · ${inv.investigation_id.slice(0, 8)}`,
+                path: `/replay/${inv.investigation_id}`,
+                state,
+                unseen,
+              },
+            ];
+          },
         );
         setInvestigations(items);
       }
@@ -692,9 +732,40 @@ export default function CommandPalette() {
             setActiveIdx(0);
           }}
           onKeyDown={onKeyDown}
-          placeholder="Type a route, investigation, document, or notebook…"
+          placeholder="Type a route, investigation, document, or notebook… (try state:blocked)"
           className="w-full px-4 py-3 text-base font-serif text-ink dark:text-bright placeholder:text-ink-mute dark:text-moonlight outline-none border-b border-rule dark:border-charcoal-1"
         />
+        {/* herdr transfer P0-5 — state-filter chips: the palette as a
+            triage surface. Clicking a chip sets the `state:` query; the
+            chip stays highlighted while its filter is active; the ✕ clears. */}
+        <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-rule dark:border-charcoal-1 flex-wrap">
+          {STATE_FILTERS.map((f) => {
+            const active = facetLeadingStateFilter(query) === f;
+            return (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setQuery(active ? "" : `state:${f}`)}
+                className={`text-[11px] font-mono px-2 py-0.5 rounded-full border transition-colors ${
+                  active
+                    ? "bg-sun text-ink border-sun"
+                    : "border-rule dark:border-charcoal-1 text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
+                }`}
+              >
+                {f}
+              </button>
+            );
+          })}
+          {facetLeadingStateFilter(query) && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="text-[11px] font-mono px-2 py-0.5 text-shadow-1 dark:text-moonlight hover:text-emperor"
+            >
+              ✕ clear
+            </button>
+          )}
+        </div>
         <ul className="max-h-[400px] overflow-y-auto">
           {ranked.length === 0 ? (
             <li className="px-4 py-6 text-sm text-shadow-1 dark:text-moonlight italic">
@@ -719,6 +790,16 @@ export default function CommandPalette() {
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {"state" in e && e.state && (
+                    <span
+                      aria-label={e.state + (e.unseen ? " · unseen" : "")}
+                      title={e.state + (e.unseen ? " · unseen" : "")}
+                      className={`w-2 h-2 rounded-full shrink-0 ${researchStateDotClass(
+                        e.state,
+                        e.unseen === true,
+                      )}`}
+                    />
+                  )}
                   {(() => {
                     const wf = entryWorkflow(e);
                     return wf && wf !== "shared" ? (

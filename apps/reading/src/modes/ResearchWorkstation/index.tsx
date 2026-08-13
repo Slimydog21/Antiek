@@ -1,7 +1,8 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
+import { markSeen } from "../../workspace/seen";
 import type { InvestigationState } from "../../hooks/useInvestigation";
 import { parseSynthesis } from "../../lib/synthesisParser";
 import GlassSurface from "../../shell/GlassSurface";
@@ -65,6 +66,14 @@ import ThinkingStream from "./ThinkingStream";
 export default function ResearchWorkstation() {
   const params = useParams<{ investigationId?: string }>();
   const investigationId = params.investigationId ?? null;
+
+  // herdr transfer P0-3 — opening an investigation marks it seen. The unread
+  // axis (shared/researchState.ts isUnseen) compares completed_at against
+  // this timestamp, so simply landing on /inv/:id clears the unread flag —
+  // same semantics as reading an email.
+  useEffect(() => {
+    if (investigationId) markSeen(investigationId);
+  }, [investigationId]);
 
   const starters: StarterPanel[] = [
     {

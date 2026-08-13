@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { AdBorderMount } from "./components/ad/AdBorderMount";
@@ -9,7 +9,7 @@ import { Scene } from "./scene/Scene";
 import BrainPresence from "./brand/BrainPresence";
 import { SceneChrome } from "./shell/SceneChrome";
 import { Topbar } from "./components/navigation/Topbar";
-import { LemonToastViewport } from "./components/lemon/LemonToast";
+import { LemonToastViewport, setToastNavigator } from "./components/lemon/LemonToast";
 import { HotkeyHud } from "./components/hotkeys/HotkeyHud";
 import { PanelLayout } from "./workspace/PanelLayout";
 import { WindowsLayer } from "./components/windows/WindowsLayer";
@@ -72,6 +72,15 @@ export function AppShell({ children }: Props) {
   // is editable, so the operator can still type freely.
   const navigate = useNavigate();
   useWorkspaceShortcuts(navigate);
+
+  // herdr transfer P0-4 — toasts become navigation: clicking a targeted
+  // toast jumps to the surface that produced it. The navigator bridge keeps
+  // LemonToast dependency-free (popout windows mount its viewport without a
+  // router; they simply don't navigate).
+  useEffect(() => {
+    setToastNavigator((path: string) => navigate(path));
+    return () => setToastNavigator(null);
+  }, [navigate]);
 
   // S9 — hydrate the workspace from localStorage + URL ?ws= on every
   // route + investigation change. Layering order: global → route →
