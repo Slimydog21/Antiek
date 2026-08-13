@@ -164,7 +164,23 @@ describe("LemonToast — navigation targets (herdr transfer P0-4)", () => {
     });
     const btn = screen.getByRole("button", { name: /Needs attention/ });
     fireEvent.click(btn);
-    expect(navigate).toHaveBeenCalledWith("/inv/xyz");
+    // The navigator receives the full target (the shell focuses a panel
+    // after navigating).
+    expect(navigate).toHaveBeenCalledWith({ path: "/inv/xyz" });
+  });
+
+  it("the navigator receives panelId when present", () => {
+    const navigate = vi.fn();
+    toast.setNavigator(navigate);
+    render(<LemonToastViewport />);
+    act(() => {
+      toast.ok("Open panel", { target: { path: "/inv/abc", panelId: "rw:chat:abc" } });
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Open panel/ }));
+    expect(navigate).toHaveBeenCalledWith({
+      path: "/inv/abc",
+      panelId: "rw:chat:abc",
+    });
   });
 
   it("clicking a targeted toast without a navigator is a safe no-op", () => {

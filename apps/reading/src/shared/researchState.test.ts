@@ -118,6 +118,15 @@ describe("isUnseen", () => {
   it("a completed research without a completion timestamp is never unread", () => {
     expect(isUnseen({ status: "completed", completed_at: null }, null)).toBe(false);
   });
+
+  it("unparsable completion timestamps fail toward unread", () => {
+    expect(isUnseen({ status: "completed", completed_at: "not-a-date" }, null)).toBe(true);
+    expect(isUnseen({ status: "completed", completed_at: "not-a-date" }, "2026-08-13T11:00:00Z")).toBe(true);
+  });
+
+  it("a corrupt last-seen timestamp fails toward unread, not false-read", () => {
+    expect(isUnseen({ status: "completed", completed_at: "2026-08-13T10:00:00Z" }, "garbage")).toBe(true);
+  });
 });
 
 describe("researchStateDotClass", () => {
@@ -132,7 +141,21 @@ describe("researchStateDotClass", () => {
     expect(researchStateDotClass("done", false)).not.toContain("ring");
   });
 
-  it("working keeps the ambient pulse", () => {
-    expect(researchStateDotClass("working", false)).toContain("animate-pulse");
+  it("the unseen halo is full-opacity (3:1 non-text contrast)", () => {
+    const cls = researchStateDotClass("done", true);
+    expect(cls).toContain("ring-[var(--state-done)]");
+    expect(cls).not.toContain("/50");
+  });
+
+  it("working keeps the ambient pulse, disabled under reduced motion", () => {
+    const cls = researchStateDotClass("working", false);
+    expect(cls).toContain("animate-pulse");
+    expect(cls).toContain("motion-reduce:animate-none");
+  });
+
+  it("no dot uses a translucent fill (contrast floor)", () => {
+    for (const state of ["working", "blocked", "done", "stopped", "unavailable"] as const) {
+      expect(researchStateDotClass(state, false)).not.toContain("/50");
+    }
   });
 });

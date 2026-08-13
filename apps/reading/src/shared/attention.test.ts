@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateAttention,
   attentionScore,
+  countSummoningGroups,
   hasUnseen,
   isSummoning,
   type AttentionInput,
@@ -76,11 +77,60 @@ describe("aggregateAttention", () => {
 });
 
 describe("isSummoning", () => {
-  it("only blocked summons the operator", () => {
-    expect(isSummoning("blocked")).toBe(true);
-    expect(isSummoning("working")).toBe(false);
-    expect(isSummoning("done")).toBe(false);
-    expect(isSummoning(null)).toBe(false);
+  it("blocked and unseen-done summon; working/seen-done do not", () => {
+    expect(isSummoning({ state: "blocked" })).toBe(true);
+    expect(isSummoning({ state: "done", unseen: true })).toBe(true);
+    expect(isSummoning({ state: "working" })).toBe(false);
+    expect(isSummoning({ state: "done" })).toBe(false);
+    expect(isSummoning({ state: "stopped" })).toBe(false);
+  });
+});
+
+describe("countSummoningGroups", () => {
+  const fam = (id: string, parentId: string | null, state: "blocked" | "working" | "done", unseen = false) =>
+    ({ id, parentId, state, unseen });
+
+  it("two summoning members of one cascade count as ONE family", () => {
+    const items = [
+      fam("root", null, "working"),
+      fam("child1", "root", "blocked"),
+      fam("child2", "root", "blocked"),
+    ];
+    expect(countSummoningGroups(items)).toBe(1);
+  });
+
+  it("two summoning members of different families count as two", () => {
+    const items = [
+      fam("a", null, "blocked"),
+      fam("b", null, "blocked"),
+    ];
+    expect(countSummoningGroups(items)).toBe(2);
+  });
+
+  it("an unseen-done leaf summons its family once", () => {
+    const items = [
+      fam("root", null, "working"),
+      fam("leaf", "root", "done", true),
+    ];
+    expect(countSummoningGroups(items)).toBe(1);
+  });
+
+  it("non-summoning items never count", () => {
+    expect(countSummoningGroups([fam("a", null, "working"), fam("b", null, "done")])).toBe(0);
+    expect(countSummoningGroups([])).toBe(0);
+  });
+
+  it("a summoning orphan with unknown parent counts as its own family", () => {
+    expect(countSummoningGroups([fam("x", "ghost", "blocked")])).toBe(1);
+  });
+
+  it("deep chains resolve to the topmost known root", () => {
+    const items = [
+      fam("top", null, "working"),
+      fam("mid", "top", "working"),
+      fam("leaf", "mid", "blocked"),
+    ];
+    expect(countSummoningGroups(items)).toBe(1);
   });
 });
 

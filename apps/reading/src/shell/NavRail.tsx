@@ -11,10 +11,9 @@ import {
   type Workflow,
 } from "./workflowTaxonomy";
 import { useInvestigationList } from "../hooks/useInvestigationList";
-import {
-  isUnseen,
-  researchStateStyle,
-} from "../shared/researchState";
+import { useSeenVersion } from "../hooks/useSeenVersion";
+import { countSummoningGroups } from "../shared/attention";
+import { isUnseen, researchStateStyle } from "../shared/researchState";
 import { lastSeenAt } from "../workspace/seen";
 import { ProductsLauncher } from "./ProductsLauncher";
 import BrainMark from "../brand/BrainMark";
@@ -269,22 +268,29 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const showRail = !isMobile || !collapsed;
   const isBottom = orientation === "bottom";
 
-  // herdr transfer P0-2 — the rail badge: how many researches need the
-  // operator right now (blocked + unseen-done). Polled like the rest of the
-  // research surfaces; an absent badge is the calm state.
-  const { investigations } = useInvestigationList({ limit: 200 });
+  // herdr transfer P0-2 — the rail badge: how many research FAMILIES need
+  // the operator right now. Counted per family root (countSummoningGroups):
+  // two blocked members of one cascade are ONE thing to look at, matching
+  // the rollup dots in the sidebar/MyResearch. Polled at 60s (a badge does
+  // not need the 30s cadence of the full log); an absent badge is calm.
+  const { investigations } = useInvestigationList({
+    limit: 200,
+    pollIntervalMs: 60_000,
+  });
   const researchSummons = useMemo(
     () =>
-      investigations.filter((s) => {
-        const style = researchStateStyle(s.status);
-        if (style.state === "blocked") return true;
-        return (
-          style.state === "done" &&
-          isUnseen(s, lastSeenAt(s.investigation_id))
-        );
-      }).length,
+      countSummoningGroups(
+        investigations.map((s) => ({
+          id: s.investigation_id,
+          parentId: s.parent_investigation_id,
+          state: researchStateStyle(s.status).state,
+          unseen: isUnseen(s, lastSeenAt(s.investigation_id)),
+        })),
+      ),
     [investigations],
   );
+  // P0-3 — re-render when any surface marks seen (badge unread count).
+  useSeenVersion();
 
   // SPR-12 M3 — the project-tree toggle that used to live on the rail is
   // gone; the floating Penguin mascot (shell/PenguinMascot.tsx) now floats

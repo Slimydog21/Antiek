@@ -25,7 +25,7 @@ import {
 } from "../shell/paletteFacet";
 import {
   researchStateDotClass,
-  researchStateFor,
+  researchStateForSafe,
   isUnseen as researchIsUnseen,
   type ResearchState,
 } from "../shared/researchState";
@@ -382,7 +382,7 @@ export default function CommandPalette() {
             // shares the source investigation's state.
             const state =
               typeof inv.status === "string"
-                ? researchStateFor(inv.status as InvestigationSummary["status"])
+                ? researchStateForSafe(inv.status)
                 : undefined;
             const unseen =
               state !== undefined && typeof inv.investigation_id === "string"
@@ -394,6 +394,8 @@ export default function CommandPalette() {
                     lastSeenAt(inv.investigation_id),
                   )
                 : false;
+            // (researchStateForSafe already validated the status above, so
+            // the cast cannot reach the throwing path.)
             return [
               {
                 kind: "investigation" as const,
@@ -732,7 +734,7 @@ export default function CommandPalette() {
             setActiveIdx(0);
           }}
           onKeyDown={onKeyDown}
-          placeholder="Type a route, investigation, document, or notebook… (try state:blocked)"
+          placeholder="Type a route, investigation, document, or notebook…"
           className="w-full px-4 py-3 text-base font-serif text-ink dark:text-bright placeholder:text-ink-mute dark:text-moonlight outline-none border-b border-rule dark:border-charcoal-1"
         />
         {/* herdr transfer P0-5 — state-filter chips: the palette as a
@@ -745,7 +747,16 @@ export default function CommandPalette() {
               <button
                 key={f}
                 type="button"
-                onClick={() => setQuery(active ? "" : `state:${f}`)}
+                aria-pressed={active}
+                onClick={() =>
+                  setQuery((q) => {
+                    const has = facetLeadingStateFilter(q) === f;
+                    // Keep any typed text: the filter leads, the rest searches.
+                    const base = q.replace(/^\s*state:[a-z]+\s*/, "").trim();
+                    if (has) return base;
+                    return base ? `state:${f} ${base}` : `state:${f}`;
+                  })
+                }
                 className={`text-[11px] font-mono px-2 py-0.5 rounded-full border transition-colors ${
                   active
                     ? "bg-sun text-ink border-sun"

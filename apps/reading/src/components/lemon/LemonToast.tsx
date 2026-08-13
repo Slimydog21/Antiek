@@ -40,12 +40,25 @@ const _listeners = new Set<(s: Item[]) => void>();
 
 /** The app shell registers its router navigate here (AppShell is inside the
  *  router; this module stays dependency-free so PanelWindowApp popouts can
- *  mount the viewport without a router and never crash). */
-let _navigate: ((path: string) => void) | null = null;
+ *  mount the viewport without a router and never crash). The navigator
+ *  receives the full ToastTarget so the shell can focus a panel after the
+ *  route lands. */
+let _navigate: ((target: ToastTarget) => void) | null = null;
 
-export function setToastNavigator(fn: ((path: string) => void) | null): void {
+export function setToastNavigator(
+  fn: ((target: ToastTarget) => void) | null,
+): void {
   _navigate = fn;
 }
+
+/** Per-kind default TTLs (pre-P0-4 contract: ok 4s, warn 6s, err 8s, info
+ *  4s). A single default would have silently halved warn/err. */
+const DEFAULT_TTL: Record<Kind, number> = {
+  ok: 4000,
+  warn: 6000,
+  err: 8000,
+  info: 4000,
+};
 
 function emit(kind: Kind, msg: string, opts: ToastOptions = {}) {
   if (kind === "err") notifyShellFailure();
@@ -53,7 +66,7 @@ function emit(kind: Kind, msg: string, opts: ToastOptions = {}) {
     id: _nextId++,
     kind,
     msg,
-    ttl: opts.ttl ?? 4000,
+    ttl: opts.ttl ?? DEFAULT_TTL[kind],
     target: opts.target,
   };
   _items = [..._items, item];
@@ -71,7 +84,7 @@ function dismiss(id: number) {
  *  (popout windows, tests) — a toast click must never crash. */
 function goTo(itemId: number, target: ToastTarget) {
   dismiss(itemId);
-  _navigate?.(target.path);
+  _navigate?.(target);
 }
 
 export const toast = {

@@ -12,6 +12,7 @@ import {
   researchStateStyle,
 } from "../../shared/researchState";
 import { lastSeenAt } from "../../workspace/seen";
+import { useSeenVersion } from "../../hooks/useSeenVersion";
 
 /**
  * Left sidebar showing past investigations as a tree. Each node carries
@@ -27,6 +28,9 @@ export default function InvestigationSidebar() {
   const tree = useInvestigationTree(investigations);
   const params = useParams<{ investigationId?: string }>();
   const activeId = params.investigationId ?? null;
+
+  // P0-3 — unread state updates live when any surface marks seen.
+  useSeenVersion();
 
   return (
     <div className="p-3 text-xs text-ink dark:text-bright">

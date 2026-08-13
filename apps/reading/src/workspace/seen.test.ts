@@ -1,9 +1,9 @@
 /**
  * seen.test.ts — last-seen storage contract.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { allSeen, lastSeenAt, markSeen } from "./seen";
+import { allSeen, getSeenVersion, lastSeenAt, markSeen, subscribeSeen } from "./seen";
 
 const KEY = "antiek:last_seen:v1";
 
@@ -51,5 +51,30 @@ describe("seen store", () => {
   it("tolerates non-object storage (returns empty, does not throw)", () => {
     window.localStorage.setItem(KEY, '"just a string"');
     expect(allSeen()).toEqual({});
+  });
+});
+
+describe("seen store — reactivity", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("subscribeSeen fires on markSeen and unsubscribes cleanly", () => {
+    const spy = vi.fn();
+    const unsub = subscribeSeen(spy);
+    markSeen("inv-1");
+    expect(spy).toHaveBeenCalledTimes(1);
+    unsub();
+    markSeen("inv-2");
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("getSeenVersion advances on markSeen", () => {
+    const v0 = getSeenVersion();
+    markSeen("inv-1");
+    expect(getSeenVersion()).toBeGreaterThan(v0);
   });
 });

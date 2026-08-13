@@ -153,8 +153,8 @@
   --state-working: var(--sun);
   --state-blocked: var(--emperor);
   --state-done:    var(--aurora);
-  --state-stopped: var(--shadow-1);
-  --state-muted:   var(--shadow-1);
+  --state-stopped: var(--shadow-2);
+  --state-muted:   var(--shadow-2);
 
   /* chunky offset shadows */
   --shadow-z1:   3px 3px 0 0 var(--ink);
@@ -328,6 +328,16 @@
 
     --aurora:  #3FE0DC;
     --emperor: #FF6155;
+
+    /* Research-state family (herdr transfer P0-1) — night aliases. Same
+       semantic targets as day; the values resolve through the night
+       redeclarations above (aurora/emperor/shadow-2), so state colours
+       track the night palette automatically. */
+    --state-working: var(--sun);
+    --state-blocked: var(--emperor);
+    --state-done:    var(--aurora);
+    --state-stopped: var(--shadow-2);
+    --state-muted:   var(--shadow-2);
 
     /* shadows glow at night */
     --shadow-z1:   3px 3px 0 0 var(--sun-deep);

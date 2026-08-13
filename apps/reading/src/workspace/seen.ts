@@ -8,12 +8,26 @@
  * deliberately NOT in the workspace snapshot: seen-state is per-operator
  * attention, not per-layout.
  *
+ * The store is REACTIVE (subscribe/version), so a surface that marks seen
+ * re-renders every other surface that displays unread state — the same
+ * pub-sub discipline LemonToast uses. Cross-tab writes sync via the
+ * `storage` event (last-write-wins; a second tab's mark wins — acceptable
+ * for one operator's attention state).
+ *
  * Storage key is versioned so a future shape change can migrate rather
  * than silently corrupt. SSR-safe (guard `window`).
  */
 const KEY = "antiek:last_seen:v1";
 
 export type SeenMap = Record<string, string>;
+
+let _version = 0;
+const _listeners = new Set<() => void>();
+
+function bump(): void {
+  _version += 1;
+  for (const l of _listeners) l();
+}
 
 function read(): SeenMap {
   if (typeof window === "undefined") return {};
@@ -52,9 +66,34 @@ export function markSeen(investigationId: string): void {
   const map = read();
   map[investigationId] = new Date().toISOString();
   write(map);
+  bump();
 }
 
 /** All seen timestamps (for bulk reads like the palette index). */
 export function allSeen(): SeenMap {
   return read();
+}
+
+/** Current store version — changes on every markSeen or cross-tab write.
+ *  Surfaces call this from useSeenVersion() to re-render on change. */
+export function getSeenVersion(): number {
+  return _version;
+}
+
+/** Subscribe to seen-state changes. Returns an unsubscribe fn. */
+export function subscribeSeen(listener: () => void): () => void {
+  _listeners.add(listener);
+  if (typeof window !== "undefined") {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === KEY) bump();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      _listeners.delete(listener);
+      window.removeEventListener("storage", onStorage);
+    };
+  }
+  return () => {
+    _listeners.delete(listener);
+  };
 }

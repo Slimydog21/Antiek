@@ -47,8 +47,10 @@ import { aggregateAttention, hasUnseen } from "../../shared/attention";
 import {
   isUnseen,
   researchStateDotClass,
+  researchStateLabel,
   researchStateStyle,
 } from "../../shared/researchState";
+import { useSeenVersion } from "../../hooks/useSeenVersion";
 import { lastSeenAt } from "../../workspace/seen";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
@@ -172,6 +174,10 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
 
   const agg = useMemo(() => aggregate(investigations), [investigations]);
   const groups = useMemo(() => groupByParent(investigations), [investigations]);
+
+  // P0-3 — re-render when ANY surface marks an investigation seen, so the
+  // unread axis updates live instead of waiting for the next 30s poll.
+  useSeenVersion();
 
   // Honest "N running, M queued": the host-local runner multiplexes browse
   // loops under a bounded semaphore (the contract's max_concurrency). More
@@ -395,8 +401,8 @@ function GroupCard({ group }: { group: Group }) {
           <span className="flex shrink-0 items-center gap-2">
             {aggregateState && (
               <span
-                aria-label={`needs: ${aggregateState}`}
-                title={`family state: ${aggregateState}`}
+                aria-label={`family: ${researchStateLabel(aggregateState)}`}
+                title={`family state: ${researchStateLabel(aggregateState)}`}
                 className={`w-2 h-2 rounded-full ${researchStateDotClass(aggregateState, aggregateUnseen)}`}
               />
             )}

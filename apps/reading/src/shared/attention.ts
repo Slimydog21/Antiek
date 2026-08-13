@@ -35,7 +35,14 @@ export function attentionScore(input: AttentionInput): number {
       return 1;
     case "unavailable":
       return 0;
+    default:
+      // A new state must be laddered explicitly — silence would rank it 0.
+      return assertNever(input.state);
   }
+}
+
+function assertNever(x: never): never {
+  throw new Error(`unhandled research state: ${String(x)}`);
 }
 
 /** The state that most needs the operator, or null when nothing does.
@@ -56,11 +63,39 @@ export function aggregateAttention(
   return best;
 }
 
-/** Whether a rollup result should render as "needs you" (the rail badge
- *  lights up only for blocked or unseen-done — working is normal, not a
- *  summons). */
-export function isSummoning(state: ResearchState | null): boolean {
-  return state === "blocked";
+/** Whether an item summons the operator: blocked (4) or unseen-done (3).
+ *  Working is normal, not a summons. */
+export function isSummoning(input: AttentionInput): boolean {
+  return attentionScore(input) >= 3;
+}
+
+export interface SummoningItem {
+  id: string;
+  parentId: string | null;
+  state: ResearchState;
+  unseen?: boolean;
+}
+
+/** Count DISTINCT research families (root + spawned tree) that contain at
+ *  least one summoning member. Two blocked members of one cascade are ONE
+ *  thing to look at — the rollup semantics herdr's tree uses, applied to
+ *  the rail badge. Orphan/unknown parents stop the walk at the item itself. */
+export function countSummoningGroups(items: readonly SummoningItem[]): number {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const parentOf = new Map(items.map((i) => [i.id, i.parentId]));
+  const roots = new Set<string>();
+  for (const item of items) {
+    if (!isSummoning(item)) continue;
+    let cur = item.id;
+    let guard = 0;
+    let parent = parentOf.get(cur) ?? null;
+    while (parent && byId.has(parent) && guard++ < 100) {
+      cur = parent;
+      parent = parentOf.get(cur) ?? null;
+    }
+    roots.add(cur);
+  }
+  return roots.size;
 }
 
 /** Whether a rollup result includes unseen completions (drives the unread

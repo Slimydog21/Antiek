@@ -75,6 +75,30 @@ function assertNever(x: never): never {
   throw new Error(`unhandled investigation status: ${String(x)}`);
 }
 
+/** Non-throwing variant for untrusted input (e.g. a raw API payload in the
+ *  palette indexer): unknown status strings degrade to `undefined` (no
+ *  state facet) instead of crashing the whole index. `researchStateFor`
+ *  stays throwing for typed callers — a new backend status must be added
+ *  here loudly, not silently. */
+export function researchStateForSafe(
+  status: string,
+): ResearchState | undefined {
+  switch (status) {
+    case "in_progress":
+      return "working";
+    case "completed":
+      return "done";
+    case "failed":
+      return "blocked";
+    case "stopped":
+      return "stopped";
+    case "not_found":
+      return "unavailable";
+    default:
+      return undefined;
+  }
+}
+
 export function researchStateStyle(
   status: InvestigationSummary["status"],
 ): ResearchStateStyle {
@@ -107,17 +131,19 @@ export function researchStateDotClass(
 ): string {
   switch (state) {
     case "working":
-      return "bg-[var(--state-working)] animate-pulse";
+      return "bg-[var(--state-working)] animate-pulse motion-reduce:animate-none";
     case "blocked":
       return "bg-[var(--state-blocked)]";
     case "done":
+      // Full-opacity halo — a 50%-opacity ring could drop below the 3:1
+      // non-text contrast floor on some surfaces.
       return unseen
-        ? "bg-[var(--state-done)] ring-2 ring-[var(--state-done)]/50"
+        ? "bg-[var(--state-done)] ring-2 ring-[var(--state-done)]"
         : "bg-[var(--state-done)]";
     case "stopped":
       return "bg-[var(--state-stopped)]";
     case "unavailable":
-      return "bg-[var(--state-muted)]/50";
+      return "bg-[var(--state-muted)]";
     default:
       return assertNever(state);
   }
@@ -144,7 +170,14 @@ export function isUnseen(
 ): boolean {
   if (summary.status !== "completed") return false;
   const finished = summary.completed_at;
+  // No completion timestamp: nothing claims it finished — never unread.
   if (!finished) return false;
+  const finishedT = new Date(finished).getTime();
+  // An UNPARSABLE completion timestamp fails toward unread — we cannot
+  // prove the operator saw it (honest direction; false-unread > false-read).
+  if (!Number.isFinite(finishedT)) return true;
   if (!lastSeenAtIso) return true;
-  return new Date(finished).getTime() > new Date(lastSeenAtIso).getTime();
+  const seenT = new Date(lastSeenAtIso).getTime();
+  if (!Number.isFinite(seenT)) return true;
+  return finishedT > seenT;
 }

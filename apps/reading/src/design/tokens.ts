@@ -323,8 +323,8 @@ export const state = {
   working: "var(--sun)",
   blocked: "var(--emperor)",
   done: "var(--aurora)",
-  stopped: "var(--shadow-1)",
-  muted: "var(--shadow-1)",
+  stopped: "var(--shadow-2)",
+  muted: "var(--shadow-2)",
 } as const;
 
 /**
