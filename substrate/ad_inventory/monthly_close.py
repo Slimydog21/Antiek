@@ -417,7 +417,11 @@ def _build_statements(
             )
         total_payee += payee_total
         # Per-payee denominators: own total + shared month view.
-        pool = int(month_denominators["month_total_payee_pool_cents"])
+        # Fail-closed narrowing (mypy 3.14 treats the heterogeneous dict as
+        # dict[str, object]): a malformed denominator must never crash the
+        # statement build with a coercion error.
+        _raw_pool = month_denominators.get("month_total_payee_pool_cents")
+        pool = _raw_pool if isinstance(_raw_pool, int) else 0
         # Integer basis points (1 bp = 0.01%) — no float in the leaf payload.
         share_bps = (payee_total * 10_000 // pool) if pool else 0
         denoms = {
@@ -432,7 +436,11 @@ def _build_statements(
                 payee_id=payee_id,
                 total_cents=payee_total,
                 windows=tuple(window_aggs),
-                attribution_math_version=formula["attribution_math_version"],
+                attribution_math_version=(
+                    formula["attribution_math_version"]
+                    if isinstance(formula["attribution_math_version"], str)
+                    else ATTRIBUTION_MATH_VERSION
+                ),
                 statement_schema_version=STATEMENT_SCHEMA_VERSION,
                 denominators=denoms,
                 formula=formula,
