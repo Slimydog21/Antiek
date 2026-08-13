@@ -408,3 +408,88 @@ the user-settable write half on the EXISTING `chunk_tier_overrides` table
   as the append) rather than on a separate read connection first — removes
   the read/write race window while still using the sanctioned
   parameterized-SELECT pattern over `runtime.db_lock` connections.
+
+## BACKEND — Own Your Mind P1 §6 export, read half (antiek-oym-export worktree)
+
+Implemented by the backend engineer in the P1 export worktree
+(`feat/own-your-mind-p1-export`, fresh checkout of origin/main @ b505a1f41).
+Additive only; no commits, no pushes. Brief: docs/own-your-mind/12-p1-change-list.md §6.
+
+### Implemented files
+
+- `interfaces/research/api/export_routes.py` (new) — `GET /export/my-graph`
+  streams `antiek-graph-export-YYYYMMDD.zip` (media type `application/zip`,
+  `Content-Disposition: attachment`, `Content-Length`, `X-Content-Type-Options:
+  nosniff`) containing:
+  - `graph/` — DuckDB `EXPORT DATABASE ... (FORMAT PARQUET)` snapshot
+    (schema.sql + load.sql + per-table parquet shards). Taken on a READ-ONLY
+    connection under the exclusive `<db>.write.lock` flock, mirroring
+    `infrastructure/ansible/templates/backup.sh.j2` step 1; counts captured on
+    the same connection inside the same lock window so they match the
+    snapshot exactly. `schema.sql` is normalized afterwards via
+    `tools/backup_normalize_schema.py::normalize_exported_schema_sql`
+    (self-ref-FK stray commas), so the bundle restores via `IMPORT DATABASE`.
+  - `events/` — sealed `*.parquet` + live `*.jsonl` event-log files copied
+    byte-for-byte from `default_events_dir()` (`ANTIEK_RESEARCH_EVENTS_DIR`,
+    fallback `ANTIEK_HOME/research_events`). No locks (append-only by
+    construction); symlinks skipped (house hardened-reader posture).
+  - `manifest.json` — `generated_at`, `source_db_path` basename,
+    `duckdb_version`, `schema_version` (graph DDL constant v1 — the DB carries
+    no per-database marker), `event_schema_version`, `counts` (tables,
+    table_rows, event_files/parquet/jsonl split, master_files), `master_md`
+    note, `graph_not_mutated: true`.
+- `tests/test_export_routes.py` (new) — 2 tests: happy path (200, zip
+  content-type + attachment filename, zip carries graph/ + events/ +
+  manifest.json, manifest counts match, schema.sql normalized, event parquet
+  round-trips via duckdb read_parquet, source DB checksum unchanged before/
+  after, temp bundle dir cleaned up after streaming, only the expected
+  `.write.lock` sidecar beside the DB) and the 503 path (empty home →
+  value-free body, no path/stack leakage).
+- `interfaces/research/api/app.py` — one-line registration of
+  `register_export_routes(app)` after the artifact router (same inclusion
+  discipline as artifact/speak routers; route carries no per-handler auth —
+  the global operator-auth middleware covers it).
+
+### Key findings / deviations
+
+- **MASTER.md has NO canonical stored location** (the brief's "verify; else
+  omit honestly" branch). Rendered MASTER.md files land at
+  `<ANTIEK_RESEARCH_DIR|~/research>/<topic_slug>/MASTER.md` via
+  `skills/domain/master_md.py::generate_master_md` (orchestrator phase 7,
+  `orchestration/loop_one/orchestrator.py:1185`) — an operator-machine path
+  outside the Antiek store. `services/html_projection` renders master_md
+  sections from synthesis refs at render time; `middleware/archive` stores the
+  syntheses rows, not rendered markdown. The bundle therefore includes the
+  syntheses data via the DuckDB export (the render input) and the manifest
+  documents `n/a — generated on demand` honestly. master_files = 0.
+- **Why the manual flock, not `connect_write` / `authority_handoff_guard`:**
+  both open-or-log through `runtime/db_lock._log_write_event`, which INSERTs a
+  `write_log` row into the SOURCE DB — a mutation that would violate the
+  read-only contract. The backup template hits the same wall and documents it;
+  this route reuses its pattern: `os.open(<db>.write.lock, O_CREAT)`, bounded
+  non-blocking flock (15s ceiling — shorter than the writer default 300s so an
+  HTTP request fails loudly), pid/purpose stamp (best-effort, connect_write
+  parity), read-only connect, EXPORT, release. Verified: EXPORT DATABASE works
+  on a read-only connection in the pinned duckdb 1.5.4, and the export adds no
+  write_log row (manual end-to-end run showed write_log rows only from the
+  fixture's own connect_write calls).
+- **Read-only proof:** test asserts the source DB file SHA-256 is identical
+  before/after the request; the only DB-named sibling files are the DB and the
+  `.write.lock` coordination sidecar (house protocol, created by writers).
+- **Errors are value-free 503s** (never paths/exceptions): missing/unopenable
+  DB → "graph database unavailable", flock timeout → "graph write lock held by
+  another process", anything else → "graph export failed".
+- Zip built with stable sorted arcnames (reproducible archives) and streamed
+  in 1 MiB chunks; the temp bundle is removed in the generator's finally (also
+  on client disconnect) and on every error path.
+- Frontend untouched; `apps/reading && npx tsc --noEmit` exits 0 (router
+  registration breaks nothing). npm ci was needed in the fresh worktree
+  (node_modules absent) before tsc could run; node_modules is gitignored.
+
+### Verification (project env, worktree root)
+
+- `uv sync --extra dev --extra pdf` — exit 0.
+- `uv run python -m pytest tests/test_export_routes.py -q` — `2 passed` (the
+  single warning is a pre-existing starlette/httpx deprecation).
+- `uv run ruff check interfaces/research/api/export_routes.py tests/test_export_routes.py interfaces/research/api/app.py` — `All checks passed!`.
+- `cd apps/reading && npx tsc --noEmit` — exit 0.
