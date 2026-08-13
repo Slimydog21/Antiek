@@ -8,6 +8,10 @@ Mechanical gates:
     rejected (422) by the frozen-dataclass __post_init__.
   * the client-supplied content_class hint is NOT trusted — eligibility is
     resolved server-side from the documents gate columns.
+  * the client-supplied ad_value_usd_cents is an IGNORED HINT — the server
+    mints the window's value from ITS OWN fill/pricing record
+    (ad_fill_decisions, persisted at fill time); the hint is logged
+    (client_hint) for auditability and never accrues.
   * GET /api/ad/fill returns a HOUSE fill (never blank) when no advertiser
     matches, promoting a servable book and never the book being read.
   * §9.0 — no gated body text in any ad payload.
@@ -92,24 +96,26 @@ def _escrow_of(db_path, ip_holder_id):
 
 
 def _mint_value(monkeypatch, cents):
-    """Patch the SERVER-side value seam (AFA-S1, frame-telemetry-v2).
+    """Patch the SERVER-side value seam (frame-telemetry-v3).
 
     The window's ad value is minted server-side, never sent by the client, so
     accrual-math tests inject the value here rather than in the request body.
-    The production default is 0 (unpriced until SPR-10)."""
+    Production resolves the value from the server's own fill/pricing record
+    (``ad_fill_decisions``); without a settled record it mints 0."""
     from interfaces.research.api import ad_routes
 
     monkeypatch.setattr(
         ad_routes,
         "resolve_window_value_cents",
-        lambda *, owner_user_id, window_id: cents,
+        lambda *, owner_user_id, window_id, con=None: cents,
     )
 
 
 def _batch(window_id="win-1", *, asset_id="pd-earner"):
-    # AFA-S1 (frame-telemetry-v2): no ad_value_usd_cents on the wire — the
-    # server prices the window (see _mint_value). The forged-value red-proof
-    # test adds the field back to prove it is IGNORED.
+    # frame-telemetry-v3: the client MAY carry an ad_value_usd_cents HINT on
+    # the wire; the server prices the window itself (see _mint_value / the
+    # fill-record join). The forged-value red-proof test adds the field to
+    # prove it is accepted, logged, and IGNORED.
     return {
         "window_id": window_id,
         "schema_version": FRAME_TELEMETRY_SCHEMA_VERSION,
@@ -169,10 +175,12 @@ def test_frame_telemetry_accepts_and_accrues(isolated_db, monkeypatch):
 
 
 def test_frame_telemetry_ignores_client_supplied_value(isolated_db):
-    """RED-PROOF (AFA-S1): a client that forges ``ad_value_usd_cents`` cannot
-    influence the accrued value — the field is dropped from the inbound shape
-    and the server mints the value (0, unpriced, by default). On pre-fix code
-    this batch accrued 999_999 cents; post-fix it accrues 0."""
+    """RED-PROOF (ad-pipeline gap S1): a client that forges
+    ``ad_value_usd_cents`` cannot influence the accrued value. The field is
+    accepted back on the wire ONLY as an IGNORED HINT — it is logged to the
+    client-hint ledger (``client_hint``) for auditability and the server mints
+    the value from its own fill record (0: no settled record exists). On
+    pre-fix code this batch accrued 999_999 cents; post-fix it accrues 0."""
     _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
                content_class="public_domain", raw_text="body",
                rights_holder_name="Earner Estate")
@@ -180,15 +188,29 @@ def test_frame_telemetry_ignores_client_supplied_value(isolated_db):
     before = _escrow_of(isolated_db, holder)
 
     forged = _batch()
-    forged["ad_value_usd_cents"] = 999_999  # a lie the wire shape ignores
+    forged["ad_value_usd_cents"] = 999_999  # a lie the server never trusts
     resp = _client().post("/api/ad/frame-telemetry", json=forged)
     assert resp.status_code == 202, resp.text
     body = resp.json()
-    # The server minted 0 (no pricing yet); the forged value is nowhere.
+    # The server minted 0 (no settled fill record); the forged value accrues
+    # nothing.
     assert body["total_ad_value_cents"] == 0
     assert body["contributor_cents"] == 0
     # Escrow did NOT move on a forged value.
     assert _escrow_of(isolated_db, holder) == before
+    # ...but the lie IS on the audit ledger: accepted as a hint, logged as
+    # client_hint, never trusted.
+    from runtime.db_lock import connect_read
+
+    con = connect_read(isolated_db)
+    try:
+        hints = con.execute(
+            "SELECT client_hint_ad_value_usd_cents, telemetry_version "
+            "FROM frame_telemetry_client_hints WHERE window_id = 'win-1'"
+        ).fetchall()
+    finally:
+        con.close()
+    assert hints == [(999_999, FRAME_TELEMETRY_SCHEMA_VERSION)]
 
 
 def test_frame_telemetry_value_lookup_is_owner_scoped_same_window(
@@ -204,7 +226,7 @@ def test_frame_telemetry_value_lookup_is_owner_scoped_same_window(
 
     seen: list[tuple[str, str]] = []
 
-    def capture(*, owner_user_id: str, window_id: str) -> int:
+    def capture(*, owner_user_id: str, window_id: str, con=None) -> int:
         seen.append((owner_user_id, window_id))
         return 0
 
@@ -303,6 +325,289 @@ def test_client_content_class_hint_is_not_trusted(isolated_db, monkeypatch):
     # Resolved server-side as ineligible → house, not an earner.
     assert body["asset_count"] == 0
     assert body["house_cents"] == 400
+
+
+# ── frame-telemetry: server-minted value (ad-pipeline gap S1) ──────────────
+
+
+def _seed_fill_record(
+    db_path, *, owner_user_id, window_id, revenue_usd_cents, price_status
+):
+    """Persist a fill/pricing record the way the fill ledger does — the durable
+    snapshot ``POST /api/ad/fills`` writes at fill time — with the price a
+    billing authority stamped (``settled``) or left ``unpriced``."""
+    from runtime.db_lock import connect_write
+    from substrate.ad_inventory.fill_decisions import ensure_table
+
+    with connect_write(db_path, purpose="test:seed-fill-record") as con:
+        ensure_table(con)
+        con.execute(
+            """
+            INSERT INTO ad_fill_decisions (
+                decision_id, request_fingerprint, owner_user_id, window_id,
+                document_id, page_index, lens, positions_json, fills_json,
+                revenue_usd_cents, price_status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                f"fill-{owner_user_id}-{window_id}",
+                f"fp-{owner_user_id}-{window_id}",
+                owner_user_id,
+                window_id,
+                None,
+                None,
+                "read",
+                '["top"]',
+                "[]",
+                revenue_usd_cents,
+                price_status,
+            ],
+        )
+
+
+def _client_hints(db_path, window_id):
+    from runtime.db_lock import connect_read
+
+    con = connect_read(db_path)
+    try:
+        return [
+            r[0]
+            for r in con.execute(
+                "SELECT client_hint_ad_value_usd_cents "
+                "FROM frame_telemetry_client_hints WHERE window_id = ?",
+                [window_id],
+            ).fetchall()
+        ]
+    finally:
+        con.close()
+
+
+def test_server_minted_settled_value_wins_over_client_hint(isolated_db):
+    """The value the accrual apportions is the server's OWN settled fill
+    record for the window. The client hint can neither add to it nor replace
+    it, and a forged hint is still logged for the audit trail."""
+    _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
+               content_class="public_domain", raw_text="body",
+               rights_holder_name="Earner Estate")
+    holder = _ip_holder_of(isolated_db, "pd-earner")
+    assert holder is not None
+    _seed_fill_record(
+        isolated_db, owner_user_id="__operator__", window_id="win-1",
+        revenue_usd_cents=4300, price_status="settled",
+    )
+    before = _escrow_of(isolated_db, holder)
+
+    batch = _batch()
+    batch["ad_value_usd_cents"] = 9_999_999  # a forged claim, 9.9M cents
+    resp = _client().post("/api/ad/frame-telemetry", json=batch)
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    # SERVER-minted from the settled fill record — not 0, not the forged hint.
+    assert body["total_ad_value_cents"] == 4300
+    assert body["contributor_cents"] == 4300
+    assert body["reconciles"] is True
+    # Escrow moved by exactly the server-minted $43.00.
+    after = _escrow_of(isolated_db, holder)
+    from decimal import Decimal
+
+    assert after - before == Decimal("43.00")
+    # The forged claim is on the audit ledger — as a hint, never as money.
+    assert _client_hints(isolated_db, "win-1") == [9_999_999]
+
+
+def test_fill_record_persisted_at_fill_time_feeds_server_minted_value(
+    isolated_db,
+):
+    """End-to-end: the fill record ``POST /api/ad/fills`` persists at fill
+    time is the record frame-telemetry joins. While it is unpriced the
+    telemetry accrues honest zero; once a billing authority settles the SAME
+    row, the identical client batch accrues the settled cents — with no client
+    change whatsoever."""
+    _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
+               content_class="public_domain", raw_text="body",
+               rights_holder_name="Earner Estate")
+    client = _client()
+
+    fill_resp = client.post(
+        "/api/ad/fills",
+        json={"window_id": "win-1", "lens": "read", "positions": ["top"]},
+    )
+    assert fill_resp.status_code == 200, fill_resp.text
+    # No advertiser seeded → house fill, unpriced 0 (the honest default).
+    assert fill_resp.json()["fills"][0]["price_status"] == "unpriced"
+
+    r1 = client.post("/api/ad/frame-telemetry", json=_batch())
+    assert r1.status_code == 202
+    assert r1.json()["total_ad_value_cents"] == 0  # unpriced → honest zero
+
+    # A billing authority settles the persisted fill record.
+    from runtime.db_lock import connect_write
+
+    with connect_write(isolated_db, purpose="test:settle-fill") as con:
+        con.execute(
+            "UPDATE ad_fill_decisions SET revenue_usd_cents = 2500, "
+            "price_status = 'settled' WHERE owner_user_id = '__operator__' "
+            "AND window_id = 'win-1'"
+        )
+
+    r2 = client.post("/api/ad/frame-telemetry", json=_batch())
+    assert r2.status_code == 202
+    assert r2.json()["total_ad_value_cents"] == 2500  # server-minted
+
+
+def test_frame_telemetry_unpriced_fill_record_accrues_zero(isolated_db):
+    """An ``unpriced`` fill record NEVER feeds the accrual, even if the row
+    already carries a candidate revenue: CPM is a ranking signal, not
+    settlement evidence — only a ``settled`` record is money."""
+    _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
+               content_class="public_domain", raw_text="body",
+               rights_holder_name="Earner Estate")
+    holder = _ip_holder_of(isolated_db, "pd-earner")
+    before = _escrow_of(isolated_db, holder)
+    _seed_fill_record(
+        isolated_db, owner_user_id="__operator__", window_id="win-1",
+        revenue_usd_cents=7700, price_status="unpriced",
+    )
+    resp = _client().post("/api/ad/frame-telemetry", json=_batch())
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["total_ad_value_cents"] == 0
+    assert body["contributor_cents"] == 0
+    assert _escrow_of(isolated_db, holder) == before
+
+
+def test_frame_telemetry_missing_fill_record_accrues_honest_zero(isolated_db):
+    """No server-side fill record for the window → the server mints 0 and the
+    window accrues house/zero honestly. No fabricated price, ever."""
+    _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
+               content_class="public_domain", raw_text="body",
+               rights_holder_name="Earner Estate")
+    resp = _client().post(
+        "/api/ad/frame-telemetry", json=_batch(window_id="win-never-filled")
+    )
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["total_ad_value_cents"] == 0
+    assert body["contributor_cents"] == 0
+    assert body["house_cents"] == 0
+    assert body["reconciles"] is True
+
+
+def test_client_hint_retry_with_changed_claim_appends_audit_row_not_money(
+    isolated_db,
+):
+    """A retry that CHANGES its claimed value is audited, not accrued: the
+    accrual is idempotent (identical attention batch → same batch_ref), the
+    escrow never moves, and both claims land on the client-hint ledger."""
+    _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
+               content_class="public_domain", raw_text="body",
+               rights_holder_name="Earner Estate")
+    holder = _ip_holder_of(isolated_db, "pd-earner")
+    client = _client()
+
+    batch = _batch()
+    batch["ad_value_usd_cents"] = 1000
+    r1 = client.post("/api/ad/frame-telemetry", json=batch)
+    assert r1.status_code == 202, r1.text
+    before = _escrow_of(isolated_db, holder)
+
+    batch["ad_value_usd_cents"] = 5000  # same window, revised claim
+    r2 = client.post("/api/ad/frame-telemetry", json=batch)
+    assert r2.status_code == 202, r2.text
+    assert r2.json()["total_ad_value_cents"] == 0  # hint never trusted
+    assert _escrow_of(isolated_db, holder) == before  # no new money
+    assert sorted(_client_hints(isolated_db, "win-1")) == [1000, 5000]
+
+
+def test_frame_telemetry_negative_client_hint_rejected(isolated_db):
+    """The hint is accepted but still validated as a sane integer — a
+    negative claim is 422, not silently logged."""
+    batch = _batch()
+    batch["ad_value_usd_cents"] = -5
+    resp = _client().post("/api/ad/frame-telemetry", json=batch)
+    assert resp.status_code == 422
+
+
+def test_frame_telemetry_v2_batch_still_accepted(isolated_db):
+    """Backward compatibility: a v2 emitter (the value field is absent from
+    its contract) keeps working on v3 semantics, and a v2-labeled body that
+    smuggles the hint is still ignored + logged."""
+    batch = _batch()
+    batch["schema_version"] = "frame-telemetry-v2"
+    resp = _client().post("/api/ad/frame-telemetry", json=batch)
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["total_ad_value_cents"] == 0
+    # stamped with the version the emitter declared
+    assert resp.json()["telemetry_version"] == "frame-telemetry-v2"
+
+    batch2 = _batch(window_id="win-2")
+    batch2["schema_version"] = "frame-telemetry-v2"
+    batch2["ad_value_usd_cents"] = 5_000_000
+    resp2 = _client().post("/api/ad/frame-telemetry", json=batch2)
+    assert resp2.status_code == 202
+    assert resp2.json()["total_ad_value_cents"] == 0
+    assert _client_hints(isolated_db, "win-2") == [5_000_000]
+
+
+def test_resolve_window_value_cents_joins_only_server_record(isolated_db):
+    """The join reads ONLY the server's own fill/pricing record: settled rows
+    mint their revenue; unpriced rows (even with candidate revenue) and
+    missing rows mint 0; a different owner never crosses over."""
+    from interfaces.research.api import ad_routes
+    from runtime.db_lock import connect_read
+
+    _seed_fill_record(
+        isolated_db, owner_user_id="owner-1", window_id="w-settled",
+        revenue_usd_cents=4300, price_status="settled",
+    )
+    _seed_fill_record(
+        isolated_db, owner_user_id="owner-1", window_id="w-unpriced",
+        revenue_usd_cents=7700, price_status="unpriced",
+    )
+    con = connect_read(isolated_db)
+    try:
+        resolve = ad_routes.resolve_window_value_cents
+        assert resolve(owner_user_id="owner-1", window_id="w-settled", con=con) == 4300
+        assert resolve(owner_user_id="owner-1", window_id="w-unpriced", con=con) == 0
+        assert resolve(owner_user_id="owner-1", window_id="w-missing", con=con) == 0
+        assert resolve(owner_user_id="owner-2", window_id="w-settled", con=con) == 0
+    finally:
+        con.close()
+
+
+def test_resolve_window_value_cents_opens_own_connection_when_con_none(
+    isolated_db,
+):
+    """The con=None path (self-opened read connection via the DB resolver) —
+    used by callers that do not already hold the single writer."""
+    from interfaces.research.api import ad_routes
+
+    _seed_fill_record(
+        isolated_db, owner_user_id="owner-1", window_id="w-settled",
+        revenue_usd_cents=1234, price_status="settled",
+    )
+    assert ad_routes.resolve_window_value_cents(
+        owner_user_id="owner-1", window_id="w-settled"
+    ) == 1234
+    assert ad_routes.resolve_window_value_cents(
+        owner_user_id="owner-1", window_id="w-none"
+    ) == 0
+
+
+def test_resolve_window_value_cents_missing_table_is_honest_zero(isolated_db):
+    """A DB with no fill ledger at all (no fill decision ever persisted) mints
+    0 — never a catalog error that bounces the telemetry flush."""
+    import duckdb
+
+    from interfaces.research.api.ad_routes import resolve_window_value_cents
+
+    con = duckdb.connect(":memory:")
+    try:
+        assert resolve_window_value_cents(
+            owner_user_id="o", window_id="w", con=con
+        ) == 0
+    finally:
+        con.close()
 
 
 # ── frame-telemetry: rejection paths ─────────────────────────────────
