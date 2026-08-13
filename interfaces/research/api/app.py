@@ -2326,22 +2326,33 @@ def create_app(
         if operation_id is not None:
             from .research_owner_dispatch import OwnerLaunchConflict, claim_owner_launch
             try:
-                investigation_id, _claim_replay, owner_start_event_id = claim_owner_launch(
+                investigation_id, claim_replay, owner_start_event_id = claim_owner_launch(
                     operation_id=operation_id, owner_user_id=owner_user_id or "",
                     launch_digest=launch_digest or "", investigation_id=investigation_id,
                 )
             except OwnerLaunchConflict:
                 raise HTTPException(status_code=409, detail="owner_model_operation_conflict") from None
-            prior = trajectory(investigation_id)
-            for row in prior:
-                payload = row.get("payload")
-                if row.get("action_type") == "investigation.start_requested" and isinstance(payload, dict):
-                    if (payload.get("owner_user_id") == owner_user_id
-                            and payload.get("owner_operation_id") == operation_id
-                            and payload.get("owner_launch_digest") == launch_digest):
-                        replay_event_id = str(row["event_id"])
-                        break
-                    raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
+            # Exact replays are decided by the durable claim row (same
+            # operation_id + launch_digest under the authority flock), NOT by
+            # scanning the event log: a concurrent twin's start event may not
+            # be visible on disk yet, and racing that read made identical
+            # concurrent requests intermittently 409 (CI flake
+            # test_exact_concurrent_owner_requests_are_one_event_and_one_response).
+            # The start event id is deterministic from the claim, so a replay
+            # returns it directly.
+            if claim_replay:
+                replay_event_id = owner_start_event_id
+            else:
+                prior = trajectory(investigation_id)
+                for row in prior:
+                    payload = row.get("payload")
+                    if row.get("action_type") == "investigation.start_requested" and isinstance(payload, dict):
+                        if (payload.get("owner_user_id") == owner_user_id
+                                and payload.get("owner_operation_id") == operation_id
+                                and payload.get("owner_launch_digest") == launch_digest):
+                            replay_event_id = str(row["event_id"])
+                            break
+                        raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
         try:
             event_id = replay_event_id or emit_typed(
                 investigation_id,
