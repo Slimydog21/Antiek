@@ -831,10 +831,14 @@ def test_upload_bearer_auth_does_not_require_browser_origin(temp_substrate, monk
 
 def test_upload_cf_service_token_does_not_require_browser_origin(temp_substrate, monkeypatch):
     monkeypatch.setenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", "service-client")
+    monkeypatch.setenv("CF_ACCESS_CLIENT_SECRET", "service-secret")
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
     response = TestClient(app).post(
         "/sources/upload",
-        headers={"Cf-Access-Client-Id": "service-client"},
+        headers={
+            "Cf-Access-Client-Id": "service-client",
+            "Cf-Access-Client-Secret": "service-secret",
+        },
         files={"file": ("note.txt", b"service upload", "text/plain")},
         data={"acquisition_attestation": "personal_reading"},
     )

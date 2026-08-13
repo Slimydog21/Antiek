@@ -33,6 +33,7 @@ def _client_with_token(
     _, token: str | None, monkeypatch, *,
     email: str | None = None,
     service_token_client_id: str | None = None,
+    service_token_client_secret: str | None = None,
 ):
     if token is None:
         monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
@@ -51,6 +52,10 @@ def _client_with_token(
             "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID",
             service_token_client_id,
         )
+    if service_token_client_secret is None:
+        monkeypatch.delenv("CF_ACCESS_CLIENT_SECRET", raising=False)
+    else:
+        monkeypatch.setenv("CF_ACCESS_CLIENT_SECRET", service_token_client_secret)
     from interfaces.research.api.app import create_app
     app = create_app(
         register_wrestling=False, register_providers=False, cors_origins=[],
@@ -310,19 +315,19 @@ def test_both_paths_neither_supplied_rejected(temp_substrate, monkeypatch):
 # ─────────────────────────────────────────────────────────────────────
 
 
-def test_service_token_client_id_match_passes(temp_substrate, monkeypatch):
-    """When ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID is set and the
-    request carries a matching ``Cf-Access-Client-Id`` header, the
-    request passes. Cloudflare's edge validates the Client-Id +
-    Client-Secret pair before forwarding; the substrate trusts the
-    header's arrival as proof of validation."""
+def test_service_token_pair_match_passes(temp_substrate, monkeypatch):
+    """A matching client ID and secret authenticate a machine caller."""
     client = _client_with_token(
         temp_substrate, None, monkeypatch,
         service_token_client_id="ab12cd.access",
+        service_token_client_secret="service-secret",
     )
     resp = client.get(
         "/investigations",
-        headers={"Cf-Access-Client-Id": "ab12cd.access"},
+        headers={
+            "Cf-Access-Client-Id": "ab12cd.access",
+            "Cf-Access-Client-Secret": "service-secret",
+        },
     )
     assert resp.status_code == 200
 
@@ -334,12 +339,45 @@ def test_service_token_client_id_case_insensitive(temp_substrate, monkeypatch):
     client = _client_with_token(
         temp_substrate, None, monkeypatch,
         service_token_client_id="ab12cd.access",
+        service_token_client_secret="service-secret",
     )
     resp = client.get(
         "/investigations",
-        headers={"Cf-Access-Client-Id": "AB12CD.ACCESS"},
+        headers={
+            "Cf-Access-Client-Id": "AB12CD.ACCESS",
+            "Cf-Access-Client-Secret": "service-secret",
+        },
     )
     assert resp.status_code == 200
+
+
+def test_service_token_client_id_alone_rejected(temp_substrate, monkeypatch):
+    client = _client_with_token(
+        temp_substrate, None, monkeypatch,
+        service_token_client_id="ab12cd.access",
+        service_token_client_secret="service-secret",
+    )
+    resp = client.get(
+        "/investigations",
+        headers={"Cf-Access-Client-Id": "ab12cd.access"},
+    )
+    assert resp.status_code == 401
+
+
+def test_service_token_wrong_secret_rejected(temp_substrate, monkeypatch):
+    client = _client_with_token(
+        temp_substrate, None, monkeypatch,
+        service_token_client_id="ab12cd.access",
+        service_token_client_secret="service-secret",
+    )
+    resp = client.get(
+        "/investigations",
+        headers={
+            "Cf-Access-Client-Id": "ab12cd.access",
+            "Cf-Access-Client-Secret": "wrong-secret",
+        },
+    )
+    assert resp.status_code == 401
 
 
 def test_service_token_client_id_mismatch_rejected(temp_substrate, monkeypatch):
@@ -349,10 +387,14 @@ def test_service_token_client_id_mismatch_rejected(temp_substrate, monkeypatch):
     client = _client_with_token(
         temp_substrate, None, monkeypatch,
         service_token_client_id="ab12cd.access",
+        service_token_client_secret="service-secret",
     )
     resp = client.get(
         "/investigations",
-        headers={"Cf-Access-Client-Id": "ffffff.access"},
+        headers={
+            "Cf-Access-Client-Id": "ffffff.access",
+            "Cf-Access-Client-Secret": "service-secret",
+        },
     )
     assert resp.status_code == 401
 
@@ -363,6 +405,7 @@ def test_service_token_three_paths_active_email_passes(temp_substrate, monkeypat
         temp_substrate, "op_secret", monkeypatch,
         email="op@antiek.ai",
         service_token_client_id="ab12cd.access",
+        service_token_client_secret="service-secret",
     )
     resp = client.get(
         "/investigations",
@@ -378,10 +421,14 @@ def test_service_token_three_paths_active_service_token_passes(
         temp_substrate, "op_secret", monkeypatch,
         email="op@antiek.ai",
         service_token_client_id="ab12cd.access",
+        service_token_client_secret="service-secret",
     )
     resp = client.get(
         "/investigations",
-        headers={"Cf-Access-Client-Id": "ab12cd.access"},
+        headers={
+            "Cf-Access-Client-Id": "ab12cd.access",
+            "Cf-Access-Client-Secret": "service-secret",
+        },
     )
     assert resp.status_code == 200
 
@@ -393,6 +440,7 @@ def test_service_token_three_paths_active_bearer_passes(
         temp_substrate, "op_secret", monkeypatch,
         email="op@antiek.ai",
         service_token_client_id="ab12cd.access",
+        service_token_client_secret="service-secret",
     )
     resp = client.get(
         "/investigations", headers={"Authorization": "Bearer op_secret"},
@@ -407,13 +455,17 @@ def test_service_token_alone_no_other_env_works(temp_substrate, monkeypatch):
     client = _client_with_token(
         temp_substrate, None, monkeypatch,
         service_token_client_id="ab12cd.access",
+        service_token_client_secret="service-secret",
     )
     # No Cf-Access-* and no Authorization → 401
     resp = client.get("/investigations")
     assert resp.status_code == 401
-    # With the Cf-Access-Client-Id → 200
+    # With the complete service-token proof → 200
     resp = client.get(
         "/investigations",
-        headers={"Cf-Access-Client-Id": "ab12cd.access"},
+        headers={
+            "Cf-Access-Client-Id": "ab12cd.access",
+            "Cf-Access-Client-Secret": "service-secret",
+        },
     )
     assert resp.status_code == 200

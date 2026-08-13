@@ -1414,7 +1414,7 @@ def create_app(
     #     the cutover window; retired per the magic-link runbook.
     #
     # (3) Cloudflare Access service token (machine via CF) —
-    #     CF-Access-Client-Id matches env.
+    #     CF-Access-Client-Id + CF-Access-Client-Secret match env.
     #
     # (4) Bearer token (machine callers) — when
     #     ANTIEK_OPERATOR_TOKEN is set, requests carrying
@@ -1479,8 +1479,10 @@ def create_app(
     _OPERATOR_TOKEN_ENV = "ANTIEK_OPERATOR_TOKEN"
     _OPERATOR_EMAIL_ENV = "ANTIEK_OPERATOR_EMAIL"
     _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV = "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID"
+    _OPERATOR_SERVICE_TOKEN_CLIENT_SECRET_ENV = "CF_ACCESS_CLIENT_SECRET"
     _CF_ACCESS_EMAIL_HEADER = "Cf-Access-Authenticated-User-Email"
     _CF_ACCESS_CLIENT_ID_HEADER = "Cf-Access-Client-Id"
+    _CF_ACCESS_CLIENT_SECRET_HEADER = "Cf-Access-Client-Secret"
     _SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 
     @app.middleware("http")
@@ -1493,6 +1495,9 @@ def create_app(
         expected_st_client_id = os.environ.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
+        expected_st_client_secret = os.environ.get(
+            _OPERATOR_SERVICE_TOKEN_CLIENT_SECRET_ENV, "",
+        ).strip()
         if request.url.path == "/multimedia/tts-gateway/synthesize":
             declared_length = request.headers.get("Content-Length")
             try:
@@ -1587,24 +1592,24 @@ def create_app(
                 return await call_next(request)
 
         # Path 3: Cloudflare Access — Service Token (machine callers)
-        # Cloudflare validates the CF-Access-Client-Id +
-        # CF-Access-Client-Secret pair at the edge before forwarding;
-        # the substrate trusts the Client Id's arrival as
-        # validation-already-happened-by-Cloudflare. We additionally
-        # match it against a configured value so multiple service
-        # tokens (e.g. operator's machine + a future CI token) can be
-        # distinguished by which one is allowed here.
-        #
-        # Note: only the Client Id is checked. The Client Secret is
-        # only visible to Cloudflare; treating Secret absence at this
-        # layer as failure would just duplicate the edge check. Trust
-        # boundary: anything reaching the origin with a Cf-Access-*
-        # header has been validated by Cloudflare's edge.
-        if expected_st_client_id:
+        # Validate the complete credential at the application boundary.
+        # The origin cannot infer that a caller traversed an Access policy
+        # merely from a client-controlled identifier header.
+        if expected_st_client_id and expected_st_client_secret:
+            import secrets as _secrets
+
             cf_client_id = request.headers.get(
                 _CF_ACCESS_CLIENT_ID_HEADER, "",
             ).strip().lower()
-            if cf_client_id and cf_client_id == expected_st_client_id:
+            cf_client_secret = request.headers.get(
+                _CF_ACCESS_CLIENT_SECRET_HEADER, "",
+            ).strip()
+            if (
+                cf_client_id == expected_st_client_id
+                and _secrets.compare_digest(
+                    cf_client_secret, expected_st_client_secret,
+                )
+            ):
                 _attach_operator(request, method="cloudflare_service_token")
                 return await call_next(request)
 
