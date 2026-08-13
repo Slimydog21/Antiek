@@ -321,11 +321,12 @@ function ReuseGateSection({ reuse }: { reuse: ObjectiveCardResponse["reuse_gate"
 }
 
 export function ObjectiveCard() {
-  const [data, setData]
-  // P0 §5: audit-only served-impression record.
-  useServedImpression({ surface: "objective-card", itemKind: "surface", itemId: "/objective" }); = useState<ObjectiveCardResponse | null>(null);
+  const [data, setData] = useState<ObjectiveCardResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // P0 §5: audit-only served-impression record.
+  useServedImpression({ surface: "objective-card", itemKind: "surface", itemId: "/objective" });
 
   const reload = useCallback(async () => {
     setLoading(true);

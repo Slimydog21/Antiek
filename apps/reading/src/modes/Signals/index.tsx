@@ -34,12 +34,13 @@ function matches(row: SignalActionView, q: string): boolean {
 }
 
 export function Signals() {
-  const [data, setData]
-  // P0 §5: audit-only served-impression record.
-  useServedImpression({ surface: "signals", itemKind: "surface", itemId: "/signals" }); = useState<SignalInventoryResponse | null>(null);
+  const [data, setData] = useState<SignalInventoryResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState<string>("");
+
+  // P0 §5: audit-only served-impression record.
+  useServedImpression({ surface: "signals", itemKind: "surface", itemId: "/signals" });
 
   const reload = useCallback(async () => {
     setLoading(true);
