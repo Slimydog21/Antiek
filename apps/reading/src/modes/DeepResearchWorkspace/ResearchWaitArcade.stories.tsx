@@ -2,7 +2,6 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { createRef, useEffect, useRef, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 
-import { WernerIceCursorShell } from "../../werner/WernerIceCursorShell";
 import { useStationInstrumentSuspended } from "../../werner/stationInstrumentSuspension";
 import ResearchWaitArcade from "./ResearchWaitArcade";
 
@@ -59,7 +58,6 @@ function CursorPolicyPreview({
       >
         <CursorPolicyStatus />
         <ResearchWaitArcade {...props} />
-        <WernerIceCursorShell />
       </div>
     </MemoryRouter>
   );

@@ -17,7 +17,7 @@
  * not reach for Daytona.
  */
 
-import { lazy, Suspense, useCallback, useRef, useState, type RefObject } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useParams } from "react-router-dom";
 
 import { PanelHost } from "../../workspace/PanelHost";
@@ -31,6 +31,7 @@ import {
   launchPlan,
   steerResearch,
   TERMINAL_STATES,
+  type LaunchOwnerModelChoice,
   type PlanTree,
   type SteerKind,
 } from "../../api/research";
@@ -39,6 +40,12 @@ import type { DistilledNode } from "../../lib/api";
 import CostMeter from "./CostMeter";
 import HardCeilingEvidence from "./HardCeilingEvidence";
 import PlanEditor from "./PlanEditor";
+import ModelPicker from "../../components/ModelPicker";
+import {
+  fetchComposerProjection,
+  type ComposerCandidateView,
+  type ComposerModelProjection,
+} from "../../api/composerProjection";
 import ResearchPanel from "./ResearchPanel";
 import Canvas from "./Canvas/Canvas";
 import BlockDetail from "./BlockDetail";
@@ -58,6 +65,16 @@ interface PlanState {
 }
 
 const NO_STARTERS: StarterPanel[] = [];
+
+const OWNER_LOOP_ONE_ROLES = [
+  "decomposer",
+  "evidence_retriever",
+  "parameter_extractor",
+  "connector",
+  "synthesizer",
+  "knowledge_extractor",
+] as const;
+
 
 export default function DeepResearchWorkspace() {
   return (
@@ -79,6 +96,9 @@ function Workspace() {
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [projection, setProjection] = useState<ComposerModelProjection | null>(null);
+  const [projectionError, setProjectionError] = useState<string | null>(null);
+  const [modelChoice, setModelChoice] = useState<ComposerCandidateView | null>(null);
 
   const guard = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -120,18 +140,57 @@ function Workspace() {
       setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
     });
 
+  const refreshProjection = useCallback(async () => {
+    try {
+      const r = await fetchComposerProjection({
+        task: "deep_research",
+        bounded_usage: [
+          { unit: "input_token", maximum: 200_000 },
+          { unit: "output_token", maximum: 100_000 },
+        ],
+      });
+      setProjection(r);
+      setProjectionError(null);
+    } catch (e) {
+      setProjectionError(e instanceof Error ? e.message : String(e));
+      setProjection(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (plan) {
+      void refreshProjection();
+    }
+  }, [plan, refreshProjection]);
+
   const handleLaunch = () =>
     guard(async () => {
       if (!plan || !plan.launchable) return;
-      const r = await launchPlan(plan.rootNodeId);
+      const ownerModelChoices = modelChoice
+        ? (Object.fromEntries(
+          OWNER_LOOP_ONE_ROLES.map((role) => [
+            role,
+            {
+              authority: "user_model" as const,
+              provider_id: modelChoice.provider,
+              model_id: modelChoice.model,
+            },
+          ]),
+        ) as Record<typeof OWNER_LOOP_ONE_ROLES[number], LaunchOwnerModelChoice>)
+        : undefined;
+      const r = await launchPlan(
+        plan.rootNodeId,
+        ownerModelChoices ? { owner_model_choices: ownerModelChoices } : {},
+      );
       track("deep_research_cascade_launched", {
         session_id: r.session_id,
       });
       notifyResearchStarted(r.session_id);
       setSessionId(r.session_id);
-      // Session IDs are deterministic per plan. A successful relaunch can
-      // therefore reuse the same ID after its prior monitor stopped polling;
-      // generation forces a fresh polling + reaction episode in that case.
+      // Session IDs are deterministic per launch authority. A successful
+      // relaunch can therefore reuse the same ID after its prior monitor
+      // stopped polling; generation forces a fresh polling + reaction
+      // episode in that case.
       setSessionGeneration((generation) => generation + 1);
     });
 
@@ -140,6 +199,19 @@ function Workspace() {
       <ComposeBar problem={problem} setProblem={setProblem} busy={busy} onCreate={handleCreate} />
       {error && (
         <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-sm text-emperor">{error}</p>
+      )}
+      {plan && projection && (
+        <ModelPicker
+          candidates={projection.ranked_candidates}
+          selected={modelChoice ? { provider: modelChoice.provider, model: modelChoice.model } : null}
+          onSelect={(c) => setModelChoice(c)}
+          error={projectionError}
+          note={
+            modelChoice
+              ? `Bound — "${modelChoice.provider} / ${modelChoice.model}" is submitted as owner route authority for paid Loop One roles. Launch fails closed if the route is not owner-executable.`
+              : "Auto route — no owner manifest is installed; cascade uses the default dispatch path."
+          }
+        />
       )}
       {plan && (
         <PlanEditor

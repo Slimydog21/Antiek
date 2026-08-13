@@ -124,7 +124,31 @@ from .attribution_explain import _largest_remainder_cents
 # echoed from the request. A v1 batch (which still carries a client value) is
 # rejected 409 by the route's version gate, so no ordering window exists in
 # which a client-priced batch accrues against v2 semantics.
-FRAME_TELEMETRY_SCHEMA_VERSION = "frame-telemetry-v2"
+#
+# v2 -> v3 (ad-pipeline gap S1, 2026-08-12): server-minted ad value. The wire
+# shape RE-ACCEPTS an optional client ``ad_value_usd_cents`` — as an IGNORED
+# HINT: accepted so a legacy emitter that still sends it is not broken, NEVER
+# trusted (the value the accrual apportions is minted SERVER-SIDE by joining
+# the server's OWN fill/pricing record — ``ad_fill_decisions``, persisted at
+# fill time by ``fill_decisions.decide_fills`` — on (owner_user_id, window_id);
+# only a ``settled`` record feeds real cents, a missing/unpriced record mints
+# 0 — honest house/zero, never a fabricated price), and logged as
+# ``client_hint`` (``frame_telemetry_client_hints``) for auditability. v2 and
+# v3 are wire-compatible (v2 is a strict subset: the hint simply absent), so
+# the route's gate accepts BOTH — see
+# ``SUPPORTED_FRAME_TELEMETRY_SCHEMA_VERSIONS``.
+FRAME_TELEMETRY_SCHEMA_VERSION = "frame-telemetry-v3"
+
+# Wire versions the /api/ad/frame-telemetry gate ACCEPTS. v2 is retained for
+# backward compatibility (see the v2 -> v3 note above): a v2 emitter remains
+# valid and simply carries no hint. v1 — the client-priced shape — stays
+# rejected. The ``telemetry_version`` stamped on persisted rows is the version
+# the EMITTER declared (both accepted shapes accrue under identical
+# server-minted semantics).
+SUPPORTED_FRAME_TELEMETRY_SCHEMA_VERSIONS = frozenset({
+    "frame-telemetry-v2",
+    FRAME_TELEMETRY_SCHEMA_VERSION,
+})
 
 # The weighting-PIPELINE version. Bump WHENEVER anything that changes a payout
 # split moves: the math in :func:`weigh_second` (a new feature term, a different
@@ -250,12 +274,14 @@ class WindowFrameBatch:
     backend consumes — NOT one row per second).
 
     ``ad_value_usd_cents`` is the window's TOTAL ad value for the seconds in
-    this batch. As of frame-telemetry-v2 (AFA-S1) it is MINTED SERVER-SIDE
-    (``ad_routes.resolve_window_value_cents``; 0 until SPR-10's auction prices
-    the window) and is NEVER supplied by the client, which measures attention
-    and prices nothing. It is apportioned per-second-equally across
-    ``len(seconds)`` seconds before per-asset weighting, so the window
-    reconciles exactly (M6).
+    this batch. As of frame-telemetry-v3 (ad-pipeline gap S1) it is MINTED
+    SERVER-SIDE by joining the server's own fill/pricing record
+    (``ad_routes.resolve_window_value_cents`` → ``ad_fill_decisions``; a
+    missing or unsettled record mints 0 — honest house/zero, never a
+    fabricated price). The client MAY send a value hint on the wire but it is
+    NEVER trusted: it is accepted, logged as ``client_hint``, and ignored. The
+    value is apportioned per-second-equally across ``len(seconds)`` seconds
+    before per-asset weighting, so the window reconciles exactly (M6).
 
     ``schema_version`` is stamped so a batch flushed by an old emitter is
     identifiable. ``window_id`` is the trace anchor for every accrual derived
@@ -487,6 +513,7 @@ def apportion_cents(weights: dict[str, float], total_cents: int) -> dict[str, in
 
 __all__ = [
     "FRAME_TELEMETRY_SCHEMA_VERSION",
+    "SUPPORTED_FRAME_TELEMETRY_SCHEMA_VERSIONS",
     "FRAME_WEIGHTING_VERSION",
     "VALID_LENSES",
     "FrameAttentionSample",

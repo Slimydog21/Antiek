@@ -67,7 +67,14 @@ import re
 import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import suppress
 from typing import Any
+
+from orchestration.rlm.prime_agent_backend import (
+    PrimeAgentOutcome,
+    PrimeAgentRequest,
+    PrimeAgentRLMBackend,
+)
 
 # Ensure substrate root on path.
 _PKG_ROOT = os.path.dirname(
@@ -98,6 +105,7 @@ DEFAULT_TEMPERATURE = 0.0
 # do iterative tool calls, so latency cost compounds. The connector
 # bridge can override via SubLLMWithTools(role=...).
 DEFAULT_SUB_LLM_ROLE = "evidence_retriever"
+PRIME_EVIDENCE_LABEL = "[Supplemental Prime Agent evidence; non-canonical]"
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +192,7 @@ def extract_json(text: str) -> Any:
                     continue
         raise ValueError(
             f"Could not parse JSON from sub-LLM response: {text[:500]}"
-        )
+        ) from None
 
 
 # ---------------------------------------------------------------------------
@@ -470,10 +478,8 @@ def search_graph(query: str, top_k: int = 5) -> str:
     except Exception as e:
         return f"search_graph error: {e!r}"
     finally:
-        try:
+        with suppress(Exception):
             con.close()
-        except Exception:
-            pass
 
     return _format_graph_search_result(result, query=query)
 
@@ -760,6 +766,8 @@ def equipped_llm_batch(
     max_parallel: int = 6,
     max_rounds: int = MAX_TOOL_ROUNDS,
     temperature: float = DEFAULT_TEMPERATURE,
+    prime_backend: PrimeAgentRLMBackend | None = None,
+    prime_outcome_sink: Callable[[PrimeAgentOutcome], None] | None = None,
 ) -> list[str]:
     """Run multiple tool-equipped sub-LLM calls in parallel.
 
@@ -779,19 +787,45 @@ def equipped_llm_batch(
             temperature=temperature,
         )
 
-    def _run_one(task: dict) -> str:
+    effective_prompts = [str(task["prompt"]) for task in tasks]
+    if prime_backend is not None:
+        # Prime requests are deliberately issued in input order. The canonical
+        # sub-LLM work may still fan out, but receipt/evidence ordering remains
+        # deterministic and no graph-write tool is exposed to Prime.
+        for i, task in enumerate(tasks):
+            with suppress(Exception):
+                outcome = prime_backend.run(PrimeAgentRequest(
+                    prompt=str(task["prompt"]),
+                    workflow="rlm-tool-batch",
+                    request_id=(
+                        f"{investigation_id or 'unscoped'}:tool-batch:{i:04d}"
+                    ),
+                ))
+                if prime_outcome_sink is not None:
+                    with suppress(Exception):
+                        prime_outcome_sink(outcome)
+                if (
+                    outcome.receipt.state.value == "success"
+                    and outcome.evidence is not None
+                    and outcome.evidence.supplemental
+                ):
+                    effective_prompts[i] += (
+                        f"\n\n{PRIME_EVIDENCE_LABEL}\n{outcome.evidence.text}"
+                    )
+
+    def _run_one(index: int, task: dict[str, Any]) -> str:
         sub = _build_sub()
         sub.register_builtins(task.get("tools", []))
-        return sub.run(task["prompt"])
+        return sub.run(effective_prompts[index])
 
     results: list[str | None] = [None] * n
     if n == 1 or max_parallel <= 1:
         for i, task in enumerate(tasks):
-            results[i] = _run_one(task)
+            results[i] = _run_one(i, task)
         return [r for r in results if r is not None]
 
     with ThreadPoolExecutor(max_workers=min(max_parallel, n)) as ex:
-        futures = {ex.submit(_run_one, task): i for i, task in enumerate(tasks)}
+        futures = {ex.submit(_run_one, i, task): i for i, task in enumerate(tasks)}
         for fut in as_completed(futures):
             i = futures[fut]
             try:

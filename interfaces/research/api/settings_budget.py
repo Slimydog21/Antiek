@@ -913,7 +913,7 @@ def build_model_decision(
 
 @settings_router.get("/models", response_model=ModelsResponse)
 def get_settings_models(request: Request) -> ModelsResponse:
-    from .settings_models_admin import user_model_authority_snapshot
+    from .settings_models_admin import request_owner_user_id, user_model_authority_snapshot
 
     raw_providers = getattr(request.app.state, "registered_providers", None)
     if isinstance(raw_providers, (set, list, tuple, frozenset)):
@@ -922,7 +922,15 @@ def get_settings_models(request: Request) -> ModelsResponse:
         registered_set = set()
     cfg = _load_dispatch_config()
     bindings = _tier_bindings(cfg)
-    user_authority = user_model_authority_snapshot(request.app)
+    user_authority = user_model_authority_snapshot(
+        request.app,
+        owner_user_id=request_owner_user_id(request),
+    )
+    registered_set = {
+        provider_id
+        for provider_id in registered_set
+        if not provider_id.startswith("user-") or provider_id in user_authority
+    }
 
     # Union of registered + config-known providers so Settings can show
     # configured-but-not-ready rows honestly.
@@ -1299,6 +1307,18 @@ def register_settings_budget_routes(app: FastAPI) -> None:
     from .settings_models_admin import register_settings_models_admin_routes
 
     register_settings_models_admin_routes(app)
+    # BYOT per-key usage/balance endpoints (owner-scoped ledger + adapters).
+    from .byot_usage_routes import register_byot_usage_routes
+
+    register_byot_usage_routes(app)
+    # Owner-scoped BYO data tools (YouTube, Polygon, FMP, EDGAR).
+    from .settings_tool_connections import register_settings_tool_connection_routes
+
+    register_settings_tool_connection_routes(app)
+    # OAuth onboarding for first-party model providers (OpenAI, Anthropic, Grok).
+    from .oauth_routes import register_oauth_routes
+
+    register_oauth_routes(app)
 
 
 __all__ = [

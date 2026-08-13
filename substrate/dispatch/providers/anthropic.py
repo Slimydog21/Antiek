@@ -77,6 +77,11 @@ _DEFAULT_TIMEOUT_S = 120.0
 # Anthropic API version header. Update when adopting a newer API version.
 _ANTHROPIC_VERSION = "2023-06-01"
 
+# Opus 5 and Sonnet 5 use adaptive thinking. The Messages API rejects
+# non-default sampling controls for these models, so the shared dispatch
+# temperature must not be serialized for either exact model id.
+_ADAPTIVE_THINKING_MODELS = frozenset({"claude-opus-5", "claude-sonnet-5"})
+
 
 class AnthropicProvider:
     """Provider implementation for Anthropic's Messages API.
@@ -181,9 +186,10 @@ class AnthropicProvider:
         body = {
             "model": model,
             "max_tokens": max_tokens,
-            "temperature": temperature,
             "messages": messages,
         }
+        if model not in _ADAPTIVE_THINKING_MODELS:
+            body["temperature"] = temperature
 
         client = self._ensure_client()
         t_start = time.monotonic()

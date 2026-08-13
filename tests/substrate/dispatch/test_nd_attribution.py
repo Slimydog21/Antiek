@@ -53,8 +53,8 @@ def _isolate_ctx() -> Iterator[None]:
     clear_nd_decision()
 
 
-def test_schema_version_bumped_to_33() -> None:
-    assert EVENT_SCHEMA_VERSION == 33
+def test_schema_version_includes_post_nd_bumps() -> None:
+    assert EVENT_SCHEMA_VERSION == 35
 
 
 def test_all_seven_nd_fields_present_with_defaults() -> None:

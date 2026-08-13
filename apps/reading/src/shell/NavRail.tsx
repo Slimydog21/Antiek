@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
@@ -10,8 +10,13 @@ import {
   workflowForPath,
   type Workflow,
 } from "./workflowTaxonomy";
+import { useInvestigationList } from "../hooks/useInvestigationList";
+import { useSeenVersion } from "../hooks/useSeenVersion";
+import { countSummoningGroups } from "../shared/attention";
+import { isUnseen, researchStateStyle } from "../shared/researchState";
+import { lastSeenAt } from "../workspace/seen";
 import { ProductsLauncher } from "./ProductsLauncher";
-import IglooMark from "../brand/werner/marks/IglooMark";
+import BrainMark from "../brand/BrainMark";
 import { KeyChip } from "../components/hotkeys/KeyChip";
 import {
   bindingForProduct,
@@ -31,7 +36,7 @@ import {
  *   Notebooks/Documents/Sources → the content tree (off the rail)
  *
  *   ┌────────┐
- *   │  ⌂     │  Werner mark
+ *   │  ⌂     │  Brain mark
  *   ├────────┤
  *   │  ⌕     │  Search (⌘K)
  *   │  ＋    │  New
@@ -86,12 +91,10 @@ import {
  *       shortcuts, and the roles/labels are identical across orientations;
  *       only the flex axis + the active-accent edge differ.
  *
- *   (2) HOME = IGLOO. The static top-left Werner mark that was the home
- *       button is now an <IglooMark> (the operator's ask: the home penguin
- *       becomes an igloo — Werner LIVES in the igloo, so home reads as
- *       "where Werner lives", and the ONE penguin left in the app is the
- *       autonomous roaming PenguinMascot, no longer competing with a second
- *       static penguin). The control is unchanged otherwise: same /home
+ *   (2) HOME = BRAIN. The static top-left mark that was the home button is
+ *       now a <BrainMark> — the brain IS the brand (mascot and logo), so the
+ *       home control reads as "the brain's home". The control is unchanged
+ *       otherwise: same /home
  *       route, same accessible <button> with aria-label + focus ring.
  */
 
@@ -153,6 +156,7 @@ function RailButton({
   orientation = "bottom",
   productId,
   binding,
+  badge,
 }: {
   icon: ReactNode;
   label: string;
@@ -169,6 +173,9 @@ function RailButton({
    *  combo from the shared map (e.g. "mod+e" for Read). Post-SPR-08 there are
    *  NO vim g-chords; the prop is always fed a real `mod+` spec. */
   binding?: string;
+  /** herdr transfer P0-2: attention count chip (blocked + unseen-done).
+   *  Rendered only when > 0 — an absent badge is the calm state. */
+  badge?: number;
 }) {
   const isWorkflow = variant === "workflow";
   const color = active
@@ -210,6 +217,14 @@ function RailButton({
       <span className="leading-none" aria-hidden="true">
         {icon}
       </span>
+      {badge !== undefined && badge > 0 && (
+        <span
+          aria-label={`${badge} need attention`}
+          className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-emperor text-ice-1 text-[9px] font-mono font-bold flex items-center justify-center"
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
       {/* SPR-07 M2 — the visible caption, now on EVERY bar button (was
           workflow-only). aria-hidden so the `.sr-only` span stays the single
           announced name. */}
@@ -253,6 +268,30 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const showRail = !isMobile || !collapsed;
   const isBottom = orientation === "bottom";
 
+  // herdr transfer P0-2 — the rail badge: how many research FAMILIES need
+  // the operator right now. Counted per family root (countSummoningGroups):
+  // two blocked members of one cascade are ONE thing to look at, matching
+  // the rollup dots in the sidebar/MyResearch. Polled at 60s (a badge does
+  // not need the 30s cadence of the full log); an absent badge is calm.
+  const { investigations } = useInvestigationList({
+    limit: 200,
+    pollIntervalMs: 60_000,
+  });
+  const researchSummons = useMemo(
+    () =>
+      countSummoningGroups(
+        investigations.map((s) => ({
+          id: s.investigation_id,
+          parentId: s.parent_investigation_id,
+          state: researchStateStyle(s.status).state,
+          unseen: isUnseen(s, lastSeenAt(s.investigation_id)),
+        })),
+      ),
+    [investigations],
+  );
+  // P0-3 — re-render when any surface marks seen (badge unread count).
+  useSeenVersion();
+
   // SPR-12 M3 — the project-tree toggle that used to live on the rail is
   // gone; the floating Penguin mascot (shell/PenguinMascot.tsx) now floats
   // and opens the "shortcuts:projecttree" panel. The workspace store is no
@@ -287,13 +326,13 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     );
   }
 
-  // Igloo home control (SPR-06 M4) — replaces the static Werner home penguin.
+  // Brain home control — replaces the static penguin/igloo mark.
   // Same /home route + accessible <button> (aria-label + visible focus ring);
-  // the mark is the only thing that changed (penguin → igloo). In the bottom
+  // the mark is the only thing that changed (penguin/igloo → brain). In the bottom
   // rail its divider is on the trailing (right) edge instead of the bottom.
   //
-  // SPR-07 M1 + M3 — the igloo was the LAST caption-less bar control (the v1
-  // complaint "the home igloo has no label"). It now stacks a VISIBLE "Home"
+  // SPR-07 M1 + M3 — the home mark was the LAST caption-less bar control (the
+  // v1 complaint "the home mark has no label"). It now stacks a VISIBLE "Home"
   // text caption + the SPR-08 ⌘ hotkey chip (⌘O = bindingForProduct("home"),
   // read from the shared map — never a hand-typed combo, never the stale "g h"
   // chord) under the mark, matching every other bar button. The button keeps
@@ -319,7 +358,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         (isBottom ? "w-16 h-full border-r-edge border-sun" : "h-16 w-full border-b-edge border-sun")
       }
     >
-      <IglooMark size={24} />
+      <BrainMark size={24} />
       <span
         className="text-[10px] leading-[11px] font-medium tracking-tight"
         aria-hidden="true"
@@ -377,6 +416,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
           orientation={orientation}
           productId={wf}
           binding={bindingForProduct(wf)?.spec}
+          badge={wf === "research" ? researchSummons : undefined}
         />
       ))}
     </nav>
@@ -402,7 +442,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   );
 
   // Bottom rail (SPR-06 default): a horizontal bar along the window bottom.
-  // Home (igloo) anchors the leading edge; the four doors sit centred so the
+  // Home (brain mark) anchors the leading edge; the four doors sit centred so the
   // eye lands on them; Search + More cluster on the trailing edge as
   // overflow. The accent border is on TOP (its inner edge, toward the
   // working region) — symmetric with the left rail's right border.

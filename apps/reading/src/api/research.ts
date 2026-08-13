@@ -254,12 +254,28 @@ export function approveSpend(
 
 // ── Launch + session (SPR-06) ───────────────────────────────────────────
 
+export interface LaunchOwnerModelChoice {
+  authority: "user_model";
+  provider_id: string;
+  model_id: string;
+}
+
 export function launchPlan(rootId: string, req: {
   per_research_budget_usd?: number;
   aggregate_budget_usd?: number | null;
   spend_mode?: SpendMode;
   hard_ceiling_usd?: string;
   authority_digest?: string;
+  owner_operation_id?: string;
+  owner_model_choices?: Record<
+    "decomposer"
+    | "evidence_retriever"
+    | "parameter_extractor"
+    | "connector"
+    | "synthesizer"
+    | "knowledge_extractor",
+    LaunchOwnerModelChoice
+  >;
 } = {}): Promise<LaunchResponse> {
   return post(`/research/plans/${encodeURIComponent(rootId)}/launch`, req);
 }

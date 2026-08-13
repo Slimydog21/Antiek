@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" width="320" height="96" role="img" aria-label="Antiek with the brain mark">
+  <!-- Antiek wordmark stack lockup. The brain on the left, the Antiek
+       wordmark on the right with the sun underline. Day variant uses
+       ink on ice; night variant uses ice on void. CSS variables
+       resolve at runtime so the same SVG flips with the OS theme. -->
+  <style>
+    .ink { fill: #0F1419; }
+    .bright { fill: #EEF1F6; }
+    .sun { fill: #F5DF24; }
+    @media (prefers-color-scheme: dark) {
+      .ink { fill: #EEF1F6; }
+      .bright { fill: #0F1419; }
+    }
+  </style>
+
+  <!-- The brain — abstracted two-hemisphere silhouette (matches the
+       BrainMark rail mark + favicon). -->
+  <g transform="translate(10 14) scale(2.2)">
+    <path
+      d="M16 5.2 C 11.8 3.6, 5.4 6.7, 6.6 12.9 C 7.6 17.6, 10.4 20.5, 12.5 23.9 C 13.5 25.7, 14.9 28, 16 27.5 C 17.1 28, 18.5 25.7, 19.5 23.9 C 21.6 20.5, 24.4 17.6, 25.4 12.9 C 26.6 6.7, 20.2 3.6, 16 5.2 Z"
+      class="ink"
+    />
+    <path
+      d="M16 6.4 C 14.8 10.8, 17.2 15, 16 25"
+      stroke="#F5DF24"
+      stroke-width="1"
+      fill="none"
+      stroke-linecap="round"
+    />
+    <path d="M9.2 11.4 C 10.7 10.4, 12.4 10.4, 13.7 11.5" class="bright" stroke-width="0.9" fill="none" stroke-linecap="round" />
+    <path d="M22.8 11.4 C 21.3 10.4, 19.6 10.4, 18.3 11.5" class="bright" stroke-width="0.9" fill="none" stroke-linecap="round" />
+  </g>
+
+  <!-- Antiek wordmark — bold geometric uppercase, 24px cap height. -->
+  <g transform="translate(104 60)">
+    <text
+      x="0" y="0"
+      font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, system-ui"
+      font-size="44"
+      font-weight="800"
+      letter-spacing="-1.5"
+      class="ink"
+    >ANTIEK</text>
+    <rect x="0" y="10" width="196" height="5" rx="2.5" class="sun" />
+  </g>
+</svg>

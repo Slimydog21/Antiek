@@ -55,9 +55,9 @@ describe("station activity route policy", () => {
   });
 
   it.each(NON_KNOWLEDGE_WORK_ROUTES)(
-    "keeps ice-fishing on taxonomy non-knowledge work: %s",
+    "keeps rest on taxonomy non-knowledge work: %s",
     (pathname) => {
-      expect(activityIdForPathname(pathname)).toBe("ice-fishing");
+      expect(activityIdForPathname(pathname)).toBe("rest");
     },
   );
 
@@ -96,7 +96,7 @@ describe("station activity route policy", () => {
   it.each(["/home", "/deep-researcher", "/not-a-route"])(
     "does not leak the lens onto unknown route lookalikes: %s",
     (pathname) => {
-      expect(activityIdForPathname(pathname)).toBe("ice-fishing");
+      expect(activityIdForPathname(pathname)).toBe("rest");
     },
   );
 

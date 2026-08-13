@@ -1,11 +1,13 @@
-# Passkey-first auth: owned login surface
+# Email-code auth: owned login surface
 
-**Status: ready to cut over as of 2026-05-21.** Replaces Cloudflare
-Access at the auth layer with an Antiek-issued session cookie. Email proves
-the operator identity once (and remains the recovery path); the callback then
-enrolls a discoverable WebAuthn passkey so ordinary login is Face ID, Touch ID,
-the device PIN, or Apple's nearby-device QR flow. Cloudflare Tunnel + DNS +
-TLS stay; only the auth layer moves into the application.
+**Status: live as of 2026-08-13.** Replaces Cloudflare Access at the
+auth layer with an Antiek-issued session cookie. Email is the daily
+path: the operator enters their address, receives a 4-digit code, and
+types it into the browser — no link gymnastics, no second screen.
+Passkey (WebAuthn) remains available as a secondary unlock for devices
+that enrolled a credential; the server stores public credential
+material only. Cloudflare Tunnel + DNS + TLS stay; only the auth
+layer moves into the application.
 
 This is the H6 cut-over. Cloudflare Access can be decommissioned at
 the operator's pace — the substrate accepts both paths during the
@@ -29,24 +31,33 @@ Three properties we want, beyond what Cloudflare Access gave us:
    "__operator__"`) issues a cookie for any future user with a
    real `user_id`. Sprint 22's multi-user pivot is the auth-
    provider side of the seam; the cookie + middleware shape stays.
-3. **The daily path has no hosted-provider dependency.** Passkey login is a
-   local public-key ceremony; AgentMail is needed only for bootstrap and
-   recovery. The server stores public credential material only. Email
-   delivery remains pluggable behind `ANTIEK_EMAIL_PROVIDER`.
+3. **Email possession is the proof, and the code is email-only.**
+   `POST /auth/request` never returns the 4-digit code in its JSON —
+   the code exists only inside the delivered email, so typing it is
+   genuine possession proof (5 wrong tries invalidate the attempt;
+   both email surfaces are per-IP rate-limited). The two-device
+   ceremony still exists (click the email link on the phone, the
+   original browser opens itself), but the single-device code entry
+   is the primary path. Passkey login remains a local public-key
+   ceremony with no hosted-provider dependency; AgentMail is needed
+   for bootstrap and recovery. Email delivery stays pluggable
+   behind `ANTIEK_EMAIL_PROVIDER`.
 
-The two-path middleware (substrate-side, see
+The origin-verifiable middleware (substrate-side, see
 `interfaces/research/api/app.py`) accepts ANY of:
 
 - `ANTIEK_SESSION` cookie minted by `/auth/callback` (browser path)
-- `Cf-Access-Authenticated-User-Email` header (legacy, kept for
-  rollback safety during cutover)
-- `Cf-Access-Client-Id` matching service-token env (legacy)
+- the complete `Cf-Access-Client-Id` + `Cf-Access-Client-Secret`
+  service-token pair matching the server environment
 - `Authorization: Bearer <token>` matching `ANTIEK_OPERATOR_TOKEN`
   (machine path; probes, CI, ansible health-checks)
 
-The order matters: the Antiek cookie is checked FIRST. So once the
-operator signs in via the new flow, every subsequent request takes
-the new path even if Cloudflare Access is still configured.
+`Cf-Access-Authenticated-User-Email` alone is never accepted. It is a
+caller-controlled header at the origin unless an Access JWT is verified,
+which this service does not currently implement.
+
+The Antiek cookie is checked first. Once the operator signs in via the
+owned flow, every subsequent request takes that path.
 
 ---
 

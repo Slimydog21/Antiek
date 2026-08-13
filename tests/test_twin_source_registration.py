@@ -477,3 +477,83 @@ def test_raw_duckdb_connection_is_not_registration_authority(tmp_path):
     with pytest.raises(TypeError, match="LockedConnection"):
         verify_twin_source_envelopes(raw)  # type: ignore[arg-type]
     raw.close()
+
+
+def test_fast_backfill_matches_per_row_gate_across_diverse_rows(graph):
+    """The preloaded fast path must produce byte-identical envelopes to the
+    per-row serve-gate path (the drift guard for the deploy backfill).
+
+    Covers: personal_reading (owner body), servable, gated, taken_down,
+    arXiv T1 (body + canonical link), arXiv T2/T3 (body denied -> metadata_only),
+    arXiv missing arxiv_id (link-back denied -> metadata_only), null metadata.
+    """
+    from substrate.twin_recursion.source_registration import (
+        _envelope_from_served_fields,
+        _row_envelope,
+    )
+
+    rows = [
+        # (document_id, title, doc_type, owner, raw_text, content_class, metadata, taken_down)
+        ("doc-personal", "T", "research", "acct", "Body text for a personal doc.", "personal_reading", None, False),
+        ("doc-servable", "T", "research", "acct", "Body text for a servable doc.", "servable", None, False),
+        ("doc-gated", "T", "research", "acct", "Body text for a gated doc.", "gated", None, False),
+        ("doc-taken", "T", "research", "acct", "Body text taken down.", "personal_reading", None, True),
+        ("doc-t1", "T", "paper", "acct", "arXiv T1 body.", "servable",
+         json.dumps({"license_uri": "http://arxiv.org/licenses/nonexclusive-distrib/1.0/", "arxiv_id": "2402.03300"}), False),
+        ("doc-t2", "T", "paper", "acct", "arXiv T2 body.", "servable",
+         json.dumps({"license_uri": "http://creativecommons.org/licenses/by-nc-sa/4.0/", "arxiv_id": "2402.03301"}), False),
+        ("doc-t3", "T", "paper", "acct", "arXiv T3 body.", "servable",
+         json.dumps({"license_uri": "http://arxiv.org/licenses/nonexclusive-distrib/1.0/", "arxiv_id": ""}), False),
+        ("doc-nometa", "T", "research", "acct", "No metadata at all.", "personal_reading", None, False),
+    ]
+    for (did, title, dtype, owner, body, cc, meta, taken) in rows:
+        graph.execute(
+            "INSERT INTO documents (document_id,source_tier,document_type,title,raw_text,owner_user_id,content_class,metadata) "
+            "VALUES (?,2,?,?,?,?,?,?)",
+            [did, dtype, title, body, owner, cc, meta],
+        )
+        if taken:
+            graph.execute(
+                "INSERT INTO book_assets (document_id,taken_down) VALUES (?,TRUE)",
+                [did],
+            )
+
+    # Fast path (preloaded row shape) vs per-row gate, for every row.
+    preloaded = graph.execute(
+        """
+        SELECT d.document_id, d.title, d.document_type, d.owner_user_id,
+               d.raw_text, d.content_class, d.metadata,
+               COALESCE(b.taken_down, FALSE) AS taken_down
+        FROM documents d
+        LEFT JOIN book_assets b ON d.document_id = b.document_id
+        ORDER BY d.document_id
+        """
+    ).fetchall()
+    assert len(preloaded) == len(rows)
+    for row in preloaded:
+        fast, _body = _envelope_from_served_fields(row)
+        gate, _body2 = _row_envelope(graph, tuple(row[:4]))
+        assert fast == gate, (
+            f"fast path diverged from the serve gate for {row[0]!r}: "
+            f"{fast.to_json()} != {gate.to_json()}"
+        )
+
+
+def test_fast_backfill_batches_and_is_resumable(graph, tmp_path):
+    """A 3-batch corpus backfills in committed batches and resumes cleanly."""
+    from substrate.twin_recursion.source_registration import _BACKFILL_BATCH_SIZE
+
+    n = _BACKFILL_BATCH_SIZE * 2 + 17  # 3 batches
+    for i in range(n):
+        graph.execute(
+            "INSERT INTO documents (document_id,source_tier,document_type,title,raw_text,owner_user_id,content_class) "
+            "VALUES (?,2,'research','T','A sufficiently long canonical body for a twin source.','acct','personal_reading')",
+            [f"doc-{i:05d}"],
+        )
+    assert backfill_twin_source_envelopes(graph) == n
+    assert backfill_twin_source_envelopes(graph) == 0  # idempotent
+    stamped = graph.execute(
+        "SELECT COUNT(*) FROM documents WHERE twin_source_envelope IS NOT NULL"
+    ).fetchone()[0]
+    assert stamped == n
+    assert len(verify_twin_source_envelopes(graph)) == n

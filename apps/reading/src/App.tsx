@@ -47,6 +47,9 @@ import SpeakIndex from "./modes/SpeakIndex";
 import SpeakInvite from "./modes/SpeakInvite";
 import Stats from "./modes/Stats";
 import TrustCenter from "./modes/TrustCenter";
+import Explain from "./modes/Explain";
+import ObjectiveCard from "./modes/ObjectiveCard";
+import Signals from "./modes/Signals";
 import WriteHome from "./modes/Write/WriteHome";
 import WrestleApp from "./modes/WrestleApp";
 
@@ -178,6 +181,14 @@ function AuthenticatedRoutes() {
             ledger, gate state from the SPR-05 gate ledger. No disbursement
             path lives here. Slots into the SPR-04 shared/operator bucket. */}
         <Route path="/coordination/cost-consent" element={<CostConsent />} />
+        {/* Own Your Mind P0 — read-only surfaces (docs/own-your-mind/
+            10-p0-implementation-brief.md). Explain is the D1 "why this
+            claim" provenance panel (kind ∈ claim | synthesis | document);
+            ObjectiveCard (C1a) + Signals (L15) are the /ops read-only
+            cards. All three are additive GET-only surfaces. */}
+        <Route path="/explain/:kind/:id" element={<Explain />} />
+        <Route path="/objective" element={<ObjectiveCard />} />
+        <Route path="/signals" element={<Signals />} />
         <Route path="/outcomes" element={<OutcomesIndex />} />
         <Route path="/outcomes/:synthesisId" element={<Outcomes />} />
         <Route path="/replay/:investigationId" element={<Replay />} />

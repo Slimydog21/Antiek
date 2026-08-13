@@ -284,7 +284,9 @@ def _dispatch_and_parse(
     the failure shape for trajectory filtering.
     """
     try:
-        result = dispatch(
+        from .research_owner_dispatch import dispatch_loop_one
+        result = dispatch_loop_one(prompt, "decomposer", investigation_id=event.investigation_id,
+                                   semantic_call_id="phase1", attempt=0) or dispatch(
             prompt,
             "decomposer",
             investigation_id=event.investigation_id,

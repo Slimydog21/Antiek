@@ -6,10 +6,12 @@ import os
 import sys
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+_PKG_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
@@ -19,6 +21,7 @@ from substrate.research_artifact import (  # noqa: E402
     import_agent_notes,
     list_outline_blocks,
 )
+from substrate.research_artifact.store import ResearchArtifactStore  # noqa: E402
 
 artifact_router = APIRouter(prefix="/research", tags=["research-artifact"])
 
@@ -43,11 +46,19 @@ class BlocksOut(BaseModel):
 
 
 class ExportOut(BaseModel):
+    artifact_id: str
     investigation_id: str
     path: str
     content_hash: str
     size_bytes: int
     event_id: str | None = None
+
+
+class ArtifactStatusOut(BaseModel):
+    artifact_id: str
+    investigation_id: str
+    selected_style: str | None
+    latest_version: int
 
 
 class ImportNotesIn(BaseModel):
@@ -62,12 +73,14 @@ class ImportNotesOut(BaseModel):
 
 
 @artifact_router.post("/{investigation_id}/artifact/export", response_model=ExportOut)
-async def post_export_artifact(investigation_id: str) -> ExportOut:
+async def post_export_artifact(investigation_id: str, request: Request) -> ExportOut:
     try:
-        res = export_research_artifact(investigation_id, db_path=_db())
+        owner_user_id = str(getattr(request.state, "user_id", None) or "__operator__")
+        res = export_research_artifact(investigation_id, db_path=_db(), owner_user_id=owner_user_id)
     except Exception as exc:  # pragma: no cover — surface as 500 with message
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return ExportOut(
+        artifact_id=res.artifact_id,
         investigation_id=res.investigation_id,
         path=str(res.path),
         content_hash=res.content_hash,
@@ -76,16 +89,32 @@ async def post_export_artifact(investigation_id: str) -> ExportOut:
     )
 
 
-@artifact_router.post(
-    "/{investigation_id}/artifact/import-notes", response_model=ImportNotesOut
-)
-async def post_import_notes(
-    investigation_id: str, body: ImportNotesIn
-) -> ImportNotesOut:
+@artifact_router.get("/{investigation_id}/artifact", response_model=ArtifactStatusOut)
+async def get_artifact_status(investigation_id: str, request: Request) -> ArtifactStatusOut:
+    """Return the caller-owned durable identity and current style metadata."""
+    owner_user_id = str(getattr(request.state, "user_id", None) or "__operator__")
+    store = ResearchArtifactStore(_db())
+    record = store.get_for_investigation(investigation_id, owner_user_id)
+    # Compatibility for the shipped deterministic identity contract. The
+    # investigation lookup remains authoritative for future non-equal IDs.
+    if record is None:
+        candidate = store.get(investigation_id)
+        if candidate is not None and candidate.owner_user_id == owner_user_id:
+            record = candidate
+    if record is None:
+        raise HTTPException(status_code=404, detail="research artifact not found")
+    return ArtifactStatusOut(
+        artifact_id=record.artifact_id,
+        investigation_id=record.investigation_id,
+        selected_style=record.selected_style,
+        latest_version=record.latest_version,
+    )
+
+
+@artifact_router.post("/{investigation_id}/artifact/import-notes", response_model=ImportNotesOut)
+async def post_import_notes(investigation_id: str, body: ImportNotesIn) -> ImportNotesOut:
     try:
-        res = import_agent_notes(
-            Path(body.path), investigation_id=investigation_id
-        )
+        res = import_agent_notes(Path(body.path), investigation_id=investigation_id)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return ImportNotesOut(

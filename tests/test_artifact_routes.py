@@ -9,8 +9,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
-from substrate.graph import ensure_initialized
+from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.insight_question import promote_insight
+from substrate.research_artifact.paths import artifact_source_path_for
+from substrate.research_artifact.store import ResearchArtifactStore
 
 
 @pytest.fixture
@@ -48,6 +50,25 @@ def test_post_export_artifact(api_env):
     assert body["content_hash"]
     assert body["size_bytes"] > 0
     assert os.path.isfile(body["path"])
+
+def test_get_artifact_status_missing(api_env):
+    response = _client().get("/research/inv-missing/artifact")
+    assert response.status_code == 404
+
+
+def test_get_artifact_status_returns_authoritative_identity(api_env):
+    source = artifact_source_path_for("artifact-authoritative", "a" * 64)
+    ResearchArtifactStore(default_db_path()).save_source(
+        "artifact-authoritative", "inv-status", "__operator__", source, b"<html></html>"
+    )
+    response = _client().get("/research/inv-status/artifact")
+    assert response.status_code == 200
+    assert response.json() == {
+        "artifact_id": "artifact-authoritative",
+        "investigation_id": "inv-status",
+        "selected_style": None,
+        "latest_version": 0,
+    }
 
 
 def test_get_artifact_blocks_empty(api_env):

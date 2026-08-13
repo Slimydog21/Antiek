@@ -9,7 +9,7 @@ import { useEffect, useRef } from "react";
  * station uses from this hook is the LIVE read:
  *   - `live`       — the exact live pointer position → the bait worm rides it
  *                    (the cursor IS the bait) and the fishing line's free end
- *                    lands there (WernerIceBait / WernerFishingLayer).
+ *                    lands there (the removed cursor-bait; the seam now feeds idle edges).
  *   - `pointerIdle`— has the pointer been still ≥ POINTER_IDLE_MS? This gates the
  *                    own-hole never-catch gag (idle) vs. the line-to-cursor
  *                    (active) — the station's one XOR.

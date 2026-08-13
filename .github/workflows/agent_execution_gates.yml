@@ -69,16 +69,18 @@ jobs:
       - name: Install ripgrep (audit scripts use rg; not on ubuntu-latest by default)
         run: sudo apt-get update && sudo apt-get install -y ripgrep
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.14'
           cache: 'pip'
 
-      - name: Install Antiek + dev deps
+      - name: Install Antiek + canonical deep-research deps
         run: |
           python -m pip install -U pip
           # AGH SPR-04 (G4): pin under the declared-bar lock — see ci.yml.
-          pip install -c tools/lints/constraints.txt -e ".[dev]"
+          # canonical_verify deep-research imports the API application, whose
+          # upload routes eagerly import the PDF reader during collection.
+          pip install -c tools/lints/constraints.txt -e ".[dev,pdf]"
 
       - uses: actions/setup-node@v6
         with:

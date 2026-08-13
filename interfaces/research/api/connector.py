@@ -221,12 +221,12 @@ def _dispatch_and_parse(
     canonical_edge_ids: tuple[str, ...] = (),
 ) -> tuple[ConnectorResult | None, str]:
     try:
-        result = dispatch(
-            prompt,
-            "connector",
-            investigation_id=event.investigation_id,
-            parent_event_id=event.event_id,
-        )
+        from .research_owner_dispatch import dispatch_loop_one
+        result = dispatch_loop_one(
+            prompt, "connector", investigation_id=event.investigation_id,
+            semantic_call_id="phase4", attempt=0,
+        ) or dispatch(prompt, "connector", investigation_id=event.investigation_id,
+                      parent_event_id=event.event_id)
         response_text = result.text
         policy_id = f"{result.provider}/{result.model}"
     except (ProviderError, KeyError) as exc:

@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 33;
+export const EVENT_SCHEMA_VERSION = 35;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -148,6 +148,7 @@ export const ActionType = {
   GROUNDEDNESS_FAILED: "groundedness.failed",
   DOCUMENT_CONTENT_CLASS_DEFAULTED: "document.content_class_defaulted",
   WORKER_IDENTITY: "worker.identity",
+  SURFACE_SERVED_IMPRESSION: "surface.served_impression",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -731,7 +732,7 @@ export interface ReuseGatedPayload {
 
 export interface DocumentLoadedPayload {
   action_type: "document.loaded";
-  media_type: "pdf" | "pasted_text" | "url_extracted" | "markdown";
+  media_type: "pdf" | "pasted_text" | "url_extracted" | "markdown" | "html";
   content_hash: string;
   size_bytes: number;
   title?: string | null;
@@ -1063,7 +1064,7 @@ export interface GraphNodeInsertedPayload {
   action_type: "graph.node.inserted";
   node_id: string;
   canonical_label: string;
-  node_type: "entity" | "organization" | "person" | "property" | "metric" | "mechanism" | "claim" | "method" | "constraint" | "insight" | "question";
+  node_type: "entity" | "organization" | "person" | "property" | "metric" | "mechanism" | "claim" | "method" | "constraint" | "insight" | "question" | "memory";
   graph_scope: "depth" | "cross_domain" | "constraint";
   has_embedding: boolean;
 }
@@ -1085,6 +1086,7 @@ export interface GraphEdgeInsertedPayload {
   source_tier: number;
   extraction_confidence: number;
   graph_scope: "depth" | "cross_domain" | "constraint";
+  owner_user_id?: string | null;
 }
 
 /**
@@ -1432,6 +1434,7 @@ export interface EvidenceRetrieveRequestedPayload {
   top_k?: number;
   chunks_block: string;
   subgraph_block: string;
+  owner_semantic_call_id?: string | null;
 }
 
 /**
@@ -1598,6 +1601,11 @@ export interface InvestigationStartRequestedPayload {
   chase_value?: number;
   chase_budget_usd?: number;
   research_tier?: "fast" | "deep" | null;
+  owner_user_id?: string | null;
+  owner_operation_id?: string | null;
+  owner_model_choices?: Record<string, Record<string, string>> | null;
+  owner_launch_digest?: string | null;
+  owner_launch_version?: number | null;
 }
 
 /**
@@ -2676,6 +2684,40 @@ export interface DocumentFiledIntoInvestigationPayload {
 }
 
 /**
+ * What the reading/research surfaces SHOWED on one render (Own Your
+ * Mind P0 §5; L8/L15).
+ * 
+ * Emitted by the surfaces (not the substrate) whenever a ranked item is
+ * displayed, so the "what was shown" half of the transparency promise is
+ * reconstructable from the trajectory alone: the item, the ranked position
+ * it held, and the ranking version that produced that position.
+ * 
+ * AUDIT-ONLY in P0. There is deliberately NO consumer that trains on this
+ * event: recording what was served must not create a position-bias
+ * self-training loop (the P0 brief's explicit constraint). A future
+ * consumer needs its own decision record before it may read this stream.
+ * 
+ * ``ranked_position`` is the 0-based index of the item in the ranked list
+ * as displayed (0 = first). ``ranked_version`` names the ranking
+ * algorithm/config version that produced the order (e.g. the param
+ * version string), so a later change in what the user saw is attributable
+ * to a version boundary. ``timestamp`` is when the item was served —
+ * display time, not item creation time. ``user_id`` scopes the record to
+ * the account that saw it (multi-user readiness, mirroring the graph's
+ * owner_user_id columns).
+ */
+export interface SurfaceServedImpressionPayload {
+  action_type: "surface.served_impression";
+  surface: string;
+  item_kind: string;
+  item_id: string;
+  ranked_position: number;
+  ranked_version: string;
+  timestamp: string;
+  user_id: string;
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -2796,7 +2838,8 @@ export type TypedPayload =
   | ReadBookAnsweredPayload
   | ReadBookAnswerJudgedPayload
   | ReadMetaReadingGeneratedPayload
-  | DocumentFiledIntoInvestigationPayload;
+  | DocumentFiledIntoInvestigationPayload
+  | SurfaceServedImpressionPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -2830,6 +2873,8 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "artifact.interacted",
   "audit.finding_emitted",
   "block.positioned",
+  "book.servability_changed",
+  "book.taken_down",
   "claim.asserted_by_operator",
   "claim.challenge_raised",
   "claim.grounding_check_failed",
@@ -2924,6 +2969,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "skill.patch_gate_reviewed",
   "skill_rule.promoted",
   "source.read",
+  "surface.served_impression",
   "synthesis.archived",
   "synthesis.master_md_skipped",
   "synthesis.master_md_written",

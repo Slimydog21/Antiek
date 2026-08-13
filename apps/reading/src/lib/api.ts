@@ -242,6 +242,12 @@ export async function getHealth(): Promise<{
  */
 export type ResearchTier = "fast" | "deep";
 
+export interface UserModelChoice {
+  authority: "user_model";
+  provider_id: string;
+  model_id: string;
+}
+
 export interface StartInvestigationRequest {
   question: string;
   context?: string;
@@ -252,12 +258,18 @@ export interface StartInvestigationRequest {
   investigation_id?: string;
   /** Curated fast/deep tier; defaults server-side to "deep" when omitted. */
   research_tier?: ResearchTier;
+  /** Owner-selected route. The server requires this and operation_id together. */
+  model_choice?: UserModelChoice;
+  /** Stable idempotency identity for an owner-selected launch. */
+  operation_id?: string;
 }
 
 export interface StartInvestigationResponse {
   investigation_id: string;
   status: string;
   start_event_id: string;
+  operation_id?: string;
+  owner_model_status?: "queued" | "replayed";
 }
 
 /** POST /investigations — kick off a cold research investigation. */
@@ -1171,6 +1183,7 @@ export interface ResearchArtifactBlocksResponse {
 }
 
 export interface ResearchArtifactExportResponse {
+  artifact_id: string;
   investigation_id: string;
   path: string;
   content_hash: string;

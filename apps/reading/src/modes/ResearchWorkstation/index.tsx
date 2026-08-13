@@ -1,7 +1,8 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
+import { markSeen } from "../../workspace/seen";
 import type { InvestigationState } from "../../hooks/useInvestigation";
 import { parseSynthesis } from "../../lib/synthesisParser";
 import GlassSurface from "../../shell/GlassSurface";
@@ -66,6 +67,7 @@ export default function ResearchWorkstation() {
   const params = useParams<{ investigationId?: string }>();
   const investigationId = params.investigationId ?? null;
 
+
   const starters: StarterPanel[] = [
     {
       kind: "InvestigationSidebar",
@@ -101,6 +103,21 @@ export default function ResearchWorkstation() {
 function InvestigationCenter({ investigationId }: { investigationId: string }) {
   const investigation = useInvestigation(investigationId);
   const centerRef = useRef<HTMLDivElement>(null);
+
+  // herdr transfer P0-3 — opening an investigation marks it seen. The unread
+  // axis (shared/researchState.ts isUnseen) compares completed_at against
+  // this timestamp, so landing on /inv/:id clears the unread flag — same
+  // semantics as reading an email. We ALSO re-mark when the status
+  // transitions (a research that completes WHILE you are watching it was
+  // seen completing, not left unread) and when the window regains focus.
+  useEffect(() => {
+    markSeen(investigationId);
+  }, [investigationId, investigation.status]);
+  useEffect(() => {
+    const onFocus = () => markSeen(investigationId);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [investigationId]);
   const openPanel = useWorkspace((s) => s.open);
 
   // SPR-04 M2: highlight → follow this. A raw highlight has no reserved

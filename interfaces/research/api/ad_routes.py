@@ -8,12 +8,18 @@ functions and adapt them to HTTP.
   the SPR-07 frontend emitter flushes, and hands it to the SPR-05 accrual engine
   (``frame_attention_accrual.accrue_window`` → per-second ``weigh_second`` →
   the ONE sanctioned escrow seam ``ip_holders.accrue_escrow`` + house seconds).
-  The route's only added responsibilities are (a) version-gating the wire shape,
+  The route's only added responsibilities are (a) version-gating the wire shape
+  (v2 and v3 accepted; the client-priced v1 stays rejected),
   (b) deserializing into the frozen dataclasses (their ``__post_init__`` ranges
   validate the payload → 422), (c) resolving the AUTHORITATIVE per-asset
   ``content_class`` + ``ip_holder_id`` server-side (the client hint is NEVER
-  trusted — the module contract requires the backend to resolve it), and
-  (d) persisting through the single-writer lock.
+  trusted — the module contract requires the backend to resolve it),
+  (d) MINTING the window's ad value server-side by joining the server's OWN
+  fill/pricing record (``ad_fill_decisions``) on (owner_user_id, window_id) —
+  the client-supplied ``ad_value_usd_cents`` is accepted only as an IGNORED
+  HINT, logged as ``client_hint`` (``frame_telemetry_client_hints``) for
+  auditability, never consulted — and (e) persisting through the single-writer
+  lock.
 
 * ``GET /api/ad/fill`` wraps ``reader_slots.fill_slot``: a matched advertiser
   creative if any, else the real ``HousePromo`` house fill (never blank).
@@ -28,15 +34,16 @@ are not imported here.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
-if TYPE_CHECKING:
-    import duckdb
+from fastapi import FastAPI, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict, Field
 
-from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field
-
-from substrate.ad_inventory.frame_attention import FRAME_TELEMETRY_SCHEMA_VERSION
+from runtime.db_lock import LockedConnection, ReadConnection
+from substrate.ad_inventory.frame_attention import (
+    FRAME_TELEMETRY_SCHEMA_VERSION,
+    SUPPORTED_FRAME_TELEMETRY_SCHEMA_VERSIONS,
+)
 
 from .books import _resolve_db_path
 
@@ -70,12 +77,16 @@ class FrameSecondIn(BaseModel):
 class WindowFrameBatchIn(BaseModel):
     window_id: str
     seconds: list[FrameSecondIn] = Field(default_factory=list)
-    # NOTE (AFA-S1, frame-telemetry-v2): ``ad_value_usd_cents`` is intentionally
-    # ABSENT from the inbound shape. The client measures attention; the SERVER
-    # prices the window (``resolve_window_value_cents``). A client that still
-    # sends the field has it SILENTLY DROPPED by pydantic (extra fields ignored)
-    # — it can never influence the accrued value. The red-proof is
+    # NOTE (ad-pipeline gap S1, frame-telemetry-v3): ``ad_value_usd_cents`` is
+    # RE-ACCEPTED on the inbound shape as an OPTIONAL IGNORED HINT — the field
+    # a legacy emitter still sends. It is NEVER trusted: the SERVER prices the
+    # window (``resolve_window_value_cents`` joins the server's OWN
+    # fill/pricing record — ``ad_fill_decisions`` — on (owner_user_id,
+    # window_id)), and the hint is only logged to
+    # ``frame_telemetry_client_hints`` (``client_hint``) for auditability. It
+    # can never influence the accrued value. The red-proof is
     # ``test_ad_routes.py::test_frame_telemetry_ignores_client_supplied_value``.
+    ad_value_usd_cents: int | None = Field(default=None, ge=0)
     schema_version: str = FRAME_TELEMETRY_SCHEMA_VERSION
 
 
@@ -121,8 +132,36 @@ class AdFillResponse(BaseModel):
     house: HousePromoResponse | None = None
 
 
+class EdgeFillResponse(BaseModel):
+    fill_decision_id: str
+    slot_id: str
+    position: str
+    kind: Literal["ad", "house"]
+    revenue_usd_cents: int
+    ad: AdCreativeResponse | None = None
+    house: HousePromoResponse | None = None
+    price_status: Literal["unpriced", "settled"]
+
+
+class MultiEdgeFillRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    window_id: str = Field(min_length=1, max_length=256)
+    lens: Literal["read", "research", "write", "speak"]
+    positions: list[Literal["top", "bottom", "left", "right"]] = Field(
+        min_length=1, max_length=4
+    )
+    document_id: str | None = Field(default=None, max_length=256)
+    page_index: int | None = Field(default=None, ge=0)
+
+
+class MultiEdgeFillResponse(BaseModel):
+    window_id: str
+    fills: list[EdgeFillResponse]
+
+
 def _resolve_asset_gate(
-    con: duckdb.DuckDBPyConnection, asset_ids: set[str]
+    con: ReadConnection, asset_ids: set[str]
 ) -> dict[str, tuple[str | None, str | None]]:
     """Resolve each asset's AUTHORITATIVE (content_class, ip_holder_id) from the
     documents gate columns — server-side, never from the client hint. An asset
@@ -141,26 +180,77 @@ def _resolve_asset_gate(
     return {r[0]: (r[1], r[2]) for r in rows}
 
 
-def resolve_window_value_cents(window_id: str) -> int:
-    """Mint the window's ad value SERVER-SIDE (AFA-S1, frame-telemetry-v2).
+def resolve_window_value_cents(
+    *,
+    owner_user_id: str,
+    window_id: str,
+    con: ReadConnection | LockedConnection | None = None,
+) -> int:
+    """Mint the window's ad value SERVER-SIDE (ad-pipeline gap S1,
+    frame-telemetry-v3).
 
-    This is the trust seam that replaces the removed client-supplied
-    ``ad_value_usd_cents``. Today it returns 0: no pricing exists, so every
-    window is ``unpriced`` and accrues zero to escrow (honest — no fabricated
-    value). It NEVER reads anything the client sent.
+    This is the trust seam that replaces the client-supplied
+    ``ad_value_usd_cents`` (which is now accepted only as an IGNORED HINT and
+    logged as ``client_hint``). The server joins ITS OWN fill/pricing record —
+    ``ad_fill_decisions``, the durable snapshot ``POST /api/ad/fills`` persists
+    at fill time (``fill_decisions.decide_fills``) — on
+    ``(owner_user_id, window_id)`` and returns the record's revenue ONLY when
+    ``price_status = 'settled'``. A missing fill record, or an ``unpriced`` one
+    (CPM is a ranking signal, not settlement evidence — the fill ledger itself
+    refuses to price), mints 0: the window accrues house/zero honestly, and the
+    server NEVER fabricates a price. It NEVER reads anything the client sent.
 
-    SPR-10 (the auction) is this function's future join: it will look up the
-    priced fill decision recorded for ``window_id`` and return that window's
-    total cents. When it does, the value becomes real WITHOUT any client change
-    — the emitter already sends no value, and the server has always been the
-    only authority. Keeping the seam here (module scope, not nested) makes it
+    ``con`` is the connection to join on. The route passes its single-writer
+    connection so the join happens under the write lock (the same lock under
+    which fill decisions are persisted — no torn ordering). When ``con`` is
+    None the resolver opens its own read connection via the DB path resolver;
+    a missing ``ad_fill_decisions`` table is treated as "no fill record
+    exists" → 0.
+
+    SPR-10 (the auction / a billing authority) settles a decision's price by
+    writing ``revenue_usd_cents`` + ``price_status='settled'`` on the existing
+    fill record; that settled row then feeds real value here WITHOUT any client
+    change. Keeping the seam here (module scope, not nested) makes it
     unit-testable and monkeypatchable: accrual-math tests inject a nonzero
-    value; the production default is 0.
+    value; the production default is the fill-ledger join.
     """
-    # window_id is accepted now (not yet used) so the SPR-10 join is a
-    # body change here, not a signature change at every call site.
-    _ = window_id
-    return 0
+    if con is None:
+        from runtime.db_lock import connect_read
+
+        con = connect_read(_resolve_db_path())
+        try:
+            return _resolve_from_fill_record(con, owner_user_id, window_id)
+        finally:
+            con.close()
+    return _resolve_from_fill_record(con, owner_user_id, window_id)
+
+
+def _resolve_from_fill_record(
+    con: ReadConnection | LockedConnection,
+    owner_user_id: str,
+    window_id: str,
+) -> int:
+    """The actual (owner_user_id, window_id) → settled-cents join. Kept
+    separate so both connection paths (caller-supplied vs self-opened) share
+    one implementation."""
+    import duckdb as _duckdb
+
+    try:
+        row = con.execute(
+            "SELECT revenue_usd_cents, price_status FROM ad_fill_decisions "
+            "WHERE owner_user_id = ? AND window_id = ?",
+            [owner_user_id, window_id],
+        ).fetchone()
+    except _duckdb.CatalogException:
+        # No ad_fill_decisions table yet → no fill decision was ever
+        # persisted → no server-side price exists. Honest zero, never an
+        # error that would bounce the telemetry flush.
+        return 0
+    if row is None or row[1] != "settled":
+        # No fill record for this window, or the record is still unpriced
+        # (CPM is a ranking signal, not settlement evidence).
+        return 0
+    return int(row[0])
 
 
 def register_ad_routes(app: FastAPI) -> None:
@@ -173,15 +263,22 @@ def register_ad_routes(app: FastAPI) -> None:
         status_code=202,
         tags=["ad"],
     )
-    async def frame_telemetry(batch_in: WindowFrameBatchIn) -> FrameTelemetryResponse:
+    async def frame_telemetry(
+        batch_in: WindowFrameBatchIn, request: Request
+    ) -> FrameTelemetryResponse:
         """Accrue one window's per-second frame-attention batch (Read SPR-09).
 
-        Version-gates the wire shape, deserializes into the frozen SPR-05
-        contract (range validation → 422), resolves the authoritative per-asset
-        content_class + ip_holder server-side, and hands the batch to the SPR-05
-        accrual engine through the single-writer lock. Weighting + accrual +
-        escrow are COMPOSED, not re-implemented. Accrual ≠ disbursement."""
+        Version-gates the wire shape (v2 and v3 accepted; v1 client-priced
+        rejected), deserializes into the frozen SPR-05 contract (range
+        validation → 422), resolves the authoritative per-asset content_class +
+        ip_holder server-side, MINTS the window's ad value server-side from the
+        server's own fill/pricing record (the client's ad_value_usd_cents is an
+        IGNORED HINT — logged as client_hint, never trusted), and hands the
+        batch to the SPR-05 accrual engine through the single-writer lock.
+        Weighting + accrual + escrow are COMPOSED, not re-implemented. Accrual
+        ≠ disbursement."""
         from runtime.db_lock import connect_write
+        from substrate.ad_inventory import fill_decisions
         from substrate.ad_inventory.frame_attention import (
             FrameAttentionSample,
             FrameSecond,
@@ -189,19 +286,24 @@ def register_ad_routes(app: FastAPI) -> None:
         )
         from substrate.ad_inventory.frame_attention_accrual import (
             accrue_window,
+            record_client_hint,
             window_reconciliation,
         )
 
         # (a) Version gate: a batch flushed by an emitter on a different contract
         # shape must not be silently mis-aggregated. 409 — the shape conflicts
-        # with what this backend accrues against.
-        if batch_in.schema_version != FRAME_TELEMETRY_SCHEMA_VERSION:
+        # with what this backend accrues against. The CURRENT version and the
+        # previous one (v2 — a strict wire subset of v3: the value hint is
+        # simply absent) are accepted so old emitters keep working; v1 — the
+        # client-priced shape — is NOT in the accepted set and stays rejected.
+        if batch_in.schema_version not in SUPPORTED_FRAME_TELEMETRY_SCHEMA_VERSIONS:
             raise HTTPException(
                 status_code=409,
                 detail=(
                     f"frame-telemetry schema mismatch: emitter sent "
                     f"{batch_in.schema_version!r}, backend accrues "
-                    f"{FRAME_TELEMETRY_SCHEMA_VERSION!r}"
+                    f"{FRAME_TELEMETRY_SCHEMA_VERSION!r} (accepted: "
+                    f"{sorted(SUPPORTED_FRAME_TELEMETRY_SCHEMA_VERSIONS)})"
                 ),
             )
 
@@ -247,26 +349,55 @@ def register_ad_routes(app: FastAPI) -> None:
                 )
                 for sec in batch_in.seconds
             )
-            batch = WindowFrameBatch(
-                window_id=batch_in.window_id,
-                seconds=seconds,
-                # SERVER-MINTED (AFA-S1, frame-telemetry-v2): the value is
-                # resolved here, never echoed from the request. The module-level
-                # seam is monkeypatchable so accrual-math tests can inject a
-                # value; production returns 0 until SPR-10 prices the window.
-                ad_value_usd_cents=resolve_window_value_cents(batch_in.window_id),
-                schema_version=batch_in.schema_version,
-            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        owner_user_id = str(
+            getattr(request.state, "user_id", None) or "__operator__"
+        )
 
         # (d) Accrue through the single-writer lock. This route runs inside the
         # --workers 1 uvicorn; accrue_window does not open its own writer.
         con_w = connect_write(db, purpose="ad/frame_telemetry")
         try:
+            # (e) SERVER-MINTED value (ad-pipeline gap S1, frame-telemetry-v3):
+            # ensure the fill ledger exists on this connection, then join the
+            # server's OWN fill/pricing record — the durable snapshot
+            # POST /api/ad/fills persisted at fill time. A missing/unsettled
+            # record mints 0 (honest house/zero; never a fabricated price).
+            # The client hint (if any) is captured but ONLY logged below —
+            # never consulted. The module-level seam is monkeypatchable so
+            # accrual-math tests can inject a value.
+            fill_decisions.ensure_table(con_w)
+            try:
+                batch = WindowFrameBatch(
+                    window_id=batch_in.window_id,
+                    seconds=seconds,
+                    ad_value_usd_cents=resolve_window_value_cents(
+                        owner_user_id=owner_user_id,
+                        window_id=batch_in.window_id,
+                        con=con_w,
+                    ),
+                    schema_version=batch_in.schema_version,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+
             result = accrue_window(
                 con_w, batch, asset_to_ip_holder=asset_to_ip_holder
             )
+            if batch_in.ad_value_usd_cents is not None:
+                # (f) The client's ad_value_usd_cents is an IGNORED HINT: it
+                # never feeds the accrual (the value was minted server-side),
+                # but it IS logged to the client-hint ledger for auditability —
+                # what the client CLAIMED vs what the server minted.
+                record_client_hint(
+                    con_w,
+                    window_id=batch_in.window_id,
+                    batch_ref=result.batch_ref,
+                    client_hint_ad_value_usd_cents=batch_in.ad_value_usd_cents,
+                    telemetry_version=result.telemetry_version,
+                )
             recon = window_reconciliation(con_w, batch.window_id)
         finally:
             con_w.close()
@@ -370,4 +501,146 @@ def register_ad_routes(app: FastAPI) -> None:
             revenue_usd_cents=fill.revenue_usd_cents,
             ad=ad_resp,
             house=house_resp,
+        )
+
+    @app.post("/api/ad/fills", response_model=MultiEdgeFillResponse, tags=["ad"])
+    async def ad_fills(
+        request: Request,
+        body: MultiEdgeFillRequest,
+    ) -> MultiEdgeFillResponse:
+        """Decide every active border edge as one durable snapshot.
+
+        Exact retries return the stored snapshot; they do not re-read or
+        re-rank inventory.  Only active inventory belonging to an advertiser
+        whose latest registry state is ACTIVE is eligible.  A selected ad is
+        still *unpriced*: CPM is a ranking signal, not settlement evidence, so
+        this route records and returns zero revenue.
+        """
+        from runtime.db_lock import connect_write
+        from substrate.ad_inventory.ad_bidding import LeadGenAdInventory
+        from substrate.ad_inventory.fill_decisions import (
+            FillDecisionConflictError,
+            decide_fills,
+        )
+        from substrate.ad_inventory.inventory_persistence import (
+            load_serving_for_matcher,
+        )
+        from substrate.ad_inventory.reader_slots import (
+            HousePromo,
+            ReaderAdSlot,
+            fill_slot,
+        )
+        from substrate.books.model import list_book_assets
+        requested_positions = tuple(body.positions)
+        if len(set(requested_positions)) != len(requested_positions):
+            raise HTTPException(
+                status_code=422,
+                detail="positions must not contain duplicate edges",
+            )
+
+        owner_user_id = str(
+            getattr(request.state, "user_id", None) or "__operator__"
+        )
+        db = _resolve_db_path()
+        with connect_write(db, purpose="ad/fills:decide") as con:
+            def _select() -> list[dict[str, object]]:
+                targeted, flat = load_serving_for_matcher(con)
+                # ``fill_slot`` is the canonical v1 matcher.  Second-generation
+                # targeting items retain their flat item payload here; the
+                # lens is the only allowlisted signal this border currently has.
+                inventory = LeadGenAdInventory(
+                    items=[item.item for item in targeted] + list(flat)
+                )
+                servable = list_book_assets(con, servable_only=True)
+                houses = [
+                    HousePromo(
+                        promoted_document_id=asset.document_id,
+                        title=asset.title,
+                        author=asset.author,
+                    )
+                    for asset in servable
+                ]
+                selected: list[dict[str, object]] = []
+                for position in requested_positions:
+                    slot = ReaderAdSlot(
+                        # Internal matching locator only.  It is never persisted
+                        # or returned as a document identity when the caller has
+                        # no document (Research/Write/Speak windows).
+                        document_id=body.document_id or f"window:{body.window_id}",
+                        page_index=body.page_index or 0,
+                        position=position,
+                    )
+                    fill = fill_slot(
+                        slot,
+                        inventory,
+                        page_topics=[body.lens],
+                        cpm_to_cents=0,
+                        house_candidates=houses,
+                    )
+                    selected.append(
+                        {
+                            "position": position,
+                            "kind": fill.kind,
+                            "revenue_usd_cents": 0,
+                            "ad": (
+                                {
+                                    "inventory_id": fill.ad.inventory_id,
+                                    "advertiser_display_name": (
+                                        fill.ad.advertiser_display_name
+                                    ),
+                                    "creative_url": fill.ad.creative_url,
+                                    "landing_url": fill.ad.landing_url,
+                                }
+                                if fill.ad is not None
+                                else None
+                            ),
+                            "house": (
+                                {
+                                    "promoted_document_id": (
+                                        fill.house.promoted_document_id
+                                    ),
+                                    "title": fill.house.title,
+                                    "author": fill.house.author,
+                                }
+                                if fill.house is not None
+                                else None
+                            ),
+                        }
+                    )
+                return selected
+
+            try:
+                decision = decide_fills(
+                    con,
+                    owner_user_id=owner_user_id,
+                    window_id=body.window_id,
+                    document_id=body.document_id,
+                    page_index=body.page_index,
+                    lens=body.lens,
+                    positions=requested_positions,
+                    select_fills=_select,
+                )
+            except FillDecisionConflictError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail="ad_fill_window_conflict",
+                ) from exc
+
+        return MultiEdgeFillResponse(
+            window_id=decision.window_id,
+            fills=[
+                EdgeFillResponse.model_validate(
+                    {
+                        **fill,
+                        "fill_decision_id": (
+                            f"{decision.decision_id}:{fill['position']}"
+                        ),
+                        "slot_id": (
+                            f"slot:{decision.decision_id}:{fill['position']}"
+                        ),
+                        "price_status": decision.price_status,
+                    }
+                )
+                for fill in decision.fills
+            ],
         )

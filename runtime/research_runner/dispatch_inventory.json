@@ -49,7 +49,10 @@
     "stage": "promotion",
     "source": "acquisition/urls/client.py",
     "function": "fetch._send",
-    "call_symbols": ["client.get", "c.get"],
+    "call_symbols": [
+      "client.get",
+      "c.get"
+    ],
     "classification": "zero_cost_external",
     "reason": "ordinary origin HTTP fetch has no metered provider charge; Browserbase escalation is disabled at this reachable call site"
   },
@@ -75,9 +78,21 @@
     "seam_id": "cascade.tail.knowledge_extractor",
     "stage": "synthesis_tail",
     "source": "skills/domain/extract.py",
-    "function": "default_llm_call_factory._call",
-    "call_symbol": "dispatch",
+    "function": "default_llm_call_factory._OwnerAwareCall.__call__",
+    "call_symbols": [
+      "dispatch_loop_one",
+      "dispatch"
+    ],
     "classification": "paid_ineligible",
     "reason": "up to six matched domains, two parse attempts per domain, and three provider fallbacks produce at most 36 physical sends; prices are zero placeholders and attempts are not reconcilable"
+  },
+  {
+    "seam_id": "cascade.synthesis.owner_model",
+    "stage": "synthesis",
+    "source": "interfaces/research/api/synthesizer.py",
+    "function": "_dispatch_once",
+    "call_symbol": "dispatch_loop_one",
+    "classification": "paid_ineligible",
+    "reason": "owner-bound synthesizer dispatch: one call plus one parse-repair per attempt, prices are placeholders and attempts are not reconcilable"
   }
 ]

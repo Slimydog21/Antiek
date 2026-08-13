@@ -12,10 +12,9 @@ The fix constructs the reuse substrate from a ``.cursor()`` of a read-WRITE
 handle that SHARES the funnel's DuckDB instance — never a conflicting
 ``connect_read``. These tests are the red-proof:
 
-* ``test_old_connect_read_path_raises_under_writer`` — pins the #140 bug: the
-  OLD construction (``make_substrate("brute_force", db)`` → ``connect_read``)
-  RAISES ``ConnectionException`` when a writer is open. This is what broke the
-  launch.
+* ``test_connect_read_path_coexists_with_sanctioned_writer`` — proves the
+  formerly broken construction can now read while this process holds the
+  sanctioned writer.
 * ``test_new_cursor_path_coexists_with_writer_and_reads_live`` — the NEW
   construction (``make_substrate_from_con`` → ``con.cursor()``) does NOT raise
   under the same held writer, retrieves the seeded unit, and reads a unit
@@ -117,16 +116,11 @@ def _seed_servable_unit(db_path: str, emb: _StubEmbedding, *, idx: int = 0) -> s
 
 
 # ---------------------------------------------------------------------------
-# Red-proof at the construction layer: OLD raises, NEW does not (deterministic)
+# Red-proof at the construction layer
 # ---------------------------------------------------------------------------
 
 
-def test_old_connect_read_path_raises_under_writer(tmp_path):
-    """The #140 construction path (``make_substrate`` → ``connect_read``) RAISES
-    ``ConnectionException`` when a read-write handle to the same file is already
-    open in the process — the exact defect that broke every cascade launch."""
-    import duckdb
-
+def test_connect_read_path_coexists_with_sanctioned_writer(tmp_path):
     db = os.path.join(tmp_path, "old.duckdb")
     init_database_at_path(db)
     emb = _StubEmbedding()
@@ -134,11 +128,10 @@ def test_old_connect_read_path_raises_under_writer(tmp_path):
 
     writer = connect_write(db, purpose="held_writer")
     try:
-        with pytest.raises(duckdb.Error) as exc_info:
-            make_substrate("brute_force", db, model=emb)  # → connect_read
-        assert "different configuration" in str(exc_info.value) or "Connection" in type(
-            exc_info.value
-        ).__name__
+        substrate = make_substrate("brute_force", db, model=emb)
+        result = substrate.query(_TOPIC, top_k=3)
+        substrate.close()
+        assert result["results"]
     finally:
         writer.close()
 

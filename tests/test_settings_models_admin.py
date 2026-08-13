@@ -27,6 +27,7 @@ from fastapi.testclient import TestClient
 from interfaces.research.api.settings_budget import register_settings_budget_routes
 from interfaces.research.api.settings_models_admin import UserModelRegistryIntegrityError
 from substrate.dispatch.base import ProviderError
+from substrate.dispatch.providers.anthropic import AnthropicProvider
 from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
 from substrate.dispatch.router import (
     get_provider,
@@ -125,6 +126,108 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     assert provider.base_url == "https://api.deepseek.com/v1"
 
 
+@pytest.mark.parametrize(
+    ("catalog_id", "provider_kind", "model_id", "adapter_type", "base_url", "path"),
+    [
+        (
+            "openai",
+            "openai_compat",
+            "gpt-5.6-sol",
+            OpenAICompatProvider,
+            "https://api.openai.com",
+            "/v1/chat/completions",
+        ),
+        (
+            "anthropic",
+            "anthropic",
+            "claude-opus-5",
+            AnthropicProvider,
+            "https://api.anthropic.com",
+            "/v1/messages",
+        ),
+    ],
+)
+def test_first_party_preset_registers_real_adapter_and_decrypts_only_at_call(
+    client: TestClient,
+    catalog_id: str,
+    provider_kind: str,
+    model_id: str,
+    adapter_type: type[OpenAICompatProvider] | type[AnthropicProvider],
+    base_url: str,
+    path: str,
+) -> None:
+    response = client.post(
+        "/settings/models/user",
+        json={
+            "provider_kind": provider_kind,
+            "provider_catalog_id": catalog_id,
+            "model_id": model_id,
+            "display_name": f"First Party {catalog_id}",
+            "api_key": _SECRET,
+        },
+    )
+    assert response.status_code == 201
+    row = response.json()
+    assert row["base_url"] == base_url
+    assert row["provider_catalog_id"] == catalog_id
+    assert row["pricing_status"] == "known"
+    assert row["execution_status"] == "blocked_idempotency_unproven"
+
+    provider = get_provider(row["id"])
+    assert isinstance(provider, adapter_type)
+    assert provider.base_url == base_url
+    if isinstance(provider, OpenAICompatProvider):
+        assert provider.chat_completions_path == path
+    else:
+        assert path == "/v1/messages"
+    assert provider._api_key is None  # noqa: SLF001
+    assert provider._resolve_api_key() == _SECRET  # noqa: SLF001
+
+
+def test_registered_sonnet_uses_valid_adaptive_thinking_request_shape(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/settings/models/user",
+        json={
+            "provider_kind": "anthropic",
+            "provider_catalog_id": "anthropic",
+            "model_id": "claude-sonnet-5",
+            "display_name": "First Party Sonnet",
+            "api_key": _SECRET,
+        },
+    )
+    assert response.status_code == 201
+    provider = get_provider(response.json()["id"])
+    assert isinstance(provider, AnthropicProvider)
+    captured: dict[str, object] = {}
+
+    def inspect_request(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "content": [{"type": "text", "text": "owner answer"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 2, "output_tokens": 3},
+            },
+            request=request,
+        )
+
+    provider._client = httpx.Client(transport=httpx.MockTransport(inspect_request))  # noqa: SLF001
+    provider._owns_client = True  # noqa: SLF001
+    result = provider.call(
+        model="claude-sonnet-5",
+        prompt="owner prompt",
+        max_tokens=32,
+        temperature=0.7,
+    )
+
+    assert result.text == "owner answer"
+    assert captured["model"] == "claude-sonnet-5"
+    assert "temperature" not in captured
+
+
 def test_exact_choice_resolves_but_execution_remains_hard_ceiling_blocked(
     client: TestClient,
 ) -> None:
@@ -173,11 +276,21 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
         RouteAuthorityCatalogEntry,
     )
 
-    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    assert (
+        client.post(
+            "/settings/models/user",
+            json={
+                **_ADD_BODY,
+                "provider_catalog_id": "deepseek",
+                "base_url": "https://api.deepseek.com",
+            },
+        ).status_code
+        == 201
+    )
     identity = ProviderRouteIdentity(
         "openai_compat",
         "deepseek-chat",
-        "https://api.deepseek.com/v1",
+        "https://api.deepseek.com",
         "user.prompt.generate",
         "generate",
     )
@@ -215,7 +328,7 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
         QualificationVerdict.QUALIFIED,
         evidence,
         provider_kind="openai_compat",
-        endpoint="https://api.deepseek.com/v1",
+        endpoint="https://api.deepseek.com",
         chargeable_units=frozenset({BillingUnit.CALL}),
         expires_at=datetime.now(UTC) + timedelta(days=1),
     )
@@ -223,7 +336,7 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
     class ExactAdapter:
         provider = "user-my-deepseek"
         model = "deepseek-chat"
-        endpoint = "https://api.deepseek.com/v1"
+        endpoint = "https://api.deepseek.com"
         capabilities = ProviderCapabilities(True, True, True, frozenset({BillingUnit.CALL}))
 
         def send_once(
@@ -510,7 +623,7 @@ def test_key_absent_from_responses_artifacts_and_logs(
 
     artifact_bytes = (env / "byok" / "credentials.enc").read_bytes()
     assert _SECRET.encode("utf-8") not in artifact_bytes
-    assert b"ciphertext_hex" in artifact_bytes  # encrypted, not omitted
+    assert json.loads(artifact_bytes) == {}  # DELETE removes ciphertext too
 
     assert _SECRET not in caplog.text
     captured = capsys.readouterr()

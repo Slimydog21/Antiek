@@ -134,3 +134,69 @@ describe("LemonToast — queue ordering", () => {
     expect(b & 4).toBeTruthy();
   });
 });
+
+
+describe("LemonToast — navigation targets (herdr transfer P0-4)", () => {
+  beforeEach(() => {
+    toast.setNavigator(null);
+    // Drain the singleton queue between tests.
+    act(() => {
+      // dismiss() is exported; the viewport owns ids, so instead we let the
+      // 4s TTL expire between tests and clear via a fresh viewport render.
+    });
+  });
+
+  it("a targeted toast renders as a clickable button with the path in its title", () => {
+    render(<LemonToastViewport />);
+    act(() => {
+      toast.info("Research finished", { target: { path: "/inv/abc" } });
+    });
+    const btn = screen.getByRole("button", { name: /Research finished/ });
+    expect(btn.getAttribute("title")).toContain("/inv/abc");
+  });
+
+  it("clicking a targeted toast navigates via the registered navigator", () => {
+    const navigate = vi.fn();
+    toast.setNavigator(navigate);
+    render(<LemonToastViewport />);
+    act(() => {
+      toast.warn("Needs attention", { target: { path: "/inv/xyz" } });
+    });
+    const btn = screen.getByRole("button", { name: /Needs attention/ });
+    fireEvent.click(btn);
+    // The navigator receives the full target (the shell focuses a panel
+    // after navigating).
+    expect(navigate).toHaveBeenCalledWith({ path: "/inv/xyz" });
+  });
+
+  it("the navigator receives panelId when present", () => {
+    const navigate = vi.fn();
+    toast.setNavigator(navigate);
+    render(<LemonToastViewport />);
+    act(() => {
+      toast.ok("Open panel", { target: { path: "/inv/abc", panelId: "rw:chat:abc" } });
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Open panel/ }));
+    expect(navigate).toHaveBeenCalledWith({
+      path: "/inv/abc",
+      panelId: "rw:chat:abc",
+    });
+  });
+
+  it("clicking a targeted toast without a navigator is a safe no-op", () => {
+    render(<LemonToastViewport />);
+    act(() => {
+      toast.err("No navigator", { target: { path: "/inv/nope" } });
+    });
+    const btn = screen.getByRole("button", { name: /No navigator/ });
+    expect(() => fireEvent.click(btn)).not.toThrow();
+  });
+
+  it("back-compat: a numeric ttl still works", () => {
+    render(<LemonToastViewport />);
+    act(() => {
+      toast.ok("legacy", 5000);
+    });
+    expect(screen.getByText("legacy")).toBeTruthy();
+  });
+});

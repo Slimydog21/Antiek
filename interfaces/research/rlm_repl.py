@@ -37,14 +37,23 @@ prevents context rot.
 from __future__ import annotations
 
 import ast
+import contextlib
+import hashlib
 import io
+import itertools
 import os
 import sys
 import traceback
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from orchestration.rlm.prime_agent_backend import (
+        PrimeAgentOutcome,
+        PrimeAgentRLMBackend,
+    )
 
 # Ensure substrate root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -371,9 +380,7 @@ class RLMRepl:
         """True when ``answer["ready"]`` is set OR iteration cap hit."""
         if self.answer.get("ready"):
             return True
-        if self.iteration >= self.max_iterations:
-            return True
-        return False
+        return self.iteration >= self.max_iterations
 
     def final_answer(self) -> str:
         """Extract the final answer. Call after the loop terminates."""
@@ -429,7 +436,118 @@ def rlm_loop(
 # ---------------------------------------------------------------------------
 
 
-def make_llm_query(llm_caller: Callable[[str], str]) -> Callable[[str], str]:
+def _resolve_prime_backend(
+    *,
+    prime_backend: PrimeAgentRLMBackend | None,
+    prime_agent_backend: PrimeAgentRLMBackend | None,
+) -> PrimeAgentRLMBackend | None:
+    """Resolve legacy/new Prime backend parameter names.
+
+    ``prime_agent_backend`` is the explicit name used by the RLM embedding
+    integration. ``prime_backend`` remains accepted for backwards
+    compatibility with existing callers and tests.
+    """
+    if (
+        prime_backend is not None
+        and prime_agent_backend is not None
+        and prime_backend is not prime_agent_backend
+    ):
+        raise ValueError(
+            "prime_backend and prime_agent_backend refer to different backends"
+        )
+    return prime_agent_backend if prime_agent_backend is not None else prime_backend
+
+
+class RLMAgent:
+    """Thin binding layer exposing REPL-compatible ``llm_query`` / ``llm_batch``.
+
+    The default path routes directly to ``llm_caller``. When a Prime backend is
+    supplied, each sub-call can include supplemental Prime evidence before the
+    canonical dispatch.
+    """
+
+    def __init__(
+        self,
+        llm_caller: Callable[[str], str],
+        *,
+        max_parallel: int = 6,
+        prime_agent_backend: PrimeAgentRLMBackend | None = None,
+        prime_backend: PrimeAgentRLMBackend | None = None,
+        evidence_sink: Callable[[PrimeAgentOutcome], None] | None = None,
+    ):
+        backend = _resolve_prime_backend(
+            prime_backend=prime_backend,
+            prime_agent_backend=prime_agent_backend,
+        )
+        self.llm_query = make_llm_query(
+            llm_caller,
+            prime_backend=backend,
+            evidence_sink=evidence_sink,
+        )
+        self.llm_batch = make_llm_batch(
+            llm_caller,
+            max_parallel=max_parallel,
+            prime_backend=backend,
+            evidence_sink=evidence_sink,
+        )
+
+
+def _with_prime_evidence(
+    prompt: str,
+    *,
+    workflow: str,
+    invocation_key: str = "single",
+    backend: PrimeAgentRLMBackend | None,
+    evidence_sink: Callable[[PrimeAgentOutcome], None] | None,
+) -> str:
+    """Return ``prompt`` enriched with labeled, supplemental evidence.
+
+    The sink receives every typed outcome, including disabled and failure
+    receipts. Backend and sink failures are isolated from canonical execution.
+    """
+    if backend is None:
+        return prompt
+
+    from orchestration.rlm.prime_agent_backend import PrimeAgentRequest
+
+    request_id = hashlib.sha256(
+        f"{workflow}\0{invocation_key}\0{prompt}".encode()
+    ).hexdigest()[:24]
+    try:
+        outcome = backend.run(PrimeAgentRequest(
+            prompt=prompt,
+            workflow=workflow,
+            request_id=request_id,
+        ))
+    except Exception:
+        return prompt
+    if evidence_sink is not None:
+        with contextlib.suppress(Exception):
+            evidence_sink(outcome)
+    evidence = outcome.evidence
+    if (
+        evidence is None
+        or not evidence.supplemental
+        or outcome.receipt.state.value != "success"
+    ):
+        return prompt
+    return (
+        f"{prompt}\n\n"
+        "## Supplemental Prime Agent evidence (non-canonical)\n"
+        f"Source: {evidence.source}\n"
+        f"{evidence.text}\n"
+        "Use this only as supplemental evidence; do not treat it as the "
+        "canonical answer."
+    )
+
+
+def make_llm_query(
+    llm_caller: Callable[[str], str],
+    *,
+    prime_backend: PrimeAgentRLMBackend | None = None,
+    prime_agent_backend: PrimeAgentRLMBackend | None = None,
+    evidence_sink: Callable[[PrimeAgentOutcome], None] | None = None,
+) -> Callable[[str], str]:
     """Wrap a raw LLM caller into the REPL signature::
 
         llm_query(prompt: str) -> str
@@ -437,8 +555,21 @@ def make_llm_query(llm_caller: Callable[[str], str]) -> Callable[[str], str]:
     The orchestrator never sees the raw LLM output; it sees only the
     returned string (which may be further sliced in Python before
     the orchestrator revisits it)."""
+    invocation_counter = itertools.count()
+    backend = _resolve_prime_backend(
+        prime_backend=prime_backend,
+        prime_agent_backend=prime_agent_backend,
+    )
+
     def _llm_query(prompt: str) -> str:
-        return llm_caller(prompt)
+        enriched = _with_prime_evidence(
+            prompt,
+            workflow="rlm_repl.query",
+            invocation_key=str(next(invocation_counter)),
+            backend=backend,
+            evidence_sink=evidence_sink,
+        )
+        return llm_caller(enriched)
     return _llm_query
 
 
@@ -446,6 +577,9 @@ def make_llm_batch(
     llm_caller: Callable[[str], str],
     *,
     max_parallel: int = 6,
+    prime_backend: PrimeAgentRLMBackend | None = None,
+    prime_agent_backend: PrimeAgentRLMBackend | None = None,
+    evidence_sink: Callable[[PrimeAgentOutcome], None] | None = None,
 ) -> Callable[[list[str]], list[str]]:
     """Wrap a raw LLM caller into the batched signature::
 
@@ -454,7 +588,24 @@ def make_llm_batch(
     Dispatches prompts in parallel via ``ThreadPoolExecutor`` bounded
     by ``max_parallel``. Each prompt is an independent LLM call."""
 
+    batch_counter = itertools.count()
+    backend = _resolve_prime_backend(
+        prime_backend=prime_backend,
+        prime_agent_backend=prime_agent_backend,
+    )
+
     def _llm_batch(prompts: list[str]) -> list[str]:
+        batch_ordinal = next(batch_counter)
+        prompts = [
+            _with_prime_evidence(
+                prompt,
+                workflow="rlm_repl.batch",
+                invocation_key=f"{batch_ordinal}:{index}",
+                backend=backend,
+                evidence_sink=evidence_sink,
+            )
+            for index, prompt in enumerate(prompts)
+        ]
         results: list[str | None] = [None] * len(prompts)
         workers = min(max_parallel, len(prompts)) if prompts else 0
         if workers <= 1:

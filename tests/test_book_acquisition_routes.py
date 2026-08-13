@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import io
+import uuid
 import zipfile
 from pathlib import Path
 
@@ -75,11 +76,15 @@ def _auth_headers(user: str = "alice") -> dict[str, str]:
 
 
 def _intent(client: TestClient, *, user: str = "alice") -> dict[str, object]:
+    # Unique title per call so the derived intent_hash cannot collide with
+    # another test's stored intent if a co-located shard test leaks a shared
+    # DB path into the router (the intent-replay 409 that flaked shard 3). The
+    # port/rights assertions below never depend on the title text.
     response = client.post(
         "/book-acquisition/intents",
         headers=_auth_headers(user),
         json={
-            "title": "Jet Engines",
+            "title": f"Jet Engines {uuid.uuid4()}",
             "author": "A. Researcher",
             "store": "publisher.example",
             "max_price_usd_cents": 3000,
@@ -114,11 +119,12 @@ def test_authenticated_intent_authorization_and_port_round_trip(tmp_path: Path) 
     intent = _intent(client)
     authorization = _authorize(client, str(intent["intent_receipt_id"]))
     assert authorization["purchase_occurred"] is False
+    epub_bytes = _epub()
 
     response = client.post(
         f"/book-acquisition/authorizations/{authorization['authorization_receipt_id']}/port",
         headers={**_auth_headers(), "content-type": EPUB_MEDIA_TYPE},
-        content=_epub(),
+        content=epub_bytes,
     )
     assert response.status_code == 200, response.text
     port = response.json()
@@ -131,7 +137,7 @@ def test_authenticated_intent_authorization_and_port_round_trip(tmp_path: Path) 
     replay = client.post(
         f"/book-acquisition/authorizations/{authorization['authorization_receipt_id']}/port",
         headers={**_auth_headers(), "content-type": EPUB_MEDIA_TYPE},
-        content=_epub(),
+        content=epub_bytes,
     )
     assert replay.status_code == 200
     assert replay.json()["port_receipt_id"] == port["port_receipt_id"]

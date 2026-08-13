@@ -347,6 +347,7 @@ def test_all_cascade_dispatchers_classified() -> None:
 
     outbound_symbols = {
         "dispatch",
+        "dispatch_loop_one",
         "client.post",
         "client.get",
         "c.get",
