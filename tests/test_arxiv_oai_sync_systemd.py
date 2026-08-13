@@ -33,7 +33,7 @@ def test_arxiv_oai_sync_service_pins_state_and_runs_incremental_cli():
         in service
     )
     assert (
-        "python -m tools.arxiv_oai_sync incremental --census-json "
+        "python -m tools.arxiv_oai_sync incremental --bulk --census-json "
         "{{ antiek_state_dir }}/reports/arxiv_oai_census.json"
     ) in service
     assert (
