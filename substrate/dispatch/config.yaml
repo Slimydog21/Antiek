@@ -228,6 +228,14 @@ role_tiers:
   # for fast, direct completions at high volume. Same one-line-routing
   # precedent as knowledge_extractor / thought_partner / creative_writer.
   autocomplete: flash
+  # LINEUP-CATALOG-TRUTH (2026-08-13): the Speak vertical's interviewer
+  # (async_interview + orchestrator) dispatches role="interviewer" but had
+  # NO role_tiers entry — every follow-up/interview question through the
+  # production dispatch adapter raised KeyError (uncaught in
+  # substrate/speak/async_interview.py). Same one-line-routing precedent as
+  # knowledge_extractor / thought_partner / creative_writer / autocomplete.
+  # Tier=pro (conversational question generation, precedent-matched).
+  interviewer: pro
 
 # ---------------------------------------------------------------------------
 # Per-tier defaults. Roles can override at call time, but these are

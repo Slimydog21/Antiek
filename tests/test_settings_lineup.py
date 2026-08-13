@@ -151,6 +151,37 @@ def test_auto_null_is_always_valid(client: TestClient) -> None:
     assert put.json()["assignments"]["advanced"]["verification"] is None
 
 
+def test_catalog_dispatch_roles_resolve_in_config(client: TestClient) -> None:
+    """The catalog must never name a dispatch role the router cannot route:
+    every llm action's dispatch_role must exist in config.role_tiers (this
+    is what the dispatch binding depends on), and the true dispatch-role
+    set is the config's — event-log labels are not dispatch roles."""
+    import pathlib as _pl
+
+    from substrate.dispatch.lineup_catalog import ACTION_BY_ID
+    from substrate.dispatch.router import DispatchConfig
+
+    cfg = DispatchConfig.from_yaml(
+        _pl.Path(__file__).resolve().parents[1] / "substrate" / "dispatch" / "config.yaml"
+    )
+    configured = set(cfg.role_tiers)
+    for action in ACTION_BY_ID.values():
+        if action.kind == "llm" and action.dispatch_role is not None:
+            assert action.dispatch_role in configured, (
+                f"action {action.action_id!r} names dispatch_role "
+                f"{action.dispatch_role!r} which is not in config.role_tiers"
+            )
+    # the previously-fabricated event-label roles must NOT appear as dispatch
+    # roles anywhere in the catalog
+    for action in ACTION_BY_ID.values():
+        assert action.dispatch_role not in {
+            "write_repository", "write_composition", "write_editor",
+            "attribution", "extractor",
+        }
+    # the one true config gap is now closed
+    assert "interviewer" in configured
+
+
 def test_default_tiers_are_present_in_catalog(client: TestClient) -> None:
     resp = client.get("/settings/lineup")
     assert resp.status_code == 200

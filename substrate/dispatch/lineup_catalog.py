@@ -56,9 +56,9 @@ ROLE_CATALOG: tuple[RoleDef, ...] = (
         actions=(
             ActionDef("research_synthesis", "Research synthesis", "The final human-facing synthesis of an investigation.", "synthesizer", "synthesis", "llm"),
             ActionDef("creative_draft", "Creative draft", "Section/outline draft generation in Write.", "creative_writer", "pro", "llm"),
-            ActionDef("write_repository", "Write repository", "Repository-level write actions (blocks, folders).", "write_repository", "pro", "llm"),
-            ActionDef("write_composition", "Write composition", "Composition actions across the write surface.", "write_composition", "pro", "llm"),
-            ActionDef("write_editor", "Write editor assist", "Editor assistance on drafted text.", "write_editor", "pro", "llm"),
+            ActionDef("write_repository", "Write repository", "Repository-level write actions (blocks, folders). Typed-event label only — no dispatch seam exists yet.", None, "pro", "llm"),
+            ActionDef("write_composition", "Write composition", "Composition actions across the write surface. Typed-event label only — no dispatch seam exists yet.", None, "pro", "llm"),
+            ActionDef("write_editor", "Write editor assist", "Editor assistance on drafted text. Typed-event label only — no dispatch seam exists yet.", None, "pro", "llm"),
             ActionDef("autocomplete", "Inline autocomplete", "Cursor-style completions in the editor.", "autocomplete", "flash", "llm"),
             ActionDef("thought_partner", "Thought partner", "Advisory thinking companion (operator surface).", "thought_partner", "pro", "llm"),
         ),
@@ -74,8 +74,8 @@ ROLE_CATALOG: tuple[RoleDef, ...] = (
             ActionDef("parameter_extraction", "Parameter extraction", "Extract search parameters from questions.", "parameter_extractor", "flash", "llm"),
             ActionDef("note_taking", "Background note-taking", "Emergent notes while wrestling documents.", "note_taker", "flash", "llm"),
             ActionDef("knowledge_extraction", "Knowledge extraction", "Phase-8 domain knowledge extraction.", "knowledge_extractor", "pro", "llm"),
-            ActionDef("distillation", "Distillation", "Distill document regions into notes/claims.", "extractor", "flash", "llm"),
-            ActionDef("attribution", "Page attribution", "Compute page/source attribution.", "attribution", "flash", "llm"),
+            ActionDef("distillation", "Distillation", "Distill document regions into notes/claims (note-taker role).", "note_taker", "flash", "llm"),
+            ActionDef("attribution", "Page attribution", "Compute page/source attribution. Typed-event label only — no dispatch seam exists yet.", None, "flash", "llm"),
             ActionDef("tier_assignment", "Tier assignment", "Rule-based routing tier assignment (LLM only for downward adjustment).", "tier_assigner", "flash", "llm"),
             ActionDef("constraint_checking", "Constraint checking", "Preflight constraint checks on plans.", "constraint_checker", "flash", "llm"),
             ActionDef("transcription", "Transcription", "Whisper audio→text for voice capture.", None, "transcription", "voice"),
@@ -92,8 +92,8 @@ ROLE_CATALOG: tuple[RoleDef, ...] = (
             ActionDef("connector", "Cross-domain connector", "Connect evidence across domains via keywords/traversal.", "connector", "pro", "llm"),
             ActionDef("talk_to_book", "Talk to book", "The reading-mode conversational agent.", "user_agent", "pro", "llm"),
             ActionDef("interviewing", "AI interviewer", "Speak-mode interviewer question generation.", "interviewer", "pro", "llm"),
-            ActionDef("meta_reading", "Meta-reading", "Generated meta-readings over book collections.", "user_agent", "pro", "llm"),
-            ActionDef("visual_claims", "Visual claims extraction", "Extract claims from document frames (vision).", "extractor", "pro", "llm"),
+            ActionDef("meta_reading", "Meta-reading", "Generated meta-readings over book collections.", "synthesizer", "synthesis", "llm"),
+            ActionDef("visual_claims", "Visual claims extraction", "Extract claims from document frames (vision providers, direct — no dispatch seam).", None, "pro", "llm"),
         ),
     ),
     RoleDef(
@@ -119,7 +119,7 @@ ROLE_CATALOG: tuple[RoleDef, ...] = (
         actions=(
             ActionDef("cascade_planning", "Cascade planning", "Build the deep-research cascade plan tree.", "decomposer", "pro", "llm"),
             ActionDef("chase_planning", "Chase-tree planning", "Plan follow-up chase questions.", "decomposer", "pro", "llm"),
-            ActionDef("rlm_bridge", "RLM bridge decisions", "Route decisions for the RLM agentic bridge.", "user_agent", "pro", "llm"),
+            ActionDef("rlm_bridge", "RLM bridge decisions", "Sub-LLM route decisions for the RLM agentic bridge (DEFAULT_SUB_LLM_ROLE).", "evidence_retriever", "flash", "llm"),
         ),
     ),
     RoleDef(
