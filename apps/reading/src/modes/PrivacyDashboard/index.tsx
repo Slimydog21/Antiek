@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
+import {
+  fetchPrivacySettings,
+  setPrivacySurface,
+  type PrivacySurface,
+} from "../../api/privacy";
 
 /**
  * Privacy Dashboard (master-spec §13.3 — first-class product surface).
@@ -9,11 +14,19 @@ import { apiFetch } from "../../lib/api";
  * private graph, with toggles per category and a 'delete everything'
  * button that actually deletes everything within 30 days."
  *
- * The dashboard reads ε budgets from the live ``/trust-center``
- * endpoint so any future telemetry surface that registers with the
- * EpsilonRegistry appears here automatically. Per master-spec §13.3:
- * 'we are architecturally incapable of leaking your data' rather
- * than 'we promise not to.'
+ * Since OYM P1 §2 the toggle state is REAL: each section reads its
+ * enabled/default_enabled from ``GET /settings/privacy`` (backed by
+ * the telemetry-preferences store, the DP shuffler's predicate) and
+ * flips it through ``PUT /settings/privacy`` with an optimistic
+ * update + rollback on failure. The ε budgets still come from the
+ * live ``/trust-center`` publication so any future surface that
+ * registers with the EpsilonRegistry appears here automatically.
+ *
+ * The forbidden surface (query-content telemetry) is rendered locked:
+ * per master-spec §13.3 the substrate is architecturally incapable of
+ * collecting it, so there is no toggle to flip — "we are
+ * architecturally incapable of leaking your data" rather than
+ * "we promise not to."
  */
 
 interface TrustCenterData {
@@ -24,11 +37,18 @@ interface TrustCenterData {
   loop_3_unlock_status: Record<string, boolean>;
 }
 
+/**
+ * Fallback copy keyed by CANONICAL registry names. The registry names
+ * the tier surface ``source_tier_preference`` (the dashboard's old
+ * ``source_tier_preference_signals`` key never matched a live surface);
+ * the backend serves the authoritative descriptions from the same copy,
+ * so this map only fills in for trust-center-only categories.
+ */
 const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   skill_invocation_frequency:
     "Which substrate skills fire and at what rate. Low sensitivity; " +
     "the DP randomizer ensures no single invocation is identifying.",
-  source_tier_preference_signals:
+  source_tier_preference:
     "Which source tiers (Tier 1 = peer-reviewed primary, " +
     "Tier 5 = anonymous) you accept versus reject. The shuffled " +
     "aggregate informs the dispatch router's tier hints.",
@@ -36,13 +56,6 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
     "The text of your research queries and the content of your " +
     "private notes. Per master-spec §13.3: NOT COLLECTED at any ε " +
     "that preserves utility — Antiek chooses no collection.",
-};
-
-const SENSITIVITY_BY_EPSILON = (eps: number): "low" | "medium" | "high" | "forbidden" => {
-  if (eps === 0) return "forbidden";
-  if (eps <= 1.0) return "high";
-  if (eps <= 2.0) return "medium";
-  return "low";
 };
 
 interface DeletionRequest {
@@ -55,19 +68,23 @@ interface DeletionRequest {
 
 export default function PrivacyDashboard() {
   const [data, setData] = useState<TrustCenterData | null>(null);
+  const [privacy, setPrivacy] = useState<PrivacySurface[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingDeletion, setPendingDeletion] = useState<DeletionRequest | null>(null);
+  const [savingSurface, setSavingSurface] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
-      const [tc, dr] = await Promise.all([
+      const [tc, dr, privacyResp] = await Promise.all([
         apiFetch("/trust-center"),
         apiFetch("/trust-center/deletion-requests").catch(() => null),
+        fetchPrivacySettings(),
       ]);
       if (!tc.ok) {
         throw new Error(`GET /trust-center failed: HTTP ${tc.status}`);
       }
       setData(await tc.json());
+      setPrivacy(privacyResp.surfaces);
 
       if (dr?.ok) {
         const drData = await dr.json();
@@ -84,6 +101,31 @@ export default function PrivacyDashboard() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  const toggleSurface = async (surface: PrivacySurface, enabled: boolean) => {
+    if (!privacy || savingSurface !== null) return;
+    const previous = privacy;
+    // Optimistic update; roll back on failure.
+    setPrivacy(
+      privacy.map((s) =>
+        s.surface_name === surface.surface_name ? { ...s, enabled } : s,
+      ),
+    );
+    setSavingSurface(surface.surface_name);
+    try {
+      const updated = await setPrivacySurface(surface.surface_name, enabled);
+      setPrivacy((prev) =>
+        prev?.map((s) =>
+          s.surface_name === updated.surface_name ? updated : s,
+        ) ?? prev,
+      );
+    } catch (e: unknown) {
+      setPrivacy(previous);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingSurface(null);
+    }
+  };
 
   const requestDeletion = async () => {
     try {
@@ -135,8 +177,11 @@ export default function PrivacyDashboard() {
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Every telemetry signal Antiek collects from your private
               graph is listed below with its live ε budget pulled from
-              the substrate's published trust posture. The substrate
-              is architecturally incapable of crossing these boundaries.
+              the substrate's published trust posture. Toggles write
+              straight to your telemetry preferences — the same store
+              the DP shuffler consults before emitting anything. The
+              substrate is architecturally incapable of crossing these
+              boundaries.
             </p>
             {data && (
               <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
@@ -152,23 +197,15 @@ export default function PrivacyDashboard() {
             </p>
           )}
 
-          {data &&
-            Object.entries(data.differential_privacy_epsilon_budgets).map(
-              ([category, epsilon]) => (
-                <TelemetrySection
-                  key={category}
-                  title={category.replace(/_/g, " ")}
-                  description={
-                    CATEGORY_DESCRIPTIONS[category] ??
-                    "Telemetry surface registered by the substrate. " +
-                    "ε budget reflects the EpsilonRegistry's per-day " +
-                    "cap for this category."
-                  }
-                  epsilon={epsilon}
-                  sensitivity={SENSITIVITY_BY_EPSILON(epsilon)}
-                />
-              ),
-            )}
+          {privacy &&
+            privacy.map((surface) => (
+              <TelemetrySection
+                key={surface.surface_name}
+                surface={surface}
+                saving={savingSurface === surface.surface_name}
+                onToggle={(enabled) => void toggleSurface(surface, enabled)}
+              />
+            ))}
 
           {data && <ArchitecturalGuarantees data={data} />}
 
@@ -187,53 +224,114 @@ export default function PrivacyDashboard() {
 }
 
 function TelemetrySection({
-  title,
-  description,
-  epsilon,
-  sensitivity,
+  surface,
+  saving,
+  onToggle,
 }: {
-  title: string;
-  description: string;
-  epsilon: number;
-  sensitivity: "low" | "medium" | "high" | "forbidden";
+  surface: PrivacySurface;
+  saving: boolean;
+  onToggle: (enabled: boolean) => void;
 }) {
-  const isForbidden = sensitivity === "forbidden";
+  const isForbidden = surface.sensitivity === "forbidden";
+  const title = surface.surface_name.replace(/_/g, " ");
+  // Server description is authoritative (it mirrors this copy
+  // keyed by registry names); the map is only a rendering fallback.
+  const description = surface.description || CATEGORY_DESCRIPTIONS[surface.surface_name];
   return (
-    <section className="border border-rule dark:border-charcoal-1 rounded-md px-5 py-4 space-y-3">
+    <section
+      className={`border border-rule dark:border-charcoal-1 rounded-md px-5 py-4 space-y-3 ${
+        isForbidden ? "opacity-70" : ""
+      }`}
+    >
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-base font-serif text-ink dark:text-bright capitalize">
           {title}
         </h3>
-        <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-          ε = {epsilon}/day
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+            ε = {surface.epsilon_per_day}/day
+          </span>
+          {!isForbidden && (
+            <ToggleSwitch
+              label={`${title} telemetry`}
+              checked={surface.enabled}
+              disabled={saving}
+              onChange={onToggle}
+            />
+          )}
+        </div>
       </div>
-      <p className="text-sm text-ink dark:text-bright leading-relaxed">{description}</p>
+      <p className="text-sm text-ink dark:text-bright leading-relaxed">
+        {description}
+      </p>
       <div className="flex items-center gap-3 pt-1">
         {isForbidden ? (
           <span className="text-xs font-mono text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-            never collected (architectural)
+            never collected (architectural) — locked
           </span>
         ) : (
           <span className="text-xs font-mono text-ink dark:text-bright bg-ice-3 dark:bg-charcoal-1 px-2 py-1 rounded">
-            collected · noisy aggregate · ε-bounded
+            {surface.enabled
+              ? "collected · noisy aggregate · ε-bounded"
+              : "paused — no telemetry routed"}
           </span>
         )}
         <span
           className={`text-xs font-mono px-2 py-1 rounded ${
-            sensitivity === "low"
+            surface.sensitivity === "low"
               ? "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
-              : sensitivity === "medium"
+              : surface.sensitivity === "medium"
                 ? "bg-sun/10 text-amber-800"
-                : sensitivity === "high"
+                : surface.sensitivity === "high"
                   ? "bg-red-50 text-red-800"
                   : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
           }`}
         >
-          sensitivity: {sensitivity}
+          sensitivity: {surface.sensitivity}
+        </span>
+        <span className="text-xs text-shadow-1 dark:text-moonlight">
+          {surface.opt_in_required
+            ? "off by default (opt-in)"
+            : isForbidden
+              ? "never enabled"
+              : "on by default"}
         </span>
       </div>
     </section>
+  );
+}
+
+function ToggleSwitch({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (enabled: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-base ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun disabled:cursor-not-allowed disabled:opacity-disabled ${
+        checked
+          ? "bg-emerald-600"
+          : "bg-ice-3 dark:bg-charcoal-1 border border-rule dark:border-slate-1"
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-base ease-standard ${
+          checked ? "translate-x-6" : "translate-x-1"
+        }`}
+      />
+    </button>
   );
 }
 

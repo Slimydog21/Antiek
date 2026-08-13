@@ -1743,6 +1743,10 @@ def create_app(
     # cost projection (honest nulls when pricing/spend unknown).
     from .settings_budget import register_settings_budget_routes
     register_settings_budget_routes(app)
+    # OYM P1 §2 — privacy toggles wired to the telemetry-preferences
+    # store (the store's first API consumer; see settings_privacy.py).
+    from .settings_privacy import register_settings_privacy_routes
+    register_settings_privacy_routes(app)
     from .research_tool_search import register_research_tool_search_routes
     register_research_tool_search_routes(app)
     # Model-decision composer Slice B — one advisory decision + exact
