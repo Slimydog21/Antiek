@@ -51,7 +51,14 @@ def env(monkeypatch):
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
     ensure_initialized(db)
-    # register_providers=False = the honest no-key state.
+    # register_providers=False = the honest no-key state. The dispatch
+    # provider registry is process-global and can be polluted by
+    # import-order side effects (provider modules registering at import
+    # time); reset it so this fixture's "no provider" contract holds
+    # regardless of what ran before in the same worker.
+    from substrate.dispatch.router import reset_provider_registry
+
+    reset_provider_registry()
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
     return {"client": TestClient(app), "db": db, "events": events, "mp": monkeypatch}
 
