@@ -21,6 +21,7 @@ import {
   explainDocument,
   explainSynthesis,
 } from "../../api/ownYourMind";
+import { createTierOverride, getTierOverrides } from "../../api/tiers";
 import { useServedImpression } from "../../lib/servedImpression";
 
 /**
@@ -112,9 +113,11 @@ function ConfidenceChip({ confidence }: { confidence: number }) {
 function ChunkBlock({
   chunk,
   document,
+  onTierChanged,
 }: {
   chunk: ExplainChunk;
   document: ExplainDocument;
+  onTierChanged?: () => void;
 }) {
   return (
     <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2.5 space-y-1.5">
@@ -135,6 +138,11 @@ function ChunkBlock({
         {chunk.text}
       </p>
       <DocumentLink document={document} />
+      <SetTierControl
+        chunkId={chunk.chunk_id}
+        currentTier={document.source_tier}
+        onCreated={onTierChanged ?? (() => undefined)}
+      />
     </div>
   );
 }
@@ -158,6 +166,149 @@ function DocumentLink({ document }: { document: ExplainDocument }) {
         <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
           acquired {new Date(document.acquired_at).toLocaleDateString()}
         </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * SetTierControl — the user-settable write half (OYM P1 §5).
+ *
+ * Revealed by a "Set tier" button on every chunk row that carries tier
+ * chips: a small form (tier 1..5 + mandatory reason) that POSTs one
+ * append-only override row, then asks the parent to reload the explain
+ * chain so the new override badge appears. The chunk's existing override
+ * history (set_by / reason / date, newest first) is listed from GET
+ * /settings/tier-overrides when the control opens.
+ */
+function SetTierControl({
+  chunkId,
+  currentTier,
+  onCreated,
+}: {
+  chunkId: string;
+  currentTier: number;
+  onCreated: () => void;
+}) {
+  const [open, setOpen] = useState<boolean>(false);
+  const [tier, setTier] = useState<number>(
+    currentTier >= 1 && currentTier <= 5 ? currentTier : 3,
+  );
+  const [reason, setReason] = useState<string>("");
+  const [overrides, setOverrides] = useState<TierOverride[] | null>(null);
+  const [busy, setBusy] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadOverrides = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await getTierOverrides(chunkId);
+      setOverrides(res.overrides);
+    } catch (e: unknown) {
+      setOverrides(null);
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [chunkId]);
+
+  const toggle = () => {
+    setOpen((wasOpen) => {
+      if (!wasOpen) void loadOverrides();
+      return !wasOpen;
+    });
+  };
+
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await createTierOverride(chunkId, tier, reason);
+      setReason("");
+      await loadOverrides();
+      // The parent reloads the explain chain so the new override badge
+      // appears next to the chunk's tier chips.
+      onCreated();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="pt-1">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        className="text-[10px] font-mono uppercase tracking-wide text-ink-soft dark:text-starlight hover:text-sun-deep dark:hover:text-sun underline decoration-dotted underline-offset-2"
+      >
+        {open ? "hide tier history" : "set tier"}
+      </button>
+      {open && (
+        <div className="mt-2 border border-rule dark:border-charcoal-1 rounded-md px-3 py-2.5 space-y-2">
+          <div className="flex items-end gap-2 flex-wrap">
+            <label className="flex flex-col gap-1 text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+              override tier
+              <select
+                value={tier}
+                onChange={(e) => setTier(Number(e.target.value))}
+                aria-label="override tier"
+                className="border border-rule dark:border-charcoal-1 rounded px-2 py-1 text-xs font-sans normal-case tracking-normal text-ink dark:text-bright bg-ice-0 dark:bg-charcoal-2"
+              >
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <option key={value} value={value}>
+                    tier {value}
+                    {value === 1
+                      ? " — strongest"
+                      : value === 5
+                        ? " — weakest"
+                        : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight grow">
+              reason (audit trail)
+              <input
+                type="text"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="why this retiering?"
+                aria-label="reason for tier override"
+                className="border border-rule dark:border-charcoal-1 rounded px-2 py-1 text-xs font-sans normal-case tracking-normal text-ink dark:text-bright bg-ice-0 dark:bg-charcoal-2 w-full"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={busy || reason.trim() === ""}
+              className="text-[10px] font-mono uppercase tracking-wide px-2 py-1 rounded bg-sun/15 dark:bg-sun/20 text-sun-deep dark:text-sun disabled:opacity-40"
+            >
+              {busy ? "recording…" : "save override"}
+            </button>
+          </div>
+          {error && (
+            <p className="text-[11px] text-emperor">{error}</p>
+          )}
+          {overrides !== null && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-mono uppercase tracking-wide text-ink-mute dark:text-moonlight">
+                Override history ({overrides.length})
+              </p>
+              {overrides.length === 0 && (
+                <p className="text-[11px] text-ink-soft dark:text-starlight italic">
+                  No overrides recorded for this chunk yet.
+                </p>
+              )}
+              {overrides.map((o) => (
+                <OverrideBadge
+                  key={`${o.chunk_id}-${o.set_at ?? o.set_by ?? "?"}`}
+                  override={o}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -258,9 +409,11 @@ function documentFor(
 function ChunksSection({
   chunks,
   documents,
+  onTierChanged,
 }: {
   chunks: ExplainChunk[];
   documents: ExplainDocument[];
+  onTierChanged?: () => void;
 }) {
   return (
     <section className="space-y-2">
@@ -276,6 +429,7 @@ function ChunksSection({
             key={chunk.chunk_id}
             chunk={chunk}
             document={documentFor(chunk.document_id, documents)}
+            onTierChanged={onTierChanged}
           />
         ))}
       </div>
@@ -303,7 +457,13 @@ function OverridesSection({ overrides }: { overrides: TierOverride[] }) {
 }
 
 /** Claim explain — the D1 wedge: node card + supporting edges + excerpts. */
-function ClaimPanel({ data }: { data: ClaimExplainResponse }) {
+function ClaimPanel({
+  data,
+  onTierChanged,
+}: {
+  data: ClaimExplainResponse;
+  onTierChanged?: () => void;
+}) {
   return (
     <div className="space-y-6">
       <NodeCard node={data.claim_node} />
@@ -324,7 +484,11 @@ function ClaimPanel({ data }: { data: ClaimExplainResponse }) {
         </div>
       </section>
 
-      <ChunksSection chunks={data.chunks} documents={data.documents} />
+      <ChunksSection
+        chunks={data.chunks}
+        documents={data.documents}
+        onTierChanged={onTierChanged}
+      />
       <OverridesSection overrides={data.chunk_tier_overrides} />
     </div>
   );
@@ -332,7 +496,13 @@ function ClaimPanel({ data }: { data: ClaimExplainResponse }) {
 
 /** One manifest pin, resolved — rendered as its own compact card so the
  *  reader sees exactly what was pinned, per entity. */
-function PinCard({ pin }: { pin: NodePin | EdgePin | ChunkPin | DocumentPin }) {
+function PinCard({
+  pin,
+  onTierChanged,
+}: {
+  pin: NodePin | EdgePin | ChunkPin | DocumentPin;
+  onTierChanged?: () => void;
+}) {
   const meta = (
     <div className="flex items-center gap-2 flex-wrap text-[10px] font-mono uppercase tracking-wide">
       <span className="text-shadow-1 dark:text-moonlight">{pin.entity_kind}</span>
@@ -355,7 +525,11 @@ function PinCard({ pin }: { pin: NodePin | EdgePin | ChunkPin | DocumentPin }) {
             ))}
           </div>
         )}
-        <ChunksSection chunks={pin.chunks} documents={pin.documents} />
+        <ChunksSection
+          chunks={pin.chunks}
+          documents={pin.documents}
+          onTierChanged={onTierChanged}
+        />
         <OverridesSection overrides={pin.chunk_tier_overrides} />
       </div>
     );
@@ -365,7 +539,11 @@ function PinCard({ pin }: { pin: NodePin | EdgePin | ChunkPin | DocumentPin }) {
       <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2.5 space-y-3">
         {meta}
         <EdgeRow edge={pin.edge} />
-        <ChunksSection chunks={pin.chunks} documents={pin.documents} />
+        <ChunksSection
+          chunks={pin.chunks}
+          documents={pin.documents}
+          onTierChanged={onTierChanged}
+        />
         <OverridesSection overrides={pin.chunk_tier_overrides} />
       </div>
     );
@@ -377,6 +555,7 @@ function PinCard({ pin }: { pin: NodePin | EdgePin | ChunkPin | DocumentPin }) {
         <ChunkBlock
           chunk={pin.chunk}
           document={documentFor(pin.chunk.document_id, pin.documents)}
+          onTierChanged={onTierChanged}
         />
         <OverridesSection overrides={pin.chunk_tier_overrides} />
       </div>
@@ -391,7 +570,13 @@ function PinCard({ pin }: { pin: NodePin | EdgePin | ChunkPin | DocumentPin }) {
 }
 
 /** Synthesis explain — the manifest pins grouped by entity kind. */
-function SynthesisPanel({ data }: { data: SynthesisExplainResponse }) {
+function SynthesisPanel({
+  data,
+  onTierChanged,
+}: {
+  data: SynthesisExplainResponse;
+  onTierChanged?: () => void;
+}) {
   const groups: Array<{ kind: string; pins: SynthesisExplainResponse["pins"][keyof SynthesisExplainResponse["pins"]] }> = [
     { kind: "document", pins: data.pins.document },
     { kind: "chunk", pins: data.pins.chunk },
@@ -444,7 +629,11 @@ function SynthesisPanel({ data }: { data: SynthesisExplainResponse }) {
                   </p>
                 </div>
               ) : (
-                <PinCard key={`${pin.entity_kind}-${pin.entity_id}`} pin={pin as NodePin | EdgePin | ChunkPin | DocumentPin} />
+                <PinCard
+                  key={`${pin.entity_kind}-${pin.entity_id}`}
+                  pin={pin as NodePin | EdgePin | ChunkPin | DocumentPin}
+                  onTierChanged={onTierChanged}
+                />
               ),
             )}
           </div>
@@ -455,7 +644,13 @@ function SynthesisPanel({ data }: { data: SynthesisExplainResponse }) {
 }
 
 /** Document explain — reverse provenance: chunks → citing edges/nodes. */
-function DocumentPanel({ data }: { data: DocumentExplainResponse }) {
+function DocumentPanel({
+  data,
+  onTierChanged,
+}: {
+  data: DocumentExplainResponse;
+  onTierChanged?: () => void;
+}) {
   // Join citing edges to their source nodes (the claims that cite this doc).
   const byNode = new Map<string, ExplainNode>();
   for (const node of data.citing_nodes) byNode.set(node.node_id, node);
@@ -476,7 +671,12 @@ function DocumentPanel({ data }: { data: DocumentExplainResponse }) {
         )}
         <div className="space-y-3">
           {data.chunks.map((chunk) => (
-            <ChunkBlock key={chunk.chunk_id} chunk={chunk} document={data.document} />
+            <ChunkBlock
+              key={chunk.chunk_id}
+              chunk={chunk}
+              document={data.document}
+              onTierChanged={onTierChanged}
+            />
           ))}
         </div>
       </section>
@@ -616,12 +816,20 @@ export function Explain() {
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
           )}
 
-          {data && kind === "claim" && <ClaimPanel data={data as ClaimExplainResponse} />}
+          {data && kind === "claim" && (
+            <ClaimPanel data={data as ClaimExplainResponse} onTierChanged={reload} />
+          )}
           {data && kind === "synthesis" && (
-            <SynthesisPanel data={data as SynthesisExplainResponse} />
+            <SynthesisPanel
+              data={data as SynthesisExplainResponse}
+              onTierChanged={reload}
+            />
           )}
           {data && kind === "document" && (
-            <DocumentPanel data={data as DocumentExplainResponse} />
+            <DocumentPanel
+              data={data as DocumentExplainResponse}
+              onTierChanged={reload}
+            />
           )}
         </div>
       </main>
