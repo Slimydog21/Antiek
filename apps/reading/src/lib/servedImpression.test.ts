@@ -11,7 +11,7 @@
  *  - envelope carries investigation_id "system"
  *  - failures are swallowed (fire-and-forget; audit never breaks the UI)
  */
-import { act, renderHook } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { emitServedImpression, useServedImpression } from "./servedImpression";
@@ -23,7 +23,7 @@ const { postTypedEventMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("./api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../lib/api")>();
+  const actual = await importOriginal<typeof import("./api")>();
   return { ...actual, postTypedEvent: postTypedEventMock };
 });
 
