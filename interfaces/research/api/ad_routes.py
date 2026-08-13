@@ -34,16 +34,12 @@ are not imported here.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
-
-from runtime.db_lock import LockedConnection
-
-if TYPE_CHECKING:
-    import duckdb
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from runtime.db_lock import LockedConnection, ReadConnection
 from substrate.ad_inventory.frame_attention import (
     FRAME_TELEMETRY_SCHEMA_VERSION,
     SUPPORTED_FRAME_TELEMETRY_SCHEMA_VERSIONS,
@@ -165,7 +161,7 @@ class MultiEdgeFillResponse(BaseModel):
 
 
 def _resolve_asset_gate(
-    con: duckdb.DuckDBPyConnection, asset_ids: set[str]
+    con: ReadConnection, asset_ids: set[str]
 ) -> dict[str, tuple[str | None, str | None]]:
     """Resolve each asset's AUTHORITATIVE (content_class, ip_holder_id) from the
     documents gate columns — server-side, never from the client hint. An asset
@@ -188,7 +184,7 @@ def resolve_window_value_cents(
     *,
     owner_user_id: str,
     window_id: str,
-    con: duckdb.DuckDBPyConnection | LockedConnection | None = None,
+    con: ReadConnection | LockedConnection | None = None,
 ) -> int:
     """Mint the window's ad value SERVER-SIDE (ad-pipeline gap S1,
     frame-telemetry-v3).
@@ -230,7 +226,7 @@ def resolve_window_value_cents(
 
 
 def _resolve_from_fill_record(
-    con: duckdb.DuckDBPyConnection | LockedConnection,
+    con: ReadConnection | LockedConnection,
     owner_user_id: str,
     window_id: str,
 ) -> int:

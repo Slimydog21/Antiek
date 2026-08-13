@@ -52,7 +52,7 @@ import stat
 import threading
 import time
 from collections.abc import Iterable, Iterator, Sequence
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
 
 import duckdb
 
@@ -544,9 +544,14 @@ class _ReadOrientedConnection:
         self._con.close()
 
 
+ReadConnection: TypeAlias = (  # noqa: UP040 -- runtime supports Python 3.11
+    duckdb.DuckDBPyConnection | _ReadOrientedConnection
+)
+
+
 def connect_read(
     db_path: str,
-) -> duckdb.DuckDBPyConnection | _ReadOrientedConnection:
+) -> ReadConnection:
     """Open the DB read-only. Use this instead of raw duckdb.connect(...,
     read_only=True) at read sites so every DB access funnels through one
     module — the future place to add per-purpose observability.
