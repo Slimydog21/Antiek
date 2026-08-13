@@ -42,6 +42,13 @@ export default defineConfig({
       // (krea_routes.py). Same-origin in dev so the browser never sees
       // the server-held KREA_API_TOKEN and no CORS is involved.
       "/krea": API_TARGET,
+      // Own Your Mind P0 (explain_routes.py + ops_routes.py): the
+      // provenance + ops surfaces. Same explicit-prefix discipline as the
+      // routes above — each new backend prefix gets a reviewed line here.
+      "/claims": API_TARGET,
+      "/syntheses": API_TARGET,
+      "/docs": API_TARGET,
+      "/ops": API_TARGET,
       "/ws": {
         target: "ws://127.0.0.1:8000",
         ws: true,

@@ -489,6 +489,15 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     # records a child investigation chasing a parent's open question).
     WORKER_IDENTITY = "worker.identity"
 
+    # ── Own Your Mind P0 — served-impression audit (L8/L15, §5 of the
+    #    P0 brief). Emitted by the reading/research surfaces on render:
+    #    WHAT was shown, in which ranked position, under which ranking
+    #    version. Audit-only in P0 — NO consumer trains on it (no
+    #    position-bias self-training); the event exists so the "what was
+    #    displayed" half of the transparency promise is reconstructable
+    #    from the trajectory alone.
+    SURFACE_SERVED_IMPRESSION = "surface.served_impression"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -759,7 +768,15 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v34: Account-memory S2a — graph node events admit the new ``memory`` node
 #     type and graph edge events carry nullable ``owner_user_id`` so the typed
 #     event remains reconstructable with the owner-scoped edge row.
-EVENT_SCHEMA_VERSION: int = 34
+# v35: Own Your Mind P0 §5 — surface.served_impression, the one new event
+#     type of the P0 batch. Records what the reading/research surfaces SHOWED
+#     (surface, item_kind, item_id, ranked_position, ranked_version,
+#     timestamp, user_id) so "what was displayed" is auditable from the
+#     trajectory alone (L8/L15). AUDIT-ONLY in P0: no consumer trains on it —
+#     there is deliberately no position-bias self-training path. Emitted by
+#     the surfaces on render, never by the substrate. docs/own-your-mind/
+#     10-p0-implementation-brief.md §5. 2026-08-12.
+EVENT_SCHEMA_VERSION: int = 35
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -3976,13 +3993,63 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
     target_question: str = ""
 
 
+# ── Own Your Mind P0 §5 — served-impression audit (v35 schema bump) ────────
+
+
+class SurfaceServedImpressionPayload(_PayloadBase):
+    """What the reading/research surfaces SHOWED on one render (Own Your
+    Mind P0 §5; L8/L15).
+
+    Emitted by the surfaces (not the substrate) whenever a ranked item is
+    displayed, so the "what was shown" half of the transparency promise is
+    reconstructable from the trajectory alone: the item, the ranked position
+    it held, and the ranking version that produced that position.
+
+    AUDIT-ONLY in P0. There is deliberately NO consumer that trains on this
+    event: recording what was served must not create a position-bias
+    self-training loop (the P0 brief's explicit constraint). A future
+    consumer needs its own decision record before it may read this stream.
+
+    ``ranked_position`` is the 0-based index of the item in the ranked list
+    as displayed (0 = first). ``ranked_version`` names the ranking
+    algorithm/config version that produced the order (e.g. the param
+    version string), so a later change in what the user saw is attributable
+    to a version boundary. ``timestamp`` is when the item was served —
+    display time, not item creation time. ``user_id`` scopes the record to
+    the account that saw it (multi-user readiness, mirroring the graph's
+    owner_user_id columns).
+    """
+
+    action_type: Literal[ActionType.SURFACE_SERVED_IMPRESSION] = (
+        ActionType.SURFACE_SERVED_IMPRESSION
+    )
+    # Which surface rendered the item (e.g. "research_workstation.ranked_list",
+    # "personal_space.recommendations"). Free-form surface label; the surface
+    # owns the vocabulary.
+    surface: str
+    # What kind of item was shown (e.g. "document", "chunk", "node", "claim",
+    # "synthesis", "note"). Free-form kind label; the emitting surface owns it.
+    item_kind: str
+    # The item's canonical id in its own substrate table (document_id /
+    # chunk_id / node_id / synthesis_id ...).
+    item_id: str
+    # 0-based position in the ranked list as displayed.
+    ranked_position: int = Field(ge=0)
+    # Version of the ranking algorithm/config that produced the order.
+    ranked_version: str
+    # When the item was served (display time, not item creation time).
+    timestamp: datetime
+    # The account that saw the item.
+    user_id: str
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | SkillPatchGateDecidedPayload | SkillPatchGateReviewedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadBookAnsweredPayload | ReadBookAnswerJudgedPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | SkillPatchGateDecidedPayload | SkillPatchGateReviewedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadBookAnsweredPayload | ReadBookAnswerJudgedPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload | SurfaceServedImpressionPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -4099,6 +4166,9 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.OUTLINE_BLOCK_PLACED.value,
     ActionType.OUTLINE_BLOCK_MOVED.value,
     ActionType.OUTLINE_BLOCK_REMOVED.value,
+    # Read workflow SPR-01 — servable-corpus legal gate (v14 schema bump).
+    ActionType.BOOK_SERVABILITY_CHANGED.value,
+    ActionType.BOOK_TAKEN_DOWN.value,
     # Write workflow SPR-02 — edit capture.
     ActionType.EDIT_CAPTURED.value,
     # Write workflow SPR-09 — draft provenance persistence (X-ray).
@@ -4127,6 +4197,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.READ_META_READING_GENERATED.value,
     # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.
     ActionType.DOCUMENT_FILED_INTO_INVESTIGATION.value,
+    # Own Your Mind P0 §5 — served-impression audit (v35 schema bump).
+    ActionType.SURFACE_SERVED_IMPRESSION.value,
 })
 
 
@@ -4439,4 +4511,6 @@ __all__ = [
     "ReadMetaReadingGeneratedPayload",
     # Filing a personal-space doc into a research project SPR-13 (v22 bump)
     "DocumentFiledIntoInvestigationPayload",
+    # Own Your Mind P0 — served-impression audit (v35 schema bump)
+    "SurfaceServedImpressionPayload",
 ]
