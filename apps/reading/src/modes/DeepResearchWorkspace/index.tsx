@@ -31,6 +31,7 @@ import {
   launchPlan,
   steerResearch,
   TERMINAL_STATES,
+  type LaunchOwnerModelChoice,
   type PlanTree,
   type SteerKind,
 } from "../../api/research";
@@ -64,6 +65,16 @@ interface PlanState {
 }
 
 const NO_STARTERS: StarterPanel[] = [];
+
+const OWNER_LOOP_ONE_ROLES = [
+  "decomposer",
+  "evidence_retriever",
+  "parameter_extractor",
+  "connector",
+  "synthesizer",
+  "knowledge_extractor",
+] as const;
+
 
 export default function DeepResearchWorkspace() {
   return (
@@ -155,15 +166,31 @@ function Workspace() {
   const handleLaunch = () =>
     guard(async () => {
       if (!plan || !plan.launchable) return;
-      const r = await launchPlan(plan.rootNodeId);
+      const ownerModelChoices = modelChoice
+        ? (Object.fromEntries(
+          OWNER_LOOP_ONE_ROLES.map((role) => [
+            role,
+            {
+              authority: "user_model" as const,
+              provider_id: modelChoice.provider,
+              model_id: modelChoice.model,
+            },
+          ]),
+        ) as Record<typeof OWNER_LOOP_ONE_ROLES[number], LaunchOwnerModelChoice>)
+        : undefined;
+      const r = await launchPlan(
+        plan.rootNodeId,
+        ownerModelChoices ? { owner_model_choices: ownerModelChoices } : {},
+      );
       track("deep_research_cascade_launched", {
         session_id: r.session_id,
       });
       notifyResearchStarted(r.session_id);
       setSessionId(r.session_id);
-      // Session IDs are deterministic per plan. A successful relaunch can
-      // therefore reuse the same ID after its prior monitor stopped polling;
-      // generation forces a fresh polling + reaction episode in that case.
+      // Session IDs are deterministic per launch authority. A successful
+      // relaunch can therefore reuse the same ID after its prior monitor
+      // stopped polling; generation forces a fresh polling + reaction
+      // episode in that case.
       setSessionGeneration((generation) => generation + 1);
     });
 
@@ -181,8 +208,8 @@ function Workspace() {
           error={projectionError}
           note={
             modelChoice
-              ? `Advisory — "${modelChoice.provider} / ${modelChoice.model}" recorded for this cascade; the server re-validates budget and eligibility at execution.`
-              : "Advisory — the server re-validates budget and eligibility at execution. Leave Auto for the curated default."
+              ? `Bound — "${modelChoice.provider} / ${modelChoice.model}" is submitted as owner route authority for paid Loop One roles. Launch fails closed if the route is not owner-executable.`
+              : "Auto route — no owner manifest is installed; cascade uses the default dispatch path."
           }
         />
       )}
