@@ -165,7 +165,15 @@ SUPPORTED_FRAME_TELEMETRY_SCHEMA_VERSIONS = frozenset({
 # fully-filtered window route to house. weigh_second's blend math is UNCHANGED
 # (the golden weight literals are identical); the version bump marks the filtered
 # era so a dispute can tell a pre-filter accrual from a post-filter one.
-FRAME_WEIGHTING_VERSION = "frame-weight-v2"
+#
+# v2 -> v3 (AFA-S2 W2-S2): the pre-accrual filter now also HOLDS REVIEW windows
+# (whole value to house under "antigaming_review_hold" — never allocated to a
+# contributor while the operator queue reviews it), and the writer applies the
+# per-(user, asset, day) dwell saturation cap, rerouting clamped cents to house.
+# weigh_second's blend math is STILL unchanged (the golden weight literals are
+# identical); the bump marks the hold+cap era so a payout dispute can tell a
+# pre-hold accrual from a post-hold one.
+FRAME_WEIGHTING_VERSION = "frame-weight-v3"
 
 
 # ---------------------------------------------------------------------------

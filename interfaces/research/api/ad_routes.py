@@ -18,8 +18,11 @@ functions and adapt them to HTTP.
   fill/pricing record (``ad_fill_decisions``) on (owner_user_id, window_id) —
   the client-supplied ``ad_value_usd_cents`` is accepted only as an IGNORED
   HINT, logged as ``client_hint`` (``frame_telemetry_client_hints``) for
-  auditability, never consulted — and (e) persisting through the single-writer
-  lock.
+  auditability, never consulted, (e) classifying the batch via
+  ``substrate.anti_gaming.frame_ivt`` and
+  reporting the honest filtered-seconds/verdict/cap outcome in the response
+  (AFA-S2, the anti-gaming pre-accrual filter), and (f) persisting through the
+  single-writer lock.
 
 * ``GET /api/ad/fill`` wraps ``reader_slots.fill_slot``: a matched advertiser
   creative if any, else the real ``HousePromo`` house fill (never blank).
@@ -34,7 +37,7 @@ are not imported here.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -43,6 +46,10 @@ from runtime.db_lock import LockedConnection, ReadConnection
 from substrate.ad_inventory.frame_attention import (
     FRAME_TELEMETRY_SCHEMA_VERSION,
     SUPPORTED_FRAME_TELEMETRY_SCHEMA_VERSIONS,
+)
+from substrate.anti_gaming.frame_ivt import (
+    DEFAULT_DAILY_ASSET_DWELL_CAP_MS,
+    classify_batch,
 )
 
 from .books import _resolve_db_path
@@ -93,7 +100,21 @@ class WindowFrameBatchIn(BaseModel):
 class FrameTelemetryResponse(BaseModel):
     """The reconciled outcome of accruing one window batch. Carries no body —
     only the trace anchor + the conserved cents split (per the M6 invariant
-    Σ contributor + house == total)."""
+    Σ contributor + house == total) + the AFA-S2 anti-gaming audit fields.
+
+    Anti-gaming fields (the pre-accrual filter's honest report — every dropped
+    second is counted, never silently removed):
+
+    * ``fraud_verdict`` — the frame_ivt window verdict ("pass"/"review"/"block").
+    * ``filtered_seconds`` — seconds withheld from allocation: the per-second
+      GIVT/SIVT exclusions for a "pass" window; ALL of the window's seconds for
+      a "review"/"block" window (held/zeroed — never allocated).
+    * ``filtered_second_counts`` — per-reason invalid-second counts (the
+      classifier's ``counts_by_reason``, exactly as persisted).
+    * ``verdict_signals`` — the window verdict's signal name → detail (why the
+      window was held/blocked; a SIVT heuristic's name lives here).
+    * ``clamped_dwell_ms`` / ``clamped_cents`` — the per-identity saturation
+      cap's reported exclusions for this window (0 when no cap is defined)."""
 
     batch_ref: str
     window_id: str
@@ -104,6 +125,12 @@ class FrameTelemetryResponse(BaseModel):
     reconciles: bool
     telemetry_version: str
     weighting_version: str
+    fraud_verdict: Literal["pass", "review", "block"]
+    filtered_seconds: int
+    filtered_second_counts: dict[str, int]
+    verdict_signals: dict[str, str]
+    clamped_dwell_ms: int
+    clamped_cents: int
 
 
 class HousePromoResponse(BaseModel):
@@ -253,6 +280,26 @@ def _resolve_from_fill_record(
     return int(row[0])
 
 
+def resolve_dwell_cap_ms(*, owner_user_id: str) -> int | None:
+    """Resolve the per-identity dwell saturation cap (AFA-S2, W2-S2).
+
+    The cap bounds one identity's countable focused dwell per (asset, day): past
+    the cap, further dwell on the same asset the same day earns nothing (the
+    sybil's extractable value is bounded). It is resolved PER IDENTITY here so a
+    cap can be defined for some identities and not others: return ``None`` for
+    an identity with no cap (unbounded), a positive ms ceiling otherwise.
+
+    Today every identity gets the published structural ceiling
+    (``DEFAULT_DAILY_ASSET_DWELL_CAP_MS`` — 6h of countable dwell on ONE asset in
+    ONE day, an un-calibrated "no honest single-document day exceeds this"
+    ceiling, documented in ``frame_ivt``; calibration against real traffic is a
+    recorded follow-up). Module-scope seam (mirrors the value-mint seam) so
+    tests can monkeypatch per-identity caps without touching the route.
+    """
+    _ = owner_user_id
+    return DEFAULT_DAILY_ASSET_DWELL_CAP_MS
+
+
 def register_ad_routes(app: FastAPI) -> None:
     """Mount the ad-border routes. Mirrors ``register_book_routes`` — one call
     from ``create_app``."""
@@ -273,10 +320,15 @@ def register_ad_routes(app: FastAPI) -> None:
         validation → 422), resolves the authoritative per-asset content_class +
         ip_holder server-side, MINTS the window's ad value server-side from the
         server's own fill/pricing record (the client's ad_value_usd_cents is an
-        IGNORED HINT — logged as client_hint, never trusted), and hands the
+        IGNORED HINT — logged as client_hint, never trusted), CLASSIFIES the
+        batch via the frame IVT anti-gaming classifier (AFA-S2:
+        GIVT/SIVT-invalid seconds are
+        dropped BEFORE allocation — never allocated, honestly counted in the
+        response; a REVIEW window is held, never allocated), applies the
+        per-identity dwell saturation cap when defined, and hands the
         batch to the SPR-05 accrual engine through the single-writer lock.
-        Weighting + accrual + escrow are COMPOSED, not re-implemented. Accrual
-        ≠ disbursement."""
+        Weighting + accrual + escrow are COMPOSED, not re-implemented.
+        Accrual ≠ disbursement."""
         from runtime.db_lock import connect_write
         from substrate.ad_inventory import fill_decisions
         from substrate.ad_inventory.frame_attention import (
@@ -356,7 +408,7 @@ def register_ad_routes(app: FastAPI) -> None:
             getattr(request.state, "user_id", None) or "__operator__"
         )
 
-        # (d) Accrue through the single-writer lock. This route runs inside the
+        # Accrue through the single-writer lock. This route runs inside the
         # --workers 1 uvicorn; accrue_window does not open its own writer.
         con_w = connect_write(db, purpose="ad/frame_telemetry")
         try:
@@ -383,8 +435,20 @@ def register_ad_routes(app: FastAPI) -> None:
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+            # AFA-S2 — classify once and pass that exact result into accrual so
+            # invalid seconds are removed before allocation and held windows
+            # never allocate contributor value.
+            classification = classify_batch(batch)
+
             result = accrue_window(
-                con_w, batch, asset_to_ip_holder=asset_to_ip_holder
+                con_w,
+                batch,
+                asset_to_ip_holder=asset_to_ip_holder,
+                owner_user_id=owner_user_id,
+                dwell_cap_ms=resolve_dwell_cap_ms(
+                    owner_user_id=owner_user_id
+                ),
+                classification=classification,
             )
             if batch_in.ad_value_usd_cents is not None:
                 # (f) The client's ad_value_usd_cents is an IGNORED HINT: it
@@ -402,6 +466,16 @@ def register_ad_routes(app: FastAPI) -> None:
         finally:
             con_w.close()
 
+        # Filtered seconds: per-second exclusions for a PASS window; for a
+        # REVIEW/BLOCK window NO second was allocated, so the whole window
+        # counts as filtered (the verdict + signals explain why).
+        if result.fraud_verdict in ("review", "block"):
+            filtered_seconds = len(batch.seconds)
+        else:
+            filtered_seconds = sum(
+                count for _, count in result.excluded_second_counts
+            )
+
         return FrameTelemetryResponse(
             batch_ref=result.batch_ref,
             window_id=result.window_id,
@@ -412,6 +486,14 @@ def register_ad_routes(app: FastAPI) -> None:
             reconciles=result.reconciles(),
             telemetry_version=result.telemetry_version,
             weighting_version=result.weighting_version,
+            fraud_verdict=cast(
+                Literal["pass", "review", "block"], result.fraud_verdict
+            ),
+            filtered_seconds=filtered_seconds,
+            filtered_second_counts=dict(result.excluded_second_counts),
+            verdict_signals=dict(result.verdict_signals),
+            clamped_dwell_ms=result.clamped_dwell_ms,
+            clamped_cents=result.clamped_cents,
         )
 
     @app.get("/api/ad/fill", response_model=AdFillResponse, tags=["ad"])

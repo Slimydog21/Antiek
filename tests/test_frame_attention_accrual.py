@@ -103,11 +103,33 @@ def test_accrual_is_append_only_and_traceable(con):
 
 def test_write_count_is_bounded_by_assets_not_seconds(con):
     """The load-bearing aggregation claim: 600 seconds × 5 assets must NOT
-    produce 3,000 rows — at most (5 asset rows + 1 house row)."""
-    samples = tuple(
-        _sample(f"doc-{k}", area=0.3, prom=0.4, dwell=400) for k in range(5)
+    produce 3,000 rows — at most (5 asset rows + 1 house row).
+
+    The per-second samples are JITTERED (area varies with the second index) so
+    the anti-gaming pre-accrual filter PASSES the window: a 600-second window
+    of byte-identical samples is a SIVT constant-attention signature and is now
+    correctly HELD (1 house row, 0 asset rows) — a different, also-bounded
+    case, exercised by the filter tests."""
+    seconds = tuple(
+        FrameSecond(
+            second_index=i,
+            lens="read",
+            samples=tuple(
+                _sample(
+                    f"doc-{k}",
+                    area=0.3 + ((i + k) % 7) * 0.01,
+                    prom=0.4,
+                    dwell=400,
+                )
+                for k in range(5)
+            ),
+        )
+        for i in range(600)
     )
-    batch = _window("w-big", 600, samples, 6000)
+    batch = WindowFrameBatch(
+        window_id="w-big", seconds=seconds, ad_value_usd_cents=6000,
+    )
+    samples = seconds[0].samples
     accrue_window(con, batch)
     n_accrual = con.execute(
         "SELECT COUNT(*) FROM frame_attention_accruals WHERE window_id = 'w-big'"
