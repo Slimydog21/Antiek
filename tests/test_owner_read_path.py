@@ -212,6 +212,258 @@ def test_owner_ask_book_reads_own_gated_content(
         "the owner's own gated/personal body must reach the model context"
     )
     assert body["answer_id"].startswith("evt-")
+    # Golden legacy wire shape: no selected-model fields are introduced.
+    assert body == {
+        "answer_id": body["answer_id"],
+        "capture_status": "captured",
+        "answer": "Page one covers entanglement.",
+        "citations": body["citations"],
+        "grounded": True,
+        "context_chunk_count": 1,
+    }
+
+
+def test_signed_session_owner_model_executes_exact_route_and_refuses_cross_owner(
+    db, stub_embeddings, monkeypatch, tmp_path,
+):
+    """End-to-end trust proof: signed middleware owner → document owner → BYOT."""
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.app import create_app
+    from substrate.auth import mint_session_cookie
+    from substrate.dispatch.router import register_provider
+
+    secret = "talk-to-book-signed-session-" + "x" * 48
+    email = "owner@example.test"
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", secret)
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", email)
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(tmp_path / "models.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "credentials.enc"))
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "byok.key"))
+    monkeypatch.setenv("ANTIEK_BYOT_USAGE_DB", str(tmp_path / "usage.sqlite3"))
+
+    _gated_book(db, "doc-owner-model", content_class="public_domain", title="Owned")
+    con = connect_write(db, purpose="bind-book-owner")
+    con.execute(
+        "UPDATE documents SET owner_user_id = ? WHERE document_id = ?",
+        ["owner-a", "doc-owner-model"],
+    )
+    con.close()
+
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    client = TestClient(app)
+    owner_cookie = {
+        "ANTIEK_SESSION": mint_session_cookie(user_id="owner-a", email=email),
+    }
+    created = client.post(
+        "/settings/models/user",
+        cookies=owner_cookie,
+        json={
+            "provider_kind": "openai_compat",
+            "provider_catalog_id": "deepseek",
+            "model_id": "deepseek-chat",
+            "display_name": "Book model",
+            "api_key": "test-owner-key-123456",
+        },
+    )
+    assert created.status_code == 201, created.text
+    provider_id = created.json()["id"]
+    fingerprint = app.state.user_model_registration_fingerprints[provider_id]
+    provider = _RecordingProvider("Selected owner answer.", name=provider_id)
+    provider._user_model_authority_fingerprint = fingerprint
+    register_provider(provider)
+
+    secret_marker = "submitted-provider-secret-marker"
+    invalid = client.post(
+        "/books/doc-owner-model/ask", cookies=owner_cookie,
+        json={"question": "invalid", "operation_id": "invalid-1", "model_choice": {
+            "authority": "user_model", "provider_id": secret_marker,
+            "model_id": "model", "forged_owner": secret_marker,
+        }},
+    )
+    assert invalid.status_code == 422
+    assert invalid.json() == {"detail": "model_selection_invalid"}
+    assert secret_marker not in invalid.text
+    assert provider.prompts == []
+
+    selected = client.post(
+        "/books/doc-owner-model/ask",
+        cookies=owner_cookie,
+        json={
+            "question": "what is the quantum passage about?",
+            "operation_id": "talk-owner-a-1",
+            "model_choice": {
+                "authority": "user_model",
+                "provider_id": provider_id,
+                "model_id": "deepseek-chat",
+            },
+        },
+    )
+    assert selected.status_code == 200, selected.text
+    receipt = selected.json()["model_receipt"]
+    assert receipt == {
+        "authority": "owner_byot",
+        "requested_provider_id": provider_id,
+        "requested_model_id": "deepseek-chat",
+        "actual_provider_id": provider_id,
+        "actual_model_id": "deepseek-chat",
+        "authority_digest": receipt["authority_digest"],
+    }
+    assert len(receipt["authority_digest"]) == 64
+    assert len(provider.prompts) == 1
+    assert "GATEDPROBE" in provider.prompts[0]
+    status = client.get(
+        "/books/model-operations/talk-owner-a-1", cookies=owner_cookie,
+    )
+    assert status.status_code == 200
+    assert status.json()["state"] == "settled"
+    assert status.json()["provider_id"] == provider_id
+    assert "api_key_id" not in status.json()
+    cannot_cancel = client.post(
+        "/books/model-operations/talk-owner-a-1/cancel", cookies=owner_cookie,
+    )
+    assert cannot_cancel.status_code == 409
+    from substrate.byot_usage.ledger import ByotUsageLedger
+    operation_ledger = ByotUsageLedger()
+    operation_ledger.prepare_operation(
+        provider_id, "owner-a", "talk-reconcile-1", 5, "a" * 64,
+    )
+    operation_ledger.mark_operation_sent("owner-a", "talk-reconcile-1")
+    operation_ledger.record_operation_result(
+        "owner-a", "talk-reconcile-1", actual_cents=2,
+        evidence_sha256="b" * 64, dispatch_event_id="evt-reconcile",
+        provider_id=provider_id, model_id="deepseek-chat",
+    )
+    reconciled = client.post(
+        "/books/model-operations/talk-reconcile-1/reconcile", cookies=owner_cookie,
+    )
+    assert reconciled.status_code == 200
+    assert reconciled.json()["state"] == "settled"
+    assert operation_ledger.key_usage(provider_id, "owner-a").used_cents == 2  # type: ignore[union-attr]
+    assert len(provider.prompts) == 1
+    operation_ledger.prepare_operation(
+        provider_id, "owner-a", "talk-stale-1", 4, "c" * 64,
+    )
+    stale_con = operation_ledger._connect()
+    stale_con.execute(
+        "UPDATE byot_operation_journal SET created_at = '2000-01-01T00:00:00+00:00'"
+        " WHERE owner_user_id = 'owner-a' AND operation_id = 'talk-stale-1'"
+    )
+    stale_con.commit()
+    stale_con.close()
+    cleanup = client.post(
+        "/books/model-operations/cleanup-prepared", cookies=owner_cookie,
+    )
+    assert cleanup.status_code == 200
+    assert cleanup.json() == {"cancelled_count": 1, "max_age_seconds": 86_400}
+    assert operation_ledger.operation("owner-a", "talk-stale-1").state == "cancelled"  # type: ignore[union-attr]
+
+    provider.prompts.clear()
+    import importlib
+    graph_search = importlib.import_module("substrate.graph.search")
+
+    def mutate_owner_at_dispatch():
+        owner_con = connect_write(db, purpose="mutate-owner-at-dispatch")
+        owner_con.execute(
+            "UPDATE documents SET owner_user_id = 'owner-b' WHERE document_id = ?",
+            ["doc-owner-model"],
+        )
+        owner_con.close()
+        return StubEmbedding()
+
+    monkeypatch.setattr(graph_search, "SentenceTransformerEmbedding", mutate_owner_at_dispatch)
+    raced = client.post(
+        "/books/doc-owner-model/ask", cookies=owner_cookie,
+        json={"question": "raced owner", "operation_id": "talk-race-1", "model_choice": {
+            "authority": "user_model", "provider_id": provider_id,
+            "model_id": "deepseek-chat",
+        }},
+    )
+    assert raced.status_code == 503
+    assert raced.json() == {"detail": "owner_model_unavailable"}
+    assert provider.prompts == []
+    monkeypatch.setattr(graph_search, "SentenceTransformerEmbedding", lambda: StubEmbedding())
+
+    other_cookie = {
+        "ANTIEK_SESSION": mint_session_cookie(user_id="owner-b", email=email),
+    }
+    for method, path in (
+        ("get", "/books/model-operations/talk-owner-a-1"),
+        ("post", "/books/model-operations/talk-owner-a-1/reconcile"),
+        ("post", "/books/model-operations/talk-owner-a-1/cancel"),
+    ):
+        hidden = getattr(client, method)(path, cookies=other_cookie)
+        assert hidden.status_code == 404
+        assert hidden.json() == {"detail": "model_operation_not_found"}
+    shared_cookie = {
+        "ANTIEK_SESSION": mint_session_cookie(user_id="__operator__", email=email),
+    }
+    for method, path in (
+        ("get", "/books/model-operations/talk-owner-a-1"),
+        ("post", "/books/model-operations/talk-owner-a-1/reconcile"),
+        ("post", "/books/model-operations/talk-owner-a-1/cancel"),
+    ):
+        refused_shared = getattr(client, method)(path, cookies=shared_cookie)
+        assert refused_shared.status_code == 401
+        assert refused_shared.json() == {"detail": "authentication_required"}
+    refused = client.post(
+        "/books/doc-owner-model/ask",
+        cookies=other_cookie,
+        json={
+            "question": "cross owner",
+            "operation_id": "talk-owner-b-1",
+            "model_choice": {
+                "authority": "user_model",
+                "provider_id": provider_id,
+                "model_id": "deepseek-chat",
+            },
+        },
+    )
+    assert refused.status_code == 503
+    assert refused.json() == {"detail": "owner_model_unavailable"}
+    assert provider.prompts == []
+
+    unauthenticated = client.post(
+        "/books/doc-owner-model/ask",
+        json={
+            "question": "no credential",
+            "operation_id": "talk-unauth-1",
+            "model_choice": {
+                "authority": "user_model",
+                "provider_id": provider_id,
+                "model_id": "deepseek-chat",
+            },
+        },
+    )
+    assert unauthenticated.status_code == 401
+    assert provider.prompts == []
+
+
+def test_local_unauthenticated_operation_endpoints_are_constant_401(
+    db, monkeypatch, tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.app import create_app
+
+    for name in (
+        "ANTIEK_AUTH_SECRET", "ANTIEK_OPERATOR_EMAIL", "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_CF_ACCESS_AUD", "ANTIEK_CF_ACCESS_TEAM_DOMAIN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("ANTIEK_BYOT_USAGE_DB", str(tmp_path / "local-usage.sqlite3"))
+    client = TestClient(
+        create_app(register_wrestling=False, register_providers=False, cors_origins=[]),
+    )
+    for method, path in (
+        ("get", "/books/model-operations/unknown"),
+        ("post", "/books/model-operations/unknown/reconcile"),
+        ("post", "/books/model-operations/unknown/cancel"),
+    ):
+        response = getattr(client, method)(path)
+        assert response.status_code == 401
+        assert response.json() == {"detail": "authentication_required"}
 
 
 def test_answer_capture_judgment_and_eval_export(

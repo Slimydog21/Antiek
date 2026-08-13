@@ -136,3 +136,64 @@ describe("token-parity guard fails on drift", () => {
     expect(shadowDriftFree(driftedShadow)).toBe(false);
   });
 });
+
+
+describe("research-state token family (herdr transfer P0-1)", () => {
+  // The --state-* tokens are SEMANTIC ALIASES over the palette constants.
+  // The invariant: every --state-* var exists in BOTH day and night css
+  // blocks, and the tokens.ts `state` mirror names the same alias target.
+  // A state colour can then never drift from the brand palette.
+  const STATE_KEYS = [
+    "working",
+    "blocked",
+    "done",
+    "stopped",
+    "muted",
+  ] as const;
+
+  const cssStateAliases = (block: string): Map<string, string> => {
+    const map = new Map<string, string>();
+    const re = /--state-([a-z]+)\s*:\s*var\((--[\w-]+)\);/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(stripComments(block))) !== null) {
+      map.set(m[1], m[2]);
+    }
+    return map;
+  };
+
+  const tsStateAliases = (): Map<string, string> => {
+    const src = readFileSync(join(here, "tokens.ts"), "utf8");
+    const map = new Map<string, string>();
+    const re = /([a-z]+):\s*"var\((--[\w-]+)\)",/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(src)) !== null) {
+      map.set(m[1], m[2]);
+    }
+    return map;
+  };
+
+  it("every state token exists in the day css block", () => {
+    const aliases = cssStateAliases(day);
+    for (const key of STATE_KEYS) expect(aliases.has(key)).toBe(true);
+  });
+
+  it("every state token exists in the night css block", () => {
+    const aliases = cssStateAliases(night);
+    for (const key of STATE_KEYS) expect(aliases.has(key)).toBe(true);
+  });
+
+  it("tokens.ts `state` mirror matches the css aliases exactly", () => {
+    const cssAliases = cssStateAliases(day);
+    const tsAliases = tsStateAliases();
+    for (const key of STATE_KEYS) {
+      expect(tsAliases.get(key)).toBe(cssAliases.get(key));
+    }
+  });
+
+  it("state aliases point only at palette constants (never raw hex)", () => {
+    const aliases = cssStateAliases(day);
+    for (const target of aliases.values()) {
+      expect(target).toMatch(/^--(sun|emperor|aurora|shadow-)/);
+    }
+  });
+});

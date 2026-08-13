@@ -281,6 +281,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ReadMetaReadingGeneratedPayload,
     # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.
     schema_module.DocumentFiledIntoInvestigationPayload,
+    # Own Your Mind P0 §5 — served-impression audit (v35 schema bump).
+    schema_module.SurfaceServedImpressionPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.

@@ -32,6 +32,7 @@ synthesizer chain).
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import sys
@@ -156,13 +157,17 @@ def _dispatch_and_parse(
     event: Event,
     *,
     sub_question: str,
+    semantic_call_id: str | None = None,
     canonical_chunk_ids: tuple[str, ...] = (),
 ) -> tuple[EvidenceResult | None, str]:
     """Run one evidence_retriever dispatch + parse. Returns
     ``(EvidenceResult, policy_id)`` on success, ``(None, fallback_id)``
     on dispatch or parse failure."""
     try:
-        result = dispatch(
+        from .research_owner_dispatch import dispatch_loop_one
+        result = dispatch_loop_one(prompt, "evidence_retriever", investigation_id=event.investigation_id,
+                                   semantic_call_id=semantic_call_id or "phase2:" + hashlib.sha256(
+                                       sub_question.encode()).hexdigest()[:16], attempt=0) or dispatch(
             prompt,
             "evidence_retriever",
             investigation_id=event.investigation_id,
@@ -226,6 +231,7 @@ def make_evidence_retriever_handler(
             prompt,
             event,
             sub_question=sub_question,
+            semantic_call_id=getattr(req, "owner_semantic_call_id", None),
             canonical_chunk_ids=canonical_chunk_ids,
         )
         if result is None:

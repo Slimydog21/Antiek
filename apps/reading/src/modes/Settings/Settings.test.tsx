@@ -8,6 +8,8 @@ import {
   type ModelDecisionResponse,
 } from "../../api/settings";
 import { fetchComposerProjection } from "../../api/composerProjection";
+import { fetchSettingsUsage } from "../../api/settingsUsage";
+import { fetchUserModels } from "../../api/settingsModels";
 import Settings from "./index";
 
 vi.mock("../../workspace/useViewportTier", () => ({
@@ -52,6 +54,44 @@ const budget = {
   over_budget: false,
   over_budget_usd: 0,
   notes: ["test note"],
+};
+
+const usageSnapshot = {
+  keys: [
+    {
+      api_key_id: "user-custom",
+      used_cents: 120,
+      limit_cents: 1000,
+      remaining_cents: 880,
+      held_cents: 40,
+      available_cents: 840,
+    },
+  ],
+  count: 1,
+};
+
+const userModelInventory = {
+  models: [
+    {
+      id: "user-custom",
+      provider_kind: "openai_compat" as const,
+      provider_catalog_id: "deepseek",
+      model_id: "deepseek-chat",
+      display_name: "User key",
+      base_url: "https://api.deepseek.com",
+      enabled: true,
+      key_present: true,
+      registered: true,
+      route_eligible: true,
+      pricing_status: "known" as const,
+      hard_ceiling_eligible: false,
+      execution_status: "blocked_idempotency_unproven" as const,
+      rate_snapshot: "deepseek-v4",
+    },
+  ],
+  count: 1,
+  stale_registered: [],
+  source: "test",
 };
 
 vi.mock("../../api/settings", () => ({
@@ -99,6 +139,38 @@ vi.mock("../../api/settings", () => ({
     provider: "zai",
     model: "glm-5.2",
   })),
+}));
+
+vi.mock("../../api/settingsUsage", () => ({
+  fetchSettingsUsage: vi.fn(async () => ({ keys: [], count: 0 })),
+  fetchSettingsBalance: vi.fn(async () => ({
+    api_key_id: "user-custom",
+    catalog_id: "deepseek",
+    kind: "balance_native",
+    balance_usd: 42.5,
+    granted_usd: 100,
+    spend_usd: 57.5,
+    budget_usd: null,
+    utilization: null,
+    window_label: null,
+    resets_at: null,
+    note: null,
+    held_cents: 40,
+    available_cents: 840,
+  })),
+  setSettingsUsageLimit: vi.fn(),
+}));
+
+vi.mock("../../api/settingsModels", () => ({
+  fetchUserModels: vi.fn(async () => ({
+    models: [],
+    count: 0,
+    stale_registered: [],
+    source: "test",
+  })),
+  fetchSettingsModelCatalog: vi.fn(async () => ({ providers: [], count: 0 })),
+  addUserModel: vi.fn(),
+  removeUserModel: vi.fn(),
 }));
 
 const composerProjection = {
@@ -175,6 +247,8 @@ vi.mock("../../api/composerProjection", () => ({
 describe("Settings SPR-01", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(fetchSettingsUsage).mockResolvedValue(usageSnapshot);
+    vi.mocked(fetchUserModels).mockResolvedValue(userModelInventory);
   });
 
   afterEach(cleanup);
@@ -189,6 +263,7 @@ describe("Settings SPR-01", () => {
     expect(screen.getAllByText("$5.00")).toHaveLength(2);
     expect(screen.getByText("$1.0000")).toBeTruthy();
     expect(screen.getByText("Reserved estimate today")).toBeTruthy();
+    expect(screen.getByText("Usage & balances (BYOT)")).toBeTruthy();
     expect(screen.queryByText("Spent today")).toBeNull();
   });
 
@@ -237,6 +312,36 @@ describe("Settings SPR-01", () => {
       seam_id: "user.prompt.generate",
       operation: "generate",
     });
+  });
+
+  it("shows selected-provider usage chip when the chosen provider key is available", async () => {
+    vi.mocked(fetchComposerProjection).mockResolvedValueOnce({
+      ...composerProjection,
+      ranked_candidates: [
+        {
+          rank: 1,
+          tier: "pro",
+          provider: "user-custom",
+          model: "deepseek-chat",
+          quality_score: 0.88,
+          quality_basis: "measured",
+          eligible: true,
+          pricing_status: "known",
+          estimated_usd_low: 0.01,
+          estimated_usd_high: 0.02,
+        },
+      ],
+      chosen_provider: "user-custom",
+      chosen_model: "deepseek-chat",
+      pricing_status: "known",
+    });
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(screen.getByRole("tab", { name: "Decision tree" }));
+    await user.click(screen.getByRole("button", { name: "Compare models" }));
+    expect((await screen.findByTestId("selected-provider-balance")).textContent).toContain(
+      "key remaining $8.80",
+    );
   });
 
   it("renders durable fallback receipts independently from model comparison", async () => {
@@ -403,15 +508,21 @@ describe("Settings SPR-01", () => {
     const user = userEvent.setup();
     render(<Settings />);
     const overview = screen.getByRole("tab", { name: "Overview" });
+    const lineup = screen.getByRole("tab", { name: "Lineup" });
     const decision = screen.getByRole("tab", { name: "Decision tree" });
     expect(overview.getAttribute("aria-controls")).toBe(
       "settings-overview-panel",
     );
     overview.focus();
     await user.keyboard("{ArrowRight}");
+    expect(lineup.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(lineup);
+    let panel = screen.getByRole("tabpanel");
+    expect(panel.getAttribute("aria-labelledby")).toBe("settings-lineup-tab");
+    await user.keyboard("{ArrowRight}");
     expect(decision.getAttribute("aria-selected")).toBe("true");
     expect(document.activeElement).toBe(decision);
-    const panel = screen.getByRole("tabpanel");
+    panel = screen.getByRole("tabpanel");
     expect(panel.getAttribute("aria-labelledby")).toBe("settings-decision-tab");
   });
 

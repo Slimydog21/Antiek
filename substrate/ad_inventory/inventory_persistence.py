@@ -249,7 +249,21 @@ def load_serving_for_matcher(
 
     The matcher prefers targeted; falls back to flat. This split
     mirrors ``select_targeted_ad``'s contract."""
-    items = load_active_inventory(con)
+    # An inventory row's own ``active`` bit is necessary but not sufficient:
+    # the advertiser registry is append-only, and only the advertiser's latest
+    # ACTIVE record may serve.  Orphans and suspended/churned advertisers fail
+    # closed here.
+    from .advertiser_onboarding import load_registry
+
+    registry = load_registry(con)
+    serving_advertiser_ids = {
+        record.advertiser_id for record in registry.all_serving()
+    }
+    items = [
+        item
+        for item in load_active_inventory(con)
+        if item.advertiser_id in serving_advertiser_ids
+    ]
     targeted: list[TargetedInventoryItem] = []
     flat: list[AdInventoryItem] = []
     for it in items:

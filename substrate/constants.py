@@ -452,6 +452,7 @@ ROLES: Final[tuple[str, ...]] = (
     "tier_assigner",         # rule-based; LLM only for downward adjustment
     "constraint_checker",
     "verifier",              # cross-family verification
+    "interviewer",           # speak vertical (async_interview + orchestrator)
 )
 
 # Default model tier per role. "flash" = bulk/cheap. "pro" = quality.
@@ -469,6 +470,7 @@ DEFAULT_ROLE_TIER: Final[dict[str, str]] = {
     "tier_assigner":        "flash",
     "constraint_checker":   "flash",
     "verifier":             "verify",
+    "interviewer":          "pro",
 }
 
 # --- Context-pack budgets -------------------------------------

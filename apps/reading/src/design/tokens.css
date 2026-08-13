@@ -62,6 +62,13 @@
   --ice-0:      #FFFFFF;
   --ice-1:      #FBFCFD;
   --ice-2:      #F4F7FA;
+  /* Pitch family (AI Role Lineup vertical, 2026-08-12) — the formation
+     field. A legitimate new token source: the FUT-style selector needs a
+     football-green field that themes with the app (day = grass, night =
+     deep turf). Kept as vars so LineupPitch consumes tokens, not hex. */
+  --pitch-base: #4C8F4F;
+  --pitch-mid:  #3D7A41;
+  --pitch-deep: #2F6633;
   --ice-3:      #EAEFF4;
   --ice-4:      #DCE5ED;
   --glacial-1:  #C2D1DD;
@@ -126,7 +133,7 @@
      weathered-sun family rather than inventing a new hue. */
   --werner-rod:   var(--sun-deep);
   /* werner-fish (SPR-05): Werner's OWN little fish in the endless never-catch
-     loop — NOT the cursor, NOT the ice-fishing bait worm. A brand-aurora teal
+     loop — NOT the cursor, NOT a bait worm. A brand-aurora teal
      so the fish reads as a cool little catch against the warm rod + near-black
      coat, on both themes; it leans on the existing --aurora accent rather than
      inventing a new hue (same restraint as --rod/--foot). */
@@ -137,6 +144,17 @@
   /* S11 a11y: darkened #E33C2D → #CE3623 (4.51:1 with white text).
      Reconciled with tokens.ts + tailwind.config.js in SPR-01. */
   --emperor: #CE3623;
+
+  /* Research-state family (herdr transfer P0-1) — SEMANTIC ALIASES, not new
+     hues. Each state token points at an existing palette constant, so state
+     colour can never drift from the brand palette: working=sun, blocked=
+     emperor, done=aurora, stopped/muted=shadow-1. Night values resolve
+     automatically because the night block re-declares the referenced vars. */
+  --state-working: var(--sun);
+  --state-blocked: var(--emperor);
+  --state-done:    var(--aurora);
+  --state-stopped: var(--shadow-2);
+  --state-muted:   var(--shadow-2);
 
   /* chunky offset shadows */
   --shadow-z1:   3px 3px 0 0 var(--ink);
@@ -226,6 +244,9 @@
     --ice-0:      #1B202A;  /* (re-mapped at night: card surface) */
     --ice-1:      #161B24;
     --ice-2:      #0D1019;
+    --pitch-base: #2E5C33;
+    --pitch-mid:  #244A29;
+    --pitch-deep: #1B3A20;
     --ice-3:      #0A0D14;
     --ice-4:      #080A10;
     --glacial-1:  #252B36;
@@ -307,6 +328,16 @@
 
     --aurora:  #3FE0DC;
     --emperor: #FF6155;
+
+    /* Research-state family (herdr transfer P0-1) — night aliases. Same
+       semantic targets as day; the values resolve through the night
+       redeclarations above (aurora/emperor/shadow-2), so state colours
+       track the night palette automatically. */
+    --state-working: var(--sun);
+    --state-blocked: var(--emperor);
+    --state-done:    var(--aurora);
+    --state-stopped: var(--shadow-2);
+    --state-muted:   var(--shadow-2);
 
     /* shadows glow at night */
     --shadow-z1:   3px 3px 0 0 var(--sun-deep);

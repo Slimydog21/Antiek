@@ -1,11 +1,28 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LemonButton } from "../../components/lemon";
-import { askBook, judgeBookAnswer } from "../../api/books";
-import type { BookCitation } from "../../api/books";
+import ModelUsagePicker from "../../components/ai/ModelUsagePicker";
+import {
+  askBook,
+  BookModelOperationNotFoundError,
+  cancelBookModelOperation,
+  getBookModelOperation,
+  judgeBookAnswer,
+  reconcileBookModelOperation,
+  SelectedBookModelUnavailableError,
+} from "../../api/books";
+import type { BookCitation, BookModelReceipt, UserModelChoice } from "../../api/books";
+import { fetchUserModels } from "../../api/settingsModels";
+import type { UserModelRow } from "../../api/settingsModels";
 import ReadAloud from "../../components/voice/ReadAloud";
 import { useTalkThread } from "./useTalkThread";
 import type { TalkMessage } from "./useTalkThread";
+
+type RoutableUserModel = UserModelRow & { route_eligible?: boolean };
+
+const modelKey = (providerId: string, modelId: string) => `${providerId}\u0000${modelId}`;
+const isRouteEligible = (model: UserModelRow) =>
+  (model as RoutableUserModel).route_eligible === true;
 
 /**
  * TalkToBook — the floating bookmark: a book-level MULTI-TURN conversation
@@ -48,9 +65,125 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [models, setModels] = useState<UserModelRow[]>([]);
+  const [modelsState, setModelsState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
+  const [modelChoice, setModelChoice] = useState<UserModelChoice | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const modelRequestRef = useRef(0);
+  const selectorRef = useRef<HTMLDivElement>(null);
+  const questionRef = useRef<HTMLTextAreaElement>(null);
 
   const turnCount = thread.messages.length;
   const branchCount = thread.state.branches.length;
+  const unresolvedOperations = thread.state.branches
+    .flatMap((branch) => branch.messages)
+    .filter((message) =>
+      Boolean(message.operation_id && message.model_operation_state) &&
+      message.model_operation_state !== "settled" &&
+      message.model_operation_state !== "cancelled",
+    );
+  const selectedDispatchBlocked = unresolvedOperations.length > 0;
+  const setModelOperationState = thread.setModelOperationState;
+  const markModelOperationNotFound = thread.markModelOperationNotFound;
+  const abandonMissingModelOperation = thread.abandonMissingModelOperation;
+  const failTurn = thread.failTurn;
+
+  const refreshModels = useCallback(async () => {
+    const request = ++modelRequestRef.current;
+    setModelsState("loading");
+    try {
+      const inventory = await fetchUserModels();
+      if (request !== modelRequestRef.current) return;
+      setModels(inventory.models);
+      setModelsState("ready");
+    } catch {
+      if (request === modelRequestRef.current) setModelsState("failed");
+    }
+  }, []);
+
+  const checkOperation = useCallback(async (
+    message: TalkMessage,
+    action: "status" | "reconcile" | "cancel" = "status",
+  ) => {
+    if (!message.operation_id) return;
+    setOperationError(null);
+    try {
+      const status = action === "reconcile"
+        ? await reconcileBookModelOperation(message.operation_id)
+        : action === "cancel"
+          ? await cancelBookModelOperation(message.operation_id)
+          : await getBookModelOperation(message.operation_id);
+      setModelOperationState(message.id, status.state);
+      if (status.state === "cancelled") {
+        failTurn(message.id);
+        setModelChoice(null);
+        void refreshModels();
+      }
+    } catch (statusError) {
+      if (action === "status" && statusError instanceof BookModelOperationNotFoundError) {
+        markModelOperationNotFound(message.id);
+        setOperationError(
+          "The server did not find this operation. Check again before considering abandonment.",
+        );
+      } else {
+        setOperationError(action === "cancel"
+          ? "This operation could not be released. Check its status before retrying."
+          : "Operation status is temporarily unavailable. Do not retry the selected model yet.");
+      }
+    }
+  }, [failTurn, markModelOperationNotFound, refreshModels, setModelOperationState]);
+
+  const abandonMissingOperation = useCallback((message: TalkMessage) => {
+    if ((message.operation_not_found_checks ?? 0) < 2) return;
+    if (!window.confirm(
+      "The server repeatedly reported that this operation does not exist. Abandon this unsent request?",
+    )) return;
+    abandonMissingModelOperation(message.id);
+    setModelChoice(null);
+    setOperationError(null);
+    void refreshModels();
+    window.setTimeout(() => questionRef.current?.focus(), 0);
+  }, [abandonMissingModelOperation, refreshModels]);
+
+  useEffect(() => {
+    if (!open) return;
+    void refreshModels();
+    questionRef.current?.focus();
+    return () => {
+      modelRequestRef.current += 1;
+    };
+  }, [open, documentId, refreshModels]);
+
+  const unresolvedKey = unresolvedOperations
+    .map((message) => `${message.id}:${message.model_operation_state}`)
+    .join("|");
+  useEffect(() => {
+    if (!open || unresolvedOperations.length === 0) return;
+    const poll = () => {
+      for (const message of unresolvedOperations) void checkOperation(message);
+    };
+    poll();
+    const timer = window.setInterval(poll, 5000);
+    return () => window.clearInterval(timer);
+  // The compact key prevents a fresh interval for unrelated thread renders.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, unresolvedKey, checkOperation]);
+
+  const selectedModel = modelChoice
+    ? models.find(
+        (model) => model.id === modelChoice.provider_id && model.model_id === modelChoice.model_id,
+      )
+    : null;
+  const selectedModelEligible = selectedModel ? isRouteEligible(selectedModel) : modelChoice === null;
+  const selectModel = (value: string) => {
+    if (value === "default") {
+      setModelChoice(null);
+      return;
+    }
+    const model = models.find((row) => modelKey(row.id, row.model_id) === value);
+    if (!model || !isRouteEligible(model)) return;
+    setModelChoice({ authority: "user_model", provider_id: model.id, model_id: model.model_id });
+  };
 
   const ask = useCallback(async () => {
     const q = draft.trim();
@@ -62,10 +195,21 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
     const history = thread.messages
       .filter((m): m is TalkMessage & { answer: string } => m.answer !== null)
       .map((m) => ({ question: m.question, answer: m.answer }));
-    const messageId = thread.startTurn(q);
+    const operationId = modelChoice ? `talk-${crypto.randomUUID()}` : undefined;
+    const messageId = thread.startTurn(q, operationId, modelChoice ?? undefined);
     setPending(true);
     try {
-      const res = await askBook(documentId, q, { history });
+      if (!selectedModelEligible) {
+        throw new Error("That model is no longer available. Choose another model or use Default.");
+      }
+      const res = modelChoice && operationId
+        ? await askBook(documentId, q, {
+            history,
+            researchTier: "deep",
+            modelChoice,
+            operationId,
+          })
+        : await askBook(documentId, q, { history, researchTier: "deep" });
       thread.completeTurn(
         messageId,
         res.answer,
@@ -73,14 +217,27 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
         res.grounded,
         res.answer_id,
         res.capture_status,
+        res.model_receipt,
       );
     } catch (e: unknown) {
-      thread.failTurn(messageId);
+      if (e instanceof SelectedBookModelUnavailableError) {
+        thread.failTurn(messageId);
+        setModelChoice(null);
+        setModels([]);
+        void refreshModels();
+        window.setTimeout(() => {
+          selectorRef.current?.querySelector("button")?.focus();
+        }, 0);
+      } else if (modelChoice) {
+        thread.setModelOperationState(messageId, "unknown");
+      } else {
+        thread.failTurn(messageId);
+      }
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setPending(false);
     }
-  }, [draft, pending, thread, documentId]);
+  }, [draft, pending, thread, documentId, modelChoice, selectedModelEligible, refreshModels]);
 
   if (!open) {
     return (
@@ -89,7 +246,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
         data-testid="talk-to-book-bookmark"
         onClick={() => setOpen(true)}
         title="Talk to this book"
-        className="fixed bottom-6 right-6 z-30 flex items-center gap-2 rounded-full bg-ink text-white px-4 py-2 text-sm font-serif shadow-lg hover:opacity-90"
+        className="fixed bottom-6 right-6 z-30 flex min-h-11 items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-serif text-white shadow-lg hover:opacity-90"
       >
         Talk to this book
         {turnCount > 0 && (
@@ -104,7 +261,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
   return (
     <aside
       data-testid="talk-to-book"
-      className="fixed bottom-6 right-6 z-30 flex flex-col w-96 max-h-[70vh] rounded-lg border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 shadow-2xl"
+      className="fixed bottom-3 left-3 right-3 z-30 flex max-h-[75vh] flex-col rounded-lg border border-rule bg-ice-0 shadow-2xl dark:border-charcoal-1 dark:bg-charcoal-2 sm:bottom-6 sm:left-auto sm:right-6 sm:w-96"
       aria-label="Talk to this book"
     >
       <header className="flex items-center justify-between gap-2 border-b border-rule dark:border-charcoal-1 px-3 py-2">
@@ -116,8 +273,11 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
             <button
               type="button"
               onClick={thread.reset}
-              className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
-              title="Clear the conversation"
+              disabled={selectedDispatchBlocked}
+              className="min-h-11 px-2 text-[11px] font-mono text-shadow-1 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-moonlight sm:min-h-0 sm:px-0"
+              title={selectedDispatchBlocked
+                ? "Resolve the pending model operation before clearing"
+                : "Clear the conversation"}
             >
               clear
             </button>
@@ -126,7 +286,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
             type="button"
             onClick={() => setOpen(false)}
             aria-label="Close"
-            className="text-[13px] font-mono text-ink dark:text-bright hover:opacity-70"
+            className="min-h-11 min-w-11 text-[13px] font-mono text-ink hover:opacity-70 dark:text-bright sm:min-h-0 sm:min-w-0"
           >
             ✕
           </button>
@@ -163,14 +323,54 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
           </p>
         )}
         {thread.messages.map((m) => (
-          <TalkMessageView
-            key={m.id}
-            message={m}
-            onJumpToPage={onJumpToPage}
-            onBranch={() => thread.branchFrom(m.id)}
-            onJudged={(verdict) => thread.setJudgment(m.id, verdict)}
-            documentId={documentId}
-          />
+          <div key={m.id}>
+            <TalkMessageView
+              message={m}
+              modelReceipt={m.model_receipt}
+              onJumpToPage={onJumpToPage}
+              onBranch={() => thread.branchFrom(m.id)}
+              onJudged={(verdict) => thread.setJudgment(m.id, verdict)}
+              documentId={documentId}
+            />
+            {m.answer === null && m.operation_id && m.model_operation_state && (
+              <div className="mt-2 rounded-md border border-sun-deep/40 bg-sun/10 p-2" role="status" aria-live="polite">
+                <p className="text-[12px] text-ink dark:text-bright">
+                  {m.model_operation_state === "prepared"
+                    ? "This model request is reserved but not sent. Release it before retrying."
+                    : m.model_operation_state === "settlement_pending"
+                      ? "The provider call completed, but settlement is pending. Reconcile it; do not retry."
+                      : m.model_operation_state === "settled"
+                        ? "The operation settled, but its answer response was lost. An administrator may need to recover the answer."
+                        : "The provider outcome is not confirmed. Do not retry this selected-model request."}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <LemonButton size="sm" className="min-h-11 sm:min-h-7" onClick={() => void checkOperation(m)}>
+                    Check status
+                  </LemonButton>
+                  {m.model_operation_state === "prepared" ? (
+                    <LemonButton size="sm" className="min-h-11 sm:min-h-7" onClick={() => void checkOperation(m, "cancel")}>
+                      Release reservation
+                    </LemonButton>
+                  ) : m.model_operation_state !== "settled" && (
+                    <LemonButton size="sm" className="min-h-11 sm:min-h-7" onClick={() => void checkOperation(m, "reconcile")}>
+                      Reconcile
+                    </LemonButton>
+                  )}
+                  {(m.operation_not_found_checks ?? 0) >= 2 &&
+                    (m.model_operation_state === "unknown" || m.model_operation_state === "requesting") && (
+                    <LemonButton
+                      size="sm"
+                      variant="danger"
+                      className="min-h-11 sm:min-h-7"
+                      onClick={() => abandonMissingOperation(m)}
+                    >
+                      Abandon unsent request
+                    </LemonButton>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         ))}
         {pending && (
           <p className="text-[12px] text-shadow-1 dark:text-moonlight italic" role="status">
@@ -182,6 +382,9 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
             {error}
           </p>
         )}
+        {operationError && (
+          <p className="text-[13px] text-emperor" role="alert">{operationError}</p>
+        )}
       </div>
 
       <form
@@ -189,24 +392,75 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
           e.preventDefault();
           void ask();
         }}
-        className="flex items-end gap-2 border-t border-rule dark:border-charcoal-1 px-3 py-2"
+        className="flex flex-col gap-2 border-t border-rule px-3 py-2 dark:border-charcoal-1"
       >
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Ask about this book…"
-          rows={2}
-          className="flex-1 bg-ice-1 dark:bg-charcoal-1 text-ink dark:text-bright rounded-md px-2 py-1.5 text-[13px] resize-none outline-none border border-rule dark:border-charcoal-1"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void ask();
+        <div ref={selectorRef}>
+          <label className="mb-1 block text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+            Model for this answer
+          </label>
+          <ModelUsagePicker
+            models={models}
+            triggerAriaLabel="Model for this answer"
+            value={
+              modelChoice
+                ? (models.find(
+                    (m) =>
+                      m.id === modelChoice.provider_id &&
+                      m.model_id === modelChoice.model_id,
+                  )?.id ?? null)
+                : null
             }
-          }}
-        />
-        <LemonButton type="submit" size="sm" variant="primary" disabled={pending || !draft.trim()}>
-          Ask
-        </LemonButton>
+            onChange={(rowId) => {
+              if (rowId === "") {
+                selectModel("default");
+                return;
+              }
+              const row = models.find((m) => m.id === rowId);
+              if (row) selectModel(modelKey(row.id, row.model_id));
+            }}
+            includeDefault
+            defaultLabel="Default (house route)"
+            triggerLabel={
+              modelChoice
+                ? (models.find(
+                    (m) =>
+                      m.id === modelChoice.provider_id &&
+                      m.model_id === modelChoice.model_id,
+                  )?.display_name ?? "Model")
+                : "Default"
+            }
+            size="sm"
+            className="[&_button]:min-h-11 sm:[&_button]:min-h-7"
+          />
+          <p className="mt-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight" aria-live="polite">
+            {modelsState === "loading" && "Loading your models…"}
+            {modelsState === "failed" && "Your models couldn’t load. Default is still available."}
+            {modelChoice && selectedModelEligible && `Requested: ${selectedModel?.display_name} · ${modelChoice.model_id}`}
+            {modelChoice && !selectedModelEligible && "This selection is unavailable. Choose another model or Default."}
+            {!modelChoice && modelsState !== "loading" && "Uses the established deep research tier."}
+            {modelChoice && selectedDispatchBlocked && "Resolve the pending model operation before starting another."}
+          </p>
+        </div>
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={questionRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Ask about this book…"
+            aria-label="Question for this book"
+            rows={2}
+            className="min-w-0 flex-1 resize-none rounded-md border border-rule bg-ice-1 px-2 py-1.5 text-[13px] text-ink outline-none dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void ask();
+              }
+            }}
+          />
+          <LemonButton className="min-h-11 sm:min-h-7" type="submit" size="sm" variant="primary" disabled={pending || !draft.trim() || !selectedModelEligible || Boolean(modelChoice && selectedDispatchBlocked)}>
+            Ask
+          </LemonButton>
+        </div>
       </form>
     </aside>
   );
@@ -214,12 +468,14 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
 
 function TalkMessageView({
   message,
+  modelReceipt,
   onJumpToPage,
   onBranch,
   onJudged,
   documentId,
 }: {
   message: TalkMessage;
+  modelReceipt?: BookModelReceipt | null;
   onJumpToPage: (pageIndex: number) => void;
   onBranch: () => void;
   onJudged: (verdict: "good" | "bad") => void;
@@ -259,6 +515,12 @@ function TalkMessageView({
           <p className="text-[13px] text-ink dark:text-bright whitespace-pre-wrap leading-relaxed">
             {message.answer}
           </p>
+
+          {modelReceipt?.actual_provider_id && modelReceipt.actual_model_id && (
+            <p className="mt-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight" data-testid="talk-model-receipt">
+              Used {modelReceipt.actual_provider_id} · {modelReceipt.actual_model_id}
+            </p>
+          )}
 
           {message.answer_id && (
             <div className="mt-2 flex items-center gap-2" aria-label="Rate this answer">

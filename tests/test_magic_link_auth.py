@@ -19,6 +19,7 @@ content if needed.
 
 from __future__ import annotations
 
+import re
 import time
 from html import escape
 from urllib.parse import parse_qs, urlparse
@@ -114,6 +115,10 @@ def _client(monkeypatch):
     # Existing magic-link contract tests model a device that has already
     # completed passkey onboarding. First-run redirection has its own test.
     monkeypatch.setattr("interfaces.research.api.auth.list_credentials", lambda: [object()])
+    # The in-process rate-limit windows are module-global; every client
+    # gets a fresh slate so throttling tests are deterministic.
+    from interfaces.research.api.auth import reset_auth_throttles
+    reset_auth_throttles()
     return TestClient(create_app(register_wrestling=False, register_providers=False))
 
 
@@ -143,7 +148,9 @@ def test_auth_request_non_allowlisted_silent(monkeypatch):
     assert r.json()["sent"] is True
     assert len(r.json()["attempt_id"]) >= 16
     assert len(r.json()["claim_secret"]) >= 16
-    assert len(r.json()["device_code"]) == 4
+    # The 4-digit code is email-only; the API must never hand it out,
+    # otherwise "type the code" would be theater, not proof.
+    assert "device_code" not in r.json()
 
 
 def test_auth_request_allowlisted_sends_email(monkeypatch):
@@ -176,10 +183,13 @@ def test_auth_email_has_explicit_html_action_and_matching_code(monkeypatch):
         if "/auth/callback?" in part
     )
 
-    assert email.subject.endswith(requested["device_code"])
-    assert requested["device_code"] in email.text_body
+    # The code travels ONLY in the email — never in the API response.
+    assert "device_code" not in requested
+    code = email.subject.rsplit("·", 1)[-1].strip()
+    assert re.fullmatch(r"\d{4}", code)
+    assert code in email.text_body
     assert email.html_body is not None
-    assert requested["device_code"] in email.html_body
+    assert code in email.html_body
     assert f'href="{escape(link, quote=True)}"' in email.html_body
     assert ">Review sign-in</a>" in email.html_body
 
@@ -192,11 +202,12 @@ def test_phone_approval_unlocks_original_browser(monkeypatch):
     requested = client.post("/auth/request", json={"email": _OPERATOR, "next": "/notebooks"}).json()
 
     link = next(part.strip() for part in sender.sent[0].email.text_body.split() if "/auth/callback?" in part)
+    code = sender.sent[0].email.subject.rsplit("·", 1)[-1].strip()
     parsed_link = urlparse(link)
     callback = client.get(f"{parsed_link.path}?{parsed_link.query}", follow_redirects=False)
     assert callback.status_code == 302
     assert "approve=" in callback.headers["location"]
-    assert f"code={requested['device_code']}" in callback.headers["location"]
+    assert f"code={code}" in callback.headers["location"]
 
     approved = client.post("/auth/approve", json={"attempt_id": requested["attempt_id"]})
     assert approved.status_code == 204
@@ -230,6 +241,182 @@ def test_handoff_cannot_be_approved_without_mailbox_session(monkeypatch):
         json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"]},
     )
     assert pending.status_code == 202
+
+
+def _requested_code(client, sender) -> str:
+    """POST /auth/request and return (attempt json, code from email)."""
+    requested = client.post("/auth/request", json={"email": _OPERATOR}).json()
+    return requested, sender.sent[-1].email.subject.rsplit("·", 1)[-1].strip()
+
+
+def test_typed_email_code_unlocks_single_device(monkeypatch):
+    """The operator's flow: code arrives by email, is typed into the
+    browser, and unlocks — no second device, no approval click needed.
+    The typed code IS the email-possession proof."""
+    sender = MockEmailProvider(log_to_stdout=False)
+    monkeypatch.setattr("interfaces.research.api.auth.get_email_provider", lambda: sender)
+    client = _client(monkeypatch)
+    requested, code = _requested_code(client, sender)
+
+    claimed = client.post(
+        "/auth/claim",
+        json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"], "code": code},
+    )
+    assert claimed.status_code == 200
+    assert claimed.json()["authenticated"] is True
+    assert SESSION_COOKIE_NAME in claimed.cookies
+
+    # One-time use: the same claim (any channel) is dead.
+    replay = client.post(
+        "/auth/claim",
+        json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"], "code": code},
+    )
+    assert replay.status_code == 410
+
+
+def test_wrong_code_rejected_with_remaining_attempts(monkeypatch):
+    sender = MockEmailProvider(log_to_stdout=False)
+    monkeypatch.setattr("interfaces.research.api.auth.get_email_provider", lambda: sender)
+    client = _client(monkeypatch)
+    requested, _ = _requested_code(client, sender)
+
+    r = client.post(
+        "/auth/claim",
+        json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"], "code": "0000"},
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "invalid_code"
+    assert r.json()["detail"]["remaining_attempts"] == 4
+    assert SESSION_COOKIE_NAME not in r.cookies
+
+
+def test_five_wrong_codes_lock_the_attempt(monkeypatch):
+    """A 10,000-space code inside a 15-minute TTL must not be
+    brute-forceable: five wrong tries kill the attempt entirely."""
+    sender = MockEmailProvider(log_to_stdout=False)
+    monkeypatch.setattr("interfaces.research.api.auth.get_email_provider", lambda: sender)
+    client = _client(monkeypatch)
+    requested, code = _requested_code(client, sender)
+
+    for attempt in range(4):
+        r = client.post(
+            "/auth/claim",
+            json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"], "code": "0000"},
+        )
+        assert r.status_code == 400, attempt
+
+    r = client.post(
+        "/auth/claim",
+        json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"], "code": "0000"},
+    )
+    assert r.status_code == 410
+    assert r.json()["detail"]["code"] == "login_attempt_locked"
+
+    # Even the CORRECT code is now dead — the attempt was invalidated.
+    locked = client.post(
+        "/auth/claim",
+        json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"], "code": code},
+    )
+    assert locked.status_code == 410
+
+
+def test_claim_without_code_waits_for_approval_then_unlocks(monkeypatch):
+    """Two-device flow preserved: no code in the claim body → 202 until
+    the email-click device approves, then 200. (Regression guard for the
+    old contract; the typed-code path is the new primary.)"""
+    sender = MockEmailProvider(log_to_stdout=False)
+    monkeypatch.setattr("interfaces.research.api.auth.get_email_provider", lambda: sender)
+    client = _client(monkeypatch)
+    requested, _ = _requested_code(client, sender)
+
+    pending = client.post(
+        "/auth/claim",
+        json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"]},
+    )
+    assert pending.status_code == 202
+
+    # The approving device has a session cookie (it clicked the link).
+    link = next(part.strip() for part in sender.sent[-1].email.text_body.split() if "/auth/callback?" in part)
+    parsed = urlparse(link)
+    client.get(f"{parsed.path}?{parsed.query}", follow_redirects=False)
+    approved = client.post("/auth/approve", json={"attempt_id": requested["attempt_id"]})
+    assert approved.status_code == 204
+
+    client.cookies.clear()
+    claimed = client.post(
+        "/auth/claim",
+        json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"]},
+    )
+    assert claimed.status_code == 200
+    assert SESSION_COOKIE_NAME in claimed.cookies
+
+
+def test_auth_request_rate_limited_per_ip(monkeypatch):
+    sender = MockEmailProvider(log_to_stdout=False)
+    monkeypatch.setattr("interfaces.research.api.auth.get_email_provider", lambda: sender)
+    client = _client(monkeypatch)
+    for _ in range(6):
+        r = client.post("/auth/request", json={"email": _OPERATOR})
+        assert r.status_code == 200
+    r = client.post("/auth/request", json={"email": _OPERATOR})
+    assert r.status_code == 429
+    assert r.json()["detail"]["code"] == "rate_limited"
+
+
+def test_auth_claim_rate_limited_per_ip(monkeypatch):
+    """Only code-bearing claims count against the IP throttle. The
+    two-device approval poll (no code) runs every 1.8s and must never
+    be throttled — it is the operator's own page, not a brute-force
+    surface."""
+    sender = MockEmailProvider(log_to_stdout=False)
+    monkeypatch.setattr("interfaces.research.api.auth.get_email_provider", lambda: sender)
+    client = _client(monkeypatch)
+    requested, code = _requested_code(client, sender)
+
+    # 40 code-less polls: never throttled.
+    for _ in range(40):
+        r = client.post(
+            "/auth/claim",
+            json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"]},
+        )
+        assert r.status_code == 202
+
+    for _ in range(30):
+        # Wrong codes are fine for the throttle check; each call counts.
+        r = client.post(
+            "/auth/claim",
+            json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"], "code": "0000"},
+        )
+        assert r.status_code in (400, 410)
+    r = client.post(
+        "/auth/claim",
+        json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"], "code": code},
+    )
+    assert r.status_code == 429
+
+
+def test_www_origin_allowed_by_cors(monkeypatch):
+    """https://www.antiek.ai serves the same Pages bundle; the login
+    surface (and WebAuthn) must work from that origin, so the default
+    CORS allow-list includes it."""
+    client = _client(monkeypatch)
+    r = client.options(
+        "/auth/request",
+        headers={
+            "Origin": "https://www.antiek.ai",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers.get("access-control-allow-origin") == "https://www.antiek.ai"
+
+
+def test_www_origin_in_webauthn_defaults(monkeypatch):
+    """WebAuthn verifies the exact page origin; a credential registered
+    from the apex must verify from www too (same rpId, subdomain)."""
+    from substrate.auth.passkeys import _origins
+    monkeypatch.delenv("ANTIEK_WEBAUTHN_ORIGINS", raising=False)
+    assert "https://www.antiek.ai" in _origins()
 
 
 def test_auth_request_rejects_malformed_email(monkeypatch):
@@ -372,10 +559,7 @@ def test_bearer_path_still_works_when_secret_set(monkeypatch):
     assert r.json()["auth_method"] == "bearer_token"
 
 
-def test_cf_access_email_path_still_works(monkeypatch):
-    """The Cloudflare Access path remains active during the cutover
-    window. Operator decommissions CF Access manually per the
-    runbook."""
+def test_cf_access_email_header_cannot_replace_signed_session(monkeypatch):
     monkeypatch.setenv("ANTIEK_AUTH_SECRET", _SECRET)
     monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", _OPERATOR)
     monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
@@ -385,8 +569,7 @@ def test_cf_access_email_path_still_works(monkeypatch):
         "/auth/whoami",
         headers={"Cf-Access-Authenticated-User-Email": _OPERATOR},
     )
-    assert r.status_code == 200
-    assert r.json()["auth_method"] == "cloudflare_access_email"
+    assert r.status_code == 401
 
 
 def test_email_provider_factory_default_mock(monkeypatch):

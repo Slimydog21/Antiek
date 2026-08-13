@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTH_TRANSPORT_FETCH_MESSAGE,
   authLoginErrorDisplay,
+  claimLogin,
   requestMagicLink,
 } from "./auth";
 
@@ -46,16 +47,15 @@ describe("requestMagicLink", () => {
     expect(result.kind === "error" && result.message).not.toContain("Failed to fetch");
   });
 
-  it("B-POLICY-ALLOWLIST-SILENT: 200 sent has null diagnostic_code", async () => {
+  it("B-POLICY-ALLOWLIST-SILENT: 200 sent has null diagnostic_code and no code", async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
-      jsonResponse(200, { sent: true, attempt_id: "attempt-123456789", claim_secret: "claim-1234567890", device_code: "2048" }),
+      jsonResponse(200, { sent: true, attempt_id: "attempt-123456789", claim_secret: "claim-1234567890" }),
     );
     const result = await requestMagicLink("any@example.com");
     expect(result).toEqual({
       kind: "sent",
       attempt_id: "attempt-123456789",
       claim_secret: "claim-1234567890",
-      device_code: "2048",
       diagnostic_code: null,
       layer: null,
     });
@@ -102,5 +102,57 @@ describe("authLoginErrorDisplay", () => {
     });
     expect(copy.message).toBe("Resend API error");
     expect(copy.hint).toMatch(/Resend|AgentMail/i);
+  });
+});
+
+describe("claimLogin", () => {
+  it("sends the typed code and unlocks on match", async () => {
+    const mockFetch = fetch as unknown as ReturnType<typeof vi.fn>;
+    mockFetch.mockResolvedValue(
+      jsonResponse(200, { authenticated: true, setup_passkey: false, next: "/" }),
+    );
+    const result = await claimLogin("attempt-123456789", "claim-1234567890", "4821");
+    expect(result).toEqual({ status: "authenticated", setup_passkey: false, next: "/" });
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toContain("/auth/claim");
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      attempt_id: "attempt-123456789",
+      claim_secret: "claim-1234567890",
+      code: "4821",
+    });
+  });
+
+  it("omits code on the two-device poll path", async () => {
+    const mockFetch = fetch as unknown as ReturnType<typeof vi.fn>;
+    mockFetch.mockResolvedValue(jsonResponse(202, {}));
+    const result = await claimLogin("attempt-123456789", "claim-1234567890");
+    expect(result).toEqual({ status: "pending" });
+    const [, init] = mockFetch.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      attempt_id: "attempt-123456789",
+      claim_secret: "claim-1234567890",
+    });
+  });
+
+  it("maps 400 invalid_code to a typed result with remaining attempts", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse(400, {
+        detail: { code: "invalid_code", message: "That code didn't match.", remaining_attempts: 3 },
+      }),
+    );
+    const result = await claimLogin("attempt-123456789", "claim-1234567890", "0000");
+    expect(result).toEqual({ status: "invalid_code", remaining_attempts: 3 });
+  });
+
+  it("maps 410 to expired", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(jsonResponse(410, {}));
+    const result = await claimLogin("attempt-123456789", "claim-1234567890", "4821");
+    expect(result).toEqual({ status: "expired" });
+  });
+
+  it("maps 429 to rate_limited", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(jsonResponse(429, {}));
+    const result = await claimLogin("attempt-123456789", "claim-1234567890", "4821");
+    expect(result).toEqual({ status: "rate_limited" });
   });
 });

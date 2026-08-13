@@ -101,17 +101,17 @@ CREATE TABLE IF NOT EXISTS chunks (
 CREATE TABLE IF NOT EXISTS nodes (
     node_id          TEXT PRIMARY KEY,
     canonical_label  TEXT NOT NULL,
-    -- DRW SPR-01 adds 'insight' + 'question' (the two atomic units of
-    -- distilled truth). Fresh DBs created from this constant get them
-    -- directly; pre-existing prod DBs are upgraded by
-    -- migrate_v9_insight_question (DuckDB cannot ALTER a CHECK in place,
-    -- so that migration rebuilds the table). Keep this list in lock-step
-    -- with substrate/schemas/events.NodeType and the rebuilt-table CHECK
-    -- in migrate_v9_insight_question._NODES_REBUILD_SQL.
+    -- DRW SPR-01 adds 'insight' + 'question'; account-memory S2a adds
+    -- 'memory'. Fresh DBs created from this constant get all three directly;
+    -- pre-existing databases are upgraded by migrate_v9_insight_question and
+    -- the operator-gated migrate_v10_account_memory respectively. DuckDB cannot
+    -- ALTER a CHECK in place, so both migrations rebuild the table. Keep this
+    -- list in lock-step with substrate/schemas/events.NodeType and the latest
+    -- rebuilt-table CHECK.
     node_type        TEXT NOT NULL CHECK (node_type IN (
         'entity', 'organization', 'person', 'property',
         'metric', 'mechanism', 'claim', 'method', 'constraint',
-        'insight', 'question'
+        'insight', 'question', 'memory'
     )),
     embedding        FLOAT[],
     graph_scope      TEXT NOT NULL CHECK (graph_scope IN (
@@ -145,7 +145,10 @@ CREATE TABLE IF NOT EXISTS edges (
         'depth', 'cross_domain', 'constraint'
     )),
     investigation_id       TEXT,
-    metadata               TEXT
+    metadata               TEXT,
+    -- Account-memory S2a: temporal memory edges are owner-scoped as well as
+    -- their endpoint nodes. Nullable preserves legacy graph rows.
+    owner_user_id          TEXT
 );
 
 -- ============================================================
@@ -441,8 +444,12 @@ CREATE INDEX IF NOT EXISTS idx_ip_holders_status ON ip_holders(status);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_class TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS ip_holder_id TEXT;
 ALTER TABLE nodes ADD COLUMN IF NOT EXISTS owner_user_id TEXT;
-CREATE INDEX IF NOT EXISTS idx_documents_content_class ON documents(content_class);
-CREATE INDEX IF NOT EXISTS idx_documents_ip_holder ON documents(ip_holder_id);
+-- Do not secondary-index mutable columns on the documents FK parent. DuckDB
+-- cannot update such a column once chunks/book_assets reference the row, even
+-- when the index is dropped inside the surrounding transaction. Older
+-- databases may already carry these indexes, so initialization removes them.
+DROP INDEX IF EXISTS idx_documents_content_class;
+DROP INDEX IF EXISTS idx_documents_ip_holder;
 CREATE INDEX IF NOT EXISTS idx_nodes_owner ON nodes(owner_user_id);
 
 CREATE TABLE IF NOT EXISTS multimedia_twin_runs (
@@ -1368,6 +1375,41 @@ _V17_OUTBOX_COLUMNS = {
 }
 
 
+# V20 — one same-row declaration for every canonical document's recursive
+# twin obligation. Existing rows remain NULL until the locked backfill derives
+# declarations from their stored bytes; the completeness verifier rejects NULL.
+ANTIEK_GRAPH_SCHEMA_V20_TWIN_SOURCE_ENVELOPE_SQL = """
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS twin_source_envelope TEXT;
+"""
+
+
+# Doc→HTML S1 — document_reader_html: the reader-HTML SIDECAR for URL/PDF/arXiv
+# docs. The html_body is the OUTPUT OF substrate.books.html_sanitizer only
+# (sanitize-on-write, same discipline as book_import/publish.py); the
+# sanitizer_version column is stamped by substrate.reader_html.store
+# (store_reader_html) at the SAME write that ran the sanitizer, and
+# serve_reader_html refuses to emit the body AS HTML unless it equals the
+# current SANITIZER_VERSION exactly. Hard FK to documents (a sidecar row only
+# ever exists for an existing document; the URL replace path updates the
+# documents row in place, never deletes it, so the FK never blocks that path).
+# This table is the ONLY trust carrier for reader bodies — documents.metadata
+# is deliberately NOT stamped (the §5.2 hazard: serve.py would then label the
+# markdown raw_text as content_format="html"). Pure idempotent CREATE IF NOT
+# EXISTS; FK-references documents, no table references this one.
+ANTIEK_GRAPH_SCHEMA_V21_READER_HTML_SQL = """
+CREATE TABLE IF NOT EXISTS document_reader_html (
+    document_id       TEXT PRIMARY KEY REFERENCES documents(document_id),
+    html_body         TEXT NOT NULL,          -- sanitize_book_html output ONLY; raw bytes never stored
+    sanitizer_version TEXT NOT NULL,          -- == SANITIZER_VERSION at the sanitize call
+    source_kind       TEXT NOT NULL,          -- 'url' | 'pdf' | 'arxiv' | 'upload_html' | 'upload_md' | 'upload_txt'
+    source_url        TEXT,
+    captured_at       TIMESTAMP NOT NULL,
+    edited_at         TIMESTAMP,              -- NULL = pristine capture
+    revision          INTEGER NOT NULL DEFAULT 1
+);
+"""
+
+
 ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL = """
 CREATE TABLE IF NOT EXISTS event_consumer_events (
     consumer_name TEXT NOT NULL,
@@ -1670,6 +1712,51 @@ def _v20_note_taker_shape_is_valid(con: LockedConnection) -> bool:
             )
         ]
     )
+
+
+# Doc→HTML S1 — document_reader_html (reader-HTML sidecar) shape fingerprint.
+# Same pattern as the V19/V20 fingerprints: exact DESCRIBE shape + PK + the
+# hard FK to documents (a sidecar row only exists for an existing document —
+# if the FK is ever dropped, the probe returns False and a fresh CREATE IF NOT
+# EXISTS re-lands the intended shape on the next init).
+_V21_READER_HTML_REQUIRED_SHAPE = {
+    "document_id": ("VARCHAR", "NO", "PRI", None),
+    "html_body": ("VARCHAR", "NO", None, None),
+    "sanitizer_version": ("VARCHAR", "NO", None, None),
+    "source_kind": ("VARCHAR", "NO", None, None),
+    "source_url": ("VARCHAR", "YES", None, None),
+    "captured_at": ("TIMESTAMP", "NO", None, None),
+    "edited_at": ("TIMESTAMP", "YES", None, None),
+    "revision": ("INTEGER", "NO", None, "1"),
+}
+
+_V21_READER_HTML_KEY_CHECKS = {
+    ("PRIMARY KEY", ("document_id",), "PRIMARY KEY(document_id)"),
+    (
+        "FOREIGN KEY",
+        ("document_id",),
+        "FOREIGN KEY (document_id) REFERENCES documents(document_id)",
+    ),
+}
+
+
+def _v21_reader_html_shape_is_valid(con: LockedConnection) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3], row[4])
+        for row in con.execute("DESCRIBE document_reader_html").fetchall()
+    }
+    if described != _V21_READER_HTML_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE table_name='document_reader_html'"
+    ).fetchall()
+    key_checks = {
+        (row[0], tuple(row[1]), row[2])
+        for row in constraints
+        if row[0] in {"PRIMARY KEY", "FOREIGN KEY", "UNIQUE", "CHECK"}
+    }
+    return key_checks == _V21_READER_HTML_KEY_CHECKS
 
 
 def _repair_empty_partial_v20_note_taker(con: LockedConnection) -> None:
@@ -2056,6 +2143,14 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL)
     _repair_empty_partial_v20_note_taker(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V20_NOTE_TAKER_REPLAY_SQL)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V20_TWIN_SOURCE_ENVELOPE_SQL)
+    from substrate.twin_recursion import backfill_twin_source_envelopes
+
+    backfill_twin_source_envelopes(con)
+    # Doc→HTML S1 — document_reader_html reader-HTML sidecar (sanitize-on-write
+    # trust contract, see the block comment above). Pure idempotent CREATE IF
+    # NOT EXISTS; FK-references documents; runs last.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V21_READER_HTML_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -2093,6 +2188,9 @@ def _schema_is_present(db_path: str) -> bool:
             "SELECT (EXISTS (SELECT 1 FROM information_schema.columns "
             "WHERE table_schema='main' AND table_name='nodes' "
             "AND column_name='owner_user_id') AND EXISTS (SELECT 1 FROM "
+            "information_schema.columns WHERE table_schema='main' AND "
+            "table_name='documents' AND column_name='twin_source_envelope') AND "
+            "NOT EXISTS (SELECT 1 FROM documents WHERE twin_source_envelope IS NULL) AND EXISTS (SELECT 1 FROM "
             "information_schema.tables WHERE table_schema='main' "
             "AND table_name='multimedia_twin_runs') AND EXISTS (SELECT 1 FROM "
             "information_schema.tables WHERE table_schema='main' "
@@ -2130,6 +2228,7 @@ def _schema_is_present(db_path: str) -> bool:
             and _v19_event_shape_is_valid(con)
             and _v20_configuration_shape_is_valid(con)
             and _v20_note_taker_shape_is_valid(con)
+            and _v21_reader_html_shape_is_valid(con)
         )
     except Exception:
         return False

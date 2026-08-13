@@ -46,6 +46,9 @@ vi.mock("./components/navigation/Topbar", () => ({
 }));
 vi.mock("./components/lemon/LemonToast", () => ({
   LemonToastViewport: () => null,
+  // herdr transfer P0-4 — AppShell registers the toast navigator; the mock
+  // contract must keep the registration callable (a no-op is fine here).
+  setToastNavigator: () => {},
 }));
 vi.mock("./workspace/PanelLayout", () => ({
   PanelLayout: ({ mainSlot }: { mainSlot: React.ReactNode }) => (

@@ -29,6 +29,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from orchestration.rlm.prime_agent_backend import PrimeAgentRLMBackend
 from orchestration.rlm.session import (
     RLM_DOC_THRESHOLD_TOKENS,
     RLM_SESSION_COST_USD_CAP,
@@ -99,6 +100,16 @@ def is_ratified() -> bool:
     return os.environ.get("ANTIEK_RLM_RATIFIED", "") == "1"
 
 
+def _prime_agent_enabled() -> bool:
+    return os.environ.get("ANTIEK_PRIME_AGENT_RLM_ENABLED", "") == "1"
+
+
+def _bridge_executor(prime_backend: PrimeAgentRLMBackend | None) -> str:
+    if prime_backend is not None and _prime_agent_enabled() and is_ratified():
+        return "prime_agent"
+    return "dispatch"
+
+
 def maybe_escalate_to_rlm(
     *,
     document_id: str,
@@ -106,6 +117,7 @@ def maybe_escalate_to_rlm(
     estimated_tokens: int,
     root_role: str = "wrestler",
     threshold_tokens: int = RLM_DOC_THRESHOLD_TOKENS,
+    prime_backend: PrimeAgentRLMBackend | None = None,
 ) -> RLMBridgeDecision:
     """Decide whether this document warrants an RLM session.
 
@@ -153,11 +165,18 @@ def maybe_escalate_to_rlm(
             reason="deferred_pending_ratification",
         )
 
+    root_executor = _bridge_executor(prime_backend)
     try:
         session = create_session(
             investigation_id=investigation_id,
             root_role=root_role,
             document_id=document_id,
+            root_executor=root_executor,
+            prime_goal_brief=(
+                "RLM long-doc wrestling session rooted at bridge escalation"
+                if root_executor == "prime_agent"
+                else None
+            ),
         )
     except RLMRatificationRequired:
         # Defensive: env var was set when is_ratified() returned True,

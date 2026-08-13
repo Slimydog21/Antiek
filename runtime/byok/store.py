@@ -51,9 +51,10 @@ THREAT MODEL (stated plainly — what this defends, and the one it does NOT)
     accidental logging, NOT against an adversary already root on the running box.
     Stated honestly; not overclaimed.
 
-Metadata is non-secret by design (cred_id / handle / pipeline_kind) and is stored
-alongside the ciphertext so :mod:`runtime.byok.pipelines` can list credentials
-without ever touching the key.
+Metadata is non-secret by design (cred_id / handle / pipeline_kind / owner_user_id)
+and is stored alongside the ciphertext so :mod:`runtime.byok.pipelines` can list
+credentials without ever touching the key. Version-3 credentials bind the owner
+namespace into the derived SecretBox key; legacy v1/v2 artifacts stay readable.
 """
 
 from __future__ import annotations
@@ -69,6 +70,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import nacl.exceptions
 import nacl.secret
@@ -79,8 +81,9 @@ from runtime.byok.secret_str import SecretStr
 _DEFAULT_ARTIFACT_NAME = "credentials.enc"
 _KEY_SIZE = nacl.secret.SecretBox.KEY_SIZE  # 32
 _KEY_FILE_MODE = 0o600
-_BOUND_CREDENTIAL_VERSION = 2
-_BINDING_PERSON = b"antiek-byok-v2"
+_BOUND_CREDENTIAL_VERSION = 3
+_BINDING_PERSON_V2 = b"antiek-byok-v2"
+_BINDING_PERSON_V3 = b"antiek-byok-v3"
 _STORE_LOCK = threading.RLock()
 
 _ENV_ARTIFACT = "ANTIEK_BYOK_ARTIFACT"
@@ -114,6 +117,7 @@ class CredentialMetadata:
     pipeline_kind: str | None = None
     binding_version: int = 1
     artifact_fingerprint: str = ""
+    owner_user_id: str | None = None
 
 
 class CredentialIntegrityError(ValueError):
@@ -126,15 +130,31 @@ def _bound_key(
     cred_id: str,
     account_handle: str,
     pipeline_kind: str | None,
+    owner_user_id: str | None,
+    binding_version: int,
 ) -> bytes:
     """Derive a SecretBox key bound to one immutable credential identity."""
-    identity = json.dumps(
-        {
+    if binding_version == 2:
+        identity_fields: dict[str, object] = {
             "account_handle": account_handle,
             "cred_id": cred_id,
             "pipeline_kind": pipeline_kind,
-            "version": _BOUND_CREDENTIAL_VERSION,
-        },
+            "version": 2,
+        }
+        person = _BINDING_PERSON_V2
+    elif binding_version == 3:
+        identity_fields = {
+            "account_handle": account_handle,
+            "cred_id": cred_id,
+            "owner_user_id": owner_user_id,
+            "pipeline_kind": pipeline_kind,
+            "version": 3,
+        }
+        person = _BINDING_PERSON_V3
+    else:
+        raise CredentialIntegrityError("credential binding version is unsupported")
+    identity = json.dumps(
+        identity_fields,
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
@@ -142,7 +162,7 @@ def _bound_key(
         identity,
         key=master,
         digest_size=nacl.secret.SecretBox.KEY_SIZE,
-        person=_BINDING_PERSON,
+        person=person,
     ).digest()
 
 
@@ -179,7 +199,7 @@ def _load_master_key(key_bytes: bytes | None, key_file: str | None) -> bytes:
                 raise ValueError(f"key file {kf} is not {_KEY_SIZE} bytes")
             return data
 
-        key = nacl.utils.random(_KEY_SIZE)
+        key = bytes(nacl.utils.random(_KEY_SIZE))
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(str(path), flags, _KEY_FILE_MODE)
         try:
@@ -192,7 +212,7 @@ def _load_master_key(key_bytes: bytes | None, key_file: str | None) -> bytes:
         return key
 
 
-def _read_artifact(artifact_path: str) -> dict:
+def _read_artifact(artifact_path: str) -> dict[str, object]:
     p = Path(artifact_path)
     if not p.exists():
         if p.is_symlink():
@@ -209,7 +229,7 @@ def _read_artifact(artifact_path: str) -> dict:
         raise CredentialIntegrityError(
             "credential artifact root must be an object; refusing mutation"
         )
-    return data
+    return cast(dict[str, object], data)
 
 
 def _fsync_directory(directory: Path) -> None:
@@ -258,7 +278,7 @@ def _artifact_lock(artifact_path: str, *, exclusive: bool) -> Iterator[None]:
         os.close(fd)
 
 
-def _write_artifact(artifact_path: str, data: dict) -> None:
+def _write_artifact(artifact_path: str, data: dict[str, object]) -> None:
     p = Path(artifact_path)
     _ensure_directory(p.parent)
     temporary = p.with_name(f".{p.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
@@ -287,6 +307,7 @@ def store_credential(
     secret: str,
     *,
     pipeline_kind: str | None = None,
+    owner_user_id: str | None = None,
     artifact_path: str | None = None,
     key_bytes: bytes | None = None,
     key_file: str | None = None,
@@ -298,8 +319,27 @@ def store_credential(
     non-secret metadata land on disk. The plaintext is never logged, never
     emitted, never written to the artifact.
     """
+    return store_credential_with_metadata(
+        account_handle, secret, pipeline_kind=pipeline_kind, owner_user_id=owner_user_id,
+        artifact_path=artifact_path, key_bytes=key_bytes, key_file=key_file,
+    ).cred_id
+
+
+def store_credential_with_metadata(
+    account_handle: str,
+    secret: str,
+    *,
+    pipeline_kind: str | None = None,
+    owner_user_id: str | None = None,
+    artifact_path: str | None = None,
+    key_bytes: bytes | None = None,
+    key_file: str | None = None,
+) -> CredentialMetadata:
+    """Atomically store a credential and return its authenticated non-secret metadata."""
     if not isinstance(secret, str) or secret == "":
         raise ValueError("secret must be a non-empty str")
+    if owner_user_id is not None and (not isinstance(owner_user_id, str) or not owner_user_id):
+        raise ValueError("owner_user_id must be a non-empty str or None")
     handle = account_handle.lstrip("@")
     artifact = artifact_path or _default_artifact_path()
     master = _load_master_key(key_bytes, key_file)
@@ -310,21 +350,32 @@ def store_credential(
             cred_id=cred_id,
             account_handle=handle,
             pipeline_kind=pipeline_kind,
+            owner_user_id=owner_user_id,
+            binding_version=_BOUND_CREDENTIAL_VERSION,
         )
     )
     sealed = box.encrypt(secret.encode("utf-8"))
 
     with _STORE_LOCK, _artifact_lock(artifact, exclusive=True):
         data = _read_artifact(artifact)
-        data[cred_id] = {
+        record: dict[str, object] = {
             "cred_id": cred_id,
             "account_handle": handle,
             "pipeline_kind": pipeline_kind,
+            "owner_user_id": owner_user_id,
             "binding_version": _BOUND_CREDENTIAL_VERSION,
             "ciphertext_hex": bytes(sealed).hex(),
         }
+        data[cred_id] = record
         _write_artifact(artifact, data)
-    return cred_id
+    return CredentialMetadata(
+        cred_id=cred_id,
+        account_handle=handle,
+        pipeline_kind=pipeline_kind,
+        binding_version=_BOUND_CREDENTIAL_VERSION,
+        artifact_fingerprint=_artifact_fingerprint(record),
+        owner_user_id=owner_user_id,
+    )
 
 
 def load_credential(
@@ -352,24 +403,29 @@ def load_credential(
     try:
         account_handle = rec["account_handle"]
         pipeline_kind = rec.get("pipeline_kind")
+        owner_user_id = rec.get("owner_user_id")
         binding_version = rec.get("binding_version", 1)
         if not isinstance(account_handle, str) or (
             pipeline_kind is not None and not isinstance(pipeline_kind, str)
         ):
             raise CredentialIntegrityError("credential metadata is invalid")
+        if owner_user_id is not None and not isinstance(owner_user_id, str):
+            raise CredentialIntegrityError("credential owner metadata is invalid")
         if not isinstance(binding_version, int) or isinstance(binding_version, bool):
             raise CredentialIntegrityError("credential binding version is invalid")
         master = _load_master_key(key_bytes, key_file)
-        if binding_version == _BOUND_CREDENTIAL_VERSION:
+        if binding_version in (2, 3):
             key = _bound_key(
                 master,
                 cred_id=cred_id,
                 account_handle=account_handle,
                 pipeline_kind=pipeline_kind,
+                owner_user_id=owner_user_id,
+                binding_version=binding_version,
             )
         elif binding_version == 1:
-            # Legacy credentials remain readable for non-routing consumers.
-            # New user-model route authority requires v2 below its own seam.
+            # Legacy unbound credentials remain readable for non-routing consumers.
+            # New user-model route authority requires v3 below its own seam.
             key = master
         else:
             raise CredentialIntegrityError("credential binding version is unsupported")
@@ -380,6 +436,29 @@ def load_credential(
             raise
         raise CredentialIntegrityError("credential integrity check failed") from exc
     return SecretStr(plaintext)
+
+
+def delete_credential(
+    cred_id: str,
+    *,
+    artifact_path: str | None = None,
+) -> bool:
+    """Remove one ciphertext record without decrypting it.
+
+    The artifact read-modify-write is serialized by the same process and file
+    locks as credential creation. ``False`` means the id was already absent.
+    """
+    artifact = artifact_path or _default_artifact_path()
+    artifact_file = Path(artifact)
+    if not artifact_file.exists() and not artifact_file.is_symlink():
+        return False
+    with _STORE_LOCK, _artifact_lock(artifact, exclusive=True):
+        data = _read_artifact(artifact)
+        if cred_id not in data:
+            return False
+        del data[cred_id]
+        _write_artifact(artifact, data)
+    return True
 
 
 def list_credentials(
@@ -404,6 +483,10 @@ def list_credentials(
                 rec.get("pipeline_kind") is not None
                 and not isinstance(rec.get("pipeline_kind"), str)
             )
+            or (
+                rec.get("owner_user_id") is not None
+                and not isinstance(rec.get("owner_user_id"), str)
+            )
         ):
             continue
         binding_version = rec.get("binding_version", 1)
@@ -416,6 +499,7 @@ def list_credentials(
                 pipeline_kind=rec.get("pipeline_kind"),
                 binding_version=binding_version,
                 artifact_fingerprint=_artifact_fingerprint(rec),
+                owner_user_id=rec.get("owner_user_id"),
             )
         )
     out.sort(key=lambda m: m.cred_id)
@@ -425,7 +509,9 @@ def list_credentials(
 __all__ = [
     "CredentialMetadata",
     "CredentialIntegrityError",
+    "delete_credential",
     "store_credential",
+    "store_credential_with_metadata",
     "load_credential",
     "list_credentials",
 ]

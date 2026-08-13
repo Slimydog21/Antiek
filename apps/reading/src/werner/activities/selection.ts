@@ -56,7 +56,7 @@ export function activityIdForPathname(pathname: string): ActivityId {
   if (workflow === "speak") return "speaking-resonance";
   return workflow === "research" || workflow === "read"
     ? "research-lens"
-    : "ice-fishing";
+    : "rest";
 }
 
 export function getActivityForPathname(pathname: string): StationActivity {

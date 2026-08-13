@@ -113,6 +113,7 @@ def promote_to_outline(
     title: str,
     deliverable_kind: str,
     specs: list[ContextBlockSpec],
+    owner_user_id: str,
     objective: str = "",
     investigation_id: str = "__operator__",
 ) -> PromoteResult:
@@ -122,6 +123,7 @@ def promote_to_outline(
     intent survives the promotion."""
     did = insert_deliverable(
         con, title=title, deliverable_kind=deliverable_kind,
+        owner_user_id=owner_user_id,
         metadata={"promoted_from": "context_window", "objective": objective},
     )
     sid = insert_section(
@@ -150,6 +152,7 @@ def promote_investigation_to_deliverable(
     investigation_id: str,
     *,
     deliverable_kind: str,
+    owner_user_id: str,
     title: str | None = None,
 ) -> InvestigationPromoteResult | None:
     """Promote a completed investigation's synthesis into a seed deliverable
@@ -229,6 +232,7 @@ def promote_investigation_to_deliverable(
         con,
         title=title or target_question or "(untitled deliverable)",
         deliverable_kind=deliverable_kind,
+        owner_user_id=owner_user_id,
         investigation_root_id=investigation_id,
         metadata={
             "promoted_from": "investigation_synthesis",

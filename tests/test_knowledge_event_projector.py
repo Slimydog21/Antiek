@@ -904,3 +904,27 @@ def test_recovery_missing_schema_never_creates_database(tmp_path: Path) -> None:
     with pytest.raises(projector.SchemaUnavailableError):
         projector.recover(db_path=db, events_dir=str(events_dir), wall_time_s=0.05)
     assert not os.path.exists(db)
+
+
+
+def test_recovery_worker_disabled_by_env_gate(monkeypatch, tmp_path):
+    """ANTIEK_DISABLE_EVENT_PROJECTOR_RECOVERY=1 must prevent the
+    knowledge-event recovery worker from starting. The worker churned at
+    ~100% CPU on prod with empty projector tables (incident 2026-08-13);
+    the gate is the reversible kill switch until the root cause lands."""
+    import duckdb as _duckdb
+
+
+    monkeypatch.setenv("ANTIEK_DISABLE_EVENT_PROJECTOR_RECOVERY", "1")
+    db = tmp_path / "gate.duckdb"
+    _duckdb.connect(str(db)).close()
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(db))
+    monkeypatch.setattr("substrate.graph.default_db_path", lambda: str(db))
+
+    app = create_app(register_wrestling=False, register_providers=False)
+    # TestClient startup runs the on_startup hooks, where the worker is
+    # normally created; the gate must keep it uncreated.
+    with TestClient(app) as _client:
+        worker = getattr(app.state, "knowledge_event_recovery_worker", None)
+        assert worker is None
+        assert getattr(app.state, "knowledge_event_recovery_stop", None) is None

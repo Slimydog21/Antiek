@@ -21,9 +21,10 @@ import { MemoryRouter } from "react-router-dom";
 
 import type { Event } from "../../generated/types";
 
-const { startInvestigationMock, navigateMock, eventStreamState } = vi.hoisted(
+const { startInvestigationMock, fetchUserModelsMock, navigateMock, eventStreamState } = vi.hoisted(
   () => ({
     startInvestigationMock: vi.fn(),
+    fetchUserModelsMock: vi.fn(),
     navigateMock: vi.fn(),
     eventStreamState: {
       current: {
@@ -34,6 +35,10 @@ const { startInvestigationMock, navigateMock, eventStreamState } = vi.hoisted(
     },
   }),
 );
+
+vi.mock("../../api/settingsModels", () => ({
+  fetchUserModels: fetchUserModelsMock,
+}));
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
@@ -104,9 +109,25 @@ function renderStart() {
 beforeEach(() => {
   installMatchMedia(false);
   startInvestigationMock.mockReset();
+  fetchUserModelsMock.mockReset();
+  fetchUserModelsMock.mockResolvedValue({ models: [], count: 0, stale_registered: [], source: "test" });
+  window.sessionStorage.clear();
   navigateMock.mockReset();
   eventStreamState.current = { events: [], status: "closed", reconnects: 0 };
 });
+
+const executableModel = {
+  id: "user-paid", provider_kind: "anthropic", provider_catalog_id: "anthropic",
+  model_id: "claude-paid", display_name: "Paid Claude", base_url: null,
+  enabled: true, key_present: true, registered: true, route_eligible: true,
+  pricing_status: "known", hard_ceiling_eligible: true,
+  execution_status: "executable", rate_snapshot: "rates-2026-08",
+};
+
+async function choosePaidModel() {
+  fireEvent.click(screen.getByRole("combobox", { name: "Model for Ask investigation" }).querySelector("button")!);
+  fireEvent.click(await screen.findByRole("option", { name: /Paid Claude/ }));
+}
 afterEach(() => cleanup());
 
 describe("StartResearch — the start-a-research entry (M1)", () => {
@@ -250,6 +271,82 @@ describe("StartResearch — cascade mode beside the one-shot Ask (SPR-01 M1)", (
     fireEvent.click(screen.getByRole("button", { name: /Break into sub-questions/i }));
     fireEvent.click(screen.getByRole("button", { name: "launch-stub" }));
     expect(navigateMock).toHaveBeenCalledWith("/deep-research/session-xyz");
+  });
+});
+
+describe("StartResearch — owner model authority", () => {
+  it("shows only fully executable inventory rows and submits one exact paired choice", async () => {
+    fetchUserModelsMock.mockResolvedValue({
+      models: [executableModel, { ...executableModel, id: "blocked", display_name: "Blocked", execution_status: "blocked_unknown_pricing" }],
+      count: 2, stale_registered: [], source: "server",
+    });
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-owner" });
+    renderStart();
+    await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalled());
+    await choosePaidModel();
+    expect(screen.queryByText(/Blocked/)).toBeNull();
+    fireEvent.change(screen.getByLabelText("Research question"), { target: { value: "Trace the owner model contract." } });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalled());
+    const request = startInvestigationMock.mock.calls[0][0];
+    expect(request.model_choice).toEqual({ authority: "user_model", provider_id: "user-paid", model_id: "claude-paid" });
+    expect(request.operation_id).toMatch(/^research-/);
+    expect(Object.keys(request).filter((key) => key === "model_choice" || key === "operation_id")).toHaveLength(2);
+  });
+
+  it("persists the same pending operation and choice across a reload", async () => {
+    fetchUserModelsMock.mockResolvedValue({ models: [executableModel], count: 1, stale_registered: [], source: "server" });
+    startInvestigationMock.mockImplementation(() => new Promise(() => {}));
+    const first = renderStart();
+    await choosePaidModel();
+    fireEvent.change(screen.getByLabelText("Research question"), { target: { value: "Resume this exact launch." } });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalledTimes(1));
+    const firstRequest = startInvestigationMock.mock.calls[0][0];
+    first.unmount();
+    renderStart();
+    await waitFor(() => expect((screen.getByLabelText("Research question") as HTMLTextAreaElement).value).toBe("Resume this exact launch."));
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalledTimes(2));
+    expect(startInvestigationMock.mock.calls[1][0].operation_id).toBe(firstRequest.operation_id);
+    expect(startInvestigationMock.mock.calls[1][0].model_choice).toEqual(firstRequest.model_choice);
+  });
+
+  it("clears a stale selected route after refresh and falls back to the established tier", async () => {
+    fetchUserModelsMock
+      .mockResolvedValueOnce({ models: [executableModel], count: 1, stale_registered: [], source: "server" })
+      .mockResolvedValueOnce({ models: [], count: 0, stale_registered: [], source: "server" });
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-default" });
+    renderStart();
+    await choosePaidModel();
+    fireEvent.click(screen.getByRole("button", { name: "Retry inventory" }));
+    await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalledTimes(2));
+    fireEvent.change(screen.getByLabelText("Research question"), { target: { value: "Use the established route now." } });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalled());
+    expect(startInvestigationMock.mock.calls[0][0]).not.toHaveProperty("model_choice");
+    expect(startInvestigationMock.mock.calls[0][0].research_tier).toBe("deep");
+  });
+
+  it("surfaces inventory failure without disabling established Ask or leaking an operation id", async () => {
+    fetchUserModelsMock.mockRejectedValue(new Error("secret upstream detail"));
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-default" });
+    renderStart();
+    expect((await screen.findByRole("alert")).textContent).toContain("Can’t load executable models");
+    expect(screen.queryByText(/research-[0-9a-f-]+/i)).toBeNull();
+    fireEvent.change(screen.getByLabelText("Research question"), { target: { value: "Continue on the default route." } });
+    expect((screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("keeps cascade isolated from the selected owner model", async () => {
+    fetchUserModelsMock.mockResolvedValue({ models: [executableModel], count: 1, stale_registered: [], source: "server" });
+    renderStart();
+    await choosePaidModel();
+    fireEvent.change(screen.getByLabelText("Research question"), { target: { value: "Break this broad question down." } });
+    fireEvent.click(screen.getByRole("button", { name: /Break into sub-questions/ }));
+    expect(screen.getByTestId("cascade-proposal")).toBeTruthy();
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+    expect(window.sessionStorage.length).toBe(0);
   });
 });
 

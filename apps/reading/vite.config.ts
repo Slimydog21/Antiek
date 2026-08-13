@@ -22,12 +22,18 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/health": API_TARGET,
+      "/api": API_TARGET,
       "/events": API_TARGET,
       "/trajectory": API_TARGET,
       // The cascade plan/launch/session surface (cascade_routes.py, prefix
       // /research). The Research-entry cascade mode + the DRW monitor both
       // call it; without this proxy a dev drive can't reach the backend.
       "/research": API_TARGET,
+      "/styles": API_TARGET,
+      "/artifacts": API_TARGET,
+      // Metadata-only Library catalog. Keep this explicit rather than using a
+      // blanket proxy so body-serving routes remain independently reviewed.
+      "/library": API_TARGET,
       // Magic-link auth (H6): both /auth/request/me and the
       // /auth/callback redirect need to be same-origin with the
       // page or the browser drops Set-Cookie.
@@ -36,6 +42,13 @@ export default defineConfig({
       // (krea_routes.py). Same-origin in dev so the browser never sees
       // the server-held KREA_API_TOKEN and no CORS is involved.
       "/krea": API_TARGET,
+      // Own Your Mind P0 (explain_routes.py + ops_routes.py): the
+      // provenance + ops surfaces. Same explicit-prefix discipline as the
+      // routes above — each new backend prefix gets a reviewed line here.
+      "/claims": API_TARGET,
+      "/syntheses": API_TARGET,
+      "/docs": API_TARGET,
+      "/ops": API_TARGET,
       "/ws": {
         target: "ws://127.0.0.1:8000",
         ws: true,

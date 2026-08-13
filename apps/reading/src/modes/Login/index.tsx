@@ -2,7 +2,7 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import Werner from "../../brand/Werner";
+import BrainMascot from "../../brand/BrainMascot";
 import { LemonButton, LemonInput } from "../../components/lemon";
 import {
   approveLogin,
@@ -57,8 +57,9 @@ export default function Login() {
   const [handoff, setHandoff] = useState<{
     attemptId: string;
     claimSecret: string;
-    deviceCode: string;
   } | null>(null);
+  const [code, setCode] = useState("");
+  const [codeWorking, setCodeWorking] = useState(false);
   const [approvalWorking, setApprovalWorking] = useState(false);
 
   const navigate = useNavigate();
@@ -155,6 +156,46 @@ export default function Login() {
     };
   }, [emailStatus, handoff, navigate, refresh]);
 
+  async function unlockWithCode(event: React.FormEvent) {
+    event.preventDefault();
+    if (!handoff || codeWorking || code.length !== 4) return;
+    setCodeWorking(true);
+    setErrorMsg("");
+    setErrorHint(null);
+    const result = await claimLogin(handoff.attemptId, handoff.claimSecret, code);
+    if (result.status === "authenticated") {
+      setEmailStatus("approved");
+      await refresh();
+      navigate(
+        result.setup_passkey
+          ? `/login?setup=passkey&next=${encodeURIComponent(result.next)}`
+          : result.next,
+        { replace: true },
+      );
+      return;
+    }
+    if (result.status === "rate_limited") {
+      setErrorMsg("Too many unlock attempts.");
+      setErrorHint("Wait a minute, then request a fresh sign-in.");
+      return;
+    }
+    if (result.status === "invalid_code") {
+      const left = result.remaining_attempts;
+      setErrorMsg(left > 0 ? "That code didn't match." : "That code didn't match.");
+      setErrorHint(
+        left > 0
+          ? `Check the email and try again. ${left} attempt${left === 1 ? "" : "s"} left before this sign-in resets.`
+          : "Request a fresh sign-in to try again.",
+      );
+      setCode("");
+    } else if (result.status === "expired") {
+      setEmailStatus("expired");
+      setErrorMsg("That sign-in expired.");
+      setErrorHint("Send a fresh one and leave this screen open.");
+    }
+    setCodeWorking(false);
+  }
+
   async function unlockWithPasskey() {
     if (passkeyState === "working") return;
     setPasskeyState("working");
@@ -218,8 +259,8 @@ export default function Login() {
       setHandoff({
         attemptId: result.attempt_id,
         claimSecret: result.claim_secret,
-        deviceCode: result.device_code,
       });
+      setCode("");
       setEmailStatus("sent");
       track("login_link_sent");
       return;
@@ -249,7 +290,7 @@ export default function Login() {
     return (
       <ReceiptShell>
         <section className="handoff-receipt" aria-labelledby="handoff-title">
-          <Werner mood="idle" size={92} label="Werner checking the matching code" className="handoff-receipt__werner" />
+          <BrainMascot mood="idle" size={92} label="Antiek checking the matching code" className="handoff-receipt__werner" />
           <div className="antiek-login__eyebrow"><span /> Tiny security check</div>
           <h1 id="handoff-title">Same four digits?</h1>
           <p className="handoff-code" aria-label={`Device code ${approvalCode}`}>{approvalCode}</p>
@@ -277,17 +318,16 @@ export default function Login() {
     return (
       <ReceiptShell>
         <section className="handoff-receipt handoff-receipt--approved" role="status">
-          <Werner mood="idle" size={110} label="Werner celebrating the approved sign-in" className="handoff-receipt__werner" />
+          <BrainMascot mood="idle" size={110} label="Antiek celebrating the approved sign-in" className="handoff-receipt__werner" />
           <span className="handoff-receipt__stamp">Approved</span>
           <div className="antiek-login__eyebrow"><span /> Delivery complete</div>
           <h1>Your other screen is opening.</h1>
-          <p>Werner carried the yes back. You can close this page.</p>
+          <p>The brain carried the yes back. You can close this page.</p>
         </section>
       </ReceiptShell>
     );
   }
 
-  const showPasskeyFirst = passkeyState !== "absent" && passkeyState !== "checking";
   const setupReady = isSetup && state.status === "authenticated";
 
   return (
@@ -314,42 +354,63 @@ export default function Login() {
               {errorMsg && <ErrorNotice message={errorMsg} hint={errorHint} />}
               <button className="antiek-login__quiet" type="button" onClick={() => navigate(nextPath, { replace: true })}>Do this later</button>
             </>
-          ) : showPasskeyFirst ? (
-            <>
-              <Eyebrow>Welcome back</Eyebrow>
-              <h1>Pick up the thread.</h1>
-              <p className="antiek-login__lede">Your workstation is exactly where you left it.</p>
-              <ActionButton
-                busy={passkeyState === "working"}
-                title={passkeyState === "working" ? "Unlocking…" : "Unlock with passkey"}
-                detail="Face ID, Touch ID, or a nearby device"
-                onClick={() => void unlockWithPasskey()}
-              />
-              {(passkeyState === "error" || errorMsg) && <ErrorNotice message={errorMsg} hint={errorHint} />}
-              <details className="antiek-login__recovery">
-                <summary>Use email recovery</summary>
-                <EmailForm email={email} setEmail={setEmail} status={emailStatus} onSubmit={onEmailSubmit} errorMsg={emailStatus === "error" ? errorMsg : ""} errorHint={emailStatus === "error" ? errorHint : null} diagnosticCode={diagnosticCode} />
-              </details>
-            </>
-          ) : emailStatus === "sent" ? (
+          ) : emailStatus === "sent" || emailStatus === "expired" ? (
             <div className="antiek-login__sent" role="status">
-              <Eyebrow>Werner is waiting</Eyebrow>
-              <h1>Now check your phone.</h1>
-              <p className="antiek-login__lede">Open the message sent to <strong>{email}</strong>. Approve it there; this screen will open itself.</p>
-              <div className="handoff-code handoff-code--desk" aria-label={`Device code ${handoff?.deviceCode}`}>
-                <small>Match this code on your phone</small>
-                <strong>{handoff?.deviceCode}</strong>
-              </div>
-              <HandoffSteps />
-              {(emailStatus as EmailStatus) === "expired" && <ErrorNotice message={errorMsg} hint={errorHint} />}
-              <button type="button" className="antiek-login__quiet" onClick={() => { setEmailStatus("idle"); setHandoff(null); }}>Use a different email</button>
+              <Eyebrow>Antiek sent you a code</Eyebrow>
+              <h1>Type the code from the email.</h1>
+              <p className="antiek-login__lede">The message went to <strong>{email}</strong>. Enter its 4-digit code below — or open the link in the email on another device and this screen will open itself.</p>
+              <form onSubmit={(event) => void unlockWithCode(event)} className="antiek-login__form">
+                <label>
+                  <span>Code from email</span>
+                  <LemonInput
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    pattern="[0-9]{4}"
+                    maxLength={4}
+                    required
+                    disabled={codeWorking}
+                    value={code}
+                    onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                    placeholder="0000"
+                    sizing="lg"
+                    wrapperClassName="w-full"
+                    aria-label="4-digit code from the email"
+                  />
+                </label>
+                <LemonButton type="submit" variant="primary" size="lg" fullWidth disabled={codeWorking || code.length !== 4}>
+                  {codeWorking ? "Unlocking…" : "Unlock"}
+                </LemonButton>
+              </form>
+              {emailStatus === "expired" && <ErrorNotice message={errorMsg} hint={errorHint} />}
+              {emailStatus === "sent" && errorMsg && <ErrorNotice message={errorMsg} hint={errorHint} />}
+              <button type="button" className="antiek-login__quiet" onClick={() => { setEmailStatus("idle"); setHandoff(null); setCode(""); }}>Use a different email</button>
             </div>
           ) : (
             <>
-              <Eyebrow>First unlock</Eyebrow>
+              <Eyebrow>{passkeyState === "ready" ? "Welcome back" : "First unlock"}</Eyebrow>
               <h1>Open your desk.</h1>
-              <p className="antiek-login__lede">Start here, approve on your phone. This screen opens itself. No link gymnastics.</p>
-              <EmailForm email={email} setEmail={setEmail} status={emailStatus} onSubmit={onEmailSubmit} errorMsg={errorMsg} errorHint={errorHint} diagnosticCode={diagnosticCode} />
+              <p className="antiek-login__lede">Enter your email and Antiek will send a one-time code. Type it in and you're in — no link gymnastics.</p>
+              <EmailForm email={email} setEmail={setEmail} status={emailStatus} onSubmit={onEmailSubmit} errorMsg={emailStatus === "error" ? errorMsg : ""} errorHint={emailStatus === "error" ? errorHint : null} diagnosticCode={diagnosticCode} />
+              <div
+                className="antiek-login__passkey-alt"
+                hidden={passkeyState === "checking" || passkeyState === "absent"}
+              >
+                <span className="antiek-login__passkey-alt__rule">or</span>
+                <button
+                  type="button"
+                  className="antiek-login__passkey-alt__button"
+                  onClick={() => void unlockWithPasskey()}
+                  disabled={passkeyState === "working"}
+                >
+                  <PasskeyMark />
+                  <span>
+                    <strong>{passkeyState === "working" ? "Unlocking…" : "Unlock with passkey"}</strong>
+                    <small>Face ID, Touch ID, or a nearby device</small>
+                  </span>
+                </button>
+                {passkeyState === "error" && <ErrorNotice message={errorMsg} hint={errorHint} />}
+              </div>
             </>
           )}
         </div>
@@ -359,12 +420,12 @@ export default function Login() {
         </footer>
       </section>
 
-      <aside className="antiek-login__trail" aria-label="Werner explains the secure device handoff">
+      <aside className="antiek-login__trail" aria-label="Antiek explains the secure device handoff">
         <div className="handoff-world">
           <p className="handoff-world__tag">ANTIEK ACCESS DESK · SIGNAL CLEAR</p>
           <div className="handoff-world__bubble">I’ll carry the yes back.</div>
           <div className="handoff-world__werner" data-waiting={emailStatus === "sent" || undefined}>
-            <Werner mood="idle" size={184} label="Werner, Antiek's penguin guide" />
+            <BrainMascot mood="idle" size={184} label="Antiek's brain guide" />
             <span className="handoff-world__thinking" aria-hidden="true"><i /><i /><i /></span>
             <span className="handoff-world__ticket" aria-hidden="true">YES</span>
           </div>

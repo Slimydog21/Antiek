@@ -20,10 +20,16 @@ const api = vi.hoisted(() => ({
   launchPlan: vi.fn(),
 }));
 
+const projectionApi = vi.hoisted(() => ({
+  fetchComposerProjection: vi.fn(),
+}));
+
 vi.mock("../../api/research", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/research")>()),
   ...api,
 }));
+
+vi.mock("../../api/composerProjection", () => projectionApi);
 
 vi.mock("../../workspace/PanelHost", () => ({
   PanelHost: ({ children }: { children: ReactNode }) => children,
@@ -81,6 +87,34 @@ describe("DeepResearchWorkspace deterministic session relaunch", () => {
       tree: APPROVED_TREE,
     });
     api.approvePlan.mockResolvedValue({});
+    projectionApi.fetchComposerProjection.mockResolvedValue({
+      task: "deep_research",
+      recommended_tier: "deep",
+      ranked_candidates: [
+        {
+          rank: 1,
+          tier: "deep",
+          provider: "zai",
+          model: "glm-5.2",
+          quality_score: 0.9,
+          quality_basis: "measured",
+          eligible: true,
+          pricing_status: "known",
+          estimated_usd_low: 0.1,
+          estimated_usd_high: 0.3,
+        },
+      ],
+      budget: { daily_cap_usd: null, spent_usd: null },
+      remaining_usd: null,
+      chosen_provider: null,
+      chosen_model: null,
+      chosen_projection: null,
+      would_exceed_budget: null,
+      pricing_status: "known",
+      authority: "advisory_explanatory",
+      notes: [],
+      fallback_plan: null,
+    });
     api.getPlan.mockResolvedValue({
       root_node_id: "q-root",
       tree: APPROVED_TREE,
@@ -119,6 +153,8 @@ describe("DeepResearchWorkspace deterministic session relaunch", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Cascade" }));
     fireEvent.click(await screen.findByRole("button", { name: "Re-approve" }));
+    fireEvent.click(await screen.findByRole("button", { name: /choose model driver/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /glm-5\.2/i }));
     await waitFor(() =>
       expect(
         (screen.getByRole("button", { name: "Launch 1" }) as HTMLButtonElement)
@@ -147,6 +183,41 @@ describe("DeepResearchWorkspace deterministic session relaunch", () => {
       ]),
     );
     expect(api.launchPlan).toHaveBeenCalledTimes(2);
+    const launchPayload = api.launchPlan.mock.calls[0]?.[1];
+    expect(launchPayload).toEqual({
+      owner_model_choices: {
+        decomposer: {
+          authority: "user_model",
+          provider_id: "zai",
+          model_id: "glm-5.2",
+        },
+        evidence_retriever: {
+          authority: "user_model",
+          provider_id: "zai",
+          model_id: "glm-5.2",
+        },
+        parameter_extractor: {
+          authority: "user_model",
+          provider_id: "zai",
+          model_id: "glm-5.2",
+        },
+        connector: {
+          authority: "user_model",
+          provider_id: "zai",
+          model_id: "glm-5.2",
+        },
+        synthesizer: {
+          authority: "user_model",
+          provider_id: "zai",
+          model_id: "glm-5.2",
+        },
+        knowledge_extractor: {
+          authority: "user_model",
+          provider_id: "zai",
+          model_id: "glm-5.2",
+        },
+      },
+    });
     window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener);
   });
 });

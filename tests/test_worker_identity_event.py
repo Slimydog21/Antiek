@@ -59,8 +59,10 @@ def test_event_schema_version_bumped():
     (DiscoveryProvider Literal += "parallel", restore #134) -> 30/31
     (SkillPatchGateDecided + SkillPatchGateReviewed, GF-3c/d Phase-8
     gate calibration audit events) -> 32 (multimedia authority events) -> 33
-    (NotDiamond DispatchCallPayload attribution fields)."""
-    assert EVENT_SCHEMA_VERSION == 33
+    (NotDiamond DispatchCallPayload attribution fields) -> 34 (owner-scoped
+    account-memory graph events) -> 35 (surface.served_impression, Own Your
+    Mind P0)."""
+    assert EVENT_SCHEMA_VERSION == 35
 
 
 # ── validation (rigor #3: rejects bad input at emit time) ───────────────────
