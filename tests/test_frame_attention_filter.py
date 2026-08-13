@@ -50,8 +50,8 @@ def test_clean_batch_is_unchanged_by_the_filter():
     # eligible asset earns the whole window, house is zero, conservation exact.
     result = aggregate_window(_batch([_second(0), _second(1), _second(2)]))
     assert result.reconciles()
-    assert _asset_total(result) == 1000
-    assert result.house.amount_cents == 0
+    assert _asset_total(result) == 700  # AFA-S5: 70% to creator pool
+    assert result.house.amount_cents == 300  # AFA-S5: 30% platform cut
     assert result.excluded_second_counts == ()
     assert result.fraud_verdict == "pass"
 
@@ -65,8 +65,8 @@ def test_invalid_second_excluded_from_numerator_and_denominator():
     assert result.reconciles()
     # Whole value went to the eligible asset over the 4 VALID seconds; the
     # excluded second neither earned nor diluted (denominator was 4, not 5).
-    assert _asset_total(result) == 1000
-    assert result.house.amount_cents == 0
+    assert _asset_total(result) == 700  # AFA-S5: 70% to creator pool
+    assert result.house.amount_cents == 300  # AFA-S5: 30% platform cut
     assert result.fraud_verdict == "pass"
     assert result.excluded_second_counts == ((REASON_DUPLICATE_INDEX, 1),)
 
