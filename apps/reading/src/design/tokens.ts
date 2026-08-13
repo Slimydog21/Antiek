@@ -344,6 +344,15 @@ export const motion = {
 export type MotionDuration = keyof typeof motion.duration;
 export type MotionEasing = keyof typeof motion.easing;
 
+/** Pitch family (AI Role Lineup vertical, 2026-08-12) — the formation
+ * field greens. Mirrors tokens.css --pitch-{base,mid,deep} (day) and the
+ * night block; LineupPitch consumes the CSS vars so theme follows
+ * prefers-color-scheme. Day = grass, night = deep turf. */
+export const pitch = {
+  day: { base: "#4C8F4F", mid: "#3D7A41", deep: "#2F6633" },
+  night: { base: "#2E5C33", mid: "#244A29", deep: "#1B3A20" },
+} as const;
+
 export const radius = { sm: "4px", md: "6px", lg: "10px" } as const;
 
 /** The brand outline thickness used on every Lemon primitive. */

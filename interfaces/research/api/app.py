@@ -1743,6 +1743,11 @@ def create_app(
     # cost projection (honest nulls when pricing/spend unknown).
     from .settings_budget import register_settings_budget_routes
     register_settings_budget_routes(app)
+    # AI Role Lineup — operator model-selection vertical (general formation
+    # + advanced tactics board). Registry-only: stores operator intent, no
+    # implicit dispatch-tier mutation (mirrors settings_models_admin).
+    from .settings_lineup import register_settings_lineup_routes
+    register_settings_lineup_routes(app)
     from .research_tool_search import register_research_tool_search_routes
     register_research_tool_search_routes(app)
     # Model-decision composer Slice B — one advisory decision + exact
