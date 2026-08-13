@@ -1748,6 +1748,10 @@ def create_app(
     # implicit dispatch-tier mutation (mirrors settings_models_admin).
     from .settings_lineup import register_settings_lineup_routes
     register_settings_lineup_routes(app)
+    # OYM P1 §2 — privacy toggles wired to the telemetry-preferences
+    # store (the store's first API consumer; see settings_privacy.py).
+    from .settings_privacy import register_settings_privacy_routes
+    register_settings_privacy_routes(app)
     from .research_tool_search import register_research_tool_search_routes
     register_research_tool_search_routes(app)
     # Own Your Mind P0 — trust wedge. Read-only provenance explain surfaces
