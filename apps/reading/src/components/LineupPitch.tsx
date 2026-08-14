@@ -13,9 +13,11 @@
  *     this component re-renders from the saved lineup.
  */
 
-import { type KeyboardEvent, useId, useMemo, useState } from "react";
+import { type KeyboardEvent, useId, useMemo, useRef, useState } from "react";
 
 import { FORMATION, type BenchModelView, type LineupChoice, type RoleView, tierStrength } from "../api/settingsLineup";
+import SketchCanvas from "./sketches/SketchCanvas";
+import { renderLineupPitch, DEFAULT_LINEUP_PITCH_PARAMS, type LineupPitchParams } from "./sketches/lineupPitch";
 
 const POSITION_LABEL: Record<string, string> = {
   gk: "GK",
@@ -47,6 +49,8 @@ export interface LineupPitchProps {
   onAssign: (roleId: string, choice: LineupChoice | null) => void;
   busyRole: string | null;
   error?: string | null;
+  /** Dark theme — the generative field renders night greens. */
+  dark?: boolean;
 }
 
 export default function LineupPitch({
@@ -58,9 +62,28 @@ export default function LineupPitch({
   onAssign,
   busyRole,
   error = null,
+  dark: darkProp,
 }: LineupPitchProps) {
   const listboxId = useId();
   const [benchOpen, setBenchOpen] = useState(false);
+  const [pulse, setPulse] = useState<{ role: string; seed: string; at: number } | null>(null);
+  const mountWall = useRef<number>(typeof performance !== "undefined" ? performance.now() : 0);
+  const isDark =
+    darkProp ??
+    (typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+  const sketchParams: LineupPitchParams = {
+    ...DEFAULT_LINEUP_PITCH_PARAMS,
+    seed: "antiek-lineup-pitch",
+    mode: isDark ? "night" : "day",
+    highlightRole: selectedRole,
+    pulseRole: pulse?.role ?? null,
+    pulseSeed: pulse?.seed ?? null,
+    pulseT: pulse?.at ?? null,
+    mountWall: mountWall.current,
+  };
 
   const byId = useMemo(() => new Map(roles.map((r) => [r.role_id, r])), [roles]);
   const selection = selectedRole ? byId.get(selectedRole) ?? null : null;
@@ -70,6 +93,7 @@ export default function LineupPitch({
 
   function pickBench(b: BenchModelView) {
     if (!selection) return;
+    setPulse({ role: selection.role_id, seed: `${b.provider_id}:${b.model_id}`, at: performance.now() });
     onAssign(selection.role_id, { provider_id: b.provider_id, model_id: b.model_id });
     setBenchOpen(false);
   }
@@ -104,23 +128,24 @@ export default function LineupPitch({
       {/* ── The pitch ─────────────────────────────────────────────── */}
       <div
         className="relative w-full overflow-hidden rounded-hog border-2 border-sun/60 shadow-[4px_4px_0_rgba(0,0,0,0.15)]"
-        style={{
-          aspectRatio: "4 / 5",
-          background:
-            "linear-gradient(160deg, var(--pitch-base) 0%, var(--pitch-mid) 45%, var(--pitch-deep) 100%)",
-        }}
+        style={{ aspectRatio: "4 / 5" }}
         role="group"
         aria-label="AI role formation pitch"
       >
-        {/* pitch markings */}
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/25" />
-          <div className="absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/25" />
-          <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/30" />
-          <div className="absolute left-0 top-[12%] h-[18%] w-[38%] rounded-r-2xl border-2 border-l-0 border-white/25" />
-          <div className="absolute right-0 top-[12%] h-[18%] w-[38%] rounded-l-2xl border-2 border-r-0 border-white/25" />
-          <div className="absolute bottom-0 left-0 h-[22%] w-[30%] rounded-tr-2xl border-2 border-b-0 border-l-0 border-white/25" />
-          <div className="absolute bottom-0 right-0 h-[22%] w-[30%] rounded-tl-2xl border-2 border-b-0 border-r-0 border-white/25" />
+        {/* Generative field — Processing-style sketch (deterministic,
+            token-coloured, reduced-motion-safe). The nine roles breathe as
+            a connected team constellation; substitutions burst at the
+            swapped position. */}
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <SketchCanvas
+            render={renderLineupPitch}
+            params={sketchParams}
+            width={400}
+            height={500}
+            className="h-full w-full"
+            aria-label="Generative formation field"
+            testId="lineup-pitch-canvas"
+          />
         </div>
 
         {/* positions */}
