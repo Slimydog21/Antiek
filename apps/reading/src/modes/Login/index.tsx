@@ -2,7 +2,11 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import BrainMascot from "../../brand/BrainMascot";
+import {
+  DEFAULT_CONSTELLATION_PARAMS,
+  renderConstellation,
+  SketchCanvas,
+} from "../../components/sketches";
 import { LemonButton, LemonInput } from "../../components/lemon";
 import {
   approveLogin,
@@ -290,7 +294,16 @@ export default function Login() {
     return (
       <ReceiptShell>
         <section className="handoff-receipt" aria-labelledby="handoff-title">
-          <BrainMascot mood="idle" size={92} label="Antiek checking the matching code" className="handoff-receipt__werner" />
+          <div className="handoff-receipt__werner">
+            <SketchCanvas
+              render={renderConstellation}
+              params={{ ...DEFAULT_CONSTELLATION_PARAMS, seed: "antiek-access-desk", mode: "night" }}
+              width={150}
+              height={150}
+              reducedMotion
+              aria-label="Antiek checking the matching code"
+            />
+          </div>
           <div className="antiek-login__eyebrow"><span /> Tiny security check</div>
           <h1 id="handoff-title">Same four digits?</h1>
           <p className="handoff-code" aria-label={`Device code ${approvalCode}`}>{approvalCode}</p>
@@ -318,7 +331,16 @@ export default function Login() {
     return (
       <ReceiptShell>
         <section className="handoff-receipt handoff-receipt--approved" role="status">
-          <BrainMascot mood="idle" size={110} label="Antiek celebrating the approved sign-in" className="handoff-receipt__werner" />
+          <div className="handoff-receipt__werner">
+            <SketchCanvas
+              render={renderConstellation}
+              params={{ ...DEFAULT_CONSTELLATION_PARAMS, seed: "antiek-access-desk", mode: "night" }}
+              width={150}
+              height={150}
+              reducedMotion
+              aria-label="Antiek celebrating the approved sign-in"
+            />
+          </div>
           <span className="handoff-receipt__stamp">Approved</span>
           <div className="antiek-login__eyebrow"><span /> Delivery complete</div>
           <h1>Your other screen is opening.</h1>
@@ -424,8 +446,16 @@ export default function Login() {
         <div className="handoff-world">
           <p className="handoff-world__tag">ANTIEK ACCESS DESK · SIGNAL CLEAR</p>
           <div className="handoff-world__bubble">I’ll carry the yes back.</div>
-          <div className="handoff-world__werner" data-waiting={emailStatus === "sent" || undefined}>
-            <BrainMascot mood="idle" size={184} label="Antiek's brain guide" />
+          <div className="handoff-world__mascot" data-waiting={emailStatus === "sent" || undefined}>
+            <div className="handoff-world__mascot-orb">
+              <SketchCanvas
+                render={renderConstellation}
+                params={{ ...DEFAULT_CONSTELLATION_PARAMS, seed: "antiek-access-desk", mode: "night" }}
+                width={300}
+                height={300}
+                aria-label="Antiek's brain guide"
+              />
+            </div>
             <span className="handoff-world__thinking" aria-hidden="true"><i /><i /><i /></span>
             <span className="handoff-world__ticket" aria-hidden="true">YES</span>
           </div>
