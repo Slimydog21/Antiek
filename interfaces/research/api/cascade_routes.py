@@ -1274,7 +1274,7 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
         if owner_operation_id is None:
             raise RuntimeError("owner operation id missing after owner selection")
         try:
-            session_id, _claim_replay, _event_id = claim_owner_launch(
+            session_id, claim_replay, _event_id = claim_owner_launch(
                 operation_id=owner_operation_id,
                 owner_user_id=owner_user_id,
                 launch_digest=launch_digest,
@@ -1291,7 +1291,7 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
                 status_code=500,
                 detail="owner_launch_claim_failed",
             ) from exc
-        if owner_launch_state(owner_operation_id) == "claimed":
+        if not claim_replay and owner_launch_state(owner_operation_id) == "claimed":
             advance_owner_launch(owner_operation_id, "claimed", "appended")
         owner_manifest = ResearchOwnerManifest(
             app=request.app,

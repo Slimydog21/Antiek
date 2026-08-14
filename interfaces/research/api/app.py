@@ -2401,7 +2401,13 @@ def create_app(
 
         if operation_id is not None:
             from .research_owner_dispatch import advance_owner_launch, owner_launch_state
-            if owner_launch_state(operation_id) == "claimed":
+            if not claim_replay and owner_launch_state(operation_id) == "claimed":
+                # Only the fresh claim advances the state machine. A concurrent
+                # exact replay must not CAS "claimed" -> "appended": two twins
+                # that both observe "claimed" and both advance produce a
+                # spurious 409 on the loser (CI flake
+                # test_exact_concurrent_owner_requests_are_one_event_and_one_response).
+                # The replay answer is the deterministic start event id.
                 advance_owner_launch(operation_id, "claimed", "appended")
 
         # Sprint 11: emit the spawn-lineage event when parent provided.
