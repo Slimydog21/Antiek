@@ -41,11 +41,16 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
 from substrate import ip_holders
-from substrate.anti_gaming.frame_ivt import classify_batch
+from substrate.anti_gaming.frame_ivt import (
+    BatchClassification,
+    clamp_countable_dwell,
+    classify_batch,
+)
 from substrate.anti_gaming.verdict import FraudVerdictKind
 
 from .frame_attention import (
@@ -125,6 +130,9 @@ def ensure_tables(con: Any) -> None:
                 inputs_json          TEXT NOT NULL,
                 fraud_verdict        TEXT NOT NULL DEFAULT 'pass',
                 excluded_counts_json TEXT NOT NULL DEFAULT '[]',
+                verdict_signals_json TEXT NOT NULL DEFAULT '[]',
+                clamped_dwell_ms     INTEGER NOT NULL DEFAULT 0,
+                clamped_cents        INTEGER NOT NULL DEFAULT 0,
                 accrued_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
@@ -142,6 +150,15 @@ def ensure_tables(con: Any) -> None:
         )
         con.execute(
             "ALTER TABLE house_seconds ADD COLUMN IF NOT EXISTS excluded_counts_json TEXT"
+        )
+        con.execute(
+            "ALTER TABLE house_seconds ADD COLUMN IF NOT EXISTS verdict_signals_json TEXT"
+        )
+        con.execute(
+            "ALTER TABLE house_seconds ADD COLUMN IF NOT EXISTS clamped_dwell_ms INTEGER"
+        )
+        con.execute(
+            "ALTER TABLE house_seconds ADD COLUMN IF NOT EXISTS clamped_cents INTEGER"
         )
         con.execute(
             "CREATE INDEX IF NOT EXISTS idx_house_seconds_window "
@@ -173,6 +190,34 @@ def ensure_tables(con: Any) -> None:
             "CREATE INDEX IF NOT EXISTS idx_frame_client_hints_window "
             "ON frame_telemetry_client_hints(window_id)"
         )
+        # AFA-S2 (W2-S2 cap): the per-(user, asset, day) counted-dwell ledger the
+        # saturation cap consumes. Append-only: one row per (window, asset) that
+        # carried countable dwell, carrying the PRIOR counted dwell at accrual
+        # time (so replay re-derives the clamp EXACTLY without depending on
+        # insertion order), the counted/clamped split, and the cap in force.
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS frame_daily_dwell (
+                dwell_id         TEXT PRIMARY KEY,
+                owner_user_id    TEXT NOT NULL,
+                asset_id         TEXT NOT NULL,
+                day_bucket       TEXT NOT NULL,
+                window_id        TEXT NOT NULL,
+                batch_ref        TEXT NOT NULL,
+                incremental_ms   INTEGER NOT NULL DEFAULT 0,
+                prior_counted_ms INTEGER NOT NULL DEFAULT 0,
+                counted_ms       INTEGER NOT NULL DEFAULT 0,
+                clamped_ms       INTEGER NOT NULL DEFAULT 0,
+                clamped_cents    INTEGER NOT NULL DEFAULT 0,
+                cap_ms           INTEGER,
+                recorded_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        con.execute(
+            "CREATE INDEX IF NOT EXISTS idx_frame_daily_dwell_identity "
+            "ON frame_daily_dwell(owner_user_id, asset_id, day_bucket)"
+        )
     except Exception:
         pass
 
@@ -186,7 +231,10 @@ def ensure_tables(con: Any) -> None:
 class FrameAccrualLine:
     """One window+asset accrual line (post-aggregation). ``summed_weight`` is
     the sum of this asset's per-second normalized weights across the window;
-    ``amount_cents`` is its conserved slice of the window ad value."""
+    ``amount_cents`` is its conserved slice of the window ad value;
+    ``countable_dwell_ms`` is this asset's summed focused dwell over the
+    window's VALID seconds — the saturation cap's input (the cap is applied by
+    the writer, which knows the per-(user, asset, day) prior)."""
 
     window_id: str
     asset_id: str
@@ -195,6 +243,7 @@ class FrameAccrualLine:
     summed_weight: float
     amount_cents: int
     n_seconds: int
+    countable_dwell_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -226,9 +275,21 @@ class WindowAccrual:
     # unaffected; M5b persists these alongside the accrual rows.
     excluded_second_counts: tuple[tuple[str, int], ...] = ()
     # The window's composite fraud verdict kind ("pass"/"review"/"block"). A
-    # "review" window still accrues (to escrow, operator queue); a "block" window
-    # routes its whole value to house.
+    # "block" window routes its whole value to house; a "review" window is HELD
+    # (whole value to house under the review-hold reason, never allocated to a
+    # contributor) pending the operator queue. A "pass" window accrues its valid
+    # seconds normally.
     fraud_verdict: str = FraudVerdictKind.PASS.value
+    # The window verdict's signal names + details (GIVT fraction, SIVT
+    # heuristics) — surfaced in the telemetry response so the operator sees WHY
+    # a window was held/blocked, never a bare verdict.
+    verdict_signals: tuple[tuple[str, str], ...] = ()
+    # AFA-S2 (W2-S2 cap): the saturation cap's reported exclusions — total dwell
+    # ms clamped across assets this window, and the cents that excess dwell was
+    # worth (routed to house, never to the contributor). 0 when no cap was
+    # defined for this accrual or nothing was clamped.
+    clamped_dwell_ms: int = 0
+    clamped_cents: int = 0
 
     def reconciles(self) -> bool:
         """Σ asset cents + house cents == total ad value cents (the invariant)."""
@@ -242,6 +303,7 @@ def aggregate_window(
     batch: WindowFrameBatch,
     *,
     asset_to_ip_holder: dict[str, str | None] | None = None,
+    classification: BatchClassification | None = None,
 ) -> WindowAccrual:
     """Reduce a window batch to per-asset accrual + a house tally, conserved to
     the cent — PURE (no DB). The accrual writer calls this, then persists.
@@ -257,6 +319,23 @@ def aggregate_window(
       3. Per-asset cents are summed across the window into one line per asset;
          per-asset weights are summed too (the per-second granularity survives
          in the summed weight, not in the row count).
+
+    FILTER-BEFORE-ALLOCATE (AFA-S2, the anti-gaming pre-accrual filter): the
+    batch is classified via :func:`substrate.anti_gaming.frame_ivt.
+    classify_batch` (or the caller supplies the classification computed once —
+    the frame-telemetry route classifies and hands it in so the response and
+    the money path consume the SAME verdict). GIVT/SIVT-invalid seconds are
+    excluded from BOTH numerator and denominator — never allocated, never
+    diluting. A BLOCK window or a REVIEW window is NEVER allocated to a
+    contributor: BLOCK routes the whole value to house ("antigaming_block"),
+    REVIEW holds the whole value to house under "antigaming_review_hold" (the
+    operator-queue hold; the platform pockets nothing silently — the reason
+    separates a hold from ordinary house seconds). Every excluded second is
+    counted and reported, never silently dropped.
+
+    ``classification`` defaults to a fresh :func:`classify_batch` call. It must
+    be the classification OF ``batch`` when supplied — this is a pure function,
+    so the caller's mistake is visible, not enforced.
 
     ``asset_to_ip_holder`` maps asset_id → ip_holder_id (None for unmapped/
     pre-claim). An asset in frame with no chunk still earns (it is the ASSET
@@ -285,17 +364,27 @@ def aggregate_window(
 
     # AFA-S2 M5 — filter-before-allocate. Classify the batch; invalid seconds are
     # excluded from BOTH the numerator and the denominator of the split (they do
-    # not earn AND do not dilute the per-second value). A BLOCK verdict or a
-    # fully-filtered window routes the whole value to house — never invented
-    # attribution. Every excluded second is counted and reported, never dropped.
-    classification = classify_batch(batch)
+    # not earn AND do not dilute the per-second value). A BLOCK or REVIEW verdict
+    # routes the whole value to house — never invented attribution, and a REVIEW
+    # window is never allocated while it sits in the operator queue. Every
+    # excluded second is counted and reported, never dropped.
+    if classification is None:
+        classification = classify_batch(batch)
     excluded = tuple(sorted(classification.counts_by_reason().items()))
     verdict_kind = classification.window_verdict.kind
+    verdict_signals = tuple(
+        (s.name, s.detail) for s in classification.window_verdict.signals
+    )
 
-    if verdict_kind is FraudVerdictKind.BLOCK:
+    if verdict_kind in (FraudVerdictKind.BLOCK, FraudVerdictKind.REVIEW):
+        reason = (
+            "antigaming_block" if verdict_kind is FraudVerdictKind.BLOCK
+            else "antigaming_review_hold"
+        )
         return _house_only_window(
-            batch, total, reason="antigaming_block",
+            batch, total, reason=reason,
             excluded=excluded, verdict_kind=verdict_kind,
+            verdict_signals=verdict_signals,
         )
 
     # Valid seconds keyed by POSITION (not second_index): position is unique and
@@ -310,6 +399,7 @@ def aggregate_window(
         return _house_only_window(
             batch, total, reason="antigaming_all_seconds_filtered",
             excluded=excluded, verdict_kind=verdict_kind,
+            verdict_signals=verdict_signals,
         )
 
     # Split the window's total ad value equally across its VALID seconds,
@@ -320,6 +410,7 @@ def aggregate_window(
     asset_weight: dict[str, float] = {}
     asset_chunk: dict[str, str | None] = {}
     asset_nsec: dict[str, int] = {}
+    asset_dwell: dict[str, int] = {}  # countable (focused) dwell ms per asset
     house_cents = 0
     house_nsec = 0
     house_reasons: set[str] = set()
@@ -345,6 +436,12 @@ def aggregate_window(
             asset_weight[aw.asset_id] = asset_weight.get(aw.asset_id, 0.0) + float(aw.weight)
             asset_chunk[aw.asset_id] = aw.chunk_id
             asset_nsec[aw.asset_id] = asset_nsec.get(aw.asset_id, 0) + 1
+            # Countable dwell is the saturation cap's unit: this asset's focused
+            # dwell over the window's VALID seconds (filter-before-cap — an
+            # invalid second contributes neither cents nor dwell).
+            asset_dwell[aw.asset_id] = (
+                asset_dwell.get(aw.asset_id, 0) + aw.focused_dwell_ms
+            )
 
     asset_lines = tuple(
         FrameAccrualLine(
@@ -355,6 +452,7 @@ def aggregate_window(
             summed_weight=asset_weight[aid],
             amount_cents=asset_cents[aid],
             n_seconds=asset_nsec[aid],
+            countable_dwell_ms=asset_dwell.get(aid, 0),
         )
         for aid in sorted(asset_cents.keys())
     )
@@ -376,6 +474,7 @@ def aggregate_window(
         weighting_version=FRAME_WEIGHTING_VERSION,
         excluded_second_counts=excluded,
         fraud_verdict=verdict_kind.value,
+        verdict_signals=verdict_signals,
     )
 
 
@@ -386,12 +485,13 @@ def _house_only_window(
     reason: str,
     excluded: tuple[tuple[str, int], ...],
     verdict_kind: FraudVerdictKind,
+    verdict_signals: tuple[tuple[str, str], ...] = (),
 ) -> WindowAccrual:
-    """A window whose ENTIRE value routes to house — a BLOCK verdict or a
-    fully-filtered window. No contributor accrues (never invented attribution);
-    the whole ad value is the house tally, and the exclusion counts + verdict are
-    carried for the audit trail. Conservation is trivially exact (house == total,
-    no asset lines)."""
+    """A window whose ENTIRE value routes to house — a BLOCK verdict, a REVIEW
+    hold, or a fully-filtered window. No contributor accrues (never invented
+    attribution); the whole ad value is the house tally, and the exclusion
+    counts + verdict + signals are carried for the audit trail. Conservation is
+    trivially exact (house == total, no asset lines)."""
     return WindowAccrual(
         batch_ref="",
         window_id=batch.window_id,
@@ -407,6 +507,7 @@ def _house_only_window(
         weighting_version=FRAME_WEIGHTING_VERSION,
         excluded_second_counts=excluded,
         fraud_verdict=verdict_kind.value,
+        verdict_signals=verdict_signals,
     )
 
 
@@ -470,6 +571,10 @@ def accrue_window(
     batch: WindowFrameBatch,
     *,
     asset_to_ip_holder: dict[str, str | None] | None = None,
+    owner_user_id: str | None = None,
+    dwell_cap_ms: int | None = None,
+    day_bucket: str | None = None,
+    classification: BatchClassification | None = None,
 ) -> WindowAccrual:
     """Persist one window batch's accrual + house tally append-only and route
     each per-asset amount into its ip_holder's escrow.
@@ -487,7 +592,25 @@ def accrue_window(
 
     Escrow: each asset line with a known ip_holder and amount > 0 routes through
     ``ip_holders.accrue_escrow`` (pre-onboarded included). House seconds accrue
-    to NO contributor. Accrual ≠ disbursement — nothing leaves escrow here."""
+    to NO contributor. Accrual ≠ disbursement — nothing leaves escrow here.
+
+    AFA-S2 (W2-S2) saturation cap — per-(user, asset, day) countable dwell
+    saturates at ``dwell_cap_ms`` when DEFINED (``None`` = uncapped, the
+    backward-compatible default). The clamp is applied filter-before-cap on the
+    first accrual only (the idempotent reload returns the stored result, never a
+    re-clamp against moved priors): each asset line's countable dwell is clamped
+    against the day's prior counted dwell (``frame_daily_dwell``), the asset's
+    cents are scaled by counted/incremental (integer floor — the excess goes to
+    house, so conservation stays exact), and every clamped ms + cent is recorded
+    and reported (``REASON_DWELL_CAP_CLAMPED`` surfaces in the response's
+    clamped fields; the dwell ledger row carries prior/counted/clamped so
+    :func:`replay` re-derives the clamp exactly). ``owner_user_id`` is the
+    reader identity the cap scopes on ("" when unknown); ``day_bucket`` is the
+    UTC day (defaults to today; injectable for tests).
+
+    ``classification`` is the frame_ivt classification of ``batch``, computed
+    ONCE by the caller (the frame-telemetry route) so the response and the money
+    path share one verdict; omitted → computed here."""
     ensure_tables(con)
     asset_to_ip_holder = asset_to_ip_holder or {}
 
@@ -505,12 +628,25 @@ def accrue_window(
     if existing is not None:
         return _load_window_accrual(con, batch_ref)
 
-    result = aggregate_window(batch, asset_to_ip_holder=asset_to_ip_holder)
+    result = aggregate_window(
+        batch,
+        asset_to_ip_holder=asset_to_ip_holder,
+        classification=classification,
+    )
     # Set the real batch_ref while PRESERVING every other field — including the
-    # AFA-S2 M5 audit fields (excluded_second_counts, fraud_verdict). Rebuilding
-    # the dataclass by hand silently dropped them (a BLOCK window returned
-    # "pass"/empty); replace() cannot.
+    # AFA-S2 audit fields (excluded_second_counts, fraud_verdict, signals).
+    # Rebuilding the dataclass by hand silently dropped them (a BLOCK window
+    # returned "pass"/empty); replace() cannot.
     result = replace(result, batch_ref=batch_ref)
+
+    if dwell_cap_ms is not None:
+        result = _apply_dwell_caps(
+            con,
+            result,
+            identity=owner_user_id or "",
+            day_bucket=day_bucket or _utc_today(),
+            cap_ms=dwell_cap_ms,
+        )
 
     # Write per-asset accrual rows (one per window+asset — write amplification
     # is bounded by the asset count, never the second count).
@@ -551,8 +687,9 @@ def accrue_window(
         INSERT INTO house_seconds (
             house_id, batch_ref, window_id, n_seconds, amount_cents,
             reason, telemetry_version, weighting_version, inputs_json,
-            fraud_verdict, excluded_counts_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            fraud_verdict, excluded_counts_json, verdict_signals_json,
+            clamped_dwell_ms, clamped_cents
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             house_id, batch_ref, result.window_id, result.house.n_seconds,
@@ -560,6 +697,11 @@ def accrue_window(
             result.telemetry_version, result.weighting_version, inputs_json,
             result.fraud_verdict,
             _canonical_json([[r, c] for r, c in result.excluded_second_counts]),
+            _canonical_json(
+                [[name, detail] for name, detail in result.verdict_signals]
+            ),
+            result.clamped_dwell_ms,
+            result.clamped_cents,
         ],
     )
 
@@ -611,6 +753,145 @@ def record_client_hint(
     return hint_id
 
 
+def _utc_today() -> str:
+    """Today's UTC date as the day bucket ("YYYY-MM-DD"). The writer stamps
+    rows with CURRENT_TIMESTAMP in SQL; the day bucket is the cap's key and is
+    derived here so tests can inject a deterministic ``day_bucket``."""
+    return datetime.now(UTC).date().isoformat()
+
+
+def _prior_counted_dwell(
+    con: Any, identity: str, asset_id: str, day_bucket: str
+) -> int:
+    """The (user, asset, day)'s already-counted countable dwell — the cap's
+    prior. Sums the append-only ledger; 0 before any row exists."""
+    row = con.execute(
+        "SELECT COALESCE(SUM(counted_ms), 0) FROM frame_daily_dwell "
+        "WHERE owner_user_id = ? AND asset_id = ? AND day_bucket = ?",
+        [identity, asset_id, day_bucket],
+    ).fetchone()
+    return int(row[0]) if row is not None else 0
+
+
+def _apply_dwell_caps(
+    con: Any,
+    result: WindowAccrual,
+    *,
+    identity: str,
+    day_bucket: str,
+    cap_ms: int,
+) -> WindowAccrual:
+    """Saturation-cap mediation (AFA-S2 W2-S2): clamp each asset line's
+    countable dwell against the per-(user, asset, day) prior and reroute the
+    clamped excess from the asset to house.
+
+    Only contributor lines carry countable dwell (a BLOCK/REVIEW hold and an
+    empty window have none — their whole value is already house), so the cap
+    never touches a held window. Each affected asset records an append-only
+    ``frame_daily_dwell`` row carrying the PRIOR it was clamped against, so
+    :func:`replay` re-derives the clamp exactly without depending on row order.
+
+    Cents rule: kept = amount × counted // incremental (integer floor). The
+    floor guarantees kept ≤ amount — the clamped remainder joins the house
+    tally, so conservation (Σ asset + house == total) is EXACT, and a clamped
+    second never earns a cent. The approximation is honest and bounded: the cap
+    is a structural ceiling on dwell, applied linearly to the asset's already-
+    weighted accrual (the blend's area/prominence terms ride along), and every
+    clamped ms/cent is reported — nothing is silently dropped.
+    """
+    if not result.asset_lines:
+        return result
+
+    clamped_dwell_ms = 0
+    clamped_cents_total = 0
+    new_lines: list[FrameAccrualLine] = []
+
+    for line in result.asset_lines:
+        incremental_ms = line.countable_dwell_ms
+        if incremental_ms <= 0:
+            # No countable dwell: the cap clamps dwell, and there is none —
+            # the line stands (its cents came from the zero-dwell equal split).
+            new_lines.append(line)
+            continue
+        prior = _prior_counted_dwell(con, identity, line.asset_id, day_bucket)
+        counted_ms, clamped_ms = clamp_countable_dwell(
+            prior, incremental_ms, cap_ms=cap_ms
+        )
+        kept_cents = (line.amount_cents * counted_ms) // incremental_ms
+        clamped_cents = line.amount_cents - kept_cents
+        clamped_dwell_ms += clamped_ms
+        clamped_cents_total += clamped_cents
+        _record_dwell_row(
+            con, result.batch_ref, line, identity=identity,
+            day_bucket=day_bucket, prior=prior, counted_ms=counted_ms,
+            clamped_ms=clamped_ms, clamped_cents=clamped_cents, cap_ms=cap_ms,
+        )
+        if kept_cents != line.amount_cents:
+            new_lines.append(replace(line, amount_cents=kept_cents))
+        else:
+            new_lines.append(line)
+
+    if clamped_dwell_ms == 0:
+        # Nothing clamped this window; the ledger still recorded the counted
+        # dwell (the cap's prior must grow even when unclamped), but the
+        # accrual itself is unchanged.
+        return replace(result, asset_lines=tuple(new_lines))
+
+    # Report the clamp even when the clamped CENTS are 0 (an unpriced window —
+    # the production default today): the dwell was still withheld, and the
+    # operator must see it. Conservation is exact either way (0 cents move).
+    house_reasons = [
+        r for r in result.house.reason.split(";") if r and r != "none"
+    ]
+    house_reasons.append("dwell_cap_clamped")
+    house = replace(
+        result.house,
+        amount_cents=result.house.amount_cents + clamped_cents_total,
+        reason=";".join(sorted(set(house_reasons))),
+    )
+    return replace(
+        result,
+        asset_lines=tuple(new_lines),
+        house=house,
+        clamped_dwell_ms=clamped_dwell_ms,
+        clamped_cents=clamped_cents_total,
+    )
+
+
+def _record_dwell_row(
+    con: Any,
+    batch_ref: str,
+    line: FrameAccrualLine,
+    *,
+    identity: str,
+    day_bucket: str,
+    prior: int,
+    counted_ms: int,
+    clamped_ms: int,
+    clamped_cents: int,
+    cap_ms: int,
+) -> None:
+    """Append one (window, asset) dwell ledger row. Deterministic id from the
+    batch ref + asset (idempotent under re-accrual; the writer's batch-level
+    idempotency gate runs first anyway)."""
+    dwell_key = f"{batch_ref}\x00{line.asset_id}".encode()
+    dwell_id = f"frame-dwell-{hashlib.sha256(dwell_key).hexdigest()[:20]}"
+    con.execute(
+        """
+        INSERT INTO frame_daily_dwell (
+            dwell_id, owner_user_id, asset_id, day_bucket, window_id,
+            batch_ref, incremental_ms, prior_counted_ms, counted_ms,
+            clamped_ms, clamped_cents, cap_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            dwell_id, identity, line.asset_id, day_bucket, line.window_id,
+            batch_ref, line.countable_dwell_ms, prior, counted_ms,
+            clamped_ms, clamped_cents, cap_ms,
+        ],
+    )
+
+
 def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
     """Reconstruct a persisted WindowAccrual from its stored rows (the read
     surface the idempotent path returns)."""
@@ -628,7 +909,8 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
         """
         SELECT window_id, n_seconds, amount_cents, reason,
                telemetry_version, weighting_version,
-               fraud_verdict, excluded_counts_json
+               fraud_verdict, excluded_counts_json, verdict_signals_json,
+               clamped_dwell_ms, clamped_cents
         FROM house_seconds WHERE batch_ref = ?
         """,
         [batch_ref],
@@ -659,6 +941,9 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
     excluded_second_counts = tuple(
         (str(r), int(c)) for r, c in json.loads(hrow[7] or "[]")
     )
+    verdict_signals = tuple(
+        (str(n), str(d)) for n, d in json.loads(hrow[8] or "[]")
+    )
     return WindowAccrual(
         batch_ref=batch_ref,
         window_id=window_id,
@@ -669,6 +954,9 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
         weighting_version=weighting_version,
         excluded_second_counts=excluded_second_counts,
         fraud_verdict=str(hrow[6]) if hrow[6] is not None else "pass",
+        verdict_signals=verdict_signals,
+        clamped_dwell_ms=int(hrow[9]) if hrow[9] is not None else 0,
+        clamped_cents=int(hrow[10]) if hrow[10] is not None else 0,
     )
 
 
@@ -744,6 +1032,15 @@ def replay(con: Any, batch_ref: str) -> FrameReplayResult:
     recomputed = aggregate_window(
         rebuilt, asset_to_ip_holder=inputs["asset_to_ip_holder"],
     )
+    # The dwell ledger rows are keyed by the real batch ref (aggregate_window
+    # leaves it ""); stamp it before re-deriving the clamp, mirroring
+    # accrue_window's own ordering.
+    recomputed = replace(recomputed, batch_ref=batch_ref)
+    # AFA-S2 (W2-S2 cap): re-derive the saturation clamp from the dwell ledger
+    # rows this accrual recorded (each carries the PRIOR it was clamped
+    # against, so replay is exact regardless of later windows). Uncapped
+    # accruals have no dwell rows → the plain aggregate is already the answer.
+    recomputed = _reapply_dwell_caps(con, recomputed)
     recorded = _load_window_accrual(con, batch_ref)
 
     rec_sig = _accrual_signature(recorded)
@@ -754,6 +1051,56 @@ def replay(con: Any, batch_ref: str) -> FrameReplayResult:
         identical=identical,
         recorded=rec_sig,
         recomputed=rcm_sig,
+    )
+
+
+def _reapply_dwell_caps(con: Any, result: WindowAccrual) -> WindowAccrual:
+    """Replay-side re-derivation of the saturation clamp: rebuilds the capped
+    accrual from the dwell ledger rows the original accrual recorded. Each row
+    carries the prior counted dwell AT ACCRUAL TIME, so the recomputation is
+    exact and independent of every later window. A missing row (or a row with
+    ``cap_ms IS NULL``) means the original accrual was uncapped — the plain
+    aggregate stands."""
+    if not result.asset_lines:
+        return result
+
+    clamped_dwell_ms = 0
+    clamped_cents_total = 0
+    new_lines: list[FrameAccrualLine] = []
+    for line in result.asset_lines:
+        incremental_ms = line.countable_dwell_ms
+        if incremental_ms <= 0:
+            new_lines.append(line)
+            continue
+        row = con.execute(
+            "SELECT prior_counted_ms, counted_ms, clamped_ms, clamped_cents, "
+            "cap_ms FROM frame_daily_dwell WHERE batch_ref = ? AND asset_id = ?",
+            [result.batch_ref, line.asset_id],
+        ).fetchone()
+        if row is None or row[4] is None:
+            new_lines.append(line)  # uncapped accrual (or pre-cap ledger)
+            continue
+        prior, _stored_counted, _stored_clamped, _stored_cents, cap_ms = row
+        counted_ms, clamped_ms = clamp_countable_dwell(
+            int(prior), incremental_ms, cap_ms=int(cap_ms)
+        )
+        kept_cents = (line.amount_cents * counted_ms) // incremental_ms
+        clamped_dwell_ms += clamped_ms
+        clamped_cents_total += line.amount_cents - kept_cents
+        new_lines.append(replace(line, amount_cents=kept_cents))
+
+    if clamped_dwell_ms == 0:
+        return replace(result, asset_lines=tuple(new_lines))
+    house = replace(
+        result.house,
+        amount_cents=result.house.amount_cents + clamped_cents_total,
+    )
+    return replace(
+        result,
+        asset_lines=tuple(new_lines),
+        house=house,
+        clamped_dwell_ms=clamped_dwell_ms,
+        clamped_cents=clamped_cents_total,
     )
 
 
