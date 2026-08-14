@@ -353,3 +353,35 @@
     --opacity-icon:     0.8;
   }
 }
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   Link Monster — Weirdmageddon incinerator palette (feature-scoped).
+   Source: docs/specs/link-monster-art-direction.md §2. Consumed only by
+   the /link-monster furnace stage (LinkMonster.css). Theme-invariant
+   (no day/night split — the apocalypse does not respect modes).
+   Sibling invariant: byte-identical to the `linkMonster` object in
+   tokens.ts.
+   ───────────────────────────────────────────────────────────────────── */
+:root {
+  --lm-sky-deep:   #1A0A0F;
+  --lm-sky-mid:    #3D0C28;
+  --lm-horizon:    #FF6B2B;
+  --lm-fur:        #1E4D8C;
+  --lm-fur-shadow: #0B1D3A;
+  --lm-rim:        #00FFD4;
+  --lm-fire-core:  #FFFBE6;
+  --lm-fire-mid:   #FF7A18;
+  --lm-fire-outer: #E81E0D;
+  --lm-steel:      #3A3D42;
+  --lm-nickel:     #8B9099;
+  --lm-node:       #22D3A7;
+  --lm-edge:       #B266FF;
+  --lm-rune-glow:  #7FFF00;
+  --lm-rune-base:  #D4E8D0;
+  --lm-ember:      #FFB347;
+  --lm-void:       #0A0A12;
+  --lm-smoke:      #2A2D35;
+  --lm-magenta:    #FF00FF;
+  --lm-bone:       #E8E0D8;
+}

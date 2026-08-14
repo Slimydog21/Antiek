@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 35;
+export const EVENT_SCHEMA_VERSION = 36;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -148,6 +148,7 @@ export const ActionType = {
   GROUNDEDNESS_FAILED: "groundedness.failed",
   DOCUMENT_CONTENT_CLASS_DEFAULTED: "document.content_class_defaulted",
   WORKER_IDENTITY: "worker.identity",
+  LINK_MONSTER_DIGESTED: "link.monster.digested",
   SURFACE_SERVED_IMPRESSION: "surface.served_impression",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
@@ -635,6 +636,25 @@ export interface WorkerIdentityPayload {
   spawn_kind: "subprocess" | "asyncio_task" | "thread" | "role_invocation" | "variant";
   expected_lifetime_s?: number | null;
   context_hash?: string | null;
+}
+
+/**
+ * Recorded once per Link Monster digest attempt. ``outcome`` is
+ * meal (body extracted), snack (metadata only), or leftover (failed —
+ * not yet emitted in v1; failures are typed API responses). Counts
+ * only — never the body (§9.0).
+ */
+export interface LinkMonsterDigestedPayload {
+  action_type: "link.monster.digested";
+  url: string;
+  final_url: string;
+  platform: string;
+  document_id: string;
+  outcome: string;
+  artifacts?: Record<string, number>;
+  title?: string | null;
+  author?: string | null;
+  duration_ms?: number;
 }
 
 /**
@@ -2724,6 +2744,7 @@ export interface SurfaceServedImpressionPayload {
 export type TypedPayload =
   | DispatchCallPayload
   | WorkerIdentityPayload
+  | LinkMonsterDigestedPayload
   | ContextPackAssembledPayload
   | KnowledgeReusedPayload
   | ReuseGatedPayload
@@ -2929,6 +2950,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "investigation.spawned_from",
   "investigation.start_requested",
   "knowledge.reused",
+  "link.monster.digested",
   "marginalia.noted",
   "note.compressed_doc_written",
   "note.emerged",

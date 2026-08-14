@@ -380,3 +380,38 @@ export const type = {
   // reading prose only (MasterMdViewer, Notebook prose blocks)
   serif: '"Charter", "Iowan Old Style", Georgia, serif',
 } as const;
+
+
+/**
+ * Link Monster — Weirdmageddon incinerator palette (feature-scoped).
+ *
+ * Source: docs/specs/link-monster-art-direction.md §2 (Krea-profiled,
+ * Gravity Falls Weirdmageddon + industrial-incinerator). Feature-scoped:
+ * these tokens are consumed ONLY by the /link-monster furnace stage
+ * (monsterSketch.ts canvas + LinkMonster.css chrome). Sibling invariant:
+ * every value is byte-identical to the --lm-* block in tokens.css.
+ */
+export const linkMonster = {
+  skyDeep: "#1A0A0F",       // apocalypse crimson (sky base)
+  skyMid: "#3D0C28",        // rift magenta (sky mid)
+  horizon: "#FF6B2B",       // ember amber (horizon glow)
+  fur: "#1E4D8C",           // cerulean pelt (monster body)
+  furShadow: "#0B1D3A",     // deep abyss (fur shadow)
+  rim: "#00FFD4",           // electric cyan (blacklight rim)
+  fireCore: "#FFFBE6",      // white-hot core
+  fireMid: "#FF7A18",       // molten orange
+  fireOuter: "#E81E0D",     // inferno red
+  steel: "#3A3D42",         // gunmetal (grate teeth)
+  nickel: "#8B9099",        // brushed nickel (bevel highlight)
+  node: "#22D3A7",          // cosmic teal (graph nodes)
+  edge: "#B266FF",          // plasma violet (graph edges)
+  runeGlow: "#7FFF00",      // toxic green (rune glow)
+  runeBase: "#D4E8D0",      // pale sage (rune base)
+  ember: "#FFB347",         // data ember (particles)
+  voidBlack: "#0A0A12",     // void black (UI panels)
+  smoke: "#2A2D35",         // chimney smoke
+  magenta: "#FF00FF",       // neon magenta (accents)
+  boneWhite: "#E8E0D8",     // bone white (text)
+} as const;
+
+export type LinkMonsterToken = keyof typeof linkMonster;

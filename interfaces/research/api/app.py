@@ -1711,6 +1711,13 @@ def create_app(
     # hardening seams and persist JSON-backed asset records.
     from .multimedia_routes import register_multimedia_routes
     register_multimedia_routes(app)
+    # Link Monster — paste-any-URL digestion surface. Classification →
+    # SSRF guard → extraction ladder (oEmbed/OG/DOM/platform) → graph
+    # stew (documents/chunks/nodes/edges/rights) + typed event.
+    # docs/specs/link-monster-spec.md. Reads/writes the same single-
+    # writer DuckDB via runtime.db_lock; no new runtime, no new keys.
+    from .link_monster_routes import register_link_monster_routes
+    register_link_monster_routes(app)
     # Settings SPR-01 — model inventory + operator budget readout + prompt
     # cost projection (honest nulls when pricing/spend unknown).
     from .settings_budget import register_settings_budget_routes

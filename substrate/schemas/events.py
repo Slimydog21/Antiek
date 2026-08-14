@@ -488,6 +488,12 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     # WorkerIdentityPayload. Distinct from investigation.spawned_from (which
     # records a child investigation chasing a parent's open question).
     WORKER_IDENTITY = "worker.identity"
+    # ── Link Monster (link ingestion surface) ──
+    #    Emitted once per digest attempt (meal, snack, or leftover) with the
+    #    artifact counts + platform + outcome, so the trajectory shows what
+    #    the Monster ate without carrying the body (§9.0: events carry no
+    #    body — raw text lives in the documents row).
+    LINK_MONSTER_DIGESTED = "link.monster.digested"
 
     # ── Own Your Mind P0 — served-impression audit (L8/L15, §5 of the
     #    P0 brief). Emitted by the reading/research surfaces on render:
@@ -776,7 +782,12 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 #     there is deliberately no position-bias self-training path. Emitted by
 #     the surfaces on render, never by the substrate. docs/own-your-mind/
 #     10-p0-implementation-brief.md §5. 2026-08-12.
-EVENT_SCHEMA_VERSION: int = 35
+# v36: Link Monster — new ``link.monster.digested`` action type + payload
+#     recording one link digest attempt (url, final_url, platform,
+#     document_id, outcome meal|snack|leftover, artifact counts, title,
+#     author). Body-bearing fields are counts only — never the body
+#     itself (§9.0). Backward-compatible: purely additive. 2026-08-13.
+EVENT_SCHEMA_VERSION: int = 36
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -3993,6 +4004,24 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
     target_question: str = ""
 
 
+class LinkMonsterDigestedPayload(_PayloadBase):
+    """Recorded once per Link Monster digest attempt. ``outcome`` is
+    meal (body extracted), snack (metadata only), or leftover (failed —
+    not yet emitted in v1; failures are typed API responses). Counts
+    only — never the body (§9.0)."""
+
+    action_type: Literal[ActionType.LINK_MONSTER_DIGESTED] = ActionType.LINK_MONSTER_DIGESTED
+    url: str
+    final_url: str
+    platform: str  # youtube | x | instagram | tiktok | substack | generic
+    document_id: str
+    outcome: str  # meal | snack | leftover
+    artifacts: dict[str, int] = Field(default_factory=dict)
+    title: str | None = None
+    author: str | None = None
+    duration_ms: int = Field(default=0, ge=0)
+
+
 # ── Own Your Mind P0 §5 — served-impression audit (v35 schema bump) ────────
 
 
@@ -4042,14 +4071,13 @@ class SurfaceServedImpressionPayload(_PayloadBase):
     # The account that saw the item.
     user_id: str
 
-
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | SkillPatchGateDecidedPayload | SkillPatchGateReviewedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadBookAnsweredPayload | ReadBookAnswerJudgedPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload | SurfaceServedImpressionPayload,
+    DispatchCallPayload | WorkerIdentityPayload | LinkMonsterDigestedPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | SkillPatchGateDecidedPayload | SkillPatchGateReviewedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadBookAnsweredPayload | ReadBookAnswerJudgedPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload | SurfaceServedImpressionPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -4060,6 +4088,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.DISPATCH_CALL.value,
     # antiek-yegge-execute SPR-01 — worker registration (future registry, SPR-04).
     ActionType.WORKER_IDENTITY.value,
+    # Link Monster — one digest attempt per link (meal/snack/leftover).
+    ActionType.LINK_MONSTER_DIGESTED.value,
     ActionType.CONTEXT_PACK_ASSEMBLED.value,
     # AFF SPR-06 — flywheel reuse half.
     ActionType.KNOWLEDGE_REUSED.value,

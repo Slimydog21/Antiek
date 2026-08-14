@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 
@@ -17,6 +18,10 @@ import DocumentsIndex from "./modes/DocumentsIndex";
 import Federation from "./modes/Federation";
 import Home from "./modes/Home/Home";
 import Library from "./modes/Library";
+// Link Monster is lazy-loaded: its p5 furnace-stage chunk must not
+// ship on every page load (S12 bundle budget, WP-12.2 — main index
+// chunk ceiling 700 KB gz). Only /link-monster pulls the Monster in.
+const LinkMonster = lazy(() => import("./modes/LinkMonster/LinkMonster"));
 import LibraryView from "./components/library/LibraryView";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
@@ -107,6 +112,14 @@ function AuthenticatedRoutes() {
             (StartResearch already serves it); see modes/Home/Home.tsx for
             the recorded, reversible routing decision. */}
         <Route path="/home" element={<Home />} />
+        <Route
+          path="/link-monster"
+          element={
+            <Suspense fallback={<div className="lm-loading">summoning the Monster…</div>}>
+              <LinkMonster />
+            </Suspense>
+          }
+        />
         <Route path="/" element={<ResearchWorkstation />} />
         <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
         {/* DRW SPR-09 — the glass-box N-research monitor (deep-research-workspace).
