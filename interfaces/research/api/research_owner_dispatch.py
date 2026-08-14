@@ -109,7 +109,13 @@ def claim_owner_launch(*, operation_id: str, owner_user_id: str,
     from runtime.db_lock import authority_handoff_guard
     path = str(_claim_db_path())
     Path(path).parent.mkdir(parents=True, mode=0o700, exist_ok=True)
-    with authority_handoff_guard(path, purpose="research-owner-authority-handoff"):
+    # 30s matches sqlite's busy timeout: 8-way concurrent identical launches
+    # serialize on this flock, and a loaded CI/dev machine can hold it past
+    # the default 5s (CI flake WriteLockTimeout on
+    # test_exact_concurrent_owner_requests_are_one_event_and_one_response).
+    with authority_handoff_guard(
+        path, purpose="research-owner-authority-handoff", timeout_s=30.0,
+    ):
         return _claim_owner_launch_locked(
             operation_id=operation_id, owner_user_id=owner_user_id,
             launch_digest=launch_digest, investigation_id=investigation_id,
@@ -132,7 +138,10 @@ def advance_owner_launch(operation_id: str, expected: str, target: str) -> None:
     """CAS launch progress under the same authority flock used by dispatch."""
     from runtime.db_lock import authority_handoff_guard
     path = str(_claim_db_path())
-    with authority_handoff_guard(path, purpose="research-owner-authority-handoff"):
+    # Same 30s rationale as claim_owner_launch: concurrent twins serialize.
+    with authority_handoff_guard(
+        path, purpose="research-owner-authority-handoff", timeout_s=30.0,
+    ):
         con = sqlite3.connect(path, timeout=30)
         try:
             con.execute("BEGIN IMMEDIATE")
@@ -158,7 +167,10 @@ def claim_owner_broadcast(operation_id: str) -> bool:
     """Elect exactly one broadcaster for an appended launch."""
     from runtime.db_lock import authority_handoff_guard
     path = str(_claim_db_path())
-    with authority_handoff_guard(path, purpose="research-owner-authority-handoff"):
+    # Same 30s rationale as claim_owner_launch: concurrent twins serialize.
+    with authority_handoff_guard(
+        path, purpose="research-owner-authority-handoff", timeout_s=30.0,
+    ):
         con = sqlite3.connect(path, timeout=30)
         try:
             con.execute("BEGIN IMMEDIATE")
