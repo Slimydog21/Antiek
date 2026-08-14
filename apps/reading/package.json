@@ -41,7 +41,7 @@
     "@tiptap/react": "^3.27.1",
     "@tiptap/starter-kit": "^3.27.1",
     "framer-motion": "^12.40.0",
-    "lucide-react": "^0.468.0",
+    "lucide-react": "^1.31.0",
     "p5": "^2.3.2",
     "pdfjs-dist": "^4.7.76",
     "posthog-js": "^1.379.1",
