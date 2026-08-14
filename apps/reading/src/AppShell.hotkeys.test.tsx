@@ -50,6 +50,13 @@ vi.mock("./components/lemon/LemonToast", () => ({
   // contract must keep the registration callable (a no-op is fine here).
   setToastNavigator: () => {},
 }));
+
+// herdr transfer P2 — AppShell mounts the seen-once release-notes modal;
+// it auto-opens in tests (unseen version), so the mock contract stubs it
+// (the modal has its own suite).
+vi.mock("./components/ReleaseNotesModal", () => ({
+  ReleaseNotesModal: () => null,
+}));
 vi.mock("./workspace/PanelLayout", () => ({
   PanelLayout: ({ mainSlot }: { mainSlot: React.ReactNode }) => (
     <div data-testid="main-region">{mainSlot}</div>

@@ -1,6 +1,14 @@
 import { startRegistration } from "@simplewebauthn/browser";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { isSoundMuted, setSoundMuted } from "../../shared/notifySound";
+import {
+  applyLayoutPreset,
+  deleteLayoutPreset,
+  listLayoutPresets,
+  saveLayoutPreset,
+} from "../../workspace/layoutPresets";
+import { project } from "../../workspace/persistence";
+import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import { LemonButton } from "../../components/lemon";
@@ -314,7 +322,24 @@ export default function Settings() {
               attention — suppressed while you are watching that research.
               Sound is generated locally (Web Audio), never recorded.
             </p>
+            <div className="pt-1">
+              <LemonButton
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent("antiek:open-release-notes"),
+                  )
+                }
+              >
+                What's new
+              </LemonButton>
+            </div>
           </div>
+        </LemonCard>
+
+        <LemonCard title="Workspace layouts" elevation="z1">
+          <WorkspaceLayoutsCard />
         </LemonCard>
 
         <LemonCard title="Models & providers" elevation="z1">
@@ -1079,6 +1104,97 @@ function Row({ label, value }: { label: string; value: string }) {
         {label}
       </span>
       <span className="text-ink dark:text-bright">{value}</span>
+    </div>
+  );
+}
+
+
+// ── Workspace layouts (herdr transfer P2, strategy 11) — named presets ────
+function WorkspaceLayoutsCard() {
+  const [name, setName] = useState("");
+  const [presets, setPresets] = useState(() => listLayoutPresets());
+  const [message, setMessage] = useState<string | null>(null);
+
+  const refresh = () => setPresets(listLayoutPresets());
+
+  const save = () => {
+    try {
+      const snapshot = project(useWorkspace.getState());
+      saveLayoutPreset(name, snapshot);
+      setName("");
+      setMessage(`Saved "${name.trim()}" — the current panel arrangement.`);
+      refresh();
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const apply = (presetName: string) => {
+    if (applyLayoutPreset(presetName)) {
+      setMessage(`Applied "${presetName}".`);
+    }
+  };
+
+  const remove = (presetName: string) => {
+    deleteLayoutPreset(presetName);
+    refresh();
+  };
+
+  return (
+    <div className="p-4 space-y-3">
+      <p className="text-[11px] leading-relaxed text-ink-soft dark:text-starlight">
+        Save the current panel arrangement under a name and re-apply it on
+        any route. The shareable URL in the layout menu still works for
+        one-off sharing; presets are the named, reusable kind.
+      </p>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save();
+          }}
+          placeholder="Preset name (e.g. research + notes)"
+          aria-label="Preset name"
+          className="flex-1 min-w-0 rounded border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-2.5 py-1.5 font-sans text-[13px] text-ink dark:text-bright placeholder:text-ink-mute dark:text-moonlight outline-none focus:border-sun"
+        />
+        <LemonButton variant="primary" size="sm" onClick={save} disabled={!name.trim()}>
+          Save current layout
+        </LemonButton>
+      </div>
+      {message && (
+        <p className="font-mono text-[11px] text-shadow-1 dark:text-moonlight" aria-live="polite">
+          {message}
+        </p>
+      )}
+      {presets.length === 0 ? (
+        <p className="text-[12px] italic text-ink-soft dark:text-starlight">
+          No saved layouts yet. Arrange your panels, then save one above.
+        </p>
+      ) : (
+        <ul className="space-y-1.5">
+          {presets.map((preset) => (
+            <li
+              key={preset.name}
+              className="flex items-center gap-2 rounded border border-rule dark:border-charcoal-1 px-2.5 py-1.5"
+            >
+              <span className="flex-1 min-w-0 truncate font-mono text-[12.5px] text-ink dark:text-bright">
+                {preset.name}
+              </span>
+              <span className="shrink-0 font-mono text-[10px] text-shadow-1 dark:text-moonlight">
+                {new Date(preset.savedAt).toLocaleDateString()}
+              </span>
+              <LemonButton variant="secondary" size="sm" onClick={() => apply(preset.name)}>
+                Apply
+              </LemonButton>
+              <LemonButton variant="tertiary" size="sm" onClick={() => remove(preset.name)}>
+                Delete
+              </LemonButton>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

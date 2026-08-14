@@ -314,7 +314,11 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     return (
       <button
         type="button"
-        title="Open navigation"
+        title={
+          researchSummons > 0
+            ? `Open navigation — ${researchSummons} need attention`
+            : "Open navigation"
+        }
         aria-label="Open navigation"
         onClick={() => setCollapsed(false)}
         className="absolute top-2 left-2 z-50 w-9 h-9 flex flex-col items-center justify-center gap-1 bg-ink text-sun border-edge border-sun rounded shadow-z2"
@@ -322,6 +326,16 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         <span className="w-4 h-0.5 bg-sun" aria-hidden="true" />
         <span className="w-4 h-0.5 bg-sun" aria-hidden="true" />
         <span className="w-4 h-0.5 bg-sun" aria-hidden="true" />
+        {/* herdr transfer P2 — the mobile hamburger carries the attention
+            badge so small screens keep their triage signal. */}
+        {researchSummons > 0 && (
+          <span
+            aria-label={`${researchSummons} need attention`}
+            className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-emperor text-ice-1 text-[9px] font-mono font-bold flex items-center justify-center"
+          >
+            {researchSummons > 99 ? "99+" : researchSummons}
+          </span>
+        )}
       </button>
     );
   }
