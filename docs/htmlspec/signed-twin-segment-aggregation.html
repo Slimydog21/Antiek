@@ -1,0 +1,15 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Cycle 107 Signed Twin Aggregation</title></head><body><main>
+<h1>Signed Segment Completion and Parent Aggregation</h1>
+<p>Status: transport-free completion authority. It verifies externally signed work and never signs, dispatches, reserves, or spends.</p>
+<section><h2>Contract</h2><ul>
+<li>Each segment receipt binds tenant, manifest, parent source, exact index/range/content hash, proposal hash, model, budget authority, expiry, and authority signature.</li>
+<li>Current canonical source bytes and the Cycle 106 registry are reverified; commitments alone cannot authorize completion.</li>
+<li>Exact replay returns the existing binding without signature-expiry revalidation or repeat work. Any changed completion conflicts.</li>
+<li>The aggregate receipt binds the complete ordered segment-binding digest. Missing, duplicated, reordered, or substituted segments refuse aggregation.</li>
+<li>One immutable parent binding materializes a canonical advisory ResearchArtifactBody with synthesis withheld. It is not graph-grounded evidence.</li>
+<li>Source bodies remain only in canonical document storage. Completion ledgers retain proposals, signed claims, hashes, and the derived parent body.</li>
+<li>This authority does not alter canonical coverage. A later projection sprint must verify the parent binding before removing requires_segmentation.</li>
+</ul></section>
+<section><h2>Failure Matrix</h2><p>Wrong tenant, source drift, stale manifest, invalid signature, expired first application, skipped segment, changed proposal, receipt substitution, schema weakening, body corruption, and crash rollback fail closed.</p></section>
+<section><h2>Next</h2><p>Integrate approved reserve-before-dispatch workers and authenticated takedown cancellation. Then project the verified parent binding into the canonical twin lifecycle and search graph.</p></section>
+</main></body></html>
