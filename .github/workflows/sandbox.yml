@@ -1,5 +1,3 @@
-name: sandbox
-
 # Sandbox compute: run an arbitrary job on GitHub's hosted runners and get the
 # output back. Public-repo minutes are free (ubuntu-latest = 2 vCPU / 7 GB /
 # 14 GB SSD). This is the agent's "more CPU" escape hatch: dispatch a job,
