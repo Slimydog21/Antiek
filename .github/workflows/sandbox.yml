@@ -1,0 +1,70 @@
+name: sandbox
+
+# Sandbox compute: run an arbitrary job on GitHub's hosted runners and get the
+# output back. Public-repo minutes are free (ubuntu-latest = 2 vCPU / 7 GB /
+# 14 GB SSD). This is the agent's "more CPU" escape hatch: dispatch a job,
+# watch the log, download artifacts. No secrets are available to this job.
+#
+#   gh workflow run sandbox.yml --ref feat/sandbox-actions \
+#       -f cmd='nproc; free -h; python3 --version' \
+#       -f upload='' \
+#       -f timeout='60'
+#
+# The runner that executes this is GitHub's infrastructure (not the Mac), so
+# jobs here do not consume the Mac's 12 cores.
+
+name: sandbox
+
+on:
+  workflow_dispatch:
+    inputs:
+      cmd:
+        description: 'Command to run via bash -lc (newline-separated ok)'
+        required: true
+        default: 'nproc && free -h && uname -a'
+      upload:
+        description: 'Path glob to upload as artifact (optional, e.g. /tmp/out/*)'
+        required: false
+        default: ''
+      timeout:
+        description: 'Job timeout in minutes'
+        required: false
+        default: '60'
+
+concurrency:
+  group: sandbox-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(inputs.timeout) }}
+    steps:
+      - name: Runner identity
+        run: |
+          echo "runner=$(uname -n) os=$(uname -a)"
+          echo "cpu=$(nproc) cores mem=$(free -g | awk '/Mem:/{print $2"G total"}') disk=$(df -h / | awk 'NR==2{print $4" free"}')"
+          echo "sandbox_id=$GITHUB_RUN_ID"
+
+      - name: Execute job
+        env:
+          CMD: ${{ inputs.cmd }}
+        shell: bash -l {0}
+        run: |
+          echo "::group::job output"
+          bash -lc "$CMD"
+          rc=$?
+          echo "::endgroup::"
+          echo "job_exit=$rc"
+          exit $rc
+
+      - name: Upload artifacts
+        if: always() && inputs.upload != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-output-${{ github.run_id }}
+          path: ${{ inputs.upload }}
+          if-no-files-found: ignore
