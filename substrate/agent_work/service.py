@@ -7,6 +7,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 
 from runtime.db_lock import connect_write
 from substrate.agent_work.domain import MarkAcknowledged, MarkWorking, ResultKind
@@ -66,7 +67,7 @@ class CompleteDispositionCommand:
     logical_worker_id: str
     bridge_credential_id: str
     context_sha256: str
-    kind: str
+    kind: Literal["decline", "approval_request"]
     message_item_id: str
     message_markdown: str
     agent_id: str

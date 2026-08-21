@@ -45,7 +45,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Any, Literal, get_args
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
@@ -4155,7 +4155,7 @@ class SurfaceServedImpressionPayload(_PayloadBase):
 # ---------------------------------------------------------------------------
 
 
-_TypedPayloadBase = Annotated[
+TypedPayload = Annotated[
     DispatchCallPayload
     | WorkerIdentityPayload
     | LinkMonsterDigestedPayload
@@ -4274,15 +4274,7 @@ _TypedPayloadBase = Annotated[
     | ReadBookAnswerJudgedPayload
     | ReadMetaReadingGeneratedPayload
     | DocumentFiledIntoInvestigationPayload
-    | SurfaceServedImpressionPayload,
-    Field(discriminator="action_type"),
-]
-
-# Keep the legacy union readable while appending the Phase 2 feedback variants.
-# ``get_args(...)[0]`` unwraps the union from its discriminator annotation so
-# Pydantic sees one flat discriminated union at the Event boundary.
-TypedPayload = Annotated[
-    get_args(_TypedPayloadBase)[0]
+    | SurfaceServedImpressionPayload
     | ArtifactCommentCreatedPayload
     | FeedbackThreadResolvedPayload
     | AgentWorkTransitionedPayload
