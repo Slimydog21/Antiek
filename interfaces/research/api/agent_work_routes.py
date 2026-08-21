@@ -11,14 +11,24 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from substrate.agent_work.service import (
+    CompleteDispositionCommand,
+    CompleteFailureCommand,
     CompleteReplyCommand,
     LeaseWorkCommand,
+    MarkAcknowledgedCommand,
     MarkSubmittedCommand,
+    MarkWorkingCommand,
+    RenewLeaseCommand,
+    complete_agent_disposition,
+    complete_agent_failure,
     complete_agent_reply,
     lease_agent_work,
+    mark_agent_work_acknowledged,
     mark_agent_work_submitted,
+    mark_agent_work_working,
+    renew_agent_work_lease,
 )
-from substrate.agent_work.store import LeaseConflict, WorkLease
+from substrate.agent_work.store import LeaseConflict, WorkLease, WorkProgress
 from substrate.graph import default_db_path, ensure_initialized
 
 from .bridge_auth import BridgePrincipal, authenticate_bridge
@@ -41,13 +51,55 @@ class SubmittedIn(BaseModel):
     herdr_target_observed: str = Field(min_length=1, max_length=256)
 
 
-class ResultIn(BaseModel):
+class RenewIn(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    attempt_no: int = Field(gt=0)
+    lease_seconds: int = Field(default=120, ge=1, le=300)
+
+
+class ProgressIn(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    attempt_no: int = Field(gt=0)
+
+
+class AcknowledgedIn(ProgressIn):
+    transport_receipt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class ReplyResultIn(BaseModel):
     model_config = {"extra": "forbid"}
 
     attempt_no: int = Field(gt=0)
     context_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     kind: Literal["reply"]
     reply_markdown: str = Field(min_length=1, max_length=32768)
+
+
+class FailureResultIn(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    attempt_no: int = Field(gt=0)
+    context_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    kind: Literal["failure"]
+    error_code: str = Field(pattern=r"^[a-z0-9_]{1,64}$")
+    retryable: bool
+
+
+class DispositionResultIn(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    attempt_no: int = Field(gt=0)
+    context_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    kind: Literal["decline", "approval_request"]
+    message_markdown: str = Field(min_length=1, max_length=32768)
+
+
+ResultIn = Annotated[
+    ReplyResultIn | FailureResultIn | DispositionResultIn,
+    Field(discriminator="kind"),
+]
 
 
 def _require_enabled() -> None:
@@ -173,6 +225,115 @@ async def mark_submitted(
     }
 
 
+@agent_work_router.post("/{work_id}/leases/{lease_id}/renew")
+async def renew_lease(
+    work_id: str,
+    lease_id: str,
+    body: RenewIn,
+    principal: Annotated[BridgePrincipal, Depends(authenticate_bridge)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    _require_enabled()
+    _require_scope(principal, "renew")
+    try:
+        result = renew_agent_work_lease(
+            _db_path(),
+            RenewLeaseCommand(
+                work_id=work_id,
+                lease_id=lease_id,
+                attempt_no=body.attempt_no,
+                logical_worker_id=principal.logical_worker_id,
+                bridge_credential_id=principal.credential_id,
+                lease_seconds=body.lease_seconds,
+                idempotency_key=_idempotency_key(idempotency_key),
+                now=datetime.now(UTC),
+            ),
+        )
+    except LeaseConflict as exc:
+        raise HTTPException(status_code=410, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "work_id": result.work_id,
+        "thread_id": result.thread_id,
+        "state": result.state,
+        "attempt_no": result.attempt_no,
+        "lease_id": result.lease_id,
+        "lease_expires_at": result.lease_expires_at.astimezone(UTC).isoformat(),
+    }
+
+
+def _progress_payload(result: WorkProgress) -> dict[str, Any]:
+    return {
+        "work_id": result.work_id,
+        "thread_id": result.thread_id,
+        "state": result.state,
+        "attempt_no": result.attempt_no,
+        "lease_id": result.lease_id,
+    }
+
+
+@agent_work_router.post("/{work_id}/leases/{lease_id}/acknowledged")
+async def mark_acknowledged(
+    work_id: str,
+    lease_id: str,
+    body: AcknowledgedIn,
+    principal: Annotated[BridgePrincipal, Depends(authenticate_bridge)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    _require_enabled()
+    _require_scope(principal, "working")
+    try:
+        result = mark_agent_work_acknowledged(
+            _db_path(),
+            MarkAcknowledgedCommand(
+                work_id=work_id,
+                lease_id=lease_id,
+                attempt_no=body.attempt_no,
+                logical_worker_id=principal.logical_worker_id,
+                bridge_credential_id=principal.credential_id,
+                transport_receipt_sha256=body.transport_receipt_sha256,
+                idempotency_key=_idempotency_key(idempotency_key),
+                now=datetime.now(UTC),
+            ),
+        )
+    except LeaseConflict as exc:
+        raise HTTPException(status_code=410, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _progress_payload(result)
+
+
+@agent_work_router.post("/{work_id}/leases/{lease_id}/working")
+async def mark_working(
+    work_id: str,
+    lease_id: str,
+    body: ProgressIn,
+    principal: Annotated[BridgePrincipal, Depends(authenticate_bridge)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    _require_enabled()
+    _require_scope(principal, "working")
+    try:
+        result = mark_agent_work_working(
+            _db_path(),
+            MarkWorkingCommand(
+                work_id=work_id,
+                lease_id=lease_id,
+                attempt_no=body.attempt_no,
+                logical_worker_id=principal.logical_worker_id,
+                bridge_credential_id=principal.credential_id,
+                idempotency_key=_idempotency_key(idempotency_key),
+                now=datetime.now(UTC),
+            ),
+        )
+    except LeaseConflict as exc:
+        raise HTTPException(status_code=410, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _progress_payload(result)
+
+
 @agent_work_router.post("/{work_id}/leases/{lease_id}/result")
 async def complete_result(
     work_id: str,
@@ -186,22 +347,58 @@ async def complete_result(
     key = _idempotency_key(idempotency_key)
     result_digest = hashlib.sha256(f"{principal.credential_id}\0{key}".encode()).hexdigest()
     try:
-        result = complete_agent_reply(
-            _db_path(),
-            CompleteReplyCommand(
-                work_id=work_id,
-                lease_id=lease_id,
-                attempt_no=body.attempt_no,
-                logical_worker_id=principal.logical_worker_id,
-                bridge_credential_id=principal.credential_id,
-                context_sha256=body.context_sha256,
-                reply_item_id=f"fit-{result_digest[:24]}",
-                reply_markdown=body.reply_markdown,
-                agent_id=principal.logical_worker_id,
-                idempotency_key=key,
-                now=datetime.now(UTC),
-            ),
-        )
+        if isinstance(body, ReplyResultIn):
+            result = complete_agent_reply(
+                _db_path(),
+                CompleteReplyCommand(
+                    work_id=work_id,
+                    lease_id=lease_id,
+                    attempt_no=body.attempt_no,
+                    logical_worker_id=principal.logical_worker_id,
+                    bridge_credential_id=principal.credential_id,
+                    context_sha256=body.context_sha256,
+                    reply_item_id=f"fit-{result_digest[:24]}",
+                    reply_markdown=body.reply_markdown,
+                    agent_id=principal.logical_worker_id,
+                    idempotency_key=key,
+                    now=datetime.now(UTC),
+                ),
+            )
+        elif isinstance(body, FailureResultIn):
+            progress = complete_agent_failure(
+                _db_path(),
+                CompleteFailureCommand(
+                    work_id=work_id,
+                    lease_id=lease_id,
+                    attempt_no=body.attempt_no,
+                    logical_worker_id=principal.logical_worker_id,
+                    bridge_credential_id=principal.credential_id,
+                    context_sha256=body.context_sha256,
+                    error_code=body.error_code,
+                    retryable=body.retryable,
+                    idempotency_key=key,
+                    now=datetime.now(UTC),
+                ),
+            )
+            return _progress_payload(progress)
+        else:
+            result = complete_agent_disposition(
+                _db_path(),
+                CompleteDispositionCommand(
+                    work_id=work_id,
+                    lease_id=lease_id,
+                    attempt_no=body.attempt_no,
+                    logical_worker_id=principal.logical_worker_id,
+                    bridge_credential_id=principal.credential_id,
+                    context_sha256=body.context_sha256,
+                    kind=body.kind,
+                    message_item_id=f"fit-{result_digest[:24]}",
+                    message_markdown=body.message_markdown,
+                    agent_id=principal.logical_worker_id,
+                    idempotency_key=key,
+                    now=datetime.now(UTC),
+                ),
+            )
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:

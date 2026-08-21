@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 39;
+export const EVENT_SCHEMA_VERSION = 40;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -967,7 +967,7 @@ export interface AgentWorkTransitionedPayload {
 }
 
 /**
- * Audit projection of one canonical agent reply.
+ * Audit projection of one canonical agent feedback message.
  */
 export interface ArtifactFeedbackRepliedPayload {
   action_type: "artifact.feedback.replied";
@@ -976,6 +976,7 @@ export interface ArtifactFeedbackRepliedPayload {
   reply_item_id: string;
   attempt_no: number;
   reply_sha256: string;
+  result_kind?: "reply" | "decline" | "approval_request";
 }
 
 /**

@@ -11,6 +11,8 @@ from substrate.feedback.service import create_feedback_thread
 from substrate.feedback.store import CreateThreadCommand
 from substrate.graph.schema import init_database_at_path
 
+TEST_NOW = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)
+
 
 def _command() -> CreateThreadCommand:
     return CreateThreadCommand(
@@ -37,11 +39,20 @@ def _command() -> CreateThreadCommand:
     )
 
 
+def _seed(db_path: str) -> None:
+    create_feedback_thread(db_path, _command())
+    with connect_write(db_path, purpose="test/seed-agent-work-clock") as con:
+        con.execute(
+            "UPDATE agent_work SET not_before=? WHERE work_id='wrk-1'",
+            [TEST_NOW],
+        )
+
+
 def test_worker_leases_one_queued_comment_with_canonical_context(tmp_path) -> None:
     db_path = str(tmp_path / "graph.duckdb")
     init_database_at_path(db_path)
-    create_feedback_thread(db_path, _command())
-    now = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)
+    _seed(db_path)
+    now = TEST_NOW
 
     with connect_write(db_path, purpose="test/agent-work-lease") as con:
         lease = AgentWorkStore().lease_one(
@@ -77,8 +88,8 @@ def test_worker_leases_one_queued_comment_with_canonical_context(tmp_path) -> No
 def test_only_the_live_lease_can_mark_work_submitted(tmp_path) -> None:
     db_path = str(tmp_path / "graph.duckdb")
     init_database_at_path(db_path)
-    create_feedback_thread(db_path, _command())
-    now = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)
+    _seed(db_path)
+    now = TEST_NOW
 
     with connect_write(db_path, purpose="test/agent-work-submit") as con:
         lease = AgentWorkStore().lease_one(
@@ -97,6 +108,7 @@ def test_only_the_live_lease_can_mark_work_submitted(tmp_path) -> None:
             lease_id=lease.lease_id,
             attempt_no=lease.attempt_no,
             logical_worker_id="research-owner",
+            bridge_credential_id="credential-1",
             now=now,
             adapter_version="herdr-bridge/0.1",
             herdr_target_observed="agent-7",
@@ -108,6 +120,7 @@ def test_only_the_live_lease_can_mark_work_submitted(tmp_path) -> None:
                 lease_id="lse-wrong",
                 attempt_no=lease.attempt_no,
                 logical_worker_id="research-owner",
+                bridge_credential_id="credential-1",
                 now=now,
                 adapter_version="herdr-bridge/0.1",
                 herdr_target_observed="agent-7",
@@ -120,8 +133,8 @@ def test_only_the_live_lease_can_mark_work_submitted(tmp_path) -> None:
 def test_live_lease_appends_one_agent_reply_and_completes_work(tmp_path) -> None:
     db_path = str(tmp_path / "graph.duckdb")
     init_database_at_path(db_path)
-    create_feedback_thread(db_path, _command())
-    now = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)
+    _seed(db_path)
+    now = TEST_NOW
 
     with connect_write(db_path, purpose="test/agent-work-reply") as con:
         store = AgentWorkStore()
@@ -141,6 +154,7 @@ def test_live_lease_appends_one_agent_reply_and_completes_work(tmp_path) -> None
             lease_id=lease.lease_id,
             attempt_no=lease.attempt_no,
             logical_worker_id="research-owner",
+            bridge_credential_id="credential-1",
             now=now,
             adapter_version="herdr-bridge/0.1",
             herdr_target_observed="agent-7",
@@ -151,6 +165,7 @@ def test_live_lease_appends_one_agent_reply_and_completes_work(tmp_path) -> None
             lease_id=lease.lease_id,
             attempt_no=lease.attempt_no,
             logical_worker_id="research-owner",
+            bridge_credential_id="credential-1",
             context_sha256="e" * 64,
             result_sha256="f" * 64,
             reply_item_id="fit-2",

@@ -797,7 +797,9 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v38: Agent feedback reply audit projection. The canonical private reply
 #     remains in DuckDB; the event carries only identity and digest.
 # v39: Operator feedback-thread resolution becomes an immutable audit event.
-EVENT_SCHEMA_VERSION: int = 39
+# v40: Feedback reply audit payload distinguishes reply, decline, and approval
+#     request outcomes without exposing private message text.
+EVENT_SCHEMA_VERSION: int = 40
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -1320,7 +1322,7 @@ class AgentWorkTransitionedPayload(_PayloadBase):
 
 
 class ArtifactFeedbackRepliedPayload(_PayloadBase):
-    """Audit projection of one canonical agent reply."""
+    """Audit projection of one canonical agent feedback message."""
 
     action_type: Literal[ActionType.ARTIFACT_FEEDBACK_REPLIED] = (
         ActionType.ARTIFACT_FEEDBACK_REPLIED
@@ -1330,6 +1332,7 @@ class ArtifactFeedbackRepliedPayload(_PayloadBase):
     reply_item_id: str
     attempt_no: int = Field(gt=0)
     reply_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    result_kind: Literal["reply", "decline", "approval_request"] = "reply"
 
 
 # ── Middleware: source_tier (architecture_notes §4) ──────────────────

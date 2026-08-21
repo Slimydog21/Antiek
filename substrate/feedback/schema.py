@@ -68,8 +68,11 @@ CREATE TABLE IF NOT EXISTS agent_work_attempts (
   lease_expires_at TIMESTAMPTZ NOT NULL,
   herdr_target_observed VARCHAR,
   adapter_version VARCHAR,
+  transport_receipt_sha256 VARCHAR,
   result_from_state VARCHAR,
   submitted_at TIMESTAMPTZ,
+  acknowledged_at TIMESTAMPTZ,
+  working_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (work_id, attempt_no)
@@ -84,6 +87,16 @@ CREATE TABLE IF NOT EXISTS feedback_command_receipts (
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (principal_id, command_kind, idempotency_key)
 );
+
+ALTER TABLE feedback_command_receipts
+  ADD COLUMN IF NOT EXISTS response_json VARCHAR;
+
+ALTER TABLE agent_work_attempts
+  ADD COLUMN IF NOT EXISTS transport_receipt_sha256 VARCHAR;
+ALTER TABLE agent_work_attempts
+  ADD COLUMN IF NOT EXISTS acknowledged_at TIMESTAMPTZ;
+ALTER TABLE agent_work_attempts
+  ADD COLUMN IF NOT EXISTS working_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_feedback_threads_owner
   ON feedback_threads(owner_user_id, created_at);

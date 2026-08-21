@@ -8,7 +8,9 @@ from datetime import datetime, timedelta
 from runtime.db_lock import LockedConnection
 from substrate.agent_work.domain import (
     FinishWork,
+    MarkAcknowledged,
     MarkSubmitted,
+    MarkWorking,
     ResultKind,
     WorkState,
     decide_transition,
@@ -43,6 +45,17 @@ class WorkProgress:
     state: str
     attempt_no: int
     lease_id: str
+    before_state: str
+
+
+@dataclass(frozen=True, slots=True)
+class LeaseRenewal:
+    work_id: str
+    thread_id: str
+    state: str
+    attempt_no: int
+    lease_id: str
+    lease_expires_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +68,75 @@ class ReplyCompletion:
 
 class AgentWorkStore:
     """Lease queued work under Antiek's existing global writer lock."""
+
+    def reclaim_expired(
+        self,
+        con: LockedConnection,
+        *,
+        logical_worker_id: str,
+        now: datetime,
+        max_attempts: int = 3,
+    ) -> list[WorkProgress]:
+        """Requeue expired attempts within the bound and terminate exhaustion."""
+        init_feedback_schema(con)
+        rows = con.execute(
+            "SELECT work_id, thread_id, state, attempt_count, active_lease_id "
+            "FROM agent_work WHERE logical_worker_id=? AND active_lease_id IS NOT NULL "
+            "AND lease_expires_at<=? AND state IN "
+            "('leased', 'submitted', 'acknowledged', 'working') "
+            "ORDER BY created_at, work_id",
+            [logical_worker_id, now],
+        ).fetchall()
+        recovered: list[WorkProgress] = []
+        for work_id, thread_id, state, attempt_no, lease_id in rows:
+            transition = decide_transition(
+                WorkState(str(state)),
+                FinishWork(
+                    kind=ResultKind.FAILURE,
+                    retryable=True,
+                    attempt_no=int(attempt_no),
+                    max_attempts=max_attempts,
+                ),
+            )
+            terminal_at = None if transition.after is WorkState.QUEUED else now
+            con.execute(
+                "UPDATE agent_work SET state=?, active_lease_id=NULL, "
+                "lease_expires_at=NULL, not_before=?, last_error_code='lease_expired', "
+                "updated_at=?, terminal_at=? WHERE work_id=? AND active_lease_id=?",
+                [
+                    transition.after.value,
+                    now,
+                    now,
+                    terminal_at,
+                    str(work_id),
+                    str(lease_id),
+                ],
+            )
+            con.execute(
+                "UPDATE agent_work_attempts SET state=?, result_from_state=?, "
+                "completed_at=? WHERE work_id=? AND attempt_no=? AND lease_id=?",
+                [
+                    "lease_expired"
+                    if transition.after is WorkState.QUEUED
+                    else "failed",
+                    transition.before.value,
+                    now,
+                    str(work_id),
+                    int(attempt_no),
+                    str(lease_id),
+                ],
+            )
+            recovered.append(
+                WorkProgress(
+                    work_id=str(work_id),
+                    thread_id=str(thread_id),
+                    state=transition.after.value,
+                    attempt_no=int(attempt_no),
+                    lease_id=str(lease_id),
+                    before_state=transition.before.value,
+                )
+            )
+        return recovered
 
     def lease_one(
         self,
@@ -140,6 +222,7 @@ class AgentWorkStore:
         con: LockedConnection,
         *,
         logical_worker_id: str,
+        bridge_credential_id: str,
         lease_id: str,
     ) -> WorkLease | None:
         """Read the canonical work context for an already issued lease."""
@@ -155,8 +238,8 @@ class AgentWorkStore:
             "JOIN agent_work_attempts a ON a.work_id=w.work_id "
             "JOIN feedback_threads t ON t.thread_id=w.thread_id "
             "JOIN feedback_items i ON i.thread_id=t.thread_id AND i.sequence=1 "
-            "WHERE w.logical_worker_id=? AND a.lease_id=?",
-            [logical_worker_id, lease_id],
+            "WHERE w.logical_worker_id=? AND a.bridge_credential_id=? AND a.lease_id=?",
+            [logical_worker_id, bridge_credential_id, lease_id],
         ).fetchone()
         if row is None:
             return None
@@ -182,6 +265,63 @@ class AgentWorkStore:
             context_sha256=str(row[3]),
         )
 
+    def renew_lease(
+        self,
+        con: LockedConnection,
+        *,
+        work_id: str,
+        lease_id: str,
+        attempt_no: int,
+        logical_worker_id: str,
+        bridge_credential_id: str,
+        now: datetime,
+        lease_seconds: int,
+    ) -> LeaseRenewal:
+        """Extend only the current live, nonterminal lease."""
+        if not 1 <= lease_seconds <= 300:
+            raise ValueError("lease_seconds must be between 1 and 300")
+        init_feedback_schema(con)
+        row = con.execute(
+            "SELECT w.thread_id, w.state, w.lease_expires_at FROM agent_work w "
+            "JOIN agent_work_attempts a ON a.work_id=w.work_id "
+            "AND a.attempt_no=w.attempt_count AND a.lease_id=w.active_lease_id "
+            "WHERE w.work_id=? AND w.logical_worker_id=? "
+            "AND a.bridge_credential_id=? AND w.active_lease_id=? "
+            "AND w.attempt_count=? AND w.lease_expires_at>? AND w.state IN "
+            "('leased', 'submitted', 'acknowledged', 'working')",
+            [
+                work_id,
+                logical_worker_id,
+                bridge_credential_id,
+                lease_id,
+                attempt_no,
+                now,
+            ],
+        ).fetchone()
+        if row is None:
+            raise LeaseConflict("work lease is missing, expired, superseded, or terminal")
+        expires_at = max(row[2], now + timedelta(seconds=lease_seconds))
+        changed = con.execute(
+            "UPDATE agent_work SET lease_expires_at=?, updated_at=? WHERE work_id=? "
+            "AND active_lease_id=? AND attempt_count=? RETURNING work_id",
+            [expires_at, now, work_id, lease_id, attempt_no],
+        ).fetchone()
+        if changed is None:  # pragma: no cover - global writer invariant
+            raise LeaseConflict("work lease changed during renewal")
+        con.execute(
+            "UPDATE agent_work_attempts SET lease_expires_at=? WHERE work_id=? "
+            "AND attempt_no=? AND lease_id=?",
+            [expires_at, work_id, attempt_no, lease_id],
+        )
+        return LeaseRenewal(
+            work_id=work_id,
+            thread_id=str(row[0]),
+            state=str(row[1]),
+            attempt_no=attempt_no,
+            lease_id=lease_id,
+            lease_expires_at=expires_at,
+        )
+
     def mark_submitted(
         self,
         con: LockedConnection,
@@ -190,6 +330,7 @@ class AgentWorkStore:
         lease_id: str,
         attempt_no: int,
         logical_worker_id: str,
+        bridge_credential_id: str,
         now: datetime,
         adapter_version: str,
         herdr_target_observed: str,
@@ -197,10 +338,20 @@ class AgentWorkStore:
         """Record adapter submission only for the current live lease."""
         init_feedback_schema(con)
         row = con.execute(
-            "SELECT thread_id, state, attempt_count FROM agent_work "
-            "WHERE work_id=? AND logical_worker_id=? AND active_lease_id=? "
-            "AND attempt_count=? AND lease_expires_at>?",
-            [work_id, logical_worker_id, lease_id, attempt_no, now],
+            "SELECT w.thread_id, w.state, w.attempt_count FROM agent_work w "
+            "JOIN agent_work_attempts a ON a.work_id=w.work_id "
+            "AND a.attempt_no=w.attempt_count AND a.lease_id=w.active_lease_id "
+            "WHERE w.work_id=? AND w.logical_worker_id=? "
+            "AND a.bridge_credential_id=? AND w.active_lease_id=? "
+            "AND w.attempt_count=? AND w.lease_expires_at>?",
+            [
+                work_id,
+                logical_worker_id,
+                bridge_credential_id,
+                lease_id,
+                attempt_no,
+                now,
+            ],
         ).fetchone()
         if row is None:
             raise LeaseConflict("work lease is missing, expired, or superseded")
@@ -224,6 +375,70 @@ class AgentWorkStore:
             state=transition.after.value,
             attempt_no=attempt_no,
             lease_id=lease_id,
+            before_state=transition.before.value,
+        )
+
+    def mark_progress(
+        self,
+        con: LockedConnection,
+        *,
+        work_id: str,
+        lease_id: str,
+        attempt_no: int,
+        logical_worker_id: str,
+        bridge_credential_id: str,
+        now: datetime,
+        command: MarkAcknowledged | MarkWorking,
+        transport_receipt_sha256: str | None = None,
+    ) -> WorkProgress:
+        """Record a lease-correlated acknowledgement or working transition."""
+        init_feedback_schema(con)
+        row = con.execute(
+            "SELECT w.thread_id, w.state FROM agent_work w "
+            "JOIN agent_work_attempts a ON a.work_id=w.work_id "
+            "AND a.attempt_no=w.attempt_count AND a.lease_id=w.active_lease_id "
+            "WHERE w.work_id=? AND w.logical_worker_id=? "
+            "AND a.bridge_credential_id=? AND w.active_lease_id=? "
+            "AND w.attempt_count=? AND w.lease_expires_at>?",
+            [
+                work_id,
+                logical_worker_id,
+                bridge_credential_id,
+                lease_id,
+                attempt_no,
+                now,
+            ],
+        ).fetchone()
+        if row is None:
+            raise LeaseConflict("work lease is missing, expired, or superseded")
+        transition = decide_transition(WorkState(str(row[1])), command)
+        con.execute(
+            "UPDATE agent_work SET state=?, updated_at=? WHERE work_id=? "
+            "AND state=? AND active_lease_id=?",
+            [transition.after.value, now, work_id, transition.before.value, lease_id],
+        )
+        if isinstance(command, MarkAcknowledged):
+            if transport_receipt_sha256 is None:
+                raise ValueError("acknowledgement requires a transport receipt digest")
+            con.execute(
+                "UPDATE agent_work_attempts SET state='acknowledged', "
+                "transport_receipt_sha256=?, acknowledged_at=? WHERE work_id=? "
+                "AND attempt_no=? AND lease_id=?",
+                [transport_receipt_sha256, now, work_id, attempt_no, lease_id],
+            )
+        else:
+            con.execute(
+                "UPDATE agent_work_attempts SET state='working', working_at=? "
+                "WHERE work_id=? AND attempt_no=? AND lease_id=?",
+                [now, work_id, attempt_no, lease_id],
+            )
+        return WorkProgress(
+            work_id=work_id,
+            thread_id=str(row[0]),
+            state=transition.after.value,
+            attempt_no=attempt_no,
+            lease_id=lease_id,
+            before_state=transition.before.value,
         )
 
     def get_progress(
@@ -234,6 +449,7 @@ class AgentWorkStore:
         lease_id: str,
         attempt_no: int,
         logical_worker_id: str,
+        bridge_credential_id: str,
     ) -> WorkProgress | None:
         """Read progress for one canonical work attempt."""
         init_feedback_schema(con)
@@ -241,8 +457,8 @@ class AgentWorkStore:
             "SELECT w.thread_id, w.state FROM agent_work w "
             "JOIN agent_work_attempts a ON a.work_id=w.work_id "
             "WHERE w.work_id=? AND w.logical_worker_id=? "
-            "AND a.lease_id=? AND a.attempt_no=?",
-            [work_id, logical_worker_id, lease_id, attempt_no],
+            "AND a.bridge_credential_id=? AND a.lease_id=? AND a.attempt_no=?",
+            [work_id, logical_worker_id, bridge_credential_id, lease_id, attempt_no],
         ).fetchone()
         if row is None:
             return None
@@ -252,6 +468,7 @@ class AgentWorkStore:
             state=str(row[1]),
             attempt_no=attempt_no,
             lease_id=lease_id,
+            before_state=WorkState.LEASED.value,
         )
 
     def complete_with_reply(
@@ -262,27 +479,40 @@ class AgentWorkStore:
         lease_id: str,
         attempt_no: int,
         logical_worker_id: str,
+        bridge_credential_id: str,
         context_sha256: str,
         result_sha256: str,
         reply_item_id: str,
         reply_markdown: str,
         agent_id: str,
         now: datetime,
+        result_kind: ResultKind = ResultKind.REPLY,
     ) -> ReplyCompletion:
         """Append one correlated reply and terminally complete its work."""
         init_feedback_schema(con)
         row = con.execute(
             "SELECT w.thread_id, w.state, t.owner_user_id "
             "FROM agent_work w JOIN feedback_threads t ON t.thread_id=w.thread_id "
-            "WHERE w.work_id=? AND w.logical_worker_id=? AND w.active_lease_id=? "
+            "JOIN agent_work_attempts a ON a.work_id=w.work_id "
+            "AND a.attempt_no=w.attempt_count AND a.lease_id=w.active_lease_id "
+            "WHERE w.work_id=? AND w.logical_worker_id=? "
+            "AND a.bridge_credential_id=? AND w.active_lease_id=? "
             "AND w.attempt_count=? AND w.context_sha256=? AND w.lease_expires_at>?",
-            [work_id, logical_worker_id, lease_id, attempt_no, context_sha256, now],
+            [
+                work_id,
+                logical_worker_id,
+                bridge_credential_id,
+                lease_id,
+                attempt_no,
+                context_sha256,
+                now,
+            ],
         ).fetchone()
         if row is None:
             raise LeaseConflict("work lease is missing, expired, or superseded")
         transition = decide_transition(
             WorkState(str(row[1])),
-            FinishWork(kind=ResultKind.REPLY, attempt_no=attempt_no),
+            FinishWork(kind=result_kind, attempt_no=attempt_no),
         )
         thread_id = str(row[0])
         sequence = int(
@@ -332,13 +562,100 @@ class AgentWorkStore:
             thread=thread,
         )
 
+    def complete_with_failure(
+        self,
+        con: LockedConnection,
+        *,
+        work_id: str,
+        lease_id: str,
+        attempt_no: int,
+        logical_worker_id: str,
+        bridge_credential_id: str,
+        context_sha256: str,
+        result_sha256: str,
+        error_code: str,
+        retryable: bool,
+        now: datetime,
+        max_attempts: int = 3,
+    ) -> WorkProgress:
+        """Record a failure, requeue within the bound, otherwise terminate."""
+        init_feedback_schema(con)
+        row = con.execute(
+            "SELECT w.thread_id, w.state FROM agent_work w "
+            "JOIN agent_work_attempts a ON a.work_id=w.work_id "
+            "AND a.attempt_no=w.attempt_count AND a.lease_id=w.active_lease_id "
+            "WHERE w.work_id=? AND w.logical_worker_id=? "
+            "AND a.bridge_credential_id=? AND w.active_lease_id=? "
+            "AND w.attempt_count=? AND w.context_sha256=? AND w.lease_expires_at>?",
+            [
+                work_id,
+                logical_worker_id,
+                bridge_credential_id,
+                lease_id,
+                attempt_no,
+                context_sha256,
+                now,
+            ],
+        ).fetchone()
+        if row is None:
+            raise LeaseConflict("work lease is missing, expired, or superseded")
+        transition = decide_transition(
+            WorkState(str(row[1])),
+            FinishWork(
+                kind=ResultKind.FAILURE,
+                retryable=retryable,
+                attempt_no=attempt_no,
+                max_attempts=max_attempts,
+            ),
+        )
+        terminal_at = None if transition.after is WorkState.QUEUED else now
+        con.execute(
+            "UPDATE agent_work SET state=?, result_sha256=?, last_error_code=?, "
+            "active_lease_id=NULL, lease_expires_at=NULL, not_before=?, updated_at=?, "
+            "terminal_at=? WHERE work_id=? AND state=? AND active_lease_id=?",
+            [
+                transition.after.value,
+                result_sha256,
+                error_code,
+                now,
+                now,
+                terminal_at,
+                work_id,
+                transition.before.value,
+                lease_id,
+            ],
+        )
+        con.execute(
+            "UPDATE agent_work_attempts SET state=?, result_from_state=?, completed_at=? "
+            "WHERE work_id=? AND attempt_no=? AND lease_id=?",
+            [
+                "retryable_failure" if transition.after is WorkState.QUEUED else "failed",
+                transition.before.value,
+                now,
+                work_id,
+                attempt_no,
+                lease_id,
+            ],
+        )
+        return WorkProgress(
+            work_id=work_id,
+            thread_id=str(row[0]),
+            state=transition.after.value,
+            attempt_no=attempt_no,
+            lease_id=lease_id,
+            before_state=transition.before.value,
+        )
+
     def get_reply_completion(
         self,
         con: LockedConnection,
         *,
         work_id: str,
         logical_worker_id: str,
+        bridge_credential_id: str,
         reply_item_id: str,
+        attempt_no: int,
+        expected_state: str = "replied",
     ) -> ReplyCompletion | None:
         """Read a previously committed reply for command replay."""
         init_feedback_schema(con)
@@ -346,8 +663,15 @@ class AgentWorkStore:
             "SELECT w.thread_id, w.state, t.owner_user_id, a.result_from_state "
             "FROM agent_work w JOIN feedback_threads t ON t.thread_id=w.thread_id "
             "JOIN agent_work_attempts a ON a.work_id=w.work_id "
-            "WHERE w.work_id=? AND w.logical_worker_id=? AND w.state='replied'",
-            [work_id, logical_worker_id],
+            "WHERE w.work_id=? AND w.logical_worker_id=? AND w.state=? "
+            "AND a.bridge_credential_id=? AND a.attempt_no=?",
+            [
+                work_id,
+                logical_worker_id,
+                expected_state,
+                bridge_credential_id,
+                attempt_no,
+            ],
         ).fetchone()
         if row is None:
             return None

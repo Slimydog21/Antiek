@@ -27,7 +27,7 @@ def bridge_api(monkeypatch, tmp_path):
                 "credential-1": {
                     "secret_sha256": hashlib.sha256(secret.encode()).hexdigest(),
                     "logical_worker_id": "research-owner",
-                    "scopes": ["lease", "submitted", "result"],
+                    "scopes": ["lease", "renew", "submitted", "working", "result"],
                 }
             }
         ),
@@ -124,6 +124,134 @@ def test_bridge_marks_its_live_lease_submitted(bridge_api) -> None:
     }
 
 
+def test_bridge_records_verifiable_acknowledgement_then_working(bridge_api) -> None:
+    client, secret = bridge_api
+    auth = {"Authorization": f"AntiekBridge credential-1.{secret}"}
+    lease = client.post(
+        "/internal/agent-work/lease",
+        headers={**auth, "Idempotency-Key": "bridge-lease-key-0001"},
+        json={"bridge_instance_id": "mini-1", "lease_seconds": 120},
+    ).json()
+    base = f"/internal/agent-work/{lease['work_id']}/leases/{lease['lease_id']}"
+    submitted = client.post(
+        f"{base}/submitted",
+        headers={**auth, "Idempotency-Key": "bridge-submit-key-0001"},
+        json={
+            "attempt_no": lease["attempt_no"],
+            "adapter_version": "herdr-bridge/0.1",
+            "herdr_target_observed": "agent-7",
+        },
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    acknowledged = client.post(
+        f"{base}/acknowledged",
+        headers={**auth, "Idempotency-Key": "bridge-ack-key-0001"},
+        json={
+            "attempt_no": lease["attempt_no"],
+            "transport_receipt_sha256": "f" * 64,
+        },
+    )
+    working = client.post(
+        f"{base}/working",
+        headers={**auth, "Idempotency-Key": "bridge-working-key-0001"},
+        json={"attempt_no": lease["attempt_no"]},
+    )
+    replay = client.post(
+        f"{base}/working",
+        headers={**auth, "Idempotency-Key": "bridge-working-key-0001"},
+        json={"attempt_no": lease["attempt_no"]},
+    )
+
+    assert acknowledged.status_code == 200, acknowledged.text
+    assert acknowledged.json()["state"] == "acknowledged"
+    assert working.status_code == 200, working.text
+    assert working.json()["state"] == "working"
+    assert replay.json() == working.json()
+
+
+def test_bridge_renews_its_live_lease_and_exactly_replays(bridge_api) -> None:
+    client, secret = bridge_api
+    auth = {"Authorization": f"AntiekBridge credential-1.{secret}"}
+    lease = client.post(
+        "/internal/agent-work/lease",
+        headers={**auth, "Idempotency-Key": "bridge-lease-key-0001"},
+        json={"bridge_instance_id": "mini-1", "lease_seconds": 30},
+    ).json()
+    path = (
+        f"/internal/agent-work/{lease['work_id']}/leases/{lease['lease_id']}/renew"
+    )
+    headers = {**auth, "Idempotency-Key": "bridge-renew-key-0001"}
+
+    first = client.post(
+        path,
+        headers=headers,
+        json={"attempt_no": lease["attempt_no"], "lease_seconds": 180},
+    )
+    replay = client.post(
+        path,
+        headers=headers,
+        json={"attempt_no": lease["attempt_no"], "lease_seconds": 180},
+    )
+
+    assert first.status_code == 200, first.text
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == first.json()
+    assert first.json()["state"] == "leased"
+    assert first.json()["lease_expires_at"] > lease["lease_expires_at"]
+
+
+def test_bridge_cannot_shorten_or_cross_credential_lease(
+    bridge_api, monkeypatch
+) -> None:
+    client, secret = bridge_api
+    auth = {"Authorization": f"AntiekBridge credential-1.{secret}"}
+    lease = client.post(
+        "/internal/agent-work/lease",
+        headers={**auth, "Idempotency-Key": "bridge-lease-key-0001"},
+        json={"bridge_instance_id": "mini-1", "lease_seconds": 300},
+    ).json()
+    path = (
+        f"/internal/agent-work/{lease['work_id']}/leases/{lease['lease_id']}/renew"
+    )
+    shorter = client.post(
+        path,
+        headers={**auth, "Idempotency-Key": "bridge-renew-key-0001"},
+        json={"attempt_no": lease["attempt_no"], "lease_seconds": 1},
+    )
+    assert shorter.status_code == 200, shorter.text
+    assert shorter.json()["lease_expires_at"] >= lease["lease_expires_at"]
+
+    other_secret = "other-bridge-secret"
+    scopes = ["lease", "renew", "submitted", "working", "result"]
+    monkeypatch.setenv(
+        "ANTIEK_BRIDGE_CREDENTIALS_JSON",
+        json.dumps(
+            {
+                "credential-1": {
+                    "secret_sha256": hashlib.sha256(secret.encode()).hexdigest(),
+                    "logical_worker_id": "research-owner",
+                    "scopes": scopes,
+                },
+                "credential-2": {
+                    "secret_sha256": hashlib.sha256(other_secret.encode()).hexdigest(),
+                    "logical_worker_id": "research-owner",
+                    "scopes": scopes,
+                },
+            }
+        ),
+    )
+    crossed = client.post(
+        path,
+        headers={
+            "Authorization": f"AntiekBridge credential-2.{other_secret}",
+            "Idempotency-Key": "bridge-renew-key-0002",
+        },
+        json={"attempt_no": lease["attempt_no"], "lease_seconds": 120},
+    )
+    assert crossed.status_code == 410
+
+
 def test_bridge_result_appends_correlated_agent_reply(bridge_api) -> None:
     client, secret = bridge_api
     auth = {"Authorization": f"AntiekBridge credential-1.{secret}"}
@@ -150,6 +278,124 @@ def test_bridge_result_appends_correlated_agent_reply(bridge_api) -> None:
     assert result["work_id"] == "wrk-1"
     assert result["thread"]["items"][-1]["body_markdown"] == (
         "The primary source confirms this fact."
+    )
+
+
+def test_retryable_failure_requeues_and_rejects_the_superseded_lease(bridge_api) -> None:
+    client, secret = bridge_api
+    auth = {"Authorization": f"AntiekBridge credential-1.{secret}"}
+    first = client.post(
+        "/internal/agent-work/lease",
+        headers={**auth, "Idempotency-Key": "bridge-lease-key-0001"},
+        json={"bridge_instance_id": "mini-1", "lease_seconds": 120},
+    ).json()
+    first_result_path = (
+        f"/internal/agent-work/{first['work_id']}/leases/{first['lease_id']}/result"
+    )
+    failed = client.post(
+        first_result_path,
+        headers={**auth, "Idempotency-Key": "bridge-failure-key-0001"},
+        json={
+            "attempt_no": first["attempt_no"],
+            "context_sha256": first["context_sha256"],
+            "kind": "failure",
+            "error_code": "herdr_unavailable",
+            "retryable": True,
+        },
+    )
+    assert failed.status_code == 200, failed.text
+    assert failed.json()["state"] == "queued"
+
+    second = client.post(
+        "/internal/agent-work/lease",
+        headers={**auth, "Idempotency-Key": "bridge-lease-key-0002"},
+        json={"bridge_instance_id": "mini-1", "lease_seconds": 120},
+    ).json()
+    assert second["attempt_no"] == 2
+    assert second["lease_id"] != first["lease_id"]
+
+    late = client.post(
+        first_result_path,
+        headers={**auth, "Idempotency-Key": "bridge-late-key-0001"},
+        json={
+            "attempt_no": first["attempt_no"],
+            "context_sha256": first["context_sha256"],
+            "kind": "reply",
+            "reply_markdown": "This stale result must not be accepted.",
+        },
+    )
+    assert late.status_code == 410
+
+    second_failed = client.post(
+        f"/internal/agent-work/{second['work_id']}/leases/{second['lease_id']}/result",
+        headers={**auth, "Idempotency-Key": "bridge-failure-key-0002"},
+        json={
+            "attempt_no": second["attempt_no"],
+            "context_sha256": second["context_sha256"],
+            "kind": "failure",
+            "error_code": "herdr_unavailable",
+            "retryable": True,
+        },
+    )
+    assert second_failed.status_code == 200, second_failed.text
+    assert second_failed.json()["state"] == "queued"
+    third = client.post(
+        "/internal/agent-work/lease",
+        headers={**auth, "Idempotency-Key": "bridge-lease-key-0003"},
+        json={"bridge_instance_id": "mini-1", "lease_seconds": 120},
+    ).json()
+    exhausted = client.post(
+        f"/internal/agent-work/{third['work_id']}/leases/{third['lease_id']}/result",
+        headers={**auth, "Idempotency-Key": "bridge-failure-key-0003"},
+        json={
+            "attempt_no": third["attempt_no"],
+            "context_sha256": third["context_sha256"],
+            "kind": "failure",
+            "error_code": "herdr_unavailable",
+            "retryable": True,
+        },
+    )
+    assert exhausted.status_code == 200, exhausted.text
+    assert exhausted.json()["state"] == "failed"
+    no_fourth = client.post(
+        "/internal/agent-work/lease",
+        headers={**auth, "Idempotency-Key": "bridge-lease-key-0004"},
+        json={"bridge_instance_id": "mini-1", "lease_seconds": 120},
+    )
+    assert no_fourth.status_code == 200
+    assert no_fourth.json() is None
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected_state"),
+    [("decline", "declined"), ("approval_request", "approval_requested")],
+)
+def test_bridge_records_terminal_agent_dispositions(
+    bridge_api, kind: str, expected_state: str
+) -> None:
+    client, secret = bridge_api
+    auth = {"Authorization": f"AntiekBridge credential-1.{secret}"}
+    lease = client.post(
+        "/internal/agent-work/lease",
+        headers={**auth, "Idempotency-Key": "bridge-lease-key-0001"},
+        json={"bridge_instance_id": "mini-1", "lease_seconds": 120},
+    ).json()
+
+    response = client.post(
+        f"/internal/agent-work/{lease['work_id']}/leases/{lease['lease_id']}/result",
+        headers={**auth, "Idempotency-Key": f"bridge-{kind}-key-0001"},
+        json={
+            "attempt_no": lease["attempt_no"],
+            "context_sha256": lease["context_sha256"],
+            "kind": kind,
+            "message_markdown": "I need operator confirmation before continuing.",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["state"] == expected_state
+    assert response.json()["thread"]["items"][-1]["body_markdown"] == (
+        "I need operator confirmation before continuing."
     )
 
 
