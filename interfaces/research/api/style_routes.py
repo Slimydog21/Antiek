@@ -349,6 +349,7 @@ async def render_artifact(
             "X-Artifact-Style": selected_style,
             "X-Artifact-Version": "preview",
             "X-Content-SHA256": digest,
+            "X-Source-SHA256": source_digest,
         },
     )
 
@@ -372,8 +373,12 @@ async def apply_artifact_style(
 
 async def _serve_version(artifact_id: str, request: Request, version: int | None) -> HTMLResponse:
     user_id = _user_id(request)
-    stored = ResearchArtifactStore(_db_path()).get_version(artifact_id, user_id, version)
+    artifact_store = ResearchArtifactStore(_db_path())
+    stored = artifact_store.get_version(artifact_id, user_id, version)
     if stored is None:
+        raise HTTPException(status_code=404, detail="artifact version not found")
+    artifact = artifact_store.get(artifact_id)
+    if artifact is None or artifact.owner_user_id != user_id or artifact.source_hash is None:
         raise HTTPException(status_code=404, detail="artifact version not found")
     try:
         raw = read_bounded_nofollow(stored.html_path, _MAX_ARTIFACT_BYTES)
@@ -391,6 +396,7 @@ async def _serve_version(artifact_id: str, request: Request, version: int | None
             "X-Artifact-Style": stored.style_name,
             "X-Artifact-Version": str(stored.version),
             "X-Content-SHA256": stored.content_hash,
+            "X-Source-SHA256": artifact.source_hash,
         },
     )
 

@@ -336,6 +336,13 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   // the raw-activity toggle). No consumer trains on it in P0.
   [ActionType.SURFACE_SERVED_IMPRESSION]: null,
 
+  // Canonical artifact-feedback audit. The reader sees these transitions in
+  // the adjacent feedback docket, so duplicating them in the research run
+  // narration would add noise without new information.
+  [ActionType.ARTIFACT_COMMENT_CREATED]: null,
+  [ActionType.AGENT_WORK_TRANSITIONED]: null,
+  [ActionType.ARTIFACT_FEEDBACK_REPLIED]: null,
+
 };
 
 /** The safe generic line for an action_type with no row — only reachable if
