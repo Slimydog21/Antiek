@@ -94,6 +94,7 @@ export default function ArtifactOutlineShelf({
           <StyleWheel
             key={artifactStatus.artifact_id}
             artifactId={artifactStatus.artifact_id}
+            investigationId={artifactStatus.investigation_id}
             initialStyle={artifactStatus.selected_style}
           />
         ) : null}
@@ -137,6 +138,7 @@ export default function ArtifactOutlineShelf({
         <StyleWheel
           key={`${artifactStatus.artifact_id}:${exportPath ?? "persisted"}`}
           artifactId={artifactStatus.artifact_id}
+          investigationId={artifactStatus.investigation_id}
           initialStyle={artifactStatus.selected_style}
         />
       ) : null}

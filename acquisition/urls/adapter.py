@@ -59,9 +59,6 @@ from substrate.rights.register import (  # noqa: E402
     register_source_document,
 )
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
-from substrate.schemas.events import (  # noqa: E402
-    FetchFallbackEscalatedPayload,
-)
 
 from .client import FetchedHtml, fetch  # noqa: E402  # sys.path bootstrap
 from .extract import (  # noqa: E402  # sys.path bootstrap
@@ -158,64 +155,6 @@ class IngestUrlResult:
     reader_snapshot_path: str | None = None
 
 
-# ---------------------------------------------------------------------------
-# Adapter
-# ---------------------------------------------------------------------------
-
-
-def _try_browserbase_escalation(
-    *,
-    url: str,
-    primary_word_count: int,
-    investigation_id: str,
-    wait_for: str | None,
-) -> FetchedHtml | None:
-    """Drive a Browserbase session and emit
-    ``FetchFallbackEscalatedPayload`` regardless of outcome. Returns
-    the new ``FetchedHtml`` on success, ``None`` on any failure so
-    the caller can fall back to the original skip path."""
-    from .budget_browserbase import BrowserbaseBudgetExceeded
-    from .client_browserbase import (
-        DEFAULT_SESSION_COST_USD,
-        BrowserbaseFetchError,
-        BrowserbaseRobotsDisallowed,
-        BrowserbaseUnavailable,
-        fetch_via_browserbase,
-    )
-
-    fallback_word_count = 0
-    fetched: FetchedHtml | None = None
-    estimated_cost = DEFAULT_SESSION_COST_USD
-    try:
-        fetched = fetch_via_browserbase(url, wait_for=wait_for)
-        md = html_to_markdown(fetched.body, base_url=fetched.final_url)
-        fallback_word_count = md.word_count
-    except (
-        BrowserbaseUnavailable,
-        BrowserbaseRobotsDisallowed,
-        BrowserbaseBudgetExceeded,
-        BrowserbaseFetchError,
-        Exception,
-    ):
-        fetched = None
-        fallback_word_count = 0
-
-    emit_typed(
-        investigation_id,
-        FetchFallbackEscalatedPayload(
-            url=url,
-            primary_word_count=primary_word_count,
-            fallback_fetcher="browserbase",
-            fallback_word_count=fallback_word_count,
-            escalation_reason="low_word_count",
-            estimated_cost_usd=estimated_cost,
-        ),
-        role="acquisition",
-        policy_id="acquisition/urls/browserbase",
-    )
-    return fetched
-
-
 def ingest_url(
     url: str,
     *,
@@ -227,9 +166,6 @@ def ingest_url(
     fetched: FetchedHtml | None = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
     on_conflict: str = "ignore",
-    # Wedge 2 (Browserbase escalation) — opt-in per call (default off).
-    fallback_to_browserbase: bool = False,
-    browserbase_wait_for: str | None = None,
 ) -> IngestUrlResult:
     """Fetch ``url``, extract markdown, ingest into substrate.
 
@@ -248,9 +184,6 @@ def ingest_url(
     reporting a re-ingest. (``insert_document`` itself only knows
     ``"error"``/``"ignore"``; ``"replace"`` is the adapter's delete-then-insert.)
 
-    ``fallback_to_browserbase`` opts in to Wedge 2 escalation when
-    the httpx primary fetch returns low_word_count. Per spec §7.4
-    Browserbase is 1000-5000× more expensive than httpx; default off.
     """
     # Spec §14.2 — alias short-circuit. When the caller passes a
     # bare URL (no pre-fetched bytes), consult url_alias first; if
@@ -297,34 +230,14 @@ def ingest_url(
     # fetch happened, but skip graph writes for plausibly-misextracted
     # pages — keeps the graph cleaner during dev.
     if md_doc.word_count < min_word_count:
-        escalation_ran = False
-        if fallback_to_browserbase and fetched is None:
-            escalation_ran = True
-            escalated = _try_browserbase_escalation(
-                url=url,
-                primary_word_count=md_doc.word_count,
-                investigation_id=investigation_id,
-                wait_for=browserbase_wait_for,
-            )
-            if escalated is not None:
-                page = escalated
-                md_doc = html_to_markdown(page.body, base_url=page.final_url)
-                text = md_doc.markdown
-                chash = "sha256:" + content_hash(text)
-
-        if md_doc.word_count < min_word_count:
-            return IngestUrlResult(
-                document_id=document_id,
-                final_url=page.final_url,
-                document_loaded_event_id=event_id,
-                skipped_reason=(
-                    "low_word_count_after_fallback"
-                    if escalation_ran
-                    else "low_word_count"
-                ),
-                title=md_doc.title,
-                author=md_doc.author,
-            )
+        return IngestUrlResult(
+            document_id=document_id,
+            final_url=page.final_url,
+            document_loaded_event_id=event_id,
+            skipped_reason="low_word_count",
+            title=md_doc.title,
+            author=md_doc.author,
+        )
 
     resolved_db_path = db_path or default_db_path()
     ensure_initialized(resolved_db_path)

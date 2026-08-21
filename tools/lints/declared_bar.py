@@ -124,6 +124,7 @@ DECLARED_MYPY_TARGETS: tuple[str, ...] = (
     "compounding",
     "runtime",
     "integrations",
+    "infrastructure",
 )
 
 

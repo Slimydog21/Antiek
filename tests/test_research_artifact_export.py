@@ -11,7 +11,9 @@ from pathlib import Path
 
 import pytest
 
+from services.html_projection.context import RenderContext
 from services.html_projection.island import extract_island
+from services.html_projection.renderer import render
 from substrate.event_log import trajectory
 from substrate.graph import ensure_initialized
 from substrate.graph.insight_question import promote_insight
@@ -64,6 +66,15 @@ def test_export_writes_html_and_insight(art_env):
     assert island["research_artifact"] == parse_body_from_html(text).model_dump(mode="json")
     assert island["research_artifact"]["investigation_id"] == "inv-ra"
     assert island["research_artifact"]["insights"][0]["text"] == "Finding one."
+    insight = island["research_artifact"]["insights"][0]
+    finding_node = island["content"][1]
+    assert finding_node["attrs"] == {
+        "node_id": insight["node_id"],
+        "source_document_id": "doc-1",
+    }
+    styled = render(island, RenderContext())
+    assert f'data-antiek-node-id="{insight["node_id"]}"' in styled
+    assert 'data-antiek-source-document-id="doc-1"' in styled
 
 
 

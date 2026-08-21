@@ -22,10 +22,12 @@ import {
 import { apiFetch } from "../../lib/api";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTag from "../../components/lemon/LemonTag";
+import ArtifactFeedbackReview from "./ArtifactFeedbackReview";
 import "./StyleWheel.css";
 
 export interface StyleWheelProps {
   artifactId: string;
+  investigationId: string;
   initialStyle?: string | null;
 }
 
@@ -65,7 +67,10 @@ function draftFromStyle(base: ProjectionStyle | undefined, nameHint: string): St
   };
 }
 
-export default function StyleWheel({ artifactId, initialStyle }: StyleWheelProps) {
+export default function StyleWheel({ artifactId, investigationId, initialStyle }: StyleWheelProps) {
+  const feedbackEnabled = ["1", "true", "yes"].includes(
+    String(import.meta.env.VITE_ANTIEK_FEEDBACK_ENABLED ?? "").toLowerCase(),
+  );
   const [styles, setStyles] = useState<ProjectionStyle[]>([]);
   const [selected, setSelected] = useState("");
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable" | "empty">("loading");
@@ -261,13 +266,10 @@ export default function StyleWheel({ artifactId, initialStyle }: StyleWheelProps
     setError(null);
     try {
       await deleteStyle(active.name);
-      setStyles((current) => {
-        const next = current.filter((s) => s.name !== active.name);
-        const fallback = next[0]?.name ?? "";
-        setSelected(fallback);
-        if (!next.length) setStatus("empty");
-        return next;
-      });
+      const next = styles.filter((style) => style.name !== active.name);
+      setStyles(next);
+      setSelected(next[0]?.name ?? "");
+      if (!next.length) setStatus("empty");
       setProvenance((prev) => {
         const copy = { ...prev };
         delete copy[active.name];
@@ -292,7 +294,13 @@ export default function StyleWheel({ artifactId, initialStyle }: StyleWheelProps
     setError(null);
     try {
       const next = await renderArtifact(artifactId, selected, true, controller.signal);
-      if (run === applyRun.current && !controller.signal.aborted) setReceipt(next);
+      if (run === applyRun.current && !controller.signal.aborted) {
+        const nextUrl = URL.createObjectURL(next.html);
+        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = nextUrl;
+        setPreviewUrl(nextUrl);
+        setReceipt(next);
+      }
     } catch (cause) {
       if (run === applyRun.current && !controller.signal.aborted) setError(messageOf(cause));
     } finally {
@@ -599,21 +607,30 @@ export default function StyleWheel({ artifactId, initialStyle }: StyleWheelProps
 
       {status === "ready" ? (
         <>
-          <div className="style-wheel__preview-shell" aria-busy={previewing}>
-            {previewUrl ? (
+          {feedbackEnabled && receipt && previewUrl ? (
+            <ArtifactFeedbackReview
+              investigationId={investigationId}
+              previewUrl={previewUrl}
+              receipt={receipt}
+              title={`${active?.label ?? "Styled"} artifact review`}
+            />
+          ) : (
+            <div className="style-wheel__preview-shell" aria-busy={previewing}>
+              {previewUrl ? (
               <iframe
                 title={`${active?.label ?? "Style"} artifact preview`}
                 sandbox=""
                 src={previewUrl}
               />
-            ) : (
-              <p>
-                {previewing
-                  ? "Building a script-free preview…"
-                  : "Preview unavailable for this artifact."}
-              </p>
-            )}
-          </div>
+              ) : (
+                <p>
+                  {previewing
+                    ? "Building a script-free preview…"
+                    : "Preview unavailable for this artifact."}
+                </p>
+              )}
+            </div>
+          )}
           <div className="style-wheel__actions">
             <LemonButton
               disabled={!selected || applying || previewing}

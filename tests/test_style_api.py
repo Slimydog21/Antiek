@@ -444,6 +444,7 @@ def test_export_then_render_exact_id_persists_owner_scoped_version(api_env, monk
     record = ResearchArtifactStore(api_env["db"]).get("inv-contract")
     assert record is not None
     assert record.owner_user_id == "__operator__"
+    assert record.source_hash is not None
     assert record.selected_style == "blog"
     assert record.latest_version == 1
     version_path = (
@@ -457,6 +458,7 @@ def test_export_then_render_exact_id_persists_owner_scoped_version(api_env, monk
     assert latest.headers["X-Artifact-Style"] == "blog"
     assert latest.headers["X-Artifact-Version"] == "1"
     assert latest.headers["X-Content-SHA256"] == hashlib.sha256(rendered.content).hexdigest()
+    assert latest.headers["X-Source-SHA256"] == record.source_hash
 
     # Omitted style reuses the durable selection and identical apply is idempotent.
     again = client.post("/artifacts/inv-contract/render")

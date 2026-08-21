@@ -44,12 +44,14 @@ function html(version = "preview", style = "antiek") {
       "X-Artifact-Style": style,
       "X-Artifact-Version": version,
       "X-Content-SHA256": HASH,
+      "X-Source-SHA256": "b".repeat(64),
     },
   });
 }
 
 describe("StyleWheel", () => {
   beforeEach(() => {
+    vi.stubEnv("VITE_ANTIEK_FEEDBACK_ENABLED", "true");
     apiFetchMock.mockReset();
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
@@ -85,11 +87,12 @@ describe("StyleWheel", () => {
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
   it("loads styles and gives keyboard selection parity", async () => {
-    render(<StyleWheel artifactId="artifact-7" />);
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
     const first = await screen.findByRole("option", { name: /Antiek/ });
     await waitFor(() => expect(first.getAttribute("aria-selected")).toBe("true"));
     fireEvent.keyDown(first, { key: "ArrowRight" });
@@ -97,7 +100,7 @@ describe("StyleWheel", () => {
   });
 
   it("supports vertical arrow parity and declares horizontal orientation", async () => {
-    render(<StyleWheel artifactId="artifact-7" />);
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
     const listbox = await screen.findByRole("listbox");
     expect(listbox.getAttribute("aria-orientation")).toBe("horizontal");
     const first = screen.getByRole("option", { name: /Antiek/ });
@@ -106,20 +109,30 @@ describe("StyleWheel", () => {
   });
 
   it("previews with a sandbox and applies a durable version receipt", async () => {
-    render(<StyleWheel artifactId="artifact-7" />);
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
     const frame = await screen.findByTitle("Antiek artifact preview");
     expect(frame.getAttribute("sandbox")).toBe("");
     fireEvent.click(screen.getByRole("button", { name: /Apply Antiek/ }));
     expect((await screen.findByText("Version 3 saved")).textContent).toBe("Version 3 saved");
+    expect(await screen.findByLabelText("Research feedback docket")).toBeTruthy();
     expect(apiFetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/artifacts/artifact-7/render"),
       expect.objectContaining({ method: "POST" }),
     );
   });
 
+  it("keeps the review docket default-off when feedback is disabled", async () => {
+    vi.stubEnv("VITE_ANTIEK_FEEDBACK_ENABLED", "false");
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
+    await screen.findByTitle("Antiek artifact preview");
+    fireEvent.click(screen.getByRole("button", { name: /Apply Antiek/ }));
+    await screen.findByText("Version 3 saved");
+    expect(screen.queryByLabelText("Research feedback docket")).toBeNull();
+  });
+
   it("shows an honest unavailable state", async () => {
     apiFetchMock.mockRejectedValueOnce(new Error("backend offline"));
-    render(<StyleWheel artifactId="artifact-7" />);
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
     expect((await screen.findByRole("alert")).textContent).toContain("Styles unavailable · backend offline");
   });
 
@@ -128,7 +141,7 @@ describe("StyleWheel", () => {
       if (String(input) === "/styles") return Promise.resolve(json({ styles: [] }));
       return Promise.resolve(html());
     });
-    render(<StyleWheel artifactId="artifact-7" />);
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
     expect((await screen.findByText(/Empty wheel/)).textContent).toContain("Empty wheel");
     expect(screen.getByRole("button", { name: /Create a style/ })).toBeTruthy();
   });
@@ -139,7 +152,7 @@ describe("StyleWheel", () => {
       if (url === "/styles") return Promise.resolve(json(styles));
       return Promise.resolve(html("preview", "folio"));
     });
-    render(<StyleWheel artifactId="artifact-7" />);
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
     expect((await screen.findByRole("option", { name: /Folio/ })).getAttribute("aria-selected")).toBe("true");
     expect(apiFetchMock).toHaveBeenCalledWith(
       "/artifacts/artifact-7/render",
@@ -148,7 +161,7 @@ describe("StyleWheel", () => {
   });
 
   it("keeps fork CSS confined to the style save body", async () => {
-    render(<StyleWheel artifactId="artifact-7" />);
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
     await screen.findByRole("listbox");
     fireEvent.click(screen.getByRole("button", { name: "Fork a style" }));
     fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "field-notes" } });
@@ -172,7 +185,7 @@ describe("StyleWheel", () => {
   });
 
   it("seeds the fork form from the selected builtin with provenance", async () => {
-    render(<StyleWheel artifactId="artifact-7" />);
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
     await screen.findByRole("option", { name: /Antiek/ });
     fireEvent.click(screen.getByRole("button", { name: /Fork “Antiek”/ }));
     expect((screen.getByLabelText("Slug") as HTMLInputElement).value).toBe("antiek-fork");
@@ -198,7 +211,7 @@ describe("StyleWheel", () => {
       }
       return Promise.resolve(html());
     });
-    render(<StyleWheel artifactId="artifact-7" />);
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
     await screen.findByRole("option", { name: /Field notes/ });
     // Builtin selected first — no delete affordance
     expect(screen.queryByRole("button", { name: /Delete fork/ })).toBeNull();
@@ -232,7 +245,7 @@ describe("StyleWheel", () => {
       }
       return Promise.resolve(html());
     });
-    render(<StyleWheel artifactId="artifact-7" />);
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
     fireEvent.click(await screen.findByRole("option", { name: /Field notes/ }));
     fireEvent.click(await screen.findByRole("button", { name: /Delete fork Field notes/ }));
     fireEvent.click(screen.getByRole("button", { name: /Confirm delete Field notes/ }));
@@ -255,7 +268,7 @@ describe("StyleWheel", () => {
       const style = new URL(url, "http://test").searchParams.get("style") ?? "antiek";
       return Promise.resolve(html("preview", style));
     });
-    render(<StyleWheel artifactId="artifact-7" />);
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
     await screen.findByTitle("Antiek artifact preview");
     fireEvent.click(screen.getByRole("button", { name: "Apply Antiek" }));
     fireEvent.click(screen.getByRole("option", { name: /Folio/ }));
@@ -266,7 +279,7 @@ describe("StyleWheel", () => {
   });
 
   it("revokes preview blobs when replaced and unmounted", async () => {
-    const { unmount } = render(<StyleWheel artifactId="artifact-7" />);
+    const { unmount } = render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
     await screen.findByTitle("Antiek artifact preview");
     fireEvent.click(screen.getByRole("option", { name: /Folio/ }));
     await screen.findByTitle("Folio artifact preview");

@@ -11,7 +11,7 @@ Two concerns:
 2. The schema change itself — ``surface.served_impression`` exists as an
    ActionType, its payload is a member of the typed union, and an Event
    envelope carrying it round-trips through the emit → trajectory path
-   with ``schema_version == 36``.
+   with the current ``schema_version == 40``.
 """
 
 from __future__ import annotations
@@ -65,8 +65,8 @@ def test_signal_inventory_shape_and_floors(client):
         "by_domain",
     }
     assert body["generated_at"]
-    # P0 AC: schema version is the bumped 36 (35 + link.monster.digested) and the vocabulary is large.
-    assert body["schema_version"] == EVENT_SCHEMA_VERSION == 36
+    # The inventory reports the live schema version, including later feedback events.
+    assert body["schema_version"] == EVENT_SCHEMA_VERSION == 40
     assert body["count"] >= 100
     assert len(body["signals"]) == body["count"]
 
@@ -160,7 +160,7 @@ def test_served_impression_round_trips_through_event_envelope(tmp_path, monkeypa
         param_version="0.2.0",
         emitted_at=datetime(2026, 8, 12, tzinfo=UTC),
     )
-    assert event.schema_version == 36
+    assert event.schema_version == 40
 
     emitted_id = emit_typed("inv-served", payload)
     assert emitted_id is not None
@@ -168,7 +168,7 @@ def test_served_impression_round_trips_through_event_envelope(tmp_path, monkeypa
     assert len(rows) == 1
     row = rows[0]
     assert row["action_type"] == "surface.served_impression"
-    assert row["schema_version"] == 36
+    assert row["schema_version"] == 40
     assert row["payload"]["surface"] == "personal_space.recommendations"
     assert row["payload"]["item_kind"] == "synthesis"
     assert row["payload"]["item_id"] == "syn-42"

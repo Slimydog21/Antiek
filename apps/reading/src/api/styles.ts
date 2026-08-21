@@ -30,6 +30,7 @@ export interface RenderedArtifact {
   style: string;
   version: string;
   hash: string;
+  sourceHash: string;
 }
 
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -45,12 +46,14 @@ function receiptHeaders(
   const style = response.headers.get("X-Artifact-Style");
   const version = response.headers.get("X-Artifact-Version");
   const hash = response.headers.get("X-Content-SHA256");
+  const sourceHash = response.headers.get("X-Source-SHA256");
   const valid =
     artifactId === expectedArtifactId &&
     typeof style === "string" && style.length > 0 &&
     (expectedStyle === undefined || style === expectedStyle) &&
     typeof version === "string" && (apply ? POSITIVE_VERSION.test(version) : version === "preview") &&
-    typeof hash === "string" && SHA256.test(hash);
+    typeof hash === "string" && SHA256.test(hash) &&
+    typeof sourceHash === "string" && SHA256.test(sourceHash);
   if (!valid) {
     throw new ApiError(
       "The render response carried an invalid or mismatched artifact receipt; it was refused.",
@@ -58,7 +61,7 @@ function receiptHeaders(
       "invalid artifact receipt",
     );
   }
-  return { artifactId, style, version, hash };
+  return { artifactId, style, version, hash, sourceHash };
 }
 
 async function checked(response: Response, action: string): Promise<Response> {

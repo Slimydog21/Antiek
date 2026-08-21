@@ -9,6 +9,7 @@ vi.mock("../lib/api", async () => {
 import { artifactVersionUrl, deleteStyle, getArtifactStatus, renderArtifact } from "./styles";
 
 const HASH = "9".repeat(64);
+const SOURCE_HASH = "8".repeat(64);
 function response(headers: Record<string, string>) {
   return new Response("<html></html>", { headers });
 }
@@ -20,8 +21,9 @@ describe("style artifact receipt contract", () => {
     apiFetchMock.mockResolvedValue(response({
       "X-Artifact-ID": "inv-1", "X-Artifact-Style": "folio",
       "X-Artifact-Version": "2", "X-Content-SHA256": HASH,
+      "X-Source-SHA256": SOURCE_HASH,
     }));
-    await expect(renderArtifact("inv-1", "folio", true)).resolves.toMatchObject({ artifactId: "inv-1", style: "folio", version: "2", hash: HASH });
+    await expect(renderArtifact("inv-1", "folio", true)).resolves.toMatchObject({ artifactId: "inv-1", style: "folio", version: "2", hash: HASH, sourceHash: SOURCE_HASH });
   });
 
   it.each([
