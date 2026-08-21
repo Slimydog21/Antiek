@@ -1503,6 +1503,15 @@ def create_app(
             return await call_next(request)
         if request.url.path in _OPERATOR_AUTH_OPEN_PATHS:
             return await call_next(request)
+        # The outbound Herdr bridge has a narrower credential namespace and
+        # scope model than operator auth. Let only its explicit scheme reach
+        # the /internal/agent-work router, where authenticate_bridge validates
+        # the credential hash, logical worker, and per-command scope. Requests
+        # without this scheme remain protected by the global operator gate.
+        if request.url.path.startswith("/internal/agent-work/"):
+            bridge_scheme, _, _ = request.headers.get("Authorization", "").partition(" ")
+            if bridge_scheme == "AntiekBridge":
+                return await call_next(request)
         # Speak invitee surface (specs/speak/): a subject's friend/family
         # is a SOURCE, not an operator account. Their invite link's TOKEN
         # is the credential — the /speak/invite/ endpoints verify it and

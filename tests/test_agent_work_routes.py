@@ -66,6 +66,35 @@ def test_bridge_lease_rejects_missing_bridge_credential(bridge_api) -> None:
     assert response.json() == {"detail": "bridge authentication required"}
 
 
+def test_bridge_scheme_reaches_scoped_auth_when_operator_auth_is_enforced(
+    bridge_api, monkeypatch
+) -> None:
+    client, secret = bridge_api
+    monkeypatch.setenv("ANTIEK_OPERATOR_TOKEN", "operator-test-secret")
+
+    rejected = client.post(
+        "/internal/agent-work/lease",
+        headers={
+            "Authorization": "AntiekBridge credential-1.wrong",
+            "Idempotency-Key": "bridge-production-auth-0001",
+        },
+        json={"bridge_instance_id": "mini-1", "lease_seconds": 120},
+    )
+    accepted = client.post(
+        "/internal/agent-work/lease",
+        headers={
+            "Authorization": f"AntiekBridge credential-1.{secret}",
+            "Idempotency-Key": "bridge-production-auth-0002",
+        },
+        json={"bridge_instance_id": "mini-1", "lease_seconds": 120},
+    )
+
+    assert rejected.status_code == 401
+    assert rejected.json() == {"detail": "bridge authentication required"}
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["work_id"] == "wrk-1"
+
+
 def test_authenticated_bridge_leases_exact_worker_context_and_replays(bridge_api) -> None:
     client, secret = bridge_api
     headers = {
