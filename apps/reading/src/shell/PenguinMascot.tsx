@@ -8,6 +8,7 @@ import {
   createWernerStage,
   EmoteView,
   installChoreography,
+  installReactionBus,
   installTargetChoreography,
   useMouseFollow,
   wernerIceFishingCursor,
@@ -16,6 +17,7 @@ import {
   type WernerStageController,
   WernerRig,
 } from "../werner";
+import { notifyPointerIdleEdge } from "../werner/shellExperienceSignals";
 import "../werner/waddle.css";
 
 /**
@@ -283,6 +285,30 @@ export function PenguinMascot() {
   // the CSS reduced-motion guard's paired JS line of defence, and when the
   // WERNER-ICE flag is off (no ice-fishing experience at all — no bait, no line,
   // so nothing to fish).
+  // Product experience: pointer idle edge → Werner "sleeping" via the reaction
+  // bus. Independent of the ice-fishing gag (always runs when motion allowed).
+  useEffect(() => {
+    if (reduceMotion || typeof window === "undefined") return;
+    let wasIdle = false;
+    let raf: number | null = null;
+    const tick = () => {
+      const reading = follow.read();
+      const idleNow =
+        !dragStart.current &&
+        !roamPaused.current &&
+        !returningHome.current &&
+        reading.pointerIdle &&
+        !reading.tabHidden;
+      notifyPointerIdleEdge(wasIdle, idleNow);
+      wasIdle = idleNow;
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => {
+      if (raf !== null) window.cancelAnimationFrame(raf);
+    };
+  }, [reduceMotion, follow]);
+
   useEffect(() => {
     if (reduceMotion || !wernerIceFishingCursor || typeof window === "undefined")
       return;
@@ -388,13 +414,16 @@ export function PenguinMascot() {
     };
     const stage = createWernerStage(host);
     stageRef.current = stage;
-    // Two activation paths feed the one stage: product activations (click OR
-    // hotkey, via the shared event) and any opt-in `data-werner-target` button.
+    // Three activation paths feed the one stage: product activations (click OR
+    // hotkey, via the shared event), any opt-in `data-werner-target` button,
+    // and named product-experience reactions (highlight / DR lifecycle / fail).
     const teardownChoreo = installChoreography(stage);
     const teardownTarget = installTargetChoreography(stage);
+    const teardownReactions = installReactionBus(stage);
     return () => {
       teardownChoreo();
       teardownTarget();
+      teardownReactions();
       stage.dispose();
       stageRef.current = null;
       if (returnTimer.current !== null) {
@@ -544,6 +573,7 @@ export function PenguinMascot() {
       ref={buttonRef}
       type="button"
       data-testid="penguin-mascot"
+      data-werner-emote={emote ?? "none"}
       aria-label="Project — click to float the project tree, double-click to open"
       title="Project · click to float · double-click to open · drag to move"
       onPointerDown={onPointerDown}

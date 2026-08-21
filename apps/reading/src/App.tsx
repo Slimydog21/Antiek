@@ -39,6 +39,7 @@ import Replay from "./modes/Replay";
 import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
 import MyResearch from "./modes/ResearchWorkstation/MyResearch";
+import { ArcadeCabinet } from "./arcade/ArcadeCabinet";
 import Settings from "./modes/Settings";
 import SkillRuleDetail from "./modes/SkillRuleDetail";
 import SkillRules from "./modes/SkillRules";
@@ -112,6 +113,8 @@ function AuthenticatedRoutes() {
             (the Research-entry cascade navigates here after launch). */}
         <Route path="/deep-research" element={<DeepResearchWorkspace />} />
         <Route path="/deep-research/:sessionId" element={<DeepResearchWorkspace />} />
+        {/* Werner Lives arcade cabinet — Club Penguin mini-games + wait easter egg */}
+        <Route path="/arcade" element={<ArcadeCabinet />} />
         <Route path="/midnight-oil" element={<MidnightOil />} />
         <Route path="/wrestle" element={<WrestleApp />} />
         <Route path="/wrestle/:documentId" element={<WrestleApp />} />

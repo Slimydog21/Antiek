@@ -11,6 +11,7 @@ import { Snow } from "./layers/Snow";
 import { PenguinJourney } from "./layers/PenguinJourney";
 import { KreaArtLayer } from "./layers/KreaArtLayer";
 import { SceneStatusBadge } from "./SceneStatusBadge";
+import { SCENE_HOTSPOTS } from "./interactiveRegions";
 // The scene's consolidated keyframes + reduced-motion guard (one motion home,
 // sanctioned in motion.guard.test.ts) — see scene.css.
 import "./scene.css";
@@ -31,9 +32,11 @@ import "./scene.css";
  * of the ridge but behind the glass content above the whole Scene.
  *
  * MOUNTING: the Scene is `position:absolute inset-0 z-0 pointer-events-none` —
- * it paints behind everything and never captures pointer events. AppShell
- * mounts it as the FIRST child of the shell frame (see AppShell.tsx); the glass
- * working surfaces float over it.
+ * it paints behind everything and never captures input. Interactive
+ * Flipbook-feel hotspots mount at **shell level** (`SceneHotspots` in
+ * AppShell) above the scene paint but under chrome that opts into
+ * `pointer-events: auto` — so empty chrome space lets hits reach hotspots.
+ * AppShell mounts Scene as the FIRST child of the shell frame.
  *
  * THEME → MOOD: the mood comes from the app's EXISTING day/night signal (OS
  * prefers-color-scheme, the same `media` darkMode Tailwind uses) via
@@ -87,6 +90,7 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
       data-scene-clock={clock.t}
       data-scene-frozen={frozen ? "true" : "false"}
       data-scene-fallback={art.isFallback ? "true" : "false"}
+      data-scene-hotspots={SCENE_HOTSPOTS.length}
       aria-hidden="true"
     >
       {/* z-0 sky + peaks (with bounded parallax) */}
@@ -99,6 +103,10 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
       <Snow mood={mood} reducedMotion={frozen} />
       {/* z-4 scenery penguin */}
       <PenguinJourney mood={mood} />
+      {/* Interactive hotspots intentionally NOT here — they mount at shell
+          level (AppShell → SceneHotspots) so a full-viewport chrome sibling
+          with pointer-events:auto cannot bury them. data-scene-hotspots
+          still records the canonical count for structural asserts. */}
       <SceneStatusBadge
         status={kreaStatus.data}
         error={kreaStatus.status === "error" ? kreaStatus.error : null}

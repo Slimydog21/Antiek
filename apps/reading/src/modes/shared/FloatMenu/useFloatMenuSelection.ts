@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { emitWernerExperience } from "../../../werner";
+
 /**
  * useFloatMenuSelection — the shared, host-agnostic selection listener that
  * feeds the {@link FloatMenu}. Generalized DIRECTLY from the shipped
@@ -129,10 +131,14 @@ export function useFloatMenuSelection({
       const provenance = resolveProvenance
         ? resolveProvenance(range, text)
         : {};
-      setSelection({
-        text,
-        rect: { top: r.top, left: r.left, width: r.width, height: r.height },
-        provenance,
+      setSelection((prev) => {
+        // Fire once when a highlight first opens (not every selectionchange tick).
+        if (!prev) emitWernerExperience({ experience: "highlight" });
+        return {
+          text,
+          rect: { top: r.top, left: r.left, width: r.width, height: r.height },
+          provenance,
+        };
       });
     }
     document.addEventListener("selectionchange", onSelectionChange);

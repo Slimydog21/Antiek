@@ -21,6 +21,12 @@ import {
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
 import Thinking from "../../shared/Thinking";
+import {
+  canDraftCollective,
+  collectiveDraftTitle,
+  selectedReadyIds,
+  toggleChaseSelection,
+} from "./chaseCollective";
 
 /**
  * ReadingCompanion — the Read glass-box (Read SPR-06 M2).
@@ -113,6 +119,8 @@ export default function ReadingCompanion({
   const [draftMergeReceipt, setDraftMergeReceipt] = useState<ResearchArtifactComposeResponse | null>(null);
   const [draftMergeIds, setDraftMergeIds] = useState<string[]>([]);
   const [draftError, setDraftError] = useState<string | null>(null);
+  /** Explicit multi-select for the collective draft unit. Empty = default all ready. */
+  const [selectedChaseIds, setSelectedChaseIds] = useState<string[]>([]);
 
   // "Working" only when the thread is genuinely running (a distill / talk in
   // flight). A not_found thread (nothing has happened on this book yet) is
@@ -129,6 +137,11 @@ export default function ReadingCompanion({
     () => readyHandoffs.map((handoff) => handoff.child_investigation_id),
     [readyHandoffs],
   );
+  const collectiveIds = useMemo(
+    () => selectedReadyIds(selectedChaseIds, readyIds),
+    [selectedChaseIds, readyIds],
+  );
+  const canDraft = canDraftCollective(collectiveIds);
 
   async function copyMergePacket() {
     const payload = {
@@ -280,16 +293,16 @@ export default function ReadingCompanion({
   }
 
   async function draftReadyChases() {
-    if (readyIds.length < 2) {
+    if (!canDraftCollective(collectiveIds)) {
       setDraftError("Two completed chases are needed for a draft merge.");
       return;
     }
     setDraftBusy(true);
     setDraftError(null);
     try {
-      const result = await composeResearchArtifacts(readyIds, true);
+      const result = await composeResearchArtifacts(collectiveIds, true);
       setDraftMergeReceipt(result);
-      setDraftMergeIds(readyIds);
+      setDraftMergeIds(collectiveIds);
       setCopiedSourceReviewPacket(false);
       setSourceApplyAck(false);
       setSourceApplyConflictAck(false);
@@ -344,13 +357,9 @@ export default function ReadingCompanion({
               <button
                 type="button"
                 onClick={() => void draftReadyChases()}
-                disabled={draftBusy || readyIds.length < 2}
+                disabled={draftBusy || !canDraft}
                 className="font-mono text-[11px] text-ink hover:underline disabled:cursor-not-allowed disabled:text-ink-mute dark:text-bright dark:disabled:text-moonlight"
-                title={
-                  readyIds.length >= 2
-                    ? "Draft a no-mutation merge of completed chase artifacts"
-                    : "Two completed chases are needed for a draft merge"
-                }
+                title={collectiveDraftTitle(collectiveIds, readyIds.length)}
               >
                 {draftBusy ? "drafting" : "draft ready"}
               </button>
@@ -578,25 +587,57 @@ export default function ReadingCompanion({
             <p className="mb-2 font-serif text-[12px] text-emperor">{draftError}</p>
           ) : null}
           <ol className="space-y-1.5">
-            {handoffs.map((handoff) => (
-              <li
-                key={`${handoff.parent_investigation_id}:${handoff.child_investigation_id}`}
-                className="rounded-hog border border-rule bg-ice-0 px-2 py-1.5 dark:bg-charcoal-2"
-              >
-                <span className="mb-1 inline-flex rounded-hog border border-rule px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-shadow-1 dark:text-moonlight">
-                  {handoffStatusLabel(summariesById.get(handoff.child_investigation_id))}
-                </span>
-                <p className="line-clamp-2 font-serif text-[13px] leading-snug text-ink dark:text-bright">
-                  {handoff.source_passage}
-                </p>
-                <Link
-                  to={`/inv/${handoff.child_investigation_id}`}
-                  className="mt-1 inline-flex font-mono text-[11px] text-shadow-1 hover:text-ink hover:underline dark:text-moonlight dark:hover:text-bright"
+            {handoffs.map((handoff) => {
+              const childId = handoff.child_investigation_id;
+              const summary = summariesById.get(childId);
+              const isReady = summary?.status === "completed";
+              // Empty selection = all ready implied; show checked when default-all or explicit.
+              const isSelected =
+                isReady &&
+                (selectedChaseIds.length === 0 || selectedChaseIds.includes(childId));
+              return (
+                <li
+                  key={`${handoff.parent_investigation_id}:${childId}`}
+                  className="rounded-hog border border-rule bg-ice-0 px-2 py-1.5 dark:bg-charcoal-2"
                 >
-                  open research
-                </Link>
-              </li>
-            ))}
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="inline-flex rounded-hog border border-rule px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                      {handoffStatusLabel(summary)}
+                    </span>
+                    {isReady ? (
+                      <label
+                        className="inline-flex items-center gap-1 font-mono text-[10px] text-shadow-1 dark:text-moonlight"
+                        title="Include in collective draft merge"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() =>
+                            setSelectedChaseIds((prev) => {
+                              // First explicit toggle from default-all: materialize all ready then toggle.
+                              const base =
+                                prev.length === 0 ? [...readyIds] : prev;
+                              return toggleChaseSelection(base, childId);
+                            })
+                          }
+                          aria-label={`Include chase in collective merge: ${handoff.source_passage.slice(0, 48)}`}
+                        />
+                        unit
+                      </label>
+                    ) : null}
+                  </div>
+                  <p className="line-clamp-2 font-serif text-[13px] leading-snug text-ink dark:text-bright">
+                    {handoff.source_passage}
+                  </p>
+                  <Link
+                    to={`/inv/${childId}`}
+                    className="mt-1 inline-flex font-mono text-[11px] text-shadow-1 hover:text-ink hover:underline dark:text-moonlight dark:hover:text-bright"
+                  >
+                    open research
+                  </Link>
+                </li>
+              );
+            })}
           </ol>
         </section>
       ) : null}

@@ -318,6 +318,65 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     );
   });
 
+  it("drafts only the multi-selected completed chases as a collective unit", async () => {
+    for (const [childInvestigationId, sourcePassage] of [
+      ["inv-pick-a", "First completed chase."],
+      ["inv-pick-b", "Second completed chase."],
+      ["inv-pick-c", "Third completed chase."],
+    ] as const) {
+      recordChaseDraftHandoff(
+        buildChaseDraftHandoff({
+          childInvestigationId,
+          parentInvestigationId: "read-doc-1",
+          sourcePassage,
+        }),
+      );
+    }
+    listState.investigations = [
+      summary({ investigation_id: "inv-pick-a", status: "completed" }),
+      summary({ investigation_id: "inv-pick-b", status: "completed" }),
+      summary({ investigation_id: "inv-pick-c", status: "completed" }),
+    ];
+    composeResearchArtifactsMock.mockResolvedValue({
+      path: "/tmp/compose-subset.html",
+      draft_merge_path: "/tmp/draft-subset.html",
+      members: [
+        {
+          investigation_id: "inv-pick-c",
+          content_hash: "hash-c",
+          artifact_path: "/tmp/inv-pick-c.html",
+          twin_notes_path: "/tmp/inv-pick-c.notes.html",
+        },
+        {
+          investigation_id: "inv-pick-a",
+          content_hash: "hash-a",
+          artifact_path: "/tmp/inv-pick-a.html",
+          twin_notes_path: "/tmp/inv-pick-a.notes.html",
+        },
+      ],
+      hash_conflicts: [],
+    });
+    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
+
+    renderCompanion();
+
+    // Deselect B so collective is A+C only (order follows ready/handoff order).
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /Include chase in collective merge: Second completed/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
+    await waitFor(() =>
+      expect(composeResearchArtifactsMock).toHaveBeenCalledWith(
+        expect.arrayContaining(["inv-pick-a", "inv-pick-c"]),
+        true,
+      ),
+    );
+    const callIds = composeResearchArtifactsMock.mock.calls.at(-1)?.[0] as string[];
+    expect(callIds).not.toContain("inv-pick-b");
+    expect(callIds).toHaveLength(2);
+    expect(await screen.findByText("/tmp/draft-subset.html")).toBeTruthy();
+  });
+
   it("keeps source apply disabled until the draft is explicitly reviewed", async () => {
     for (const childInvestigationId of ["inv-apply-a", "inv-apply-b"]) {
       recordChaseDraftHandoff(

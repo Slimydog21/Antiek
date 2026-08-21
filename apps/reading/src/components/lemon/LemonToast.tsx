@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { notifyShellFailure } from "../../werner/shellExperienceSignals";
+
 /**
  * LemonToast — tiny pub-sub toast queue + viewport renderer.
  *
@@ -11,6 +13,9 @@ import { useEffect, useState } from "react";
  * Mount <LemonToastViewport /> once at app root (AppShell). Toasts auto-dismiss
  * after `ttl` ms (default 4000). The queue is an in-module store with a tiny
  * subscriber pattern — no zustand dep, ~30 LoC.
+ *
+ * Product signal: `toast.err` is the shell-wide failure path — it notifies
+ * Werner (`fail` experience) so the living mascot reacts to real product errors.
  */
 type Kind = "ok" | "warn" | "err" | "info";
 type Item = { id: number; kind: Kind; msg: string; ttl: number };
@@ -23,6 +28,9 @@ function emit(kind: Kind, msg: string, ttl: number) {
   const item: Item = { id: _nextId++, kind, msg, ttl };
   _items = [..._items, item];
   _listeners.forEach((l) => l(_items));
+  if (kind === "err") {
+    notifyShellFailure(msg);
+  }
   setTimeout(() => dismiss(item.id), ttl);
   return item.id;
 }

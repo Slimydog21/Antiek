@@ -1,5 +1,5 @@
 import "./animations.css";
-import Werner from "../../Werner";
+import BrainMascot from "../../BrainMascot";
 
 /**
  * Werner the penguin, tobogganing — used as a loading spinner.
@@ -11,7 +11,7 @@ import Werner from "../../Werner";
  * Sizes 24 / 32 / 64 are the recommended steps. Anything in between
  * works because the SVG scales.
  *
- * Core mark delegated to <Werner mood="idle" /> + --werner-* tokens
+ * Core mark delegated to <BrainMascot mood="idle" /> + --werner-* tokens
  * for any remaining accents. No more parallel geometry fork.
  */
 type Props = {
@@ -56,7 +56,7 @@ export default function WernerTobogganSpinner({
           <line x1="48" y1="36" x2="48" y2="40" stroke="var(--werner-coat)" strokeWidth="1.5" />
         </g>
       </svg>
-      <Werner mood="idle" size={size} className="werner-toboggan" style={{ position: "absolute", left: "25%", top: "8%" }} />
+      <BrainMascot mood="idle" size={size} className="werner-toboggan" style={{ position: "absolute", left: "25%", top: "8%" }} />
     </span>
   );
 }

@@ -1,4 +1,4 @@
-import Werner from "../../brand/Werner";
+import BrainMascot from "../../brand/BrainMascot";
 
 /**
  * CelebrateBurst — the visible half of a signature delight beat (U-05 M2).
@@ -43,7 +43,7 @@ export default function CelebrateBurst({
           : "pointer-events-none inline-flex"
       }
     >
-      <Werner mood="celebrate" size={size} />
+      <BrainMascot mood="celebrate" size={size} />
     </span>
   );
 }
