@@ -151,6 +151,7 @@ def test_live_lease_appends_one_agent_reply_and_completes_work(tmp_path) -> None
             lease_id=lease.lease_id,
             attempt_no=lease.attempt_no,
             logical_worker_id="research-owner",
+            context_sha256="e" * 64,
             result_sha256="f" * 64,
             reply_item_id="fit-2",
             reply_markdown="I checked the primary paper and added the missing evidence.",

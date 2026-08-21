@@ -24,8 +24,8 @@ CREATE TABLE IF NOT EXISTS feedback_threads (
   state VARCHAR NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'resolved')),
   create_operation_id VARCHAR NOT NULL UNIQUE,
   create_request_sha256 VARCHAR NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS agent_work (
@@ -36,13 +36,13 @@ CREATE TABLE IF NOT EXISTS agent_work (
   context_sha256 VARCHAR NOT NULL,
   attempt_count INTEGER NOT NULL DEFAULT 0,
   active_lease_id VARCHAR,
-  lease_expires_at TIMESTAMP,
-  not_before TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  lease_expires_at TIMESTAMPTZ,
+  not_before TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_error_code VARCHAR,
   result_sha256 VARCHAR,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  terminal_at TIMESTAMP
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  terminal_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS feedback_items (
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS feedback_items (
   author_id VARCHAR NOT NULL,
   body_markdown VARCHAR NOT NULL,
   work_id VARCHAR,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (thread_id, sequence)
 );
 
@@ -65,12 +65,13 @@ CREATE TABLE IF NOT EXISTS agent_work_attempts (
   bridge_credential_id VARCHAR NOT NULL,
   bridge_instance_id VARCHAR NOT NULL,
   state VARCHAR NOT NULL DEFAULT 'leased',
-  lease_expires_at TIMESTAMP NOT NULL,
+  lease_expires_at TIMESTAMPTZ NOT NULL,
   herdr_target_observed VARCHAR,
   adapter_version VARCHAR,
-  submitted_at TIMESTAMP,
-  completed_at TIMESTAMP,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  result_from_state VARCHAR,
+  submitted_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (work_id, attempt_no)
 );
 
@@ -80,7 +81,7 @@ CREATE TABLE IF NOT EXISTS feedback_command_receipts (
   idempotency_key VARCHAR NOT NULL,
   request_sha256 VARCHAR NOT NULL,
   resource_id VARCHAR NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (principal_id, command_kind, idempotency_key)
 );
 

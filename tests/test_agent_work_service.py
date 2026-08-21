@@ -6,7 +6,14 @@ from datetime import UTC, datetime
 import pytest
 
 from runtime.db_lock import connect_write
-from substrate.agent_work.service import CompleteReplyCommand, complete_agent_reply
+from substrate.agent_work.service import (
+    CompleteReplyCommand,
+    LeaseWorkCommand,
+    MarkSubmittedCommand,
+    complete_agent_reply,
+    lease_agent_work,
+    mark_agent_work_submitted,
+)
 from substrate.agent_work.store import AgentWorkStore
 from substrate.feedback.domain import ArtifactVersionRef, NodeTextAnchor
 from substrate.feedback.service import create_feedback_thread
@@ -58,6 +65,7 @@ def test_reply_callback_is_atomic_audited_and_exactly_replayable(tmp_path) -> No
         attempt_no=1,
         logical_worker_id="research-owner",
         bridge_credential_id="credential-1",
+        context_sha256="e" * 64,
         reply_item_id="fit-2",
         reply_markdown="Verified against the primary paper.",
         agent_id="research-owner",
@@ -72,9 +80,82 @@ def test_reply_callback_is_atomic_audited_and_exactly_replayable(tmp_path) -> No
     assert len(first.thread.items) == 2
     with connect_write(db_path, purpose="test/result-event") as con:
         event = event_for_operation(con, "agent-result:wrk-1:1")
+        transitioned = event_for_operation(con, "agent-transition:wrk-1:1:replied")
     assert event is not None
     assert event.action_type == "artifact.feedback.replied"
     assert event.payload.reply_item_id == "fit-2"
+    assert transitioned is not None
+    assert transitioned.payload.before_state == "leased"
+    assert transitioned.payload.after_state == "replied"
+
+
+def test_lease_command_is_atomic_audited_and_exactly_replayable(tmp_path) -> None:
+    db_path = str(tmp_path / "graph.duckdb")
+    init_database_at_path(db_path)
+    _seed(db_path)
+    command = LeaseWorkCommand(
+        logical_worker_id="research-owner",
+        bridge_credential_id="credential-1",
+        bridge_instance_id="mini-1",
+        lease_id="lse-1",
+        lease_seconds=120,
+        idempotency_key="lease-key-1",
+        now=datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
+    )
+
+    first = lease_agent_work(db_path, command)
+    replay = lease_agent_work(db_path, command)
+
+    assert replay == first
+    assert first is not None
+    assert first.work_id == "wrk-1"
+    with connect_write(db_path, purpose="test/lease-event") as con:
+        transitioned = event_for_operation(con, "agent-transition:wrk-1:1:leased")
+    assert transitioned is not None
+    assert transitioned.payload.before_state == "queued"
+    assert transitioned.payload.after_state == "leased"
+
+
+def test_submitted_command_is_atomic_audited_and_exactly_replayable(tmp_path) -> None:
+    db_path = str(tmp_path / "graph.duckdb")
+    init_database_at_path(db_path)
+    _seed(db_path)
+    now = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)
+    lease = lease_agent_work(
+        db_path,
+        LeaseWorkCommand(
+            logical_worker_id="research-owner",
+            bridge_credential_id="credential-1",
+            bridge_instance_id="mini-1",
+            lease_id="lse-1",
+            lease_seconds=120,
+            idempotency_key="lease-key-1",
+            now=now,
+        ),
+    )
+    assert lease is not None
+    command = MarkSubmittedCommand(
+        work_id=lease.work_id,
+        lease_id=lease.lease_id,
+        attempt_no=lease.attempt_no,
+        logical_worker_id="research-owner",
+        bridge_credential_id="credential-1",
+        adapter_version="herdr-bridge/0.1",
+        herdr_target_observed="agent-7",
+        idempotency_key="submitted-key-1",
+        now=now,
+    )
+
+    first = mark_agent_work_submitted(db_path, command)
+    replay = mark_agent_work_submitted(db_path, command)
+
+    assert replay == first
+    assert first.state == "submitted"
+    with connect_write(db_path, purpose="test/submitted-event") as con:
+        transitioned = event_for_operation(con, "agent-transition:wrk-1:1:submitted")
+    assert transitioned is not None
+    assert transitioned.payload.before_state == "leased"
+    assert transitioned.payload.after_state == "submitted"
 
 
 def test_result_key_cannot_be_reused_with_different_reply(tmp_path) -> None:
@@ -99,6 +180,7 @@ def test_result_key_cannot_be_reused_with_different_reply(tmp_path) -> None:
         attempt_no=1,
         logical_worker_id="research-owner",
         bridge_credential_id="credential-1",
+        context_sha256="e" * 64,
         reply_item_id="fit-2",
         reply_markdown="First result.",
         agent_id="research-owner",
@@ -144,6 +226,7 @@ def test_reply_and_audit_event_roll_back_together(tmp_path) -> None:
                 attempt_no=1,
                 logical_worker_id="research-owner",
                 bridge_credential_id="credential-1",
+                context_sha256="e" * 64,
                 reply_item_id="fit-2",
                 reply_markdown="This must roll back.",
                 agent_id="research-owner",

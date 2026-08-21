@@ -6705,6 +6705,12 @@ def create_app(
     from interfaces.research.api.artifact_routes import artifact_router
     app.include_router(artifact_router)
 
+    from interfaces.research.api.feedback_routes import feedback_router
+    app.include_router(feedback_router)
+
+    from interfaces.research.api.agent_work_routes import agent_work_router
+    app.include_router(agent_work_router)
+
     # Full-graph export bundle (own-your-mind P1 §6, read half). GET
     # /export/my-graph streams a zip of the DuckDB EXPORT snapshot + the
     # event-log parquets/jsonl + manifest.json. Read-only: never opens the
