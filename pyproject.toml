@@ -93,16 +93,6 @@ embedding = ["sentence-transformers>=3.0", "numpy>=1.26"]
 interview = ["openai-whisper>=20240930"]  # for ASR, swap for API client when wired
 youtube = ["yt-dlp>=2024.8.6", "youtube-transcript-api>=0.6"]
 rss = ["feedparser>=6.0"]
-# Browserbase escalation — Wedge 2 of the Exa & Browserbase integration
-# spec. Optional per spec §14.4: pinned here so the operator installs the
-# SDKs only when actually enabling fallback_to_browserbase=True. Lazy
-# imports inside acquisition/urls/client_browserbase.py raise
-# BrowserbaseUnavailable when the SDK is missing — loud failure rather
-# than silent degradation.
-browserbase = [
-  "browserbase>=0.4",
-  "playwright>=1.45",
-]
 # NotDiamond advisory model-router adapter (Wave 1). Optional and lazy:
 # runtime/notdiamond imports the SDK only inside select_model(), so dispatch
 # still runs when this extra is absent. TODO(SPR-ND): relax the exact pin after
@@ -112,7 +102,7 @@ notdiamond = [
 ]
 # Remote-exec research fan-out — unified SPR-02, behind the §16
 # research-fan-out exemption (docs/decisions/s16-research-fanout-exemption.md).
-# Optional and lazy by the same discipline as [browserbase]: pinned here so
+# Optional and lazy: pinned here so
 # the operator installs the SDK only when actually enabling remote-exec
 # (ANTIEK_REMOTE_EXEC_ENABLED=1). The lazy import inside
 # runtime/remote_exec/daytona.py raises RemoteExecUnavailable when the SDK is

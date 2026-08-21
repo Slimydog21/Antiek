@@ -159,19 +159,6 @@ spec_doc = "docs/integration_exa_browserbase.md"
 # Tier 2 — prod call-site with sunset clock
 # ============================================================
 
-[browserbase]
-package = "browserbase"
-tier = 2
-voucher = "slimydog"
-vouched_at = "2026-05-21"
-sunset_date = "2026-08-19"
-justification = "Ingestion-escalation fallback inside acquisition/urls/. 90-day default sunset; promote to Tier 3 once Wedge 2 ratifies after legal gate clears, or demote if AnchorBrowser Plan-B becomes primary."
-prod_call_sites = [
-    "acquisition/urls/client_browserbase.py",
-]
-spec_doc = "docs/integration_exa_browserbase.md"
-
-
 # ============================================================
 # Tier 1 — local prototype (imports under tools/ or scripts/ ok)
 # ============================================================
