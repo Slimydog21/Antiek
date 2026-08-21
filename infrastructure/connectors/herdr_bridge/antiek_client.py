@@ -68,6 +68,7 @@ class AntiekClient:
             ),
             "Content-Type": "application/json",
             "Idempotency-Key": idempotency_key,
+            "User-Agent": "AntiekHerdrBridge/0.1",
         }
         response = self._transport(
             "POST",
