@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS feedback_threads (
 
 CREATE TABLE IF NOT EXISTS agent_work (
   work_id VARCHAR PRIMARY KEY,
-  thread_id VARCHAR NOT NULL UNIQUE REFERENCES feedback_threads(thread_id),
+  thread_id VARCHAR NOT NULL UNIQUE,
   logical_worker_id VARCHAR NOT NULL,
   state VARCHAR NOT NULL DEFAULT 'queued',
   context_sha256 VARCHAR NOT NULL,
@@ -47,19 +47,19 @@ CREATE TABLE IF NOT EXISTS agent_work (
 
 CREATE TABLE IF NOT EXISTS feedback_items (
   item_id VARCHAR PRIMARY KEY,
-  thread_id VARCHAR NOT NULL REFERENCES feedback_threads(thread_id),
+  thread_id VARCHAR NOT NULL,
   sequence INTEGER NOT NULL CHECK (sequence > 0),
   author_kind VARCHAR NOT NULL CHECK (author_kind IN ('operator', 'agent', 'system')),
   author_id VARCHAR NOT NULL,
   body_markdown VARCHAR NOT NULL,
-  work_id VARCHAR REFERENCES agent_work(work_id),
+  work_id VARCHAR,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (thread_id, sequence)
 );
 
 CREATE TABLE IF NOT EXISTS agent_work_attempts (
   attempt_id VARCHAR PRIMARY KEY,
-  work_id VARCHAR NOT NULL REFERENCES agent_work(work_id),
+  work_id VARCHAR NOT NULL,
   attempt_no INTEGER NOT NULL CHECK (attempt_no > 0),
   lease_id VARCHAR NOT NULL UNIQUE,
   bridge_credential_id VARCHAR NOT NULL,
@@ -72,6 +72,16 @@ CREATE TABLE IF NOT EXISTS agent_work_attempts (
   completed_at TIMESTAMP,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (work_id, attempt_no)
+);
+
+CREATE TABLE IF NOT EXISTS feedback_command_receipts (
+  principal_id VARCHAR NOT NULL,
+  command_kind VARCHAR NOT NULL,
+  idempotency_key VARCHAR NOT NULL,
+  request_sha256 VARCHAR NOT NULL,
+  resource_id VARCHAR NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (principal_id, command_kind, idempotency_key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_feedback_threads_owner

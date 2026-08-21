@@ -222,6 +222,7 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     ARTIFACT_INTERACTED = "artifact.interacted"
     ARTIFACT_COMMENT_CREATED = "artifact.comment.created"
     AGENT_WORK_TRANSITIONED = "agent.work.transitioned"
+    ARTIFACT_FEEDBACK_REPLIED = "artifact.feedback.replied"
 
     # ── Sprint 17-30+ additions (master-spec §11.6 + §13.5 + §13.7
     #    + §13.9). Bumped EVENT_SCHEMA_VERSION accordingly when this
@@ -792,7 +793,9 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v37: Version-bound artifact feedback — comment creation and canonical
 #     agent-work transitions. Payloads carry identities and hashes, never
 #     private comment text or transport secrets. Purely additive. 2026-08-21.
-EVENT_SCHEMA_VERSION: int = 37
+# v38: Agent feedback reply audit projection. The canonical private reply
+#     remains in DuckDB; the event carries only identity and digest.
+EVENT_SCHEMA_VERSION: int = 38
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -1300,6 +1303,19 @@ class AgentWorkTransitionedPayload(_PayloadBase):
     after_state: str
     attempt_no: int = Field(ge=0)
     reason: str
+
+
+class ArtifactFeedbackRepliedPayload(_PayloadBase):
+    """Audit projection of one canonical agent reply."""
+
+    action_type: Literal[ActionType.ARTIFACT_FEEDBACK_REPLIED] = (
+        ActionType.ARTIFACT_FEEDBACK_REPLIED
+    )
+    work_id: str
+    thread_id: str
+    reply_item_id: str
+    attempt_no: int = Field(gt=0)
+    reply_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 # ── Middleware: source_tier (architecture_notes §4) ──────────────────
@@ -4249,7 +4265,10 @@ _TypedPayloadBase = Annotated[
 # ``get_args(...)[0]`` unwraps the union from its discriminator annotation so
 # Pydantic sees one flat discriminated union at the Event boundary.
 TypedPayload = Annotated[
-    get_args(_TypedPayloadBase)[0] | ArtifactCommentCreatedPayload | AgentWorkTransitionedPayload,
+    get_args(_TypedPayloadBase)[0]
+    | ArtifactCommentCreatedPayload
+    | AgentWorkTransitionedPayload
+    | ArtifactFeedbackRepliedPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -4289,6 +4308,7 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset(
         ActionType.ARTIFACT_INTERACTED.value,
         ActionType.ARTIFACT_COMMENT_CREATED.value,
         ActionType.AGENT_WORK_TRANSITIONED.value,
+        ActionType.ARTIFACT_FEEDBACK_REPLIED.value,
         ActionType.GRAPH_TIER_ASSIGNED.value,
         ActionType.GRAPH_TIER_OVERRIDDEN.value,
         ActionType.TIER_REWRITE_BULK.value,
@@ -4557,6 +4577,7 @@ __all__ = [
     "ArtifactInteractedPayload",
     "ArtifactCommentCreatedPayload",
     "AgentWorkTransitionedPayload",
+    "ArtifactFeedbackRepliedPayload",
     # Middleware: source_tier
     "TierClassificationMethod",
     "TierAdjustmentMethod",

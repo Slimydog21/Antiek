@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 37;
+export const EVENT_SCHEMA_VERSION = 38;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -102,6 +102,7 @@ export const ActionType = {
   ARTIFACT_INTERACTED: "artifact.interacted",
   ARTIFACT_COMMENT_CREATED: "artifact.comment.created",
   AGENT_WORK_TRANSITIONED: "agent.work.transitioned",
+  ARTIFACT_FEEDBACK_REPLIED: "artifact.feedback.replied",
   RLM_BRIDGE_DECIDED: "rlm.bridge.decided",
   QUALITY_GATE_EVALUATED: "quality_gate.evaluated",
   CROSS_GRAPH_CITATION_RECORDED: "cross_graph.citation.recorded",
@@ -951,6 +952,18 @@ export interface AgentWorkTransitionedPayload {
   after_state: string;
   attempt_no: number;
   reason: string;
+}
+
+/**
+ * Audit projection of one canonical agent reply.
+ */
+export interface ArtifactFeedbackRepliedPayload {
+  action_type: "artifact.feedback.replied";
+  work_id: string;
+  thread_id: string;
+  reply_item_id: string;
+  attempt_no: number;
+  reply_sha256: string;
 }
 
 /**
@@ -2799,6 +2812,7 @@ export type TypedPayload =
   | ArtifactInteractedPayload
   | ArtifactCommentCreatedPayload
   | AgentWorkTransitionedPayload
+  | ArtifactFeedbackRepliedPayload
   | TierAssignedPayload
   | TierOverriddenPayload
   | TierRewriteBulkPayload
@@ -2924,6 +2938,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "ai.action.applied",
   "ai.action.undone",
   "artifact.comment.created",
+  "artifact.feedback.replied",
   "artifact.generated",
   "artifact.interacted",
   "audit.finding_emitted",

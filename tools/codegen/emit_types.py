@@ -169,6 +169,7 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ArtifactInteractedPayload,
     schema_module.ArtifactCommentCreatedPayload,
     schema_module.AgentWorkTransitionedPayload,
+    schema_module.ArtifactFeedbackRepliedPayload,
     schema_module.TierAssignedPayload,
     schema_module.TierOverriddenPayload,
     schema_module.TierRewriteBulkPayload,
