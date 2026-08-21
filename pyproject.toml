@@ -162,6 +162,7 @@ dev = [
 # the matching system libs. Substack export works without the extra.
 
 [project.scripts]
+herdr-bridge = "infrastructure.connectors.herdr_bridge.cli:main"
 # Entry point lives at `antiek.cli:main` once we wire it. For now this is
 # a placeholder so `pip install -e .` doesn't fail; the real launcher
 # fires up Hermes with the right profile (see spec, "Compute and runtime").
@@ -182,6 +183,7 @@ packages = [
   "compounding",
   "runtime",
   "integrations",
+  "infrastructure",
 ]
 
 [tool.ruff]
