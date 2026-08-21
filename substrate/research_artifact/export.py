@@ -99,15 +99,36 @@ def _projection_model(body: ResearchArtifactBody) -> dict[str, object]:
             }
         )
 
-    def paragraph(text: str) -> None:
-        content.append({"type": "paragraph", "content": [{"type": "text", "text": text}]})
+    def paragraph(
+        text: str,
+        *,
+        node_id: str | None = None,
+        source_document_id: str | None = None,
+    ) -> None:
+        node: dict[str, object] = {
+            "type": "paragraph",
+            "content": [{"type": "text", "text": text}],
+        }
+        if node_id is not None:
+            node["attrs"] = {
+                "node_id": node_id,
+                "source_document_id": source_document_id,
+            }
+        content.append(node)
 
     heading("Findings")
     for insight in body.insights:
-        paragraph(insight.text)
+        paragraph(
+            insight.text,
+            node_id=insight.node_id,
+            source_document_id=insight.source_document_id,
+        )
     heading("Open gaps")
     for question in body.open_questions:
-        paragraph(question.text)
+        paragraph(
+            question.text,
+            node_id=question.node_id,
+        )
     heading("Synthesis excerpt")
     paragraph(body.synthesis_excerpt or "Synthesis not available.")
     if body.agent_notes:
