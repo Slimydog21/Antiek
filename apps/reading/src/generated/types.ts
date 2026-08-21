@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 36;
+export const EVENT_SCHEMA_VERSION = 37;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -100,6 +100,8 @@ export const ActionType = {
   USER_EDIT_DISTILLATION: "user.edit_distillation",
   ARTIFACT_GENERATED: "artifact.generated",
   ARTIFACT_INTERACTED: "artifact.interacted",
+  ARTIFACT_COMMENT_CREATED: "artifact.comment.created",
+  AGENT_WORK_TRANSITIONED: "agent.work.transitioned",
   RLM_BRIDGE_DECIDED: "rlm.bridge.decided",
   QUALITY_GATE_EVALUATED: "quality_gate.evaluated",
   CROSS_GRAPH_CITATION_RECORDED: "cross_graph.citation.recorded",
@@ -921,6 +923,34 @@ export interface ArtifactInteractedPayload {
   action_type: "artifact.interacted";
   artifact_id: string;
   interaction_kind: "opened" | "closed" | "dismissed";
+}
+
+/**
+ * Audit projection of one canonical, immutable-version comment.
+ */
+export interface ArtifactCommentCreatedPayload {
+  action_type: "artifact.comment.created";
+  thread_id: string;
+  item_id: string;
+  artifact_id: string;
+  artifact_version: number;
+  artifact_content_sha256: string;
+  artifact_source_sha256: string;
+  anchor_node_id: string;
+  body_sha256: string;
+}
+
+/**
+ * Audit projection of a canonical agent-work state transition.
+ */
+export interface AgentWorkTransitionedPayload {
+  action_type: "agent.work.transitioned";
+  work_id: string;
+  thread_id: string;
+  before_state?: string | null;
+  after_state: string;
+  attempt_no: number;
+  reason: string;
 }
 
 /**
@@ -2767,6 +2797,8 @@ export type TypedPayload =
   | UserEditDistillationPayload
   | ArtifactGeneratedPayload
   | ArtifactInteractedPayload
+  | ArtifactCommentCreatedPayload
+  | AgentWorkTransitionedPayload
   | TierAssignedPayload
   | TierOverriddenPayload
   | TierRewriteBulkPayload
@@ -2888,8 +2920,10 @@ export interface Event {
 }
 
 export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
+  "agent.work.transitioned",
   "ai.action.applied",
   "ai.action.undone",
+  "artifact.comment.created",
   "artifact.generated",
   "artifact.interacted",
   "audit.finding_emitted",

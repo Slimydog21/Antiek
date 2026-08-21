@@ -7,6 +7,14 @@ import unicodedata
 from dataclasses import dataclass
 
 
+@dataclass(frozen=True, slots=True)
+class ArtifactVersionRef:
+    artifact_id: str
+    version: int
+    content_sha256: str
+    source_sha256: str
+
+
 def normalize_node_text(value: str) -> str:
     """Apply the cross-runtime ``unicode-nfc-v1`` normalization contract."""
     return unicodedata.normalize("NFC", value.replace("\r\n", "\n").replace("\r", "\n"))

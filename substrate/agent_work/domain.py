@@ -91,9 +91,7 @@ def decide_transition(state: WorkState, command: WorkCommand) -> Transition:
         return Transition(before=state, after=WorkState.SUBMITTED, reason="submitted")
     if state is WorkState.SUBMITTED and isinstance(command, MarkAcknowledged):
         return Transition(before=state, after=WorkState.ACKNOWLEDGED, reason="acknowledged")
-    if state in {WorkState.SUBMITTED, WorkState.ACKNOWLEDGED} and isinstance(
-        command, MarkWorking
-    ):
+    if state in {WorkState.SUBMITTED, WorkState.ACKNOWLEDGED} and isinstance(command, MarkWorking):
         return Transition(before=state, after=WorkState.WORKING, reason="working")
     if state in {
         WorkState.LEASED,
