@@ -70,6 +70,11 @@ dependencies = [
   # CI). The format package's only other external import is duckdb (already
   # core above) for the sidecar reader/writer graph-edge paths.
   "jsonschema>=4.0",
+  # DuckDB imports pytz while materializing timezone-aware TIMESTAMP values.
+  # Declare it directly because the agent-work lifecycle reads those values
+  # in the core server path; relying on another package to provide it made
+  # clean CI environments fail at query time.
+  "pytz>=2024.1",
   # 2.8 is the newest line compatible with the repository's declared
   # cryptography==48 constraint. 3.x requires cryptography>=49.
   "webauthn>=2.8,<4",
