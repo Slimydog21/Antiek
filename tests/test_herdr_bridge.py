@@ -326,6 +326,7 @@ def test_antiek_client_uses_scoped_auth_stable_result_key_and_exact_json(tmp_pat
     client.result(result)
 
     assert calls[0][2]["Authorization"] == "AntiekBridge mini-bridge-1.test-secret"
+    assert calls[0][2]["User-Agent"] == "AntiekHerdrBridge/0.1"
     assert calls[0][3] == {
         "bridge_instance_id": "faisals-mac-mini",
         "lease_seconds": 120,
