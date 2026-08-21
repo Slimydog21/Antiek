@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { emitWernerExperience } from "../../../werner";
 
@@ -97,20 +97,26 @@ export function useFloatMenuSelection({
   minLength = 3,
 }: UseFloatMenuSelectionOptions): FloatMenuSelection | null {
   const [selection, setSelection] = useState<FloatMenuSelection | null>(null);
+  const selectionOpenRef = useRef(false);
 
   useEffect(() => {
+    const dismissSelection = () => {
+      selectionOpenRef.current = false;
+      setSelection((current) => (current ? null : current));
+    };
+
     function onSelectionChange() {
       const sel = window.getSelection();
       const scope = scopeRef.current;
       // Empty selection / no scope → dismiss (rigor #3: empty selection → no
       // window, no crash). Clear only if currently open to avoid render churn.
       if (!sel || sel.rangeCount === 0 || !scope) {
-        setSelection((s) => (s ? null : s));
+        dismissSelection();
         return;
       }
       const text = sel.toString().trim();
       if (!text || text.length < minLength) {
-        setSelection((s) => (s ? null : s));
+        dismissSelection();
         return;
       }
       const range = sel.getRangeAt(0);
@@ -118,32 +124,37 @@ export function useFloatMenuSelection({
       // menu (HighlightToolbar.tsx:52). A selection elsewhere on the page is
       // not ours; dismiss.
       if (!scope.contains(range.commonAncestorContainer)) {
-        setSelection((s) => (s ? null : s));
+        dismissSelection();
         return;
       }
       const r = range.getBoundingClientRect();
       // A collapsed selection has a zero-area rect — treat as dismissed
       // (rigor #3: selection collapses while menu open → dismiss).
       if (r.width === 0 && r.height === 0) {
-        setSelection((s) => (s ? null : s));
+        dismissSelection();
         return;
       }
       const provenance = resolveProvenance
         ? resolveProvenance(range, text)
         : {};
-      setSelection((prev) => {
-        // Fire once when a highlight first opens (not every selectionchange tick).
-        if (!prev) emitWernerExperience({ experience: "highlight" });
-        return {
-          text,
-          rect: { top: r.top, left: r.left, width: r.width, height: r.height },
-          provenance,
-        };
+      // Fire once when a highlight first opens (not every selectionchange
+      // tick). Keep the effect outside React's state updater: React may replay
+      // updater functions, while the experience event must be emitted once.
+      if (!selectionOpenRef.current) {
+        emitWernerExperience({ experience: "highlight" });
+        selectionOpenRef.current = true;
+      }
+      setSelection({
+        text,
+        rect: { top: r.top, left: r.left, width: r.width, height: r.height },
+        provenance,
       });
     }
     document.addEventListener("selectionchange", onSelectionChange);
-    return () =>
+    return () => {
+      selectionOpenRef.current = false;
       document.removeEventListener("selectionchange", onSelectionChange);
+    };
   }, [scopeRef, resolveProvenance, minLength]);
 
   return selection;
