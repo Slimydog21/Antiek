@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 38;
+export const EVENT_SCHEMA_VERSION = 39;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -101,6 +101,7 @@ export const ActionType = {
   ARTIFACT_GENERATED: "artifact.generated",
   ARTIFACT_INTERACTED: "artifact.interacted",
   ARTIFACT_COMMENT_CREATED: "artifact.comment.created",
+  FEEDBACK_THREAD_RESOLVED: "feedback.thread.resolved",
   AGENT_WORK_TRANSITIONED: "agent.work.transitioned",
   ARTIFACT_FEEDBACK_REPLIED: "artifact.feedback.replied",
   RLM_BRIDGE_DECIDED: "rlm.bridge.decided",
@@ -939,6 +940,17 @@ export interface ArtifactCommentCreatedPayload {
   artifact_source_sha256: string;
   anchor_node_id: string;
   body_sha256: string;
+}
+
+/**
+ * Audit projection of an operator resolving a feedback thread.
+ */
+export interface FeedbackThreadResolvedPayload {
+  action_type: "feedback.thread.resolved";
+  thread_id: string;
+  artifact_id: string;
+  artifact_version: number;
+  reason?: "operator_resolved";
 }
 
 /**
@@ -2811,6 +2823,7 @@ export type TypedPayload =
   | ArtifactGeneratedPayload
   | ArtifactInteractedPayload
   | ArtifactCommentCreatedPayload
+  | FeedbackThreadResolvedPayload
   | AgentWorkTransitionedPayload
   | ArtifactFeedbackRepliedPayload
   | TierAssignedPayload
@@ -2980,6 +2993,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "federation.partner.registered",
   "federation.partner.revoked",
   "federation.partner.trusted",
+  "feedback.thread.resolved",
   "fetch.fallback.escalated",
   "graph.edge.inserted",
   "graph.node.inserted",

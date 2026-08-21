@@ -2,11 +2,16 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const createFeedbackMock = vi.hoisted(() => vi.fn());
+const resolveFeedbackMock = vi.hoisted(() => vi.fn());
 vi.mock("../../api/feedback", async () => {
   const actual = await vi.importActual<typeof import("../../api/feedback")>(
     "../../api/feedback",
   );
-  return { ...actual, createArtifactFeedback: createFeedbackMock };
+  return {
+    ...actual,
+    createArtifactFeedback: createFeedbackMock,
+    resolveFeedbackThread: resolveFeedbackMock,
+  };
 });
 
 import ArtifactFeedbackReview from "./ArtifactFeedbackReview";
@@ -15,10 +20,11 @@ describe("ArtifactFeedbackReview", () => {
   afterEach(() => {
     cleanup();
     createFeedbackMock.mockReset();
+    resolveFeedbackMock.mockReset();
   });
 
   it("turns a one-node selection into a durable feedback thread", async () => {
-    createFeedbackMock.mockResolvedValue({
+    const openThread = {
       thread_id: "fth-1",
       investigation_id: "inv-1",
       state: "open",
@@ -53,7 +59,9 @@ describe("ArtifactFeedbackReview", () => {
         state: "queued",
         attempt_count: 0,
       },
-    });
+    };
+    createFeedbackMock.mockResolvedValue(openThread);
+    resolveFeedbackMock.mockResolvedValue({ ...openThread, state: "resolved" });
     render(
       <ArtifactFeedbackReview
         investigationId="inv-1"
@@ -95,5 +103,8 @@ describe("ArtifactFeedbackReview", () => {
 
     await waitFor(() => expect(createFeedbackMock).toHaveBeenCalledOnce());
     expect(await screen.findByText("Queued for research-owner")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Resolve thread" }));
+    await waitFor(() => expect(resolveFeedbackMock).toHaveBeenCalledOnce());
+    expect(await screen.findByText("Resolved")).toBeTruthy();
   });
 });

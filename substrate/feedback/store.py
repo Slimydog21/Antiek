@@ -199,3 +199,33 @@ class FeedbackStore:
             ),
             work=WorkView(str(work_row[0]), str(work_row[1]), str(work_row[2]), int(work_row[3])),
         )
+
+    def resolve_thread(
+        self,
+        con: LockedConnection,
+        *,
+        owner_user_id: str,
+        thread_id: str,
+    ) -> ThreadView:
+        """Resolve one owner-scoped thread without altering its work history."""
+        init_feedback_schema(con)
+        row = con.execute(
+            "SELECT state FROM feedback_threads WHERE thread_id=? AND owner_user_id=?",
+            [thread_id, owner_user_id],
+        ).fetchone()
+        if row is None:
+            raise KeyError("feedback thread not found")
+        if str(row[0]) == "open":
+            con.execute(
+                "UPDATE feedback_threads SET state='resolved', updated_at=now() "
+                "WHERE thread_id=? AND owner_user_id=? AND state='open'",
+                [thread_id, owner_user_id],
+            )
+        thread = self.get_thread(
+            con,
+            owner_user_id=owner_user_id,
+            thread_id=thread_id,
+        )
+        if thread is None:  # pragma: no cover - database invariant
+            raise RuntimeError("resolved feedback thread could not be read back")
+        return thread

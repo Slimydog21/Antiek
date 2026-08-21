@@ -340,6 +340,7 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   // the adjacent feedback docket, so duplicating them in the research run
   // narration would add noise without new information.
   [ActionType.ARTIFACT_COMMENT_CREATED]: null,
+  [ActionType.FEEDBACK_THREAD_RESOLVED]: null,
   [ActionType.AGENT_WORK_TRANSITIONED]: null,
   [ActionType.ARTIFACT_FEEDBACK_REPLIED]: null,
 

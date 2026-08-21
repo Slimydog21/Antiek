@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from runtime.db_lock import LockedConnection, connect_write
 from substrate.feedback.anchor import validate_artifact_anchor
+from substrate.feedback.schema import init_feedback_schema
 from substrate.feedback.store import CreateThreadCommand, FeedbackStore, ThreadView
 from substrate.schemas.events import (
     AgentWorkTransitionedPayload,
     ArtifactCommentCreatedPayload,
+    FeedbackThreadResolvedPayload,
 )
 from substrate.write.event_outbox import (
     build_typed_envelope,
@@ -110,3 +114,80 @@ def create_artifact_feedback(
             if validated.investigation_id != command.investigation_id:
                 raise ValueError("artifact does not belong to the investigation")
             return _persist_feedback_thread(con, command, checkpoint=checkpoint)
+
+
+@dataclass(frozen=True, slots=True)
+class ResolveThreadCommand:
+    owner_user_id: str
+    thread_id: str
+    idempotency_key: str
+
+
+def resolve_feedback_thread(db_path: str, command: ResolveThreadCommand) -> ThreadView:
+    """Atomically resolve, audit, and exactly replay one feedback thread."""
+    request_sha256 = hashlib.sha256(
+        json.dumps(
+            {
+                "owner_user_id": command.owner_user_id,
+                "thread_id": command.thread_id,
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+    with connect_write(db_path, purpose="feedback/resolve") as con:  # noqa: SIM117
+        with eventful_transaction(con, "unused-until-thread-load"):
+            init_feedback_schema(con)
+            receipt = con.execute(
+                "SELECT request_sha256, resource_id FROM feedback_command_receipts "
+                "WHERE principal_id=? AND command_kind='resolve_thread' "
+                "AND idempotency_key=?",
+                [command.owner_user_id, command.idempotency_key],
+            ).fetchone()
+            store = FeedbackStore()
+            if receipt is not None:
+                if str(receipt[0]) != request_sha256:
+                    raise ValueError("idempotency key was reused with different bytes")
+                replay = store.get_thread(
+                    con,
+                    owner_user_id=command.owner_user_id,
+                    thread_id=str(receipt[1]),
+                )
+                if replay is None:  # pragma: no cover - database invariant
+                    raise RuntimeError("resolve receipt has no canonical result")
+                return replay
+            thread = store.resolve_thread(
+                con,
+                owner_user_id=command.owner_user_id,
+                thread_id=command.thread_id,
+            )
+            operation_id = f"feedback-resolve:{thread.thread_id}"
+            if event_for_operation(con, operation_id) is None:
+                event = build_typed_envelope(
+                    thread.investigation_id,
+                    FeedbackThreadResolvedPayload(
+                        thread_id=thread.thread_id,
+                        artifact_id=thread.artifact.artifact_id,
+                        artifact_version=thread.artifact.version,
+                    ),
+                    event_id=f"evt-feedback-resolved-{thread.thread_id}",
+                )
+                enqueue_event(
+                    con,
+                    operation_id=operation_id,
+                    aggregate_kind="feedback_thread",
+                    aggregate_id=thread.thread_id,
+                    event=event,
+                )
+            con.execute(
+                "INSERT INTO feedback_command_receipts ("
+                "principal_id, command_kind, idempotency_key, request_sha256, resource_id"
+                ") VALUES (?, 'resolve_thread', ?, ?, ?)",
+                [
+                    command.owner_user_id,
+                    command.idempotency_key,
+                    request_sha256,
+                    thread.thread_id,
+                ],
+            )
+            return thread

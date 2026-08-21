@@ -7,13 +7,18 @@ import json
 import os
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from runtime.db_lock import connect_write
 from substrate.feedback.anchor import ArtifactAnchorMismatch
 from substrate.feedback.domain import ArtifactVersionRef, NodeTextAnchor
-from substrate.feedback.service import create_artifact_feedback
+from substrate.feedback.service import (
+    ResolveThreadCommand,
+    create_artifact_feedback,
+    resolve_feedback_thread,
+)
 from substrate.feedback.store import CreateThreadCommand, FeedbackStore, ThreadView
 from substrate.graph import default_db_path, ensure_initialized
 
@@ -60,6 +65,13 @@ def _owner(request: Request) -> str:
 def _canonical_digest(value: Any) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _require_idempotency_key(value: str | None) -> str:
+    key = (value or "").strip()
+    if not 16 <= len(key) <= 160 or not key.isascii() or not key.isprintable():
+        raise HTTPException(status_code=400, detail="valid Idempotency-Key is required")
+    return key
 
 
 def _thread_payload(thread: ThreadView) -> dict[str, Any]:
@@ -119,9 +131,7 @@ async def create_feedback(
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> dict[str, Any]:
     _require_enabled()
-    key = (idempotency_key or "").strip()
-    if not 16 <= len(key) <= 160 or not key.isascii() or not key.isprintable():
-        raise HTTPException(status_code=400, detail="valid Idempotency-Key is required")
+    key = _require_idempotency_key(idempotency_key)
     if version < 1:
         raise HTTPException(status_code=404, detail="artifact version not found")
     owner_user_id = _owner(request)
@@ -174,7 +184,11 @@ async def create_feedback(
 
 
 @feedback_router.get("/feedback/threads/{thread_id}")
-async def get_feedback(thread_id: str, request: Request) -> dict[str, Any]:
+async def get_feedback(
+    thread_id: str,
+    request: Request,
+    if_none_match: Annotated[str | None, Header(alias="If-None-Match")] = None,
+) -> Response:
     _require_enabled()
     with connect_write(_db_path(), purpose="feedback/read") as con:
         thread = FeedbackStore().get_thread(
@@ -184,6 +198,37 @@ async def get_feedback(thread_id: str, request: Request) -> dict[str, Any]:
         )
     if thread is None:
         raise HTTPException(status_code=404, detail="feedback thread not found")
+    payload = _thread_payload(thread)
+    etag = f'"{_canonical_digest(payload)}"'
+    candidates = {
+        candidate.strip().removeprefix("W/")
+        for candidate in (if_none_match or "").split(",")
+    }
+    if "*" in candidates or etag in candidates:
+        return Response(status_code=304, headers={"ETag": etag})
+    return JSONResponse(payload, headers={"ETag": etag})
+
+
+@feedback_router.post("/feedback/threads/{thread_id}/resolve")
+async def resolve_feedback(
+    thread_id: str,
+    request: Request,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    _require_enabled()
+    try:
+        thread = resolve_feedback_thread(
+            _db_path(),
+            ResolveThreadCommand(
+                owner_user_id=_owner(request),
+                thread_id=thread_id,
+                idempotency_key=_require_idempotency_key(idempotency_key),
+            ),
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="feedback thread not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _thread_payload(thread)
 
 

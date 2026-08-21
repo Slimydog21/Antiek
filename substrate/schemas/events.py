@@ -221,6 +221,7 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     ARTIFACT_GENERATED = "artifact.generated"
     ARTIFACT_INTERACTED = "artifact.interacted"
     ARTIFACT_COMMENT_CREATED = "artifact.comment.created"
+    FEEDBACK_THREAD_RESOLVED = "feedback.thread.resolved"
     AGENT_WORK_TRANSITIONED = "agent.work.transitioned"
     ARTIFACT_FEEDBACK_REPLIED = "artifact.feedback.replied"
 
@@ -795,7 +796,8 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 #     private comment text or transport secrets. Purely additive. 2026-08-21.
 # v38: Agent feedback reply audit projection. The canonical private reply
 #     remains in DuckDB; the event carries only identity and digest.
-EVENT_SCHEMA_VERSION: int = 38
+# v39: Operator feedback-thread resolution becomes an immutable audit event.
+EVENT_SCHEMA_VERSION: int = 39
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -1291,6 +1293,18 @@ class ArtifactCommentCreatedPayload(_PayloadBase):
     artifact_source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     anchor_node_id: str
     body_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class FeedbackThreadResolvedPayload(_PayloadBase):
+    """Audit projection of an operator resolving a feedback thread."""
+
+    action_type: Literal[ActionType.FEEDBACK_THREAD_RESOLVED] = (
+        ActionType.FEEDBACK_THREAD_RESOLVED
+    )
+    thread_id: str
+    artifact_id: str
+    artifact_version: int = Field(gt=0)
+    reason: Literal["operator_resolved"] = "operator_resolved"
 
 
 class AgentWorkTransitionedPayload(_PayloadBase):
@@ -4267,6 +4281,7 @@ _TypedPayloadBase = Annotated[
 TypedPayload = Annotated[
     get_args(_TypedPayloadBase)[0]
     | ArtifactCommentCreatedPayload
+    | FeedbackThreadResolvedPayload
     | AgentWorkTransitionedPayload
     | ArtifactFeedbackRepliedPayload,
     Field(discriminator="action_type"),
@@ -4307,6 +4322,7 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset(
         ActionType.ARTIFACT_GENERATED.value,
         ActionType.ARTIFACT_INTERACTED.value,
         ActionType.ARTIFACT_COMMENT_CREATED.value,
+        ActionType.FEEDBACK_THREAD_RESOLVED.value,
         ActionType.AGENT_WORK_TRANSITIONED.value,
         ActionType.ARTIFACT_FEEDBACK_REPLIED.value,
         ActionType.GRAPH_TIER_ASSIGNED.value,
@@ -4576,6 +4592,7 @@ __all__ = [
     "ArtifactGeneratedPayload",
     "ArtifactInteractedPayload",
     "ArtifactCommentCreatedPayload",
+    "FeedbackThreadResolvedPayload",
     "AgentWorkTransitionedPayload",
     "ArtifactFeedbackRepliedPayload",
     # Middleware: source_tier

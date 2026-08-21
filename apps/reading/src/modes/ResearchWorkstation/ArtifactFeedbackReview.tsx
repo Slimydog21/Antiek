@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   createArtifactFeedback,
   getFeedbackThread,
+  resolveFeedbackThread,
   type FeedbackAnchor,
   type FeedbackThread,
 } from "../../api/feedback";
@@ -38,7 +39,15 @@ type ReviewState =
       body: string;
       idempotencyKey: string;
     }
-  | { kind: "active"; thread: FeedbackThread }
+  | {
+      kind: "active";
+      thread: FeedbackThread;
+      etag: string | null;
+      resolution:
+        | { kind: "ready" }
+        | { kind: "submitting"; idempotencyKey: string }
+        | { kind: "error"; idempotencyKey: string; message: string };
+    }
   | {
       kind: "error";
       selection: ArtifactFeedbackSelection;
@@ -91,14 +100,31 @@ export default function ArtifactFeedbackReview({
   useEffect(() => {
     if (state.kind !== "active" || TERMINAL_WORK_STATES.has(state.thread.work.state)) return;
     const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      void getFeedbackThread(state.thread.thread_id, controller.signal)
-        .then((thread) => setState({ kind: "active", thread }))
-        .catch(() => undefined);
-    }, 5_000);
+    let timer: number | null = null;
+    const schedule = () => {
+      timer = window.setTimeout(() => {
+        void getFeedbackThread(state.thread.thread_id, state.etag, controller.signal)
+          .then((result) => {
+            if (result.kind === "thread") {
+              setState({
+                kind: "active",
+                thread: result.thread,
+                etag: result.etag,
+                resolution: state.resolution,
+              });
+            } else if (!controller.signal.aborted) {
+              schedule();
+            }
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) schedule();
+          });
+      }, 5_000);
+    };
+    schedule();
     return () => {
       controller.abort();
-      window.clearTimeout(timer);
+      if (timer !== null) window.clearTimeout(timer);
     };
   }, [state]);
 
@@ -152,9 +178,36 @@ export default function ArtifactFeedbackReview({
         bodyMarkdown: body,
         idempotencyKey: command.idempotencyKey,
       });
-      setState({ kind: "active", thread });
+      setState({ kind: "active", thread, etag: null, resolution: { kind: "ready" } });
     } catch (error) {
       setState({ ...command, kind: "error", body, message: messageOf(error) });
+    }
+  };
+
+  const resolveThread = async () => {
+    if (state.kind !== "active" || state.thread.state === "resolved") return;
+    const idempotencyKey =
+      state.resolution.kind === "error"
+        ? state.resolution.idempotencyKey
+        : `feedback-resolve-${crypto.randomUUID()}`;
+    const current = state;
+    setState({
+      ...current,
+      resolution: { kind: "submitting", idempotencyKey },
+    });
+    try {
+      const thread = await resolveFeedbackThread(current.thread.thread_id, idempotencyKey);
+      setState({
+        kind: "active",
+        thread,
+        etag: null,
+        resolution: { kind: "ready" },
+      });
+    } catch (error) {
+      setState({
+        ...current,
+        resolution: { kind: "error", idempotencyKey, message: messageOf(error) },
+      });
     }
   };
 
@@ -210,7 +263,9 @@ export default function ArtifactFeedbackReview({
         {state.kind === "active" ? (
           <div className="artifact-review__thread" aria-live="polite">
             <p className="artifact-review__work-state">
-              {state.thread.work.state === "queued"
+              {state.thread.state === "resolved"
+                ? "Resolved"
+                : state.thread.work.state === "queued"
                 ? `Queued for ${state.thread.work.logical_worker_id}`
                 : `Research work · ${state.thread.work.state}`}
             </p>
@@ -222,6 +277,19 @@ export default function ArtifactFeedbackReview({
                 </li>
               ))}
             </ol>
+            {state.thread.state === "open" ? (
+              <LemonButton
+                size="sm"
+                variant="tertiary"
+                disabled={state.resolution.kind === "submitting"}
+                onClick={() => void resolveThread()}
+              >
+                {state.resolution.kind === "submitting" ? "Resolving…" : "Resolve thread"}
+              </LemonButton>
+            ) : null}
+            {state.resolution.kind === "error" ? (
+              <p role="alert">{state.resolution.message}</p>
+            ) : null}
           </div>
         ) : null}
       </aside>

@@ -105,6 +105,25 @@ def test_operator_creates_and_reads_version_bound_feedback(feedback_api) -> None
     loaded = client.get(f"/feedback/threads/{created['thread_id']}")
     assert loaded.status_code == 200
     assert loaded.json() == created
+    assert loaded.headers["ETag"].startswith('"')
+    unchanged = client.get(
+        f"/feedback/threads/{created['thread_id']}",
+        headers={"If-None-Match": loaded.headers["ETag"]},
+    )
+    assert unchanged.status_code == 304
+    assert unchanged.content == b""
+    resolved = client.post(
+        f"/feedback/threads/{created['thread_id']}/resolve",
+        headers={"Idempotency-Key": "feedback-resolve-0001"},
+    )
+    assert resolved.status_code == 200, resolved.text
+    assert resolved.json()["state"] == "resolved"
+    changed = client.get(
+        f"/feedback/threads/{created['thread_id']}",
+        headers={"If-None-Match": loaded.headers["ETag"]},
+    )
+    assert changed.status_code == 200
+    assert changed.headers["ETag"] != loaded.headers["ETag"]
 
 
 def test_feedback_create_requires_idempotency_key(feedback_api) -> None:

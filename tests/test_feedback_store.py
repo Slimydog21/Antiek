@@ -4,7 +4,11 @@ import pytest
 
 from runtime.db_lock import connect_write
 from substrate.feedback.domain import ArtifactVersionRef, NodeTextAnchor
-from substrate.feedback.service import create_feedback_thread
+from substrate.feedback.service import (
+    ResolveThreadCommand,
+    create_feedback_thread,
+    resolve_feedback_thread,
+)
 from substrate.feedback.store import CreateThreadCommand, FeedbackStore
 from substrate.graph.schema import init_database_at_path
 from substrate.write.event_outbox import event_for_operation
@@ -123,3 +127,25 @@ def test_create_command_rolls_back_domain_and_outbox_after_first_event(tmp_path)
         assert FeedbackStore().get_thread(con, owner_user_id="owner-1", thread_id="fth-1") is None
         assert event_for_operation(con, "feedback:create:op-1:comment") is None
         assert event_for_operation(con, "feedback:create:op-1:work") is None
+
+
+def test_resolve_thread_is_atomic_audited_and_exactly_replayable(tmp_path) -> None:
+    db_path = str(tmp_path / "graph.duckdb")
+    init_database_at_path(db_path)
+    create_feedback_thread(db_path, _command())
+    command = ResolveThreadCommand(
+        owner_user_id="owner-1",
+        thread_id="fth-1",
+        idempotency_key="resolve-key-0001",
+    )
+
+    first = resolve_feedback_thread(db_path, command)
+    replay = resolve_feedback_thread(db_path, command)
+
+    assert replay == first
+    assert first.state == "resolved"
+    with connect_write(db_path, purpose="test/feedback-resolved-event") as con:
+        event = event_for_operation(con, "feedback-resolve:fth-1")
+    assert event is not None
+    assert event.action_type == "feedback.thread.resolved"
+    assert event.payload.thread_id == "fth-1"

@@ -48,6 +48,10 @@ export interface CreateArtifactFeedbackInput {
   idempotencyKey: string;
 }
 
+export type FeedbackPollResult =
+  | { kind: "not_modified"; etag: string }
+  | { kind: "thread"; etag: string; thread: FeedbackThread };
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -170,11 +174,34 @@ export async function createArtifactFeedback(
 
 export async function getFeedbackThread(
   threadId: string,
+  etag: string | null = null,
   signal?: AbortSignal,
-): Promise<FeedbackThread> {
+): Promise<FeedbackPollResult> {
+  const headers = etag === null ? undefined : { "If-None-Match": etag };
   const response = await apiFetch(
     `${API_BASE}/feedback/threads/${encodeURIComponent(threadId)}`,
-    { signal },
+    { headers, signal },
   );
-  return parseFeedbackThread(await checkedJson(response, "Loading feedback"));
+  const responseEtag = response.headers.get("ETag");
+  if (response.status === 304) {
+    if (!responseEtag) throw new Error("Invalid feedback response: missing ETag");
+    return { kind: "not_modified", etag: responseEtag };
+  }
+  if (!responseEtag) throw new Error("Invalid feedback response: missing ETag");
+  const thread = parseFeedbackThread(await checkedJson(response, "Loading feedback"));
+  return { kind: "thread", etag: responseEtag, thread };
+}
+
+export async function resolveFeedbackThread(
+  threadId: string,
+  idempotencyKey: string,
+): Promise<FeedbackThread> {
+  const response = await apiFetch(
+    `${API_BASE}/feedback/threads/${encodeURIComponent(threadId)}/resolve`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+    },
+  );
+  return parseFeedbackThread(await checkedJson(response, "Resolving feedback"));
 }
