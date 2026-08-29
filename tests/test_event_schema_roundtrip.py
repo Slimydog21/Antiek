@@ -7,6 +7,9 @@ through the full typed union unchanged, with its exact action_type string.
 from __future__ import annotations
 
 import hashlib
+import subprocess
+import typing
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -27,6 +30,7 @@ from substrate.schemas.events import (
     ProviderUnknownReason,
     TypedPayload,
 )
+from tools.codegen.emit_types import PAYLOAD_MODELS
 
 HEX = "a" * 64
 
@@ -193,3 +197,63 @@ def test_v41_action_type_strings_exact() -> None:
     }
     actual = {factory().action_type for factory in ALL_V41_PAYLOADS}
     assert expected <= actual
+
+
+# --- codegen completeness + TS compile round-trip -------------------------
+
+
+def test_codegen_registry_covers_typed_union() -> None:
+    """The manual PAYLOAD_MODELS registry must track the union exactly."""
+    union_names = {
+        getattr(arg, "__name__", str(arg))
+        for arg in typing.get_args(typing.get_args(TypedPayload)[0])
+    }
+    registry_names = {model.__name__ for model in PAYLOAD_MODELS}
+    assert registry_names == union_names, (
+        f"codegen drift: missing={union_names - registry_names} "
+        f"stale={registry_names - union_names}"
+    )
+
+
+def test_v41_typescript_round_trip_compiles() -> None:
+    """The generated TS must type v41 payloads and narrow the union."""
+    worktree = Path(__file__).resolve().parents[1]
+    tsc = None
+    for candidate in (
+        worktree / "apps/reading/node_modules/.bin/tsc",
+        worktree.parents[1] / "platform/apps/reading/node_modules/.bin/tsc",
+    ):
+        if candidate.exists():
+            tsc = candidate
+            break
+    if tsc is None:
+        pytest.skip("no tsc available in worktree or platform checkout")
+
+    result = subprocess.run(
+        [
+            str(tsc),
+            "--noEmit",
+            "--strict",
+            "--target",
+            "es2020",
+            "--moduleResolution",
+            "bundler",
+            "--module",
+            "esnext",
+            str(worktree / "tests/fixtures/v41_ts_roundtrip.ts"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    # The harness asserts EVENT_SCHEMA_VERSION === 41 at runtime-compile level.
+    types_ts = (worktree / "apps/reading/src/generated/types.ts").read_text()
+    assert "EVENT_SCHEMA_VERSION = 41" in types_ts
+    for discriminator in (
+        '"artifact.highlight.created"',
+        '"feedback.dispatch.completed"',
+        '"owner.launch.role.completed"',
+        '"deliverable.html.edited"',
+    ):
+        assert discriminator in types_ts

@@ -171,6 +171,16 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.FeedbackThreadResolvedPayload,
     schema_module.AgentWorkTransitionedPayload,
     schema_module.ArtifactFeedbackRepliedPayload,
+    # D2 anchored comments (v41) — same order as the TypedPayload union.
+    schema_module.ArtifactHighlightCreatedPayload,
+    schema_module.FeedbackDispatchRequestedPayload,
+    schema_module.FeedbackDispatchRefusedPayload,
+    schema_module.FeedbackDispatchProviderUnknownPayload,
+    schema_module.FeedbackDispatchCompletedPayload,
+    schema_module.DeliverableHtmlEditedPayload,
+    schema_module.OwnerLaunchRoleStartedPayload,
+    schema_module.OwnerLaunchRoleProviderUnknownPayload,
+    schema_module.OwnerLaunchRoleCompletedPayload,
     schema_module.TierAssignedPayload,
     schema_module.TierOverriddenPayload,
     schema_module.TierRewriteBulkPayload,
@@ -290,10 +300,26 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.SurfaceServedImpressionPayload,
 )
 
+# Bare enum classes used as payload field types. Emitted as TS string-literal
+# aliases with the same name; _python_to_ts_inner resolves registered enums.
+_ENUM_FIELD_ALIASES: dict[type[enum.Enum], str] = {
+    schema_module.HighlightColor: "HighlightColor",
+    schema_module.ProviderUnknownReason: "ProviderUnknownReason",
+    schema_module.DispatchErrorCode: "DispatchErrorCode",
+    schema_module.LoopOneChildRole: "LoopOneChildRole",
+}
+
+
 # Re-exported Literal aliases. Name → list of allowed values.
 # Emitted as ``export type <Name> = "a" | "b";`` so the TS side can use
 # them in switch narrowing and exhaustiveness checks.
 LITERAL_ALIASES: dict[str, tuple[str, ...]] = {
+    "HighlightColor": tuple(m.value for m in schema_module.HighlightColor),
+    "ProviderUnknownReason": tuple(m.value for m in schema_module.ProviderUnknownReason),
+    "D2QueueTransitionReason": tuple(m.value for m in schema_module.D2QueueTransitionReason),
+    "RoleEventReason": tuple(m.value for m in schema_module.RoleEventReason),
+    "DispatchErrorCode": tuple(m.value for m in schema_module.DispatchErrorCode),
+    "LoopOneChildRole": tuple(m.value for m in schema_module.LoopOneChildRole),
     "ConfidenceLevel": typing.get_args(schema_module.ConfidenceLevel),
     "ArtifactKind": typing.get_args(schema_module.ArtifactKind),
     "TierClassificationMethod": typing.get_args(schema_module.TierClassificationMethod),
@@ -411,6 +437,9 @@ def _python_to_ts_inner(tp: Any, *, field_name: str, model_name: str) -> str:
     if isinstance(tp, type) and issubclass(tp, enum.Enum):
         if tp is ActionType:
             return "ActionType"
+        alias = _ENUM_FIELD_ALIASES.get(tp)
+        if alias is not None:
+            return alias
         raise UnsupportedType(
             f"{model_name}.{field_name}: bare enum {tp.__name__!r} has no "
             "registered TS emission. Add a case to _python_to_ts_inner."
@@ -499,7 +528,7 @@ def _emit_interface(model: type[BaseModel], lines: list[str]) -> None:
     if docstring:
         lines.append("/**")
         for d_line in docstring.splitlines():
-            lines.append(f" * {d_line.rstrip()}")
+            lines.append(f" * {d_line.rstrip()}".rstrip())
         lines.append(" */")
     lines.append(f"export interface {name} {{")
     for field_name, field in model.model_fields.items():
