@@ -11,19 +11,7 @@ import datetime
 import duckdb
 import pytest
 
-
-@pytest.fixture
-def db_path(tmp_path):
-    """Create a temporary DuckDB database path."""
-    return str(tmp_path / "test_feedback.duckdb")
-
-
-@pytest.fixture
-def baseline_db(db_path):
-    """Create a baseline v40 database with test data."""
-    con = duckdb.connect(db_path)
-    # Create baseline schema.
-    con.execute("""
+BASELINE_DDL = """
     CREATE TABLE IF NOT EXISTS feedback_threads (
       thread_id VARCHAR PRIMARY KEY,
       owner_user_id VARCHAR NOT NULL,
@@ -93,17 +81,12 @@ def baseline_db(db_path):
       created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE (work_id, attempt_no)
     );
-    """)
-    con.close()
-    return db_path
+    """
 
 
-@pytest.fixture
-def seeded_db(baseline_db):
-    """Create a baseline database with valid test data."""
-    con = duckdb.connect(baseline_db)
+def seed_valid_rows(con) -> None:
+    """Seed one valid thread/item/work/attempt aggregate for tests."""
     now = datetime.datetime.now(datetime.UTC)
-
     # Insert valid thread.
     con.execute("""
     INSERT INTO feedback_threads (
@@ -143,6 +126,29 @@ def seeded_db(baseline_db):
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, ["att-1", "work-1", 1, "lease-1", "cred-1", "inst-1", "leased", now, now])
 
+
+
+@pytest.fixture
+def db_path(tmp_path):
+    """Create a temporary DuckDB database path."""
+    return str(tmp_path / "test_feedback.duckdb")
+
+
+@pytest.fixture
+def baseline_db(db_path):
+    """Create a baseline v40 database with test data."""
+    con = duckdb.connect(db_path)
+    # Create baseline schema.
+    con.execute(BASELINE_DDL)
+    con.close()
+    return db_path
+
+
+@pytest.fixture
+def seeded_db(baseline_db):
+    """Create a baseline database with valid test data."""
+    con = duckdb.connect(baseline_db)
+    seed_valid_rows(con)
     con.close()
     return baseline_db
 

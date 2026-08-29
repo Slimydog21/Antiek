@@ -142,6 +142,16 @@ def _source_columns(table: str) -> tuple[str, ...]:
     return tuple(FEEDBACK_V41_COLUMN_MAP[table]["source_columns"])
 
 
+def _crash_point(phase: str) -> None:
+    """Deterministic hard-exit for real-process kill/resume tests.
+
+    Enabled only when D2_FEEDBACK_V41_CRASH_AFTER equals the just-committed
+    phase; mirrors process death immediately after the phase COMMIT.
+    """
+    if os.environ.get("D2_FEEDBACK_V41_CRASH_AFTER") == phase:
+        os._exit(70)
+
+
 def _now_utc() -> datetime:
     return datetime.now(UTC)
 
@@ -549,8 +559,12 @@ def migrate_feedback_v41(con: LockedConnection) -> None:
                 # Verify active shape and both committed digests.
                 _verify_active_shape(con, expected_schema=existing[3], expected_rows=existing[4])
                 return
-            # Resume from existing phase.
-            _validate_baseline_shape(con)
+            # Resume from existing phase. After the rename phase the v40
+            # baseline is gone; validate the renamed active shape instead.
+            if phase == "renamed":
+                _verify_active_shape(con)
+            else:
+                _validate_baseline_shape(con)
             _resume_from_phase(con, phase, existing)
             return
 
@@ -560,6 +574,7 @@ def migrate_feedback_v41(con: LockedConnection) -> None:
             "INSERT INTO schema_migrations (migration_id, phase, started_at) VALUES (?, 'started', ?)",
             [MIGRATION_ID, _now_utc()]
         )
+        _crash_point("started")
 
         # Phase 2: Create v41 tables and set temp_created.
         _phase_create_tables(con, expected="started")
@@ -662,7 +677,7 @@ def _phase_create_tables(con: LockedConnection, *, expected: str) -> None:
     with _phase_transaction(con):
         con.execute(_get_v41_ddl())
         _cas_phase(con, expected, "temp_created", started_at=_now_utc())
-
+    _crash_point("temp_created")
 
 def _phase_copy_rows(con: LockedConnection, *, expected: str) -> None:
     """Copy baseline rows to v41 tables with quarantine."""
@@ -679,7 +694,7 @@ def _phase_copy_rows(con: LockedConnection, *, expected: str) -> None:
             temp_schema_sha256=temp_schema_sha,
             temp_rows_sha256=temp_rows_sha,
         )
-
+    _crash_point("copied")
 
 def _copy_threads(con: LockedConnection, now: datetime) -> None:
     """Copy feedback_threads to v41 with validation and quarantine."""
@@ -1055,7 +1070,7 @@ def _phase_rename(con: LockedConnection, *, expected: str) -> None:
         for table in ("feedback_threads_v41", "feedback_items_v41", "agent_work_v41", "agent_work_attempts_v41"):
             con.execute(f"ALTER TABLE {table} RENAME TO {table.replace('_v41', '')}")
         _cas_phase(con, expected, "renamed")
-
+    _crash_point("renamed")
 
 def _phase_complete(con: LockedConnection, *, expected: str) -> None:
     """Compute active digests and complete the marker."""
