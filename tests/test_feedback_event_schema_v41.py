@@ -221,3 +221,77 @@ def test_deliverable_edit_bounds_changed_node_count() -> None:
     assert DeliverableHtmlEditedPayload(**fields).changed_node_count == 20
     with pytest.raises(pydantic.ValidationError):
         DeliverableHtmlEditedPayload(**{**fields, "changed_node_count": 21})
+
+
+# --- v41 resolved-payload extension + v40 read adapter --------------------
+
+from pydantic import TypeAdapter  # noqa: E402
+
+from substrate.schemas.events import (  # noqa: E402
+    FeedbackThreadResolvedPayload,
+    FeedbackThreadResolvedPayloadV40,
+    TypedPayload,
+    resolve_feedback_thread_payload,
+)
+
+_TYPED_ADAPTER = TypeAdapter(TypedPayload)
+
+_V40_ROW = {
+    "action_type": "feedback.thread.resolved",
+    "thread_id": "t-1",
+    "artifact_id": "art-1",
+    "artifact_version": 1,
+    "reason": "operator_resolved",
+}
+
+
+def _v41_row(**overrides: object) -> dict[str, object]:
+    row: dict[str, object] = {
+        "action_type": "feedback.thread.resolved",
+        "thread_id": "t-1",
+        "owner_user_id": "owner-a",
+        "artifact_id": "art-1",
+        "artifact_version": 1,
+        "artifact_content_sha256": HEX,
+        "artifact_source_sha256": HEX,
+        "resolution_event_id": "evt-feedback-resolved-t-1",
+        "reason": "operator_resolved",
+    }
+    row.update(overrides)
+    return row
+
+
+def test_v41_resolved_requires_full_tuple() -> None:
+    assert FeedbackThreadResolvedPayload.model_validate(_v41_row()).owner_user_id == "owner-a"
+    for missing in ("owner_user_id", "artifact_content_sha256", "artifact_source_sha256", "resolution_event_id"):
+        row = dict(_v41_row())
+        row.pop(missing)
+        with pytest.raises(pydantic.ValidationError):
+            FeedbackThreadResolvedPayload.model_validate(row)
+
+
+def test_v41_resolved_accepts_edit_applied_reason() -> None:
+    payload = FeedbackThreadResolvedPayload.model_validate(_v41_row(reason="edit_applied"))
+    assert payload.reason == "edit_applied"
+
+
+def test_v40_row_selected_as_adapter_with_null_pointer() -> None:
+    adapter = resolve_feedback_thread_payload(40, dict(_V40_ROW))
+    assert type(adapter) is FeedbackThreadResolvedPayloadV40
+    assert adapter.resolution_event_id is None
+
+
+def test_v40_row_rejected_by_v41_write_model() -> None:
+    with pytest.raises(pydantic.ValidationError):
+        FeedbackThreadResolvedPayload.model_validate(dict(_V40_ROW))
+
+
+def test_legacy_resolution_cannot_be_reemitted_as_v41() -> None:
+    with pytest.raises(pydantic.ValidationError):
+        _TYPED_ADAPTER.validate_python(dict(_V40_ROW))
+
+
+def test_newer_envelope_versions_parse_as_v41() -> None:
+    for version in (41, 42):
+        payload = resolve_feedback_thread_payload(version, _v41_row())
+        assert type(payload) is FeedbackThreadResolvedPayload

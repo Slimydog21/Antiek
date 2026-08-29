@@ -167,8 +167,12 @@ def resolve_feedback_thread(db_path: str, command: ResolveThreadCommand) -> Thre
                     thread.investigation_id,
                     FeedbackThreadResolvedPayload(
                         thread_id=thread.thread_id,
+                        owner_user_id=command.owner_user_id,
                         artifact_id=thread.artifact.artifact_id,
                         artifact_version=thread.artifact.version,
+                        artifact_content_sha256=thread.artifact.content_sha256,
+                        artifact_source_sha256=thread.artifact.source_sha256,
+                        resolution_event_id=f"evt-feedback-resolved-{thread.thread_id}",
                     ),
                     event_id=f"evt-feedback-resolved-{thread.thread_id}",
                 )

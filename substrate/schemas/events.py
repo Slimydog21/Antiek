@@ -1321,7 +1321,39 @@ class ArtifactCommentCreatedPayload(_PayloadBase):
 
 
 class FeedbackThreadResolvedPayload(_PayloadBase):
-    """Audit projection of an operator resolving a feedback thread."""
+    """Audit projection of a v41 thread resolution (write model).
+
+    v41 writes require the full owner/artifact tuple and a non-null
+    resolution pointer. ``edit_applied`` is reserved for SPR-05 deliverable
+    edits; resolve callers keep ``operator_resolved``.
+    """
+
+    model_config = ConfigDict(extra="forbid", use_enum_values=True)
+
+    action_type: Literal[ActionType.FEEDBACK_THREAD_RESOLVED] = (
+        ActionType.FEEDBACK_THREAD_RESOLVED
+    )
+    thread_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
+    owner_user_id: str = Field(pattern=r"^[\x20-\x7e]{1,256}$")
+    artifact_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
+    artifact_version: int = Field(gt=0)
+    artifact_content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    artifact_source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    resolution_event_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
+    reason: Literal["operator_resolved", "edit_applied"] = "operator_resolved"
+
+
+class FeedbackThreadResolvedPayloadV40(_PayloadBase):
+    """Read-only adapter for legacy v40 resolution rows.
+
+    Selected by envelope ``schema_version=40`` through
+    ``resolve_feedback_thread_payload``. Exposes ``resolution_event_id=None``
+    and is deliberately NOT a member of the ``TypedPayload`` union, so the
+    typed emit path structurally rejects it: a legacy resolution is never
+    re-emitted as v41 and never claims a new edit.
+    """
+
+    model_config = ConfigDict(extra="forbid", use_enum_values=True)
 
     action_type: Literal[ActionType.FEEDBACK_THREAD_RESOLVED] = (
         ActionType.FEEDBACK_THREAD_RESOLVED
@@ -1329,7 +1361,22 @@ class FeedbackThreadResolvedPayload(_PayloadBase):
     thread_id: str
     artifact_id: str
     artifact_version: int = Field(gt=0)
+    resolution_event_id: Literal[None] = None
     reason: Literal["operator_resolved"] = "operator_resolved"
+
+
+def resolve_feedback_thread_payload(
+    schema_version: int, payload: dict[str, Any]
+) -> FeedbackThreadResolvedPayload | FeedbackThreadResolvedPayloadV40:
+    """Version-selected read adapter for ``feedback.thread.resolved`` rows.
+
+    Envelopes stamped ``schema_version=40`` carry only the legacy tuple and
+    must validate against the read-only V40 adapter; anything else parses
+    as the v41 write model with its full required tuple.
+    """
+    if schema_version == 40:
+        return FeedbackThreadResolvedPayloadV40.model_validate(payload)
+    return FeedbackThreadResolvedPayload.model_validate(payload)
 
 
 class AgentWorkTransitionedPayload(_PayloadBase):
@@ -4922,6 +4969,8 @@ __all__ = [
     "ArtifactInteractedPayload",
     "ArtifactCommentCreatedPayload",
     "FeedbackThreadResolvedPayload",
+    "FeedbackThreadResolvedPayloadV40",
+    "resolve_feedback_thread_payload",
     "AgentWorkTransitionedPayload",
     "ArtifactFeedbackRepliedPayload",
     "ArtifactHighlightCreatedPayload",
