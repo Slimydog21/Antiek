@@ -218,20 +218,19 @@ def row_digest(
     return _sha256(blob)
 
 
-def _canonical_schema_ddls() -> dict[str, str]:
-    """Extract the nine canonical CREATE statements from the D2 DDL."""
-    ddl = _get_v41_ddl()
-    matches = list(re.finditer(r"CREATE TABLE IF NOT EXISTS (\w+) ", ddl))
-    result: dict[str, str] = {}
-    for index, match in enumerate(matches):
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(ddl)
-        statement = ddl[match.start():end].strip()
-        result[match.group(1)] = " ".join(statement.split())
-    return result
-
-
 def _actual_schema_ddls(con: LockedConnection, *, active: bool) -> dict[str, str]:
-    """Read actual DDL and normalize renamed active table names."""
+    """Read the schema digest inputs from DuckDB's stored catalog SQL.
+
+    DuckDB's sqlite_master stores a restructured rendering of the CREATE
+    statement (no IF NOT EXISTS, constraints hoisted into a trailing table
+    list, its own spacing). Both temp and active schema digests are computed
+    from THIS rendering, so they are self-consistent within one DuckDB
+    version — but a DuckDB upgrade that changes the rendering would change
+    schema digests for an identical physical schema. That failure is made
+    loud by the golden normalization vector in
+    tests/test_feedback_migration_digest_vectors.py rather than silently
+    breaking resume idempotency.
+    """
     names = {name: name for name in V41_TABLE_ORDER}
     if active:
         for name in ("feedback_threads_v41", "feedback_items_v41", "agent_work_v41", "agent_work_attempts_v41"):

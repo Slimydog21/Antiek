@@ -18,10 +18,15 @@ from __future__ import annotations
 import hashlib
 import unicodedata
 from datetime import datetime, timedelta, timezone
+from typing import Any
+
+import duckdb
 
 from substrate.feedback.migrations import (
     _CANONICAL_PRIMARY_KEYS,
     V41_TABLE_ORDER,
+    _actual_schema_ddls,
+    _get_v41_ddl,
     canonical_row_json,
     row_digest,
     schema_digest,
@@ -106,3 +111,40 @@ def test_row_digest_golden_vector() -> None:
     ]
     columns_by_table["feedback_provenance"] = ("thread_id", "ref_index", "v")
     assert row_digest(rows_by_table, columns_by_table) == ROW_DIGEST_VECTOR_SHA
+
+
+# --- DDL normalization pins -------------------------------------------------
+# _actual_schema_ddls digests DuckDB's stored catalog SQL (see its docstring).
+# These pins make rendering drift — e.g. from a DuckDB upgrade — fail loudly
+# instead of silently changing schema digests and breaking resume idempotency.
+
+ACTUAL_PROVENANCE_DDL_PREFIX = (
+    "CREATE TABLE feedback_provenance(thread_id VARCHAR, owner_user_id VARCHAR "
+    "NOT NULL, ref_index INTEGER, node_id VARCHAR NOT NULL"
+)
+ACTUAL_SCHEMA_DIGEST_VECTOR_SHA = "9146bc64f69edc954fe8ba9606cc9ed827e8f49d0d9aa8074d9aee9f233a807b"
+
+
+def _v41_catalog() -> Any:
+    con = duckdb.connect(":memory:")
+    con.execute(_get_v41_ddl())
+    return con
+
+
+def test_actual_schema_ddls_deterministic_and_golden() -> None:
+    first = _actual_schema_ddls(_v41_catalog(), active=False)
+    second = _actual_schema_ddls(_v41_catalog(), active=False)
+    assert first == second, "catalog rendering must be deterministic across connections"
+
+    assert set(first) == set(NINE_TABLES)
+    provenance = first["feedback_provenance"]
+    assert provenance.startswith(ACTUAL_PROVENANCE_DDL_PREFIX)
+    assert "IF NOT EXISTS" not in provenance, "DuckDB drops it from stored SQL"
+    assert "CHECK(" in provenance, "constraints are hoisted into the stored rendering"
+    assert schema_digest(first) == ACTUAL_SCHEMA_DIGEST_VECTOR_SHA
+
+
+def test_schema_digest_stable_across_connections() -> None:
+    a = _actual_schema_ddls(_v41_catalog(), active=False)
+    b = _actual_schema_ddls(_v41_catalog(), active=False)
+    assert schema_digest(a) == schema_digest(b)
