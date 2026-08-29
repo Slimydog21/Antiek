@@ -7,9 +7,12 @@ It uses one primary writer connection with per-phase durable transactions.
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import hashlib
 import json
+import os
 import re
+import threading
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -71,7 +74,7 @@ FEEDBACK_V41_COLUMN_MAP: dict[str, dict[str, Any]] = {
     "agent_work_v41": {"source_table": "agent_work", "source_columns": AGENT_WORK_COLS,
         "defaults": {"dispatch_id": None, "work_kind": "feedback_reply"}},
     "agent_work_attempts_v41": {"source_table": "agent_work_attempts", "source_columns": AGENT_WORK_ATTEMPTS_COLS,
-        "defaults": {"dispatch_id": None, "work_kind": "feedback_reply", "attempt_actual_cents": None,
+        "defaults": {"dispatch_id": None, "work_kind": "feedback_reply", "attempt_actual_cents": 0,
                       "provider_boundary_crossed": False, "provider_receipt_sha256": None,
                       "provider_result_json": None, "provider_result_sha256": None, "evidence_sha256": None}},
     "feedback_threads_v41_quarantine": {"source_table": None, "source_columns":
@@ -126,7 +129,7 @@ FEEDBACK_V41_COLUMN_MAP["agent_work_attempts_v41"].update({
         "result_from_state", "submitted_at", "acknowledged_at", "working_at", "completed_at", "created_at",
         "dispatch_id", "work_kind", "attempt_actual_cents", "provider_boundary_crossed", "provider_receipt_sha256",
         "provider_result_json", "provider_result_sha256", "evidence_sha256"),
-    "default_expressions": {"dispatch_id": "NULL", "work_kind": "'feedback_reply'", "attempt_actual_cents": "NULL",
+    "default_expressions": {"dispatch_id": "NULL", "work_kind": "'feedback_reply'", "attempt_actual_cents": "0",
         "provider_boundary_crossed": "false", "provider_receipt_sha256": "NULL", "provider_result_json": "NULL",
         "provider_result_sha256": "NULL", "evidence_sha256": "NULL"},
     "validation_predicates": {"attempt_no": ">0", "correlation": "active work", "state": "v40 attempt states"},
@@ -148,24 +151,21 @@ def _sha256(data: bytes) -> str:
 
 
 def canonical_row_json(row: dict[str, Any], columns: Sequence[str]) -> bytes:
-    """Build canonical JSON for a row using exactly the named columns.
-
-    Keys are sorted, strings are NFC-normalized, timestamps are ISO format,
-    SQL None maps to JSON null, ensure_ascii=True, compact separators.
-    """
+    """Encode named row fields deterministically for migration evidence."""
     import unicodedata
-    obj = {}
+    obj: dict[str, Any] = {}
     for col in columns:
         val = row.get(col)
-        if val is None:
-            obj[col] = None
+        if val is None or isinstance(val, (bool, int, float)):
+            obj[col] = val
         elif isinstance(val, datetime):
-            obj[col] = val.isoformat()
+            timestamp = val if val.tzinfo is not None else val.replace(tzinfo=UTC)
+            obj[col] = timestamp.astimezone(UTC).isoformat().replace("+00:00", "Z")
         elif isinstance(val, bytes):
-            obj[col] = val.decode("utf-8")
+            obj[col] = unicodedata.normalize("NFC", val.decode("utf-8", errors="replace"))
         else:
             obj[col] = unicodedata.normalize("NFC", str(val))
-    return json.dumps(obj, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+    return json.dumps(obj, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode()
 
 
 def schema_digest(table_ddls: dict[str, str]) -> str:
@@ -173,6 +173,19 @@ def schema_digest(table_ddls: dict[str, str]) -> str:
     items = [{"table": name, "ddl": table_ddls[name]} for name in V41_TABLE_ORDER]
     blob = json.dumps(items, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
     return _sha256(blob)
+
+
+_CANONICAL_PRIMARY_KEYS: dict[str, tuple[str, ...]] = {
+    "feedback_threads_v41": ("thread_id",),
+    "feedback_items_v41": ("item_id",),
+    "agent_work_v41": ("work_id",),
+    "agent_work_attempts_v41": ("attempt_id",),
+    "feedback_threads_v41_quarantine": ("quarantine_id",),
+    "feedback_items_v41_quarantine": ("quarantine_id",),
+    "agent_work_v41_quarantine": ("quarantine_id",),
+    "agent_work_attempts_v41_quarantine": ("quarantine_id",),
+    "feedback_provenance": ("thread_id", "ref_index"),
+}
 
 
 def row_digest(
@@ -188,8 +201,8 @@ def row_digest(
     parts = []
     for table in V41_TABLE_ORDER:
         cols = columns_by_table[table]
-        key = pk if pk is not None and pk in cols else cols[0]
-        rows = sorted(rows_by_table.get(table, []), key=lambda r: str(r.get(key, "")))
+        keys = (pk,) if pk is not None and pk in cols else _CANONICAL_PRIMARY_KEYS.get(table, (cols[0],))
+        rows = sorted(rows_by_table.get(table, []), key=lambda r: tuple(str(r.get(key, "")) for key in keys))
         parts.append({"table": table, "rows": [json.loads(canonical_row_json(r, cols)) for r in rows]})
     blob = json.dumps(parts, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode()
     return _sha256(blob)
@@ -437,6 +450,52 @@ def _q_id(table: str, original_row_sha256: str) -> str:
     return f"q_{_sha256(f'd2-quarantine\0{table}\0{original_row_sha256}'.encode())}"
 
 
+_PROCESS_MIGRATION_LOCK = threading.Lock()
+
+
+@contextlib.contextmanager
+def _migration_lock(con: LockedConnection):
+    """Take the migration-specific lock before touching catalog or marker."""
+    db_path = getattr(con, "_db_path", "")
+    fd: int | None = None
+    process_lock = _PROCESS_MIGRATION_LOCK
+    if db_path:
+        lock_path = f"{db_path}.d2_feedback_v41.lock"
+        fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            os.close(fd)
+            raise RuntimeError("migration_in_progress: d2_feedback_v41") from exc
+    elif not process_lock.acquire(blocking=False):
+        raise RuntimeError("migration_in_progress: d2_feedback_v41")
+    try:
+        yield
+    finally:
+        if fd is not None:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+        else:
+            process_lock.release()
+
+
+def _bounded_text(value: Any, limit: int = 256) -> str | None:
+    if value is None:
+        return None
+    raw = str(value).encode("utf-8")[:limit]
+    return raw.decode("utf-8", errors="ignore")
+
+
+def _evidence(fields: dict[str, Any], reason: str) -> str:
+    safe = {"truncated_fields": {}}
+    for key, value in fields.items():
+        text = _bounded_text(value, 512)
+        safe["truncated_fields"][key] = text
+    safe["reason"] = reason
+    encoded = json.dumps(safe, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+    return encoded.encode("utf-8")[:8192].decode("utf-8", errors="ignore")
+
+
 @contextlib.contextmanager
 def _phase_transaction(con: LockedConnection):
     """Make each durable migration phase one primary-connection transaction."""
@@ -476,40 +535,61 @@ def migrate_feedback_v41(con: LockedConnection) -> None:
     Uses one primary writer connection. Each phase commits separately.
     Crash resume picks up from the committed phase marker.
     """
-    # Phase 1: Ensure schema_migrations table and insert/read marker.
-    con.execute(_get_schema_migrations_ddl())
-    existing = con.execute(
-        "SELECT phase, temp_schema_sha256, temp_rows_sha256, active_schema_sha256, active_rows_sha256 "
-        "FROM schema_migrations WHERE migration_id = ?", [MIGRATION_ID]
-    ).fetchone()
+    with _migration_lock(con):
+        # Phase 1: create/read marker before validating only a non-completed baseline.
+        con.execute(_get_schema_migrations_ddl())
+        existing = con.execute(
+            "SELECT phase, temp_schema_sha256, temp_rows_sha256, active_schema_sha256, active_rows_sha256 "
+            "FROM schema_migrations WHERE migration_id = ?", [MIGRATION_ID]
+        ).fetchone()
 
-    if existing:
-        phase = str(existing[0])
-        if phase == "completed":
-            # Verify active shape and both committed digests.
-            _verify_active_shape(con, expected_schema=existing[3], expected_rows=existing[4])
+        if existing:
+            phase = str(existing[0])
+            if phase == "completed":
+                # Verify active shape and both committed digests.
+                _verify_active_shape(con, expected_schema=existing[3], expected_rows=existing[4])
+                return
+            # Resume from existing phase.
+            _validate_baseline_shape(con)
+            _resume_from_phase(con, phase, existing)
             return
-        # Resume from existing phase.
-        _resume_from_phase(con, phase, existing)
-        return
 
-    # Insert marker as started.
-    con.execute(
-        "INSERT INTO schema_migrations (migration_id, phase, started_at) VALUES (?, 'started', ?)",
-        [MIGRATION_ID, _now_utc()]
-    )
+        _validate_baseline_shape(con)
+        # Insert marker as started.
+        con.execute(
+            "INSERT INTO schema_migrations (migration_id, phase, started_at) VALUES (?, 'started', ?)",
+            [MIGRATION_ID, _now_utc()]
+        )
 
-    # Phase 2: Create v41 tables and set temp_created.
-    _phase_create_tables(con, expected="started")
+        # Phase 2: Create v41 tables and set temp_created.
+        _phase_create_tables(con, expected="started")
 
-    # Phase 3: Copy rows and set copied.
-    _phase_copy_rows(con, expected="temp_created")
+        # Phase 3: Copy rows and set copied.
+        _phase_copy_rows(con, expected="temp_created")
 
-    # Phase 4: Rename tables and set renamed.
-    _phase_rename(con, expected="copied")
+        # Phase 4: Rename tables and set renamed.
+        _phase_rename(con, expected="copied")
 
-    # Phase 5: Complete marker.
-    _phase_complete(con, expected="renamed")
+        # Phase 5: Complete marker.
+        _phase_complete(con, expected="renamed")
+
+
+def _validate_baseline_shape(con: LockedConnection) -> None:
+    """Fail closed before any marker/catalog mutation on a non-v41 baseline."""
+    expected = {
+        "feedback_threads": FEEDBACK_THREADS_COLS,
+        "feedback_items": FEEDBACK_ITEMS_COLS,
+        "agent_work": AGENT_WORK_COLS,
+        "agent_work_attempts": AGENT_WORK_ATTEMPTS_COLS,
+    }
+    for table, columns in expected.items():
+        found = con.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ? "
+            "ORDER BY ordinal_position", [table]
+        ).fetchall()
+        actual = tuple(str(row[0]) for row in found)
+        if actual != columns:
+            raise RuntimeError(f"migration_conflict: baseline shape mismatch for {table}")
 
 
 def _verify_active_shape(con: LockedConnection, *, expected_schema: str | None = None, expected_rows: str | None = None) -> None:
@@ -592,6 +672,7 @@ def _phase_copy_rows(con: LockedConnection, *, expected: str) -> None:
         _copy_items(con, now)
         _copy_work(con, now)
         _copy_attempts(con, now)
+        _apply_dependency_cascade(con, now)
         temp_schema_sha, temp_rows_sha = _migration_digests(con, active=False)
         _cas_phase(
             con, expected, "copied",
@@ -673,17 +754,13 @@ def _quarantine_thread(con: LockedConnection, row_dict: dict, reason: str, now: 
     """Quarantine a malformed feedback_threads row."""
     original_row_sha256 = _sha256(canonical_row_json(row_dict, _source_columns("feedback_threads_v41")))
     q_id = _q_id("feedback_threads", original_row_sha256)
-    evidence = json.dumps({
-        "thread_id": row_dict.get("thread_id"),
-        "reason": reason,
-        "field_lengths": {k: len(str(v)) if v else 0 for k, v in row_dict.items()},
-    }, sort_keys=True, ensure_ascii=True, separators=(",", ":"))[:8192]
+    evidence = _evidence({"thread_id": row_dict.get("thread_id")}, reason)
 
     con.execute(
         "INSERT INTO feedback_threads_v41_quarantine "
         "(quarantine_id, original_thread_id, reason, original_row_sha256, evidence_json, quarantined_at) "
         "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (quarantine_id) DO NOTHING",
-        [q_id, row_dict.get("thread_id"), reason, original_row_sha256, evidence, now]
+        [q_id, _bounded_text(row_dict.get("thread_id")), reason, original_row_sha256, evidence, now]
     )
 
 
@@ -746,18 +823,13 @@ def _quarantine_item(con: LockedConnection, row_dict: dict, reason: str, now: da
     """Quarantine a malformed feedback_items row."""
     original_row_sha256 = _sha256(canonical_row_json(row_dict, _source_columns("feedback_items_v41")))
     q_id = _q_id("feedback_items", original_row_sha256)
-    evidence = json.dumps({
-        "item_id": row_dict.get("item_id"),
-        "thread_id": row_dict.get("thread_id"),
-        "reason": reason,
-        "field_lengths": {k: len(str(v)) if v else 0 for k, v in row_dict.items()},
-    }, sort_keys=True, ensure_ascii=True, separators=(",", ":"))[:8192]
+    evidence = _evidence({"item_id": row_dict.get("item_id"), "thread_id": row_dict.get("thread_id")}, reason)
 
     con.execute(
         "INSERT INTO feedback_items_v41_quarantine "
         "(quarantine_id, original_item_id, original_thread_id, reason, original_row_sha256, evidence_json, quarantined_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (quarantine_id) DO NOTHING",
-        [q_id, row_dict.get("item_id"), row_dict.get("thread_id"), reason, original_row_sha256, evidence, now]
+        [q_id, _bounded_text(row_dict.get("item_id")), _bounded_text(row_dict.get("thread_id")), reason, original_row_sha256, evidence, now]
     )
 
 
@@ -787,6 +859,9 @@ def _copy_work(con: LockedConnection, now: datetime) -> None:
         elif thread_id not in active_threads:
             is_valid = False
             reason = "invalid_correlation"
+        elif row_dict.get("attempt_count", 0) > 2:
+            is_valid = False
+            reason = "attempt_count_exceeded"
         elif state not in ("queued", "leased", "submitted", "acknowledged", "working",
                           "replied", "declined", "approval_requested", "failed",
                           "lease_expired", "retryable_failure"):
@@ -824,19 +899,14 @@ def _quarantine_work(con: LockedConnection, row_dict: dict, reason: str, now: da
     """Quarantine a malformed agent_work row."""
     original_row_sha256 = _sha256(canonical_row_json(row_dict, _source_columns("agent_work_v41")))
     q_id = _q_id("agent_work", original_row_sha256)
-    evidence = json.dumps({
-        "work_id": row_dict.get("work_id"),
-        "thread_id": row_dict.get("thread_id"),
-        "reason": reason,
-        "state": row_dict.get("state"),
-        "attempt_count": row_dict.get("attempt_count"),
-    }, sort_keys=True, ensure_ascii=True, separators=(",", ":"))[:8192]
+    evidence = _evidence({"work_id": row_dict.get("work_id"), "thread_id": row_dict.get("thread_id"),
+                          "state": row_dict.get("state"), "attempt_count": row_dict.get("attempt_count")}, reason)
 
     con.execute(
         "INSERT INTO agent_work_v41_quarantine "
         "(quarantine_id, original_work_id, reason, original_row_sha256, evidence_json, quarantined_at) "
         "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (quarantine_id) DO NOTHING",
-        [q_id, row_dict.get("work_id"), reason, original_row_sha256, evidence, now]
+        [q_id, _bounded_text(row_dict.get("work_id")), reason, original_row_sha256, evidence, now]
     )
 
 
@@ -882,8 +952,8 @@ def _copy_attempts(con: LockedConnection, now: datetime) -> None:
                     "bridge_instance_id, state, lease_expires_at, herdr_target_observed, "
                     "adapter_version, transport_receipt_sha256, result_from_state, "
                     "submitted_at, acknowledged_at, working_at, completed_at, created_at, "
-                    "dispatch_id, work_kind) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'feedback_reply')",
+                    "dispatch_id, work_kind, attempt_actual_cents) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'feedback_reply', 0)",
                     [
                         row_dict["attempt_id"], row_dict["work_id"],
                         row_dict["attempt_no"], row_dict["lease_id"],
@@ -904,23 +974,74 @@ def _copy_attempts(con: LockedConnection, now: datetime) -> None:
             _quarantine_attempt(con, row_dict, reason, now)
 
 
+def _apply_dependency_cascade(con: LockedConnection, now: datetime) -> None:
+    """Quarantine whole aggregates when any dependent legacy row is unsafe."""
+    thread_cols = _source_columns("feedback_threads_v41")
+    item_cols = _source_columns("feedback_items_v41")
+    work_cols = _source_columns("agent_work_v41")
+    attempt_cols = _source_columns("agent_work_attempts_v41")
+    thread_rows = {row[0]: dict(zip(thread_cols, row, strict=True)) for row in con.execute(
+        f"SELECT {', '.join(thread_cols)} FROM feedback_threads").fetchall()}
+    item_rows = [dict(zip(item_cols, row, strict=True)) for row in con.execute(
+        f"SELECT {', '.join(item_cols)} FROM feedback_items").fetchall()]
+    work_rows = {row[0]: dict(zip(work_cols, row, strict=True)) for row in con.execute(
+        f"SELECT {', '.join(work_cols)} FROM agent_work").fetchall()}
+    attempt_rows = [dict(zip(attempt_cols, row, strict=True)) for row in con.execute(
+        f"SELECT {', '.join(attempt_cols)} FROM agent_work_attempts").fetchall()]
+
+    bad_threads: set[Any] = set()
+    quarantined_item_threads = con.execute(
+        "SELECT DISTINCT original_thread_id FROM feedback_items_v41_quarantine "
+        "WHERE original_thread_id IS NOT NULL"
+    ).fetchall()
+    bad_threads.update(row[0] for row in quarantined_item_threads)
+    for row in thread_rows.values():
+        sequences = sorted(item["sequence"] for item in item_rows if item["thread_id"] == row["thread_id"])
+        if sequences and sequences != list(range(1, len(sequences) + 1)):
+            bad_threads.add(row["thread_id"])
+
+    bad_works = {row[0] for row in con.execute(
+        "SELECT original_work_id FROM agent_work_v41_quarantine WHERE original_work_id IS NOT NULL"
+    ).fetchall()}
+    bad_attempt_works = {row[0] for row in con.execute(
+        "SELECT original_work_id FROM agent_work_attempts_v41_quarantine WHERE original_work_id IS NOT NULL"
+    ).fetchall()}
+    bad_works.update(bad_attempt_works)
+    for work_id in bad_works:
+        work = work_rows.get(work_id)
+        if work is not None:
+            bad_threads.add(work["thread_id"])
+
+    for thread_id in bad_threads:
+        thread = thread_rows.get(thread_id)
+        if thread is None:
+            continue
+        _quarantine_thread(con, thread, "invalid_shape", now)
+        related_work_ids = {work["work_id"] for work in work_rows.values() if work["thread_id"] == thread_id}
+        for item in (item for item in item_rows if item["thread_id"] == thread_id):
+            _quarantine_item(con, item, "invalid_shape", now)
+        for work in (work for work in work_rows.values() if work["thread_id"] == thread_id):
+            _quarantine_work(con, work, "invalid_correlation", now)
+        for attempt in (attempt for attempt in attempt_rows if attempt["work_id"] in related_work_ids):
+            _quarantine_attempt(con, attempt, "invalid_correlation", now)
+        con.execute("DELETE FROM agent_work_attempts_v41 WHERE work_id IN (SELECT work_id FROM agent_work_v41 WHERE thread_id = ?)", [thread_id])
+        con.execute("DELETE FROM agent_work_v41 WHERE thread_id = ?", [thread_id])
+        con.execute("DELETE FROM feedback_items_v41 WHERE thread_id = ?", [thread_id])
+        con.execute("DELETE FROM feedback_threads_v41 WHERE thread_id = ?", [thread_id])
+
+
 def _quarantine_attempt(con: LockedConnection, row_dict: dict, reason: str, now: datetime) -> None:
     """Quarantine a malformed agent_work_attempts row."""
     original_row_sha256 = _sha256(canonical_row_json(row_dict, _source_columns("agent_work_attempts_v41")))
     q_id = _q_id("agent_work_attempts", original_row_sha256)
-    evidence = json.dumps({
-        "attempt_id": row_dict.get("attempt_id"),
-        "work_id": row_dict.get("work_id"),
-        "reason": reason,
-        "state": row_dict.get("state"),
-        "attempt_no": row_dict.get("attempt_no"),
-    }, sort_keys=True, ensure_ascii=True, separators=(",", ":"))[:8192]
+    evidence = _evidence({"attempt_id": row_dict.get("attempt_id"), "work_id": row_dict.get("work_id"),
+                          "state": row_dict.get("state"), "attempt_no": row_dict.get("attempt_no")}, reason)
 
     con.execute(
         "INSERT INTO agent_work_attempts_v41_quarantine "
         "(quarantine_id, original_attempt_id, original_work_id, reason, original_row_sha256, evidence_json, quarantined_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (quarantine_id) DO NOTHING",
-        [q_id, row_dict.get("attempt_id"), row_dict.get("work_id"), reason, original_row_sha256, evidence, now]
+        [q_id, _bounded_text(row_dict.get("attempt_id")), _bounded_text(row_dict.get("work_id")), reason, original_row_sha256, evidence, now]
     )
 
 

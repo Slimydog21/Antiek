@@ -235,6 +235,7 @@ def test_valid_rows_migrated(seeded_db):
     result = con.execute("SELECT attempt_id, work_kind FROM agent_work_attempts WHERE attempt_id = 'att-1'").fetchone()
     assert result is not None
     assert result[1] == "feedback_reply"
+    assert con.execute("SELECT attempt_actual_cents FROM agent_work_attempts WHERE attempt_id = 'att-1'").fetchone()[0] == 0
 
 
 def test_quarantine_malformed_thread(baseline_db):
@@ -398,4 +399,64 @@ def test_copy_phase_rolls_back_and_resumes(seeded_db, monkeypatch):
     assert con.execute(
         "SELECT phase FROM schema_migrations WHERE migration_id = 'd2_feedback_v41'"
     ).fetchone()[0] == "completed"
+    con.close()
+
+
+def test_invalid_dependent_row_quarantines_aggregate(seeded_db):
+    """An invalid item or work row cannot leave a partially active aggregate."""
+    con = duckdb.connect(seeded_db)
+    con.execute("UPDATE feedback_items SET body_markdown = '' WHERE item_id = 'item-1'")
+    con.execute("UPDATE agent_work SET state = 'not-a-state' WHERE work_id = 'work-1'")
+    con.close()
+    from substrate.feedback.migrations import migrate_feedback_v41
+    con = duckdb.connect(seeded_db)
+    migrate_feedback_v41(con)
+    assert con.execute("SELECT * FROM feedback_threads WHERE thread_id = 'thread-1'").fetchone() is None
+    assert con.execute("SELECT * FROM feedback_items WHERE thread_id = 'thread-1'").fetchone() is None
+    assert con.execute("SELECT * FROM agent_work WHERE thread_id = 'thread-1'").fetchone() is None
+    assert con.execute("SELECT reason FROM feedback_threads_v41_quarantine WHERE original_thread_id = 'thread-1'").fetchone()[0] == 'invalid_shape'
+    assert con.execute("SELECT count(*) FROM feedback_items_v41_quarantine WHERE original_thread_id = 'thread-1'").fetchone()[0] == 1
+    assert con.execute("SELECT count(*) FROM agent_work_v41_quarantine WHERE original_work_id = 'work-1'").fetchone()[0] == 1
+    assert con.execute("SELECT count(*) FROM agent_work_attempts_v41_quarantine WHERE original_work_id = 'work-1'").fetchone()[0] == 1
+    con.close()
+
+
+def test_overbound_legacy_id_is_quarantined_safely(baseline_db):
+    """Raw malformed IDs never reach constrained quarantine columns."""
+    con = duckdb.connect(baseline_db)
+    now = datetime.datetime.now(datetime.UTC)
+    long_id = "é" * 300
+    con.execute("""INSERT INTO feedback_threads (
+        thread_id, owner_user_id, investigation_id, artifact_id, artifact_version,
+        artifact_content_sha256, artifact_source_sha256, normalization, anchor_node_id,
+        anchor_node_text_sha256, anchor_start_scalar, anchor_end_scalar, anchor_quote,
+        anchor_prefix, anchor_suffix, state, create_operation_id, create_request_sha256,
+        created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", [
+        long_id, "owner-a", "inv-1", "art-1", 1, "a" * 64, "b" * 64, "unicode-nfc-v1",
+        "node-1", "c" * 64, 0, 2, "q", "", "", "open", "op-long", "d" * 64, now, now,
+    ])
+    con.close()
+    from substrate.feedback.migrations import migrate_feedback_v41
+    con = duckdb.connect(baseline_db)
+    migrate_feedback_v41(con)
+    row = con.execute("SELECT original_thread_id, evidence_json FROM feedback_threads_v41_quarantine").fetchone()
+    assert row is not None
+    assert len(row[0].encode()) <= 256
+    assert row[0] != long_id
+    assert 'truncated_fields' in row[1]
+    con.close()
+
+
+def test_attempt_count_over_two_quarantines_work_and_thread(seeded_db):
+    """Legacy retry counts above the D2 bound cannot enter the active queue."""
+    con = duckdb.connect(seeded_db)
+    con.execute("UPDATE agent_work SET attempt_count = 3 WHERE work_id = 'work-1'")
+    con.close()
+    from substrate.feedback.migrations import migrate_feedback_v41
+    con = duckdb.connect(seeded_db)
+    migrate_feedback_v41(con)
+    assert con.execute("SELECT count(*) FROM agent_work WHERE work_id = 'work-1'").fetchone()[0] == 0
+    assert con.execute("SELECT reason FROM agent_work_v41_quarantine WHERE original_work_id = 'work-1'").fetchone()[0] == 'attempt_count_exceeded'
+    assert con.execute("SELECT count(*) FROM feedback_threads WHERE thread_id = 'thread-1'").fetchone()[0] == 0
     con.close()
