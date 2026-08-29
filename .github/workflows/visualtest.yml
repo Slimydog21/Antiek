@@ -21,6 +21,11 @@ on:
       - apps/reading/.lostpixel/baseline/**
       - .github/workflows/visualtest.yml
   workflow_dispatch:
+    inputs:
+      regen:
+        description: "Mint baselines (update mode) + upload instead of checking"
+        type: boolean
+        default: false
 
 concurrency:
   group: visualtest-${{ github.ref }}
@@ -65,6 +70,25 @@ jobs:
         # stale and need an operator re-approval (an honest signal, not a
         # reason to re-swallow).
         run: npx lost-pixel
+        if: inputs.regen != true
+
+      # --- Baseline-mint mode (issue #3089) ------------------------------
+      # Dispatch with regen=true: mint the full baseline set in THIS
+      # environment (ubuntu-22.04 + lost-pixel's chromium) and upload it
+      # for local overlay + commit. Baselines minted on the same host
+      # that checks them cannot carry platform rendering deltas.
+      - name: Regenerate baselines (update mode)
+        if: inputs.regen == true
+        run: npm run visualtest:update
+
+      - name: Upload minted baselines
+        if: inputs.regen == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: lostpixel-baselines-${{ github.run_number }}
+          path: apps/reading/.lostpixel/baseline/
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Upload diff artifacts on failure
         if: failure()
