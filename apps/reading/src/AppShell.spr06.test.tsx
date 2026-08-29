@@ -61,6 +61,12 @@ vi.mock("./components/lemon/LemonToast", () => ({
   // contract must keep the registration callable (a no-op is fine here).
   setToastNavigator: () => {},
 }));
+
+// herdr transfer P2 — seen-once release notes; stubbed like the other
+// heavy children (auto-opens in tests otherwise).
+vi.mock("./components/ReleaseNotesModal", () => ({
+  ReleaseNotesModal: () => null,
+}));
 vi.mock("./workspace/PanelLayout", () => ({
   PanelLayout: ({ mainSlot }: { mainSlot: React.ReactNode }) => (
     <div data-testid="main-region">{mainSlot}</div>

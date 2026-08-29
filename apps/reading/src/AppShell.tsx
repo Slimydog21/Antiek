@@ -15,6 +15,10 @@ import { useWorkspace } from "./workspace/WorkspaceStore";
 import { WindowsLayer } from "./components/windows/WindowsLayer";
 import { useWorkspaceShortcuts } from "./workspace/shortcuts";
 import { useWorkspaceHydration } from "./workspace/useWorkspaceHydration";
+import { useResearchNotifications } from "./hooks/useResearchNotifications";
+import { useDocumentTitle } from "./hooks/useDocumentTitle";
+import { useFaviconAttention } from "./hooks/useFaviconAttention";
+import { ReleaseNotesModal } from "./components/ReleaseNotesModal";
 
 /**
  * AppShell — the top-level chrome for the redesigned UI.
@@ -97,6 +101,18 @@ export function AppShell({ children }: Props) {
   // investigation → URL (one-shot). Writes the per-route /
   // per-investigation snapshot back to localStorage debounced at 250 ms.
   useWorkspaceHydration();
+
+  // herdr transfer P1 — the sound visibility channel (suppressed while
+  // watching; mute in Settings → Attention & sounds).
+  useResearchNotifications();
+
+  // herdr transfer P1 — the window title is a status surface (main SPA
+  // only; popout windows own their own titles).
+  useDocumentTitle();
+
+  // herdr transfer P2 — the favicon carries a state dot (composed with the
+  // brand mark; restored when attention clears).
+  useFaviconAttention();
 
   return (
     // EDGE-RESERVATION SEAM (SPR-06 M3) — the outer frame fills the viewport
@@ -189,6 +205,8 @@ export function AppShell({ children }: Props) {
 
       {/* Toast viewport — single mount-point for the whole app */}
       <LemonToastViewport />
+      {/* herdr transfer P2 — staged release notes, seen-once per version. */}
+      <ReleaseNotesModal />
 
       {/* SPR-08 — the keyboard cheat-sheet. Mounted ONCE here so a single
           uncontrolled instance self-subscribes to the HELP_TOGGLE window event

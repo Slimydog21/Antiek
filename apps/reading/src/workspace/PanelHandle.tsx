@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import LemonButton from "../components/lemon/LemonButton";
 import { LemonDropdown, LemonMenuItem } from "../components/lemon/LemonDropdown";
@@ -7,6 +7,7 @@ import { press } from "../design/motion";
 import { useWorkspace } from "./WorkspaceStore";
 import { clampRectToViewport } from "./panelLayoutLogic";
 import { openPopoutFor } from "./popout";
+import { zIndex } from "../design/zIndex";
 import type { PanelMode } from "./panel.types";
 
 /**
@@ -33,8 +34,43 @@ type Props = {
 export function PanelHandle({ id, draggable, resizable = false }: Props) {
   const panel = useWorkspace((s) => s.panels[id]);
   const focused = useWorkspace((s) => s.focusedPanelId === id);
+  const isZoomed = useWorkspace((s) => s.zoomedPanelId === id);
   const actions = useWorkspace.getState;
   const start = useRef<{ x: number; y: number } | null>(null);
+
+  // ── Panel context menu (herdr transfer P2): right-click the handle for
+  //    the full action set — pin, dock, float, popout, zoom, close. Same
+  //    items as the kebab, reachable by mouse without opening the ⋯ menu. ──
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const ctxRef = useRef<HTMLDivElement | null>(null);
+
+  const onContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const closeCtx = useCallback(() => setCtxMenu(null), []);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ctxRef.current?.contains(e.target as Node)) closeCtx();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeCtx();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [ctxMenu, closeCtx]);
+
+  const ctxAction = (fn: () => void) => () => {
+    fn();
+    closeCtx();
+  };
   const resizeStart = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
 
   const onPointerDown = useCallback(
@@ -139,6 +175,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onContextMenu={onContextMenu}
       >
         {/* Drag grip — only visible/meaningful in floating mode */}
         {draggable && (
@@ -170,6 +207,27 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
           }
         >
           {panel.pinned ? "★" : "☆"}
+        </button>
+
+        {/* Zoom toggle (herdr transfer P1) — fills the workspace with this
+            panel. The button is itself the persistent chrome when zoomed:
+            it reads "⤡" and sits on the only visible handle. */}
+        <button
+          type="button"
+          data-handle-action="zoom"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => actions().toggleZoom(isZoomed ? null : id)}
+          aria-label={isZoomed ? "Exit zoom" : "Zoom to full workspace"}
+          aria-pressed={isZoomed}
+          title={isZoomed ? "Exit zoom (Esc)" : "Zoom to full workspace"}
+          className={
+            "px-1.5 leading-none text-[13px] " +
+            (isZoomed
+              ? "text-sun-deep dark:text-sun"
+              : "text-ink-mute dark:text-moonlight hover:text-ink dark:hover:text-bright")
+          }
+        >
+          {isZoomed ? "⤡" : "⤢"}
         </button>
 
         {/* Kebab — mode actions */}
@@ -285,6 +343,50 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
               "linear-gradient(135deg, transparent 0%, transparent 50%, #F5DF24 50%, #F5DF24 60%, transparent 60%, transparent 70%, #F5DF24 70%, #F5DF24 80%, transparent 80%)",
           }}
         />
+      )}
+
+      {/* Context menu — fixed at the cursor, same item vocabulary as the
+          kebab (one source of truth for what a panel can do). */}
+      {ctxMenu && (
+        <div
+          ref={ctxRef}
+          role="menu"
+          aria-label={`${panel.title} actions`}
+          className="fixed min-w-[180px] rounded-hog border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 shadow-z3 dark:shadow-z3-night py-1 font-sans text-[13px]"
+          style={{ left: ctxMenu.x, top: ctxMenu.y, zIndex: zIndex.popover }}
+        >
+          <LemonMenuItem
+            icon={panel.pinned ? "★" : "☆"}
+            onClick={ctxAction(() => (panel.pinned ? actions().unpin(id) : actions().pin(id)))}
+          >
+            {panel.pinned ? "Unpin" : "Pin"}
+          </LemonMenuItem>
+          <LemonMenuItem
+            icon={isZoomed ? "⤡" : "⤢"}
+            onClick={ctxAction(() => actions().toggleZoom(isZoomed ? null : id))}
+          >
+            {isZoomed ? "Exit zoom" : "Zoom"}
+          </LemonMenuItem>
+          <LemonMenuItem icon="◧" onClick={ctxAction(() => setMode("docked-left"))}>
+            Dock left
+          </LemonMenuItem>
+          <LemonMenuItem icon="◨" onClick={ctxAction(() => setMode("docked-right"))}>
+            Dock right
+          </LemonMenuItem>
+          <LemonMenuItem icon="◯" onClick={ctxAction(() => setMode("docked-bottom"))}>
+            Dock bottom
+          </LemonMenuItem>
+          <LemonMenuItem icon="▢" onClick={ctxAction(() => setMode("floating"))}>
+            Float
+          </LemonMenuItem>
+          <LemonMenuItem icon="↗" onClick={ctxAction(() => setMode("popout"))}>
+            Pop out window
+          </LemonMenuItem>
+          <div className="my-1 border-t border-rule dark:border-charcoal-1" />
+          <LemonMenuItem icon="✕" onClick={ctxAction(() => actions().close(id))}>
+            Close panel
+          </LemonMenuItem>
+        </div>
       )}
     </>
   );
