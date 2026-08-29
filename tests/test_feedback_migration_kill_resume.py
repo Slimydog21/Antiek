@@ -13,7 +13,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import datetime
 import duckdb
 import pytest
 
