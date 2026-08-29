@@ -54,7 +54,9 @@ def _isolate_ctx() -> Iterator[None]:
 
 
 def test_schema_version_includes_post_nd_bumps() -> None:
-    assert EVENT_SCHEMA_VERSION == 40
+    # v41 (D2 anchored comments) bumped the schema; the ND-attribution bumps
+    # this guards against losing remain included at any later version.
+    assert EVENT_SCHEMA_VERSION >= 40
 
 
 def test_all_seven_nd_fields_present_with_defaults() -> None:

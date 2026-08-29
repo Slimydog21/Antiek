@@ -508,6 +508,21 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     #    from the trajectory alone.
     SURFACE_SERVED_IMPRESSION = "surface.served_impression"
 
+    # ── D2 anchored comments (voice-note 2026-08-28) — v41 typed payloads.
+    #    Purely additive; comment create continues ARTIFACT_COMMENT_CREATED.
+    #    Highlight create, comment dispatch lifecycle, deliverable edit, and
+    #    owner child-role launch projections. Audit identities only: no body
+    #    text, prompt, model credential, or hold secret ever rides an event.
+    ARTIFACT_HIGHLIGHT_CREATED = "artifact.highlight.created"
+    FEEDBACK_DISPATCH_REQUESTED = "feedback.dispatch.requested"
+    FEEDBACK_DISPATCH_REFUSED = "feedback.dispatch.refused"
+    FEEDBACK_DISPATCH_PROVIDER_UNKNOWN = "feedback.dispatch.provider_unknown"
+    FEEDBACK_DISPATCH_COMPLETED = "feedback.dispatch.completed"
+    DELIVERABLE_HTML_EDITED = "deliverable.html.edited"
+    OWNER_LAUNCH_ROLE_STARTED = "owner.launch.role.started"
+    OWNER_LAUNCH_ROLE_PROVIDER_UNKNOWN = "owner.launch.role.provider_unknown"
+    OWNER_LAUNCH_ROLE_COMPLETED = "owner.launch.role.completed"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -799,7 +814,15 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v39: Operator feedback-thread resolution becomes an immutable audit event.
 # v40: Feedback reply audit payload distinguishes reply, decline, and approval
 #     request outcomes without exposing private message text.
-EVENT_SCHEMA_VERSION: int = 40
+# v41: D2 anchored comments — highlight create with closed five-color palette
+#     and required provenance digest; comment dispatch lifecycle (requested,
+#     refused, provider_unknown, completed with pre-boundary cancellation);
+#     deliverable HTML edit projection; owner child-role launch projections.
+#     Audit identities and digests only. FeedbackThreadResolvedPayload is
+#     extended in the v41 write model with the full owner/artifact tuple and
+#     an explicit resolution pointer; legacy v40 rows read through a
+#     dedicated adapter (see FeedbackThreadResolvedPayloadV40).
+EVENT_SCHEMA_VERSION: int = 41
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -1333,6 +1356,298 @@ class ArtifactFeedbackRepliedPayload(_PayloadBase):
     attempt_no: int = Field(gt=0)
     reply_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     result_kind: Literal["reply", "decline", "approval_request"] = "reply"
+
+
+# ── D2 anchored comments: shared enums and v41 payloads ────────────────
+# Exact-string enums owned by the v41 event schema; every v41 payload,
+# DDL check, recovery response, and test uses these strings verbatim.
+
+
+class HighlightColor(str, Enum):  # noqa: UP042 - preserve established schema enum API.
+    """Closed five-value highlight palette shared by DDL and events."""
+
+    ESSENTIAL = "essential"
+    SUPPORTING = "supporting"
+    DISPUTED = "disputed"
+    QUESTION = "question"
+    AGENT = "agent"
+
+
+class ProviderUnknownReason(str, Enum):  # noqa: UP042
+    """Why a paid boundary ended with an unresolved provider outcome."""
+
+    TRANSPORT_TIMEOUT = "transport_timeout"
+    PROVIDER_DISCONNECT = "provider_disconnect"
+    PROCESS_CRASH_AFTER_BOUNDARY = "process_crash_after_boundary"
+    RECEIPT_UNAVAILABLE = "receipt_unavailable"
+
+
+class D2QueueTransitionReason(str, Enum):  # noqa: UP042
+    """Bounded reasons for agent-work queue transitions."""
+
+    LEASED = "leased"
+    SENT = "sent"
+    PROVIDER_BOUNDARY_CROSSED = "provider_boundary_crossed"
+    INVALID_COMMAND_RESULT = "invalid_command_result"
+    VALIDATION_RETRY_REQUEUE = "validation_retry_requeue"
+    RESULT_CHECKPOINTED = "result_checkpointed"
+    SETTLED = "settled"
+    FAILED_TERMINAL = "failed_terminal"
+    CANCELLED_NOT_SENT = "cancelled_not_sent"
+
+
+class RoleEventReason(str, Enum):  # noqa: UP042
+    """Bounded reasons for owner child-role lifecycle events."""
+
+    STARTED = "started"
+    PROVIDER_DISCONNECT = "provider_disconnect"
+    RESULT_CHECKPOINTED = "result_checkpointed"
+    SETTLED = "settled"
+    FAILED_TERMINAL = "failed_terminal"
+    CANCELLED_NOT_SENT = "cancelled_not_sent"
+
+
+class DispatchErrorCode(str, Enum):  # noqa: UP042
+    """Closed D2 dispatch failure taxonomy."""
+
+    PROVIDER_RESULT_MISSING = "provider_result_missing"
+    AUTHORITY_RECEIPT_MISMATCH = "authority_receipt_mismatch"
+    OWNER_CHILD_FAILED = "owner_child_failed"
+    PUBLICATION_RECOVERY_REQUIRED = "publication_recovery_required"
+    BUDGET_EXCEEDED = "budget_exceeded"
+    PROVIDER_CALL_FAILED = "provider_call_failed"
+    INVALID_COMMAND_RESULT = "invalid_command_result"
+
+
+class LoopOneChildRole(str, Enum):  # noqa: UP042
+    """The six paid Loop One roles an owner child launch may claim."""
+
+    DECOMPOSER = "decomposer"
+    EVIDENCE_RETRIEVER = "evidence_retriever"
+    PARAMETER_EXTRACTOR = "parameter_extractor"
+    CONNECTOR = "connector"
+    SYNTHESIZER = "synthesizer"
+    KNOWLEDGE_EXTRACTOR = "knowledge_extractor"
+
+
+D2DispatchAction = Literal["edit_in_place", "branch_research"]
+
+_ID = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+_OWNER = r"^[\x20-\x7e]{1,256}$"
+_HEX64 = r"^[0-9a-f]{64}$"
+
+
+class ArtifactHighlightCreatedPayload(_PayloadBase):
+    """Audit projection of one canonical colored highlight entry.
+
+    ``provenance_digest_sha256`` is required for every highlight and carries
+    the canonical row-set digest — including the exact empty-array digest
+    when ``source_refs=[]``. Comment creates keep using
+    ArtifactCommentCreatedPayload and must never carry a provenance digest.
+    """
+
+    model_config = ConfigDict(extra="forbid", use_enum_values=True)
+
+    action_type: Literal[ActionType.ARTIFACT_HIGHLIGHT_CREATED] = (
+        ActionType.ARTIFACT_HIGHLIGHT_CREATED
+    )
+    thread_id: str = Field(pattern=_ID)
+    item_id: str = Field(pattern=_ID)
+    artifact_id: str = Field(pattern=_ID)
+    artifact_version: int = Field(gt=0)
+    artifact_content_sha256: str = Field(pattern=_HEX64)
+    artifact_source_sha256: str = Field(pattern=_HEX64)
+    anchor_node_id: str = Field(pattern=_ID)
+    highlight_color: HighlightColor
+    body_sha256: str | None = Field(default=None, pattern=_HEX64)
+    provenance_digest_sha256: str = Field(pattern=_HEX64)
+    entry_kind: Literal["highlight"] = "highlight"
+
+
+class _D2DispatchPayloadBase(_PayloadBase):
+    """Shared lineage/artifact tuple for comment-dispatch audit payloads."""
+
+    dispatch_id: str = Field(pattern=_ID)
+    thread_id: str = Field(pattern=_ID)
+    owner_user_id: str = Field(pattern=_OWNER)
+    action: D2DispatchAction
+    artifact_id: str = Field(pattern=_ID)
+    artifact_version: int = Field(gt=0)
+    artifact_content_sha256: str = Field(pattern=_HEX64)
+    artifact_source_sha256: str = Field(pattern=_HEX64)
+
+
+class FeedbackDispatchRequestedPayload(_D2DispatchPayloadBase):
+    """Durable request receipt enqueued in the primary hold transaction.
+
+    No body, prompt, model credential, or hold secret.
+    """
+
+    action_type: Literal[ActionType.FEEDBACK_DISPATCH_REQUESTED] = (
+        ActionType.FEEDBACK_DISPATCH_REQUESTED
+    )
+    operation_id: str = Field(pattern=_ID)
+    work_id: str = Field(pattern=_ID)
+    authority_digest_sha256: str = Field(pattern=_HEX64)
+
+
+class FeedbackDispatchRefusedPayload(_D2DispatchPayloadBase):
+    """Value-free refusal receipt; no hold, credential, body, or prompt."""
+
+    action_type: Literal[ActionType.FEEDBACK_DISPATCH_REFUSED] = (
+        ActionType.FEEDBACK_DISPATCH_REFUSED
+    )
+    operation_id: str = Field(pattern=_ID)
+    refusal_code: str = Field(min_length=1, max_length=64)
+    remaining_budget_cents: int | None = Field(default=None, ge=0)
+
+
+class FeedbackDispatchProviderUnknownPayload(_D2DispatchPayloadBase):
+    """Visible durable ambiguous-boundary state; not a terminal outcome."""
+
+    action_type: Literal[ActionType.FEEDBACK_DISPATCH_PROVIDER_UNKNOWN] = (
+        ActionType.FEEDBACK_DISPATCH_PROVIDER_UNKNOWN
+    )
+    operation_id: str = Field(pattern=_ID)
+    attempt_no: int = Field(gt=0)
+    provider_boundary_crossed: Literal[True] = True
+    reason_code: ProviderUnknownReason
+    provider_result_sha256: str | None = Field(default=None, pattern=_HEX64)
+
+
+class FeedbackDispatchCompletedPayload(_D2DispatchPayloadBase):
+    """Terminal dispatch outcome with exact lifecycle-pointer conditionals.
+
+    ``attempt_no=0`` is legal only for pre-boundary cancellation; paid
+    outcomes require ``attempt_no>0``. Succeeded edits require a result
+    digest and the exact resolution pointer; succeeded branches require
+    both child pointers; failed/cancelled require all pointers null.
+    """
+
+    action_type: Literal[ActionType.FEEDBACK_DISPATCH_COMPLETED] = (
+        ActionType.FEEDBACK_DISPATCH_COMPLETED
+    )
+    outcome: Literal["succeeded", "failed", "cancelled"]
+    attempt_no: int = Field(ge=0)
+    result_sha256: str | None = Field(default=None, pattern=_HEX64)
+    actual_cents: int = Field(ge=0)
+    resolution_event_id: str | None = Field(default=None, pattern=_ID)
+    child_investigation_id: str | None = Field(default=None, pattern=_ID)
+    child_start_event_id: str | None = Field(default=None, pattern=_ID)
+
+    @model_validator(mode="after")
+    def _check_dispatch_completion(self) -> FeedbackDispatchCompletedPayload:
+        if self.attempt_no == 0 and self.outcome != "cancelled":
+            raise ValueError("attempt_no=0 is legal only for pre-boundary cancellation")
+        pointers = (
+            self.resolution_event_id,
+            self.child_investigation_id,
+            self.child_start_event_id,
+        )
+        if self.outcome in ("failed", "cancelled"):
+            if any(pointer is not None for pointer in pointers):
+                raise ValueError("failed/cancelled outcomes require all pointers null")
+        elif self.outcome == "succeeded":
+            if self.action == "edit_in_place":
+                if self.result_sha256 is None or self.resolution_event_id is None:
+                    raise ValueError(
+                        "succeeded edit requires a result digest and resolution pointer"
+                    )
+                if self.child_investigation_id is not None or self.child_start_event_id is not None:
+                    raise ValueError("succeeded edit must not carry child pointers")
+            elif self.action == "branch_research":
+                if self.child_investigation_id is None or self.child_start_event_id is None:
+                    raise ValueError("succeeded branch requires both child pointers")
+                if self.resolution_event_id is not None:
+                    raise ValueError("succeeded branch must not carry a resolution pointer")
+        return self
+
+
+class DeliverableHtmlEditedPayload(_PayloadBase):
+    """Audit projection of one agent edit of an owner deliverable."""
+
+    action_type: Literal[ActionType.DELIVERABLE_HTML_EDITED] = (
+        ActionType.DELIVERABLE_HTML_EDITED
+    )
+    dispatch_id: str = Field(pattern=_ID)
+    feedback_thread_id: str = Field(pattern=_ID)
+    owner_user_id: str = Field(pattern=_OWNER)
+    artifact_id: str = Field(pattern=_ID)
+    from_version: int = Field(gt=0)
+    to_version: int = Field(gt=0)
+    source_sha256: str = Field(pattern=_HEX64)
+    from_content_sha256: str = Field(pattern=_HEX64)
+    to_content_sha256: str = Field(pattern=_HEX64)
+    changed_node_count: int = Field(ge=0, le=20)
+    output_sha256: str = Field(pattern=_HEX64)
+    resolution_event_id: str = Field(pattern=_ID)
+
+
+class _OwnerLaunchRolePayloadBase(_PayloadBase):
+    """Shared lineage/route tuple for owner child-role launch events."""
+
+    owner_user_id: str = Field(pattern=_OWNER)
+    launch_claim_id: str = Field(pattern=_ID)
+    parent_dispatch_id: str = Field(pattern=_ID)
+    feedback_thread_id: str = Field(pattern=_ID)
+    child_investigation_id: str = Field(pattern=_ID)
+    operation_id: str = Field(pattern=_ID)
+    role: LoopOneChildRole
+    run_id: str = Field(pattern=_ID)
+    authority_digest_sha256: str = Field(pattern=_HEX64)
+    provider_id: str = Field(pattern=_ID)
+    model_id: str = Field(pattern=_ID)
+    source_handle: str = Field(pattern=_ID)
+    attempt_no: Literal[1] = 1
+
+
+class OwnerLaunchRoleStartedPayload(_OwnerLaunchRolePayloadBase):
+    """Paid owner child-role launch started; ceiling is projected only."""
+
+    action_type: Literal[ActionType.OWNER_LAUNCH_ROLE_STARTED] = (
+        ActionType.OWNER_LAUNCH_ROLE_STARTED
+    )
+    projected_max_cents: int = Field(gt=0)
+
+
+class OwnerLaunchRoleProviderUnknownPayload(_OwnerLaunchRolePayloadBase):
+    """Ambiguous paid boundary for a child role. No result body, hold
+    secret, credential, prompt, or raw conversation."""
+
+    action_type: Literal[ActionType.OWNER_LAUNCH_ROLE_PROVIDER_UNKNOWN] = (
+        ActionType.OWNER_LAUNCH_ROLE_PROVIDER_UNKNOWN
+    )
+    provider_boundary_crossed: Literal[True] = True
+    provider_receipt_sha256: str | None = Field(default=None, pattern=_HEX64)
+    provider_result_sha256: str | None = Field(default=None, pattern=_HEX64)
+    reason_code: ProviderUnknownReason
+
+
+class OwnerLaunchRoleCompletedPayload(_OwnerLaunchRolePayloadBase):
+    """Terminal child-role outcome. Succeeded requires non-null result and
+    provider receipt digests; failed/cancelled require a closed
+    DispatchErrorCode and carry no lifecycle pointers."""
+
+    action_type: Literal[ActionType.OWNER_LAUNCH_ROLE_COMPLETED] = (
+        ActionType.OWNER_LAUNCH_ROLE_COMPLETED
+    )
+    outcome: Literal["succeeded", "failed", "cancelled"]
+    result_sha256: str | None = Field(default=None, pattern=_HEX64)
+    provider_receipt_sha256: str | None = Field(default=None, pattern=_HEX64)
+    actual_cents: int = Field(ge=0)
+    evidence_sha256: str | None = Field(default=None, pattern=_HEX64)
+    error_code: DispatchErrorCode | None = None
+
+    @model_validator(mode="after")
+    def _check_role_completion(self) -> OwnerLaunchRoleCompletedPayload:
+        if self.outcome == "succeeded":
+            if self.result_sha256 is None or self.provider_receipt_sha256 is None:
+                raise ValueError("succeeded requires result and provider receipt digests")
+            if self.error_code is not None:
+                raise ValueError("succeeded must not carry an error code")
+        elif self.error_code is None:
+            raise ValueError("failed/cancelled require a closed DispatchErrorCode")
+        return self
 
 
 # ── Middleware: source_tier (architecture_notes §4) ──────────────────
@@ -4278,7 +4593,16 @@ TypedPayload = Annotated[
     | ArtifactCommentCreatedPayload
     | FeedbackThreadResolvedPayload
     | AgentWorkTransitionedPayload
-    | ArtifactFeedbackRepliedPayload,
+    | ArtifactFeedbackRepliedPayload
+    | ArtifactHighlightCreatedPayload
+    | FeedbackDispatchRequestedPayload
+    | FeedbackDispatchRefusedPayload
+    | FeedbackDispatchProviderUnknownPayload
+    | FeedbackDispatchCompletedPayload
+    | DeliverableHtmlEditedPayload
+    | OwnerLaunchRoleStartedPayload
+    | OwnerLaunchRoleProviderUnknownPayload
+    | OwnerLaunchRoleCompletedPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -4423,6 +4747,16 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset(
         ActionType.VOICE_CAPTURED.value,
         # Living Roadmap SPR-04 — highlight → float-menu user NOTE provenance.
         ActionType.MARGINALIA_NOTED.value,
+        # D2 anchored comments (v41) — typed payload registrations.
+        ActionType.ARTIFACT_HIGHLIGHT_CREATED.value,
+        ActionType.FEEDBACK_DISPATCH_REQUESTED.value,
+        ActionType.FEEDBACK_DISPATCH_REFUSED.value,
+        ActionType.FEEDBACK_DISPATCH_PROVIDER_UNKNOWN.value,
+        ActionType.FEEDBACK_DISPATCH_COMPLETED.value,
+        ActionType.DELIVERABLE_HTML_EDITED.value,
+        ActionType.OWNER_LAUNCH_ROLE_STARTED.value,
+        ActionType.OWNER_LAUNCH_ROLE_PROVIDER_UNKNOWN.value,
+        ActionType.OWNER_LAUNCH_ROLE_COMPLETED.value,
         # Living Roadmap SPR-03 — block-canvas position persistence.
         ActionType.BLOCK_POSITIONED.value,
         # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
@@ -4590,6 +4924,21 @@ __all__ = [
     "FeedbackThreadResolvedPayload",
     "AgentWorkTransitionedPayload",
     "ArtifactFeedbackRepliedPayload",
+    "ArtifactHighlightCreatedPayload",
+    "FeedbackDispatchRequestedPayload",
+    "FeedbackDispatchRefusedPayload",
+    "FeedbackDispatchProviderUnknownPayload",
+    "FeedbackDispatchCompletedPayload",
+    "DeliverableHtmlEditedPayload",
+    "OwnerLaunchRoleStartedPayload",
+    "OwnerLaunchRoleProviderUnknownPayload",
+    "OwnerLaunchRoleCompletedPayload",
+    "HighlightColor",
+    "ProviderUnknownReason",
+    "D2QueueTransitionReason",
+    "RoleEventReason",
+    "DispatchErrorCode",
+    "LoopOneChildRole",
     # Middleware: source_tier
     "TierClassificationMethod",
     "TierAdjustmentMethod",
