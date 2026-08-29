@@ -679,6 +679,60 @@ def _phase_create_tables(con: LockedConnection, *, expected: str) -> None:
         _cas_phase(con, expected, "temp_created", started_at=_now_utc())
     _crash_point("temp_created")
 
+
+# The frozen marker schema cannot carry a baseline-rows digest, so the copy
+# phase persists it as a bounded evidence row in the threads quarantine table
+# under a deterministic synthetic key derived from the migration id. The
+# rename phase recomputes and compares before dropping the baseline tables,
+# closing the crash-to-resume silent-data-loss window.
+_BASELINE_DIGEST_TABLE = "feedback_threads_v41_quarantine"
+
+
+def _baseline_rows_digest(con: LockedConnection) -> str:
+    """Digest every baseline row in fixed table/column order."""
+    columns_by_table = {
+        "feedback_threads": _source_columns("feedback_threads_v41"),
+        "feedback_items": _source_columns("feedback_items_v41"),
+        "agent_work": _source_columns("agent_work_v41"),
+        "agent_work_attempts": _source_columns("agent_work_attempts_v41"),
+    }
+    parts = []
+    for table in ("feedback_threads", "feedback_items", "agent_work", "agent_work_attempts"):
+        columns = columns_by_table[table]
+        rows = _table_rows(con, table, columns)
+        key = columns[0]
+        rows = sorted(rows, key=lambda r: str(r.get(key, "")))
+        parts.append({"table": table, "rows": [json.loads(canonical_row_json(r, columns)) for r in rows]})
+    blob = json.dumps(parts, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode()
+    return _sha256(blob)
+
+
+def _baseline_digest_row_id() -> str:
+    return _q_id("feedback_threads", _sha256(f"d2-baseline-digest\0{MIGRATION_ID}".encode()))
+
+
+def _store_baseline_digest(con: LockedConnection, digest: str, now: datetime) -> None:
+    evidence = json.dumps(
+        {"kind": "baseline_rows_digest", "migration_id": MIGRATION_ID, "digest": digest},
+        sort_keys=True, ensure_ascii=True, separators=(",", ":"),
+    )[:8192]
+    con.execute(
+        f"INSERT INTO {_BASELINE_DIGEST_TABLE} "
+        "(quarantine_id, original_thread_id, reason, original_row_sha256, evidence_json, quarantined_at) "
+        "VALUES (?, NULL, 'unknown_malformation', ?, ?, ?) "
+        "ON CONFLICT (quarantine_id) DO NOTHING",
+        [_baseline_digest_row_id(), digest, evidence, now],
+    )
+
+
+def _load_baseline_digest(con: LockedConnection) -> str | None:
+    row = con.execute(
+        f"SELECT original_row_sha256 FROM {_BASELINE_DIGEST_TABLE} WHERE quarantine_id = ?",
+        [_baseline_digest_row_id()],
+    ).fetchone()
+    return str(row[0]) if row is not None else None
+
+
 def _phase_copy_rows(con: LockedConnection, *, expected: str) -> None:
     """Copy baseline rows to v41 tables with quarantine."""
     with _phase_transaction(con):
@@ -688,6 +742,7 @@ def _phase_copy_rows(con: LockedConnection, *, expected: str) -> None:
         _copy_work(con, now)
         _copy_attempts(con, now)
         _apply_dependency_cascade(con, now)
+        _store_baseline_digest(con, _baseline_rows_digest(con), now)
         temp_schema_sha, temp_rows_sha = _migration_digests(con, active=False)
         _cas_phase(
             con, expected, "copied",
@@ -1062,6 +1117,14 @@ def _quarantine_attempt(con: LockedConnection, row_dict: dict, reason: str, now:
 
 def _phase_rename(con: LockedConnection, *, expected: str) -> None:
     """Rename v41 tables to active names (one transaction)."""
+    recorded = _load_baseline_digest(con)
+    if recorded is None:
+        raise RuntimeError("migration_conflict: baseline digest record missing at rename")
+    if _baseline_rows_digest(con) != recorded:
+        raise RuntimeError(
+            "migration_conflict: baseline tables changed after copy; "
+            "refusing rename to avoid dropping uncopied rows"
+        )
     with _phase_transaction(con):
         con.execute("DROP TABLE IF EXISTS agent_work_attempts CASCADE")
         con.execute("DROP TABLE IF EXISTS agent_work CASCADE")

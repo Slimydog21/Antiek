@@ -13,6 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import datetime
 import duckdb
 import pytest
 
@@ -103,3 +104,50 @@ def test_completed_marker_survives_third_process(tmp_path: Path) -> None:
     assert after_items == before_items
     assert marker_after == marker
     assert marker_after[0] == "completed"
+
+
+def test_baseline_drift_after_crash_refuses_rename(tmp_path: Path) -> None:
+    """A baseline write between crash-at-copied and resume fails closed.
+
+    Before the rename-time baseline-digest pre-check, such rows were
+    silently dropped by the rename DROP; now the resume must refuse with
+    migration_conflict and leave both the baseline row and the marker
+    untouched for operator resolution.
+    """
+    db = tmp_path / "drift.duckdb"
+    shutil.copy(_build_template(tmp_path), db)
+
+    killed = _run(db, crash_after="copied")
+    assert killed.returncode == 70, killed.stderr
+
+    con = duckdb.connect(str(db))
+    con.execute(
+        """INSERT INTO feedback_threads (
+            thread_id, owner_user_id, investigation_id, artifact_id, artifact_version,
+            artifact_content_sha256, artifact_source_sha256, normalization,
+            anchor_node_id, anchor_node_text_sha256, anchor_start_scalar, anchor_end_scalar,
+            anchor_quote, anchor_prefix, anchor_suffix, state, create_operation_id,
+            create_request_sha256
+        ) VALUES ('late-thread', 'owner-a', 'inv-1', 'art-1', 1, ?, ?, 'unicode-nfc-v1',
+                  'node-1', ?, 0, 1, 'q', '', '', 'open', 'op-late', ?)""",
+        ["a" * 64, "b" * 64, "c" * 64, "d" * 64],
+    )
+    con.close()
+
+    resumed = _run(db, crash_after=None)
+    assert resumed.returncode != 0
+    assert "migration_conflict" in resumed.stderr
+    assert "baseline tables changed" in resumed.stderr
+
+    con = duckdb.connect(str(db))
+    phase = con.execute(
+        "SELECT phase FROM schema_migrations WHERE migration_id = 'd2_feedback_v41'"
+    ).fetchone()[0]
+    assert phase == "copied"
+    assert con.execute(
+        "SELECT count(*) FROM feedback_threads WHERE thread_id = 'late-thread'"
+    ).fetchone()[0] == 1
+    assert con.execute(
+        "SELECT count(*) FROM feedback_threads_v41 WHERE thread_id = 'thread-1'"
+    ).fetchone()[0] == 1
+    con.close()
