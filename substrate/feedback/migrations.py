@@ -136,6 +136,12 @@ FEEDBACK_V41_COLUMN_MAP["agent_work_attempts_v41"].update({
     "quarantine_reason_mapping": {"state": "invalid_state", "attempt_no": "invalid_attempt_no",
         "correlation": "invalid_correlation"},
 })
+# V41-owned quarantine/provenance tables have no legacy source. Their declared
+# column tuple is therefore their complete destination contract.
+for _table_name in V41_TABLE_ORDER[4:]:
+    FEEDBACK_V41_COLUMN_MAP[_table_name]["destination_columns"] = (
+        FEEDBACK_V41_COLUMN_MAP[_table_name]["source_columns"]
+    )
 
 
 def _source_columns(table: str) -> tuple[str, ...]:
@@ -430,6 +436,7 @@ CREATE TABLE IF NOT EXISTS feedback_provenance (
   CHECK((status <> 'dangling' OR reason <> 'ok') IS TRUE),
   CHECK((status <> 'quarantined' OR reason <> 'ok') IS TRUE)
 );
+CREATE INDEX IF NOT EXISTS idx_feedback_provenance_owner ON feedback_provenance(owner_user_id,thread_id,ref_index);
 """
 
 
@@ -493,13 +500,28 @@ def _bounded_text(value: Any, limit: int = 256) -> str | None:
 
 
 def _evidence(fields: dict[str, Any], reason: str) -> str:
-    safe = {"truncated_fields": {}}
+    """Build bounded audit evidence without leaking oversized legacy values."""
+    encoded_fields: dict[str, dict[str, Any]] = {}
     for key, value in fields.items():
-        text = _bounded_text(value, 512)
-        safe["truncated_fields"][key] = text
-    safe["reason"] = reason
-    encoded = json.dumps(safe, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
-    return encoded.encode("utf-8")[:8192].decode("utf-8", errors="ignore")
+        raw = b"" if value is None else str(value).encode("utf-8")
+        oversized = len(raw) > 256
+        field_evidence: dict[str, Any] = {
+            "byte_length": len(raw),
+            "sha256": _sha256(raw),
+            "truncated": oversized,
+        }
+        if not oversized:
+            field_evidence["value"] = None if value is None else str(value)
+        encoded_fields[key] = field_evidence
+    encoded = json.dumps(
+        {"fields": encoded_fields, "reason": reason},
+        sort_keys=True,
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+    if len(encoded.encode("utf-8")) > 8192:
+        raise RuntimeError("migration_conflict: quarantine evidence exceeds 8192 bytes")
+    return encoded
 
 
 @contextlib.contextmanager
@@ -622,6 +644,7 @@ def _verify_active_shape(con: LockedConnection, *, expected_schema: str | None =
         ).fetchone()
         if result is None:
             raise RuntimeError(f"migration_conflict: active table {table} missing after completed marker")
+    _verify_provenance_index(con)
     if expected_schema is not None and expected_rows is not None:
         actual_schema, actual_rows = _migration_digests(con, active=True)
         if (actual_schema, actual_rows) != (expected_schema, expected_rows):
@@ -636,7 +659,7 @@ def _resume_from_phase(con: LockedConnection, phase: str, marker_row: tuple) -> 
         _phase_rename(con, expected="copied")
         _phase_complete(con, expected="renamed")
     elif phase == "temp_created":
-        _verify_temp_exists(con)
+        _verify_temp_schema_digest(con, marker_row[1])
         _phase_copy_rows(con, expected="temp_created")
         _phase_rename(con, expected="copied")
         _phase_complete(con, expected="renamed")
@@ -650,14 +673,32 @@ def _resume_from_phase(con: LockedConnection, phase: str, marker_row: tuple) -> 
         raise RuntimeError(f"migration_conflict: unknown phase {phase!r}")
 
 
+def _verify_provenance_index(con: LockedConnection) -> None:
+    row = con.execute(
+        "SELECT table_name, expressions, is_unique, is_primary FROM duckdb_indexes() "
+        "WHERE index_name = 'idx_feedback_provenance_owner'"
+    ).fetchone()
+    if row != ("feedback_provenance", "[owner_user_id, thread_id, ref_index]", False, False):
+        raise RuntimeError("migration_conflict: feedback provenance owner index missing or changed")
+
+
 def _verify_temp_exists(con: LockedConnection) -> None:
-    """Verify all v41 temp tables exist."""
+    """Verify all v41 temp tables and the provenance owner index exist."""
     for table in V41_TABLE_ORDER:
         result = con.execute(
             "SELECT table_name FROM information_schema.tables WHERE table_name = ?", [table]
         ).fetchone()
         if result is None:
             raise RuntimeError(f"migration_conflict: temp table {table} missing")
+    _verify_provenance_index(con)
+
+
+def _verify_temp_schema_digest(con: LockedConnection, expected_schema: str | None) -> None:
+    """Verify the catalog DDL committed with the temp_created marker."""
+    _verify_temp_exists(con)
+    actual_schema = schema_digest(_actual_schema_ddls(con, active=False))
+    if expected_schema is None or actual_schema != expected_schema:
+        raise RuntimeError("migration_conflict: temporary schema digest mismatch")
 
 
 def _verify_temp_row_digests(con: LockedConnection, expected_schema: str, expected_rows: str) -> None:
@@ -669,64 +710,68 @@ def _verify_temp_row_digests(con: LockedConnection, expected_schema: str, expect
 
 
 def _phase_create_tables(con: LockedConnection, *, expected: str) -> None:
-    """Create all nine v41 tables."""
+    """Create all nine v41 tables and commit their catalog DDL digest."""
     with _phase_transaction(con):
         con.execute(_get_v41_ddl())
-        _cas_phase(con, expected, "temp_created", started_at=_now_utc())
+        temp_schema_sha = schema_digest(_actual_schema_ddls(con, active=False))
+        _cas_phase(
+            con,
+            expected,
+            "temp_created",
+            started_at=_now_utc(),
+            temp_schema_sha256=temp_schema_sha,
+        )
     _crash_point("temp_created")
 
 
-# The frozen marker schema cannot carry a baseline-rows digest, so the copy
-# phase persists it as a bounded evidence row in the threads quarantine table
-# under a deterministic synthetic key derived from the migration id. The
-# rename phase recomputes and compares before dropping the baseline tables,
-# closing the crash-to-resume silent-data-loss window.
-_BASELINE_DIGEST_TABLE = "feedback_threads_v41_quarantine"
+# The durable temp copy itself is the baseline-drift witness. Every source row
+# is represented exactly once: either by its source columns in an active temp
+# table or by original_row_sha256 in the matching quarantine table. Comparing
+# the two row-hash multisets before rename closes the crash/resume write gap
+# without inventing a fake quarantine row or a parallel evidence table.
+_COPIED_SOURCE_TABLES: tuple[tuple[str, str, str], ...] = (
+    ("feedback_threads", "feedback_threads_v41", "feedback_threads_v41_quarantine"),
+    ("feedback_items", "feedback_items_v41", "feedback_items_v41_quarantine"),
+    ("agent_work", "agent_work_v41", "agent_work_v41_quarantine"),
+    ("agent_work_attempts", "agent_work_attempts_v41", "agent_work_attempts_v41_quarantine"),
+)
 
 
-def _baseline_rows_digest(con: LockedConnection) -> str:
-    """Digest every baseline row in fixed table/column order."""
-    columns_by_table = {
-        "feedback_threads": _source_columns("feedback_threads_v41"),
-        "feedback_items": _source_columns("feedback_items_v41"),
-        "agent_work": _source_columns("agent_work_v41"),
-        "agent_work_attempts": _source_columns("agent_work_attempts_v41"),
-    }
-    parts = []
-    for table in ("feedback_threads", "feedback_items", "agent_work", "agent_work_attempts"):
-        columns = columns_by_table[table]
-        rows = _table_rows(con, table, columns)
-        key = columns[0]
-        rows = sorted(rows, key=lambda r: str(r.get(key, "")))
-        parts.append({"table": table, "rows": [json.loads(canonical_row_json(r, columns)) for r in rows]})
+def _row_hashes(con: LockedConnection, table: str, columns: tuple[str, ...]) -> list[str]:
+    return sorted(
+        _sha256(canonical_row_json(row, columns))
+        for row in _table_rows(con, table, columns)
+    )
+
+
+def _row_hash_multiset_digest(parts: list[dict[str, Any]]) -> str:
     blob = json.dumps(parts, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode()
     return _sha256(blob)
 
 
-def _baseline_digest_row_id() -> str:
-    return _q_id("feedback_threads", _sha256(f"d2-baseline-digest\0{MIGRATION_ID}".encode()))
+def _baseline_rows_digest(con: LockedConnection) -> str:
+    """Digest the row-hash multiset of every current baseline table."""
+    parts: list[dict[str, Any]] = []
+    for source, temp, _quarantine in _COPIED_SOURCE_TABLES:
+        columns = _source_columns(temp)
+        parts.append({"table": source, "row_sha256s": _row_hashes(con, source, columns)})
+    return _row_hash_multiset_digest(parts)
 
 
-def _store_baseline_digest(con: LockedConnection, digest: str, now: datetime) -> None:
-    evidence = json.dumps(
-        {"kind": "baseline_rows_digest", "migration_id": MIGRATION_ID, "digest": digest},
-        sort_keys=True, ensure_ascii=True, separators=(",", ":"),
-    )[:8192]
-    con.execute(
-        f"INSERT INTO {_BASELINE_DIGEST_TABLE} "
-        "(quarantine_id, original_thread_id, reason, original_row_sha256, evidence_json, quarantined_at) "
-        "VALUES (?, NULL, 'unknown_malformation', ?, ?, ?) "
-        "ON CONFLICT (quarantine_id) DO NOTHING",
-        [_baseline_digest_row_id(), digest, evidence, now],
-    )
-
-
-def _load_baseline_digest(con: LockedConnection) -> str | None:
-    row = con.execute(
-        f"SELECT original_row_sha256 FROM {_BASELINE_DIGEST_TABLE} WHERE quarantine_id = ?",
-        [_baseline_digest_row_id()],
-    ).fetchone()
-    return str(row[0]) if row is not None else None
+def _copied_baseline_rows_digest(con: LockedConnection) -> str:
+    """Digest source-row hashes represented by active temp or quarantine rows."""
+    parts: list[dict[str, Any]] = []
+    for source, temp, quarantine in _COPIED_SOURCE_TABLES:
+        columns = _source_columns(temp)
+        represented = _row_hashes(con, temp, columns)
+        represented.extend(
+            str(row[0])
+            for row in con.execute(
+                f"SELECT original_row_sha256 FROM {quarantine}"
+            ).fetchall()
+        )
+        parts.append({"table": source, "row_sha256s": sorted(represented)})
+    return _row_hash_multiset_digest(parts)
 
 
 def _phase_copy_rows(con: LockedConnection, *, expected: str) -> None:
@@ -738,7 +783,6 @@ def _phase_copy_rows(con: LockedConnection, *, expected: str) -> None:
         _copy_work(con, now)
         _copy_attempts(con, now)
         _apply_dependency_cascade(con, now)
-        _store_baseline_digest(con, _baseline_rows_digest(con), now)
         temp_schema_sha, temp_rows_sha = _migration_digests(con, active=False)
         _cas_phase(
             con, expected, "copied",
@@ -1218,10 +1262,7 @@ def _quarantine_attempt(con: LockedConnection, row_dict: dict, reason: str, now:
 
 def _phase_rename(con: LockedConnection, *, expected: str) -> None:
     """Rename v41 tables to active names (one transaction)."""
-    recorded = _load_baseline_digest(con)
-    if recorded is None:
-        raise RuntimeError("migration_conflict: baseline digest record missing at rename")
-    if _baseline_rows_digest(con) != recorded:
+    if _baseline_rows_digest(con) != _copied_baseline_rows_digest(con):
         raise RuntimeError(
             "migration_conflict: baseline tables changed after copy; "
             "refusing rename to avoid dropping uncopied rows"

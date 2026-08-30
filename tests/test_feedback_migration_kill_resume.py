@@ -150,3 +150,37 @@ def test_baseline_drift_after_crash_refuses_rename(tmp_path: Path) -> None:
         "SELECT count(*) FROM feedback_threads_v41 WHERE thread_id = 'thread-1'"
     ).fetchone()[0] == 1
     con.close()
+
+
+def test_temp_created_resume_rejects_catalog_ddl_drift(tmp_path: Path) -> None:
+    """A crash at temp_created cannot bless tampered temporary DDL on resume."""
+    db = tmp_path / "temp-ddl-drift.duckdb"
+    shutil.copy(_build_template(tmp_path), db)
+
+    killed = _run(db, crash_after="temp_created")
+    assert killed.returncode == 70, killed.stderr
+
+    con = duckdb.connect(str(db))
+    marker = con.execute(
+        "SELECT phase, temp_schema_sha256 FROM schema_migrations "
+        "WHERE migration_id = 'd2_feedback_v41'"
+    ).fetchone()
+    assert marker is not None
+    assert marker[0] == "temp_created"
+    assert marker[1] is not None and len(marker[1]) == 64
+    con.execute("ALTER TABLE feedback_items_v41 ADD COLUMN rogue_column VARCHAR")
+    con.close()
+
+    resumed = _run(db, crash_after=None)
+    assert resumed.returncode != 0
+    assert "migration_conflict: temporary schema digest mismatch" in resumed.stderr
+
+    con = duckdb.connect(str(db))
+    assert con.execute(
+        "SELECT phase FROM schema_migrations WHERE migration_id = 'd2_feedback_v41'"
+    ).fetchone() == ("temp_created",)
+    assert con.execute(
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name='feedback_items_v41' AND column_name='rogue_column'"
+    ).fetchone() == (1,)
+    con.close()

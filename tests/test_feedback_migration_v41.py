@@ -7,6 +7,10 @@ idempotency, and crash/resume semantics against a real DuckDB file.
 from __future__ import annotations
 
 import datetime
+import hashlib
+import inspect
+import json
+import re
 
 import duckdb
 import pytest
@@ -450,7 +454,10 @@ def test_overbound_legacy_id_is_quarantined_safely(baseline_db):
     assert row is not None
     assert len(row[0].encode()) <= 256
     assert row[0] != long_id
-    assert 'truncated_fields' in row[1]
+    evidence = json.loads(row[1])
+    assert evidence["fields"]["thread_id"]["truncated"] is True
+    assert evidence["fields"]["thread_id"]["byte_length"] == len(long_id.encode())
+    assert "value" not in evidence["fields"]["thread_id"]
     con.close()
 
 
@@ -563,4 +570,92 @@ def test_dispatch_attempt_constraints_keep_reply_scope_and_attempt_bound(seeded_
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             values,
         )
+    con.close()
+
+
+def test_provenance_owner_index_exists_after_migration(seeded_db):
+    """The frozen owner/thread/ref_index provenance index is installed."""
+    from substrate.feedback.migrations import migrate_feedback_v41
+
+    con = duckdb.connect(seeded_db)
+    migrate_feedback_v41(con)
+    indexes = con.execute(
+        "SELECT index_name FROM duckdb_indexes() "
+        "WHERE index_name='idx_feedback_provenance_owner'"
+    ).fetchall()
+    assert indexes == [("idx_feedback_provenance_owner",)]
+    con.close()
+
+
+def test_successful_migration_does_not_create_phantom_quarantine_rows(seeded_db):
+    """Runner evidence never masquerades as a malformed legacy row."""
+    from substrate.feedback.migrations import migrate_feedback_v41
+
+    con = duckdb.connect(seeded_db)
+    migrate_feedback_v41(con)
+    assert con.execute(
+        "SELECT count(*) FROM feedback_threads_v41_quarantine"
+    ).fetchone() == (0,)
+    con.close()
+
+
+def test_quarantine_evidence_hashes_oversized_values_without_raw_leak() -> None:
+    """Oversized legacy values are length/digest evidence, never raw excerpts."""
+    from substrate.feedback.migrations import _evidence
+
+    oversized = "sensitive-" * 100
+    encoded = _evidence({"thread_id": oversized, "state": "open"}, "invalid_shape")
+    evidence = json.loads(encoded)
+    assert oversized not in encoded
+    assert evidence["reason"] == "invalid_shape"
+    assert evidence["fields"]["thread_id"] == {
+        "byte_length": len(oversized.encode()),
+        "sha256": hashlib.sha256(oversized.encode()).hexdigest(),
+        "truncated": True,
+    }
+    assert evidence["fields"]["state"]["value"] == "open"
+    assert evidence["fields"]["state"]["truncated"] is False
+    assert len(encoded.encode()) <= 8192
+
+
+def test_column_map_matches_information_schema_and_copy_is_named() -> None:
+    """Every map entry names exact destination/source columns and defaults."""
+    from substrate.feedback import migrations
+
+    con = duckdb.connect(":memory:")
+    con.execute(BASELINE_DDL)
+    con.execute(migrations._get_v41_ddl())
+    for table, contract in migrations.FEEDBACK_V41_COLUMN_MAP.items():
+        destination = tuple(
+            row[0]
+            for row in con.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name=? ORDER BY ordinal_position",
+                [table],
+            ).fetchall()
+        )
+        assert tuple(contract["destination_columns"]) == destination
+        source_table = contract["source_table"]
+        if source_table is None:
+            continue
+        source = tuple(
+            row[0]
+            for row in con.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name=? ORDER BY ordinal_position",
+                [source_table],
+            ).fetchall()
+        )
+        assert tuple(contract["source_columns"]) == source
+        assert set(destination) == set(source) | set(contract["defaults"])
+        assert set(contract["default_expressions"]) == set(contract["defaults"])
+    source_text = inspect.getsource(migrations)
+    assert re.search(r"SELECT\s+\*\s+FROM", source_text, re.I) is None
+    for table in (
+        "feedback_threads_v41",
+        "feedback_items_v41",
+        "agent_work_v41",
+        "agent_work_attempts_v41",
+    ):
+        assert f"INSERT INTO {table} VALUES" not in source_text
     con.close()
