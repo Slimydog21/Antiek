@@ -223,3 +223,35 @@ def test_started_resume_rejects_preexisting_v41_catalog(tmp_path: Path) -> None:
         "WHERE table_name='feedback_provenance'"
     ).fetchone() == (3,)
     con.close()
+
+
+
+def test_started_resume_rejects_case_variant_v41_index(tmp_path: Path) -> None:
+    """DuckDB identifiers are case-insensitive, so catalog guards must be too."""
+    db = tmp_path / "started-case-variant-index.duckdb"
+    shutil.copy(_build_template(tmp_path), db)
+
+    killed = _run(db, crash_after="started")
+    assert killed.returncode == 70, killed.stderr
+
+    con = duckdb.connect(str(db))
+    con.execute("CREATE TABLE index_carrier (thread_id VARCHAR, ref_index INTEGER)")
+    con.execute(
+        "CREATE INDEX IDX_FEEDBACK_PROVENANCE_OWNER "
+        "ON index_carrier(thread_id, ref_index)"
+    )
+    con.close()
+
+    resumed = _run(db, crash_after=None)
+    assert resumed.returncode != 0
+    assert "migration_conflict: v41 catalog objects already exist at started" in resumed.stderr
+
+    con = duckdb.connect(str(db))
+    assert con.execute(
+        "SELECT phase FROM schema_migrations WHERE migration_id = 'd2_feedback_v41'"
+    ).fetchone() == ("started",)
+    assert con.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE lower(table_name)='feedback_provenance'"
+    ).fetchone() == (0,)
+    con.close()

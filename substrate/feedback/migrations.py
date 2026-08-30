@@ -716,7 +716,7 @@ def _assert_v41_catalog_absent(con: LockedConnection) -> None:
         str(row[0])
         for row in con.execute(
             f"SELECT table_name FROM information_schema.tables "
-            f"WHERE table_name IN ({placeholders}) ORDER BY table_name",
+            f"WHERE lower(table_name) IN ({placeholders}) ORDER BY table_name",
             list(V41_TABLE_ORDER),
         ).fetchall()
     ]
@@ -724,7 +724,7 @@ def _assert_v41_catalog_absent(con: LockedConnection) -> None:
         str(row[0])
         for row in con.execute(
             "SELECT index_name FROM duckdb_indexes() "
-            "WHERE index_name = 'idx_feedback_provenance_owner'"
+            "WHERE lower(index_name) = 'idx_feedback_provenance_owner'"
         ).fetchall()
     ]
     if tables or indexes:
