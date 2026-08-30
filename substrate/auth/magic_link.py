@@ -66,6 +66,8 @@ class SessionClaims:
     user_id: str
     email: str
     issued_at: int  # unix seconds
+    provider: str | None = None
+    subject: str | None = None
 
 
 # ── Internals ────────────────────────────────────────────────────────
@@ -191,21 +193,31 @@ def verify_magic_link_token(
 # ── Session cookies ──────────────────────────────────────────────────
 
 
-def mint_session_cookie(*, user_id: str, email: str) -> str:
-    """Mint a signed session-cookie value.
+def mint_session_cookie(
+    *,
+    user_id: str,
+    email: str,
+    provider: str | None = None,
+    subject: str | None = None,
+) -> str:
+    """Mint the signed transport cookie for a resolved owner.
 
-    Carries ``user_id`` + ``email`` so the middleware can reconstruct
-    ``UserClaims`` without a DB lookup. Multi-user Sprint 22 will
-    keep this shape and add a per-user scope list.
+    New subject-backed sessions carry both ``provider`` and ``subject``.
+    The optional pair exists only so old operator cookies remain parseable
+    during the SPR-02 migration; protected routes never promote a cookie
+    without the pair to a verified principal.
     """
-    return _encode(
-        _SESSION_AUDIENCE,
-        {
-            "user_id": user_id,
-            "email": email.strip().lower(),
-            "iat": int(time.time()),
-        },
-    )
+    if (provider is None) != (subject is None):
+        raise ValueError("session provider and subject must be supplied together")
+    payload: dict[str, Any] = {
+        "user_id": user_id,
+        "email": email.strip().lower(),
+        "iat": int(time.time()),
+    }
+    if provider is not None and subject is not None:
+        payload["provider"] = provider
+        payload["subject"] = subject
+    return _encode(_SESSION_AUDIENCE, payload)
 
 
 def verify_session_cookie(
@@ -228,6 +240,18 @@ def verify_session_cookie(
     user_id = payload.get("user_id")
     email = payload.get("email")
     iat = payload.get("iat")
+    provider = payload.get("provider")
+    subject = payload.get("subject")
     if not isinstance(user_id, str) or not isinstance(email, str) or not isinstance(iat, int):
         raise InvalidSessionCookie("session claims malformed")
-    return SessionClaims(user_id=user_id, email=email, issued_at=iat)
+    if (provider is None) != (subject is None):
+        raise InvalidSessionCookie("session subject claims malformed")
+    if provider is not None and (not isinstance(provider, str) or not isinstance(subject, str)):
+        raise InvalidSessionCookie("session subject claims malformed")
+    return SessionClaims(
+        user_id=user_id,
+        email=email,
+        issued_at=iat,
+        provider=provider,
+        subject=subject,
+    )

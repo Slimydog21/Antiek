@@ -1550,9 +1550,33 @@ def create_app(
         if os.environ.get("ANTIEK_AUTH_SECRET", "").strip():
             session_value = request.cookies.get(_SESSION_COOKIE_NAME, "")
             if session_value:
+                principal = None
+                try:
+                    from substrate.multi_user.auth import resolve_authenticated_principal
+
+                    principal = resolve_authenticated_principal(request)
+                except Exception:  # noqa: BLE001 — invalid cookie falls through
+                    principal = None
+                if principal is not None:
+                    principal_email = (principal.email or "").strip().lower()
+                    if not operator_emails or principal_email in operator_emails:
+                        _attach_operator(
+                            request,
+                            method=principal.auth_method,
+                            email=principal.email,
+                            user_id=principal.owner_user_id,
+                        )
+                        request.state.verified_principal = principal
+                        return await call_next(request)
+
+                # Temporary local-operator compatibility for existing signed
+                # sessions and the env-gated computer-use bootstrap. These
+                # bytes never become a VerifiedPrincipal, so D2 owner routes
+                # can reject them without weakening legacy operator routes.
                 cookie_claims: SessionClaims | None
                 try:
                     from substrate.auth import verify_session_cookie
+
                     cookie_claims = verify_session_cookie(session_value)
                 except Exception:  # noqa: BLE001 — invalid cookie falls through
                     cookie_claims = None
@@ -1565,6 +1589,7 @@ def create_app(
                             email=cookie_claims.email,
                             user_id=cookie_claims.user_id,
                         )
+                        request.state.legacy_session = True
                         return await call_next(request)
 
         # Path 2: Cloudflare Access — Service Token (machine callers)

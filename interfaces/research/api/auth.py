@@ -64,10 +64,13 @@ from substrate.auth import (
     get_email_provider,
     list_credentials,
     mint_magic_link_token,
-    mint_session_cookie,
     registration_options,
     verify_magic_link_token,
 )
+from substrate.auth import (
+    mint_session_cookie as mint_legacy_session_cookie,
+)
+from substrate.multi_user.auth import mint_session_cookie
 
 from .operator_allowlist import operator_allowlist_from_env
 
@@ -527,10 +530,7 @@ def register_auth_routes(
             # between request and click. Reject without leaking which
             # case we're in.
             return _redirect_login_error(error_code="not_authorized", next_path=next)
-        cookie = mint_session_cookie(
-            user_id="__operator__",
-            email=email,
-        )
+        cookie = mint_session_cookie("magic_link", email, email)
         # The first successful email proof is also the passkey bootstrap.
         # Keep the original destination, but pause on Login long enough to
         # create the device credential that makes future email unnecessary.
@@ -630,7 +630,7 @@ def register_auth_routes(
             pending.claimed = True
             email = pending.email
             next_path = pending.next_path
-        cookie = mint_session_cookie(user_id="__operator__", email=email)
+        cookie = mint_session_cookie("magic_link", email, email)
         response = Response(
             content=json.dumps({"authenticated": True, "setup_passkey": not bool(list_credentials()), "next": next_path}),
             media_type="application/json",
@@ -686,7 +686,7 @@ def register_auth_routes(
                 status_code=503,
                 detail={"code": "operator_email_missing", "message": "Operator email is not configured."},
             )
-        cookie = mint_session_cookie(user_id="__operator__", email=allow[0])
+        cookie = mint_session_cookie("passkey", allow[0], allow[0])
         response = Response(status_code=204)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
@@ -765,7 +765,7 @@ def register_auth_routes(
         # invariant — same assumption the magic-link path already makes.
         allow = sorted(_resolve_allowlist())
         email = allow[0] if allow else "__operator__"
-        cookie = mint_session_cookie(user_id="__operator__", email=email)
+        cookie = mint_legacy_session_cookie(user_id="__operator__", email=email)
         response = RedirectResponse(url=_resolve_redirect(next), status_code=302)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
