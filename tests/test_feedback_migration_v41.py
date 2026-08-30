@@ -659,3 +659,91 @@ def test_column_map_matches_information_schema_and_copy_is_named() -> None:
     ):
         assert f"INSERT INTO {table} VALUES" not in source_text
     con.close()
+
+
+
+def test_missing_root_item_quarantines_entire_aggregate(seeded_db) -> None:
+    """A thread with no required sequence-1 item is never active."""
+    from substrate.feedback.migrations import migrate_feedback_v41
+
+    con = duckdb.connect(seeded_db)
+    con.execute("DELETE FROM feedback_items WHERE thread_id='thread-1'")
+    migrate_feedback_v41(con)
+    assert con.execute("SELECT count(*) FROM feedback_threads").fetchone() == (0,)
+    assert con.execute("SELECT count(*) FROM agent_work").fetchone() == (0,)
+    assert con.execute("SELECT count(*) FROM agent_work_attempts").fetchone() == (0,)
+    assert con.execute(
+        "SELECT reason FROM feedback_threads_v41_quarantine "
+        "WHERE original_thread_id='thread-1'"
+    ).fetchone() == ("invalid_shape",)
+    con.close()
+
+
+def test_missing_work_quarantines_thread_and_items(seeded_db) -> None:
+    """Active reads never receive a thread/item aggregate with no work row."""
+    from substrate.feedback.migrations import migrate_feedback_v41
+
+    con = duckdb.connect(seeded_db)
+    con.execute("DELETE FROM agent_work_attempts WHERE work_id='work-1'")
+    con.execute("DELETE FROM agent_work WHERE work_id='work-1'")
+    migrate_feedback_v41(con)
+    assert con.execute("SELECT count(*) FROM feedback_threads").fetchone() == (0,)
+    assert con.execute("SELECT count(*) FROM feedback_items").fetchone() == (0,)
+    assert con.execute(
+        "SELECT reason FROM feedback_threads_v41_quarantine "
+        "WHERE original_thread_id='thread-1'"
+    ).fetchone() == ("invalid_shape",)
+    assert con.execute(
+        "SELECT reason FROM feedback_items_v41_quarantine WHERE original_item_id='item-1'"
+    ).fetchone() == ("invalid_shape",)
+    con.close()
+
+
+def test_full_source_ids_drive_cascade_not_truncated_quarantine_references(seeded_db) -> None:
+    """A malformed overbound work id cannot collide with a valid 256-byte prefix."""
+    from substrate.feedback.migrations import migrate_feedback_v41
+
+    valid_work_id = "w" + "a" * 255
+    malformed_work_id = valid_work_id + "x"
+    con = duckdb.connect(seeded_db)
+    con.execute("UPDATE agent_work SET work_id=? WHERE work_id='work-1'", [valid_work_id])
+    con.execute("UPDATE feedback_items SET work_id=? WHERE item_id='item-1'", [valid_work_id])
+    con.execute("UPDATE agent_work_attempts SET work_id=? WHERE attempt_id='att-1'", [valid_work_id])
+    con.execute(
+        """INSERT INTO feedback_threads (
+            thread_id, owner_user_id, investigation_id, artifact_id, artifact_version,
+            artifact_content_sha256, artifact_source_sha256, normalization, anchor_node_id,
+            anchor_node_text_sha256, anchor_start_scalar, anchor_end_scalar, anchor_quote,
+            anchor_prefix, anchor_suffix, state, create_operation_id, create_request_sha256
+        ) VALUES ('thread-bad', 'owner-a', 'inv-1', 'art-1', 1, ?, ?, 'unicode-nfc-v1',
+                  'node-bad', ?, 0, 1, 'q', '', '', 'open', 'op-bad', ?)""",
+        ["a" * 64, "b" * 64, "c" * 64, "d" * 64],
+    )
+    con.execute(
+        """INSERT INTO feedback_items
+           (item_id, thread_id, sequence, author_kind, author_id, body_markdown, work_id)
+           VALUES ('item-bad', 'thread-bad', 1, 'operator', 'owner-a', 'bad', ?)""",
+        [malformed_work_id],
+    )
+    con.execute(
+        """INSERT INTO agent_work
+           (work_id, thread_id, logical_worker_id, state, context_sha256, attempt_count)
+           VALUES (?, 'thread-bad', 'worker-bad', 'queued', ?, 0)""",
+        [malformed_work_id, "e" * 64],
+    )
+
+    migrate_feedback_v41(con)
+    assert con.execute(
+        "SELECT thread_id FROM feedback_threads ORDER BY thread_id"
+    ).fetchall() == [("thread-1",)]
+    assert con.execute("SELECT work_id FROM agent_work").fetchone() == (valid_work_id,)
+    assert con.execute(
+        "SELECT reason FROM feedback_threads_v41_quarantine "
+        "WHERE original_thread_id='thread-bad'"
+    ).fetchone() == ("invalid_shape",)
+    assert con.execute(
+        "SELECT count(*) FROM agent_work_v41_quarantine "
+        "WHERE original_work_id=?",
+        [valid_work_id],
+    ).fetchone() == (1,)
+    con.close()

@@ -43,6 +43,7 @@ Schema changes are load-bearing API changes (architecture_notes.md §7).
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Annotated, Any, Literal
@@ -522,6 +523,7 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     OWNER_LAUNCH_ROLE_STARTED = "owner.launch.role.started"
     OWNER_LAUNCH_ROLE_PROVIDER_UNKNOWN = "owner.launch.role.provider_unknown"
     OWNER_LAUNCH_ROLE_COMPLETED = "owner.launch.role.completed"
+    AGENT_WORK_D2_TRANSITIONED = "agent.work.d2_transitioned"
 
 
 # Schema version stamped into every emitted row. Bump when any payload
@@ -1491,6 +1493,31 @@ D2DispatchAction = Literal["edit_in_place", "branch_research"]
 _ID = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
 _OWNER = r"^[\x20-\x7e]{1,256}$"
 _HEX64 = r"^[0-9a-f]{64}$"
+
+
+class AgentWorkD2TransitionedPayload(_PayloadBase):
+    """Bounded v41 audit tuple for one durable D2 work transition."""
+
+    action_type: Literal[ActionType.AGENT_WORK_D2_TRANSITIONED] = (
+        ActionType.AGENT_WORK_D2_TRANSITIONED
+    )
+    event_schema_version: Literal[41] = 41
+    thread_id: str = Field(pattern=_ID)
+    work_id: str = Field(pattern=_ID)
+    dispatch_id: str = Field(pattern=_ID)
+    owner_user_id: str = Field(pattern=_OWNER)
+    work_kind: Literal["feedback_dispatch"] = "feedback_dispatch"
+    attempt_no: int = Field(ge=0)
+    lease_id: str = Field(pattern=_ID)
+    provider_boundary_crossed: bool
+    from_state: str = Field(pattern=_ID)
+    to_state: str = Field(pattern=_ID)
+    reason: D2QueueTransitionReason
+    result_sha256: str | None = Field(default=None, pattern=_HEX64)
+    provider_result_sha256: str | None = Field(default=None, pattern=_HEX64)
+    provider_receipt_sha256: str | None = Field(default=None, pattern=_HEX64)
+    attempt_actual_cents: int = Field(ge=0)
+    emitted_at: datetime
 
 
 class ArtifactHighlightCreatedPayload(_PayloadBase):
@@ -2652,6 +2679,67 @@ class AuditFindingPayload(_PayloadBase):
 # ---------------------------------------------------------------------------
 
 
+_D2_BRANCH_REQUIRED_FIELDS: tuple[str, ...] = (
+    "owner_user_id",
+    "owner_operation_id",
+    "dispatch_id",
+    "parent_investigation_id",
+    "parent_artifact_id",
+    "parent_artifact_version",
+    "parent_artifact_content_sha256",
+    "parent_artifact_source_sha256",
+    "feedback_thread_id",
+    "child_investigation_id",
+    "start_event_id",
+    "spawn_context_sha256",
+)
+_D2_BRANCH_ONLY_FIELDS: tuple[str, ...] = (
+    "dispatch_id",
+    "parent_artifact_id",
+    "parent_artifact_version",
+    "parent_artifact_content_sha256",
+    "parent_artifact_source_sha256",
+    "feedback_thread_id",
+    "child_investigation_id",
+    "start_event_id",
+    "spawn_context_sha256",
+)
+
+
+def _validate_d2_branch_lineage(payload: Any) -> None:
+    """Enforce one complete D2 lineage tuple without breaking legacy events."""
+    if payload.launch_kind == "d2_branch":
+        missing = [
+            field for field in _D2_BRANCH_REQUIRED_FIELDS if getattr(payload, field, None) is None
+        ]
+        if missing:
+            raise ValueError(
+                "d2_branch requires complete D2 branch lineage: " + ", ".join(missing)
+            )
+        if re.fullmatch(_OWNER, payload.owner_user_id) is None:
+            raise ValueError("d2_branch owner_user_id must be printable ASCII <=256 bytes")
+        for field in ("owner_operation_id", "parent_investigation_id"):
+            if re.fullmatch(_ID, getattr(payload, field)) is None:
+                raise ValueError(f"d2_branch {field} must be a bounded ASCII id")
+        if getattr(payload, "spawn_context", None):
+            raise ValueError("d2_branch forbids raw spawn_context; use spawn_context_sha256")
+        if getattr(payload, "parent_event_id", None) is not None:
+            raise ValueError("d2_branch must not mix legacy parent_event_id")
+        if any(
+            getattr(payload, field, None) is not None
+            for field in ("owner_model_choices", "owner_launch_digest", "owner_launch_version")
+        ):
+            raise ValueError("d2_branch must not mix legacy owner-launch metadata")
+        return
+    populated = [
+        field for field in _D2_BRANCH_ONLY_FIELDS if getattr(payload, field, None) is not None
+    ]
+    if populated:
+        raise ValueError(
+            "legacy launch forbids D2 branch fields: " + ", ".join(populated)
+        )
+
+
 class InvestigationStartRequestedPayload(_PayloadBase):
     """Cold-question entry point. The orchestrator subscribes to this
     action_type and spawns a per-investigation coroutine that walks
@@ -2668,7 +2756,8 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     action_type: Literal[ActionType.INVESTIGATION_START_REQUESTED] = (
         ActionType.INVESTIGATION_START_REQUESTED
     )
-    question: str
+    launch_kind: Literal["legacy", "d2_branch"] = "legacy"
+    question: str = Field(max_length=2000)
     context: str = ""
     topic_slug: str | None = None
     # Cap on parallel evidence_retrieve dispatches (one per sub-question
@@ -2678,6 +2767,15 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # Sprint 11: parent investigation lineage for chase-spawned children.
     parent_investigation_id: str | None = None
     spawn_context: str | None = None  # highlighted text from parent's synthesis
+    dispatch_id: str | None = Field(default=None, pattern=_ID)
+    parent_artifact_id: str | None = Field(default=None, pattern=_ID)
+    parent_artifact_version: int | None = Field(default=None, gt=0)
+    parent_artifact_content_sha256: str | None = Field(default=None, pattern=_HEX64)
+    parent_artifact_source_sha256: str | None = Field(default=None, pattern=_HEX64)
+    feedback_thread_id: str | None = Field(default=None, pattern=_ID)
+    child_investigation_id: str | None = Field(default=None, pattern=_ID)
+    start_event_id: str | None = Field(default=None, pattern=_ID)
+    spawn_context_sha256: str | None = Field(default=None, pattern=_HEX64)
     # Sprint 12: continuous chase mode. When chase_mode != "off", the
     # orchestrator re-enters phase 1 with the strongest open question
     # from current evidentiary_gaps as a new spawned sub-investigation
@@ -2716,6 +2814,11 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     owner_model_choices: dict[str, dict[str, str]] | None = None
     owner_launch_digest: str | None = None
     owner_launch_version: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _check_d2_branch_lineage(self) -> InvestigationStartRequestedPayload:
+        _validate_d2_branch_lineage(self)
+        return self
 
 
 class InvestigationChaseHaltedPayload(_PayloadBase):
@@ -2757,9 +2860,28 @@ class InvestigationSpawnedFromPayload(_PayloadBase):
     action_type: Literal[ActionType.INVESTIGATION_SPAWNED_FROM] = (
         ActionType.INVESTIGATION_SPAWNED_FROM
     )
-    parent_investigation_id: str
+    launch_kind: Literal["legacy", "d2_branch"] = "legacy"
+    parent_investigation_id: str | None = None
     parent_event_id: str | None = None
     spawn_context: str = ""
+    owner_user_id: str | None = None
+    owner_operation_id: str | None = None
+    dispatch_id: str | None = Field(default=None, pattern=_ID)
+    parent_artifact_id: str | None = Field(default=None, pattern=_ID)
+    parent_artifact_version: int | None = Field(default=None, gt=0)
+    parent_artifact_content_sha256: str | None = Field(default=None, pattern=_HEX64)
+    parent_artifact_source_sha256: str | None = Field(default=None, pattern=_HEX64)
+    feedback_thread_id: str | None = Field(default=None, pattern=_ID)
+    child_investigation_id: str | None = Field(default=None, pattern=_ID)
+    start_event_id: str | None = Field(default=None, pattern=_ID)
+    spawn_context_sha256: str | None = Field(default=None, pattern=_HEX64)
+
+    @model_validator(mode="after")
+    def _check_d2_branch_lineage(self) -> InvestigationSpawnedFromPayload:
+        _validate_d2_branch_lineage(self)
+        if self.launch_kind == "legacy" and self.parent_investigation_id is None:
+            raise ValueError("legacy spawn requires parent_investigation_id")
+        return self
 
 
 class PageAttributionComputedPayload(_PayloadBase):
@@ -4649,6 +4771,7 @@ TypedPayload = Annotated[
     | ArtifactCommentCreatedPayload
     | FeedbackThreadResolvedPayload
     | AgentWorkTransitionedPayload
+    | AgentWorkD2TransitionedPayload
     | ArtifactFeedbackRepliedPayload
     | ArtifactHighlightCreatedPayload
     | FeedbackDispatchRequestedPayload
@@ -4804,6 +4927,7 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset(
         # Living Roadmap SPR-04 — highlight → float-menu user NOTE provenance.
         ActionType.MARGINALIA_NOTED.value,
         # D2 anchored comments (v41) — typed payload registrations.
+        ActionType.AGENT_WORK_D2_TRANSITIONED.value,
         ActionType.ARTIFACT_HIGHLIGHT_CREATED.value,
         ActionType.FEEDBACK_DISPATCH_REQUESTED.value,
         ActionType.FEEDBACK_DISPATCH_REFUSED.value,
@@ -4861,6 +4985,7 @@ WRESTLING_ACTION_TYPES: frozenset[str] = frozenset(
 # the dedicated read-only adapter below rather than by the v41 write model.
 D2_V41_ACTION_TYPES: frozenset[str] = frozenset(
     {
+        ActionType.AGENT_WORK_D2_TRANSITIONED.value,
         ActionType.ARTIFACT_HIGHLIGHT_CREATED.value,
         ActionType.FEEDBACK_DISPATCH_REQUESTED.value,
         ActionType.FEEDBACK_DISPATCH_REFUSED.value,
@@ -4933,7 +5058,11 @@ class Event(BaseModel):
             if isinstance(self.action_type, ActionType)
             else str(self.action_type)
         )
-        if at in D2_V41_ACTION_TYPES and self.schema_version != 41:
+        d2_branch = at in {
+            ActionType.INVESTIGATION_START_REQUESTED.value,
+            ActionType.INVESTIGATION_SPAWNED_FROM.value,
+        } and getattr(self.payload, "launch_kind", None) == "d2_branch"
+        if (at in D2_V41_ACTION_TYPES or d2_branch) and self.schema_version != 41:
             raise ValueError(f"D2 event {at!r} requires schema_version=41")
         return self
 
@@ -5061,6 +5190,7 @@ __all__ = [
     "resolve_feedback_thread_payload",
     "AgentWorkTransitionedPayload",
     "ArtifactFeedbackRepliedPayload",
+    "AgentWorkD2TransitionedPayload",
     "ArtifactHighlightCreatedPayload",
     "FeedbackDispatchRequestedPayload",
     "FeedbackDispatchRefusedPayload",

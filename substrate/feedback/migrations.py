@@ -1216,56 +1216,102 @@ def _copy_attempts(con: LockedConnection, now: datetime) -> None:
 
 
 def _apply_dependency_cascade(con: LockedConnection, now: datetime) -> None:
-    """Quarantine whole aggregates when any dependent legacy row is unsafe."""
+    """Keep only complete source aggregates, using full source identities.
+
+    Quarantine references are intentionally truncated for safety and therefore
+    must never drive dependency decisions. The source rows remain available
+    until rename, so cascade with their full values and require each active
+    thread to have a contiguous root-item sequence, exactly one work row, and
+    the attempts declared by that work row.
+    """
     thread_cols = _source_columns("feedback_threads_v41")
     item_cols = _source_columns("feedback_items_v41")
     work_cols = _source_columns("agent_work_v41")
     attempt_cols = _source_columns("agent_work_attempts_v41")
-    thread_rows = {row[0]: dict(zip(thread_cols, row, strict=True)) for row in con.execute(
-        f"SELECT {', '.join(thread_cols)} FROM feedback_threads").fetchall()}
-    item_rows = [dict(zip(item_cols, row, strict=True)) for row in con.execute(
-        f"SELECT {', '.join(item_cols)} FROM feedback_items").fetchall()]
-    work_rows = {row[0]: dict(zip(work_cols, row, strict=True)) for row in con.execute(
-        f"SELECT {', '.join(work_cols)} FROM agent_work").fetchall()}
-    attempt_rows = [dict(zip(attempt_cols, row, strict=True)) for row in con.execute(
-        f"SELECT {', '.join(attempt_cols)} FROM agent_work_attempts").fetchall()]
+    thread_rows = {
+        row[0]: dict(zip(thread_cols, row, strict=True))
+        for row in con.execute(
+            f"SELECT {', '.join(thread_cols)} FROM feedback_threads"
+        ).fetchall()
+    }
+    item_rows = [
+        dict(zip(item_cols, row, strict=True))
+        for row in con.execute(
+            f"SELECT {', '.join(item_cols)} FROM feedback_items"
+        ).fetchall()
+    ]
+    work_rows = [
+        dict(zip(work_cols, row, strict=True))
+        for row in con.execute(
+            f"SELECT {', '.join(work_cols)} FROM agent_work"
+        ).fetchall()
+    ]
+    attempt_rows = [
+        dict(zip(attempt_cols, row, strict=True))
+        for row in con.execute(
+            f"SELECT {', '.join(attempt_cols)} FROM agent_work_attempts"
+        ).fetchall()
+    ]
+
+    active_thread_ids = {
+        row[0] for row in con.execute("SELECT thread_id FROM feedback_threads_v41").fetchall()
+    }
+    active_item_ids = {
+        row[0] for row in con.execute("SELECT item_id FROM feedback_items_v41").fetchall()
+    }
+    active_work_ids = {
+        row[0] for row in con.execute("SELECT work_id FROM agent_work_v41").fetchall()
+    }
+    active_attempt_ids = {
+        row[0] for row in con.execute("SELECT attempt_id FROM agent_work_attempts_v41").fetchall()
+    }
 
     bad_threads: set[Any] = set()
-    quarantined_item_threads = con.execute(
-        "SELECT DISTINCT original_thread_id FROM feedback_items_v41_quarantine "
-        "WHERE original_thread_id IS NOT NULL"
-    ).fetchall()
-    bad_threads.update(row[0] for row in quarantined_item_threads)
-    for row in thread_rows.values():
-        sequences = sorted(item["sequence"] for item in item_rows if item["thread_id"] == row["thread_id"])
-        if sequences and sequences != list(range(1, len(sequences) + 1)):
-            bad_threads.add(row["thread_id"])
-
-    bad_works = {row[0] for row in con.execute(
-        "SELECT original_work_id FROM agent_work_v41_quarantine WHERE original_work_id IS NOT NULL"
-    ).fetchall()}
-    bad_attempt_works = {row[0] for row in con.execute(
-        "SELECT original_work_id FROM agent_work_attempts_v41_quarantine WHERE original_work_id IS NOT NULL"
-    ).fetchall()}
-    bad_works.update(bad_attempt_works)
-    for work_id in bad_works:
-        work = work_rows.get(work_id)
-        if work is not None:
-            bad_threads.add(work["thread_id"])
+    for thread_id in thread_rows:
+        items = [row for row in item_rows if row.get("thread_id") == thread_id]
+        works = [row for row in work_rows if row.get("thread_id") == thread_id]
+        if thread_id not in active_thread_ids:
+            bad_threads.add(thread_id)
+            continue
+        if not items or any(row.get("item_id") not in active_item_ids for row in items):
+            bad_threads.add(thread_id)
+            continue
+        sequences = [row.get("sequence") for row in items]
+        if not all(type(sequence) is int for sequence in sequences) or sorted(sequences) != list(
+            range(1, len(sequences) + 1)
+        ):
+            bad_threads.add(thread_id)
+            continue
+        if len(works) != 1 or works[0].get("work_id") not in active_work_ids:
+            bad_threads.add(thread_id)
+            continue
+        work_id = works[0].get("work_id")
+        attempts = [row for row in attempt_rows if row.get("work_id") == work_id]
+        if any(row.get("attempt_id") not in active_attempt_ids for row in attempts):
+            bad_threads.add(thread_id)
 
     for thread_id in bad_threads:
         thread = thread_rows.get(thread_id)
         if thread is None:
             continue
+        related_items = [row for row in item_rows if row.get("thread_id") == thread_id]
+        related_works = [row for row in work_rows if row.get("thread_id") == thread_id]
+        related_work_ids = {row.get("work_id") for row in related_works}
+        related_attempts = [
+            row for row in attempt_rows if row.get("work_id") in related_work_ids
+        ]
         _quarantine_thread(con, thread, "invalid_shape", now)
-        related_work_ids = {work["work_id"] for work in work_rows.values() if work["thread_id"] == thread_id}
-        for item in (item for item in item_rows if item["thread_id"] == thread_id):
+        for item in related_items:
             _quarantine_item(con, item, "invalid_shape", now)
-        for work in (work for work in work_rows.values() if work["thread_id"] == thread_id):
+        for work in related_works:
             _quarantine_work(con, work, "invalid_correlation", now)
-        for attempt in (attempt for attempt in attempt_rows if attempt["work_id"] in related_work_ids):
+        for attempt in related_attempts:
             _quarantine_attempt(con, attempt, "invalid_correlation", now)
-        con.execute("DELETE FROM agent_work_attempts_v41 WHERE work_id IN (SELECT work_id FROM agent_work_v41 WHERE thread_id = ?)", [thread_id])
+        con.execute(
+            "DELETE FROM agent_work_attempts_v41 WHERE work_id IN "
+            "(SELECT work_id FROM agent_work_v41 WHERE thread_id = ?)",
+            [thread_id],
+        )
         con.execute("DELETE FROM agent_work_v41 WHERE thread_id = ?", [thread_id])
         con.execute("DELETE FROM feedback_items_v41 WHERE thread_id = ?", [thread_id])
         con.execute("DELETE FROM feedback_threads_v41 WHERE thread_id = ?", [thread_id])

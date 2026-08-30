@@ -15,7 +15,7 @@ import duckdb
 
 from runtime.db_lock import WriteLockTimeout, connect_write
 
-INSERT_SQL = """
+INSERT_THREAD_SQL = """
 INSERT INTO feedback_threads (
     thread_id, owner_user_id, investigation_id, artifact_id, artifact_version,
     artifact_content_sha256, artifact_source_sha256, normalization,
@@ -23,6 +23,21 @@ INSERT INTO feedback_threads (
     anchor_quote, anchor_prefix, anchor_suffix, state, create_operation_id,
     create_request_sha256
 ) VALUES (?, ?, ?, ?, 1, ?, ?, 'unicode-nfc-v1', 'node-1', ?, 0, 1, 'q', '', '', 'open', ?, ?)
+"""
+INSERT_ITEM_V40_SQL = """
+INSERT INTO feedback_items (
+    item_id, thread_id, sequence, author_kind, author_id, body_markdown, work_id
+) VALUES (?, ?, 1, 'operator', 'load-writer', 'q', ?)
+"""
+INSERT_ITEM_V41_SQL = """
+INSERT INTO feedback_items (
+    item_id, thread_id, sequence, author_kind, author_id, entry_kind, body_markdown, work_id
+) VALUES (?, ?, 1, 'operator', 'load-writer', 'comment', 'q', ?)
+"""
+INSERT_WORK_SQL = """
+INSERT INTO agent_work (
+    work_id, thread_id, logical_worker_id, state, context_sha256, attempt_count
+) VALUES (?, ?, 'load-worker', 'queued', ?, 0)
 """
 
 
@@ -42,10 +57,26 @@ def main() -> int:
         thread_id = f"{prefix}-{index}"
         try:
             with connect_write(db, purpose="d2-concurrent-writer", timeout_s=0.25) as con:
-                con.execute(INSERT_SQL, [
-                    thread_id, "load-writer", "inv-load", "art-load",
-                    "a" * 64, "b" * 64, "c" * 64, "op-" + thread_id, "d" * 64,
-                ])
+                item_id = f"item-{thread_id}"
+                work_id = f"work-{thread_id}"
+                con.execute("BEGIN")
+                try:
+                    con.execute(INSERT_THREAD_SQL, [
+                        thread_id, "load-writer", "inv-load", "art-load",
+                        "a" * 64, "b" * 64, "c" * 64, "op-" + thread_id, "d" * 64,
+                    ])
+                    has_entry_kind = con.execute(
+                        "SELECT count(*) FROM information_schema.columns "
+                        "WHERE table_name='feedback_items' AND column_name='entry_kind'"
+                    ).fetchone()[0] == 1
+                    item_sql = INSERT_ITEM_V41_SQL if has_entry_kind else INSERT_ITEM_V40_SQL
+                    con.execute(item_sql, [item_id, thread_id, work_id])
+                    con.execute(INSERT_WORK_SQL, [work_id, thread_id, "e" * 64])
+                except BaseException:
+                    con.execute("ROLLBACK")
+                    raise
+                else:
+                    con.execute("COMMIT")
             inserted += 1
             with log.open("a") as handle:
                 handle.write(thread_id + "\n")

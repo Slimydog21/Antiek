@@ -15,14 +15,20 @@ import pytest
 
 from substrate.schemas.events import (
     EVENT_SCHEMA_VERSION,
+    TYPED_PAYLOAD_ACTION_TYPES,
+    ActionType,
+    AgentWorkD2TransitionedPayload,
     ArtifactHighlightCreatedPayload,
     D2QueueTransitionReason,
     DeliverableHtmlEditedPayload,
     DispatchErrorCode,
     DispatchRefusalCode,
+    Event,
     FeedbackDispatchCompletedPayload,
     FeedbackDispatchRefusedPayload,
     HighlightColor,
+    InvestigationSpawnedFromPayload,
+    InvestigationStartRequestedPayload,
     LoopOneChildRole,
     OwnerLaunchRoleCompletedPayload,
     ProviderUnknownReason,
@@ -322,3 +328,149 @@ def test_newer_envelope_versions_parse_as_v41() -> None:
     for version in (41, 42):
         payload = resolve_feedback_thread_payload(version, _v41_row())
         assert type(payload) is FeedbackThreadResolvedPayload
+
+
+
+def _d2_branch_lineage() -> dict[str, object]:
+    return {
+        "launch_kind": "d2_branch",
+        "owner_user_id": "owner-a",
+        "owner_operation_id": "owner-op-1",
+        "dispatch_id": "dispatch-1",
+        "parent_investigation_id": "inv-parent",
+        "parent_artifact_id": "artifact-1",
+        "parent_artifact_version": 2,
+        "parent_artifact_content_sha256": HEX,
+        "parent_artifact_source_sha256": "b" * 64,
+        "feedback_thread_id": "thread-1",
+        "child_investigation_id": "inv-child",
+        "start_event_id": "evt-start-1",
+        "spawn_context_sha256": "c" * 64,
+    }
+
+
+def test_d2_branch_start_and_spawn_require_complete_lineage_tuple() -> None:
+    lineage = _d2_branch_lineage()
+    start = InvestigationStartRequestedPayload(question="Why?", **lineage)
+    spawned = InvestigationSpawnedFromPayload(**lineage)
+    assert start.launch_kind == "d2_branch"
+    assert spawned.spawn_context_sha256 == "c" * 64
+
+    for field in (
+        "owner_user_id",
+        "owner_operation_id",
+        "dispatch_id",
+        "parent_investigation_id",
+        "parent_artifact_id",
+        "parent_artifact_version",
+        "parent_artifact_content_sha256",
+        "parent_artifact_source_sha256",
+        "feedback_thread_id",
+        "child_investigation_id",
+        "start_event_id",
+        "spawn_context_sha256",
+    ):
+        partial = {**lineage, field: None}
+        with pytest.raises(pydantic.ValidationError, match="complete D2 branch lineage"):
+            InvestigationStartRequestedPayload(question="Why?", **partial)
+        with pytest.raises(pydantic.ValidationError, match="complete D2 branch lineage"):
+            InvestigationSpawnedFromPayload(**partial)
+
+
+def test_legacy_investigation_shapes_preserve_chase_fields_and_forbid_d2_fields() -> None:
+    start = InvestigationStartRequestedPayload(
+        question="legacy", parent_investigation_id="inv-parent", spawn_context="raw legacy"
+    )
+    spawned = InvestigationSpawnedFromPayload(
+        parent_investigation_id="inv-parent", spawn_context="raw legacy"
+    )
+    assert start.launch_kind == "legacy"
+    assert spawned.launch_kind == "legacy"
+    for payload_type, base in (
+        (InvestigationStartRequestedPayload, {"question": "legacy"}),
+        (InvestigationSpawnedFromPayload, {"parent_investigation_id": "inv-parent"}),
+    ):
+        with pytest.raises(pydantic.ValidationError, match="legacy launch forbids D2 branch fields"):
+            payload_type(**base, dispatch_id="dispatch-1")
+
+
+def test_d2_branch_rejects_raw_spawn_context_and_bounds_question() -> None:
+    with pytest.raises(pydantic.ValidationError, match="raw spawn_context"):
+        InvestigationStartRequestedPayload(
+            question="Why?", **_d2_branch_lineage(), spawn_context="secret raw text"
+        )
+    with pytest.raises(pydantic.ValidationError):
+        InvestigationStartRequestedPayload(question="x" * 2001)
+
+
+def test_agent_work_d2_transitioned_is_v41_typed_and_bounded() -> None:
+    fields = {
+        "event_schema_version": 41,
+        "thread_id": "thread-1",
+        "work_id": "work-1",
+        "dispatch_id": "dispatch-1",
+        "owner_user_id": "owner-a",
+        "work_kind": "feedback_dispatch",
+        "attempt_no": 1,
+        "lease_id": "lease-1",
+        "provider_boundary_crossed": True,
+        "from_state": "sent",
+        "to_state": "provider_unknown",
+        "reason": "provider_boundary_crossed",
+        "result_sha256": None,
+        "provider_result_sha256": HEX,
+        "provider_receipt_sha256": None,
+        "attempt_actual_cents": 12,
+        "emitted_at": "2026-08-30T00:00:00Z",
+    }
+    payload = AgentWorkD2TransitionedPayload(**fields)
+    assert payload.action_type == "agent.work.d2_transitioned"
+    envelope = Event(
+        event_id="evt-1",
+        investigation_id="inv-1",
+        action_type=ActionType.AGENT_WORK_D2_TRANSITIONED,
+        payload=payload,
+        param_version="test",
+        schema_version=41,
+        emitted_at="2026-08-30T00:00:00Z",
+    )
+    assert envelope.schema_version == 41
+    with pytest.raises(pydantic.ValidationError, match="requires schema_version=41"):
+        Event(**{**envelope.model_dump(), "schema_version": 40})
+    for field, value in (
+        ("attempt_no", -1),
+        ("attempt_actual_cents", -1),
+        ("result_sha256", "A" * 64),
+        ("event_schema_version", 40),
+    ):
+        with pytest.raises(pydantic.ValidationError):
+            AgentWorkD2TransitionedPayload(**{**fields, field: value})
+
+
+
+def test_d2_branch_envelopes_require_v41_but_legacy_shapes_remain_readable() -> None:
+    d2 = InvestigationStartRequestedPayload(question="Why?", **_d2_branch_lineage())
+    common = {
+        "event_id": "evt-branch",
+        "investigation_id": "inv-child",
+        "action_type": ActionType.INVESTIGATION_START_REQUESTED,
+        "param_version": "test",
+        "emitted_at": "2026-08-30T00:00:00Z",
+    }
+    with pytest.raises(pydantic.ValidationError, match="requires schema_version=41"):
+        Event(**common, payload=d2, schema_version=40)
+    legacy = InvestigationStartRequestedPayload(question="legacy")
+    assert Event(**common, payload=legacy, schema_version=40).schema_version == 40
+
+
+def test_agent_work_d2_transition_action_is_in_typed_registry() -> None:
+    assert ActionType.AGENT_WORK_D2_TRANSITIONED.value in TYPED_PAYLOAD_ACTION_TYPES
+
+
+
+def test_d2_branch_owner_and_lineage_ids_are_bounded_ascii() -> None:
+    for field, value in (("owner_user_id", "ownér"), ("owner_operation_id", "bad id")):
+        with pytest.raises(pydantic.ValidationError, match="bounded ASCII|printable ASCII"):
+            InvestigationStartRequestedPayload(
+                question="Why?", **{**_d2_branch_lineage(), field: value}
+            )

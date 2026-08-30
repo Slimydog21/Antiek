@@ -16,7 +16,9 @@ import pytest
 from pydantic import TypeAdapter
 
 from substrate.schemas.events import (
+    AgentWorkD2TransitionedPayload,
     ArtifactHighlightCreatedPayload,
+    D2QueueTransitionReason,
     DeliverableHtmlEditedPayload,
     Event,
     FeedbackDispatchCompletedPayload,
@@ -25,6 +27,8 @@ from substrate.schemas.events import (
     FeedbackDispatchRequestedPayload,
     FeedbackThreadResolvedPayload,
     HighlightColor,
+    InvestigationSpawnedFromPayload,
+    InvestigationStartRequestedPayload,
     LoopOneChildRole,
     OwnerLaunchRoleCompletedPayload,
     OwnerLaunchRoleProviderUnknownPayload,
@@ -172,7 +176,54 @@ def _role_completed() -> OwnerLaunchRoleCompletedPayload:
     )
 
 
+def _transition() -> AgentWorkD2TransitionedPayload:
+    return AgentWorkD2TransitionedPayload(
+        thread_id="t-1",
+        work_id="w-1",
+        dispatch_id="d-1",
+        owner_user_id="owner-a",
+        attempt_no=1,
+        lease_id="lease-1",
+        provider_boundary_crossed=True,
+        from_state="sent",
+        to_state="provider_unknown",
+        reason=D2QueueTransitionReason.PROVIDER_BOUNDARY_CROSSED,
+        provider_result_sha256=HEX,
+        attempt_actual_cents=12,
+        emitted_at="2026-08-30T00:00:00Z",
+    )
+
+
+def _branch_lineage() -> dict[str, Any]:
+    return {
+        "launch_kind": "d2_branch",
+        "owner_user_id": "owner-a",
+        "owner_operation_id": "owner-op-1",
+        "dispatch_id": "d-1",
+        "parent_investigation_id": "inv-parent",
+        "parent_artifact_id": "art-1",
+        "parent_artifact_version": 1,
+        "parent_artifact_content_sha256": HEX,
+        "parent_artifact_source_sha256": HEX,
+        "feedback_thread_id": "t-1",
+        "child_investigation_id": "inv-child",
+        "start_event_id": "evt-start-1",
+        "spawn_context_sha256": HEX,
+    }
+
+
+def _branch_start() -> InvestigationStartRequestedPayload:
+    return InvestigationStartRequestedPayload(question="Why?", **_branch_lineage())
+
+
+def _branch_spawn() -> InvestigationSpawnedFromPayload:
+    return InvestigationSpawnedFromPayload(**_branch_lineage())
+
+
 ALL_V41_PAYLOADS = [
+    _transition,
+    _branch_start,
+    _branch_spawn,
     _highlight,
     _requested,
     _refused,
@@ -199,6 +250,9 @@ def test_v41_payload_round_trips_through_union(factory) -> None:
 
 def test_v41_action_type_strings_exact() -> None:
     expected = {
+        "agent.work.d2_transitioned",
+        "investigation.start_requested",
+        "investigation.spawned_from",
         "artifact.highlight.created",
         "feedback.dispatch.requested",
         "feedback.dispatch.refused",

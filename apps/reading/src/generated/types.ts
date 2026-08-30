@@ -163,6 +163,7 @@ export const ActionType = {
   OWNER_LAUNCH_ROLE_STARTED: "owner.launch.role.started",
   OWNER_LAUNCH_ROLE_PROVIDER_UNKNOWN: "owner.launch.role.provider_unknown",
   OWNER_LAUNCH_ROLE_COMPLETED: "owner.launch.role.completed",
+  AGENT_WORK_D2_TRANSITIONED: "agent.work.d2_transitioned",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -995,6 +996,30 @@ export interface AgentWorkTransitionedPayload {
   after_state: string;
   attempt_no: number;
   reason: string;
+}
+
+/**
+ * Bounded v41 audit tuple for one durable D2 work transition.
+ */
+export interface AgentWorkD2TransitionedPayload {
+  action_type: "agent.work.d2_transitioned";
+  event_schema_version?: 41;
+  thread_id: string;
+  work_id: string;
+  dispatch_id: string;
+  owner_user_id: string;
+  work_kind?: "feedback_dispatch";
+  attempt_no: number;
+  lease_id: string;
+  provider_boundary_crossed: boolean;
+  from_state: string;
+  to_state: string;
+  reason: D2QueueTransitionReason;
+  result_sha256?: string | null;
+  provider_result_sha256?: string | null;
+  provider_receipt_sha256?: string | null;
+  attempt_actual_cents: number;
+  emitted_at: string;
 }
 
 /**
@@ -1899,12 +1924,22 @@ export interface AuditFindingPayload {
  */
 export interface InvestigationStartRequestedPayload {
   action_type: "investigation.start_requested";
+  launch_kind?: "legacy" | "d2_branch";
   question: string;
   context?: string;
   topic_slug?: string | null;
   max_sub_questions?: number;
   parent_investigation_id?: string | null;
   spawn_context?: string | null;
+  dispatch_id?: string | null;
+  parent_artifact_id?: string | null;
+  parent_artifact_version?: number | null;
+  parent_artifact_content_sha256?: string | null;
+  parent_artifact_source_sha256?: string | null;
+  feedback_thread_id?: string | null;
+  child_investigation_id?: string | null;
+  start_event_id?: string | null;
+  spawn_context_sha256?: string | null;
   chase_mode?: "off" | "depth" | "duration";
   chase_value?: number;
   chase_budget_usd?: number;
@@ -1959,9 +1994,21 @@ export interface InvestigationFailedPayload {
  */
 export interface InvestigationSpawnedFromPayload {
   action_type: "investigation.spawned_from";
-  parent_investigation_id: string;
+  launch_kind?: "legacy" | "d2_branch";
+  parent_investigation_id?: string | null;
   parent_event_id?: string | null;
   spawn_context?: string;
+  owner_user_id?: string | null;
+  owner_operation_id?: string | null;
+  dispatch_id?: string | null;
+  parent_artifact_id?: string | null;
+  parent_artifact_version?: number | null;
+  parent_artifact_content_sha256?: string | null;
+  parent_artifact_source_sha256?: string | null;
+  feedback_thread_id?: string | null;
+  child_investigation_id?: string | null;
+  start_event_id?: string | null;
+  spawn_context_sha256?: string | null;
 }
 
 /**
@@ -3058,6 +3105,7 @@ export type TypedPayload =
   | ArtifactCommentCreatedPayload
   | FeedbackThreadResolvedPayload
   | AgentWorkTransitionedPayload
+  | AgentWorkD2TransitionedPayload
   | ArtifactFeedbackRepliedPayload
   | ArtifactHighlightCreatedPayload
   | FeedbackDispatchRequestedPayload
@@ -3189,6 +3237,7 @@ export interface Event {
 }
 
 export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
+  "agent.work.d2_transitioned",
   "agent.work.transitioned",
   "ai.action.applied",
   "ai.action.undone",

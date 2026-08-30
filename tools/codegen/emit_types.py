@@ -170,6 +170,7 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ArtifactCommentCreatedPayload,
     schema_module.FeedbackThreadResolvedPayload,
     schema_module.AgentWorkTransitionedPayload,
+    schema_module.AgentWorkD2TransitionedPayload,
     schema_module.ArtifactFeedbackRepliedPayload,
     # D2 anchored comments (v41) — same order as the TypedPayload union.
     schema_module.ArtifactHighlightCreatedPayload,
@@ -305,6 +306,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
 _ENUM_FIELD_ALIASES: dict[type[enum.Enum], str] = {
     schema_module.HighlightColor: "HighlightColor",
     schema_module.ProviderUnknownReason: "ProviderUnknownReason",
+    schema_module.D2QueueTransitionReason: "D2QueueTransitionReason",
+    schema_module.RoleEventReason: "RoleEventReason",
     schema_module.DispatchRefusalCode: "DispatchRefusalCode",
     schema_module.DispatchErrorCode: "DispatchErrorCode",
     schema_module.LoopOneChildRole: "LoopOneChildRole",
