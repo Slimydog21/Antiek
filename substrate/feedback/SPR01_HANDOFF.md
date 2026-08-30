@@ -1,76 +1,118 @@
-# SPR-01 Handoff — D2 Anchored Comments (Feedback Schema Migration + v41 Event Schema)
+# SPR-01 Handoff — D2 Anchored Comments Schema and Event Contract
 
-Status: **feature-complete, blocked on independent review** (subagent infrastructure failure — 14 consecutive probe deaths across 4 lineages; see Review status).
+Status: **rework complete; final different-lineage re-review required**. Do not merge, push, enable production, or start SPR-02 from this document alone.
 
-- Branch: `d2/spr01-feedback-schema-migration` (worktree, NOT pushed — sprint forbids push)
-- Baseline: `origin/main` @ `0bb7b76ff47e1b42bf66bc0f016e75e91578fa94`
-- Commits (oldest → newest):
-  - `2817545a` feat(feedback): add v41 migration runner
-  - `9b739a4f3` fix(feedback): repair review P0/P1 findings in v41 migration
-  - `96d1ed82` test(feedback): add real-process kill/resume gate for v41 migration
-  - `5a0bf05be` test(feedback): add concurrent-writer exclusion gate
-  - `bebb6fc23` fix(feedback): refuse rename when baseline drifts after copy
-  - `3203b889c` style(feedback): ruff fixes for drift pre-check
-  - `8109a9653` test(feedback): pin v41 digests to spec-derived golden vectors
-  - `880442f1e` test(feedback): pin DuckDB catalog DDL normalization; drop dead helper
-  - `2ca71eaae` feat(events): add D2 v41 typed payloads and shared enums
-  - `ce30c9857` feat(events): v41 resolved payload tuple + v40 read adapter
-  - `9434a2f5b` test(events): rollback/atomicity gate for v41 resolved outbox
-  - `cf9ce1326` feat(codegen): emit v41 payloads to TypeScript with tsc round-trip
+- Branch: `d2/spr01-feedback-schema-migration`
+- Worktree: `/Users/slimydog/Antiek/worktrees/d2-spr01-feedback-schema`
+- Baseline: `0bb7b76ff47e1b42bf66bc0f016e75e91578fa94`
+- Implementation tip: `cb2b919bcfe4d4c653864a795944b86926a80cca`
+- Canonical spec: `specs/antiek-voicenote-2026-08-28-anchored-comments/sprint-01-annotation-schema-store.html`
+- Accepted D2 package aggregate: `d54b65157443df6aa8ffdecabf23149e19df4cc51b261cee6da486bfed4ddfe8`
 
-## Owned surfaces
+## Delivered contract
 
-- `substrate/feedback/migrations.py` (NEW — sole v40→v41 migration owner)
-- `substrate/schemas/events.py` (v41 payload union seam; version 40→41)
-- `substrate/feedback/service.py` (resolve caller full-tuple only)
-- `tools/codegen/emit_types.py` (v41 registry + enum aliases + whitespace fix)
-- `apps/reading/src/generated/types.ts` (regenerated; never hand-edited)
-- Tests: `test_feedback_migration_{v41,kill_resume,concurrency,digest_vectors}.py`,
-  `test_feedback_event_schema_v41.py`, `test_event_schema_roundtrip.py`,
-  `test_feedback_event_rollback.py`, fixtures `v41_ts_roundtrip.ts`,
-  helpers `_migration_crash_runner.py`, `_migration_concurrent_writer.py`.
+### Migration SQL and recovery
 
-## Gate evidence (fresh run 2026-08-29T16:25:20Z)
+`substrate/feedback/migrations.py::migrate_feedback_v41(primary_con)` remains the sole v40→v41 owner. It creates exactly the four active temp tables, four quarantine tables, and `feedback_provenance`, plus the spec index:
 
-Commands and exit codes, verbatim:
+```sql
+CREATE INDEX IF NOT EXISTS idx_feedback_provenance_owner
+  ON feedback_provenance(owner_user_id,thread_id,ref_index);
+```
 
-    pytest <9 lane files> -q          → 69 passed in 27.25s        exit=0
-    ruff check <12 files>             → All checks passed!          exit=0
-    tools/codegen/check_staleness.py  → events OK, contracts OK    exit=0
-    git diff --check                  → (silent)                    exit=0
-    real-DB migration smoke           → marker completed            exit=0
+The primary writer flock stays held across `started → temp_created → copied → renamed → completed`. Each phase commits independently with CAS markers and catalog/row digests. Resume verifies the committed phase before mutation. The runner refuses pre-existing target objects, including case variants and foreign-schema names, before v41 creation.
 
-Real DuckDB migration marker (seeded baseline, single `migrate_feedback_v41` run):
+Every legacy source row is represented exactly once by either an active temp row or its quarantine `original_row_sha256`. Cascade decisions use full source IDs, never the bounded `original_*` audit columns. An active thread requires:
 
-- phase: `completed`; `completed_at` set.
-- temp/active schema digests: `9146bc64f69edc95…` (equal); rows digests: `11674785d9cb6be8…` (equal).
-- Active thread survives with `entry_kind='comment'`.
+- at least one item with a contiguous sequence beginning at 1;
+- every source item to be active;
+- exactly one active work row;
+- every source attempt for that work row to be active.
 
-What the 69 tests prove (by file):
+Missing roots/work, malformed dependents, and overbound-ID prefix collisions quarantine the owning aggregate. Evidence JSON contains per-field byte length, SHA-256, and truncation state; values over 256 bytes are never copied raw.
 
-1. `test_feedback_migration_v41.py` (11) — nine-table rebuild, D2 defaults (incl. `attempt_actual_cents=0`), malformed thread/item quarantine, aggregate cascade, overbound-Unicode-ID safe quarantine, marker completion, idempotent rerun, tamper refusal, rollback/resume.
-2. `test_feedback_migration_kill_resume.py` (6) — real-process kill (exit 70) at EVERY phase boundary (started/temp_created/copied/renamed) then fresh-process resume to completed with intact digests+data; third-run no-op; baseline-drift-after-crash refuses rename and preserves everything.
-3. `test_feedback_migration_concurrency.py` (3) — deterministic writer exclusion while the write flock is held; no lost rows across the race; `migration_in_progress` fail-fast with zero catalog mutation.
-4. `test_feedback_migration_digest_vectors.py` (8) — golden SHA-256 vectors for `canonical_row_json`/`schema_digest`/`row_digest` (spec-derived, independently computed); DuckDB catalog-rendering determinism + golden pin.
-5. `test_feedback_event_schema_v41.py` (18) — version 41 exactly once; six enums' exact strings; every payload conditional (highlight digest incl. empty-array fixture, pre-boundary cancellation, edit/branch pointers, role digests/error codes); v40 adapter selection + structural re-emit rejection.
-6. `test_event_schema_roundtrip.py` (13) — all nine v41 discriminators round-trip through the `TypedPayload` union; codegen registry completeness guard; `tsc --noEmit --strict` compile round-trip of the committed TS harness.
-7. `test_feedback_event_rollback.py` (3) — rolled-back transaction leaves no event AND no row; commit carries the v41 event atomically; byte-drift replay refused.
-8. `test_feedback_routes.py` (2) + `test_feedback_store.py` (6) — pre-existing feedback behavior unregressed.
+### Event and codegen diff
 
-## Known gaps / limitations (all deliberate, on record)
+The write schema is exactly v41. The typed union includes the full D2 payload set, including:
 
-1. Baseline-digest record rides in `feedback_threads_v41_quarantine` under the catch-all reason with `evidence_json.kind="baseline_rows_digest"`; audit consumers must filter on the kind marker. Cleaner home needs a spec-level marker change.
-2. Schema digests hash DuckDB's catalog rendering (not spec DDL text); pinned to 1.5.4 rendering by golden vector so upgrades fail loudly, not silently.
-3. Recovery runbook for a refused drift (restart-from-temp-created) is not implemented; the failure is fail-closed.
-4. TS round-trip is compile-time only; Python remains the sole runtime validator.
-5. `D2QueueTransitionReason`/`RoleEventReason` emitted as TS aliases but have no payload fields yet (SPR-04 runtime emission).
+- `investigation.start_requested` and `investigation.spawned_from` with conditional `launch_kind="d2_branch"`, the complete owner/dispatch/parent-artifact/feedback/child/start tuple, bounded context hash, and partial-tuple rejection while legacy chase shapes remain readable;
+- `agent.work.d2_transitioned` with `event_schema_version=41`, closed `D2QueueTransitionReason`, owner/dispatch/work/attempt/provider/cost tuple, bounded IDs, hashes, and timestamp;
+- highlight, dispatch, deliverable edit, owner-role, and full-tuple resolution payloads;
+- a read-only v40 resolution adapter that never re-emits or claims `edit_applied`;
+- exact v41 envelope locking for all unconditional D2 actions and conditional D2 branch launches.
 
-## Review status
+`tools/codegen/emit_types.py` is the source of `apps/reading/src/generated/types.ts`. The committed TypeScript fixture constructs and narrows the D2 transition and both D2 branch variants under `tsc --strict`.
 
-- Round-1 different-lineage review (deepseek-v4-pro): **REQUEST CHANGES** — 2 P0 (dependency cascade absent; migration lock absent) + 3 P1 (map/defaults, quarantine safety, digest canonicalization). **All repaired** in `9b739a4f3` with regression tests; several repairs caught further real bugs (resume-after-rename, digest-row ordering).
-- Re-review: attempted 5× on 4 lineages (deepseek-pro/flash, glm-5.3, gpt-5.6-luna) — every child dies after one empty assistant message. Diagnosed as subagent-infrastructure failure, not task failure. Probe cadence continues each heartbeat.
-- **No independent ACCEPT is claimed.** Do not treat SPR-01 as accepted until a different-lineage review passes over `2817545a..cf9ce132`.
+### Provenance result shape
 
-## Next wave (SPR-02 preflight, from the accepted sprint)
+`feedback_provenance` has the frozen owner/thread/ref index key, eight-ref bound, node/edge/chunk/claim/document/IP-holder pointers, closed status/holder/reason vocabularies, lower-case source digest, and the owner index above. This branch owns the schema/result contract only; no parallel provenance writer or annotation store was added.
 
-SPR-02 requires the completed `d2_feedback_v41` marker with matching active digests (proven above), plus SPR-01 review acceptance. Out-of-matrix legacy routes remain uncertified. Do not enable production flags, push, or merge from this lane.
+## Exact changed paths
+
+- `apps/reading/src/generated/types.ts`
+- `substrate/feedback/SPR01_HANDOFF.md`
+- `substrate/feedback/migrations.py`
+- `substrate/feedback/service.py`
+- `substrate/schemas/__init__.py`
+- `substrate/schemas/events.py`
+- `substrate/write/event_outbox.py`
+- `tests/_migration_concurrent_writer.py`
+- `tests/_migration_crash_runner.py`
+- `tests/fixtures/v41_ts_roundtrip.ts`
+- `tests/substrate/dispatch/test_nd_attribution.py`
+- `tests/test_event_schema_roundtrip.py`
+- `tests/test_feedback_event_rollback.py`
+- `tests/test_feedback_event_schema_v41.py`
+- `tests/test_feedback_migration_concurrency.py`
+- `tests/test_feedback_migration_digest_vectors.py`
+- `tests/test_feedback_migration_kill_resume.py`
+- `tests/test_feedback_migration_v41.py`
+- `tools/codegen/emit_types.py`
+
+## Fresh gate evidence at `cb2b919bcfe4d4c653864a795944b86926a80cca`
+
+```text
+/Users/slimydog/Antiek/.venv/bin/python -m pytest   tests/test_feedback_migration_v41.py   tests/test_feedback_migration_kill_resume.py   tests/test_feedback_migration_concurrency.py   tests/test_feedback_migration_digest_vectors.py   tests/test_feedback_event_schema_v41.py   tests/test_event_schema_roundtrip.py   tests/test_feedback_event_rollback.py   tests/test_feedback_routes.py   tests/test_feedback_store.py -q
+→ 113 passed, 1 warning in 31.54s; exit 0
+
+/Users/slimydog/Antiek/.venv/bin/python -m pytest tests/substrate/dispatch/test_nd_attribution.py -q
+→ 12 passed in 0.49s; exit 0
+
+/Users/slimydog/Antiek/.venv/bin/python -m pytest   tests/test_start_research_owner_api.py   tests/test_loop_one_orchestrator.py   tests/test_orchestrator_chase.py   tests/test_sprint11_api.py   tests/test_weekly_report.py -q
+→ 64 passed, 3 warnings in 24.59s; exit 0
+
+/Users/slimydog/Antiek/.venv/bin/ruff check <all changed Python files>
+→ All checks passed!; exit 0
+
+/Users/slimydog/Antiek/.venv/bin/python tools/codegen/check_staleness.py
+→ OK [events]; OK [contracts]; exit 0
+
+git diff --check
+→ silent; exit 0
+```
+
+Real-store coverage includes DuckDB 1.5.4 migration execution, idempotent rerun, kill/resume after every committed phase, concurrent complete-aggregate writers, add/update/delete drift refusal, catalog/table/index tamper refusal, malformed Unicode/SQL-like values, missing root/work quarantine, full-ID prefix collision isolation, rollback, and outbox replay identity. The valid seed produces zero quarantine rows. Deliberately malformed fixtures produce only their source/cascade rows; there is no synthetic runner row.
+
+No browser gate applies to this backend/schema slice. The real generated frontend artifact is compiled through `tests/fixtures/v41_ts_roundtrip.ts` with `tsc --noEmit --strict` inside the 113-test lane.
+
+## Review record
+
+- Event repair review: `/Users/slimydog/Antiek/.infinite/prime-goal-2026-08-28/review-spr01-events-fix-glm.md` → `ACCEPT`.
+- Migration F1-F3 review: `/Users/slimydog/Antiek/.infinite/prime-goal-2026-08-28/review-spr01-migration-f1-f3-fix-glm.md` → `ACCEPT`.
+- Migration F4-F8 review: `/Users/slimydog/Antiek/.infinite/prime-goal-2026-08-28/review-spr01-migration-f4-f8-fix-glm.md` → `ACCEPT`.
+- D1 catalog review: `/Users/slimydog/Antiek/.infinite/prime-goal-2026-08-28/review-spr01-migration-d1-fix-glm.md` → `ACCEPT`.
+- Final security/owner-isolation review at `ae4bc0292`: `/Users/slimydog/Antiek/.infinite/prime-goal-2026-08-28/review-spr01-final-security-glm.md` → `ACCEPT`, zero CRITICAL/HIGH/MEDIUM findings.
+- Final whole-range review at `ae4bc0292`: `/Users/slimydog/Antiek/.infinite/prime-goal-2026-08-28/review-spr01-final-full-range-codex.md` → `REQUEST CHANGES` for two P1 findings and two P2 findings.
+- P1 repairs landed in `cb2b919bcfe4d4c653864a795944b86926a80cca`: complete D2 event variants and full-source, no-partial aggregate cascade. P2 repairs pin the ND schema test to exactly 41 and replace this handoff. **A fresh final whole-range and security delta review is still required.**
+
+## Remaining limitations and blockers
+
+1. Final different-lineage acceptance of `0bb7b76ff..cb2b919bcfe4d4c653864a795944b86926a80cca` is pending. This is the only SPR-01 acceptance blocker claimed here.
+2. A narrow historical v39 resolution-event window fails closed on replay; the authorized frozen adapter covers v40. This is recorded LOW, not silently upgraded.
+3. Migration copies/digests use whole-table `fetchall()` under the exclusive migration flock; memory scales with legacy feedback-table size.
+4. `D2_FEEDBACK_V41_CRASH_AFTER` is a test-only, env-gated hard-exit hook in production code and must remain unset outside the crash harness.
+5. Repository-wide `pytest -q` is not a bounded deterministic gate: an untouched NotDiamond timeout test can flake under load and unrelated tmp-tree teardown can stall. The exact SPR-01, owner-launch regression, and deterministic prefix gates above are green.
+
+## Next action
+
+Request a bounded different-lineage delta/full-range re-review of `cb2b919bcfe4d4c653864a795944b86926a80cca` against the two final P1 reproductions, the complete D2 event contract, this handoff, and all prior artifacts. Close the claim only if both final correctness and security reviewers return `ACCEPT`. SPR-02 remains blocked until then.
