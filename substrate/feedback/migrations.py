@@ -322,8 +322,8 @@ CREATE TABLE IF NOT EXISTS feedback_items_v41 (
 CREATE TABLE IF NOT EXISTS agent_work_v41 (
   work_id VARCHAR PRIMARY KEY CHECK(regexp_matches(work_id,'^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$')),
   thread_id VARCHAR NOT NULL UNIQUE CHECK(regexp_matches(thread_id,'^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$')),
-  logical_worker_id VARCHAR NOT NULL CHECK(length(logical_worker_id) BETWEEN 1 AND 256),
-  state VARCHAR NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','leased','submitted','acknowledged','working','replied','declined','approval_requested','failed','sent','provider_unknown','validation_retry','settlement_pending','completed','cancelled','lease_expired','retryable_failure')),
+  logical_worker_id VARCHAR NOT NULL CHECK(regexp_matches(logical_worker_id,'^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$')),
+  state VARCHAR NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','leased','submitted','acknowledged','working','replied','declined','approval_requested','failed','sent','provider_unknown','validation_retry','settlement_pending','completed','cancelled')),
   context_sha256 CHAR(64) NOT NULL CHECK(regexp_matches(context_sha256,'^[0-9a-f]{64}$')),
   attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0),
   active_lease_id VARCHAR NULL CHECK(active_lease_id IS NULL OR regexp_matches(active_lease_id,'^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$')),
@@ -367,15 +367,12 @@ CREATE TABLE IF NOT EXISTS agent_work_attempts_v41 (
   provider_result_json VARCHAR NULL CHECK(provider_result_json IS NULL OR octet_length(encode(provider_result_json)) <= 32768),
   provider_result_sha256 CHAR(64) NULL CHECK(provider_result_sha256 IS NULL OR regexp_matches(provider_result_sha256,'^[0-9a-f]{64}$')),
   evidence_sha256 CHAR(64) NULL CHECK(evidence_sha256 IS NULL OR regexp_matches(evidence_sha256,'^[0-9a-f]{64}$')),
-  UNIQUE(work_id,attempt_no),
   CHECK((provider_result_json IS NULL OR provider_result_sha256 = sha256(provider_result_json)) IS TRUE),
-  CHECK((work_kind <> 'feedback_dispatch' OR state <> 'cancelled' OR (provider_boundary_crossed = false AND provider_receipt_sha256 IS NULL AND provider_result_json IS NULL AND provider_result_sha256 IS NULL AND evidence_sha256 IS NULL AND attempt_actual_cents = 0)) IS TRUE),
-  CHECK((work_kind <> 'feedback_dispatch' OR state <> 'failed' OR (provider_boundary_crossed = true AND provider_receipt_sha256 IS NOT NULL AND evidence_sha256 IS NOT NULL AND attempt_actual_cents >= 0)) IS TRUE),
+  UNIQUE(work_id,attempt_no),
   CHECK((work_kind <> 'feedback_dispatch' OR state <> 'provider_unknown' OR (attempt_actual_cents IS NULL AND provider_receipt_sha256 IS NULL AND provider_result_json IS NULL AND provider_result_sha256 IS NULL AND evidence_sha256 IS NULL)) IS TRUE),
-  CHECK((state NOT IN ('sent','provider_unknown','settlement_pending','completed','failed') OR provider_boundary_crossed = true) IS TRUE),
-  CHECK((state NOT IN ('settlement_pending','completed') OR (provider_result_sha256 IS NOT NULL AND provider_receipt_sha256 IS NOT NULL AND evidence_sha256 IS NOT NULL)) IS TRUE),
-  CHECK((state <> 'completed' OR provider_result_sha256 IS NOT NULL) IS TRUE),
-  CHECK((((provider_result_json IS NULL) = (provider_result_sha256 IS NULL))) IS TRUE)
+  CHECK((work_kind <> 'feedback_dispatch' OR state <> 'failed' OR (provider_boundary_crossed = true AND provider_receipt_sha256 IS NOT NULL AND evidence_sha256 IS NOT NULL AND attempt_actual_cents >= 0)) IS TRUE),
+  CHECK((work_kind <> 'feedback_dispatch' OR state <> 'cancelled' OR (provider_boundary_crossed = false AND provider_receipt_sha256 IS NULL AND provider_result_json IS NULL AND provider_result_sha256 IS NULL AND evidence_sha256 IS NULL AND attempt_actual_cents = 0)) IS TRUE),
+  CHECK((work_kind = 'feedback_reply') = (dispatch_id IS NULL) IS TRUE AND (work_kind = 'feedback_reply' OR (dispatch_id IS NOT NULL AND attempt_no BETWEEN 1 AND 2 AND ((provider_result_json IS NULL) = (provider_result_sha256 IS NULL)) IS TRUE AND (state <> 'provider_unknown' OR provider_boundary_crossed = true) AND (state NOT IN ('settlement_pending','completed') OR (provider_result_sha256 IS NOT NULL AND provider_receipt_sha256 IS NOT NULL AND evidence_sha256 IS NOT NULL AND attempt_actual_cents >= 0)) AND (state <> 'completed' OR provider_result_sha256 IS NOT NULL))) IS TRUE)
 );
 CREATE TABLE IF NOT EXISTS feedback_threads_v41_quarantine (
   quarantine_id VARCHAR PRIMARY KEY CHECK(regexp_matches(quarantine_id,'^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$')),
@@ -750,73 +747,240 @@ def _phase_copy_rows(con: LockedConnection, *, expected: str) -> None:
         )
     _crash_point("copied")
 
+_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
+_HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+_OWNER_RE = re.compile(r"^[\x20-\x7e]{1,256}$")
+_WORK_STATES = frozenset(
+    {
+        "queued",
+        "leased",
+        "submitted",
+        "acknowledged",
+        "working",
+        "replied",
+        "declined",
+        "approval_requested",
+        "failed",
+        "sent",
+        "provider_unknown",
+        "validation_retry",
+        "settlement_pending",
+        "completed",
+        "cancelled",
+    }
+)
+_ATTEMPT_STATES = frozenset(
+    {
+        "leased",
+        "submitted",
+        "acknowledged",
+        "working",
+        "completed",
+        "failed",
+        "sent",
+        "provider_unknown",
+        "validation_retry",
+        "settlement_pending",
+        "cancelled",
+        "lease_expired",
+        "retryable_failure",
+    }
+)
+
+
+def _is_id(value: Any) -> bool:
+    return isinstance(value, str) and _ID_RE.fullmatch(value) is not None
+
+
+def _is_optional_id(value: Any) -> bool:
+    return value is None or _is_id(value)
+
+
+def _is_hex64(value: Any) -> bool:
+    return isinstance(value, str) and _HEX64_RE.fullmatch(value) is not None
+
+
+def _is_optional_hex64(value: Any) -> bool:
+    return value is None or _is_hex64(value)
+
+
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _text_length_between(value: Any, lower: int, upper: int) -> bool:
+    return isinstance(value, str) and lower <= len(value) <= upper
+
+
+def _thread_quarantine_reason(row: dict[str, Any]) -> str | None:
+    if not all(
+        _is_id(row.get(field))
+        for field in (
+            "thread_id",
+            "investigation_id",
+            "artifact_id",
+            "anchor_node_id",
+            "create_operation_id",
+        )
+    ):
+        return "invalid_shape"
+    owner = row.get("owner_user_id")
+    if not isinstance(owner, str) or _OWNER_RE.fullmatch(owner) is None:
+        return "invalid_shape"
+    if (
+        not _is_int(row.get("artifact_version"))
+        or row["artifact_version"] <= 0
+        or row.get("normalization") != "unicode-nfc-v1"
+        or row.get("created_at") is None
+        or row.get("updated_at") is None
+    ):
+        return "invalid_shape"
+    if not all(
+        _is_hex64(row.get(field))
+        for field in (
+            "artifact_content_sha256",
+            "artifact_source_sha256",
+            "anchor_node_text_sha256",
+            "create_request_sha256",
+        )
+    ):
+        return "invalid_hash"
+    start = row.get("anchor_start_scalar")
+    end = row.get("anchor_end_scalar")
+    if (
+        not _is_int(start)
+        or not _is_int(end)
+        or start < 0
+        or end <= start
+        or not _text_length_between(row.get("anchor_quote"), 1, 4096)
+        or not _text_length_between(row.get("anchor_prefix"), 0, 32)
+        or not _text_length_between(row.get("anchor_suffix"), 0, 32)
+    ):
+        return "invalid_anchor"
+    # The frozen copy rule writes a null resolution pointer. A legacy resolved
+    # row therefore cannot satisfy the v41 lifecycle contract and is audited.
+    if row.get("state") != "open":
+        return "invalid_lifecycle"
+    return None
+
+
+def _item_quarantine_reason(
+    row: dict[str, Any], active_threads: set[Any]
+) -> str | None:
+    if (
+        not _is_id(row.get("item_id"))
+        or not _is_id(row.get("thread_id"))
+        or not _is_int(row.get("sequence"))
+        or row["sequence"] <= 0
+        or row.get("created_at") is None
+    ):
+        return "invalid_shape"
+    if row["thread_id"] not in active_threads:
+        return "missing_parent"
+    if row.get("author_kind") not in {"operator", "agent", "system"} or not _is_id(
+        row.get("author_id")
+    ):
+        return "invalid_author"
+    if not _text_length_between(row.get("body_markdown"), 1, 32768):
+        return "invalid_body"
+    if not _is_optional_id(row.get("work_id")):
+        return "invalid_correlation"
+    return None
+
+
+def _work_quarantine_reason(
+    row: dict[str, Any], active_threads: set[Any]
+) -> str | None:
+    if not _is_id(row.get("work_id")) or not _is_id(row.get("thread_id")):
+        return "invalid_correlation"
+    if row["thread_id"] not in active_threads:
+        return "invalid_correlation"
+    if (
+        not _is_id(row.get("logical_worker_id"))
+        or not _is_hex64(row.get("context_sha256"))
+        or not _is_optional_id(row.get("active_lease_id"))
+        or not _is_optional_hex64(row.get("result_sha256"))
+        or row.get("not_before") is None
+        or row.get("created_at") is None
+        or row.get("updated_at") is None
+    ):
+        return "invalid_correlation"
+    attempt_count = row.get("attempt_count")
+    if not _is_int(attempt_count) or attempt_count < 0:
+        return "invalid_correlation"
+    if attempt_count > 2:
+        return "attempt_count_exceeded"
+    if row.get("state") not in _WORK_STATES:
+        return "invalid_state"
+    return None
+
+
+def _attempt_quarantine_reason(
+    row: dict[str, Any], active_work: set[Any]
+) -> str | None:
+    if not _is_id(row.get("attempt_id")) or not _is_id(row.get("work_id")):
+        return "invalid_correlation"
+    if row["work_id"] not in active_work:
+        return "invalid_correlation"
+    if not all(
+        _is_id(row.get(field))
+        for field in ("lease_id", "bridge_credential_id", "bridge_instance_id")
+    ) or row.get("lease_expires_at") is None or row.get("created_at") is None:
+        return "invalid_correlation"
+    attempt_no = row.get("attempt_no")
+    if not _is_int(attempt_no) or attempt_no < 1:
+        return "invalid_attempt_no"
+    if row.get("state") not in _ATTEMPT_STATES:
+        return "invalid_state"
+    return None
+
+
 def _copy_threads(con: LockedConnection, now: datetime) -> None:
-    """Copy feedback_threads to v41 with validation and quarantine."""
-    baseline_cols = ", ".join(_source_columns("feedback_threads_v41"))
-    rows = con.execute(f"SELECT {baseline_cols} FROM feedback_threads").fetchall()
+    """Copy feedback_threads to v41 after complete CHECK preclassification."""
     col_names = _source_columns("feedback_threads_v41")
+    rows = con.execute(
+        f"SELECT {', '.join(col_names)} FROM feedback_threads"
+    ).fetchall()
 
     for row in rows:
         row_dict = dict(zip(col_names, row, strict=False))
-        # Validate: check key fields.
-        thread_id = row_dict.get("thread_id", "")
-        owner_user_id = row_dict.get("owner_user_id", "")
-        row_dict.get("investigation_id", "")
-        row_dict.get("artifact_id", "")
-        artifact_content_sha256 = row_dict.get("artifact_content_sha256", "")
-        artifact_source_sha256 = row_dict.get("artifact_source_sha256", "")
-        anchor_quote = row_dict.get("anchor_quote", "")
-        anchor_prefix = row_dict.get("anchor_prefix", "")
-        anchor_suffix = row_dict.get("anchor_suffix", "")
-        row_dict.get("create_operation_id", "")
-        row_dict.get("create_request_sha256", "")
-
-        # Basic validation.
-        is_valid = True
-        reason = "unknown_malformation"
-
-        if not thread_id or len(thread_id) > 256 or not owner_user_id or len(owner_user_id) > 256:
-            is_valid = False
-            reason = "invalid_shape"
-        elif not artifact_content_sha256 or len(artifact_content_sha256) != 64 or not artifact_source_sha256 or len(artifact_source_sha256) != 64:
-            is_valid = False
-            reason = "invalid_hash"
-        elif not anchor_quote or len(anchor_quote) > 4096 or len(anchor_prefix) > 32 or len(anchor_suffix) > 32:
-            is_valid = False
-            reason = "invalid_anchor"
-
-        if is_valid:
-            try:
-                # Insert with v41 defaults.
-                con.execute(
-                    "INSERT INTO feedback_threads_v41 "
-                    "(thread_id, owner_user_id, investigation_id, artifact_id, artifact_version, "
-                    "artifact_content_sha256, artifact_source_sha256, normalization, "
-                    "anchor_node_id, anchor_node_text_sha256, anchor_start_scalar, anchor_end_scalar, "
-                    "anchor_quote, anchor_prefix, anchor_suffix, state, create_operation_id, "
-                    "create_request_sha256, entry_kind, highlight_color, resolution_event_id, "
-                    "branch_investigation_id, branch_start_event_id, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'comment', NULL, NULL, NULL, NULL, ?, ?)",
-                    [
-                        row_dict["thread_id"], row_dict["owner_user_id"],
-                        row_dict["investigation_id"], row_dict["artifact_id"],
-                        row_dict["artifact_version"], row_dict["artifact_content_sha256"],
-                        row_dict["artifact_source_sha256"], row_dict["normalization"],
-                        row_dict["anchor_node_id"], row_dict["anchor_node_text_sha256"],
-                        row_dict["anchor_start_scalar"], row_dict["anchor_end_scalar"],
-                        row_dict["anchor_quote"], row_dict["anchor_prefix"],
-                        row_dict["anchor_suffix"], row_dict["state"],
-                        row_dict["create_operation_id"], row_dict["create_request_sha256"],
-                        row_dict.get("created_at", now), row_dict.get("updated_at", now),
-                    ]
-                )
-            except Exception:
-                # Constraint violation → quarantine.
-                is_valid = False
-                reason = "unknown_malformation"
-
-        if not is_valid:
+        reason = _thread_quarantine_reason(row_dict)
+        if reason is not None:
             _quarantine_thread(con, row_dict, reason, now)
+            continue
+        con.execute(
+            "INSERT INTO feedback_threads_v41 "
+            "(thread_id, owner_user_id, investigation_id, artifact_id, artifact_version, "
+            "artifact_content_sha256, artifact_source_sha256, normalization, "
+            "anchor_node_id, anchor_node_text_sha256, anchor_start_scalar, anchor_end_scalar, "
+            "anchor_quote, anchor_prefix, anchor_suffix, state, create_operation_id, "
+            "create_request_sha256, entry_kind, highlight_color, resolution_event_id, "
+            "branch_investigation_id, branch_start_event_id, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+            "'comment', NULL, NULL, NULL, NULL, ?, ?)",
+            [
+                row_dict["thread_id"],
+                row_dict["owner_user_id"],
+                row_dict["investigation_id"],
+                row_dict["artifact_id"],
+                row_dict["artifact_version"],
+                row_dict["artifact_content_sha256"],
+                row_dict["artifact_source_sha256"],
+                row_dict["normalization"],
+                row_dict["anchor_node_id"],
+                row_dict["anchor_node_text_sha256"],
+                row_dict["anchor_start_scalar"],
+                row_dict["anchor_end_scalar"],
+                row_dict["anchor_quote"],
+                row_dict["anchor_prefix"],
+                row_dict["anchor_suffix"],
+                row_dict["state"],
+                row_dict["create_operation_id"],
+                row_dict["create_request_sha256"],
+                row_dict["created_at"],
+                row_dict["updated_at"],
+            ],
+        )
 
 
 def _quarantine_thread(con: LockedConnection, row_dict: dict, reason: str, now: datetime) -> None:
@@ -834,58 +998,35 @@ def _quarantine_thread(con: LockedConnection, row_dict: dict, reason: str, now: 
 
 
 def _copy_items(con: LockedConnection, now: datetime) -> None:
-    """Copy feedback_items to v41 with validation and quarantine."""
-    baseline_cols = ", ".join(_source_columns("feedback_items_v41"))
-    rows = con.execute(f"SELECT {baseline_cols} FROM feedback_items").fetchall()
+    """Copy feedback_items after complete CHECK preclassification."""
     col_names = _source_columns("feedback_items_v41")
-
-    # Build set of active v41 thread IDs for parent validation.
-    active_threads = set()
-    for r in con.execute("SELECT thread_id FROM feedback_threads_v41").fetchall():
-        active_threads.add(r[0])
+    rows = con.execute(f"SELECT {', '.join(col_names)} FROM feedback_items").fetchall()
+    active_threads = {
+        row[0] for row in con.execute("SELECT thread_id FROM feedback_threads_v41").fetchall()
+    }
 
     for row in rows:
         row_dict = dict(zip(col_names, row, strict=False))
-        is_valid = True
-        reason = "unknown_malformation"
-
-        item_id = row_dict.get("item_id", "")
-        thread_id = row_dict.get("thread_id", "")
-        author_kind = row_dict.get("author_kind", "")
-        body_markdown = row_dict.get("body_markdown", "")
-
-        if not item_id or len(item_id) > 256:
-            is_valid = False
-            reason = "invalid_shape"
-        elif thread_id not in active_threads:
-            is_valid = False
-            reason = "missing_parent"
-        elif author_kind not in ("operator", "agent", "system"):
-            is_valid = False
-            reason = "invalid_author"
-        elif len(body_markdown) > 32768 or len(body_markdown) < 1:
-            is_valid = False
-            reason = "invalid_body"
-
-        if is_valid:
-            try:
-                con.execute(
-                    "INSERT INTO feedback_items_v41 "
-                    "(item_id, thread_id, sequence, author_kind, author_id, entry_kind, body_markdown, work_id, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, 'comment', ?, ?, ?)",
-                    [
-                        row_dict["item_id"], row_dict["thread_id"],
-                        row_dict["sequence"], row_dict["author_kind"],
-                        row_dict["author_id"], row_dict["body_markdown"],
-                        row_dict.get("work_id"), row_dict.get("created_at", now),
-                    ]
-                )
-            except Exception:
-                is_valid = False
-                reason = "unknown_malformation"
-
-        if not is_valid:
+        reason = _item_quarantine_reason(row_dict, active_threads)
+        if reason is not None:
             _quarantine_item(con, row_dict, reason, now)
+            continue
+        con.execute(
+            "INSERT INTO feedback_items_v41 "
+            "(item_id, thread_id, sequence, author_kind, author_id, entry_kind, "
+            "body_markdown, work_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, 'comment', ?, ?, ?)",
+            [
+                row_dict["item_id"],
+                row_dict["thread_id"],
+                row_dict["sequence"],
+                row_dict["author_kind"],
+                row_dict["author_id"],
+                row_dict["body_markdown"],
+                row_dict.get("work_id"),
+                row_dict["created_at"],
+            ],
+        )
 
 
 def _quarantine_item(con: LockedConnection, row_dict: dict, reason: str, now: datetime) -> None:
@@ -903,65 +1044,43 @@ def _quarantine_item(con: LockedConnection, row_dict: dict, reason: str, now: da
 
 
 def _copy_work(con: LockedConnection, now: datetime) -> None:
-    """Copy agent_work to v41 with validation and quarantine."""
-    baseline_cols = ", ".join(_source_columns("agent_work_v41"))
-    rows = con.execute(f"SELECT {baseline_cols} FROM agent_work").fetchall()
+    """Copy agent_work after complete CHECK preclassification."""
     col_names = _source_columns("agent_work_v41")
-
-    active_threads = set()
-    for r in con.execute("SELECT thread_id FROM feedback_threads_v41").fetchall():
-        active_threads.add(r[0])
+    rows = con.execute(f"SELECT {', '.join(col_names)} FROM agent_work").fetchall()
+    active_threads = {
+        row[0] for row in con.execute("SELECT thread_id FROM feedback_threads_v41").fetchall()
+    }
 
     for row in rows:
         row_dict = dict(zip(col_names, row, strict=False))
-        is_valid = True
-        reason = "unknown_malformation"
-
-        work_id = row_dict.get("work_id", "")
-        thread_id = row_dict.get("thread_id", "")
-        state = row_dict.get("state", "")
-        row_dict.get("context_sha256", "")
-
-        if not work_id or len(work_id) > 256:
-            is_valid = False
-            reason = "invalid_shape"
-        elif thread_id not in active_threads:
-            is_valid = False
-            reason = "invalid_correlation"
-        elif row_dict.get("attempt_count", 0) > 2:
-            is_valid = False
-            reason = "attempt_count_exceeded"
-        elif state not in ("queued", "leased", "submitted", "acknowledged", "working",
-                          "replied", "declined", "approval_requested", "failed",
-                          "lease_expired", "retryable_failure"):
-            is_valid = False
-            reason = "invalid_state"
-
-        if is_valid:
-            try:
-                con.execute(
-                    "INSERT INTO agent_work_v41 "
-                    "(work_id, thread_id, logical_worker_id, state, context_sha256, "
-                    "attempt_count, active_lease_id, lease_expires_at, not_before, "
-                    "last_error_code, result_sha256, created_at, updated_at, terminal_at, "
-                    "dispatch_id, work_kind) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'feedback_reply')",
-                    [
-                        row_dict["work_id"], row_dict["thread_id"],
-                        row_dict["logical_worker_id"], row_dict["state"],
-                        row_dict["context_sha256"], row_dict["attempt_count"],
-                        row_dict.get("active_lease_id"), row_dict.get("lease_expires_at"),
-                        row_dict["not_before"], row_dict.get("last_error_code"),
-                        row_dict.get("result_sha256"), row_dict.get("created_at", now),
-                        row_dict.get("updated_at", now), row_dict.get("terminal_at"),
-                    ]
-                )
-            except Exception:
-                is_valid = False
-                reason = "unknown_malformation"
-
-        if not is_valid:
+        reason = _work_quarantine_reason(row_dict, active_threads)
+        if reason is not None:
             _quarantine_work(con, row_dict, reason, now)
+            continue
+        con.execute(
+            "INSERT INTO agent_work_v41 "
+            "(work_id, thread_id, logical_worker_id, state, context_sha256, "
+            "attempt_count, active_lease_id, lease_expires_at, not_before, "
+            "last_error_code, result_sha256, created_at, updated_at, terminal_at, "
+            "dispatch_id, work_kind) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'feedback_reply')",
+            [
+                row_dict["work_id"],
+                row_dict["thread_id"],
+                row_dict["logical_worker_id"],
+                row_dict["state"],
+                row_dict["context_sha256"],
+                row_dict["attempt_count"],
+                row_dict.get("active_lease_id"),
+                row_dict.get("lease_expires_at"),
+                row_dict["not_before"],
+                row_dict.get("last_error_code"),
+                row_dict.get("result_sha256"),
+                row_dict["created_at"],
+                row_dict["updated_at"],
+                row_dict.get("terminal_at"),
+            ],
+        )
 
 
 def _quarantine_work(con: LockedConnection, row_dict: dict, reason: str, now: datetime) -> None:
@@ -980,67 +1099,50 @@ def _quarantine_work(con: LockedConnection, row_dict: dict, reason: str, now: da
 
 
 def _copy_attempts(con: LockedConnection, now: datetime) -> None:
-    """Copy agent_work_attempts to v41 with validation and quarantine."""
-    baseline_cols = ", ".join(_source_columns("agent_work_attempts_v41"))
-    rows = con.execute(f"SELECT {baseline_cols} FROM agent_work_attempts").fetchall()
+    """Copy agent_work_attempts after complete CHECK preclassification."""
     col_names = _source_columns("agent_work_attempts_v41")
-
-    active_work = set()
-    for r in con.execute("SELECT work_id FROM agent_work_v41").fetchall():
-        active_work.add(r[0])
+    rows = con.execute(
+        f"SELECT {', '.join(col_names)} FROM agent_work_attempts"
+    ).fetchall()
+    active_work = {
+        row[0] for row in con.execute("SELECT work_id FROM agent_work_v41").fetchall()
+    }
 
     for row in rows:
         row_dict = dict(zip(col_names, row, strict=False))
-        is_valid = True
-        reason = "unknown_malformation"
-
-        attempt_id = row_dict.get("attempt_id", "")
-        work_id = row_dict.get("work_id", "")
-        state = row_dict.get("state", "")
-        attempt_no = row_dict.get("attempt_no", 0)
-
-        if not attempt_id or len(attempt_id) > 256:
-            is_valid = False
-            reason = "invalid_shape"
-        elif work_id not in active_work:
-            is_valid = False
-            reason = "invalid_correlation"
-        elif state not in ("leased", "submitted", "acknowledged", "working", "completed",
-                          "failed", "lease_expired", "retryable_failure"):
-            is_valid = False
-            reason = "invalid_state"
-        elif attempt_no < 1:
-            is_valid = False
-            reason = "invalid_attempt_no"
-
-        if is_valid:
-            try:
-                con.execute(
-                    "INSERT INTO agent_work_attempts_v41 "
-                    "(attempt_id, work_id, attempt_no, lease_id, bridge_credential_id, "
-                    "bridge_instance_id, state, lease_expires_at, herdr_target_observed, "
-                    "adapter_version, transport_receipt_sha256, result_from_state, "
-                    "submitted_at, acknowledged_at, working_at, completed_at, created_at, "
-                    "dispatch_id, work_kind, attempt_actual_cents) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'feedback_reply', 0)",
-                    [
-                        row_dict["attempt_id"], row_dict["work_id"],
-                        row_dict["attempt_no"], row_dict["lease_id"],
-                        row_dict["bridge_credential_id"], row_dict["bridge_instance_id"],
-                        row_dict["state"], row_dict["lease_expires_at"],
-                        row_dict.get("herdr_target_observed"), row_dict.get("adapter_version"),
-                        row_dict.get("transport_receipt_sha256"), row_dict.get("result_from_state"),
-                        row_dict.get("submitted_at"), row_dict.get("acknowledged_at"),
-                        row_dict.get("working_at"), row_dict.get("completed_at"),
-                        row_dict.get("created_at", now),
-                    ]
-                )
-            except Exception:
-                is_valid = False
-                reason = "unknown_malformation"
-
-        if not is_valid:
+        reason = _attempt_quarantine_reason(row_dict, active_work)
+        if reason is not None:
             _quarantine_attempt(con, row_dict, reason, now)
+            continue
+        con.execute(
+            "INSERT INTO agent_work_attempts_v41 "
+            "(attempt_id, work_id, attempt_no, lease_id, bridge_credential_id, "
+            "bridge_instance_id, state, lease_expires_at, herdr_target_observed, "
+            "adapter_version, transport_receipt_sha256, result_from_state, "
+            "submitted_at, acknowledged_at, working_at, completed_at, created_at, "
+            "dispatch_id, work_kind, attempt_actual_cents) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+            "NULL, 'feedback_reply', 0)",
+            [
+                row_dict["attempt_id"],
+                row_dict["work_id"],
+                row_dict["attempt_no"],
+                row_dict["lease_id"],
+                row_dict["bridge_credential_id"],
+                row_dict["bridge_instance_id"],
+                row_dict["state"],
+                row_dict["lease_expires_at"],
+                row_dict.get("herdr_target_observed"),
+                row_dict.get("adapter_version"),
+                row_dict.get("transport_receipt_sha256"),
+                row_dict.get("result_from_state"),
+                row_dict.get("submitted_at"),
+                row_dict.get("acknowledged_at"),
+                row_dict.get("working_at"),
+                row_dict.get("completed_at"),
+                row_dict["created_at"],
+            ],
+        )
 
 
 def _apply_dependency_cascade(con: LockedConnection, now: datetime) -> None:

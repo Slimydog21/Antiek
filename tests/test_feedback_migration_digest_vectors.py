@@ -122,7 +122,7 @@ ACTUAL_PROVENANCE_DDL_PREFIX = (
     "CREATE TABLE feedback_provenance(thread_id VARCHAR, owner_user_id VARCHAR "
     "NOT NULL, ref_index INTEGER, node_id VARCHAR NOT NULL"
 )
-ACTUAL_SCHEMA_DIGEST_VECTOR_SHA = "9146bc64f69edc954fe8ba9606cc9ed827e8f49d0d9aa8074d9aee9f233a807b"
+ACTUAL_SCHEMA_DIGEST_VECTOR_SHA = "c1bbb94773d5c9c54dec5c813967b5bc7f46ab0a2394e177be09f5c02ba507af"
 
 
 def _v41_catalog() -> Any:

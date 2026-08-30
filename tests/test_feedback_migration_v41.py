@@ -466,3 +466,101 @@ def test_attempt_count_over_two_quarantines_work_and_thread(seeded_db):
     assert con.execute("SELECT reason FROM agent_work_v41_quarantine WHERE original_work_id = 'work-1'").fetchone()[0] == 'attempt_count_exceeded'
     assert con.execute("SELECT count(*) FROM feedback_threads WHERE thread_id = 'thread-1'").fetchone()[0] == 0
     con.close()
+
+
+@pytest.mark.parametrize(
+    ("mutation", "original_thread_id", "expected_reason"),
+    [
+        ("UPDATE feedback_threads SET state='resolved' WHERE thread_id='thread-1'", "thread-1", "invalid_lifecycle"),
+        ("UPDATE feedback_threads SET artifact_content_sha256=? WHERE thread_id='thread-1'", "thread-1", "invalid_hash"),
+        ("UPDATE feedback_threads SET thread_id='thread 1' WHERE thread_id='thread-1'", "thread 1", "invalid_shape"),
+        ("UPDATE feedback_threads SET thread_id='é-thread' WHERE thread_id='thread-1'", "é-thread", "invalid_shape"),
+    ],
+)
+def test_sql_check_malformed_threads_quarantine_without_aborting(
+    baseline_db, mutation, original_thread_id, expected_reason
+):
+    """Rows that fail v41 SQL checks are classified before any INSERT."""
+    from substrate.feedback.migrations import migrate_feedback_v41
+
+    con = duckdb.connect(baseline_db)
+    seed_valid_rows(con)
+    if "artifact_content_sha256=?" in mutation:
+        con.execute(mutation, ["A" * 64])
+    else:
+        con.execute(mutation)
+
+    migrate_feedback_v41(con)
+    migrate_feedback_v41(con)
+
+    marker = con.execute(
+        "SELECT phase FROM schema_migrations WHERE migration_id='d2_feedback_v41'"
+    ).fetchone()
+    quarantined = con.execute(
+        "SELECT reason FROM feedback_threads_v41_quarantine WHERE original_thread_id=?",
+        [original_thread_id],
+    ).fetchone()
+    assert marker == ("completed",)
+    assert quarantined == (expected_reason,)
+    assert con.execute("SELECT count(*) FROM feedback_threads").fetchone() == (0,)
+    con.close()
+
+
+@pytest.mark.parametrize("terminal_state", ["completed", "failed"])
+def test_terminal_feedback_reply_attempts_migrate_without_dispatch_evidence(
+    baseline_db, terminal_state
+):
+    """Dispatch-only evidence checks never bind legacy feedback replies."""
+    from substrate.feedback.migrations import migrate_feedback_v41
+
+    con = duckdb.connect(baseline_db)
+    seed_valid_rows(con)
+    con.execute(
+        "UPDATE agent_work_attempts SET state=? WHERE attempt_id='att-1'", [terminal_state]
+    )
+
+    migrate_feedback_v41(con)
+    migrate_feedback_v41(con)
+
+    row = con.execute(
+        "SELECT state, work_kind, dispatch_id, attempt_actual_cents, "
+        "provider_boundary_crossed, provider_receipt_sha256, provider_result_sha256, evidence_sha256 "
+        "FROM agent_work_attempts WHERE attempt_id='att-1'"
+    ).fetchone()
+    assert row == (terminal_state, "feedback_reply", None, 0, False, None, None, None)
+    assert con.execute(
+        "SELECT phase FROM schema_migrations WHERE migration_id='d2_feedback_v41'"
+    ).fetchone() == ("completed",)
+    con.close()
+
+
+def test_dispatch_attempt_constraints_keep_reply_scope_and_attempt_bound(seeded_db):
+    """The exact v41 attempts DDL binds correlation and bounds only dispatch rows."""
+    from substrate.feedback.migrations import migrate_feedback_v41
+
+    con = duckdb.connect(seeded_db)
+    migrate_feedback_v41(con)
+    now = datetime.datetime.now(datetime.UTC)
+    values = [
+        "dispatch-att", "dispatch-work", 3, "dispatch-lease", "dispatch-cred",
+        "dispatch-instance", "leased", now, now, "dispatch-1", "feedback_dispatch", 0,
+    ]
+    with pytest.raises(duckdb.ConstraintException):
+        con.execute(
+            "INSERT INTO agent_work_attempts "
+            "(attempt_id,work_id,attempt_no,lease_id,bridge_credential_id,bridge_instance_id,"
+            "state,lease_expires_at,created_at,dispatch_id,work_kind,attempt_actual_cents) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            values,
+        )
+    values[2] = 2
+    values[9] = None
+    with pytest.raises(duckdb.ConstraintException):
+        con.execute(
+            "INSERT INTO agent_work_attempts "
+            "(attempt_id,work_id,attempt_no,lease_id,bridge_credential_id,bridge_instance_id,"
+            "state,lease_expires_at,created_at,dispatch_id,work_kind,attempt_actual_cents) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            values,
+        )
+    con.close()
