@@ -184,3 +184,42 @@ def test_temp_created_resume_rejects_catalog_ddl_drift(tmp_path: Path) -> None:
         "WHERE table_name='feedback_items_v41' AND column_name='rogue_column'"
     ).fetchone() == (1,)
     con.close()
+
+
+
+def test_started_resume_rejects_preexisting_v41_catalog(tmp_path: Path) -> None:
+    """No v41 object can legitimately pre-exist after atomic crash-at-started."""
+    db = tmp_path / "started-catalog-tamper.duckdb"
+    shutil.copy(_build_template(tmp_path), db)
+
+    killed = _run(db, crash_after="started")
+    assert killed.returncode == 70, killed.stderr
+
+    con = duckdb.connect(str(db))
+    con.execute(
+        "CREATE TABLE feedback_provenance "
+        "(thread_id VARCHAR, owner_user_id VARCHAR, ref_index INTEGER)"
+    )
+    con.execute(
+        "CREATE INDEX idx_feedback_provenance_owner "
+        "ON feedback_provenance(thread_id, ref_index)"
+    )
+    con.close()
+
+    resumed = _run(db, crash_after=None)
+    assert resumed.returncode != 0
+    assert "migration_conflict: v41 catalog objects already exist at started" in resumed.stderr
+
+    con = duckdb.connect(str(db))
+    assert con.execute(
+        "SELECT phase FROM schema_migrations WHERE migration_id = 'd2_feedback_v41'"
+    ).fetchone() == ("started",)
+    assert con.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE table_name='feedback_threads_v41'"
+    ).fetchone() == (0,)
+    assert con.execute(
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name='feedback_provenance'"
+    ).fetchone() == (3,)
+    con.close()

@@ -709,9 +709,35 @@ def _verify_temp_row_digests(con: LockedConnection, expected_schema: str, expect
         raise RuntimeError("migration_conflict: temporary schema/row digest mismatch")
 
 
+def _assert_v41_catalog_absent(con: LockedConnection) -> None:
+    """Refuse catalog objects that cannot exist after atomic crash-at-started."""
+    placeholders = ", ".join("?" for _ in V41_TABLE_ORDER)
+    tables = [
+        str(row[0])
+        for row in con.execute(
+            f"SELECT table_name FROM information_schema.tables "
+            f"WHERE table_name IN ({placeholders}) ORDER BY table_name",
+            list(V41_TABLE_ORDER),
+        ).fetchall()
+    ]
+    indexes = [
+        str(row[0])
+        for row in con.execute(
+            "SELECT index_name FROM duckdb_indexes() "
+            "WHERE index_name = 'idx_feedback_provenance_owner'"
+        ).fetchall()
+    ]
+    if tables or indexes:
+        objects = ", ".join([*(f"table:{name}" for name in tables), *(f"index:{name}" for name in indexes)])
+        raise RuntimeError(
+            f"migration_conflict: v41 catalog objects already exist at started: {objects}"
+        )
+
+
 def _phase_create_tables(con: LockedConnection, *, expected: str) -> None:
     """Create all nine v41 tables and commit their catalog DDL digest."""
     with _phase_transaction(con):
+        _assert_v41_catalog_absent(con)
         con.execute(_get_v41_ddl())
         temp_schema_sha = schema_digest(_actual_schema_ddls(con, active=False))
         _cas_phase(
