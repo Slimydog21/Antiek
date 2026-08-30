@@ -305,6 +305,7 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
 _ENUM_FIELD_ALIASES: dict[type[enum.Enum], str] = {
     schema_module.HighlightColor: "HighlightColor",
     schema_module.ProviderUnknownReason: "ProviderUnknownReason",
+    schema_module.DispatchRefusalCode: "DispatchRefusalCode",
     schema_module.DispatchErrorCode: "DispatchErrorCode",
     schema_module.LoopOneChildRole: "LoopOneChildRole",
 }
@@ -316,6 +317,7 @@ _ENUM_FIELD_ALIASES: dict[type[enum.Enum], str] = {
 LITERAL_ALIASES: dict[str, tuple[str, ...]] = {
     "HighlightColor": tuple(m.value for m in schema_module.HighlightColor),
     "ProviderUnknownReason": tuple(m.value for m in schema_module.ProviderUnknownReason),
+    "DispatchRefusalCode": tuple(m.value for m in schema_module.DispatchRefusalCode),
     "D2QueueTransitionReason": tuple(m.value for m in schema_module.D2QueueTransitionReason),
     "RoleEventReason": tuple(m.value for m in schema_module.RoleEventReason),
     "DispatchErrorCode": tuple(m.value for m in schema_module.DispatchErrorCode),

@@ -6,7 +6,9 @@
 import {
   ArtifactHighlightCreatedPayload,
   FeedbackDispatchCompletedPayload,
+  FeedbackDispatchRefusedPayload,
   OwnerLaunchRoleCompletedPayload,
+  DispatchRefusalCode,
   HighlightColor,
   LoopOneChildRole,
   TypedPayload,
@@ -26,6 +28,21 @@ const highlight: ArtifactHighlightCreatedPayload = {
   anchor_node_id: "node-1",
   highlight_color: "disputed" as HighlightColor,
   provenance_digest_sha256: HEX,
+};
+
+const refused: FeedbackDispatchRefusedPayload = {
+  action_type: "feedback.dispatch.refused",
+  dispatch_id: "d-1",
+  thread_id: "t-1",
+  owner_user_id: "owner-a",
+  action: "edit_in_place",
+  artifact_id: "art-1",
+  artifact_version: 1,
+  artifact_content_sha256: HEX,
+  artifact_source_sha256: HEX,
+  operation_id: "op-1",
+  refusal_code: "no_budget" as DispatchRefusalCode,
+  remaining_budget_cents: 0,
 };
 
 const completed: FeedbackDispatchCompletedPayload = {
@@ -66,11 +83,14 @@ const role: OwnerLaunchRoleCompletedPayload = {
   actual_cents: 25,
 };
 
-const payloads: TypedPayload[] = [highlight, completed, role];
+const payloads: TypedPayload[] = [highlight, refused, completed, role];
 for (const p of payloads) {
   switch (p.action_type) {
     case "artifact.highlight.created":
       if (p.entry_kind !== "highlight") throw new Error("entry_kind");
+      break;
+    case "feedback.dispatch.refused":
+      if (p.refusal_code !== "no_budget") throw new Error("refusal_code");
       break;
     case "feedback.dispatch.completed":
       if (p.attempt_no === 0 && p.outcome !== "cancelled") throw new Error("attempt_no");

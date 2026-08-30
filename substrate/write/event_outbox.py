@@ -20,7 +20,13 @@ from substrate.event_log.events import (
     default_events_dir,
     investigation_event_lock,
 )
-from substrate.schemas.events import DEFAULT_POLICY_ID, EVENT_SCHEMA_VERSION, Event
+from substrate.schemas.events import (
+    DEFAULT_POLICY_ID,
+    EVENT_SCHEMA_VERSION,
+    Event,
+    StoredEvent,
+    parse_stored_event,
+)
 
 
 class EventOutboxError(RuntimeError):
@@ -118,7 +124,7 @@ def enqueue_event(
     return event.event_id
 
 
-def event_for_operation(con: LockedConnection, operation_id: str) -> Event | None:
+def event_for_operation(con: LockedConnection, operation_id: str) -> StoredEvent | None:
     row = con.execute(
         "SELECT event_json, event_sha256 FROM write_event_outbox WHERE operation_id=?",
         [operation_id],
@@ -129,7 +135,10 @@ def event_for_operation(con: LockedConnection, operation_id: str) -> Event | Non
     if hashlib.sha256(encoded.encode()).hexdigest() != digest:
         raise EventOutboxError("stored outbox digest does not match event bytes")
     try:
-        return Event.model_validate_json(encoded)
+        raw = json.loads(encoded)
+        if not isinstance(raw, dict):
+            raise ValueError("stored event must be a JSON object")
+        return parse_stored_event(raw)
     except Exception as exc:
         raise EventOutboxError("stored outbox event is invalid") from exc
 

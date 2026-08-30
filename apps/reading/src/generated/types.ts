@@ -170,6 +170,8 @@ export type HighlightColor = "essential" | "supporting" | "disputed" | "question
 
 export type ProviderUnknownReason = "transport_timeout" | "provider_disconnect" | "process_crash_after_boundary" | "receipt_unavailable";
 
+export type DispatchRefusalCode = "no_budget" | "unsupported_action" | "owner_model_unavailable" | "authority_receipt_mismatch";
+
 export type D2QueueTransitionReason = "leased" | "sent" | "provider_boundary_crossed" | "invalid_command_result" | "validation_retry_requeue" | "result_checkpointed" | "settled" | "failed_terminal" | "cancelled_not_sent";
 
 export type RoleEventReason = "started" | "provider_disconnect" | "result_checkpointed" | "settled" | "failed_terminal" | "cancelled_not_sent";
@@ -1065,7 +1067,7 @@ export interface FeedbackDispatchRefusedPayload {
   artifact_source_sha256: string;
   action_type: "feedback.dispatch.refused";
   operation_id: string;
-  refusal_code: string;
+  refusal_code: DispatchRefusalCode;
   remaining_budget_cents?: number | null;
 }
 

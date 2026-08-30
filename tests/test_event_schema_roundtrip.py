@@ -18,10 +18,12 @@ from pydantic import TypeAdapter
 from substrate.schemas.events import (
     ArtifactHighlightCreatedPayload,
     DeliverableHtmlEditedPayload,
+    Event,
     FeedbackDispatchCompletedPayload,
     FeedbackDispatchProviderUnknownPayload,
     FeedbackDispatchRefusedPayload,
     FeedbackDispatchRequestedPayload,
+    FeedbackThreadResolvedPayload,
     HighlightColor,
     LoopOneChildRole,
     OwnerLaunchRoleCompletedPayload,
@@ -75,7 +77,7 @@ def _refused() -> FeedbackDispatchRefusedPayload:
     return FeedbackDispatchRefusedPayload(
         **_dispatch_base(),
         operation_id="op-1",
-        refusal_code="budget_exceeded",
+        refusal_code="no_budget",
         remaining_budget_cents=0,
     )
 
@@ -118,6 +120,18 @@ def _edited() -> DeliverableHtmlEditedPayload:
         changed_node_count=3,
         output_sha256=HEX,
         resolution_event_id="rev-1",
+    )
+
+
+def _resolved() -> FeedbackThreadResolvedPayload:
+    return FeedbackThreadResolvedPayload(
+        thread_id="t-1",
+        owner_user_id="owner-a",
+        artifact_id="art-1",
+        artifact_version=1,
+        artifact_content_sha256=HEX,
+        artifact_source_sha256=HEX,
+        resolution_event_id="evt-feedback-resolved-t-1",
     )
 
 
@@ -197,6 +211,20 @@ def test_v41_action_type_strings_exact() -> None:
     }
     actual = {factory().action_type for factory in ALL_V41_PAYLOADS}
     assert expected <= actual
+
+
+@pytest.mark.parametrize("factory", [*ALL_V41_PAYLOADS, _resolved])
+def test_d2_payloads_reject_v40_envelopes(factory) -> None:
+    with pytest.raises(ValueError, match="schema_version=41"):
+        Event(
+            event_id="evt-1",
+            investigation_id="inv-1",
+            action_type=factory().action_type,
+            payload=factory(),
+            param_version="test",
+            schema_version=40,
+            emitted_at="2026-08-30T00:00:00Z",
+        )
 
 
 # --- codegen completeness + TS compile round-trip -------------------------

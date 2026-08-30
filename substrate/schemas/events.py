@@ -1454,6 +1454,15 @@ class RoleEventReason(str, Enum):  # noqa: UP042
     CANCELLED_NOT_SENT = "cancelled_not_sent"
 
 
+class DispatchRefusalCode(str, Enum):  # noqa: UP042
+    """Closed, value-free D2 dispatch admission refusal taxonomy."""
+
+    NO_BUDGET = "no_budget"
+    UNSUPPORTED_ACTION = "unsupported_action"
+    OWNER_MODEL_UNAVAILABLE = "owner_model_unavailable"
+    AUTHORITY_RECEIPT_MISMATCH = "authority_receipt_mismatch"
+
+
 class DispatchErrorCode(str, Enum):  # noqa: UP042
     """Closed D2 dispatch failure taxonomy."""
 
@@ -1545,7 +1554,7 @@ class FeedbackDispatchRefusedPayload(_D2DispatchPayloadBase):
         ActionType.FEEDBACK_DISPATCH_REFUSED
     )
     operation_id: str = Field(pattern=_ID)
-    refusal_code: str = Field(min_length=1, max_length=64)
+    refusal_code: DispatchRefusalCode
     remaining_budget_cents: int | None = Field(default=None, ge=0)
 
 
@@ -4847,6 +4856,25 @@ WRESTLING_ACTION_TYPES: frozenset[str] = frozenset(
 )
 
 
+# D2 v41 payloads must never be accepted under a legacy envelope version.
+# ``feedback.thread.resolved`` is included because its v40 shape is parsed by
+# the dedicated read-only adapter below rather than by the v41 write model.
+D2_V41_ACTION_TYPES: frozenset[str] = frozenset(
+    {
+        ActionType.ARTIFACT_HIGHLIGHT_CREATED.value,
+        ActionType.FEEDBACK_DISPATCH_REQUESTED.value,
+        ActionType.FEEDBACK_DISPATCH_REFUSED.value,
+        ActionType.FEEDBACK_DISPATCH_PROVIDER_UNKNOWN.value,
+        ActionType.FEEDBACK_DISPATCH_COMPLETED.value,
+        ActionType.FEEDBACK_THREAD_RESOLVED.value,
+        ActionType.DELIVERABLE_HTML_EDITED.value,
+        ActionType.OWNER_LAUNCH_ROLE_STARTED.value,
+        ActionType.OWNER_LAUNCH_ROLE_PROVIDER_UNKNOWN.value,
+        ActionType.OWNER_LAUNCH_ROLE_COMPLETED.value,
+    }
+)
+
+
 # ---------------------------------------------------------------------------
 # Event envelope
 # ---------------------------------------------------------------------------
@@ -4899,6 +4927,17 @@ class Event(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _check_d2_requires_v41_envelope(self) -> Event:
+        at = (
+            self.action_type.value
+            if isinstance(self.action_type, ActionType)
+            else str(self.action_type)
+        )
+        if at in D2_V41_ACTION_TYPES and self.schema_version != 41:
+            raise ValueError(f"D2 event {at!r} requires schema_version=41")
+        return self
+
+    @model_validator(mode="after")
     def _check_wrestling_requires_document_id(self) -> Event:
         at = (
             self.action_type.value
@@ -4921,6 +4960,51 @@ class Event(BaseModel):
         return v.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
+class FeedbackThreadResolvedEventV40(BaseModel):
+    """Read-only envelope for a legacy v40 thread-resolution event.
+
+    It is intentionally separate from ``Event``: the write model accepts only
+    the full v41 resolution payload, while durable v40 rows remain readable.
+    """
+
+    model_config = ConfigDict(extra="forbid", use_enum_values=True, frozen=True)
+
+    event_id: str
+    investigation_id: str
+    synthesis_id: str | None = None
+    phase: int | None = Field(default=None, ge=1, le=9)
+    role: str | None = None
+    action_type: Literal[ActionType.FEEDBACK_THREAD_RESOLVED] = (
+        ActionType.FEEDBACK_THREAD_RESOLVED
+    )
+    payload: FeedbackThreadResolvedPayloadV40
+    parent_event_id: str | None = None
+    policy_id: str = DEFAULT_POLICY_ID
+    param_version: str
+    schema_version: Literal[40] = 40
+    emitted_at: datetime
+    document_id: str | None = None
+
+    @field_serializer("emitted_at")
+    def _serialize_emitted_at(self, value: datetime) -> str:
+        if value.tzinfo is None:
+            return value.isoformat() + "Z"
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+StoredEvent = Event | FeedbackThreadResolvedEventV40
+
+
+def parse_stored_event(data: dict[str, Any]) -> StoredEvent:
+    """Parse one durable event with the sole authorized v40 adapter."""
+    if (
+        data.get("schema_version") == 40
+        and data.get("action_type") == ActionType.FEEDBACK_THREAD_RESOLVED.value
+    ):
+        return FeedbackThreadResolvedEventV40.model_validate(data)
+    return Event.model_validate(data)
+
+
 # ---------------------------------------------------------------------------
 # Public surface
 # ---------------------------------------------------------------------------
@@ -4932,8 +5016,12 @@ __all__ = [
     "DEFAULT_POLICY_ID",
     "TYPED_PAYLOAD_ACTION_TYPES",
     "WRESTLING_ACTION_TYPES",
+    "D2_V41_ACTION_TYPES",
     "TypedPayload",
     "Event",
+    "FeedbackThreadResolvedEventV40",
+    "StoredEvent",
+    "parse_stored_event",
     "ContextLayer",
     "Claim",
     "ConfidenceLevel",
@@ -4986,6 +5074,7 @@ __all__ = [
     "ProviderUnknownReason",
     "D2QueueTransitionReason",
     "RoleEventReason",
+    "DispatchRefusalCode",
     "DispatchErrorCode",
     "LoopOneChildRole",
     # Middleware: source_tier

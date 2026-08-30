@@ -14,9 +14,11 @@ from substrate.feedback.store import CreateThreadCommand, FeedbackStore, ThreadV
 from substrate.schemas.events import (
     AgentWorkTransitionedPayload,
     ArtifactCommentCreatedPayload,
+    FeedbackThreadResolvedEventV40,
     FeedbackThreadResolvedPayload,
 )
 from substrate.write.event_outbox import (
+    EventOutboxError,
     build_typed_envelope,
     enqueue_event,
     event_for_operation,
@@ -123,6 +125,62 @@ class ResolveThreadCommand:
     idempotency_key: str
 
 
+def _ensure_resolution_event(
+    con: LockedConnection,
+    *,
+    thread: ThreadView,
+    owner_user_id: str,
+) -> None:
+    """Insert or byte-verify the deterministic resolution event."""
+    operation_id = f"feedback-resolve:{thread.thread_id}"
+    event_id = f"evt-feedback-resolved-{thread.thread_id}"
+    existing = event_for_operation(con, operation_id)
+
+    if isinstance(existing, FeedbackThreadResolvedEventV40):
+        payload = existing.payload
+        legacy_identity = (
+            existing.event_id,
+            existing.investigation_id,
+            payload.thread_id,
+            payload.artifact_id,
+            payload.artifact_version,
+            payload.reason,
+        )
+        expected_identity = (
+            event_id,
+            thread.investigation_id,
+            thread.thread_id,
+            thread.artifact.artifact_id,
+            thread.artifact.version,
+            "operator_resolved",
+        )
+        if legacy_identity != expected_identity:
+            raise EventOutboxError("outbox identity was reused with different event bytes")
+        return
+
+    event = build_typed_envelope(
+        thread.investigation_id,
+        FeedbackThreadResolvedPayload(
+            thread_id=thread.thread_id,
+            owner_user_id=owner_user_id,
+            artifact_id=thread.artifact.artifact_id,
+            artifact_version=thread.artifact.version,
+            artifact_content_sha256=thread.artifact.content_sha256,
+            artifact_source_sha256=thread.artifact.source_sha256,
+            resolution_event_id=event_id,
+        ),
+        event_id=event_id,
+        emitted_at=existing.emitted_at if existing is not None else None,
+    )
+    enqueue_event(
+        con,
+        operation_id=operation_id,
+        aggregate_kind="feedback_thread",
+        aggregate_id=thread.thread_id,
+        event=event,
+    )
+
+
 def resolve_feedback_thread(db_path: str, command: ResolveThreadCommand) -> ThreadView:
     """Atomically resolve, audit, and exactly replay one feedback thread."""
     request_sha256 = hashlib.sha256(
@@ -155,34 +213,22 @@ def resolve_feedback_thread(db_path: str, command: ResolveThreadCommand) -> Thre
                 )
                 if replay is None:  # pragma: no cover - database invariant
                     raise RuntimeError("resolve receipt has no canonical result")
+                _ensure_resolution_event(
+                    con,
+                    thread=replay,
+                    owner_user_id=command.owner_user_id,
+                )
                 return replay
             thread = store.resolve_thread(
                 con,
                 owner_user_id=command.owner_user_id,
                 thread_id=command.thread_id,
             )
-            operation_id = f"feedback-resolve:{thread.thread_id}"
-            if event_for_operation(con, operation_id) is None:
-                event = build_typed_envelope(
-                    thread.investigation_id,
-                    FeedbackThreadResolvedPayload(
-                        thread_id=thread.thread_id,
-                        owner_user_id=command.owner_user_id,
-                        artifact_id=thread.artifact.artifact_id,
-                        artifact_version=thread.artifact.version,
-                        artifact_content_sha256=thread.artifact.content_sha256,
-                        artifact_source_sha256=thread.artifact.source_sha256,
-                        resolution_event_id=f"evt-feedback-resolved-{thread.thread_id}",
-                    ),
-                    event_id=f"evt-feedback-resolved-{thread.thread_id}",
-                )
-                enqueue_event(
-                    con,
-                    operation_id=operation_id,
-                    aggregate_kind="feedback_thread",
-                    aggregate_id=thread.thread_id,
-                    event=event,
-                )
+            _ensure_resolution_event(
+                con,
+                thread=thread,
+                owner_user_id=command.owner_user_id,
+            )
             con.execute(
                 "INSERT INTO feedback_command_receipts ("
                 "principal_id, command_kind, idempotency_key, request_sha256, resource_id"

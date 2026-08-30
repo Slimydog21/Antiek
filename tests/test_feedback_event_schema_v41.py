@@ -19,7 +19,9 @@ from substrate.schemas.events import (
     D2QueueTransitionReason,
     DeliverableHtmlEditedPayload,
     DispatchErrorCode,
+    DispatchRefusalCode,
     FeedbackDispatchCompletedPayload,
+    FeedbackDispatchRefusedPayload,
     HighlightColor,
     LoopOneChildRole,
     OwnerLaunchRoleCompletedPayload,
@@ -69,6 +71,12 @@ def test_shared_enum_exact_strings() -> None:
         "provider_call_failed",
         "invalid_command_result",
     ]
+    assert [code.value for code in DispatchRefusalCode] == [
+        "no_budget",
+        "unsupported_action",
+        "owner_model_unavailable",
+        "authority_receipt_mismatch",
+    ]
     assert [color.value for color in HighlightColor] == [
         "essential",
         "supporting",
@@ -110,6 +118,25 @@ def test_highlight_requires_provenance_digest() -> None:
 def test_zero_ref_highlight_hashes_exact_empty_array_json() -> None:
     payload = _highlight()
     assert payload.provenance_digest_sha256 == hashlib.sha256(b"[]").hexdigest()
+
+
+def test_dispatch_refusal_rejects_values_outside_closed_enum() -> None:
+    fields = {
+        "dispatch_id": "d-1",
+        "thread_id": "t-1",
+        "owner_user_id": "owner-a",
+        "action": "edit_in_place",
+        "artifact_id": "art-1",
+        "artifact_version": 1,
+        "artifact_content_sha256": HEX,
+        "artifact_source_sha256": HEX,
+        "operation_id": "op-1",
+        "refusal_code": "no_budget",
+    }
+    assert FeedbackDispatchRefusedPayload(**fields).refusal_code == "no_budget"
+    for invalid in ("budget_exceeded", "arbitrary", "\n"):
+        with pytest.raises(pydantic.ValidationError):
+            FeedbackDispatchRefusedPayload(**{**fields, "refusal_code": invalid})
 
 
 def _dispatch(**overrides: object) -> FeedbackDispatchCompletedPayload:
