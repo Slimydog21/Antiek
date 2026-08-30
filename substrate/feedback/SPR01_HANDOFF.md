@@ -1,11 +1,12 @@
 # SPR-01 Handoff — D2 Anchored Comments Schema and Event Contract
 
-Status: **rework complete; final different-lineage re-review required**. Do not merge, push, enable production, or start SPR-02 from this document alone.
+Status: **accepted; implementation frozen**. SPR-01 may close. Merge, push, and production enablement remain separate broader-goal decisions.
 
 - Branch: `d2/spr01-feedback-schema-migration`
 - Worktree: `/Users/slimydog/Antiek/worktrees/d2-spr01-feedback-schema`
 - Baseline: `0bb7b76ff47e1b42bf66bc0f016e75e91578fa94`
 - Implementation tip: `edf21f55ef9671359db21ef1914220443256a6a5`
+- Independently reviewed package tip: `0105369e064c61d93c0ed6559532dc120a0df28d`
 - Canonical spec: `specs/antiek-voicenote-2026-08-28-anchored-comments/sprint-01-annotation-schema-store.html`
 - Accepted D2 package aggregate: `d54b65157443df6aa8ffdecabf23149e19df4cc51b261cee6da486bfed4ddfe8`
 
@@ -105,16 +106,18 @@ No browser gate applies to this backend/schema slice. The real generated fronten
 - Final whole-range review at `ae4bc0292`: `/Users/slimydog/Antiek/.infinite/prime-goal-2026-08-28/review-spr01-final-full-range-codex.md` → `REQUEST CHANGES` for two P1 findings and two P2 findings.
 - P1 repairs landed in `cb2b919bcfe4d4c653864a795944b86926a80cca`: complete D2 event variants and full-source, no-partial aggregate cascade. P2 repairs pin the ND schema test to exactly 41 and replace this handoff.
 - Final repair review at `6d0b0b13c`: `/Users/slimydog/Antiek/.infinite/prime-goal-2026-08-28/review-spr01-final-repair-codex.md` → `REQUEST CHANGES` for legacy spawned events accepting D2-only owner fields.
-- Class-aware legacy owner-lineage repair landed in `edf21f55ef9671359db21ef1914220443256a6a5` with a red/green regression. **A fresh final whole-range and security delta review is still required.**
+- Class-aware legacy owner-lineage repair landed in `edf21f55ef9671359db21ef1914220443256a6a5` with a red/green regression.
+- Current-tip security/owner-isolation review at `0105369e064c61d93c0ed6559532dc120a0df28d`: `/Users/slimydog/Antiek/.infinite/prime-goal-2026-08-28/review-spr01-final-current-security-deepseek.md` → `ACCEPT`, 165 relevant tests and zero CRITICAL/HIGH/MEDIUM findings.
+- Current-tip whole-range correctness review at `0105369e064c61d93c0ed6559532dc120a0df28d`: `/Users/slimydog/Antiek/.infinite/prime-goal-2026-08-28/review-spr01-final-current-codex-retry.md` → `ACCEPT`, all prior P1/P2 findings closed.
+- Root final rerun at reviewed tip: 114 SPR-01 tests, 12 ND tests, 64 owner/legacy investigation regressions, Ruff, codegen staleness, strict TypeScript fixture compile, and diff-check all passed.
 
-## Remaining limitations and blockers
+## Remaining limitations (non-blocking)
 
-1. Final different-lineage acceptance of `0bb7b76ff..edf21f55ef9671359db21ef1914220443256a6a5` is pending. This is the only SPR-01 acceptance blocker claimed here.
-2. A narrow historical v39 resolution-event window fails closed on replay; the authorized frozen adapter covers v40. This is recorded LOW, not silently upgraded.
-3. Migration copies/digests use whole-table `fetchall()` under the exclusive migration flock; memory scales with legacy feedback-table size.
-4. `D2_FEEDBACK_V41_CRASH_AFTER` is a test-only, env-gated hard-exit hook in production code and must remain unset outside the crash harness.
-5. Repository-wide `pytest -q` is not a bounded deterministic gate: an untouched NotDiamond timeout test can flake under load and unrelated tmp-tree teardown can stall. The exact SPR-01, owner-launch regression, and deterministic prefix gates above are green.
+1. A narrow historical v39 resolution-event window fails closed on replay; the authorized frozen adapter covers v40. This is recorded LOW, not silently upgraded.
+2. Migration copies/digests use whole-table `fetchall()` under the exclusive migration flock; memory scales with legacy feedback-table size.
+3. `D2_FEEDBACK_V41_CRASH_AFTER` is a test-only, env-gated hard-exit hook in production code and must remain unset outside the crash harness.
+4. Repository-wide `pytest -q` is not a bounded deterministic gate: an untouched NotDiamond timeout test can flake under load and unrelated tmp-tree teardown can stall. The exact SPR-01, owner-launch regression, and deterministic prefix gates above are green.
 
 ## Next action
 
-Request a bounded different-lineage delta/full-range re-review of `edf21f55ef9671359db21ef1914220443256a6a5` against the two final P1 reproductions, the complete D2 event contract, this handoff, and all prior artifacts. Close the claim only if both final correctness and security reviewers return `ACCEPT`. SPR-02 remains blocked until then.
+Close the SPR-01 claim at the docs-only closure tip, validate the control plane, and preserve the reviewed implementation/package hashes above. SPR-02 may then be claimed only after a fresh overlap and open-PR check. Merge, push, and production enablement remain blocked on the broader objective audit.
