@@ -2731,8 +2731,19 @@ def _validate_d2_branch_lineage(payload: Any) -> None:
         ):
             raise ValueError("d2_branch must not mix legacy owner-launch metadata")
         return
+    action_type = (
+        payload.action_type.value
+        if isinstance(payload.action_type, ActionType)
+        else str(payload.action_type)
+    )
+    branch_only_fields = _D2_BRANCH_ONLY_FIELDS
+    if action_type == ActionType.INVESTIGATION_SPAWNED_FROM.value:
+        # These fields predate D2 on start events, but are new and D2-only on
+        # spawned audit events. Preserve legacy starts without allowing a
+        # partial owner tuple to leak into a legacy spawn.
+        branch_only_fields += ("owner_user_id", "owner_operation_id")
     populated = [
-        field for field in _D2_BRANCH_ONLY_FIELDS if getattr(payload, field, None) is not None
+        field for field in branch_only_fields if getattr(payload, field, None) is not None
     ]
     if populated:
         raise ValueError(

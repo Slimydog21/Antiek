@@ -474,3 +474,18 @@ def test_d2_branch_owner_and_lineage_ids_are_bounded_ascii() -> None:
             InvestigationStartRequestedPayload(
                 question="Why?", **{**_d2_branch_lineage(), field: value}
             )
+
+
+
+def test_legacy_spawn_forbids_d2_owner_fields_but_legacy_start_preserves_them() -> None:
+    start = InvestigationStartRequestedPayload(
+        question="legacy owner launch",
+        owner_user_id="owner-a",
+        owner_operation_id="owner-op-1",
+    )
+    assert start.launch_kind == "legacy"
+    for field in ("owner_user_id", "owner_operation_id"):
+        with pytest.raises(pydantic.ValidationError, match="legacy launch forbids D2 branch fields"):
+            InvestigationSpawnedFromPayload(
+                parent_investigation_id="inv-parent", **{field: "owner-a"}
+            )
