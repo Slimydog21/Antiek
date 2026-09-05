@@ -63,24 +63,27 @@ export function usePanelSizeStable<T extends HTMLElement = HTMLDivElement>(
  *     S9 implements the actual window.open + cross-window sync.
  *     S3 stubs this — the panel just doesn't render in-tab.
  */
-type Props = { id: string };
+type Props = { id: string; /** herdr transfer P1 — render full-bleed for the zoom overlay,
+   *  ignoring the panel's own mode geometry (a floating panel zoomed to the
+   *  workspace must fill it, not float at its rect). */ zoomed?: boolean };
 
-export function PanelLayoutPanel({ id }: Props) {
+export function PanelLayoutPanel({ id, zoomed = false }: Props) {
   const panel = useWorkspace((s) => s.panels[id]);
   const isFocused = useWorkspace((s) => s.focusedPanelId === id);
   const bringToFront = useWorkspace((s) => s.bringToFront);
   const reduceMotion = usePrefersReducedMotion();
 
   const onMouseDownRaise = useCallback(() => {
-    if (panel && panel.mode === "floating") bringToFront(id);
-  }, [panel, id, bringToFront]);
+    if (!zoomed && panel && panel.mode === "floating") bringToFront(id);
+  }, [panel, id, bringToFront, zoomed]);
 
   // S3 acceptance: ESC closes the focused floating panel.
   // Only listens when this panel is the focused-floating one. Ignores
   // ESC while focus is inside an editable element so the operator can
-  // still use Escape to cancel inline edits.
+  // still use Escape to cancel inline edits. (Zoomed panels skip this —
+  // the zoom overlay owns Esc and exits zoom instead of closing.)
   useEffect(() => {
-    if (!panel || panel.mode !== "floating" || !isFocused) return;
+    if (!panel || panel.mode !== "floating" || !isFocused || zoomed) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       const t = e.target as HTMLElement | null;
@@ -133,11 +136,13 @@ export function PanelLayoutPanel({ id }: Props) {
   if (!panel) return null;
   const Renderer = PanelRegistry[panel.kind];
 
-  // popout — rendering is owned by the popout window (S9).
-  if (panel.mode === "popout") return null;
+  // popout — rendering is owned by the popout window (S9), EXCEPT when
+  // zoomed: the whole point of zoom is to see the panel, so zoom renders
+  // it in-tab full-bleed (the popout window keeps its own copy).
+  if (panel.mode === "popout" && !zoomed) return null;
 
   // floating
-  if (panel.mode === "floating") {
+  if (panel.mode === "floating" && !zoomed) {
     const shadow = opaquePanelShadowClasses(panel.zIndex, isFocused);
     return (
       <motion.div
@@ -184,14 +189,17 @@ export function PanelLayoutPanel({ id }: Props) {
     );
   }
 
-  // docked-left / docked-right / docked-bottom — flat, sit in the dock column
+  // docked-left / docked-right / docked-bottom — flat, sit in the dock column.
+  // Zoomed: the same flat full-bleed treatment, filling the overlay.
   return (
     <div
       className={
         "flex flex-col bg-ice-0 dark:bg-charcoal-2 " +
-        (panel.mode === "docked-bottom"
-          ? "h-full"
-          : "border-b border-rule dark:border-charcoal-1 min-h-[140px] flex-1 ") +
+        (zoomed
+          ? "h-full w-full"
+          : panel.mode === "docked-bottom"
+            ? "h-full"
+            : "border-b border-rule dark:border-charcoal-1 min-h-[140px] flex-1 ") +
         "overflow-hidden " +
         (isFocused ? "" : "opacity-95")
       }

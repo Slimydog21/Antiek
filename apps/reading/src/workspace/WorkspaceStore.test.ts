@@ -213,3 +213,60 @@ describe("WorkspaceStore — pin + unpin + reset", () => {
     expect(s().dockBottomHeight).toBe(220);
   });
 });
+
+
+describe("WorkspaceStore — zoom (herdr transfer P1)", () => {
+  it("starts unzoomed", () => {
+    expect(s().zoomedPanelId).toBeNull();
+  });
+
+  it("toggleZoom focuses and marks a panel", () => {
+    const id = s().open("FakeSidebar", {});
+    s().toggleZoom(id);
+    expect(s().zoomedPanelId).toBe(id);
+    expect(s().focusedPanelId).toBe(id);
+  });
+
+  it("toggleZoom on the same panel exits zoom", () => {
+    const id = s().open("FakeSidebar", {});
+    s().toggleZoom(id);
+    s().toggleZoom(id);
+    expect(s().zoomedPanelId).toBeNull();
+  });
+
+  it("toggleZoom(null) exits zoom", () => {
+    const id = s().open("FakeSidebar", {});
+    s().toggleZoom(id);
+    s().toggleZoom(null);
+    expect(s().zoomedPanelId).toBeNull();
+  });
+
+  it("toggleZoom on a missing panel exits zoom (never dangles)", () => {
+    const id = s().open("FakeSidebar", {});
+    s().toggleZoom(id);
+    s().toggleZoom("nope");
+    expect(s().zoomedPanelId).toBeNull();
+  });
+
+  it("closing the zoomed panel clears zoom", () => {
+    const id = s().open("FakeSidebar", {});
+    s().toggleZoom(id);
+    s().close(id);
+    expect(s().zoomedPanelId).toBeNull();
+  });
+
+  it("closing another panel keeps zoom", () => {
+    const a = s().open("FakeSidebar", {});
+    const b = s().open("FakeChat", {});
+    s().toggleZoom(a);
+    s().close(b);
+    expect(s().zoomedPanelId).toBe(a);
+  });
+
+  it("reset clears zoom", () => {
+    const id = s().open("FakeSidebar", {});
+    s().toggleZoom(id);
+    s().reset();
+    expect(s().zoomedPanelId).toBeNull();
+  });
+});
