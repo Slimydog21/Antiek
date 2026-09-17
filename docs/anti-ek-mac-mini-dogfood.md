@@ -100,6 +100,14 @@ curl -sS -X POST -H "Authorization: Bearer $ANTIEK_OPERATOR_TOKEN" \
   -d '{"page_index":0}'
 ```
 
+## HTML-native BookReader
+
+Uploads write a sanitized `document_reader_html` sidecar. After PR #3101,
+`GET /books/{id}/(owner-)full-text` prefers that sidecar as `content_format=html`
+when rights release the body — so `/read/:id` renders HTML via ReadingColumn
+(not the text/markdown fallback). Library books without a sidecar still serve
+text. Research MASTER.md and writing assets are not yet on this path.
+
 ## Highlight → Research this → notebook (API chain)
 
 With owner cookie or Bearer:
