@@ -438,10 +438,10 @@ class FullTextResponse(BaseModel):
 def _prefer_reader_html_body(
     con: Any,
     document_id: str,
-    result: "ServeResult",
+    result: ServeResult,
     *,
     owner: bool,
-) -> "ServeResult":
+) -> ServeResult:
     """Upgrade a rights-released body to the trusted reader-html sidecar.
 
     Uploads deliberately do NOT stamp ``documents.metadata`` with sanitizer
@@ -451,19 +451,32 @@ def _prefer_reader_html_body(
     ``document_reader_html`` is present and version-current.
 
     Only substitutes when rights already released ``full_text`` AND the
-    sidecar serve returns ``available`` + ``content_format=html``. Gated /
-    taken-down / missing-sidecar paths are unchanged.
+    sidecar row is version-current. Queries the sidecar table directly (does
+    not re-enter ``serve_reader_html`` / ``serve_full_text_guarded``) because
+    the caller already proved the rights ring. ``owner`` is retained for call-
+    site clarity; rights are not re-derived here.
     """
+    del owner  # rights already decided by caller; keep kw for call-site clarity
     if result.full_text is None:
         return result
-    from substrate.reader_html.store import serve_reader_html
+    from substrate.books.html_sanitizer import SANITIZER_VERSION
 
-    html = serve_reader_html(con, document_id, owner=owner)
-    if not (html.available and html.content_format == "html" and html.body):
+    row = con.execute(
+        """
+        SELECT html_body, sanitizer_version
+        FROM document_reader_html
+        WHERE document_id = ?
+        """,
+        [document_id],
+    ).fetchone()
+    if row is None:
+        return result
+    html_body, version = row
+    if version != SANITIZER_VERSION or not html_body:
         return result
     return replace(
         result,
-        full_text=html.body,
+        full_text=html_body,
         content_format="html",
     )
 

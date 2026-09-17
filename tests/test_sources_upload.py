@@ -984,8 +984,8 @@ def test_uploaded_doc_books_fulltext_prefers_reader_html_sidecar(
     assert ob["content_format"] == "html"
     assert "<p>" in (ob.get("full_text") or "")
     # Metadata remains unstamped (disjoint trust contracts).
-    from substrate.books.html_sanitizer import is_trusted_sanitized
     from runtime.db_lock import connect_read
+    from substrate.books.html_sanitizer import is_trusted_sanitized
     from substrate.graph import default_db_path
 
     con = connect_read(default_db_path())
