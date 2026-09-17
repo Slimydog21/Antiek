@@ -41,6 +41,10 @@ export ANTIEK_DISABLE_EVENT_PROJECTOR_RECOVERY=1
 export ANTIEK_BUILD_SHA="$(git rev-parse HEAD)"
 export ANTIEK_WEBAUTHN_RP_ID=localhost
 export ANTIEK_WEBAUTHN_ORIGINS="http://127.0.0.1:5173,http://localhost:5173"
+# Local HTTP dogfood: Secure cookies would be dropped by the browser on :5173/:8000.
+# FRONTEND_BASE so /auth/dev-login redirects to Vite, not the API host.
+export ANTIEK_COOKIE_INSECURE="${ANTIEK_COOKIE_INSECURE:-1}"
+export ANTIEK_FRONTEND_BASE_URL="${ANTIEK_FRONTEND_BASE_URL:-http://127.0.0.1:5173}"
 
 nohup "$PL/.venv/bin/uvicorn" interfaces.research.api.app:app \
   --host 127.0.0.1 --port 8000 --workers 1 \
