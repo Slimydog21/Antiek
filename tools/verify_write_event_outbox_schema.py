@@ -36,7 +36,9 @@ EXPECTED_INDEX = [
         "write_event_outbox(investigation_id, state, outbox_sequence);",
     )
 ]
-EXPECTED_SEQUENCE = [("write_event_outbox_sequence", 1, 1)]
+# name, increment_by only — DuckDB rewrites start_value to last_value+1 after
+# nextval+reopen on live DBs; pinning start_value==1 false-positives prod deploy.
+EXPECTED_SEQUENCE = [("write_event_outbox_sequence", 1)]
 
 
 def verify(db_path: str) -> None:
@@ -56,7 +58,7 @@ def verify(db_path: str) -> None:
             "WHERE table_name='write_event_outbox' ORDER BY index_name"
         ).fetchall()
         sequence = con.execute(
-            "SELECT sequence_name, start_value, increment_by "
+            "SELECT sequence_name, increment_by "
             "FROM duckdb_sequences() "
             "WHERE sequence_name='write_event_outbox_sequence'"
         ).fetchall()
