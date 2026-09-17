@@ -31,6 +31,7 @@ import logging
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import Any, Literal, cast
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -431,6 +432,53 @@ class FullTextResponse(BaseModel):
     canonical_url: str | None = None
     license: str | None = None
     content_format: Literal["text", "html"] = "text"
+
+
+
+def _prefer_reader_html_body(
+    con: Any,
+    document_id: str,
+    result: ServeResult,
+    *,
+    owner: bool,
+) -> ServeResult:
+    """Upgrade a rights-released body to the trusted reader-html sidecar.
+
+    Uploads deliberately do NOT stamp ``documents.metadata`` with sanitizer
+    provenance (sidecar is the sole HTML trust carrier — see upload_routes).
+    BookReader reads ``/books/{id}/(owner-)full-text``, so without this bridge
+    owned uploads render as ``content_format=text`` even when
+    ``document_reader_html`` is present and version-current.
+
+    Only substitutes when rights already released ``full_text`` AND the
+    sidecar row is version-current. Queries the sidecar table directly (does
+    not re-enter ``serve_reader_html`` / ``serve_full_text_guarded``) because
+    the caller already proved the rights ring. ``owner`` is retained for call-
+    site clarity; rights are not re-derived here.
+    """
+    del owner  # rights already decided by caller; keep kw for call-site clarity
+    if result.full_text is None:
+        return result
+    from substrate.books.html_sanitizer import SANITIZER_VERSION
+
+    row = con.execute(
+        """
+        SELECT html_body, sanitizer_version
+        FROM document_reader_html
+        WHERE document_id = ?
+        """,
+        [document_id],
+    ).fetchone()
+    if row is None:
+        return result
+    html_body, version = row
+    if version != SANITIZER_VERSION or not html_body:
+        return result
+    return replace(
+        result,
+        full_text=html_body,
+        content_format="html",
+    )
 
 
 def _full_text_response(result: ServeResult) -> FullTextResponse:
@@ -858,6 +906,7 @@ def register_book_routes(app: FastAPI) -> None:
         con = connect_read(db)
         try:
             result = serve_full_text_guarded(con, document_id)
+            result = _prefer_reader_html_body(con, document_id, result, owner=False)
         finally:
             con.close()
         if not result.found:
@@ -896,6 +945,7 @@ def register_book_routes(app: FastAPI) -> None:
         con = connect_read(db)
         try:
             result = serve_full_text_guarded(con, document_id, owner=True)
+            result = _prefer_reader_html_body(con, document_id, result, owner=True)
         finally:
             con.close()
         if not result.found:

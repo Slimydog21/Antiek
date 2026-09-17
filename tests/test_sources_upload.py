@@ -963,23 +963,48 @@ def test_upload_binds_book_asset_for_bookreader(temp_substrate, client):
     assert spin.json()["investigation_id"].startswith("inv-")
 
 
-def test_uploaded_doc_books_fulltext_still_text(temp_substrate, client, monkeypatch):
-    """Storing the sidecar must NOT stamp documents.metadata with the trusted
-    bit, or the books full-text endpoint would label the raw_text as html and
-    the reader would innerHTML it (the stored-XSS-adjacent defect this lane
-    guards). The two trust contracts stay disjoint."""
+def test_uploaded_doc_books_fulltext_prefers_reader_html_sidecar(
+    temp_substrate, client, monkeypatch
+):
+    """Books full-text must NOT trust documents.metadata for HTML — sidecar is
+    the sole carrier. When the sidecar is present + version-current, owner /
+    servable full-text prefer that sanitized body as content_format=html so
+    BookReader /read/:id renders HTML-native uploads (not text fallback)."""
     resp = client.post(
         "/sources/upload",
         files={"file": ("page.html", b"<p>Body for hazard test.</p>", "text/html")},
         data={"acquisition_attestation": "personal_reading"},
     )
     document_id = resp.json()["document_id"]
+
+    # Sidecar present must not unlock personal_reading on the public books path.
+    public = client.get(f"/books/{document_id}/full-text")
+    assert public.status_code == 200
+    pb = public.json()
+    assert pb.get("full_text") is None
+    assert pb.get("content_format") == "text"
+
     _as_owner(monkeypatch)
 
     owner = client.get(f"/books/{document_id}/owner-full-text")
     assert owner.status_code == 200
     ob = owner.json()
-    assert ob["content_format"] == "text"  # NOT html — metadata not trust-stamped
+    assert ob["content_format"] == "html"
+    assert "<p>" in (ob.get("full_text") or "")
+    # Metadata remains unstamped (disjoint trust contracts).
+    from runtime.db_lock import connect_read
+    from substrate.books.html_sanitizer import is_trusted_sanitized
+    from substrate.graph import default_db_path
+
+    con = connect_read(default_db_path())
+    try:
+        meta = con.execute(
+            "SELECT metadata FROM documents WHERE document_id = ?",
+            [document_id],
+        ).fetchone()[0]
+    finally:
+        con.close()
+    assert is_trusted_sanitized(meta) is False
 
 
 # ---------------------------------------------------------------------------
