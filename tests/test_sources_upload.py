@@ -19,8 +19,8 @@ Acceptance for the lane (brief, no live network):
 - a missing or invalid ``acquisition_attestation`` → 4xx.
 
 Plus magic-over-extension sniffing is pinned independently, and the §5.2 hazard
-holds (the books full-text endpoint keeps serving an uploaded doc as
-``content_format="text"`` — the sidecar is the sole HTML trust carrier).
+holds (``documents.metadata`` is never the HTML trust carrier; rights-released
+books full-text prefers the version-current sidecar as ``content_format="html"``).
 """
 
 from __future__ import annotations
@@ -921,7 +921,7 @@ def test_personal_reading_upload_not_publicly_servable(temp_substrate, client):
 
 
 # ---------------------------------------------------------------------------
-# §5.2 hazard: the books full-text endpoint keeps serving uploads as "text"
+# §5.2 + #3101: metadata unstamped; rights-released full-text prefers sidecar html
 # ---------------------------------------------------------------------------
 
 

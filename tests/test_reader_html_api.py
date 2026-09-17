@@ -6,8 +6,10 @@ Acceptance for the lane:
 - an untrusted / unsanitized / version-stale body is NOT served as HTML
   (mirrors the book stored-XSS regression posture — the version gate is the
   whole point);
-- the §5.2 hazard holds: a URL doc with a sidecar still serves
-  ``content_format="text"`` from the books full-text endpoint;
+- the §5.2 hazard holds: sidecar presence must NOT stamp
+  ``documents.metadata``; public books full-text still withholds
+  ``personal_reading``, while owner/rights-released full-text prefers the
+  version-current sidecar as ``content_format="html"`` (#3101);
 - the REAL ingest path (``ingest_url`` with a fake fetch) produces a trusted
   sidecar that the endpoint serves as HTML.
 """
@@ -27,7 +29,7 @@ if _REPO not in sys.path:
 
 from interfaces.research.api import books as books_api  # noqa: E402
 from interfaces.research.api.app import create_app  # noqa: E402
-from runtime.db_lock import connect_write  # noqa: E402
+from runtime.db_lock import connect_read, connect_write  # noqa: E402
 from substrate.books.html_sanitizer import SANITIZER_VERSION  # noqa: E402
 from substrate.reader_html.store import store_reader_html  # noqa: E402
 
@@ -226,18 +228,21 @@ def test_public_request_gets_snippet_not_html(temp_substrate, client):
 
 
 # ---------------------------------------------------------------------------
-# §5.2 hazard regression — the two trust contracts stay disjoint
+# §5.2 hazard + #3101 prefer-sidecar — metadata unstamped; rights-released → html
 # ---------------------------------------------------------------------------
 
 
-def test_url_doc_books_fulltext_still_text(temp_substrate, client, monkeypatch):
-    """Storing the sidecar must NOT stamp documents.metadata, or the books
-    full-text endpoint would label the MARKDOWN raw_text as html and the
-    reader would innerHTML markdown (the exact stored-XSS-adjacent defect
-    this lane guards)."""
+def test_url_doc_books_fulltext_prefers_reader_html_sidecar(
+    temp_substrate, client, monkeypatch
+):
+    """§5.2 + #3101: sidecar must NOT stamp documents.metadata, but when
+    rights already release full text the books endpoint prefers the
+    version-current reader-html body as content_format=html (same contract
+    as test_uploaded_doc_books_fulltext_prefers_reader_html_sidecar)."""
     _insert_url_doc(temp_substrate["db_path"])
     _store_sidecar(temp_substrate["db_path"])
 
+    # Sidecar present must not unlock personal_reading on the public path.
     resp = client.get("/books/doc-url-abc/full-text")
     assert resp.status_code == 200
     body = resp.json()
@@ -247,8 +252,21 @@ def test_url_doc_books_fulltext_still_text(temp_substrate, client, monkeypatch):
     _as_owner(monkeypatch)
     owner = client.get("/books/doc-url-abc/owner-full-text")
     assert owner.status_code == 200
-    assert owner.json()["content_format"] == "text"
-    assert owner.json()["full_text"] == "# Title\n\nBody text here."
+    ob = owner.json()
+    assert ob["content_format"] == "html"
+    assert ob["full_text"] == "<article><h1>Hi</h1><p>Body text.</p></article>"
+    # Metadata remains unstamped (disjoint trust contracts).
+    from substrate.books.html_sanitizer import is_trusted_sanitized
+
+    con = connect_read(temp_substrate["db_path"])
+    try:
+        meta = con.execute(
+            "SELECT metadata FROM documents WHERE document_id = ?",
+            ["doc-url-abc"],
+        ).fetchone()[0]
+    finally:
+        con.close()
+    assert is_trusted_sanitized(meta) is False
 
 
 # ---------------------------------------------------------------------------
