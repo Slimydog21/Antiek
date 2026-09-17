@@ -42,12 +42,12 @@ from processing.chunking.chunker import chunk_markdown
 from runtime.db_lock import LockedConnection
 from substrate.books.html_sanitizer import sanitize_book_html, sanitized_html_provenance
 from substrate.books.ingest import register_book
-from substrate.reader_html.store import store_reader_html
 from substrate.books.model import BookAsset, TocItem, get_book_asset
 from substrate.books.servability import servability_of
 from substrate.constants import GATED_DEFAULT_CONTENT_CLASS, SYSTEM_INVESTIGATION_ID
 from substrate.event_log import emit_typed
 from substrate.graph.ops import insert_chunk, insert_document
+from substrate.reader_html.store import store_reader_html
 from substrate.schemas.events import BookServabilityChangedPayload
 
 from .convert import ConvertedBook, TocHeading
