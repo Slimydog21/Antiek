@@ -138,8 +138,19 @@ curl -sS -X POST -H "Authorization: Bearer $ANTIEK_OPERATOR_TOKEN" \
 Uploads write a sanitized `document_reader_html` sidecar. After PR #3101,
 `GET /books/{id}/(owner-)full-text` prefers that sidecar as `content_format=html`
 when rights release the body — so `/read/:id` renders HTML via ReadingColumn
-(not the text/markdown fallback). Library books without a sidecar still serve
-text. Research MASTER.md and writing assets are not yet on this path.
+(not the text/markdown fallback). PDF ingest (`acquisition/books/adapter`) and
+book-import publish also write the sidecar on the same sanitize-on-write path.
+
+Older library `book_assets` that only have markdown `raw_text` can be backfilled
+without changing rights / `content_class` (gated books may still get a sidecar
+for owner-html serve):
+
+```bash
+python -m tools.backfill_book_reader_html --db-path ~/.antiek/research_graph.duckdb
+python -m tools.backfill_book_reader_html --db-path ~/.antiek/research_graph.duckdb --apply
+```
+
+Research MASTER.md and writing assets are not yet on this path.
 
 ## Highlight → Research this → notebook (API chain)
 
