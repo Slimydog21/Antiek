@@ -36,8 +36,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser().error("benchmark requires --query-set and --output")
     if args.action == "promote" and (not args.manifest or not args.confirm):
         parser().error("promote requires --manifest and --confirm")
-    from substrate.graph.retrieval_adapters.turbopuffer import TurbopufferSubstrate
     from processing.embedding.embed import SentenceTransformerEmbedding
+    from substrate.graph.retrieval_adapters.turbopuffer import TurbopufferSubstrate
     from substrate.graph.search import EmbeddingModel
     if args.dry_run:
         from runtime.db_lock import connect_read

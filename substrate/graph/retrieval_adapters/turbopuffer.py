@@ -33,11 +33,7 @@ _EXTERNAL_CLASSES = frozenset({"public_domain", "opt_in_licensed", "source_decla
 
 def _fts_enabled(value: Any) -> bool:
     """Official SDK returns True on write schema and a config object on metadata."""
-    if value is True:
-        return True
-    if value is False or value is None:
-        return False
-    return True
+    return value is not False and value is not None
 
 
 def _content_digest_row(row: dict[str, Any]) -> dict[str, Any]:
