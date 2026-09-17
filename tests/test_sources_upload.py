@@ -976,6 +976,14 @@ def test_uploaded_doc_books_fulltext_prefers_reader_html_sidecar(
         data={"acquisition_attestation": "personal_reading"},
     )
     document_id = resp.json()["document_id"]
+
+    # Sidecar present must not unlock personal_reading on the public books path.
+    public = client.get(f"/books/{document_id}/full-text")
+    assert public.status_code == 200
+    pb = public.json()
+    assert pb.get("full_text") is None
+    assert pb.get("content_format") == "text"
+
     _as_owner(monkeypatch)
 
     owner = client.get(f"/books/{document_id}/owner-full-text")
