@@ -637,8 +637,8 @@ def register_upload_routes(app: FastAPI) -> None:
         # strip_trust_markers (W2 mandatory) — a client can never relay a forged
         # content_sanitized bit through it. The §5.2 hazard is held: we do NOT
         # stamp sanitized_html_provenance() into documents.metadata (the sidecar
-        # is the sole trust carrier for reader bodies); the books full-text
-        # endpoint therefore keeps serving this doc as content_format="text".
+        # is the sole trust carrier). books.py prefers that sidecar body as
+        # content_format="html" when serving full-text — never by trusting metadata.
         metadata = strip_trust_markers(
             {
                 "source": "upload",

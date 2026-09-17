@@ -31,6 +31,7 @@ import logging
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import Any, Literal, cast
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -431,6 +432,40 @@ class FullTextResponse(BaseModel):
     canonical_url: str | None = None
     license: str | None = None
     content_format: Literal["text", "html"] = "text"
+
+
+
+def _prefer_reader_html_body(
+    con: Any,
+    document_id: str,
+    result: "ServeResult",
+    *,
+    owner: bool,
+) -> "ServeResult":
+    """Upgrade a rights-released body to the trusted reader-html sidecar.
+
+    Uploads deliberately do NOT stamp ``documents.metadata`` with sanitizer
+    provenance (sidecar is the sole HTML trust carrier — see upload_routes).
+    BookReader reads ``/books/{id}/(owner-)full-text``, so without this bridge
+    owned uploads render as ``content_format=text`` even when
+    ``document_reader_html`` is present and version-current.
+
+    Only substitutes when rights already released ``full_text`` AND the
+    sidecar serve returns ``available`` + ``content_format=html``. Gated /
+    taken-down / missing-sidecar paths are unchanged.
+    """
+    if result.full_text is None:
+        return result
+    from substrate.reader_html.store import serve_reader_html
+
+    html = serve_reader_html(con, document_id, owner=owner)
+    if not (html.available and html.content_format == "html" and html.body):
+        return result
+    return replace(
+        result,
+        full_text=html.body,
+        content_format="html",
+    )
 
 
 def _full_text_response(result: ServeResult) -> FullTextResponse:
@@ -858,6 +893,7 @@ def register_book_routes(app: FastAPI) -> None:
         con = connect_read(db)
         try:
             result = serve_full_text_guarded(con, document_id)
+            result = _prefer_reader_html_body(con, document_id, result, owner=False)
         finally:
             con.close()
         if not result.found:
@@ -896,6 +932,7 @@ def register_book_routes(app: FastAPI) -> None:
         con = connect_read(db)
         try:
             result = serve_full_text_guarded(con, document_id, owner=True)
+            result = _prefer_reader_html_body(con, document_id, result, owner=True)
         finally:
             con.close()
         if not result.found:
