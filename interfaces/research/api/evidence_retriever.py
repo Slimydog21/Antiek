@@ -32,6 +32,8 @@ synthesizer chain).
 
 from __future__ import annotations
 
+import asyncio
+
 import hashlib
 import os
 import re
@@ -227,7 +229,8 @@ def make_evidence_retriever_handler(
             subgraph_block=req.subgraph_block,
         )
 
-        result, policy_id = _dispatch_and_parse(
+        result, policy_id = await asyncio.to_thread(
+            _dispatch_and_parse,
             prompt,
             event,
             sub_question=sub_question,

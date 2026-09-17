@@ -29,6 +29,8 @@ Failure-mode discipline (mirrors decomposer + evidence_retriever):
 
 from __future__ import annotations
 
+import asyncio
+
 import json
 import os
 import sys
@@ -206,7 +208,8 @@ def make_parameter_extractor_handler(
         canonical_chunk_ids = _extract_canonical_chunk_ids(evidence_block)
 
         prompt = render_full_prompt(evidence_block=evidence_block)
-        result, policy_id = _dispatch_and_parse(
+        result, policy_id = await asyncio.to_thread(
+            _dispatch_and_parse,
             prompt,
             event,
             canonical_chunk_ids=canonical_chunk_ids,
