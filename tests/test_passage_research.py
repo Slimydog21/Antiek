@@ -153,6 +153,47 @@ def test_spin_research_endpoint_gate_safe(db):
     assert researches_for_passage("doc-gated-api", 1) == [body["investigation_id"]]
 
 
+def test_spin_research_broadcasts_start_requested(db):
+    """spin-research must wake Loop One via the in-process broadcaster.
+
+    emit_typed alone only appends jsonl; without broadcast the inv stays
+    forever in_progress (Mac Mini isolated-events dogfood gap).
+    """
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.app import create_app
+    from interfaces.research.api.broadcast import EventBroadcaster
+
+    class RecordingBus(EventBroadcaster):
+        def __init__(self) -> None:
+            super().__init__()
+            self.seen: list[str] = []
+
+        async def broadcast(self, event):  # type: ignore[override]
+            at = getattr(event, "action_type", None)
+            if hasattr(at, "value"):
+                at = at.value
+            self.seen.append(str(at))
+            await super().broadcast(event)
+
+    _register(db, "doc-spin-bcast", "A short owner note about citrus grafting.")
+    bus = RecordingBus()
+    client = TestClient(
+        create_app(
+            broadcaster=bus,
+            register_wrestling=False,
+            register_providers=False,
+            cors_origins=[],
+        )
+    )
+    resp = client.post(
+        "/books/doc-spin-bcast/spin-research",
+        json={"page_index": 0, "passage_text": "citrus grafting"},
+    )
+    assert resp.status_code == 202, resp.text
+    assert "investigation.start_requested" in bus.seen
+
+
 def test_spin_research_endpoint_unknown_book_404(db):
     from fastapi.testclient import TestClient
 
