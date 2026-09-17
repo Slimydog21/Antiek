@@ -37,7 +37,6 @@ Failure-mode discipline (mirrors wrestling + grounding):
 from __future__ import annotations
 
 import asyncio
-
 import os
 import sys
 
@@ -72,7 +71,7 @@ from substrate.schemas import (  # noqa: E402
     SubQuestion,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
