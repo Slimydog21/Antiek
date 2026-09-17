@@ -455,6 +455,42 @@ def _prior_graph_knowledge_section(question: str) -> str:
     )
 
 
+async def _render_chunks_block_for_sub_question_async(
+    sub_question: str,
+    *,
+    top_k: int = 5,
+    policy_tag: str = "attribution_eligible",
+) -> str:
+    """Offload sync embedding + DuckDB search so uvicorn /health stays responsive."""
+    return await asyncio.to_thread(
+        _render_chunks_block_for_sub_question,
+        sub_question,
+        top_k=top_k,
+        policy_tag=policy_tag,
+    )
+
+
+async def _render_subgraph_block_for_sub_question_async(
+    sub_question: str,
+    *,
+    top_k: int = 5,
+    policy_tag: str = "attribution_eligible",
+) -> str:
+    """Offload sync subgraph search off the uvicorn event loop."""
+    return await asyncio.to_thread(
+        _render_subgraph_block_for_sub_question,
+        sub_question,
+        top_k=top_k,
+        policy_tag=policy_tag,
+    )
+
+
+async def _prior_graph_knowledge_section_async(question: str) -> str:
+    """Offload Phase-1 orientation corpus cite off the event loop."""
+    return await asyncio.to_thread(_prior_graph_knowledge_section, question)
+
+
+
 # Per-phase await timeout for role bridges. DeepSeek V4 Pro under
 # OpenRouter load empirically takes 200-250s on a long-output role
 # (decomposer producing 8 sub-questions with rationale was 226s on
@@ -642,7 +678,7 @@ async def _run_phase_1(
             f"Question: {ctx.question}\n\n"
             + ("Loop 1 orchestrator orienting on the cold question. " * 30)
             + "\n\n## Prior Graph Knowledge\n\n"
-            + _prior_graph_knowledge_section(ctx.question)
+            + await _prior_graph_knowledge_section_async(ctx.question)
         )
         _write_marker(ctx, "orientation.md", body)
     return await _drive_phase(ctx, phase=1, work=work())
@@ -686,10 +722,10 @@ async def _run_phase_2(
 
         async def _retrieve_one(index: int, sq: SubQuestion) -> EvidenceRetrieveDeliveredPayload:
             async with sem:
-                chunks_block = _render_chunks_block_for_sub_question(
+                chunks_block = await _render_chunks_block_for_sub_question_async(
                     sq.sub_question, top_k=5, policy_tag=research_policy_tag,
                 )
-                subgraph_block = _render_subgraph_block_for_sub_question(
+                subgraph_block = await _render_subgraph_block_for_sub_question_async(
                     sq.sub_question, top_k=5, policy_tag=research_policy_tag,
                 )
                 await broadcast_emit(
@@ -1991,7 +2027,9 @@ def make_loop_one_handler(
                 await _maybe_spawn_chase_child(ctx, broadcaster)
 
         # Detached task — the orchestrator runs alongside the request
-        # handler that triggered it.
+        # handler that triggered it. Sync embed/search inside phases is
+        # further offloaded via asyncio.to_thread so --workers 1 uvicorn
+        # keeps serving /health during Loop One.
         asyncio.create_task(
             run_and_maybe_chase(),
             name=f"loop_one:{event.investigation_id}",

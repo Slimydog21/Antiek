@@ -36,6 +36,7 @@ parameter_extractor):
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from collections.abc import Awaitable, Callable
@@ -325,7 +326,8 @@ def make_connector_handler(
         )
 
         # ── 3. Dispatch + parse ──
-        result, policy_id = _dispatch_and_parse(
+        result, policy_id = await asyncio.to_thread(
+            _dispatch_and_parse,
             prompt,
             event,
             canonical_node_ids=canonical_node_ids,

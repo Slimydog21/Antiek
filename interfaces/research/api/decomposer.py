@@ -36,6 +36,7 @@ Failure-mode discipline (mirrors wrestling + grounding):
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 
@@ -70,7 +71,7 @@ from substrate.schemas import (  # noqa: E402
     SubQuestion,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -170,8 +171,8 @@ def make_decomposer_handler(
             question=question,
             context=context,
         )
-        result_1, policy_id_1 = _dispatch_and_parse(
-            prompt, event, label="initial",
+        result_1, policy_id_1 = await asyncio.to_thread(
+            _dispatch_and_parse, prompt, event, label="initial",
         )
         if result_1 is None:
             await _emit_delivered(
@@ -184,7 +185,9 @@ def make_decomposer_handler(
 
         # ── Paraphrase guard ──
         sub_q_texts = [s.sub_question for s in result_1.decomposition]
-        flags_1 = _safe_check_paraphrases(question, sub_q_texts, embedder=embedder)
+        flags_1 = await asyncio.to_thread(
+            _safe_check_paraphrases, question, sub_q_texts, embedder=embedder,
+        )
 
         if not flags_1:
             sq, kw = _result_to_payload_lists(result_1)
@@ -219,8 +222,8 @@ def make_decomposer_handler(
             context=context,
             extra_user_prefix=regenerate_instruction(flags_1),
         )
-        result_2, policy_id_2 = _dispatch_and_parse(
-            regen_prompt, event, label="regen",
+        result_2, policy_id_2 = await asyncio.to_thread(
+            _dispatch_and_parse, regen_prompt, event, label="regen",
         )
         if result_2 is None:
             # Regen dispatch/parse failed — fall back to pass 1 output.
@@ -238,7 +241,9 @@ def make_decomposer_handler(
             return
 
         sub_q_texts_2 = [s.sub_question for s in result_2.decomposition]
-        flags_2 = _safe_check_paraphrases(question, sub_q_texts_2, embedder=embedder)
+        flags_2 = await asyncio.to_thread(
+            _safe_check_paraphrases, question, sub_q_texts_2, embedder=embedder,
+        )
 
         emit_typed(
             event.investigation_id,

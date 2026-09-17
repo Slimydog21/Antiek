@@ -29,6 +29,11 @@ Local HTTP also needs (already set by the start script / `.env` for Mini dogfood
 
 ## Loop One consumer (no separate process)
 
+Sync embed/search and provider `dispatch` inside Loop One / role bridges
+run via `asyncio.to_thread` so a single uvicorn worker (`--workers 1`)
+keeps answering `/health` mid-investigation (spin-research dogfood).
+
+
 Investigation progress is **in-process**: the API's `EventBroadcaster`
 wakes `orchestration/loop_one` on `investigation.start_requested`.
 
