@@ -42,6 +42,7 @@ from processing.chunking.chunker import chunk_markdown
 from runtime.db_lock import LockedConnection
 from substrate.books.html_sanitizer import sanitize_book_html, sanitized_html_provenance
 from substrate.books.ingest import register_book
+from substrate.reader_html.store import store_reader_html
 from substrate.books.model import BookAsset, TocItem, get_book_asset
 from substrate.books.servability import servability_of
 from substrate.constants import GATED_DEFAULT_CONTENT_CLASS, SYSTEM_INVESTIGATION_ID
@@ -617,6 +618,16 @@ def publish_converted_book(
             # the canonical rights chokepoint below.
             content_class=resolved_content_class,
             on_conflict="error",
+        )
+        # Sidecar is the BookReader HTML trust carrier (PR #3101). Body is
+        # already a sanitize_book_html fixed point; store_reader_html
+        # re-sanitizes idempotently and stamps SANITIZER_VERSION.
+        store_reader_html(
+            con,
+            document_id=document_id,
+            main_html=body,
+            source_kind="book_import",
+            source_url=source_uri or f"antiek://book-import/{body_sha[:32]}",
         )
         asset = register_book(
             con,
