@@ -195,6 +195,13 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # documents (no WHERE in between) so subqueries do not trip it; tracked
         # separately from this PR.
         "tools/quarantine_test_residue.py",
+        # Book reader-HTML sidecar backfill (operator CLI): reads raw_text ONLY
+        # to project markdown/HTML into store_reader_html (sanitize-on-write).
+        # Never serves a body to a caller — rights / content_class are untouched;
+        # BookReader still emits bodies only via serve_full_text_guarded + the
+        # sidecar prefer bridge. Same internal-writer category as book_import
+        # publish / twin backfill above.
+        "tools/backfill_book_reader_html.py",
     }
 )
 
