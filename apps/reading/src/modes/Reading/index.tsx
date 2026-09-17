@@ -177,13 +177,17 @@ export default function BookReader() {
   // served. We pass it through so the FloatMenu chokepoint refuses Search/Deep-
   // research over a non-servable book (defence in depth — the body can't even
   // reach the DOM, but the outbound guard holds regardless).
+  // Owner-readable personal_reading has full body via owner-full-text but
+  // book.servable_full_text stays false (public gate). Treat ownerReadable as
+  // servable for FloatMenu outbound so highlight → Deep-research works in
+  // dogfood without weakening the public /full-text contract.
   const resolveProvenance = useCallback(
     (_range: Range, _text: string): SelectionProvenance => ({
       documentId,
       chunkId: representativeChunkId,
-      servable: book?.servable_full_text ?? false,
+      servable: ownerReadable,
     }),
-    [documentId, book?.servable_full_text],
+    [documentId, ownerReadable],
   );
 
   const selection = useFloatMenuSelection({
@@ -429,7 +433,7 @@ export default function BookReader() {
                   through this SAME markdown column, no PDF.js. */}
               <ReadingColumn
                 ref={articleRef}
-                assetId={book.servable_full_text ? documentId : null}
+                assetId={ownerReadable ? documentId : null}
                 text={page?.text ?? ""}
                 contentFormat={body.content_format ?? "text"}
               />
@@ -447,7 +451,7 @@ export default function BookReader() {
                     >
                       {showVoice ? "Close voice note" : "＋ Voice note"}
                     </LemonButton>
-                    <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={page.text} />
+                    <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={selection?.text ?? page.text} />
                   </div>
                   {showVoice && (
                     <VoiceNote

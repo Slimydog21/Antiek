@@ -34,6 +34,14 @@ export default defineConfig({
       // Metadata-only Library catalog. Keep this explicit rather than using a
       // blanket proxy so body-serving routes remain independently reviewed.
       "/library": API_TARGET,
+      // Anti-Ek dogfood smoke (local, uncommitted): BookReader + Sources need
+      // same-origin proxy or SPA HTML is returned and JSON.parse fails.
+      "/books": API_TARGET,
+      "/sources": API_TARGET,
+      "/investigations": API_TARGET,
+      "/chunks": API_TARGET,
+      "/write": API_TARGET,
+      "/notebooks": API_TARGET,
       // Magic-link auth (H6): both /auth/request/me and the
       // /auth/callback redirect need to be same-origin with the
       // page or the browser drops Set-Cookie.
