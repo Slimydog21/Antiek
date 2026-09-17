@@ -1,6 +1,7 @@
 # Anti-Ek Mac Mini multi-CLI swarm
 
 Reusable roles for speeding implement → review → ship on the Mini.
+Canonical playbook with Mini-verified invocations: [`docs/anti-ek-cli-swarm.md`](../anti-ek-cli-swarm.md).
 **Never put API keys, tokens, or `.env` values in this doc or in prompts.**
 
 ## Available CLIs (PATH)
