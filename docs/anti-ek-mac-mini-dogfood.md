@@ -27,6 +27,39 @@ Local HTTP also needs (already set by the start script / `.env` for Mini dogfood
 - `ANTIEK_COOKIE_INSECURE=1` — browsers drop `Secure` cookies on `http://`
 - `ANTIEK_FRONTEND_BASE_URL=http://127.0.0.1:5173` — post-login redirect to Vite
 
+## Loop One consumer (no separate process)
+
+Investigation progress is **in-process**: the API's `EventBroadcaster`
+wakes `orchestration/loop_one` on `investigation.start_requested`.
+
+- `POST /investigations` and watch-for-later already `bus.broadcast` after
+  `emit_typed`.
+- `POST /books/{id}/spin-research` must do the same (emit alone only writes
+  `{ANTIEK_RESEARCH_EVENTS_DIR}/inv-*.jsonl` and leaves status `in_progress`
+  forever).
+
+Dogfood therefore needs **only** the start script (API + Vite). There is no
+extra research-runner process for isolated events.
+
+`ANTIEK_DISABLE_EVENT_PROJECTOR_RECOVERY=1` is intentional: it skips the
+DuckDB *knowledge* event-projector recovery worker (boot / CPU incident),
+**not** Loop One. Do not re-enable it hoping spin-research will advance.
+
+After spin-research:
+
+```bash
+INV=…  # investigation_id from spin-research response
+curl -sS -H "Authorization: Bearer $ANTIEK_OPERATOR_TOKEN" \
+  "http://127.0.0.1:8000/investigations/$INV"
+# expect status leaving pure in_progress (phase / last_delivered / terminal)
+# or trajectory growing past a lone start_requested row:
+curl -sS -H "Authorization: Bearer $ANTIEK_OPERATOR_TOKEN" \
+  "http://127.0.0.1:8000/trajectory/$INV" | head
+```
+
+UI: `http://127.0.0.1:5173/inv/$INV` — citations/notebook signal once Loop One
+phases deliver (providers must be keyed in `platform/.env`).
+
 ## Owner session (gated / personal_reading)
 
 `GET /books/{id}/owner-full-text` requires a **real** auth method
@@ -114,8 +147,11 @@ With owner cookie or Bearer:
 
 1. Upload `user_owned` HTML/txt → note `document_id`.
 2. `POST /books/{id}/spin-research` with selected text / page seed.
-3. Follow redirect / response to investigation id → `GET /investigations/{id}`
-   (or UI `/inv/:id`) and confirm citations block or honest gap.
+3. API broadcasts `investigation.start_requested` → Loop One runs in the
+   same uvicorn process (isolated events dir is fine; no second consumer).
+4. Poll `GET /investigations/{id}` / UI `/inv/:id` until status leaves pure
+   `in_progress` or trajectory shows phase/delivered events — citations
+   when providers are available, otherwise an honest empty/gap state.
 
 Vite proxies `/books`, `/sources`, `/investigations`, `/auth`, etc. to
 `:8000` so the SPA does not parse HTML as JSON.

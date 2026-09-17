@@ -37,6 +37,8 @@ export PYTHONPATH="$WT"
 export ANTIEK_HOME="$HOME_ISO"
 export ANTIEK_RESEARCH_EVENTS_DIR="$EVENTS_ISO"
 export ANTIEK_DUCKDB_PATH="$SHARED_DB"
+# Skips DuckDB knowledge-projector recovery (boot/CPU). Loop One still runs
+# in-process via EventBroadcaster after spin-research / POST /investigations.
 export ANTIEK_DISABLE_EVENT_PROJECTOR_RECOVERY=1
 export ANTIEK_BUILD_SHA="$(git rev-parse HEAD)"
 export ANTIEK_WEBAUTHN_RP_ID=localhost

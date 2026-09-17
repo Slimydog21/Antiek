@@ -1034,6 +1034,27 @@ def register_book_routes(app: FastAPI) -> None:
                 status_code=503,
                 detail="Event log is disabled (ANTIEK_EVENTS_DISABLED).",
             )
+        # Broadcast so the in-process Loop 1 orchestrator (subscribed to
+        # investigation.start_requested) actually starts. emit_typed alone
+        # only appends the jsonl — same wake-up as POST /investigations and
+        # watch-for-later escalation. Without this, inv-* stays forever
+        # in_progress under isolated-events dogfood (no separate consumer).
+        from substrate.event_log import trajectory
+        from substrate.schemas import Event
+
+        bus = getattr(app.state, "broadcaster", None)
+        if bus is not None:
+            for row in reversed(trajectory(investigation_id)):
+                if row.get("event_id") == event_id:
+                    try:
+                        await bus.broadcast(Event.model_validate(row))
+                    except Exception:  # pragma: no cover — diagnostic
+                        logger.exception(
+                            "spin_research broadcast failed inv=%s event=%s",
+                            investigation_id,
+                            event_id,
+                        )
+                    break
         link_passage_to_research(
             document_id=document_id,
             page_index=req.page_index,
