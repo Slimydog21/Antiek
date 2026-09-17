@@ -925,6 +925,44 @@ def test_personal_reading_upload_not_publicly_servable(temp_substrate, client):
 # ---------------------------------------------------------------------------
 
 
+def test_upload_binds_book_asset_for_bookreader(temp_substrate, client):
+    """Owned uploads must resolve on GET /books/{id} so /read/:id BookReader works.
+
+    Regression for the Sources → Open in reader 404: reader-html alone is not
+    enough — BookReader loads detail via the books surface, which keys off
+    book_assets. user_owned also remains publicly full-text servable so the
+    highlight → spin-research path can seed from the passage body.
+    """
+    resp = client.post(
+        "/sources/upload",
+        files={"file": ("note.html", b"<h1>Owned Note</h1><p>Highlight me for spin.</p>", "text/html")},
+        data={"acquisition_attestation": "user_owned", "title": "Owned Note"},
+    )
+    assert resp.status_code == 201, resp.text
+    document_id = resp.json()["document_id"]
+    assert resp.json()["reader_html_available"] is True
+
+    detail = client.get(f"/books/{document_id}")
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["document_id"] == document_id
+    assert body["title"] == "Owned Note"
+    assert body["servable_full_text"] is True
+    assert body["license_basis"] == "user_owned"
+    assert body["page_count"] >= 1
+
+    full = client.get(f"/books/{document_id}/full-text")
+    assert full.status_code == 200, full.text
+    assert "Highlight me for spin" in (full.json().get("full_text") or "")
+
+    spin = client.post(
+        f"/books/{document_id}/spin-research",
+        json={"page_index": 0, "passage_text": "Highlight me for spin"},
+    )
+    assert spin.status_code == 202, spin.text
+    assert spin.json()["investigation_id"].startswith("inv-")
+
+
 def test_uploaded_doc_books_fulltext_still_text(temp_substrate, client, monkeypatch):
     """Storing the sidecar must NOT stamp documents.metadata with the trusted
     bit, or the books full-text endpoint would label the raw_text as html and

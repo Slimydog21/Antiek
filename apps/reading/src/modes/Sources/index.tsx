@@ -103,6 +103,12 @@ export default function Sources() {
   const [rows, setRows] = useState<IngestRow[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [attested, setAttested] = useState(false);
+  /** Bartz attestation → content_class. personal_reading stays the default
+   * (owner-only); user_owned is for content Faisal authored so BookReader
+   * can serve full text + spin without the owner-full-text privilege. */
+  const [uploadAttestation, setUploadAttestation] = useState<
+    "personal_reading" | "user_owned"
+  >("personal_reading");
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done">("idle");
   const [uploadResult, setUploadResult] = useState<SourceUploadResponse | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -127,6 +133,7 @@ export default function Sources() {
     setUploadState("idle");
     setUploadFile(null);
     setAttested(false);
+    setUploadAttestation("personal_reading");
     if (!file) return;
     const validationError = validateSourceUpload(file);
     setUploadError(validationError ? uploadErrorCopy[validationError] : null);
@@ -141,7 +148,7 @@ export default function Sources() {
     setUploadState("uploading");
     setUploadError(null);
     try {
-      const result = await uploadSource(uploadFile, "personal_reading", controller.signal);
+      const result = await uploadSource(uploadFile, uploadAttestation, controller.signal);
       if (controller.signal.aborted) {
         setUploadError(uploadErrorCopy.cancelled);
         setUploadState("idle");
@@ -268,11 +275,31 @@ export default function Sources() {
                 </p>
               )}
 
-              <fieldset className="mt-5" disabled={uploadState === "uploading"}>
+              <fieldset className="mt-5 space-y-3" disabled={uploadState === "uploading"}>
                 <legend className="text-sm font-semibold text-ink dark:text-bright">Confirm how you may use this document</legend>
-                <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm text-ink dark:text-bright">
+                <label className="flex cursor-pointer items-start gap-3 text-sm text-ink dark:text-bright">
+                  <input
+                    type="radio"
+                    name="upload-attestation"
+                    checked={uploadAttestation === "personal_reading"}
+                    onChange={() => setUploadAttestation("personal_reading")}
+                    className="mt-0.5"
+                  />
+                  <span>Personal reading — I lawfully hold this copy for myself. Reader content stays owner-only.</span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-3 text-sm text-ink dark:text-bright">
+                  <input
+                    type="radio"
+                    name="upload-attestation"
+                    checked={uploadAttestation === "user_owned"}
+                    onChange={() => setUploadAttestation("user_owned")}
+                    className="mt-0.5"
+                  />
+                  <span>I authored this (notes / drafts) — open it in BookReader with full text, highlight, and spin-research.</span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-3 text-sm text-ink dark:text-bright">
                   <input type="checkbox" checked={attested} onChange={(event) => setAttested(event.target.checked)} className="mt-0.5" />
-                  <span>I lawfully hold this copy and am adding it for my personal reading. Its reader content stays owner-only.</span>
+                  <span>I confirm the attestation above is accurate.</span>
                 </label>
               </fieldset>
 
