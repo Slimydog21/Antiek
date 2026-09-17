@@ -41,6 +41,7 @@ import { collectAnchoredWidgets, collectDecorations } from "../../reading-physic
 import type { ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
 import { openPdfPanel } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
+import ManualSponsorFooter from "./ManualSponsorFooter";
 import { buildLayoutMap } from "./readingGeometryPass";
 
 /**
@@ -398,6 +399,11 @@ export default function MasterMdViewer({
           stat={synthesis.compoundingStat}
         />
       </article>
+
+      {/* Website ads MVP — flag-gated manual sponsor footer (AdBorder bottom
+          rail + BiddingPolicy.MANUAL_SPONSOR / house). Default OFF; no live
+          AppLovin/MAX. See applovin-website-mvp-attribution-ledger-2026-09-17. */}
+      <ManualSponsorFooter synthesisId={synthesisId} />
 
       {/* ── Living-Roadmap SPR-02 (M2) — the minimap, a SECOND render pass of the
           SAME facets against the LIVE layout-map ──────────────────────────────

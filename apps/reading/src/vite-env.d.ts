@@ -4,7 +4,15 @@ interface ImportMetaEnv {
   readonly VITE_ANTIEK_UI?: string;
   readonly VITE_POSTHOG_PROJECT_TOKEN?: string;
   readonly VITE_POSTHOG_HOST?: string;
+  /** Opt-in MASTER.md manual sponsor footer (website ads MVP). Set to "1". */
+  readonly VITE_MANUAL_SPONSOR_FOOTER?: string;
+  /** Optional operator-sold sponsor display name (with landing URL → ad fill). */
+  readonly VITE_MANUAL_SPONSOR_NAME?: string;
+  readonly VITE_MANUAL_SPONSOR_LANDING_URL?: string;
+  /** Optional creative image URL; defaults to /mark-32.png when name+landing set. */
+  readonly VITE_MANUAL_SPONSOR_CREATIVE_URL?: string;
 }
+
 
 interface ImportMeta {
   readonly env: ImportMetaEnv;
