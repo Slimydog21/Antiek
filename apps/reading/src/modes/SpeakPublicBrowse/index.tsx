@@ -5,6 +5,7 @@ import PublicLane from "../Speak/lanes/PublicLane";
 import {
   listPublicFeed,
   listPublicOpportunities,
+  openContributionLive,
   type FeedItem,
   type PublicOpportunity,
 } from "../../lib/speakApi";
@@ -15,29 +16,33 @@ import { GATE_PHRASES, PUBLIC_LANE_LABELS, PUSHES_COPY } from "../../lib/speakVo
  *
  * Sibling to `/speak/invite/:token` — logged-out visitors can read the
  * public-intent feed + heuristic opportunities without RequireAuth.
- * Contribution without an invite stays G7-honest; minting invites remains
- * on the authenticated PublicLane / operator console.
+ * G7 open contribution (when live): visitor CTA mints via open-contribute.
+ * Private projects stay invite-only.
  */
 export default function SpeakPublicBrowse() {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [opps, setOpps] = useState<PublicOpportunity[]>([]);
+  const [g7Live, setG7Live] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setFeedLoading(true);
     setError(null);
     try {
-      const [f, o] = await Promise.all([
+      const [f, o, g7] = await Promise.all([
         listPublicFeed(),
         listPublicOpportunities().catch(() => [] as PublicOpportunity[]),
+        openContributionLive().catch(() => false),
       ]);
       setFeed(f);
       setOpps(o);
+      setG7Live(Boolean(g7));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
       setFeed([]);
       setOpps([]);
+      setG7Live(false);
     } finally {
       setFeedLoading(false);
     }
@@ -61,7 +66,9 @@ export default function SpeakPublicBrowse() {
             {PUBLIC_LANE_LABELS.browseHeading}
           </h1>
           <p className="mt-2 font-serif text-[14px] text-ink-mute dark:text-moonlight">
-            {PUBLIC_LANE_LABELS.browseSubhead}
+            {g7Live
+              ? PUBLIC_LANE_LABELS.browseSubheadLive
+              : PUBLIC_LANE_LABELS.browseSubhead}
           </p>
           <p className="mt-3 font-serif text-[12px]">
             <Link to="/login" className="text-sun-deep underline dark:text-sun">
@@ -80,7 +87,9 @@ export default function SpeakPublicBrowse() {
           data-testid="browse-g7-banner"
         >
           <p className="font-serif text-[12px] text-ink dark:text-bright">
-            {GATE_PHRASES.publicEcosystem.whenGated}
+            {g7Live
+              ? PUBLIC_LANE_LABELS.openContributionLive
+              : GATE_PHRASES.publicEcosystem.whenGated}
           </p>
         </aside>
 

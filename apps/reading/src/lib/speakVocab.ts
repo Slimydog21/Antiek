@@ -193,10 +193,18 @@ export const PUBLIC_LANE_LABELS = {
     "Browse open remembrances without signing in. To add a memory, " +
     "you will need an invite link from the family - open contribution " +
     "without an invite is not live yet.",
+  browseSubheadLive:
+    "Browse open remembrances without signing in. Public projects " +
+    "accept open contribution (token door; no account). Private " +
+    "projects stay invite-only.",
   visitorCtaNote:
     "To add what you remember, ask the family for an invite link " +
     "(the link token is your credential - no account). Open " +
     "contribution without an invite is not live yet.",
+  visitorCtaNoteLive:
+    "Add what you remember — open contribution mints your invite " +
+    "door (token is the credential; no account). Private projects " +
+    "still need a family invite.",
   /** M5 — a feed item is public-INTENT, never confirmed published. */
   intendedPublic:
     "A public remembrance — open to the people invited to add what they remember.",
@@ -229,6 +237,10 @@ export const PUBLIC_LANE_LABELS = {
    * phrases: a gate phrase is the FUTURE-tense "what opens it" sentence; these
    * are the present-tense "it is open" counterpart, read live from G2/G3).
    */
+  openContributionLive:
+    "Open contribution is live for public remembrances — add what you " +
+    "remember without a pre-shared family invite. The link token is " +
+    "still your credential (no account). Private projects stay invite-only.",
   publishingOpen:
     "Public sharing is open — remembrances can now be shared publicly.",
   payoutsOpen:
@@ -236,6 +248,10 @@ export const PUBLIC_LANE_LABELS = {
   /** M4 — explainer step 2, distinct from the M2 lock panel's sentence so the
    *  same G7 sentence is not printed twice on screen. Points at the panel above
    *  rather than repeating it verbatim. */
+  explainerStepOpenContributionLive:
+    "Open contribution is live for public remembrances — strangers " +
+    "mint an invite door from browse (token credential, no account). " +
+    "Private stays invite-only.",
   explainerStepOpenContribution:
     "Open contribution by anyone arrives after the ecosystem review — see the " +
     "note above; for now, contributions come through your invites.",

@@ -40,7 +40,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from orchestration.interview.orchestrator import ConsentRequired
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_read, connect_write
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.speak import (
     biography,
@@ -110,6 +110,22 @@ def _write(purpose: str) -> Iterator[Any]:
     con = connect_write(db, purpose=purpose)
     try:
         ensure_speak_schema(con)
+        yield con
+    finally:
+        con.close()
+
+
+@contextmanager
+def _read(purpose: str) -> Iterator[Any]:
+    """Read-only Speak path — LazyRW / connect_read; does not take the write flock.
+
+    Used for public feed + opportunities so browse stays responsive when
+    agent_work/lease holds the writer. Schema must already exist (prod /
+    prior writes). Does NOT call ensure_speak_schema (DDL needs a writer).
+    """
+    db = _db()
+    con = connect_read(db)
+    try:
         yield con
     finally:
         con.close()
@@ -386,16 +402,21 @@ async def public_feed() -> dict:
     the surface a visitor scrolls and can 'interview-with'/chime in on.
     Honest when empty (returns ``[]``). Distinct from ``GET /projects``,
     which is the operator's full index (their private dashboard)."""
-    with _translate(), _write("speak/api:feed") as con:
-        rows = con.execute(
-            "SELECT p.project_id, ip.title, p.subject_ref, p.subject_status, "
-            "p.invitation_mode, "
-            "(SELECT count(*) FROM interviews i WHERE i.project_id = p.project_id) "
-            "FROM speak_projects p "
-            "JOIN interview_projects ip ON ip.project_id = p.project_id "
-            "WHERE p.publish_intent = 'will_be_public' "
-            "ORDER BY p.created_at DESC"
-        ).fetchall()
+    try:
+        with _translate(), _read("speak/api:feed") as con:
+            rows = con.execute(
+                "SELECT p.project_id, ip.title, p.subject_ref, p.subject_status, "
+                "p.invitation_mode, "
+                "(SELECT count(*) FROM interviews i WHERE i.project_id = p.project_id) "
+                "FROM speak_projects p "
+                "JOIN interview_projects ip ON ip.project_id = p.project_id "
+                "WHERE p.publish_intent = 'will_be_public' "
+                "ORDER BY p.created_at DESC"
+            ).fetchall()
+    except Exception as exc:
+        if "speak_projects" not in str(exc) and "Catalog" not in type(exc).__name__:
+            raise
+        rows = []
     return {
         "count": len(rows),
         "projects": [
@@ -460,6 +481,33 @@ async def open_public(project_id: str) -> dict:
 # ---------------------------------------------------------------------------
 # Invitee: consent + interview
 # ---------------------------------------------------------------------------
+
+
+@speak_router.post("/projects/{project_id}/open-contribute", status_code=201)
+async def open_contribute(project_id: str) -> dict:
+    """Unauthenticated self-serve contribution door for will_be_public projects (G7).
+
+    Mints an invite TOKEN (source, not an account) so a stranger on
+    ``/speak/browse`` can open SpeakInvite without a pre-shared family invite.
+    Private projects stay invite-only. Gated on ``ANTIEK_SPEAK_PUBLIC_ECOSYSTEM``.
+    Cite: speak-private-public-spine · anti-ek-speak-deepblu-remap §public.
+    Open in operator-auth middleware (POST path match).
+    """
+    with _translate(), _write("speak/api:open_contribute") as con:
+        inv = invitations.mint_open_contribution(con, project_id)
+    return {
+        "honesty": {
+            "open_contribution": "live_g7_will_be_public_only",
+            "credential": "invite_token_source_not_account",
+            "private_projects": "invite_only_unchanged",
+            "economics": "public_may_accrue_escrow_g2_g3_still_gate_publish_disburse",
+        },
+        "project_id": project_id,
+        "interview_id": inv.interview_id,
+        "token": inv.token,
+        "invite_path": f"/speak/invite/{inv.token}",
+        "invitation_mode": "public",
+    }
 
 
 @speak_router.post("/interviews/{interview_id}/consent", status_code=200)
@@ -724,10 +772,17 @@ async def public_opportunities(
     """
     from substrate.speak.invitations import public_ecosystem_enabled
 
-    with _translate(), _write("speak/api:opportunities") as con:
-        pubs = speak_pushes.list_public_opportunities(
-            con, interest=interest
-        )
+    try:
+        with _translate(), _read("speak/api:opportunities") as con:
+            pubs = speak_pushes.list_public_opportunities(
+                con, interest=interest, ensure=False
+            )
+    except Exception as exc:
+        # Fresh DB / schema not yet ensured — honest empty (read path
+        # cannot DDL). Writer paths create schema on first project.
+        if "speak_projects" not in str(exc) and "Catalog" not in type(exc).__name__:
+            raise
+        pubs = []
     g7 = public_ecosystem_enabled()
     return {
         "honesty": {
@@ -760,8 +815,13 @@ async def list_pushes() -> dict:
     ``private_repings`` — invitees still in flight with an invite token;
     pending question counts from async_interview.resume.
     """
-    with _translate(), _write("speak/api:pushes") as con:
-        pubs = speak_pushes.list_public_opportunities(con)
+    try:
+        with _translate(), _read("speak/api:pushes") as con:
+            pubs = speak_pushes.list_public_opportunities(con, ensure=False)
+    except Exception as exc:
+        if "speak_projects" not in str(exc) and "Catalog" not in type(exc).__name__:
+            raise
+        pubs = []
     privates = speak_pushes.list_private_repings_at(_db())
     return {
         "honesty": {

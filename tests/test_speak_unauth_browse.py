@@ -60,7 +60,11 @@ def test_feed_and_opportunities_open_while_operator_auth_on(client, monkeypatch)
     assert opps.status_code == 200, opps.text
     data = opps.json()
     assert data["honesty"]["auth"] == "unauthenticated_read_only"
-    assert "gated_G7" in data["honesty"]["open_contribution_without_invite"]
+    flag = data["honesty"]["open_contribution_without_invite"]
+    assert flag in (
+        "gated_G7_ANTIEK_SPEAK_PUBLIC_ECOSYSTEM",
+        "live",
+    )
     pub_ids = [o["project_id"] for o in data["public_opportunities"]]
     assert project_id in pub_ids
 
@@ -74,4 +78,5 @@ def test_opportunities_honest_empty_g7(client, monkeypatch):
     assert r.status_code == 200
     body = r.json()
     assert body["public_opportunities"] == []
-    assert "gated_G7" in body["honesty"]["open_contribution_without_invite"]
+    flag = body["honesty"]["open_contribution_without_invite"]
+    assert flag.startswith("gated_G7") or flag == "live"
