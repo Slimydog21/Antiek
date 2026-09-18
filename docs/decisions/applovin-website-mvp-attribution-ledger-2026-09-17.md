@@ -119,4 +119,4 @@ Weights: **per page** (which assets were on-screen) × **per second** (FrameSeco
 
 ## 7. Next agent one-liner
 
-Ship **flag-gated manual sponsor footer on MASTER.md** using existing `AdBorder` / `MANUAL_SPONSOR` seams + house fallback; keep `ad_eligible` as the only UI gate; advance W2 S2/S3 in substrate without turning on live network ads.
+Ship **BYOT capacity slider** (or close W2 S2 IVT / S3 synthesis composition) — Phase-2 manual sponsor now persists `ad_fill_decisions` via `POST /api/ad/fills` (research lens, $0 unpriced, `bidding_policy=manual_sponsor` in fills_json). Still no live network ads / disbursement.
