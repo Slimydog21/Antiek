@@ -34,7 +34,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from typing import Any, Literal, cast
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
@@ -389,6 +389,7 @@ class SpinResearchResponse(BaseModel):
     gated: bool
     servability: str
     seed_preview: str
+    capacity_warning: dict[str, object] | None = None
 
 
 class ImpressionItem(BaseModel):
@@ -983,7 +984,12 @@ def register_book_routes(app: FastAPI) -> None:
         status_code=202,
         tags=["books"],
     )
-    async def spin_research(document_id: str, req: SpinResearchRequest) -> SpinResearchResponse:
+    async def spin_research(
+        document_id: str,
+        req: SpinResearchRequest,
+        request: Request,
+        response: Response,
+    ) -> SpinResearchResponse:
         """Spin a deep research from a book passage (Read SPR-08).
 
         Builds the GATE-SAFE seed server-side (a gated book contributes
@@ -993,6 +999,15 @@ def register_book_routes(app: FastAPI) -> None:
         seed is built and consumed here so gated full text never crosses
         into a research via the browser.
         """
+        from .compute_capacity_gate import (
+            attach_capacity_warn_header,
+            commit_start_acu,
+            run_capacity_precheck,
+            warning_body,
+        )
+
+        capacity_gate = run_capacity_precheck(request)
+
         from runtime.db_lock import connect_read
         from substrate.books.passage_research import (
             build_research_seed,
@@ -1081,6 +1096,14 @@ def register_book_routes(app: FastAPI) -> None:
             page_index=req.page_index,
             investigation_id=investigation_id,
         )
+        post_gate = commit_start_acu(
+            request,
+            investigation_id=investigation_id,
+            reason="spin_research",
+        )
+        warn_gate = post_gate if post_gate.verdict == "soft_warn" else capacity_gate
+        attach_capacity_warn_header(response, warn_gate)
+
         return SpinResearchResponse(
             investigation_id=investigation_id,
             document_id=document_id,
@@ -1088,6 +1111,7 @@ def register_book_routes(app: FastAPI) -> None:
             gated=seed.gated,
             servability=seed.servability,
             seed_preview=seed.seed_text[:240] + ("…" if len(seed.seed_text) > 240 else ""),
+            capacity_warning=warning_body(warn_gate),
         )
 
     # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited, gate-safe) ──

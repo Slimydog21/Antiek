@@ -1,32 +1,42 @@
-"""Antiek-hosted agent compute capacity (managed CPU slider).
+"""Antiek-hosted agent compute capacity (managed CPU slider + ACU meter).
 
-Doctrine (vision map pillar 3): BYO Token + BYO Tools; NO BYO CPU by default.
-Antiek manages agent compute and research traces; the owner picks a monthly
-capacity tier / unit budget for a predictable bill. Token spend stays on the
-BYOT usage ledger — this module is *compute quota*, not LLM cents.
+Doctrine: BYO Token + BYO Tools; NO BYO CPU by default. Antiek manages agent
+compute and research traces; owners pick a monthly ACU budget. Token spend
+stays on the BYOT usage ledger.
 
-Honesty: used units stay ``unmetered`` until a real meter exists. No fake
-billing. Enforcement defaults OFF (soft/hard are flag-gated stubs).
+1 ACU = one investigation start (see ``acu_meter``). No fake billing.
 """
 
 from .store import (
     CAPACITY_TIERS,
-    ComputeCapacity,
     CapacityEvaluation,
+    ComputeCapacity,
     ensure_table,
     evaluate_capacity,
     get_capacity,
     set_capacity,
     tier_default_units,
 )
+from .acu_meter import (
+    ACU_PER_INVESTIGATION_START,
+    CAPACITY_WARN_HEADER,
+    CapacityGateResult,
+    gate_investigation_start,
+    record_investigation_start_acu,
+)
 
 __all__ = [
+    "ACU_PER_INVESTIGATION_START",
     "CAPACITY_TIERS",
-    "ComputeCapacity",
+    "CAPACITY_WARN_HEADER",
     "CapacityEvaluation",
+    "CapacityGateResult",
+    "ComputeCapacity",
     "ensure_table",
     "evaluate_capacity",
+    "gate_investigation_start",
     "get_capacity",
+    "record_investigation_start_acu",
     "set_capacity",
     "tier_default_units",
 ]

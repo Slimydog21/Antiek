@@ -1,8 +1,9 @@
 """DuckDB SoT for per-owner Antiek-hosted compute capacity.
 
 Table ``owner_compute_capacity`` is the durable preference + soft quota.
-Metering of used units is intentionally deferred — ``used_status`` is
-``unmetered`` until a real agent-compute meter writes known usage.
+Used units are written by ``acu_meter.record_investigation_start_acu``
+(1 ACU per investigation start). Until the first charge, ``used_status``
+stays ``unmetered``.
 """
 
 from __future__ import annotations
