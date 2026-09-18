@@ -460,12 +460,29 @@ def connect_write(
     except OSError:
         pass
 
-    try:
-        con = duckdb.connect(db_path)
-    except Exception:
+    # DuckDB rejects RW when any same-process handle is open read-only.
+    # Hold the flock while we wait for brief RO sessions (health, spin seed
+    # reads) to close — writers stay serialized; readers are short-lived.
+    con = None
+    open_error: Exception | None = None
+    while True:
+        try:
+            con = duckdb.connect(db_path)
+            break
+        except Exception as exc:
+            open_error = exc
+            if _SAME_FILE_DIFFERENT_CONFIG not in str(exc):
+                break
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(
+                min(poll_interval_s, max(0.0, deadline - time.monotonic()))
+            )
+    if con is None:
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
-        raise
+        assert open_error is not None
+        raise open_error
     return LockedConnection(
         con,
         fd,
@@ -557,15 +574,16 @@ def connect_read(
     module — the future place to add per-purpose observability.
 
     DuckDB rejects a true read-only connection when this process already has
-    the same file open read-write. In that one proven configuration conflict,
-    a writer created by this module authorizes a same-config connection whose
-    direct SQL mutation surfaces are rejected. Other connection failures stay
+    the same file open read-write (``connect_write``, unflocked reuse
+    substrates, etc.). On that configuration conflict, fall back to a
+    same-config read-write handle whose direct SQL mutation surfaces are
+    rejected (``_ReadOrientedConnection``). Other connection failures stay
     explicit rather than being retried with broader privileges.
     """
     try:
         return duckdb.connect(db_path, read_only=True)
     except duckdb.ConnectionException as exc:
-        if _SAME_FILE_DIFFERENT_CONFIG not in str(exc) or not _has_local_writer(db_path):
+        if _SAME_FILE_DIFFERENT_CONFIG not in str(exc):
             raise
         return _ReadOrientedConnection(duckdb.connect(db_path, read_only=False))
 

@@ -1002,7 +1002,27 @@ def register_book_routes(app: FastAPI) -> None:
         from substrate.schemas import InvestigationStartRequestedPayload
 
         db = _resolve_db_path()
-        con = connect_read(db)
+        # Transient DuckDB RO/RW config clashes with note-taker recovery or
+        # reuse inject: brief retry before hard-failing the spin.
+        con = None
+        last_exc: Exception | None = None
+        for _attempt in range(8):
+            try:
+                con = connect_read(db)
+                break
+            except Exception as exc:  # noqa: BLE001 — duckdb ConnectionException
+                last_exc = exc
+                if "different configuration" not in str(exc):
+                    raise
+                import asyncio as _asyncio
+
+                await _asyncio.sleep(0.05 * (_attempt + 1))
+        if con is None:
+            assert last_exc is not None
+            raise HTTPException(
+                status_code=503,
+                detail=f"graph_temporarily_unavailable: {last_exc}",
+            ) from last_exc
         try:
             seed = build_research_seed(
                 con,
