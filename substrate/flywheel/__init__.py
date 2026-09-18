@@ -21,6 +21,9 @@ emits exactly one ``reuse.gated`` event recording its score, the threshold, and
 the reason(s) it was excluded (``below-threshold`` and/or ``non-servable``).
 """
 
+from substrate.flywheel.investigation_start_reuse import (
+    maybe_reuse_prior_knowledge_at_start,
+)
 from substrate.flywheel.reuse_gate import (
     REUSE_GROUNDEDNESS_THRESHOLD,
     GateDecision,
@@ -33,4 +36,5 @@ __all__ = [
     "GateDecision",
     "filter_reusable",
     "groundedness_of",
+    "maybe_reuse_prior_knowledge_at_start",
 ]

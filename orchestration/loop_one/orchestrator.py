@@ -1731,6 +1731,22 @@ async def _run_investigation(
     """Walk all 9 phases. On any phase failure, emits
     ``investigation.failed`` and returns. On success, emits
     ``investigation.completed`` with the synthesis verdict."""
+    # AFF SPR-06 reuse half — Mini dogfood daily path is spin-research →
+    # Loop One (not HostLocalRunner). Emit knowledge.reused before phase 1
+    # so /health flywheel_ready can become honest once compounding runs.
+    # Offloaded: retrieval may load embedders / touch DuckDB.
+    try:
+        from substrate.flywheel.investigation_start_reuse import (
+            maybe_reuse_prior_knowledge_at_start,
+        )
+
+        await asyncio.to_thread(
+            maybe_reuse_prior_knowledge_at_start,
+            investigation_id=ctx.investigation_id,
+            question_text=ctx.question,
+        )
+    except Exception:
+        pass
     phases: list[Callable[[], Coroutine[Any, Any, bool]]] = [
         lambda: _run_phase_1(ctx, broadcaster, coordinator),
         lambda: _run_phase_2(ctx, broadcaster, coordinator),
