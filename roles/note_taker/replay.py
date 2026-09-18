@@ -208,6 +208,7 @@ def _promote_delivered_notes(
                 event,
                 enabled=True,
                 emit_graph_events=False,
+                events_dir=events_dir,
             )
         except Exception as exc:  # noqa: BLE001
             print(
