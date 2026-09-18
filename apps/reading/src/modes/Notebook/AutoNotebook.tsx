@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { getDistillation, ApiError } from "../../lib/api";
-import type { DistilledNode } from "../../lib/api";
+import {
+  getDistillation,
+  getPromptTelemetry,
+  ApiError,
+} from "../../lib/api";
+import type { DistilledNode, PromptTelemetryResponse } from "../../lib/api";
 import { parseSynthesis } from "../../lib/synthesisParser";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import AIActionFailure from "../../shared/AIActionFailure";
@@ -179,7 +183,10 @@ function AutoNotebookForInvestigation({
 
   return (
     <AutoNotebookShell>
-      <AutoNotebookBody notebook={notebook} />
+      <AutoNotebookBody
+        notebook={notebook}
+        investigationId={investigationId}
+      />
     </AutoNotebookShell>
   );
 }
@@ -198,7 +205,13 @@ function AutoNotebookShell({ children }: { children: React.ReactNode }) {
 }
 
 
-function AutoNotebookBody({ notebook }: { notebook: DerivedNotebook }) {
+function AutoNotebookBody({
+  notebook,
+  investigationId,
+}: {
+  notebook: DerivedNotebook;
+  investigationId: string;
+}) {
   if (notebook.isEmpty) {
     // RIGOR #1: nothing in the graph to narrate yet — say so honestly, never
     // invent a section/insight/question.
@@ -213,6 +226,9 @@ function AutoNotebookBody({ notebook }: { notebook: DerivedNotebook }) {
             questions. There’s nothing in the graph to narrate yet — as the
             research produces insights and questions, they appear here.
           </p>
+        </div>
+        <div className="mt-10">
+          <PromptTelemetryPanel investigationId={investigationId} />
         </div>
       </article>
     );
@@ -272,6 +288,8 @@ function AutoNotebookBody({ notebook }: { notebook: DerivedNotebook }) {
           />
         ))}
       </div>
+
+      <PromptTelemetryPanel investigationId={investigationId} />
     </article>
   );
 }
@@ -335,6 +353,138 @@ function SectionView({
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+
+/** Trajectory-backed prompt / model-call telemetry (event-log SoT).
+ *  Citations stay in insights/questions; this panel is the call ledger. */
+function PromptTelemetryPanel({ investigationId }: { investigationId: string }) {
+  const [state, setState] = useState<
+    | { kind: "loading" }
+    | { kind: "error"; reason: string }
+    | { kind: "loaded"; data: PromptTelemetryResponse }
+  >({ kind: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ kind: "loading" });
+    void getPromptTelemetry(investigationId)
+      .then((data) => {
+        if (!cancelled) setState({ kind: "loaded", data });
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setState({
+            kind: "error",
+            reason: err instanceof Error ? err.message : "couldn’t load telemetry",
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [investigationId]);
+
+  if (state.kind === "loading") {
+    return (
+      <section
+        data-testid="prompt-telemetry"
+        data-telemetry-state="loading"
+        className="border-t border-rule dark:border-charcoal-1 pt-6"
+      >
+        <p className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+          Prompts & model calls
+        </p>
+        <p className="mt-2 text-sm text-ink-soft dark:text-starlight">Loading telemetry…</p>
+      </section>
+    );
+  }
+  if (state.kind === "error") {
+    return (
+      <section
+        data-testid="prompt-telemetry"
+        data-telemetry-state="error"
+        className="border-t border-rule dark:border-charcoal-1 pt-6"
+      >
+        <p className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+          Prompts & model calls
+        </p>
+        <p className="mt-2 text-sm text-ink-soft dark:text-starlight">{state.reason}</p>
+      </section>
+    );
+  }
+
+  const { data } = state;
+  const qPreview =
+    data.question && data.question.length > 280
+      ? `${data.question.slice(0, 280)}…`
+      : data.question;
+
+  return (
+    <section
+      data-testid="prompt-telemetry"
+      data-telemetry-state="loaded"
+      data-call-count={data.call_count}
+      className="border-t border-rule dark:border-charcoal-1 pt-6 space-y-3"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+          Prompts & model calls
+        </p>
+        <p className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">
+          {data.call_count} call{data.call_count === 1 ? "" : "s"}
+          {data.total_latency_ms > 0
+            ? ` · ${(data.total_latency_ms / 1000).toFixed(1)}s model time`
+            : ""}
+          {data.total_cost_usd > 0
+            ? ` · $${data.total_cost_usd.toFixed(4)}`
+            : ""}
+        </p>
+      </div>
+      {qPreview ? (
+        <div className="rounded-md bg-ice-1 dark:bg-charcoal-1 px-3 py-2">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-1">
+            Research question
+          </p>
+          <p className="font-serif text-[13px] leading-relaxed text-ink dark:text-bright whitespace-pre-wrap">
+            {qPreview}
+          </p>
+        </div>
+      ) : null}
+      {data.call_count === 0 ? (
+        <p className="text-sm text-ink-soft dark:text-starlight">
+          No model calls recorded on this investigation’s trajectory yet.
+        </p>
+      ) : (
+        <ul className="space-y-2" data-testid="prompt-telemetry-calls">
+          {data.calls.map((c, i) => (
+            <li
+              key={c.event_id ?? `${c.role}-${i}`}
+              className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2 text-[12px]"
+            >
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px] text-ink dark:text-bright">
+                <span className="font-semibold">{c.role}</span>
+                <span>
+                  {c.provider}/{c.model}
+                </span>
+                <span>{c.finish_reason ?? "—"}</span>
+                <span>{c.latency_ms}ms</span>
+                {c.cost_usd > 0 ? <span>${c.cost_usd.toFixed(4)}</span> : null}
+              </div>
+              {c.prompt_hash ? (
+                <p className="mt-1 font-mono text-[10px] text-shadow-1 dark:text-moonlight truncate">
+                  prompt_hash {c.prompt_hash.slice(0, 16)}…
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">
+        From event log · prompt bodies not stored (hash only)
+      </p>
     </section>
   );
 }

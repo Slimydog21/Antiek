@@ -1777,6 +1777,8 @@ def create_app(
     # (?format=html|antiek|antiek_html). Rights filter in adapt_notebook_for_export.
     from .notebook_artifact import register_notebook_artifact_routes
     register_notebook_artifact_routes(app)
+    from .prompt_telemetry import register_prompt_telemetry_routes
+    register_prompt_telemetry_routes(app)
     # HPRJ SPR-06 — deliverable (Write surface) export: GET /api/deliverables/{id}/artifact
     from .deliverable_artifact import register_deliverable_artifact_routes
     register_deliverable_artifact_routes(app)
