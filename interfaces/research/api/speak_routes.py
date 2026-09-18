@@ -65,6 +65,7 @@ from substrate.speak import (
 from substrate.speak import (
     publish as publish_mod,
 )
+from substrate.speak import pushes as speak_pushes
 from substrate.speak import (
     subject_consent as subject_consent_mod,
 )
@@ -86,7 +87,6 @@ from substrate.speak.contributor import DisbursementBlocked
 from substrate.speak.invitations import PublicEcosystemGated
 from substrate.speak.publish_gate import PublishBlocked
 from substrate.speak.schema import ensure_speak_schema
-from substrate.speak import pushes as speak_pushes
 
 speak_router = APIRouter(prefix="/speak", tags=["speak"])
 
