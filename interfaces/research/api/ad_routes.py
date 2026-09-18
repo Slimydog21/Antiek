@@ -38,6 +38,7 @@ are not imported here.
 from __future__ import annotations
 
 import asyncio
+import threading
 
 from typing import Literal, cast
 
@@ -62,6 +63,9 @@ from .books import _resolve_db_path
 # house-degrades; exact retries use connect_read / LazyRW and never flock.
 _FILLS_WRITE_TIMEOUT_S = 2.0
 _FRAME_WRITE_TIMEOUT_S = 5.0
+# Serialize fills DB access in-process so RO lookup cannot overlap RW
+# open (DuckDB SAME_FILE) across concurrent to_thread workers.
+_FILLS_GATE = threading.Lock()
 
 
 # ── Wire shapes (pydantic mirrors of the frozen dataclass contract) ──
@@ -620,13 +624,16 @@ def register_ad_routes(app: FastAPI) -> None:
     ) -> MultiEdgeFillResponse:
         """Decide every active border edge as one durable snapshot.
 
-        Exact retries return the stored snapshot via ``connect_read`` /
-        LazyRW (no write flock — #3121 coexist / #3153 class). New decisions
-        take a **short** ``connect_write`` (2s) off the event loop via
-        ``asyncio.to_thread``; under agent_work contention the route returns
-        503 ``ad_fill_writer_busy`` so the border house-degrades instead of
-        hanging for the default 300s write wait. Still *unpriced* $0 — no
-        fake revenue.
+        Contention class (#3121 coexist / #3153 Speak nonblock):
+
+        - In-process ``_FILLS_GATE`` serializes lookup+decide so concurrent
+          ``to_thread`` workers never open RO and RW on the same DuckDB file
+          at once (SAME_FILE wedge).
+        - Exact retry: ``connect_read`` / LazyRW under the gate (no flock).
+        - New decision: ``connect_write(..., timeout_s=2)``; on timeout / SAME_FILE
+          → 503 ``ad_fill_writer_busy`` (FE house-degrades).
+        - House promo scan capped (32) so the flock hold stays short.
+        Still *unpriced* $0 — no fake revenue.
         """
         from runtime.db_lock import WriteLockTimeout, connect_read, connect_write
         from substrate.ad_inventory.ad_bidding import LeadGenAdInventory
@@ -680,7 +687,7 @@ def register_ad_routes(app: FastAPI) -> None:
                 honesty=WebsiteAdsHonesty.model_validate(website_ads_honesty()),
             )
 
-        def _try_lookup() -> FillDecision | None:
+        def _lookup() -> FillDecision | None:
             con = connect_read(db)
             try:
                 return lookup_fill_decision(
@@ -694,10 +701,6 @@ def register_ad_routes(app: FastAPI) -> None:
                 )
             finally:
                 con.close()
-
-        replayed = await asyncio.to_thread(_try_lookup)
-        if replayed is not None:
-            return _response(replayed)
 
         def _decide_new() -> FillDecision:
             with connect_write(
@@ -717,15 +720,19 @@ def register_ad_routes(app: FastAPI) -> None:
                     if sponsor is not None and body.lens == "research":
                         items = [sponsor] + items
                     inventory = LeadGenAdInventory(items=items)
-                    servable = list_book_assets(con, servable_only=True)
-                    houses = [
-                        HousePromo(
-                            promoted_document_id=asset.document_id,
-                            title=asset.title,
-                            author=asset.author,
-                        )
-                        for asset in servable
-                    ]
+                    houses: list[HousePromo] = []
+                    try:
+                        servable = list_book_assets(con, servable_only=True)
+                        houses = [
+                            HousePromo(
+                                promoted_document_id=asset.document_id,
+                                title=asset.title,
+                                author=asset.author,
+                            )
+                            for asset in servable[:32]
+                        ]
+                    except Exception:
+                        houses = []
                     selected: list[dict[str, object]] = []
                     for position in requested_positions:
                         slot = ReaderAdSlot(
@@ -790,17 +797,33 @@ def register_ad_routes(app: FastAPI) -> None:
                     select_fills=_select,
                 )
 
+        def _sync() -> FillDecision | None:
+            with _FILLS_GATE:
+                found = _lookup()
+                if found is not None:
+                    return found
+                try:
+                    return _decide_new()
+                except FillDecisionConflictError:
+                    raise
+                except WriteLockTimeout:
+                    return None
+                except Exception as exc:
+                    if "different configuration" in str(exc):
+                        return None
+                    raise
+
         try:
-            decision = await asyncio.to_thread(_decide_new)
+            decision = await asyncio.to_thread(_sync)
         except FillDecisionConflictError as exc:
             raise HTTPException(
                 status_code=409,
                 detail="ad_fill_window_conflict",
             ) from exc
-        except WriteLockTimeout as exc:
+
+        if decision is None:
             raise HTTPException(
                 status_code=503,
                 detail="ad_fill_writer_busy",
-            ) from exc
-
+            )
         return _response(decision)
