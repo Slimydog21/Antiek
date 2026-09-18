@@ -119,12 +119,19 @@ function isHttpsUrl(value: unknown): value is string {
   try { return new URL(value).protocol === "https:"; } catch { return false; }
 }
 
+/** Antiek-served creatives may be same-origin paths (manual sponsor mark). */
+function isCreativeUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 2048 || !value) return false;
+  if (value.startsWith("/") && !value.startsWith("//")) return true;
+  return isHttpsUrl(value);
+}
+
 function parseAd(value: unknown): AdCreative | null {
   if (!isRecord(value) || !hasExactKeys(value, EXACT_AD_KEYS)) return null;
   if (
     typeof value.inventory_id !== "string" || !value.inventory_id ||
     typeof value.advertiser_display_name !== "string" || !value.advertiser_display_name ||
-    !isHttpsUrl(value.creative_url) || !isHttpsUrl(value.landing_url)
+    !isCreativeUrl(value.creative_url) || !isHttpsUrl(value.landing_url)
   ) return null;
   return value as unknown as AdCreative;
 }

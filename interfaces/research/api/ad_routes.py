@@ -626,13 +626,23 @@ def register_ad_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         with connect_write(db, purpose="ad/fills:decide") as con:
             def _select() -> list[dict[str, object]]:
+                from substrate.ad_inventory.manual_sponsor import (
+                    bidding_policy_wire,
+                    resolve_manual_sponsor_item,
+                )
+
                 targeted, flat = load_serving_for_matcher(con)
                 # ``fill_slot`` is the canonical v1 matcher.  Second-generation
                 # targeting items retain their flat item payload here; the
                 # lens is the only allowlisted signal this border currently has.
-                inventory = LeadGenAdInventory(
-                    items=[item.item for item in targeted] + list(flat)
-                )
+                items = [item.item for item in targeted] + list(flat)
+                # Website MVP Phase 2: operator-sold manual sponsor (research
+                # lens). Prefixed so it wins topic match when enabled; CPM=$0
+                # -> still unpriced / no fake revenue in decide_fills.
+                sponsor = resolve_manual_sponsor_item()
+                if sponsor is not None and body.lens == "research":
+                    items = [sponsor] + items
+                inventory = LeadGenAdInventory(items=items)
                 servable = list_book_assets(con, servable_only=True)
                 houses = [
                     HousePromo(
@@ -659,36 +669,42 @@ def register_ad_routes(app: FastAPI) -> None:
                         cpm_to_cents=0,
                         house_candidates=houses,
                     )
-                    selected.append(
-                        {
-                            "position": position,
-                            "kind": fill.kind,
-                            "revenue_usd_cents": 0,
-                            "ad": (
-                                {
-                                    "inventory_id": fill.ad.inventory_id,
-                                    "advertiser_display_name": (
-                                        fill.ad.advertiser_display_name
-                                    ),
-                                    "creative_url": fill.ad.creative_url,
-                                    "landing_url": fill.ad.landing_url,
-                                }
-                                if fill.ad is not None
-                                else None
-                            ),
-                            "house": (
-                                {
-                                    "promoted_document_id": (
-                                        fill.house.promoted_document_id
-                                    ),
-                                    "title": fill.house.title,
-                                    "author": fill.house.author,
-                                }
-                                if fill.house is not None
-                                else None
-                            ),
-                        }
-                    )
+                    fill_row: dict[str, object] = {
+                        "position": position,
+                        "kind": fill.kind,
+                        "revenue_usd_cents": 0,
+                        "ad": (
+                            {
+                                "inventory_id": fill.ad.inventory_id,
+                                "advertiser_display_name": (
+                                    fill.ad.advertiser_display_name
+                                ),
+                                "creative_url": fill.ad.creative_url,
+                                "landing_url": fill.ad.landing_url,
+                            }
+                            if fill.ad is not None
+                            else None
+                        ),
+                        "house": (
+                            {
+                                "promoted_document_id": (
+                                    fill.house.promoted_document_id
+                                ),
+                                "title": fill.house.title,
+                                "author": fill.house.author,
+                            }
+                            if fill.house is not None
+                            else None
+                        ),
+                    }
+                    # Ledger audit: stamp MANUAL_SPONSOR when the matched ad
+                    # is the operator Phase-2 creative (inventory_id prefix).
+                    if (
+                        fill.ad is not None
+                        and str(fill.ad.inventory_id).startswith("manual_sponsor:")
+                    ):
+                        fill_row["bidding_policy"] = bidding_policy_wire()
+                    selected.append(fill_row)
                 return selected
 
             try:
