@@ -287,16 +287,41 @@ def _dispatch_and_parse(
     ``(DecompositionResult, policy_id)`` on success, ``(None, fallback_id)``
     when the call or the parse failed. The fallback policy_id marks
     the failure shape for trajectory filtering.
+
+    Mini dogfood (2026-09-18): when zai is unregistered, deepseek often
+    returns ``finish_reason=length`` on the pro-tier budget and the truncated
+    JSON fails parse → empty ``decompose.delivered`` → Phase 1 fails →
+    notebook/citations never fill. Retry once at 16384 tokens on length before
+    giving up.
     """
     try:
         from .research_owner_dispatch import dispatch_loop_one
-        result = dispatch_loop_one(prompt, "decomposer", investigation_id=event.investigation_id,
-                                   semantic_call_id="phase1", attempt=0) or dispatch(
+
+        result = dispatch_loop_one(
+            prompt,
+            "decomposer",
+            investigation_id=event.investigation_id,
+            semantic_call_id="phase1",
+            attempt=0,
+        ) or dispatch(
             prompt,
             "decomposer",
             investigation_id=event.investigation_id,
             parent_event_id=event.event_id,
         )
+        if getattr(result, "finish_reason", None) == "length":
+            print(
+                f"decomposer.handle[{label}]: finish_reason=length — "
+                "retrying once with max_tokens=16384",
+                flush=True,
+            )
+            result = dispatch(
+                prompt,
+                "decomposer",
+                investigation_id=event.investigation_id,
+                parent_event_id=event.event_id,
+                max_tokens=16384,
+            )
         response_text = result.text
         policy_id = f"{result.provider}/{result.model}"
     except (ProviderError, KeyError) as exc:

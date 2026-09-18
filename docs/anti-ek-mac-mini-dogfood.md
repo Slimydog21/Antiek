@@ -168,6 +168,19 @@ python -m tools.backfill_book_reader_html --db-path ~/.antiek/research_graph.duc
 
 Research MASTER.md and writing assets are not yet on this path.
 
+## Highlight Deep-research notebook (UI)
+
+Two equivalent dogfood entry points on `/read/:id`:
+
+1. **Select a passage** then FloatMenu **Deep-research** -> `POST /books/{id}/spin-research` with the selection -> navigate `/inv/:id`.
+2. **Research this page** button -> same endpoint (selection text if any, else page seed).
+
+Both broadcast `investigation.start_requested` so Loop One runs in-process.
+Citations / auto-notebook fill once phases deliver (providers must be keyed).
+If Phase 1 fails (empty decompose), `/inv/:id` shows `failed` with reason -- honest empty notebook, not invented citations.
+
+When `zai` is unregistered on Mini, decomposer falls through to `deepseek` / `xiaomi`. A `finish_reason=length` reply is retried once at 16384 tokens so truncated JSON does not strand the vertical slice.
+
 ## Highlight → Research this → notebook (API chain)
 
 With owner cookie or Bearer:
