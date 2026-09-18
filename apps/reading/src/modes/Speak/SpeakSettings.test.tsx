@@ -83,7 +83,10 @@ describe("SpeakSettings — the honest split", () => {
         onQuoteBook={() => {}}
       />,
     );
-    expect(screen.getByText(/there's no contributor split/i)).toBeTruthy();
+    const notice = screen.getByTestId("private-econ-settings-notice");
+    expect(notice).toBeTruthy();
+    expect(notice.textContent ?? "").toMatch(/will NOT make money/i);
+    expect(notice.textContent ?? "").toMatch(/no contributor split/i);
     expect(screen.queryByText(/\$0\.00/)).toBeNull();
   });
 

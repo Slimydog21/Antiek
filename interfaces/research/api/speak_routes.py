@@ -751,7 +751,7 @@ async def invitee_landing(token: str) -> dict:
         interview_id, project_id = iv.interview_id, iv.project_id
         required = [s.value for s in iv.required_consent_scopes]
         prow = con.execute(
-            "SELECT ip.title, p.subject_ref, p.subject_status "
+            "SELECT ip.title, p.subject_ref, p.subject_status, p.publish_intent "
             "FROM speak_projects p JOIN interview_projects ip ON ip.project_id = p.project_id "
             "WHERE p.project_id = ?", [project_id],
         ).fetchone()
@@ -764,6 +764,9 @@ async def invitee_landing(token: str) -> dict:
         "project_title": prow[0] if prow else project_id,
         "subject_ref": prow[1] if prow else None,
         "subject_status": prow[2] if prow else None,
+        # economics_mode: private_never_published => no 70% split; surface for
+        # invitee no-earnings honesty (Anti-Ek Speak remap).
+        "publish_intent": (prow[3] if prow and prow[3] else "private_never_published"),
         "required_consent_scopes": required,
         "granted_consent_scopes": granted,
         "status": session.status,
