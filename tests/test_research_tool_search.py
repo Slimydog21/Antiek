@@ -436,3 +436,50 @@ def test_local_quota_refusal_leaves_the_operation_retriable(monkeypatch, tmp_pat
     after_reset = client.post("/research/tools/search", json=body)
     assert after_reset.status_code == 200, after_reset.text
     assert after_reset.json()["candidates"][0]["external_id"] == "dQw4w9WgXcQ"
+
+
+def test_rate_limited_x_search_leaves_the_operation_retriable(monkeypatch, tmp_path):
+    """A 429 and the ban sentinel it writes both release the operation_id.
+
+    X answers the first send 429, and the governor records a ``banned_until``
+    from it, so the second attempt raises ``VendorBanned`` before any send —
+    two different exception types on one user-visible condition. Both mean the
+    vendor performed no search, so both must answer 429 and leave the row
+    unclaimed; marking either one ``unknown`` would stand the operation_id
+    behind a 409 long after the window reopened. The third attempt is that
+    reopening, and it must run for real.
+    """
+    sends = 0
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        nonlocal sends
+        sends += 1
+        return httpx.Response(429, json={"title": "Too Many Requests"}, headers={"retry-after": "900"})
+
+    def serve(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_X_SEARCH_PAGE)
+
+    limited = _x_connector(refuse, tmp_path, name="limited")
+    reopened = _x_connector(serve, tmp_path, name="reopened")
+    connectors = [limited, limited, reopened]
+    client = _app(monkeypatch, tmp_path, lambda *_a, **_k: connectors.pop(0))
+    body = {
+        "operation_id": "search_operation_x02",
+        "vendor": "x",
+        "query": "fusion materials",
+        "max_results": 5,
+    }
+
+    first = client.post("/research/tools/search", json=body)
+    assert first.status_code == 429, first.text
+    assert first.json()["detail"] == "tool search is rate limited"
+
+    banned = client.post("/research/tools/search", json=body)
+    assert banned.status_code == 429, banned.text
+    # The governor refused before building a request, so X was never asked twice.
+    assert sends == 1
+
+    after_window = client.post("/research/tools/search", json=body)
+    assert after_window.status_code == 200, after_window.text
+    assert after_window.json()["status"] == "completed"
+    assert after_window.json()["candidates"][0]["external_id"] == "1799999999999999999"

@@ -232,13 +232,18 @@ def _flatten_search_page(payload: dict[str, Any]) -> list[dict[str, Any]]:
     """Join one recent-search page's tweets to their expanded authors.
 
     Pure: a parsed page in, plain records out — no network, no key, no clock,
-    so a fixture exercises it exactly as a live page would. The record keys
-    match ``acquisition.twitter.api_client.parse_search_response`` because the
-    two lanes read the same endpoint and a reader downstream should not have
-    to ask which client fetched a tweet. The parse is duplicated rather than
-    imported: ``acquisition`` builds on ``runtime.connectors``, and reaching
-    back up from here would invert that and drag the acquisition adapter into
-    a connector that promises to stay box-bounded.
+    so a fixture exercises it exactly as a live page would. The five keys are
+    named as ``acquisition.twitter.api_client.parse_search_response`` names
+    them, and carry the same meaning, because the two lanes read the same
+    endpoint and a reader downstream should not have to ask which client
+    fetched a tweet. They are a subset of it, not a drop-in for it: the
+    acquisition record also carries ``author_verified`` and
+    ``referenced_tweets``, which ingest needs and a candidate list does not,
+    so code that consumes one is not safe to point at the other unread. The
+    parse is duplicated rather than imported: ``acquisition`` builds on
+    ``runtime.connectors``, and reaching back up from here would invert that
+    and drag the acquisition adapter into a connector that promises to stay
+    box-bounded.
 
     A tweet X declines to expand keeps its row and loses only the handle.
     """
