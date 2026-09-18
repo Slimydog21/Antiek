@@ -156,10 +156,10 @@ def _extract_chunk_ids_from_block(chunks_block: str) -> tuple[str, ...]:
 # ---------------------------------------------------------------------------
 
 
-# First-call output budget. Flash default was 4096; Mini deepseek
-# evidence JSON routinely needs more (length @4096, retry stop at
-# ~4.5–7.7k). Match decomposer: first call = former retry budget.
-EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS = 16384
+# First-call output budget. 8192 covers Mini deepseek stops at ~2–7.7k
+# without inviting 90s+ verbose completions. Length-retry uses the same
+# budget as safety (prompt HARD LIMIT should make length rare).
+EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS = 8192
 
 
 def _dispatch_once(
@@ -192,6 +192,18 @@ def _dispatch_once(
         }
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
+        # Phase-2 wall ≈ max(latency) under PHASE_2_MAX_CONCURRENCY=4.
+        # Prefer Xiaomi MiMo for evidence when registered — Mini bench
+        # ~14s vs deepseek ~24s on compact JSON (still falls through the
+        # flash chain if Xiaomi errors).
+        try:
+            from substrate.dispatch.router import get_provider
+
+            get_provider("xiaomi")
+            kwargs["provider_override"] = "xiaomi"
+            kwargs["model_override"] = "mimo-v2.5-pro"
+        except KeyError:
+            pass
         result = dispatch(prompt, "evidence_retriever", **kwargs)
     return result.text, f"{result.provider}/{result.model}", getattr(
         result, "finish_reason", None
@@ -208,10 +220,9 @@ def _dispatch_and_parse(
 ) -> tuple[EvidenceResult | None, str]:
     """Run evidence_retriever dispatch + parse with Mini dogfood retries.
 
-    First call uses ``EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS`` (16384) so
-    deepseek can finish evidence JSON without flash-4096 truncation.
-    Length-retry at the same budget remains safety; synthesizer-style
-    self-repair still runs on structural parse failure.
+    First call uses ``EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS`` (8192) plus
+    optional Xiaomi primary (faster flash on Mini). Length-retry stays
+    safety; synthesizer-style self-repair still runs on parse failure.
     """
     try:
         response_text, policy_id, finish = _dispatch_once(

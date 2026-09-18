@@ -121,7 +121,7 @@ def test_dispatch_and_parse_self_repairs_on_bad_json(monkeypatch):
     assert policy == "stub-evidence/stub-flash-model"
 
 
-def test_flash_tier_raised_and_evidence_budget_is_16384():
+def test_flash_tier_raised_and_evidence_budget_is_8192():
     cfg = DispatchConfig.from_yaml(
         Path(__file__).resolve().parents[1]
         / "substrate"
@@ -130,4 +130,4 @@ def test_flash_tier_raised_and_evidence_budget_is_16384():
     )
     assert cfg.tiers["flash"].max_tokens == 8192
     assert cfg.role_tiers["evidence_retriever"] == "flash"
-    assert er.EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS == 16384
+    assert er.EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS == 8192
