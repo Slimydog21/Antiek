@@ -180,6 +180,11 @@ export type PayoutCopyKey = keyof typeof PAYOUT_COPY;
  */
 export const PUBLIC_LANE_LABELS = {
   browseHeading: "Public remembrances",
+  discoverBrowseLink: "Browse public remembrances",
+  discoverBrowseBlurb:
+    "Anyone can browse open remembrances without signing in. " +
+    "Adding a memory still needs a family invite link until " +
+    "open contribution is live.",
   browseSubhead:
     "Browse open remembrances without signing in. To add a memory, " +
     "you will need an invite link from the family - open contribution " +
