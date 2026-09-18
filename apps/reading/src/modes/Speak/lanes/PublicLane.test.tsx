@@ -121,6 +121,25 @@ describe("PublicLane — searchable feed", () => {
   });
 });
 
+describe("PublicLane — share public browse (discoverability)", () => {
+  it("offers the no-login browse link for operators to share", () => {
+    mount();
+    const el = screen.getByTestId("share-browse-link");
+    expect(el).toBeTruthy();
+    const a = screen.getByRole("link", { name: PUBLIC_LANE_LABELS.shareBrowseLink });
+    expect(a.getAttribute("href")).toBe("/speak/browse");
+  });
+
+  it("hides the share strip in visitorMode", () => {
+    render(
+      <MemoryRouter>
+        <PublicLane feedLoading={false} feed={FEED} visitorMode />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId("share-browse-link")).toBeNull();
+  });
+});
+
 describe("PublicLane — the honest G7 locked state (M2)", () => {
   it("renders the canonical GATE_PHRASES.publicEcosystem copy verbatim (static, not a live read)", () => {
     mount();
