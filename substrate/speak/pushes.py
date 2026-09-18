@@ -1,6 +1,7 @@
 """Speak dual-push / continuous-ping helpers (Anti-Ek Speak remap).
 
-Dogfoodable MVP — NO second notification stack, NO ML profile matching:
+Dogfoodable MVP — NO second notification stack, NO ML profile matching.
+Email re-ping reuses substrate.auth get_email_provider (AgentMail/Resend/Mock):
 
   (a) Public opportunities — will_be_public projects ranked by fewest
       voices first ("what you'd add value to" heuristic). Honest: not
@@ -52,6 +53,11 @@ class RepingResult:
     followups_added: int
     pending_question_count: int
     skipped_reason: str | None = None
+    email_status: str | None = None
+    email_to: str | None = None
+    email_provider: str | None = None
+    email_message_id: str | None = None
+    email_detail: str | None = None
 
 
 def list_public_opportunities(con: Any, *, limit: int = 20) -> list[PublicOpportunity]:
@@ -145,26 +151,34 @@ def list_private_repings_at(db_path: str, *, limit: int = 50) -> list[PrivateRep
     return out
 
 
-def prepare_reping(db_path: str, *, interview_id: str) -> RepingResult:
+def prepare_reping(db_path: str, *, interview_id: str, send_email: bool = False) -> RepingResult:
     """Consent-scoped continuous ping: generate followups + return invite door.
 
     Skips declined interviews. Reuses ``async_interview.next_followups``.
-    Does NOT send email — returns the path for the operator to share / open
-    (AgentMail push is a later seam, not this MVP).
+    Optionally delivers the invite door by email via ``reping_mail``
+    (AgentMail/Resend/Mock) when ``send_email`` is True, consent allows,
+    and ``ANTIEK_SPEAK_REPING_EMAIL`` is set. Never emails declined invitees.
     """
     from runtime.db_lock import connect_write
 
     with connect_write(db_path, purpose="speak/pushes.reping_gate") as con:
         ensure_speak_schema(con)
         row = con.execute(
-            "SELECT i.status, s.token FROM interviews i "
+            "SELECT i.status, s.token, "
+            "COALESCE(i.informant_email, ''), "
+            "COALESCE(ip.title, p.project_id) "
+            "FROM interviews i "
             "LEFT JOIN speak_invites s ON s.interview_id = i.interview_id "
+            "LEFT JOIN speak_projects p ON p.project_id = i.project_id "
+            "LEFT JOIN interview_projects ip ON ip.project_id = i.project_id "
             "WHERE i.interview_id = ?",
             [interview_id],
         ).fetchone()
         if row is None:
             raise ValueError(f"interview {interview_id!r} not found")
-        status, token = row[0], row[1]
+        status, token, informant_email, project_title = (
+            row[0], row[1], row[2], row[3],
+        )
         if status == "declined":
             return RepingResult(
                 interview_id=interview_id,
@@ -173,6 +187,8 @@ def prepare_reping(db_path: str, *, interview_id: str) -> RepingResult:
                 followups_added=0,
                 pending_question_count=0,
                 skipped_reason="declined — consent-scoped, no re-ping",
+                email_status="skipped_declined",
+                email_detail="consent-scoped: never email declined invitees",
             )
         if not token:
             return RepingResult(
@@ -182,6 +198,7 @@ def prepare_reping(db_path: str, *, interview_id: str) -> RepingResult:
                 followups_added=0,
                 pending_question_count=0,
                 skipped_reason="no invite token",
+                email_status="skipped_no_invite_path",
             )
 
     before = async_interview.resume(db_path, interview_id)
@@ -193,13 +210,29 @@ def prepare_reping(db_path: str, *, interview_id: str) -> RepingResult:
     # Count newly generated followups from return value when pending unchanged
     if added == 0 and fus:
         added = len(fus)
+    invite_path = f"/speak/invite/{token}"
+    from substrate.speak import reping_mail
+
+    mail = reping_mail.try_send_reping_email(
+        to=informant_email or None,
+        invite_path=invite_path,
+        project_title=str(project_title or ""),
+        followups_added=added,
+        pending_question_count=len(after_pending),
+        send_requested=send_email,
+    )
     return RepingResult(
         interview_id=interview_id,
         token=token,
-        invite_path=f"/speak/invite/{token}",
+        invite_path=invite_path,
         followups_added=added,
         pending_question_count=len(after_pending),
         skipped_reason=None,
+        email_status=mail.status,
+        email_to=mail.to,
+        email_provider=mail.provider,
+        email_message_id=mail.message_id,
+        email_detail=mail.detail,
     )
 
 

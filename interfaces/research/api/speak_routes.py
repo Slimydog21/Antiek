@@ -699,13 +699,16 @@ async def order_book(project_id: str, req: BookOrderRequest) -> dict:
 
 # ---------------------------------------------------------------------------
 # Dual push / continuous ping (Anti-Ek Speak remap §PUSHES)
-# Dogfood MVP: (a) public opportunities heuristic (b) private re-ping via
-# next_followups + SpeakInvite door. No AgentMail send; no ML matching.
+# Dogfood: (a) public opportunities heuristic (b) private re-ping via
+# next_followups + SpeakInvite door + optional AgentMail/Resend email.
+# No ML matching. Consent-scoped: never email declined.
 # ---------------------------------------------------------------------------
 
 
 class RepingRequest(BaseModel):
     interview_id: str = Field(..., min_length=1)
+    send_email: bool = False
+    """When true, attempt invitee email via get_email_provider if env gate on."""
 
 
 @speak_router.get("/pushes")
@@ -723,7 +726,7 @@ async def list_pushes() -> dict:
     return {
         "honesty": {
             "public_ranking": "fewest_voices_first_heuristic_not_ml_profile_matching",
-            "private_delivery": "invite_path_only_no_email_send_in_mvp",
+            "private_delivery": "invite_path_plus_optional_email_when_ANTIEK_SPEAK_REPING_EMAIL",
         },
         "public_opportunities": [
             {
@@ -756,11 +759,16 @@ async def reping_invitee(req: RepingRequest) -> dict:
     """Generate followups (if any) and return the SpeakInvite door for an invitee.
 
     Consent-scoped: declined interviews are skipped with an honest reason.
-    Does not send email — operator shares ``invite_path``.
+    Optional email: when ``send_email`` and ``ANTIEK_SPEAK_REPING_EMAIL``,
+    deliver invite_path via AgentMail/Resend/Mock; degrade honestly if unset.
     """
     with _translate():
         try:
-            result = speak_pushes.prepare_reping(_db(), interview_id=req.interview_id)
+            result = speak_pushes.prepare_reping(
+                _db(),
+                interview_id=req.interview_id,
+                send_email=req.send_email,
+            )
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
     return {
@@ -770,6 +778,11 @@ async def reping_invitee(req: RepingRequest) -> dict:
         "followups_added": result.followups_added,
         "pending_question_count": result.pending_question_count,
         "skipped_reason": result.skipped_reason,
+        "email_status": result.email_status,
+        "email_to": result.email_to,
+        "email_provider": result.email_provider,
+        "email_message_id": result.email_message_id,
+        "email_detail": result.email_detail,
     }
 
 

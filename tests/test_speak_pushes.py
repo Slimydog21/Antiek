@@ -62,7 +62,7 @@ def test_pushes_lists_public_heuristic_and_private_repings(client):
 
     pushes = client.get("/speak/pushes").json()
     assert pushes["honesty"]["public_ranking"].startswith("fewest_voices")
-    assert "no_email" in pushes["honesty"]["private_delivery"]
+    assert "optional_email" in pushes["honesty"]["private_delivery"]
     pub_ids = [o["project_id"] for o in pushes["public_opportunities"]]
     assert pub["project_id"] in pub_ids
     # Public ranking reason is honest (not ML).
