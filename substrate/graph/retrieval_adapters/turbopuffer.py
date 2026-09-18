@@ -1,7 +1,13 @@
-"""Single-namespace, operator-only Turbopuffer shadow benchmark.
+"""Single-namespace Turbopuffer SERVABLE hybrid index (shadow → promote).
 
-This is not mounted on production serving.  Rebuild is explicit and query
-falls back to canonical DuckDB retrieval on every vendor failure.
+DuckDB/graph remains source of truth. TurboPuffer holds a SERVABLE-only
+secondary hybrid retrieval index for rights-clean external chunks
+(``TURBOPUFFER_INDEX_CONTENT_CLASSES``). Rebuild is explicit; promote writes
+a local active pointer; successful queries report ``status: "servable"``
+when that pointer is active, else ``status: "shadow"``. Query always
+hydrates/gates via DuckDB and falls back to canonical search on vendor
+failure. Not the default talk-to-book mount — enable via
+``ANTIEK_TURBOPUFFER_SERVABLE`` / ``ANTIEK_TURBOPUFFER_SHADOW_ENABLED``.
 """
 
 from __future__ import annotations
@@ -15,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from runtime.db_lock import connect_read
+from substrate.constants import TURBOPUFFER_INDEX_CONTENT_CLASSES
 from substrate.graph.embedding_meta import _identity
 from substrate.graph.retrieval_adapters.turbopuffer_client import (
     ShadowNamespace,
@@ -26,9 +33,11 @@ from substrate.graph.search import EmbeddingModel, search
 
 _SKIPPED = "skipped — no credentials"
 _ENABLE_ENV = "ANTIEK_TURBOPUFFER_SHADOW_ENABLED"
+_SERVABLE_ENABLE_ENV = "ANTIEK_TURBOPUFFER_SERVABLE"
+_MAX_ROWS_ENV = "ANTIEK_TURBOPUFFER_MAX_ROWS"
+_DEFAULT_MAX_ROWS = 10_000
 DEFAULT_NAMESPACE = "antiek-shadow-chunks-v1"
 _FORBIDDEN_NAMESPACE_PARTS = ("user", "investigation", "shard")
-_EXTERNAL_CLASSES = frozenset({"public_domain", "opt_in_licensed", "source_declared_open"})
 
 
 def _fts_enabled(value: Any) -> bool:
@@ -61,6 +70,18 @@ def _validate_namespace(value: str) -> str:
     return value
 
 
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").lower() in {"1", "true", "yes"}
+
+
+def _max_export_rows() -> int:
+    raw = os.environ.get(_MAX_ROWS_ENV, "").strip()
+    if raw.isdigit():
+        return max(1, int(raw))
+    return _DEFAULT_MAX_ROWS
+
+
 class TurbopufferSubstrate:
     name = "turbopuffer"
 
@@ -75,7 +96,7 @@ class TurbopufferSubstrate:
         self._manifest_dir = Path(manifest_dir or ".antiek/turbopuffer-shadow")
         self._context = {"region": region, "db_identity": db_identity,
                          "account_identity": hashlib.sha256((api_key or "").encode()).hexdigest()[:16]}
-        enabled = os.environ.get(_ENABLE_ENV, "").lower() in {"1", "true", "yes"}
+        enabled = _env_truthy(_ENABLE_ENV) or _env_truthy(_SERVABLE_ENABLE_ENV)
         self.status: str | None = None if api_key and (namespace is not None or enabled) else _SKIPPED
 
     @classmethod
@@ -92,6 +113,39 @@ class TurbopufferSubstrate:
     @property
     def skipped(self) -> bool:
         return self.status == _SKIPPED
+
+    def active_pointer(self) -> dict[str, Any] | None:
+        """Return the local promote pointer if present and context-matched."""
+        pointer = self._manifest_dir / "active.json"
+        if not pointer.exists():
+            return None
+        active = json.loads(pointer.read_text(encoding="utf-8"))
+        if active.get("context") != self._context:
+            return None
+        return active
+
+    def query_status_label(self) -> str:
+        """``servable`` when a promote pointer is active; else ``shadow``."""
+        return "servable" if self.active_pointer() is not None else "shadow"
+
+    def readiness(self) -> dict[str, Any]:
+        """Operator-facing SERVABLE readiness snapshot (no network)."""
+        pointer = self.active_pointer()
+        return {
+            "adapter": self.name,
+            "skipped": self.skipped,
+            "api_key_present": bool(self._api_key),
+            "shadow_enabled": _env_truthy(_ENABLE_ENV),
+            "servable_enabled": _env_truthy(_SERVABLE_ENABLE_ENV),
+            "namespace_default": self._namespace_name,
+            "active_namespace": None if pointer is None else pointer.get("active_namespace"),
+            "content_hash": None if pointer is None else pointer.get("content_hash"),
+            "query_status_if_live": self.query_status_label(),
+            "export_classes": sorted(TURBOPUFFER_INDEX_CONTENT_CLASSES),
+            "max_export_rows": _max_export_rows(),
+            "duckdb_is_sot": True,
+            "production_default_mount": False,
+        }
 
     def _ns(self) -> ShadowNamespace:
         if self._namespace is None:
@@ -122,7 +176,7 @@ class TurbopufferSubstrate:
             raise RuntimeError("embedding provider/model/version/dimension mismatch")
         if dry_run and int(dimension) != int(self._model.dimension):
             raise RuntimeError("embedding dimension mismatch")
-        allowed = sorted(_EXTERNAL_CLASSES)
+        allowed = sorted(TURBOPUFFER_INDEX_CONTENT_CLASSES)
         placeholders = ",".join("?" for _ in allowed)
         rows = self._con.execute(
             "SELECT c.chunk_id,c.embedding,c.text,c.document_id,d.source_tier,"
@@ -157,8 +211,12 @@ class TurbopufferSubstrate:
                     "embedding": manifest["embedding"]}
         ns = self._namespace or make_namespace(api_key=self._api_key or "", region=self._region,
                                                namespace=staging)
-        if len(payload) > 10_000:
-            raise RuntimeError("shadow verification is bounded to 10,000 rows")
+        max_rows = _max_export_rows()
+        if len(payload) > max_rows:
+            raise RuntimeError(
+                f"Turbopuffer export verification is bounded to {max_rows} rows "
+                f"(set {_MAX_ROWS_ENV} to raise for SERVABLE-scale rebuilds)"
+            )
         for start in range(0, len(payload), batch_size):
             ns.write(upsert_rows=payload[start:start + batch_size],
                      distance_metric="cosine_distance",
@@ -232,7 +290,7 @@ class TurbopufferSubstrate:
               policy_tag: str = "attribution_eligible",
               allow_fallback: bool = True) -> dict[str, Any]:
         if policy_tag != "attribution_eligible":
-            raise ValueError("Turbopuffer shadow supports attribution_eligible only")
+            raise ValueError("Turbopuffer SERVABLE index supports attribution_eligible only")
         if self.skipped:
             return {"query": text, "top_k": top_k, "results": [], "node_matches": [],
                     "status": _SKIPPED}
@@ -295,7 +353,7 @@ class TurbopufferSubstrate:
                                 "document_title": r[6], "source_tier": r[7], "document_type": r[8],
                                 "similarity": dot / denom if denom else 0.0})
             return {"query": text, "top_k": top_k, "results": results[:top_k],
-                    "node_matches": [], "status": "shadow"}
+                    "node_matches": [], "status": self.query_status_label()}
         except Exception as exc:
             return fallback(type(exc).__name__)
 

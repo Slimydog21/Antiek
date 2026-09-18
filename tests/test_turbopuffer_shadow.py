@@ -189,7 +189,7 @@ def test_cli_help_and_dry_run_are_reachable_without_credentials(graph):
     help_run = subprocess.run([sys.executable, "-m", "tools.turbopuffer_shadow", "--help"],
                               text=True, capture_output=True, check=False)
     assert help_run.returncode == 0
-    assert "never production" in help_run.stdout
+    assert "DuckDB remains SoT" in help_run.stdout or "SERVABLE" in help_run.stdout
     run = subprocess.run([sys.executable, "-m", "tools.turbopuffer_shadow", "rebuild",
                           "--db", graph, "--dry-run"], text=True, capture_output=True,
                          check=False)
@@ -241,3 +241,61 @@ def test_promoted_pointer_context_drives_vendor_namespace(graph, tmp_path, monke
                                        manifest_dir=tmp_path)
     active._ns()
     assert made == [staged["namespace"]]
+
+
+def test_promoted_query_reports_servable_status(graph, tmp_path, monkeypatch):
+    fake = FakeNamespace()
+    sub = TurbopufferSubstrate.open(graph, model=HashEmbedding(), api_key="x", namespace=fake,
+                                    manifest_dir=tmp_path)
+    staged = sub.rebuild_shadow()
+    assert staged["row_count"] >= 1
+    fake.ids = [str(row["id"]) for row in fake.upserted_rows]
+    assert sub.query_status_label() == "shadow"
+    pre = sub.query("government", top_k=1, allow_fallback=False)
+    assert pre["status"] == "shadow"
+    assert pre["results"], "vendor ids must hydrate from DuckDB SoT"
+    sub.promote(staged["manifest_path"],
+                confirmation="PROMOTE-" + staged["content_hash"][:12])
+    assert sub.query_status_label() == "servable"
+    post = sub.query("government", top_k=1, allow_fallback=False)
+    assert post["status"] == "servable"
+    assert post["results"]
+
+
+
+def test_servable_env_enables_without_shadow_flag(graph, tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTIEK_TURBOPUFFER_SHADOW_ENABLED", raising=False)
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_SERVABLE", "1")
+    sub = TurbopufferSubstrate.open(graph, model=HashEmbedding(), api_key="x",
+                                    manifest_dir=tmp_path)
+    assert not sub.skipped
+    ready = sub.readiness()
+    assert ready["servable_enabled"] is True
+    assert ready["duckdb_is_sot"] is True
+    assert ready["production_default_mount"] is False
+    assert "public_domain" in ready["export_classes"]
+
+
+def test_max_rows_env_bounds_rebuild(graph, tmp_path, monkeypatch):
+    fake = FakeNamespace()
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_MAX_ROWS", "1")
+    from substrate.graph.retrieval_adapters import turbopuffer as mod
+    assert mod._max_export_rows() == 1
+    sub = TurbopufferSubstrate.open(graph, model=HashEmbedding(), api_key="x", namespace=fake,
+                                    manifest_dir=tmp_path)
+    dry = sub.rebuild_shadow(dry_run=True)
+    if dry["eligible_rows"] > 1:
+        with pytest.raises(RuntimeError, match="bounded"):
+            sub.rebuild_shadow()
+
+
+
+def test_cli_status_action(graph, tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_SERVABLE", "1")
+    fake = FakeNamespace()
+    # status does not need network; open with key via env
+    monkeypatch.setenv("TURBOPUFFER_API_KEY", "x")
+    assert main(["status", "--db", graph]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["duckdb_is_sot"] is True
+    assert out["adapter"] == "turbopuffer"
