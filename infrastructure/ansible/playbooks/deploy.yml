@@ -448,6 +448,18 @@
     # The API startup path is deliberately read-only, so deploying code alone
     # does not apply newly-added DuckDB tables or columns. The initializer is
     # idempotent and uses the same writer coordination as request DML.
+    #
+    # Single-writer deploy hygiene (2026-09-19): stop the live process BEFORE
+    # migrate/verify. Uvicorn (and warm-writer keepalive, ANTIEK_WRITE_KEEPALIVE_S)
+    # otherwise hold DuckDB / flock and ansible schema tasks time out — the
+    # recurring failed=1 seen across #3166–#3169 deploys. Cite
+    # docs/decisions/anti-ek-composite-rollup-2026-09-19.md + ads-warm-writer-keepalive.
+    - name: stop antiek before schema migrate (release DuckDB + warm flock)
+      ansible.builtin.systemd:
+        name: antiek.service
+        state: stopped
+      tags: [code]
+
     - name: migrate and verify graph schema before restarting into new code
       block:
         - name: initialize graph schema
