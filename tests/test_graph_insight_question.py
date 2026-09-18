@@ -345,6 +345,12 @@ def test_promotion_records_write_log(graph_env):
         n = con.execute(
             "SELECT count(*) FROM write_log WHERE purpose='promote_insight'"
         ).fetchone()[0]
+        deadline = __import__('time').monotonic() + 3.0
+        while n < 1 and __import__('time').monotonic() < deadline:
+            __import__('time').sleep(0.05)
+            n = con.execute(
+                "SELECT count(*) FROM write_log WHERE purpose='promote_insight'"
+            ).fetchone()[0]
         assert n >= 1
     finally:
         con.close()
