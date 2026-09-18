@@ -243,7 +243,20 @@ def _log_write_event(
                     if time.monotonic() >= deadline:
                         return  # give up; main pipeline already done
                     time.sleep(0.1)
-            con = duckdb.connect(db_path)
+            con = None
+            open_deadline = time.monotonic() + min(1.0, max_wait_s)
+            while True:
+                try:
+                    con = duckdb.connect(db_path)
+                    break
+                except Exception as open_exc:
+                    if (
+                        _SAME_FILE_DIFFERENT_CONFIG not in str(open_exc)
+                        or time.monotonic() >= open_deadline
+                    ):
+                        raise
+                    time.sleep(0.05)
+            assert con is not None
             try:
                 con.execute(
                     "INSERT INTO write_log (purpose, duration_s, success, error) "

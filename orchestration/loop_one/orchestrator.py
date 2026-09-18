@@ -521,6 +521,7 @@ class InvestigationContext:
     investigation_id: str
     question: str
     context: str = ""
+    document_id: str | None = None
     topic_slug: str | None = None
     max_sub_questions: int = 8
     decomposition: DecomposeQuestionDeliveredPayload | None = None
@@ -1744,6 +1745,7 @@ async def _run_investigation(
             maybe_reuse_prior_knowledge_at_start,
             investigation_id=ctx.investigation_id,
             question_text=ctx.question,
+            source_document_id=ctx.document_id,
         )
     except Exception:
         pass
@@ -1960,6 +1962,7 @@ def make_loop_one_handler(
             investigation_id=event.investigation_id,
             question=req.question,
             context=req.context,
+            document_id=event.document_id,
             topic_slug=req.topic_slug,
             max_sub_questions=req.max_sub_questions,
             chase_mode=req.chase_mode,

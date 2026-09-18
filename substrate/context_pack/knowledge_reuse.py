@@ -209,6 +209,11 @@ class RetrievedUnit:
     # owner cannot lawfully reuse the unit (deny-by-default, same as public).
     content_class: str | None = None
     taken_down: bool = False
+    # Same-source-document affinity (spin-research / book-scoped starts).
+    # ST embeddings score meta-research notes ~0.05-0.10 vs passage text,
+    # below RELEVANCE_FLOOR=0.25 (calibrated on hash embedders). Same-doc
+    # units that cleared groundedness are topical to the book under study.
+    same_document: bool = False
 
     @property
     def unit_id(self) -> str:
@@ -329,6 +334,7 @@ def retrieve_prior_units(
     question_text: str,
     limit: int = DEFAULT_RETRIEVE_LIMIT,
     policy_tag: str = "attribution_eligible",
+    source_document_id: str | None = None,
 ) -> list[RetrievedUnit]:
     """Retrieve prior knowledge units ranked by similarity to ``question_text``.
 
@@ -446,15 +452,80 @@ def retrieve_prior_units(
         # D2: stamp the DOCUMENT-SIDE content_class + taken_down so the trust
         # gate's owner-private branch (owner_readable) can admit a personal_reading-
         # derived unit on the owner path without touching the public bar.
+        src = getattr(unit.provenance, "source_document_id", None)
+        same = bool(
+            source_document_id
+            and isinstance(src, str)
+            and src == source_document_id
+        )
         out.append(RetrievedUnit(
             unit=unit,
             similarity=float(similarity or 0.0),
             content_class=content_class,
             taken_down=bool(taken_down),
+            same_document=same,
         ))
 
-    # Stable order: similarity desc, then unit id asc (deterministic ties).
-    out.sort(key=lambda ru: (-ru.similarity, ru.unit_id))
+    # Book-scoped start: ensure same-document insights are candidates even
+    # when global cosine-to-passage ranks them below the top-k ceiling.
+    if source_document_id:
+        have = {ru.unit_id for ru in out}
+        try:
+            same_rows = con.execute(
+                "SELECT node_id FROM nodes "
+                "WHERE node_type IN ('insight', 'question') "
+                "AND embedding IS NOT NULL "
+                "AND json_extract_string(metadata, '$.source_document_id') = ? "
+                "ORDER BY node_id ASC LIMIT ?",
+                [source_document_id, int(limit)],
+            ).fetchall()
+        except Exception:
+            same_rows = []
+        for (node_id,) in same_rows:
+            if node_id in have:
+                continue
+            try:
+                unit = knowledge_unit_of(
+                    con, node_id, score_groundedness=True
+                )
+            except ValueError:
+                continue
+            # Similarity vs question for ordering; may be low for meta-notes.
+            try:
+                sim_row = con.execute(
+                    f"SELECT {sim_expr} FROM nodes WHERE node_id = ?",
+                    [node_id],
+                ).fetchone()
+                similarity = float(sim_row[0]) if sim_row else 0.0
+            except Exception:
+                similarity = 0.0
+            cc = None
+            src_doc = getattr(unit.provenance, "source_document_id", None)
+            if src_doc:
+                cc_row = con.execute(
+                    "SELECT content_class FROM documents WHERE document_id = ? LIMIT 1",
+                    [src_doc],
+                ).fetchone()
+                if cc_row and cc_row[0]:
+                    cc = str(cc_row[0])
+            out.append(RetrievedUnit(
+                unit=unit,
+                similarity=similarity,
+                content_class=cc,
+                taken_down=False,
+                same_document=True,
+            ))
+            have.add(node_id)
+
+    # Prefer same-document + higher stored groundedness, then cosine.
+    def _rank(ru: RetrievedUnit) -> tuple:
+        g = getattr(ru.unit, "groundedness_score", None)
+        g_key = float(g) if isinstance(g, (int, float)) else -1.0
+        return (0 if ru.same_document else 1, -g_key, -ru.similarity, ru.unit_id)
+
+    out.sort(key=_rank)
+    if len(out) > int(limit):
+        out = out[: int(limit)]
     return out
 
 
@@ -513,7 +584,10 @@ def select_units_within_budget(
     Returns ``(selected, decisions)``: ``decisions`` covers EVERY input unit
     (``injected`` or ``dropped-over-budget``), in the same ranked order."""
     counter = counter or DefaultTokenCounter()
-    ranked = sorted(units, key=lambda ru: (-ru.similarity, ru.unit_id))
+    ranked = sorted(
+        units,
+        key=lambda ru: (0 if ru.same_document else 1, -ru.similarity, ru.unit_id),
+    )
     used = counter.count(header_text) if header_text else 0
     selected: list[RetrievedUnit] = []
     decisions: list[UnitDecision] = []
@@ -586,7 +660,9 @@ def partition_units(
                 similarity=ru.similarity, decision=DECISION_NOT_SERVABLE,
             ))
             continue
-        if ru.similarity < relevance_floor:
+        # Same-document priors: passage-vs-meta-note cosine is not the
+        # product relevance signal (see RetrievedUnit.same_document).
+        if ru.similarity < relevance_floor and not ru.same_document:
             n_low_rel += 1
             decisions.append(UnitDecision(
                 unit_id=ru.unit_id, source_investigation_id=ru.source_investigation_id,
