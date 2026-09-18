@@ -220,6 +220,47 @@ def _parse_gap(obj: Any, idx: int) -> ParsedGap:
     )
 
 
+
+def _coerce_answer(obj: Any) -> str:
+    """Coerce model ``answer`` into a string.
+
+    Mini dogfood (2026-09-18) observed ``answer: null`` and occasional
+    non-string scalars from flash-tier providers — the hard reject
+    ``answer must be a string`` emptied every claim into the
+    ``(parse_failed)`` fallback. Empty string is the role's honest
+    "say nothing" shape (already allowed when insufficient_evidence).
+    Numbers/bools stringify; objects/lists still fail closed.
+    """
+    if obj is None:
+        return ""
+    if isinstance(obj, str):
+        return obj
+    if isinstance(obj, bool):
+        return "true" if obj else "false"
+    if isinstance(obj, (int, float)):
+        return str(obj)
+    raise EvidenceValidationError(
+        f"top: answer must be a string (got {type(obj).__name__})"
+    )
+
+
+def _coerce_bool(obj: Any, field_name: str, ctx: str) -> bool:
+    """Accept bool, or common model string/int encodings of bool."""
+    if isinstance(obj, bool):
+        return obj
+    if isinstance(obj, str):
+        low = obj.strip().lower()
+        if low in ("true", "yes", "1"):
+            return True
+        if low in ("false", "no", "0"):
+            return False
+    if isinstance(obj, int) and obj in (0, 1):
+        return bool(obj)
+    raise EvidenceValidationError(
+        f"{ctx}: {field_name} must be a boolean (got {type(obj).__name__})"
+    )
+
+
 def parse_evidence_response(
     text: str,
     *,
@@ -260,12 +301,12 @@ def parse_evidence_response(
 
     # ``answer`` may be empty when insufficient_evidence=True — the
     # role's discipline is "say nothing rather than fabricate."
-    answer_raw = obj.get("answer")
-    if not isinstance(answer_raw, str):
-        raise EvidenceValidationError("top: answer must be a string")
-    answer = answer_raw
+    # Coerce null/missing/scalar (Mini dogfood: ``answer: null``).
+    answer = _coerce_answer(obj.get("answer"))
 
     claims_raw = obj.get("supporting_claims")
+    if claims_raw is None:
+        claims_raw = []
     if not isinstance(claims_raw, list):
         raise EvidenceValidationError("top: supporting_claims must be a list")
     claims = tuple(
@@ -274,15 +315,17 @@ def parse_evidence_response(
     )
 
     gaps_raw = obj.get("evidentiary_gaps")
+    if gaps_raw is None:
+        gaps_raw = []
     if not isinstance(gaps_raw, list):
         raise EvidenceValidationError("top: evidentiary_gaps must be a list")
     gaps = tuple(_parse_gap(g, i) for i, g in enumerate(gaps_raw))
 
-    insufficient = obj.get("insufficient_evidence")
-    if not isinstance(insufficient, bool):
-        raise EvidenceValidationError(
-            "top: insufficient_evidence must be a boolean"
-        )
+    insufficient = _coerce_bool(
+        obj.get("insufficient_evidence"),
+        "insufficient_evidence",
+        "top",
+    )
 
     # Cross-field validation: when insufficient_evidence=False the
     # role must produce at least one supporting claim — otherwise the

@@ -415,7 +415,8 @@ async def test_parse_failure_falls_back_preserving_dispatch_policy_id(
     _, bus = app_and_bus
     inv = "inv-ev-badparse"
 
-    register_provider(_StubEvidenceRetriever("totally not JSON"))
+    stub = _StubEvidenceRetriever("totally not JSON")
+    register_provider(stub)
     _patch_dispatch_config(monkeypatch, _evidence_config("stub-evidence"))
 
     await _post_evidence_request(
@@ -432,9 +433,10 @@ async def test_parse_failure_falls_back_preserving_dispatch_policy_id(
     p = e.payload
     assert p.insufficient_evidence is True
     assert p.supporting_claims == []
-    # Dispatch succeeded — parse failed. Policy stamp reflects the
-    # dispatched provider, NOT the no-provider fallback.
+    # Dispatch succeeded — parse failed (initial + one self-repair). Policy
+    # stamp reflects the dispatched provider, NOT the no-provider fallback.
     assert e.policy_id == "stub-evidence/stub-flash-model"
+    assert stub.call_count == 2
 
 
 @pytest.mark.asyncio

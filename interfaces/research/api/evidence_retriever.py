@@ -13,14 +13,17 @@ Subscribes to ``evidence.retrieve.requested`` events. For each request:
 4. Emits ``EVIDENCE_RETRIEVE_DELIVERED`` with the parsed structured
    output.
 
-Failure-mode discipline (mirrors decomposer + grounder):
+Failure-mode discipline (mirrors decomposer + synthesizer + grounder):
 
-- Validation failure on parse → empty Delivered with
+- ``finish_reason=length`` → one retry at ``max_tokens=16384``.
+- Validation failure on parse → one self-repair re-dispatch with the
+  error prepended; if that also fails → empty Delivered with
   ``insufficient_evidence=True``, ``supporting_claims=[]``,
   ``answer="(parse_failed)"``. A validation marker is logged to
   stderr for forensics.
 - Provider unavailable → same fallback shape, policy_id stamped
   ``evidence-retriever-fallback/no-provider``.
+- Parser coerces ``answer: null`` / missing → ``""`` (Mini dogfood).
 
 The request payload carries ``chunks_block`` and ``subgraph_block``
 verbatim so the role's input is fully reconstructable from the
@@ -153,6 +156,42 @@ def _extract_chunk_ids_from_block(chunks_block: str) -> tuple[str, ...]:
 # ---------------------------------------------------------------------------
 
 
+def _dispatch_once(
+    prompt: str,
+    event: Event,
+    *,
+    sub_question: str,
+    semantic_call_id: str | None,
+    attempt: int,
+    max_tokens: int | None = None,
+):
+    """One provider call. Returns ``(text, policy_id, finish_reason)``
+    or raises ``ProviderError`` / ``KeyError``."""
+    from .research_owner_dispatch import dispatch_loop_one
+
+    result = None
+    if max_tokens is None and attempt == 0:
+        result = dispatch_loop_one(
+            prompt,
+            "evidence_retriever",
+            investigation_id=event.investigation_id,
+            semantic_call_id=semantic_call_id
+            or "phase2:" + hashlib.sha256(sub_question.encode()).hexdigest()[:16],
+            attempt=attempt,
+        )
+    if result is None:
+        kwargs: dict = {
+            "investigation_id": event.investigation_id,
+            "parent_event_id": event.event_id,
+        }
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        result = dispatch(prompt, "evidence_retriever", **kwargs)
+    return result.text, f"{result.provider}/{result.model}", getattr(
+        result, "finish_reason", None
+    )
+
+
 def _dispatch_and_parse(
     prompt: str,
     event: Event,
@@ -161,21 +200,35 @@ def _dispatch_and_parse(
     semantic_call_id: str | None = None,
     canonical_chunk_ids: tuple[str, ...] = (),
 ) -> tuple[EvidenceResult | None, str]:
-    """Run one evidence_retriever dispatch + parse. Returns
-    ``(EvidenceResult, policy_id)`` on success, ``(None, fallback_id)``
-    on dispatch or parse failure."""
+    """Run evidence_retriever dispatch + parse with Mini dogfood retries.
+
+    Mirrors decomposer (``finish_reason=length`` → one larger budget) and
+    synthesizer (one self-repair on structural parse failure). Observed
+    Mini failures (2026-09-18): ``answer must be a string`` / unparseable
+    JSON after flash-tier truncation — empty delivered → thin citations.
+    """
     try:
-        from .research_owner_dispatch import dispatch_loop_one
-        result = dispatch_loop_one(prompt, "evidence_retriever", investigation_id=event.investigation_id,
-                                   semantic_call_id=semantic_call_id or "phase2:" + hashlib.sha256(
-                                       sub_question.encode()).hexdigest()[:16], attempt=0) or dispatch(
+        response_text, policy_id, finish = _dispatch_once(
             prompt,
-            "evidence_retriever",
-            investigation_id=event.investigation_id,
-            parent_event_id=event.event_id,
+            event,
+            sub_question=sub_question,
+            semantic_call_id=semantic_call_id,
+            attempt=0,
         )
-        response_text = result.text
-        policy_id = f"{result.provider}/{result.model}"
+        if finish == "length":
+            print(
+                "evidence_retriever.handle: finish_reason=length — "
+                "retrying once with max_tokens=16384",
+                flush=True,
+            )
+            response_text, policy_id, _finish = _dispatch_once(
+                prompt,
+                event,
+                sub_question=sub_question,
+                semantic_call_id=semantic_call_id,
+                attempt=1,
+                max_tokens=16384,
+            )
     except (ProviderError, KeyError) as exc:
         print(
             f"evidence_retriever.handle: dispatch failed — "
@@ -192,11 +245,54 @@ def _dispatch_and_parse(
         )
         return parsed, policy_id
     except EvidenceValidationError as exc:
+        first_error = exc  # keep past except-scope (Py3 deletes the as-target)
         print(
-            f"evidence_retriever.handle: parse failed — {exc}",
+            f"evidence_retriever.handle: parse failed — {first_error} — "
+            "attempting one self-repair",
+            flush=True,
+        )
+
+    repair_prefix = (
+        "Your previous response failed the substrate's structural "
+        "contract with the following error:\n\n"
+        f"    {first_error!s}\n\n"
+        "This is your one and only chance to fix it. Produce a single "
+        "JSON object that satisfies the contract. ``answer`` MUST be a "
+        'JSON string (use "" if insufficient_evidence is true — never '
+        "null). ``supporting_claims`` and ``evidentiary_gaps`` MUST be "
+        "arrays. ``insufficient_evidence`` MUST be a JSON boolean.\n\n"
+        "----\n\n"
+    )
+    try:
+        retry_text, retry_policy, _ = _dispatch_once(
+            repair_prefix + prompt,
+            event,
+            sub_question=sub_question,
+            semantic_call_id=semantic_call_id,
+            attempt=1,
+        )
+    except (ProviderError, KeyError) as exc:
+        print(
+            f"evidence_retriever.handle: self-repair dispatch failed — "
+            f"{type(exc).__name__}: {exc}",
             flush=True,
         )
         return None, policy_id
+
+    try:
+        parsed = parse_evidence_response(
+            retry_text,
+            expected_sub_question=sub_question,
+            canonical_chunk_ids=canonical_chunk_ids,
+        )
+        return parsed, retry_policy
+    except EvidenceValidationError as exc:
+        print(
+            f"evidence_retriever.handle: parse failed after self-repair — {exc}",
+            flush=True,
+        )
+        return None, retry_policy
+
 
 
 # ---------------------------------------------------------------------------
