@@ -1745,6 +1745,8 @@ def create_app(
     # store (the store's first API consumer; see settings_privacy.py).
     from .settings_privacy import register_settings_privacy_routes
     register_settings_privacy_routes(app)
+    from .settings_compute_capacity import register_settings_compute_capacity_routes
+    register_settings_compute_capacity_routes(app)
     from .research_tool_search import register_research_tool_search_routes
     register_research_tool_search_routes(app)
     # Own Your Mind P0 — trust wedge. Read-only provenance explain surfaces

@@ -1,3 +1,20 @@
+vi.mock("../../api/settingsComputeCapacity", () => ({
+  fetchComputeCapacity: vi.fn(async () => ({
+    owner_user_id: "__operator__",
+    tier: "standard",
+    monthly_compute_units: 500,
+    used_compute_units: null,
+    used_status: "unmetered",
+    enforcement: "off",
+    updated_at: null,
+    is_default: true,
+    tier_presets: { starter: 100, standard: 500, power: 2000 },
+    evaluation: { allowed: true, soft_over: false, would_hard_block: false, note: "used_unmetered_no_fake_billing" },
+    note: "test",
+  })),
+  setComputeCapacity: vi.fn(),
+}));
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
