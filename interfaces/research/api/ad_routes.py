@@ -61,7 +61,7 @@ from .books import _resolve_db_path
 # #3153 write_log cap class). Default connect_write is 300s — that hung
 # POST /api/ad/fills and blocked the uvicorn event loop. Fail fast → client
 # house-degrades; exact retries use connect_read / LazyRW and never flock.
-_FILLS_WRITE_TIMEOUT_S = 2.0
+_FILLS_WRITE_TIMEOUT_S = 8.0
 _FRAME_WRITE_TIMEOUT_S = 5.0
 # Serialize fills DB access in-process so RO lookup cannot overlap RW
 # open (DuckDB SAME_FILE) across concurrent to_thread workers.
@@ -624,24 +624,24 @@ def register_ad_routes(app: FastAPI) -> None:
     ) -> MultiEdgeFillResponse:
         """Decide every active border edge as one durable snapshot.
 
-        Contention class (#3121 coexist / #3153 Speak nonblock):
+        Prod forensic (Mac Mini / Hetzner): cold DuckDB open on the ~900MB
+        store is ~7s. A read-then-write path stacked two opens (~14s) and
+        timed out clients. This route uses **one** ``connect_write``
+        (``decide_fills`` already replays exact fingerprints via SELECT).
 
-        - In-process ``_FILLS_GATE`` serializes lookup+decide so concurrent
-          ``to_thread`` workers never open RO and RW on the same DuckDB file
-          at once (SAME_FILE wedge).
-        - Exact retry: ``connect_read`` / LazyRW under the gate (no flock).
-        - New decision: ``connect_write(..., timeout_s=2)``; on timeout / SAME_FILE
-          → 503 ``ad_fill_writer_busy`` (FE house-degrades).
-        - House promo scan capped (32) so the flock hold stays short.
+        Contention (#3121 / #3153 / #3157–#3159):
+        - ``_FILLS_GATE`` serializes in-process fills
+        - ``timeout_s=8`` flock wait; on timeout → 503 ``ad_fill_writer_busy``
+        - house promo scan capped at 32 under the flock
+        - ``asyncio.to_thread`` so the event loop stays responsive
         Still *unpriced* $0 — no fake revenue.
         """
-        from runtime.db_lock import WriteLockTimeout, connect_read, connect_write
+        from runtime.db_lock import WriteLockTimeout, connect_write
         from substrate.ad_inventory.ad_bidding import LeadGenAdInventory
         from substrate.ad_inventory.fill_decisions import (
             FillDecision,
             FillDecisionConflictError,
             decide_fills,
-            lookup_fill_decision,
         )
         from substrate.ad_inventory.inventory_persistence import (
             load_serving_for_matcher,
@@ -687,22 +687,7 @@ def register_ad_routes(app: FastAPI) -> None:
                 honesty=WebsiteAdsHonesty.model_validate(website_ads_honesty()),
             )
 
-        def _lookup() -> FillDecision | None:
-            con = connect_read(db)
-            try:
-                return lookup_fill_decision(
-                    con,
-                    owner_user_id=owner_user_id,
-                    window_id=body.window_id,
-                    document_id=body.document_id,
-                    page_index=body.page_index,
-                    lens=body.lens,
-                    positions=requested_positions,
-                )
-            finally:
-                con.close()
-
-        def _decide_new() -> FillDecision:
+        def _decide() -> FillDecision:
             with connect_write(
                 db,
                 purpose="ad/fills:decide",
@@ -799,17 +784,19 @@ def register_ad_routes(app: FastAPI) -> None:
 
         def _sync() -> FillDecision | None:
             with _FILLS_GATE:
-                found = _lookup()
-                if found is not None:
-                    return found
                 try:
-                    return _decide_new()
+                    return _decide()
                 except FillDecisionConflictError:
                     raise
                 except WriteLockTimeout:
                     return None
                 except Exception as exc:
-                    if "different configuration" in str(exc):
+                    msg = str(exc)
+                    if (
+                        "different configuration" in msg
+                        or "Unique file handle conflict" in msg
+                        or "already attached" in msg
+                    ):
                         return None
                     raise
 
