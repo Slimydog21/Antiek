@@ -25,6 +25,7 @@ the operator's smoke test.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -83,6 +84,71 @@ class YouTubeQuotaExhausted(YouTubeError):
             f"meter hard-set until reset {reset_at}",
             status_code=403,
         )
+
+
+@dataclass(frozen=True)
+class YouTubeSearchHit:
+    """One parsed search hit.
+
+    ``kind`` is the vendor's id-kind with its ``youtube#`` prefix stripped
+    (``video``, ``channel``, ``playlist``), and ``video_id`` holds whichever
+    id the hit carries for that kind — a channel hit carries a channel id, and
+    the field name follows the shape ``acquisition.youtube.data_api`` already
+    ships so a reader meets one YouTube record, not two.
+    """
+
+    video_id: str
+    kind: str
+    title: str
+    description: str
+    channel_id: str
+    channel_title: str
+    published_at: str
+
+
+def parse_search_items(items: object) -> list[YouTubeSearchHit]:
+    """Decode a ``search.list`` ``items`` array into hits.
+
+    Pure: an array in, records out — no network, no key, no clock, so a
+    fixture exercises it exactly as a live page would. An item whose id block
+    carries no id at all is dropped; anything else keeps its row with the
+    fields the vendor did send. The parse is duplicated from the acquisition
+    lane rather than imported because ``acquisition`` builds on
+    ``runtime.connectors``, and importing back down from here would invert
+    that dependency.
+    """
+    if not isinstance(items, list):
+        return []
+    hits: list[YouTubeSearchHit] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        id_obj = item.get("id")
+        id_obj = id_obj if isinstance(id_obj, dict) else {}
+        id_kind = str(id_obj.get("kind") or "")
+        kind = id_kind[len("youtube#"):] if id_kind.startswith("youtube#") else id_kind
+        identifier = str(
+            id_obj.get("videoId")
+            or id_obj.get("channelId")
+            or id_obj.get("playlistId")
+            or ""
+        )
+        if not identifier:
+            continue
+        snippet = item.get("snippet")
+        snippet = snippet if isinstance(snippet, dict) else {}
+        hits.append(
+            YouTubeSearchHit(
+                video_id=identifier,
+                kind=kind or "video",
+                title=str(snippet.get("title") or ""),
+                description=str(snippet.get("description") or ""),
+                channel_id=str(snippet.get("channelId") or ""),
+                channel_title=str(snippet.get("channelTitle") or ""),
+                published_at=str(snippet.get("publishedAt") or ""),
+            )
+        )
+    return hits
 
 
 class YouTubeDataConnector(PasteKeyConnector):
@@ -221,13 +287,21 @@ class YouTubeDataConnector(PasteKeyConnector):
         max_results: int = _MAX_RESULTS_DEFAULT,
         order: str | None = None,
         type_: str = "video",
-    ) -> list[dict[str, Any]]:
+    ) -> list[YouTubeSearchHit]:
         """Search wrapper: ``GET /youtube/v3/search``.
 
         Reserves 100 quota units (``search.list`` cost) before the request is
-        built. Returns the raw ``items`` array. ``max_results`` is bounded 1-50
-        (vendor-documented). ``order`` is one of the vendor's values (``date``,
-        ``rating``, ``relevance``, ``title``, ``viewCount``).
+        built, and returns parsed :class:`YouTubeSearchHit` rows rather than
+        the vendor's ``items``. A search item hides its id under
+        ``id.videoId`` / ``id.channelId`` / ``id.playlistId`` depending on
+        ``id.kind``, and its human fields under ``snippet``; a caller handed
+        the raw item has to re-derive that shape, and one that guesses wrong
+        drops every row while the call still costs the user 100 units.
+        :func:`parse_search_items` does that decode once, here.
+
+        ``max_results`` is bounded 1-50 (vendor-documented). ``order`` is one
+        of the vendor's values (``date``, ``rating``, ``relevance``,
+        ``title``, ``viewCount``).
         """
         if not query or not query.strip():
             raise ValueError("query must be a non-empty string")
@@ -247,10 +321,7 @@ class YouTubeDataConnector(PasteKeyConnector):
             params["type"] = type_
 
         payload = self._get("/search", params, units=_SEARCH_UNITS)
-        items = payload.get("items")
-        if not isinstance(items, list):
-            return []
-        return items
+        return parse_search_items(payload.get("items"))
 
     def close(self) -> None:
         """Close the held httpx client — only if this connector created it."""
@@ -289,4 +360,6 @@ __all__ = [
     "YouTubeError",
     "YouTubeKeyRequired",
     "YouTubeQuotaExhausted",
+    "YouTubeSearchHit",
+    "parse_search_items",
 ]
