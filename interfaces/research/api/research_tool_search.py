@@ -22,9 +22,12 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from acquisition.twitter.api_client import XApiError
-from acquisition.youtube.data_api import YouTubeApiError, YouTubeQuotaExhausted
+from acquisition.youtube.data_api import YouTubeApiError
+from acquisition.youtube.data_api import YouTubeQuotaExhausted as AcquisitionQuotaExhausted
 from runtime.connectors.quota_meter import QuotaExhausted
+from runtime.connectors.rate_governor import VendorBanned
 from runtime.connectors.registry import ToolConnectionUnavailable, resolve_tool_connection
+from runtime.connectors.youtube import YouTubeQuotaExhausted as VendorQuotaExhausted
 
 router = APIRouter(prefix="/research/tools", tags=["research-tools"])
 _PRIVATE = "private, no-store"
@@ -209,9 +212,20 @@ def _unknown(owner: str, operation_id: str) -> None:
 
 
 def _release(owner: str, operation_id: str) -> None:
+    """Return an operation_id to unclaimed after a refusal that produced nothing.
+
+    Two states qualify. ``claimed`` is the connection refusing before any
+    send. ``sent`` is the vendor refusing a search it never performed — a
+    daily quota that is out, a rate window that has not reopened. A search is
+    a read, so in both cases nothing exists at the vendor to reconcile and the
+    outcome is not ambiguous; marking the row ``unknown`` would strand the
+    operation_id behind a 409 forever, long after the condition that caused it
+    had cleared.
+    """
     with _connect() as con:
         con.execute(
-            "DELETE FROM searches WHERE owner=? AND operation_id=? AND state='claimed'",
+            "DELETE FROM searches WHERE owner=? AND operation_id=? "
+            "AND state IN ('claimed','sent')",
             (owner, operation_id),
         )
 
@@ -269,6 +283,20 @@ def _x(rows: object) -> list[SearchCandidate]:
     return out
 
 
+def _clears_on_its_own(exc: BaseException) -> bool:
+    """True when a refusal lifts on the vendor's clock rather than the user's.
+
+    A 429 and a governor ban sentinel both say come back later, and the search
+    they refused bought nothing. Everything else keeps the terminal mark: a
+    transport error or an unparseable body leaves the outcome genuinely
+    ambiguous, and a rejected credential needs the user before any retry can
+    succeed.
+    """
+    if isinstance(exc, VendorBanned):
+        return True
+    return getattr(exc, "status_code", None) == 429
+
+
 @router.post("/search", response_model=SearchResponse)
 async def search_tools(request: Request, response: Response) -> SearchResponse:
     owner = _owner(request)
@@ -295,7 +323,7 @@ async def search_tools(request: Request, response: Response) -> SearchResponse:
         if body.vendor == "youtube":
             candidates = _youtube(connector.search(body.query, max_results=body.max_results))
         else:
-            candidates = _x(connector.recent_search(body.query, max_results=body.max_results))
+            candidates = _x(connector.search_tweets(body.query, max_results=body.max_results))
         result = SearchResponse(
             operation_id=body.operation_id,
             vendor=body.vendor,
@@ -306,13 +334,16 @@ async def search_tools(request: Request, response: Response) -> SearchResponse:
         return result
     except _PublicError:
         raise
-    except (QuotaExhausted, YouTubeQuotaExhausted):
-        _unknown(owner, body.operation_id)
+    except (QuotaExhausted, AcquisitionQuotaExhausted, VendorQuotaExhausted):
+        _release(owner, body.operation_id)
         raise _PublicError(429, "tool quota is exhausted") from None
     except ToolConnectionUnavailable:
         _release(owner, body.operation_id)
         raise _PublicError(503, "tool search is unavailable") from None
-    except (YouTubeApiError, XApiError, OSError, RuntimeError):
+    except (YouTubeApiError, XApiError, OSError, RuntimeError) as exc:
+        if _clears_on_its_own(exc):
+            _release(owner, body.operation_id)
+            raise _PublicError(429, "tool search is rate limited") from None
         _unknown(owner, body.operation_id)
         raise _PublicError(503, "tool search is unavailable") from None
     finally:
