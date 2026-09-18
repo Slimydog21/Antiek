@@ -117,6 +117,15 @@ def _make_fetched_html(arxiv_id: str = "2402.03300") -> FetchedHtml:
 
 
 class _StubEmbedder:
+    # Every chunk write pins its provider identity through
+    # substrate.graph.embedding_meta._identity, which reads ``.dimension``
+    # (commit 8f5096795, "pin chunk embedding provider metadata"). These two
+    # stubs were never updated for it, so every PDF-leg test in this file has
+    # been dying on AttributeError instead of asserting anything. 16 matches the
+    # vector this stub returns and the convention every other stub in tests/
+    # already uses.
+    dimension = 16
+
     def encode(self, text: str) -> list[float]:
         h = abs(hash(text)) % 64
         v = [0.0] * 16
@@ -336,8 +345,17 @@ def test_html_absent_uses_injected_fetch_pdf(temp_db_and_events):
 
 
 def test_prefer_html_false_never_calls_fetch_html(temp_db_and_events):
-    """When prefer_html is False (the default), fetch_html is never called
-    and the PDF path is used exclusively."""
+    """The explicit PDF-only opt-out: prefer_html=False never calls fetch_html
+    and uses the PDF path exclusively.
+
+    This test used to rely on the DEFAULT being False and passed no
+    ``prefer_html`` at all. The default is now True (arXiv's HTML rendering
+    carries ~2.4x the body text PDF extraction recovers), so the flag is now
+    passed explicitly. Every assertion below is unchanged — the opt-out path
+    this test guards still exists and still behaves identically; only the way
+    the test reaches it is explicit. The new default gets its own assertion in
+    ``test_prefer_html_defaults_to_true`` below, which is a STRONGER claim than
+    the implicit one this test used to carry."""
     html_called = []
 
     def spy_fetch_html(arxiv_id: str) -> FetchedHtml | None:
@@ -349,7 +367,7 @@ def test_prefer_html_false_never_calls_fetch_html(temp_db_and_events):
     res = ingest_paper_with_rights(
         paper,
         investigation_id="inv-test",
-        # prefer_html defaults to False
+        prefer_html=False,  # explicit opt-out; no longer the default
         fetch_html=spy_fetch_html,
         pdf_bytes=_PDF_BYTES,
         db_path=temp_db_and_events["db_path"],
@@ -414,3 +432,210 @@ def test_html_path_uses_arxiv_doc_id(temp_db_and_events):
 
     assert res.document_id == arxiv_doc_id("2402.03340")
     assert res.document_id == "doc-arxiv-2402.03340"
+
+
+# ---------------------------------------------------------------------------
+# F. HTML-first is the DEFAULT, and a 429 on the HTML leg never degrades to PDF
+# ---------------------------------------------------------------------------
+
+
+def test_prefer_html_defaults_to_true(temp_db_and_events):
+    """No ``prefer_html`` argument at all → the HTML leg runs and wins.
+
+    This is the fidelity default, not a style choice: arXiv's own HTML
+    rendering of a paper carries roughly 2.4x the body text a PDF extraction
+    recovers from the same paper, plus the math, tables and two-column reading
+    order that PDF extraction flattens. A default of False meant every caller
+    that did not opt in threw more than half the body away before chunking.
+
+    ``pdf_bytes`` is supplied alongside an explicit ``fetch_html``: with the
+    HTML fetcher wired, the HTML leg wins even though PDF bytes are already in
+    hand. (Without a wired ``fetch_html``, in-hand ``pdf_bytes`` deliberately
+    suppresses the DEFAULT network fetcher — see
+    ``test_pdf_bytes_in_hand_never_triggers_a_default_html_fetch``.)
+    """
+    import inspect
+
+    import duckdb
+
+    from acquisition.arxiv.adapter import ingest_paper_with_rights as _adapter_fn
+
+    # The signature default itself, so a future edit that flips it back reds here
+    # rather than only in the behavioral assertions below.
+    assert (
+        inspect.signature(_adapter_fn).parameters["prefer_html"].default is True
+    )
+
+    html_called: list[str] = []
+
+    def spy_fetch_html(arxiv_id: str) -> FetchedHtml | None:
+        html_called.append(arxiv_id)
+        return _make_fetched_html(arxiv_id)
+
+    paper = _paper("2402.03400", _CC_BY)
+
+    res = ingest_paper_with_rights(
+        paper,
+        investigation_id="inv-test",
+        # NO prefer_html argument — the default is what is under test.
+        fetch_html=spy_fetch_html,
+        pdf_bytes=_PDF_BYTES,
+        db_path=temp_db_and_events["db_path"],
+        embedder=_StubEmbedder(),
+    )
+
+    assert html_called == ["2402.03400"]
+
+    con = duckdb.connect(temp_db_and_events["db_path"])
+    try:
+        row = con.execute(
+            "SELECT raw_text, metadata FROM documents WHERE document_id = ?",
+            [res.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+
+    assert row is not None
+    raw_text, metadata_raw = row
+    metadata = json.loads(metadata_raw) if isinstance(metadata_raw, str) else metadata_raw
+
+    # The stored body is the sanitized HTML rendering, NOT the PDF text — proof
+    # the HTML leg won rather than merely being attempted.
+    assert raw_text == sanitize_book_html(_RAW_HTML)
+    assert metadata.get("html_sha256") == _make_fetched_html("2402.03400").sha256
+    assert _PDF_TEXT.split(".")[0] not in raw_text
+
+
+def test_html_leg_429_raises_and_never_falls_back_to_pdf(temp_db_and_events, tmp_path):
+    """A 429 on the HTML leg arms the ban sentinel and PROPAGATES. It must not
+    be read as "this paper has no HTML rendering" and answered by fetching the
+    heavier PDF from the same host — that turns a rate-limit into an IP ban.
+
+    Driven through the REAL ``html_fetch.fetch_html`` over an
+    ``httpx.MockTransport`` (no network), so this covers the actual 429 handling
+    rather than a stub that raises on command.
+    """
+    import httpx
+
+    from acquisition.arxiv import html_fetch
+    from acquisition.arxiv.throttle import ArxivBanned, ArxivThrottle
+
+    throttle = ArxivThrottle(
+        state_path=str(tmp_path / "throttle.json"), sleep=lambda _s: None
+    )
+
+    hops: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        hops.append(str(request.url))
+        return httpx.Response(429, headers={"Retry-After": "600"})
+
+    pdf_called: list[str] = []
+
+    def spy_fetch_pdf(arxiv_id: str) -> bytes:
+        pdf_called.append(arxiv_id)
+        return _PDF_BYTES
+
+    def real_fetch_html(arxiv_id: str) -> FetchedHtml | None:
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+            return html_fetch.fetch_html(
+                arxiv_id, throttle=throttle, client=client
+            )
+
+    paper = _paper("2402.03401", _CC_BY)
+
+    with pytest.raises(ArxivBanned):
+        ingest_paper_with_rights(
+            paper,
+            investigation_id="inv-test",
+            fetch_html=real_fetch_html,
+            fetch_pdf=spy_fetch_pdf,
+            db_path=temp_db_and_events["db_path"],
+            embedder=_StubEmbedder(),
+        )
+
+    # The HTML hop really went out, and the PDF leg was never reached.
+    assert hops and "/html/2402.03401" in hops[0]
+    assert pdf_called == []
+    # The 429 armed the ban sentinel on the shared state, so the NEXT arXiv
+    # request on this box refuses before egressing.
+    assert throttle.is_banned()
+
+
+def test_html_leg_429_does_not_fall_back_even_with_pdf_bytes_in_hand(
+    temp_db_and_events, tmp_path
+):
+    """The no-fallback rule holds even when PDF bytes are already available and
+    ingesting them would cost nothing — a 429 is a stop signal about the HOST,
+    not a statement about this paper's HTML."""
+    import httpx
+
+    from acquisition.arxiv import html_fetch
+    from acquisition.arxiv.throttle import ArxivBanned, ArxivThrottle
+
+    throttle = ArxivThrottle(
+        state_path=str(tmp_path / "throttle.json"), sleep=lambda _s: None
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429)
+
+    def real_fetch_html(arxiv_id: str) -> FetchedHtml | None:
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+            return html_fetch.fetch_html(
+                arxiv_id, throttle=throttle, client=client
+            )
+
+    paper = _paper("2402.03402", _CC_BY)
+
+    with pytest.raises(ArxivBanned):
+        ingest_paper_with_rights(
+            paper,
+            investigation_id="inv-test",
+            fetch_html=real_fetch_html,
+            pdf_bytes=_PDF_BYTES,
+            db_path=temp_db_and_events["db_path"],
+            embedder=_StubEmbedder(),
+        )
+
+
+def test_pdf_bytes_in_hand_never_triggers_a_default_html_fetch(temp_db_and_events):
+    """A caller that hands in ``pdf_bytes`` and wires no ``fetch_html`` must not
+    cause a live arxiv.org/html request.
+
+    This is the guard rail on the HTML-first default. Making prefer_html True
+    without it turns every offline-shaped call — a fixture-bytes ingest, a unit
+    test, a replay — into live egress against a host that has IP-banned this box
+    before, to fetch a body the caller already holds. The adapter's default HTML
+    fetcher is monkeypatched to a tripwire: if it is consulted at all, this test
+    fails rather than reaching the network."""
+    from acquisition.arxiv import adapter as _adapter
+
+    tripped: list[str] = []
+
+    def _tripwire(arxiv_id: str):
+        tripped.append(arxiv_id)
+        raise AssertionError(
+            "the default arxiv.org/html fetcher was called for a caller that "
+            "supplied pdf_bytes — that is live network egress from an "
+            "offline-shaped call"
+        )
+
+    original = _adapter._default_fetch_html
+    _adapter._default_fetch_html = _tripwire
+    try:
+        paper = _paper("2402.03403", _CC_BY)
+        res = ingest_paper_with_rights(
+            paper,
+            investigation_id="inv-test",
+            # NO prefer_html (default True), NO fetch_html, body already in hand.
+            pdf_bytes=_PDF_BYTES,
+            db_path=temp_db_and_events["db_path"],
+            embedder=_StubEmbedder(),
+        )
+    finally:
+        _adapter._default_fetch_html = original
+
+    assert tripped == []
+    # The ingest completed on the in-hand bytes rather than being skipped.
+    assert res.servable_full_text is True
