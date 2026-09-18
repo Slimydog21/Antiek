@@ -41,6 +41,7 @@ class TrustCenterPayload:
     substrate_controls: tuple[str, ...]
     compliance_frameworks: tuple[str, ...]
     loop_3_unlock_status: dict[str, bool]
+    website_ads: dict
 
     def as_dict(self) -> dict:
         return {
@@ -51,6 +52,7 @@ class TrustCenterPayload:
             "substrate_controls": list(self.substrate_controls),
             "compliance_frameworks": list(self.compliance_frameworks),
             "loop_3_unlock_status": dict(self.loop_3_unlock_status),
+            "website_ads": dict(self.website_ads),
         }
 
 
@@ -73,6 +75,8 @@ def build_publication(
         s.surface_name: s.epsilon_per_day
         for s in reg.list_surfaces()
     }
+    from substrate.ad_inventory.rank0_honesty import website_ads_honesty
+
     return TrustCenterPayload(
         differential_privacy_epsilon_budgets=surfaces,
         deletion_sla_days=deletion_sla_days,
@@ -85,6 +89,7 @@ def build_publication(
             "open_weight_justification": False,
             "eval_headroom": False,
         }),
+        website_ads=website_ads_honesty(),
     )
 
 

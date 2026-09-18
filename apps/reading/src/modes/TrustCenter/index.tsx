@@ -20,12 +20,30 @@ import { PUBLIC_LANE_LABELS } from "../../lib/speakVocab";
  * the cap.
  */
 
+interface WebsiteAdsHonesty {
+  surface: string;
+  serving_model: string;
+  max_sdk_on_web: boolean;
+  fill_ladder: string[];
+  price_status_default: string;
+  revenue_usd_cents_until_pricing: number;
+  pricing_gate: string;
+  legal_gate: string;
+  speak_contributor_share: number;
+  speak_platform_share: number;
+  money_model: string;
+  disbursement: string;
+  decision_ref: string;
+  spec_ref: string;
+}
+
 interface TrustCenterData {
   differential_privacy_epsilon_budgets: Record<string, number>;
   deletion_sla_days: number;
   substrate_controls: string[];
   compliance_frameworks: string[];
   loop_3_unlock_status: Record<string, boolean>;
+  website_ads?: WebsiteAdsHonesty;
 }
 
 const EPSILON_CAP = 10;
@@ -148,6 +166,69 @@ export default function TrustCenter() {
                   ))}
                 </ul>
               </Section>
+
+              {data.website_ads && (
+                <Section title="Website advertising (Rank 0)">
+                  <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
+                    Antiek serves its own creatives on the website. There is no
+                    AppLovin MAX SDK on web. Until Rank 0.1 pricing and Rank 0.2
+                    legal gate clear, fills stay unpriced at $0 — Speak&apos;s
+                    70% contributor share accrues only from settled revenue,
+                    never invented cents.
+                  </p>
+                  <ul
+                    className="text-sm text-ink dark:text-bright space-y-1 list-disc pl-5"
+                    data-testid="trust-website-ads"
+                  >
+                    <li>
+                      Serving model:{" "}
+                      <code className="font-mono text-[12px]">
+                        {data.website_ads.serving_model}
+                      </code>{" "}
+                      (MAX on web:{" "}
+                      {data.website_ads.max_sdk_on_web ? "yes" : "no"})
+                    </li>
+                    <li>
+                      Fill ladder:{" "}
+                      {data.website_ads.fill_ladder.join(" → ")}
+                    </li>
+                    <li>
+                      Default price status:{" "}
+                      <code className="font-mono text-[12px]">
+                        {data.website_ads.price_status_default}
+                      </code>{" "}
+                      / revenue until pricing: $
+                      {(data.website_ads.revenue_usd_cents_until_pricing / 100).toFixed(2)}
+                    </li>
+                    <li>
+                      Gates: {data.website_ads.pricing_gate} ·{" "}
+                      {data.website_ads.legal_gate}
+                    </li>
+                    <li>
+                      Speak escrow split (settled only):{" "}
+                      {Math.round(data.website_ads.speak_contributor_share * 100)}%
+                      contributors /{" "}
+                      {Math.round(data.website_ads.speak_platform_share * 100)}%
+                      platform
+                    </li>
+                    <li>
+                      Money model:{" "}
+                      <code className="font-mono text-[12px]">
+                        {data.website_ads.money_model}
+                      </code>
+                    </li>
+                    <li>
+                      Disbursement:{" "}
+                      <code className="font-mono text-[12px]">
+                        {data.website_ads.disbursement}
+                      </code>
+                    </li>
+                  </ul>
+                  <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                    {data.website_ads.decision_ref}
+                  </p>
+                </Section>
+              )}
 
               <Section title="Loop 3 (RL training) unlock criteria">
                 <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">

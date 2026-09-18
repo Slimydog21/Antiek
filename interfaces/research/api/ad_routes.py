@@ -182,9 +182,32 @@ class MultiEdgeFillRequest(BaseModel):
     page_index: int | None = Field(default=None, ge=0)
 
 
+class WebsiteAdsHonesty(BaseModel):
+    """Rank 0 website monetization honesty (no MAX-on-web; no fake cents).
+
+    docs/decisions/applovin-website-mvp-attribution-ledger-2026-09-17.md
+    """
+
+    surface: Literal["website"]
+    serving_model: Literal["antiek_owned_creatives"]
+    max_sdk_on_web: bool
+    fill_ladder: list[str]
+    price_status_default: Literal["unpriced"]
+    revenue_usd_cents_until_pricing: int
+    pricing_gate: str
+    legal_gate: str
+    speak_contributor_share: float
+    speak_platform_share: float
+    money_model: str
+    disbursement: str
+    decision_ref: str
+    spec_ref: str
+
+
 class MultiEdgeFillResponse(BaseModel):
     window_id: str
     fills: list[EdgeFillResponse]
+    honesty: WebsiteAdsHonesty
 
 
 def _resolve_asset_gate(
@@ -724,6 +747,8 @@ def register_ad_routes(app: FastAPI) -> None:
                     detail="ad_fill_window_conflict",
                 ) from exc
 
+        from substrate.ad_inventory.rank0_honesty import website_ads_honesty
+
         return MultiEdgeFillResponse(
             window_id=decision.window_id,
             fills=[
@@ -741,4 +766,5 @@ def register_ad_routes(app: FastAPI) -> None:
                 )
                 for fill in decision.fills
             ],
+            honesty=WebsiteAdsHonesty.model_validate(website_ads_honesty()),
         )

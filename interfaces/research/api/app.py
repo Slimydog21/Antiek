@@ -6679,6 +6679,7 @@ def create_app(
         substrate_controls: list[str]
         compliance_frameworks: list[str]
         loop_3_unlock_status: dict[str, bool]
+        website_ads: dict
 
     @app.get(
         "/trust-center",
@@ -6708,6 +6709,8 @@ def create_app(
                 "eval_headroom": False,
             }
 
+        from substrate.ad_inventory.rank0_honesty import website_ads_honesty
+
         return TrustCenterPublication(
             differential_privacy_epsilon_budgets={
                 "skill_invocation_frequency": 2.0,
@@ -6730,6 +6733,7 @@ def create_app(
                 "SOC 2 Type II — deferred (not required for consumer Phase 1)",
             ],
             loop_3_unlock_status=loop_3_status,
+            website_ads=website_ads_honesty(),
         )
 
     # ── Speak workflow (specs/speak/) — the fourth workflow's REST

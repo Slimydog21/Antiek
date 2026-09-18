@@ -80,6 +80,13 @@ describe("ManualSponsorFooter", () => {
       }),
     );
     expect(screen.getByText("From the library")).toBeTruthy();
+    await waitFor(() => {
+      expect(root.getAttribute("data-price-status")).toBe("unpriced");
+      expect(root.getAttribute("data-fill-kind")).toBe("house");
+    });
+    expect(screen.getByTestId("manual-sponsor-rank0-honesty").textContent).toMatch(
+      /House fill/,
+    );
     const rail = screen.getByLabelText("Recommended reading");
     expect(rail.getAttribute("data-slot-id")).toBe(
       "slot:synthesis:syn-1:footer",
@@ -94,6 +101,14 @@ describe("ManualSponsorFooter", () => {
     );
     expect(await screen.findByText("Acme Labs")).toBeTruthy();
     expect(screen.getByLabelText("Advertisement")).toBeTruthy();
+    const root = screen.getByTestId("manual-sponsor-footer");
+    await waitFor(() => {
+      expect(root.getAttribute("data-price-status")).toBe("unpriced");
+      expect(root.getAttribute("data-fill-kind")).toBe("ad");
+    });
+    expect(screen.getByTestId("manual-sponsor-rank0-honesty").textContent).toMatch(
+      /Sponsor fill/,
+    );
   });
 
   it("uses anon slot id when synthesisId is missing", async () => {
