@@ -799,6 +799,136 @@ def _event_payload(event: dict[str, Any]) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def resolve_substantive_chunk_id(con: Any, document_id: str | None) -> str | None:
+    """Most substantive non-boilerplate chunk for a document (funnel heuristic).
+
+    Grounds note-taker / funnel deposits so ``knowledge_unit_of`` can recover
+    claim→chunk→doc provenance and the unit becomes reusable.
+    """
+    if not document_id:
+        return None
+    row = con.execute(
+        """SELECT chunk_id FROM chunks
+           WHERE document_id = ?
+             AND length(text) BETWEEN 400 AND 4000
+             AND text NOT ILIKE '%bibliography%'
+             AND text NOT ILIKE '%references%'
+             AND text NOT ILIKE '%index%'
+             AND text NOT ILIKE '## Page%'
+             AND text NOT ILIKE 'chapter %'
+             AND text NOT ILIKE 'contents%'
+           ORDER BY length(text) DESC
+           LIMIT 1""",
+        [document_id],
+    ).fetchone()
+    if not row or row[0] is None:
+        row = con.execute(
+            """SELECT chunk_id FROM chunks
+               WHERE document_id = ?
+               ORDER BY length(text) DESC
+               LIMIT 1""",
+            [document_id],
+        ).fetchone()
+    if not row or row[0] is None:
+        return None
+    return str(row[0])
+
+
+def _note_evidence_texts(event: dict[str, Any], *, events_dir: str | None) -> list[str]:
+    """Load cited source-event payloads for deposit-time groundedness."""
+    payload = _event_payload(event)
+    ids = payload.get("source_event_ids") or []
+    if not isinstance(ids, list) or not ids:
+        return []
+    want = {str(x) for x in ids if x}
+    if not want:
+        return []
+    investigation_id = event.get("investigation_id") or payload.get("investigation_id") or ""
+    if not investigation_id:
+        return []
+    try:
+        from substrate.event_log import default_events_dir, iter_physical_events
+    except ImportError:
+        return []
+    root = events_dir or default_events_dir()
+    out: list[str] = []
+    for row in iter_physical_events(str(investigation_id), events_dir=root):
+        if row.get("event_id") not in want:
+            continue
+        pl = row.get("payload") or {}
+        if not isinstance(pl, dict):
+            continue
+        bits = [
+            str(pl.get("sub_question") or ""),
+            str(pl.get("answer") or ""),
+            str(pl.get("rendered_text") or ""),
+            str(pl.get("thesis") or ""),
+        ]
+        text = "\n".join(b for b in bits if b.strip())
+        if text.strip():
+            out.append(text.strip())
+    return out
+
+
+def _score_note_groundedness(
+    con: Any,
+    note_text: str,
+    *,
+    chunk_id: str | None,
+    evidence_texts: list[str],
+) -> float:
+    from substrate.eval.groundedness import score_claim
+
+    chunk_texts: list[str] = list(evidence_texts)
+    if chunk_id:
+        row = con.execute(
+            "SELECT text FROM chunks WHERE chunk_id = ? LIMIT 1", [chunk_id]
+        ).fetchone()
+        if row and row[0] is not None:
+            chunk_texts.insert(0, str(row[0]))
+    verdict = score_claim(
+        note_text,
+        chunk_texts,
+        cited_chunk_ids=[chunk_id] if chunk_id else [],
+    )
+    return float(verdict.score)
+
+
+def _stamp_insight_grounding(
+    con: Any,
+    node_id: str,
+    *,
+    source_document_id: str,
+    chunk_id: str,
+    investigation_id: str,
+    groundedness_score: float | None,
+) -> None:
+    """Merge grounding into node metadata (idempotent; upgrades ignore-hits)."""
+    import json
+
+    row = con.execute(
+        "SELECT metadata FROM nodes WHERE node_id = ? LIMIT 1", [node_id]
+    ).fetchone()
+    if row is None:
+        return
+    meta: dict[str, Any] = {}
+    if row[0]:
+        try:
+            meta = json.loads(row[0])
+        except (TypeError, ValueError):
+            meta = {}
+    meta.setdefault("source_document_id", source_document_id)
+    meta.setdefault("chunk_id", chunk_id)
+    if investigation_id:
+        meta.setdefault("investigation_id", investigation_id)
+    if groundedness_score is not None:
+        meta["groundedness_score"] = float(groundedness_score)
+    con.execute(
+        "UPDATE nodes SET metadata = ? WHERE node_id = ?",
+        [json.dumps(meta, separators=(",", ":")), node_id],
+    )
+
+
 def promote_from_note_event(
     event: dict[str, Any],
     *,
@@ -806,14 +936,17 @@ def promote_from_note_event(
     enabled: bool = False,
     embedding_provider: Any = None,
     emit_graph_events: bool = True,
+    events_dir: str | None = None,
 ) -> str | None:
     """Promote a single ``note.emerged`` event into an insight node.
 
     Opt-in: returns ``None`` unless ``enabled=True`` (SPR-03 flips the
-    always-on switch). The note's ``source_event_ids`` are recorded in
-    node metadata (they reference events, not nodes, so they cannot be
-    ``supported_by`` edges); document/claim-node grounding is the job of
-    richer callers that pass ``supported_by`` explicitly.
+    always-on switch). Grounds on envelope ``document_id`` + a substantive
+    chunk so ``knowledge_unit_of`` can assemble a reusable unit; deposit-time
+    groundedness scores the note against chunk text PLUS cited
+    ``source_event_ids`` payloads (Loop One evidence answers), because
+    note-taker notes are usually meta-claims about retrieval rather than
+    lexical quotes of the book chunk alone.
     """
     if not enabled:
         return None
@@ -822,19 +955,59 @@ def promote_from_note_event(
     if not isinstance(text, str) or not text.strip():
         return None
     investigation_id = event.get("investigation_id") or payload.get("investigation_id") or ""
-    return promote_insight(
-        text=text.strip(),
-        investigation_id=investigation_id,
-        confidence=payload.get("confidence", "unknown"),
-        metadata={
+    doc_raw = event.get("document_id") or payload.get("document_id")
+    source_document_id = (
+        doc_raw.strip()
+        if isinstance(doc_raw, str) and doc_raw.strip() and not doc_raw.startswith("research:")
+        else None
+    )
+    evidence_texts = _note_evidence_texts(event, events_dir=events_dir)
+    note_text = text.strip()
+
+    def _do(c: LockedConnection) -> str | None:
+        chunk_id = (
+            resolve_substantive_chunk_id(c, source_document_id)
+            if source_document_id
+            else None
+        )
+        gscore: float | None = None
+        if chunk_id or evidence_texts:
+            gscore = _score_note_groundedness(
+                c,
+                note_text,
+                chunk_id=chunk_id,
+                evidence_texts=evidence_texts,
+            )
+        meta: dict[str, Any] = {
             "source_event_ids": payload.get("source_event_ids", []),
             "origin_event_id": event.get("event_id"),
             "origin_note_id": payload.get("note_id"),
-        },
-        embedding_provider=embedding_provider,
-        emit_graph_events=emit_graph_events,
-        con=con,
-    )
+        }
+        if gscore is not None:
+            meta["groundedness_score"] = gscore
+        nid = promote_insight(
+            text=note_text,
+            investigation_id=investigation_id,
+            confidence=payload.get("confidence", "unknown"),
+            metadata=meta,
+            source_document_id=source_document_id,
+            chunk_id=chunk_id,
+            embedding_provider=embedding_provider,
+            emit_graph_events=emit_graph_events,
+            con=c,
+        )
+        if nid and source_document_id and chunk_id:
+            _stamp_insight_grounding(
+                c,
+                nid,
+                source_document_id=source_document_id,
+                chunk_id=chunk_id,
+                investigation_id=investigation_id,
+                groundedness_score=gscore,
+            )
+        return nid
+
+    return _with_connection(con, "promote_from_note_event", _do)
 
 
 def promote_from_question_event(
@@ -1065,7 +1238,11 @@ def knowledge_unit_of(
 
     groundedness_score: float | None = None
     if score_groundedness:
-        groundedness_score = _score_unit_groundedness(con, text, chunk_id)
+        stored_gs = meta.get("groundedness_score")
+        if isinstance(stored_gs, (int, float)):
+            groundedness_score = float(stored_gs)
+        else:
+            groundedness_score = _score_unit_groundedness(con, text, chunk_id)
 
     # Resolve the content-rights class from the source document when the caller
     # did not supply one. The funnel deposits notes with no supported_by claim
