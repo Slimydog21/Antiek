@@ -74,12 +74,16 @@ export interface WebsiteAdsHonesty {
   revenue_usd_cents_until_pricing: number;
   pricing_gate: string;
   legal_gate: string;
+  settlement_open?: boolean;
+  settlement_path?: string;
+  settlement_requires?: string[];
   speak_contributor_share: number;
   speak_platform_share: number;
   money_model: string;
   disbursement: string;
   decision_ref: string;
   spec_ref: string;
+  rank01_decision_ref?: string;
 }
 
 export interface FillResult {
@@ -177,6 +181,7 @@ function parseHonesty(value: unknown): WebsiteAdsHonesty | undefined {
   if (value.revenue_usd_cents_until_pricing !== 0) return undefined;
   if (typeof value.pricing_gate !== "string") return undefined;
   if (typeof value.legal_gate !== "string") return undefined;
+  if ("settlement_open" in value && value.settlement_open !== false) return undefined;
   if (typeof value.speak_contributor_share !== "number") return undefined;
   if (typeof value.speak_platform_share !== "number") return undefined;
   if (typeof value.money_model !== "string") return undefined;

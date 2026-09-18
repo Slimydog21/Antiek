@@ -149,7 +149,8 @@ def decide_fills(
         raise ValueError("fill selector must return exactly one fill per requested edge")
 
     # There is deliberately no CPM-to-impression-price conversion here.  Until
-    # a billing authority supplies a settled price, every fill is unpriced $0.
+    # Rank 0.1 ``settle_fill_decision`` records a gated settled price, every
+    # fill is unpriced $0 (render decision ≠ bill).
     revenue_usd_cents = 0
     price_status = "unpriced"
     decision_id = f"fill-{fingerprint[:24]}"
