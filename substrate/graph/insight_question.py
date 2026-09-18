@@ -1106,6 +1106,7 @@ def promote_from_note_event(
     embedding_provider: Any = None,
     emit_graph_events: bool = True,
     events_dir: str | None = None,
+    min_groundedness: float | None = 0.5,
 ) -> str | None:
     """Promote a single ``note.emerged`` event into an insight node.
 
@@ -1113,9 +1114,19 @@ def promote_from_note_event(
     always-on switch). Grounds on envelope ``document_id`` + a substantive
     chunk so ``knowledge_unit_of`` can assemble a reusable unit; deposit-time
     groundedness scores the note against chunk text PLUS cited
-    ``source_event_ids`` payloads (Loop One evidence answers), because
-    note-taker notes are usually meta-claims about retrieval rather than
-    lexical quotes of the book chunk alone.
+    ``source_event_ids`` payloads (and broadened sibling/decompose/doc
+    evidence).
+
+    ``min_groundedness`` (default 0.5, same bar as the reuse gate) refuses
+    promotion when the honest lexical score is strictly below the bar —
+    ``note.emerged`` stays on the event log for the notebook, but the
+    retrieve pool is not polluted with below-threshold insights. Pass
+    ``min_groundedness=None`` to promote regardless of score (tests /
+    explicit backfill). Never invents or inflates scores.
+
+    Lock order: event-log reads for evidence happen BEFORE the DuckDB write
+    session so note-taker catch_up cannot deadlock (write-held + event-lock
+    wait vs event-held + write wait).
     """
     if not enabled:
         return None
@@ -1132,16 +1143,34 @@ def promote_from_note_event(
     )
     note_text = text.strip()
 
+    # Event-log evidence OUTSIDE the DuckDB writer (avoids lock-order inversion
+    # with DurableNoteTakerReplay.catch_up).
+    event_evidence = _note_evidence_texts(event, events_dir=events_dir, con=None)
+
     def _do(c: LockedConnection) -> str | None:
-        # Score inside the write connection so document chunks are visible.
-        evidence_texts = _note_evidence_texts(
-            event, events_dir=events_dir, con=c
-        )
         chunk_id = (
             resolve_substantive_chunk_id(c, source_document_id)
             if source_document_id
             else None
         )
+        # Chunk texts only here — no event-log iter under the write lock.
+        evidence_texts = list(event_evidence)
+        if source_document_id:
+            try:
+                rows = c.execute(
+                    "SELECT text FROM chunks WHERE document_id = ?",
+                    [source_document_id],
+                ).fetchall()
+            except Exception:
+                rows = []
+            seen = set(evidence_texts)
+            for (chunk_text,) in rows:
+                if chunk_text is None:
+                    continue
+                t = str(chunk_text).strip()
+                if t and t not in seen:
+                    evidence_texts.append(t)
+                    seen.add(t)
         gscore: float | None = None
         if chunk_id or evidence_texts:
             gscore = _score_note_groundedness(
@@ -1150,6 +1179,12 @@ def promote_from_note_event(
                 chunk_id=chunk_id,
                 evidence_texts=evidence_texts,
             )
+        if (
+            min_groundedness is not None
+            and gscore is not None
+            and gscore < float(min_groundedness)
+        ):
+            return None
         meta: dict[str, Any] = {
             "source_event_ids": payload.get("source_event_ids", []),
             "origin_event_id": event.get("event_id"),
@@ -1180,6 +1215,7 @@ def promote_from_note_event(
         return nid
 
     return _with_connection(con, "promote_from_note_event", _do)
+
 
 
 def promote_from_question_event(
