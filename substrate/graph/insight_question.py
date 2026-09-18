@@ -835,14 +835,17 @@ def resolve_substantive_chunk_id(con: Any, document_id: str | None) -> str | Non
 
 
 def _note_evidence_texts(event: dict[str, Any], *, events_dir: str | None) -> list[str]:
-    """Load cited source-event payloads for deposit-time groundedness."""
+    """Load evidence texts for deposit-time groundedness.
+
+    Prefers cited ``source_event_ids``, then adds every
+    ``evidence.retrieve.delivered`` answer in the same investigation.
+    Note-taker windows synthesize across a retrieve slice; scoring only
+    against the cited subset under-grounds meta-notes that are entailed
+    by sibling delivers in the same window.
+    """
     payload = _event_payload(event)
     ids = payload.get("source_event_ids") or []
-    if not isinstance(ids, list) or not ids:
-        return []
-    want = {str(x) for x in ids if x}
-    if not want:
-        return []
+    want = {str(x) for x in ids if isinstance(ids, list) and x}
     investigation_id = event.get("investigation_id") or payload.get("investigation_id") or ""
     if not investigation_id:
         return []
@@ -851,10 +854,9 @@ def _note_evidence_texts(event: dict[str, Any], *, events_dir: str | None) -> li
     except ImportError:
         return []
     root = events_dir or default_events_dir()
-    out: list[str] = []
+    cited: list[str] = []
+    siblings: list[str] = []
     for row in iter_physical_events(str(investigation_id), events_dir=root):
-        if row.get("event_id") not in want:
-            continue
         pl = row.get("payload") or {}
         if not isinstance(pl, dict):
             continue
@@ -865,8 +867,19 @@ def _note_evidence_texts(event: dict[str, Any], *, events_dir: str | None) -> li
             str(pl.get("thesis") or ""),
         ]
         text = "\n".join(b for b in bits if b.strip())
-        if text.strip():
-            out.append(text.strip())
+        if not text.strip():
+            continue
+        eid = row.get("event_id")
+        if want and eid in want:
+            cited.append(text.strip())
+        elif row.get("action_type") == "evidence.retrieve.delivered":
+            siblings.append(text.strip())
+    out = list(cited)
+    seen = set(cited)
+    for s in siblings:
+        if s not in seen:
+            out.append(s)
+            seen.add(s)
     return out
 
 
