@@ -40,3 +40,7 @@ Fix: in-process `_FILLS_GATE` + read-first under gate + 2s write cap + house sca
 
 Prod: `connect_read` raised `BinderException: Unique file handle conflict` (DB already attached RW in uvicorn) — not covered by SAME_FILE string → 500.
 Expanded `connect_read` LazyRW fallback for unique-handle / already-attached.
+
+## Follow-up 3 — single open (cold DuckDB ~7s)
+
+Prod bench: `connect_read`/`connect_write` each ~7s on ~900MB store; read-then-write stacked to ~14s → client timeouts. Fills is now **write-only** (one open; `decide_fills` SELECT-replays). Flock timeout 8s → 503.
