@@ -1729,6 +1729,23 @@ def test_unrelated_tools_scripts_stay_out_of_scope():
 
 
 def test_an_unreadable_conditional_file_fails_closed():
-    """Fail direction check: when the predicate cannot read a file's source it
-    must scan it, not skip it."""
+    """Fail direction check: when the scanner cannot read a file's source it
+    must not let that file leave the scan.
+
+    The predicate-level half (``source=None`` → in scope) is not enough on its
+    own: ``find_violations`` reads the file BEFORE it consults the predicate, so
+    an unreadable file never reaches it. Both halves are asserted here — the
+    second drives the real entry point over a dangling symlink inside the
+    conditional scan dir, which is the only way the promise in
+    ``_tools_file_can_reach_arxiv``'s docstring is actually kept."""
     assert rate_governor_check._in_egress_scan_scope("tools/whatever.py", None) is True
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "tools").mkdir()
+        (root / "tools" / "gone.py").symlink_to(root / "nowhere.py")
+        violations = rate_governor_check.find_violations(root=root)
+
+    assert len(violations) == 1, violations
+    assert violations[0].startswith("tools/gone.py:"), violations
+    assert "unreadable" in violations[0], violations

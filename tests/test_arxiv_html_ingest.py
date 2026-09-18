@@ -6,9 +6,13 @@ A. prefer_html=True + valid FetchedHtml → stored as sanitized HTML with
    provenance metadata (content_sanitized, content_sanitizer_version).
 B. prefer_html=True + fetch_html returns None → falls back to PDF path
    unchanged (existing behavior preserved).
-C. prefer_html=False (default) → PDF path only, fetch_html never called.
+C. prefer_html=False (the explicit opt-out, no longer the default) → PDF path
+   only, fetch_html never called.
 D. ArxivBanned from fetch_html propagates (never silently swallowed).
 E. Existing adapter tests still pass (run separately, reported in DONE.md).
+F. prefer_html defaults to TRUE; a 429 on the HTML leg raises rather than
+   degrading to the heavier PDF endpoint; and in-hand ``pdf_bytes`` with no
+   wired ``fetch_html`` never triggers the default network HTML fetch.
 """
 
 from __future__ import annotations

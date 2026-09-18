@@ -743,8 +743,10 @@ def ingest_paper_with_rights(
     # test suite a live hit on a host that has IP-banned this box before) to
     # replace a body that is already in hand. A caller that genuinely wants
     # HTML-first with its own PDF fallback says so by passing ``fetch_html``,
-    # and then it runs. Callers that pass no body at all — both production call
-    # sites — get the default HTML-first fetch, which is the point of the flag.
+    # and then it runs. Callers that pass no body at all get the default
+    # HTML-first fetch, which is the point of the flag, and that is all three
+    # production call sites: tools/ingest_arxiv.py:170, and the bulk and export
+    # thunks in tools/run_corpus_ingest.py (:433 and :552).
     html_fetcher = fetch_html or (None if pdf_bytes is not None else _default_fetch_html)
     if prefer_html and html_fetcher is not None:
         fetched = html_fetcher(paper.arxiv_id)

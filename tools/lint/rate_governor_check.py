@@ -486,7 +486,19 @@ def find_violations(root: Path = _REPO) -> list[str]:
             continue
         try:
             source = py.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeDecodeError) as exc:
+            # FAIL CLOSED, which is what the conditional scope promises. A file
+            # inside the scan dirs whose source cannot be read cannot be shown
+            # to route its egress through the governor, and silently skipping it
+            # is precisely the blind spot this scanner exists to remove — the
+            # round-4 scope bypass in a different shape. Report it as a
+            # violation so a dangling symlink or an undecodable module is a red
+            # lint the operator sees, not a file that quietly left the scan.
+            out.append(
+                f"{rel}:1: in scope but unreadable ({type(exc).__name__}) — the "
+                "scanner cannot prove this file routes its external egress "
+                "through the host-based arXiv governor"
+            )
             continue
         if not _in_egress_scan_scope(rel, source):
             continue
