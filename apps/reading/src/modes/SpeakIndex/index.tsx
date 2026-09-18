@@ -11,6 +11,7 @@ import {
   type FeedItem,
   type RememberedPerson,
 } from "../../lib/speakApi";
+import { PRIVATE_ECON_COPY } from "../../lib/speakVocab";
 import PublicLane from "../Speak/lanes/PublicLane";
 import YoursLane from "../Speak/lanes/YoursLane";
 import AIActionFailure from "../../shared/AIActionFailure";
@@ -151,6 +152,12 @@ export default function SpeakIndex() {
             {submitting ? "Starting…" : "Start their story"}
           </LemonButton>
         </form>
+        <p
+          className="mb-6 font-serif text-[12px] text-ink-mute dark:text-moonlight"
+          data-testid="private-econ-create-notice"
+        >
+          {PRIVATE_ECON_COPY.createDefaultsPrivate}
+        </p>
 
         {createFailed && (
           <div className="mb-6">

@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import {
   inviteStatusLabel,
+  PRIVATE_ECON_COPY,
   type InviteStatus,
 } from "../../lib/speakVocab";
 
@@ -94,6 +95,17 @@ export default function Invites({
           {" · "}
           {invites.length} invitee{invites.length === 1 ? "" : "s"}
         </p>
+        {publishIntent !== "will_be_public" && (
+          <aside
+            role="note"
+            className="mt-2 rounded border-2 border-emperor bg-ice-0 p-2 dark:bg-charcoal-1"
+            data-testid="private-econ-invites-notice"
+          >
+            <p className="font-serif text-[12px] font-semibold text-ink dark:text-bright">
+              {PRIVATE_ECON_COPY.operatorInviteNoEarnings}
+            </p>
+          </aside>
+        )}
       </header>
 
       <div className="flex gap-2 mb-4">

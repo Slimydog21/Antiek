@@ -20,7 +20,7 @@ import {
   type EconomicsView,
   type ProjectDetail,
 } from "../../lib/speakApi";
-import { VOICE_STATE_LABELS } from "../../lib/speakVocab";
+import { PRIVATE_ECON_COPY, VOICE_STATE_LABELS } from "../../lib/speakVocab";
 import GlassSurface from "../../shell/GlassSurface";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Invites from "./Invites";
@@ -257,6 +257,14 @@ export default function Speak() {
             <p className="mt-0.5 font-serif text-[13px] text-ink-mute dark:text-moonlight">
               {project?.willBePublic ? "Will be shared publicly" : "Kept private"}
             </p>
+            {!project?.willBePublic && (
+              <p
+                className="mt-2 max-w-md font-serif text-[12px] font-semibold text-emperor"
+                data-testid="private-econ-project-notice"
+              >
+                {PRIVATE_ECON_COPY.operatorInviteNoEarnings}
+              </p>
+            )}
           </div>
           <LemonButton
             variant="tertiary"

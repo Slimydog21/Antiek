@@ -184,6 +184,7 @@ def test_biography_invite_lands_on_talk_flow_for_that_project(client):
 
     # The invitee's token lands on the talk flow for THIS biography's project.
     landing = client.get(f"/speak/invite/{token}").json()
+    assert landing["publish_intent"] in ("private_never_published", "will_be_public")
     assert landing["project_id"] == comp["project_id"]
 
 

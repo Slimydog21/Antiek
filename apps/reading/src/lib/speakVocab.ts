@@ -271,6 +271,55 @@ export function inviteStatusLabel(status: InviteStatus): string {
   return VOICE_STATE_LABELS[INVITE_STATUS_TO_VOICE_STATE[status]];
 }
 
+
+/**
+ * PRIVATE_ECON_COPY — unmistakable no-earnings honesty for private /
+ * never-published Speak projects (Anti-Ek remap 2026-09-18 + spine).
+ *
+ * Mirrors `substrate/speak/economics_mode.py`: private + never_published ⇒
+ * `split_applies=False` (no 70% contributor split; creator carries cost;
+ * user plans / publisher economics do not apply). Public / will-be-public
+ * keeps the honest "can earn via escrow" path.
+ *
+ * Not gate phrases (no enable/unlock agency) — live in `allRenderedPhrases()`
+ * so env-flag leak scans still cover them.
+ *
+ * Cite: docs/decisions/anti-ek-speak-deepblu-remap-2026-09-18.md,
+ *       docs/decisions/speak-private-public-spine.md
+ */
+export const PRIVATE_ECON_COPY = {
+  /** Invitee — must be impossible to miss before consent / recording. */
+  inviteeNoEarnings:
+    "You will NOT make money on this private project. Sharing a memory helps " +
+    "the story; there is no payout, ad share, or earnings while it stays private.",
+  inviteeNoEarningsDetail:
+    "Earnings only apply if this story is later published publicly on Antiek — " +
+    "then the usual 70% contributor split can accrue to escrow. Until then: no money.",
+  /** Operator create (defaults to private_never_published). */
+  createDefaultsPrivate:
+    "New stories start private: friends you invite will NOT make money unless " +
+    "you later publish the story publicly on Antiek.",
+  /** Operator Invites panel. */
+  operatorInviteNoEarnings:
+    "Private project — invitees will NOT make money. Publisher and plan " +
+    "economics do not apply. Publish publicly later to unlock the 70% contributor split.",
+  /** SpeakSettings matrix cell (active private). */
+  operatorPrivateMatrixBody:
+    "You invite the people who knew them. Nothing is published; you carry the " +
+    "cost. Invitees will NOT make money on this private project.",
+  /** SpeakSettings "What contributors are owed" when splitApplies=false. */
+  operatorPrivateNoSplit:
+    "This private project is not monetised — contributors will NOT make money " +
+    "here. There is no contributor split, no ad share, and no payout. Publish " +
+    "publicly on Antiek to share earnings 70% with the people who contributed.",
+  /** Public / will-be-public honesty counterpart for invitee + operator. */
+  publicCanEarn:
+    "When this story is public, contributors can earn via the 70% split " +
+    "(accrued to escrow; money routes only after legal review).",
+} as const;
+
+export type PrivateEconCopyKey = keyof typeof PRIVATE_ECON_COPY;
+
 /** Every rendered string this module exposes, flattened — the surface the
  *  gate-honesty contract test scans. Keeping it derived (not hand-maintained)
  *  means a new label/phrase is automatically covered by the test. */
@@ -281,6 +330,7 @@ export function allRenderedPhrases(): string[] {
     ...Object.values(VOICE_STATE_LABELS),
     ...Object.values(PUBLIC_LANE_LABELS),
     ...Object.values(PAYOUT_COPY),
+    ...Object.values(PRIVATE_ECON_COPY),
   ];
   for (const gate of Object.values(GATE_PHRASES)) {
     out.push(gate.label, gate.whenGated);
