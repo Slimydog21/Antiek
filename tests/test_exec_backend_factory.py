@@ -238,6 +238,32 @@ def _mentions_docker(node: ast.stmt) -> bool:
     return "docker" in ast.dump(node).lower()
 
 
+def _docker_branch_imports() -> list[ast.stmt]:
+    """Every import statement sitting inside an ``if effective == "docker"``
+    branch. Nesting the import somewhere in the function is not enough: hoisted
+    to the function top it would run on the default path too, so the branch is
+    the thing worth pinning."""
+    tree = ast.parse(Path(factory_module.__file__).read_text(encoding="utf-8"))
+    found: list[ast.stmt] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If) or not isinstance(node.test, ast.Compare):
+            continue
+        test = node.test
+        if not (isinstance(test.left, ast.Name) and test.left.id == "effective"):
+            continue
+        if not any(
+            isinstance(c, ast.Constant) and c.value == "docker"
+            for c in test.comparators
+        ):
+            continue
+        found.extend(
+            inner
+            for inner in ast.walk(node)
+            if isinstance(inner, ast.Import | ast.ImportFrom)
+        )
+    return found
+
+
 class TestDefaultPathDoesNotImportDocker:
     """The docker adapter is pulled in only when docker is actually asked for."""
 
@@ -250,9 +276,21 @@ class TestDefaultPathDoesNotImportDocker:
             "factory.py imports docker at module level; the import belongs "
             "inside the docker branch"
         )
-        assert [n for n in nested if _mentions_docker(n)], (
+        nested_docker = [n for n in nested if _mentions_docker(n)]
+        assert nested_docker, (
             "expected a function-local docker import in factory.py — the "
             "docker branch is missing"
+        )
+        branch_docker = [n for n in _docker_branch_imports() if _mentions_docker(n)]
+        assert branch_docker, (
+            'expected the docker import inside the `if effective == "docker"` '
+            "branch; anywhere earlier in the function and the default path "
+            "pays for it on every call"
+        )
+        assert len(branch_docker) == len(nested_docker), (
+            "a docker import in factory.py sits outside the docker branch — "
+            f"{len(nested_docker)} function-local, {len(branch_docker)} in the "
+            "branch"
         )
 
     def test_default_build_imports_no_docker_module(self) -> None:
