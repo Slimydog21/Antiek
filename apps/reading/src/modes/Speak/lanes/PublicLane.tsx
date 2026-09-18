@@ -163,6 +163,23 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
         />
       </div>
 
+      {!visitorMode && (
+        <aside
+          className="rounded border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1"
+          data-testid="share-browse-link"
+        >
+          <p className="font-serif text-[12px] text-ink-mute dark:text-moonlight">
+            {PUBLIC_LANE_LABELS.shareBrowseHint}
+          </p>
+          <Link
+            to="/speak/browse"
+            className="mt-1 inline-block font-mono text-[11px] text-sun-deep underline dark:text-sun"
+          >
+            {PUBLIC_LANE_LABELS.shareBrowseLink}
+          </Link>
+        </aside>
+      )}
+
       {/* ── M1 · the feed (loading / empty / empty-search / list) ───────── */}
       {feedLoading ? (
         <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">

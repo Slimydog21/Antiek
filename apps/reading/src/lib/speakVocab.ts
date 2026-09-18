@@ -181,6 +181,10 @@ export type PayoutCopyKey = keyof typeof PAYOUT_COPY;
 export const PUBLIC_LANE_LABELS = {
   browseHeading: "Public remembrances",
   discoverBrowseLink: "Browse public remembrances",
+  shareBrowseLink: "Open public browse (no login)",
+  shareBrowseHint:
+    "Share this page with friends who are not signed in — " +
+    "they can browse remembrances and wait for an invite to add one.",
   discoverBrowseBlurb:
     "Anyone can browse open remembrances without signing in. " +
     "Adding a memory still needs a family invite link until " +

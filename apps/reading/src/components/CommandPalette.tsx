@@ -222,6 +222,13 @@ const ROUTE_INDEX: PaletteRoute[] = [
   },
   {
     kind: "route",
+    id: "route:speak-browse",
+    title: "Public remembrances",
+    subtitle: "Browse open remembrances without an account (/speak/browse)",
+    path: "/speak/browse",
+  },
+  {
+    kind: "route",
     id: "route:federation",
     title: "Federation config",
     subtitle: "Cross-substrate policy (/federation)",
