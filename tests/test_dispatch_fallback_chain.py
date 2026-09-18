@@ -439,10 +439,13 @@ def test_chaos_dispatch_raises_when_all_three_layers_fail(production_config, _ev
             config=production_config,
         )
     rows = trajectory("inv-doubly-doomed")
-    # Three failure events — one per layer walked.
-    assert len(rows) == 3
+    # Registered providers that actually raise emit one error each.
+    # Unregistered primary links (e.g. zai_reasoning when only  was
+    # registered) are skipped quietly — no poison finish_reason=error.
+    assert len(rows) == 2
     for row in rows:
         assert row["payload"]["finish_reason"] == "error"
+        assert row["payload"]["provider"] in {"deepseek", "xiaomi"}
 
 
 # ─────────────────────────────────────────────────────────────────────
