@@ -5,7 +5,7 @@ import PublicLane from "../Speak/lanes/PublicLane";
 import {
   listPublicFeed,
   listPublicOpportunities,
-  openContributionLive,
+  speakPublicHonesty,
   type FeedItem,
   type PublicOpportunity,
 } from "../../lib/speakApi";
@@ -33,11 +33,16 @@ export default function SpeakPublicBrowse() {
       const [f, o, g7] = await Promise.all([
         listPublicFeed(),
         listPublicOpportunities().catch(() => [] as PublicOpportunity[]),
-        openContributionLive().catch(() => false),
+        speakPublicHonesty().catch(() => ({
+          openContributionLive: false,
+          publicPublishingLive: false,
+          disbursementLive: false,
+          moneyModel: "",
+        })),
       ]);
       setFeed(f);
       setOpps(o);
-      setG7Live(Boolean(g7));
+      setG7Live(Boolean(g7 && typeof g7 === "object" ? g7.openContributionLive : g7));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
       setFeed([]);

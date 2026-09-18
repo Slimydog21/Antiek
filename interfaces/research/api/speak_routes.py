@@ -383,7 +383,7 @@ async def get_project(project_id: str) -> ProjectResponse:
 
 @speak_router.get("/projects/{project_id}/economics")
 async def get_economics(project_id: str) -> dict:
-    with _translate(), _write("speak/api:economics") as con:
+    with _translate(), _read("speak/api:economics") as con:
         policy = economics_mode.policy_for_project(con, project_id)
     # The G2/G3 gate STATE, read-only (gate_status.py). The UI shows these
     # as "gated / not yet activated" — there is no flip/close affordance
@@ -803,6 +803,10 @@ async def public_opportunities(
             raise
         pubs = []
     g7 = public_ecosystem_enabled()
+    from substrate.speak import gate_status as _gs
+
+    pub = _gs.public_publishing_allowed()
+    disb = _gs.disbursement_allowed()
     return {
         "honesty": {
             "ranking": speak_pushes.RANKING_HONESTY_ID,
@@ -810,6 +814,11 @@ async def public_opportunities(
             "open_contribution_without_invite": (
                 "live" if g7 else "gated_G7_ANTIEK_SPEAK_PUBLIC_ECOSYSTEM"
             ),
+            # G2/G3 — accrue-now / disburse-later (spr-10 · afa-escrow · remap).
+            # Env-flag names stay in API honesty only; UI uses GATE_PHRASES.
+            "public_publishing": "live" if pub.allowed else "gated_G2_G3",
+            "disbursement": "live" if disb.allowed else "gated_G2_G3_accrue_escrow_only",
+            "money_model": "accrue_escrow_now_disburse_after_legal_review",
         },
         "public_opportunities": [
             {

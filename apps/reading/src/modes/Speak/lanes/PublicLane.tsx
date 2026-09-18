@@ -6,7 +6,7 @@ import {
   getEconomics,
   makeContributionInvitePath,
   openContributePath,
-  openContributionLive,
+  speakPublicHonesty,
   type EconomicsView,
   type FeedItem,
 } from "../../../lib/speakApi";
@@ -128,15 +128,23 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
   // (G7, by contrast, has no FE read and stays static — see the header.)
   const [econ, setEcon] = useState<EconomicsView | null>(null);
   const [g7Live, setG7Live] = useState(false);
+  const [publishingLive, setPublishingLive] = useState(false);
+  const [disbursementLive, setDisbursementLive] = useState(false);
   const probeId = feed.length > 0 ? feed[0].id : null;
   useEffect(() => {
     let live = true;
-    openContributionLive()
-      .then((v) => {
-        if (live) setG7Live(v);
+    speakPublicHonesty()
+      .then((h) => {
+        if (!live) return;
+        setG7Live(h.openContributionLive);
+        setPublishingLive(h.publicPublishingLive);
+        setDisbursementLive(h.disbursementLive);
       })
       .catch(() => {
-        if (live) setG7Live(false);
+        if (!live) return;
+        setG7Live(false);
+        setPublishingLive(false);
+        setDisbursementLive(false);
       });
     return () => {
       live = false;
@@ -336,13 +344,13 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
           </li>
           {/* G2 — LIVE: gated future-tense copy vs honest open-state copy. */}
           <li className="font-serif text-[13px] text-ink dark:text-bright">
-            {publishingOpen
+            {publishingOpen || (visitorMode && publishingLive)
               ? PUBLIC_LANE_LABELS.publishingOpen
               : GATE_PHRASES.publicSharing.whenGated}
           </li>
           {/* G3 — LIVE: gated future-tense copy vs honest open-state copy. */}
           <li className="font-serif text-[13px] text-ink dark:text-bright">
-            {payoutsOpen
+            {payoutsOpen || (visitorMode && disbursementLive)
               ? PUBLIC_LANE_LABELS.payoutsOpen
               : GATE_PHRASES.disbursement.whenGated}
           </li>
