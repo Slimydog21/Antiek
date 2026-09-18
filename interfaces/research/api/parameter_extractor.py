@@ -166,7 +166,7 @@ def _dispatch_and_parse(
         )
         response_text = result.text
         policy_id = f"{result.provider}/{result.model}"
-    except (ProviderError, KeyError) as exc:
+    except Exception as exc:  # ProviderError/KeyError/OwnerByot*/etc.
         print(
             f"parameter_extractor.handle: dispatch failed — "
             f"{type(exc).__name__}: {exc}",
