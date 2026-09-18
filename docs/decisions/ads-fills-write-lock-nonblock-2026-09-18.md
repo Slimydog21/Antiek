@@ -25,3 +25,13 @@ could not complete.
 ## Success
 
 Fills no longer systematically hang under write contention.
+
+## Follow-up (same day)
+
+Prod smoke showed RO-then-RW SAME_FILE races + multi-fd flock wedging.
+Flipped to **write-first (2s)** then **read lookup fallback**; house scan capped.
+
+## Follow-up
+
+Prod wedge: concurrent RO lookup + RW open → DuckDB SAME_FILE; multi-fd flock.
+Fix: in-process `_FILLS_GATE` + read-first under gate + 2s write cap + house scan cap 32.
