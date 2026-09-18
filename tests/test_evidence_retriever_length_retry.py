@@ -1,10 +1,12 @@
-"""Evidence retriever: length retry + self-repair (Mini dogfood)."""
+"""Evidence retriever: first-call budget + length-retry safety (Mini dogfood)."""
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from interfaces.research.api import evidence_retriever as er
+from substrate.dispatch.router import DispatchConfig
 from substrate.schemas import ActionType, Event, EvidenceRetrieveRequestedPayload
 
 
@@ -49,6 +51,27 @@ def _good(sub_q: str) -> str:
     )
 
 
+def test_first_call_uses_raised_output_budget(monkeypatch):
+    calls: list[int | None] = []
+    sub_q = "What evidence supports X?"
+    good = _good(sub_q)
+
+    def fake_once(prompt, event, *, sub_question, semantic_call_id, attempt, max_tokens=None):
+        calls.append(max_tokens)
+        return good, "deepseek/deepseek-v4-pro", "stop"
+
+    monkeypatch.setattr(er, "_dispatch_once", fake_once)
+    parsed, policy = er._dispatch_and_parse(
+        "prompt",
+        _event(sub_q),
+        sub_question=sub_q,
+        canonical_chunk_ids=("chk-1",),
+    )
+    assert parsed is not None
+    assert calls == [er.EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS]
+    assert policy == "deepseek/deepseek-v4-pro"
+
+
 def test_dispatch_and_parse_retries_on_length(monkeypatch):
     calls: list[int | None] = []
     sub_q = "What evidence supports X?"
@@ -56,7 +79,7 @@ def test_dispatch_and_parse_retries_on_length(monkeypatch):
 
     def fake_once(prompt, event, *, sub_question, semantic_call_id, attempt, max_tokens=None):
         calls.append(max_tokens)
-        if max_tokens is None and len(calls) == 1:
+        if len(calls) == 1:
             return "{truncated", "deepseek/deepseek-chat", "length"
         return good, "deepseek/deepseek-chat", "stop"
 
@@ -69,7 +92,8 @@ def test_dispatch_and_parse_retries_on_length(monkeypatch):
     )
     assert parsed is not None
     assert parsed.answer.startswith("X is supported")
-    assert calls == [None, 16384]
+    budget = er.EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS
+    assert calls == [budget, budget]
     assert policy == "deepseek/deepseek-chat"
 
 
@@ -95,3 +119,15 @@ def test_dispatch_and_parse_self_repairs_on_bad_json(monkeypatch):
     assert len(calls) == 2
     assert "structural contract" in calls[1]
     assert policy == "stub-evidence/stub-flash-model"
+
+
+def test_flash_tier_raised_and_evidence_budget_is_16384():
+    cfg = DispatchConfig.from_yaml(
+        Path(__file__).resolve().parents[1]
+        / "substrate"
+        / "dispatch"
+        / "config.yaml"
+    )
+    assert cfg.tiers["flash"].max_tokens == 8192
+    assert cfg.role_tiers["evidence_retriever"] == "flash"
+    assert er.EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS == 16384

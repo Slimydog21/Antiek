@@ -64,6 +64,7 @@ Before you respond, verify your draft does **not** exhibit any of these:
 2. **Unjustified confidence.** Confidence is decorrelated from the model's surface fluency. `confidence_basis` must reference specific chunk counts and tiers, not the feel of the answer.
 3. **Suppressing the gaps field.** Producing a complete-looking answer with `evidentiary_gaps: []` when in fact gaps exist degrades downstream constraint checking and synthesis. List the gaps even when the answer is otherwise strong.
 4. **Citing chunks you did not actually use.** Every `chunk_id` in a claim must contain language that supports the claim. Pro-forma citations get caught at backtest time.
+5. **Verbose answers.** Prefer a tight `answer` (a few sentences) and at most 3–5 `supporting_claims`. Do not pad `evidentiary_gaps` with speculation. Brevity keeps the JSON inside one completion budget.
 
 {voice_addendum}
 """.strip()
