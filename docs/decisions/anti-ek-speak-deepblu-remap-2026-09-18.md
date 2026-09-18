@@ -110,7 +110,46 @@ Payback for Speak contributors happens when ads show on surfaces that **used** t
 
 ---
 
+## Operator vision lock (2026-09-18) — public pay / private no-pay / dual push
+
+Faisal’s product lock for Speak (UX must match `economics_mode` + spine — not a new money path):
+
+### 1) PUBLIC Speak — community insights → pay when published
+
+Anyone can contribute insights that feed **research / books**. When the work is **published** on Antiek (public publishing mode), contributors are paid via the existing **`speak_contribution` escrow** and the **70%** creator/contributor slice (`contributor.py` / `CREATOR_REV_SHARE`). Ads may appear on Read/Research/Write surfaces that use that content — **not** on the Speak surface.
+
+### 2) PRIVATE projects — invite-only corpus; unmistakable no-payout UX
+
+Example: biography of a parent — operator invites friends; they install / open invite links; answer **voice interview** questions; corpus builds in the background; further evidence surfaces new questions → **continuous pings** to invitees.
+
+**Economics (already in code):** `substrate/speak/economics_mode.py` — `invitation=private` + `publishing=never_published` ⇒ **no algorithmic 70% split**; creator carries inference margin; **user plans / publisher economics do not apply**. Accrue/disburse paths must not imply a balance.
+
+**UX requirement (not yet fully productized — required next):** every private / never-published Speak surface (create project, invites, invitee door, economics panel) must make it **unmistakable** that contributors **will NOT make money** on this private project unless/until it is **republished** on Antiek as public (at which point the binding public split applies — see `economics_mode`: public publishing ⇒ split with no creator override). Cite honesty contract in `docs/decisions/speak-private-public-spine.md` (economics view is read-only; no false close affordance).
+
+### 3) PUSHES — dual model
+
+| Push | Audience | Intent |
+|---|---|---|
+| **(a) Public profile-matched** | Open ecosystem (G7 when unlocked) | “What you’d add value to” — match contributor profile/expertise to public research/book gaps |
+| **(b) Private friend invites** | Token invitees | Operator-commissioned remembrance / interview; continuous follow-up pings as gaps reopen |
+
+Both pushes reuse existing invite / feed machinery (`speak_invites`, PublicLane, SpeakInvite) — do not invent a second notification stack in this remap. Continuous-ping for private is **Loop/substrate follow-up** on open questions from the growing corpus (master-spec §11 dashboard / voice follow-up), gated by consent.
+
+### Mapping to KEEP code
+
+| Vision cell | Existing enforcement |
+|---|---|
+| Public → 70% when published | `economics_mode.resolve_policy` (`split_applies == (publishing == public)`); `contributor.accrue_contributions` |
+| Private never-published → $0 payback | Same matrix: `split_applies=False`; spine economics read |
+| Unauth contribute door | Invite token `/speak/invite/:token` (feed CTA dead-end still open — SPR-03) |
+| No ads on Speak | AppLovin decision table — Speak / private / settings out of scope |
+
+---
+
 ## Next Speak gap (after this doc)
 
-1. **PublicLane dead-end** — feed “Add your memory” must mint/link invite token (`/speak/invite/:token`), not authed `/speak/:id`; honest empty/G7 state.
-2. Then: thin glue only if needed so community `voice_note` on research/book investigations always resolve to an `ip_holder` for AccrualContract — still no new ledger.
+1. **Private economics notice (UX)** — unmistakable “you will NOT make money on this private project” on create/invite/invitee/economics surfaces; must mirror `economics_mode` private/never_published (no false payout chrome).
+2. **PublicLane dead-end** — feed “Add your memory” must mint/link invite token (`/speak/invite/:token`), not authed `/speak/:id`; honest empty/G7 state (`speak-private-public-spine.md` SPR-03).
+3. **Continuous ping (private)** — evidence→new questions→invitee nudges; reuse open-question / follow-up paths; consent-scoped.
+4. **Dual push** — (a) public profile-matched “what you’d add value to”; (b) private friend invites — productize on existing invite/feed, G7 for open public.
+5. Thin glue only if needed so community `voice_note` on research/book investigations resolve to an `ip_holder` for AccrualContract — still no new ledger.
