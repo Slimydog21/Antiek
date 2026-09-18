@@ -87,6 +87,20 @@ def _node_ids_from_trajectory(
             if ntype in ("insight", "question") and nid not in seen:
                 seen.add(nid)
                 ordered.append(nid)
+        elif at == ActionType.NOTE_EMERGED.value:
+            # Mini dogfood / projector-off: note.emerged is the durable signal;
+            # insight node id is content-addressed from note_text.
+            text = payload.get("note_text")
+            if isinstance(nid, str) and nid.strip():
+                cand = nid.strip()
+            elif isinstance(text, str) and text.strip():
+                from substrate.graph.insight_question import insight_node_id
+                cand = insight_node_id(text.strip())
+            else:
+                cand = None
+            if cand and cand not in seen:
+                seen.add(cand)
+                ordered.append(cand)
         elif at == ActionType.QUESTION_ESCALATED_TO_RESEARCH.value:
             qid = payload.get("question_id")
             child = payload.get("child_investigation_id")

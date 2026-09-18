@@ -71,6 +71,11 @@ SUBSCRIBED_ACTION_TYPES: tuple[str, ...] = (
     ActionType.DISTILLATION_DELIVERED.value,
     ActionType.CLAIM_GROUNDING_CHECK_PASSED.value,
     ActionType.CLAIM_GROUNDING_CHECK_FAILED.value,
+    ActionType.EVIDENCE_RETRIEVE_DELIVERED.value,
+    ActionType.SYNTHESIZE_DELIVERED.value,
+    ActionType.DECOMPOSE_QUESTION_DELIVERED.value,
+    ActionType.CONNECTOR_DELIVERED.value,
+    ActionType.PARAMETER_EXTRACT_DELIVERED.value,
 )
 
 # Default synthesis cadence. The role prompt is tuned for short
@@ -107,12 +112,26 @@ def _default_replay_service(
         request: dict[str, Any], *, idempotency_key: str
     ) -> Any:
         del idempotency_key
-        return dispatch(
+        result = dispatch(
             request["prompt"],
             "note_taker",
             investigation_id=request["investigation_id"],
             parent_event_id=request["source_event_ids"][-1],
         )
+        if getattr(result, "finish_reason", None) == "length":
+            print(
+                "note_taker.replay: finish_reason=length — "
+                "retrying once with max_tokens=16384",
+                flush=True,
+            )
+            result = dispatch(
+                request["prompt"],
+                "note_taker",
+                investigation_id=request["investigation_id"],
+                parent_event_id=request["source_event_ids"][-1],
+                max_tokens=16384,
+            )
+        return result
 
     return DurableNoteTakerReplay(
         durable_dispatch,

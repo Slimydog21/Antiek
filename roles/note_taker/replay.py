@@ -35,6 +35,12 @@ QUALIFYING_ACTION_TYPES = frozenset(
         "distillation.delivered",
         "claim.grounding_check_passed",
         "claim.grounding_check_failed",
+        # Loop One / spin-research (Mini dogfood 2026-09-18)
+        "evidence.retrieve.delivered",
+        "synthesize.delivered",
+        "decompose.delivered",
+        "connector.delivered",
+        "parameter_extract.delivered",
     }
 )
 
@@ -135,6 +141,82 @@ def _render_event(event: dict[str, Any]) -> str:
     return f"[{event['event_id']}] {event.get('action_type')}: {_canonical(payload or {})}"
 
 
+
+
+def _resolve_note_document_id(
+    investigation_id: str,
+    request: dict[str, Any],
+    *,
+    events_dir: str,
+) -> str:
+    """note.emerged requires envelope document_id (sec 9.1).
+
+    Loop One may omit document_id; parse spawn_context or use research: synthetic.
+    """
+    doc = request.get("document_id")
+    if isinstance(doc, str) and doc.strip():
+        return doc.strip()
+    for event in iter_physical_events(investigation_id, events_dir=events_dir):
+        env_doc = event.get("document_id")
+        if isinstance(env_doc, str) and env_doc.strip():
+            return env_doc.strip()
+        payload = event.get("payload") or {}
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except (TypeError, ValueError):
+                payload = {}
+        sc = payload.get("spawn_context") if isinstance(payload, dict) else None
+        if isinstance(sc, str) and sc.startswith("read: passage "):
+            parts = sc.split()
+            if len(parts) >= 3 and parts[2].strip():
+                return parts[2].strip()
+    return f"research:{investigation_id}"
+
+
+def _promote_delivered_notes(
+    investigation_id: str,
+    delivered_ids: list[str],
+    *,
+    events_dir: str,
+    db_path: str,
+) -> None:
+    """Project note.emerged into insight nodes for distill/AutoNotebook.
+
+    Mini dogfood disables knowledge-projector recovery; without inline
+    promote, note.emerged never becomes GRAPH_NODE_INSERTED.
+    """
+    if not delivered_ids:
+        return
+    try:
+        from substrate.graph.insight_question import promote_from_note_event
+    except ImportError:  # pragma: no cover
+        return
+    want = set(delivered_ids)
+    for event in iter_physical_events(investigation_id, events_dir=events_dir):
+        if event.get("event_id") not in want:
+            continue
+        if event.get("action_type") != "note.emerged":
+            continue
+        try:
+            # emit_graph_events=False: GRAPH_NODE_INSERTED uses the same
+            # investigation delivery.lock as outbox dispatch; nesting/racing
+            # it after note.emerged delivery can TimeoutError for 10s and
+            # still leave distill empty. Nodes land in DuckDB here;
+            # distillation_for also resolves insight ids from note.emerged.
+            promote_from_note_event(
+                event,
+                enabled=True,
+                emit_graph_events=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"note_taker.replay: promote_from_note_event failed for "
+                f"{event.get('event_id')}: {type(exc).__name__}: {exc}",
+                flush=True,
+            )
+
+
 class DurableNoteTakerReplay:
     """Discover fixed physical windows and advance their durable state machine."""
 
@@ -172,7 +254,16 @@ class DurableNoteTakerReplay:
         with _locks_guard:
             lock = _locks.setdefault(key, threading.Lock())
         with lock, _replay_lock(investigation_id, self.events_dir):
-            return self._catch_up_locked(investigation_id)
+            delivered = self._catch_up_locked(investigation_id)
+        # Promote AFTER releasing the replay/delivery locks — emitting
+        # GRAPH_NODE_INSERTED under the replay lock deadlocks the event lock.
+        _promote_delivered_notes(
+            investigation_id,
+            delivered,
+            events_dir=self.events_dir,
+            db_path=self.db_path,
+        )
+        return delivered
 
     def _catch_up_locked(self, investigation_id: str) -> list[str]:
         _assert_complete_tail(investigation_id, self.events_dir)
@@ -259,7 +350,10 @@ class DurableNoteTakerReplay:
             source_json = _canonical(ids)
             source_digest = _digest(source_json)
             request = {
-                "document_id": window[-1].get("document_id"),
+                "document_id": window[-1].get("document_id")
+                or _resolve_note_document_id(
+                    investigation_id, {}, events_dir=self.events_dir
+                ),
                 "investigation_id": investigation_id,
                 "prompt": NOTE_TAKER_SYSTEM_PROMPT
                 + "\n\n"
@@ -326,7 +420,13 @@ class DurableNoteTakerReplay:
         request = json.loads(request_json)
         if not isinstance(request, dict):
             raise TypeError("stored provider request must be an object")
-        params = inspect.signature(self.dispatcher).parameters
+        try:
+            params = inspect.signature(self.dispatcher).parameters
+        except (TypeError, ValueError) as exc:
+            # CPython 3.12+ may raise ValueError for bogus __signature__;
+            # keep the local-validation contract as TypeError so the window
+            # stays prepared (test_local_pre_dispatch_validation_*).
+            raise TypeError("dispatcher signature is not inspectable") from exc
         if "idempotency_key" in params:
             return lambda: self.dispatcher(request, idempotency_key=key)
         if len(params) >= 2:
@@ -429,7 +529,11 @@ class DurableNoteTakerReplay:
                             ).fetchone()[0],
                             event_id=event_id,
                             emitted_at=datetime.now(UTC),
-                            document_id=json.loads(request_json).get("document_id"),
+                            document_id=_resolve_note_document_id(
+                                investigation_id,
+                                json.loads(request_json),
+                                events_dir=self.events_dir,
+                            ),
                         )
                         enqueue_event(
                             con,
