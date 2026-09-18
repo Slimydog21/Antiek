@@ -870,7 +870,16 @@ def _note_evidence_texts(
     cited: list[str] = []
     siblings: list[str] = []
     agenda: list[str] = []
-    for row in iter_physical_events(str(investigation_id), events_dir=root):
+    # Unlocked physical read: append-only JSONL/parquet. Taking
+    # investigation_event_lock (.delivery.lock) here deadlocks on macOS when
+    # the caller already holds that lock (e.g. _promote_delivered_notes iterating
+    # note.emerged under iter_physical_events) — flock is not re-entrant across
+    # fds. Concurrent catch_up holding the lock would also TimeoutError promote.
+    for row in iter_physical_events(
+        str(investigation_id),
+        events_dir=root,
+        _lock_already_held=True,
+    ):
         pl = row.get("payload") or {}
         if not isinstance(pl, dict):
             continue

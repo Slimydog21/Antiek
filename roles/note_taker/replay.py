@@ -233,11 +233,20 @@ def _promote_delivered_notes(
     except ImportError:  # pragma: no cover
         return
     want = set(delivered_ids)
-    for event in iter_physical_events(investigation_id, events_dir=events_dir):
-        if event.get("event_id") not in want:
-            continue
-        if event.get("action_type") != "note.emerged":
-            continue
+    # Snapshot note events WITHOUT holding .delivery.lock across promote.
+    # Nested iter_physical_events (evidence load) cannot re-acquire the same
+    # flock on macOS; concurrent catch_up would also block locked reads.
+    note_events = [
+        event
+        for event in iter_physical_events(
+            investigation_id,
+            events_dir=events_dir,
+            _lock_already_held=True,
+        )
+        if event.get("event_id") in want
+        and event.get("action_type") == "note.emerged"
+    ]
+    for event in note_events:
         try:
             # emit_graph_events=False: GRAPH_NODE_INSERTED uses the same
             # investigation delivery.lock as outbox dispatch; nesting/racing
