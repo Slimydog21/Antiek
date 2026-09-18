@@ -57,7 +57,7 @@ export default function SpeakPublicBrowse() {
           <p className="font-mono text-[10px] uppercase tracking-wider text-ink-mute dark:text-moonlight">
             Antiek Speak
           </p>
-          <h1 className="mt-1 font-serif text-[28px] font-semibold text-ink dark:text-bright">
+          <h1 className="mt-1 font-serif text-[24px] font-semibold text-ink dark:text-bright">
             {PUBLIC_LANE_LABELS.browseHeading}
           </h1>
           <p className="mt-2 font-serif text-[14px] text-ink-mute dark:text-moonlight">
