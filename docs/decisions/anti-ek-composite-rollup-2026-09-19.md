@@ -44,3 +44,10 @@
 ## Leave-off
 
 After this fix lands: pick BYOT/ACU dogfood **or** TalkToBook↔TP unify **or** outline→Write import based on Faisal priority; composite climbs via residuals 2–4 and 9.
+
+## Follow-up (same residual)
+
+Warm-writer keepalive parked the RW handle after `graph.schema` CLI init, so the
+CLI's subsequent `read_only` connect failed even with antiek stopped. Fix:
+`flush_warm_writers` in schema CLI + `ANTIEK_WRITE_KEEPALIVE_S=0` on ansible
+migrate/verify tasks.

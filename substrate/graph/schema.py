@@ -2292,10 +2292,17 @@ def list_tables(con: duckdb.DuckDBPyConnection) -> list[str]:
 if __name__ == "__main__":
     import argparse
 
+    from runtime.db_lock import flush_warm_writers
+
     p = argparse.ArgumentParser(description="Initialize the Antiek graph schema")
     p.add_argument("--db-path", required=True, help="Path to DuckDB file")
     args = p.parse_args()
     init_database_at_path(args.db_path)
+    # Warm-writer keepalive parks the RW handle after init_database_at_path;
+    # a read_only reopen in the same process then fails with DuckDB
+    # "different configuration than existing connections". Flush first.
+    # Cite: docs/decisions/anti-ek-composite-rollup-2026-09-19.md
+    flush_warm_writers(args.db_path)
     con = duckdb.connect(args.db_path, read_only=True)
     try:
         for t in list_tables(con):
