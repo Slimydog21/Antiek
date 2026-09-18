@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
-import { getBook, getBookFullText, listBooks, servabilityLabel } from "../../api/books";
+import { getBook, getBookFullText, listBooks, servabilityLabel, spinResearch } from "../../api/books";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
 import type {
@@ -41,7 +41,6 @@ import { emitSourceRead, isRead } from "./sourceRead";
 export default function BookReader() {
   const { documentId = "" } = useParams<{ documentId: string }>();
   const navigate = useNavigate();
-  const openPanel = useWorkspace((s) => s.open);
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [body, setBody] = useState<FullTextResponse | null>(null);
@@ -166,8 +165,8 @@ export default function BookReader() {
   // book selection's document + its §9.0 servable flag so the menu's outbound
   // chokepoint can refuse a withheld selection. The in-book highlight→action
   // (the old inline "Go deeper" affordance) is GENERALIZED through this menu:
-  // Deep-research opens the SAME floating ChaseThread panel that Research uses,
-  // so there is ONE in-book highlight primitive across both surfaces.
+  // Deep-research (highlight) used to open ChaseThread without book provenance;
+  // that path never hit spin-research / notebook distill. Wire to spin-research.
   const articleRef = useRef<HTMLElement>(null);
 
   // §9.0 servability of the open book — the in-book selection's servability.
@@ -196,21 +195,23 @@ export default function BookReader() {
     minLength: 8,
   });
 
-  // Deep-research → the EXISTING workspace ChaseThread floating panel. §9.0:
-  // `safeSpawnText` is null when the selection crosses a withheld region —
-  // refuse rather than spawn on a withheld body (the chokepoint already refuses,
-  // so this is null only for a non-servable book; we never chase it).
+  // Deep-research (highlight) -> spin-research + /inv/:id. Book-bound provenance
+  // via POST /books/{id}/spin-research. ChaseThread stays the in-investigation
+  // chase path on the Research workstation. Section 9.0: null safeSpawnText = refuse.
   const onDeepResearch = useCallback(
     (safeSpawnText: string | null, _sel: FloatMenuSelection) => {
       if (safeSpawnText === null) return;
-      window.getSelection()?.removeAllRanges(); // collapse so the menu closes
-      openPanel(
-        "ChaseThread",
-        { spawnContext: safeSpawnText, parentInvestigationId: readingThreadId },
-        { mode: "floating", title: "Follow this" },
-      );
+      window.getSelection()?.removeAllRanges();
+      void (async () => {
+        try {
+          const res = await spinResearch(documentId, pageIndex, safeSpawnText);
+          navigate(`/inv/${encodeURIComponent(res.investigation_id)}`);
+        } catch (err: unknown) {
+          console.error("spin-research from highlight failed", err);
+        }
+      })();
     },
-    [openPanel, readingThreadId],
+    [documentId, pageIndex, navigate],
   );
 
   // Turning the page (or jumping via TOC) collapses a stale selection — the
@@ -340,8 +341,8 @@ export default function BookReader() {
           (substrate/graph/insight_question.promote_from_marginalia_event; the
           /events/typed endpoint promotes on emit, backfill is the safety net).
           §9: source_kind "user" is carried onto the node — never conflated with
-          a model-emerged insight. Deep-research opens a floating ChaseThread
-          panel. §9.0: the outbound chokepoint refuses Search/Deep-research
+          a model-emerged insight. Deep-research spins book-bound research and
+          navigates to /inv/:id. §9.0: the outbound chokepoint refuses Search/Deep-research
           over a non-servable book. */}
       <FloatMenu
         selection={selection}

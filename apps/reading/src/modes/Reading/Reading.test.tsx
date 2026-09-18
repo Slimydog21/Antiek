@@ -407,9 +407,17 @@ describe("BookReader", () => {
     expect(env.payload.note_text).toBe("a thought while reading");
   });
 
-  it("Deep-research in-book opens a floating ChaseThread seeded with the passage (generalized rabbit-hole, M2/M3)", async () => {
+  it("Deep-research in-book spins research and navigates to /inv/:id (dogfood vertical slice)", async () => {
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());
+    spinResearchMock.mockResolvedValue({
+      investigation_id: "inv-from-highlight",
+      document_id: "doc-1",
+      page_index: 0,
+      gated: false,
+      servability: "public_domain",
+      seed_preview: "The opening of the book.",
+    });
     await renderReader();
     const para = await screen.findByText("The opening of the book.");
     selectTextIn(para, "The opening of the book.");
@@ -417,16 +425,18 @@ describe("BookReader", () => {
     const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Deep-research" }));
 
-    const panel = Object.values(useWorkspace.getState().panels).find((p) => p.kind === "ChaseThread");
-    expect(panel).toBeTruthy();
-    expect(panel?.mode).toBe("floating");
-    expect(panel?.title).toBe("Follow this");
-    expect(panel?.props).toMatchObject({
-      spawnContext: "The opening of the book.",
-      parentInvestigationId: "read-doc-1",
-    });
-    // The reader stays in place while the research panel floats in workspace chrome.
-    expect(screen.getByRole("complementary", { name: /Reading companion/ })).toBeTruthy();
+    await waitFor(() => expect(spinResearchMock).toHaveBeenCalled());
+    expect(spinResearchMock).toHaveBeenCalledWith(
+      "doc-1",
+      0,
+      expect.stringContaining("The opening of the book."),
+    );
+    expect(navigateMock).toHaveBeenCalledWith("/inv/inv-from-highlight");
+    // Reader no longer opens ChaseThread for Deep-research — that path lacked
+    // book provenance and never hit spin-research / notebook distill.
+    expect(
+      Object.values(useWorkspace.getState().panels).find((p) => p.kind === "ChaseThread"),
+    ).toBeUndefined();
   });
 
   it("a taken-down (restricted) book renders no body — nothing to read, highlight, or chase (servable-corpus honesty, §9.0)", async () => {
