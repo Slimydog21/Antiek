@@ -36,6 +36,7 @@ import contextlib
 import os
 import sys
 import threading
+import time
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
@@ -146,7 +147,7 @@ def start_replay_recovery(
     db_path: str | None = None,
     events_dir: str | None = None,
     stop_event: threading.Event | None = None,
-    poll_interval_s: float = 0.5,
+    poll_interval_s: float = 2.0,
 ) -> threading.Thread:
     """Continuously catch up every physical stream without blocking startup."""
     if poll_interval_s <= 0:
@@ -172,6 +173,12 @@ def start_replay_recovery(
                         f"{investigation_id}: {exc!r}",
                         file=sys.stderr,
                     )
+                # Fairness gap so fills / lease peers can acquire (#3164 class).
+                yield_s = float(
+                    os.environ.get("ANTIEK_NOTE_TAKER_REPLAY_LOCK_YIELD_S", "1.0") or "1.0"
+                )
+                if yield_s > 0 and not os.environ.get("PYTEST_CURRENT_TEST"):
+                    time.sleep(yield_s)
             stop.wait(poll_interval_s)
 
     thread = threading.Thread(target=recover, name="note-taker-replay-recovery", daemon=True)
