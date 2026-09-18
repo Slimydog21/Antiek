@@ -35,3 +35,8 @@ Flipped to **write-first (2s)** then **read lookup fallback**; house scan capped
 
 Prod wedge: concurrent RO lookup + RW open → DuckDB SAME_FILE; multi-fd flock.
 Fix: in-process `_FILLS_GATE` + read-first under gate + 2s write cap + house scan cap 32.
+
+## Follow-up 2 — BinderException LazyRW
+
+Prod: `connect_read` raised `BinderException: Unique file handle conflict` (DB already attached RW in uvicorn) — not covered by SAME_FILE string → 500.
+Expanded `connect_read` LazyRW fallback for unique-handle / already-attached.
