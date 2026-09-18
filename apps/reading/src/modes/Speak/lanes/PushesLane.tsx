@@ -15,7 +15,7 @@ import { PUSHES_COPY } from "../../../lib/speakVocab";
 /**
  * Dual-push inbox (Anti-Ek Speak remap §PUSHES).
  *
- * (a) Public opportunities — heuristic fewest-voices ranking.
+ * (a) Public opportunities — multi-signal heuristic ranking (not ML).
  * (b) Private re-pings — prepare followups + SpeakInvite door.
  * No second notification stack; no ML. Optional AgentMail/Resend when env gate on.
  */
@@ -134,6 +134,9 @@ export default function PushesLane() {
         <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
           {PUSHES_COPY.publicHeading}
         </h3>
+          <p className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight">
+            {PUSHES_COPY.rankingSignals}
+          </p>
         {pubs.length === 0 ? (
           <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
             {PUSHES_COPY.publicEmpty}

@@ -298,9 +298,15 @@ export async function listPublicFeed(): Promise<FeedItem[]> {
   }));
 }
 
-/** Unauthenticated public opportunities (fewest-voices heuristic). */
-export async function listPublicOpportunities(): Promise<PublicOpportunity[]> {
-  const resp = await apiFetch("/speak/opportunities");
+/** Unauthenticated public opportunities (multi-signal heuristic, not ML). */
+export async function listPublicOpportunities(opts?: {
+  interest?: string;
+}): Promise<PublicOpportunity[]> {
+  const q =
+    opts?.interest && opts.interest.trim()
+      ? `?interest=${encodeURIComponent(opts.interest.trim())}`
+      : "";
+  const resp = await apiFetch(`/speak/opportunities${q}`);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const raw = (await resp.json()) as Record<string, unknown>;
   const pubs = Array.isArray(raw.public_opportunities) ? raw.public_opportunities : [];
@@ -312,6 +318,7 @@ export async function listPublicOpportunities(): Promise<PublicOpportunity[]> {
       subjectRef: typeof r.subject_ref === "string" ? r.subject_ref : null,
       voiceCount: typeof r.voice_count === "number" ? r.voice_count : 0,
       rankReason: String(r.rank_reason ?? ""),
+      rankScore: typeof r.rank_score === "number" ? r.rank_score : 0,
     };
   });
 }
@@ -426,6 +433,7 @@ export interface PublicOpportunity {
   subjectRef: string | null;
   voiceCount: number;
   rankReason: string;
+  rankScore: number;
 }
 
 export interface PrivateReping {
@@ -479,6 +487,7 @@ export async function listPushes(): Promise<PushesView> {
         subjectRef: typeof r.subject_ref === "string" ? r.subject_ref : null,
         voiceCount: typeof r.voice_count === "number" ? r.voice_count : 0,
         rankReason: String(r.rank_reason ?? ""),
+        rankScore: typeof r.rank_score === "number" ? r.rank_score : 0,
       };
     }),
     privateRepings: privs.map((row) => {

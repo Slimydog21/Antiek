@@ -713,21 +713,25 @@ class RepingRequest(BaseModel):
 
 
 @speak_router.get("/opportunities")
-async def public_opportunities() -> dict:
+async def public_opportunities(
+    interest: str | None = Query(None, description="Optional interest tokens for title/subject overlap"),
+) -> dict:
     """Unauthenticated public contribution opportunities (read-only).
 
-    Same heuristic as dual-push public list (fewest voices first) — NOT ML.
+    Same multi-signal heuristic as dual-push public list — NOT ML.
     Open in operator-auth middleware. G7 flag is honest: open contribution
     without an invite is still gated; this endpoint only *lists* projects.
     """
     from substrate.speak.invitations import public_ecosystem_enabled
 
     with _translate(), _write("speak/api:opportunities") as con:
-        pubs = speak_pushes.list_public_opportunities(con)
+        pubs = speak_pushes.list_public_opportunities(
+            con, interest=interest
+        )
     g7 = public_ecosystem_enabled()
     return {
         "honesty": {
-            "ranking": "fewest_voices_first_heuristic_not_ml_profile_matching",
+            "ranking": speak_pushes.RANKING_HONESTY_ID,
             "auth": "unauthenticated_read_only",
             "open_contribution_without_invite": (
                 "live" if g7 else "gated_G7_ANTIEK_SPEAK_PUBLIC_ECOSYSTEM"
@@ -740,6 +744,7 @@ async def public_opportunities() -> dict:
                 "subject_ref": o.subject_ref,
                 "voice_count": o.voice_count,
                 "rank_reason": o.rank_reason,
+                "rank_score": round(o.rank_score, 4),
             }
             for o in pubs
         ],
@@ -750,7 +755,7 @@ async def public_opportunities() -> dict:
 async def list_pushes() -> dict:
     """Operator inbox for dual push.
 
-    ``public_opportunities`` — will_be_public projects, fewest voices first
+    ``public_opportunities`` — will_be_public projects, multi-signal heuristic
     (honest: heuristic, not profile matching).
     ``private_repings`` — invitees still in flight with an invite token;
     pending question counts from async_interview.resume.
@@ -760,7 +765,7 @@ async def list_pushes() -> dict:
     privates = speak_pushes.list_private_repings_at(_db())
     return {
         "honesty": {
-            "public_ranking": "fewest_voices_first_heuristic_not_ml_profile_matching",
+            "public_ranking": speak_pushes.RANKING_HONESTY_ID,
             "private_delivery": "invite_path_plus_optional_email_when_ANTIEK_SPEAK_REPING_EMAIL",
         },
         "public_opportunities": [
@@ -770,6 +775,7 @@ async def list_pushes() -> dict:
                 "subject_ref": o.subject_ref,
                 "voice_count": o.voice_count,
                 "rank_reason": o.rank_reason,
+                "rank_score": round(o.rank_score, 4),
             }
             for o in pubs
         ],
