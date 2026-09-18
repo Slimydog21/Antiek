@@ -1,11 +1,13 @@
 """The two owner predicates must agree on who a person is, and fail closed together.
 
-Antiek resolves "which person is this request" in two places for two purposes:
+Antiek resolves "which person is this request" in three places for three purposes:
 
   * ``account_memory_identity.distinct_signed_owner`` — whose private memory and
     whose ingested documents these are;
   * ``owner_byot_dispatch.authenticated_distinct_owner`` — whose API credential and
-    whose budget this request may spend.
+    whose budget this request may spend;
+  * ``research_tool_search._owner`` — whose connected third-party tool credential
+    (X, YouTube, and the finance vendors) this search may spend.
 
 They must return the SAME value for the same human. If they ever diverge, a person's
 spend is attributed to an identity their own memory cannot see, and the BYOT usage
@@ -33,6 +35,8 @@ from interfaces.research.api.owner_byot_dispatch import (
     OwnerByotDispatchUnavailable,
     authenticated_distinct_owner,
 )
+from interfaces.research.api.research_tool_search import _PublicError
+from interfaces.research.api.research_tool_search import _owner as tool_search_owner
 
 OPERATOR_EMAIL = "operator@example.test"
 
@@ -54,14 +58,39 @@ def _memory(user_id: object, email: object) -> str | None:
     return distinct_signed_owner(_request(SESSION_AUTH_METHOD, user_id, email))
 
 
+def _tools(method: str, user_id: object, email: object) -> str | None:
+    try:
+        return tool_search_owner(_request(method, user_id, email))
+    except _PublicError:
+        return None
+
+
 def test_both_predicates_resolve_the_operator_session_to_one_owner() -> None:
-    """The load-bearing invariant: one person, one owner, across memory and spend."""
+    """The load-bearing invariant: one person, one owner, across memory, spend and tools."""
     memory_owner = _memory("__operator__", OPERATOR_EMAIL)
     spend_owner = _byot(SESSION_AUTH_METHOD, "__operator__", OPERATOR_EMAIL)
+    tools_owner = _tools(SESSION_AUTH_METHOD, "__operator__", OPERATOR_EMAIL)
 
     assert memory_owner is not None, "account memory refused a real operator session"
     assert spend_owner is not None, "BYOT dispatch refused a real operator session"
-    assert memory_owner == spend_owner
+    assert tools_owner is not None, "connected-tool search refused a real operator session"
+    assert memory_owner == spend_owner == tools_owner
+
+
+def test_connected_tool_search_fails_closed_the_same_way() -> None:
+    """The tool predicate shares the boundary, not just the happy path.
+
+    Note the asymmetry this closed: ``settings_tool_connections`` already refused the
+    sentinel only for machine auth methods, so STORING a connected credential worked
+    while every search that would USE one answered 401. The chassis looked wired end to
+    end precisely because nothing downstream of the gate had ever been reached.
+    """
+    assert _tools(SESSION_AUTH_METHOD, "__operator__", None) is None
+    assert _tools("bearer_token", "__operator__", OPERATOR_EMAIL) is None
+    assert _tools("cloudflare_service_token", "__operator__", OPERATOR_EMAIL) is None
+    for sentinel in ("shared", "service", "local"):
+        assert _tools(SESSION_AUTH_METHOD, sentinel, OPERATOR_EMAIL) is None
+    assert _tools(SESSION_AUTH_METHOD, "usr_real_123", OPERATOR_EMAIL) == "usr_real_123"
 
 
 def test_both_predicates_pass_a_genuine_user_id_through_unchanged() -> None:

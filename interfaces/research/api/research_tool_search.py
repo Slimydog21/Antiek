@@ -12,6 +12,12 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, FastAPI, Request, Response
+
+from interfaces.research.api.account_memory_identity import (
+    FORBIDDEN_OWNERS,
+    OPERATOR_STORAGE_SENTINEL,
+    derive_owner_from_verified_email,
+)
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -65,13 +71,40 @@ class _PublicError(Exception):
 
 
 def _owner(request: Request) -> str:
+    """Resolve the person whose connected-tool credential this search may spend.
+
+    This refused ``__operator__`` unconditionally, which is the user_id every production
+    login mints — so every connected-tool search answered 401 and no stored credential
+    could ever be used. Storing one worked (``settings_tool_connections._owner`` refuses
+    the sentinel only for the machine auth methods), which is why the chassis looked
+    wired end to end while nothing downstream of it was reachable: the X and YouTube
+    defects behind this gate had never been reached to be noticed.
+
+    Resolve through the same shared derivation as account memory and BYOT dispatch, so
+    one person is one owner across their memory, their spend and their tools. A
+    session-cookie request has already had its address verified and allowlist-checked by
+    the auth middleware; ``derive_owner_from_verified_email`` returns None when there is
+    no address, so this still fails closed rather than inventing an owner.
+    """
     owner = getattr(request.state, "user_id", None)
     method = getattr(request.state, "auth_method", None)
     if not isinstance(owner, str) or not owner.strip() or len(owner) > 256:
         raise _PublicError(401, "authenticated user identity required")
-    if method != "antiek_session_cookie" or owner == "__operator__":
+    if method != "antiek_session_cookie":
         raise _PublicError(401, "authenticated user identity required")
-    return owner.strip()
+
+    normalized = owner.strip()
+    if normalized.casefold() not in FORBIDDEN_OWNERS:
+        return normalized
+    if normalized.casefold() != OPERATOR_STORAGE_SENTINEL:
+        raise _PublicError(401, "authenticated user identity required")
+
+    derived = derive_owner_from_verified_email(
+        getattr(request.state, "user_email", None)
+    )
+    if derived is None:
+        raise _PublicError(401, "authenticated user identity required")
+    return derived
 
 
 def _journal_path() -> Path:
