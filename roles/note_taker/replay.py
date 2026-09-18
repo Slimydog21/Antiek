@@ -244,12 +244,20 @@ def _promote_delivered_notes(
             # it after note.emerged delivery can TimeoutError for 10s and
             # still leave distill empty. Nodes land in DuckDB here;
             # distillation_for also resolves insight ids from note.emerged.
-            promote_from_note_event(
+            # min_groundedness=0.5 (default): refuse below-threshold insights
+            # so the retrieve pool stays high-signal; note.emerged remains.
+            nid = promote_from_note_event(
                 event,
                 enabled=True,
                 emit_graph_events=False,
                 events_dir=events_dir,
             )
+            if nid is None:
+                print(
+                    f"note_taker.replay: promote refused (below groundedness "
+                    f"bar or empty note) for {event.get('event_id')}",
+                    flush=True,
+                )
         except Exception as exc:  # noqa: BLE001
             print(
                 f"note_taker.replay: promote_from_note_event failed for "
