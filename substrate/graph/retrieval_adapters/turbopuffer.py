@@ -35,7 +35,7 @@ _SKIPPED = "skipped — no credentials"
 _ENABLE_ENV = "ANTIEK_TURBOPUFFER_SHADOW_ENABLED"
 _SERVABLE_ENABLE_ENV = "ANTIEK_TURBOPUFFER_SERVABLE"
 _MAX_ROWS_ENV = "ANTIEK_TURBOPUFFER_MAX_ROWS"
-_DEFAULT_MAX_ROWS = 10_000
+_DEFAULT_MAX_ROWS = 50_000
 DEFAULT_NAMESPACE = "antiek-shadow-chunks-v1"
 _FORBIDDEN_NAMESPACE_PARTS = ("user", "investigation", "shard")
 
@@ -147,6 +147,40 @@ class TurbopufferSubstrate:
             "production_default_mount": False,
         }
 
+    def eligible_stats(self) -> dict[str, Any]:
+        """Count DuckDB SoT rows eligible for the TurboPuffer SERVABLE index."""
+        allowed = sorted(TURBOPUFFER_INDEX_CONTENT_CLASSES)
+        placeholders = ",".join("?" for _ in allowed)
+        docs = self._con.execute(
+            f"SELECT count(*) FROM documents WHERE content_class IN ({placeholders})",
+            allowed,
+        ).fetchone()[0]
+        chunks = self._con.execute(
+            "SELECT count(*) FROM chunks c JOIN documents d ON d.document_id=c.document_id "
+            f"WHERE d.content_class IN ({placeholders})",
+            allowed,
+        ).fetchone()[0]
+        with_emb = self._con.execute(
+            "SELECT count(*) FROM chunks c JOIN documents d ON d.document_id=c.document_id "
+            f"WHERE c.embedding IS NOT NULL AND d.content_class IN ({placeholders})",
+            allowed,
+        ).fetchone()[0]
+        with_meta = self._con.execute(
+            "SELECT count(*) FROM embeddings_meta em "
+            "JOIN chunks c USING(chunk_id) "
+            "JOIN documents d ON d.document_id=c.document_id "
+            f"WHERE d.content_class IN ({placeholders})",
+            allowed,
+        ).fetchone()[0]
+        return {
+            "export_classes": allowed,
+            "documents": int(docs),
+            "chunks": int(chunks),
+            "chunks_with_embedding": int(with_emb),
+            "chunks_with_embeddings_meta": int(with_meta),
+            "export_ready": int(with_emb) == int(with_meta),
+        }
+
     def _ns(self) -> ShadowNamespace:
         if self._namespace is None:
             if not self._api_key:
@@ -209,6 +243,19 @@ class TurbopufferSubstrate:
                     "staging_namespace": staging, "eligible_rows": len(payload),
                     "content_hash": content_hash, "batches": math.ceil(len(payload) / batch_size),
                     "embedding": manifest["embedding"]}
+        # Incremental: skip vendor rewrite when active SERVABLE pointer already
+        # matches this exact rights-clean export digest (cron-friendly no-op).
+        active = self.active_pointer()
+        if active and active.get("content_hash") == content_hash:
+            return {
+                "status": "unchanged",
+                "namespace": active.get("active_namespace"),
+                "row_count": len(payload),
+                "content_hash": content_hash,
+                "eligible_rows": len(payload),
+                "embedding": manifest["embedding"],
+                "incremental": True,
+            }
         ns = self._namespace or make_namespace(api_key=self._api_key or "", region=self._region,
                                                namespace=staging)
         max_rows = _max_export_rows()
@@ -356,6 +403,33 @@ class TurbopufferSubstrate:
                     "node_matches": [], "status": self.query_status_label()}
         except Exception as exc:
             return fallback(type(exc).__name__)
+
+    def sync_servable(
+        self,
+        *,
+        dry_run: bool = False,
+        batch_size: int = 500,
+        auto_promote: bool = False,
+        confirm: str | None = None,
+    ) -> dict[str, Any]:
+        """Rebuild if the eligible export digest changed; optionally promote.
+
+        DuckDB remains SoT. This is the cron entrypoint for incremental
+        TurboPuffer refresh (no-op when ``content_hash`` matches active pointer).
+        """
+        stats = self.eligible_stats()
+        staged = self.rebuild_shadow(dry_run=dry_run, batch_size=batch_size)
+        out: dict[str, Any] = {"eligible": stats, "rebuild": staged}
+        if dry_run or staged.get("status") in {"unchanged", "dry-run"}:
+            out["status"] = staged.get("status")
+            return out
+        if not auto_promote:
+            out["status"] = "staged"
+            return out
+        promoted = self.promote(staged["manifest_path"], confirmation=confirm or "")
+        out["promote"] = promoted
+        out["status"] = "synced"
+        return out
 
     def close(self) -> None:
         self._con.close()

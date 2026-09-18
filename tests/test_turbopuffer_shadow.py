@@ -299,3 +299,36 @@ def test_cli_status_action(graph, tmp_path, monkeypatch, capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["duckdb_is_sot"] is True
     assert out["adapter"] == "turbopuffer"
+
+
+def test_rebuild_unchanged_when_active_hash_matches(graph, tmp_path):
+    fake = FakeNamespace()
+    sub = TurbopufferSubstrate.open(graph, model=HashEmbedding(), api_key="x", namespace=fake,
+                                    manifest_dir=tmp_path)
+    staged = sub.rebuild_shadow()
+    sub.promote(staged["manifest_path"],
+                confirmation="PROMOTE-" + staged["content_hash"][:12])
+    # second rebuild against same payload must short-circuit
+    again = TurbopufferSubstrate.open(graph, model=HashEmbedding(), api_key="x", namespace=fake,
+                                      manifest_dir=tmp_path)
+    out = again.rebuild_shadow()
+    assert out["status"] == "unchanged"
+    assert out["incremental"] is True
+    assert out["content_hash"] == staged["content_hash"]
+
+
+def test_eligible_stats_and_sync_dry_run(graph, tmp_path):
+    fake = FakeNamespace()
+    sub = TurbopufferSubstrate.open(graph, model=HashEmbedding(), api_key="x", namespace=fake,
+                                    manifest_dir=tmp_path)
+    stats = sub.eligible_stats()
+    assert stats["chunks_with_embedding"] >= 1
+    assert stats["export_ready"] is True
+    synced = sub.sync_servable(dry_run=True)
+    assert synced["status"] == "dry-run"
+    assert synced["eligible"]["chunks"] >= 1
+
+
+def test_default_max_rows_raised():
+    from substrate.graph.retrieval_adapters import turbopuffer as mod
+    assert mod._DEFAULT_MAX_ROWS >= 50_000
