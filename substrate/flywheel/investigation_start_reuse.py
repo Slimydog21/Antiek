@@ -43,10 +43,13 @@ def maybe_reuse_prior_knowledge_at_start(
     if not investigation_id or not (question_text or "").strip():
         return None
     parent = None
+    registered = False
+    resolved_db = ""
     try:
         import duckdb
 
         from processing.embedding import default_embedding_provider
+        from runtime.db_lock import _register_local_writer, _unregister_local_writer
         from substrate.context_pack.knowledge_reuse import (
             assemble_context_pack_with_reuse,
             retrieve_prior_units,
@@ -60,7 +63,10 @@ def maybe_reuse_prior_knowledge_at_start(
         model = embedding_provider or default_embedding_provider()
 
         # Read-write, no flock — shares process DuckDB config with writers.
+        # Register so concurrent connect_read sees a local writer (LazyRW).
         parent = duckdb.connect(resolved_db)
+        _register_local_writer(resolved_db)
+        registered = True
         substrate = make_substrate_from_con("brute_force", parent, model=model)
         units = retrieve_prior_units(substrate, question_text=question_text.strip())
         result = assemble_context_pack_with_reuse(
@@ -78,3 +84,8 @@ def maybe_reuse_prior_knowledge_at_start(
         if parent is not None:
             with contextlib.suppress(Exception):
                 parent.close()
+        if registered and resolved_db:
+            with contextlib.suppress(Exception):
+                from runtime.db_lock import _unregister_local_writer
+
+                _unregister_local_writer(resolved_db)
