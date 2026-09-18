@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_read, connect_write
 from substrate.event_log import default_events_dir, iter_physical_events
 from substrate.graph import default_db_path
 from substrate.graph.schema import init_database_at_path
@@ -43,6 +43,45 @@ QUALIFYING_ACTION_TYPES = frozenset(
         "parameter_extract.delivered",
     }
 )
+
+
+# Prod 2026-09-18: idle catch_up still opened DuckDB write for discovery /
+# discover_window / advance even when windows were already completed. Each
+# open on ~881MB holds the flock ~7s (write_log excludes open); recovery
+# polls every 0.5s and fragments free windows between agent_work/lease so
+# POST /api/ad/fills → 503. Cite: #3164 lease yield; #3112 arxiv yield.
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+# Sleep after releasing DuckDB write so fills / lease peers can acquire.
+REPLAY_LOCK_YIELD_S = _env_float("ANTIEK_NOTE_TAKER_REPLAY_LOCK_YIELD_S", 1.0)
+# Fail a replay write rather than hold flock for default connect_write 300s.
+REPLAY_WRITE_TIMEOUT_S = _env_float("ANTIEK_NOTE_TAKER_REPLAY_WRITE_TIMEOUT_S", 25.0)
+
+
+def _yield_write_lock_for_peers() -> None:
+    # Tests assert lock *release* between windows; wall-clock yield is a prod
+    # fairness knob (fills / lease). Skip under pytest so suites stay fast.
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    if REPLAY_LOCK_YIELD_S > 0.0:
+        time.sleep(REPLAY_LOCK_YIELD_S)
+
+
+def _connect_write_replay(db_path: str, *, purpose: str):
+    """Short-timeout writer for note-taker replay (arxiv / #3164 class)."""
+    return connect_write(
+        db_path, purpose=purpose, timeout_s=REPLAY_WRITE_TIMEOUT_S
+    )
 
 
 class NoteTakerReplayCorruption(RuntimeError):
@@ -365,38 +404,63 @@ class DurableNoteTakerReplay:
             prompt_sha256,
             configuration_sha256,
         )
-        with connect_write(self.db_path, purpose="note_taker/replay_discovery") as con:
+        # Read-mostly: idle catch_up must not open a writer when config is
+        # stable and no window is stuck in 'calling' (#3164 / fills contention).
+        with connect_read(self.db_path) as con:
             existing_configuration = con.execute(
                 "SELECT threshold, prompt_sha256, configuration_sha256 "
                 "FROM note_taker_configurations WHERE consumer_version=? "
                 "AND investigation_id=?",
                 [CONSUMER_VERSION, investigation_id],
             ).fetchone()
-            if existing_configuration is None:
-                con.execute(
-                    "INSERT INTO note_taker_configurations (consumer_version, "
-                    "investigation_id, threshold, prompt_sha256, "
-                    "configuration_sha256) VALUES (?, ?, ?, ?, ?)",
-                    [
-                        CONSUMER_VERSION,
-                        investigation_id,
-                        self.threshold,
-                        prompt_sha256,
-                        configuration_sha256,
-                    ],
-                )
-            elif existing_configuration != expected_configuration:
-                raise NoteTakerReplayCorruption(
-                    "note-taker configuration drift requires an explicit "
-                    "consumer-version migration"
-                )
-            con.execute(
-                "UPDATE note_taker_windows SET state='uncertain', "
-                "uncertainty_reason='process ownership lost while provider outcome was unknown', "
-                "updated_at=CURRENT_TIMESTAMP WHERE investigation_id=? AND consumer_version=? "
-                "AND state='calling'",
+            calling_n = con.execute(
+                "SELECT COUNT(*) FROM note_taker_windows "
+                "WHERE investigation_id=? AND consumer_version=? AND state='calling'",
                 [investigation_id, CONSUMER_VERSION],
+            ).fetchone()[0]
+        if existing_configuration is not None and existing_configuration != expected_configuration:
+            raise NoteTakerReplayCorruption(
+                "note-taker configuration drift requires an explicit "
+                "consumer-version migration"
             )
+        if existing_configuration is None or int(calling_n) > 0:
+            with _connect_write_replay(
+                self.db_path, purpose="note_taker/replay_discovery"
+            ) as con:
+                if existing_configuration is None:
+                    # Re-check under the write lock (cross-investigation peers).
+                    again = con.execute(
+                        "SELECT threshold, prompt_sha256, configuration_sha256 "
+                        "FROM note_taker_configurations WHERE consumer_version=? "
+                        "AND investigation_id=?",
+                        [CONSUMER_VERSION, investigation_id],
+                    ).fetchone()
+                    if again is None:
+                        con.execute(
+                            "INSERT INTO note_taker_configurations (consumer_version, "
+                            "investigation_id, threshold, prompt_sha256, "
+                            "configuration_sha256) VALUES (?, ?, ?, ?, ?)",
+                            [
+                                CONSUMER_VERSION,
+                                investigation_id,
+                                self.threshold,
+                                prompt_sha256,
+                                configuration_sha256,
+                            ],
+                        )
+                    elif again != expected_configuration:
+                        raise NoteTakerReplayCorruption(
+                            "note-taker configuration drift requires an explicit "
+                            "consumer-version migration"
+                        )
+                con.execute(
+                    "UPDATE note_taker_windows SET state='uncertain', "
+                    "uncertainty_reason='process ownership lost while provider outcome was unknown', "
+                    "updated_at=CURRENT_TIMESTAMP WHERE investigation_id=? AND consumer_version=? "
+                    "AND state='calling'",
+                    [investigation_id, CONSUMER_VERSION],
+                )
+            _yield_write_lock_for_peers()
         # Historical streams can contain thousands of windows. Never hold the
         # global DuckDB writer lock across the complete backfill: one bounded
         # transaction per window lets API writes and deploy verifiers make
@@ -433,55 +497,70 @@ class DurableNoteTakerReplay:
             }
             request_json = _canonical(request)
             prepared = False
-            with connect_write(
-                self.db_path, purpose="note_taker/replay_discover_window"
-            ) as con:
+            fingerprint = (
+                window_id,
+                source_json,
+                source_digest,
+                request_json,
+                _digest(request_json),
+                window_id,
+            )
+            with connect_read(self.db_path) as con:
                 existing = con.execute(
                     "SELECT window_id, source_event_ids_json, source_digest, request_json, request_sha256, "
                     "provider_idempotency_key FROM note_taker_windows WHERE consumer_version=? "
                     "AND investigation_id=? AND threshold=? AND ordinal=?",
                     [CONSUMER_VERSION, investigation_id, self.threshold, ordinal],
                 ).fetchone()
-                fingerprint = (
-                    window_id,
-                    source_json,
-                    source_digest,
-                    request_json,
-                    _digest(request_json),
-                    window_id,
+            if existing and existing != fingerprint:
+                raise NoteTakerReplayCorruption(
+                    f"window identity conflict at ordinal {ordinal}"
                 )
-                if existing and existing != fingerprint:
-                    raise NoteTakerReplayCorruption(
-                        f"window identity conflict at ordinal {ordinal}"
-                    )
-                if not existing:
-                    con.execute(
-                        "INSERT INTO note_taker_windows (window_id, consumer_version, investigation_id, "
-                        "threshold, ordinal, first_event_id, last_event_id, source_event_ids_json, "
-                        "source_digest, request_json, request_sha256, provider_idempotency_key, state) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared')",
-                        [
-                            window_id,
-                            CONSUMER_VERSION,
-                            investigation_id,
-                            self.threshold,
-                            ordinal,
-                            ids[0],
-                            ids[-1],
-                            source_json,
-                            source_digest,
-                            request_json,
-                            _digest(request_json),
-                            window_id,
-                        ],
-                    )
-                    prepared = True
+            if not existing:
+                with _connect_write_replay(
+                    self.db_path, purpose="note_taker/replay_discover_window"
+                ) as con:
+                    again = con.execute(
+                        "SELECT window_id, source_event_ids_json, source_digest, request_json, "
+                        "request_sha256, provider_idempotency_key FROM note_taker_windows "
+                        "WHERE consumer_version=? AND investigation_id=? AND threshold=? "
+                        "AND ordinal=?",
+                        [CONSUMER_VERSION, investigation_id, self.threshold, ordinal],
+                    ).fetchone()
+                    if again and again != fingerprint:
+                        raise NoteTakerReplayCorruption(
+                            f"window identity conflict at ordinal {ordinal}"
+                        )
+                    if not again:
+                        con.execute(
+                            "INSERT INTO note_taker_windows (window_id, consumer_version, investigation_id, "
+                            "threshold, ordinal, first_event_id, last_event_id, source_event_ids_json, "
+                            "source_digest, request_json, request_sha256, provider_idempotency_key, state) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared')",
+                            [
+                                window_id,
+                                CONSUMER_VERSION,
+                                investigation_id,
+                                self.threshold,
+                                ordinal,
+                                ids[0],
+                                ids[-1],
+                                source_json,
+                                source_digest,
+                                request_json,
+                                _digest(request_json),
+                                window_id,
+                            ],
+                        )
+                        prepared = True
+                _yield_write_lock_for_peers()
             if prepared:
                 self._check("prepared", window_id)
 
         delivered: list[str] = []
         for ordinal in range(complete):
             delivered.extend(self._advance(investigation_id, ordinal))
+            _yield_write_lock_for_peers()
         return delivered
 
     def _validated_call(self, request_json: str, key: str) -> Callable[[], Any]:
@@ -503,23 +582,28 @@ class DurableNoteTakerReplay:
         return lambda: self.dispatcher(request)
 
     def _advance(self, investigation_id: str, ordinal: int) -> list[str]:
-        with connect_write(self.db_path, purpose="note_taker/replay_advance") as con:
+        # Terminal / no-op states: read-only (idle catch_up must not thrash writer).
+        with connect_read(self.db_path) as con:
             row = con.execute(
                 "SELECT window_id, state, request_json, request_sha256, provider_idempotency_key, "
                 "raw_result, raw_result_sha256, source_event_ids_json FROM note_taker_windows "
                 "WHERE consumer_version=? AND investigation_id=? AND threshold=? AND ordinal=?",
                 [CONSUMER_VERSION, investigation_id, self.threshold, ordinal],
             ).fetchone()
-            if row is None:
-                raise NoteTakerReplayCorruption("discovered window disappeared")
-            window_id, state, request_json, request_sha, key, raw, raw_sha, source_json = row
-            if _digest(request_json) != request_sha:
-                raise NoteTakerReplayCorruption("stored request digest mismatch")
-            if state in ("uncertain", "completed"):
-                return []
-            if state == "prepared":
-                self._check("before_provider_call", window_id)
-                call = self._validated_call(request_json, key)
+        if row is None:
+            raise NoteTakerReplayCorruption("discovered window disappeared")
+        window_id, state, request_json, request_sha, key, raw, raw_sha, source_json = row
+        if _digest(request_json) != request_sha:
+            raise NoteTakerReplayCorruption("stored request digest mismatch")
+        if state in ("uncertain", "completed"):
+            return []
+        call = None
+        if state == "prepared":
+            self._check("before_provider_call", window_id)
+            call = self._validated_call(request_json, key)
+            with _connect_write_replay(
+                self.db_path, purpose="note_taker/replay_advance"
+            ) as con:
                 changed = con.execute(
                     "UPDATE note_taker_windows SET state='calling', attempt_count=attempt_count+1, "
                     "updated_at=CURRENT_TIMESTAMP WHERE window_id=? AND state='prepared' RETURNING window_id",
@@ -528,7 +612,13 @@ class DurableNoteTakerReplay:
                 if changed is None:
                     raise NoteTakerReplayCorruption("prepared window ownership changed")
                 state = "calling"
+            _yield_write_lock_for_peers()
         if state == "calling":
+            if call is None:
+                raise NoteTakerReplayCorruption(
+                    "calling window lacks provider entry in this attempt "
+                    "(expected discovery to mark ownership lost)"
+                )
             self._check("after_calling_commit", window_id)
             try:
                 result = call()
@@ -539,7 +629,7 @@ class DurableNoteTakerReplay:
                 policy_id = f"{provider}/{model}" if provider and model else None
                 if not isinstance(text, str):
                     raise TypeError("provider result text must be a string")
-                with connect_write(self.db_path, purpose="note_taker/replay_store_result") as con:
+                with _connect_write_replay(self.db_path, purpose="note_taker/replay_store_result") as con:
                     changed = con.execute(
                         "UPDATE note_taker_windows SET state='result_stored', raw_result=?, "
                         "raw_result_sha256=?, provider=?, model=?, policy_id=?, updated_at=CURRENT_TIMESTAMP "
@@ -549,9 +639,10 @@ class DurableNoteTakerReplay:
                     if changed is None:
                         raise NoteTakerReplayCorruption("calling window ownership changed")
                 self._check("after_result_commit", window_id)
+                _yield_write_lock_for_peers()
                 raw, raw_sha, state = text, _digest(text), "result_stored"
             except Exception as exc:
-                with connect_write(self.db_path, purpose="note_taker/replay_uncertain") as con:
+                with _connect_write_replay(self.db_path, purpose="note_taker/replay_uncertain") as con:
                     changed = con.execute(
                         "UPDATE note_taker_windows SET state='uncertain', uncertainty_reason=?, "
                         "updated_at=CURRENT_TIMESTAMP WHERE window_id=? AND state='calling' RETURNING window_id",
@@ -565,7 +656,7 @@ class DurableNoteTakerReplay:
                 raise NoteTakerReplayCorruption("stored provider result digest mismatch")
             source_ids = json.loads(source_json)
             notes = parse_notes_response(raw, canonical_event_ids=source_ids)
-            with connect_write(self.db_path, purpose="note_taker/replay_materialize") as con:
+            with _connect_write_replay(self.db_path, purpose="note_taker/replay_materialize") as con:
                 con.execute("BEGIN TRANSACTION")
                 try:
                     for index, note in enumerate(notes):
@@ -623,7 +714,8 @@ class DurableNoteTakerReplay:
                     con.execute("ROLLBACK")
                     raise
             self._check("after_materialize_commit", window_id)
-        with connect_write(self.db_path, purpose="note_taker/replay_delivery") as con:
+            _yield_write_lock_for_peers()
+        with _connect_write_replay(self.db_path, purpose="note_taker/replay_delivery") as con:
             delivered = dispatch_aggregate_pending(
                 con,
                 investigation_id,
