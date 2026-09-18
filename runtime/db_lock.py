@@ -608,15 +608,24 @@ def connect_read(
 
     DuckDB rejects a true read-only connection when this process already has
     the same file open read-write (``connect_write``, unflocked reuse
-    substrates, etc.). On that configuration conflict, fall back to a
+    substrates, etc.). On that configuration conflict **or** a unique-file-
+    handle / already-attached BinderError (newer DuckDB), fall back to a
     same-config read-write handle whose direct SQL mutation surfaces are
     rejected (``_ReadOrientedConnection``). Other connection failures stay
     explicit rather than being retried with broader privileges.
+
+    Cite: #3121 LazyRW coexist; Ads fills #3157/#3158 (BinderException wedge).
     """
     try:
         return duckdb.connect(db_path, read_only=True)
-    except duckdb.ConnectionException as exc:
-        if _SAME_FILE_DIFFERENT_CONFIG not in str(exc):
+    except Exception as exc:
+        msg = str(exc)
+        lazy_ok = (
+            _SAME_FILE_DIFFERENT_CONFIG in msg
+            or "Unique file handle conflict" in msg
+            or "already attached" in msg
+        )
+        if not lazy_ok:
             raise
         return _ReadOrientedConnection(duckdb.connect(db_path, read_only=False))
 
