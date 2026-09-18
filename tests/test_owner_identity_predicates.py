@@ -22,6 +22,7 @@ document ingest answered 401, and all four owner-paid BYOT entry points answered
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -149,3 +150,43 @@ def test_derivation_is_stable_distinct_and_keeps_the_address_out_of_the_value() 
     # The stored owner must not carry the address into rows or diagnostics.
     for fragment in ("operator", "example", "@"):
         assert fragment not in first.removeprefix("acct_")
+
+
+def test_derived_owner_is_structurally_safe_for_any_input() -> None:
+    """The derived owner becomes a storage key, so its SHAPE is the security property.
+
+    Prompted by a sibling lane's finding: a renderer that had always escaped everything
+    grew the ability to emit attributes, and a path that was safe only because nothing
+    was ever emitted raw became an injection surface overnight. The lesson generalises —
+    when a value starts flowing somewhere new, pin what it can contain rather than
+    assuming the producer stays benign.
+
+    Here the producer is a verified e-mail address, which is attacker-influenced in a
+    multi-operator deployment. The output is fed to row keys and comparisons, so the
+    invariant that matters is that it is ALWAYS ``acct_`` plus 32 hex characters — never
+    a path fragment, never SQL, never a control character — regardless of input. That
+    holds because the address is hashed rather than interpolated, and this test is what
+    stops someone "optimising" the hash away later.
+    """
+    hostile = [
+        "../../etc/passwd@x.test",
+        "a'; DROP TABLE users--@x.test",
+        "a\x00b@x.test",
+        "\N{GRINNING FACE}@x.test",
+        "<script>alert(1)</script>@x.test",
+        "a%2e%2e%2fb@x.test",
+        "  padded@x.test  ",
+        "MiXeDcAsE@X.TEST",
+    ]
+    for address in hostile:
+        owner = derive_owner_from_verified_email(address)
+        assert owner is not None, f"unexpectedly refused: {address!r}"
+        assert re.fullmatch(r"acct_[0-9a-f]{32}", owner), (
+            f"{address!r} produced a structurally unsafe owner: {owner!r}"
+        )
+
+    # Inputs that must be refused outright rather than hashed into something plausible.
+    for address in ["A" * 400 + "@x.test", "a@b.test\n@c.test", "no-at-sign", "@x.test"]:
+        assert derive_owner_from_verified_email(address) is None, (
+            f"should have refused: {address!r}"
+        )
