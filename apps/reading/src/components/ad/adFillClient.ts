@@ -64,6 +64,24 @@ export interface SlotFill {
 export type BorderPosition = "top" | "bottom" | "left" | "right";
 
 /** Outcome of a fill request — never throws; the border always paints. */
+/** Rank 0 website ads honesty (mirrors substrate rank0_honesty). */
+export interface WebsiteAdsHonesty {
+  surface: string;
+  serving_model: string;
+  max_sdk_on_web: boolean;
+  fill_ladder: string[];
+  price_status_default: string;
+  revenue_usd_cents_until_pricing: number;
+  pricing_gate: string;
+  legal_gate: string;
+  speak_contributor_share: number;
+  speak_platform_share: number;
+  money_model: string;
+  disbursement: string;
+  decision_ref: string;
+  spec_ref: string;
+}
+
 export interface FillResult {
   fills: SlotFill[];
   /**
@@ -73,6 +91,8 @@ export interface FillResult {
    * yet wired — honesty over a silent fallback.
    */
   served: boolean;
+  /** Present when the fills route returned Rank 0 honesty. */
+  honesty?: WebsiteAdsHonesty;
 }
 
 /** A neutral house fill for one edge, used when the route is absent. */
@@ -89,7 +109,8 @@ function houseFill(position: BorderPosition): SlotFill {
   };
 }
 
-const EXACT_RESPONSE_KEYS = new Set(["window_id", "fills"]);
+const EXACT_RESPONSE_KEYS = new Set(["window_id", "fills", "honesty"]);
+const LEGACY_RESPONSE_KEYS = new Set(["window_id", "fills"]);
 const EXACT_FILL_KEYS = new Set([
   "fill_decision_id",
   "slot_id",
@@ -146,13 +167,38 @@ function parseHouse(value: unknown): HousePromo | null | undefined {
   return value as HousePromo;
 }
 
+function parseHonesty(value: unknown): WebsiteAdsHonesty | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.surface !== "website") return undefined;
+  if (value.serving_model !== "antiek_owned_creatives") return undefined;
+  if (value.max_sdk_on_web !== false) return undefined;
+  if (!Array.isArray(value.fill_ladder)) return undefined;
+  if (value.price_status_default !== "unpriced") return undefined;
+  if (value.revenue_usd_cents_until_pricing !== 0) return undefined;
+  if (typeof value.pricing_gate !== "string") return undefined;
+  if (typeof value.legal_gate !== "string") return undefined;
+  if (typeof value.speak_contributor_share !== "number") return undefined;
+  if (typeof value.speak_platform_share !== "number") return undefined;
+  if (typeof value.money_model !== "string") return undefined;
+  if (typeof value.disbursement !== "string") return undefined;
+  if (typeof value.decision_ref !== "string") return undefined;
+  if (typeof value.spec_ref !== "string") return undefined;
+  return value as unknown as WebsiteAdsHonesty;
+}
+
 function parseFillResponse(
   value: unknown,
   windowId: string,
   requested: BorderPosition[],
-): SlotFill[] | null {
-  if (!isRecord(value) || !hasExactKeys(value, EXACT_RESPONSE_KEYS)) return null;
+): { fills: SlotFill[]; honesty?: WebsiteAdsHonesty } | null {
+  if (!isRecord(value)) return null;
+  const keysOk =
+    hasExactKeys(value, EXACT_RESPONSE_KEYS) ||
+    hasExactKeys(value, LEGACY_RESPONSE_KEYS);
+  if (!keysOk) return null;
   if (value.window_id !== windowId || !Array.isArray(value.fills)) return null;
+  const honesty = "honesty" in value ? parseHonesty(value.honesty) : undefined;
+  if ("honesty" in value && honesty === undefined) return null;
   const requestedSet = new Set(requested);
   const seen = new Set<string>();
   const parsed: SlotFill[] = [];
@@ -174,7 +220,8 @@ function parseFillResponse(
     seen.add(position);
     parsed.push({ ...(raw as unknown as SlotFill), ad, house: house ?? null });
   }
-  return seen.size === requestedSet.size ? parsed : null;
+  if (seen.size !== requestedSet.size) return null;
+  return { fills: parsed, honesty };
 }
 
 /**
@@ -205,16 +252,17 @@ export async function fetchFill(opts: {
       // The border must remain usable when fill authority is unavailable.
       return { fills: opts.positions.map(houseFill), served: false };
     }
-    const fills = parseFillResponse(await resp.json(), opts.windowId, opts.positions);
-    if (fills === null) {
+    const parsed = parseFillResponse(await resp.json(), opts.windowId, opts.positions);
+    if (parsed === null) {
       return { fills: opts.positions.map(houseFill), served: false };
     }
     // Any edge the server didn't fill is house-filled here so every requested
     // edge always has a creative (house is the default, never blank).
-    const byPos = new Map(fills.map((f) => [f.position, f]));
+    const byPos = new Map(parsed.fills.map((f) => [f.position, f]));
     return {
       fills: opts.positions.map((p) => byPos.get(p) ?? houseFill(p)),
       served: true,
+      honesty: parsed.honesty,
     };
   } catch {
     return { fills: opts.positions.map(houseFill), served: false };

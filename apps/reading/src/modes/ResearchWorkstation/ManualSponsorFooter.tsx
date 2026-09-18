@@ -13,7 +13,11 @@
  */
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchFill, type SlotFill } from "../../components/ad/adFillClient";
+import {
+  fetchFill,
+  type SlotFill,
+  type WebsiteAdsHonesty,
+} from "../../components/ad/adFillClient";
 import AdBorder, { type AdFillView } from "../Reading/AdBorder";
 import { BIDDING_POLICY_MANUAL_SPONSOR } from "./manualSponsorFill";
 import { manualSponsorFooterEnabled } from "./manualSponsorFlags";
@@ -63,6 +67,9 @@ export default function ManualSponsorFooter({
   );
   const [served, setServed] = useState(false);
   const [decisionId, setDecisionId] = useState<string | null>(null);
+  const [priceStatus, setPriceStatus] = useState<"unpriced" | "settled" | null>(null);
+  const [fillKind, setFillKind] = useState<"ad" | "house" | null>(null);
+  const [honesty, setHonesty] = useState<WebsiteAdsHonesty | null>(null);
   const [fillView, setFillView] = useState<AdFillView>({ kind: "house", house: null });
 
   useEffect(() => {
@@ -79,6 +86,9 @@ export default function ManualSponsorFooter({
       const bottom = result.fills.find((f) => f.position === "bottom") ?? result.fills[0];
       setServed(result.served);
       setDecisionId(bottom?.fill_decision_id ?? null);
+      setPriceStatus(bottom?.price_status ?? null);
+      setFillKind(bottom?.kind ?? null);
+      setHonesty(result.honesty ?? null);
       setFillView(slotFillToView(bottom));
     })();
     return () => ac.abort();
@@ -95,8 +105,22 @@ export default function ManualSponsorFooter({
       data-bidding-policy={BIDDING_POLICY_MANUAL_SPONSOR}
       data-fill-served={served ? "1" : "0"}
       data-fill-decision-id={decisionId ?? undefined}
+      data-price-status={priceStatus ?? undefined}
+      data-fill-kind={fillKind ?? undefined}
+      data-max-sdk-on-web={honesty ? (honesty.max_sdk_on_web ? "1" : "0") : undefined}
+      data-money-model={honesty?.money_model}
     >
       <AdBorder slotId={slotId} position="bottom" fill={fillView} />
+      {served && priceStatus === "unpriced" && (
+        <p
+          className="mt-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight"
+          data-testid="manual-sponsor-rank0-honesty"
+        >
+          {fillKind === "ad"
+            ? "Sponsor fill · unpriced $0 until Rank 0.1 pricing + Rank 0.2 legal (no fake cents; Speak 70% from settled only)."
+            : "House fill · library promo · unpriced $0 (house → sponsor → lead-gen; Antiek-served, no MAX on web)."}
+        </p>
+      )}
     </div>
   );
 }
