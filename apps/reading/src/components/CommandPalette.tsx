@@ -692,6 +692,20 @@ export default function CommandPalette() {
       ...ROUTE_INDEX_WITH_FACET,
       ...investigations,
       ...documents,
+      ...((): PaletteRoute[] => {
+        const m = window.location.pathname.match(/^\/inv\/([^/]+)/);
+        if (!m) return [];
+        const id = decodeURIComponent(m[1]);
+        return [
+          {
+            kind: "route" as const,
+            id: "route:auto-notebook-current",
+            title: "Auto-notebook for this research",
+            subtitle: `Narrative view · /notebook/auto/${id.slice(0, 8)}…`,
+            path: `/notebook/auto/${encodeURIComponent(id)}`,
+          },
+        ];
+      })(),
       ...notebooks,
       ...parked,
     ],

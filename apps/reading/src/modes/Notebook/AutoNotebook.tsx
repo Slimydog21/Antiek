@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import {
   getDistillation,
@@ -17,6 +17,7 @@ import {
   type AutoNotebook as DerivedNotebook,
   type AutoNotebookSection,
 } from "./deriveAutoNotebook";
+import NotebookLoopNav from "./NotebookLoopNav";
 
 /**
  * AutoNotebook — the auto-generated, always-current narrative VIEW of a
@@ -217,14 +218,17 @@ function AutoNotebookBody({
     // invent a section/insight/question.
     return (
       <article className="max-w-3xl mx-auto px-8 py-12">
+        <NotebookLoopNav investigationId={investigationId} canWrite={false} />
+
         <div className="max-w-md mx-auto text-center space-y-3">
           <h1 className="text-2xl font-serif text-ink dark:text-bright leading-tight">
             {notebook.title}
           </h1>
           <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
             This notebook writes itself from the research’s insights and open
-            questions. There’s nothing in the graph to narrate yet — as the
-            research produces insights and questions, they appear here.
+            questions. There’s nothing in the graph to narrate yet — keep researching
+            (or open Distill); as insights land, they appear here. When you’re
+            ready, continue in Write with this research connected.
           </p>
         </div>
         <div className="mt-10">
@@ -236,16 +240,11 @@ function AutoNotebookBody({
 
   return (
     <article className="max-w-3xl mx-auto px-8 py-10 space-y-8">
-      <header className="space-y-1">
-        <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-          <Link
-            to={`/inv/${encodeURIComponent(notebook.investigationId)}`}
-            className="underline-offset-2 hover:underline"
-            data-testid="auto-notebook-back-to-research"
-          >
-            ← back to research
-          </Link>
-        </p>
+      <header className="space-y-2">
+        <NotebookLoopNav
+          investigationId={notebook.investigationId}
+          canWrite
+        />
         <h1 className="text-2xl font-serif text-ink dark:text-bright leading-tight">
           {notebook.title}
         </h1>
@@ -370,7 +369,9 @@ function PromptTelemetryPanel({ investigationId }: { investigationId: string }) 
   useEffect(() => {
     let cancelled = false;
     setState({ kind: "loading" });
-    void getPromptTelemetry(investigationId)
+    // Promise.resolve so a missing/undefined mock or sync throw never
+    // becomes an unhandled rejection during tests / dogfood.
+    void Promise.resolve(getPromptTelemetry(investigationId))
       .then((data) => {
         if (!cancelled) setState({ kind: "loaded", data });
       })
@@ -454,8 +455,11 @@ function PromptTelemetryPanel({ investigationId }: { investigationId: string }) 
         </div>
       ) : null}
       {data.call_count === 0 ? (
-        <p className="text-sm text-ink-soft dark:text-starlight">
-          No model calls recorded on this investigation’s trajectory yet.
+        <p
+          className="text-sm text-ink-soft dark:text-starlight"
+          data-telemetry-empty="true"
+        >
+          No model calls on this trajectory yet — prompts stay hashed in the event log once research roles run (bodies never stored here).
         </p>
       ) : (
         <ul className="space-y-2" data-testid="prompt-telemetry-calls">

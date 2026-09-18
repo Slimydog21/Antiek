@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import {
   createDeliverable,
@@ -41,6 +41,8 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const fromInvestigation = (searchParams.get("investigation") || "").trim() || null;
 
   const [detail, setDetail] = useState<DeliverableDetailResponse | null>(null);
   const [pieces, setPieces] = useState<DeliverableSummary[]>([]);
@@ -183,6 +185,7 @@ export default function WriteHome() {
             <ConnectResearch
               pieceTitle={newTitle}
               disabled={starting}
+              preferredInvestigationId={fromInvestigation}
               onConnect={(resolved) => void createWithConnection(resolved)}
             />
           ) : (

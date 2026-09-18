@@ -240,6 +240,10 @@ describe("AutoNotebook — honest empty state (M1, rigor #1)", () => {
     expect(screen.queryByTestId("auto-notebook-proposed-banner")).toBeNull();
     // No outline / fabricated sections.
     expect(screen.queryByTestId("auto-notebook-outline")).toBeNull();
+    // Daily-loop polish: empty is not a dead end.
+    expect(screen.getByTestId("notebook-loop-nav")).toBeTruthy();
+    const write = screen.getByTestId("auto-notebook-continue-write");
+    expect(write.getAttribute("href")).toBe("/write?investigation=inv-empty");
   });
 });
 

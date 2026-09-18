@@ -38,12 +38,15 @@ export interface ConnectResearchProps {
    * isn't a blank "Untitled". */
   pieceTitle: string;
   disabled?: boolean;
+  /** From AutoNotebook `/write?investigation=` — same connectExisting path. */
+  preferredInvestigationId?: string | null;
 }
 
 export default function ConnectResearch({
   onConnect,
   pieceTitle,
   disabled,
+  preferredInvestigationId,
 }: ConnectResearchProps) {
   const [projects, setProjects] = useState<InvestigationSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -141,14 +144,30 @@ export default function ConnectResearch({
           Loading your research projects…
         </p>
       ) : projects.length > 0 ? (
-        <ul className="max-h-56 space-y-1 overflow-y-auto">
-          {projects.map((p) => (
+        <>
+          {preferredInvestigationId ? (
+            <p
+              className="text-xs text-aurora"
+              data-testid="connect-research-preferred"
+            >
+              Pre-selected from your notebook — connect that research to keep
+              the daily loop (research → notebook → write).
+            </p>
+          ) : null}
+          <ul className="max-h-56 space-y-1 overflow-y-auto">
+          {([...projects].sort((a, b) => {
+              const pref = preferredInvestigationId ?? "";
+              if (!pref) return 0;
+              if (a.investigation_id === pref) return -1;
+              if (b.investigation_id === pref) return 1;
+              return 0;
+            })).map((p) => (
             <li key={p.investigation_id}>
               <button
                 type="button"
                 onClick={() => void connectExisting(p)}
                 disabled={disabled || spawning}
-                className="w-full rounded border border-rule bg-ice-0 px-3 py-2 text-left hover:border-ocean disabled:opacity-60 dark:border-charcoal-1 dark:bg-charcoal-2"
+                className={`w-full rounded border px-3 py-2 text-left hover:border-ocean disabled:opacity-60 dark:bg-charcoal-2 ${preferredInvestigationId === p.investigation_id ? "border-aurora bg-ice-1 dark:border-aurora" : "border-rule bg-ice-0 dark:border-charcoal-1"}`}
               >
                 <span className="block truncate font-serif text-sm text-ink dark:text-bright">
                   {p.question?.trim() || "(untitled research)"}
@@ -161,6 +180,8 @@ export default function ConnectResearch({
             </li>
           ))}
         </ul>
+        </>
+
       ) : (
         <p className="text-xs italic text-ink-mute dark:text-moonlight">
           No research projects yet — start without one and we'll open a folder.
