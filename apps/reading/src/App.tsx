@@ -50,6 +50,7 @@ import Sources from "./modes/Sources";
 import SpeakConsole from "./modes/Speak";
 import SpeakIndex from "./modes/SpeakIndex";
 import SpeakInvite from "./modes/SpeakInvite";
+import SpeakPublicBrowse from "./modes/SpeakPublicBrowse";
 import Stats from "./modes/Stats";
 import TrustCenter from "./modes/TrustCenter";
 import Explain from "./modes/Explain";
@@ -256,6 +257,8 @@ export default function App() {
             family is a source, not an account; the URL token is their
             credential). Must precede the RequireAuth catch-all. */}
         <Route path="/speak/invite/:token" element={<SpeakInvite />} />
+        {/* Unauthenticated public remembrances browse (read-only). */}
+        <Route path="/speak/browse" element={<SpeakPublicBrowse />} />
         {/* S9 — popout panel windows render outside AppShell. The
             popout app handles its own chrome; no NavRail/Topbar/
             PanelLayout wrapping. */}

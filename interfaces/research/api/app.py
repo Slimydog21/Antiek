@@ -1456,6 +1456,11 @@ def create_app(
         "/.well-known/mcp-tools.json",
         # Machine-to-machine multimedia gateway verifies its own fixed bearer.
         "/multimedia/tts-gateway/synthesize",
+        # Speak public browse (Anti-Ek Speak): read-only feed +
+        # opportunities for logged-out visitors. Sibling to
+        # /speak/invite/ (token door). No mutation endpoints.
+        "/speak/feed",
+        "/speak/opportunities",
     }
     _OPERATOR_TOKEN_ENV = "ANTIEK_OPERATOR_TOKEN"
     _OPERATOR_EMAIL_ENV = "ANTIEK_OPERATOR_EMAIL"
@@ -1522,6 +1527,10 @@ def create_app(
         # middleware lets the prefix through. See
         # interfaces/research/api/speak_routes.py + docs/decisions/speak_workflow.md.
         if request.url.path.startswith("/speak/invite/"):
+            return await call_next(request)
+        # Read-only public Speak browse (logged-out). Exact paths also
+        # listed in _OPERATOR_AUTH_OPEN_PATHS; keep both in sync.
+        if request.url.path in ("/speak/feed", "/speak/opportunities"):
             return await call_next(request)
 
         # Once a path validates the caller, populate request.state with
