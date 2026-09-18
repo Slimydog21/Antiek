@@ -29,9 +29,10 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { Event } from "../../generated/types";
 import type { DistilledNode } from "../../lib/api";
 
-const { getDistillationMock, getChunkMock } = vi.hoisted(() => ({
+const { getDistillationMock, getChunkMock, getPromptTelemetryMock } = vi.hoisted(() => ({
   getDistillationMock: vi.fn(),
   getChunkMock: vi.fn(),
+  getPromptTelemetryMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => {
@@ -40,6 +41,7 @@ vi.mock("../../lib/api", async (orig) => {
     ...actual,
     getDistillation: getDistillationMock,
     getChunk: getChunkMock,
+    getPromptTelemetry: getPromptTelemetryMock,
   };
 });
 
@@ -82,6 +84,26 @@ import AutoNotebook from "./AutoNotebook";
 afterEach(() => {
   cleanup();
   getDistillationMock.mockReset();
+  getPromptTelemetryMock.mockReset();
+  getPromptTelemetryMock.mockResolvedValue({
+    investigation_id: "inv-1",
+    question: "What is liberty?",
+    call_count: 1,
+    total_cost_usd: 0.001,
+    total_latency_ms: 500,
+    prompt_bodies_stored: false,
+    calls: [{
+      role: "decomposer",
+      provider: "deepseek",
+      model: "deepseek-chat",
+      finish_reason: "stop",
+      latency_ms: 500,
+      cost_usd: 0.001,
+      prompt_hash: "abcd",
+      input_tokens: 10,
+      output_tokens: 20,
+    }],
+  });
   getChunkMock.mockReset();
   investigationStub.status = "completed";
   investigationStub.question = "What is the moat?";

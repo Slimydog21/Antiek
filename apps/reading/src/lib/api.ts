@@ -1257,6 +1257,51 @@ export interface ChallengeNoteResponse {
   reserved_child_investigation_id?: string | null;
 }
 
+
+/** Prompt / question telemetry from the investigation trajectory (event-log SoT).
+ *  Full prompt bodies are not stored on dispatch.call — only prompt_hash +
+ *  the opening research question from start_requested. */
+export interface PromptCallTelemetry {
+  event_id?: string | null;
+  emitted_at?: string | null;
+  role: string;
+  provider: string;
+  model: string;
+  tier?: string | null;
+  finish_reason?: string | null;
+  latency_ms: number;
+  cost_usd: number;
+  prompt_hash?: string | null;
+  input_tokens: number;
+  output_tokens: number;
+}
+
+export interface PromptTelemetryResponse {
+  investigation_id: string;
+  question: string | null;
+  call_count: number;
+  total_cost_usd: number;
+  total_latency_ms: number;
+  calls: PromptCallTelemetry[];
+  prompt_bodies_stored: boolean;
+}
+
+export async function getPromptTelemetry(
+  investigationId: string,
+): Promise<PromptTelemetryResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/investigations/${encodeURIComponent(investigationId)}/prompt-telemetry`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /investigations/{id}/prompt-telemetry failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 /** POST /research/notes/{nodeId}/challenge — drive the shipped living-note
  *  path. Resolves → mutates in place; declines → escalation (reserved, not
  *  launched). 503 = no model configured (honest no-key); the caller shows
