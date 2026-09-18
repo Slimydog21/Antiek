@@ -35,8 +35,8 @@ from interfaces.research.api.owner_byot_dispatch import (
     OwnerByotDispatchUnavailable,
     authenticated_distinct_owner,
 )
-from interfaces.research.api.research_tool_search import _PublicError
 from interfaces.research.api.research_tool_search import _owner as tool_search_owner
+from interfaces.research.api.research_tool_search import _PublicError
 
 OPERATOR_EMAIL = "operator@example.test"
 
