@@ -250,7 +250,7 @@ class _LazyReuseSubstrate:
     funnel uses — so similarity is computed in one space (a hash stub when
     sentence-transformers is absent still makes the flywheel turn)."""
 
-    name = "brute_force"
+    name = "brute_force"  # overwritten in _ensure when hybrid turbopuffer mounts
 
     def __init__(self, db_path: str, model: Any) -> None:
         self._db_path = db_path
@@ -262,11 +262,18 @@ class _LazyReuseSubstrate:
         if self._inner is None:
             import duckdb
 
-            from substrate.graph.retrieval_substrate import make_substrate_from_con
+            from substrate.graph.retrieval_substrate import (
+                make_substrate_from_con,
+                resolve_reuse_substrate_kind,
+            )
 
             # Read-write, NO flock — shares the funnel's DuckDB instance.
             self._parent = duckdb.connect(self._db_path)
-            self._inner = make_substrate_from_con("brute_force", self._parent, model=self._model)
+            kind = resolve_reuse_substrate_kind()
+            self._inner = make_substrate_from_con(
+                kind, self._parent, model=self._model, db_path=self._db_path,
+            )
+            self.name = getattr(self._inner, "name", kind) or kind
         return self._inner
 
     @property

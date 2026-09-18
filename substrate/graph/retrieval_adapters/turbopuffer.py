@@ -110,6 +110,39 @@ class TurbopufferSubstrate:
                    namespace_name=namespace_name, region=region, manifest_dir=manifest_dir,
                    db_identity=db_identity)
 
+    @classmethod
+    def from_con(
+        cls,
+        con: Any,
+        *,
+        model: EmbeddingModel,
+        db_path: str,
+        api_key: str | None = None,
+        namespace: ShadowNamespace | None = None,
+        namespace_name: str = DEFAULT_NAMESPACE,
+        region: str = "gcp-us-central1",
+        manifest_dir: str | Path | None = None,
+    ) -> TurbopufferSubstrate:
+        """Shared-connection constructor for cascade/flywheel reuse.
+
+        DuckDB hydration/gating uses ``con.cursor()`` (no second ``connect_read``).
+        TurboPuffer remains the remote SERVABLE index only. ``db_path`` must be
+        the same filesystem path used at promote time so the active pointer
+        context matches.
+        """
+        key = api_key if api_key is not None else os.environ.get("TURBOPUFFER_API_KEY")
+        db_identity = hashlib.sha256(str(Path(db_path).resolve()).encode()).hexdigest()
+        return cls(
+            con.cursor(),
+            model=model,
+            api_key=key,
+            namespace=namespace,
+            namespace_name=namespace_name,
+            region=region,
+            manifest_dir=manifest_dir,
+            db_identity=db_identity,
+        )
+
     @property
     def skipped(self) -> bool:
         return self.status == _SKIPPED
@@ -354,11 +387,6 @@ class TurbopufferSubstrate:
               document_ids: Sequence[str] | None = None,
               policy_tag: str = "attribution_eligible",
               allow_fallback: bool = True) -> dict[str, Any]:
-        if policy_tag != "attribution_eligible":
-            raise ValueError("Turbopuffer SERVABLE index supports attribution_eligible only")
-        if self.skipped:
-            return {"query": text, "top_k": top_k, "results": [], "node_matches": [],
-                    "status": _SKIPPED}
         def fallback(reason: str) -> dict[str, Any]:
             if not allow_fallback:
                 return {"query": text, "top_k": top_k, "results": [], "node_matches": [],
@@ -369,6 +397,19 @@ class TurbopufferSubstrate:
                          policy_tag=policy_tag),
                 "status": "degraded — brute_force", "degraded_reason": reason,
             }
+        # Privileged / gated / owner paths stay DuckDB-only (never TP index).
+        if policy_tag != "attribution_eligible":
+            return {
+                **search(self._con, text, model=self._model, top_k=top_k,
+                         source_tier_max=source_tier_max, document_ids=document_ids,
+                         policy_tag=policy_tag),
+                "status": "duckdb — non_servable_policy",
+            }
+        if self.skipped:
+            if allow_fallback:
+                return fallback("no credentials")
+            return {"query": text, "top_k": top_k, "results": [], "node_matches": [],
+                    "status": _SKIPPED}
         if document_ids is not None and not document_ids:
             return fallback("empty document scope")
         query_vec = list(self._model.encode(text))
