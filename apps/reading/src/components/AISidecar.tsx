@@ -11,6 +11,10 @@ import {
   workspaceContextPrompt,
 } from "./ai/aiActions";
 import type { DispatchedAction } from "./ai/aiActions";
+import {
+  THOUGHT_PARTNER_SEED_EVENT,
+  type ThoughtPartnerSeedDetail,
+} from "./ai/thoughtPartnerSeed";
 
 /**
  * Ubiquitous AI Sidecar (PostHog Wedge 4, master-spec §5.6 + §4.6).
@@ -90,6 +94,25 @@ export default function AISidecar() {
   const [aiLog, setAiLog] = useState<DispatchedAction[]>([]);
 
   const period = useMemo_period();
+
+  // Shared seed bus (BrainstormStation parked question, etc.).
+  useEffect(() => {
+    const onSeed = (ev: Event) => {
+      const detail = (ev as CustomEvent<ThoughtPartnerSeedDetail>).detail;
+      if (!detail) return;
+      if (typeof detail.prompt === "string" && detail.prompt.trim()) {
+        setDraft(detail.prompt.trim());
+        setReply(null);
+      }
+      if (typeof detail.system_context === "string") {
+        setComposedContext(detail.system_context);
+      }
+      queueMicrotask(() => inputRef.current?.focus());
+    };
+    window.addEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
+    return () => window.removeEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
+  }, []);
+
 
   const reloadContext = useCallback(async () => {
     try {

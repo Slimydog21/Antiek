@@ -157,6 +157,8 @@ export interface DialogueReply {
   prompt: string;
   /** The model's reply — MODEL-sourced, never relabelled as user content. */
   reply: string;
+  /** Role shape from thought_partner (CHALLENGE | SYNTHESIS | EXTENSION). */
+  shape: "CHALLENGE" | "SYNTHESIS" | "EXTENSION";
 }
 
 /** Build the user-sourced prompt for a dialogue over a selection. The
@@ -229,5 +231,10 @@ export async function dialogueOverSelection(args: {
   }
   const data = await resp.json();
   const reply: string = data.text ?? data.body ?? "";
-  return { prompt, reply };
+  const rawShape = String(data.shape ?? "SYNTHESIS").toUpperCase();
+  const shape =
+    rawShape === "CHALLENGE" || rawShape === "EXTENSION"
+      ? rawShape
+      : "SYNTHESIS";
+  return { prompt, reply, shape };
 }
