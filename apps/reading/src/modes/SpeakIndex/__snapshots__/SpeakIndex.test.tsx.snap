@@ -95,6 +95,15 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         >
           Public remembrances
         </button>
+        <button
+          aria-selected="false"
+          class="-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
+          data-testid="speak-tab-pushes"
+          role="tab"
+          type="button"
+        >
+          Pushes
+        </button>
       </div>
       <section
         class="space-y-4"
@@ -272,6 +281,15 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         >
           Public remembrances
         </button>
+        <button
+          aria-selected="false"
+          class="-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
+          data-testid="speak-tab-pushes"
+          role="tab"
+          type="button"
+        >
+          Pushes
+        </button>
       </div>
       <p
         class="font-serif text-sm italic text-ink-mute dark:text-moonlight"
@@ -377,6 +395,15 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           type="button"
         >
           Public remembrances
+        </button>
+        <button
+          aria-selected="false"
+          class="-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
+          data-testid="speak-tab-pushes"
+          role="tab"
+          type="button"
+        >
+          Pushes
         </button>
       </div>
       <section>

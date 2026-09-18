@@ -65,6 +65,7 @@ from substrate.speak import (
 from substrate.speak import (
     publish as publish_mod,
 )
+from substrate.speak import pushes as speak_pushes
 from substrate.speak import (
     subject_consent as subject_consent_mod,
 )
@@ -694,6 +695,85 @@ async def order_book(project_id: str, req: BookOrderRequest) -> dict:
 
 
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Dual push / continuous ping (Anti-Ek Speak remap §PUSHES)
+# Dogfood MVP: (a) public opportunities heuristic (b) private re-ping via
+# next_followups + SpeakInvite door. No AgentMail send; no ML matching.
+# ---------------------------------------------------------------------------
+
+
+class RepingRequest(BaseModel):
+    interview_id: str = Field(..., min_length=1)
+
+
+@speak_router.get("/pushes")
+async def list_pushes() -> dict:
+    """Operator inbox for dual push.
+
+    ``public_opportunities`` — will_be_public projects, fewest voices first
+    (honest: heuristic, not profile matching).
+    ``private_repings`` — invitees still in flight with an invite token;
+    pending question counts from async_interview.resume.
+    """
+    with _translate(), _write("speak/api:pushes") as con:
+        pubs = speak_pushes.list_public_opportunities(con)
+    privates = speak_pushes.list_private_repings_at(_db())
+    return {
+        "honesty": {
+            "public_ranking": "fewest_voices_first_heuristic_not_ml_profile_matching",
+            "private_delivery": "invite_path_only_no_email_send_in_mvp",
+        },
+        "public_opportunities": [
+            {
+                "project_id": o.project_id,
+                "title": o.title,
+                "subject_ref": o.subject_ref,
+                "voice_count": o.voice_count,
+                "rank_reason": o.rank_reason,
+            }
+            for o in pubs
+        ],
+        "private_repings": [
+            {
+                "project_id": r.project_id,
+                "project_title": r.project_title,
+                "interview_id": r.interview_id,
+                "who": r.who,
+                "status": r.status,
+                "token": r.token,
+                "pending_question_count": r.pending_question_count,
+                "invite_path": r.invite_path,
+            }
+            for r in privates
+        ],
+    }
+
+
+@speak_router.post("/pushes/reping")
+async def reping_invitee(req: RepingRequest) -> dict:
+    """Generate followups (if any) and return the SpeakInvite door for an invitee.
+
+    Consent-scoped: declined interviews are skipped with an honest reason.
+    Does not send email — operator shares ``invite_path``.
+    """
+    with _translate():
+        try:
+            result = speak_pushes.prepare_reping(_db(), interview_id=req.interview_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+    return {
+        "interview_id": result.interview_id,
+        "token": result.token,
+        "invite_path": result.invite_path,
+        "followups_added": result.followups_added,
+        "pending_question_count": result.pending_question_count,
+        "skipped_reason": result.skipped_reason,
+    }
+
+
+
 # Invitee surface — TOKEN-AUTHORIZED, unauthenticated.
 #
 # The invitee (a subject's friend or family member) is a SOURCE, not an

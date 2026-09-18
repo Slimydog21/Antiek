@@ -399,3 +399,98 @@ export async function createPerson(name: string): Promise<string> {
   if (!data.project_id) throw new Error("no project returned");
   return String(data.project_id);
 }
+
+// ── Dual push / continuous ping (Anti-Ek Speak remap §PUSHES) ───────────
+
+export interface PublicOpportunity {
+  projectId: string;
+  title: string;
+  subjectRef: string | null;
+  voiceCount: number;
+  rankReason: string;
+}
+
+export interface PrivateReping {
+  projectId: string;
+  projectTitle: string;
+  interviewId: string;
+  who: string;
+  status: string;
+  token: string;
+  pendingQuestionCount: number;
+  invitePath: string;
+}
+
+export interface PushesView {
+  honesty: { publicRanking: string; privateDelivery: string };
+  publicOpportunities: PublicOpportunity[];
+  privateRepings: PrivateReping[];
+}
+
+export interface RepingView {
+  interviewId: string;
+  token: string;
+  invitePath: string;
+  followupsAdded: number;
+  pendingQuestionCount: number;
+  skippedReason: string | null;
+}
+
+export async function listPushes(): Promise<PushesView> {
+  const resp = await apiFetch("/speak/pushes");
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const raw = (await resp.json()) as Record<string, unknown>;
+  const honesty = (raw.honesty ?? {}) as Record<string, unknown>;
+  const pubs = Array.isArray(raw.public_opportunities) ? raw.public_opportunities : [];
+  const privs = Array.isArray(raw.private_repings) ? raw.private_repings : [];
+  return {
+    honesty: {
+      publicRanking: String(honesty.public_ranking ?? ""),
+      privateDelivery: String(honesty.private_delivery ?? ""),
+    },
+    publicOpportunities: pubs.map((row) => {
+      const r = row as Record<string, unknown>;
+      return {
+        projectId: String(r.project_id ?? ""),
+        title: String(r.title ?? ""),
+        subjectRef: typeof r.subject_ref === "string" ? r.subject_ref : null,
+        voiceCount: typeof r.voice_count === "number" ? r.voice_count : 0,
+        rankReason: String(r.rank_reason ?? ""),
+      };
+    }),
+    privateRepings: privs.map((row) => {
+      const r = row as Record<string, unknown>;
+      return {
+        projectId: String(r.project_id ?? ""),
+        projectTitle: String(r.project_title ?? ""),
+        interviewId: String(r.interview_id ?? ""),
+        who: String(r.who ?? ""),
+        status: String(r.status ?? ""),
+        token: String(r.token ?? ""),
+        pendingQuestionCount:
+          typeof r.pending_question_count === "number" ? r.pending_question_count : 0,
+        invitePath: String(r.invite_path ?? ""),
+      };
+    }),
+  };
+}
+
+export async function repingInvitee(interviewId: string): Promise<RepingView> {
+  const resp = await apiFetch("/speak/pushes/reping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ interview_id: interviewId }),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const r = (await resp.json()) as Record<string, unknown>;
+  return {
+    interviewId: String(r.interview_id ?? ""),
+    token: String(r.token ?? ""),
+    invitePath: String(r.invite_path ?? ""),
+    followupsAdded: typeof r.followups_added === "number" ? r.followups_added : 0,
+    pendingQuestionCount:
+      typeof r.pending_question_count === "number" ? r.pending_question_count : 0,
+    skippedReason: typeof r.skipped_reason === "string" ? r.skipped_reason : null,
+  };
+}
+
