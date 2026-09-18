@@ -440,6 +440,9 @@ class InvestigationStartResponse(BaseModel):
     start_event_id: str
     operation_id: str | None = None
     owner_model_status: str | None = None
+    # ACU soft-warn when near/over managed compute capacity. Null when
+    # enforcement=off or within budget. Never invents dollars.
+    capacity_warning: dict[str, object] | None = None
 
 
 class RubricScore(BaseModel):
@@ -2296,6 +2299,7 @@ def create_app(
     async def post_investigation(
         req: InvestigationStartRequest,
         request: Request,
+        response: Response,
     ) -> InvestigationStartResponse:
         """Cold-question entry point. Emits
         ``INVESTIGATION_START_REQUESTED`` into the trajectory; the
@@ -2303,6 +2307,16 @@ def create_app(
         spawns the per-investigation coroutine that drives phases
         1-9. Returns the investigation_id + start_event_id
         immediately so the caller can poll status."""
+        from .compute_capacity_gate import (
+            attach_capacity_warn_header,
+            commit_start_acu,
+            run_capacity_precheck,
+            warning_body,
+        )
+
+        # Antiek-hosted ACU gate (1 ACU / start). Hard refuse only when
+        # ANTIEK_COMPUTE_CAPACITY_ENFORCEMENT=hard and used >= limit.
+        capacity_gate = run_capacity_precheck(request)
         # Lazy import — avoid pulling InvestigationStartRequestedPayload
         # at module import time so test setups that monkey-patch the
         # schema layer (drift tests) don't see a partially-initialized
@@ -2475,6 +2489,15 @@ def create_app(
                         raise HTTPException(status_code=503, detail="owner_model_start_pending") from None
                 break
 
+        # Meter 1 ACU for this start (idempotent on investigation_id).
+        post_gate = commit_start_acu(
+            request,
+            investigation_id=investigation_id,
+            reason="post_investigations",
+        )
+        warn_gate = post_gate if post_gate.verdict == "soft_warn" else capacity_gate
+        attach_capacity_warn_header(response, warn_gate)
+
         return InvestigationStartResponse(
             investigation_id=investigation_id,
             status="started",
@@ -2485,6 +2508,7 @@ def create_app(
             # durably queues the launch, so do not call this "accepted".
             owner_model_status=("replayed" if replay_event_id is not None else "queued")
             if operation_id is not None else None,
+            capacity_warning=warning_body(warn_gate),
         )
 
     @app.get(
