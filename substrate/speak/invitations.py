@@ -52,7 +52,11 @@ class Invite:
 
     @property
     def link(self) -> str:
-        return f"https://{INVITE_HOST}/{self.interview_id}?token={self.token}"
+        # Antiek SpeakInvite door — token IS the credential (unauth route
+        # /speak/invite/:token). Prefer this over the legacy interview-host
+        # query form so PublicLane / share links never dead-end into the
+        # authed operator console (speak-private-public-spine SPR-03).
+        return f"https://antiek.ai/speak/invite/{self.token}"
 
 
 def public_ecosystem_enabled() -> bool:
@@ -166,7 +170,8 @@ def lifecycle(con: Any, project_id: str) -> list[dict]:
             "informant_email": r[1],
             "informant_handle": r[2],
             "status": r[3],
-            "link": (f"https://{INVITE_HOST}/{r[0]}?token={token}" if token else None),
+            "link": (f"https://antiek.ai/speak/invite/{token}" if token else None),
+            "token": token,
             "required_consent_scopes": (json.loads(r[5]) if r[5] else []),
         })
     return out

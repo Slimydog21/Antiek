@@ -197,6 +197,7 @@ class InviteResponse(BaseModel):
     invite_id: str
     interview_id: str
     link: str
+    token: str
     required_consent_scopes: list[str]
     status: str
 
@@ -420,6 +421,7 @@ async def invite(project_id: str, req: InviteRequest) -> InviteResponse:
         )
     return InviteResponse(
         invite_id=iv.invite_id, interview_id=iv.interview_id, link=iv.link,
+        token=iv.token,
         required_consent_scopes=[s.value for s in iv.required_consent_scopes],
         status=iv.status,
     )
@@ -440,6 +442,7 @@ async def resolve_invite(token: str) -> InviteResponse:
         raise HTTPException(status_code=404, detail="unknown or expired invite token")
     return InviteResponse(
         invite_id=iv.invite_id, interview_id=iv.interview_id, link=iv.link,
+        token=iv.token,
         required_consent_scopes=[s.value for s in iv.required_consent_scopes],
         status=iv.status,
     )

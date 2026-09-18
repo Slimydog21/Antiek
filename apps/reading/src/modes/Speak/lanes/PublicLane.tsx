@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { LemonButton, LemonInput } from "../../../components/lemon";
-import { getEconomics, type EconomicsView, type FeedItem } from "../../../lib/speakApi";
+import {
+  getEconomics,
+  makeContributionInvitePath,
+  type EconomicsView,
+  type FeedItem,
+} from "../../../lib/speakApi";
 import { GATE_PHRASES, PUBLIC_LANE_LABELS } from "../../../lib/speakVocab";
 
 /**
@@ -52,6 +57,49 @@ export interface PublicLaneProps {
 const PANEL =
   "rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 " +
   "dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night";
+
+
+/**
+ * Mint a link-only invite and navigate to SpeakInvite (`/speak/invite/:token`).
+ * Presentational parent stays prop-driven; mint is on-click (no feed prefetch).
+ */
+function ContributionInviteCta({ projectId }: { projectId: string }) {
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const openDoor = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const path = await makeContributionInvitePath(projectId);
+      navigate(path);
+    } catch {
+      setErr(PUBLIC_LANE_LABELS.ctaMintFailed);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <LemonButton
+        variant="secondary"
+        size="sm"
+        disabled={busy}
+        onClick={() => void openDoor()}
+        data-testid={`contribution-invite-cta-${projectId}`}
+      >
+        {busy ? PUBLIC_LANE_LABELS.ctaMintBusy : "Add your memory"}
+      </LemonButton>
+      {err && (
+        <p className="mt-1 font-serif text-[11px] text-emperor" role="alert">
+          {err}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
   const [query, setQuery] = useState("");
@@ -155,18 +203,13 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
                 {PUBLIC_LANE_LABELS.intendedPublic}
               </p>
 
-              {/* M3 — the CTA. PublicLane lives behind RequireAuth, so the
-                  viewer IS the operator: a real link to their own project
-                  (/speak/:id) is the correct, WORKING action for them. The
-                  label is reframed so it never implies a logged-out stranger
-                  can contribute now (open public contribution is G7-gated,
-                  framed below). No /login link, no 403 button, no dead end. */}
+              {/* M3 — the CTA. Spine SPR-03 dead-end fix: mint a link-only
+                  invite and open /speak/invite/:token (SpeakInvite — unauth,
+                  token is the credential). NEVER /speak/:id (operator console).
+                  Open contribution WITHOUT an invite stays G7-honest below.
+                  Title link above still reaches the operator console. */}
               <div className="mt-2">
-                <Link to={`/speak/${f.id}`}>
-                  <LemonButton variant="secondary" size="sm">
-                    Add your memory
-                  </LemonButton>
-                </Link>
+                <ContributionInviteCta projectId={f.id} />
                 <p className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight">
                   {PUBLIC_LANE_LABELS.ctaOperatorOnly}
                 </p>
@@ -232,13 +275,12 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
       </div>
 
       {/*
-        OUT OF SCOPE (flagged, NOT built) — SPR-01 carry-forward open questions,
-        backend/operator scope:
-          · an UNAUTHENTICATED /speak browse route (a stranger reading the
-            feed without an account);
-          · a G7-gated token-mint endpoint that lets a stranger contribute.
-        Neither is built here: PublicLane stays authed-only behind RequireAuth,
-        and the lane is honest that open public contribution is not yet live.
+        PARTIAL close of spine SPR-03: feed CTA now mints invite tokens →
+        SpeakInvite. Still OUT OF SCOPE (operator/G7):
+          · an UNAUTHENTICATED /speak browse route (stranger reading the feed
+            without an account) — PublicLane stays behind RequireAuth;
+          · open contribution WITHOUT an invite (G7 / ANTIEK_SPEAK_PUBLIC_ECOSYSTEM).
+        The G7 lock panel above stays honest/future-tense until that gate flips.
       */}
     </section>
   );

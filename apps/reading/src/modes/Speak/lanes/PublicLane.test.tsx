@@ -8,9 +8,9 @@
  *     (static, future-tense) — there is NO live G7 read to mock (getEconomics
  *     carries no ecosystem signal), so for G7 this is a content assertion, not
  *     a branch on economics.
- *   - M3: the CTA renders a USABLE action — a real /speak/:id link (the
- *     operator's own public-intent project), never /login and never a dead end;
- *     and it is honestly framed that open contribution by others is not live.
+ *   - M3: the CTA mints an invite token and opens /speak/invite/:token
+ *     (SpeakInvite door), NEVER /speak/:id (operator console) and never /login;
+ *     and it is honestly framed that open contribution without an invite is G7.
  *   - M4: the explainer is honest-tense and carries no per-second ad model, AND
  *     its G2/G3 publishing + payout lines reflect LIVE gate state read via
  *     `getEconomics` — both the gated branch and the open branch are asserted.
@@ -28,15 +28,18 @@ import { MemoryRouter } from "react-router-dom";
 // vi.hoisted + vi.mock the data edge, per the SPR-03 harness. PublicLane reads
 // getEconomics LIVE (G2/G3); listPublicFeed is mocked so the lane's
 // type/value imports resolve cleanly under the spec's stated harness.
-const { getEconomicsMock, listPublicFeedMock } = vi.hoisted(() => ({
-  getEconomicsMock: vi.fn(),
-  listPublicFeedMock: vi.fn(),
-}));
+const { getEconomicsMock, listPublicFeedMock, makeContributionInvitePathMock } =
+  vi.hoisted(() => ({
+    getEconomicsMock: vi.fn(),
+    listPublicFeedMock: vi.fn(),
+    makeContributionInvitePathMock: vi.fn(),
+  }));
 
 vi.mock("../../../lib/speakApi", async (orig) => ({
   ...(await orig<typeof import("../../../lib/speakApi")>()),
   getEconomics: getEconomicsMock,
   listPublicFeed: listPublicFeedMock,
+  makeContributionInvitePath: makeContributionInvitePathMock,
 }));
 
 import PublicLane from "./PublicLane";
@@ -62,6 +65,7 @@ function economics(over: Partial<EconomicsView>): EconomicsView {
 beforeEach(() => {
   getEconomicsMock.mockReset().mockResolvedValue(economics({}));
   listPublicFeedMock.mockReset();
+  makeContributionInvitePathMock.mockReset().mockResolvedValue("/speak/invite/tok-feed-1");
 });
 afterEach(cleanup);
 
@@ -137,26 +141,36 @@ describe("PublicLane — the honest G7 locked state (M2)", () => {
   });
 });
 
-describe("PublicLane — the CTA is usable, not a dead end (M3)", () => {
-  it("renders an 'Add your memory' action linking to the operator's own /speak/:id (never /login)", () => {
+describe("PublicLane — the CTA opens the invite-token door (M3 / spine SPR-03)", () => {
+  it("Add your memory mints an invite and navigates to /speak/invite/:token (never /speak/:id console)", async () => {
     mount({ feed: [{ id: "p9", name: "Aunt May", voiceCount: 1 }] });
-    const cta = screen.getByRole("button", { name: /add your memory/i });
+    const cta = screen.getByTestId("contribution-invite-cta-p9");
     expect(cta).toBeTruthy();
-
-    // It is wrapped in a real link to the project — a working action for the
-    // authed operator, NOT /login and NOT a dead/clickable-but-403 control.
+    fireEvent.click(cta);
+    await waitFor(() =>
+      expect(makeContributionInvitePathMock).toHaveBeenCalledWith("p9"),
+    );
+    // Title may still link the operator console; the CTA must not.
     const links = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
     expect(links).toContain("/speak/p9");
     for (const href of links) {
       expect(href).not.toBe("/login");
-      expect(href).not.toBeNull();
-      expect(href).not.toBe("#");
     }
+    // CTA is a button that mints — not a Link to /speak/:id.
+    expect(cta.closest("a")).toBeNull();
   });
 
-  it("is honest that open contribution by others is not live", () => {
+  it("is honest that open contribution without an invite is not live (G7)", () => {
     mount({ feed: [{ id: "p9", name: "Aunt May", voiceCount: 1 }] });
     expect(screen.getByText(PUBLIC_LANE_LABELS.ctaOperatorOnly)).toBeTruthy();
+    expect(screen.getByText(GATE_PHRASES.publicEcosystem.whenGated)).toBeTruthy();
+  });
+
+  it("surfaces an honest error when invite mint fails (no silent dead end)", async () => {
+    makeContributionInvitePathMock.mockRejectedValueOnce(new Error("boom"));
+    mount({ feed: [{ id: "p9", name: "Aunt May", voiceCount: 1 }] });
+    fireEvent.click(screen.getByTestId("contribution-invite-cta-p9"));
+    expect(await screen.findByText(PUBLIC_LANE_LABELS.ctaMintFailed)).toBeTruthy();
   });
 });
 
