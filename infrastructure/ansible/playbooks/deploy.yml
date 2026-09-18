@@ -471,6 +471,8 @@
               - --db-path
               - "{{ antiek_state_dir }}/antiek.duckdb"
             chdir: "{{ antiek_install_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
           become_user: "{{ antiek_user }}"
           changed_when: false
 
@@ -482,6 +484,8 @@
               - --db-path
               - "{{ antiek_state_dir }}/antiek.duckdb"
             chdir: "{{ antiek_install_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
           become_user: "{{ antiek_user }}"
           changed_when: false
 
@@ -493,6 +497,8 @@
               - --db-path
               - "{{ antiek_state_dir }}/antiek.duckdb"
             chdir: "{{ antiek_install_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
           become_user: "{{ antiek_user }}"
           changed_when: false
 
@@ -504,6 +510,8 @@
               - --db-path
               - "{{ antiek_state_dir }}/antiek.duckdb"
             chdir: "{{ antiek_install_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
           become_user: "{{ antiek_user }}"
           changed_when: false
 
