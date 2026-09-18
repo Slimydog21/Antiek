@@ -3,9 +3,9 @@
 Dogfoodable MVP — NO second notification stack, NO ML profile matching.
 Email re-ping reuses substrate.auth get_email_provider (AgentMail/Resend/Mock):
 
-  (a) Public opportunities — will_be_public projects ranked by fewest
-      voices first ("what you'd add value to" heuristic). Honest: not
-      profile-matched ML.
+  (a) Public opportunities — will_be_public projects ranked by a
+      multi-signal heuristic (voice need + recency + subject/title
+      specificity; optional interest-token overlap). Honest: not ML.
   (b) Private re-pings — invitees who are not declined, have a token,
       and still have pending questions (or can receive followups).
       ``prepare_reping`` runs ``next_followups`` (consent-scoped: skips
@@ -31,6 +31,8 @@ class PublicOpportunity:
     voice_count: int
     """Honest ranking label — not ML."""
     rank_reason: str
+    rank_score: float = 0.0
+    """Composite heuristic score (higher = listed first)."""
 
 
 @dataclass(frozen=True)
@@ -60,11 +62,152 @@ class RepingResult:
     email_detail: str | None = None
 
 
-def list_public_opportunities(con: Any, *, limit: int = 20) -> list[PublicOpportunity]:
-    """Naive public push list: public-intent projects needing more voices.
+# --- ranking helpers (honest multi-signal heuristic, NOT ML) -----------------
 
-    Ranking = ascending voice_count (fewest first). Explicitly NOT ML /
-    profile matching — dogfood surface for dual-push (a).
+_STOP = frozenset(
+    {
+        "a", "an", "the", "and", "or", "of", "for", "to", "in", "on", "at",
+        "by", "with", "from", "his", "her", "their", "our", "my", "about",
+        "story", "stories", "life", "biography", "remembrance", "memory",
+        "memories", "project", "speak",
+    }
+)
+
+
+def tokenize_interest(text: str | None) -> set[str]:
+    """Lowercase alphanumeric tokens, stopwords dropped. Deterministic."""
+    if not text:
+        return set()
+    raw: list[str] = []
+    buf: list[str] = []
+    for ch in text.lower():
+        if ch.isalnum():
+            buf.append(ch)
+        else:
+            if buf:
+                raw.append("".join(buf))
+                buf = []
+    if buf:
+        raw.append("".join(buf))
+    return {t for t in raw if len(t) > 1 and t not in _STOP}
+
+
+def _specificity_score(title: str, subject_ref: str | None) -> float:
+    """More distinct content tokens → clearer contribution target (0..1)."""
+    toks = tokenize_interest(f"{title} {subject_ref or ''}")
+    if not toks:
+        return 0.0
+    return min(len(toks), 8) / 8.0
+
+
+def _voice_need_score(voice_count: int) -> float:
+    """Fewer voices → higher need. 0 voices = 1.0; decays toward 0."""
+    return 1.0 / (1.0 + max(0, voice_count))
+
+
+def _recency_score(created_at: Any, *, now_ts: float | None = None) -> float:
+    """Newer projects score higher. Age > ~90 days → near floor."""
+    import time
+    from datetime import datetime
+
+    now = now_ts if now_ts is not None else time.time()
+    ts: float | None = None
+    if created_at is None:
+        return 0.5
+    if isinstance(created_at, (int, float)):
+        ts = float(created_at)
+    elif isinstance(created_at, datetime):
+        ts = created_at.timestamp()
+    else:
+        s = str(created_at).replace("Z", "")
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                ts = datetime.strptime(s[:26], fmt).timestamp()
+                break
+            except ValueError:
+                continue
+    if ts is None:
+        return 0.5
+    age_days = max(0.0, (now - ts) / 86400.0)
+    return max(0.1, 1.0 - (age_days / 90.0) * 0.9)
+
+
+def _overlap_score(title: str, subject_ref: str | None, interest: str | None) -> float:
+    """Overlap of interest tokens with title+subject (0..1)."""
+    q = tokenize_interest(interest)
+    if not q:
+        return 0.0
+    doc = tokenize_interest(f"{title} {subject_ref or ''}")
+    if not doc:
+        return 0.0
+    inter = q & doc
+    if not inter:
+        return 0.0
+    return len(inter) / len(q | doc)
+
+
+def _combine_scores(
+    *,
+    voice_need: float,
+    recency: float,
+    specificity: float,
+    overlap: float,
+    has_interest: bool,
+) -> float:
+    if has_interest:
+        return (
+            0.40 * voice_need
+            + 0.20 * recency
+            + 0.10 * specificity
+            + 0.30 * overlap
+        )
+    return 0.55 * voice_need + 0.25 * recency + 0.20 * specificity
+
+
+def _rank_reason(
+    *,
+    voice_count: int,
+    recency: float,
+    specificity: float,
+    overlap: float,
+    has_interest: bool,
+) -> str:
+    parts = [
+        f"needs voices ({voice_count})",
+        "newer first" if recency >= 0.6 else "older still open",
+        "clearer subject" if specificity >= 0.4 else "thin subject labels",
+    ]
+    if has_interest:
+        parts.append(
+            f"title/subject overlap {overlap:.2f}"
+            if overlap > 0
+            else "no title/subject overlap with interest"
+        )
+    return "heuristic: " + "; ".join(parts) + " — not ML profile matching"
+
+
+RANKING_HONESTY_ID = (
+    "multi_signal_heuristic_voice_need_recency_specificity"
+    "_optional_interest_overlap_not_ml"
+)
+
+
+def list_public_opportunities(
+    con: Any,
+    *,
+    limit: int = 20,
+    interest: str | None = None,
+) -> list[PublicOpportunity]:
+    """Public push list with multi-signal heuristic ranking (NOT ML).
+
+    Signals (documented in ``rank_reason`` / ``RANKING_HONESTY_ID``):
+      • voice need — fewer non-declined voices score higher
+      • recency — newer ``speak_projects.created_at`` scores higher
+      • specificity — richer title/subject_ref token sets score higher
+      • optional interest overlap — when ``interest`` is provided, Jaccard
+        overlap with title+subject boosts the score (still token heuristic)
+
+    Sort: descending composite score, then title.
     """
     ensure_speak_schema(con)
     rows = con.execute(
@@ -72,32 +215,48 @@ def list_public_opportunities(con: Any, *, limit: int = 20) -> list[PublicOpport
         SELECT p.project_id, ip.title, p.subject_ref,
                (SELECT COUNT(*) FROM interviews i
                 WHERE i.project_id = p.project_id
-                  AND i.status NOT IN ('declined')) AS voice_count
+                  AND i.status NOT IN ('declined')) AS voice_count,
+               p.created_at
         FROM speak_projects p
         JOIN interview_projects ip ON ip.project_id = p.project_id
         WHERE p.publish_intent = 'will_be_public'
-        ORDER BY voice_count ASC, ip.title ASC
-        LIMIT ?
-        """,
-        [limit],
+        """
     ).fetchall()
-    out: list[PublicOpportunity] = []
+    has_interest = bool(tokenize_interest(interest))
+    scored: list[PublicOpportunity] = []
     for r in rows:
         vc = int(r[3] or 0)
-        out.append(
+        title = r[1] or r[0]
+        subject = r[2]
+        voice_need = _voice_need_score(vc)
+        recency = _recency_score(r[4])
+        specificity = _specificity_score(title, subject)
+        overlap = _overlap_score(title, subject, interest)
+        score = _combine_scores(
+            voice_need=voice_need,
+            recency=recency,
+            specificity=specificity,
+            overlap=overlap,
+            has_interest=has_interest,
+        )
+        scored.append(
             PublicOpportunity(
                 project_id=r[0],
-                title=r[1] or r[0],
-                subject_ref=r[2],
+                title=title,
+                subject_ref=subject,
                 voice_count=vc,
-                rank_reason=(
-                    "fewest voices first — heuristic, not profile matching"
-                    if vc == 0
-                    else f"{vc} voice(s) so far — heuristic, not profile matching"
+                rank_reason=_rank_reason(
+                    voice_count=vc,
+                    recency=recency,
+                    specificity=specificity,
+                    overlap=overlap,
+                    has_interest=has_interest,
                 ),
+                rank_score=score,
             )
         )
-    return out
+    scored.sort(key=lambda o: (-o.rank_score, o.title.lower()))
+    return scored[:limit]
 
 
 def list_private_repings_at(db_path: str, *, limit: int = 50) -> list[PrivateReping]:
@@ -240,7 +399,9 @@ __all__ = [
     "PublicOpportunity",
     "PrivateReping",
     "RepingResult",
+    "RANKING_HONESTY_ID",
     "list_public_opportunities",
     "list_private_repings_at",
     "prepare_reping",
+    "tokenize_interest",
 ]

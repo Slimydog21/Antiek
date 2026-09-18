@@ -100,7 +100,7 @@ export default function SpeakPublicBrowse() {
             {PUSHES_COPY.publicHeading}
           </h2>
           <p className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight">
-            Fewest voices first — heuristic, not ML profile matching.
+            {PUSHES_COPY.rankingSignals}
           </p>
           {opps.length === 0 ? (
             <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">

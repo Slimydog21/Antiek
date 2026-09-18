@@ -352,11 +352,15 @@ export const PUSHES_COPY = {
   tabLabel: "Pushes",
   heading: "What needs a voice",
   honestyBanner:
-    "Public matching is a simple heuristic (fewest voices first) — not ML " +
-    "profile matching yet. Private re-pings can email the invite door when " +
+    "Public ranking is a multi-signal heuristic (needs voices + recency + " +
+    "subject/title clarity; optional interest overlap) — not ML profile " +
+    "matching. Private re-pings can email the invite door when " +
     "ANTIEK_SPEAK_REPING_EMAIL is on and AgentMail/Resend is configured; " +
     "declined invitees are never emailed.",
   publicHeading: "Public — what you'd add value to",
+  rankingSignals:
+    "Ranked by needs-voices, recency, and subject/title clarity " +
+    "(optional interest overlap) — heuristic, not ML.",
   publicEmpty: "No public-intent remembrances need voices yet.",
   privateHeading: "Private — friend invites to re-ping",
   privateEmpty: "No open friend invites need a nudge right now.",

@@ -23,7 +23,7 @@ import { PUSHES_COPY } from "../../../lib/speakVocab";
 beforeEach(() => {
   listPushesMock.mockReset().mockResolvedValue({
     honesty: {
-      publicRanking: "fewest_voices_first_heuristic_not_ml_profile_matching",
+      publicRanking: "multi_signal_heuristic_voice_need_recency_specificity_optional_interest_overlap_not_ml",
       privateDelivery: "invite_path_only_no_email_send_in_mvp",
     },
     publicOpportunities: [
@@ -32,7 +32,8 @@ beforeEach(() => {
         title: "Needs voices",
         subjectRef: "Uncle Theo",
         voiceCount: 0,
-        rankReason: "fewest voices first — heuristic, not profile matching",
+        rankReason: "heuristic: needs voices (0); newer first; clearer subject — not ML profile matching",
+        rankScore: 0.9,
       },
     ],
     privateRepings: [
@@ -90,6 +91,6 @@ describe("PushesLane — dual push dogfood surface", () => {
     fireEvent.click(screen.getByTestId("reping-iv1"));
     await waitFor(() => expect(repingInviteeMock).toHaveBeenCalledWith("iv1", { sendEmail: true }));
     // Honesty: banner still denies ML profile matching.
-    expect(screen.getByText(/not ML profile matching/i)).toBeTruthy();
+    expect(screen.getAllByText(/not ML profile matching/i).length).toBeGreaterThan(0);
   });
 });
