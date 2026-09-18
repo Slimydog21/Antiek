@@ -57,7 +57,10 @@ def maybe_reuse_prior_knowledge_at_start(
         )
         from substrate.event_log import default_events_dir
         from substrate.graph import default_db_path
-        from substrate.graph.retrieval_substrate import make_substrate_from_con
+        from substrate.graph.retrieval_substrate import (
+            make_substrate_from_con,
+            resolve_reuse_substrate_kind,
+        )
 
         resolved_db = db_path or default_db_path()
         resolved_events = events_dir or default_events_dir()
@@ -68,7 +71,10 @@ def maybe_reuse_prior_knowledge_at_start(
         parent = duckdb.connect(resolved_db)
         _register_local_writer(resolved_db)
         registered = True
-        substrate = make_substrate_from_con("brute_force", parent, model=model)
+        kind = resolve_reuse_substrate_kind()
+        substrate = make_substrate_from_con(
+            kind, parent, model=model, db_path=resolved_db,
+        )
         units = retrieve_prior_units(
             substrate,
             question_text=question_text.strip(),

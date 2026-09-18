@@ -148,8 +148,9 @@ def test_benchmark_mode_never_falls_back(graph):
 def test_private_policy_and_namespace_derivation_rejected(graph):
     sub = TurbopufferSubstrate.open(graph, model=HashEmbedding(), api_key="x",
                                     namespace=FakeNamespace())
-    with pytest.raises(ValueError, match="attribution_eligible"):
-        sub.query("x", policy_tag="operator_only")
+    # Privileged/gated policy stays on DuckDB SoT — vendor never consulted.
+    out = sub.query("x", policy_tag="operator_only")
+    assert out["status"] == "duckdb — non_servable_policy"
     with pytest.raises(ValueError, match="shadow namespace"):
         TurbopufferSubstrate.open(graph, model=HashEmbedding(), api_key="x",
                                   namespace=FakeNamespace(), namespace_name="users.1")

@@ -78,3 +78,30 @@ rows is 50_000 (`ANTIEK_TURBOPUFFER_MAX_ROWS` to raise).
 If `merge_staging` refuses with SchemaDivergence (column order / missing
 `owner_user_id`), stop uvicorn and ingest with
 `run_corpus_ingest --db-path "$DB" --allow-prod-write` instead of staging→merge.
+
+
+## Env-gated hybrid mount (reuse / cascade)
+
+When `ANTIEK_TURBOPUFFER_SERVABLE=1` and `TURBOPUFFER_API_KEY` are set on the
+API process, cascade `_LazyReuseSubstrate` and Loop One
+`maybe_reuse_prior_knowledge_at_start` resolve to
+`make_substrate_from_con("turbopuffer", …, db_path=…)`.
+
+- DuckDB remains SoT; TurboPuffer is SERVABLE hybrid retrieval only.
+- `policy_tag=attribution_eligible` → TP (hydrate+§9.0 gate via DuckDB).
+- Any other policy tag (owner/gated) → DuckDB `search()` only; vendor never called.
+- Talk-to-book / `/corpus/search` stay on DuckDB `search()` (not this mount).
+
+```bash
+# Mini uvicorn already loads platform/.env (#3127). Ensure:
+# ANTIEK_TURBOPUFFER_SERVABLE=1
+# TURBOPUFFER_API_KEY=…
+# Promote pointer present (.antiek/turbopuffer-shadow/active.json)
+
+python - <<'PY'
+import os
+os.environ["ANTIEK_TURBOPUFFER_SERVABLE"] = "1"
+from substrate.graph.retrieval_substrate import resolve_reuse_substrate_kind
+print(resolve_reuse_substrate_kind())  # turbopuffer
+PY
+```
