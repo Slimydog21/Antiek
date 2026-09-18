@@ -8,7 +8,6 @@ import ContextPicker from "./ai/ContextPicker";
 import {
   dispatchAiAction,
   parseAssistantReply,
-  workspaceContextPrompt,
 } from "./ai/aiActions";
 import type { DispatchedAction } from "./ai/aiActions";
 import {
