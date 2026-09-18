@@ -4,11 +4,15 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
+import httpx
+import nacl.secret
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from acquisition.twitter.api_client import XApiError
 from interfaces.research.api import research_tool_search as subject
+from runtime.connectors.registry import connect_tool
+from runtime.connectors.registry import resolve_tool_connection as real_resolve_tool_connection
 
 
 @dataclass
@@ -179,3 +183,242 @@ def test_private_value_free_errors_never_cache_or_echo_query(monkeypatch, tmp_pa
     })
     assert conflict.status_code == 409
     assert conflict.headers["cache-control"] == "private, no-store"
+
+
+# ---------------------------------------------------------------------------
+# The vendor paths, driven through the REAL connectors over MockTransport.
+#
+# The fakes above stand in for a resolved connector's RETURN shape; these tests
+# resolve through the real registry instead, so a connector that stops
+# answering the call the route makes (a rename, a re-shaped return) fails here
+# rather than in production. No network: each connector gets an httpx client
+# over MockTransport plus a temp-dir governor / quota meter.
+# ---------------------------------------------------------------------------
+
+_X_BEARER = "x-valid-bearer-token-0123456789abcdef"
+_YT_KEY = "AIza" + "a" * 24
+_TEST_KEY_BYTES = b"0" * nacl.secret.SecretBox.KEY_SIZE
+
+_YT_VIDEO_ITEM = {
+    "kind": "youtube#searchResult",
+    "etag": "e1",
+    "id": {"kind": "youtube#video", "videoId": "dQw4w9WgXcQ"},
+    "snippet": {
+        "publishedAt": "2026-08-14T17:00:00Z",
+        "channelId": "UC_lab",
+        "title": "Solid-state batteries, explained",
+        "description": "A lecture on sulfide electrolytes.",
+        "channelTitle": "Battery Lab",
+        "thumbnails": {"default": {"url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg"}},
+    },
+}
+
+
+def _vendor_send(monkeypatch, tmp_path, vendor: str, handler, *, owner: str = "owner-a"):
+    """A TestClient whose route resolves the REAL connector for ``vendor``.
+
+    The registry seam is wrapped rather than replaced: ``resolve_tool_connection``
+    runs for real (so the vendor → connector map is exercised) with the test's
+    transport and a temp state dir injected. One fresh connector per call, so a
+    test can model a quota reset or a reopened rate window by moving
+    ``state["dir"]`` between attempts.
+    """
+    monkeypatch.setenv("ANTIEK_TOOL_SEARCH_JOURNAL", str(tmp_path / "journal.sqlite3"))
+    monkeypatch.setenv("ANTIEK_TOOL_CONNECTIONS_PATH", str(tmp_path / "connections.json"))
+    artifact = str(tmp_path / "credentials.enc")
+    connect_tool(
+        owner,
+        vendor,
+        _X_BEARER if vendor == "x" else _YT_KEY,
+        artifact_path=artifact,
+        key_bytes=_TEST_KEY_BYTES,
+    )
+    state: dict = {"dir": str(tmp_path / "meter"), "connectors": []}
+
+    def resolve(owner_user_id, vendor_name, **kwargs):
+        connector = real_resolve_tool_connection(
+            owner_user_id,
+            vendor_name,
+            artifact_path=artifact,
+            key_bytes=_TEST_KEY_BYTES,
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+            state_dir=state["dir"],
+            **kwargs,
+        )
+        state["connectors"].append(connector)
+        return connector
+
+    monkeypatch.setattr(subject, "resolve_tool_connection", resolve)
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def identity(request, call_next):
+        request.state.user_id = owner
+        request.state.auth_method = "antiek_session_cookie"
+        return await call_next(request)
+
+    subject.register_research_tool_search_routes(app)
+    return TestClient(app), state
+
+
+def test_x_search_returns_candidates_from_a_real_connector(monkeypatch, tmp_path):
+    sent: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, json={
+            "data": [
+                {"id": "1812345678901234567", "text": "Grid storage pilot results",
+                 "author_id": "42", "created_at": "2026-08-30T11:02:00.000Z",
+                 "conversation_id": "1812345678901234567"},
+                {"id": "1812345678901234568", "text": "Second result",
+                 "author_id": "43", "created_at": "2026-08-29T09:00:00.000Z"},
+            ],
+            "includes": {"users": [
+                {"id": "42", "username": "gridwatcher", "verified": True},
+                {"id": "43", "username": "cellchem"},
+            ]},
+        })
+
+    client, _state = _vendor_send(monkeypatch, tmp_path, "x", handler)
+    response = client.post("/research/tools/search", json={
+        "operation_id": "x_operation_0001", "vendor": "x",
+        "query": "grid storage", "max_results": 10,
+    })
+
+    assert response.status_code == 200, response.text
+    assert response.json()["candidates"] == [
+        {"external_id": "1812345678901234567",
+         "title_or_text": "Grid storage pilot results",
+         "url": "https://x.com/gridwatcher/status/1812345678901234567",
+         "published_at": "2026-08-30T11:02:00.000Z",
+         "author": "gridwatcher"},
+        {"external_id": "1812345678901234568",
+         "title_or_text": "Second result",
+         "url": "https://x.com/cellchem/status/1812345678901234568",
+         "published_at": "2026-08-29T09:00:00.000Z",
+         "author": "cellchem"},
+    ]
+    assert [request.url.path for request in sent] == ["/2/tweets/search/recent"]
+    assert sent[0].url.params["query"] == "grid storage"
+    # The bearer rides the Authorization header only.
+    assert sent[0].headers["authorization"] == f"Bearer {_X_BEARER}"
+    assert _X_BEARER not in str(sent[0].url)
+
+
+def test_youtube_search_spends_quota_and_returns_candidates(monkeypatch, tmp_path):
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/youtube/v3/search"
+        assert request.url.params["q"] == "solid state batteries"
+        return httpx.Response(200, json={
+            "kind": "youtube#searchListResponse",
+            "etag": "etag-1",
+            "regionCode": "US",
+            "pageInfo": {"totalResults": 2, "resultsPerPage": 2},
+            "items": [
+                _YT_VIDEO_ITEM,
+                {"kind": "youtube#searchResult", "etag": "e2",
+                 "id": {"kind": "youtube#channel", "channelId": "UC_lab"},
+                 "snippet": {"publishedAt": "2026-07-02T08:30:00Z", "channelId": "UC_lab",
+                             "title": "Battery Lab", "description": "Channel.",
+                             "channelTitle": "Battery Lab"}},
+            ],
+        })
+
+    client, state = _vendor_send(monkeypatch, tmp_path, "youtube", handler)
+    response = client.post("/research/tools/search", json={
+        "operation_id": "yt_operation_0001", "vendor": "youtube",
+        "query": "solid state batteries", "max_results": 10,
+    })
+
+    assert response.status_code == 200, response.text
+    assert response.json()["candidates"] == [
+        {"external_id": "dQw4w9WgXcQ",
+         "title_or_text": "Solid-state batteries, explained",
+         "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+         "published_at": "2026-08-14T17:00:00Z",
+         "author": "Battery Lab"},
+        {"external_id": "UC_lab",
+         "title_or_text": "Battery Lab",
+         "url": "https://www.youtube.com/channel/UC_lab",
+         "published_at": "2026-07-02T08:30:00Z",
+         "author": "Battery Lab"},
+    ]
+    # These two rows are what the 100-unit search.list reservation bought.
+    assert state["connectors"][0].quota_remaining().remaining == 10_000 - 100
+
+
+def test_vendor_quota_403_does_not_poison_the_operation_id(monkeypatch, tmp_path):
+    sends = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sends["n"] += 1
+        if sends["n"] == 1:
+            return httpx.Response(403, json={"error": {
+                "code": 403,
+                "message": "Quota exceeded",
+                "errors": [{
+                    "domain": "youtube.quota",
+                    "reason": "quotaExceeded",
+                    "message": "The request cannot be completed because you have "
+                               "exceeded your quota.",
+                }],
+            }})
+        return httpx.Response(200, json={"items": [_YT_VIDEO_ITEM]})
+
+    client, state = _vendor_send(monkeypatch, tmp_path, "youtube", handler)
+    body = {"operation_id": "yt_operation_0002", "vendor": "youtube",
+            "query": "solid state batteries", "max_results": 10}
+
+    exhausted = client.post("/research/tools/search", json=body)
+    assert exhausted.status_code == 429, exhausted.text
+
+    # Same vendor-day: the meter refuses locally, without a second vendor send —
+    # and still without burning the operation.
+    still_exhausted = client.post("/research/tools/search", json=body)
+    assert still_exhausted.status_code == 429, still_exhausted.text
+
+    # Quota reset (a fresh meter). The same operation_id must now run for real
+    # instead of answering 409 from a poisoned journal entry.
+    state["dir"] = str(tmp_path / "meter_after_reset")
+    after_reset = client.post("/research/tools/search", json=body)
+    assert after_reset.status_code == 200, after_reset.text
+    assert after_reset.json()["status"] == "completed"
+    assert len(after_reset.json()["candidates"]) == 1
+    assert sends["n"] == 2
+
+
+def test_x_rate_limit_releases_the_operation_id(monkeypatch, tmp_path):
+    sends = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sends["n"] += 1
+        if sends["n"] == 1:
+            return httpx.Response(
+                429,
+                json={"title": "Too Many Requests", "detail": "Rate limit exceeded"},
+                headers={"Retry-After": "900"},
+            )
+        return httpx.Response(200, json={
+            "data": [{"id": "1812345678901234569", "text": "Back online",
+                      "author_id": "42", "created_at": "2026-09-01T10:00:00.000Z"}],
+            "includes": {"users": [{"id": "42", "username": "gridwatcher"}]},
+        })
+
+    client, state = _vendor_send(monkeypatch, tmp_path, "x", handler)
+    body = {"operation_id": "x_operation_0002", "vendor": "x",
+            "query": "grid storage", "max_results": 10}
+
+    limited = client.post("/research/tools/search", json=body)
+    assert limited.status_code == 429, limited.text
+
+    # Inside the governor's ban window: refused before the send, still retriable.
+    banned = client.post("/research/tools/search", json=body)
+    assert banned.status_code == 429, banned.text
+
+    # The window reopens (a fresh governor). Same operation_id, real send.
+    state["dir"] = str(tmp_path / "gov_after_window")
+    after_window = client.post("/research/tools/search", json=body)
+    assert after_window.status_code == 200, after_window.text
+    assert after_window.json()["candidates"][0]["external_id"] == "1812345678901234569"
+    assert sends["n"] == 2

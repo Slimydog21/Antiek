@@ -25,9 +25,12 @@ the operator's smoke test.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
+
+if TYPE_CHECKING:  # the acquisition lane owns the parsed record (see search())
+    from acquisition.youtube.data_api import YouTubeSearchResult
 
 from runtime.connectors.base import (
     KEY_MAX_LEN,
@@ -221,13 +224,19 @@ class YouTubeDataConnector(PasteKeyConnector):
         max_results: int = _MAX_RESULTS_DEFAULT,
         order: str | None = None,
         type_: str = "video",
-    ) -> list[dict[str, Any]]:
+    ) -> list[YouTubeSearchResult]:
         """Search wrapper: ``GET /youtube/v3/search``.
 
         Reserves 100 quota units (``search.list`` cost) before the request is
-        built. Returns the raw ``items`` array. ``max_results`` is bounded 1-50
-        (vendor-documented). ``order`` is one of the vendor's values (``date``,
-        ``rating``, ``relevance``, ``title``, ``viewCount``).
+        built. Returns parsed search hits — not the vendor's raw ``items`` —
+        the same record ``acquisition.youtube.data_api.YouTubeConnector.search``
+        returns for this endpoint and the one the research-tool candidate
+        mapper destructures, so the vendor envelope is decoded once, by the
+        parser that owns it. ``max_results`` is bounded 1-50 (vendor-documented)
+        and bounds the vendor page, not the parsed list: an item missing its
+        ``id``/``snippet`` objects is dropped rather than failing the page.
+        ``order`` is one of the vendor's values (``date``, ``rating``,
+        ``relevance``, ``title``, ``viewCount``).
         """
         if not query or not query.strip():
             raise ValueError("query must be a non-empty string")
@@ -247,10 +256,12 @@ class YouTubeDataConnector(PasteKeyConnector):
             params["type"] = type_
 
         payload = self._get("/search", params, units=_SEARCH_UNITS)
-        items = payload.get("items")
-        if not isinstance(items, list):
-            return []
-        return items
+        # Imported at call time, not module scope: the envelope parser belongs
+        # to the acquisition lane's Data API module, and this connector borrows
+        # it rather than restating the vendor's shape.
+        from acquisition.youtube.data_api import parse_search_response
+
+        return parse_search_response(payload)
 
     def close(self) -> None:
         """Close the held httpx client — only if this connector created it."""

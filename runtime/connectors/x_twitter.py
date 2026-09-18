@@ -184,12 +184,21 @@ class XTwitterConnector(PasteKeyConnector):
     ) -> list[dict[str, Any]]:
         """Recent-search wrapper: ``GET /2/tweets/search/recent``.
 
-        Returns the raw ``data`` array of tweet objects. ``max_results`` is a
-        hard ceiling of 25 (the product-level bound for the settings surface);
-        the key's own tier may impose a lower effective limit (a 429 pauses the
-        governor). X's documented rate limit for recent-search is 450 req / 15
-        min at the app level (75 req / 15 min per-user); the governor enforces
-        the conservative 25 req / 15 min host-global ceiling.
+        Returns flattened tweet records — ``tweet_id``, ``text``,
+        ``author_handle``, ``created_at`` — not the vendor's raw ``data``
+        objects. That is the shape ``acquisition.twitter.api_client`` returns
+        for this endpoint and the shape the research-tool candidate mapper
+        destructures, so the vendor envelope is decoded in one place
+        (``parse_search_response``) for both lanes. The author handle rides the
+        ``includes.users`` expansion this call asks for; a tweet X declines to
+        expand keeps its row and loses only the handle.
+
+        ``max_results`` is a hard ceiling of 25 (the product-level bound for
+        the settings surface); the key's own tier may impose a lower effective
+        limit (a 429 pauses the governor). X's documented rate limit for
+        recent-search is 450 req / 15 min at the app level (75 req / 15 min
+        per-user); the governor enforces the conservative 25 req / 15 min
+        host-global ceiling.
         """
         if not query or not query.strip():
             raise ValueError("query must be a non-empty string")
@@ -201,12 +210,18 @@ class XTwitterConnector(PasteKeyConnector):
                 "query": query,
                 "max_results": str(max_results),
                 "tweet.fields": "created_at,author_id,conversation_id",
+                "expansions": "author_id",
+                "user.fields": "username",
             },
         )
-        data = payload.get("data")
-        if not isinstance(data, list):
+        if not isinstance(payload.get("data"), list):
             return []
-        return data
+        # Imported here, not at module scope: ``api_client`` pulls the
+        # acquisition lane's adapter (chunking, embedding, substrate), which
+        # importing this connector should not drag in.
+        from acquisition.twitter.api_client import parse_search_response
+
+        return parse_search_response(payload)
 
     def close(self) -> None:
         """Close the held httpx client — only if this connector created it."""

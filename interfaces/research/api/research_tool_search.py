@@ -1,4 +1,13 @@
-"""Owner-scoped, replay-safe candidate search for connected research tools."""
+"""Owner-scoped, replay-safe candidate search for connected research tools.
+
+The journal is the idempotency record: one row per ``(owner, operation_id)``,
+digested against the request, so a replay returns the stored response without a
+second vendor send. Only an ambiguous failure burns that record — a transport
+error or an unparseable body may have reached the vendor. A refusal the vendor
+documents as temporary, a daily quota that resets or a rate window that
+reopens, releases the claim instead, so the same ``operation_id`` can succeed
+once the condition clears (see :func:`_refusal_clears`).
+"""
 
 from __future__ import annotations
 
@@ -15,14 +24,19 @@ from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from acquisition.twitter.api_client import XApiError
-from acquisition.youtube.data_api import YouTubeApiError, YouTubeQuotaExhausted
 from runtime.connectors.quota_meter import QuotaExhausted
+from runtime.connectors.rate_governor import VendorBanned
 from runtime.connectors.registry import ToolConnectionUnavailable, resolve_tool_connection
+from runtime.connectors.x_twitter import XTwitterError
+from runtime.connectors.youtube import YouTubeError, YouTubeQuotaExhausted
 
 router = APIRouter(prefix="/research/tools", tags=["research-tools"])
 _PRIVATE = "private, no-store"
 _OP_PATTERN = r"^[A-Za-z0-9_-]{16,128}$"
+
+# HTTP refusals that clear on their own: the vendor is asking to come back
+# later, so the operation they refused stays retriable (§ _refusal_clears).
+_SELF_CLEARING_STATUSES = frozenset({429})
 
 
 class SearchRequest(BaseModel):
@@ -176,9 +190,20 @@ def _unknown(owner: str, operation_id: str) -> None:
 
 
 def _release(owner: str, operation_id: str) -> None:
+    """Drop an operation the vendor never performed.
+
+    Covers both ``claimed`` (the connection refused before any send) and
+    ``sent`` (the vendor answered with a refusal that clears on its own —
+    a quota that resets, a rate window that reopens). Nothing was produced
+    and nothing changed at the vendor, so the row goes rather than becoming
+    a terminal outcome: deleting it returns the ``operation_id`` to
+    unclaimed, and a later attempt — after the reset — runs for real instead
+    of answering 409 from a burned journal entry.
+    """
     with _connect() as con:
         con.execute(
-            "DELETE FROM searches WHERE owner=? AND operation_id=? AND state='claimed'",
+            "DELETE FROM searches WHERE owner=? AND operation_id=? "
+            "AND state IN ('claimed','sent')",
             (owner, operation_id),
         )
 
@@ -236,6 +261,22 @@ def _x(rows: object) -> list[SearchCandidate]:
     return out
 
 
+def _refusal_clears(exc: BaseException) -> bool:
+    """True when a vendor refusal expires without the user doing anything.
+
+    A quota that resets at the vendor's midnight and a rate window that
+    reopens are conditions, not outcomes: the request bought nothing, so the
+    operation stays retriable. Everything else keeps the terminal
+    ``unknown`` mark — a transport error or an unparseable body leaves the
+    real outcome ambiguous, and a credential the vendor rejected needs the
+    user before it can succeed.
+    """
+    if isinstance(exc, (QuotaExhausted, YouTubeQuotaExhausted, VendorBanned)):
+        return True
+    status = getattr(exc, "status_code", None)
+    return isinstance(status, int) and status in _SELF_CLEARING_STATUSES
+
+
 @router.post("/search", response_model=SearchResponse)
 async def search_tools(request: Request, response: Response) -> SearchResponse:
     owner = _owner(request)
@@ -262,7 +303,7 @@ async def search_tools(request: Request, response: Response) -> SearchResponse:
         if body.vendor == "youtube":
             candidates = _youtube(connector.search(body.query, max_results=body.max_results))
         else:
-            candidates = _x(connector.recent_search(body.query, max_results=body.max_results))
+            candidates = _x(connector.search_tweets(body.query, max_results=body.max_results))
         result = SearchResponse(
             operation_id=body.operation_id,
             vendor=body.vendor,
@@ -273,13 +314,16 @@ async def search_tools(request: Request, response: Response) -> SearchResponse:
         return result
     except _PublicError:
         raise
-    except (QuotaExhausted, YouTubeQuotaExhausted):
-        _unknown(owner, body.operation_id)
+    except (QuotaExhausted, YouTubeQuotaExhausted, VendorBanned):
+        _release(owner, body.operation_id)
         raise _PublicError(429, "tool quota is exhausted") from None
     except ToolConnectionUnavailable:
         _release(owner, body.operation_id)
         raise _PublicError(503, "tool search is unavailable") from None
-    except (YouTubeApiError, XApiError, OSError, RuntimeError):
+    except (YouTubeError, XTwitterError, OSError, RuntimeError) as exc:
+        if _refusal_clears(exc):
+            _release(owner, body.operation_id)
+            raise _PublicError(429, "tool search is rate limited") from None
         _unknown(owner, body.operation_id)
         raise _PublicError(503, "tool search is unavailable") from None
     finally:
