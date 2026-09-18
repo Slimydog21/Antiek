@@ -288,3 +288,22 @@ the already-merged items are recognised and only the failures retry.
 * **It does not change the gates.** SPR-02 owns rights, SPR-03 extraction, SPR-04
   dedup, SPR-09 budget. The audit asserts they hold; a failure is a finding
   routed back to the owning sprint, never a gate tuned here.
+
+## arXiv OAI sync write-lock yielding (prod)
+
+Nightly `antiek-arxiv-oai-sync.timer` (04:20 UTC) runs:
+
+```bash
+python -m tools.arxiv_oai_sync incremental --bulk \
+  --persist-batch-size 200 --max-lock-seconds 15 --lock-yield-seconds 0.5
+```
+
+Persist opens DuckDB `write.lock` only for short sessions (≤200 rows or ≤15s),
+then sleeps 0.5s so uvicorn can acquire the flock. Env overrides:
+`ANTIEK_ARXIV_PERSIST_BATCH_SIZE`, `ANTIEK_ARXIV_MAX_LOCK_SECONDS`,
+`ANTIEK_ARXIV_LOCK_YIELD_SECONDS`. Across-run high-water still advances only on
+clean completion (crash mid-harvest is idempotent via `arxiv_id` upsert).
+
+Do **not** disable the timer unless an emergency ops guard is required; prefer
+tuning batch/max-lock/yield. Incident 2026-09-18 held one lock ~5.5h.
+

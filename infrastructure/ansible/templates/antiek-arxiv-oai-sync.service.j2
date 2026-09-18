@@ -30,7 +30,9 @@ Environment="ANTIEK_ARXIV_OAI_STATE_PATH={{ antiek_state_dir }}/arxiv_oai_harves
 Environment="ANTIEK_ARXIV_OAI_SYNC_PATH={{ antiek_state_dir }}/arxiv_oai_sync.json"
 
 ExecStartPre=/usr/bin/mkdir -p {{ antiek_state_dir }}/reports
-ExecStart={{ antiek_install_dir }}/.venv/bin/python -m tools.arxiv_oai_sync incremental --bulk --census-json {{ antiek_state_dir }}/reports/arxiv_oai_census.json
+# Chunked DuckDB write locks (batch/max-lock/yield) so nightly sync cannot
+# monopolize write.lock for hours (prod incident 2026-09-18).
+ExecStart={{ antiek_install_dir }}/.venv/bin/python -m tools.arxiv_oai_sync incremental --bulk --persist-batch-size 200 --max-lock-seconds 15 --lock-yield-seconds 0.5 --census-json {{ antiek_state_dir }}/reports/arxiv_oai_census.json
 ExecStartPost={{ antiek_install_dir }}/.venv/bin/python -m tools.source_census --source arxiv --db-path {{ antiek_state_dir }}/antiek.duckdb --out {{ antiek_state_dir }}/reports/source_census.json
 
 StandardOutput=journal
