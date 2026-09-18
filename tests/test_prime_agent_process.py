@@ -11,6 +11,8 @@ import pytest
 
 import runtime.prime_agent.process as process_module
 from runtime.prime_agent.installation import (
+    MAXIMUM_VERSION,
+    MINIMUM_VERSION,
     PrimeAgentUnavailable,
     prime_agent_artifact_digest,
     resolve_prime_agent_binary,
@@ -72,7 +74,10 @@ elif sys.argv[1:] == ['--help']: print('-p --cwd --offline --no-session --no-too
     )
 
 
-@pytest.mark.parametrize("version", ["0.6.9", "0.8.0", "nonsense"])
+# Boundaries of the supported line: one below MINIMUM_VERSION, one at MAXIMUM_VERSION
+# (exclusive, so it must be rejected), and an unparseable string. 0.9.x sits inside
+# the window and is covered by test_supported_line_admits_the_shipping_major below.
+@pytest.mark.parametrize("version", ["0.6.9", "0.10.0", "nonsense"])
 def test_version_drift_is_rejected(tmp_path: Path, version: str) -> None:
     binary = _raw_script(
         tmp_path,
@@ -80,6 +85,22 @@ def test_version_drift_is_rejected(tmp_path: Path, version: str) -> None:
     )
     with pytest.raises(PrimeAgentUnavailable):
         verify_prime_agent_installation(binary, environ={"PATH": os.environ["PATH"]})
+
+
+@pytest.mark.parametrize("version", ["0.7.0", "0.8.0", "0.9.4", "0.9.99"])
+def test_supported_line_admits_the_shipping_major(tmp_path: Path, version: str) -> None:
+    """Every version inside [MINIMUM_VERSION, MAXIMUM_VERSION) is admitted.
+
+    This is the regression that matters in practice: the ceiling was pinned at <0.8.0
+    while upstream shipped 0.9.x, so every Prime Agent path refused the installed binary
+    and the whole lane was dead without saying so anywhere a reader would look.
+    """
+    binary = _raw_script(
+        tmp_path,
+        f"import sys\nprint('prime-agent {version}' if '--version' in sys.argv else '-p --cwd --offline --no-session --no-tools --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --mode rpc')\n",
+    )
+    installation = verify_prime_agent_installation(binary, environ={"PATH": os.environ["PATH"]})
+    assert installation.version == tuple(int(part) for part in version.split("."))
 
 
 def test_help_substrings_cannot_impersonate_exact_short_flag(tmp_path: Path) -> None:
@@ -249,7 +270,10 @@ def test_real_local_prime_bundle_harmless_probes() -> None:
     installation = verify_prime_agent_installation(
         binary, environ={"PATH": os.environ["PATH"]}
     )
-    assert (0, 7, 0) <= installation.version < (0, 8, 0)
+    # Derived from the constants, never a second hardcoded copy of the window: the
+    # literal here drifted out of sync with upstream once already and turned a live
+    # incompatibility into a plain assertion failure nobody read as one.
+    assert MINIMUM_VERSION <= installation.version < MAXIMUM_VERSION
     assert time.monotonic() - started < 10
     warm_started = time.monotonic()
     warm = run_prime_agent_process(

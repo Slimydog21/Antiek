@@ -1,4 +1,10 @@
-"""Fail-closed, metered Prime 0.7 JSONL-RPC supplemental evidence call."""
+"""Fail-closed, metered Prime Agent JSONL-RPC supplemental evidence call.
+
+The supported Prime Agent line is whatever ``runtime.prime_agent.installation`` admits
+(``MINIMUM_VERSION``..``MAXIMUM_VERSION``), not a single pinned release. The record
+fields parsed here are pinned by ``tests/test_prime_agent_wire_contract.py`` so an
+upstream rename fails a test rather than silently metering a zero-cost call.
+"""
 
 from __future__ import annotations
 
