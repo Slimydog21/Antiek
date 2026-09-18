@@ -216,3 +216,7 @@ Note-taker qualifies Loop One delivers (`evidence.retrieve.delivered`,
 → insight nodes (works with projector recovery disabled).
 
 Check: `GET /research/$INV/distill` after ≥ threshold qualifying events.
+
+## Flywheel / knowledge reuse (Loop One)
+
+Spin-research to Loop One calls substrate.flywheel.investigation_start_reuse at investigation start (AFF SPR-06). After at least one knowledge.reused event in ANTIEK_RESEARCH_EVENTS_DIR, /health reports flywheel_ready true. Cascade/HostLocalRunner already had this hook; Mini daily-use needed the Loop One wire.
