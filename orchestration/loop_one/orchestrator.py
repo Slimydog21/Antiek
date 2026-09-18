@@ -504,6 +504,11 @@ PER_EVIDENCE_TIMEOUT = 300.0
 
 # ANT-DRL-03: bounded parallel Phase 2 retrieves (default 4 per spec
 # open question). Override via ANTIEK_PHASE_2_CONCURRENCY for profiling.
+# Default 4: one slot per typical Round-1 sub-question. Mini dogfood
+# (inv-0d863d4e73cc) proved retrieves already run in parallel — phase-2
+# wall ≈ max(provider latency), not sum. Raising concurrency above N
+# sub-questions does not shrink wall; cut per-call latency instead
+# (evidence Xiaomi prefer + compact JSON).
 PHASE_2_MAX_CONCURRENCY = max(
     1,
     int(os.environ.get("ANTIEK_PHASE_2_CONCURRENCY", "4")),

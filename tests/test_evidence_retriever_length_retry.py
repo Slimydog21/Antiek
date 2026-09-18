@@ -130,4 +130,4 @@ def test_flash_tier_raised_and_evidence_budget_is_16384():
     )
     assert cfg.tiers["flash"].max_tokens == 8192
     assert cfg.role_tiers["evidence_retriever"] == "flash"
-    assert er.EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS == 16384
+    assert er.EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS == 8192

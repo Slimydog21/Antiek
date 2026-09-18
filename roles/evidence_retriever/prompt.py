@@ -95,6 +95,8 @@ Evidence type required: `{{evidence_type_required}}`
 
 {{subgraph_block}}
 
+HARD LIMIT (phase-2 wall): `answer` ≤ 2 short sentences; `supporting_claims` ≤ 3;
+`evidentiary_gaps` ≤ 2. Prefer silence/`insufficient_evidence` over padding.
 Produce a single JSON object conforming to the output schema. No prose outside the JSON.
 
 ## Output structure (MANDATORY — use these exact field names)
