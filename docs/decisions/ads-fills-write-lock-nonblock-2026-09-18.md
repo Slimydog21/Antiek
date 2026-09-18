@@ -48,3 +48,7 @@ Prod bench: `connect_read`/`connect_write` each ~7s on ~900MB store; read-then-w
 ## Follow-up 4 — dedicated fills executor
 
 Lock stamp showed `agent_work/lease` holding the flock; fills `asyncio.to_thread` starved behind default executor workers. Fills now uses `_FILLS_EXECUTOR` (2 workers).
+
+## Follow-up 5 — process write gate
+Linux flock multi-fd same-process footgun: agent_work/lease + fills both LOCK_EX then duckdb.connect hangs. `_PROCESS_WRITE_GATE` serializes connect_write in-process.
+

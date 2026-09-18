@@ -60,6 +60,11 @@ import duckdb
 
 DEFAULT_TIMEOUT_S = 300  # 5 minutes — long enough for a 200-paper ingest
 
+# Linux flock is per-file-description: two open()s of the sidecar in the
+# SAME process can both LOCK_EX, then the second duckdb.connect hangs.
+# Serialize writers in-process. Cite: #3121; Ads #3157–#3161.
+_PROCESS_WRITE_GATE = threading.Lock()
+
 # Sentinel db_path used by the internal write_log logger to skip recursive
 # logging. (We do NOT log the log writes themselves; that would be an
 # observability liability without paying for itself.)
@@ -388,6 +393,10 @@ class LockedConnection:
                     os.close(self._lock_fd)
                 except OSError:
                     pass
+            try:
+                _PROCESS_WRITE_GATE.release()
+            except RuntimeError:
+                pass
         # Log AFTER the lock is released, on a fresh connection (briefly
         # re-locked). The main pipeline never blocks on this.
         if self._db_path:
@@ -423,6 +432,39 @@ def connect_write(
     from runtime.test_store_guard import assert_write_path_not_real_store
 
     assert_write_path_not_real_store(db_path)
+
+    gate_deadline = time.monotonic() + timeout_s
+    while True:
+        if _PROCESS_WRITE_GATE.acquire(blocking=False):
+            break
+        if time.monotonic() >= gate_deadline:
+            raise WriteLockTimeout(
+                f"Could not acquire in-process write gate within {timeout_s}s "
+                f"(another connect_write holds it in this process)."
+            )
+        time.sleep(min(poll_interval_s, max(0.0, gate_deadline - time.monotonic())))
+
+    try:
+        return _connect_write_after_process_gate(
+            db_path,
+            timeout_s=timeout_s,
+            poll_interval_s=poll_interval_s,
+            purpose=purpose,
+            close_log_max_wait_s=close_log_max_wait_s,
+        )
+    except BaseException:
+        _PROCESS_WRITE_GATE.release()
+        raise
+
+
+def _connect_write_after_process_gate(
+    db_path: str,
+    *,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+    poll_interval_s: float = 0.25,
+    purpose: str = "",
+    close_log_max_wait_s: float = 0.25,
+) -> "LockedConnection":
     lock_path = _lock_path_for(db_path)
     parent = os.path.dirname(lock_path)
     if parent and not os.path.exists(parent):
