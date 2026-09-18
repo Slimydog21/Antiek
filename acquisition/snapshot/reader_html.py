@@ -25,6 +25,7 @@ from __future__ import annotations
 import html
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 _SCRIPT_RE = re.compile(r"<script[\s\S]*?</script>", re.IGNORECASE)
 _STYLE_RE = re.compile(r"<style[\s\S]*?</style>", re.IGNORECASE)
@@ -47,22 +48,69 @@ _BULLET_RE = re.compile(r"^([ \t]*)([-+*])[ \t]+(.*)$")
 _ORDERED_RE = re.compile(r"^([ \t]*)(\d{1,9})([.)])[ \t]+(.*)$")
 _DELIM_CELL_RE = re.compile(r":?-+:?\Z")
 
+# Every inline construct is bounded. An unbounded inner quantifier makes the
+# scan quadratic in line length, because each of a line's N positions can drag
+# its lookahead to the end of the line before failing: 500k of "[" on one line
+# cost roughly nine CPU-minutes, and the API serving this runs --workers 1, so
+# one ingested file of that shape stalls every other request behind it. These
+# ceilings are far above real prose (a link text or emphasis run longer than
+# 512 characters, or a URL past 2048, simply stays literal text) and they make
+# the cost linear in the length of the line.
+_MAX_INLINE_SPAN = 512
+_MAX_URL_CHARS = 2048
+
+# The URL policy of ``substrate.books.html_sanitizer`` (``_ALLOWED_URL_SCHEMES``
+# and its ``_safe_url``), which remains the authority; the renderer repeats it
+# because not every consumer of this module reaches that sanitizer. Notably
+# ``build_reader_snapshot`` below runs only ``sanitize_html_fragment``, a two
+# regex denylist, so a ``javascript:`` or ``data:text/html`` URL emitted here
+# would land live in a written snapshot file with nothing in between.
+_ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
+
+# Characters a browser strips from a URL before sniffing its scheme, so that a
+# split payload like "jav&#9;ascript:" cannot reassemble past the check.
+_URL_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _safe_url(value: str) -> str:
+    """The URL iff its scheme is http(s) or it has none, else ``""``.
+
+    Deny-by-default, mirroring the sanitizer: ``javascript:``, ``data:``,
+    ``vbscript:``, ``file:`` and every unknown scheme come back empty, and the
+    caller then emits the element without that attribute.
+    """
+    cleaned = _URL_CONTROL_RE.sub("", value).strip()
+    if not cleaned:
+        return ""
+    try:
+        scheme = urlsplit(cleaned).scheme.lower()
+    except ValueError:
+        return ""
+    if scheme and scheme not in _ALLOWED_URL_SCHEMES:
+        return ""
+    return cleaned
+
+
 # One pass over a line finds the next inline construct. Order matters: the
 # longer opener of an ambiguous pair (``***`` before ``**`` before ``*``) has to
 # come first, and code spans come early so markers inside them stay literal.
 _INLINE_RE = re.compile(
     r"(?P<esc>\\(?P<esc_ch>[\\`*_{}\[\]()#+\-.!>~|]))"
-    r"|(?P<code>(?P<tick>`+)(?P<code_body>.+?)(?P=tick))"
-    r"|(?P<img>!\[(?P<img_alt>[^\]]*)\]\((?P<img_src>[^()\s]*)(?:[ \t]+\"[^\"]*\")?\))"
-    r"|(?P<link>\[(?P<link_text>[^\]]*)\]\((?P<link_href>[^()\s]*)(?:[ \t]+\"[^\"]*\")?\))"
-    r"|(?P<auto><(?P<auto_url>https?://[^<>\s]+)>)"
-    r"|(?P<both>\*\*\*(?P<both_body>[^\s*](?:.*?[^\s*])?)\*\*\*)"
-    r"|(?P<both2>(?<![A-Za-z0-9])___(?P<both2_body>[^\s_](?:.*?[^\s_])?)___(?![A-Za-z0-9]))"
-    r"|(?P<strong>\*\*(?P<strong_body>[^\s*](?:.*?[^\s*])?)\*\*)"
-    r"|(?P<strong2>(?<![A-Za-z0-9])__(?P<strong2_body>[^\s_](?:.*?[^\s_])?)__(?![A-Za-z0-9]))"
-    r"|(?P<strike>~~(?P<strike_body>[^\s~](?:.*?[^\s~])?)~~)"
-    r"|(?P<em>\*(?P<em_body>[^\s*](?:.*?[^\s*])?)\*)"
-    r"|(?P<em2>(?<![A-Za-z0-9])_(?P<em2_body>[^\s_](?:.*?[^\s_])?)_(?![A-Za-z0-9]))"
+    r"|(?P<code>(?P<tick>`+)(?P<code_body>.{1,@SPAN@}?)(?P=tick))"
+    r"|(?P<img>!\[(?P<img_alt>[^\]]{0,@SPAN@})\]"
+    r"\((?P<img_src>[^()\s]{0,@URL@})(?:[ \t]+\"[^\"]{0,@SPAN@}\")?\))"
+    r"|(?P<link>\[(?P<link_text>[^\]]{0,@SPAN@})\]"
+    r"\((?P<link_href>[^()\s]{0,@URL@})(?:[ \t]+\"[^\"]{0,@SPAN@}\")?\))"
+    r"|(?P<auto><(?P<auto_url>https?://[^<>\s]{1,@URL@})>)"
+    r"|(?P<both>\*\*\*(?P<both_body>[^\s*](?:.{0,@SPAN@}?[^\s*])?)\*\*\*)"
+    r"|(?P<both2>(?<![A-Za-z0-9])___(?P<both2_body>[^\s_](?:.{0,@SPAN@}?[^\s_])?)___(?![A-Za-z0-9]))"
+    r"|(?P<strong>\*\*(?P<strong_body>[^\s*](?:.{0,@SPAN@}?[^\s*])?)\*\*)"
+    r"|(?P<strong2>(?<![A-Za-z0-9])__(?P<strong2_body>[^\s_](?:.{0,@SPAN@}?[^\s_])?)__(?![A-Za-z0-9]))"
+    r"|(?P<strike>~~(?P<strike_body>[^\s~](?:.{0,@SPAN@}?[^\s~])?)~~)"
+    r"|(?P<em>\*(?P<em_body>[^\s*](?:.{0,@SPAN@}?[^\s*])?)\*)"
+    r"|(?P<em2>(?<![A-Za-z0-9])_(?P<em2_body>[^\s_](?:.{0,@SPAN@}?[^\s_])?)_(?![A-Za-z0-9]))".replace(
+        "@SPAN@", str(_MAX_INLINE_SPAN)
+    ).replace("@URL@", str(_MAX_URL_CHARS))
 )
 
 
@@ -110,18 +158,18 @@ def _render_inline(text: str, depth: int = 0) -> str:
         elif match.group("code") is not None:
             out.append(f"<code>{_esc(match.group('code_body'))}</code>")
         elif match.group("img") is not None:
-            src = match.group("img_src")
+            src = _safe_url(match.group("img_src"))
             alt = match.group("img_alt")
             attrs = f' src="{_attr(src)}"' if src else ""
             attrs += f' alt="{_attr(alt)}"' if alt else ""
             out.append(f"<img{attrs} />")
         elif match.group("link") is not None:
-            href = match.group("link_href")
+            href = _safe_url(match.group("link_href"))
             inner = _render_inline(match.group("link_text"), depth + 1)
             open_tag = f'<a href="{_attr(href)}">' if href else "<a>"
             out.append(f"{open_tag}{inner}</a>")
         elif match.group("auto") is not None:
-            url = match.group("auto_url")
+            url = _safe_url(match.group("auto_url"))
             out.append(f'<a href="{_attr(url)}">{_esc(url)}</a>')
         elif match.group("both") is not None:
             body = _render_inline(match.group("both_body"), depth + 1)
@@ -391,9 +439,16 @@ def markdown_to_safe_html(markdown: str, *, max_chars: int = 500_000) -> str:
     footnotes, raw HTML passthrough, task-list checkboxes, table alignment —
     is deliberately left as literal escaped text.
 
-    The result is not trusted HTML. It is a safe *input* to
+    URLs are held to the sanitizer's own scheme allowlist before they are
+    written: http(s), relative paths and ``#fragment`` anchors survive, while
+    ``javascript:``, ``data:``, ``file:`` and every unknown scheme drop the
+    attribute and leave the element behind. That check is repeated here rather
+    than left downstream because ``build_reader_snapshot`` writes this output
+    to a file without passing it through the allowlist sanitizer.
+
+    The result is still not trusted HTML. It is a safe *input* to
     ``substrate.books.html_sanitizer.sanitize_book_html``, which remains the
-    write-time trust floor and which every call site already applies.
+    write-time trust floor for everything stored or served.
     """
     text = markdown[:max_chars].replace("\r\n", "\n").replace("\r", "\n")
     rendered = _render_blocks(text.split("\n"))

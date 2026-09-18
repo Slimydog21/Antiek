@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import time
+
+import pytest
+
 from acquisition.snapshot.reader_html import (
     build_reader_snapshot,
     markdown_to_safe_html,
@@ -155,14 +159,70 @@ def test_literal_img_onerror_prose_stays_escaped():
     assert '&lt;img src=x onerror="alert(1)"&gt;' in body
 
 
-def test_javascript_url_in_a_link_is_dropped_by_the_sanitizer():
-    # The renderer writes the href it was given; the sanitizer is what refuses
-    # the scheme. Both halves of the contract are asserted here.
+def test_javascript_url_never_reaches_the_href_at_all():
+    # This test used to assert the opposite — that the renderer emitted
+    # ``href="javascript:alert"`` and left refusing it to the sanitizer. That
+    # held only for the call sites which reach the sanitizer. The snapshot
+    # writer below does not, so the renderer now applies the scheme allowlist
+    # itself and the dangerous URL exists at no point in the pipeline.
     rendered = markdown_to_safe_html("[click](javascript:alert)")
-    assert '<a href="javascript:alert">' in rendered
-    body = sanitize_book_html(rendered)
-    assert "javascript:" not in body.lower()
-    assert body == "<p><a>click</a></p>"
+    assert "javascript:" not in rendered.lower()
+    assert rendered == "<p><a>click</a></p>"
+    assert sanitize_book_html(rendered) == "<p><a>click</a></p>"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "javascript:alert",
+        "JaVaScRiPt:alert",
+        "data:text/html;base64,PHN2Zz4=",
+        "vbscript:msgbox",
+        "file:///etc/passwd",
+    ],
+)
+def test_hostile_scheme_never_reaches_the_written_snapshot(url):
+    """The snapshot writer is not behind the allowlist sanitizer.
+
+    ``build_reader_snapshot`` runs only ``sanitize_html_fragment``, a two regex
+    denylist for script/style, and writes the result to a file an operator
+    opens in a browser. A renderer that emitted attacker-chosen URL schemes
+    would put a live ``javascript:`` link in that file, so the renderer refuses
+    the scheme rather than delegating the refusal downstream.
+    """
+    for markdown in (f"[t]({url})", f"![t]({url})"):
+        rendered = markdown_to_safe_html(markdown)
+        snapshot = build_reader_snapshot(
+            source_url="https://example.com/x",
+            document_id="doc-1",
+            ip_holder_id=None,
+            main_html=rendered,
+            ingested_at="2026-09-18T00:00:00Z",
+        )
+        article = snapshot.split("<article>")[1].split("</article>")[0]
+        assert url.lower() not in article.lower()
+        assert 'href="' not in article and 'src="' not in article
+
+
+@pytest.mark.parametrize("url", ["https://example.com/p", "/relative/path", "#anchor"])
+def test_safe_urls_still_survive(url):
+    assert f'<a href="{url}">t</a>' in _round_trip(f"[t]({url})")
+
+
+def test_hostile_line_renders_in_bounded_time():
+    """A line of unclosed brackets must not be quadratic in its length.
+
+    Each unbounded inner quantifier let one position drag its scan to the end
+    of the line, so this input cost 13.6s at 80k characters and extrapolated to
+    roughly nine CPU-minutes at the 500k ``max_chars`` ceiling — on an API that
+    runs a single worker, which means every other request waits behind it. The
+    bounded pattern renders the same input in about 0.2s; the ceiling here is
+    deliberately loose so the test measures the complexity class, not the
+    machine.
+    """
+    started = time.perf_counter()
+    markdown_to_safe_html("[" * 80_000)
+    assert time.perf_counter() - started < 5.0
 
 
 def test_renderer_output_is_a_fixed_point_of_the_sanitizer():
