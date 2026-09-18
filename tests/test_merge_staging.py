@@ -87,6 +87,10 @@ class _StubEmbedder:
     known function of its content — lets us assert byte/element identity after
     a merge without a real model."""
 
+    dimension = 16
+    provider_name = "stub"
+    model_name = "stub-dim-16"
+
     def encode(self, text: str) -> list[float]:
         h = abs(hash(text)) % 64
         v = [0.0] * 16
@@ -344,14 +348,12 @@ def test_merge_preserves_content_class_not_redecided(env):
 # ---------------------------------------------------------------------------
 # M2/M3 — column-order safety across the migration path (sharpen defect #1)
 #
-# The merge copies with an EXPLICIT column list guarded by a pre-merge
-# names+order check, never a positional ``s.*``. These two tests are the
-# defensible record that a future migration which rebuilds/reorders a live
-# table cannot silently corrupt a merge:
-#   - the first builds live via the REBUILDING migration path (not a fresh
-#     init) and asserts the merge still lands data in the right columns;
-#   - the second forces a column-order divergence and asserts the merge aborts
-#     BEFORE any insert rather than shuffling data.
+# The merge copies with an EXPLICIT named column list (never ``s.*``).
+# Order may diverge; live-only nullable columns are null-filled. These tests:
+#   - migration-path live still merges correctly;
+#   - order divergence still succeeds with correct column placement;
+#   - live-only columns null-fill;
+#   - missing required staging PK still aborts before insert.
 # ---------------------------------------------------------------------------
 
 
@@ -407,26 +409,21 @@ def test_merge_into_migration_path_live_db(env):
         assert live_vecs[cid] == vec, f"vector for {cid} changed across migration-path merge"
 
 
-def test_schema_divergence_aborts_merge_before_any_insert(env):
-    """If a merged table's column ORDER diverges between staging and live, the
-    merge must raise SchemaDivergence and write nothing — a positional copy
-    would shuffle data into the wrong columns. The guard fires before BEGIN, so
-    live counts are untouched."""
-    live = os.path.join(env["tmpdir"], "live_diverged.duckdb")
-    staging = os.path.join(env["tmpdir"], "staging_diverged.duckdb")
+def test_merge_succeeds_despite_column_order_divergence(env):
+    """Column ORDER may diverge between staging and live — named projection
+    still lands values in the correct columns (Mini prod failure mode)."""
+    live = os.path.join(env["tmpdir"], "live_reordered.duckdb")
+    staging = os.path.join(env["tmpdir"], "staging_reordered.duckdb")
     init_database_at_path(live)
-    _stage_books(staging, [{"bytes": b"diverge-book", "content_class": "public_domain"}])
+    _stage_books(staging, [{"bytes": b"reorder-book", "content_class": "public_domain"}])
 
-    # Force a divergence on book_assets: swap two adjacent columns' order on
-    # LIVE only (same names+types, different ordinal positions) — exactly the
-    # shape a future table-rebuilding migration could introduce. Recreate the
-    # table with toc_json/page_count transposed.
-    with connect_write(live, purpose="test-force-divergence") as con:
+    # Transpose page_count / toc_json on LIVE only (same names, different order).
+    with connect_write(live, purpose="test-force-reorder") as con:
         con.execute("DROP TABLE book_assets")
         con.execute(
             "CREATE TABLE book_assets ("
             "  document_id TEXT PRIMARY KEY REFERENCES documents(document_id),"
-            "  page_count INTEGER,"               # transposed ↑ ahead of toc_json
+            "  page_count INTEGER,"
             "  toc_json TEXT,"
             "  pagination_scheme TEXT, cover_uri TEXT, provenance TEXT,"
             "  license_basis TEXT,"
@@ -438,13 +435,69 @@ def test_schema_divergence_aborts_merge_before_any_insert(env):
             ")"
         )
     assert _ordered_cols(live, "book_assets")[:3] == ["document_id", "page_count", "toc_json"]
+    assert _ordered_cols(staging, "book_assets")[:3] != ["document_id", "page_count", "toc_json"]
+
+    result = merge_staging(live_db=live, staging_db=staging)
+    assert sum(t.inserted for t in result.tables) >= 1
+    livecon = duckdb.connect(live, read_only=True)
+    try:
+        row = livecon.execute(
+            "SELECT content_class FROM documents LIMIT 1"
+        ).fetchone()
+        assert row is not None and row[0] == "public_domain"
+    finally:
+        livecon.close()
+
+
+def test_merge_null_fills_live_only_columns(env):
+    """Live-only nullable columns (e.g. chunks.owner_user_id) do not block merge."""
+    live = os.path.join(env["tmpdir"], "live_extra_col.duckdb")
+    staging = os.path.join(env["tmpdir"], "staging_extra_col.duckdb")
+    init_database_at_path(live)
+    with connect_write(live, purpose="test-add-live-only-col") as con:
+        con.execute("ALTER TABLE chunks ADD COLUMN IF NOT EXISTS owner_user_id TEXT")
+        con.execute(
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS structured_blocks TEXT"
+        )
+    _stage_books(staging, [{"bytes": b"extra-col-book", "content_class": "public_domain"}])
+    assert "owner_user_id" in _ordered_cols(live, "chunks")
+    assert "owner_user_id" not in _ordered_cols(staging, "chunks")
+
+    result = merge_staging(live_db=live, staging_db=staging)
+    assert any(t.table == "chunks" and t.inserted >= 1 for t in result.tables)
+    livecon = duckdb.connect(live, read_only=True)
+    try:
+        nulls = livecon.execute(
+            "SELECT count(*) FROM chunks WHERE owner_user_id IS NULL"
+        ).fetchone()[0]
+        assert nulls >= 1
+    finally:
+        livecon.close()
+
+
+def test_schema_divergence_aborts_when_staging_missing_pk(env, monkeypatch):
+    """Missing required PK on staging still aborts before any insert."""
+    live = os.path.join(env["tmpdir"], "live_missing_pk.duckdb")
+    staging = os.path.join(env["tmpdir"], "staging_missing_pk.duckdb")
+    init_database_at_path(live)
+    _stage_books(staging, [{"bytes": b"pk-book", "content_class": "public_domain"}])
+
+    import tools.merge_staging as ms
+
+    real = ms._ordered_columns
+
+    def _hide_chunk_pk(con, table: str, *, catalog: str):
+        cols = real(con, table, catalog=catalog)
+        if catalog == "staging" and table == "chunks":
+            return [c for c in cols if c != "chunk_id"]
+        return cols
+
+    monkeypatch.setattr(ms, "_ordered_columns", _hide_chunk_pk)
     before = _counts(live)
-
-    with pytest.raises(SchemaDivergence, match="book_assets"):
+    with pytest.raises(SchemaDivergence, match="chunks"):
         merge_staging(live_db=live, staging_db=staging)
+    assert _counts(live) == before
 
-    # Nothing was written — the guard fired before the first insert.
-    assert _counts(live) == before, "a diverged-schema merge must write nothing"
 
 
 # ---------------------------------------------------------------------------
