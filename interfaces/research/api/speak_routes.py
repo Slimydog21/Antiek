@@ -119,11 +119,20 @@ def _write(purpose: str) -> Iterator[Any]:
 def _read(purpose: str) -> Iterator[Any]:
     """Read-only Speak path — LazyRW / connect_read; does not take the write flock.
 
-    Used for public feed + opportunities so browse stays responsive when
-    agent_work/lease holds the writer. Schema must already exist (prod /
-    prior writes). Does NOT call ensure_speak_schema (DDL needs a writer).
+    Used for public feed + opportunities + invite landing so browse stays
+    responsive when agent_work/lease holds the writer. Schema must already
+    exist (prod / prior writes). Does NOT call ``ensure_initialized`` /
+    ``ensure_speak_schema`` — those contend with note-taker
+    ``_schema_is_present`` on the hot path (prod hang after #3153).
+
+    Missing DB file → yield raises ``FileNotFoundError`` so invite GETs
+    can map to 404 without taking the writer.
     """
-    db = _db()
+    import os as _os
+
+    db = default_db_path()
+    if not _os.path.exists(db):
+        raise FileNotFoundError(db)
     con = connect_read(db)
     try:
         yield con
@@ -413,6 +422,8 @@ async def public_feed() -> dict:
                 "WHERE p.publish_intent = 'will_be_public' "
                 "ORDER BY p.created_at DESC"
             ).fetchall()
+    except FileNotFoundError:
+        rows = []
     except Exception as exc:
         if "speak_projects" not in str(exc) and "Catalog" not in type(exc).__name__:
             raise
@@ -458,8 +469,14 @@ async def list_invites(project_id: str) -> dict:
 
 @speak_router.get("/invites/resolve")
 async def resolve_invite(token: str) -> InviteResponse:
-    with _translate(), _read("speak/api:resolve") as con:
-        iv = _invite_read_or_404(con, token)
+    try:
+        read_cm = _read("speak/api:resolve")
+        with _translate(), read_cm as con:
+            iv = _invite_read_or_404(con, token)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="unknown or expired invite token"
+        ) from exc
     if iv is None:
         raise HTTPException(status_code=404, detail="unknown or expired invite token")
     return InviteResponse(
@@ -521,7 +538,7 @@ async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict:
 @speak_router.get("/interviews/{interview_id}")
 async def get_interview(interview_id: str) -> dict:
     with _translate():
-        session = resume(_db(), interview_id)
+        session = resume(default_db_path(), interview_id)
     return {
         "interview_id": session.interview_id,
         "project_id": session.project_id,
@@ -777,6 +794,8 @@ async def public_opportunities(
             pubs = speak_pushes.list_public_opportunities(
                 con, interest=interest, ensure=False
             )
+    except FileNotFoundError:
+        pubs = []
     except Exception as exc:
         # Fresh DB / schema not yet ensured — honest empty (read path
         # cannot DDL). Writer paths create schema on first project.
@@ -960,20 +979,31 @@ async def invitee_landing(token: str) -> dict:
     invited to, the consent scopes the invite asks for, what they've
     already granted (so a returning invitee skips re-consent), and — once
     consented — the pending questions + transcript so far."""
-    with _translate(), _read("speak/api:invite_landing") as con:
-        iv = _invite_read_or_404(con, token)
-        if iv is None:
-            raise HTTPException(status_code=404, detail="unknown or expired invite link")
-        interview_id, project_id = iv.interview_id, iv.project_id
-        required = [s.value for s in iv.required_consent_scopes]
-        prow = con.execute(
-            "SELECT ip.title, p.subject_ref, p.subject_status, p.publish_intent "
-            "FROM speak_projects p JOIN interview_projects ip ON ip.project_id = p.project_id "
-            "WHERE p.project_id = ?", [project_id],
-        ).fetchone()
-        granted = sorted(s.value for s in consent_mod.consent_state(con, interview_id).granted)
-    # resume() acquires its OWN lock — call it AFTER releasing ours (no nesting).
-    session = resume(_db(), interview_id)
+    try:
+        with _translate(), _read("speak/api:invite_landing") as con:
+            iv = _invite_read_or_404(con, token)
+            if iv is None:
+                raise HTTPException(
+                    status_code=404, detail="unknown or expired invite link"
+                )
+            interview_id, project_id = iv.interview_id, iv.project_id
+            required = [s.value for s in iv.required_consent_scopes]
+            prow = con.execute(
+                "SELECT ip.title, p.subject_ref, p.subject_status, p.publish_intent "
+                "FROM speak_projects p JOIN interview_projects ip "
+                "ON ip.project_id = p.project_id "
+                "WHERE p.project_id = ?",
+                [project_id],
+            ).fetchone()
+            granted = sorted(
+                s.value for s in consent_mod.consent_state(con, interview_id).granted
+            )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="unknown or expired invite link"
+        ) from exc
+    # resume() is connect_read — call AFTER releasing our read handle.
+    session = resume(default_db_path(), interview_id)
     return {
         "interview_id": interview_id,
         "project_id": project_id,
@@ -989,6 +1019,7 @@ async def invitee_landing(token: str) -> dict:
         "pending_questions": session.pending_questions(),
         "transcript": session.turns,
     }
+
 
 
 @speak_router.post("/invite/{token}/consent", status_code=200)
