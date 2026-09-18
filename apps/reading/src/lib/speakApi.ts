@@ -201,15 +201,33 @@ export async function inviteByEmail(id: string, email: string): Promise<Arriving
 }
 
 /** A generic, link-only invite (the shareable "anyone with the link" door for
- *  the warm flow). Backed by a handle so the operator can send it broadly. */
+ *  the warm flow). Backed by a handle so the operator can send it broadly.
+ *  Returns the absolute share URL (`https://antiek.ai/speak/invite/{token}`). */
 export async function makeShareLink(id: string): Promise<string> {
+  const path = await makeContributionInvitePath(id);
+  // Absolute URL for clipboard / out-of-app share; path is the in-app door.
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return `${window.location.origin}${path}`;
+  }
+  return `https://antiek.ai${path}`;
+}
+
+/**
+ * Mint (or reuse) a link-only invite and return the **in-app SpeakInvite door**
+ * path `/speak/invite/{token}`. This is the unauthenticated contribution
+ * credential path (spine SPR-03) — never `/speak/:projectId` (operator console).
+ */
+export async function makeContributionInvitePath(id: string): Promise<string> {
   const resp = await apiFetch(`/speak/projects/${encodeURIComponent(id)}/invites`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ informant_handle: "a friend or family member" }),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return toVoice(await resp.json()).link;
+  const raw = (await resp.json()) as Record<string, unknown>;
+  const token = typeof raw.token === "string" ? raw.token : "";
+  if (!token) throw new Error("invite response missing token");
+  return `/speak/invite/${encodeURIComponent(token)}`;
 }
 
 /**

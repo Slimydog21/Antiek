@@ -183,9 +183,14 @@ export const PUBLIC_LANE_LABELS = {
   intendedPublic:
     "A public remembrance — open to the people invited to add what they remember.",
   /** M3 — honest framing of who the working CTA serves today. */
+  /** M3 — CTA opens the invite-token door (/speak/invite/:token), not the
+   *  authed operator console. Open contribution WITHOUT an invite stays G7. */
   ctaOperatorOnly:
-    "This opens your own public-intent remembrance. Open contribution by " +
-    "anyone is described below — it isn't live yet.",
+    "Opens the invite door — the link's token is the credential (no account " +
+    "needed). Open contribution by anyone without an invite is described " +
+    "below — it isn't live yet.",
+  ctaMintBusy: "Opening invite door…",
+  ctaMintFailed: "Couldn't open the invite door — try again.",
   /** M4 — explainer heading. */
   explainerHeading: "How public remembrances will work",
   /** M4 — step 1, the only present-ish framing, still about the future flow. */
