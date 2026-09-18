@@ -35,6 +35,7 @@ def maybe_reuse_prior_knowledge_at_start(
     events_dir: str | None = None,
     role: str = "decomposer",
     embedding_provider: Any | None = None,
+    source_document_id: str | None = None,
 ) -> str | None:
     """Run AFF SPR-06 reuse once for an investigation start.
 
@@ -68,7 +69,11 @@ def maybe_reuse_prior_knowledge_at_start(
         _register_local_writer(resolved_db)
         registered = True
         substrate = make_substrate_from_con("brute_force", parent, model=model)
-        units = retrieve_prior_units(substrate, question_text=question_text.strip())
+        units = retrieve_prior_units(
+            substrate,
+            question_text=question_text.strip(),
+            source_document_id=source_document_id,
+        )
         result = assemble_context_pack_with_reuse(
             role=role,
             investigation_id=investigation_id,
