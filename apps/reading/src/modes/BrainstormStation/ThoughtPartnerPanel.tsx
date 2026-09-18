@@ -19,12 +19,12 @@ import ContextPicker from "../../components/ai/ContextPicker";
 import {
   parseAssistantReply,
   dispatchAiAction,
-  workspaceContextPrompt,
 } from "../../components/ai/aiActions";
 import type { DispatchedAction } from "../../components/ai/aiActions";
 import {
   THOUGHT_PARTNER_SEED_EVENT,
   type ThoughtPartnerSeedDetail,
+  composeThoughtPartnerSystemContext,
 } from "../../components/ai/thoughtPartnerSeed";
 
 export { THOUGHT_PARTNER_SEED_EVENT, type ThoughtPartnerSeedDetail };
@@ -86,9 +86,9 @@ export default function ThoughtPartnerPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt,
-          system_context: composedContext.trim()
-            ? composedContext
-            : workspaceContextPrompt(),
+          system_context: composeThoughtPartnerSystemContext(
+            composedContext.trim() ? composedContext : null,
+          ),
         }),
       });
       if (!resp.ok) {
