@@ -27,6 +27,17 @@ Local HTTP also needs (already set by the start script / `.env` for Mini dogfood
 - `ANTIEK_COOKIE_INSECURE=1` — browsers drop `Secure` cookies on `http://`
 - `ANTIEK_FRONTEND_BASE_URL=http://127.0.0.1:5173` — post-login redirect to Vite
 
+## /health under agent-work lease load
+
+`GET /health` returns the **startup-cached** DuckDB snapshot and never takes
+the DuckDB write lock. Agent-work bridge routes (`/internal/agent-work/*`)
+run `ensure_initialized` + lease writes via `asyncio.to_thread` so a single
+uvicorn worker keeps answering `/health` while herdr-bridge polls lease
+(same class of fix as Loop One offload).
+
+Prod incident 2026-09-18: `arxiv_oai_sync` held `antiek.duckdb.write.lock`
+for hours; sync `lease_work` blocked the event loop → `/health` timeouts.
+
 ## Loop One consumer (no separate process)
 
 Sync embed/search and provider `dispatch` inside Loop One / role bridges

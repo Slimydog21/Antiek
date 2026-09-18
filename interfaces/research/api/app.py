@@ -1945,15 +1945,25 @@ def create_app(
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
-        # Deferred flywheel probe (see create_app): scan the event log at most
-        # once, on the first /health request, then reuse the snapshot — so
-        # importing this module never pays the scan.
-        if not getattr(app.state, "_flywheel_probed", False):
-            (
-                app.state.flywheel_ready,
-                app.state.knowledge_reuse_count,
-            ) = _probe_flywheel()
-            app.state._flywheel_probed = True
+        # Deferred flywheel probe (see create_app): never block /health on the
+        # event-log scan or any DuckDB write path. Kick a background to_thread
+        # once; return last-known (default False/0) until it finishes. DuckDB
+        # fields always come from the startup-cached app.state.duckdb_health
+        # snapshot — /health must stay responsive under agent-work lease load.
+        if not getattr(app.state, "_flywheel_probed", False) and not getattr(
+            app.state, "_flywheel_probe_started", False
+        ):
+            app.state._flywheel_probe_started = True
+
+            async def _flywheel_bg() -> None:
+                try:
+                    ready, count = await asyncio.to_thread(_probe_flywheel)
+                    app.state.flywheel_ready = ready
+                    app.state.knowledge_reuse_count = count
+                finally:
+                    app.state._flywheel_probed = True
+
+            asyncio.create_task(_flywheel_bg())
         duckdb_health = app.state.duckdb_health
         registered_providers = {
             str(provider)
