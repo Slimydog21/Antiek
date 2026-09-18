@@ -4,7 +4,7 @@
 **Status:** Consolidation / remap — **no product code**.  
 **Mandate:** Forensic inventory of Antiek-related specs/plans Faisal has made on the Mac Mini, remapped onto the **locked 2026-09-17 Anti-Ek vision**. Do not start from scratch — cite KEEP / MERGE / DEFER / ARCHIVE for each pillar.  
 **Repo companion:** this file lands in-repo so next PRs can cite it. Mini-only companions stay linked by path.  
-**Ads coordination:** AppLovin website MVP + attribution ledger is already recorded in [`docs/decisions/applovin-website-mvp-attribution-ledger-2026-09-17.md`](./decisions/applovin-website-mvp-attribution-ledger-2026-09-17.md) (merged #3103). **This doc does not duplicate that PR** — it cross-links and absorbs ads only as pillar 5/7.
+**Ads coordination:** AppLovin website MVP + attribution ledger is already recorded in [`docs/decisions/applovin-website-mvp-attribution-ledger-2026-09-17.md`](./decisions/applovin-website-mvp-attribution-ledger-2026-09-17.md) (merged #3103). **This doc does not duplicate that PR** — it cross-links and absorbs ads only as pillar 5/7. Speak/DeepBlu→attribution remap: [`docs/decisions/anti-ek-speak-deepblu-remap-2026-09-18.md`](./decisions/anti-ek-speak-deepblu-remap-2026-09-18.md).
 
 ---
 
@@ -69,6 +69,7 @@ Paths are relative to the Antiek git root unless prefixed `~/…` (Mac Mini comp
 | `docs/decisions/owner-privileged-read-path.md` | Owner read for gated/private | — | **shipped** — pillar 4 private path | 4 |
 | `docs/decisions/read-spr-01-servable-corpus-gate.md` | Servable corpus gate | — | **shipped** | 4, 5 |
 | `docs/decisions/speak-private-public-spine.md` | Private/public spine | — | **KEEP** | 1, 4 |
+| **`docs/decisions/anti-ek-speak-deepblu-remap-2026-09-18.md`** | **DeepBlu→Speak→ad_fill remap (no new ledger)** | **2026-09-18** | **shipped** — Speak KEEP; Desktop DeepBlu ARCHIVE; community voice reuses contributor/`speak_contribution` | **1, 2, 5** |
 | `~/Antiek/specs/antiek-html-projection/` | HTML projection sprints | 2026-06-12 | **KEEP** / **MERGE** with html-transport | 1 |
 | `~/Antiek/specs/antiek-duckdb-plane/` | DuckDB discipline plane | 2026-06-23 | **KEEP** | 1, 4 |
 | `docs/specs/canonical-twin-*` / htmlspec twins | Twin document / knowledge HTML | various | **partial** | 1, 2 |
@@ -122,6 +123,7 @@ Paths are relative to the Antiek git root unless prefixed `~/…` (Mac Mini comp
 | path | title/topic | date | status | vision # |
 |---|---|---|---|---|
 | **`docs/decisions/applovin-website-mvp-attribution-ledger-2026-09-17.md`** | **Locked ads decision (website MVP)** | **2026-09-17** | **shipped** (#3103) — **authoritative for pillar 5 website** | **5, 6, 7** |
+| `docs/decisions/anti-ek-speak-deepblu-remap-2026-09-18.md` | Speak/DeepBlu ↔ attribution (Speak surface = No ads) | 2026-09-18 | **shipped** — cross-link; no second ledger | 5 |
 | `docs/integration_applovin.md` | AppLovin / Axon posture; REJECT web MAX | 2026-07-02 | **KEEP** doctrine (#118) | 5 |
 | `docs/specs/ad-v1-scalable-2026-08-12.md` | Gap-ranked ad v1 plan | 2026-08-12 | **KEEP** execution order | 5 |
 | `docs/specs/publisher-ecosystem-2026-08-12.md` | 70/30 publisher ecosystem | 2026-08-12 | **KEEP** | 5, 7 |
@@ -216,7 +218,7 @@ Paths are relative to the Antiek git root unless prefixed `~/…` (Mac Mini comp
 
 | Disposition | Specs |
 |---|---|
-| **KEEP** | **`applovin-website-mvp-attribution-ledger-2026-09-17.md` (primary)**, `integration_applovin.md`, `ad-v1-scalable`, `publisher-ecosystem`, frame-attribution Mini spec, axon-loop |
+| **KEEP** | **`applovin-website-mvp-attribution-ledger-2026-09-17.md` (primary)**, `anti-ek-speak-deepblu-remap-2026-09-18.md` (Speak↔ledger), `integration_applovin.md`, `ad-v1-scalable`, `publisher-ecosystem`, frame-attribution Mini spec, axon-loop |
 | **MERGE** | Nothing new in this PR — follow #3103 next-agent one-liner |
 | **DEFER** | Live AppLovin demand, MAX, Apple ads, disbursement-readiness |
 | **ARCHIVE** | None of the ads doctrine (too load-bearing) |
