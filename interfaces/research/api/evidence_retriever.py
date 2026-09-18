@@ -229,7 +229,7 @@ def _dispatch_and_parse(
                 attempt=1,
                 max_tokens=16384,
             )
-    except (ProviderError, KeyError) as exc:
+    except Exception as exc:  # ProviderError/KeyError/OwnerByot*/etc.
         print(
             f"evidence_retriever.handle: dispatch failed — "
             f"{type(exc).__name__}: {exc}",
@@ -271,7 +271,7 @@ def _dispatch_and_parse(
             semantic_call_id=semantic_call_id,
             attempt=1,
         )
-    except (ProviderError, KeyError) as exc:
+    except Exception as exc:  # ProviderError/KeyError/OwnerByot*/etc.
         print(
             f"evidence_retriever.handle: self-repair dispatch failed — "
             f"{type(exc).__name__}: {exc}",

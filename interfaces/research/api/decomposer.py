@@ -315,16 +315,26 @@ def _dispatch_and_parse(
                 "retrying once with max_tokens=16384",
                 flush=True,
             )
-            result = dispatch(
-                prompt,
-                "decomposer",
-                investigation_id=event.investigation_id,
-                parent_event_id=event.event_id,
-                max_tokens=16384,
-            )
+            truncated = result
+            try:
+                result = dispatch(
+                    prompt,
+                    "decomposer",
+                    investigation_id=event.investigation_id,
+                    parent_event_id=event.event_id,
+                    max_tokens=16384,
+                )
+            except Exception as retry_exc:  # noqa: BLE001
+                print(
+                    f"decomposer.handle[{label}]: length-retry failed — "
+                    f"{type(retry_exc).__name__}: {retry_exc}; "
+                    "using truncated first response",
+                    flush=True,
+                )
+                result = truncated
         response_text = result.text
         policy_id = f"{result.provider}/{result.model}"
-    except (ProviderError, KeyError) as exc:
+    except Exception as exc:  # ProviderError/KeyError/OwnerByot*/etc.
         print(
             f"decomposer.handle[{label}]: dispatch failed — "
             f"{type(exc).__name__}: {exc}",

@@ -230,7 +230,7 @@ def _dispatch_and_parse(
                       parent_event_id=event.event_id)
         response_text = result.text
         policy_id = f"{result.provider}/{result.model}"
-    except (ProviderError, KeyError) as exc:
+    except Exception as exc:  # ProviderError/KeyError/OwnerByot*/etc.
         print(
             f"connector.handle: dispatch failed — "
             f"{type(exc).__name__}: {exc}",

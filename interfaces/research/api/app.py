@@ -6912,10 +6912,31 @@ def create_app(
         if worker is not None:
             worker.join(timeout=1.0)
 
+
+    def _recover_stranded_dispatch() -> None:
+        from .stranded_dispatch_recovery import start_stranded_dispatch_recovery
+
+        stop = threading.Event()
+        app.state.stranded_dispatch_recovery_stop = stop
+        app.state.stranded_dispatch_recovery_worker = start_stranded_dispatch_recovery(
+            stop_event=stop,
+        )
+
+    def _stop_stranded_dispatch() -> None:
+        stop = getattr(app.state, "stranded_dispatch_recovery_stop", None)
+        worker = getattr(app.state, "stranded_dispatch_recovery_worker", None)
+        if stop is not None:
+            stop.set()
+        if worker is not None:
+            worker.join(timeout=1.0)
+
+
     app.router.on_startup.append(_recover_knowledge_event_projector)
     app.router.on_startup.append(_recover_note_taker_replay)
+    app.router.on_startup.append(_recover_stranded_dispatch)
     app.router.on_shutdown.append(_stop_knowledge_event_projector)
     app.router.on_shutdown.append(_stop_note_taker_replay)
+    app.router.on_shutdown.append(_stop_stranded_dispatch)
     return app
 
 
