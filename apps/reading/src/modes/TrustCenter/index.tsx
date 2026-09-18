@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import { PUBLIC_LANE_LABELS } from "../../lib/speakVocab";
 
 /**
  * Trust Center (master-spec §13.7 + PostHog Wedge 7).
@@ -64,6 +66,23 @@ export default function TrustCenter() {
               substrate; if a bullet is wrong, the bullet is wrong.
             </p>
           </header>
+
+          <aside
+            className="rounded-md border-2 border-ink bg-ice-0 p-4 dark:border-charcoal-1 dark:bg-charcoal-1"
+            data-testid="trust-speak-browse-link"
+          >
+            <p className="text-sm text-ink dark:text-bright leading-relaxed">
+              {PUBLIC_LANE_LABELS.discoverBrowseBlurb}
+            </p>
+            <p className="mt-2">
+              <Link
+                to="/speak/browse"
+                className="font-mono text-[12px] text-sun-deep underline dark:text-sun"
+              >
+                {PUBLIC_LANE_LABELS.discoverBrowseLink}
+              </Link>
+            </p>
+          </aside>
 
           {error && (
             <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
