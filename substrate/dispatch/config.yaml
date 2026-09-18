@@ -247,7 +247,11 @@ role_tiers:
 # ---------------------------------------------------------------------------
 tier_defaults:
   flash:
-    max_tokens: 4096
+    # 8192: evidence_retriever (and other flash roles) were truncating at
+    # 4096 (finish_reason=length) on Mini deepseek; successful length-retries
+    # landed ~4.5–7.7k completion tokens. Evidence first-call still passes
+    # EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS=16384 explicitly.
+    max_tokens: 8192
     temperature: 0.2
     context_budget_tokens: 32000
   pro:

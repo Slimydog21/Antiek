@@ -156,6 +156,12 @@ def _extract_chunk_ids_from_block(chunks_block: str) -> tuple[str, ...]:
 # ---------------------------------------------------------------------------
 
 
+# First-call output budget. Flash default was 4096; Mini deepseek
+# evidence JSON routinely needs more (length @4096, retry stop at
+# ~4.5–7.7k). Match decomposer: first call = former retry budget.
+EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS = 16384
+
+
 def _dispatch_once(
     prompt: str,
     event: Event,
@@ -170,7 +176,7 @@ def _dispatch_once(
     from .research_owner_dispatch import dispatch_loop_one
 
     result = None
-    if max_tokens is None and attempt == 0:
+    if attempt == 0:
         result = dispatch_loop_one(
             prompt,
             "evidence_retriever",
@@ -202,10 +208,10 @@ def _dispatch_and_parse(
 ) -> tuple[EvidenceResult | None, str]:
     """Run evidence_retriever dispatch + parse with Mini dogfood retries.
 
-    Mirrors decomposer (``finish_reason=length`` → one larger budget) and
-    synthesizer (one self-repair on structural parse failure). Observed
-    Mini failures (2026-09-18): ``answer must be a string`` / unparseable
-    JSON after flash-tier truncation — empty delivered → thin citations.
+    First call uses ``EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS`` (16384) so
+    deepseek can finish evidence JSON without flash-4096 truncation.
+    Length-retry at the same budget remains safety; synthesizer-style
+    self-repair still runs on structural parse failure.
     """
     try:
         response_text, policy_id, finish = _dispatch_once(
@@ -214,11 +220,13 @@ def _dispatch_and_parse(
             sub_question=sub_question,
             semantic_call_id=semantic_call_id,
             attempt=0,
+            max_tokens=EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS,
         )
         if finish == "length":
+            # Safety net — happy path should stop on first call at 16384.
             print(
                 "evidence_retriever.handle: finish_reason=length — "
-                "retrying once with max_tokens=16384",
+                f"retrying once with max_tokens={EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS}",
                 flush=True,
             )
             response_text, policy_id, _finish = _dispatch_once(
@@ -227,7 +235,7 @@ def _dispatch_and_parse(
                 sub_question=sub_question,
                 semantic_call_id=semantic_call_id,
                 attempt=1,
-                max_tokens=16384,
+                max_tokens=EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS,
             )
     except Exception as exc:  # ProviderError/KeyError/OwnerByot*/etc.
         print(
