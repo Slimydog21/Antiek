@@ -203,9 +203,10 @@ class MultiEdgeFillRequest(BaseModel):
 
 
 class WebsiteAdsHonesty(BaseModel):
-    """Rank 0 website monetization honesty (no MAX-on-web; no fake cents).
+    """Rank 0 / 0.1 website monetization honesty (no MAX-on-web; no fake cents).
 
     docs/decisions/applovin-website-mvp-attribution-ledger-2026-09-17.md
+    docs/decisions/ads-rank01-pricing-settlement-gate-2026-09-18.md
     """
 
     surface: Literal["website"]
@@ -216,12 +217,16 @@ class WebsiteAdsHonesty(BaseModel):
     revenue_usd_cents_until_pricing: int
     pricing_gate: str
     legal_gate: str
+    settlement_open: bool
+    settlement_path: str
+    settlement_requires: list[str]
     speak_contributor_share: float
     speak_platform_share: float
     money_model: str
     disbursement: str
     decision_ref: str
     spec_ref: str
+    rank01_decision_ref: str
 
 
 class MultiEdgeFillResponse(BaseModel):

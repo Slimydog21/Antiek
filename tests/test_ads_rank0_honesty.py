@@ -30,6 +30,9 @@ def test_website_ads_honesty_shape():
     assert h["speak_platform_share"] == SPEAK_PLATFORM_SHARE == 0.30
     assert h["money_model"] == "no_fake_cents_until_settled_pricing"
     assert "applovin-website-mvp" in h["decision_ref"]
+    assert h["settlement_open"] is False
+    assert h["settlement_path"] == "settle_fill_decision"
+    assert "rank_0_1_pricing_authority_ref" in h["settlement_requires"]
 
 
 def test_assert_unpriced_zero_rejects_fake_cents():

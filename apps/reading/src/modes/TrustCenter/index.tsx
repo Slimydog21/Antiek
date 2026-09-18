@@ -29,12 +29,16 @@ interface WebsiteAdsHonesty {
   revenue_usd_cents_until_pricing: number;
   pricing_gate: string;
   legal_gate: string;
+  settlement_open?: boolean;
+  settlement_path?: string;
+  settlement_requires?: string[];
   speak_contributor_share: number;
   speak_platform_share: number;
   money_model: string;
   disbursement: string;
   decision_ref: string;
   spec_ref: string;
+  rank01_decision_ref?: string;
 }
 
 interface TrustCenterData {
@@ -171,8 +175,8 @@ export default function TrustCenter() {
                 <Section title="Website advertising (Rank 0)">
                   <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
                     Antiek serves its own creatives on the website. There is no
-                    AppLovin MAX SDK on web. Until Rank 0.1 pricing and Rank 0.2
-                    legal gate clear, fills stay unpriced at $0 — Speak&apos;s
+                    AppLovin MAX SDK on web. Fills default to unpriced $0. Rank 0.1 settlement requires an explicit
+                    pricing authority plus Rank 0.2 legal gate — never invented cents — Speak&apos;s
                     70% contributor share accrues only from settled revenue,
                     never invented cents.
                   </p>
@@ -204,6 +208,20 @@ export default function TrustCenter() {
                       Gates: {data.website_ads.pricing_gate} ·{" "}
                       {data.website_ads.legal_gate}
                     </li>
+                    <li>
+                      Settlement open:{" "}
+                      {data.website_ads.settlement_open ? "yes" : "no"}
+                      {data.website_ads.settlement_path
+                        ? ` · path ${data.website_ads.settlement_path}`
+                        : ""}
+                    </li>
+                    {data.website_ads.settlement_requires &&
+                      data.website_ads.settlement_requires.length > 0 && (
+                        <li>
+                          Settled requires:{" "}
+                          {data.website_ads.settlement_requires.join(" · ")}
+                        </li>
+                      )}
                     <li>
                       Speak escrow split (settled only):{" "}
                       {Math.round(data.website_ads.speak_contributor_share * 100)}%
