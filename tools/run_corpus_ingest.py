@@ -372,7 +372,17 @@ def _arxiv_bulk_candidates(
     from the fetched PDF is gated inside the ingest thunk via
     ``substrate.quality_gate.assess_extraction_quality`` BEFORE the document is
     written — OCR garbage in the PDF body is a counted per-item rejection, not a
-    silent ingest."""
+    silent ingest.
+
+    Where that gate does NOT reach (stated plainly rather than implied): the
+    ingest is HTML-first, and when arXiv serves an HTML rendering the PDF is
+    never fetched, so ``assess_extraction_quality`` never runs on that paper.
+    The HTML leg is not ungated — ``html_fetch`` rejects an absent/stub
+    rendering below ``MIN_HTML_CHARS`` and the body is allowlist-sanitized
+    before storage — but those are different checks from the OCR-garbage floor,
+    and the OCR failure mode they guard is a property of PDF text extraction
+    that arXiv's own HTML does not have. Extending the extraction-quality gate
+    to HTML bodies is a separate piece of work."""
     import os as _os
 
     from acquisition.arxiv import (
@@ -405,11 +415,24 @@ def _arxiv_bulk_candidates(
             # the write boundary like the other connectors' thunks; SPR-01's
             # merge consumes it, today's ingest_paper_with_rights still mints its
             # own id (the documented seam, identical to the export/PD/OA thunks).
-            pdf_bytes = fetch_bulk_pdf(_p, throttle=persistent)
-            _assert_pdf_body_quality(pdf_bytes, ref_id=f"arxiv:{_p.arxiv_id}")
+            #
+            # The PDF fetch is handed in as a CALLABLE rather than pre-fetched
+            # into ``pdf_bytes``. ``ingest_paper_with_rights`` is HTML-first by
+            # default, so a pre-fetch would spend a full arXiv request — >=3s of
+            # the host-global budget — on a body the HTML leg then discards, and
+            # worse, ``_assert_pdf_body_quality`` could reject the paper on PDF
+            # extraction quality before the higher-fidelity HTML rendering was
+            # ever attempted. As a callable the fetch runs only when the HTML leg
+            # returns None, and the quality gate still guards every PDF body that
+            # actually reaches ingest.
+            def _fetch_pdf_checked(_arxiv_id: str) -> bytes:
+                pdf_bytes = fetch_bulk_pdf(_p, throttle=persistent)
+                _assert_pdf_body_quality(pdf_bytes, ref_id=f"arxiv:{_p.arxiv_id}")
+                return pdf_bytes
+
             result = ingest_paper_with_rights(
                 _p, investigation_id=investigation_id,
-                pdf_bytes=pdf_bytes, db_path=db_path,
+                fetch_pdf=_fetch_pdf_checked, db_path=db_path,
             )
             return f"{result.content_class} ({result.servability})"
 
@@ -911,18 +934,30 @@ def _discover_paper_records(
 
 
 def _fetch_paper_pdf(rec, *, throttle, source: str) -> bytes:
-    """Fetch a servable paper's PDF behind the shared throttle + the shared
-    PDF-vs-HTML reality check. Quality/reality only — content_class is already
-    decided by the chokepoint."""
-    import httpx
+    """Fetch a servable paper's PDF behind the aggregator throttle, the
+    host-global arXiv governor, and the shared PDF-vs-HTML reality check.
+    Quality/reality only — content_class is already decided by the chokepoint.
 
+    Why the governed client and not a bare ``httpx.Client``. ``rec.pdf_url`` is
+    resolved at runtime from third-party aggregator metadata, and CORE, Semantic
+    Scholar and bioRxiv all mirror arXiv, so this URL can be
+    ``https://arxiv.org/pdf/<id>`` on the initial hop or after a redirect. The
+    aggregator throttle below knows nothing about arXiv's IP-scoped ceiling of
+    one request every three seconds, so a bare client here is an ungoverned
+    arXiv egress — the exact shape that historically IP-banned the box, sitting
+    on a live ingest loop. ``arxiv_governed_client`` attaches the per-hop request/response hooks,
+    so ANY arXiv hop (initial or redirect target) is held under the host-global
+    flock + >=3s spacing + 429 ban sentinel while a non-arXiv host passes through
+    untouched. The two throttles are independent layers, not alternatives.
+    """
+    from acquisition.arxiv.rate_governor import arxiv_governed_client
     from acquisition.openaccess.pdf_detect import assert_pdf
 
     throttle_key = {"core": "core", "semantic_scholar": "semantic_scholar",
                     "plos": "plos"}.get(source, f"biorxiv_{source}")
     throttle.before_request(throttle_key)
     url = rec.pdf_url
-    with httpx.Client(
+    with arxiv_governed_client(
         follow_redirects=True,
         timeout=30.0,  # match the existing PDF fetch request timeout below
     ) as c:
