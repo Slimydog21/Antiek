@@ -325,6 +325,29 @@ export const PRIVATE_ECON_COPY = {
 
 export type PrivateEconCopyKey = keyof typeof PRIVATE_ECON_COPY;
 
+
+/**
+ * Dual-push / continuous-ping copy (Anti-Ek Speak remap §PUSHES).
+ * Honest about heuristic public ranking and invite-path-only delivery.
+ */
+export const PUSHES_COPY = {
+  tabLabel: "Pushes",
+  heading: "What needs a voice",
+  honestyBanner:
+    "Public matching is a simple heuristic (fewest voices first) — not ML " +
+    "profile matching yet. Private re-pings open the invite door; email push " +
+    "is not sent automatically in this MVP.",
+  publicHeading: "Public — what you'd add value to",
+  publicEmpty: "No public-intent remembrances need voices yet.",
+  privateHeading: "Private — friend invites to re-ping",
+  privateEmpty: "No open friend invites need a nudge right now.",
+  repingBusy: "Preparing follow-ups…",
+  repingDone: "Invite door ready — share or open the link.",
+  openInvite: "Open invite door",
+  prepareReping: "Re-ping (new questions)",
+  contribute: "Add a memory",
+} as const;
+
 /** Every rendered string this module exposes, flattened — the surface the
  *  gate-honesty contract test scans. Keeping it derived (not hand-maintained)
  *  means a new label/phrase is automatically covered by the test. */
@@ -336,6 +359,7 @@ export function allRenderedPhrases(): string[] {
     ...Object.values(PUBLIC_LANE_LABELS),
     ...Object.values(PAYOUT_COPY),
     ...Object.values(PRIVATE_ECON_COPY),
+    ...Object.values(PUSHES_COPY),
   ];
   for (const gate of Object.values(GATE_PHRASES)) {
     out.push(gate.label, gate.whenGated);
