@@ -303,7 +303,7 @@ function OpenAutoNotebookLink({ investigationId }: { investigationId: string }) 
         data-testid="open-auto-notebook"
         className="font-mono text-[11px] uppercase tracking-wider text-aurora underline-offset-2 hover:underline"
       >
-        Open notebook →
+        Open auto-notebook →
       </Link>
     </p>
   );
