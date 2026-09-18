@@ -672,7 +672,7 @@ def ingest_paper_with_rights(
     pdf_bytes: bytes | None = None,
     fetch_pdf: PdfFetcher | None = None,
     fetch_html: HtmlFetcher | None = None,
-    prefer_html: bool = False,
+    prefer_html: bool = True,
     source_tier: int = DEFAULT_ARXIV_FULLTEXT_SOURCE_TIER,
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
@@ -690,8 +690,8 @@ def ingest_paper_with_rights(
          guessed servable.
       2. Build a ``license_basis`` audit string (license name + URI for
          servable; a "why gated" string otherwise).
-      3. When ``prefer_html`` is True, attempt the HTML-first path: fetch
-         via ``fetch_html`` (or the default rate-governed fetcher), sanitize
+      3. When ``prefer_html`` is True (the DEFAULT), attempt the HTML-first
+         path: fetch via ``fetch_html`` (or the default fetcher), sanitize
          through the trusted allowlist sanitizer, and store with
          ``content_format="html"`` (provenance-stamped).  If the paper has
          no HTML rendering (``fetch_html`` returns ``None``), fall through
@@ -703,17 +703,50 @@ def ingest_paper_with_rights(
     ``pdf_bytes`` short-circuits the PDF fetch (CI passes fixture bytes so
     no network).  When omitted, ``fetch_pdf`` (default: arxiv.org/pdf) is
     used.  ``fetch_html`` is the injectable HTML fetcher (tests pass a
-    stub).  ``prefer_html`` enables the HTML-first path; when False the
-    function behaves exactly as before (PDF only).
+    stub).
+
+    ``prefer_html`` DEFAULTS TO TRUE.  HTML-first is not a preference, it is a
+    measured fidelity difference: arXiv's own HTML rendering of a paper carries
+    roughly 2.4x the body text a PDF text-extraction recovers from the same
+    paper (6,635 words against 2,802 on the skill's reference measurement), and
+    it keeps the math, the tables and the two-column reading order that PDF
+    extraction flattens or drops.  Ingesting the PDF when an HTML rendering
+    exists throws away more than half the body before a single chunk is written,
+    and no downstream retrieval can recover text that was never stored.  Papers
+    with no HTML rendering are unaffected: ``fetch_html`` returns ``None`` and
+    the PDF leg below runs exactly as before.  Pass ``prefer_html=False`` to
+    force the PDF leg.
+
+    One case the default does NOT cover, deliberately: a caller that hands in
+    ``pdf_bytes`` and wires no ``fetch_html`` gets the PDF leg.  It already has
+    the body, so fetching arxiv.org/html behind its back would spend a real
+    arXiv request to replace something it already holds, and would turn a call
+    shaped as offline into live egress against a host that has IP-banned this
+    box before.  Passing ``fetch_html`` alongside ``pdf_bytes`` opts that caller
+    back into HTML-first.
+
+    The HTML leg NEVER degrades to PDF on a 429.  A 429 is arXiv arming the ban
+    sentinel, not a statement that the HTML rendering is absent; the fetcher
+    raises ``ArxivBanned`` and it propagates through here, because retrying the
+    same host on its heavier endpoint is how a rate-limit becomes an IP ban.
     """
     from acquisition.books.adapter import ingest_servable_book
 
     resolution = resolve_license(paper.license_uri)
     basis = license_basis_string(resolution)
 
-    # --- HTML-first path (new) ---
-    if prefer_html:
-        html_fetcher = fetch_html or _default_fetch_html
+    # --- HTML-first path ---
+    # The DEFAULT fetcher is withheld when the caller already handed us the body
+    # (``pdf_bytes``) and wired no HTML fetcher. Reaching out to arxiv.org/html
+    # there would be a surprise egress on a call the caller shaped as offline —
+    # it spends a real arXiv request (>=3s of the host-global budget, and in a
+    # test suite a live hit on a host that has IP-banned this box before) to
+    # replace a body that is already in hand. A caller that genuinely wants
+    # HTML-first with its own PDF fallback says so by passing ``fetch_html``,
+    # and then it runs. Callers that pass no body at all — both production call
+    # sites — get the default HTML-first fetch, which is the point of the flag.
+    html_fetcher = fetch_html or (None if pdf_bytes is not None else _default_fetch_html)
+    if prefer_html and html_fetcher is not None:
         fetched = html_fetcher(paper.arxiv_id)
         if fetched is not None:
             result = _ingest_html_with_rights(

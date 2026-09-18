@@ -411,10 +411,17 @@ def test_scanner_does_not_flag_dict_or_xml_get_false_positives():
 
 
 def test_scanner_scope_is_the_acquisition_tree_not_tools():
-    """HOST-based scope (round-4): the scanner binds the WHOLE acquisition tree,
-    but ``tools/`` is out of scope (its only HTTP is a localhost demo client to
-    the Antiek API — no arXiv egress). A raw httpx egress in a ``tools/`` script
-    is therefore NOT flagged."""
+    """A ``tools/`` script with no connection to arXiv is NOT flagged.
+
+    Round-4 justified this by claiming ``tools/`` carries no arXiv egress at
+    all. That claim was FALSE (see the tools/ tests below), so ``tools/`` is now
+    scanned — but CONDITIONALLY, per file, via
+    ``_tools_file_can_reach_arxiv``. The fixture below names no arXiv host and
+    imports no ``acquisition`` module, so it is one of the ~130 operator scripts
+    (PostHog sync, Krea smoke, prod-parity /health, the localhost demo client)
+    whose hosts are fixed by configuration and can never resolve to arXiv. The
+    assertion is unchanged and still correct; only the reason it holds is now
+    precise rather than a blanket claim about the directory."""
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         _write(
@@ -1594,3 +1601,134 @@ def _read_last_request_at(state_path: str) -> float:
 
     with open(state_path, encoding="utf-8") as f:
         return float(json.load(f).get("last_request_at", 0.0))
+
+
+# ── (d) tools/ IS IN SCOPE, conditionally (round-6) ─────────────────────────
+#
+# The round-4/5 scanner scoped itself to acquisition/ + substrate/graph/ on the
+# stated grounds that "tools/ carries no arXiv egress". That was false, and the
+# blind spot was live: tools/run_corpus_ingest.py::_fetch_paper_pdf fetched an
+# aggregator-resolved rec.pdf_url (CORE / Semantic Scholar / bioRxiv all mirror
+# arXiv) through a bare httpx.Client, and tools/arxiv_verify.py probed
+# oaipmh.arxiv.org with a bare urlopen. Neither was visible to the lint.
+
+
+def test_scanner_flags_an_ungoverned_tools_fetcher_that_imports_acquisition():
+    """THE regression this scope change exists for: a ``tools/`` script that
+    reaches paper records through ``acquisition`` and fetches whatever URL they
+    carry. It names no arXiv host anywhere — the URL is a runtime attribute —
+    so only the ``acquisition`` import marks it as able to reach arXiv."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _write(
+            root,
+            "tools/run_ingest.py",
+            """\
+            import httpx
+            from acquisition.papers.core import search_works
+
+            def fetch(rec):
+                with httpx.Client(follow_redirects=True) as c:
+                    return c.get(rec.pdf_url, timeout=30.0).content
+            """,
+        )
+        violations = rate_governor_check.find_violations(root=root)
+    assert len(violations) == 1, violations
+    assert violations[0].startswith("tools/run_ingest.py:"), violations
+
+
+def test_scanner_flags_a_bare_urlopen_against_an_arxiv_host_in_tools():
+    """The verifier shape: a stdlib ``urlopen`` against an arXiv host literal in
+    a ``tools/`` script. Caught by the arXiv-name clause of the predicate."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _write(
+            root,
+            "tools/verify.py",
+            """\
+            import urllib.request
+
+            def probe(base_url="https://oaipmh.arxiv.org/oai"):
+                req = urllib.request.Request(base_url + "?verb=Identify")
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    return resp.read()
+            """,
+        )
+        violations = rate_governor_check.find_violations(root=root)
+    assert len(violations) == 1, violations
+    assert violations[0].startswith("tools/verify.py:"), violations
+
+
+def test_scanner_accepts_the_governed_form_of_the_same_tools_fetchers():
+    """Both offenders above, routed through the governed seam, are clean — the
+    scanner demands the governed shape, it does not just blanket-ban egress in
+    ``tools/``."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _write(
+            root,
+            "tools/run_ingest.py",
+            """\
+            from acquisition.arxiv.rate_governor import arxiv_governed_client
+            from acquisition.papers.core import search_works
+
+            def fetch(rec):
+                with arxiv_governed_client(follow_redirects=True, timeout=30.0) as c:
+                    return c.get(rec.pdf_url, timeout=30.0).content
+            """,
+        )
+        _write(
+            root,
+            "tools/verify.py",
+            """\
+            import urllib.request
+            from acquisition.arxiv.rate_governor import (
+                canonical_arxiv_throttle,
+                govern_if_arxiv,
+            )
+
+            def probe(base_url="https://oaipmh.arxiv.org/oai"):
+                url = base_url + "?verb=Identify"
+                req = urllib.request.Request(url)
+                def _send():
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        return resp.read()
+                return govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
+            """,
+        )
+        assert rate_governor_check.find_violations(root=root) == []
+
+
+def test_the_real_arxiv_reaching_tools_files_are_actually_in_scope():
+    """NON-VACUITY GUARD. ``test_scanner_reports_zero_violations_on_the_current_tree``
+    is only meaningful if the files it should be reading are in scope. Assert
+    that against the REAL repo files, so a future narrowing of the predicate
+    that silently drops them turns this red instead of leaving a green lint over
+    an unscanned tree."""
+    repo = Path(rate_governor_check._REPO)
+    for rel in ("tools/run_corpus_ingest.py", "tools/arxiv_verify.py", "tools/ingest_arxiv.py"):
+        src = (repo / rel).read_text(encoding="utf-8")
+        assert rate_governor_check._in_egress_scan_scope(rel, src), (
+            f"{rel} reaches arXiv but the scanner does not scan it"
+        )
+
+
+def test_unrelated_tools_scripts_stay_out_of_scope():
+    """The other half of the predicate: the operator scripts whose hosts are
+    fixed by configuration stay out, so the lint does not go permanently red on
+    a wall of non-findings that would then be silenced wholesale."""
+    repo = Path(rate_governor_check._REPO)
+    for rel in ("tools/krea_smoke.py", "tools/auth_probe.py", "tools/prod_parity/check.py"):
+        path = repo / rel
+        if not path.exists():  # pragma: no cover - defensive on a partial tree
+            continue
+        src = path.read_text(encoding="utf-8")
+        assert not rate_governor_check._in_egress_scan_scope(rel, src), (
+            f"{rel} cannot reach an arXiv host but is being scanned"
+        )
+
+
+def test_an_unreadable_conditional_file_fails_closed():
+    """Fail direction check: when the predicate cannot read a file's source it
+    must scan it, not skip it."""
+    assert rate_governor_check._in_egress_scan_scope("tools/whatever.py", None) is True
