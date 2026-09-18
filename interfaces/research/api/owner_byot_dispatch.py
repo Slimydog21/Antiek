@@ -13,13 +13,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 
+from interfaces.research.api import settings_models_admin as models_admin
 from interfaces.research.api.account_memory_identity import (
     FORBIDDEN_OWNERS,
     OPERATOR_STORAGE_SENTINEL,
     derive_owner_from_verified_email,
 )
-
-from interfaces.research.api import settings_models_admin as models_admin
 from runtime.research_runner.byot_provider_catalog import (
     get_model_variant,
     get_provider_preset,

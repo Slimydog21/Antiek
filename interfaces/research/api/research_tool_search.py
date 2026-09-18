@@ -12,17 +12,16 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, FastAPI, Request, Response
-
-from interfaces.research.api.account_memory_identity import (
-    FORBIDDEN_OWNERS,
-    OPERATOR_STORAGE_SENTINEL,
-    derive_owner_from_verified_email,
-)
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from acquisition.twitter.api_client import XApiError
 from acquisition.youtube.data_api import YouTubeApiError, YouTubeQuotaExhausted
+from interfaces.research.api.account_memory_identity import (
+    FORBIDDEN_OWNERS,
+    OPERATOR_STORAGE_SENTINEL,
+    derive_owner_from_verified_email,
+)
 from runtime.connectors.quota_meter import QuotaExhausted
 from runtime.connectors.registry import ToolConnectionUnavailable, resolve_tool_connection
 
