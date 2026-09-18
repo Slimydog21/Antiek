@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -28,6 +29,36 @@ from substrate.write.event_outbox import (
     enqueue_event,
     eventful_transaction,
 )
+
+# Prod 2026-09-18: empty agent_work/lease still held the write flock ~10s
+# (DuckDB open on ~881MB dominates; write_log duration_s excludes open).
+# Bridge polls ~every 21s; note_taker fragments gaps; fills 8s → 503.
+# Cite: #3111 to_thread; #3112 arxiv max-lock / yield; ads fills #3157–#3162.
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+# Fail lease rather than hold flock for default connect_write 300s on SAME_FILE wait.
+LEASE_WRITE_TIMEOUT_S = _env_float("ANTIEK_AGENT_WORK_LEASE_WRITE_TIMEOUT_S", 25.0)
+MAX_RECLAIM_PER_LEASE = _env_int("ANTIEK_AGENT_WORK_MAX_RECLAIM_PER_LEASE", 5)
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,7 +188,11 @@ def lease_agent_work(
 ) -> WorkLease | None:
     """Atomically lease, audit, and exactly replay one polling command."""
     request_sha256 = _lease_request_sha256(command)
-    with connect_write(db_path, purpose="agent_work/lease") as con:  # noqa: SIM117
+    with connect_write(  # noqa: SIM117
+        db_path,
+        purpose="agent_work/lease",
+        timeout_s=LEASE_WRITE_TIMEOUT_S,
+    ) as con:
         with eventful_transaction(con, "unused-until-work-load"):
             init_feedback_schema(con)
             receipt = con.execute(
@@ -181,11 +216,21 @@ def lease_agent_work(
                     raise RuntimeError("lease receipt has no canonical result")
                 return replay
 
-            recovered = store.reclaim_expired(
-                con,
-                logical_worker_id=command.logical_worker_id,
-                now=command.now,
-            )
+            # Cap reclaim per lease (arxiv #3112 chunk class). Leftover expired
+            # rows are picked up on the next poll — never skip reclaim entirely.
+            if MAX_RECLAIM_PER_LEASE == 0:
+                recovered = []
+            else:
+                recovered = store.reclaim_expired(
+                    con,
+                    logical_worker_id=command.logical_worker_id,
+                    now=command.now,
+                    max_reclaim=(
+                        None
+                        if MAX_RECLAIM_PER_LEASE < 0
+                        else MAX_RECLAIM_PER_LEASE
+                    ),
+                )
             for expired in recovered:
                 investigation_id = str(
                     con.execute(

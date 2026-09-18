@@ -76,17 +76,28 @@ class AgentWorkStore:
         logical_worker_id: str,
         now: datetime,
         max_attempts: int = 3,
+        max_reclaim: int | None = None,
     ) -> list[WorkProgress]:
-        """Requeue expired attempts within the bound and terminate exhaustion."""
+        """Requeue expired attempts within the bound and terminate exhaustion.
+
+        ``max_reclaim`` caps rows mutated in one call (arxiv #3112 chunk class)
+        so a large expired backlog cannot monopolize the write lock.
+        """
         init_feedback_schema(con)
-        rows = con.execute(
+        sql = (
             "SELECT work_id, thread_id, state, attempt_count, active_lease_id "
             "FROM agent_work WHERE logical_worker_id=? AND active_lease_id IS NOT NULL "
             "AND lease_expires_at<=? AND state IN "
             "('leased', 'submitted', 'acknowledged', 'working') "
-            "ORDER BY created_at, work_id",
-            [logical_worker_id, now],
-        ).fetchall()
+            "ORDER BY created_at, work_id"
+        )
+        params: list[object] = [logical_worker_id, now]
+        if max_reclaim is not None:
+            if max_reclaim < 0:
+                raise ValueError("max_reclaim must be >= 0")
+            sql += " LIMIT ?"
+            params.append(int(max_reclaim))
+        rows = con.execute(sql, params).fetchall()
         recovered: list[WorkProgress] = []
         for work_id, thread_id, state, attempt_no, lease_id in rows:
             transition = decide_transition(

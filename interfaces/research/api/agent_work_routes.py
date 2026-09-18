@@ -119,6 +119,27 @@ def _idempotency_key(value: str | None) -> str:
     return key
 
 
+
+def _lock_yield_s() -> float:
+    """Seconds to sleep after a write-holding agent-work handler returns.
+
+    Lock is already released when ``asyncio.to_thread`` completes; yielding
+    before the HTTP response returns delays the bridge's next poll so
+    ``POST /api/ad/fills`` (and peers) can acquire the flock (#3112 yield
+    class; #3111 to_thread keeps the event loop responsive during the hold).
+    """
+    raw = os.environ.get("ANTIEK_AGENT_WORK_LOCK_YIELD_S", "3.0").strip()
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 3.0
+
+
+async def _yield_write_lock_for_peers() -> None:
+    delay = _lock_yield_s()
+    if delay > 0.0:
+        await asyncio.sleep(delay)
+
 def _require_scope(principal: BridgePrincipal, scope: str) -> None:
     if scope not in principal.scopes:
         raise HTTPException(
@@ -196,8 +217,10 @@ async def lease_work(
     def _sync() -> WorkLease | None:
         return lease_agent_work(_db_path(), cmd)
 
-    # Offload ensure_initialized + lease write lock off the uvicorn loop (#3108 class).
+    # Offload ensure_initialized + lease write lock off the uvicorn loop (#3108/#3111).
     lease = await asyncio.to_thread(_sync)
+    # Lock released; yield so fills / note_taker peers can acquire (#3112 class).
+    await _yield_write_lock_for_peers()
     return None if lease is None else _lease_payload(lease)
 
 
@@ -229,6 +252,7 @@ async def mark_submitted(
 
     try:
         result = await asyncio.to_thread(_sync)
+        await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:
@@ -268,6 +292,7 @@ async def renew_lease(
 
     try:
         result = await asyncio.to_thread(_sync)
+        await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:
@@ -308,6 +333,7 @@ async def mark_acknowledged(
 
     try:
         result = await asyncio.to_thread(_sync)
+        await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:
@@ -340,6 +366,7 @@ async def mark_working(
 
     try:
         result = await asyncio.to_thread(_sync)
+        await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:
@@ -420,11 +447,14 @@ async def complete_result(
     try:
         if isinstance(body, ReplyResultIn):
             result = await asyncio.to_thread(_sync_reply)
+            await _yield_write_lock_for_peers()
         elif isinstance(body, FailureResultIn):
             progress = await asyncio.to_thread(_sync_failure)
+            await _yield_write_lock_for_peers()
             return _progress_payload(progress)
         else:
             result = await asyncio.to_thread(_sync_disposition)
+            await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:
