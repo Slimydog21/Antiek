@@ -450,3 +450,36 @@ def test_youtube_search_of_an_empty_page_is_empty(artifact: str, tmp_path: Path)
     conn.attach_key(_YT_KEY)
     assert conn.search("nothing matches this", max_results=5) == []
     conn.close()
+
+
+def test_youtube_hit_without_a_kind_takes_the_one_its_id_field_implies(
+    artifact: str, tmp_path: Path
+) -> None:
+    """``id.kind`` missing must not silently make a channel look like a video.
+
+    The route turns ``kind`` into the candidate's URL, so a channel id read as
+    a video builds ``watch?v=<channel id>`` — a link that resolves to nothing
+    and a control that looks like it worked. The id field the vendor did fill
+    already says which kind it is.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"items": [
+            {"id": {"videoId": "v1"}, "snippet": {"title": "A video"}},
+            {"id": {"channelId": "UC_no_kind"}, "snippet": {"title": "A channel"}},
+            {"id": {"playlistId": "PL_no_kind"}, "snippet": {"title": "A playlist"}},
+        ]})
+
+    conn = YouTubeDataConnector(
+        artifact_path=artifact,
+        key_bytes=_TEST_KEY_BYTES,
+        client=httpx.Client(transport=_mock_transport(handler)),
+        meter=_fake_meter(tmp_path / "quota7"),
+    )
+    conn.attach_key(_YT_KEY)
+    hits = conn.search("anything", max_results=5)
+    assert [(h.video_id, h.kind) for h in hits] == [
+        ("v1", "video"),
+        ("UC_no_kind", "channel"),
+        ("PL_no_kind", "playlist"),
+    ]
+    conn.close()
