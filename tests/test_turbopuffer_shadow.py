@@ -169,7 +169,7 @@ def test_rebuild_detects_vendor_content_corruption(graph):
     fake = FakeNamespace()
     fake.corrupt_verification = True
     sub = TurbopufferSubstrate.open(graph, model=HashEmbedding(), api_key="x", namespace=fake)
-    with pytest.raises(RuntimeError, match="content-hash"):
+    with pytest.raises(RuntimeError, match="verification failed"):
         sub.rebuild_shadow()
 
 
