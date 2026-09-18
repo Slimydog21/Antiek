@@ -207,3 +207,12 @@ synthesis truth; UI projects via `deriveAutoNotebook` — no notebook write API.
 3. Outline/sections re-derive from `GET /research/{id}/distill` + synthesis.
    Insights show `source: <document_id>` when grounded.
 4. Empty graph → honest empty state (never invented citations).
+
+
+## Note-taker → distill (Loop One)
+
+Note-taker qualifies Loop One delivers (`evidence.retrieve.delivered`,
+`synthesize.delivered`, …). After each window it promotes `note.emerged`
+→ insight nodes (works with projector recovery disabled).
+
+Check: `GET /research/$INV/distill` after ≥ threshold qualifying events.

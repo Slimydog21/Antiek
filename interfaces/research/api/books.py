@@ -1028,6 +1028,7 @@ def register_book_routes(app: FastAPI) -> None:
             ),
             role="read/spin_research",
             policy_id="read/books/spin_research",
+            document_id=document_id,
         )
         if event_id is None:
             raise HTTPException(
