@@ -29,7 +29,7 @@ from substrate.write.event_outbox import (
 from .parser import parse_notes_response
 from .prompt import NOTE_TAKER_SYSTEM_PROMPT
 
-CONSUMER_VERSION = 2
+CONSUMER_VERSION = 3  # v3: passage-aligned prompt + doc excerpts in window
 QUALIFYING_ACTION_TYPES = frozenset(
     {
         "distillation.delivered",
@@ -129,6 +129,46 @@ def _assert_complete_tail(investigation_id: str, events_dir: str) -> None:
         stream.seek(-1, os.SEEK_END)
         if stream.read(1) != b"\n":
             raise NoteTakerReplayCorruption("incomplete JSONL tail")
+
+
+def _document_excerpts_for_prompt(db_path: str, document_id: str | None) -> str:
+    """Best-effort book surface for the note-taker window (read-oriented).
+
+    Caps total characters so the provider prompt stays bounded. Empty when
+    the document is unknown or the DB cannot be opened.
+    """
+    if not isinstance(document_id, str) or not document_id.strip():
+        return ""
+    if document_id.startswith("research:"):
+        return ""
+    try:
+        from runtime.db_lock import connect_read
+    except ImportError:
+        return ""
+    try:
+        with connect_read(db_path) as con:
+            rows = con.execute(
+                "SELECT text FROM chunks WHERE document_id = ? "
+                "ORDER BY chunk_id ASC LIMIT 8",
+                [document_id.strip()],
+            ).fetchall()
+    except Exception:
+        return ""
+    parts: list[str] = []
+    total = 0
+    for (text,) in rows:
+        if not text:
+            continue
+        snippet = str(text).strip()
+        if not snippet:
+            continue
+        if total + len(snippet) > 2400:
+            snippet = snippet[: max(0, 2400 - total)]
+        parts.append(snippet)
+        total += len(snippet)
+        if total >= 2400:
+            break
+    return "\n---\n".join(parts)
 
 
 def _render_event(event: dict[str, Any]) -> str:
@@ -350,16 +390,27 @@ class DurableNoteTakerReplay:
             window_id = _window_id(investigation_id, self.threshold, ids)
             source_json = _canonical(ids)
             source_digest = _digest(source_json)
+            document_id = window[-1].get("document_id") or _resolve_note_document_id(
+                investigation_id, {}, events_dir=self.events_dir
+            )
+            doc_excerpts = _document_excerpts_for_prompt(
+                self.db_path, document_id
+            )
+            prompt_body = NOTE_TAKER_SYSTEM_PROMPT + "\n\n"
+            if doc_excerpts:
+                prompt_body += (
+                    "Document excerpts (ground notes against these):\n"
+                    + doc_excerpts
+                    + "\n\n"
+                )
+            prompt_body += (
+                "\n".join(map(_render_event, window))
+                + "\n\nNow produce the JSON object."
+            )
             request = {
-                "document_id": window[-1].get("document_id")
-                or _resolve_note_document_id(
-                    investigation_id, {}, events_dir=self.events_dir
-                ),
+                "document_id": document_id,
                 "investigation_id": investigation_id,
-                "prompt": NOTE_TAKER_SYSTEM_PROMPT
-                + "\n\n"
-                + "\n".join(map(_render_event, window))
-                + "\n\nNow produce the JSON object.",
+                "prompt": prompt_body,
                 "role": "note_taker",
                 "source_event_ids": ids,
             }
