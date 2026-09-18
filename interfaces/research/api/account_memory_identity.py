@@ -46,7 +46,7 @@ from fastapi import Request
 SESSION_AUTH_METHOD = "antiek_session_cookie"
 
 # Storage/service identities that cannot name a person. Refused as owners.
-_FORBIDDEN_OWNERS = frozenset({"__operator__", "shared", "service", "local"})
+FORBIDDEN_OWNERS = frozenset({"__operator__", "shared", "service", "local"})
 
 # The one sentinel the authentication paths actually mint (magic-link callback, code
 # exchange, passkey assertion, dev-login — all of ``auth.py``). A request carrying it has
@@ -57,7 +57,7 @@ _FORBIDDEN_OWNERS = frozenset({"__operator__", "shared", "service", "local"})
 # them, so their appearance means a genuinely shared or machine context, and admitting
 # them on a matching address would widen a privacy boundary to buy nothing. Narrow beats
 # clever here: this fixes the case that actually occurs and changes no other.
-_OPERATOR_STORAGE_SENTINEL = "__operator__"
+OPERATOR_STORAGE_SENTINEL = "__operator__"
 
 # Namespace marker so a derived owner is never mistaken for a substrate user_id.
 _DERIVED_OWNER_PREFIX = "acct_"
@@ -71,12 +71,17 @@ _MAX_OWNER_LENGTH = 256
 _MAX_EMAIL_LENGTH = 320
 
 
-def _derived_owner_from_verified_email(value: object) -> str | None:
+def derive_owner_from_verified_email(value: object) -> str | None:
     """Stable opaque owner for a session whose e-mail the middleware already verified.
 
-    Reached only on the session-cookie path, so the address has passed magic-link or
-    passkey proof AND the operator allowlist. This function re-checks shape only; it is
-    not the authorization decision and must never be treated as one.
+    Shared by every owner predicate so that one person resolves to ONE owner value
+    everywhere. If account memory and BYOT dispatch derived this differently, the same
+    human would own two disjoint sets of rows and their spend would be attributed to an
+    identity their memory could not see — so this lives in one place on purpose.
+
+    Callers are responsible for reaching this only on a path where the address was
+    actually verified. This function re-checks shape only; it is not the authorization
+    decision and must never be treated as one.
     """
     if not isinstance(value, str):
         return None
@@ -106,19 +111,25 @@ def distinct_signed_owner(request: Request) -> str | None:
         return None
 
     folded = owner.casefold()
-    if folded not in _FORBIDDEN_OWNERS:
+    if folded not in FORBIDDEN_OWNERS:
         # A genuine per-user id. Used as-is; the fallback below is not reached, so
         # Sprint 22+ multi-user sessions are unaffected by any of this.
         return owner
 
-    if folded != _OPERATOR_STORAGE_SENTINEL:
+    if folded != OPERATOR_STORAGE_SENTINEL:
         # "shared" / "service" / "local": no fallback, no owner.
         return None
 
     # The single-operator storage sentinel. Fall back to the verified session e-mail,
     # which does name one person. Returns None when there is none, so this still fails
     # closed rather than inventing an owner.
-    return _derived_owner_from_verified_email(getattr(state, "user_email", None))
+    return derive_owner_from_verified_email(getattr(state, "user_email", None))
 
 
-__all__ = ["SESSION_AUTH_METHOD", "distinct_signed_owner"]
+__all__ = [
+    "FORBIDDEN_OWNERS",
+    "SESSION_AUTH_METHOD",
+    "OPERATOR_STORAGE_SENTINEL",
+    "derive_owner_from_verified_email",
+    "distinct_signed_owner",
+]
