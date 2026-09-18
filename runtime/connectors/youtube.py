@@ -86,15 +86,21 @@ class YouTubeQuotaExhausted(YouTubeError):
         )
 
 
+_ID_FIELDS = (("videoId", "video"), ("channelId", "channel"), ("playlistId", "playlist"))
+
+
 @dataclass(frozen=True)
 class YouTubeSearchHit:
     """One parsed search hit.
 
     ``kind`` is the vendor's id-kind with its ``youtube#`` prefix stripped
-    (``video``, ``channel``, ``playlist``), and ``video_id`` holds whichever
-    id the hit carries for that kind — a channel hit carries a channel id, and
-    the field name follows the shape ``acquisition.youtube.data_api`` already
-    ships so a reader meets one YouTube record, not two.
+    (``video``, ``channel``, ``playlist``); a hit that names no kind takes the
+    one its id field implies, because a caller reads ``kind`` to decide which
+    URL a hit even has and guessing ``video`` for a channel id builds a watch
+    link to nothing. ``video_id`` holds whichever id the hit carries for that
+    kind — a channel hit carries a channel id, and the field name follows the
+    shape ``acquisition.youtube.data_api`` already ships so a reader meets one
+    YouTube record, not two.
     """
 
     video_id: str
@@ -112,7 +118,8 @@ def parse_search_items(items: object) -> list[YouTubeSearchHit]:
     Pure: an array in, records out — no network, no key, no clock, so a
     fixture exercises it exactly as a live page would. An item whose id block
     carries no id at all is dropped; anything else keeps its row with the
-    fields the vendor did send. The parse is duplicated from the acquisition
+    fields the vendor did send, and takes its kind from the id field it filled
+    when the vendor named no kind. The parse is duplicated from the acquisition
     lane rather than imported because ``acquisition`` builds on
     ``runtime.connectors``, and importing back down from here would invert
     that dependency.
@@ -127,12 +134,13 @@ def parse_search_items(items: object) -> list[YouTubeSearchHit]:
         id_obj = id_obj if isinstance(id_obj, dict) else {}
         id_kind = str(id_obj.get("kind") or "")
         kind = id_kind[len("youtube#"):] if id_kind.startswith("youtube#") else id_kind
-        identifier = str(
-            id_obj.get("videoId")
-            or id_obj.get("channelId")
-            or id_obj.get("playlistId")
-            or ""
-        )
+        identifier = ""
+        for field, implied in _ID_FIELDS:
+            value = id_obj.get(field)
+            if value:
+                identifier = str(value)
+                kind = kind or implied
+                break
         if not identifier:
             continue
         snippet = item.get("snippet")
@@ -140,7 +148,7 @@ def parse_search_items(items: object) -> list[YouTubeSearchHit]:
         hits.append(
             YouTubeSearchHit(
                 video_id=identifier,
-                kind=kind or "video",
+                kind=kind,
                 title=str(snippet.get("title") or ""),
                 description=str(snippet.get("description") or ""),
                 channel_id=str(snippet.get("channelId") or ""),
