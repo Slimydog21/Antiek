@@ -236,17 +236,42 @@ export async function openContributePath(projectId: string): Promise<string> {
   return path;
 }
 
-/** Live G7 flag from opportunities honesty (no env-flag leak in UI). */
-export async function openContributionLive(): Promise<boolean> {
+/** Live public Speak honesty from opportunities (no env-flag leak in UI). */
+export interface SpeakPublicHonesty {
+  openContributionLive: boolean;
+  publicPublishingLive: boolean;
+  disbursementLive: boolean;
+  moneyModel: string;
+}
+
+export async function speakPublicHonesty(): Promise<SpeakPublicHonesty> {
+  const empty: SpeakPublicHonesty = {
+    openContributionLive: false,
+    publicPublishingLive: false,
+    disbursementLive: false,
+    moneyModel: "accrue_escrow_now_disburse_after_legal_review",
+  };
   try {
     const resp = await apiFetch("/speak/opportunities");
-    if (!resp.ok) return false;
+    if (!resp.ok) return empty;
     const raw = (await resp.json()) as Record<string, unknown>;
     const honesty = (raw.honesty ?? {}) as Record<string, unknown>;
-    return honesty.open_contribution_without_invite === "live";
+    return {
+      openContributionLive: honesty.open_contribution_without_invite === "live",
+      publicPublishingLive: honesty.public_publishing === "live",
+      disbursementLive: honesty.disbursement === "live",
+      moneyModel: String(
+        honesty.money_model ?? "accrue_escrow_now_disburse_after_legal_review",
+      ),
+    };
   } catch {
-    return false;
+    return empty;
   }
+}
+
+/** Live G7 flag from opportunities honesty (no env-flag leak in UI). */
+export async function openContributionLive(): Promise<boolean> {
+  return (await speakPublicHonesty()).openContributionLive;
 }
 
 export async function makeContributionInvitePath(id: string): Promise<string> {

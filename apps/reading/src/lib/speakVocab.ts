@@ -353,8 +353,9 @@ export const PRIVATE_ECON_COPY = {
     "publicly on Antiek to share earnings 70% with the people who contributed.",
   /** Public / will-be-public honesty counterpart for invitee + operator. */
   publicCanEarn:
-    "When this story is public, contributors can earn via the 70% split " +
-    "(accrued to escrow; money routes only after legal review).",
+    "When this story is published publicly, contributors can earn via the 70% " +
+    "split: quality grades accrue to escrow now; cash leaves escrow only after " +
+    "legal review (G2/G3). Nothing is paid out today.",
 } as const;
 
 export type PrivateEconCopyKey = keyof typeof PRIVATE_ECON_COPY;
