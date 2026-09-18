@@ -1,4 +1,4 @@
-"""Decomposer retries once when finish_reason=length (Mini dogfood)."""
+"""Decomposer first-call budget + length-retry safety (Mini dogfood)."""
 
 from __future__ import annotations
 
@@ -59,7 +59,8 @@ def _well_formed_decomp() -> dict:
     }
 
 
-def test_dispatch_and_parse_retries_on_length(monkeypatch):
+def test_first_call_uses_raised_output_budget(monkeypatch):
+    """Happy path: first call at DECOMPOSER_OUTPUT_MAX_TOKENS finishes stop."""
     calls: list[int | None] = []
     good = json.dumps(_well_formed_decomp())
 
@@ -73,7 +74,41 @@ def test_dispatch_and_parse_retries_on_length(monkeypatch):
         **kw,
     ):
         calls.append(max_tokens)
-        if max_tokens is None:
+        return SimpleNamespace(
+            text=good,
+            provider="deepseek",
+            model="deepseek-v4-pro",
+            finish_reason="stop",
+        )
+
+    monkeypatch.setattr(dec, "dispatch", fake_dispatch)
+    import interfaces.research.api.research_owner_dispatch as rod
+
+    monkeypatch.setattr(rod, "dispatch_loop_one", lambda *a, **k: None)
+
+    parsed, policy = dec._dispatch_and_parse("prompt", _event(), label="initial")
+    assert parsed is not None
+    assert len(parsed.decomposition) == 4
+    assert calls == [dec.DECOMPOSER_OUTPUT_MAX_TOKENS]
+    assert policy == "deepseek/deepseek-v4-pro"
+
+
+def test_dispatch_and_parse_retries_on_length(monkeypatch):
+    """Safety: if first call still returns length, retry once at same budget."""
+    calls: list[int | None] = []
+    good = json.dumps(_well_formed_decomp())
+
+    def fake_dispatch(
+        prompt,
+        role,
+        *,
+        investigation_id,
+        parent_event_id=None,
+        max_tokens=None,
+        **kw,
+    ):
+        calls.append(max_tokens)
+        if len(calls) == 1:
             return SimpleNamespace(
                 text="{truncated",
                 provider="deepseek",
@@ -95,5 +130,19 @@ def test_dispatch_and_parse_retries_on_length(monkeypatch):
     parsed, policy = dec._dispatch_and_parse("prompt", _event(), label="initial")
     assert parsed is not None
     assert len(parsed.decomposition) == 4
-    assert calls == [None, 16384]
+    budget = dec.DECOMPOSER_OUTPUT_MAX_TOKENS
+    assert calls == [budget, budget]
     assert policy == "deepseek/deepseek-v4-pro"
+
+
+def test_pro_tier_default_matches_decomposer_budget():
+    from substrate.dispatch.router import DispatchConfig
+    from pathlib import Path
+
+    cfg = DispatchConfig.from_yaml(
+        Path(__file__).resolve().parents[1]
+        / "substrate"
+        / "dispatch"
+        / "config.yaml"
+    )
+    assert cfg.tiers["pro"].max_tokens == dec.DECOMPOSER_OUTPUT_MAX_TOKENS
