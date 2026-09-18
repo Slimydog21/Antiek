@@ -834,14 +834,27 @@ def resolve_substantive_chunk_id(con: Any, document_id: str | None) -> str | Non
     return str(row[0])
 
 
-def _note_evidence_texts(event: dict[str, Any], *, events_dir: str | None) -> list[str]:
+def _note_evidence_texts(
+    event: dict[str, Any],
+    *,
+    events_dir: str | None,
+    con: Any | None = None,
+) -> list[str]:
     """Load evidence texts for deposit-time groundedness.
 
-    Prefers cited ``source_event_ids``, then adds every
-    ``evidence.retrieve.delivered`` answer in the same investigation.
+    Prefers cited ``source_event_ids``, then adds:
+
+    * every ``evidence.retrieve.delivered`` answer in the same investigation
+    * ``decompose.delivered`` sub-questions / rationales (the wrestling agenda
+      the note synthesizes)
+    * all chunk texts for the note's ``document_id`` when a DB connection is
+      supplied (passage-aligned lexical coverage)
+
     Note-taker windows synthesize across a retrieve slice; scoring only
     against the cited subset under-grounds meta-notes that are entailed
-    by sibling delivers in the same window.
+    by sibling delivers in the same window. Document chunks are the book
+    surface the operator is reading — honest entailment evidence, not a
+    score pad.
     """
     payload = _event_payload(event)
     ids = payload.get("source_event_ids") or []
@@ -856,9 +869,23 @@ def _note_evidence_texts(event: dict[str, Any], *, events_dir: str | None) -> li
     root = events_dir or default_events_dir()
     cited: list[str] = []
     siblings: list[str] = []
+    agenda: list[str] = []
     for row in iter_physical_events(str(investigation_id), events_dir=root):
         pl = row.get("payload") or {}
         if not isinstance(pl, dict):
+            continue
+        at = row.get("action_type")
+        if at == "decompose.delivered":
+            for sq in pl.get("decomposition") or []:
+                if not isinstance(sq, dict):
+                    continue
+                bits = [
+                    str(sq.get("sub_question") or ""),
+                    str(sq.get("rationale") or ""),
+                ]
+                text = "\n".join(b for b in bits if b.strip())
+                if text.strip():
+                    agenda.append(text.strip())
             continue
         bits = [
             str(pl.get("sub_question") or ""),
@@ -872,14 +899,30 @@ def _note_evidence_texts(event: dict[str, Any], *, events_dir: str | None) -> li
         eid = row.get("event_id")
         if want and eid in want:
             cited.append(text.strip())
-        elif row.get("action_type") == "evidence.retrieve.delivered":
+        elif at == "evidence.retrieve.delivered":
             siblings.append(text.strip())
     out = list(cited)
     seen = set(cited)
-    for s in siblings:
+    for s in siblings + agenda:
         if s not in seen:
             out.append(s)
             seen.add(s)
+    doc = event.get("document_id") or payload.get("document_id")
+    if con is not None and isinstance(doc, str) and doc.strip():
+        try:
+            rows = con.execute(
+                "SELECT text FROM chunks WHERE document_id = ?",
+                [doc.strip()],
+            ).fetchall()
+        except Exception:
+            rows = []
+        for (chunk_text,) in rows:
+            if chunk_text is None:
+                continue
+            t = str(chunk_text).strip()
+            if t and t not in seen:
+                out.append(t)
+                seen.add(t)
     return out
 
 
@@ -905,6 +948,119 @@ def _score_note_groundedness(
         cited_chunk_ids=[chunk_id] if chunk_id else [],
     )
     return float(verdict.score)
+
+
+
+def rescore_promoted_note_groundedness(
+    *,
+    con: LockedConnection | None = None,
+    db_path: str | None = None,
+    events_dir: str | None = None,
+    source_document_id: str | None = None,
+    dry_run: bool = True,
+    only_below_threshold: bool = False,
+    threshold: float = 0.5,
+) -> list[dict[str, Any]]:
+    """Re-score insight nodes deposited from note.emerged with current evidence.
+
+    Uses the same ``_note_evidence_texts`` + ``_score_note_groundedness`` path as
+    ``promote_from_note_event`` (no invented scores). Updates
+    ``metadata.groundedness_score`` when ``dry_run=False``.
+
+    Returns one row per considered insight:
+    ``{node_id, old, new, delta, updated, crossed_threshold}``.
+    """
+    from runtime.db_lock import connect_write
+    from substrate.event_log import default_events_dir, iter_physical_events
+    from substrate.graph import default_db_path
+
+    root = events_dir or default_events_dir()
+    path = db_path or default_db_path()
+
+    def _run(c: LockedConnection) -> list[dict[str, Any]]:
+        sql = (
+            "SELECT node_id, canonical_label, metadata FROM nodes "
+            "WHERE node_type = 'insight'"
+        )
+        params: list[Any] = []
+        if source_document_id:
+            sql += (
+                " AND json_extract_string(metadata, '$.source_document_id') = ?"
+            )
+            params.append(source_document_id)
+        rows = c.execute(sql, params).fetchall()
+        out: list[dict[str, Any]] = []
+        for node_id, label, meta_s in rows:
+            import json as _json
+
+            meta: dict[str, Any] = {}
+            if meta_s:
+                try:
+                    meta = _json.loads(meta_s)
+                except (TypeError, ValueError):
+                    meta = {}
+            old_raw = meta.get("groundedness_score")
+            old = float(old_raw) if isinstance(old_raw, (int, float)) else None
+            if only_below_threshold and old is not None and old >= threshold:
+                continue
+            inv = meta.get("investigation_id") or ""
+            origin = meta.get("origin_event_id")
+            chunk_id = meta.get("chunk_id")
+            text = (label or "").strip()
+            if not text or not inv:
+                continue
+            event = None
+            for row in iter_physical_events(str(inv), events_dir=root):
+                if origin and row.get("event_id") == origin:
+                    event = row
+                    break
+            if event is None:
+                for row in iter_physical_events(str(inv), events_dir=root):
+                    if row.get("action_type") != "note.emerged":
+                        continue
+                    pl = row.get("payload") or {}
+                    if isinstance(pl, dict) and (pl.get("note_text") or "").strip() == text:
+                        event = row
+                        break
+            if event is None:
+                continue
+            # Ensure document_id on envelope for chunk join
+            if not event.get("document_id") and meta.get("source_document_id"):
+                event = dict(event)
+                event["document_id"] = meta.get("source_document_id")
+            evidence = _note_evidence_texts(event, events_dir=root, con=c)
+            new = _score_note_groundedness(
+                c, text, chunk_id=chunk_id if isinstance(chunk_id, str) else None,
+                evidence_texts=evidence,
+            )
+            crossed = old is not None and old < threshold <= new
+            updated = False
+            if not dry_run and (old is None or abs(new - old) > 1e-12):
+                _stamp_insight_grounding(
+                    c,
+                    str(node_id),
+                    source_document_id=str(meta.get("source_document_id") or ""),
+                    chunk_id=str(chunk_id or ""),
+                    investigation_id=str(inv),
+                    groundedness_score=new,
+                )
+                updated = True
+            out.append(
+                {
+                    "node_id": str(node_id),
+                    "old": old,
+                    "new": new,
+                    "delta": (new - old) if old is not None else None,
+                    "updated": updated,
+                    "crossed_threshold": crossed,
+                }
+            )
+        return out
+
+    if con is not None:
+        return _run(con)
+    with connect_write(path, purpose="insight/groundedness_backfill") as c:
+        return _run(c)
 
 
 def _stamp_insight_grounding(
@@ -974,10 +1130,13 @@ def promote_from_note_event(
         if isinstance(doc_raw, str) and doc_raw.strip() and not doc_raw.startswith("research:")
         else None
     )
-    evidence_texts = _note_evidence_texts(event, events_dir=events_dir)
     note_text = text.strip()
 
     def _do(c: LockedConnection) -> str | None:
+        # Score inside the write connection so document chunks are visible.
+        evidence_texts = _note_evidence_texts(
+            event, events_dir=events_dir, con=c
+        )
         chunk_id = (
             resolve_substantive_chunk_id(c, source_document_id)
             if source_document_id

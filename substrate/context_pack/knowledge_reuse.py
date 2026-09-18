@@ -170,6 +170,14 @@ DEFAULT_RETRIEVE_LIMIT = 50
 # so the floor only gets safer there. A
 # reviewer can lower it toward 0 (more permissive) or raise it (stricter) with a
 # one-line rationale; nothing else moves.
+# ST / sentence-transformers note: production Mini dogfood uses ST embeddings
+# where meta-research notes vs a book *passage* seed often score ~0.05-0.10
+# cosine — below this floor — even when same-book and groundedness-pass.
+# Book-scoped spins therefore use RetrievedUnit.same_document to skip this
+# floor after the groundedness gate (see #3122). Do NOT casually lower this
+# constant to "fix" ST spins; that would re-admit cross-doc noise under hash
+# and ST alike. Calibrate a separate embedder-aware floor only with a labeled
+# set and an explicit decision record.
 RELEVANCE_FLOOR = 0.25
 
 _REUSE_HEADER = (
