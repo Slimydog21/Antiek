@@ -53,12 +53,43 @@ function authHeaders(extra?: HeadersInit): Record<string, string> {
   return merged;
 }
 
+/** Resolve a root-relative API path against {@link API_BASE}.
+ *
+ * WHY THIS EXISTS. In production the app is served from Cloudflare Pages
+ * (antiek.ai) while the substrate answers on a different origin
+ * (api.antiek.ai), and Pages carries no `_redirects`, no `_routes.json` and no
+ * Functions proxy — so a bare `"/speak/projects"` resolves against the Pages
+ * origin and returns the SPA shell, never the API. In development the Vite
+ * proxy makes the same string work, which is exactly why the mistake survived:
+ * it is invisible locally and total in production.
+ *
+ * Doing this here rather than at the call sites is deliberate. There were 146
+ * bare calls against 92 correctly-prefixed ones; prefixing each by hand is a
+ * large diff that fixes today's call sites and silently accepts tomorrow's.
+ * One resolution point cannot drift.
+ *
+ * Idempotent by construction. With `API_BASE` empty (dev) the path is returned
+ * unchanged, so the Vite proxy keeps working. With `API_BASE` set, an already
+ * prefixed call is an absolute URL, does not start with "/", and is left alone.
+ * Protocol-relative "//host/path" is a real absolute URL and is also left alone.
+ */
+export function resolveApiUrl(path: string): string {
+  if (!API_BASE) return path;
+  if (!path.startsWith("/") || path.startsWith("//")) return path;
+  return `${API_BASE}${path}`;
+}
+
 /** ``fetch`` wrapper that sends session cookies (``credentials: include``).
  * Exported for new mode components that need direct API access
  * outside the typed helper functions (e.g. OperatorDashboard,
- * PrivacyDashboard, Notebook). */
+ * PrivacyDashboard, Notebook).
+ *
+ * A string argument is resolved through {@link resolveApiUrl}. `Request` and
+ * `URL` arguments are already resolved by the caller and are passed through
+ * untouched — rebuilding a `Request` here would silently drop its body. */
 export function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  return fetch(input, {
+  const target = typeof input === "string" ? resolveApiUrl(input) : input;
+  return fetch(target, {
     ...(init ?? {}),
     headers: authHeaders(init?.headers),
     credentials: "include",
