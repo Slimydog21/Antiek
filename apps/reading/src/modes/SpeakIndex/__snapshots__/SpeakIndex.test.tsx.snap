@@ -69,6 +69,12 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           Start their story
         </button>
       </form>
+      <p
+        class="mb-6 font-serif text-[12px] text-ink-mute dark:text-moonlight"
+        data-testid="private-econ-create-notice"
+      >
+        New stories start private: friends you invite will NOT make money unless you later publish the story publicly on Antiek.
+      </p>
       <div
         class="mb-4 flex gap-1 border-b border-rule dark:border-charcoal-1"
         role="tablist"
@@ -240,6 +246,12 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           Start their story
         </button>
       </form>
+      <p
+        class="mb-6 font-serif text-[12px] text-ink-mute dark:text-moonlight"
+        data-testid="private-econ-create-notice"
+      >
+        New stories start private: friends you invite will NOT make money unless you later publish the story publicly on Antiek.
+      </p>
       <div
         class="mb-4 flex gap-1 border-b border-rule dark:border-charcoal-1"
         role="tablist"
@@ -340,6 +352,12 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           Start their story
         </button>
       </form>
+      <p
+        class="mb-6 font-serif text-[12px] text-ink-mute dark:text-moonlight"
+        data-testid="private-econ-create-notice"
+      >
+        New stories start private: friends you invite will NOT make money unless you later publish the story publicly on Antiek.
+      </p>
       <div
         class="mb-4 flex gap-1 border-b border-rule dark:border-charcoal-1"
         role="tablist"
