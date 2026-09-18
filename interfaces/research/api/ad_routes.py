@@ -37,6 +37,8 @@ are not imported here.
 
 from __future__ import annotations
 
+import asyncio
+
 from typing import Literal, cast
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -53,6 +55,14 @@ from substrate.anti_gaming.frame_ivt import (
 )
 
 from .books import _resolve_db_path
+
+# Short write waits under agent_work / note-taker contention (#3121 coexist,
+# #3153 write_log cap class). Default connect_write is 300s — that hung
+# POST /api/ad/fills and blocked the uvicorn event loop. Fail fast → client
+# house-degrades; exact retries use connect_read / LazyRW and never flock.
+_FILLS_WRITE_TIMEOUT_S = 2.0
+_FRAME_WRITE_TIMEOUT_S = 5.0
+
 
 # ── Wire shapes (pydantic mirrors of the frozen dataclass contract) ──
 #
@@ -431,93 +441,88 @@ def register_ad_routes(app: FastAPI) -> None:
             getattr(request.state, "user_id", None) or "__operator__"
         )
 
-        # Accrue through the single-writer lock. This route runs inside the
-        # --workers 1 uvicorn; accrue_window does not open its own writer.
-        con_w = connect_write(db, purpose="ad/frame_telemetry")
-        try:
-            # (e) SERVER-MINTED value (ad-pipeline gap S1, frame-telemetry-v3):
-            # ensure the fill ledger exists on this connection, then join the
-            # server's OWN fill/pricing record — the durable snapshot
-            # POST /api/ad/fills persisted at fill time. A missing/unsettled
-            # record mints 0 (honest house/zero; never a fabricated price).
-            # The client hint (if any) is captured but ONLY logged below —
-            # never consulted. The module-level seam is monkeypatchable so
-            # accrual-math tests can inject a value.
-            fill_decisions.ensure_table(con_w)
-            try:
-                batch = WindowFrameBatch(
-                    window_id=batch_in.window_id,
-                    seconds=seconds,
-                    ad_value_usd_cents=resolve_window_value_cents(
-                        owner_user_id=owner_user_id,
+        # Accrue through the single-writer lock off the event loop
+        # (asyncio.to_thread) with a short flock wait — #3121 coexist /
+        # #3153 class. Default 300s write wait wedged uvicorn under
+        # agent_work. No fake pricing: missing/unpriced fill still mints $0.
+        from runtime.db_lock import WriteLockTimeout
+
+        def _accrue_sync() -> FrameTelemetryResponse:
+            with connect_write(
+                db,
+                purpose="ad/frame_telemetry",
+                timeout_s=_FRAME_WRITE_TIMEOUT_S,
+            ) as con_w:
+                fill_decisions.ensure_table(con_w)
+                try:
+                    batch = WindowFrameBatch(
                         window_id=batch_in.window_id,
-                        con=con_w,
-                    ),
-                    schema_version=batch_in.schema_version,
-                )
-            except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
+                        seconds=seconds,
+                        ad_value_usd_cents=resolve_window_value_cents(
+                            owner_user_id=owner_user_id,
+                            window_id=batch_in.window_id,
+                            con=con_w,
+                        ),
+                        schema_version=batch_in.schema_version,
+                    )
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-            # AFA-S2 — classify once and pass that exact result into accrual so
-            # invalid seconds are removed before allocation and held windows
-            # never allocate contributor value.
-            classification = classify_batch(batch)
-
-            result = accrue_window(
-                con_w,
-                batch,
-                asset_to_ip_holder=asset_to_ip_holder,
-                owner_user_id=owner_user_id,
-                dwell_cap_ms=resolve_dwell_cap_ms(
-                    owner_user_id=owner_user_id
-                ),
-                classification=classification,
-            )
-            if batch_in.ad_value_usd_cents is not None:
-                # (f) The client's ad_value_usd_cents is an IGNORED HINT: it
-                # never feeds the accrual (the value was minted server-side),
-                # but it IS logged to the client-hint ledger for auditability —
-                # what the client CLAIMED vs what the server minted.
-                record_client_hint(
+                classification = classify_batch(batch)
+                result = accrue_window(
                     con_w,
-                    window_id=batch_in.window_id,
-                    batch_ref=result.batch_ref,
-                    client_hint_ad_value_usd_cents=batch_in.ad_value_usd_cents,
-                    telemetry_version=result.telemetry_version,
+                    batch,
+                    asset_to_ip_holder=asset_to_ip_holder,
+                    owner_user_id=owner_user_id,
+                    dwell_cap_ms=resolve_dwell_cap_ms(
+                        owner_user_id=owner_user_id
+                    ),
+                    classification=classification,
                 )
-            recon = window_reconciliation(con_w, batch.window_id)
-        finally:
-            con_w.close()
+                if batch_in.ad_value_usd_cents is not None:
+                    record_client_hint(
+                        con_w,
+                        window_id=batch_in.window_id,
+                        batch_ref=result.batch_ref,
+                        client_hint_ad_value_usd_cents=batch_in.ad_value_usd_cents,
+                        telemetry_version=result.telemetry_version,
+                    )
+                recon = window_reconciliation(con_w, batch.window_id)
 
-        # Filtered seconds: per-second exclusions for a PASS window; for a
-        # REVIEW/BLOCK window NO second was allocated, so the whole window
-        # counts as filtered (the verdict + signals explain why).
-        if result.fraud_verdict in ("review", "block"):
-            filtered_seconds = len(batch.seconds)
-        else:
-            filtered_seconds = sum(
-                count for _, count in result.excluded_second_counts
-            )
+                if result.fraud_verdict in ("review", "block"):
+                    filtered_seconds = len(batch.seconds)
+                else:
+                    filtered_seconds = sum(
+                        count for _, count in result.excluded_second_counts
+                    )
 
-        return FrameTelemetryResponse(
-            batch_ref=result.batch_ref,
-            window_id=result.window_id,
-            total_ad_value_cents=result.total_ad_value_cents,
-            contributor_cents=recon["contributor_cents"],
-            house_cents=recon["house_cents"],
-            asset_count=len(result.asset_lines),
-            reconciles=result.reconciles(),
-            telemetry_version=result.telemetry_version,
-            weighting_version=result.weighting_version,
-            fraud_verdict=cast(
-                Literal["pass", "review", "block"], result.fraud_verdict
-            ),
-            filtered_seconds=filtered_seconds,
-            filtered_second_counts=dict(result.excluded_second_counts),
-            verdict_signals=dict(result.verdict_signals),
-            clamped_dwell_ms=result.clamped_dwell_ms,
-            clamped_cents=result.clamped_cents,
-        )
+                return FrameTelemetryResponse(
+                    batch_ref=result.batch_ref,
+                    window_id=result.window_id,
+                    total_ad_value_cents=result.total_ad_value_cents,
+                    contributor_cents=recon["contributor_cents"],
+                    house_cents=recon["house_cents"],
+                    asset_count=len(result.asset_lines),
+                    reconciles=result.reconciles(),
+                    telemetry_version=result.telemetry_version,
+                    weighting_version=result.weighting_version,
+                    fraud_verdict=cast(
+                        Literal["pass", "review", "block"], result.fraud_verdict
+                    ),
+                    filtered_seconds=filtered_seconds,
+                    filtered_second_counts=dict(result.excluded_second_counts),
+                    verdict_signals=dict(result.verdict_signals),
+                    clamped_dwell_ms=result.clamped_dwell_ms,
+                    clamped_cents=result.clamped_cents,
+                )
+
+        try:
+            return await asyncio.to_thread(_accrue_sync)
+        except WriteLockTimeout as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="ad_frame_writer_busy",
+            ) from exc
 
     @app.get("/api/ad/fill", response_model=AdFillResponse, tags=["ad"])
     async def ad_fill(
@@ -615,27 +620,33 @@ def register_ad_routes(app: FastAPI) -> None:
     ) -> MultiEdgeFillResponse:
         """Decide every active border edge as one durable snapshot.
 
-        Exact retries return the stored snapshot; they do not re-read or
-        re-rank inventory.  Only active inventory belonging to an advertiser
-        whose latest registry state is ACTIVE is eligible.  A selected ad is
-        still *unpriced*: CPM is a ranking signal, not settlement evidence, so
-        this route records and returns zero revenue.
+        Exact retries return the stored snapshot via ``connect_read`` /
+        LazyRW (no write flock — #3121 coexist / #3153 class). New decisions
+        take a **short** ``connect_write`` (2s) off the event loop via
+        ``asyncio.to_thread``; under agent_work contention the route returns
+        503 ``ad_fill_writer_busy`` so the border house-degrades instead of
+        hanging for the default 300s write wait. Still *unpriced* $0 — no
+        fake revenue.
         """
-        from runtime.db_lock import connect_write
+        from runtime.db_lock import WriteLockTimeout, connect_read, connect_write
         from substrate.ad_inventory.ad_bidding import LeadGenAdInventory
         from substrate.ad_inventory.fill_decisions import (
+            FillDecision,
             FillDecisionConflictError,
             decide_fills,
+            lookup_fill_decision,
         )
         from substrate.ad_inventory.inventory_persistence import (
             load_serving_for_matcher,
         )
+        from substrate.ad_inventory.rank0_honesty import website_ads_honesty
         from substrate.ad_inventory.reader_slots import (
             HousePromo,
             ReaderAdSlot,
             fill_slot,
         )
         from substrate.books.model import list_book_assets
+
         requested_positions = tuple(body.positions)
         if len(set(requested_positions)) != len(requested_positions):
             raise HTTPException(
@@ -647,91 +658,128 @@ def register_ad_routes(app: FastAPI) -> None:
             getattr(request.state, "user_id", None) or "__operator__"
         )
         db = _resolve_db_path()
-        with connect_write(db, purpose="ad/fills:decide") as con:
-            def _select() -> list[dict[str, object]]:
-                from substrate.ad_inventory.manual_sponsor import (
-                    bidding_policy_wire,
-                    resolve_manual_sponsor_item,
-                )
 
-                targeted, flat = load_serving_for_matcher(con)
-                # ``fill_slot`` is the canonical v1 matcher.  Second-generation
-                # targeting items retain their flat item payload here; the
-                # lens is the only allowlisted signal this border currently has.
-                items = [item.item for item in targeted] + list(flat)
-                # Website MVP Phase 2: operator-sold manual sponsor (research
-                # lens). Prefixed so it wins topic match when enabled; CPM=$0
-                # -> still unpriced / no fake revenue in decide_fills.
-                sponsor = resolve_manual_sponsor_item()
-                if sponsor is not None and body.lens == "research":
-                    items = [sponsor] + items
-                inventory = LeadGenAdInventory(items=items)
-                servable = list_book_assets(con, servable_only=True)
-                houses = [
-                    HousePromo(
-                        promoted_document_id=asset.document_id,
-                        title=asset.title,
-                        author=asset.author,
+        def _response(decision: FillDecision) -> MultiEdgeFillResponse:
+            return MultiEdgeFillResponse(
+                window_id=decision.window_id,
+                fills=[
+                    EdgeFillResponse.model_validate(
+                        {
+                            **fill,
+                            "fill_decision_id": (
+                                f"{decision.decision_id}:{fill['position']}"
+                            ),
+                            "slot_id": (
+                                f"slot:{decision.decision_id}:{fill['position']}"
+                            ),
+                            "price_status": decision.price_status,
+                        }
                     )
-                    for asset in servable
-                ]
-                selected: list[dict[str, object]] = []
-                for position in requested_positions:
-                    slot = ReaderAdSlot(
-                        # Internal matching locator only.  It is never persisted
-                        # or returned as a document identity when the caller has
-                        # no document (Research/Write/Speak windows).
-                        document_id=body.document_id or f"window:{body.window_id}",
-                        page_index=body.page_index or 0,
-                        position=position,
-                    )
-                    fill = fill_slot(
-                        slot,
-                        inventory,
-                        page_topics=[body.lens],
-                        cpm_to_cents=0,
-                        house_candidates=houses,
-                    )
-                    fill_row: dict[str, object] = {
-                        "position": position,
-                        "kind": fill.kind,
-                        "revenue_usd_cents": 0,
-                        "ad": (
-                            {
-                                "inventory_id": fill.ad.inventory_id,
-                                "advertiser_display_name": (
-                                    fill.ad.advertiser_display_name
-                                ),
-                                "creative_url": fill.ad.creative_url,
-                                "landing_url": fill.ad.landing_url,
-                            }
-                            if fill.ad is not None
-                            else None
-                        ),
-                        "house": (
-                            {
-                                "promoted_document_id": (
-                                    fill.house.promoted_document_id
-                                ),
-                                "title": fill.house.title,
-                                "author": fill.house.author,
-                            }
-                            if fill.house is not None
-                            else None
-                        ),
-                    }
-                    # Ledger audit: stamp MANUAL_SPONSOR when the matched ad
-                    # is the operator Phase-2 creative (inventory_id prefix).
-                    if (
-                        fill.ad is not None
-                        and str(fill.ad.inventory_id).startswith("manual_sponsor:")
-                    ):
-                        fill_row["bidding_policy"] = bidding_policy_wire()
-                    selected.append(fill_row)
-                return selected
+                    for fill in decision.fills
+                ],
+                honesty=WebsiteAdsHonesty.model_validate(website_ads_honesty()),
+            )
 
+        def _try_lookup() -> FillDecision | None:
+            con = connect_read(db)
             try:
-                decision = decide_fills(
+                return lookup_fill_decision(
+                    con,
+                    owner_user_id=owner_user_id,
+                    window_id=body.window_id,
+                    document_id=body.document_id,
+                    page_index=body.page_index,
+                    lens=body.lens,
+                    positions=requested_positions,
+                )
+            finally:
+                con.close()
+
+        replayed = await asyncio.to_thread(_try_lookup)
+        if replayed is not None:
+            return _response(replayed)
+
+        def _decide_new() -> FillDecision:
+            with connect_write(
+                db,
+                purpose="ad/fills:decide",
+                timeout_s=_FILLS_WRITE_TIMEOUT_S,
+            ) as con:
+                def _select() -> list[dict[str, object]]:
+                    from substrate.ad_inventory.manual_sponsor import (
+                        bidding_policy_wire,
+                        resolve_manual_sponsor_item,
+                    )
+
+                    targeted, flat = load_serving_for_matcher(con)
+                    items = [item.item for item in targeted] + list(flat)
+                    sponsor = resolve_manual_sponsor_item()
+                    if sponsor is not None and body.lens == "research":
+                        items = [sponsor] + items
+                    inventory = LeadGenAdInventory(items=items)
+                    servable = list_book_assets(con, servable_only=True)
+                    houses = [
+                        HousePromo(
+                            promoted_document_id=asset.document_id,
+                            title=asset.title,
+                            author=asset.author,
+                        )
+                        for asset in servable
+                    ]
+                    selected: list[dict[str, object]] = []
+                    for position in requested_positions:
+                        slot = ReaderAdSlot(
+                            document_id=body.document_id
+                            or f"window:{body.window_id}",
+                            page_index=body.page_index or 0,
+                            position=position,
+                        )
+                        fill = fill_slot(
+                            slot,
+                            inventory,
+                            page_topics=[body.lens],
+                            cpm_to_cents=0,
+                            house_candidates=houses,
+                        )
+                        fill_row: dict[str, object] = {
+                            "position": position,
+                            "kind": fill.kind,
+                            "revenue_usd_cents": 0,
+                            "ad": (
+                                {
+                                    "inventory_id": fill.ad.inventory_id,
+                                    "advertiser_display_name": (
+                                        fill.ad.advertiser_display_name
+                                    ),
+                                    "creative_url": fill.ad.creative_url,
+                                    "landing_url": fill.ad.landing_url,
+                                }
+                                if fill.ad is not None
+                                else None
+                            ),
+                            "house": (
+                                {
+                                    "promoted_document_id": (
+                                        fill.house.promoted_document_id
+                                    ),
+                                    "title": fill.house.title,
+                                    "author": fill.house.author,
+                                }
+                                if fill.house is not None
+                                else None
+                            ),
+                        }
+                        if (
+                            fill.ad is not None
+                            and str(fill.ad.inventory_id).startswith(
+                                "manual_sponsor:"
+                            )
+                        ):
+                            fill_row["bidding_policy"] = bidding_policy_wire()
+                        selected.append(fill_row)
+                    return selected
+
+                return decide_fills(
                     con,
                     owner_user_id=owner_user_id,
                     window_id=body.window_id,
@@ -741,30 +789,18 @@ def register_ad_routes(app: FastAPI) -> None:
                     positions=requested_positions,
                     select_fills=_select,
                 )
-            except FillDecisionConflictError as exc:
-                raise HTTPException(
-                    status_code=409,
-                    detail="ad_fill_window_conflict",
-                ) from exc
 
-        from substrate.ad_inventory.rank0_honesty import website_ads_honesty
+        try:
+            decision = await asyncio.to_thread(_decide_new)
+        except FillDecisionConflictError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="ad_fill_window_conflict",
+            ) from exc
+        except WriteLockTimeout as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="ad_fill_writer_busy",
+            ) from exc
 
-        return MultiEdgeFillResponse(
-            window_id=decision.window_id,
-            fills=[
-                EdgeFillResponse.model_validate(
-                    {
-                        **fill,
-                        "fill_decision_id": (
-                            f"{decision.decision_id}:{fill['position']}"
-                        ),
-                        "slot_id": (
-                            f"slot:{decision.decision_id}:{fill['position']}"
-                        ),
-                        "price_status": decision.price_status,
-                    }
-                )
-                for fill in decision.fills
-            ],
-            honesty=WebsiteAdsHonesty.model_validate(website_ads_honesty()),
-        )
+        return _response(decision)
