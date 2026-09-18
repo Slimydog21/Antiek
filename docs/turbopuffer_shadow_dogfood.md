@@ -45,3 +45,30 @@ when `ANTIEK_TURBOPUFFER_DOGFOOD_LIVE=1`).
 
 Never reclassify gated radar / `restricted_pending_opt_in` PDFs as public.
 Export allowlist is code-enforced via `TURBOPUFFER_INDEX_CONTENT_CLASSES`.
+
+
+## Corpus scale (rights-clean)
+
+DuckDB SoT must contain more than the Gettysburg fixture before SERVABLE
+retrieval has value. Operator path:
+
+```bash
+# 1) Ingest short Gutenberg PD works via staging (uvicorn may keep serving)
+ANTIEK_TURBOPUFFER_DOGFOOD_INGEST=1 ANTIEK_TURBOPUFFER_DOGFOOD_LIVE=1 \
+  ./scripts/dogfood_turbopuffer_corpus_scale.sh
+
+# 2) Or stepwise:
+python -m tools.run_corpus_ingest --source public_domain \
+  --pd-ids 11,1080,84,2680 --limit 8 \
+  --staging-db /tmp/antiek-pd-tpuf-staging.duckdb
+python -m tools.merge_staging --staging-db /tmp/antiek-pd-tpuf-staging.duckdb \
+  --live-db "$HOME/.antiek/research_graph.duckdb"
+python -m tools.backfill_embeddings_meta --db "$HOME/.antiek/research_graph.duckdb" \
+  --only-export-classes
+python -m tools.turbopuffer_shadow sync --db "$HOME/.antiek/research_graph.duckdb"
+# promote with PROMOTE-<hash12> then query — expect status: servable and >2 ids
+```
+
+`sync` is cron-friendly: when the export `content_hash` matches the active
+pointer it returns `status: unchanged` (no vendor rewrite). Default max export
+rows is 50_000 (`ANTIEK_TURBOPUFFER_MAX_ROWS` to raise).

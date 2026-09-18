@@ -14,13 +14,15 @@ from typing import Any
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Rebuild/promote/query the Turbopuffer SERVABLE hybrid index (DuckDB remains SoT; not the default talk-to-book mount).")
-    p.add_argument("action", choices=("rebuild", "query", "benchmark", "promote", "status"))
+    p.add_argument("action", choices=("rebuild", "query", "benchmark", "promote", "status", "stats", "sync"))
     p.add_argument("--db", required=True, help="canonical graph DuckDB path")
     p.add_argument("--dry-run", action="store_true", help="count eligible rows; no SDK/network/write")
     p.add_argument("--query", help="query text for the query action")
     p.add_argument("--query-set", help="JSON list with query and relevant_ids (>=20)")
     p.add_argument("--manifest")
     p.add_argument("--confirm")
+    p.add_argument("--auto-promote", action="store_true",
+                   help="sync action: promote after a successful rebuild")
     p.add_argument("--output", help="non-content benchmark artifact path")
     p.add_argument("--include-result-ids", action="store_true",
                    help="include opaque result IDs (never text or query bodies)")
@@ -36,11 +38,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser().error("benchmark requires --query-set and --output")
     if args.action == "promote" and (not args.manifest or not args.confirm):
         parser().error("promote requires --manifest and --confirm")
+    if args.action == "sync" and args.auto_promote and not args.confirm:
+        parser().error("sync --auto-promote requires --confirm PROMOTE-<hash12>")
     from processing.embedding.embed import SentenceTransformerEmbedding
     from substrate.graph.retrieval_adapters.turbopuffer import TurbopufferSubstrate
     from substrate.graph.search import EmbeddingModel
     # status / dry-run never call encode(); avoid loading SentenceTransformer.
-    if args.dry_run or args.action == "status":
+    if args.dry_run or args.action in {"status", "stats"}:
         from runtime.db_lock import connect_read
         con = connect_read(args.db)
         try:
@@ -78,6 +82,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 result["embedding"] = sub.canonical_embedding_identity()
             except Exception as exc:  # noqa: BLE001 — operator snapshot
                 result["embedding_error"] = type(exc).__name__
+            result["eligible"] = sub.eligible_stats()
+        elif args.action == "stats":
+            result = sub.eligible_stats()
+        elif args.action == "sync":
+            result = sub.sync_servable(
+                dry_run=args.dry_run,
+                auto_promote=bool(args.auto_promote),
+                confirm=args.confirm,
+            )
         elif args.action == "rebuild":
             result = sub.rebuild_shadow(dry_run=args.dry_run)
         elif args.action == "promote":
