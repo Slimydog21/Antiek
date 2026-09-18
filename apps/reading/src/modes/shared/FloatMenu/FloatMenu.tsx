@@ -483,6 +483,11 @@ function DialoguePanel({
             AI reply
           </span>
           <p className="text-bright whitespace-pre-wrap leading-relaxed">{reply.reply}</p>
+          {reply.shape ? (
+            <p className="text-[10px] uppercase tracking-wide text-moonlight font-mono" data-testid="dialogue-shape">
+              {reply.shape}
+            </p>
+          ) : null}
         </div>
       )}
       <textarea
