@@ -40,7 +40,6 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import threading
-
 from typing import Literal, cast
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -62,7 +61,7 @@ from .books import _resolve_db_path
 # #3153 write_log cap class). Default connect_write is 300s — that hung
 # POST /api/ad/fills and blocked the uvicorn event loop. Fail fast → client
 # house-degrades; exact retries use connect_read / LazyRW and never flock.
-_FILLS_WRITE_TIMEOUT_S = 8.0
+_FILLS_WRITE_TIMEOUT_S = 15.0
 _FRAME_WRITE_TIMEOUT_S = 5.0
 # Serialize fills DB access in-process so RO lookup cannot overlap RW
 # open (DuckDB SAME_FILE) across concurrent to_thread workers.
@@ -642,7 +641,7 @@ def register_ad_routes(app: FastAPI) -> None:
 
         Contention (#3121 / #3153 / #3157–#3159):
         - ``_FILLS_GATE`` serializes in-process fills
-        - ``timeout_s=8`` flock wait; on timeout → 503 ``ad_fill_writer_busy``
+        - ``timeout_s=15`` flock wait; on timeout → 503 ``ad_fill_writer_busy``
         - house promo scan capped at 32 under the flock
         - ``asyncio.to_thread`` so the event loop stays responsive
         Still *unpriced* $0 — no fake revenue.

@@ -20,6 +20,7 @@ from substrate.graph.health import DuckDBHealth
 
 @pytest.mark.asyncio
 async def test_lease_work_offloads_db_and_keeps_loop_responsive(monkeypatch):
+    monkeypatch.setenv("ANTIEK_AGENT_WORK_LOCK_YIELD_S", "0")
     """lease_work must asyncio.to_thread DB work so /health heartbeats continue."""
 
     def slow_lease(db_path: str, cmd: LeaseWorkCommand):
