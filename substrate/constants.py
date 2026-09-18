@@ -542,6 +542,21 @@ SERVABLE_CONTENT_CLASSES: Final[frozenset[str]] = frozenset({
     "source_declared_open",
 })
 
+# TurboPuffer SERVABLE index allowlist: rights-clean EXTERNAL corpus only.
+# Strict subset of SERVABLE_CONTENT_CLASSES — excludes user_owned and
+# user_public_contribution so private/operator and user-posted bodies stay
+# DuckDB-only (TurboPuffer is SERVABLE secondary index, never SoT).
+TURBOPUFFER_INDEX_CONTENT_CLASSES: Final[frozenset[str]] = frozenset({
+    "public_domain",
+    "opt_in_licensed",
+    "source_declared_open",
+})
+assert TURBOPUFFER_INDEX_CONTENT_CLASSES <= SERVABLE_CONTENT_CLASSES, (
+    "TURBOPUFFER_INDEX_CONTENT_CLASSES must be a subset of SERVABLE_CONTENT_CLASSES"
+)
+assert "user_owned" not in TURBOPUFFER_INDEX_CONTENT_CLASSES
+assert "user_public_contribution" not in TURBOPUFFER_INDEX_CONTENT_CLASSES
+
 # ── The fourth rights state: personal_reading (Personal-Reading Lane SPR-01) ──
 #
 # The first three rights states answer "may Antiek serve this body to the

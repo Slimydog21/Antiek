@@ -1,4 +1,4 @@
-"""Operator command for the unpromoted Turbopuffer shadow benchmark."""
+"""Operator command for Turbopuffer shadow → SERVABLE promote/query."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from typing import Any
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Rebuild or query the fixed Turbopuffer shadow namespace (never production serving).")
-    p.add_argument("action", choices=("rebuild", "query", "benchmark", "promote"))
+        description="Rebuild/promote/query the Turbopuffer SERVABLE hybrid index (DuckDB remains SoT; not the default talk-to-book mount).")
+    p.add_argument("action", choices=("rebuild", "query", "benchmark", "promote", "status"))
     p.add_argument("--db", required=True, help="canonical graph DuckDB path")
     p.add_argument("--dry-run", action="store_true", help="count eligible rows; no SDK/network/write")
     p.add_argument("--query", help="query text for the query action")
@@ -39,7 +39,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     from processing.embedding.embed import SentenceTransformerEmbedding
     from substrate.graph.retrieval_adapters.turbopuffer import TurbopufferSubstrate
     from substrate.graph.search import EmbeddingModel
-    if args.dry_run:
+    # status / dry-run never call encode(); avoid loading SentenceTransformer.
+    if args.dry_run or args.action == "status":
         from runtime.db_lock import connect_read
         con = connect_read(args.db)
         try:
@@ -53,7 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         class DryModel:
             dimension = dim
             def encode(self, text: str) -> list[float]:
-                raise RuntimeError("dry-run never embeds")
+                raise RuntimeError("status/dry-run never embeds")
         model: EmbeddingModel = DryModel()
     else:
         from runtime.db_lock import connect_read
@@ -71,7 +72,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                                     api_key=os.environ.get("TURBOPUFFER_API_KEY"),
                                     region=args.region)
     try:
-        if args.action == "rebuild":
+        if args.action == "status":
+            result = sub.readiness()
+            try:
+                result["embedding"] = sub.canonical_embedding_identity()
+            except Exception as exc:  # noqa: BLE001 — operator snapshot
+                result["embedding_error"] = type(exc).__name__
+        elif args.action == "rebuild":
             result = sub.rebuild_shadow(dry_run=args.dry_run)
         elif args.action == "promote":
             result = sub.promote(args.manifest, confirmation=args.confirm)
@@ -108,7 +115,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if args.include_result_ids:
                     row["result_ids"] = ids
                 rows.append(row)
-            wins = sum(1 for row in rows if row["status"] == "shadow" and
+            wins = sum(1 for row in rows if row["status"] in {"shadow", "servable"} and
                        row["delta_percentage_points"] >= 15)
             passed = wins / len(rows) >= 0.70
             artifact = {"status": "measured", "namespace": sub._namespace_name,
