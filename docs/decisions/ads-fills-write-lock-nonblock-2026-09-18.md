@@ -44,3 +44,7 @@ Expanded `connect_read` LazyRW fallback for unique-handle / already-attached.
 ## Follow-up 3 — single open (cold DuckDB ~7s)
 
 Prod bench: `connect_read`/`connect_write` each ~7s on ~900MB store; read-then-write stacked to ~14s → client timeouts. Fills is now **write-only** (one open; `decide_fills` SELECT-replays). Flock timeout 8s → 503.
+
+## Follow-up 4 — dedicated fills executor
+
+Lock stamp showed `agent_work/lease` holding the flock; fills `asyncio.to_thread` starved behind default executor workers. Fills now uses `_FILLS_EXECUTOR` (2 workers).

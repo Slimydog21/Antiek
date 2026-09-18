@@ -38,6 +38,7 @@ are not imported here.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import threading
 
 from typing import Literal, cast
@@ -66,6 +67,11 @@ _FRAME_WRITE_TIMEOUT_S = 5.0
 # Serialize fills DB access in-process so RO lookup cannot overlap RW
 # open (DuckDB SAME_FILE) across concurrent to_thread workers.
 _FILLS_GATE = threading.Lock()
+# Dedicated pool so fills are not queued behind agent_work/lease
+# threads that saturate the default asyncio to_thread executor.
+_FILLS_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=2, thread_name_prefix="ad-fills"
+)
 
 
 # ── Wire shapes (pydantic mirrors of the frozen dataclass contract) ──
@@ -801,7 +807,8 @@ def register_ad_routes(app: FastAPI) -> None:
                     raise
 
         try:
-            decision = await asyncio.to_thread(_sync)
+            loop = asyncio.get_running_loop()
+            decision = await loop.run_in_executor(_FILLS_EXECUTOR, _sync)
         except FillDecisionConflictError as exc:
             raise HTTPException(
                 status_code=409,
