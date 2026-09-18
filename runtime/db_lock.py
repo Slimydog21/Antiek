@@ -41,10 +41,17 @@ WP-2 (2026-05-14): added `write_log` observability with best-effort logging
 on close, `WriteCoordinator`/`WriteContext` Protocols, `FlockWriteCoordinator`
 facade. The Protocols document the interface for the Quack swap; today's
 implementation remains the flock + LockedConnection pair.
+
+WP-3 (2026-09-18): optional in-process warm writer keepalive
+(`ANTIEK_WRITE_KEEPALIVE_S`, default 20s; disabled under pytest). Parks the
+DuckDB handle + flock after close so the next `connect_write` in this process
+skips the ~6.8s open on large DBs. Flock stays held while warm (cross-process
+writers wait). Cite: #3121 coexist; #3164/#3165 fill contention.
 """
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import errno
 import fcntl
@@ -54,6 +61,7 @@ import stat
 import threading
 import time
 from collections.abc import Iterable, Iterator, Sequence
+from dataclasses import dataclass
 from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
 
 import duckdb
@@ -64,6 +72,135 @@ DEFAULT_TIMEOUT_S = 300  # 5 minutes — long enough for a 200-paper ingest
 # SAME process can both LOCK_EX, then the second duckdb.connect hangs.
 # Serialize writers in-process. Cite: #3121; Ads #3157–#3161.
 _PROCESS_WRITE_GATE = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# Warm writer keepalive (WP-3 / 2026-09-18)
+#
+# Prod open of ~881–925MB DuckDB is ~6.7s every connect_write; lease + fills
+# thrash open/close. Keep the RW handle + flock for a short idle window so the
+# next in-process writer reuses it (process gate still serializes). Cross-
+# process writers block on flock until keepalive expires — bounded by default
+# 20s. Disabled under pytest so lock-release tests stay honest.
+# ---------------------------------------------------------------------------
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _write_keepalive_s() -> float:
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return 0.0
+    return max(0.0, _env_float("ANTIEK_WRITE_KEEPALIVE_S", 20.0))
+
+
+@dataclass
+class _WarmWriterSlot:
+    con: Any
+    lock_fd: int
+    lock_path: str
+    db_path: str
+    expires_mono: float
+    last_purpose: str
+
+
+_warm_slots: dict[str, _WarmWriterSlot] = {}
+_warm_slots_lock = threading.Lock()
+
+
+def _warm_key(db_path: str) -> str:
+    return os.path.abspath(os.fspath(db_path))
+
+
+def _destroy_warm_slot(slot: _WarmWriterSlot) -> None:
+    """Fully release a parked writer (DuckDB close + flock + local registry)."""
+    with contextlib.suppress(Exception):
+        slot.con.close()
+    with contextlib.suppress(Exception):
+        _unregister_local_writer(slot.db_path)
+    with contextlib.suppress(OSError):
+        fcntl.flock(slot.lock_fd, fcntl.LOCK_UN)
+    with contextlib.suppress(OSError):
+        os.close(slot.lock_fd)
+
+
+def _take_warm_slot(db_path: str) -> _WarmWriterSlot | None:
+    """Return a live warm slot for reuse, or None. Caller holds process gate."""
+    key = _warm_key(db_path)
+    with _warm_slots_lock:
+        slot = _warm_slots.pop(key, None)
+    if slot is None:
+        return None
+    if time.monotonic() >= slot.expires_mono:
+        _destroy_warm_slot(slot)
+        return None
+    return slot
+
+
+def _park_warm_slot(
+    *,
+    con: Any,
+    lock_fd: int,
+    lock_path: str,
+    db_path: str,
+    purpose: str,
+    keepalive_s: float,
+) -> None:
+    """Park after a successful write session. Caller still holds process gate
+    until this returns; gate is released by LockedConnection.close afterward.
+    """
+    key = _warm_key(db_path)
+    new_slot = _WarmWriterSlot(
+        con=con,
+        lock_fd=lock_fd,
+        lock_path=lock_path,
+        db_path=db_path,
+        expires_mono=time.monotonic() + keepalive_s,
+        last_purpose=purpose or "warm-idle",
+    )
+    try:
+        os.ftruncate(lock_fd, 0)
+        stamp = (
+            f"{os.getpid()} warm-idle/{purpose or '-'} "
+            f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n"
+        )
+        os.write(lock_fd, stamp.encode())
+    except OSError:
+        pass
+    with _warm_slots_lock:
+        old = _warm_slots.pop(key, None)
+        _warm_slots[key] = new_slot
+    if old is not None:
+        # Should be unreachable under the process gate; destroy defensively.
+        _destroy_warm_slot(old)
+
+
+def flush_warm_writers(db_path: str | None = None) -> int:
+    """Drop parked warm writers (tests / deploy). Returns number destroyed."""
+    with _warm_slots_lock:
+        if db_path is None:
+            slots = list(_warm_slots.values())
+            _warm_slots.clear()
+        else:
+            key = _warm_key(db_path)
+            slot = _warm_slots.pop(key, None)
+            slots = [slot] if slot is not None else []
+    for slot in slots:
+        _destroy_warm_slot(slot)
+    return len(slots)
+
+
+def _atexit_flush_warm_writers() -> None:
+    flush_warm_writers()
+
+
+atexit.register(_atexit_flush_warm_writers)
 
 # Sentinel db_path used by the internal write_log logger to skip recursive
 # logging. (We do NOT log the log writes themselves; that would be an
@@ -332,6 +469,8 @@ class LockedConnection:
         purpose: str = "",
         acquired_at: float = 0.0,
         close_log_max_wait_s: float = 0.25,
+        from_warm: bool = False,
+        keepalive_s: float | None = None,
     ):
         self._con = con
         self._lock_fd = lock_fd
@@ -343,7 +482,12 @@ class LockedConnection:
         self._error: str | None = None
         self._close_log_max_wait_s = close_log_max_wait_s
         self._in_explicit_transaction = False
-        if self._db_path:
+        self._from_warm = from_warm
+        self._keepalive_s = (
+            _write_keepalive_s() if keepalive_s is None else max(0.0, float(keepalive_s))
+        )
+        # Warm reuse already counted in _active_writers; do not double-register.
+        if self._db_path and not from_warm:
             _register_local_writer(self._db_path)
 
     @property
@@ -381,6 +525,36 @@ class LockedConnection:
         if self._closed:
             return
         self._closed = True
+        duration = max(0.0, time.monotonic() - self._acquired_at)
+        can_park = (
+            self._keepalive_s > 0.0
+            and bool(self._db_path)
+            and not self._in_explicit_transaction
+            and self._error is None
+            and self._lock_fd >= 0
+        )
+        if can_park:
+            # Log on the warm connection — re-opening for write_log would
+            # deadlock on the flock we are about to keep held.
+            with contextlib.suppress(Exception):
+                self._con.execute(
+                    "INSERT INTO write_log (purpose, duration_s, success, error) "
+                    "VALUES (?, ?, ?, ?)",
+                    [self._purpose, float(duration), True, None],
+                )
+            _park_warm_slot(
+                con=self._con,
+                lock_fd=self._lock_fd,
+                lock_path=self._lock_path,
+                db_path=self._db_path,
+                purpose=self._purpose,
+                keepalive_s=self._keepalive_s,
+            )
+            try:
+                _PROCESS_WRITE_GATE.release()
+            except RuntimeError:
+                pass
+            return
         try:
             self._con.close()
         finally:
@@ -400,7 +574,6 @@ class LockedConnection:
         # Log AFTER the lock is released, on a fresh connection (briefly
         # re-locked). The main pipeline never blocks on this.
         if self._db_path:
-            duration = max(0.0, time.monotonic() - self._acquired_at)
             _log_write_event(
                 self._db_path,
                 self._purpose,
@@ -465,6 +638,29 @@ def _connect_write_after_process_gate(
     purpose: str = "",
     close_log_max_wait_s: float = 0.25,
 ) -> "LockedConnection":
+    # Fast path: reuse parked in-process writer (skips ~6.8s duckdb.connect).
+    warm = _take_warm_slot(db_path)
+    if warm is not None:
+        try:
+            os.ftruncate(warm.lock_fd, 0)
+            stamp = (
+                f"{os.getpid()} {purpose or '-'} "
+                f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n"
+            )
+            os.write(warm.lock_fd, stamp.encode())
+        except OSError:
+            pass
+        return LockedConnection(
+            warm.con,
+            warm.lock_fd,
+            warm.lock_path,
+            db_path=db_path,
+            purpose=purpose or "-",
+            acquired_at=time.monotonic(),
+            close_log_max_wait_s=close_log_max_wait_s,
+            from_warm=True,
+        )
+
     lock_path = _lock_path_for(db_path)
     parent = os.path.dirname(lock_path)
     if parent and not os.path.exists(parent):
