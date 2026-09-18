@@ -197,3 +197,28 @@ describe("deriveAutoNotebook — title + escalation are carried, not invented", 
     expect(q.escalated).toBe(true);
   });
 });
+
+
+describe("deriveAutoNotebook citations", () => {
+  it("carries sourceDocumentId from distilled insights", () => {
+    const nb = deriveAutoNotebook({
+      investigationId: "inv-1",
+      question: "Q?",
+      insights: [
+        {
+          node_id: "n1",
+          kind: "insight",
+          text: "Claim",
+          refinement_count: 0,
+          escalated: false,
+          source_document_id: "doc-book-1",
+        },
+      ],
+      questions: [],
+      synthesis: null,
+    });
+    expect(nb.outline.find((s) => s.kind === "insights")?.entries[0].sourceDocumentId).toBe(
+      "doc-book-1",
+    );
+  });
+});

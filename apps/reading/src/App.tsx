@@ -141,7 +141,7 @@ function AuthenticatedRoutes() {
         <Route path="/create/:deliverableId" element={<CreationStudio />} />
         <Route path="/brainstorm" element={<BrainstormStation />} />
         <Route path="/notebooks" element={<NotebooksIndex />} />
-        {/* SPR-06 — the auto-notebook (PROPOSED — sign-off pending). The
+        {/* SPR-06 — the auto-notebook (RATIFIED 2026-09-18). The
             derived, always-current narrative VIEW of one research's
             insight/question graph, behind a visible "proposed" banner. A
             REVERSIBLE leaf: removing this route + AutoNotebook.tsx reverts to

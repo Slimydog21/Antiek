@@ -1,9 +1,9 @@
 /**
  * AutoNotebook.test.tsx — SPR-06 M1, the auto-notebook surface
- * (PROPOSED — sign-off pending).
+ * (RATIFIED).
  *
  * Pins:
- *   - the "proposed (sign-off pending)" banner renders on the auto view;
+ *   - the proposed banner is gone (ratified);
  *   - the dynamic outline + sections render from REAL graph content
  *     (getDistillation), and FLIP when the graph changes (the load-bearing
  *     graph-change re-derive — distillation [insight A, question B] → add
@@ -126,21 +126,19 @@ function renderAt(investigationId: string) {
   );
 }
 
-describe("AutoNotebook — the proposed banner (M1, rigor #1 honesty)", () => {
-  it("renders the 'proposed — sign-off pending' banner on the auto view", async () => {
+describe("AutoNotebook — ratified shell (no proposed banner)", () => {
+  it("renders the auto-notebook shell without a proposed banner", async () => {
     getDistillationMock.mockResolvedValue({
       investigation_id: "inv-1",
-      insights: [insight("i1", "GPUs gate scale.")],
+      insights: [],
       questions: [],
     });
     renderAt("inv-1");
-    const banner = await screen.findByTestId("auto-notebook-proposed-banner");
-    expect(banner).toBeTruthy();
-    expect(banner.textContent).toMatch(/proposed/i);
-    expect(banner.textContent).toMatch(/sign-off pending/i);
-    expect(banner.textContent).toMatch(/isn.t ratified yet/i);
+    expect(await screen.findByTestId("auto-notebook-shell")).toBeTruthy();
+    expect(screen.queryByTestId("auto-notebook-proposed-banner")).toBeNull();
   });
 });
+
 
 describe("AutoNotebook — renders real graph content (M1)", () => {
   it("derives the outline + sections from the distillation", async () => {
@@ -217,8 +215,7 @@ describe("AutoNotebook — honest empty state (M1, rigor #1)", () => {
         screen.getByText(/nothing in the graph to narrate yet/i),
       ).toBeTruthy(),
     );
-    // The banner is still present (it's the auto view).
-    expect(screen.getByTestId("auto-notebook-proposed-banner")).toBeTruthy();
+    expect(screen.queryByTestId("auto-notebook-proposed-banner")).toBeNull();
     // No outline / fabricated sections.
     expect(screen.queryByTestId("auto-notebook-outline")).toBeNull();
   });

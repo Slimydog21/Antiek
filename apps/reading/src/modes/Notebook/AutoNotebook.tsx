@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { getDistillation, ApiError } from "../../lib/api";
 import type { DistilledNode } from "../../lib/api";
@@ -18,17 +18,9 @@ import {
  * AutoNotebook — the auto-generated, always-current narrative VIEW of a
  * workstation's insight/question graph (SPR-06 M1).
  *
- * ⚠️ PROPOSED — SIGN-OFF PENDING. The operator's resolution that "a notebook IS
- * the auto-generated narrative view of the graph (document lens over the
- * block-lens canvas), one per investigation, always auto, no manual save" is
- * PROPOSED, not ratified. This surface ships behind a visible "proposed
- * (sign-off pending)" banner and is a DERIVED, REVERSIBLE leaf:
- *   - it adds NO new persisted store and NO new writes — the single-writer
- *     DuckDB invariant is untouched (it only READS getDistillation + the
- *     synthesis events the workstation already streams);
- *   - removing this route + the banner reverts cleanly to the manual TipTap
- *     Notebook (modes/Notebook/index.tsx), which is a SEPARATE surface this
- *     does not touch;
+ * ✅ RATIFIED 2026-09-18 — auto-generated narrative view of the graph;
+ * derived leaf (no new DuckDB store). See
+ * docs/decisions/spr-06-auto-notebook-proposed.md.
  *   - it is NOT a hard dependency of SPR-05 (research home) or SPR-07 (Read).
  * Rationale + what-would-ratify-vs-revert: docs/decisions/spr-06-auto-notebook-proposed.md.
  *
@@ -52,9 +44,6 @@ import {
  * only produce the outline shape (deriveAutoNotebook → AutoNotebook.outline) it
  * will read.
  */
-
-const PROPOSED_BANNER_TEXT =
-  "Proposed — sign-off pending. This notebook is generated from your research's graph and regenerates as you work; the design isn't ratified yet.";
 
 type DistillState =
   | { kind: "loading" }
@@ -200,8 +189,7 @@ function AutoNotebookForInvestigation({
  *  separate, unbannered surface). */
 function AutoNotebookShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col h-screen">
-      <ProposedBanner />
+    <div className="flex flex-col h-screen" data-testid="auto-notebook-shell">
       <main className="flex-1 min-h-0 bg-ice-0 dark:bg-charcoal-2 overflow-y-auto">
         {children}
       </main>
@@ -209,28 +197,6 @@ function AutoNotebookShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-/**
- * The "Proposed — sign-off pending" banner. §5 voice (plain, honest), warning
- * affordance built on the design system's warning palette (the `sun` family is
- * the brand's warning/attention token — see design/tokens.ts; here expressed via
- * the `sun` Tailwind utilities the rest of the app uses for attention states).
- * Honest copy: this is NOT a ratified feature.
- */
-function ProposedBanner() {
-  return (
-    <div
-      role="note"
-      aria-label="Proposed feature — sign-off pending"
-      data-testid="auto-notebook-proposed-banner"
-      className="flex items-start gap-2 border-b border-sun/40 bg-sun/15 px-6 py-2.5 text-[13px] leading-relaxed text-ink dark:text-bright"
-    >
-      <span className="mt-[2px] font-mono text-[10px] font-bold uppercase tracking-wider text-sun-deep dark:text-sun shrink-0">
-        proposed
-      </span>
-      <p className="font-serif">{PROPOSED_BANNER_TEXT}</p>
-    </div>
-  );
-}
 
 function AutoNotebookBody({ notebook }: { notebook: DerivedNotebook }) {
   if (notebook.isEmpty) {
@@ -255,6 +221,15 @@ function AutoNotebookBody({ notebook }: { notebook: DerivedNotebook }) {
   return (
     <article className="max-w-3xl mx-auto px-8 py-10 space-y-8">
       <header className="space-y-1">
+        <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+          <Link
+            to={`/inv/${encodeURIComponent(notebook.investigationId)}`}
+            className="underline-offset-2 hover:underline"
+            data-testid="auto-notebook-back-to-research"
+          >
+            ← back to research
+          </Link>
+        </p>
         <h1 className="text-2xl font-serif text-ink dark:text-bright leading-tight">
           {notebook.title}
         </h1>
@@ -343,6 +318,14 @@ function SectionView({
               <p className="font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
                 {e.text}
               </p>
+              {e.sourceDocumentId && (
+                <p
+                  className="mt-0.5 font-mono text-[11px] text-shadow-1 dark:text-moonlight"
+                  data-testid="auto-notebook-citation"
+                >
+                  source: {e.sourceDocumentId}
+                </p>
+              )}
               {e.escalated && (
                 <p className="mt-0.5 font-mono text-[11px] text-sun-deep dark:text-sun">
                   this needs more research

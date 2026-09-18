@@ -195,3 +195,15 @@ With owner cookie or Bearer:
 
 Vite proxies `/books`, `/sources`, `/investigations`, `/auth`, etc. to
 `:8000` so the SPA does not parse HTML as JSON.
+
+
+## Auto-notebook (ratified 2026-09-18)
+
+Derived narrative view of one research graph (SPR-06). DuckDB holds distill +
+synthesis truth; UI projects via `deriveAutoNotebook` — no notebook write API.
+
+1. Open `/inv/$INV` (completed or in-progress distill).
+2. Click **Open notebook →** or go to `/notebook/auto/$INV`.
+3. Outline/sections re-derive from `GET /research/{id}/distill` + synthesis.
+   Insights show `source: <document_id>` when grounded.
+4. Empty graph → honest empty state (never invented citations).

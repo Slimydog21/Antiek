@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   getDistillation,
@@ -107,12 +108,14 @@ export default function DistillView({ investigationId, running, onChase }: Disti
           onRetry={() => void load()}
           retryLabel="Check again"
         />
+        <OpenAutoNotebookLink investigationId={investigationId} />
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-5 px-4 py-4">
+      <OpenAutoNotebookLink investigationId={investigationId} />
       {running && (
         <p className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
           still working — this is what’s distilled so far
@@ -288,4 +291,20 @@ function Grounding({ node }: { node: DistilledNode }) {
     return <span className="font-mono italic">no source on record</span>;
   }
   return <span className="font-mono">grounded in a source</span>;
+}
+
+
+/** Dogfood path: research → auto-notebook (SPR-06 ratified). Derived view only. */
+function OpenAutoNotebookLink({ investigationId }: { investigationId: string }) {
+  return (
+    <p className="px-0 pt-1">
+      <Link
+        to={`/notebook/auto/${encodeURIComponent(investigationId)}`}
+        data-testid="open-auto-notebook"
+        className="font-mono text-[11px] uppercase tracking-wider text-aurora underline-offset-2 hover:underline"
+      >
+        Open notebook →
+      </Link>
+    </p>
+  );
 }
