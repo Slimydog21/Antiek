@@ -41,6 +41,11 @@ Usage:
     python -m tools.arxiv_oai_sync incremental --bulk
     python -m tools.arxiv_oai_sync incremental --bulk --bulk-snapshot /path/to/snapshot.json
 
+    # short-lived DuckDB write locks (prod default): batch + yield so uvicorn
+    # can serve / lease between flushes (incident 2026-09-18: one lock held 5.5h)
+    python -m tools.arxiv_oai_sync incremental --bulk \
+        --persist-batch-size 200 --max-lock-seconds 15 --lock-yield-seconds 0.5
+
     # full backfill code path (LIVE run is operator-only; this is the same path)
     python -m tools.arxiv_oai_sync backfill --until 2024-12-31
     python -m tools.arxiv_oai_sync backfill --bulk
@@ -62,6 +67,7 @@ import json
 import logging
 import os
 import sys
+import time
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -89,6 +95,127 @@ from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.schemas.documents import ArxivOaiRecord, RightsCensus  # noqa: E402
 
 logger = logging.getLogger("tools.arxiv_oai_sync")
+
+# Short-lived write-lock defaults (prod nightly). Override via CLI or env.
+# Incident 2026-09-18: one connect_write wrapped the entire --bulk stream and
+# held antiek.duckdb.write.lock for ~5.5h, starving api.antiek.ai /health.
+DEFAULT_PERSIST_BATCH_SIZE = 200
+DEFAULT_MAX_LOCK_SECONDS = 15.0
+DEFAULT_LOCK_YIELD_SECONDS = 0.5
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return int(raw)
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return float(raw)
+
+
+def resolve_persist_batch_size(cli_value: int | None = None) -> int:
+    if cli_value is not None:
+        return cli_value
+    return _env_int("ANTIEK_ARXIV_PERSIST_BATCH_SIZE", DEFAULT_PERSIST_BATCH_SIZE)
+
+
+def resolve_max_lock_seconds(cli_value: float | None = None) -> float:
+    if cli_value is not None:
+        return cli_value
+    return _env_float("ANTIEK_ARXIV_MAX_LOCK_SECONDS", DEFAULT_MAX_LOCK_SECONDS)
+
+
+def resolve_lock_yield_seconds(cli_value: float | None = None) -> float:
+    if cli_value is not None:
+        return cli_value
+    return _env_float("ANTIEK_ARXIV_LOCK_YIELD_SECONDS", DEFAULT_LOCK_YIELD_SECONDS)
+
+
+def _persist_one(con, record: ArxivOaiRecord, tally: dict) -> None:
+    if record.deleted:
+        tally["skipped_deleted"] += 1
+    elif persist_oai_record(con, record):
+        tally["inserted"] += 1
+    else:
+        tally["updated"] += 1
+
+
+def _flush_persist_batch(
+    db_path: str,
+    batch: list[ArxivOaiRecord],
+    tally: dict,
+    *,
+    max_lock_s: float,
+    yield_s: float,
+) -> None:
+    """Persist ``batch`` under one or more short-lived write locks.
+
+    Releases the lock every ``max_lock_s`` wall-clock seconds (or sooner when
+    the batch ends), sleeping ``yield_s`` between sessions so other writers
+    (uvicorn / agent-work lease) can acquire the flock.
+    """
+    if not batch:
+        return
+    idx = 0
+    n = len(batch)
+    while idx < n:
+        with connect_write(db_path, purpose="acquisition/arxiv_oai_sync") as con:
+            t0 = time.monotonic()
+            while idx < n:
+                _persist_one(con, batch[idx], tally)
+                idx += 1
+                if max_lock_s > 0 and (time.monotonic() - t0) >= max_lock_s:
+                    break
+        if idx < n and yield_s > 0:
+            time.sleep(yield_s)
+
+
+def _chunked_persist_tap(
+    records: Iterator[ArxivOaiRecord],
+    db_path: str,
+    tally: dict,
+    *,
+    batch_size: int = DEFAULT_PERSIST_BATCH_SIZE,
+    max_lock_s: float = DEFAULT_MAX_LOCK_SECONDS,
+    yield_s: float = DEFAULT_LOCK_YIELD_SECONDS,
+) -> Iterator[ArxivOaiRecord]:
+    """Pass records through while UPSERTing under short-lived write locks.
+
+    Same census/high-water stream contract as ``_persist_tap``, but never holds
+    the DuckDB write lock across an entire multi-hour harvest. Crash safety is
+    unchanged: the across-run high-water checkpoint still advances only after
+    the full stream completes; mid-run crashes leave upserts idempotent by
+    ``arxiv_id``.
+    """
+    if batch_size < 1:
+        raise ValueError("batch_size must be >= 1")
+    if max_lock_s < 0:
+        raise ValueError("max_lock_s must be >= 0")
+    if yield_s < 0:
+        raise ValueError("yield_s must be >= 0")
+
+    pending: list[ArxivOaiRecord] = []
+    for record in records:
+        pending.append(record)
+        if len(pending) >= batch_size:
+            _flush_persist_batch(
+                db_path, pending, tally, max_lock_s=max_lock_s, yield_s=yield_s
+            )
+            yield from pending
+            pending = []
+            if yield_s > 0:
+                time.sleep(yield_s)
+    if pending:
+        _flush_persist_batch(
+            db_path, pending, tally, max_lock_s=max_lock_s, yield_s=yield_s
+        )
+        yield from pending
+
 
 
 def default_sync_state_path() -> str:
@@ -270,6 +397,9 @@ def run_sync(
     resume: bool = True,
     harvested_at: datetime | None = None,
     db_path: str | None = None,
+    persist_batch_size: int | None = None,
+    max_lock_seconds: float | None = None,
+    lock_yield_seconds: float | None = None,
 ) -> SyncResult:
     """Run one harvest, PERSIST it to the documents store, fold it into a census,
     then advance the high-water mark on clean completion.
@@ -286,11 +416,12 @@ def run_sync(
     internals.
 
     ``db_path`` resolves the documents store (honoring ``ANTIEK_DUCKDB_PATH``);
-    the harvest is upserted into it under ONE write lock for the whole pass —
-    each LIVE record landing as a ``doc-arxiv-<id>`` row keyed by arxiv_id (M5
-    corpus-present), re-ingesting an id UPDATEing in place rather than
-    duplicating (M3). The persist stage taps the SAME stream the census folds, so
-    a backfill streams to the DB row-by-row without holding the corpus in memory.
+    the harvest is upserted in SHORT-LIVED write-lock batches (see
+    ``persist_batch_size`` / ``max_lock_seconds``) — each LIVE record landing as a
+    ``doc-arxiv-<id>`` row keyed by arxiv_id (M5 corpus-present), re-ingesting an
+    id UPDATEing in place rather than duplicating (M3). The persist stage taps the
+    SAME stream the census folds, so a backfill streams to the DB row-by-row
+    without holding the corpus in memory or monopolizing the write lock.
 
     The high-water mark advances ONLY if some record's datestamp exceeds the
     prior mark and the harvest reached clean completion (the harvester clears its
@@ -321,29 +452,33 @@ def run_sync(
 
     resolved_db = ensure_initialized(db_path or default_db_path())
 
-    # One write lock wraps the WHOLE harvest: build_census drives the stream to
-    # completion (or propagates a crash) while the instrumented pipeline records
-    # the max datestamp (_track_high_water) and upserts each live record into the
-    # documents store (_persist_tap), all on the single locked connection. The
-    # lock closes — releasing the writer — before the checkpoint is written, and
-    # a crash mid-harvest propagates out of the `with` BEFORE write_checkpoint.
-    with connect_write(resolved_db, purpose="acquisition/arxiv_oai_sync") as con:
-        census = build_census(
-            _persist_tap(
-                _track_high_water(
-                    harvester.harvest(
-                        from_date=from_date, until_date=until_date, resume=resume
-                    ),
-                    high_water,
+    batch_size = resolve_persist_batch_size(persist_batch_size)
+    max_lock_s = resolve_max_lock_seconds(max_lock_seconds)
+    yield_s = resolve_lock_yield_seconds(lock_yield_seconds)
+
+    # Chunked write locks: build_census drives the stream to completion while
+    # _chunked_persist_tap upserts in short sessions (batch_size / max_lock_s)
+    # and yields the lock between flushes. Checkpoint still writes ONLY after
+    # the stream ends cleanly — crash mid-harvest never advances high-water.
+    census = build_census(
+        _chunked_persist_tap(
+            _track_high_water(
+                harvester.harvest(
+                    from_date=from_date, until_date=until_date, resume=resume
                 ),
-                con,
-                persist_tally,
+                high_water,
             ),
-            metadata_prefix=metadata_prefix,
-            from_date=from_date,
-            until_date=until_date,
-            harvested_at=at,
-        )
+            resolved_db,
+            persist_tally,
+            batch_size=batch_size,
+            max_lock_s=max_lock_s,
+            yield_s=yield_s,
+        ),
+        metadata_prefix=metadata_prefix,
+        from_date=from_date,
+        until_date=until_date,
+        harvested_at=at,
+    )
 
     seen = high_water["max_datestamp"]
     prior = checkpoint.last_successful_datestamp
@@ -387,6 +522,9 @@ def run_bulk_sync(
     harvested_at: datetime | None = None,
     db_path: str | None = None,
     oai_tail: bool = True,
+    persist_batch_size: int | None = None,
+    max_lock_seconds: float | None = None,
+    lock_yield_seconds: float | None = None,
 ) -> SyncResult:
     """Bulk-dump-aware sync: stream the free metadata snapshot, then OAI tail.
 
@@ -473,21 +611,26 @@ def run_bulk_sync(
             from_date=oai_from, until_date=until_date, resume=resume
         )
 
-    # One write lock wraps BOTH stages: a crash mid-bulk OR mid-OAI-tail
-    # propagates out of the `with` BEFORE write_checkpoint — the across-run
-    # mark never advances on a partial run.
-    with connect_write(resolved_db, purpose="acquisition/arxiv_oai_sync") as con:
-        census = build_census(
-            _persist_tap(
-                _track_high_water(_combined(), high_water),
-                con,
-                persist_tally,
-            ),
-            metadata_prefix=metadata_prefix,
-            from_date=from_date,
-            until_date=until_date,
-            harvested_at=at,
-        )
+    batch_size = resolve_persist_batch_size(persist_batch_size)
+    max_lock_s = resolve_max_lock_seconds(max_lock_seconds)
+    yield_s = resolve_lock_yield_seconds(lock_yield_seconds)
+
+    # Chunked write locks across BOTH stages. Crash mid-bulk/mid-OAI still
+    # skips write_checkpoint — across-run mark never advances on a partial run.
+    census = build_census(
+        _chunked_persist_tap(
+            _track_high_water(_combined(), high_water),
+            resolved_db,
+            persist_tally,
+            batch_size=batch_size,
+            max_lock_s=max_lock_s,
+            yield_s=yield_s,
+        ),
+        metadata_prefix=metadata_prefix,
+        from_date=from_date,
+        until_date=until_date,
+        harvested_at=at,
+    )
 
     seen = high_water["max_datestamp"]
     prior = checkpoint.last_successful_datestamp
@@ -635,6 +778,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="documents store path (default: ANTIEK_DUCKDB_PATH or the resolved "
              "graph DB); the harvested metadata corpus is upserted here",
     )
+    p.add_argument(
+        "--persist-batch-size",
+        type=int,
+        default=None,
+        help=(
+            f"records per write-lock flush (default {DEFAULT_PERSIST_BATCH_SIZE} "
+            "or ANTIEK_ARXIV_PERSIST_BATCH_SIZE). Smaller → more lock yields."
+        ),
+    )
+    p.add_argument(
+        "--max-lock-seconds",
+        type=float,
+        default=None,
+        help=(
+            f"hard wall-clock cap holding DuckDB write.lock per session "
+            f"(default {DEFAULT_MAX_LOCK_SECONDS} or ANTIEK_ARXIV_MAX_LOCK_SECONDS). "
+            "0 disables the time cap (batch size still applies)."
+        ),
+    )
+    p.add_argument(
+        "--lock-yield-seconds",
+        type=float,
+        default=None,
+        help=(
+            f"sleep between write-lock sessions so uvicorn can acquire the flock "
+            f"(default {DEFAULT_LOCK_YIELD_SECONDS} or ANTIEK_ARXIV_LOCK_YIELD_SECONDS)."
+        ),
+    )
     return p
 
 
@@ -687,6 +858,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 resume=not args.no_resume,
                 db_path=args.db_path,
                 oai_tail=not args.bulk_only,
+                persist_batch_size=args.persist_batch_size,
+                max_lock_seconds=args.max_lock_seconds,
+                lock_yield_seconds=args.lock_yield_seconds,
             )
         else:
             result = run_sync(
@@ -697,6 +871,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sync_state_path=default_sync_state_path(),
                 resume=not args.no_resume,
                 db_path=args.db_path,
+                persist_batch_size=args.persist_batch_size,
+                max_lock_seconds=args.max_lock_seconds,
+                lock_yield_seconds=args.lock_yield_seconds,
             )
     except ArxivBanned as exc:
         # The throttle ban sentinel is active — PAUSE, do not re-hit the

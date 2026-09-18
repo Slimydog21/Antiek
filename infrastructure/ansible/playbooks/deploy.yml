@@ -660,7 +660,7 @@
     - name: prod-parity assert — deployed SHA == box HEAD + providers live
       ansible.builtin.command:
         cmd: >-
-          python {{ playbook_dir }}/../../../tools/prod_parity/check.py
+          python3 {{ playbook_dir }}/../../../tools/prod_parity/check.py
           --url https://{{ api_domain }}
           --expected-sha {{ antiek_expected_sha }}
       delegate_to: localhost
