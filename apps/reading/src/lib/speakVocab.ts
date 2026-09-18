@@ -335,8 +335,9 @@ export const PUSHES_COPY = {
   heading: "What needs a voice",
   honestyBanner:
     "Public matching is a simple heuristic (fewest voices first) — not ML " +
-    "profile matching yet. Private re-pings open the invite door; email push " +
-    "is not sent automatically in this MVP.",
+    "profile matching yet. Private re-pings can email the invite door when " +
+    "ANTIEK_SPEAK_REPING_EMAIL is on and AgentMail/Resend is configured; " +
+    "declined invitees are never emailed.",
   publicHeading: "Public — what you'd add value to",
   publicEmpty: "No public-intent remembrances need voices yet.",
   privateHeading: "Private — friend invites to re-ping",
@@ -344,8 +345,11 @@ export const PUSHES_COPY = {
   repingBusy: "Preparing follow-ups…",
   repingDone: "Invite door ready — share or open the link.",
   openInvite: "Open invite door",
-  prepareReping: "Re-ping (new questions)",
+  prepareReping: "Re-ping + email",
   contribute: "Add a memory",
+  emailSent: "Email sent with the invite door.",
+  emailSkippedEnv: "Invite door ready — email not sent (ANTIEK_SPEAK_REPING_EMAIL unset).",
+  emailDegraded: "Invite door ready — email could not send (check AgentMail/Resend credentials).",
 } as const;
 
 /** Every rendered string this module exposes, flattened — the surface the

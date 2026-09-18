@@ -55,6 +55,11 @@ beforeEach(() => {
     followupsAdded: 1,
     pendingQuestionCount: 3,
     skippedReason: null,
+    emailStatus: "skipped_env_gate",
+    emailTo: "aunt@x.com",
+    emailProvider: null,
+    emailMessageId: null,
+    emailDetail: "ANTIEK_SPEAK_REPING_EMAIL unset",
   });
   makeContributionInvitePathMock.mockReset().mockResolvedValue("/speak/invite/tok-pub");
 });
@@ -83,7 +88,7 @@ describe("PushesLane — dual push dogfood surface", () => {
     mount();
     await screen.findByTestId("reping-iv1");
     fireEvent.click(screen.getByTestId("reping-iv1"));
-    await waitFor(() => expect(repingInviteeMock).toHaveBeenCalledWith("iv1"));
+    await waitFor(() => expect(repingInviteeMock).toHaveBeenCalledWith("iv1", { sendEmail: true }));
     // Honesty: banner still denies ML profile matching.
     expect(screen.getByText(/not ML profile matching/i)).toBeTruthy();
   });

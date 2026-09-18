@@ -17,7 +17,7 @@ import { PUSHES_COPY } from "../../../lib/speakVocab";
  *
  * (a) Public opportunities — heuristic fewest-voices ranking.
  * (b) Private re-pings — prepare followups + SpeakInvite door.
- * No second notification stack; no ML; no auto email.
+ * No second notification stack; no ML. Optional AgentMail/Resend when env gate on.
  */
 const PANEL =
   "rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 " +
@@ -64,12 +64,20 @@ export default function PushesLane() {
     setBusyId(row.interviewId);
     setNote(null);
     try {
-      const result = await repingInvitee(row.interviewId);
+      const result = await repingInvitee(row.interviewId, { sendEmail: true });
       if (result.skippedReason) {
         setNote(result.skippedReason);
       } else {
+        const emailNote =
+          result.emailStatus === "sent"
+            ? PUSHES_COPY.emailSent
+            : result.emailStatus === "skipped_env_gate"
+              ? PUSHES_COPY.emailSkippedEnv
+              : result.emailStatus && result.emailStatus.startsWith("degraded")
+                ? PUSHES_COPY.emailDegraded
+                : PUSHES_COPY.repingDone;
         setNote(
-          `${PUSHES_COPY.repingDone} (+${result.followupsAdded} follow-up` +
+          `${emailNote} (+${result.followupsAdded} follow-up` +
             `${result.followupsAdded === 1 ? "" : "s"}; ` +
             `${result.pendingQuestionCount} pending).`,
         );

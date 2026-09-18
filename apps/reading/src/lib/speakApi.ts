@@ -434,6 +434,11 @@ export interface RepingView {
   followupsAdded: number;
   pendingQuestionCount: number;
   skippedReason: string | null;
+  emailStatus: string | null;
+  emailTo: string | null;
+  emailProvider: string | null;
+  emailMessageId: string | null;
+  emailDetail: string | null;
 }
 
 export async function listPushes(): Promise<PushesView> {
@@ -475,11 +480,17 @@ export async function listPushes(): Promise<PushesView> {
   };
 }
 
-export async function repingInvitee(interviewId: string): Promise<RepingView> {
+export async function repingInvitee(
+  interviewId: string,
+  opts: { sendEmail?: boolean } = {},
+): Promise<RepingView> {
   const resp = await apiFetch("/speak/pushes/reping", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ interview_id: interviewId }),
+    body: JSON.stringify({
+      interview_id: interviewId,
+      send_email: opts.sendEmail === true,
+    }),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const r = (await resp.json()) as Record<string, unknown>;
@@ -491,6 +502,11 @@ export async function repingInvitee(interviewId: string): Promise<RepingView> {
     pendingQuestionCount:
       typeof r.pending_question_count === "number" ? r.pending_question_count : 0,
     skippedReason: typeof r.skipped_reason === "string" ? r.skipped_reason : null,
+    emailStatus: typeof r.email_status === "string" ? r.email_status : null,
+    emailTo: typeof r.email_to === "string" ? r.email_to : null,
+    emailProvider: typeof r.email_provider === "string" ? r.email_provider : null,
+    emailMessageId: typeof r.email_message_id === "string" ? r.email_message_id : null,
+    emailDetail: typeof r.email_detail === "string" ? r.email_detail : null,
   };
 }
 
