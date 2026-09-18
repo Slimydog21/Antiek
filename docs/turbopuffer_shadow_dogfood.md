@@ -72,3 +72,9 @@ python -m tools.turbopuffer_shadow sync --db "$HOME/.antiek/research_graph.duckd
 `sync` is cron-friendly: when the export `content_hash` matches the active
 pointer it returns `status: unchanged` (no vendor rewrite). Default max export
 rows is 50_000 (`ANTIEK_TURBOPUFFER_MAX_ROWS` to raise).
+
+## Staging schema note
+
+If `merge_staging` refuses with SchemaDivergence (column order / missing
+`owner_user_id`), stop uvicorn and ingest with
+`run_corpus_ingest --db-path "$DB" --allow-prod-write` instead of staging→merge.
