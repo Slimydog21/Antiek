@@ -52,6 +52,8 @@ export interface PublicLaneProps {
   feedLoading: boolean;
   /** The feed of public-intent remembrances (humanized). */
   feed: FeedItem[];
+  /** Logged-out browse: no invite mint, no operator console links. */
+  visitorMode?: boolean;
 }
 
 const PANEL =
@@ -101,7 +103,7 @@ function ContributionInviteCta({ projectId }: { projectId: string }) {
   );
 }
 
-export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
+export default function PublicLane({ feedLoading, feed, visitorMode = false }: PublicLaneProps) {
   const [query, setQuery] = useState("");
 
   // FIX 2 — LIVE G2/G3 read. `getEconomics` is per-project but G2/G3 are GLOBAL
@@ -115,7 +117,7 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
   const [econ, setEcon] = useState<EconomicsView | null>(null);
   const probeId = feed.length > 0 ? feed[0].id : null;
   useEffect(() => {
-    if (!probeId) {
+    if (!probeId || visitorMode) {
       setEcon(null);
       return;
     }
@@ -183,12 +185,18 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
           {filtered.map((f) => (
             <li key={f.id} className={PANEL}>
               <div className="flex items-center justify-between gap-3">
-                <Link
-                  to={`/speak/${f.id}`}
-                  className="font-serif text-[16px] text-ink hover:underline dark:text-bright"
-                >
-                  {f.name}
-                </Link>
+                {visitorMode ? (
+                  <span className="font-serif text-[16px] text-ink dark:text-bright">
+                    {f.name}
+                  </span>
+                ) : (
+                  <Link
+                    to={`/speak/${f.id}`}
+                    className="font-serif text-[16px] text-ink hover:underline dark:text-bright"
+                  >
+                    {f.name}
+                  </Link>
+                )}
                 <span className="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight">
                   {f.voiceCount === 0
                     ? "no voices yet"
@@ -209,10 +217,21 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
                   Open contribution WITHOUT an invite stays G7-honest below.
                   Title link above still reaches the operator console. */}
               <div className="mt-2">
-                <ContributionInviteCta projectId={f.id} />
-                <p className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight">
-                  {PUBLIC_LANE_LABELS.ctaOperatorOnly}
-                </p>
+                {visitorMode ? (
+                  <p
+                    className="font-serif text-[11px] text-ink-mute dark:text-moonlight"
+                    data-testid={`visitor-cta-note-${f.id}`}
+                  >
+                    {PUBLIC_LANE_LABELS.visitorCtaNote}
+                  </p>
+                ) : (
+                  <>
+                    <ContributionInviteCta projectId={f.id} />
+                    <p className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight">
+                      {PUBLIC_LANE_LABELS.ctaOperatorOnly}
+                    </p>
+                  </>
+                )}
               </div>
             </li>
           ))}

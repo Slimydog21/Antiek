@@ -711,6 +711,41 @@ class RepingRequest(BaseModel):
     """When true, attempt invitee email via get_email_provider if env gate on."""
 
 
+
+@speak_router.get("/opportunities")
+async def public_opportunities() -> dict:
+    """Unauthenticated public contribution opportunities (read-only).
+
+    Same heuristic as dual-push public list (fewest voices first) — NOT ML.
+    Open in operator-auth middleware. G7 flag is honest: open contribution
+    without an invite is still gated; this endpoint only *lists* projects.
+    """
+    from substrate.speak.invitations import public_ecosystem_enabled
+
+    with _translate(), _write("speak/api:opportunities") as con:
+        pubs = speak_pushes.list_public_opportunities(con)
+    g7 = public_ecosystem_enabled()
+    return {
+        "honesty": {
+            "ranking": "fewest_voices_first_heuristic_not_ml_profile_matching",
+            "auth": "unauthenticated_read_only",
+            "open_contribution_without_invite": (
+                "live" if g7 else "gated_G7_ANTIEK_SPEAK_PUBLIC_ECOSYSTEM"
+            ),
+        },
+        "public_opportunities": [
+            {
+                "project_id": o.project_id,
+                "title": o.title,
+                "subject_ref": o.subject_ref,
+                "voice_count": o.voice_count,
+                "rank_reason": o.rank_reason,
+            }
+            for o in pubs
+        ],
+    }
+
+
 @speak_router.get("/pushes")
 async def list_pushes() -> dict:
     """Operator inbox for dual push.

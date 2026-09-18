@@ -298,6 +298,24 @@ export async function listPublicFeed(): Promise<FeedItem[]> {
   }));
 }
 
+/** Unauthenticated public opportunities (fewest-voices heuristic). */
+export async function listPublicOpportunities(): Promise<PublicOpportunity[]> {
+  const resp = await apiFetch("/speak/opportunities");
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const raw = (await resp.json()) as Record<string, unknown>;
+  const pubs = Array.isArray(raw.public_opportunities) ? raw.public_opportunities : [];
+  return pubs.map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      projectId: String(r.project_id ?? ""),
+      title: String(r.title ?? ""),
+      subjectRef: typeof r.subject_ref === "string" ? r.subject_ref : null,
+      voiceCount: typeof r.voice_count === "number" ? r.voice_count : 0,
+      rankReason: String(r.rank_reason ?? ""),
+    };
+  });
+}
+
 export interface PayoutReleaseView {
   spentUsd: string;
   budgetUsd: string;

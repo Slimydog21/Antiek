@@ -179,6 +179,15 @@ export type PayoutCopyKey = keyof typeof PAYOUT_COPY;
  * fiction (mirrors the guard at speakApi.ts releasePayout).
  */
 export const PUBLIC_LANE_LABELS = {
+  browseHeading: "Public remembrances",
+  browseSubhead:
+    "Browse open remembrances without signing in. To add a memory, " +
+    "you will need an invite link from the family - open contribution " +
+    "without an invite is not live yet.",
+  visitorCtaNote:
+    "To add what you remember, ask the family for an invite link " +
+    "(the link token is your credential - no account). Open " +
+    "contribution without an invite is not live yet.",
   /** M5 — a feed item is public-INTENT, never confirmed published. */
   intendedPublic:
     "A public remembrance — open to the people invited to add what they remember.",
