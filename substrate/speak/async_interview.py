@@ -40,7 +40,7 @@ from typing import Any
 # Reused, NOT forked: the voice substrate + interviewer role.
 from acquisition.voice import ingest_voice_note  # noqa: E402
 from orchestration.interview.orchestrator import ConsentRequired
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_read, connect_write
 
 from .schema import ensure_speak_schema
 
@@ -226,8 +226,13 @@ def start_async_interview(
 
 def resume(db_path: str, interview_id: str) -> AsyncInterviewSession:
     """Reconstruct an interview's state from persisted storage — the
-    whole point of an async interview is that you can leave and return."""
-    with connect_write(db_path, purpose="speak/async_interview.resume") as con:
+    whole point of an async interview is that you can leave and return.
+
+    Read-only (``connect_read`` / LazyRW) — never takes the write flock.
+    Invite landing and other reconstruct paths must not hang behind
+    ``agent_work`` / write_log close contention (#3121 coexist).
+    """
+    with connect_read(db_path) as con:
         row = con.execute(
             "SELECT project_id, status FROM interviews WHERE interview_id = ?",
             [interview_id],

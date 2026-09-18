@@ -36,6 +36,8 @@ Read-only callers should use `connect_read()` rather than raw
 module — the place to add observability later.
 
 WP-2 (2026-05-14): added `write_log` observability with best-effort logging
+# WP-2b (2026-09-18): write_log close-path wait capped at 250ms (drop if
+# contended); no daemon RW thread (races in-process RO / #3121 coexist)
 on close, `WriteCoordinator`/`WriteContext` Protocols, `FlockWriteCoordinator`
 facade. The Protocols document the interface for the Quack swap; today's
 implementation remains the flock + LockedConnection pair.
@@ -202,21 +204,36 @@ def _log_write_event(
     success: bool,
     error: str | None = None,
     max_wait_s: float = 5.0,
+    *,
+    blocking: bool = False,
 ) -> None:
-    """Append one row to the `write_log` table on a fresh, briefly-locked
-    connection.
+    """Best-effort ``write_log`` append with a hard wait ceiling.
 
-    Called from `LockedConnection.close()` (clean exit) and from
-    `connect_write()` itself when the lock acquire fails (so we capture
-    WriteLockTimeout events too). This intentionally opens a *separate*
-    coordinator-respecting connection rather than reusing the caller's
-    handle — the spec requires the log write not extend the caller's
-    critical section, and the caller may have already committed/closed.
+    Cite: #3121 coexist / LazyRW; Speak invite GET hangs when close() waited
+    up to 5s (or forever on ``duckdb.connect``) under ``agent_work`` contention.
 
-    Best-effort: any exception is swallowed (with stderr breadcrumb). The
-    main pipeline must NEVER fail because the log table is missing or
-    contended. Designed to no-op gracefully when migrate_v7_write_log.py
-    hasn't been applied yet.
+    Always synchronous (no daemon thread — a background RW connect races
+    in-process RO peers with SAME_FILE config errors). ``blocking=False``
+    (close path) caps wait at 250ms then drops the log entry. ``blocking=True``
+    honors ``max_wait_s`` for tests that assert the row.
+    """
+    if purpose == _WRITE_LOG_PURPOSE:
+        return
+    wait = float(max_wait_s) if blocking else min(float(max_wait_s), 0.25)
+    _log_write_event_sync(
+        db_path, purpose, duration_s, success, error, wait
+    )
+
+
+def _log_write_event_sync(
+    db_path: str,
+    purpose: str,
+    duration_s: float,
+    success: bool,
+    error: str | None = None,
+    max_wait_s: float = 5.0,
+) -> None:
+    """Synchronous write_log insert. Hard-bounded; never hangs the pipeline.
     """
     if purpose == _WRITE_LOG_PURPOSE:
         # Defensive: we never log the log. Should never happen since the
@@ -244,17 +261,20 @@ def _log_write_event(
                         return  # give up; main pipeline already done
                     time.sleep(0.1)
             con = None
-            open_deadline = time.monotonic() + min(1.0, max_wait_s)
+            # Retry SAME_FILE config clash for the full wait budget (#3121
+            # coexist). Never raise into the caller — drop the log entry if
+            # peers still hold RO/RW when the deadline hits.
+            open_budget = max(0.0, float(max_wait_s))
+            open_deadline = time.monotonic() + (open_budget if open_budget > 0 else 0.0)
             while True:
                 try:
                     con = duckdb.connect(db_path)
                     break
                 except Exception as open_exc:
-                    if (
-                        _SAME_FILE_DIFFERENT_CONFIG not in str(open_exc)
-                        or time.monotonic() >= open_deadline
-                    ):
+                    if _SAME_FILE_DIFFERENT_CONFIG not in str(open_exc):
                         raise
+                    if open_budget <= 0 or time.monotonic() >= open_deadline:
+                        return  # peer still open; skip observability
                     time.sleep(0.05)
             assert con is not None
             try:
@@ -306,7 +326,7 @@ class LockedConnection:
         db_path: str = "",
         purpose: str = "",
         acquired_at: float = 0.0,
-        close_log_max_wait_s: float = 5.0,
+        close_log_max_wait_s: float = 0.25,
     ):
         self._con = con
         self._lock_fd = lock_fd
@@ -388,7 +408,7 @@ def connect_write(
     timeout_s: float = DEFAULT_TIMEOUT_S,
     poll_interval_s: float = 0.25,
     purpose: str = "",
-    close_log_max_wait_s: float = 5.0,
+    close_log_max_wait_s: float = 0.25,
 ) -> LockedConnection:
     """Acquire an exclusive flock on the sidecar lock file, then open DuckDB
     for write. Returns a LockedConnection that releases the lock on close().

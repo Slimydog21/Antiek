@@ -458,8 +458,8 @@ async def list_invites(project_id: str) -> dict:
 
 @speak_router.get("/invites/resolve")
 async def resolve_invite(token: str) -> InviteResponse:
-    with _translate(), _write("speak/api:resolve") as con:
-        iv = invitations.resolve_token(con, token)
+    with _translate(), _read("speak/api:resolve") as con:
+        iv = _invite_read_or_404(con, token)
     if iv is None:
         raise HTTPException(status_code=404, detail="unknown or expired invite token")
     return InviteResponse(
@@ -924,6 +924,25 @@ class InviteAnswerRequest(BaseModel):
 _INVITEE_TRANSCRIBER: Any | None = None
 
 
+
+def _invite_read_or_404(con: Any, token: str):
+    """Resolve invite on a read connection; missing Speak schema → 404.
+
+    Fresh DBs have no speak_* tables until a writer ensures schema. Invite
+    GETs use ``_read`` (no DDL); treat absent tables as unknown token.
+    """
+    try:
+        return invitations.resolve_token(con, token)
+    except Exception as exc:  # noqa: BLE001 — catalog-absent → closed door
+        name = type(exc).__name__
+        msg = str(exc).lower()
+        if "catalog" in name.lower() or "does not exist" in msg:
+            raise HTTPException(
+                status_code=404, detail="unknown or expired invite link"
+            ) from exc
+        raise
+
+
 def _require_token(con: Any, token: str) -> tuple[str, str]:
     """Resolve an invite token to (interview_id, project_id) or 404. The
     token is the invitee's credential — a bad/expired token is the only
@@ -941,8 +960,8 @@ async def invitee_landing(token: str) -> dict:
     invited to, the consent scopes the invite asks for, what they've
     already granted (so a returning invitee skips re-consent), and — once
     consented — the pending questions + transcript so far."""
-    with _translate(), _write("speak/api:invite_landing") as con:
-        iv = invitations.resolve_token(con, token)
+    with _translate(), _read("speak/api:invite_landing") as con:
+        iv = _invite_read_or_404(con, token)
         if iv is None:
             raise HTTPException(status_code=404, detail="unknown or expired invite link")
         interview_id, project_id = iv.interview_id, iv.project_id
