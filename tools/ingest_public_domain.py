@@ -54,6 +54,7 @@ from acquisition.books.public_domain import (  # noqa: E402
     SourceClient,
     SourceError,
     gutenberg_candidates,
+    gutenberg_direct_works,
     ingest_work,
 )
 
@@ -215,9 +216,12 @@ def discover(
     if curated:
         ids = list(CURATED_GUTENBERG_IDS)
         limit = max(limit, len(ids))
-    works = gutenberg_candidates(
-        client, subject=subject, search=search, ids=ids, limit=limit
-    )
+    if ids and not subject and not search:
+        works = gutenberg_direct_works(list(ids)[:limit])
+    else:
+        works = gutenberg_candidates(
+            client, subject=subject, search=search, ids=ids, limit=limit
+        )
     if curated:
         arc_client = archive_client or client
         for identifier in CURATED_ARCHIVE_IDENTIFIERS:

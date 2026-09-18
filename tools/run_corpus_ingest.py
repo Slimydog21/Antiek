@@ -660,6 +660,7 @@ def _public_domain_candidates(
         SourceClient,
         SourceError,
         gutenberg_candidates,
+        gutenberg_direct_works,
         ingest_work,
         strip_gutenberg_boilerplate,
     )
@@ -677,29 +678,34 @@ def _public_domain_candidates(
     if curated:
         selected_ids = list(CURATED_GUTENBERG_IDS)
         limit = max(limit, len(selected_ids))
-    try:
-        works = gutenberg_candidates(
-            client, subject=subject, search=search_term, ids=selected_ids, limit=limit
-        )
-    except SourceBanned as exc:
-        logger.warning(
-            "public-domain source banned (sentinel active); skipping PD: %s", exc
-        )
-        return []
-    except SourceError as exc:
-        # A transient gutendex 503/timeout during PD discovery must NOT abort
-        # the whole run (and block OA, which runs after PD). Isolate it like the
-        # OA discovery path does per item; the run proceeds with the other
-        # sources and reports zero PD candidates this pass. This restores the
-        # contract SourceClient documents: a retry-exhausted request "raises
-        # SourceError for the caller to catch per-item — it must NOT abort the
-        # batch."
-        logger.warning(
-            "public-domain discovery failed (transient source error); "
-            "skipping PD this run: %s",
-            exc,
-        )
-        return []
+    # Explicit ids / curated spine: fetch from gutenberg.org cache (no Gutendex).
+    # Subject/search still use Gutendex discovery (may skip on timeout/ban).
+    if selected_ids and not subject and not search_term:
+        works = gutenberg_direct_works(list(selected_ids)[:limit])
+    else:
+        try:
+            works = gutenberg_candidates(
+                client, subject=subject, search=search_term, ids=selected_ids, limit=limit
+            )
+        except SourceBanned as exc:
+            logger.warning(
+                "public-domain source banned (sentinel active); skipping PD: %s", exc
+            )
+            return []
+        except SourceError as exc:
+            # A transient gutendex 503/timeout during PD discovery must NOT abort
+            # the whole run (and block OA, which runs after PD). Isolate it like the
+            # OA discovery path does per item; the run proceeds with the other
+            # sources and reports zero PD candidates this pass. This restores the
+            # contract SourceClient documents: a retry-exhausted request "raises
+            # SourceError for the caller to catch per-item — it must NOT abort the
+            # batch."
+            logger.warning(
+                "public-domain discovery failed (transient source error); "
+                "skipping PD this run: %s",
+                exc,
+            )
+            return []
 
     out: list[PlannedCandidate] = []
     for w in works:
