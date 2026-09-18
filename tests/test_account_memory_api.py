@@ -119,13 +119,90 @@ def test_post_get_are_owner_isolated_and_supersede_is_current_only(client: TestC
     assert "vim" not in provider.prompts[0] and "emacs" not in provider.prompts[0]
 
 
-@pytest.mark.parametrize("owner", ["__operator__", "shared", "service", "local"])
+@pytest.mark.parametrize("owner", ["shared", "service", "local"])
 def test_private_memory_rejects_non_distinct_owner(client: TestClient, owner: str) -> None:
+    """Shared and machine identities get no owner, and no e-mail fallback rescues them.
+
+    ``__operator__`` is deliberately absent from this list — see the test below. These
+    three are: no authentication path mints them, so their presence means a genuinely
+    shared or service context, and they stay hard-refused even with a verified address.
+    """
     response = client.post(
         "/account/memory", cookies=_cookie(owner), json=_payload("secret", datetime.now(UTC))
     )
     assert response.status_code == 401
     assert "secret" not in response.text
+
+
+def test_operator_sentinel_resolves_to_a_stable_derived_owner(client: TestClient) -> None:
+    """The single-operator storage sentinel is a person, proved by the verified e-mail.
+
+    Every production login mints ``user_id="__operator__"``, so before this the predicate
+    returned None for every real session and all three consumers — account-memory context,
+    the account-memory routes and the document-ingest route — were unreachable. The ingest
+    route answered a bare 401 to the operator on his own deployment.
+    """
+    written = client.post(
+        "/account/memory",
+        cookies=_cookie("__operator__"),
+        json=_payload("kate", datetime.now(UTC)),
+    )
+    assert written.status_code == 200, written.text
+
+    # Stable across sessions: a second login with the same verified address reads it back.
+    read = client.get("/account/memory?q=editor&limit=8", cookies=_cookie("__operator__"))
+    assert read.status_code == 200
+    assert [row["object"] for row in read.json()["items"]] == ["kate"]
+
+
+def test_operator_sentinel_without_a_verified_email_still_fails_closed(
+    client: TestClient,
+) -> None:
+    """No address, no owner. The fallback must not invent one."""
+    from substrate.auth import mint_session_cookie
+
+    response = client.post(
+        "/account/memory",
+        cookies={"ANTIEK_SESSION": mint_session_cookie(user_id="__operator__", email="")},
+        json=_payload("secret", datetime.now(UTC)),
+    )
+    assert response.status_code in {401, 403}
+    assert "secret" not in response.text
+
+
+def test_derived_owner_is_opaque_distinct_and_stable() -> None:
+    """Unit-level properties of the derivation, independent of the HTTP stack."""
+    from types import SimpleNamespace
+
+    from interfaces.research.api.account_memory_identity import (
+        SESSION_AUTH_METHOD,
+        distinct_signed_owner,
+    )
+
+    def owner_for(email: str | None, user_id: str = "__operator__") -> str | None:
+        request = SimpleNamespace(
+            state=SimpleNamespace(
+                auth_method=SESSION_AUTH_METHOD, user_id=user_id, user_email=email
+            )
+        )
+        return distinct_signed_owner(request)  # type: ignore[arg-type]
+
+    first = owner_for("Owner@Example.test")
+    assert first is not None
+    # Stable across logins and case/whitespace normalized.
+    assert first == owner_for("  owner@example.TEST  ")
+    # Distinct between people.
+    assert first != owner_for("other@example.test")
+    # Opaque: the address does not appear in the stored owner value.
+    assert "owner" not in first.removeprefix("acct_")
+    assert "@" not in first and "example" not in first
+    # Malformed or missing addresses yield no owner.
+    assert owner_for(None) is None
+    assert owner_for("") is None
+    assert owner_for("not-an-email") is None
+    assert owner_for("a@b@c") is None
+    # A genuine per-user id is returned verbatim, never hashed.
+    assert owner_for("owner@example.test", user_id="usr_real_123") == "usr_real_123"
 
 
 def test_schema_missing_fails_closed_without_migration(
