@@ -51,6 +51,10 @@ tiers:
   # code change needed.
 
   flash:
+  # EFFECTIVE PRIMARY ON MINI (no Z_AI_API_KEY): zai is unregistered and
+  # skipped; deepseek-v4-pro is the first ready link. Anthropic/OpenRouter
+  # keys may be present for BYOT/talk-to-book but stay out of this chain
+  # (claude-less + direct-API directive / test_routing_is_claudeless).
     # Bulk, cost-optimized. Note-taking, page-level ingestion,
     # extraction, grounder, constraint_checker.
     #

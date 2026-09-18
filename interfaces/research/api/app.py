@@ -1804,12 +1804,16 @@ def create_app(
     # dispatch via the in-process mock pass register_providers=False
     # so this startup pass doesn't see operator credentials.
     if register_providers:
-        from substrate.dispatch.providers import register_default_providers
-        app.state.registered_providers = register_default_providers(quiet=True)
         from interfaces.research.api.boot_providers import (
+            load_dispatch_env_files,
             log_zero_providers_warning_if_needed,
         )
+        from substrate.dispatch.providers import register_default_providers
 
+        # Auto-load platform/.env (and ANTIEK_ENV_FILE) so Mini restarts
+        # without a manual `source` still register deepseek/xiaomi/…
+        load_dispatch_env_files()
+        app.state.registered_providers = register_default_providers(quiet=True)
         log_zero_providers_warning_if_needed(app.state.registered_providers)
     else:
         app.state.registered_providers = set()
