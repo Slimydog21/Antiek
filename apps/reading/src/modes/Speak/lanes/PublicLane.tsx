@@ -5,6 +5,8 @@ import { LemonButton, LemonInput } from "../../../components/lemon";
 import {
   getEconomics,
   makeContributionInvitePath,
+  openContributePath,
+  openContributionLive,
   type EconomicsView,
   type FeedItem,
 } from "../../../lib/speakApi";
@@ -65,7 +67,14 @@ const PANEL =
  * Mint a link-only invite and navigate to SpeakInvite (`/speak/invite/:token`).
  * Presentational parent stays prop-driven; mint is on-click (no feed prefetch).
  */
-function ContributionInviteCta({ projectId }: { projectId: string }) {
+function ContributionInviteCta({
+  projectId,
+  mode = "operator",
+}: {
+  projectId: string;
+  /** operator = authed mint; open = G7 unauth self-serve. */
+  mode?: "operator" | "open";
+}) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -74,7 +83,10 @@ function ContributionInviteCta({ projectId }: { projectId: string }) {
     setBusy(true);
     setErr(null);
     try {
-      const path = await makeContributionInvitePath(projectId);
+      const path =
+        mode === "open"
+          ? await openContributePath(projectId)
+          : await makeContributionInvitePath(projectId);
       navigate(path);
     } catch {
       setErr(PUBLIC_LANE_LABELS.ctaMintFailed);
@@ -115,7 +127,21 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
   // the gated copy. A fetch failure resets to null (gated) and never crashes.
   // (G7, by contrast, has no FE read and stays static — see the header.)
   const [econ, setEcon] = useState<EconomicsView | null>(null);
+  const [g7Live, setG7Live] = useState(false);
   const probeId = feed.length > 0 ? feed[0].id : null;
+  useEffect(() => {
+    let live = true;
+    openContributionLive()
+      .then((v) => {
+        if (live) setG7Live(v);
+      })
+      .catch(() => {
+        if (live) setG7Live(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
   useEffect(() => {
     if (!probeId || visitorMode) {
       setEcon(null);
@@ -235,12 +261,24 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
                   Title link above still reaches the operator console. */}
               <div className="mt-2">
                 {visitorMode ? (
-                  <p
-                    className="font-serif text-[11px] text-ink-mute dark:text-moonlight"
-                    data-testid={`visitor-cta-note-${f.id}`}
-                  >
-                    {PUBLIC_LANE_LABELS.visitorCtaNote}
-                  </p>
+                  g7Live ? (
+                    <>
+                      <ContributionInviteCta projectId={f.id} mode="open" />
+                      <p
+                        className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight"
+                        data-testid={`visitor-cta-note-${f.id}`}
+                      >
+                        {PUBLIC_LANE_LABELS.visitorCtaNoteLive}
+                      </p>
+                    </>
+                  ) : (
+                    <p
+                      className="font-serif text-[11px] text-ink-mute dark:text-moonlight"
+                      data-testid={`visitor-cta-note-${f.id}`}
+                    >
+                      {PUBLIC_LANE_LABELS.visitorCtaNote}
+                    </p>
+                  )
                 ) : (
                   <>
                     <ContributionInviteCta projectId={f.id} />
@@ -268,7 +306,9 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
           {GATE_PHRASES.publicEcosystem.label}
         </h3>
         <p className="mt-1 font-serif text-[13px] text-ink-mute dark:text-moonlight">
-          {GATE_PHRASES.publicEcosystem.whenGated}
+          {g7Live
+            ? PUBLIC_LANE_LABELS.openContributionLive
+            : GATE_PHRASES.publicEcosystem.whenGated}
         </p>
       </div>
 
@@ -290,7 +330,9 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
           </li>
           {/* G7 — static, no FE read; distinct from the M2 panel above. */}
           <li className="font-serif text-[13px] text-ink dark:text-bright">
-            {PUBLIC_LANE_LABELS.explainerStepOpenContribution}
+            {g7Live
+              ? PUBLIC_LANE_LABELS.explainerStepOpenContributionLive
+              : PUBLIC_LANE_LABELS.explainerStepOpenContribution}
           </li>
           {/* G2 — LIVE: gated future-tense copy vs honest open-state copy. */}
           <li className="font-serif text-[13px] text-ink dark:text-bright">
@@ -315,8 +357,8 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
         SpeakInvite. Still OUT OF SCOPE (operator/G7):
           · an UNAUTHENTICATED /speak browse route (stranger reading the feed
             without an account) — PublicLane stays behind RequireAuth;
-          · open contribution WITHOUT an invite (G7 / ANTIEK_SPEAK_PUBLIC_ECOSYSTEM).
-        The G7 lock panel above stays honest/future-tense until that gate flips.
+          · G7 open contribution is live when opportunities honesty says so;
+            private projects remain invite-only.
       */}
     </section>
   );

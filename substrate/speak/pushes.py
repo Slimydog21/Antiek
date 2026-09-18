@@ -197,6 +197,7 @@ def list_public_opportunities(
     *,
     limit: int = 20,
     interest: str | None = None,
+    ensure: bool = True,
 ) -> list[PublicOpportunity]:
     """Public push list with multi-signal heuristic ranking (NOT ML).
 
@@ -209,7 +210,8 @@ def list_public_opportunities(
 
     Sort: descending composite score, then title.
     """
-    ensure_speak_schema(con)
+    if ensure:
+        ensure_speak_schema(con)
     rows = con.execute(
         """
         SELECT p.project_id, ip.title, p.subject_ref,

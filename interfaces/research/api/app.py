@@ -1458,7 +1458,8 @@ def create_app(
         "/multimedia/tts-gateway/synthesize",
         # Speak public browse (Anti-Ek Speak): read-only feed +
         # opportunities for logged-out visitors. Sibling to
-        # /speak/invite/ (token door). No mutation endpoints.
+        # /speak/invite/ (token door). Open-contribute is a
+        # separate POST path match below (G7 mint).
         "/speak/feed",
         "/speak/opportunities",
     }
@@ -1527,6 +1528,16 @@ def create_app(
         # middleware lets the prefix through. See
         # interfaces/research/api/speak_routes.py + docs/decisions/speak_workflow.md.
         if request.url.path.startswith("/speak/invite/"):
+            return await call_next(request)
+        # G7 open contribution: POST /speak/projects/{id}/open-contribute
+        # Self-serve mint for will_be_public only (handler enforces).
+        _p = request.url.path
+        if (
+            request.method == "POST"
+            and _p.startswith("/speak/projects/")
+            and _p.endswith("/open-contribute")
+            and _p.count("/") == 4
+        ):
             return await call_next(request)
         # Read-only public Speak browse (logged-out). Exact paths also
         # listed in _OPERATOR_AUTH_OPEN_PATHS; keep both in sync.

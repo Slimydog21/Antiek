@@ -217,6 +217,38 @@ export async function makeShareLink(id: string): Promise<string> {
  * path `/speak/invite/{token}`. This is the unauthenticated contribution
  * credential path (spine SPR-03) — never `/speak/:projectId` (operator console).
  */
+
+/**
+ * G7 self-serve open contribution (unauth). Mints an invite TOKEN for a
+ * will_be_public project — stranger browse → SpeakInvite door without a
+ * pre-shared family invite. Private projects stay invite-only (403).
+ * Cite: speak-private-public-spine · remap §public.
+ */
+export async function openContributePath(projectId: string): Promise<string> {
+  const resp = await apiFetch(
+    `/speak/projects/${encodeURIComponent(projectId)}/open-contribute`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+  );
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const raw = (await resp.json()) as Record<string, unknown>;
+  const path = typeof raw.invite_path === "string" ? raw.invite_path : "";
+  if (!path.startsWith("/speak/invite/")) throw new Error("open-contribute missing invite_path");
+  return path;
+}
+
+/** Live G7 flag from opportunities honesty (no env-flag leak in UI). */
+export async function openContributionLive(): Promise<boolean> {
+  try {
+    const resp = await apiFetch("/speak/opportunities");
+    if (!resp.ok) return false;
+    const raw = (await resp.json()) as Record<string, unknown>;
+    const honesty = (raw.honesty ?? {}) as Record<string, unknown>;
+    return honesty.open_contribution_without_invite === "live";
+  } catch {
+    return false;
+  }
+}
+
 export async function makeContributionInvitePath(id: string): Promise<string> {
   const resp = await apiFetch(`/speak/projects/${encodeURIComponent(id)}/invites`, {
     method: "POST",

@@ -81,6 +81,11 @@ Environment="TORCH_HOME={{ antiek_state_dir }}/cache/torch"
 # `git rev-parse HEAD` of the install dir, which IS the deployed checkout.
 {% if antiek_build_sha is defined and antiek_build_sha %}
 Environment="ANTIEK_BUILD_SHA={{ antiek_build_sha }}"
+
+# Speak G7 — open contribution for will_be_public projects
+# (stranger self-serve mint via /speak/projects/{id}/open-contribute).
+# Private projects stay invite-only; G2/G3 still gate publish/disburse.
+Environment="ANTIEK_SPEAK_PUBLIC_ECOSYSTEM=1"
 {% endif %}
 
 # ── THE LOAD-BEARING LINE ────────────────────────────────────────────────
