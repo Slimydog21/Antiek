@@ -84,8 +84,13 @@ def build_execution_backend(
 
     if effective == "docker":
         # Local import, the idiom of ``runtime/remote_exec/factory.py``'s
-        # ``_default_provider_factory``: the default path builds a local
-        # backend without ever pulling the docker adapter into the process.
+        # ``_default_provider_factory``: the default path reaches a local
+        # backend without this function importing the docker adapter. That is
+        # not yet observable process-wide, because ``__init__`` re-exports
+        # ``DockerBackend`` eagerly and anything importing this package has
+        # therefore already loaded it; the nested import is what keeps the
+        # factory itself independent of the adapter, and what makes the default
+        # path docker-free the moment that re-export goes lazy.
         from .docker_backend import DockerBackend
 
         # ``probe`` is the loud gate. A missing CLI or an unreachable daemon
