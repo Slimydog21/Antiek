@@ -22,6 +22,7 @@ import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
 import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
+import { clearReadingFocus, setReadingFocus } from "../../lib/readingFocus";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { emitSourceRead, isRead } from "./sourceRead";
 
@@ -188,6 +189,30 @@ export default function BookReader() {
     [documentId, ownerReadable],
   );
 
+  // TP SERVABLE mount — BEFORE any early returns (Rules of Hooks).
+  // Gated books never publish page body (dual structure / #3135 class).
+  useEffect(() => {
+    if (!documentId) {
+      clearReadingFocus();
+      return;
+    }
+    const pageText =
+      ownerReadable && pages[pageIndex]?.text
+        ? pages[pageIndex].text
+        : null;
+    setReadingFocus({
+      documentId,
+      pageIndex,
+      title: book?.title ?? null,
+      pageText,
+      servable: ownerReadable,
+    });
+    return () => {
+      clearReadingFocus();
+    };
+  }, [documentId, pageIndex, book?.title, ownerReadable, pages]);
+
+
   const selection = useFloatMenuSelection({
     scopeRef: articleRef,
     resolveProvenance,
@@ -284,6 +309,7 @@ export default function BookReader() {
 
   const { label, colour } = servabilityLabel(book.servability);
   const page = pages[pageIndex];
+
   const slotBase = `slot:${documentId}:p${pageIndex}`;
 
   // ── Rights-tiered reader branch (Read SPR-05) ────────────────────────────

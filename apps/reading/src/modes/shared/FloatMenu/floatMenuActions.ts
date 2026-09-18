@@ -5,6 +5,7 @@ import {
   ApiError,
   type BlockSearchHit,
 } from "../../../lib/api";
+import { composeThoughtPartnerSystemContext } from "../../../components/ai/thoughtPartnerSeed";
 import type { MarginaliaNotedPayload } from "../../../generated/types";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
 
@@ -220,6 +221,7 @@ export async function dialogueOverSelection(args: {
     body: JSON.stringify({
       investigation_id: args.investigationId,
       prompt,
+      system_context: composeThoughtPartnerSystemContext(null),
     }),
   });
   if (!resp.ok) {

@@ -14,6 +14,7 @@ import type { DispatchedAction } from "./ai/aiActions";
 import {
   THOUGHT_PARTNER_SEED_EVENT,
   type ThoughtPartnerSeedDetail,
+  composeThoughtPartnerSystemContext,
 } from "./ai/thoughtPartnerSeed";
 
 /**
@@ -207,9 +208,9 @@ export default function AISidecar() {
         body: JSON.stringify({
           investigation_id: "__sidecar__",
           prompt: draft,
-          system_context: composedContext.trim()
-            ? composedContext
-            : workspaceContextPrompt(),
+          system_context: composeThoughtPartnerSystemContext(
+            composedContext.trim() ? composedContext : null,
+          ),
         }),
       });
       if (!resp.ok) {
