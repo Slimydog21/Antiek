@@ -251,7 +251,10 @@ tier_defaults:
     temperature: 0.2
     context_budget_tokens: 32000
   pro:
-    max_tokens: 8192
+    # 16384: deepseek-v4-pro routinely needs >8192 completion tokens for
+    # decomposer JSON (rationales + 8–20 keywords). 8192 caused finish_reason=
+    # length on the first call and a ~2–3 min length-retry as the happy path.
+    max_tokens: 16384
     temperature: 0.3
     context_budget_tokens: 64000
   synthesis:

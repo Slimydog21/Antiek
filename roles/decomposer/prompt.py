@@ -54,6 +54,7 @@ Before you respond, verify your draft does **not** exhibit any of these:
 3. **Generic categories as keywords.** "Technology" or "market" are not keywords — they are taxonomies. Use the language a primary expert or SEC filing would use: "GAA transistor yield", "TAM in commercial photonics", "MRR cohort retention".
 4. **Vacuous rationales.** "This is important to understand" is not a rationale. State what specifically requires independent investigation.
 5. **Below 4 or above 8 sub-questions.** Below 4 the decomposition is performative; above 8 retrieval costs balloon without proportional gain.
+6. **Verbose rationales or synonym dumps.** Keep each `rationale` to at most two short sentences. Prefer 8–12 keywords with 0–1 synonyms each unless a synonym is load-bearing for retrieval. Brevity keeps the JSON inside one completion budget.
 """.strip()
 
 

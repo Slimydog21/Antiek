@@ -276,6 +276,12 @@ def make_decomposer_handler(
 # Dispatch + parse + emit helpers
 # ---------------------------------------------------------------------------
 
+# First-call output budget for decomposer. Must match (or exceed) the
+# pro tier default in substrate/dispatch/config.yaml. DeepSeek V4 Pro
+# Mini dogfood: ~11.5k completion tokens for a full 4–8 SQ JSON; 8192
+# truncated mid-JSON (finish_reason=length) and forced a long retry.
+DECOMPOSER_OUTPUT_MAX_TOKENS = 16384
+
 
 def _dispatch_and_parse(
     prompt: str,
@@ -288,11 +294,9 @@ def _dispatch_and_parse(
     when the call or the parse failed. The fallback policy_id marks
     the failure shape for trajectory filtering.
 
-    Mini dogfood (2026-09-18): when zai is unregistered, deepseek often
-    returns ``finish_reason=length`` on the pro-tier budget and the truncated
-    JSON fails parse → empty ``decompose.delivered`` → Phase 1 fails →
-    notebook/citations never fill. Retry once at 16384 tokens on length before
-    giving up.
+    First call uses ``DECOMPOSER_OUTPUT_MAX_TOKENS`` (16384) so deepseek
+    can finish a full 4–8 SQ JSON without ``finish_reason=length``. A
+    length-retry at the same budget remains as a safety net only.
     """
     try:
         from .research_owner_dispatch import dispatch_loop_one
@@ -308,11 +312,14 @@ def _dispatch_and_parse(
             "decomposer",
             investigation_id=event.investigation_id,
             parent_event_id=event.event_id,
+            max_tokens=DECOMPOSER_OUTPUT_MAX_TOKENS,
         )
         if getattr(result, "finish_reason", None) == "length":
+            # Safety net only — happy path should succeed on first call
+            # after DECOMPOSER_OUTPUT_MAX_TOKENS / pro tier raise.
             print(
                 f"decomposer.handle[{label}]: finish_reason=length — "
-                "retrying once with max_tokens=16384",
+                f"retrying once with max_tokens={DECOMPOSER_OUTPUT_MAX_TOKENS}",
                 flush=True,
             )
             truncated = result
@@ -322,7 +329,7 @@ def _dispatch_and_parse(
                     "decomposer",
                     investigation_id=event.investigation_id,
                     parent_event_id=event.event_id,
-                    max_tokens=16384,
+                    max_tokens=DECOMPOSER_OUTPUT_MAX_TOKENS,
                 )
             except Exception as retry_exc:  # noqa: BLE001
                 print(
