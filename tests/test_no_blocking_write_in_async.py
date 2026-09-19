@@ -125,8 +125,9 @@ def test_clean_when_the_locked_section_is_a_sync_def_hopped_to_a_thread(tmp_path
 
 def test_clean_for_run_in_threadpool_and_run_in_executor(tmp_path):
     # upload_routes.py uses starlette's run_in_threadpool; ad_routes.py uses a
-    # dedicated executor. Both are recognized by callee name, so an aliased or
-    # re-exported hop still counts.
+    # dedicated executor. Neither hop is named in the rule: what makes both
+    # green is the nested sync def interposing a scope, which is why an aliased
+    # or re-exported hop needs no special handling.
     p = _write(tmp_path, """
         import asyncio
         from starlette.concurrency import run_in_threadpool
@@ -155,6 +156,88 @@ def test_clean_for_a_lambda_handed_straight_to_a_thread_hop(tmp_path):
 
         async def handler(db):
             return await asyncio.to_thread(lambda: connect_write(db))
+    """)
+    assert scan_file(p) == []
+
+
+def test_flags_an_eager_call_in_a_thread_hops_arguments(tmp_path):
+    # Python evaluates a call's arguments on the calling thread, so this takes
+    # the flock on the event loop and only then hands the open connection to a
+    # worker. Being lexically inside to_thread(...) is not an exemption.
+    p = _write(tmp_path, """
+        import asyncio
+        from runtime.db_lock import connect_write
+
+        async def handler(db, apply):
+            return await asyncio.to_thread(apply, connect_write(db))
+    """)
+    v = scan_file(p)
+    assert len(v) == 1
+    assert v[0].func == "handler"
+
+
+def test_flags_a_function_local_aliased_import(tmp_path):
+    # The acquisition/youtube/adapter.py idiom, moved into an async body: the
+    # alias binds the same blocking function and the module's own AST can say so.
+    p = _write(tmp_path, """
+        async def handler(db):
+            from runtime.db_lock import connect_write as _cw
+            with _cw(db, purpose="x") as con:
+                con.execute("INSERT INTO t VALUES (1)")
+    """)
+    v = scan_file(p)
+    assert len(v) == 1
+    # Reported under the canonical entry name, not the alias.
+    assert v[0].call == "connect_write"
+
+
+def test_flags_a_module_level_alias_and_a_plain_rebinding(tmp_path):
+    # runtime/remote_exec/funnel.py binds _GRAPH_WRITER = connect_write today.
+    p = _write(tmp_path, """
+        from runtime.db_lock import connect_write as cw
+
+        _GRAPH_WRITER = cw
+
+        async def a(db):
+            with cw(db) as con:
+                con.execute("INSERT INTO t VALUES (1)")
+
+        async def b(db):
+            with _GRAPH_WRITER(db) as con:
+                con.execute("INSERT INTO t VALUES (2)")
+    """)
+    assert sorted(v.func for v in scan_file(p)) == ["a", "b"]
+
+
+def test_an_unrelated_alias_is_not_flagged(tmp_path):
+    # The alias map must not turn every local name into a write-lock entry.
+    p = _write(tmp_path, """
+        from runtime.db_lock import connect_read as cr
+
+        _READER = cr
+
+        async def handler(db):
+            with cr(db) as con:
+                con.execute("SELECT 1")
+            with _READER(db) as con:
+                con.execute("SELECT 1")
+    """)
+    assert scan_file(p) == []
+
+
+def test_known_false_negative_lambda_that_is_never_dispatched(tmp_path):
+    """A lambda holding the acquisition and then called inline still blocks.
+
+    Same gap as the nested sync def above and pinned for the same reason: the
+    lambda is the shape handed to a thread hop, so the scope rule has to let it
+    through. See the module docstring, limitation 1.
+    """
+    p = _write(tmp_path, """
+        from runtime.db_lock import connect_write
+
+        async def handler(db):
+            f = lambda: connect_write(db)   # noqa: E731
+            return f()
     """)
     assert scan_file(p) == []
 
@@ -211,6 +294,21 @@ def test_known_false_negative_contextmanager_helper(tmp_path):
                 con.execute("INSERT INTO t VALUES (1)")
     """)
     assert scan_file(p) == []
+
+
+def test_scan_paths_recurses_into_subpackages(tmp_path):
+    # The gate is pointed at top-level directories, so a violation buried in
+    # interfaces/research/api has to be found from `interfaces` alone.
+    nested = tmp_path / "interfaces" / "research" / "api"
+    nested.mkdir(parents=True)
+    _write(nested, """
+        from runtime.db_lock import connect_write
+
+        async def handler(db):
+            with connect_write(db) as con:
+                con.execute("INSERT INTO t VALUES (1)")
+    """, name="route.py")
+    assert len(scan_paths([tmp_path])) == 1
 
 
 def test_test_files_are_skipped(tmp_path):

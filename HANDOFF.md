@@ -93,18 +93,18 @@ invariant `no_seam_call_under_write_lock` already enforces elsewhere.
 
 `tools/lints/no_blocking_write_in_async.py` is the lint. It flags a call to
 `connect_write`, `connect_write_retrying` or `acquire_write_context` whose
-nearest enclosing function scope is an `async def` and which is not lexically
-inside a thread hop's arguments (`to_thread`, `run_in_threadpool`,
-`run_in_executor`, matched by callee name so an alias or re-export still counts).
-"Nearest enclosing scope" is the whole design: `app.py` is one `create_app()`
-factory wrapping every route, so the enclosing chain is sync then async, and a
-rule keyed on "any enclosing async" or "any enclosing sync" gets every one of the
-32 backwards.
+nearest enclosing function scope is an `async def`. "Nearest enclosing scope" is
+the whole design: `app.py` is one `create_app()` factory wrapping every route, so
+the enclosing chain is sync then async, and a rule keyed on "any enclosing async"
+or "any enclosing sync" gets every one of the 32 backwards. Aliases are resolved
+from the module's own AST, so `from runtime.db_lock import connect_write as _cw`
+and `_GRAPH_WRITER = connect_write` — both shapes the tree already writes — bind
+names the rule still recognizes.
 
 `tools/lints/baselines/no_blocking_write_in_async.json` grandfathers the 48.
 `tools/lints/cli_with_baseline.py` gains the registry entry
 `blocking_write_in_async`. `tools/lints/README.md` gains the baseline's section
-and the table above. `tests/test_no_blocking_write_in_async.py` is 15 tests, all
+and the table above. `tests/test_no_blocking_write_in_async.py` is 21 tests, all
 against fixture source in `tmp_path`, never the real tree.
 `.github/workflows/write_lock_async_floor.yml` runs enforce with `--check-stale`.
 
@@ -118,8 +118,14 @@ every correct migration. The cost is a false negative on a closure that is calle
 rather than dispatched; measured cost today is zero, and
 `test_known_false_negative_sync_closure_that_never_reaches_a_hop` pins it.
 
-A call already inside a thread hop's arguments is **not** flagged, recognized
-structurally rather than by import path.
+Being inside a thread hop's arguments is **not** an exemption. Python evaluates
+a call's arguments on the calling thread, so
+`await asyncio.to_thread(apply, connect_write(db))` takes the flock on the event
+loop and only then hands the open connection to a worker. The only shape that
+really defers the acquisition is a callable, and the nearest-scope rule already
+lets a nested `def` or `lambda` through, so an argument-position exemption could
+only ever bless the eager form. An earlier draft carried one; no test could tell
+whether it was there, which is how it surfaced.
 
 A `@contextmanager` helper wrapping `connect_write` and called from async code
 **is** a violation and this lint cannot see it — the `connect_write` lives in a
