@@ -2,7 +2,7 @@
 
 Converts documents (PDF, DOCX, EPUB, PPTX, XLSX, CSV, ODT, RTF, HTML, MD,
 TXT) to sanitized canonical HTML for the Antiek reader surface. Uses the
-anydoc → docling → pypdf → local OCR (ocrmypdf/tesseract) for reader-HTML sidecars.
+anydoc → docling → pypdf → OCR (DeepSeek preferred, else ocrmypdf/tesseract) for reader-HTML sidecars.
 """
 
 from .converter import (

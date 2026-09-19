@@ -47,3 +47,7 @@ Env knobs: `OCRMYPDF_BIN`, `TESSERACT_BIN`, `PDFTOPPM_BIN`,
 Scanned PDF uploads on Mini get an honest OCR→HTML path when brew tools are
 present. Hosts without tools get a clear deferred error instead of a silent
 empty sidecar.
+
+## Supersession
+
+Prefer-DeepSeek order: see `pdf-deepseek-ocr-html-prefer-2026-09-19.md`.

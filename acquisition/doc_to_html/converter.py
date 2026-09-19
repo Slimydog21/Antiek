@@ -3,7 +3,7 @@
 Converts documents to sanitized canonical HTML for the Antiek reader surface.
 Uses the anydoc CLI for conversion, then docling, then in-process pypdf
 (``acquisition.books.reader.read_pdf``) for text-layer PDFs when CLIs fail
-or return empty/thin markdown, then local OCR (``ocrmypdf`` / ``tesseract``+
+or return empty/thin markdown, then OCR (DeepSeek preferred, else ``ocrmypdf`` / ``tesseract``+
 ``pdftoppm``) for scanned PDFs when those tools are on PATH. Dual structure:
 DuckDB SoT + sanitized reader-HTML sidecar via ``store_reader_html``.
 
@@ -120,7 +120,7 @@ def convert_to_markdown(
 ) -> str:
     """Convert a document to GitHub-Flavored Markdown.
 
-    Order: anydoc → docling → pypdf → local OCR (PDF / fmt=pdf only).
+    Order: anydoc → docling → pypdf → OCR (DeepSeek → ocrmypdf → tesseract; PDF only).
     Empty/whitespace CLI stdout is treated as failure (not success).
 
     Returns:
@@ -148,7 +148,7 @@ def convert_to_markdown_with_engine(
 ) -> tuple[str, str]:
     """Like ``convert_to_markdown`` but also returns the engine name used.
 
-    Engine is one of: ``anydoc`` | ``docling`` | ``pypdf`` | ``ocrmypdf`` |
+    Engine is one of: ``anydoc`` | ``docling`` | ``pypdf`` | ``deepseek_ocr`` | ``ocrmypdf`` |
     ``tesseract``.
     """
     path = Path(asset_path)
@@ -459,7 +459,7 @@ def ingest_asset(
     file_bytes = path.read_bytes()
     document_id = _doc_id_for_asset(source_uri, file_bytes)
 
-    # Convert to markdown (anydoc → docling → pypdf → OCR for PDFs)
+    # Convert to markdown (anydoc → docling → pypdf → DeepSeek/ocrmypdf/tesseract for PDFs)
     md, converter_engine = convert_to_markdown_with_engine(path, fmt=kind)
     if not md.strip():
         raise ConversionError(

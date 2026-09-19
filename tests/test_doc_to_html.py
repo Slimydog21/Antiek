@@ -1084,3 +1084,70 @@ def test_pypdf_thin_defers_to_ocr(tmp_path: Path, monkeypatch):
         md, engine = convert_to_markdown_with_engine(pdf_path, fmt="pdf")
     assert engine == "tesseract"
     assert "Full page of OCR" in md
+
+
+def test_deepseek_ocr_preferred_over_ocrmypdf(tmp_path: Path, monkeypatch):
+    """When DeepSeek is available it wins over ocrmypdf/tesseract."""
+    from acquisition.doc_to_html import converter, pdf_ocr
+
+    pdf = tmp_path / "scan.pdf"
+    pdf.write_bytes(b"%PDF-1.4 thin")
+
+    monkeypatch.setenv("ANTIEK_PDF_OCR", "1")
+    monkeypatch.setenv("ANTIEK_PDF_OCR_DEEPSEEK", "1")
+
+    def fake_deepseek(path, *, timeout_s=0, max_output=0, max_pages=0):
+        return "# Page from DeepSeek\n\nRecovered VLM text here for the scan."
+
+    def boom_ocrmypdf(*_a, **_k):
+        raise AssertionError("ocrmypdf must not run when DeepSeek succeeds")
+
+    with (
+        patch("acquisition.doc_to_html.pdf_ocr.deepseek_ocr_available", return_value=True),
+        patch("acquisition.doc_to_html.pdf_ocr._run_deepseek_ocr", side_effect=fake_deepseek),
+        patch("acquisition.doc_to_html.pdf_ocr.ocrmypdf_bin", return_value="/bin/ocrmypdf"),
+        patch("acquisition.doc_to_html.pdf_ocr._run_ocrmypdf", side_effect=boom_ocrmypdf),
+        patch("acquisition.doc_to_html.converter._run_pypdf", return_value=None),
+        patch("acquisition.doc_to_html.converter._run_anydoc", return_value=None),
+        patch("acquisition.doc_to_html.converter._run_docling", return_value=None),
+    ):
+        md, engine = converter.convert_to_markdown_with_engine(pdf, fmt="pdf")
+    assert engine == "deepseek_ocr"
+    assert "Recovered VLM text" in md
+
+
+def test_deepseek_fail_falls_back_to_ocrmypdf(tmp_path: Path, monkeypatch):
+    """Empty/failed DeepSeek must fall through to ocrmypdf."""
+    from acquisition.doc_to_html import converter, pdf_ocr
+
+    pdf = tmp_path / "scan.pdf"
+    pdf.write_bytes(b"%PDF-1.4 thin")
+    monkeypatch.setenv("ANTIEK_PDF_OCR", "1")
+
+    with (
+        patch("acquisition.doc_to_html.pdf_ocr.deepseek_ocr_available", return_value=True),
+        patch("acquisition.doc_to_html.pdf_ocr._run_deepseek_ocr", return_value=None),
+        patch("acquisition.doc_to_html.pdf_ocr.ocrmypdf_bin", return_value="/bin/ocrmypdf"),
+        patch(
+            "acquisition.doc_to_html.pdf_ocr._run_ocrmypdf",
+            return_value="# OCR page\n\nHello from ocrmypdf fallback.",
+        ),
+        patch("acquisition.doc_to_html.pdf_ocr.tesseract_bin", return_value=None),
+        patch("acquisition.doc_to_html.converter._run_pypdf", return_value=None),
+        patch("acquisition.doc_to_html.converter._run_anydoc", return_value=None),
+        patch("acquisition.doc_to_html.converter._run_docling", return_value=None),
+    ):
+        md, engine = converter.convert_to_markdown_with_engine(pdf, fmt="pdf")
+    assert engine == "ocrmypdf"
+    assert "ocrmypdf fallback" in md
+
+
+def test_deepseek_disabled_uses_brew(tmp_path: Path, monkeypatch):
+    """ANTIEK_PDF_OCR_DEEPSEEK=0 skips DeepSeek even if service is up."""
+    from acquisition.doc_to_html import pdf_ocr
+
+    monkeypatch.setenv("ANTIEK_PDF_OCR", "1")
+    monkeypatch.setenv("ANTIEK_PDF_OCR_DEEPSEEK", "0")
+    with patch("acquisition.doc_to_html.pdf_ocr.ocrmypdf_bin", return_value="/bin/ocrmypdf"):
+        # deepseek_ocr_available must be False when env off
+        assert pdf_ocr.deepseek_ocr_available() is False
