@@ -631,8 +631,8 @@ def collapse(records: Iterable[IdentityRecord]) -> tuple[CanonicalWork, ...]:
     bounded discovery batches the orchestrator feeds it.
     """
     # group_key -> list of members, preserving first-seen order of groups.
-    groups: dict[tuple, list[IdentityRecord]] = {}
-    order: list[tuple] = []
+    groups: dict[tuple[str, str], list[IdentityRecord]] = {}
+    order: list[tuple[str, str]] = []
     key_cache: dict[str, IdentityKey] = {}
 
     for record in records:
@@ -641,9 +641,9 @@ def collapse(records: Iterable[IdentityRecord]) -> tuple[CanonicalWork, ...]:
         if ikey.confidence is Confidence.LOW:
             # A LOW key never merges: give each LOW record a singleton group
             # keyed on its own ref_id so it can never absorb another work.
-            group_key: tuple = ("__low__", record.ref_id)
+            group_key: tuple[str, str] = ("__low__", record.ref_id)
         else:
-            group_key = (ikey.key_type.value, ikey.key)
+            group_key = (str(ikey.key_type.value), str(ikey.key))
         if group_key not in groups:
             groups[group_key] = []
             order.append(group_key)
