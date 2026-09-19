@@ -56,9 +56,24 @@
     # navigations, but they must reach FastAPI to verify the token and mint the
     # session cookie. Serving index.html for `/auth/callback` leaves the token
     # in the address bar and sends the operator straight back to Login.
+    #
+    # The machine-readable operational surfaces are excluded for the same
+    # reason: they have no SPA route, and must always be the backend's own
+    # answer. Each path excluded here also appears in @api_routes below, so
+    # the exclusion actually reaches uvicorn instead of falling through to
+    # the static file_server.
+    #
+    # /health matters most. This matcher is the FIRST handler in the route
+    # block, so any client sending a browser-like Accept header — which most
+    # uptime monitors do — was served index.html with 200 unconditionally,
+    # including while uvicorn was down and the JSON path returned 502. A
+    # monitor pointed at /health could never observe an outage. Verified
+    # 2026-09-19 against production: `curl -H 'Accept: text/html' /health`
+    # returned 200 text/html (1308 bytes, the SPA shell), while
+    # `Accept: application/json` returned the real 715-byte payload.
     @spa_browser_nav {
         header Accept *text/html*
-        not path /auth/*
+        not path /auth/* /health /openapi.json /ops/*
     }
 
     route {
