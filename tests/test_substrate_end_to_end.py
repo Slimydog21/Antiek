@@ -21,6 +21,10 @@ import pytest
 # bare import error would show red. The suite runs in full once pi-execution
 # merges.
 pytest.importorskip("substrate.conversation")
+pytest.importorskip(
+    "substrate.harness.fork",
+    reason="harness.fork ships with the unmerged pi-execution primitives",
+)
 
 from substrate.conversation.compaction import compact as compact_fn
 from substrate.conversation.event import Event
