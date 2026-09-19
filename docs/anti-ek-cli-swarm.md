@@ -32,7 +32,7 @@ Mini dogfood: [`docs/anti-ek-mac-mini-dogfood.md`](./anti-ek-mac-mini-dogfood.md
 ## PATH (required)
 
 ```bash
-export PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.kimi-code/bin:$PATH"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:$HOME/.kimi-code/bin:$PATH"
 ```
 
 SSH sessions often lack Homebrew + kimi unless you export this. The swarm
@@ -187,7 +187,7 @@ $(git diff origin/main...HEAD)" --output-format text
 ## Parallel review recipe
 
 ```bash
-export PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.kimi-code/bin:$PATH"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:$HOME/.kimi-code/bin:$PATH"
 cd /Users/slimydog/Antiek/deploy-main-20260917   # or current PR worktree
 ./scripts/anti-ek-swarm-review.sh --check           # readiness first
 ./scripts/anti-ek-swarm-review.sh origin/main

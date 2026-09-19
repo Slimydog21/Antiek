@@ -18,7 +18,7 @@ Canonical playbook with Mini-verified invocations: [`docs/anti-ek-cli-swarm.md`]
 | Herdr | `herdr` | `herdr workspace` / `tab` (Antiek **w7**) |
 
 ```bash
-export PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.kimi-code/bin:$PATH"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:$HOME/.kimi-code/bin:$PATH"
 ./scripts/anti-ek-swarm-review.sh --check
 ```
 

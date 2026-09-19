@@ -30,3 +30,6 @@ skips (`claude` unguarded under `set -e`).
 
 Agents and humans can prove swarm readiness before burning reviews. CLI/Herdr
 grade climbs with evidence (`--check` → `core_ready=true` on Mini).
+
+## Follow-up
+PATH order: `~/.local/bin` before Homebrew so Claude 2.1.278 (local) wins over brew 2.1.42.
