@@ -1,19 +1,19 @@
 /**
  * BrainstormStation thought-partner pane (master-spec §4.5 Surface E).
  *
- * Replaces the Sprint-17 CTA placeholder: this panel is a real one-shot
- * round-trip to ``POST /thought-partner`` — the SAME role + endpoint the
- * AISidecar and FloatMenu Dialogue already use. Selected parked questions
- * seed the composer via ``antiek:thought-partner:seed`` (BrainstormStation
- * dispatches on select). No new product surface; completes the active
- * component of Surface E beside the watch-for-later parking lot.
+ * Real one-shot ``POST /thought-partner`` — same role + endpoint as
+ * AISidecar / FloatMenu Dialogue. Parked questions seed via
+ * ``antiek:thought-partner:seed``. Lego insight slotting: graph blocks
+ * drag (or click-slot) from ``InsightLegoShelf`` into the focus tray;
+ * send merges them through ``POST /compose-context`` (@insight) into
+ * ``system_context`` — same CK-4 / §9.0 path as ContextPicker.
  *
  * Cite: docs/master-product-spec.md §4.5; roles/thought_partner/program.md;
- * docs/anti-ek-vision-map-2026-09-17.md pillar 2 (daily loop).
+ * docs/decisions/tp-surface-e-real-panel-2026-09-18.md residual Lego.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { apiFetch } from "../../lib/api";
+import { apiFetch, composeContext } from "../../lib/api";
 import { WernerThinking } from "../../brand/werner/animated";
 import ContextPicker from "../../components/ai/ContextPicker";
 import {
@@ -26,6 +26,15 @@ import {
   type ThoughtPartnerSeedDetail,
   composeThoughtPartnerSystemContext,
 } from "../../components/ai/thoughtPartnerSeed";
+import type { PaletteDragPayload } from "../CreationStudio/BlockPalette";
+import InsightLegoShelf from "./InsightLegoShelf";
+import {
+  mergeSlottedSystemContext,
+  parsePaletteDrag,
+  slotInsight,
+  slottedToContextItems,
+  unslotInsight,
+} from "./insightLegoSlot";
 
 export { THOUGHT_PARTNER_SEED_EVENT, type ThoughtPartnerSeedDetail };
 
@@ -44,6 +53,8 @@ export default function ThoughtPartnerPanel() {
   const [draft, setDraft] = useState("");
   const [composedContext, setComposedContext] = useState("");
   const [seedLabel, setSeedLabel] = useState<string | null>(null);
+  const [slotted, setSlotted] = useState<PaletteDragPayload[]>([]);
+  const [dropActive, setDropActive] = useState(false);
   const [reply, setReply] = useState<ThoughtPartnerReply | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,12 +78,39 @@ export default function ThoughtPartnerPanel() {
           ? detail.source_label.trim()
           : null,
       );
-      // Focus after seed so Faisal can refine before Send.
       queueMicrotask(() => inputRef.current?.focus());
     };
     window.addEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
     return () => window.removeEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
   }, []);
+
+  const addSlot = useCallback((payload: PaletteDragPayload) => {
+    setSlotted((prev) => slotInsight(prev, payload));
+  }, []);
+
+  const onDragOverFocus = useCallback((e: React.DragEvent) => {
+    if (![...e.dataTransfer.types].includes("application/x-antiek-block")) {
+      // Still allow — some browsers hide custom MIME until drop.
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDropActive(true);
+  }, []);
+
+  const onDragLeaveFocus = useCallback((e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setDropActive(false);
+  }, []);
+
+  const onDropFocus = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDropActive(false);
+      const payload = parsePaletteDrag(e.dataTransfer);
+      if (payload) addSlot(payload);
+    },
+    [addSlot],
+  );
 
   const send = useCallback(async () => {
     const prompt = draft.trim();
@@ -81,13 +119,30 @@ export default function ThoughtPartnerPanel() {
     setError(null);
     setReply(null);
     try {
+      let insightCtx = "";
+      const items = slottedToContextItems(slotted);
+      if (items.length > 0) {
+        try {
+          const composed = await composeContext({ items });
+          insightCtx = composed.system_context ?? "";
+        } catch {
+          // Degrade: still send with labels so the model sees focus intent.
+          insightCtx = slotted
+            .map((s) => `@insight[${s.block_id}] ${s.label}`)
+            .join("\n");
+        }
+      }
+      const merged = mergeSlottedSystemContext(
+        insightCtx,
+        composedContext.trim() ? composedContext : null,
+      );
       const resp = await apiFetch("/thought-partner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt,
           system_context: composeThoughtPartnerSystemContext(
-            composedContext.trim() ? composedContext : null,
+            merged.trim() ? merged : null,
           ),
         }),
       });
@@ -119,7 +174,7 @@ export default function ThoughtPartnerPanel() {
     } finally {
       setPending(false);
     }
-  }, [composedContext, draft, pending]);
+  }, [composedContext, draft, pending, slotted]);
 
   return (
     <div
@@ -131,8 +186,8 @@ export default function ThoughtPartnerPanel() {
           Thought partner
         </h3>
         <p className="text-[11px] font-serif text-ink-mute dark:text-moonlight leading-relaxed">
-          Challenge, synthesize, or extend notes and parked questions — same
-          role as ⌘/ sidecar and in-book Dialogue.
+          Slot insights like Legos into focus, then challenge / synthesize /
+          extend — same role as ⌘/ sidecar and in-book Dialogue.
         </p>
       </header>
 
@@ -144,6 +199,55 @@ export default function ThoughtPartnerPanel() {
           Seeded from {seedLabel}
         </p>
       ) : null}
+
+      <InsightLegoShelf onSlot={addSlot} />
+
+      <div
+        data-testid="thought-partner-focus-tray"
+        onDragOver={onDragOverFocus}
+        onDragLeave={onDragLeaveFocus}
+        onDrop={onDropFocus}
+        className={
+          "min-h-[3.5rem] border border-dashed rounded p-2 space-y-1.5 transition-colors " +
+          (dropActive
+            ? "border-ocean bg-ocean/10"
+            : "border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-3")
+        }
+      >
+        <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+          Focus tray
+          {slotted.length ? ` · ${slotted.length}` : ""}
+        </p>
+        {slotted.length === 0 ? (
+          <p className="text-[11px] text-ink-mute dark:text-moonlight italic">
+            Drop insight Legos here (or tap + on the shelf).
+          </p>
+        ) : (
+          <ul className="flex flex-wrap gap-1" aria-label="Slotted insights">
+            {slotted.map((s) => (
+              <li
+                key={s.block_id}
+                className="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded border border-ocean/40 bg-ocean/10 text-[10px] font-serif text-ink dark:text-bright"
+                data-testid="slotted-insight-chip"
+              >
+                <span className="truncate" title={s.label}>
+                  {s.label}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${s.label}`}
+                  className="font-mono text-ink-mute hover:text-emperor"
+                  onClick={() =>
+                    setSlotted((prev) => unslotInsight(prev, s.block_id))
+                  }
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <ContextPicker onContextChange={setComposedContext} />
 
