@@ -81,6 +81,19 @@
         state: present
       tags: [base, backup]
 
+    # OCR fallback for scanned/thin PDF→reader-HTML (#3190). DeepSeek prefer
+    # (#3196) stays first when ANTIEK_OCR_BASE_URL is reachable; these CLIs
+    # cover prod where no VLM runs. Cite docs/decisions/prod-ocr-cli-apt-2026-09-19.md.
+    - name: install OCR fallback CLIs (ocrmypdf / tesseract / poppler)
+      ansible.builtin.apt:
+        name:
+          - ocrmypdf
+          - tesseract-ocr
+          - tesseract-ocr-eng
+          - poppler-utils
+        state: present
+      tags: [base, ocr]
+
     # ──────────────────────────────────────────────────────────────────────
     # 2. Unattended security upgrades (no auto-reboots)
     # ──────────────────────────────────────────────────────────────────────
