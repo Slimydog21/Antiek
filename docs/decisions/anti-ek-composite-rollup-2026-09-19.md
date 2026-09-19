@@ -1,6 +1,6 @@
 # Anti-Ek composite rollup (2026-09-19)
 
-**Tip verified (live 2026-09-19 12:14 Asia/Riyadh)**: `23622452cb17fdcb92f65fb60b8d9fc00e6b9d0e`
+**Tip verified (live 2026-09-19 12:17 Asia/Riyadh)**: tip pending this PR (TalkToBook↔TP unify)
 - Prod `https://api.antiek.ai/health`: `build_sha`=`23622452…` (#3174 deployed); `flywheel_ready=false`; duckdb ok schema 40.
 - Mac Mini dogfood `:8000/health`: tip-aligned via `start-shared-duckdb-mac-mini.sh` on `deploy-main-20260917`; was lagging `7f665826`; now `23622452…`, healthy, `flywheel_ready=false`.
 - #3174 outline→Write auto-import merged+deployed. Deploy flock #3171–#3173 prior.
@@ -19,19 +19,19 @@
 | Speak | 100 | Honesty / invite / coexist signed off this programme |
 | Ads | 94 | Rank-0 honesty, fills nonblock, no fake pricing; AppLovin still open product |
 | BYOT/ACU | 78 | Soft-warn / meter paths exist; not fully dogfood-scored this arc |
-| Thinking Partner | 80 | Surface E real (#3167) + SERVABLE page mount (#3169); Lego / TalkToBook unify residual |
+| Thinking Partner | 90 | Surface E + SERVABLE mount + TalkToBook on thought_partner role (#unify); Lego slotting residual |
 | Notebook | 92 | AutoNotebook + daily-loop (#3168) + outline→Write auto-import (from-investigation UI) |
 | TurboPuffer | 72 | #3135 env-gated hybrid for reuse; not corpus/TalkToBook/TP UI mount |
 | HTML-native | 75 | Research artifact HTML + ArtifactOutlineShelf; reader HTML ingest incomplete |
 | CLI / Herdr | 70 | Herdr standing + Mini SSH lane; CLI surface uneven vs app |
 
-**Composite (equal-weight mean of above) ≈ 85/100.** Was ~84; +1 from Execution/Notebook/Code after Mini sync + outline import.
+**Composite (equal-weight mean of above) ≈ 86/100.** TP 80→90 via TalkToBook role unify; Notebook 92; Mini flywheel_ready=true dogfood.
 
 ## Residuals blocking composite 100
 
 1. ~~Deploy flock vs warm-writer~~ — addressed #3171–#3173 (stop-before-migrate, flush warm writer, live verify keepalive=0).
 2. **Lego insight slotting** into TP pane (master-spec §4.5) — not invented this arc.
-3. **TalkToBook ↔ `thought_partner` unify** — `/books/{id}/ask` vs `/thought-partner` dual paths.
+3. ~~TalkToBook ↔ `thought_partner` unify~~ — closed: same role+shapes; ask keeps book-scoped retrieval (dual structure).
 4. ~~Outline → Write auto-import~~ — closed: WriteHome calls from-investigation; 404→empty link fallback.
 5. **Email re-ping / first-cohort publisher outreach** — operator/G2 counsel, not code-only.
 6. **G2 counsel / Synquery partnership** — product decision.
@@ -43,7 +43,7 @@
 
 ## Highest-leverage next (after this PR)
 
-**TalkToBook ↔ thought_partner unify** (product daily-loop) **or** flywheel_ready liveness (compounding signal) **or** BYOT/ACU dogfood — prefer TP unify if Faisal is in reading/TP loop.
+**flywheel_ready=false on prod** (Mini already true/18) **or** CLI/Herdr 70 **or** Lego insight slotting into TP — prefer flywheel prod liveness for compounding signal.
 
 ## Leave-off
 
