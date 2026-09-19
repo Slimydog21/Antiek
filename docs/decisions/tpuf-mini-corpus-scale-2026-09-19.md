@@ -36,6 +36,15 @@ Rights: only `TURBOPUFFER_INDEX_CONTENT_CLASSES` (public_domain / source_declare
 - Staging verify: SERVABLE-scale (>100) accepts strong sample when `approx_row_count` is unknown/0 (vendor lag); still fails on **partial** approx after brief poll.
 - Dual structure unchanged; `production_default_mount` stays false.
 
+## Live evidence (2026-09-19 ~22:40 Asia/Riyadh)
+
+| Host | indexed_row_count before | after | mount | hybrid_ready |
+|------|-------------------------:|------:|:-----:|:------------:|
+| Mini dogfood | **2** | **636** | false | true |
+| Prod `api.antiek.ai` | 4837 | 4837 (unchanged) | false | true |
+
+Query smoke: `status=servable` after promote. DuckDB SoT unchanged.
+
 ## Grade
 
 | Surface | Before | After (ops+code) |
