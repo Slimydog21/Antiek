@@ -658,7 +658,7 @@ def make_region_selected_handler(
                 insert_chunk(
                     con,
                     chunk_id=chunk_id,
-                    document_id=event.document_id,
+                    document_id=document_id,
                     chunk_index=p.char_start,  # use char_start as a stable index
                     section_path=f"page {p.page}" if p.page is not None else None,
                     text=p.text_excerpt,
