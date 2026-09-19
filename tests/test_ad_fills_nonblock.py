@@ -64,7 +64,13 @@ def test_fills_exact_replay_same_decision(isolated_client):
 
 
 def test_fills_new_returns_503_quickly_under_writer_hold(isolated_client):
-    """New decision must fail-fast on flock (8s cap), not hang for 300s."""
+    """New decision must fail-fast on flock (bounded by the route's write
+    timeout), not hang for the 300s default. The cap is READ from the
+    route's constant — 20aef5cac deliberately raised it 8s -> 15s after
+    prod forensics showed constant 503s at 8s; the assertion tracks the
+    deliberate value plus scheduling slack rather than a hardcoded cap."""
+    from interfaces.research.api.ad_routes import _FILLS_WRITE_TIMEOUT_S
+
     client, db = isolated_client
 
     release = threading.Event()
@@ -88,7 +94,11 @@ def test_fills_new_returns_503_quickly_under_writer_hold(isolated_client):
 
     assert resp.status_code == 503, resp.text
     assert resp.json()["detail"] == "ad_fill_writer_busy"
-    assert elapsed < 12.0, f"fills new-busy took {elapsed:.3f}s (expected ~8s cap)"
+    cap = _FILLS_WRITE_TIMEOUT_S + 5.0
+    assert elapsed < cap, (
+        f"fills new-busy took {elapsed:.3f}s "
+        f"(cap {_FILLS_WRITE_TIMEOUT_S:.0f}s + 5s slack)"
+    )
 
 
 def test_lookup_fill_decision_read_path(isolated_client):
