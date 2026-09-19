@@ -19,9 +19,14 @@ from .parser import (
     ThoughtPartnerResponse,
     parse_thought_partner_response,
 )
-from .prompt import THOUGHT_PARTNER_SYSTEM_PROMPT, compose_thought_partner_prompt
+from .prompt import (
+    MAX_HISTORY_TURNS,
+    THOUGHT_PARTNER_SYSTEM_PROMPT,
+    compose_thought_partner_prompt,
+)
 
 __all__ = [
+    "MAX_HISTORY_TURNS",
     "THOUGHT_PARTNER_SYSTEM_PROMPT",
     "VALID_SHAPES",
     "compose_thought_partner_prompt",
