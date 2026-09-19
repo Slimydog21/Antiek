@@ -289,6 +289,89 @@ CONTRACT_TABLE: Final[tuple[BlockContract, ...]] = (
         ),
         partial="latex",
     ),
+
+    # ── Structural document block types (ingest bridge) ──
+    #
+    # The six types above this comment describe an Antiek *notebook*. The
+    # six below describe a *document*: the headings, lists, tables, code,
+    # quotes and rules that an ingested PDF, web page or .docx is actually
+    # made of. They arrive through
+    # services/html_projection/adapters/document.py, which parses the
+    # sanitized reader-HTML sidecar into these nodes, and they use the
+    # standard TipTap node names (heading / bulletList / orderedList /
+    # blockquote / codeBlock / table / horizontalRule) so the doc-model
+    # stays a real TipTap document — the same names an editor would
+    # round-trip.
+    #
+    # Before they existed a table reached the renderer as an unknown type
+    # and rendered as "unsupported block (table)": visible and honest, but
+    # the grid was gone. That is the gap this set closes.
+    BlockContract(
+        block_type="heading",
+        tiptap_types=("antiek_heading", "heading"),
+        source=(
+            "acquisition/snapshot/reader_html.py:402 "
+            "(_render_blocks emits <h1>-<h6> from ATX headings); "
+            "substrate/books/html_sanitizer.py:96 "
+            "(ALLOWED_TAGS h1-h6 survive sanitization)"
+        ),
+        partial="heading",
+    ),
+    BlockContract(
+        block_type="list",
+        tiptap_types=("antiek_list", "list", "bulletList", "orderedList"),
+        source=(
+            "acquisition/snapshot/reader_html.py:326 "
+            "(_render_list emits <ul>/<ol> with start); "
+            "substrate/books/html_sanitizer.py:98 "
+            "(ALLOWED_TAGS ul/ol/li)"
+        ),
+        partial="list_block",
+    ),
+    BlockContract(
+        block_type="table",
+        tiptap_types=("antiek_table", "table"),
+        source=(
+            "acquisition/snapshot/reader_html.py:268 "
+            "(_render_table emits <table><thead><tbody>); "
+            "substrate/books/html_sanitizer.py:103 "
+            "(ALLOWED_TAGS table/thead/tbody/tr/th/td)"
+        ),
+        partial="table",
+    ),
+    BlockContract(
+        block_type="code_block",
+        tiptap_types=("antiek_code_block", "code_block", "codeBlock"),
+        source=(
+            "acquisition/snapshot/reader_html.py:396 "
+            "(_render_blocks emits <pre><code> from fences); "
+            "substrate/books/html_sanitizer.py:99 "
+            "(ALLOWED_TAGS pre/code)"
+        ),
+        partial="code_block",
+    ),
+    BlockContract(
+        block_type="blockquote",
+        tiptap_types=("antiek_blockquote", "blockquote"),
+        source=(
+            "acquisition/snapshot/reader_html.py:292 "
+            "(_render_quote emits <blockquote>); "
+            "substrate/books/html_sanitizer.py:99 "
+            "(ALLOWED_TAGS blockquote)"
+        ),
+        partial="blockquote",
+    ),
+    BlockContract(
+        block_type="horizontal_rule",
+        tiptap_types=("antiek_horizontal_rule", "horizontal_rule", "horizontalRule"),
+        source=(
+            "acquisition/snapshot/reader_html.py:406 "
+            "(_render_blocks emits <hr /> from thematic breaks); "
+            "substrate/books/html_sanitizer.py:97 "
+            "(ALLOWED_TAGS hr)"
+        ),
+        partial="horizontal_rule",
+    ),
 )
 
 

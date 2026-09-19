@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -170,22 +171,28 @@ async def write_account_memory(request: Request) -> AccountMemoryWriteResponse:
             valid_from=payload.valid_from,
             created_at=payload.valid_from,
         )
-        with connect_write(default_db_path(), purpose="account_memory_write") as con:
-            timeline = load_memory_timeline(con, candidate)
-            decision = route_memory_update(timeline, candidate)
-            item = (
-                decision.matched_item
-                if decision.action == "NOOP"
-                else write_memory_item(
-                    con,
-                    owner_user_id=owner,
-                    subject=candidate.subject,
-                    predicate=candidate.predicate,
-                    object=candidate.object,
-                    provenance=candidate.provenance,
-                    valid_from=candidate.valid_from,
+
+        def _sync() -> tuple[Any, Any]:
+            with connect_write(default_db_path(), purpose="account_memory_write") as con:
+                timeline = load_memory_timeline(con, candidate)
+                decision = route_memory_update(timeline, candidate)
+                item = (
+                    decision.matched_item
+                    if decision.action == "NOOP"
+                    else write_memory_item(
+                        con,
+                        owner_user_id=owner,
+                        subject=candidate.subject,
+                        predicate=candidate.predicate,
+                        object=candidate.object,
+                        provenance=candidate.provenance,
+                        valid_from=candidate.valid_from,
+                    )
                 )
-            )
+            return decision, item
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        decision, item = await asyncio.to_thread(_sync)
     except (WriteLockTimeout, OSError, duckdb.Error) as exc:
         raise _unavailable(exc) from None
     except ValueError:

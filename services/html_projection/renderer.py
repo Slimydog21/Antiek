@@ -108,6 +108,23 @@ _PARTIAL_MODULES: dict[str, Any] = {
     "image": importlib.import_module(".partials.image", package=__package__),
     "latex": importlib.import_module(".partials.latex", package=__package__),
     "widget": importlib.import_module(".partials.widget", package=__package__),
+    # Structural document blocks (the ingest bridge): heading, list, table,
+    # code, quote, rule. Imported eagerly with the rest so the table stays
+    # fixed at module import.
+    "heading": importlib.import_module(".partials.heading", package=__package__),
+    "list_block": importlib.import_module(
+        ".partials.list_block", package=__package__
+    ),
+    "table": importlib.import_module(".partials.table", package=__package__),
+    "code_block": importlib.import_module(
+        ".partials.code_block", package=__package__
+    ),
+    "blockquote": importlib.import_module(
+        ".partials.blockquote", package=__package__
+    ),
+    "horizontal_rule": importlib.import_module(
+        ".partials.horizontal_rule", package=__package__
+    ),
 }
 
 
@@ -135,6 +152,21 @@ def _render_block(node: Any, ctx: RenderContext) -> str:
     # Partial modules are dynamically imported (ModuleType) — their render()
     # contract is str; cast keeps behavior identical under --strict.
     return cast(str, module.render(node, ctx))
+
+
+def render_block(node: Any, ctx: RenderContext) -> str:
+    """Render ONE top-level node — the recursion seam for structural blocks.
+
+    A list item, a blockquote and a table cell each hold arbitrary blocks, so
+    ``partials/_structural.py`` has to dispatch a child the same way the
+    document body does. It calls this rather than reimplementing the contract
+    lookup, which is what keeps "unknown type renders visibly as unsupported"
+    true at every depth instead of only at the top level.
+
+    It is a thin public alias for :func:`_render_block`; the private name
+    stays because the renderer body reads better with it.
+    """
+    return _render_block(node, ctx)
 
 
 def _render_edges(edges: list[dict[str, Any]]) -> str:
@@ -308,4 +340,4 @@ def restyle_artifact(
     return render(doc_model, ctx, style=style)
 
 
-__all__ = ["render", "restyle_artifact"]
+__all__ = ["render", "render_block", "restyle_artifact"]
