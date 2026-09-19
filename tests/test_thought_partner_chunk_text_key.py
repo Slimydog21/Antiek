@@ -80,7 +80,7 @@ def test_production_mapper_surfaces_chunk_text_as_note_text(monkeypatch):
 
     monkeypatch.setattr(db_lock_mod, "connect_read", _fake_connect_read)
 
-    notes = app_mod._retrieve_thought_partner_context("photonics", "operator_only")
+    notes, _status, _deg = app_mod._retrieve_thought_partner_context("photonics", "operator_only")
 
     assert notes, "production mapper returned no notes from a non-empty hit list"
     assert notes[0]["note_text"] == "The photonic interconnect reduces mesh latency.", (

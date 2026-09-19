@@ -157,7 +157,7 @@ def test_thought_partner_retrieves_library_context_into_the_prompt(client, monke
     }]
     monkeypatch.setattr(
         "interfaces.research.api.app._retrieve_thought_partner_context",
-        lambda prompt, policy_tag, **kw: canned_notes,
+        lambda prompt, policy_tag, **kw: (canned_notes, "servable", None),
     )
     reply = (
         '{"shape":"synthesis","synthesis_text":"grounded reply",'
