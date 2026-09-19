@@ -205,7 +205,7 @@ def load_for_recipient(
     return [_row_to_decision(r) for r in rows]
 
 
-def _row_to_decision(r: tuple) -> PersistedDecisionRow:
+def _row_to_decision(r: tuple[Any, ...]) -> PersistedDecisionRow:
     return PersistedDecisionRow(
         decision_id=r[0],
         impression_id=r[1],

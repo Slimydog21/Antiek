@@ -415,7 +415,7 @@ def save_record(con: Any, record: AdvertiserRecord) -> str:
         ],
     ).fetchone()
     if existing is not None:
-        return existing[0]
+        return str(existing[0])
 
     attempt_id = f"advrec-{uuid.uuid4().hex[:12]}"
     con.execute(

@@ -156,7 +156,7 @@ def initiate_transfer(
     provider: StripeProvider,
     decision: RevShareDecision,
     account_id_for_recipient: str | None,
-    metadata: dict | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> TransferOutcome:
     """Drive one ``RevShareDecision`` through Stripe Connect with full
     audit. Returns a ``TransferOutcome`` describing what happened.

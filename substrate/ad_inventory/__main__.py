@@ -32,6 +32,8 @@ omitting the flag prints a clear refusal."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import argparse
 import json
 import sys
@@ -39,6 +41,7 @@ import sys
 from substrate.ad_inventory.advertiser_onboarding import (
     AdvertiserOnboardingError,
     AdvertiserRecord,
+    AdvertiserRegistry,
     activate_advertiser,
     approve_advertiser,
     churn_advertiser,
@@ -95,7 +98,9 @@ def _print_record(rec: AdvertiserRecord, *, as_json: bool) -> None:
     print(f"  last_change_at  {rec.last_status_change_at}")
 
 
-def _with_write(db_path: str, purpose: str, fn) -> AdvertiserRecord:
+def _with_write(
+    db_path: str, purpose: str, fn: Callable[[AdvertiserRegistry], AdvertiserRecord]
+) -> AdvertiserRecord:
     """Common pattern: load → transition → save inside a single
     locked write."""
     from runtime.db_lock import connect_write
@@ -347,7 +352,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    return int(args.func(args))
 
 
 if __name__ == "__main__":

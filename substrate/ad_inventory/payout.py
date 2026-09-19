@@ -14,6 +14,12 @@ publisher verification."""
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from substrate.anti_gaming.verdict import FraudVerdict
+    from substrate.billing.kyc import KycRegistry
+
 import enum
 import uuid
 from dataclasses import dataclass, field
@@ -159,8 +165,8 @@ def distribute_with_gates(
     ad_revenue_usd_cents: int,
     attribution_shares: dict[str, float],
     document_to_recipient: dict[str, tuple[RevShareKind, str, bool]],
-    kyc_registry=None,  # type: Optional[KycRegistry]
-    fraud_verdict=None,  # type: Optional[FraudVerdict]
+    kyc_registry: KycRegistry | None = None,
+    fraud_verdict: FraudVerdict | None = None,
 ) -> list[RevShareDecision]:
     """Distribute revenue + apply §9.5 KYC settlement gate + §9.7
     anti-gaming gate.
