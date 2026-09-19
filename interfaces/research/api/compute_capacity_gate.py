@@ -11,6 +11,7 @@ from runtime.db_lock import WriteLockTimeout, connect_write
 from substrate.compute_capacity.acu_meter import (
     CAPACITY_WARN_HEADER,
     CapacityGateResult,
+    capacity_exhausted_payload,
     capacity_warning_payload,
     gate_investigation_start,
     record_investigation_start_acu,
@@ -49,7 +50,9 @@ def run_capacity_precheck(request: Request) -> CapacityGateResult:
     except WriteLockTimeout as exc:
         raise HTTPException(status_code=503, detail="graph_busy_retry") from exc
     if gate.verdict == "hard_refuse":
-        raise HTTPException(status_code=429, detail=gate.detail)
+        raise HTTPException(
+            status_code=429, detail=capacity_exhausted_payload(gate)
+        )
     return gate
 
 

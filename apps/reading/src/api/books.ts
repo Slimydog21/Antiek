@@ -10,7 +10,10 @@
 import { API_BASE, apiFetch } from "../lib/api";
 import { toast } from "../components/lemon/LemonToast";
 import {
+  CapacityExhaustedError,
+  formatCapacityExhaustedToast,
   formatCapacityWarnToast,
+  parseCapacityExhaustedDetail,
   parseCapacityWarning,
   stashCapacityWarning,
 } from "../lib/capacityWarn";
@@ -223,7 +226,18 @@ export async function spinResearch(
     body: JSON.stringify({ page_index: pageIndex, passage_text: passageText ?? null }),
   });
   if (resp.status === 404) throw new Error("book_not_found");
-  if (!resp.ok) throw new Error(`POST /books/{id}/spin-research: HTTP ${resp.status}`);
+  if (!resp.ok) {
+    const body = await resp.text();
+    const exhausted = parseCapacityExhaustedDetail(resp.status, body);
+    if (exhausted) {
+      toast.err(formatCapacityExhaustedToast(exhausted), {
+        ttl: 10000,
+        target: { path: "/settings" },
+      });
+      throw new CapacityExhaustedError(exhausted);
+    }
+    throw new Error(`POST /books/{id}/spin-research: HTTP ${resp.status}`);
+  }
   const raw = (await resp.json()) as Record<string, unknown>;
   const capacity_warning = parseCapacityWarning(raw.capacity_warning);
   const out: SpinResearchResponse = {

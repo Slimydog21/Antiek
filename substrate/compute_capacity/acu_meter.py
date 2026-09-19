@@ -420,3 +420,24 @@ def capacity_warning_payload(gate: CapacityGateResult) -> dict[str, object] | No
         "enforcement": gate.capacity.enforcement,
         "used_status": gate.capacity.used_status,
     }
+
+
+def capacity_exhausted_payload(gate: CapacityGateResult) -> dict[str, object]:
+    """Structured 429 detail for hard refuse — no fake billing; ACU only."""
+    used = gate.capacity.used_compute_units
+    limit = gate.capacity.monthly_compute_units
+    msg = (
+        f"Antiek-hosted compute at monthly capacity "
+        f"({used}/{limit} ACU). New research starts are refused until "
+        f"capacity resets or the monthly ACU limit is raised in Settings. "
+        f"BYO Token spend is separate."
+    )
+    return {
+        "code": gate.detail,
+        "message": msg,
+        "used_compute_units": used,
+        "monthly_compute_units": limit,
+        "enforcement": gate.capacity.enforcement,
+        "used_status": gate.capacity.used_status,
+        "retryable": False,
+    }

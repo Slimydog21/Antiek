@@ -139,7 +139,13 @@ def test_http_hard_refuse_429(isolated_db, monkeypatch):
     client = TestClient(create_app(register_wrestling=False, register_providers=False))
     r = client.post("/investigations", json={"question": "Should be refused"})
     assert r.status_code == 429
-    assert r.json()["detail"] == "compute_capacity_exhausted"
+    detail = r.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["code"] == "compute_capacity_exhausted"
+    assert detail["retryable"] is False
+    assert detail["used_compute_units"] >= 1
+    assert detail["monthly_compute_units"] == 1
+    assert "BYO Token" in detail["message"]
 
 
 
