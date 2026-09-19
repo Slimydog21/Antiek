@@ -303,7 +303,8 @@ def make_contained_gather_loop(
             # raising paths. On the abandonment paths — HostLocalRunner raises
             # BudgetExceeded out of its ``async for`` body without aclosing the
             # generator — it runs when asyncio finalizes the async generator
-            # instead. See the note in tests/test_contained_gather.py.
+            # instead, which is prompt but not deterministic. Nothing tests
+            # that path; HANDOFF.md carries it as the lane's open risk.
             with contextlib.suppress(Exception):
                 await workspace.destroy()
 

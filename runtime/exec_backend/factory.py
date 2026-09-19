@@ -8,12 +8,14 @@ a silent downgrade would *weaken an isolation guarantee* the caller declared.
 Isolation downgrades must be an explicit operator choice (change the env var),
 never an availability accident.
 
-The factory accepts ``seal_on_complete`` and ``retrieval_substrate`` so the
-cascade launch site can forward its runner kwargs through without a signature
+The factory accepts ``seal_on_complete`` and ``retrieval_substrate`` so a
+caller holding a bag of runner kwargs can forward them without a signature
 mismatch — they are carried for call-site compatibility and logged, not applied
 to the ``ExecutionBackend`` (which has no concept of sealing or substrate reuse;
 those are research-runner concerns). This is the MINIMAL reconciliation the spec
-flags in S4.
+flags in S4. No caller forwards them today: the cascade's call site moved into
+``_research_loop_factory``, which builds the backend before a runner exists and
+so has nothing to pass.
 """
 
 from __future__ import annotations
@@ -44,8 +46,8 @@ def build_execution_backend(
 
     * ``kind`` — explicit override (tests pass this); ``None`` defers to the env
       var; absent both, the default is ``"local"`` (``LocalProcessBackend``).
-    * ``seal_on_complete`` / ``retrieval_substrate`` — accepted so the cascade
-      launch site can forward its runner kwargs without a ``TypeError``; they are
+    * ``seal_on_complete`` / ``retrieval_substrate`` — accepted so a caller can
+      forward runner kwargs without a ``TypeError``; they are
       **not** applied to the backend (``ExecutionBackend`` has no concept of
       sealing or substrate reuse). Logged once at DEBUG so an operator can trace
       the forwarding.
