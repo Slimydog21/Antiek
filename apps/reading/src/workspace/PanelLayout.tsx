@@ -44,6 +44,12 @@ export function PanelLayout({ mainSlot }: Props) {
   const setDockBottomHeight = useWorkspace((s) => s.setDockBottomHeight);
   const reduceMotion = usePrefersReducedMotion();
   const tier = useViewportTier();
+  // herdr transfer P1 — zoom: one panel fills the workspace. Runtime-only
+  // (never persisted); Esc exits; the pill is the persistent chrome.
+  const zoomedPanelId = useWorkspace((s) => s.zoomedPanelId);
+  const zoomedPanel = useWorkspace(
+    (s) => (s.zoomedPanelId ? s.panels[s.zoomedPanelId] : null) ?? null,
+  );
 
   // S11 — at tier "lg" the two side docks can't both be visible; if both
   // have panels we collapse the right one (operator can flip via kebab).
@@ -82,6 +88,25 @@ export function PanelLayout({ mainSlot }: Props) {
     }
     prevTierRef.current = tier;
   }, [tier, dockLeftIds.length, dockRightIds.length]);
+
+  // herdr transfer P1 — Esc exits zoom (persistent chrome + escape hatch).
+  // Ignored while an editable element has focus (Esc cancels inline edits).
+  useEffect(() => {
+    if (!zoomedPanelId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const el = e.target as HTMLElement | null;
+      if (el) {
+        const tag = el.tagName.toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") return;
+        if (el.isContentEditable) return;
+      }
+      e.preventDefault();
+      useWorkspace.getState().toggleZoom(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoomedPanelId]);
 
   // S11 acceptance: tier `sm` (< 768px) renders a "use a larger
   // screen" splash; the workspace shell is not designed for phone
@@ -190,6 +215,29 @@ export function PanelLayout({ mainSlot }: Props) {
           <PanelLayoutPanel key={id} id={id} />
         ))}
       </aside>
+
+      {/* herdr transfer P1 — ZOOM overlay: one panel fills the workspace,
+          everything else hidden behind it. The pill is the persistent
+          chrome that reminds the operator the other panels still exist
+          (herdr's zoom-with-chrome lesson — focus modes without a
+          reminder train "my panels died" bug reports). Esc exits. */}
+      {zoomedPanel && (
+        <div
+          className="absolute inset-0 z-[60] flex flex-col bg-ice-2 dark:bg-space-2"
+          data-testid="workspace-zoom-overlay"
+          aria-label={`Zoomed panel: ${zoomedPanel.title}`}
+        >
+          <PanelLayoutPanel id={zoomedPanel.id} zoomed />
+          <button
+            type="button"
+            onClick={() => useWorkspace.getState().toggleZoom(null)}
+            className="absolute top-2 right-3 z-[61] flex items-center gap-2 rounded-full border border-sun bg-ink/90 text-ice-1 dark:text-ink px-3 py-1 font-mono text-[11px] shadow-z2 dark:shadow-z2-night hover:bg-ink"
+            data-testid="zoom-exit-pill"
+          >
+            <span aria-hidden="true">⤡</span> ZOOM · Esc to exit
+          </button>
+        </div>
+      )}
     </div>
   );
 }
