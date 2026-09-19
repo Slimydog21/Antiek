@@ -410,7 +410,7 @@ def maybe_commit_investigation_wall_topup(
     return int(result.acu_units)
 
 
-def capacity_warning_payload(gate: CapacityGateResult) -> dict[str, object] | None:
+def capacity_warning_payload(gate: CapacityGateResult) -> dict[str, Any] | None:
     if gate.verdict == "ok" or gate.warning is None:
         return None
     return {
@@ -423,7 +423,7 @@ def capacity_warning_payload(gate: CapacityGateResult) -> dict[str, object] | No
     }
 
 
-def capacity_exhausted_payload(gate: CapacityGateResult) -> dict[str, object]:
+def capacity_exhausted_payload(gate: CapacityGateResult) -> dict[str, Any]:
     """Structured 429 detail for hard refuse — no fake billing; ACU only."""
     used = gate.capacity.used_compute_units
     limit = gate.capacity.monthly_compute_units
