@@ -410,6 +410,21 @@ class HostLocalRunner:
                     events_dir=self._events_dir,
                     outbox_db_path=self._outbox_db_path,
                 )
+
+        # BYOT wall-time ACU top-up (#3139/#3140/#3184) — best-effort; never
+        # fail completion because metering failed. Soft/hard still apply on
+        # later starts via updated used_compute_units.
+        if st.started:
+            try:
+                from substrate.compute_capacity.acu_meter import (
+                    maybe_commit_investigation_wall_topup,
+                )
+
+                maybe_commit_investigation_wall_topup(
+                    iid, db_path=self._outbox_db_path
+                )
+            except Exception:
+                pass
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 

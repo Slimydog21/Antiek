@@ -12,8 +12,13 @@ from fastapi.testclient import TestClient
 from interfaces.research.api.app import create_app
 from substrate.compute_capacity.acu_meter import (
     ACU_PER_INVESTIGATION_START,
+    WALL_TOPUP_MAX_ACU,
+    WALL_TOPUP_QUANTUM_SECONDS,
+    compute_wall_topup_acu,
     gate_investigation_start,
     record_investigation_start_acu,
+    record_investigation_wall_topup_acu,
+    wall_topup_ledger_id,
 )
 from substrate.compute_capacity.store import set_capacity
 
@@ -135,3 +140,76 @@ def test_http_hard_refuse_429(isolated_db, monkeypatch):
     r = client.post("/investigations", json={"question": "Should be refused"})
     assert r.status_code == 429
     assert r.json()["detail"] == "compute_capacity_exhausted"
+
+
+
+def test_wall_topup_heuristic():
+    assert WALL_TOPUP_QUANTUM_SECONDS == 300
+    assert WALL_TOPUP_MAX_ACU == 12
+    assert compute_wall_topup_acu(0) == 0
+    assert compute_wall_topup_acu(299.9) == 0
+    assert compute_wall_topup_acu(300) == 1
+    assert compute_wall_topup_acu(599) == 1
+    assert compute_wall_topup_acu(600) == 2
+    assert compute_wall_topup_acu(300 * 20) == 12  # capped
+    assert wall_topup_ledger_id("inv-x") == "inv-x#wall_topup"
+
+
+def test_wall_topup_increments_and_idempotent(isolated_db):
+    from runtime.db_lock import connect_write
+
+    with connect_write(isolated_db, purpose="test:wall") as con:
+        set_capacity(con, owner_user_id="owner-a", tier="starter")
+        record_investigation_start_acu(
+            con, owner_user_id="owner-a", investigation_id="inv-long"
+        )
+        assert get_used(con, "owner-a") == 1
+        r1 = record_investigation_wall_topup_acu(
+            con,
+            investigation_id="inv-long",
+            wall_seconds=900,  # 3 quanta
+        )
+        assert r1 is not None
+        assert r1.replayed is False
+        assert r1.acu_units == 3
+        assert get_used(con, "owner-a") == 4
+        r2 = record_investigation_wall_topup_acu(
+            con,
+            investigation_id="inv-long",
+            wall_seconds=900,
+        )
+        assert r2 is not None
+        assert r2.replayed is True
+        assert get_used(con, "owner-a") == 4
+
+
+def test_wall_topup_zero_under_quantum(isolated_db):
+    from runtime.db_lock import connect_write
+
+    with connect_write(isolated_db, purpose="test:wall0") as con:
+        set_capacity(con, owner_user_id="owner-a", tier="starter")
+        record_investigation_start_acu(
+            con, owner_user_id="owner-a", investigation_id="inv-short"
+        )
+        r = record_investigation_wall_topup_acu(
+            con, investigation_id="inv-short", wall_seconds=120
+        )
+        assert r is None
+        assert get_used(con, "owner-a") == 1
+
+
+def test_wall_topup_no_start_row(isolated_db):
+    from runtime.db_lock import connect_write
+
+    with connect_write(isolated_db, purpose="test:wall-none") as con:
+        set_capacity(con, owner_user_id="owner-a", tier="starter")
+        r = record_investigation_wall_topup_acu(
+            con, investigation_id="never-started", wall_seconds=600
+        )
+        assert r is None
+
+
+def get_used(con, owner):
+    from substrate.compute_capacity.store import get_capacity
+
+    return get_capacity(con, owner).used_compute_units
