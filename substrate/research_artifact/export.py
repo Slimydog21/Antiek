@@ -41,7 +41,7 @@ def export_research_artifact(
     # The legacy ResearchArtifact remains the human/editable source channel.
     # Add the projection engine's canonical, inert island so the same stored
     # artifact can be deterministically re-rendered without scraping HTML.
-    projection_model = _projection_model(body)
+    projection_model = research_projection_doc_model(body)
     html_text = render_html(body).replace(
         "</body>", f"{embed_island(projection_model)}\n</body>", 1
     )
@@ -86,7 +86,7 @@ def export_research_artifact(
     )
 
 
-def _projection_model(body: ResearchArtifactBody) -> dict[str, object]:
+def research_projection_doc_model(body: ResearchArtifactBody) -> dict[str, object]:
     """Lossless-enough presentation model plus explicit source provenance."""
     content: list[dict[str, object]] = []
 

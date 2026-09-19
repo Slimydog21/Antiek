@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type DragEvent } from "react";
 
 import {
+  API_BASE,
   exportResearchArtifact,
   getResearchArtifactBlocks,
   type ResearchArtifactBlock,
@@ -89,6 +90,15 @@ export default function ArtifactOutlineShelf({
           <LemonButton size="sm" disabled={busy} onClick={() => void onExport()}>
             Export research HTML
           </LemonButton>
+          <a
+            href={`${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact.html`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs underline decoration-dotted underline-offset-2 text-ink-mute hover:text-ink"
+            data-testid="research-artifact-view-html"
+          >
+            View HTML
+          </a>
         </div>
         {artifactStatus ? (
           <StyleWheel
@@ -112,6 +122,15 @@ export default function ArtifactOutlineShelf({
           <LemonButton size="sm" disabled={busy} onClick={() => void onExport()}>
             Export HTML
           </LemonButton>
+          <a
+            href={`${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact.html`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs underline decoration-dotted underline-offset-2 text-ink-mute hover:text-ink"
+            data-testid="research-artifact-view-html"
+          >
+            View HTML
+          </a>
           {exportPath ? (
             <span className="truncate font-mono text-[10px] text-ink-mute" title={exportPath}>
               {exportPath}

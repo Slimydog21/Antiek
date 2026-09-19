@@ -22,10 +22,10 @@
 | Thinking Partner | 96 | Surface E + SERVABLE + TalkToBook unify + Lego insight slotting (#this) |
 | Notebook | 92 | AutoNotebook + daily-loop (#3168) + outline→Write auto-import (from-investigation UI) |
 | TurboPuffer | 86 | #3135 reuse + TP library hybrid + /health dogfood; prod_default_mount still false |
-| HTML-native | 75 | Research artifact HTML + ArtifactOutlineShelf; reader HTML ingest incomplete |
+| HTML-native | 88 | Research GET artifact.html inline view + View HTML; synth .html inline; PDF ingest residual |
 | CLI / Herdr | 88 | Playbook+script refreshed 2026-09-19; Herdr w7 convention; --check smoke |
 
-**Composite (equal-weight mean of above) ≈ 93/100.** TP 96; TurboPuffer 86; Notebook 92; CLI/Herdr 88; flywheel prod true.
+**Composite (equal-weight mean of above) ≈ 94/100.** HTML-native 88; TP 96; TurboPuffer 86; Notebook 92; CLI/Herdr 88.
 
 ## Residuals blocking composite 100
 
@@ -43,7 +43,7 @@
 
 ## Highest-leverage next (after this PR)
 
-**Next gap toward 100:** HTML-native (~75) / BYOT (~78) / multi-turn TP — TurboPuffer residual is production_default_mount.
+**Next gap toward 100:** BYOT (~78) or multi-turn TP — HTML-native residual is PDF→HTML converter coverage.
 
 ## Leave-off
 

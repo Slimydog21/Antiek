@@ -50,7 +50,8 @@ def test_allowed_synthesis_200_gate_clean(monkeypatch):
     monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
     r = _client().get("/api/syntheses/s1/artifact.html")
     assert r.status_code == 200
-    assert "attachment" in r.headers["content-disposition"]
+    assert "inline" in r.headers["content-disposition"]
+    assert "attachment" not in r.headers["content-disposition"]
     assert "synthesis-s1.html" in r.headers["content-disposition"]
     assert_script_free(r.text)  # gate-clean served bytes
     assert "PUBLIC DOMAIN TEXT" in r.text  # servable embedded
