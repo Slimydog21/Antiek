@@ -77,7 +77,7 @@ MAX_ADAPT_CHARS: int = 1_000_000
 # inside a request handler.
 MAX_TREE_DEPTH: int = 24
 
-# Mirrors substrate/books/html_sanitizer.py:87 _DROP_WITH_CONTENT. The
+# Mirrors substrate/books/html_sanitizer.py:113 _DROP_WITH_CONTENT. The
 # sanitizer removes these subtrees wholesale, so in the normal path they
 # cannot reach us; repeating the set means a caller who hands this function
 # UNSANITIZED html still cannot get script or style text rendered as prose.
@@ -86,6 +86,33 @@ MAX_TREE_DEPTH: int = 24
 _DROP_SUBTREE: frozenset[str] = frozenset({
     "script", "style", "noscript", "template", "iframe",
     "object", "embed", "applet", "svg", "math", "head", "title",
+})
+
+# Every void element in the HTML spec, not just the three the sanitizer
+# ALLOWS (its VOID_TAGS is an allowlist subset — br/hr/img — because it only
+# ever serializes tags it kept). A tree builder needs the FULL set, because
+# the question here is not "may this tag survive" but "will a close tag ever
+# arrive for it". It will not, so a void element must never be pushed onto
+# either stack.
+#
+# Getting this wrong loses content silently, which is the one thing this
+# module exists to prevent, and it does so in two different ways:
+#
+#   - ``<embed>`` is void AND in the drop set. Pushed onto _drop_stack it is
+#     never popped, so every element after it in the document is suppressed
+#     to EOF — no placeholder, no island copy, no trace at all.
+#   - ``<input>``/``<meta>``/``<col>``/``<source>`` and the rest are void and
+#     NOT in the drop set. Pushed onto the element stack they swallow the
+#     whole remainder of the document as their children, which then collapses
+#     into one ``source:<tag>`` node of concatenated text: every block
+#     boundary after that point is gone.
+#
+# Neither is reachable through ``serve_reader_html`` (the sanitizer strips
+# both classes first), but this function is public and its contract above
+# promises an unsanitized caller a bounded, visible result.
+_VOID_ELEMENTS: frozenset[str] = VOID_TAGS | frozenset({
+    "area", "base", "col", "embed", "input", "link",
+    "meta", "param", "source", "track", "wbr",
 })
 
 # Wrappers that carry no meaning of their own: their children are the
@@ -198,12 +225,15 @@ class _TreeParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
         if tag in _DROP_SUBTREE:
-            self._drop_stack.append(tag)
+            # A void drop tag (``<embed>``) has no end tag, so suppressing on
+            # it would suppress to EOF. Drop the element, suppress nothing.
+            if tag not in _VOID_ELEMENTS:
+                self._drop_stack.append(tag)
             return
         if self._drop_stack:
             return
         el = self._open(tag, attrs)
-        if tag not in VOID_TAGS:
+        if tag not in _VOID_ELEMENTS:
             self._stack.append(el)
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:

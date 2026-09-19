@@ -322,3 +322,36 @@ def test_a_projection_that_fails_the_zero_script_gate_is_refused_not_served(
     assert resp.status_code == 500
     assert "zero-script gate" in resp.json()["detail"]
     assert "alert(1)" not in resp.text
+
+
+def test_the_content_hash_header_is_the_hash_of_the_bytes_served(
+    api_env, client, monkeypatch
+):
+    """X-Content-SHA256 is an integrity claim, so it has to be checkable.
+
+    The header exists so a caller can pin the projection it received — a
+    ``.antiek`` container signs the same bytes later, and a restyle is
+    supposed to be provably the same document under a different sheet. A
+    constant or a stale digest would satisfy every other assertion in this
+    file while making the header a decoration, so it is compared against the
+    body here, and across two different styles to show it tracks the bytes
+    rather than the document id.
+    """
+    import hashlib
+
+    _seed_document(api_env["db_path"])
+    _seed_sidecar(api_env["db_path"])
+    _as_owner(monkeypatch)
+
+    digests = {}
+    for style in ("academic-paper", None):
+        url = "/documents/doc-ingested/render" + (f"?style={style}" if style else "")
+        resp = client.get(url)
+        assert resp.status_code == 200, resp.text
+        expected = hashlib.sha256(resp.text.encode("utf-8")).hexdigest()
+        assert resp.headers["X-Content-SHA256"] == expected
+        digests[style] = expected
+
+    assert digests["academic-paper"] != digests[None], (
+        "two styles of the same document must not share a content hash"
+    )
