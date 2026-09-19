@@ -41,6 +41,11 @@ from pydantic import BaseModel, Field
 
 from orchestration.interview.orchestrator import ConsentRequired
 from runtime.db_lock import connect_read, connect_write
+
+# Reuse auth.py's throttle window rather than starting a second one: it
+# already carries the ``reset_auth_throttles()`` test seam, and sharing the
+# store means a test that clears throttles clears these too.
+from .auth import _client_ip, _throttled
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.speak import (
     biography,
@@ -500,8 +505,27 @@ async def open_public(project_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
+# Admission control for the one unauthenticated write door in this module.
+# Two buckets, because they defend different things:
+#
+#   per-IP   — stops one caller minting invites in a loop.
+#   global   — stops ANY volume of callers from monopolising the write lock.
+#
+# The global bucket is the load-bearing one. This handler takes
+# ``connect_write`` on a DuckDB the whole service shares under ``--workers 1``,
+# so sustained writes here do not merely add rows, they starve every other
+# writer — including the nightly backup and the corpus ingest. A per-IP limit
+# alone would not bound that, and in this topology it may not even partition:
+# uvicorn runs with proxy_headers on behind Caddy, but Caddy itself sits behind
+# a Cloudflare Tunnel, so the address it forwards can be the tunnel endpoint
+# rather than the end user. The global cap holds regardless of how client IPs
+# resolve.
+_OPEN_CONTRIBUTE_PER_IP_LIMIT = 5
+_OPEN_CONTRIBUTE_GLOBAL_LIMIT = 30
+
+
 @speak_router.post("/projects/{project_id}/open-contribute", status_code=201)
-async def open_contribute(project_id: str) -> dict:
+async def open_contribute(project_id: str, request: Request) -> dict:
     """Unauthenticated self-serve contribution door for will_be_public projects (G7).
 
     Mints an invite TOKEN (source, not an account) so a stranger on
@@ -509,7 +533,23 @@ async def open_contribute(project_id: str) -> dict:
     Private projects stay invite-only. Gated on ``ANTIEK_SPEAK_PUBLIC_ECOSYSTEM``.
     Cite: speak-private-public-spine · anti-ek-speak-deepblu-remap §public.
     Open in operator-auth middleware (POST path match).
+
+    Rate-limited: this is an anonymous door onto the single-writer database,
+    and ``GET /speak/feed`` publishes the ``project_id`` needed to reach it.
     """
+    if _throttled("speak:open-contribute:global", _OPEN_CONTRIBUTE_GLOBAL_LIMIT):
+        raise HTTPException(
+            status_code=429,
+            detail="open contribution is busy; retry shortly",
+        )
+    if _throttled(
+        f"speak:open-contribute:{_client_ip(request)}",
+        _OPEN_CONTRIBUTE_PER_IP_LIMIT,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail="too many open contribution requests; retry shortly",
+        )
     with _translate(), _write("speak/api:open_contribute") as con:
         inv = invitations.mint_open_contribution(con, project_id)
     return {
