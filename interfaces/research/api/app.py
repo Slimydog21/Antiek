@@ -2081,7 +2081,10 @@ def create_app(
                     app.state._flywheel_probed = True
                     app.state._flywheel_probe_started = False
 
-            asyncio.create_task(_flywheel_bg())
+            # Keep a reference on app.state: an unreferenced create_task can
+            # be GC'd mid-run, and the handle lets tests/shutdown await the
+            # probe deterministically instead of polling.
+            app.state._flywheel_probe_task = asyncio.create_task(_flywheel_bg())
         duckdb_health = app.state.duckdb_health
         registered_providers = {
             str(provider)
