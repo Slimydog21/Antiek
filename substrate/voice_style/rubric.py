@@ -17,6 +17,8 @@ passage scores 1.0; a heavily-slopped one scores 0.0.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import enum
 import re
 from dataclasses import dataclass
@@ -158,7 +160,8 @@ def _trailing_summary(text: str) -> tuple[bool, str]:
     return (False, "")
 
 
-_DETECTORS: tuple[tuple[ViolationKind, callable, float], ...] = (  # type: ignore[type-arg]
+Detector = Callable[[str], tuple[bool, str]]
+_DETECTORS: tuple[tuple[ViolationKind, Detector, float], ...] = (
     (ViolationKind.BULLET_ABUSE, _bullet_abuse, _WEIGHT_HEAVY),
     (ViolationKind.EM_DASH_OVERUSE, _em_dash_overuse, _WEIGHT_LIGHT),
     (ViolationKind.SLOP_BOILERPLATE, _slop_boilerplate, _WEIGHT_HEAVY),

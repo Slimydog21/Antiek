@@ -8,6 +8,8 @@ the DB.
 
 from __future__ import annotations
 
+from typing import Any
+
 from dataclasses import dataclass
 
 from substrate.dp_shuffler.epsilon_registry import EpsilonRegistry
@@ -42,7 +44,7 @@ class TrustCenterPayload:
     compliance_frameworks: tuple[str, ...]
     loop_3_unlock_status: dict[str, bool]
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> dict[str, Any]:
         return {
             "differential_privacy_epsilon_budgets": dict(
                 self.differential_privacy_epsilon_budgets,
@@ -91,7 +93,7 @@ def build_publication(
 def list_surface_descriptions(
     *,
     registry: EpsilonRegistry | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Enumerate registered surfaces in description form for the
     PrivacyDashboard — caller may include per-category descriptions
     that the dashboard renders alongside each ε budget."""

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import os
 import sqlite3
 import threading
@@ -196,7 +198,7 @@ def apply_defaults_from_registry(
     store: PreferenceStore,
     *,
     user_id: str,
-    registry,  # avoid circular import; substrate.dp_shuffler.EpsilonRegistry
+    registry: Any | None = None,  # avoid circular import; substrate.dp_shuffler.EpsilonRegistry
 ) -> int:
     """Seed a user's preferences from the registry's defaults.
 
@@ -207,6 +209,7 @@ def apply_defaults_from_registry(
 
     Returns the number of preferences seeded."""
     seeded = 0
+    assert registry is not None, "apply_defaults_from_registry requires a registry"
     for surface in registry.list_surfaces():
         existing = store.get(user_id=user_id, surface_name=surface.surface_name)
         if existing is not None:

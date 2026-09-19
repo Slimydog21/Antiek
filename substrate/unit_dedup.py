@@ -75,6 +75,8 @@ over this file is empty by construction).
 
 from __future__ import annotations
 
+from typing import Any
+
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -251,7 +253,7 @@ def find_near_duplicate(
     candidate_unit: CandidateUnit,
     existing_units: Sequence[ExistingUnit],
     *,
-    embedding_provider=None,
+    embedding_provider: Any | None = None,
 ) -> DuplicateMatch | None:
     """Return the first existing unit ``candidate_unit`` duplicates, or None.
 

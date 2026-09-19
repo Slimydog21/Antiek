@@ -40,6 +40,8 @@ Time + sleep are injectable so CI is deterministic and never sleeps for real.
 
 from __future__ import annotations
 
+from typing import Any
+
 import json
 import os
 import random
@@ -127,11 +129,11 @@ class _SourceState:
     @classmethod
     def from_dict(cls, d: Mapping[str, object]) -> _SourceState:
         return cls(
-            last_request_at=float(d.get("last_request_at", 0.0) or 0.0),
-            banned_until=float(d.get("banned_until", 0.0) or 0.0),
+            last_request_at=float(d.get("last_request_at") or 0.0),  # type: ignore[arg-type]
+            banned_until=float(d.get("banned_until") or 0.0),  # type: ignore[arg-type]
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "last_request_at": self.last_request_at,
             "banned_until": self.banned_until,
@@ -154,7 +156,7 @@ class _AllState:
                     sources[str(key)] = _SourceState.from_dict(val)
         return cls(sources=sources)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"sources": {k: v.to_dict() for k, v in self.sources.items()}}
 
 
