@@ -7,6 +7,8 @@ exercised lightly (it drives the mock harness) and marked slow.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from compounding.benchmark.pilot import (
@@ -16,7 +18,7 @@ from compounding.benchmark.pilot import (
 )
 
 
-def test_zero_cv_clamps_n_and_flags_degenerate():
+def test_zero_cv_clamps_n_and_flags_degenerate() -> None:
     """A zero-variance (mock-path) pilot clamps n to the minimum and says so in
     the derivation — the operator must not mistake it for a powered run."""
     p = propose_parameters({"token_cost_usd": 0.0}, cold_means={"token_cost_usd": 0.0})
@@ -26,7 +28,7 @@ def test_zero_cv_clamps_n_and_flags_degenerate():
     assert "zero-variance" in p.derivation or "CV is 0" in p.derivation
 
 
-def test_n_grows_with_cv():
+def test_n_grows_with_cv() -> None:
     """Higher observed CV demands more runs for the same target half-width."""
     low = propose_parameters({"token_cost_usd": 0.10}, cold_means={"token_cost_usd": 0.50})
     high = propose_parameters({"token_cost_usd": 0.40}, cold_means={"token_cost_usd": 0.50})
@@ -35,7 +37,7 @@ def test_n_grows_with_cv():
     assert MIN_PROPOSED_N <= high.n <= MAX_PROPOSED_N
 
 
-def test_floor_outside_noise_band_and_tolerance_tighter():
+def test_floor_outside_noise_band_and_tolerance_tighter() -> None:
     """The material floor sits strictly outside the cold-arm noise band (2·CV·
     cold_mean) and the control tolerance is tighter than the floor (§2)."""
     p = propose_parameters({"token_cost_usd": 0.20}, cold_means={"token_cost_usd": 1.00})
@@ -45,7 +47,7 @@ def test_floor_outside_noise_band_and_tolerance_tighter():
     assert abs(p.control_tolerance - 0.20) < 1e-9
 
 
-def test_n_derivation_formula():
+def test_n_derivation_formula() -> None:
     """n = ceil((z·CV/target)²) with z=1.96, target=0.10 → for CV=0.20,
     (1.96·0.2/0.1)² = 3.92² ≈ 15.37 → 16."""
     p = propose_parameters({"token_cost_usd": 0.20}, cold_means={"token_cost_usd": 1.00})
@@ -53,7 +55,7 @@ def test_n_derivation_formula():
 
 
 @pytest.mark.slow
-def test_run_pilot_drives_harness(tmp_path):
+def test_run_pilot_drives_harness(tmp_path: Path) -> None:
     """The pilot RUN drives the real mock harness and reports CV. Slow (multiple
     arm runs); excluded from the fast CI suite via the ``slow`` marker."""
     import os
