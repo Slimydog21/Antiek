@@ -251,9 +251,20 @@ def _collapse(text: str) -> str:
 
 def _raw_text(node: _El | str) -> str:
     """Every character of text under ``node``, verbatim. Used for ``<pre>``,
-    where whitespace is content, and for an unmapped subtree's island copy."""
+    where whitespace is content, and for an unmapped subtree's island copy.
+
+    A ``<br>`` becomes a newline rather than nothing. Inside ``<pre>`` the
+    break IS the line, and a URL ingest stores the page's own serialized DOM
+    (``acquisition/urls/extract.py:205``), so a code block written with
+    ``<br>`` instead of literal newlines is ordinary web input. Returning
+    nothing for it ran the lines together with no trace on the surface and
+    none in the island either — the silent loss this module exists to
+    prevent. Elsewhere the newline is collapsed to a space by ``_collapse``,
+    which is what a break means in running text anyway."""
     if isinstance(node, str):
         return node
+    if node.tag == "br":
+        return "\n"
     return "".join(_raw_text(child) for child in node.children)
 
 

@@ -291,3 +291,34 @@ def test_public_caller_is_refused_the_personal_reading_body(api_env, client):
     resp = client.get("/documents/doc-ingested/render")
     assert resp.status_code == 403
     assert resp.json()["detail"] == "rights_denied"
+
+
+def test_a_projection_that_fails_the_zero_script_gate_is_refused_not_served(
+    api_env, client, monkeypatch
+):
+    """The route's gate call has to be able to red, or it is decoration.
+
+    Nothing the adapter can produce today trips the gate — that is the point
+    of the adapter, and the reason this assertion needs an injected
+    violation rather than a hostile document. What is under test is the
+    route: given an artifact carrying a script, does it refuse, or does it
+    serve the bytes and let the gate's exception be swallowed? Deleting the
+    ``assert_script_free`` call leaves every other test in this file green,
+    so this is the only thing standing between a future refactor and a
+    projection route that ships executable HTML.
+    """
+    from interfaces.research.api import style_routes
+
+    _seed_document(api_env["db_path"])
+    _seed_sidecar(api_env["db_path"])
+    _as_owner(monkeypatch)
+
+    monkeypatch.setattr(
+        style_routes,
+        "render",
+        lambda *args, **kwargs: "<html><body><script>alert(1)</script></body></html>",
+    )
+    resp = client.get("/documents/doc-ingested/render")
+    assert resp.status_code == 500
+    assert "zero-script gate" in resp.json()["detail"]
+    assert "alert(1)" not in resp.text
