@@ -12,6 +12,13 @@ with:
   plus `ANTIEK_DISABLE_EVENT_PROJECTOR_RECOVERY=1` so a 2GB event log does not
   block boot.
 
+- **Shared TurboPuffer shadow** — `ANTIEK_TURBOPUFFER_MANIFEST_DIR=$HOME/.antiek/turbopuffer-shadow`
+  so `active.json` / hybrid_ready survive tip-sync worktree swaps (same
+  durability class as DuckDB). See `docs/decisions/mac-mini-dogfood-durable-tpuf-2026-09-19.md`.
+- **Flywheel seed** — `~/.antiek/flywheel-seed/*.jsonl` (real `knowledge.reused`
+  trajectories only). Copied into isolated events when that dir has no reuse
+  evidence yet — keeps `/health` flywheel_ready without scanning the 2GB log.
+
 ## Start
 
 ```bash
