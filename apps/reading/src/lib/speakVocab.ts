@@ -105,6 +105,13 @@ export const GATE_PHRASES = {
       "Open public contributions arrive after the ecosystem review (G7); for " +
       "now, contributions come through your invites.",
   },
+  /** Synquery expert network — partnership gated until operator enable post-PMF. */
+  synquery: {
+    label: "Expert network (Synquery)",
+    whenGated:
+      "Expert-network booking (Synquery) opens only after creation-surface " +
+      "PMF and an operator partnership flip — not a live booking surface today.",
+  },
 } as const;
 
 export type GatePhraseKey = keyof typeof GATE_PHRASES;

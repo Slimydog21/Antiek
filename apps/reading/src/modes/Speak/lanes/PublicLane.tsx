@@ -130,6 +130,7 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
   const [g7Live, setG7Live] = useState(false);
   const [publishingLive, setPublishingLive] = useState(false);
   const [disbursementLive, setDisbursementLive] = useState(false);
+  const [synqueryLive, setSynqueryLive] = useState(false);
   const probeId = feed.length > 0 ? feed[0].id : null;
   useEffect(() => {
     let live = true;
@@ -139,12 +140,14 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
         setG7Live(h.openContributionLive);
         setPublishingLive(h.publicPublishingLive);
         setDisbursementLive(h.disbursementLive);
+        setSynqueryLive(h.synqueryLive);
       })
       .catch(() => {
         if (!live) return;
         setG7Live(false);
         setPublishingLive(false);
         setDisbursementLive(false);
+        setSynqueryLive(false);
       });
     return () => {
       live = false;
@@ -353,6 +356,14 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
             {payoutsOpen || (visitorMode && disbursementLive)
               ? PUBLIC_LANE_LABELS.payoutsOpen
               : GATE_PHRASES.disbursement.whenGated}
+          </li>
+          <li
+            className="font-serif text-[13px] text-ink dark:text-bright"
+            data-testid="public-lane-synquery-gate"
+          >
+            {synqueryLive
+              ? "Expert-network booking (Synquery) is live for this operator."
+              : GATE_PHRASES.synquery.whenGated}
           </li>
         </ol>
         <p className="mt-2 font-serif text-[12px] italic text-ink-mute dark:text-moonlight">

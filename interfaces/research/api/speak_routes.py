@@ -807,6 +807,9 @@ async def public_opportunities(
 
     pub = _gs.public_publishing_allowed()
     disb = _gs.disbursement_allowed()
+    from substrate.speak.g2_synquery_honesty import g2_synquery_honesty
+
+    g2sq = g2_synquery_honesty()
     return {
         "honesty": {
             "ranking": speak_pushes.RANKING_HONESTY_ID,
@@ -819,6 +822,10 @@ async def public_opportunities(
             "public_publishing": "live" if pub.allowed else "gated_G2_G3",
             "disbursement": "live" if disb.allowed else "gated_G2_G3_accrue_escrow_only",
             "money_model": "accrue_escrow_now_disburse_after_legal_review",
+            "paid_today": False,
+            "g2_counsel_gated": g2sq["g2_counsel_gated"],
+            "synquery_partnership": g2sq["synquery_partnership"],
+            "synquery_gated": g2sq["synquery_gated"],
         },
         "public_opportunities": [
             {

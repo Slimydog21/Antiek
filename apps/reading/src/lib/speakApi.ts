@@ -242,6 +242,11 @@ export interface SpeakPublicHonesty {
   publicPublishingLive: boolean;
   disbursementLive: boolean;
   moneyModel: string;
+  /** G2 counsel still gates publishing/payout when true (deny-by-default). */
+  g2CounselGated: boolean;
+  /** Synquery partnership live only when operator enables flag post-PMF. */
+  synqueryLive: boolean;
+  paidToday: boolean;
 }
 
 export async function speakPublicHonesty(): Promise<SpeakPublicHonesty> {
@@ -250,6 +255,9 @@ export async function speakPublicHonesty(): Promise<SpeakPublicHonesty> {
     publicPublishingLive: false,
     disbursementLive: false,
     moneyModel: "accrue_escrow_now_disburse_after_legal_review",
+    g2CounselGated: true,
+    synqueryLive: false,
+    paidToday: false,
   };
   try {
     const resp = await apiFetch("/speak/opportunities");
@@ -263,6 +271,9 @@ export async function speakPublicHonesty(): Promise<SpeakPublicHonesty> {
       moneyModel: String(
         honesty.money_model ?? "accrue_escrow_now_disburse_after_legal_review",
       ),
+      g2CounselGated: honesty.g2_counsel_gated !== false,
+      synqueryLive: honesty.synquery_partnership === "live",
+      paidToday: honesty.paid_today === true,
     };
   } catch {
     return empty;
