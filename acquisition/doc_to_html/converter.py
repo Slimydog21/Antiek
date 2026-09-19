@@ -1,7 +1,10 @@
 """Document-to-canonical-HTML ingestion pipeline (Antiek doc→HTML S-D2H).
 
 Converts documents to sanitized canonical HTML for the Antiek reader surface.
-Uses the anydoc CLI for conversion with docling as fallback for scanned PDFs.
+Uses the anydoc CLI for conversion, then docling, then in-process pypdf
+(``acquisition.books.reader.read_pdf``) for text-layer PDFs when CLIs fail
+or return empty markdown. Dual structure: DuckDB SoT + sanitized reader-HTML
+sidecar via ``store_reader_html``.
 
 CRITICAL: Storage goes ONLY through store_reader_html, which sanitizes INSIDE
 the write and stamps SANITIZER_VERSION in the same INSERT. Never store raw
@@ -88,7 +91,15 @@ class FairUseError(ValueError):
 
 
 class ConversionError(RuntimeError):
-    """Raised when document conversion fails (both anydoc and docling)."""
+    """Raised when document conversion fails (anydoc, docling, and pypdf)."""
+
+
+def _nonempty_markdown(text: str | None) -> str | None:
+    """Treat whitespace-only CLI output as failure so PDF fallback can run."""
+    if text is None:
+        return None
+    stripped = text.strip()
+    return stripped if stripped else None
 
 
 def _resolve_bin(env_key: str, fallback: str) -> str:
@@ -103,40 +114,100 @@ def convert_to_markdown(
     timeout: float = CONVERSION_TIMEOUT_SECONDS,
     max_output_bytes: int = MAX_CONVERTED_MARKDOWN_BYTES,
 ) -> str:
-    """Convert a document to GitHub-Flavored Markdown using anydoc CLI.
+    """Convert a document to GitHub-Flavored Markdown.
 
-    Falls back to docling when anydoc exits non-zero (e.g. scanned PDFs).
-
-    Args:
-        asset_path: Path to the document file.
-        fmt: Optional format override for anydoc (--format flag).
-        timeout: Subprocess timeout in seconds.
-        max_output_bytes: Maximum output size in bytes.
+    Order: anydoc CLI → docling CLI → in-process pypdf (PDF / fmt=pdf only).
+    Empty/whitespace CLI stdout is treated as failure (not success).
 
     Returns:
         GFM markdown string.
 
     Raises:
-        ConversionError: If both anydoc and docling fail.
+        ConversionError: If all applicable converters fail.
         FileNotFoundError: If asset_path does not exist.
+    """
+    md, _engine = convert_to_markdown_with_engine(
+        asset_path,
+        fmt=fmt,
+        timeout=timeout,
+        max_output_bytes=max_output_bytes,
+    )
+    return md
+
+
+def convert_to_markdown_with_engine(
+    asset_path: str | Path,
+    *,
+    fmt: str | None = None,
+    timeout: float = CONVERSION_TIMEOUT_SECONDS,
+    max_output_bytes: int = MAX_CONVERTED_MARKDOWN_BYTES,
+) -> tuple[str, str]:
+    """Like ``convert_to_markdown`` but also returns the engine name used.
+
+    Engine is one of: ``anydoc`` | ``docling`` | ``pypdf``.
     """
     path = Path(asset_path)
     if not path.exists():
         raise FileNotFoundError(f"asset not found: {path}")
 
-    # Try anydoc first
-    md = _run_anydoc(path, fmt=fmt, timeout=timeout, max_output=max_output_bytes)
+    md = _nonempty_markdown(
+        _run_anydoc(path, fmt=fmt, timeout=timeout, max_output=max_output_bytes)
+    )
     if md is not None:
-        return md
+        return md, "anydoc"
 
-    # Fallback to docling
-    md = _run_docling(path, timeout=timeout, max_output=max_output_bytes)
+    md = _nonempty_markdown(
+        _run_docling(path, timeout=timeout, max_output=max_output_bytes)
+    )
     if md is not None:
-        return md
+        return md, "docling"
+
+    if _looks_like_pdf(path, fmt=fmt):
+        md = _nonempty_markdown(_run_pypdf(path, max_output=max_output_bytes))
+        if md is not None:
+            return md, "pypdf"
 
     raise ConversionError(
-        f"conversion failed for {path.name}: both anydoc and docling failed"
+        f"conversion failed for {path.name}: anydoc, docling"
+        + (", and pypdf" if _looks_like_pdf(path, fmt=fmt) else "")
+        + " failed (or returned empty text)"
     )
+
+
+def _looks_like_pdf(path: Path, *, fmt: str | None) -> bool:
+    if (fmt or "").lower() == "pdf":
+        return True
+    return path.suffix.lower() == ".pdf"
+
+
+def _run_pypdf(path: Path, *, max_output: int) -> str | None:
+    """In-process text-layer PDF extraction via acquisition.books.reader.
+
+    Covers the common upload path when anydoc/docling are missing, timed out,
+    or returned empty markdown. Scanned/image-only PDFs still fail (no OCR here).
+    """
+    try:
+        from acquisition.books.reader import read_pdf
+    except ImportError:
+        logger.warning("pypdf reader unavailable for PDF fallback")
+        return None
+    try:
+        result = read_pdf(str(path), promote_headings=True)
+    except Exception as exc:
+        logger.debug("pypdf fallback failed for %s: %s", path.name, exc)
+        return None
+    if result.word_count <= 0 or not (result.markdown or "").strip():
+        logger.debug(
+            "pypdf extracted no text for %s (pages=%s words=%s)",
+            path.name,
+            result.page_count,
+            result.word_count,
+        )
+        return None
+    output = result.markdown
+    if len(output.encode("utf-8")) > max_output:
+        output = output.encode("utf-8")[:max_output].decode("utf-8", errors="ignore")
+    return output
 
 
 def _run_anydoc(
@@ -284,7 +355,7 @@ def ingest_asset(
     Pipeline:
     1. Validate source (http(s) URL, uploaded file, or local path)
     2. Check fair-use gate
-    3. Convert to markdown (anydoc → docling fallback)
+    3. Convert to markdown (anydoc → docling → pypdf for PDFs)
     4. Render canonical HTML (markdown_to_safe_html → sanitize_book_html)
     5. Insert document + store HTML sidecar
     6. Write memory item (best-effort)
@@ -323,25 +394,35 @@ def ingest_asset(
     file_bytes = path.read_bytes()
     document_id = _doc_id_for_asset(source_uri, file_bytes)
 
-    # Convert to markdown
-    md = convert_to_markdown(path, fmt=kind)
+    # Convert to markdown (anydoc → docling → pypdf for PDFs)
+    md, converter_engine = convert_to_markdown_with_engine(path, fmt=kind)
+    if not md.strip():
+        raise ConversionError(
+            f"conversion produced no text for {path.name} (engine={converter_engine})"
+        )
 
     # Render canonical HTML
     # markdown_to_safe_html is escape-first (safe input to the sanitizer)
     safe_html = markdown_to_safe_html(md)
     # sanitize_book_html applies the allowlist sanitizer (the trust floor)
     sanitized_html = sanitize_book_html(safe_html)
+    if not sanitized_html.strip():
+        raise ConversionError(
+            f"sanitized HTML empty for {path.name} (engine={converter_engine})"
+        )
 
     # Build metadata (server-controlled only; strip trust markers)
     metadata = strip_trust_markers({
         "source": "doc_ingest",
         "asset_kind": kind,
         "source_uri": source_uri,
+        "converter_engine": converter_engine,
         "provenance": {
             "fair_use_class": provenance["fair_use_class"],
             "source_url": provenance.get("source_url", source_uri),
             "license_note": provenance.get("license_note"),
             "fetched_at": provenance["fetched_at"],
+            "converter_engine": converter_engine,
         },
     })
 
@@ -426,5 +507,6 @@ __all__ = [
     "FairUseError",
     "MAX_CONVERTED_MARKDOWN_BYTES",
     "convert_to_markdown",
+    "convert_to_markdown_with_engine",
     "ingest_asset",
 ]

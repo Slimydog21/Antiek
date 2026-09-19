@@ -2,7 +2,7 @@
 
 Converts documents (PDF, DOCX, EPUB, PPTX, XLSX, CSV, ODT, RTF, HTML, MD,
 TXT) to sanitized canonical HTML for the Antiek reader surface. Uses the
-anydoc CLI for conversion with docling as fallback for scanned PDFs.
+anydoc then docling then in-process pypdf for reader-HTML sidecars.
 """
 
 from .converter import (
@@ -12,6 +12,7 @@ from .converter import (
     ConversionError,
     FairUseError,
     convert_to_markdown,
+    convert_to_markdown_with_engine,
     ingest_asset,
 )
 
@@ -22,5 +23,6 @@ __all__ = [
     "DOCLING_BIN",
     "FairUseError",
     "convert_to_markdown",
+    "convert_to_markdown_with_engine",
     "ingest_asset",
 ]
