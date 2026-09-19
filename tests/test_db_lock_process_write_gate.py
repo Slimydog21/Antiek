@@ -28,9 +28,8 @@ def test_second_writer_times_out_while_first_holds_in_process():
     t.start()
     assert held.wait(timeout=5)
     t0 = time.monotonic()
-    with pytest.raises(WriteLockTimeout):
-        with connect_write(db, purpose="test:second", timeout_s=1.0):
-            pass
+    with pytest.raises(WriteLockTimeout), connect_write(db, purpose="test:second", timeout_s=1.0):
+        pass
     elapsed = time.monotonic() - t0
     release.set()
     t.join(timeout=5)

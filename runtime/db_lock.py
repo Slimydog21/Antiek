@@ -637,7 +637,7 @@ def _connect_write_after_process_gate(
     poll_interval_s: float = 0.25,
     purpose: str = "",
     close_log_max_wait_s: float = 0.25,
-) -> "LockedConnection":
+) -> LockedConnection:
     # Fast path: reuse parked in-process writer (skips ~6.8s duckdb.connect).
     warm = _take_warm_slot(db_path)
     if warm is not None:
@@ -1121,10 +1121,8 @@ class FlockWriteCoordinator:
                         )
                     time.sleep(0.1)
         except Exception:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(fd)
-            except OSError:
-                pass
             raise
         try:
             os.ftruncate(fd, 0)

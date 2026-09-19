@@ -142,9 +142,9 @@ def test_recover_emits_investigation_failed(tmp_path: Path, monkeypatch) -> None
 
 
 def test_decomposer_dispatch_catches_generic_exception(monkeypatch) -> None:
+    import interfaces.research.api.research_owner_dispatch as rod
     from interfaces.research.api import decomposer as dec
     from substrate.schemas import Event
-    import interfaces.research.api.research_owner_dispatch as rod
 
     class Boom(RuntimeError):
         pass

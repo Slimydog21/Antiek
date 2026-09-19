@@ -86,7 +86,7 @@ def test_reping_email_sent_when_env_gate_on(client, monkeypatch):
     assert body["email_provider"] == "mock"
     assert len(client._mock_mail.sent) == 1
     mail = client._mock_mail.sent[0].email
-    assert "aunt@x.com" == mail.to
+    assert mail.to == "aunt@x.com"
     assert f"/speak/invite/{iv['token']}" in mail.text_body or iv["token"] in mail.text_body
     assert "antiek.ai/speak/invite" in mail.text_body
 

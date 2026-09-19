@@ -21,11 +21,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from substrate.event_log import emit_typed
 from substrate.event_log.events import (
     default_events_dir,
     iter_physical_events,
 )
-from substrate.event_log import emit_typed
 from substrate.schemas.events import InvestigationFailedPayload
 
 # Role request → phase number (Loop One).
@@ -142,14 +142,9 @@ def find_stranded_investigations(
             continue
         if last_action == "dispatch.call":
             pl = last.get("payload") or {}
-            if isinstance(pl, dict) and pl.get("finish_reason") not in (
-                "error",
-                "length",
-                None,
-            ):
-                # Successful in-flight dispatch — leave alone.
-                if pl.get("finish_reason") in ("stop", "tool_use"):
-                    continue
+            # Successful in-flight dispatch — leave alone.
+            if isinstance(pl, dict) and pl.get("finish_reason") in ("stop", "tool_use"):
+                continue
         phase = _REQUEST_PHASE.get(pending, 1)
         found.append(
             StrandedInvestigation(

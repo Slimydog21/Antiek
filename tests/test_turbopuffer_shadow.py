@@ -293,7 +293,6 @@ def test_max_rows_env_bounds_rebuild(graph, tmp_path, monkeypatch):
 
 def test_cli_status_action(graph, tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("ANTIEK_TURBOPUFFER_SERVABLE", "1")
-    fake = FakeNamespace()
     # status does not need network; open with key via env
     monkeypatch.setenv("TURBOPUFFER_API_KEY", "x")
     assert main(["status", "--db", graph]) == 0

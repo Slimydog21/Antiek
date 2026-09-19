@@ -16,10 +16,10 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from services.html_projection.context import Provenance, RenderContext  # noqa: E402
 from services.html_projection.gate import ScriptViolation, assert_script_free  # noqa: E402
 from services.html_projection.renderer import render  # noqa: E402
+from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
     build_body,
     export_research_artifact,
@@ -137,7 +137,7 @@ async def post_import_notes(investigation_id: str, body: ImportNotesIn) -> Impor
     response_class=HTMLResponse,
     summary="HTML-native research outcome view (script-free projection)",
 )
-async def get_artifact_html(investigation_id: str, request: Request) -> Response:
+async def get_artifact_html(investigation_id: str, request: Request) -> HTMLResponse:
     """Serve Profile B research findings as a script-free HTML projection.
 
     DuckDB/graph remains source of truth; this is a Lemon/HTML projection for

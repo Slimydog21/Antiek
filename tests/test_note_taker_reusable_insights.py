@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import duckdb
+
 from processing.embedding import default_embedding_provider
 from runtime.db_lock import connect_write
 from substrate.context_pack.knowledge_reuse import (
@@ -25,8 +27,6 @@ from substrate.schemas.events import (
     EvidenceRetrieveDeliveredPayload,
     NoteEmergedPayload,
 )
-import duckdb
-
 
 DOC_ID = "doc-book-test"
 NOTE_TEXT = (

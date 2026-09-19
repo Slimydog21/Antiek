@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 
 import duckdb
-import pytest
 
 import runtime.db_lock as db_lock
 

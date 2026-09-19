@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from benchmarks.retrieval_bench import HashEmbedding, seed_graph

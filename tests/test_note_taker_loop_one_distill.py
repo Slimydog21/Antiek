@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-
-import pytest
 
 from roles.note_taker.distill_query import distillation_for
 from roles.note_taker.replay import QUALIFYING_ACTION_TYPES, DurableNoteTakerReplay
