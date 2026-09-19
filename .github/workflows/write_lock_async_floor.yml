@@ -28,24 +28,37 @@ name: write-lock-async-floor
 on:
   pull_request:
     paths:
-      - 'interfaces/**/*.py'
-      - 'substrate/**/*.py'
-      - 'runtime/**/*.py'
-      - 'orchestration/**/*.py'
-      - 'roles/**/*.py'
+      # One line per directory in SCOPE_DIRS below. A directory that enforce
+      # scans but this filter omits is a blind spot: the gate simply does not
+      # run on the PR that introduces the violation there.
       - 'acquisition/**/*.py'
       - 'compounding/**/*.py'
-      - 'tools/lints/no_blocking_write_in_async.py'
-      - 'tools/lints/cli_with_baseline.py'
+      - 'interfaces/**/*.py'
+      - 'middleware/**/*.py'
+      - 'orchestration/**/*.py'
+      - 'processing/**/*.py'
+      - 'roles/**/*.py'
+      - 'runtime/**/*.py'
+      - 'services/**/*.py'
+      - 'substrate/**/*.py'
+      - 'tools/**/*.py'
       - 'tools/lints/baselines/no_blocking_write_in_async.json'
       - 'tests/test_no_blocking_write_in_async.py'
       - '.github/workflows/write_lock_async_floor.yml'
   push:
     branches: [main]
     paths:
+      - 'acquisition/**/*.py'
+      - 'compounding/**/*.py'
       - 'interfaces/**/*.py'
+      - 'middleware/**/*.py'
+      - 'orchestration/**/*.py'
+      - 'processing/**/*.py'
+      - 'roles/**/*.py'
+      - 'runtime/**/*.py'
+      - 'services/**/*.py'
       - 'substrate/**/*.py'
-      - 'tools/lints/no_blocking_write_in_async.py'
+      - 'tools/**/*.py'
       - 'tools/lints/baselines/no_blocking_write_in_async.json'
 
 jobs:
