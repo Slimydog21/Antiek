@@ -53,7 +53,7 @@ def _ext_of(filename: str | None, content_type: str | None) -> str:
 
 
 def extract_text(
-    data, *, filename: str | None = None, content_type: str | None = None,
+    data: bytes | str, *, filename: str | None = None, content_type: str | None = None,
 ) -> ExtractionResult:
     """Extract text from ``data`` (bytes or str). Dispatches on extension /
     content-type. Never raises on a bad file — returns ``ok=False``."""
@@ -78,7 +78,7 @@ def extract_text(
     return ExtractionResult(ok=False, reason=f"unsupported file type: .{ext}")
 
 
-def _decode(data, *, kind: str, extractor: str) -> ExtractionResult:
+def _decode(data: bytes | str, *, kind: str, extractor: str) -> ExtractionResult:
     if isinstance(data, str):
         return ExtractionResult(ok=True, text=data, kind=kind, extractor=extractor)
     try:
@@ -91,7 +91,7 @@ def _decode(data, *, kind: str, extractor: str) -> ExtractionResult:
             return ExtractionResult(ok=False, reason="undecodable bytes (broken encoding)")
 
 
-def _extract_html(data) -> ExtractionResult:
+def _extract_html(data: bytes | str) -> ExtractionResult:
     raw = data if isinstance(data, str) else data.decode("utf-8", errors="replace")
     try:
         import html2text
@@ -107,7 +107,7 @@ def _extract_html(data) -> ExtractionResult:
             return ExtractionResult(ok=False, reason="no HTML extractor (html2text/bs4) available")
 
 
-def _extract_pdf(data) -> ExtractionResult:
+def _extract_pdf(data: bytes | str) -> ExtractionResult:
     import io
     try:
         import pypdf

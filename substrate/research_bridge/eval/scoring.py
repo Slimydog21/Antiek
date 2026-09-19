@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .labels import LabelledPaste
 
 SemanticJudge = Callable[[str, str], bool]
 
@@ -73,9 +77,9 @@ def _safe_div(num: int, denom: int) -> float:
 
 
 def score_against_labels(
-    labelled_pastes,  # Iterable[LabelledPaste]
+    labelled_pastes: Iterable["LabelledPaste"],
     *,
-    extracted_for_doc,  # Callable[[str], tuple[list[str], list[str]]]
+    extracted_for_doc: Callable[[str], tuple[list[str], list[str]]],
     judge: SemanticJudge,
 ) -> EvalReport:
     rows: list[EvalReportRow] = []

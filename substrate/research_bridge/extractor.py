@@ -19,17 +19,22 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 try:
-    from ...runtime.db_lock import LockedConnection
+    from ...runtime.db_lock import LockedConnection  # type: ignore[import-not-found]
     from ..constants import SYSTEM_INVESTIGATION_ID
-    from ..graph.ops import content_addressed_id, insert_node, new_random_id
+    from ..graph.ops import (
+        content_addressed_id,
+        insert_node,
+        new_random_id,
+    )
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
-    from substrate.constants import SYSTEM_INVESTIGATION_ID  # type: ignore[no-redef]
-    from substrate.graph.ops import (  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
+    from substrate.constants import SYSTEM_INVESTIGATION_ID
+    from substrate.graph.ops import (
         insert_node,
         new_random_id,
     )
@@ -118,7 +123,7 @@ def render_prompt(
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 
 
-def _extract_json_object(text: str) -> dict:
+def _extract_json_object(text: str) -> dict[str, Any]:
     text = text.strip()
     try:
         obj = json.loads(text)
@@ -147,7 +152,7 @@ def _extract_json_object(text: str) -> dict:
 
 
 def _validate_items(
-    raw_items: list,
+    raw_items: list[Any],
     *,
     raw_text: str,
     confidence_floor: float,
@@ -234,7 +239,7 @@ def _promote_insight_to_node(
         return None
 
 
-def _fetch_paste_row(con: LockedConnection, document_id: str) -> dict | None:
+def _fetch_paste_row(con: LockedConnection, document_id: str) -> dict[str, Any] | None:
     row = con.execute(
         """
         SELECT rp.document_id, rp.source, rp.raw_sha256, d.raw_text
@@ -601,7 +606,9 @@ class StoredItem:
     model_id: str
 
 
-def list_insights(con, *, document_id: str, version: int | None = None) -> list[StoredItem]:
+def list_insights(
+    con: LockedConnection, *, document_id: str, version: int | None = None,
+) -> list[StoredItem]:
     if version is None:
         rows = con.execute(
             "SELECT insight_id, document_id, summary, quote, "
@@ -633,7 +640,7 @@ def list_insights(con, *, document_id: str, version: int | None = None) -> list[
 
 
 def list_open_questions(
-    con, *, document_id: str, version: int | None = None
+    con: LockedConnection, *, document_id: str, version: int | None = None
 ) -> list[StoredItem]:
     if version is None:
         rows = con.execute(

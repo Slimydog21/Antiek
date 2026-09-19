@@ -30,7 +30,10 @@ from dataclasses import dataclass
 from typing import Any
 
 try:
-    from ...runtime.db_lock import LockedConnection, connect_write
+    from ...runtime.db_lock import (  # type: ignore[import-not-found]
+        LockedConnection,
+        connect_write,
+    )
     from ..graph.insight_question import graph_db_path
     from ..graph.ops import content_addressed_id, insert_chunk, insert_document
     from .detect_external import detect_external_research
@@ -39,21 +42,19 @@ try:
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection, connect_write  # type: ignore[no-redef]
-    from substrate.graph.insight_question import graph_db_path  # type: ignore[no-redef]
-    from substrate.graph.ops import (  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection, connect_write
+    from substrate.graph.insight_question import graph_db_path
+    from substrate.graph.ops import (
         content_addressed_id,
         insert_chunk,
         insert_document,
     )
-    from substrate.research_bridge.detect_external import (
-        detect_external_research,  # type: ignore[no-redef]
-    )
-    from substrate.research_bridge.extractors import (  # type: ignore[no-redef]
+    from substrate.research_bridge.detect_external import detect_external_research
+    from substrate.research_bridge.extractors import (
         ExtractionResult,
         extract_text,
     )
-    from substrate.research_bridge.ingest import (  # type: ignore[no-redef]
+    from substrate.research_bridge.ingest import (
         CHUNK_TARGET_CHARS,
         _chunk_paragraphs,
         _split_paragraphs,
@@ -80,7 +81,7 @@ class FileIngestResult:
     vendor: str
     extractor: str
     degraded: bool
-    chunk_ids: tuple
+    chunk_ids: tuple[str, ...]
     text: str
     was_new: bool
 
@@ -88,7 +89,7 @@ class FileIngestResult:
 def ingest_file(
     con: LockedConnection,
     *,
-    data,
+    data: bytes | str,
     filename: str | None = None,
     content_type: str | None = None,
     investigation_id: str | None = None,

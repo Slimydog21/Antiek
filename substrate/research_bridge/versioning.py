@@ -19,18 +19,23 @@ import json
 import os
 import sys
 from dataclasses import dataclass
+from typing import Any, cast
 
 try:
-    from ...runtime.db_lock import LockedConnection, connect_read, connect_write
+    from ...runtime.db_lock import (  # type: ignore[import-not-found]
+        LockedConnection,
+        connect_read,
+        connect_write,
+    )
     from ..graph.insight_question import graph_db_path
     from ..graph.ops import content_addressed_id, insert_document
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import (  # type: ignore[no-redef]
+    from runtime.db_lock import (
         LockedConnection,
     )
-    from substrate.graph.ops import content_addressed_id, insert_document  # type: ignore[no-redef]
+    from substrate.graph.ops import content_addressed_id, insert_document
 
 
 @dataclass(frozen=True)
@@ -40,19 +45,22 @@ class DocumentVersion:
     parent_document_id: str | None
 
 
-def _doc(con, document_id: str):
-    return con.execute(
+def _doc(con: LockedConnection, document_id: str) -> tuple[Any, ...] | None:
+    row = con.execute(
         "SELECT document_type, source_tier, source_uri, title, raw_text, "
         "investigation_id, ip_holder_id, content_class, metadata "
         "FROM documents WHERE document_id = ?", [document_id],
     ).fetchone()
+    # duckdb's fetchone() is typed Any; the SELECT fixes the 9-column tuple.
+    return None if row is None else cast(tuple[Any, ...], row)
 
 
-def _meta(raw) -> dict:
+def _meta(raw: str | None) -> dict[Any, Any]:
     if not raw:
         return {}
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
     except (TypeError, ValueError):
         return {}
 
@@ -96,7 +104,9 @@ def create_document_version(
     return new_id
 
 
-def document_versions(con, root_or_any_id: str) -> list[DocumentVersion]:
+def document_versions(
+    con: LockedConnection, root_or_any_id: str,
+) -> list[DocumentVersion]:
     """Walk the version chain for a document family, ordered by version.
     Accepts the root id or any version id (resolves to the root)."""
     row = _doc(con, root_or_any_id)
@@ -110,7 +120,7 @@ def document_versions(con, root_or_any_id: str) -> list[DocumentVersion]:
         "WHERE document_id = ? OR metadata LIKE ?",
         [root, f'%"version_root": "{root}"%'],
     ).fetchall()
-    versions = []
+    versions: list[DocumentVersion] = []
     for did, m in rows:
         rbm = _meta(m).get("research_bridge", {})
         versions.append(DocumentVersion(
