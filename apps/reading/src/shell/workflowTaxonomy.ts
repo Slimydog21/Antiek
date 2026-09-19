@@ -378,6 +378,14 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     built: true,
     route: "/speak/invite/:token",
   },
+  {
+    id: "SpeakPublicBrowse",
+    workflow: "speak",
+    label: "Public remembrances",
+    blurb: "Unauthenticated, read-only browse of public-intent remembrances + opportunities (no login).",
+    built: true,
+    route: "/speak/browse",
+  },
   // SPR-11 — the Biography TEMPLATE. NOT a fifth workflow: a biography
   // composes Research + Write + Speak over the ONE graph, so it is classified
   // under Speak (the talk/voices surface it leads into), reachable from the
