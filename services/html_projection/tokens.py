@@ -110,6 +110,21 @@ TOKENS_CSS: Final[str] = """\
 .antiek-edges li{margin:0 0 .25rem;}
 .antiek-footer{border-top:1px solid var(--antiek-rule);margin-top:2rem;padding-top:.75rem;color:var(--antiek-muted);font-size:.8rem;font-family:var(--antiek-mono);}
 .antiek-footer a{color:var(--antiek-muted);}
+.antiek-heading{margin:1.75rem 0 .6rem;line-height:1.3;font-weight:650;}
+.antiek-doc h2.antiek-heading{font-size:1.3rem;}
+.antiek-doc h3.antiek-heading{font-size:1.1rem;}
+.antiek-doc h4.antiek-heading,.antiek-doc h5.antiek-heading,.antiek-doc h6.antiek-heading{font-size:1rem;color:var(--antiek-muted);}
+.antiek-list{margin:0 0 1rem;padding-left:1.5rem;}
+.antiek-list li{margin:0 0 .35rem;}
+.antiek-list .antiek-list{margin:.35rem 0 0;}
+.antiek-quote{margin:0 0 1.25rem;padding:.1rem 0 .1rem 1rem;border-left:3px solid var(--antiek-rule);color:var(--antiek-muted);}
+.antiek-code{font-family:var(--antiek-mono);background:#f6f6fa;border-radius:.25rem;padding:.7rem .9rem;margin:0 0 1.25rem;overflow-x:auto;font-size:.9rem;}
+.antiek-rule{border:0;border-top:1px solid var(--antiek-rule);margin:1.75rem 0;}
+.antiek-table-wrap{overflow-x:auto;margin:0 0 1.25rem;}
+.antiek-table{border-collapse:collapse;width:100%;font-size:.95rem;}
+.antiek-table caption{caption-side:top;text-align:left;color:var(--antiek-muted);font-size:.85rem;padding:0 0 .4rem;}
+.antiek-table th,.antiek-table td{border:1px solid var(--antiek-rule);padding:.4rem .6rem;text-align:left;vertical-align:top;}
+.antiek-table th{background:#fafaff;font-weight:600;}
 """
 
 
