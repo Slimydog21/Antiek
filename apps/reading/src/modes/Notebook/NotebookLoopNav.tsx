@@ -5,18 +5,34 @@ import { Link } from "react-router-dom";
  * Cite: AutoNotebook (SPR-06), DistillView open-auto-notebook, Write ConnectResearch.
  * No new product — only links to already-shipped surfaces.
  */
+
+/** Build `/write?investigation=&title=` handoff (title optional, never invented). */
+export function writeHandoffHref(
+  investigationId: string,
+  title?: string | null,
+): string {
+  const q = new URLSearchParams();
+  q.set("investigation", investigationId);
+  const t = (title ?? "").trim();
+  if (t) q.set("title", t.slice(0, 200));
+  return `/write?${q.toString()}`;
+}
+
 export interface NotebookLoopNavProps {
   investigationId: string;
   /** When true, emphasize Write handoff (graph has narratable content). */
   canWrite?: boolean;
+  /** Prefills Write title when continuing from auto-notebook (real question/title only). */
+  writeTitle?: string | null;
 }
 
 export default function NotebookLoopNav({
   investigationId,
   canWrite = false,
+  writeTitle = null,
 }: NotebookLoopNavProps) {
   const inv = encodeURIComponent(investigationId);
-  const writeTo = `/write?investigation=${inv}`;
+  const writeTo = writeHandoffHref(investigationId, writeTitle);
 
   return (
     <nav
@@ -33,7 +49,7 @@ export default function NotebookLoopNav({
       </Link>
       <span aria-hidden="true">·</span>
       <Link
-        to={`/inv/${inv}`}
+        to={`/inv/${inv}#distill`}
         className="underline-offset-2 hover:underline"
         data-testid="auto-notebook-open-distill"
       >

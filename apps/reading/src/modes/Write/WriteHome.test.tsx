@@ -227,4 +227,21 @@ describe("WriteHome — the re-homed door", () => {
     );
     expect(createDeliverableMock).not.toHaveBeenCalled();
   });
+
+  it("notebook→Write continuity: prefills title and shows banner", async () => {
+    listInvestigationsMock.mockResolvedValue({
+      count: 1,
+      investigations: [{
+        investigation_id: "inv-notebook",
+        question: "What is the moat?",
+        status: "completed",
+        spawned_by_daemon: false,
+      }],
+    });
+    mountAt("/write?investigation=inv-notebook&title=Moat%20memo");
+    const title = await screen.findByPlaceholderText(/what are you writing/i);
+    expect((title as HTMLInputElement).value).toBe("Moat memo");
+    expect(screen.getByTestId("write-from-notebook-banner")).toBeTruthy();
+    expect(await screen.findByTestId("connect-research-preferred")).toBeTruthy();
+  });
 });
