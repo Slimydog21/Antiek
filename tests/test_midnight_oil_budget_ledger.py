@@ -763,9 +763,15 @@ def test_schema_migration_adds_freed_drawn_cents(tmp_path: object) -> None:
             "WHERE hold_id = ?",
             [hold.hold_id],
         ).fetchone()
+        column = rd.execute(
+            "SELECT is_nullable, column_default FROM information_schema.columns "
+            "WHERE table_name = 'midnight_oil_call_holds' "
+            "AND column_name = 'freed_drawn_cents'"
+        ).fetchone()
     finally:
         rd.close()
     assert int(row[0]) == 0
+    assert column == ("NO", "0")
 
     # Settle must succeed.
     bal = ledger.settle(hold, 80)

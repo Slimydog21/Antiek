@@ -266,6 +266,10 @@ class BudgetLedger:
                 "UPDATE midnight_oil_call_holds SET freed_drawn_cents = 0 "
                 "WHERE freed_drawn_cents IS NULL"
             )
+            ctx.execute(
+                "ALTER TABLE midnight_oil_call_holds ALTER COLUMN "
+                "freed_drawn_cents SET NOT NULL"
+            )
 
     # --- transactional wrapper -------------------------------------------
 
