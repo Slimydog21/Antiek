@@ -332,3 +332,60 @@ def test_eligible_stats_and_sync_dry_run(graph, tmp_path):
 def test_default_max_rows_raised():
     from substrate.graph.retrieval_adapters import turbopuffer as mod
     assert mod._DEFAULT_MAX_ROWS >= 50_000
+
+
+def test_rebuild_accepts_lagging_approx_at_servable_scale(graph, tmp_path):
+    """Vendor approx_row_count=0 after upsert must not block SERVABLE-scale promote."""
+    from runtime.db_lock import connect_write
+    from substrate.graph.embedding_meta import _identity
+
+    model = HashEmbedding()
+    con = connect_write(graph, purpose="tpuf-scale-seed")
+    try:
+        provider, model_name, dim, fingerprint = _identity(model)
+        for i in range(120):
+            doc = f"doc-scale-{i}"
+            chunk = f"c-scale-{i}"
+            text = f"scale text {i} public domain corpus row"
+            con.execute(
+                "INSERT OR REPLACE INTO documents(document_id, title, source_tier, "
+                "document_type, content_class) VALUES (?, ?, 1, 'paper', 'public_domain')",
+                [doc, f"Scale {i}"],
+            )
+            emb = model.encode(text)
+            con.execute(
+                "INSERT OR REPLACE INTO chunks(chunk_id, document_id, chunk_index, text, "
+                "embedding, token_count) VALUES (?, ?, 0, ?, ?, ?)",
+                [chunk, doc, text, emb, max(1, len(text) // 4)],
+            )
+            con.execute(
+                "INSERT OR REPLACE INTO embeddings_meta VALUES (?,?,?,?,?,CURRENT_TIMESTAMP)",
+                [chunk, provider, model_name, dim, fingerprint],
+            )
+    finally:
+        con.close()
+
+    class LaggingNamespace(FakeNamespace):
+        def metadata(self, **kwargs):
+            return type(
+                "Metadata",
+                (),
+                {
+                    "approx_row_count": 0,
+                    "schema_": {"text": {"type": "string", "full_text_search": True}},
+                },
+            )()
+
+        def query(self, **kwargs):
+            limit = int(kwargs.get("limit") or 64)
+            rows = [dict(r) for r in sorted(self.upserted_rows, key=lambda x: x["id"])][:limit]
+            return type("QueryResponse", (), {"rows": [Row(**r) for r in rows]})()
+
+    fake = LaggingNamespace()
+    sub = TurbopufferSubstrate.open(
+        graph, model=model, api_key="x", namespace=fake,
+        manifest_dir=tmp_path / "manifests-scale",
+    )
+    staged = sub.rebuild_shadow()
+    assert staged["status"] == "staged"
+    assert staged["row_count"] >= 120
