@@ -23,13 +23,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from services.html_projection.adapters.synthesis import (
-from substrate.contracts.anti_ek_honesty import html_projection_response_headers
     Claim,
     RightsRefusal,
     SourceRef,
     SynthesisExport,
     adapt_synthesis,
 )
+from substrate.contracts.anti_ek_honesty import html_projection_response_headers
 from services.html_projection.context import Provenance, RenderContext
 from services.html_projection.gate import ScriptViolation, assert_script_free
 from services.html_projection.renderer import render
