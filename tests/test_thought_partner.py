@@ -135,10 +135,20 @@ def test_thought_partner_response_schema_pin(client):
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert set(body) == {"shape", "text"}
+    assert set(body) == {
+        "shape",
+        "text",
+        "library_retrieval_status",
+        "library_retrieval_degraded_reason",
+    }
     assert isinstance(body["shape"], str)
     assert isinstance(body["text"], str)
     assert body["shape"] in {"challenge", "synthesis", "extension"}
+    assert isinstance(body["library_retrieval_status"], str)
+    # Degraded reason is None when retrieval succeeded (or DuckDB fallback tagged).
+    assert body["library_retrieval_degraded_reason"] is None or isinstance(
+        body["library_retrieval_degraded_reason"], str
+    )
 
 
 def test_thought_partner_retrieves_library_context_into_the_prompt(client, monkeypatch):
