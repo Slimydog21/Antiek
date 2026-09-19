@@ -21,6 +21,13 @@ change rather than an architecture change.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+from collections.abc import Iterable
+
+if TYPE_CHECKING:
+    from . import LegalGateVerdict
+
 from . import registry
 from .predicate import (
     author_blocked_reason,
@@ -48,11 +55,11 @@ class RegistryBackedLegalGate:
     def __init__(
         self,
         *,
-        banned_domains=None,
-        banned_corpus_ids=None,
-        banned_authors=None,
-        banned_title_substrings=None,
-        banned_content_hash_prefixes=None,
+        banned_domains: Iterable[str] | None = None,
+        banned_corpus_ids: Iterable[str] | None = None,
+        banned_authors: Iterable[str] | None = None,
+        banned_title_substrings: Iterable[str] | None = None,
+        banned_content_hash_prefixes: Iterable[str] | None = None,
     ) -> None:
         # None → consult the module-level registry. Explicit
         # injection (even an empty tuple) overrides — useful for
@@ -79,7 +86,7 @@ class RegistryBackedLegalGate:
             else registry.BANNED_CONTENT_HASH_PREFIXES
         )
 
-    def check_url(self, url: str):
+    def check_url(self, url: str) -> "LegalGateVerdict":
         """Implements the `LegalGate.check_url` protocol method.
 
         Today checks only the URL's host against
@@ -113,7 +120,7 @@ class RegistryBackedLegalGate:
         title: str = "",
         source_corpus: str = "",
         content_hash: str = "",
-    ):
+    ) -> "LegalGateVerdict":
         """Fuller-metadata check. Used by ingestion paths that have
         author/title/corpus/hash at the time of the gate
         consultation. Routes through the full `document_blocked_reason`
