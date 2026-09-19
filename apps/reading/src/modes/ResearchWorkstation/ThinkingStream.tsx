@@ -87,6 +87,7 @@ const TONE_STYLE: Record<Narration["tone"], { dot: string; text: string }> = {
 export default function ThinkingStream({ investigation, steer, onRetry }: ThinkingStreamProps) {
   const [showRaw, setShowRaw] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Derive the narrated story from the (already-deduped) events. The local
   // event_id dedupe makes the derivation correct even if handed a raw list.
@@ -104,12 +105,119 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
     return out;
   }, [investigation.events]);
 
-  // Preserve TrajectoryView's auto-scroll-to-tail so the live story stays in
-  // view as it grows.
+  // ── Copy-mode (herdr transfer P1): the transcript is a document you can
+  //    read while the research runs — scrolling up DETACHES the live follow
+  //    (never yank the reader to the bottom mid-read), a "↓ N new" pill
+  //    re-pins, and `/` opens in-transcript search that never pauses the
+  //    stream (herdr's copy-mode rule: the history stays live).
+  const [followPinned, setFollowPinned] = useState(true);
+  const [newSinceUnpin, setNewSinceUnpin] = useState(0);
+  const pinnedAtCountRef = useRef(0);
+  const [searchActive, setSearchActive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeMatch, setActiveMatch] = useState(0);
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+    if (atBottom) {
+      if (!followPinned) {
+        setFollowPinned(true);
+        setNewSinceUnpin(0);
+      }
+    } else if (followPinned) {
+      // Reader detached: remember where the tail was so we can count the
+      // lines that arrive while they read.
+      pinnedAtCountRef.current = lines.length;
+      setFollowPinned(false);
+    }
+  };
+
+  // Count new lines since detach.
   useEffect(() => {
+    if (!followPinned) {
+      setNewSinceUnpin(lines.length - pinnedAtCountRef.current);
+    }
+  }, [lines.length, followPinned]);
+
+  const jumpToLatest = () => {
+    pinnedAtCountRef.current = lines.length;
+    setNewSinceUnpin(0);
+    setFollowPinned(true);
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [lines.length]);
+  };
+
+  // `/` opens search (ignored while typing in an editable); Esc closes it;
+  // Enter/Shift+Enter step through matches.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el) {
+        const tag = el.tagName.toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") return;
+        if (el.isContentEditable) return;
+      }
+      if (e.key === "/") {
+        e.preventDefault();
+        setSearchActive(true);
+        setSearchQuery("");
+        setActiveMatch(0);
+        // Focus after render.
+        requestAnimationFrame(() => searchInputRef.current?.focus());
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Search matches: line indices whose narration contains the query.
+  const matches = useMemo(
+    () => findMatchIndices(lines.map((l) => l.line), searchQuery),
+    [lines, searchQuery],
+  );
+  useEffect(() => {
+    setActiveMatch(0);
+  }, [searchQuery, matches.length]);
+  // Keep the active index in range as matches shrink.
+  useEffect(() => {
+    if (matches.length === 0) setActiveMatch(0);
+    else if (activeMatch >= matches.length) setActiveMatch(matches.length - 1);
+  }, [matches.length, activeMatch]);
+
+  // Jump the active match into view.
+  useEffect(() => {
+    if (!searchActive || matches.length === 0) return;
+    const el = scrollRef.current?.querySelector(
+      `[data-line-index="${matches[activeMatch]}"]`,
+    );
+    el?.scrollIntoView({ block: "center" });
+  }, [searchActive, activeMatch, matches]);
+
+  const stepMatch = (dir: 1 | -1) => {
+    if (matches.length === 0) return;
+    setActiveMatch((m) => (m + dir + matches.length) % matches.length);
+  };
+
+  const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      stepMatch(e.shiftKey ? -1 : 1);
+    } else if (e.key === "Escape") {
+      setSearchActive(false);
+      setSearchQuery("");
+    }
+  };
+
+  // Preserve TrajectoryView's auto-scroll-to-tail so the live story stays in
+  // view as it grows — but ONLY while the reader is pinned to the tail
+  // (copy-mode: scroll up and the follow detaches; the "↓ N new" pill
+  // re-pins).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && followPinned) el.scrollTop = el.scrollHeight;
+  }, [lines.length, followPinned]);
 
   const running = investigation.status === "in_progress";
   // The socket dropped mid-run and is re-establishing — show a reconnecting
@@ -168,22 +276,91 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
           <RawActivity investigation={investigation} />
         </div>
       ) : (
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+        <>
+          {/* Copy-mode search bar (herdr transfer P1) — `/` to open. The
+              stream keeps flowing while you search. */}
+          {searchActive && (
+            <div className="flex items-center gap-2 border-b border-rule bg-ice-1 px-3 py-1.5 dark:border-charcoal-1">
+              <span className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">/</span>
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={onSearchKeyDown}
+                placeholder="Search the transcript…"
+                aria-label="Search the transcript"
+                className="flex-1 bg-transparent font-serif text-[13px] text-ink dark:text-bright placeholder:text-ink-mute dark:text-moonlight outline-none"
+              />
+              <span
+                className="font-mono text-[11px] text-shadow-1 dark:text-moonlight tabular-nums"
+                aria-live="polite"
+              >
+                {matches.length === 0 && searchQuery.trim()
+                  ? "0/0"
+                  : matches.length > 0
+                    ? `${activeMatch + 1}/${matches.length}`
+                    : ""}
+              </span>
+              {searchQuery.trim() && matches.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => stepMatch(1)}
+                  aria-label="Next match"
+                  className="px-1 font-mono text-[12px] text-shadow-1 hover:text-ink dark:hover:text-bright"
+                >
+                  ↓
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchActive(false);
+                  setSearchQuery("");
+                }}
+                aria-label="Close search"
+                className="px-1 font-mono text-[12px] text-shadow-1 hover:text-ink dark:hover:text-bright"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          <div ref={scrollRef} onScroll={onScroll} className="relative flex-1 overflow-y-auto px-4 py-4">
           {lines.length === 0 ? (
             <ConnectingBeat status={investigation.streamStatus} />
           ) : (
             <ol className="space-y-2.5">
-              {lines.map((l) => (
-                <li key={l.eventId} className="flex items-start gap-2.5">
-                  <span
-                    className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${TONE_STYLE[l.tone].dot}`}
-                    aria-hidden="true"
-                  />
-                  <span className={`font-serif text-[14px] leading-relaxed ${TONE_STYLE[l.tone].text}`}>
-                    {l.line}
-                  </span>
-                </li>
-              ))}
+              {lines.map((l, i) => {
+                const isActiveMatch = matches.includes(i) && i === matches[activeMatch];
+                return (
+                  <li
+                    key={l.eventId}
+                    data-line-index={i}
+                    className={`flex items-start gap-2.5 ${isActiveMatch ? "rounded bg-sun/10 px-1 -mx-1" : ""}`}
+                  >
+                    <span
+                      className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${TONE_STYLE[l.tone].dot}`}
+                      aria-hidden="true"
+                    />
+                    <span className={`font-serif text-[14px] leading-relaxed ${TONE_STYLE[l.tone].text}`}>
+                      {searchQuery.trim()
+                        ? splitMatches(l.line, searchQuery).map((seg, k) =>
+                            seg.match ? (
+                              <mark
+                                key={k}
+                                className="rounded-sm bg-sun/40 px-0.5 text-inherit dark:bg-sun/30"
+                              >
+                                {seg.text}
+                              </mark>
+                            ) : (
+                              <span key={k}>{seg.text}</span>
+                            ),
+                          )
+                        : l.line}
+                    </span>
+                  </li>
+                );
+              })}
             </ol>
           )}
 
@@ -204,7 +381,21 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
               the answer is below
             </p>
           )}
-        </div>
+
+          {/* Copy-mode jump pill — appears only after the reader detached
+              AND new lines arrived; click re-pins to the live tail. */}
+          {!followPinned && newSinceUnpin > 0 && (
+            <button
+              type="button"
+              onClick={jumpToLatest}
+              className="sticky bottom-3 mx-auto block rounded-full border border-aurora bg-ice-1 px-3 py-1 font-mono text-[11px] text-aurora shadow-z2 dark:bg-charcoal-2 dark:shadow-z2-night hover:bg-ice-3"
+              data-testid="copy-mode-jump-pill"
+            >
+              ↓ {newSinceUnpin} new · jump to latest
+            </button>
+          )}
+          </div>
+        </>
       )}
     </div>
   );
@@ -330,4 +521,45 @@ function RawActivity({ investigation }: { investigation: InvestigationState }) {
 function failureReason(investigation: InvestigationState): string | null {
   const p = investigation.terminalPayload as { reason?: unknown } | null;
   return p && typeof p.reason === "string" && p.reason.trim() ? p.reason.trim() : null;
+}
+
+
+// ── Copy-mode pure helpers (herdr transfer P1) — extracted for unit tests.
+//    The search is substring over narrated lines; matches are case-
+//    insensitive, and splitting keeps the <mark> rendering trivial. ───────
+
+/** Line indices whose narration contains the query (case-insensitive). */
+export function findMatchIndices(lines: string[], query: string): number[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const out: number[] = [];
+  lines.forEach((line, i) => {
+    if (line.toLowerCase().includes(q)) out.push(i);
+  });
+  return out;
+}
+
+/** Split text around case-insensitive query matches for <mark> rendering.
+ *  Empty query returns the whole text as one non-match segment. */
+export function splitMatches(
+  text: string,
+  query: string,
+): { text: string; match: boolean }[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [{ text, match: false }];
+  const lower = text.toLowerCase();
+  const out: { text: string; match: boolean }[] = [];
+  let i = 0;
+  for (;;) {
+    const idx = lower.indexOf(q, i);
+    if (idx === -1) {
+      if (i < text.length) out.push({ text: text.slice(i), match: false });
+      break;
+    }
+    if (idx > i) out.push({ text: text.slice(i, idx), match: false });
+    out.push({ text: text.slice(idx, idx + q.length), match: true });
+    i = idx + q.length;
+  }
+  if (out.length === 0) out.push({ text, match: false });
+  return out;
 }

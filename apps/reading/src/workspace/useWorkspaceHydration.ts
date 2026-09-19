@@ -119,8 +119,9 @@ export function useWorkspaceHydration() {
       }
     }
 
-    // Apply everything in one set
-    useWorkspace.setState(next);
+    // Apply everything in one set. Zoom is a transient focus mode — a
+    // route/investigation change always exits it (never persisted).
+    useWorkspace.setState({ ...next, zoomedPanelId: null });
 
     // Target the writes for THIS route + investigation
     setPersistScope(
