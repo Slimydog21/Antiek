@@ -29,7 +29,13 @@ from substrate.agent_work.service import (
     mark_agent_work_working,
     renew_agent_work_lease,
 )
-from substrate.agent_work.store import LeaseConflict, WorkLease, WorkProgress
+from substrate.agent_work.store import (
+    LeaseConflict,
+    LeaseRenewal,
+    ReplyCompletion,
+    WorkLease,
+    WorkProgress,
+)
 from substrate.graph import default_db_path, ensure_initialized
 
 from .bridge_auth import BridgePrincipal, authenticate_bridge
@@ -247,7 +253,7 @@ async def mark_submitted(
         now=datetime.now(UTC),
     )
 
-    def _sync():
+    def _sync() -> WorkProgress:
         return mark_agent_work_submitted(_db_path(), cmd)
 
     try:
@@ -287,7 +293,7 @@ async def renew_lease(
         now=datetime.now(UTC),
     )
 
-    def _sync():
+    def _sync() -> LeaseRenewal:
         return renew_agent_work_lease(_db_path(), cmd)
 
     try:
@@ -328,7 +334,7 @@ async def mark_acknowledged(
         now=datetime.now(UTC),
     )
 
-    def _sync():
+    def _sync() -> WorkProgress:
         return mark_agent_work_acknowledged(_db_path(), cmd)
 
     try:
@@ -361,7 +367,7 @@ async def mark_working(
         now=datetime.now(UTC),
     )
 
-    def _sync():
+    def _sync() -> WorkProgress:
         return mark_agent_work_working(_db_path(), cmd)
 
     try:
@@ -387,7 +393,7 @@ async def complete_result(
     key = _idempotency_key(idempotency_key)
     result_digest = hashlib.sha256(f"{principal.credential_id}\0{key}".encode()).hexdigest()
 
-    def _sync_reply():
+    def _sync_reply() -> ReplyCompletion:
         assert isinstance(body, ReplyResultIn)
         return complete_agent_reply(
             _db_path(),
@@ -406,7 +412,7 @@ async def complete_result(
             ),
         )
 
-    def _sync_failure():
+    def _sync_failure() -> WorkProgress:
         assert isinstance(body, FailureResultIn)
         return complete_agent_failure(
             _db_path(),
@@ -424,7 +430,7 @@ async def complete_result(
             ),
         )
 
-    def _sync_disposition():
+    def _sync_disposition() -> ReplyCompletion:
         assert isinstance(body, DispositionResultIn)
         return complete_agent_disposition(
             _db_path(),

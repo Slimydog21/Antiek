@@ -71,9 +71,9 @@ def _to_response(cap: Any) -> ComputeCapacityResponse:
         updated_at=cap.updated_at,
         is_default=cap.is_default,
         tier_presets={
-            t: tier_default_units(t)
+            t: units
             for t in CAPACITY_TIERS
-            if tier_default_units(t) is not None
+            if (units := tier_default_units(t)) is not None
         },
         evaluation={
             "allowed": ev.allowed,

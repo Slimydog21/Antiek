@@ -22,7 +22,10 @@ Best-effort: any failure returns None and never raises into the orchestrator.
 from __future__ import annotations
 
 import contextlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from runtime.db_lock import ReadConnection
 
 __all__ = ["maybe_reuse_prior_knowledge_at_start"]
 
@@ -43,7 +46,7 @@ def maybe_reuse_prior_knowledge_at_start(
     """
     if not investigation_id or not (question_text or "").strip():
         return None
-    parent = None
+    parent: ReadConnection | None = None
     registered = False
     resolved_db = ""
     try:

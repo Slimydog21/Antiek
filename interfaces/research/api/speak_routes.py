@@ -501,7 +501,7 @@ async def open_public(project_id: str) -> dict:
 
 
 @speak_router.post("/projects/{project_id}/open-contribute", status_code=201)
-async def open_contribute(project_id: str) -> dict:
+async def open_contribute(project_id: str) -> dict[str, Any]:
     """Unauthenticated self-serve contribution door for will_be_public projects (G7).
 
     Mints an invite TOKEN (source, not an account) so a stranger on
@@ -835,7 +835,7 @@ async def public_opportunities(
 
 
 @speak_router.get("/pushes")
-async def list_pushes() -> dict:
+async def list_pushes() -> dict[str, Any]:
     """Operator inbox for dual push.
 
     ``public_opportunities`` — will_be_public projects, multi-signal heuristic
@@ -884,7 +884,7 @@ async def list_pushes() -> dict:
 
 
 @speak_router.post("/pushes/reping")
-async def reping_invitee(req: RepingRequest) -> dict:
+async def reping_invitee(req: RepingRequest) -> dict[str, Any]:
     """Generate followups (if any) and return the SpeakInvite door for an invitee.
 
     Consent-scoped: declined interviews are skipped with an honest reason.
@@ -953,7 +953,7 @@ _INVITEE_TRANSCRIBER: Any | None = None
 
 
 
-def _invite_read_or_404(con: Any, token: str):
+def _invite_read_or_404(con: Any, token: str) -> invitations.Invite | None:
     """Resolve invite on a read connection; missing Speak schema → 404.
 
     Fresh DBs have no speak_* tables until a writer ensures schema. Invite
@@ -1061,7 +1061,7 @@ async def invitee_voice(
     question_id: str = Query(..., min_length=1),
     duration_seconds: float = Query(default=0.0, ge=0.0),
     language: str | None = Query(default=None),
-) -> dict:
+) -> dict[str, Any]:
     """Phone-first, voice-first invitee answer (Product Depth SPR-08 M3).
 
     The headline invitee fix: a non-power-user on a phone taps to talk and

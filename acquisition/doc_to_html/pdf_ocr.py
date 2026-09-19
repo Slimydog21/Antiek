@@ -301,9 +301,10 @@ def _run_ocrmypdf(path: Path, *, timeout_s: float, max_output: int) -> str | Non
         if not sidecar.is_file():
             return None
         text = sidecar.read_text(encoding="utf-8", errors="replace")
-        text = _nonempty(text)
-        if text is None:
+        nonempty = _nonempty(text)
+        if nonempty is None:
             return None
+        text = nonempty
         raw = text.encode("utf-8")
         if len(raw) > max_output:
             text = raw[:max_output].decode("utf-8", errors="ignore")

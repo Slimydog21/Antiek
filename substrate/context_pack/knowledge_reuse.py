@@ -526,7 +526,7 @@ def retrieve_prior_units(
             have.add(node_id)
 
     # Prefer same-document + higher stored groundedness, then cosine.
-    def _rank(ru: RetrievedUnit) -> tuple:
+    def _rank(ru: RetrievedUnit) -> tuple[int, float, float, str]:
         g = getattr(ru.unit, "groundedness_score", None)
         g_key = float(g) if isinstance(g, (int, float)) else -1.0
         return (0 if ru.same_document else 1, -g_key, -ru.similarity, ru.unit_id)

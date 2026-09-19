@@ -46,7 +46,7 @@ def default_manifest_dir() -> Path:
     return Path(".antiek/turbopuffer-shadow")
 
 
-def probe_turbopuffer_health(*, db_path: str | None = None) -> dict:
+def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
     """Cheap /health snapshot — no vendor network, never raises.
 
     Reports env+key+pointer-file honesty. ``hybrid_ready`` is True only when
@@ -235,7 +235,7 @@ class TurbopufferSubstrate:
         pointer = self._manifest_dir / "active.json"
         if not pointer.exists():
             return None
-        active = json.loads(pointer.read_text(encoding="utf-8"))
+        active: dict[str, Any] = json.loads(pointer.read_text(encoding="utf-8"))
         if active.get("context") != self._context:
             return None
         return active

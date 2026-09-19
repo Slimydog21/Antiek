@@ -156,7 +156,7 @@ def _display_answer_from_tp(parsed: Any, raw: str) -> str:
             lines.append(line)
         return "\n".join(lines)
     if parsed.synthesis and parsed.synthesis.text.strip():
-        return parsed.synthesis.text.strip()
+        return str(parsed.synthesis.text.strip())
     return (raw or "").strip()
 
 

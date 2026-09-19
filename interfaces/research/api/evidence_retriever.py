@@ -41,6 +41,7 @@ import os
 import re
 import sys
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -170,7 +171,7 @@ def _dispatch_once(
     semantic_call_id: str | None,
     attempt: int,
     max_tokens: int | None = None,
-):
+) -> tuple[str, str, str | None]:
     """One provider call. Returns ``(text, policy_id, finish_reason)``
     or raises ``ProviderError`` / ``KeyError``."""
     from .research_owner_dispatch import dispatch_loop_one
@@ -186,7 +187,7 @@ def _dispatch_once(
             attempt=attempt,
         )
     if result is None:
-        kwargs: dict = {
+        kwargs: dict[str, Any] = {
             "investigation_id": event.investigation_id,
             "parent_event_id": event.event_id,
         }
