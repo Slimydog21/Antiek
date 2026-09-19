@@ -25,7 +25,7 @@
 | HTML-native | 75 | Research artifact HTML + ArtifactOutlineShelf; reader HTML ingest incomplete |
 | CLI / Herdr | 70 | Herdr standing + Mini SSH lane; CLI surface uneven vs app |
 
-**Composite (equal-weight mean of above) ≈ 86/100.** TP 80→90 via TalkToBook role unify; Notebook 92; Mini flywheel_ready=true dogfood.
+**Composite (equal-weight mean of above) ≈ 88/100.** TP 90; Notebook 92; flywheel prod restored (#3177) honest reuse_count=1; Mini=18.
 
 ## Residuals blocking composite 100
 
