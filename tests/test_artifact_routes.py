@@ -113,4 +113,4 @@ def test_get_artifact_html_inline_script_free(api_env):
     assert "attachment" not in disp
     assert "HTML-native research finding" in resp.text
     assert "<script" not in resp.text.lower()
-    assert resp.headers.get("x-antiek-projection") == "research-artifact-html-native"
+    assert resp.headers.get("x-antiek-html-projection") == "script-free; disposition=inline"

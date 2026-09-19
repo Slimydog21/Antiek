@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from substrate.contracts.anti_ek_honesty import assert_ads_honesty_shape
+
 DECISION_REF = (
     "docs/decisions/applovin-website-mvp-attribution-ledger-2026-09-17.md"
 )
@@ -74,7 +76,7 @@ def website_ads_honesty() -> dict[str, Any]:
     flip itself. ``paid_fill_gated`` is always True: the paid path exists
     only behind legal + ACTIVE advertiser + pricing authority.
     """
-    return {
+    payload = {
         "surface": "website",
         "serving_model": "antiek_owned_creatives",
         "max_sdk_on_web": False,
@@ -99,6 +101,9 @@ def website_ads_honesty() -> dict[str, Any]:
         "rank01_decision_ref": RANK01_DECISION_REF,
         "paid_fill_decision_ref": PAID_FILL_DECISION_REF,
     }
+    # Tip-honest Specs contract — fail closed if envelope drifts.
+    assert_ads_honesty_shape(payload)
+    return payload
 
 
 def assert_unpriced_zero(revenue_usd_cents: int, price_status: str) -> None:

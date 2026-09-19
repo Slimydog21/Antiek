@@ -36,7 +36,7 @@ First-parent / merge tips that moved grades **after** the prior leave-off tip `7
 |---------|------:|------------------|
 | Plans | 99 | Tip-honest leave-off + rollup; decision cross-links #3212–Specs; ops residuals named |
 | Specs | **99** | Honesty catalog + frozen required keys + pytest product rules + OpenAPI `artifact.html` inventory; residual = broader OAS / private UX polish |
-| Code | 96 | Dual structure; evening honesty surfaces; OCR DeepSeek-prefer; lint bars |
+| Code | **98** | Honesty builders self-assert; unified Html-Projection headers (research+writing); private Speak no-payout UX productized |
 | Execution | 98 | Merge+deploy habit; Mini tip-aligned; durable dogfood + swarm `--check` |
 | Production | 98 | Tip-aligned Mini+prod; flywheel/TPuf key+hybrid; mount=false honest |
 | Speak | 100 | Residual-100 + Trust/opportunities G2/Synquery honesty; accrue≠paid |
@@ -48,7 +48,7 @@ First-parent / merge tips that moved grades **after** the prior leave-off tip `7
 | HTML-native | 99 | Research + Write/Notebook inline `artifact.html` + pypdf/OCR; projection honesty header |
 | CLI / Herdr | 99 | #3180–#3181 + inventory honesty (probe tip, w7 tabs, wrapper alias) |
 
-**Composite (equal-weight mean of 13 surfaces) = 1277/13 ≈ 98.23 → report **~98**.**
+**Composite (equal-weight mean of 13 surfaces) = 1279/13 ≈ 98.38 → report **~98**.**
 
 Prior leave-offs: `440dc2ba…` ~94; `7bfff594…` ~97; `7b871c58…`/`7da3fb34…` ~98; Specs contracts raise Specs 97→99 without inventing mount/CPM/G2.
 
@@ -77,7 +77,7 @@ Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywh
 
 1. **Operator:** G2 counsel sign-off / Synquery flag / email outreach (not code).
 2. **Product ask:** `production_default_mount` promote? AppLovin live demand?
-3. **Code residual:** Code ~96 / TPuf ~95 (no mount flip). Specs ~99.
+3. **Code residual:** Code ~98 / TPuf ~95 (no mount flip). Specs ~99.
 4. Do not invent Synquery/G2/email/mount/CPM.
 
 ## Decision index (Anti-Ek honesty, 2026-09-19)
