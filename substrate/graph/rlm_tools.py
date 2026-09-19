@@ -68,8 +68,7 @@ import re
 import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
-
+from typing import Any, TYPE_CHECKING
 # Ensure substrate root on path.
 _PKG_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -77,12 +76,15 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-try:
-    import requests  # type: ignore[import-untyped]
-    _REQUESTS_AVAILABLE = True
-except ImportError:  # pragma: no cover — best-effort
-    requests = None
-    _REQUESTS_AVAILABLE = False
+_REQUESTS_AVAILABLE = False
+if TYPE_CHECKING:
+    import requests
+else:
+    try:
+        import requests  # type: ignore[import-untyped]
+        _REQUESTS_AVAILABLE = True
+    except ImportError:  # pragma: no cover — best-effort
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -224,8 +226,8 @@ def web_search(query: str) -> str:
                 return requests.get(
                     _serp_url,
                     params={
-                        "q": query, "api_key": serpapi_key,
-                        "engine": "google", "num": 5,
+                        "q": str(query), "api_key": str(serpapi_key),
+                        "engine": "google", "num": "5",
                     },
                     timeout=15,
                 )

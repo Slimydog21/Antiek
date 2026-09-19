@@ -126,6 +126,7 @@ dev = [
   "mypy>=1.11",
   "types-PyYAML",
   "types-python-dateutil",
+  "types-requests",
 ]
 # NOTE on export extras: xhtml2pdf pulls reportlab → pycairo which needs
 # system libcairo2-dev. We deliberately do NOT include xhtml2pdf or
