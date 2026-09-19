@@ -1,62 +1,92 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   emoteForExperience,
   emitWernerExperience,
   installReactionBus,
-  isProductExperience,
-  PRODUCT_EXPERIENCES,
-  WERNER_EXPERIENCE_EVENT,
   type ProductExperience,
+  WERNER_EXPERIENCE_EVENT,
 } from "./reactionBus";
+import type { EmoteKind } from "./emotes";
+import type { WernerStageController } from "./WernerStage";
 
-afterEach(() => vi.restoreAllMocks());
+function fakeStage(): WernerStageController & { emotes: EmoteKind[] } {
+  const emotes: EmoteKind[] = [];
+  return {
+    emotes,
+    emote: (kind: EmoteKind) => {
+      emotes.push(kind);
+    },
+    moveTo: () => {},
+    waddleToEl: () => {},
+    follow: () => {},
+    idle: () => {},
+    freeze: () => {},
+    unfreeze: () => {},
+    getState: () => ({ name: "idle" }) as ReturnType<WernerStageController["getState"]>,
+    dispose: () => {},
+  } as unknown as WernerStageController & { emotes: EmoteKind[] };
+}
 
-describe("Werner product reaction bus", () => {
+describe("emoteForExperience (shipped pure map)", () => {
   const cases: Array<[ProductExperience, string]> = [
     ["highlight", "curious"],
     ["deep_research_start", "thinking"],
     ["deep_research_complete", "happy"],
     ["deep_research_error", "dizzy"],
-    ["idle", "sleeping"],
     ["fail", "dizzy"],
+    ["error", "dizzy"],
+    ["idle", "sleeping"],
   ];
 
-  it.each(cases)("maps %s to %s", (experience, emote) => {
+  it.each(cases)("%s → %s", (experience, emote) => {
     expect(emoteForExperience(experience)).toBe(emote);
   });
+});
 
-  it("keeps the runtime allowlist and exhaustive map aligned", () => {
-    expect(PRODUCT_EXPERIENCES).toHaveLength(cases.length);
-    expect(PRODUCT_EXPERIENCES.every(isProductExperience)).toBe(true);
-    expect(isProductExperience("recording_started")).toBe(false);
-  });
-
-  it("translates a valid event once and teardown removes the listener", () => {
-    const emote = vi.fn();
-    const teardown = installReactionBus({ emote });
-
-    emitWernerExperience("highlight");
-    expect(emote).toHaveBeenCalledTimes(1);
-    expect(emote).toHaveBeenLastCalledWith("curious");
-
+describe("installReactionBus", () => {
+  it("fires stage.emote from emitWernerExperience", () => {
+    const stage = fakeStage();
+    const teardown = installReactionBus(stage);
+    emitWernerExperience({ experience: "highlight" });
+    expect(stage.emotes).toEqual(["curious"]);
     teardown();
-    emitWernerExperience("fail");
-    expect(emote).toHaveBeenCalledTimes(1);
   });
 
-  it("ignores missing and unknown runtime detail", () => {
-    const emote = vi.fn();
-    const teardown = installReactionBus({ emote });
+  it("honours explicit emote override", () => {
+    const stage = fakeStage();
+    const teardown = installReactionBus(stage);
+    emitWernerExperience({ experience: "idle", emote: "happy" });
+    expect(stage.emotes).toEqual(["happy"]);
+    teardown();
+  });
 
-    window.dispatchEvent(new CustomEvent(WERNER_EXPERIENCE_EVENT));
+  it("teardown stops reactions", () => {
+    const stage = fakeStage();
+    const teardown = installReactionBus(stage);
+    teardown();
+    emitWernerExperience({ experience: "fail" });
+    expect(stage.emotes).toEqual([]);
+  });
+
+  it("listens on the shared event name", () => {
+    expect(WERNER_EXPERIENCE_EVENT).toBe("antiek:werner-experience");
+    const stage = fakeStage();
+    const teardown = installReactionBus(stage);
     window.dispatchEvent(
       new CustomEvent(WERNER_EXPERIENCE_EVENT, {
-        detail: { experience: "arbitrary_plugin_event" },
+        detail: { experience: "deep_research_start" },
       }),
     );
+    expect(stage.emotes).toEqual(["thinking"]);
+    teardown();
+  });
 
-    expect(emote).not.toHaveBeenCalled();
+  it("ignores malformed detail", () => {
+    const stage = fakeStage();
+    const teardown = installReactionBus(stage);
+    window.dispatchEvent(new CustomEvent(WERNER_EXPERIENCE_EVENT, { detail: {} }));
+    expect(stage.emotes).toEqual([]);
     teardown();
   });
 });

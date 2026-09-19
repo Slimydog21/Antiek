@@ -25,7 +25,8 @@ export function defaultLoopHost(): LoopHost {
       typeof performance !== "undefined" ? performance.now() : Date.now(),
     requestFrame: (cb) => requestAnimationFrame(cb),
     cancelFrame: (id) => cancelAnimationFrame(id),
-    isHidden: () => (typeof document !== "undefined" ? document.hidden : false),
+    isHidden: () =>
+      typeof document !== "undefined" ? document.hidden : false,
   };
 }
 
@@ -55,7 +56,7 @@ export function createArcadeLoop(options: CreateLoopOptions): ArcadeLoop {
   let frameId: number | null = null;
   let lastMs = 0;
   let accumulator = 0;
-  const emptyInput: InputState = {
+  let emptyInput: InputState = {
     pointer: null,
     pointerDown: false,
     pointerPressed: false,
@@ -75,25 +76,10 @@ export function createArcadeLoop(options: CreateLoopOptions): ArcadeLoop {
     lastMs = ms;
     const frame = Math.min(Math.max(raw, 0), MAX_FRAME_SEC);
     accumulator += frame;
-    let input: InputState | null = null;
+    const input = options.getInput();
     let steps = 0;
     while (accumulator >= FIXED_DT_SEC && steps < MAX_SUBSTEPS) {
-      // Sample only when a simulation step will consume the input. Sampling on
-      // a zero-step render frame would clear producer-owned press edges before
-      // the game could observe them.
-      input ??= options.getInput();
-      const stepInput =
-        steps === 0
-          ? input
-          : {
-              ...input,
-              pointerPressed: false,
-              pointerReleased: false,
-              keysPressed: new Set<string>(),
-            };
-      // A catch-up frame may run several fixed steps, but a physical press is
-      // an edge and therefore belongs to the first step only.
-      options.cartridge.update(FIXED_DT_SEC, stepInput, options.ctx);
+      options.cartridge.update(FIXED_DT_SEC, input, options.ctx);
       accumulator -= FIXED_DT_SEC;
       steps += 1;
     }

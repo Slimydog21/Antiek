@@ -1,5 +1,5 @@
 /**
- * Arcade engine contract (WERNER-ACT SPR-07 subset).
+ * Arcade engine contract (Werner Lives SPR-08 subset).
  *
  * Every mini-game implements `Cartridge`. The engine owns the loop, input
  * sampling, and canvas lifecycle; games own pure rules + presentation.

@@ -24,7 +24,10 @@ const REASON_COPY: Record<string, string> = {
 export function sceneStatusReason(status: KreaStatusSnapshot | null): string | null {
   if (!status) return null;
   if (status.gate_verdict) return status.gate_verdict;
-  const latest = status.failures.at(-1);
+  // Guard incomplete snapshots (offline stubs, partial API responses) so a
+  // missing `failures` array never throws and unmounts the living shell.
+  const failures = Array.isArray(status.failures) ? status.failures : [];
+  const latest = failures.at(-1);
   return latest?.reason ?? null;
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { createArcadeLoop } from "./loop";
 import { createSeededRng } from "./rng";
@@ -30,7 +30,6 @@ export function ArcadeMount({
 }: ArcadeMountProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const bestRef = useRef(0);
-  const instructionsId = useId();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -44,8 +43,6 @@ export function ArcadeMount({
     let pointerDown = false;
     let pointerPressed = false;
     let pointerReleased = false;
-    const capturedPointers = new Set<number>();
-    let loop: ReturnType<typeof createArcadeLoop> | null = null;
 
     const sample = (): InputState => {
       const snap: InputState = {
@@ -63,38 +60,21 @@ export function ArcadeMount({
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (
-        [" ", "ArrowDown", "ArrowUp", "Enter", "Escape", "q", "w"].includes(
-          e.key,
-        )
-      ) {
-        e.preventDefault();
-      }
-      const pressed = !keysDown.has(e.key);
-      if (pressed) keysPressed.add(e.key);
+      if (!keysDown.has(e.key)) keysPressed.add(e.key);
       keysDown.add(e.key);
-      if (reducedMotion && pressed) loop?.stepOnce(sample());
     };
     const onKeyUp = (e: KeyboardEvent) => {
       keysDown.delete(e.key);
     };
     const onPointerMove = (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
-      const scaleX = rect.width > 0 ? width / rect.width : 1;
-      const scaleY = rect.height > 0 ? height / rect.height : 1;
-      pointer = {
-        x: (e.clientX - rect.left) * scaleX,
-        y: (e.clientY - rect.top) * scaleY,
-      };
+      pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
     const onPointerDown = (e: PointerEvent) => {
-      canvas.focus();
       canvas.setPointerCapture(e.pointerId);
-      capturedPointers.add(e.pointerId);
       pointerDown = true;
       pointerPressed = true;
       onPointerMove(e);
-      if (reducedMotion) loop?.stepOnce(sample());
     };
     const onPointerUp = (e: PointerEvent) => {
       pointerDown = false;
@@ -102,18 +82,10 @@ export function ArcadeMount({
       if (canvas.hasPointerCapture(e.pointerId)) {
         canvas.releasePointerCapture(e.pointerId);
       }
-      capturedPointers.delete(e.pointerId);
-      if (reducedMotion) loop?.stepOnce(sample());
-    };
-    const onBlur = () => {
-      keysDown.clear();
-      keysPressed.clear();
-      pointerDown = false;
     };
 
-    canvas.addEventListener("keydown", onKeyDown);
-    canvas.addEventListener("keyup", onKeyUp);
-    canvas.addEventListener("blur", onBlur);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerdown", onPointerDown);
     canvas.addEventListener("pointerup", onPointerUp);
@@ -130,7 +102,7 @@ export function ArcadeMount({
     };
 
     cartridge.init(ctx);
-    loop = createArcadeLoop({
+    const loop = createArcadeLoop({
       cartridge,
       ctx,
       getInput: sample,
@@ -140,17 +112,10 @@ export function ArcadeMount({
     loop.start();
 
     return () => {
-      loop?.stop();
+      loop.stop();
       cartridge.teardown();
-      for (const pointerId of capturedPointers) {
-        if (canvas.hasPointerCapture(pointerId)) {
-          canvas.releasePointerCapture(pointerId);
-        }
-      }
-      capturedPointers.clear();
-      canvas.removeEventListener("keydown", onKeyDown);
-      canvas.removeEventListener("keyup", onKeyUp);
-      canvas.removeEventListener("blur", onBlur);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointerup", onPointerUp);
@@ -159,31 +124,23 @@ export function ArcadeMount({
   }, [cartridge, width, height, seed, reducedMotion]);
 
   return (
-    <>
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height}
-        className={className}
-        data-testid={testId}
-        role="application"
-        tabIndex={0}
-        aria-label={cartridge.meta.title}
-        aria-describedby={instructionsId}
-        style={{
-          display: "block",
-          width,
-          height,
-          maxWidth: "100%",
-          touchAction: "none",
-          borderRadius: 8,
-          background: "var(--card-soft)",
-        }}
-      />
-      <span id={instructionsId} className="sr-only">
-        Focus the game, then use Space or Enter to start. Arrow keys control Ice
-        Fishing. Pointer or keyboard controls Paperclip Zombies. Escape exits.
-      </span>
-    </>
+    <canvas
+      ref={canvasRef}
+      width={width}
+      height={height}
+      className={className}
+      data-testid={testId}
+      role="img"
+      aria-label={cartridge.meta.title}
+      style={{
+        display: "block",
+        width,
+        height,
+        maxWidth: "100%",
+        touchAction: "none",
+        borderRadius: 8,
+        background: "var(--color-bg-soft, #f3f1ea)",
+      }}
+    />
   );
 }

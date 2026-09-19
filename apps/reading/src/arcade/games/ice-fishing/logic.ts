@@ -22,7 +22,6 @@ export interface IceFishingState {
   phase: IcePhase;
   score: number;
   lives: number;
-  startingLives: number;
   hookX: number;
   hookY: number;
   hookVy: number;
@@ -48,12 +47,10 @@ export interface IceFishingConfig {
 export function createIceFishingState(cfg: IceFishingConfig): IceFishingState {
   const width = Math.max(64, cfg.width);
   const height = Math.max(64, cfg.height);
-  const startingLives = Math.max(1, Math.floor(cfg.lives ?? 3));
   return {
     phase: "ready",
     score: 0,
-    lives: startingLives,
-    startingLives,
+    lives: cfg.lives ?? 3,
     hookX: width / 2,
     hookY: 36,
     hookVy: 0,
@@ -74,7 +71,7 @@ export function startRound(state: IceFishingState): IceFishingState {
     ...state,
     phase: "playing",
     score: 0,
-    lives: state.startingLives,
+    lives: state.lives > 0 ? state.lives : 3,
     hookY: 36,
     hookVy: 0,
     dropping: false,
@@ -98,7 +95,10 @@ function aabb(
   return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
 
-function spawnFish(state: IceFishingState, rng: () => number): IceFishingState {
+function spawnFish(
+  state: IceFishingState,
+  rng: () => number,
+): IceFishingState {
   const roll = rng();
   const kind: Fish["kind"] =
     roll < 0.15 ? "hazard" : roll < 0.55 ? "small" : "medium";
@@ -147,7 +147,7 @@ export function stepIceFishing(
     return state;
   }
   if (state.phase === "gameover") {
-    if (input.start) return startRound(state);
+    if (input.start) return startRound({ ...state, lives: 3 });
     return state;
   }
 
@@ -200,7 +200,6 @@ export function stepIceFishing(
   // Catch check
   const hookSize = 10;
   const remaining: Fish[] = [];
-  let caught = false;
   for (const f of next.fishes) {
     const hit = aabb(
       next.hookX - hookSize / 2,
@@ -213,7 +212,6 @@ export function stepIceFishing(
       f.h,
     );
     if (hit && (next.dropping || next.reeling || next.reducedMotion)) {
-      caught = true;
       if (f.kind === "hazard") {
         next.lives -= 1;
         next.reeling = true;
@@ -232,7 +230,7 @@ export function stepIceFishing(
   next.fishes = remaining;
 
   // Reduced-motion simplified path: click/start awards a point occasionally
-  if (next.reducedMotion && input.drop && !caught) {
+  if (next.reducedMotion && input.drop) {
     next.score += 1;
   }
 

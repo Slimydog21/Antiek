@@ -56,15 +56,13 @@ const SANCTIONED = new Set<string>([
   // animations.css. See brand/BrainMascot.tsx + brand/README.md.
   "src/brand/mascot-brain/brainMascot.css",
   "src/brand/werner/animated/animations.css",
-  // Semantic reactions are a single, token-driven Werner motion home. Keep
-  // their seven one-shot beats consolidated here instead of baselining them
-  // as unrelated ad-hoc motion.
-  "src/brand/werner/reactions/semantic-reactions.css",
   "src/design/motion.css",
   "src/design/motion.ts",
   // The reactive Werner mascot's waddle/bump poses (AMS SPR-05/10) — a
   // dedicated motion home, the same kind of slot as animations.css above.
   "src/werner/waddle.css",
+  // Ice-fishing cursor chrome (bait bob) — one consolidated home, not inline.
+  "src/werner/ice-fishing.css",
   // The living-mountainscape scene's consolidated keyframes (AMS SPR-04):
   // krea crossfade + the scenery penguin's journey/bob. One motion home, not
   // sprawled inline across the layer components.

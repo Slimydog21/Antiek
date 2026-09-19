@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { emitWernerExperience } from "../../../werner";
 
@@ -97,7 +97,6 @@ export function useFloatMenuSelection({
   minLength = 3,
 }: UseFloatMenuSelectionOptions): FloatMenuSelection | null {
   const [selection, setSelection] = useState<FloatMenuSelection | null>(null);
-  const selectionOpenRef = useRef(false);
 
   useEffect(() => {
     function onSelectionChange() {
@@ -106,13 +105,11 @@ export function useFloatMenuSelection({
       // Empty selection / no scope → dismiss (rigor #3: empty selection → no
       // window, no crash). Clear only if currently open to avoid render churn.
       if (!sel || sel.rangeCount === 0 || !scope) {
-        selectionOpenRef.current = false;
         setSelection((s) => (s ? null : s));
         return;
       }
       const text = sel.toString().trim();
       if (!text || text.length < minLength) {
-        selectionOpenRef.current = false;
         setSelection((s) => (s ? null : s));
         return;
       }
@@ -121,7 +118,6 @@ export function useFloatMenuSelection({
       // menu (HighlightToolbar.tsx:52). A selection elsewhere on the page is
       // not ours; dismiss.
       if (!scope.contains(range.commonAncestorContainer)) {
-        selectionOpenRef.current = false;
         setSelection((s) => (s ? null : s));
         return;
       }
@@ -129,21 +125,20 @@ export function useFloatMenuSelection({
       // A collapsed selection has a zero-area rect — treat as dismissed
       // (rigor #3: selection collapses while menu open → dismiss).
       if (r.width === 0 && r.height === 0) {
-        selectionOpenRef.current = false;
         setSelection((s) => (s ? null : s));
         return;
       }
       const provenance = resolveProvenance
         ? resolveProvenance(range, text)
         : {};
-      if (!selectionOpenRef.current) {
-        selectionOpenRef.current = true;
-        emitWernerExperience("highlight");
-      }
-      setSelection({
-        text,
-        rect: { top: r.top, left: r.left, width: r.width, height: r.height },
-        provenance,
+      setSelection((prev) => {
+        // Fire once when a highlight first opens (not every selectionchange tick).
+        if (!prev) emitWernerExperience({ experience: "highlight" });
+        return {
+          text,
+          rect: { top: r.top, left: r.left, width: r.width, height: r.height },
+          provenance,
+        };
       });
     }
     document.addEventListener("selectionchange", onSelectionChange);

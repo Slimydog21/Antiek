@@ -1,5 +1,5 @@
 import "./animations.css";
-import Werner from "../../Werner";
+import BrainMascot from "../../BrainMascot";
 
 /**
  * Werner the penguin, waddling — route-navigation transition.
@@ -13,7 +13,7 @@ import Werner from "../../Werner";
  * helper that owns the "show Werner during nav" lifecycle lives in
  * `useWaddleTransition` (sibling file).
  *
- * Core mark delegated to <Werner mood="idle" /> + --werner-* tokens
+ * Core mark delegated to <BrainMascot mood="idle" /> + --werner-* tokens
  * for any remaining accents. No more parallel geometry fork.
  */
 type Props = { size?: number; label?: string };
@@ -32,7 +32,7 @@ export default function WernerWaddle({
       {/* Core mark now single-source from canonical Werner at rail fidelity.
           The waddle chrome (body bob + foot lift) is applied via the
           container class; the penguin geometry itself is no longer forked. */}
-      <Werner mood="idle" size={size} className="werner-waddle" />
+      <BrainMascot mood="idle" size={size} className="werner-waddle" />
     </span>
   );
 }

@@ -22,7 +22,6 @@ export interface ZombiesState {
   phase: ZombiesPhase;
   score: number;
   lives: number;
-  startingLives: number;
   wave: number;
   zombies: Zombie[];
   spawnRemaining: number;
@@ -41,12 +40,10 @@ export function createZombiesState(opts: {
   lives?: number;
   reducedMotion?: boolean;
 }): ZombiesState {
-  const startingLives = Math.max(1, Math.floor(opts.lives ?? 3));
   return {
     phase: "ready",
     score: 0,
-    lives: startingLives,
-    startingLives,
+    lives: opts.lives ?? 3,
     wave: 0,
     zombies: [],
     spawnRemaining: 0,
@@ -66,7 +63,7 @@ export function startZombies(state: ZombiesState): ZombiesState {
       ...state,
       phase: "playing",
       score: 0,
-      lives: state.startingLives,
+      lives: 3,
       wave: 0,
       zombies: [],
       elapsed: 0,

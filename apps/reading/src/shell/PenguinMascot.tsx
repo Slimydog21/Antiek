@@ -10,13 +10,14 @@ import {
   installChoreography,
   installReactionBus,
   installTargetChoreography,
-  notifyPointerIdleEdge,
   useMouseFollow,
+  wernerIceFishingCursor,
   type EmoteKind,
   type StageHost,
   type WernerStageController,
-} from "../werner"
-import BrainMascot from "../brand/BrainMascot";
+  WernerRig,
+} from "../werner";
+import { notifyPointerIdleEdge } from "../werner/shellExperienceSignals";
 import "../werner/waddle.css";
 
 /**
@@ -61,13 +62,20 @@ import "../werner/waddle.css";
  * supersession of the reel's signed acceptance criterion #3 live in
  * docs/htmlspec/werner-fixed-station/DESIGN.md.
  *
- * The model, stated once: the station is FIXED and the mascot does not chase
- * the cursor. The fishing rod, the cursor-bait line and the never-catch gag
- * were REMOVED at the operator's directive (2026-08-13: "get rid of the
- * fishing rod in the cursor ... stop the brain from following the cursor").
- * The station keeps the ratified interaction shell: single-click float,
- * double-click open, drag to re-station, emotes, directed strolls. The ONLY
- * JS the station needs is the class
+ * The model, stated once: THE CURSOR IS THE BAIT ON WERNER'S LINE. He is the
+ * fisherman fixed at his station; the cursor is his bait. Two ambient states,
+ * split by the EXISTING pointer-idle signal (useMouseFollow.pointerIdle) — the
+ * same XOR the reel/gag already used, with the station swapped onto the
+ * pointer-active side:
+ *   - pointer ACTIVE (moving): Werner stays put; a fishing line hangs from his
+ *     rod tip to the cursor-bait (WernerFishingLayer + WernerIceBait, mounted
+ *     by WernerIceCursorShell). The cursor IS the bait.
+ *   - pointer IDLE (still ≥ POINTER_IDLE_MS): no live bait to cast to, so Werner
+ *     runs the never-catch gag at his OWN ice-hole — the `werner-fishing` CSS
+ *     cartoon (FISHING_BEATS / waddle.css), unchanged. This is his "cool
+ *     animation" and it still NEVER lands a catch (a ratified, test-pinned
+ *     invariant).
+ * The gag is a pure CSS keyframe loop; the ONLY JS it needs is the class
  * toggle in the tiny station rAF below (no position writes, no spring, no
  * roam). Under reduced motion the rAF early-returns and the class is never
  * added — Werner is fully still but clickable, the same floor the roam honoured.
@@ -99,12 +107,7 @@ function initialMascotPos(): { x: number; y: number } {
   const vw = typeof window !== "undefined" ? window.innerWidth : 1440;
   const vh = typeof window !== "undefined" ? window.innerHeight : 900;
   return clampRectToViewport(
-    {
-      x: 88,
-      y: vh - MASCOT_SIZE - 96,
-      width: MASCOT_SIZE,
-      height: MASCOT_SIZE,
-    },
+    { x: 88, y: vh - MASCOT_SIZE - 96, width: MASCOT_SIZE, height: MASCOT_SIZE },
     { width: vw, height: vh },
   );
 }
@@ -112,13 +115,6 @@ function initialMascotPos(): { x: number; y: number } {
 export function PenguinMascot() {
   const navigate = useNavigate();
   const reduceMotion = usePrefersReducedMotion();
-
-  // The active (default) station activity. With one registered activity
-  
-  // mascot renders THIS activity's ambient class instead of a hard-coded string
-  // — an activity can toggle CSS + mount a cursor-instrument, but has no access
-  // to Werner's position (see src/werner/activities/types.ts). Stable identity
-  // (the frozen registry singleton), so it is safe in effect deps.
 
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   // The bob wrapper (the span carrying the idle wander + the walk animation
@@ -139,12 +135,14 @@ export function PenguinMascot() {
   // Pending single-click float, deferred so a double-click can cancel it. null = none.
   const clickTimer = useRef<number | null>(null);
   // The station idle-gag scheduler (a single rAF; auto-pauses on a hidden tab).
-  // Its ONLY job is the body-bob wrapper — no position work.
+  // Its ONLY job is to toggle the `werner-fishing` class — no position work.
+  const gagRaf = useRef<number | null>(null);
   // Cleanup timer for the return-home stroll after a directed excursion.
   const returnTimer = useRef<number | null>(null);
 
   // The lagged/live cursor read seam. Under the station it is used ONLY to read
-    // layers own their own instances. Disabled (frozen) under reduced motion so
+  // pointerIdle (does the own-hole gag own Werner right now?) — the bait + line
+  // layers own their own instances. Disabled (frozen) under reduced motion so
   // there is zero involuntary behaviour.
   const follow = useMouseFollow({ disabled: reduceMotion });
   // A ref mirror of reduceMotion the once-created StageHost can read without a
@@ -162,7 +160,7 @@ export function PenguinMascot() {
   const roamPaused = useRef(false);
   // TRUE during the return-home leg (after a directed excursion, before Werner is
   // back on station). The gag stands down for this window too, so an idle pointer
-  // can't stack the ambient bob onto the walk-home gait.
+  // can't stack the own-hole fishing cartoon onto the walk-home gait.
   const returningHome = useRef(false);
   // The imperative controller (the SPR-10 seam). Created once; its StageHost
   // reuses THIS component's position + stroll rather than forking a second one.
@@ -277,46 +275,73 @@ export function PenguinMascot() {
     };
   }, [strollTo, restGait]);
 
-  // Product-experience idle is independent of the selected station activity:
-  // the lens, nib, and resonance modes can all let Werner fall asleep. This
-  // loop reads the existing pointer seam and emits only the active→idle edge;
-  // it owns no position or cursor writes and does not run under reduced motion.
+  // ── The station idle-gag driver. ──
+  // Toggles the `werner-fishing` class on the bob span: ON while the pointer is
+  // idle on a visible tab and Werner is neither being dragged nor on a directed
+  // excursion (his own-hole never-catch cartoon owns the scene); OFF otherwise
+  // (the cursor is the live bait, and WernerFishingLayer draws the line to it).
+  // No position writes — a fixed station only *decides* which ambient plays.
+  // Disabled entirely under reduced motion (the class is never added), matching
+  // the CSS reduced-motion guard's paired JS line of defence, and when the
+  // WERNER-ICE flag is off (no ice-fishing experience at all — no bait, no line,
+  // so nothing to fish).
+  // Product experience: pointer idle edge → Werner "sleeping" via the reaction
+  // bus. Independent of the ice-fishing gag (always runs when motion allowed).
   useEffect(() => {
     if (reduceMotion || typeof window === "undefined") return;
-    const canReactToIdle = (reading: ReturnType<typeof follow.read>) =>
-      !dragStart.current &&
-      !roamPaused.current &&
-      !returningHome.current &&
-      !reading.tabHidden;
-    // Pointer history is the edge authority. Drag/excursion/visibility are
-    // eligibility gates only: reopening one while an already-idle pointer is
-    // unchanged must never impersonate a fresh active→idle transition.
-    let wasPointerIdle = follow.read().pointerIdle;
-    let raf = 0;
+    let wasIdle = false;
+    let raf: number | null = null;
     const tick = () => {
       const reading = follow.read();
-      notifyPointerIdleEdge(
-        wasPointerIdle,
-        reading.pointerIdle,
-        canReactToIdle(reading),
-      );
-      wasPointerIdle = reading.pointerIdle;
+      const idleNow =
+        !dragStart.current &&
+        !roamPaused.current &&
+        !returningHome.current &&
+        reading.pointerIdle &&
+        !reading.tabHidden;
+      notifyPointerIdleEdge(wasIdle, idleNow);
+      wasIdle = idleNow;
       raf = window.requestAnimationFrame(tick);
     };
-    // Browsers pause rAF in hidden tabs. Re-baseline on each visibility edge
-    // so time elapsed while asleep cannot surface as an active→idle edge on
-    // the first frame after the tab returns.
-    const onVisibilityChange = () => {
-      wasPointerIdle = follow.read().pointerIdle;
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    // Baseline from reality. No movement history reads idle, but that is a
-    // level, not an active→idle edge, and must not animate on mount or after a
-    // reduced-motion preference flip clears pointer history.
     raf = window.requestAnimationFrame(tick);
     return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.cancelAnimationFrame(raf);
+      if (raf !== null) window.cancelAnimationFrame(raf);
+    };
+  }, [reduceMotion, follow]);
+
+  useEffect(() => {
+    if (reduceMotion || !wernerIceFishingCursor || typeof window === "undefined")
+      return;
+
+    let fishing = false;
+    const setFishingLoop = (on: boolean) => {
+      if (on === fishing) return;
+      fishing = on;
+      bobRef.current?.classList.toggle("werner-fishing", on);
+    };
+
+    const tick = () => {
+      const reading = follow.read();
+      setFishingLoop(
+        !dragStart.current &&
+          !roamPaused.current &&
+          !returningHome.current &&
+          reading.pointerIdle &&
+          !reading.tabHidden,
+      );
+      gagRaf.current = window.requestAnimationFrame(tick);
+    };
+    gagRaf.current = window.requestAnimationFrame(tick);
+
+    return () => {
+      if (gagRaf.current !== null) {
+        window.cancelAnimationFrame(gagRaf.current);
+        gagRaf.current = null;
+      }
+      // Drop the gag class on teardown so a no-rAF state (unmount, or a flip
+      // into reduced motion where this effect early-returns) never strands
+      // Werner mid-cast with the loop class on.
+      bobRef.current?.classList.remove("werner-fishing");
     };
   }, [reduceMotion, follow]);
 
@@ -389,8 +414,9 @@ export function PenguinMascot() {
     };
     const stage = createWernerStage(host);
     stageRef.current = stage;
-    // Two activation paths feed the one stage: product activations (click OR
-    // hotkey, via the shared event) and any opt-in `data-werner-target` button.
+    // Three activation paths feed the one stage: product activations (click OR
+    // hotkey, via the shared event), any opt-in `data-werner-target` button,
+    // and named product-experience reactions (highlight / DR lifecycle / fail).
     const teardownChoreo = installChoreography(stage);
     const teardownTarget = installTargetChoreography(stage);
     const teardownReactions = installReactionBus(stage);
@@ -443,31 +469,27 @@ export function PenguinMascot() {
 
   // ── Drag (pointer-capture, clamped — reuses the panel clamp rule). ──
   // A drag RE-STATIONS Werner: the station home moves to where he is dropped.
-  const onPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      e.currentTarget.setPointerCapture(e.pointerId);
-      dragStart.current = { x: e.clientX, y: e.clientY };
-      moved.current = false;
-      // Hand the position to the pointer: kill any in-flight stroll transition +
-      // gait so the drag tracks the cursor 1:1 instead of easing behind it.
-      if (buttonRef.current) buttonRef.current.style.transition = "";
-      if (bobRef.current) {
-        // Invariant: `werner-waddle` ⟺ actively strolling; otherwise the idle
-        // `penguin-mascot-wander`. A drag ends any stroll, so swap back to the
-        // wander (gated on reduceMotion so a reduced-motion drag stays still).
-        bobRef.current.classList.remove("werner-waddle");
-        bobRef.current.classList.remove("werner-step");
-        if (!reduceMotion)
-          bobRef.current.classList.add("penguin-mascot-wander");
-      }
-      if (returnTimer.current !== null) {
-        window.clearTimeout(returnTimer.current);
-        returnTimer.current = null;
-      }
-      returningHome.current = false;
-    },
-    [reduceMotion],
-  );
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    moved.current = false;
+    // Hand the position to the pointer: kill any in-flight stroll transition +
+    // gait so the drag tracks the cursor 1:1 instead of easing behind it.
+    if (buttonRef.current) buttonRef.current.style.transition = "";
+    if (bobRef.current) {
+      // Invariant: `werner-waddle` ⟺ actively strolling; otherwise the idle
+      // `penguin-mascot-wander`. A drag ends any stroll, so swap back to the
+      // wander (gated on reduceMotion so a reduced-motion drag stays still).
+      bobRef.current.classList.remove("werner-waddle");
+      bobRef.current.classList.remove("werner-step");
+      if (!reduceMotion) bobRef.current.classList.add("penguin-mascot-wander");
+    }
+    if (returnTimer.current !== null) {
+      window.clearTimeout(returnTimer.current);
+      returnTimer.current = null;
+    }
+    returningHome.current = false;
+  }, [reduceMotion]);
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
@@ -578,8 +600,9 @@ export function PenguinMascot() {
           IN-PLACE drift on top of Werner's breathing sway — ambient life, not
           locomotion); while Werner is on a directed excursion the stroll adds
           `werner-waddle`/`werner-step` here so his feet bob as he walks; while
-          All are gated/cleared under reduced motion so the mascot is fully
-          still for those users. */}
+          the pointer is idle the station gag adds `werner-fishing` here so the
+          own-hole cartoon plays. All are gated/cleared under reduced motion so
+          he is fully still for those users. */}
       <span
         ref={bobRef}
         className={reduceMotion ? "" : "penguin-mascot-wander"}
@@ -590,10 +613,14 @@ export function PenguinMascot() {
           position: "relative",
         }}
       >
-        {/* The base brain mark — breathes off the station's ambient classes;
-            hidden behind the emote overlay when one is playing. */}
+        {/* The base Werner mark — the SPR-06 walk-cycle RIG (feet + flippers
+            animate off the `werner-waddle`/`werner-step` walk signal during an
+            excursion) plus the SPR-04 rod + the SPR-05 own-hole line/fish the
+            `werner-fishing` gag animates. The rig owns no motion source; it
+            consumes the class signals this bob span carries. Hidden behind the
+            emote overlay when one is playing so we don't stack penguins. */}
         <span style={{ visibility: emote ? "hidden" : "visible" }}>
-          <BrainMascot mood="idle" size={MASCOT_SIZE} label="Project" />
+          <WernerRig size={MASCOT_SIZE} label="Project" />
         </span>
         {/* The active emote (SPR-05) — an existing animated Werner mark mapped to
             the emote kind, overlaid on the mascot. Keyed by kind so a one-shot

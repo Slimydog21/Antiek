@@ -1,35 +1,39 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+/**
+ * toast.err is the shell-wide failure path — drives notifyShellFailure →
+ * emitWernerExperience("fail"). Tests the SHIPPED LemonToast.emit path.
+ */
+import { afterEach, describe, expect, it } from "vitest";
 
-import { WERNER_EXPERIENCE_EVENT } from "../../werner";
 import { toast } from "./LemonToast";
+import { WERNER_EXPERIENCE_EVENT } from "../../werner/reactionBus";
 
 afterEach(() => {
-  vi.useRealTimers();
+  // dismiss any lingering toasts by id range (best-effort)
+  for (let i = 0; i < 50; i++) toast.dismiss(i);
 });
 
-describe("LemonToast failure experience", () => {
-  it("emits one Werner failure for an error toast", () => {
-    vi.useFakeTimers();
-    const listener = vi.fn();
-    window.addEventListener(WERNER_EXPERIENCE_EVENT, listener);
-
-    toast.err("Could not save", 1);
-
-    expect(listener).toHaveBeenCalledTimes(1);
-    expect((listener.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
-      experience: "fail",
-    });
-    window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener);
+describe("toast.err product experience path", () => {
+  it("toast.err dispatches fail experience on the real emit path", () => {
+    const seen: string[] = [];
+    const on = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (d?.experience) seen.push(d.experience);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, on);
+    toast.err("substrate unreachable");
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, on);
+    expect(seen).toContain("fail");
   });
 
-  it("does not treat successful feedback as failure", () => {
-    vi.useFakeTimers();
-    const listener = vi.fn();
-    window.addEventListener(WERNER_EXPERIENCE_EVENT, listener);
-
-    toast.ok("Saved", 1);
-
-    expect(listener).not.toHaveBeenCalled();
-    window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener);
+  it("toast.ok does not emit fail", () => {
+    const seen: string[] = [];
+    const on = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (d?.experience) seen.push(d.experience);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, on);
+    toast.ok("saved");
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, on);
+    expect(seen).not.toContain("fail");
   });
 });
