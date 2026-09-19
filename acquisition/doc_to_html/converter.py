@@ -258,13 +258,11 @@ def _run_pdf_ocr(
 ) -> tuple[str, str] | None:
     """Local OCR after empty/thin pypdf. Returns (text, engine) or None."""
     try:
-        from acquisition.doc_to_html.pdf_ocr import run_pdf_ocr
+        from acquisition.doc_to_html import pdf_ocr as _pdf_ocr
     except ImportError:
         logger.warning("pdf_ocr module unavailable")
         return None
     # OCR gets its own longer budget; do not inherit the 30s CLI convert timeout.
-    from acquisition.doc_to_html import pdf_ocr as _pdf_ocr
-
     ocr_timeout = max(float(timeout), float(_pdf_ocr.DEFAULT_OCR_TIMEOUT_S))
     try:
         return _pdf_ocr.run_pdf_ocr(

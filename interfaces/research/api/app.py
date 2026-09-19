@@ -6784,7 +6784,7 @@ def create_app(
         substrate_controls: list[str]
         compliance_frameworks: list[str]
         loop_3_unlock_status: dict[str, bool]
-        website_ads: dict
+        website_ads: dict[str, Any]
 
     @app.get(
         "/trust-center",

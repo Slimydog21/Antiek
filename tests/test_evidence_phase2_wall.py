@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from interfaces.research.api import evidence_retriever as er
-from substrate.dispatch.router import reset_provider_registry, register_provider
+from substrate.dispatch.router import register_provider, reset_provider_registry
 from substrate.schemas import ActionType, Event, EvidenceRetrieveRequestedPayload
 
 

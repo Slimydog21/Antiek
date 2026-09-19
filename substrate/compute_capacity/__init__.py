@@ -7,16 +7,6 @@ stays on the BYOT usage ledger.
 1 ACU = investigation start + optional wall-time top-up on completion (see ``acu_meter``). No fake billing.
 """
 
-from .store import (
-    CAPACITY_TIERS,
-    CapacityEvaluation,
-    ComputeCapacity,
-    ensure_table,
-    evaluate_capacity,
-    get_capacity,
-    set_capacity,
-    tier_default_units,
-)
 from .acu_meter import (
     ACU_PER_INVESTIGATION_START,
     CAPACITY_WARN_HEADER,
@@ -27,6 +17,16 @@ from .acu_meter import (
     gate_investigation_start,
     record_investigation_start_acu,
     record_investigation_wall_topup_acu,
+)
+from .store import (
+    CAPACITY_TIERS,
+    CapacityEvaluation,
+    ComputeCapacity,
+    ensure_table,
+    evaluate_capacity,
+    get_capacity,
+    set_capacity,
+    tier_default_units,
 )
 
 __all__ = [

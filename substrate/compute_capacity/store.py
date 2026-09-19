@@ -106,11 +106,7 @@ def _row_to_capacity(
 ) -> ComputeCapacity:
     used_status: UsedStatus = str(row[4])  # type: ignore[assignment]
     used_raw = row[3]
-    used: int | None
-    if used_status == "unmetered":
-        used = None
-    else:
-        used = int(used_raw) if used_raw is not None else 0
+    used: int | None = None if used_status == "unmetered" else int(used_raw) if used_raw is not None else 0
     updated = row[5]
     updated_s: str | None
     if updated is None:

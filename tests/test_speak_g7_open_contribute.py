@@ -9,7 +9,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
-from substrate.speak import invitations
 
 
 class StubEmbedding:

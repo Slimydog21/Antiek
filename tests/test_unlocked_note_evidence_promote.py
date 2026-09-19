@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from pathlib import Path
 
 import duckdb
 
+from roles.note_taker.replay import _promote_delivered_notes
 from runtime.db_lock import connect_write
 from substrate.event_log.events import investigation_event_lock
 from substrate.graph import ensure_initialized
@@ -17,7 +17,6 @@ from substrate.graph.insight_question import (
     promote_from_note_event,
 )
 from substrate.graph.ops import insert_chunk, insert_document
-from roles.note_taker.replay import _promote_delivered_notes
 
 
 def _seed(db: str, events: Path, inv: str) -> dict:

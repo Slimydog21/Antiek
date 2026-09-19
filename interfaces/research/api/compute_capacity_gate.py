@@ -74,8 +74,10 @@ def commit_start_acu(
             )
             # Re-evaluate after increment for response warn (may newly soft_over).
             from substrate.compute_capacity.acu_meter import (
-                evaluate_with_near_limit,
                 CapacityGateResult as CGR,
+            )
+            from substrate.compute_capacity.acu_meter import (
+                evaluate_with_near_limit,
             )
 
             ev = evaluate_with_near_limit(recorded.capacity)

@@ -9,6 +9,7 @@ the DB.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from substrate.dp_shuffler.epsilon_registry import EpsilonRegistry
 
@@ -41,7 +42,7 @@ class TrustCenterPayload:
     substrate_controls: tuple[str, ...]
     compliance_frameworks: tuple[str, ...]
     loop_3_unlock_status: dict[str, bool]
-    website_ads: dict
+    website_ads: dict[str, Any]
 
     def as_dict(self) -> dict:
         return {

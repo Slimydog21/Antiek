@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 # Bound prior turns folded into the prompt (TalkToBook / book_qa parity).
 MAX_HISTORY_TURNS = 8

@@ -8,7 +8,8 @@ import tempfile
 
 import pytest
 
-from substrate.ad_inventory.fill_decisions import decide_fills, ensure_table
+from runtime.db_lock import connect_write
+from substrate.ad_inventory.fill_decisions import decide_fills
 from substrate.ad_inventory.fill_settlement import (
     FillSettlementError,
     settle_fill_decision,
@@ -19,7 +20,6 @@ from substrate.ad_inventory.rank0_honesty import (
     assert_settlement_allowed,
     website_ads_honesty,
 )
-from runtime.db_lock import connect_write
 
 
 @pytest.fixture()
@@ -210,6 +210,7 @@ def test_resolve_window_value_only_when_settled(db):
 
 def test_fills_api_honesty_reports_settlement_closed(db):
     from fastapi.testclient import TestClient
+
     from interfaces.research.api.app import create_app
 
     client = TestClient(create_app())

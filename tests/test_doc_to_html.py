@@ -928,9 +928,8 @@ def test_convert_raises_when_pdf_has_no_text_layer(sample_pdf: Path):
     def _all_cli_fail(cmd, *args, **kwargs):
         return MockCompletedProcess(returncode=1, stdout="", stderr="nope")
 
-    with patch("subprocess.run", side_effect=_all_cli_fail):
-        with pytest.raises(ConversionError, match="pypdf|OCR"):
-            convert_to_markdown(sample_pdf, fmt="pdf")
+    with patch("subprocess.run", side_effect=_all_cli_fail), pytest.raises(ConversionError, match="pypdf|OCR"):
+        convert_to_markdown(sample_pdf, fmt="pdf")
 
 
 def test_ingest_asset_pypdf_path_stores_reader_html(db_env: dict, tmp_path: Path):
@@ -1045,15 +1044,15 @@ def test_ocr_empty_still_refused(tmp_path: Path, monkeypatch):
             "acquisition.doc_to_html.pdf_ocr.ocr_cli_available",
             return_value=True,
         ),
+        pytest.raises(ConversionError),
     ):
-        with pytest.raises(ConversionError):
-            convert_to_markdown(pdf_path, fmt="pdf")
+        convert_to_markdown(pdf_path, fmt="pdf")
 
 
 def test_pypdf_thin_defers_to_ocr(tmp_path: Path, monkeypatch):
     """Thin text-layer (few words) must not win over OCR."""
-    from acquisition.doc_to_html.converter import convert_to_markdown_with_engine
     from acquisition.books.reader import ReadResult
+    from acquisition.doc_to_html.converter import convert_to_markdown_with_engine
 
     pdf_path = tmp_path / "thin.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 thin")
@@ -1088,7 +1087,7 @@ def test_pypdf_thin_defers_to_ocr(tmp_path: Path, monkeypatch):
 
 def test_deepseek_ocr_preferred_over_ocrmypdf(tmp_path: Path, monkeypatch):
     """When DeepSeek is available it wins over ocrmypdf/tesseract."""
-    from acquisition.doc_to_html import converter, pdf_ocr
+    from acquisition.doc_to_html import converter
 
     pdf = tmp_path / "scan.pdf"
     pdf.write_bytes(b"%PDF-1.4 thin")
@@ -1118,7 +1117,7 @@ def test_deepseek_ocr_preferred_over_ocrmypdf(tmp_path: Path, monkeypatch):
 
 def test_deepseek_fail_falls_back_to_ocrmypdf(tmp_path: Path, monkeypatch):
     """Empty/failed DeepSeek must fall through to ocrmypdf."""
-    from acquisition.doc_to_html import converter, pdf_ocr
+    from acquisition.doc_to_html import converter
 
     pdf = tmp_path / "scan.pdf"
     pdf.write_bytes(b"%PDF-1.4 thin")

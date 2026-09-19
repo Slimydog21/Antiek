@@ -207,8 +207,8 @@ def test_looks_like_question_heuristic():
 
 def test_question_shaped_note_is_parked(monkeypatch):
     """Voice distill emits question.identified for question-shaped notes."""
-    from substrate.event_log import trajectory
     from substrate.books.voice_note import distill_voice_note
+    from substrate.event_log import trajectory
 
     result = distill_voice_note(
         document_id="doc-book-1",

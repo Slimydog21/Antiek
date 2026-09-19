@@ -136,8 +136,9 @@ def test_dispatch_and_parse_retries_on_length(monkeypatch):
 
 
 def test_pro_tier_default_matches_decomposer_budget():
-    from substrate.dispatch.router import DispatchConfig
     from pathlib import Path
+
+    from substrate.dispatch.router import DispatchConfig
 
     cfg = DispatchConfig.from_yaml(
         Path(__file__).resolve().parents[1]

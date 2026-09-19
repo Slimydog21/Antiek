@@ -9,7 +9,9 @@ from ``investigation.start_requested``.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from typing import Any
+
+from fastapi import APIRouter, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from substrate.event_log import trajectory
@@ -61,7 +63,8 @@ def build_prompt_telemetry(
 
     for row in rows:
         at = row.get("action_type")
-        payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+        raw_payload = row.get("payload")
+        payload: dict[str, Any] = raw_payload if isinstance(raw_payload, dict) else {}
         if at == start and question is None:
             q = payload.get("question") or payload.get("sub_question")
             if isinstance(q, str) and q.strip():
@@ -130,5 +133,5 @@ async def get_prompt_telemetry(investigation_id: str) -> PromptTelemetryOut:
     return build_prompt_telemetry(investigation_id, rows)
 
 
-def register_prompt_telemetry_routes(app) -> None:
+def register_prompt_telemetry_routes(app: FastAPI) -> None:
     app.include_router(prompt_telemetry_router)

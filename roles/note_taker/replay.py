@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-from runtime.db_lock import connect_read, connect_write
+from runtime.db_lock import LockedConnection, connect_read, connect_write
 from substrate.event_log import default_events_dir, iter_physical_events
 from substrate.graph import default_db_path
 from substrate.graph.schema import init_database_at_path
@@ -77,7 +77,7 @@ def _yield_write_lock_for_peers() -> None:
         time.sleep(REPLAY_LOCK_YIELD_S)
 
 
-def _connect_write_replay(db_path: str, *, purpose: str):
+def _connect_write_replay(db_path: str, *, purpose: str) -> LockedConnection:
     """Short-timeout writer for note-taker replay (arxiv / #3164 class)."""
     return connect_write(
         db_path, purpose=purpose, timeout_s=REPLAY_WRITE_TIMEOUT_S
@@ -413,11 +413,12 @@ class DurableNoteTakerReplay:
                 "AND investigation_id=?",
                 [CONSUMER_VERSION, investigation_id],
             ).fetchone()
-            calling_n = con.execute(
+            calling_row = con.execute(
                 "SELECT COUNT(*) FROM note_taker_windows "
                 "WHERE investigation_id=? AND consumer_version=? AND state='calling'",
                 [investigation_id, CONSUMER_VERSION],
-            ).fetchone()[0]
+            ).fetchone()
+            calling_n = calling_row[0] if calling_row is not None else 0
         if existing_configuration is not None and existing_configuration != expected_configuration:
             raise NoteTakerReplayCorruption(
                 "note-taker configuration drift requires an explicit "
