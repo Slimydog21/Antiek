@@ -19,6 +19,8 @@ straight into SPR-05's ``plan_from_gap`` seed interface.
 
 from __future__ import annotations
 
+from typing import Any
+
 import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -35,11 +37,11 @@ class UngroundedGapError(ValueError):
 class GapCandidate:
     kind: str
     question: str                       # the phrased research question (SPR-05 seed)
-    backing_node_ids: tuple             # REQUIRED, non-empty — the grounding guard
+    backing_node_ids: tuple[str, ...]   # REQUIRED, non-empty — the grounding guard
     impact_score: float = 0.0
     evidence: dict[str, object] = field(default_factory=dict)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.kind not in GAP_KINDS:
             raise ValueError(f"unknown gap kind {self.kind!r}; allowed: {GAP_KINDS}")
         if not self.backing_node_ids:
