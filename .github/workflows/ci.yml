@@ -453,8 +453,36 @@ jobs:
         run: npm ci
 
       - name: Type-check
+        # `npm run typecheck` is `tsc -b --noEmit`, NOT `npx tsc --noEmit`.
+        # The -b matters: apps/reading/tsconfig.json is a solution file with
+        # `"files": []` and project references to tsconfig.app.json and
+        # tsconfig.node.json. Outside build mode tsc resolves that literally
+        # and compiles the empty file set, so `npx tsc --noEmit` type-checked
+        # ZERO files and exited 0 unconditionally. Measured on this tree:
+        #   tsc --noEmit      -> 0 files seen, exit 0
+        #   tsc -b --noEmit   -> 750 files seen, exit 0
+        # Build mode follows the references and checks the real 750.
         working-directory: apps/reading
-        run: npx tsc --noEmit
+        run: npm run typecheck
+
+      - name: Negative control — prove the type gate can fail
+        # A gate with no proof of sensitivity is not a gate. The step above
+        # was green for its whole life while checking nothing; only a
+        # deliberately-broken input distinguishes "passing" from "blind".
+        # Generalizes tests/test_caddy_allowlist_coverage.py's
+        # test_drift_guard_is_not_vacuous to the type gate.
+        working-directory: apps/reading
+        run: |
+          set -u
+          control=src/__negative_control__.ts
+          cleanup() { rm -f "$control"; }
+          trap cleanup EXIT
+          printf 'export const mustFail: number = "not a number";\n' > "$control"
+          if npm run typecheck >/dev/null 2>&1; then
+            echo "::error::The type gate accepted a deliberate type error. It is not checking anything."
+            exit 1
+          fi
+          echo "Type gate correctly rejected a deliberate type error."
 
       - name: Token lint (pattern not tone — no new hardcoded hex)
         # frontend-design SPR-01 (harvested from PR #4). Fails the PR on any
