@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-import threading
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -9,34 +10,50 @@ import pytest
 
 import runtime.db_lock as db_lock
 
+# The contender must be a separate PROCESS: since the in-process write gate
+# (38171a350, "stop multi-fd flock hang") serializes every connect_write in
+# one process, a same-process waiter cannot reach _register_write_waiter
+# while the holder is active. Cross-process publication is the mechanism's
+# real contract — its only consumer (the recovery worker in app.py) yields
+# when "another process has actually reported contention".
+_CONTENDER_SCRIPT = """\
+import sys
+sys.path.insert(0, {repo!r})
+import runtime.db_lock as db_lock
+with db_lock.connect_write({db!r}, purpose="waiter", timeout_s=30, poll_interval_s=0.01):
+    print("acquired", flush=True)
+"""
+
 
 def test_contending_writer_publishes_and_consumes_handoff_signal(
     tmp_path: Path,
 ) -> None:
     db_path = str(tmp_path / "graph.duckdb")
-    outcome: list[str] = []
+    repo = str(Path(__file__).resolve().parents[1])
 
     with db_lock.connect_write(db_path, purpose="holder") as holder:
         holder.execute("CREATE TABLE proof (value INTEGER)")
-
-        def contend() -> None:
-            with db_lock.connect_write(
-                db_path,
-                purpose="waiter",
-                timeout_s=2,
-                poll_interval_s=0.01,
-            ):
-                outcome.append("acquired")
-
-        waiter = threading.Thread(target=contend)
-        waiter.start()
-        deadline = time.monotonic() + 1
+        proc = subprocess.Popen(
+            [sys.executable, "-c", _CONTENDER_SCRIPT.format(repo=repo, db=db_path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        # Deadline covers interpreter + duckdb import in the child on a
+        # loaded CI box; the holder must observe the token well before.
+        deadline = time.monotonic() + 30
         while not db_lock.write_handoff_requested(db_path):
+            if proc.poll() is not None:
+                _, stderr = proc.communicate()
+                raise AssertionError(
+                    f"contender exited {proc.returncode} before publishing: {stderr}"
+                )
             assert time.monotonic() < deadline
             time.sleep(0.01)
-
-    waiter.join(2)
-    assert outcome == ["acquired"]
+    # Holder exited -> child acquires -> exits 0.
+    stdout, _ = proc.communicate(timeout=60)
+    assert proc.returncode == 0
+    assert "acquired" in stdout
     assert not db_lock.write_handoff_requested(db_path)
 
 

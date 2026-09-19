@@ -130,8 +130,18 @@ def test_health_flywheel_true_after_reuse_event(tmp_path, monkeypatch):
     assert ready is True, "graph open + >=1 knowledge.reused must resolve flywheel_ready=True"
     assert count >= 1
 
-    # Route-level: /health reflects it.
-    body = _client().get("/health").json()
+    # Route-level: /health reflects it. The probe runs as a background task
+    # (ec8e80814: /health must never block on the event-log scan), so the
+    # FIRST response still carries the pre-probe default; trigger it, await
+    # the task handle deterministically (no sleep/poll), then re-read.
+    import asyncio
+
+    with _client() as client:
+        first = client.get("/health")
+        assert first.status_code == 200
+        task = client.app.state._flywheel_probe_task
+        client.portal.call(asyncio.wait_for, task, 10)
+        body = client.get("/health").json()
     assert body["flywheel_ready"] is True
     assert body["knowledge_reuse_count"] >= 1
 
