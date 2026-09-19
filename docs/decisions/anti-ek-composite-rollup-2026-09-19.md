@@ -46,11 +46,11 @@ First-parent / merge tips that moved grades **after** the prior leave-off tip `7
 | BYOT/ACU | 98 | Soft-warn + wall + **hard-refuse UX**; no Stripe |
 | Thinking Partner | 100 | Multiturn + SERVABLE + TalkToBook unify + Lego + voice-park |
 | Notebook | 98 | AutoNotebook + daily-loop + outline→Write + continuity polish |
-| TurboPuffer | **97** | Health honesty (shadow/pointer/corpus row_count) + TP retrieval status; **`production_default_mount=false`** by design |
+| TurboPuffer | **98** | Health honesty + Mini corpus scale (hundreds+ SERVABLE) + approx lag verify; **`production_default_mount=false`** by design |
 | HTML-native | 99 | Research + Write/Notebook inline `artifact.html` + pypdf/OCR; projection honesty header |
 | CLI / Herdr | 99 | #3180–#3181 + inventory honesty (probe tip, w7 tabs, wrapper alias) |
 
-**Composite (equal-weight mean of 13 surfaces) = 1281/13 ≈ 98.54 → report **~98**.**
+**Composite (equal-weight mean of 13 surfaces) = 1282/13 ≈ 98.62 → report **~98.5**.**
 
 Prior leave-offs: `440dc2ba…` ~94; `7bfff594…` ~97; `7b871c58…`/`7da3fb34…` ~98; Specs contracts raise Specs 97→99 without inventing mount/CPM/G2.
 
@@ -81,7 +81,7 @@ Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywh
 
 1. **Operator:** G2 counsel sign-off / Synquery flag / email outreach (not code).
 2. **Product ask:** `production_default_mount` promote? AppLovin live demand?
-3. **Ops residual:** TPuf mount promote / G2 / Synquery / email / AppLovin CPM. Code ~98 · Specs ~99 · TPuf ~97.
+3. **Ops residual:** TPuf mount promote / G2 / Synquery / email / AppLovin CPM. Code ~98 · Specs ~99 · TPuf ~98.
 4. Do not invent Synquery/G2/email/mount/CPM.
 
 ## Decision index (Anti-Ek honesty, 2026-09-19)
@@ -97,7 +97,7 @@ Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywh
 | Specs | [anti-ek-specs-honesty-contracts](./anti-ek-specs-honesty-contracts-2026-09-19.md), [honesty API catalog](../specs/anti-ek-honesty-api-contracts-2026-09-19.md) |
 | Plans | [anti-ek-plans-tip-honesty](./anti-ek-plans-tip-honesty-2026-09-19.md) |
 | Dogfood | [mac-mini-dogfood-durable-tpuf](./mac-mini-dogfood-durable-tpuf-2026-09-19.md) |
-| TurboPuffer | [tpuf-tp-hybrid-health](./tpuf-tp-hybrid-health-2026-09-19.md), [tpuf-health-corpus-honesty](./tpuf-health-corpus-honesty-2026-09-19.md), [prod-turbopuffer-servable](./prod-turbopuffer-servable-2026-09-19.md) |
+| TurboPuffer | [tpuf-tp-hybrid-health](./tpuf-tp-hybrid-health-2026-09-19.md), [tpuf-health-corpus-honesty](./tpuf-health-corpus-honesty-2026-09-19.md), [tpuf-mini-corpus-scale](./tpuf-mini-corpus-scale-2026-09-19.md), [prod-turbopuffer-servable](./prod-turbopuffer-servable-2026-09-19.md) |
 
 ## Leave-off
 
