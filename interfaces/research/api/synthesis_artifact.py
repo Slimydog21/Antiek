@@ -172,7 +172,8 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
             headers={
                 "Content-Disposition": (
                     f'inline; filename="synthesis-{synthesis_id}.html"'
-                )
+                ),
+                "X-Antiek-Html-Projection": "script-free; disposition=inline",
             },
         )
 
