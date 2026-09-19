@@ -199,7 +199,7 @@ def test_unauthenticated_local_uses_frozen_pre_feature_prompt(
         compose_thought_partner_prompt,
     )
 
-    monkeypatch.setattr(app_module, "_retrieve_thought_partner_context", lambda *a, **k: [])
+    monkeypatch.setattr(app_module, "_retrieve_thought_partner_context", lambda *a, **k: ([], "duckdb — brute_force_kind", None))
     client = TestClient(
         app_module.create_app(
             register_wrestling=False,
@@ -344,7 +344,7 @@ def test_recall_is_deterministically_max_eight_and_preserves_role_prompt(
     from interfaces.research.api import app as app_module
     from roles.thought_partner import compose_thought_partner_prompt
 
-    monkeypatch.setattr(app_module, "_retrieve_thought_partner_context", lambda *a, **k: [])
+    monkeypatch.setattr(app_module, "_retrieve_thought_partner_context", lambda *a, **k: ([], "duckdb — brute_force_kind", None))
     captured_roles: list[str] = []
     real_dispatch = app_module.dispatch
 
