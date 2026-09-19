@@ -121,6 +121,22 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
             />
           </label>
         </div>
+        <aside
+          class="rounded border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1"
+          data-testid="share-browse-link"
+        >
+          <p
+            class="font-serif text-[12px] text-ink-mute dark:text-moonlight"
+          >
+            Share this page with friends who are not signed in — they can browse remembrances and wait for an invite to add one.
+          </p>
+          <a
+            class="mt-1 inline-block font-mono text-[11px] text-sun-deep underline dark:text-sun"
+            href="/speak/browse"
+          >
+            Open public browse (no login)
+          </a>
+        </aside>
         <p
           class="font-serif text-sm italic text-ink-mute dark:text-moonlight"
         >
