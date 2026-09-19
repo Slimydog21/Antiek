@@ -66,11 +66,19 @@ def maybe_reuse_prior_knowledge_at_start(
         resolved_events = events_dir or default_events_dir()
         model = embedding_provider or default_embedding_provider()
 
-        # Read-write, no flock — shares process DuckDB config with writers.
-        # Register so concurrent connect_read sees a local writer (LazyRW).
-        parent = duckdb.connect(resolved_db)
-        _register_local_writer(resolved_db)
-        registered = True
+        # Prefer same-process RW (no flock) so we coexist with note-taker /
+        # LazyRW writers. Cross-process (ops smoke while uvicorn holds the
+        # file) falls back to connect_read — retrieve is read-only; emit only
+        # touches the event log.
+        try:
+            parent = duckdb.connect(resolved_db)
+            _register_local_writer(resolved_db)
+            registered = True
+        except Exception:
+            from runtime.db_lock import connect_read
+
+            parent = connect_read(resolved_db)
+            registered = False
         kind = resolve_reuse_substrate_kind()
         substrate = make_substrate_from_con(
             kind, parent, model=model, db_path=resolved_db,

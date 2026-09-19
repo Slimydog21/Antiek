@@ -39,11 +39,11 @@
 8. **TurboPuffer promote beyond reuse** — still env-gated; corpus search not on TP.
 9. **BYOT/ACU dogfood score to parity with Speak** — needs focused lane.
 10. **Voice → park → discuss TP** end-to-end polish.
-11. **flywheel_ready=false** on prod + Mini (`knowledge_reuse_count=0`) — Loop One reuse probe / events path; infra green otherwise.
+11. ~~flywheel_ready=false on prod~~ — closed: no investigations since #3118; seed + env alias + RO fallback + health re-probe (Mini already true).
 
 ## Highest-leverage next (after this PR)
 
-**flywheel_ready=false on prod** (Mini already true/18) **or** CLI/Herdr 70 **or** Lego insight slotting into TP — prefer flywheel prod liveness for compounding signal.
+**CLI/Herdr 70** or **Lego insight slotting into TP** — prefer CLI/Herdr if operator daily loop is Herdr-heavy; else Lego for Surface E 100.
 
 ## Leave-off
 

@@ -123,12 +123,16 @@ except ImportError:  # pragma: no cover — direct-script fallback
 
 
 def default_events_dir() -> str:
-    return os.environ.get(
-        "ANTIEK_RESEARCH_EVENTS_DIR",
-        os.path.join(
-            os.environ.get("ANTIEK_HOME", os.path.expanduser("~/.antiek")),
-            "research_events",
-        ),
+    # Prefer ANTIEK_RESEARCH_EVENTS_DIR; accept ANTIEK_EVENT_LOG_DIR as the
+    # ansible/systemd alias (antiek.service.j2) so probe + emit share one dir.
+    explicit = os.environ.get("ANTIEK_RESEARCH_EVENTS_DIR") or os.environ.get(
+        "ANTIEK_EVENT_LOG_DIR"
+    )
+    if explicit:
+        return explicit
+    return os.path.join(
+        os.environ.get("ANTIEK_HOME", os.path.expanduser("~/.antiek")),
+        "research_events",
     )
 
 
