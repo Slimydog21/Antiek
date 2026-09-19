@@ -102,6 +102,7 @@ from runtime.research_runner import (
     make_contract_gather_stub,
     make_exa_gather_loop,
 )
+from runtime.research_runner.contained_gather import make_contained_gather_loop
 from runtime.research_runner.cost_projection import project_cascade_cost
 from runtime.research_runner.protocol import BrowseLoop
 from runtime.research_runner.provider_gateway import (
@@ -343,10 +344,49 @@ def _research_loop_factory() -> BrowseLoop:
     into the evidence pack as ``doc-url-*`` chunks through the single
     ``ingest_url`` write seam + the legal gate. No route change either way.
 
-    Reading the env here (not at import) keeps the exa branch — and any
-    ``ExaClient`` it would build — out of the stub-default path entirely.
+    When the operator sets ``ANTIEK_EXEC_BACKEND``, the gather step instead
+    runs inside an ``ExecutionBackend`` workspace
+    (``make_contained_gather_loop``). This is where the exec seam joins the
+    cascade: the *loop* changes, the runner does not — ``HostLocalRunner``
+    still owns budget, steering, the event log and ``on_emit=funnel.submit``,
+    so the promotion funnel remains the single graph writer. Building the
+    backend here also means the factory's loud failures (no docker daemon →
+    ``BackendUnavailable``) surface at launch, not as a silent local
+    downgrade.
+
+    Reading the env here (not at import) keeps both branches — and any
+    ``ExaClient`` or backend they would build — out of the stub-default path
+    entirely.
     """
     mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
+    backend_kind = os.environ.get(BACKEND_ENV, "").strip()
+
+    if backend_kind:
+        if mode == "exa":
+            # Refuse rather than pick one. The Exa loop retrieves over the
+            # network and promotes through ``ingest_url`` in this process;
+            # containing it is a different lane. Silently honouring one flag
+            # would leave the operator believing gather is sandboxed when it
+            # is not, which is the exact lie ``NetPolicyUnsupported`` exists
+            # to prevent one rung lower.
+            raise RuntimeError(
+                f"{BACKEND_ENV}={backend_kind!r} and ANTIEK_DRW_GATHER=exa are "
+                "mutually exclusive: the Exa gather loop runs in-process and "
+                "writes through ingest_url, so it cannot be contained by the "
+                "execution backend. Unset one."
+            )
+        backend = build_execution_backend()
+        if backend.name == "local":
+            logger.warning(
+                "%s=%r selected LocalProcessBackend: it runs agent code as "
+                "this service user with no isolation. It is a seam exerciser, "
+                "not a sandbox; only a backend that can enforce the declared "
+                "net policy will provision a workspace.",
+                BACKEND_ENV,
+                backend_kind,
+            )
+        return make_contained_gather_loop(backend, steps=2, cost_per_step=0.01)
+
     if mode == "exa":
         return cast(BrowseLoop, make_exa_gather_loop(top_k=3))
     return cast(BrowseLoop, make_contract_gather_stub(steps=2, cost_per_step=0.01))
@@ -1475,19 +1515,6 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
                 seal_on_complete=False,
                 retrieval_substrate=reuse_substrate,
             )
-            # Exec-backend seam: when ANTIEK_EXEC_BACKEND is set, plumb the
-            # ExecutionBackend abstraction so it is reachable from the cascade.
-            # Default (unset) path is unchanged — HostLocalRunner above.
-            if os.environ.get(BACKEND_ENV):
-                _exec_backend = build_execution_backend(
-                    seal_on_complete=False,
-                    retrieval_substrate=reuse_substrate,
-                )
-                logger.info(
-                    "ExecutionBackend wired: %s (runner remains %s)",
-                    _exec_backend.name,
-                    type(runner).__name__,
-                )
             session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
             if gateway is not None:
                 _HARD_CEILING_LAUNCHING.add(session_id)
