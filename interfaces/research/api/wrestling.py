@@ -501,12 +501,32 @@ def make_document_loaded_handler(
                 estimate_tokens_from_bytes,
                 maybe_escalate_to_rlm,
             )
+            from orchestration.rlm.prime_agent_backend import (
+                prime_agent_backend_from_environment,
+            )
 
+            # Supply the backend so the documented flags become the real switch.
+            #
+            # Every RLM site accepts a ``prime_backend`` and, until now, no non-test
+            # code anywhere constructed one — so `_bridge_executor(None)` returned
+            # "dispatch" unconditionally and the entire Prime lane was unreachable at
+            # runtime while looking wired at the module level. This is the one RLM site
+            # with a live entry point (document.loaded), which makes it the honest place
+            # to close that gap first; the other seven have no route at all and wiring
+            # them without a consumer is what produced eight inert parameters.
+            #
+            # The default path is unchanged. `_bridge_executor` requires ALL THREE of a
+            # non-None backend, ANTIEK_PRIME_AGENT_RLM_ENABLED=1 and ANTIEK_RLM_RATIFIED=1
+            # (bridge.py:103-110), and the factory itself returns a backend with
+            # enabled=False unless the first flag is set. Neither flag is set anywhere in
+            # the deployment config, so behaviour is byte-identical until the operator
+            # ratifies — which is exactly the gate session.py:36-40 says is deliberate.
             decision = maybe_escalate_to_rlm(
                 document_id=event.document_id,
                 investigation_id=event.investigation_id or "__no_investigation__",
                 estimated_tokens=estimate_tokens_from_bytes(p.size_bytes or 0),
                 root_role="wrestler",
+                prime_backend=prime_agent_backend_from_environment(),
             )
             if decision.above_threshold:
                 # Surface the decision for the wrestling driver +
