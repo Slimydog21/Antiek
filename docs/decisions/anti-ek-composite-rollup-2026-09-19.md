@@ -1,6 +1,6 @@
 # Anti-Ek composite rollup (2026-09-19 leave-off)
 
-**Tip verified (live 2026-09-19 ~19:50 Asia/Riyadh)**: parent `7da3fb3432c1d6590712a9d7a6e500bb4c03c13a` (#3220); Specs honesty contracts PR lands atop (see leave-off tip after merge).
+**Tip verified (live 2026-09-19 ~22:10 Asia/Riyadh)**: parent `1b8623559321ed446265f6a529a0480c61f60852` (#3225 Code honesty); TPuf health/corpus honesty PR lands atop (see leave-off tip after merge).
 
 | Host | Evidence |
 |------|----------|
@@ -27,6 +27,8 @@ First-parent / merge tips that moved grades **after** the prior leave-off tip `7
 | #3219 | Write/Notebook inline `artifact.html` + projection header | [html-writing-asset-inline-2026-09-19](./html-writing-asset-inline-2026-09-19.md) |
 | #3220 | Plans tip honesty (leave-off / rollup / index) | [anti-ek-plans-tip-honesty-2026-09-19](./anti-ek-plans-tip-honesty-2026-09-19.md) |
 | Specs | Honesty API contracts + `anti_ek_honesty` + contract tests | [anti-ek-specs-honesty-contracts-2026-09-19](./anti-ek-specs-honesty-contracts-2026-09-19.md) · [specs catalog](../specs/anti-ek-honesty-api-contracts-2026-09-19.md) |
+| #3225 | Code honesty wiring + Html-Projection unify | [anti-ek-code-honesty-wiring-2026-09-19](./anti-ek-code-honesty-wiring-2026-09-19.md) |
+| TPuf | Health corpus honesty + TP retrieval status (no mount flip) | [tpuf-health-corpus-honesty-2026-09-19](./tpuf-health-corpus-honesty-2026-09-19.md) |
 
 **Prod TPuf key** present — raises TurboPuffer / Production without flipping `production_default_mount`.
 
@@ -44,15 +46,15 @@ First-parent / merge tips that moved grades **after** the prior leave-off tip `7
 | BYOT/ACU | 98 | Soft-warn + wall + **hard-refuse UX**; no Stripe |
 | Thinking Partner | 100 | Multiturn + SERVABLE + TalkToBook unify + Lego + voice-park |
 | Notebook | 98 | AutoNotebook + daily-loop + outline→Write + continuity polish |
-| TurboPuffer | 95 | Mini+prod hybrid_ready + key; **`production_default_mount=false`** by design |
+| TurboPuffer | **97** | Health honesty (shadow/pointer/corpus row_count) + TP retrieval status; **`production_default_mount=false`** by design |
 | HTML-native | 99 | Research + Write/Notebook inline `artifact.html` + pypdf/OCR; projection honesty header |
 | CLI / Herdr | 99 | #3180–#3181 + inventory honesty (probe tip, w7 tabs, wrapper alias) |
 
-**Composite (equal-weight mean of 13 surfaces) = 1279/13 ≈ 98.38 → report **~98**.**
+**Composite (equal-weight mean of 13 surfaces) = 1281/13 ≈ 98.54 → report **~98**.**
 
 Prior leave-offs: `440dc2ba…` ~94; `7bfff594…` ~97; `7b871c58…`/`7da3fb34…` ~98; Specs contracts raise Specs 97→99 without inventing mount/CPM/G2.
 
-**Why not honest ≥99 or literal 100?** Ads≤98 until live priced demand; TurboPuffer≤96 while `production_default_mount=false`; G2 counsel + Synquery + email remain **operator** flips (honesty shipped). Inventing partnership, cents, or mount flip would violate standing. Code ~96 residual remains.
+**Why not honest ≥99 or literal 100?** Ads≤98 until live priced demand; TurboPuffer≤97 while `production_default_mount=false` (health/corpus honesty shipped); G2 counsel + Synquery + email remain **operator** flips. Inventing partnership, cents, or mount flip would violate standing. Code ~98 residual = broader OAS / flaky shards.
 
 ## Residuals blocking literal composite 100
 
@@ -67,17 +69,19 @@ Prior leave-offs: `440dc2ba…` ~94; `7bfff594…` ~97; `7b871c58…`/`7da3fb34�
 9. ~~Mini tip lag / durable dogfood~~ — closed; tip-aligned.
 10. ~~Notebook continuity / CLI inventory / HTML writing-asset inline~~ — shipped #3217/#3218/#3219.
 11. ~~Plans tip honesty~~ — shipped #3220.
-12. ~~Specs honesty API contracts~~ — this leave-off.
+12. ~~Specs honesty API contracts~~ — shipped.
+13. ~~Code honesty wiring~~ — shipped #3225.
+14. ~~TPuf health/corpus honesty (non-mount)~~ — this leave-off.
 
 ## Closed this programme (do not re-open as gaps)
 
-Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywheel seed; HTML research + Write/Notebook inline view; BYOT soft-warn + wall + hard-refuse; TP multiturn + voice-park; PDF pypdf + OCR DeepSeek-prefer; CLI/Herdr `--check` + inventory; #3192 operator/Prime/BYOT/arxiv; Mini durable TPuf/flywheel; Ads paid_fill_gated; G2/Synquery honesty; Notebook continuity; Plans tip honesty; **Specs honesty contracts**.
+Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywheel seed; HTML research + Write/Notebook inline view; BYOT soft-warn + wall + hard-refuse; TP multiturn + voice-park; PDF pypdf + OCR DeepSeek-prefer; CLI/Herdr `--check` + inventory; #3192 operator/Prime/BYOT/arxiv; Mini durable TPuf/flywheel; Ads paid_fill_gated; G2/Synquery honesty; Notebook continuity; Plans tip honesty; Specs honesty contracts; Code honesty wiring; **TPuf health/corpus honesty (no mount flip)**.
 
 ## Highest-leverage next (if continuing)
 
 1. **Operator:** G2 counsel sign-off / Synquery flag / email outreach (not code).
 2. **Product ask:** `production_default_mount` promote? AppLovin live demand?
-3. **Code residual:** Code ~98 / TPuf ~95 (no mount flip). Specs ~99.
+3. **Ops residual:** TPuf mount promote / G2 / Synquery / email / AppLovin CPM. Code ~98 · Specs ~99 · TPuf ~97.
 4. Do not invent Synquery/G2/email/mount/CPM.
 
 ## Decision index (Anti-Ek honesty, 2026-09-19)
@@ -93,7 +97,8 @@ Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywh
 | Specs | [anti-ek-specs-honesty-contracts](./anti-ek-specs-honesty-contracts-2026-09-19.md), [honesty API catalog](../specs/anti-ek-honesty-api-contracts-2026-09-19.md) |
 | Plans | [anti-ek-plans-tip-honesty](./anti-ek-plans-tip-honesty-2026-09-19.md) |
 | Dogfood | [mac-mini-dogfood-durable-tpuf](./mac-mini-dogfood-durable-tpuf-2026-09-19.md) |
+| TurboPuffer | [tpuf-tp-hybrid-health](./tpuf-tp-hybrid-health-2026-09-19.md), [tpuf-health-corpus-honesty](./tpuf-health-corpus-honesty-2026-09-19.md), [prod-turbopuffer-servable](./prod-turbopuffer-servable-2026-09-19.md) |
 
 ## Leave-off
 
-Infra green after Specs contracts merge+deploy. Mini tip-aligned. Dual structure intact. No fake money. Specs tip-honest (~99).
+Infra green after TPuf health/corpus honesty merge+deploy. Mini tip-aligned. Dual structure intact. No fake money. `production_default_mount=false` intentional. TPuf ~97 · composite ~98.

@@ -153,10 +153,16 @@ class HealthResponse(BaseModel):
     # hybrid_ready requires env+key+active pointer; production_default_mount
     # stays False until deliberately flipped in a future decision.
     turbopuffer_servable_enabled: bool = False
+    turbopuffer_shadow_enabled: bool = False
     turbopuffer_api_key_present: bool = False
     turbopuffer_active_pointer: bool = False
+    turbopuffer_pointer_context_ok: bool | None = None
     turbopuffer_hybrid_ready: bool = False
     turbopuffer_resolved_kind: str = "brute_force"
+    turbopuffer_indexed_row_count: int | None = None
+    turbopuffer_content_hash: str | None = None
+    turbopuffer_duckdb_is_sot: bool = True
+    turbopuffer_thought_partner_hybrid_wired: bool = True
     turbopuffer_production_default_mount: bool = False
     # GF-7: startup read-only health snapshot for the graph DuckDB file.
     # This is intentionally separate from ``status`` so /health can keep
@@ -275,10 +281,16 @@ def _probe_turbopuffer() -> dict[str, Any]:
     except Exception as exc:
         return {
             "servable_enabled": False,
+            "shadow_enabled": False,
             "api_key_present": False,
             "active_pointer_file": False,
+            "active_pointer_context_ok": None,
             "hybrid_ready": False,
             "resolved_kind": "brute_force",
+            "indexed_row_count": None,
+            "content_hash": None,
+            "duckdb_is_sot": True,
+            "thought_partner_hybrid_wired": True,
             "production_default_mount": False,
             "error": f"{type(exc).__name__}: {exc}",
         }
@@ -1292,25 +1304,19 @@ class ThoughtPartnerRequest(BaseModel):
 
 def _retrieve_thought_partner_context(
     prompt: str, policy_tag: str, *, top_k: int = 8,
-) -> list[dict[str, Any]]:
-    """Retrieve the most semantically-relevant passages from the operator's
-    knowledge graph for ``prompt`` and map them to the thought-partner
-    role's ``selected_notes`` shape (CK-1: the "ask your library" grounding
-    — Cursor's auto-context analog).
+) -> tuple[list[dict[str, Any]], str | None, str | None]:
+    """Retrieve library notes for Thought Partner + honesty status.
 
-    §9.0-gated by ``policy_tag`` (see ThoughtPartnerRequest). Read-only
-    (connect_read) — the corpus is never mutated (§16 single-writer).
-    Degraded posture, never raises: connect_read on a fresh/absent graph
-    raises (read-only cannot create), which yields an honest empty list so
-    the model still answers, just without library grounding. The embedding
-    model is constructed INSIDE the connect_read block so an absent graph
-    short-circuits before paying the sentence-transformers load (keeps the
-    endpoint fast on a cold box and keeps tests hermetic).
+    Returns ``(selected_notes, retrieval_status, degraded_reason)``.
+    Status mirrors ``TurbopufferSubstrate.query`` / DuckDB search honesty:
+    ``servable`` / ``shadow`` / ``degraded — brute_force`` /
+    ``duckdb — non_servable_policy`` / ``duckdb — brute_force_kind`` /
+    ``empty — graph_unavailable``. Never invents hybrid success.
 
-    When ``ANTIEK_TURBOPUFFER_SERVABLE`` + ``TURBOPUFFER_API_KEY`` resolve
-    hybrid kind ``turbopuffer``, library grounding uses the SERVABLE hybrid
-    substrate (same gate as cascade/flywheel reuse). Non-``attribution_eligible``
-    policies stay DuckDB SoT inside the adapter — gated never hits TurboPuffer.
+    §9.0-gated by ``policy_tag``. Read-only. Degraded posture, never raises.
+    When ``ANTIEK_TURBOPUFFER_SERVABLE`` + key resolve hybrid kind
+    ``turbopuffer``, uses SERVABLE hybrid (same gate as cascade/flywheel).
+    Non-``attribution_eligible`` stays DuckDB SoT inside the adapter.
     """
     from runtime.db_lock import connect_read
     from substrate.graph import default_db_path
@@ -1333,21 +1339,29 @@ def _retrieve_thought_partner_context(
                     prompt, top_k=top_k, policy_tag=policy_tag,
                 )
             else:
-                retrieved = search(
-                    con, prompt, model=model, top_k=top_k, policy_tag=policy_tag,
-                )
+                retrieved = {
+                    **search(
+                        con, prompt, model=model, top_k=top_k, policy_tag=policy_tag,
+                    ),
+                    "status": "duckdb — brute_force_kind",
+                }
     except Exception:
-        return []
+        return [], "empty — graph_unavailable", "connect_read_or_embed_failed"
+    status = retrieved.get("status")
+    if not isinstance(status, str) or not status:
+        status = "unknown"
+    degraded = retrieved.get("degraded_reason")
+    degraded_s = degraded if isinstance(degraded, str) else None
     notes: list[dict[str, Any]] = []
     for hit in retrieved.get("results", []):
         doc_id = hit.get("document_id")
         notes.append({
             "note_id": hit.get("chunk_id"),
-            "note_text": hit.get("chunk_text", ""),  # search() emits "chunk_text" (graph/search.py:260); the prior "text" key never existed, so every retrieved note mapped to empty string and starved the model of library grounding.
+            "note_text": hit.get("chunk_text", ""),
             "source_event_ids": [doc_id] if doc_id else [],
             "confidence": float(hit.get("similarity") or 0.0),
         })
-    return notes
+    return notes, status, degraded_s
 
 
 class CrossGraphCitationRequest(BaseModel):
@@ -2091,6 +2105,11 @@ def create_app(
                     "servable_enabled"
                 )
             ),
+            turbopuffer_shadow_enabled=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "shadow_enabled"
+                )
+            ),
             turbopuffer_api_key_present=bool(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
                     "api_key_present"
@@ -2099,6 +2118,11 @@ def create_app(
             turbopuffer_active_pointer=bool(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
                     "active_pointer_file"
+                )
+            ),
+            turbopuffer_pointer_context_ok=(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "active_pointer_context_ok"
                 )
             ),
             turbopuffer_hybrid_ready=bool(
@@ -2111,7 +2135,31 @@ def create_app(
                     "resolved_kind", "brute_force"
                 )
             ),
-            turbopuffer_production_default_mount=False,
+            turbopuffer_indexed_row_count=(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "indexed_row_count"
+                )
+            ),
+            turbopuffer_content_hash=(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "content_hash"
+                )
+            ),
+            turbopuffer_duckdb_is_sot=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "duckdb_is_sot", True
+                )
+            ),
+            turbopuffer_thought_partner_hybrid_wired=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "thought_partner_hybrid_wired", True
+                )
+            ),
+            turbopuffer_production_default_mount=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "production_default_mount", False
+                )
+            ),
             duckdb_ready=duckdb_health.ready,
             duckdb_status=duckdb_health.status,
             duckdb_schema_present=duckdb_health.schema_present,
@@ -5907,6 +5955,10 @@ def create_app(
     class ThoughtPartnerResponseBody(BaseModel):
         shape: str  # "challenge" | "synthesis" | "extension"
         text: str
+        # Library grounding honesty — never invents hybrid success.
+        # status mirrors substrate.query (servable|shadow|degraded — brute_force|…).
+        library_retrieval_status: str | None = None
+        library_retrieval_degraded_reason: str | None = None
 
     @app.post(
         "/thought-partner",
@@ -5946,11 +5998,12 @@ def create_app(
             for t in (req.history or [])
             if t.question.strip() and t.answer.strip()
         ]
+        selected_notes, lib_status, lib_degraded = _retrieve_thought_partner_context(
+            req.prompt, effective_policy_tag,
+        )
         role_prompt = compose_thought_partner_prompt(
             user_prompt=req.prompt,
-            selected_notes=_retrieve_thought_partner_context(
-                req.prompt, effective_policy_tag,
-            ),
+            selected_notes=selected_notes,
             conversation_history=history_payload,
         )
         assembled_prompt = THOUGHT_PARTNER_SYSTEM_PROMPT
@@ -5983,6 +6036,8 @@ def create_app(
         return ThoughtPartnerResponseBody(
             shape=parsed.shape,
             text=result.text,
+            library_retrieval_status=lib_status,
+            library_retrieval_degraded_reason=lib_degraded,
         )
 
     # ── CK-3 inline autocomplete endpoint (cursor-for-knowledge) ──
