@@ -459,6 +459,7 @@ def make_document_loaded_handler(
             return  # malformed — the wrestling validator should have rejected
 
         p = event.payload
+        document_id: str = event.document_id  # narrowed; closures re-widen
 
         def _sync() -> bool:
             try:
@@ -474,7 +475,7 @@ def make_document_loaded_handler(
             try:
                 insert_document(
                     con,
-                    document_id=event.document_id,
+                    document_id=document_id,
                     source_tier=4,  # conservative default; tier_assigner will refine later
                     document_type=p.media_type,
                     source_uri=p.source_uri,
@@ -616,6 +617,7 @@ def make_region_selected_handler(
             return
 
         p = event.payload
+        document_id: str = event.document_id  # narrowed; closures re-widen
         chunk_id = _region_to_chunk_id(p.region_id)
         # Lazy-resolve the embedder so tests + env-var overrides take
         # effect without us caching a stale module-level value.
@@ -647,7 +649,7 @@ def make_region_selected_handler(
                 # we synthesize a placeholder row so the chunks FK holds.
                 insert_document(
                     con,
-                    document_id=event.document_id,
+                    document_id=document_id,
                     source_tier=4,
                     document_type="pdf",
                     investigation_id=event.investigation_id,
