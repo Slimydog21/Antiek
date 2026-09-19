@@ -19,18 +19,18 @@
 | Speak | 100 | Honesty / invite / coexist signed off this programme |
 | Ads | 94 | Rank-0 honesty, fills nonblock, no fake pricing; AppLovin still open product |
 | BYOT/ACU | 78 | Soft-warn / meter paths exist; not fully dogfood-scored this arc |
-| Thinking Partner | 90 | Surface E + SERVABLE mount + TalkToBook on thought_partner role (#unify); Lego slotting residual |
+| Thinking Partner | 96 | Surface E + SERVABLE + TalkToBook unify + Lego insight slotting (#this) |
 | Notebook | 92 | AutoNotebook + daily-loop (#3168) + outline→Write auto-import (from-investigation UI) |
 | TurboPuffer | 72 | #3135 env-gated hybrid for reuse; not corpus/TalkToBook/TP UI mount |
 | HTML-native | 75 | Research artifact HTML + ArtifactOutlineShelf; reader HTML ingest incomplete |
 | CLI / Herdr | 70 | Herdr standing + Mini SSH lane; CLI surface uneven vs app |
 
-**Composite (equal-weight mean of above) ≈ 88/100.** TP 90; Notebook 92; flywheel prod restored (#3177) honest reuse_count=1; Mini=18.
+**Composite (equal-weight mean of above) ≈ 90/100.** TP 96 (Lego slotting); Notebook 92; flywheel prod true; Mini reuse=18.
 
 ## Residuals blocking composite 100
 
 1. ~~Deploy flock vs warm-writer~~ — addressed #3171–#3173 (stop-before-migrate, flush warm writer, live verify keepalive=0).
-2. **Lego insight slotting** into TP pane (master-spec §4.5) — not invented this arc.
+2. ~~**Lego insight slotting** into TP pane~~ — closed: shelf + focus tray + compose-context @insight (reuse Write drag MIME).
 3. ~~TalkToBook ↔ `thought_partner` unify~~ — closed: same role+shapes; ask keeps book-scoped retrieval (dual structure).
 4. ~~Outline → Write auto-import~~ — closed: WriteHome calls from-investigation; 404→empty link fallback.
 5. **Email re-ping / first-cohort publisher outreach** — operator/G2 counsel, not code-only.
@@ -43,7 +43,7 @@
 
 ## Highest-leverage next (after this PR)
 
-**CLI/Herdr 70** or **Lego insight slotting into TP** — prefer CLI/Herdr if operator daily loop is Herdr-heavy; else Lego for Surface E 100.
+**CLI/Herdr ~70** — next primary gap toward composite 100 (Lego TP closed).
 
 ## Leave-off
 
