@@ -28,6 +28,7 @@ from services.html_projection.adapters.document import (
     adapt_document_for_projection,
 )
 from services.html_projection.gate import find_violations
+from services.html_projection.partials._structural import MAX_NEST
 from substrate.books.html_sanitizer import sanitize_book_html
 
 _MARKDOWN = """\
@@ -384,3 +385,209 @@ def test_a_br_inside_pre_is_a_line_break_not_a_deletion():
         '<pre class="antiek-code"><code>def f(x):\n    return x * 2\n\nprint(f(2))</code></pre>'
         in visible
     )
+
+
+# ── The void-element boundary: where a silent drop actually came from ──
+
+
+def test_a_void_drop_tag_suppresses_itself_and_nothing_after_it():
+    """``<embed>`` must not swallow the rest of the document.
+
+    The drop set is a set of tag NAMES, but suppression is a stack that pops
+    on a close tag, and ``<embed>`` is void — no close tag is ever coming.
+    Pushing it therefore suppressed every element after it to EOF: no
+    placeholder, no island copy, no trace at all, which is the precise
+    failure this module is built to refuse. The container drop tags still
+    suppress their subtrees, so the fix narrows the bug without loosening
+    the floor.
+    """
+    doc = adapt_document_for_projection(
+        "doc-embed",
+        "<p>before</p><embed src='x.swf'><p>after</p><h2>still here</h2>",
+        "url",
+        None,
+    )
+    visible = _visible(render(doc, RenderContext()))
+    assert "before" in visible and "after" in visible
+    assert '<h2 class="antiek-heading">still here</h2>' in visible
+
+    for container in ("script", "style", "iframe", "svg", "template"):
+        body = f"<p>a</p><{container}>secret</{container}><p>b</p>"
+        kept = _visible(render(adapt_document_for_projection("d", body, "url", None), RenderContext()))
+        assert "secret" not in kept, f"{container} subtree must still be suppressed"
+        assert "a" in kept and "b" in kept
+
+
+def test_an_unknown_void_tag_does_not_swallow_the_document_into_one_node():
+    """A void tag outside the drop set must not eat its own siblings.
+
+    ``VOID_TAGS`` in the sanitizer is an allowlist subset — br/hr/img — because
+    that module only serializes tags it kept. A tree builder needs the full
+    HTML void set instead: pushed onto the element stack, an ``<input>`` never
+    closes, so the whole remainder of the document became its children and
+    collapsed into one ``source:input`` node of concatenated text. The
+    placeholder was visible, which is why this is not the silent drop above,
+    but every block boundary after it was gone.
+    """
+    doc = adapt_document_for_projection(
+        "doc-input",
+        "<p>before</p><input type='text'><p>after</p><h2>still here</h2>",
+        "upload",
+        None,
+    )
+    types = [node["type"] for node in doc["content"]]
+    assert types == ["paragraph", "source:input", "paragraph", "heading"]
+    visible = _visible(render(doc, RenderContext()))
+    assert "unsupported block (source:input)" in visible
+    assert '<h2 class="antiek-heading">still here</h2>' in visible
+
+
+# ── Escaping, at the two places the ingest bridge newly feeds ──
+
+
+def test_a_code_block_whose_text_is_script_markup_is_escaped_not_executed():
+    """Script markup inside ``<pre>`` is TEXT, and has to stay text.
+
+    A page documenting an XSS writes ``&lt;script&gt;`` inside a fence; the
+    sanitizer keeps those entities, and the adapter's parser decodes them, so
+    the doc-model legitimately carries the literal characters
+    ``<script>alert(1)</script>``. Only ``code_block``'s escape stands between
+    that and a real script element in the projected artifact. Unescape it and
+    every other test in this file stays green, so the gate would be the first
+    thing to notice — at which point a lawful document 500s instead of
+    rendering.
+    """
+    body = sanitize_book_html(
+        "<pre><code>&lt;script&gt;alert(1)&lt;/script&gt;</code></pre>"
+    )
+    doc = adapt_document_for_projection("doc-code-script", body, "url", None)
+    assert doc["content"][0]["content"][0]["text"] == "<script>alert(1)</script>"
+
+    html = render(doc, RenderContext())
+    assert (
+        '<pre class="antiek-code"><code>&lt;script&gt;alert(1)&lt;/script&gt;</code></pre>'
+        in _visible(html)
+    )
+    assert find_violations(html) == []
+
+
+def test_an_unmapped_tag_name_cannot_carry_markup_into_the_placeholder():
+    """The placeholder names a tag the SOURCE chose, so it is hostile input.
+
+    ``HTMLParser`` ends a tag name at whitespace, ``/`` or ``>`` and nothing
+    else, so ``&``, ``"``, ``'`` and ``=`` all survive into it, and the adapter
+    hands the result straight to the unsupported fallback as ``source:<tag>``.
+    That fallback escapes the type, and the ingest bridge is what made an
+    attacker-chosen string reach it, so the escaping is pinned from this side.
+    The ampersand is the character that proves it: unescaped it opens an entity
+    the browser will try to resolve.
+    """
+    doc = adapt_document_for_projection(
+        "doc-hostile-tag", "<x&y>boom</x&y>", "url", None
+    )
+    assert doc["content"][0]["type"] == "source:x&y"
+    visible = _visible(render(doc, RenderContext()))
+    assert "unsupported block (source:x&amp;y)" in visible
+
+    for probe, node_type in (
+        ('<x"onerror=alert(1) >boom', 'source:x"onerror=alert(1)'),
+        ("<p'q>boom", "source:p'q"),
+    ):
+        hostile = adapt_document_for_projection("d", probe, "url", None)
+        assert hostile["content"][0]["type"] == node_type
+        assert find_violations(render(hostile, RenderContext())) == []
+
+
+def test_a_rejected_image_url_scheme_never_reaches_the_island():
+    """The URL allowlist covers ``<img src>``, not only ``<a href>``.
+
+    The visible surface cannot leak either way — the image partial renders alt
+    text and never emits a ``src`` — but the island is the round-trip channel,
+    and a doc-model carrying ``javascript:`` is a live URL the moment any
+    future surface honours the attr. The module says a rejected scheme must
+    not reach the island; this is the half of that sentence the link tests do
+    not cover.
+    """
+    doc = adapt_document_for_projection(
+        "doc-img-scheme",
+        '<p><img src="javascript:alert(1)" alt="one"></p>'
+        '<p><img src="data:text/html;base64,PHNjcmlwdD4=" alt="two"></p>'
+        '<p><img src="https://example.com/ok.png" alt="three"></p>',
+        "url",
+        None,
+    )
+    images = [n for n in doc["content"] if n["type"] == "antiek_image"]
+    assert [img["attrs"].get("alt") for img in images] == ["one", "two", "three"]
+    assert "src" not in images[0]["attrs"] and "src" not in images[1]["attrs"]
+    assert images[2]["attrs"]["src"] == "https://example.com/ok.png"
+
+    html = render(doc, RenderContext())
+    assert "javascript:" not in html and "base64" not in html
+    assert find_violations(html) == []
+
+
+# ── Doc-models that did not come from the adapter ──
+#
+# The island is a real input channel: extract_island recovers a doc-model and
+# restyle re-renders it, so the renderer sees shapes the adapter never emits.
+# The three below are the ones whose handling is asserted only in a comment.
+
+
+def test_a_heading_level_outside_one_to_six_is_clamped():
+    """``<h99>`` is not an element. A doc-model can still ask for one."""
+    doc = {
+        "title": None,
+        "content": [
+            {"type": "heading", "attrs": {"level": 99}, "content": [{"type": "text", "text": "hi"}]},
+            {"type": "heading", "attrs": {"level": 0}, "content": [{"type": "text", "text": "lo"}]},
+            {"type": "heading", "attrs": {"level": "x"}, "content": [{"type": "text", "text": "bad"}]},
+        ],
+        "source": {},
+    }
+    visible = _visible(render(doc, RenderContext()))
+    assert '<h6 class="antiek-heading">hi</h6>' in visible
+    assert '<h1 class="antiek-heading">lo</h1>' in visible
+    assert '<h2 class="antiek-heading">bad</h2>' in visible
+
+
+def test_a_malformed_list_or_table_still_shows_everything_it_carried():
+    """A child in the wrong slot is rendered, never dropped.
+
+    ``render_list_at`` wraps a non-``listItem`` child in its own ``<li>`` and
+    ``render_table_at`` wraps a cell of an unexpected type in its own ``<td>``,
+    both so a malformed structure degrades visibly rather than quietly. Delete
+    either and the content vanishes with nothing else failing.
+    """
+    doc = {
+        "title": None,
+        "content": [
+            {"type": "bulletList", "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "ORPHAN-ITEM"}]}
+            ]},
+            {"type": "table", "content": [
+                {"type": "tableRow", "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "ODD-CELL"}]}
+                ]}
+            ]},
+        ],
+        "source": {},
+    }
+    visible = _visible(render(doc, RenderContext()))
+    assert "<li>" in visible and "ORPHAN-ITEM" in visible
+    assert "<td>" in visible and "ODD-CELL" in visible
+
+
+def test_nesting_past_the_bound_is_a_visible_marker_not_a_recursion_error():
+    """The depth bound is what keeps a hostile doc-model out of the stack.
+
+    Past ``MAX_NEST`` the node renders a placeholder naming its type and the
+    limit. Content below the bound is lost, which is the cost, but it is
+    announced — and the request returns instead of raising ``RecursionError``
+    inside a handler.
+    """
+    node: dict = {"type": "paragraph", "content": [{"type": "text", "text": "DEEPEST"}]}
+    for _ in range(MAX_NEST + 4):
+        node = {"type": "bulletList", "content": [{"type": "listItem", "content": [node]}]}
+    visible = _visible(render({"title": None, "content": [node], "source": {}}, RenderContext()))
+    assert f"unsupported block (bulletList beyond nesting depth {MAX_NEST})" in visible
+    assert "DEEPEST" not in visible
