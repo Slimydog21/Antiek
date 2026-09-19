@@ -55,7 +55,7 @@ from substrate.schemas import (  # noqa: E402
     NoteEmergedPayload,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402 -- lazy export after path fix
 
 # Action types the note-taker subscribes to. Tightened to the events
 # that ACTUALLY reflect substantive wrestling movement — distillations

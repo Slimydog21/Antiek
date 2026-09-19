@@ -24,11 +24,7 @@ from typing import Any
 try:
     from ...runtime.db_lock import LockedConnection  # type: ignore[import-not-found]
     from ..constants import SYSTEM_INVESTIGATION_ID
-    from ..graph.ops import (
-        content_addressed_id,
-        insert_node,
-        new_random_id,
-    )
+    from ..graph.ops import insert_node, new_random_id
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))

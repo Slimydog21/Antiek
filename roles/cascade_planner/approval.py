@@ -28,7 +28,6 @@ try:
     from substrate.graph.insight_question import graph_db_path
 
     from .persist import _json
-    from .tree_contract import PlanTree
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))

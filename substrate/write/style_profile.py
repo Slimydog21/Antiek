@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from typing import Any
 
 try:
-    from ..graph.ops import content_addressed_id, new_random_id
+    from ..graph.ops import content_addressed_id
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))

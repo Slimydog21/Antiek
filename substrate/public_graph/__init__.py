@@ -41,9 +41,8 @@ is not invoked here — that's a separate signal layer.
 from __future__ import annotations
 
 import enum
-import re
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 # Master-spec §5.4 — at most 2 em-dashes per thesis-shaped artifact.
 # Note-level threshold is more permissive (4) since notes can chain.

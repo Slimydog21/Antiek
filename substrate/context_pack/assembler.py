@@ -459,8 +459,8 @@ def assemble_context_pack(
     text = "".join(rt for _, rt, _ in kept_canonical)
 
     assembled = tuple(
-        AssembledLayer(kind=l.kind, source=l.source, tokens=t, rendered=r)
-        for l, r, t in kept_canonical
+        AssembledLayer(kind=layer.kind, source=layer.source, tokens=tokens, rendered=rendered)
+        for layer, rendered, tokens in kept_canonical
     )
 
     # Emit the typed event so the pack provenance is queryable.

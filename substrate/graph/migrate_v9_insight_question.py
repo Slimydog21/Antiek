@@ -61,6 +61,7 @@ regardless — the migration does not snapshot for you.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 
@@ -259,10 +260,8 @@ def migrate(con: LockedConnection) -> bool:
             )
         con.execute("COMMIT")
     except Exception:
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover — rollback on a dead txn
             con.execute("ROLLBACK")
-        except Exception:  # pragma: no cover — rollback on a dead txn
-            pass
         raise
     return True
 

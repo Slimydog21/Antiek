@@ -36,7 +36,7 @@ _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-from datetime import UTC
+from datetime import UTC  # noqa: E402 -- direct-script fallback import
 
 from processing.embedding import (  # noqa: E402
     EmbeddingProvider,
@@ -65,7 +65,7 @@ from substrate.schemas import (  # noqa: E402
     Event,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402 -- lazy export after path fix
 
 # The role-tail prompt appended after the context pack. Asks for
 # structured JSON; the parser tolerates loose formatting (Markdown code

@@ -18,11 +18,9 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Optional
-
-from substrate.event_log import emit_typed
+from typing import Any
 
 # Status state machine per master-spec §9.10.
 VALID_STATUSES: frozenset[str] = frozenset({

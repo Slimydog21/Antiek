@@ -132,9 +132,11 @@ def _union_find_clusters(
 
     for i in range(n):
         for j in range(i + 1, n):
-            if embeddings is not None:
-                if _cosine(embeddings[i], embeddings[j]) < similarity_threshold:
-                    continue  # embeddings say "not a candidate"
+            if (
+                embeddings is not None
+                and _cosine(embeddings[i], embeddings[j]) < similarity_threshold
+            ):
+                continue  # embeddings say "not a candidate"
             if equivalence(claims[i].text, claims[j].text):
                 union(i, j)
 

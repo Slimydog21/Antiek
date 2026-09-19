@@ -119,8 +119,10 @@ def process_request(
             reason=f"status={req.status.value}",
         )
 
-    if req.status == DeletionRequestStatus.PENDING:
-        if age < timedelta(days=CANCELLATION_WINDOW_DAYS):
+    if (
+        req.status == DeletionRequestStatus.PENDING
+        and age < timedelta(days=CANCELLATION_WINDOW_DAYS)
+    ):
             remaining = CANCELLATION_WINDOW_DAYS - age.days
             return DeletionResult(
                 request_id=req.request_id,

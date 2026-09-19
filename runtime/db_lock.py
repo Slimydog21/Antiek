@@ -305,7 +305,7 @@ def connect_write(
                     raise WriteLockTimeout(
                         f"Could not acquire write lock on {lock_path} within {timeout_s}s. "
                         f"Another writer is holding it; inspect with `lsof {lock_path}`."
-                    )
+                    ) from e
                 time.sleep(poll_interval_s)
     except WriteLockTimeout:
         raise
@@ -521,7 +521,7 @@ class FlockWriteCoordinator:
                         os.close(fd)
                         raise WriteLockTimeout(
                             f"Could not acquire write lock on {lock_path} within {self.timeout_s}s."
-                        )
+                        ) from e
                     time.sleep(0.1)
         except Exception:
             with contextlib.suppress(OSError):

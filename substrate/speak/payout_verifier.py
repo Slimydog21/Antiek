@@ -443,9 +443,9 @@ def release_payout(
     # already bound what was written + escrowed, so spent_usd is just the sum
     # of the actual accrued amounts, and capped/exhausted are the flags
     # accrue_contributions set on the lines it wrote.
-    spent = sum((l.amount_usd for l in lines if not l.slop_gated), Decimal("0"))
-    capped = [l.interview_id for l in lines if l.capped]
-    exhausted = any(l.budget_clamped for l in lines)
+    spent = sum((line.amount_usd for line in lines if not line.slop_gated), Decimal("0"))
+    capped = [line.interview_id for line in lines if line.capped]
+    exhausted = any(line.budget_clamped for line in lines)
 
     return PayoutRelease(
         accrual_lines=tuple(lines),

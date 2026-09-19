@@ -32,7 +32,7 @@ try:
         default_budget_for,
     )
     from .note_budget import NoteCoverage, render_note, select_within_budget
-    from .note_retrieval import RetrievedNote, retrieve_project_notes
+    from .note_retrieval import retrieve_project_notes
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(_here))

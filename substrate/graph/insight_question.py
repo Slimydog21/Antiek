@@ -46,10 +46,11 @@ owns the always-on trigger; this sprint only builds the path.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from substrate.contracts.nodes import KnowledgeUnitContract, ServabilityTag
@@ -80,7 +81,6 @@ except ImportError:  # pragma: no cover — direct-script fallback
 
 # insight/question live in the primary in-domain ("depth") graph — not
 # the cross_domain connector layer nor the constraint layer.
-_T = TypeVar("_T")
 
 _PROMOTION_GRAPH_SCOPE = "depth"
 
@@ -190,9 +190,9 @@ def _node_type_of_source(relation: str) -> str:
     return spec.source_type
 
 
-def _with_connection[_T](
-    con: LockedConnection | None, purpose: str, fn: Callable[[LockedConnection], _T]
-) -> _T:
+def _with_connection[T](
+    con: LockedConnection | None, purpose: str, fn: Callable[[LockedConnection], T]
+) -> T:
     """Run ``fn(con)`` either on the caller's connection (caller owns the
     transaction) or on a fresh write-locked connection wrapped in an
     atomic BEGIN/COMMIT."""
@@ -206,10 +206,8 @@ def _with_connection[_T](
             owned.execute("COMMIT")
             return result
         except Exception:
-            try:
+            with contextlib.suppress(Exception):  # pragma: no cover
                 owned.execute("ROLLBACK")
-            except Exception:  # pragma: no cover
-                pass
             raise
     finally:
         owned.close()

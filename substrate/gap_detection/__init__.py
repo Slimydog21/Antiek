@@ -16,7 +16,7 @@ invent a gap or change the ranking.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, List, Optional
+from typing import Any
 
 from .candidates import (
     GapCandidate,

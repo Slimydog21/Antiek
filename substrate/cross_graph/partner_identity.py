@@ -347,8 +347,8 @@ def verify_partner_token(
     )
     try:
         key = bytes.fromhex(shared_secret_hex)
-    except ValueError:
-        raise PartnerIdentityError("shared_secret_hex is not valid hex")
+    except ValueError as exc:
+        raise PartnerIdentityError("shared_secret_hex is not valid hex") from exc
     expected_sig = hmac.new(key, sig_input, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected_sig, sig_hex):
         return None

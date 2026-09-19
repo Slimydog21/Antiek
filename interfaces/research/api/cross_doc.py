@@ -64,7 +64,7 @@ from substrate.schemas import (  # noqa: E402
     QuestionResolvedByDocPayload,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402 -- lazy export after path fix
 
 # Default similarity threshold. Tuned for the sentence-transformers
 # production embedder. For the HashEmbedding fallback used in dev/tests,

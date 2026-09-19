@@ -209,7 +209,7 @@ def _parse_json(text: str) -> Any:
                     continue
         raise ValueError(
             f"Could not parse JSON from planner response: {text[:500]}"
-        )
+        ) from None
 
 
 def plan_dag(

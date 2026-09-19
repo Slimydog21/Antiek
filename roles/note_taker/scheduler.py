@@ -27,12 +27,10 @@ from typing import Any
 
 try:
     from .distill import Distiller
-    from .document_pass import PassResult, run_document_pass
+    from .document_pass import run_document_pass
 except ImportError:  # pragma: no cover
     from roles.note_taker.distill import Distiller
-    from roles.note_taker.document_pass import (
-        run_document_pass,
-    )
+    from roles.note_taker.document_pass import run_document_pass
 
 
 DEFAULT_DEBOUNCE_S = 2.0

@@ -80,13 +80,13 @@ _GENERIC_TRANSITIONS = {
 
 
 def _bullet_abuse(text: str) -> tuple[bool, str]:
-    lines = [l for l in text.splitlines() if l.strip()]
+    lines = [line for line in text.splitlines() if line.strip()]
     if len(lines) < 6:
         # Too few lines to make a bullet judgement.
         return (False, "")
     bullets = sum(
-        1 for l in lines
-        if l.lstrip().startswith(("- ", "* ", "• ")) or re.match(r"^\d+\.\s", l.lstrip())
+        1 for line in lines
+        if line.lstrip().startswith(("- ", "* ", "• ")) or re.match(r"^\d+\.\s", line.lstrip())
     )
     share = bullets / len(lines)
     if share > 0.30:
@@ -141,7 +141,7 @@ def _numbered_list_as_prose(text: str) -> tuple[bool, str]:
 
 
 def _trailing_summary(text: str) -> tuple[bool, str]:
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(lines) < 4:
         return (False, "")
     first = lines[0].lower()

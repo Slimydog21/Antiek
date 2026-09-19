@@ -33,8 +33,8 @@ import contextlib
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 # Block types — must match the SQL CHECK constraint in
 # substrate/graph/schema.py:notebook_blocks.block_type.

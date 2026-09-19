@@ -22,12 +22,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 try:
-    from ...runtime.db_lock import (  # type: ignore[import-not-found]
-        LockedConnection,
-        connect_read,
-        connect_write,
-    )
-    from ..graph.insight_question import graph_db_path
+    from ...runtime.db_lock import LockedConnection  # type: ignore[import-not-found]
     from ..graph.ops import content_addressed_id, insert_document
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))

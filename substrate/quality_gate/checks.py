@@ -61,10 +61,13 @@ class SourceTierBounds:
     max_acceptable: int = 3  # Tier 4-5 reroutes to private
 
 
+_DEFAULT_SOURCE_TIER_BOUNDS = SourceTierBounds()
+
+
 def check_source_tier(
     note: CandidateNote,
     *,
-    bounds: SourceTierBounds = SourceTierBounds(),
+    bounds: SourceTierBounds = _DEFAULT_SOURCE_TIER_BOUNDS,
 ) -> CheckResult:
     """Every cited source must be in [bounds.min_acceptable,
     bounds.max_acceptable]. Tier 4-5 sources are blog-tier and below;

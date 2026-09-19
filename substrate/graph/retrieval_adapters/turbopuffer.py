@@ -24,6 +24,7 @@ record). This environment has no key, so turbopuffer is UN-MEASURED here.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from collections.abc import Sequence
@@ -114,7 +115,5 @@ class TurbopufferSubstrate:
         )
 
     def close(self) -> None:
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover
             self._con.close()
-        except Exception:  # pragma: no cover
-            pass

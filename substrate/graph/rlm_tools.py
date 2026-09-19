@@ -185,7 +185,7 @@ def extract_json(text: str) -> Any:
                     continue
         raise ValueError(
             f"Could not parse JSON from sub-LLM response: {text[:500]}"
-        )
+        ) from None
 
 
 # ---------------------------------------------------------------------------

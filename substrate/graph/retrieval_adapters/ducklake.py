@@ -25,6 +25,7 @@ the source of truth and is never written by this adapter.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from collections.abc import Sequence
@@ -115,7 +116,5 @@ class DuckLakeSubstrate:
         )
 
     def close(self) -> None:
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover
             self._con.close()
-        except Exception:  # pragma: no cover
-            pass

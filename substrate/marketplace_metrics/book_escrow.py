@@ -252,8 +252,11 @@ def accrue_reading_session(
 
     accrued = 0
     for d in decisions:
-        if d.kind is RevShareKind.PUBLISHER and d.recipient_ref == holder_id:
-            if d.amount_usd_cents > 0:
+        if (
+            d.kind is RevShareKind.PUBLISHER
+            and d.recipient_ref == holder_id
+            and d.amount_usd_cents > 0
+        ):
                 # Accrue into the EXISTING escrow. accrue_escrow takes USD;
                 # convert cents → Decimal dollars.
                 ip_holders.accrue_escrow(

@@ -186,11 +186,11 @@ def register_ad_impression_routes(app: FastAPI) -> None:
         ):
             try:
                 kind = RevShareKind(kind_str)
-            except ValueError:
+            except ValueError as exc:
                 raise _refuse(
                     422, "invalid_kind",
                     f"unknown RevShareKind {kind_str!r}",
-                )
+                ) from exc
             recipient_map[doc_id] = (kind, recipient_ref, bool(requires_escrow))
 
         router = PayoutRouter()
