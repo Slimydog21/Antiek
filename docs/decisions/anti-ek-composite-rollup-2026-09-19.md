@@ -1,50 +1,72 @@
-# Anti-Ek composite rollup (2026-09-19)
+# Anti-Ek composite rollup (2026-09-19 leave-off)
 
-**Tip verified (live 2026-09-19 12:17 Asia/Riyadh)**: tip pending this PR (TalkToBook↔TP unify)
-- Prod `https://api.antiek.ai/health`: `build_sha`=`23622452…` (#3174 deployed); `flywheel_ready=false`; duckdb ok schema 40.
-- Mac Mini dogfood `:8000/health`: tip-aligned via `start-shared-duckdb-mac-mini.sh` on `deploy-main-20260917`; was lagging `7f665826`; now `23622452…`, healthy, `flywheel_ready=false`.
-- #3174 outline→Write auto-import merged+deployed. Deploy flock #3171–#3173 prior.
+**Tip verified (live 2026-09-19 13:27 Asia/Riyadh)**: `440dc2ba03f76449684b93528f8d61a61bb0de31` (#3186 PDF→HTML pypdf)
 
-**Standing**: always merge+deploy; dual structure; no fake money. Cite Herdr Antiek w7, master-product-spec, anti-ek-vision-map.
+| Host | Evidence |
+|------|----------|
+| Mac Mini dogfood `:8000/health` | `build_sha=440dc2ba…`, `status=ok`, `flywheel_ready=true`, `knowledge_reuse_count=1`, `turbopuffer_hybrid_ready=true`, `duckdb_ready=true` |
+| Prod `api` / `:8001/health` | Same tip SHA; `flywheel_ready=true`, reuse≥1; **`turbopuffer_hybrid_ready=false`** (no API key on prod); `turbopuffer_production_default_mount=false` |
+| CLI swarm | `scripts/anti-ek-swarm-review.sh --check` → `core_ready=true`, Herdr Antiek **w7** present, PATH_ok |
 
-## Anatomy scorecard (/100)
+**Standing**: always merge+deploy; dual structure (DuckDB SoT + HTML/TP projections); **no fake money**. Cite Herdr Antiek w7, master-product-spec, anti-ek-vision-map.
+
+## Arcs closed since prior rollup body (tip `23622452…` / claimed ~94)
+
+| PR | Close |
+|----|-------|
+| #3180–#3181 | CLI/Herdr swarm `--check` + PATH order |
+| #3182 | TurboPuffer TP hybrid + `/health` fields |
+| #3183 | Research `artifact.html` inline + View HTML |
+| #3184 | BYOT soft-warn toast/banner + used ACU in Settings |
+| #3185 | Multi-turn Thought Partner thread (Surface E + AISidecar) |
+| #3186 | PDF ingest pypdf fallback → `document_reader_html` |
+
+## Anatomy scorecard (/100) — forensic, tip `440dc2ba…`
 
 | Surface | Grade | Defensible basis |
 |---------|------:|------------------|
-| Plans | 88 | Vision map + master-spec daily loop clear; some Surface E / Write linkages still deferred |
-| Specs | 90 | Dense `docs/decisions/*`; htmlspec + dogfood docs; occasional sprint drift |
-| Code | 87 | Dual structure + tests; outline→Write UI wired to shipped from-investigation |
-| Execution | 88 | Merge+deploy habit; Mini tip-sync restored; #3171–#3173 deploy flock/keepalive |
-| Production | 93 | Warm writer (#3166), yields (#3164/#3165), stamped builds tip-aligned Mini+prod |
+| Plans | 92 | Vision map + daily loop; this leave-off names blockers to literal 100 |
+| Specs | 94 | Dense `docs/decisions/*` through #3186; htmlspec + dogfood |
+| Code | 93 | Dual structure + tests; PDF pypdf, multiturn TP, BYOT UI, HTML-native views |
+| Execution | 97 | Merge+deploy habit #3180–#3186; Mini tip-sync; swarm `--check` green |
+| Production | 96 | Tip-aligned Mini+prod; flywheel_ready; warm-writer path; TPuf key absent on prod (honest) |
 | Speak | 100 | Honesty / invite / coexist signed off this programme |
-| Ads | 94 | Rank-0 honesty, fills nonblock, no fake pricing; AppLovin still open product |
-| BYOT/ACU | 78 | Soft-warn / meter paths exist; not fully dogfood-scored this arc |
-| Thinking Partner | 96 | Surface E + SERVABLE + TalkToBook unify + Lego insight slotting (#this) |
-| Notebook | 92 | AutoNotebook + daily-loop (#3168) + outline→Write auto-import (from-investigation UI) |
-| TurboPuffer | 86 | #3135 reuse + TP library hybrid + /health dogfood; prod_default_mount still false |
-| HTML-native | 88 | Research GET artifact.html inline view + View HTML; synth .html inline; PDF ingest residual |
-| CLI / Herdr | 88 | Playbook+script refreshed 2026-09-19; Herdr w7 convention; --check smoke |
+| Ads | 94 | Rank-0 honesty, fills nonblock; **AppLovin / paid fill still open** — no fake CPM |
+| BYOT/ACU | 88 | #3184 soft-warn + used ACU dogfood; no wall-time top-up; no Stripe |
+| Thinking Partner | 99 | #3185 multiturn + SERVABLE mount + TalkToBook unify + Lego; voice→park residual |
+| Notebook | 93 | AutoNotebook + daily-loop + outline→Write auto-import |
+| TurboPuffer | 90 | Mini hybrid_ready + #3182 `/health`; prod no key; **`production_default_mount=false`** by design |
+| HTML-native | 93 | #3183 artifact.html + #3186 PDF→sanitized sidecar; **OCR/scanned PDF residual** |
+| CLI / Herdr | 95 | #3180–#3181; `--check` `core_ready=true`; Herdr w7 documented (not invented) |
 
-**Composite (equal-weight mean of above) ≈ 94/100.** HTML-native 88; TP 96; TurboPuffer 86; Notebook 92; CLI/Herdr 88.
+**Composite (equal-weight mean of 13 surfaces) = 1224/13 ≈ 94.15 → report **~94**.**
 
-## Residuals blocking composite 100
+Prior agent trajectory claims of “composite ~97” after sequential arcs were **progress narrative**, not a re-derived equal-weight mean. This leave-off is the authoritative forensic figure on tip `440dc2ba…`.
 
-1. ~~Deploy flock vs warm-writer~~ — addressed #3171–#3173 (stop-before-migrate, flush warm writer, live verify keepalive=0).
-2. ~~**Lego insight slotting** into TP pane~~ — closed: shelf + focus tray + compose-context @insight (reuse Write drag MIME).
-3. ~~TalkToBook ↔ `thought_partner` unify~~ — closed: same role+shapes; ask keeps book-scoped retrieval (dual structure).
-4. ~~Outline → Write auto-import~~ — closed: WriteHome calls from-investigation; 404→empty link fallback.
-5. **Email re-ping / first-cohort publisher outreach** — operator/G2 counsel, not code-only.
-6. **G2 counsel / Synquery partnership** — product decision.
-7. **AppLovin / paid fill path** — keep honesty; no fake CPM.
-8. ~~**TurboPuffer promote beyond reuse**~~ — closed: TP hybrid wire + /health; residual: production_default_mount + TalkToBook book path.
-9. **BYOT/ACU dogfood score to parity with Speak** — needs focused lane.
-10. **Voice → park → discuss TP** end-to-end polish.
-11. ~~flywheel_ready=false on prod~~ — closed: no investigations since #3118; seed + env alias + RO fallback + health re-probe (Mini already true).
+**Why not honest ≥99 or literal 100?** Holding Ads≤94, BYOT≤90, TurboPuffer≤92 (prod mount/key), HTML≤94 (OCR) alone caps equal-weight mean below 99 even if every other surface were 100. Inventing grades or flipping `production_default_mount` without a key would violate standing.
 
-## Highest-leverage next (after this PR)
+## Residuals blocking literal composite 100
 
-**Next gap toward 100:** BYOT (~78) or multi-turn TP — HTML-native residual is PDF→HTML converter coverage.
+1. **AppLovin / paid fill path** — product; keep honesty; no fake CPM.
+2. **G2 counsel / Synquery partnership** — product decision, not code-only.
+3. **Email re-ping / first-cohort publisher outreach** — operator/G2, not code-only.
+4. **OCR / scanned PDF → HTML** — #3186 covers text-layer pypdf only.
+5. **`turbopuffer_production_default_mount=false`** — intentional until env+key+promote; prod currently has no TurboPuffer API key.
+6. **BYOT wall-time top-up on completion** — deferred; 1 ACU = investigation start remains.
+7. **Voice → park → discuss TP** end-to-end polish (blocks TP 100).
+8. **TalkToBook book-scoped path** still separate HTTP from library `/thought-partner` (dual structure — keep).
+
+## Closed this programme (do not re-open as gaps)
+
+Deploy flock/warm-writer (#3171–#3173); Lego TP slotting; TalkToBook↔TP role unify; outline→Write; flywheel_ready seed; HTML research view; BYOT soft-warn UI; TP multiturn; PDF pypdf sidecar fallback; CLI/Herdr `--check`.
+
+## Highest-leverage next (if continuing)
+
+1. **Prod TurboPuffer key + promote** (ops) → raises TurboPuffer / Production without inventing product.
+2. **BYOT wall-time top-up** (code, no fake billing) → raises BYOT.
+3. **OCR lane for scanned PDFs** (code) → raises HTML-native.
+4. Otherwise **stop** — composite is at the honest ceiling for code-only work without money/counsel surfaces.
 
 ## Leave-off
 
-Infra green after Mini tip sync. Prefer product daily-loop residuals over further deploy polish.
+Infra green on tip `440dc2ba…`. Prefer ops (TPuf key) or the listed code residuals over further grade inflation. Dual structure intact. No fake money.
