@@ -56,7 +56,7 @@ class IpHolder:
     claimed_at: str | None
     opted_out_at: str | None
     created_at: str
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def _now_iso() -> str:
@@ -68,7 +68,7 @@ def create_pre_onboarded(
     *,
     display_name: str,
     legal_contact_email: str | None = None,
-    metadata: dict | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> str:
     """Create a pre-onboarded IP holder account.
 
@@ -225,7 +225,7 @@ def list_all(con: Any, status: str | None = None) -> list[IpHolder]:
     return [_row_to_holder(r) for r in rows]
 
 
-def _row_to_holder(row: tuple) -> IpHolder:
+def _row_to_holder(row: tuple[Any, ...]) -> IpHolder:
     (
         ip_holder_id, display_name, legal_contact_email,
         status, escrow_balance_usd, escrow_account_ref,

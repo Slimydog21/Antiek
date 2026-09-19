@@ -42,6 +42,8 @@ light (stdlib only) so the meta-check can run in pytest-free environments too.
 
 from __future__ import annotations
 
+from typing import Any
+
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -139,7 +141,7 @@ class Invariant:
         return self.guard.split("::", 1)[0] if self.guard else ""
 
 
-def _require(data: dict, key: str, src: Path) -> object:
+def _require(data: dict[str, Any], key: str, src: Path) -> object:
     if key not in data:
         raise RegistryError(f"{src.name}: missing required key {key!r}")
     return data[key]

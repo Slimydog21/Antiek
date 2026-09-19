@@ -64,7 +64,7 @@ class NotebookBlock:
     block_index: int
     block_type: str
     ref_id: str | None  # substrate reference (claim_id, note_id, etc); NULL for prose/latex
-    content_json: dict
+    content_json: dict[str, Any]
     created_at: str
 
 
@@ -78,7 +78,7 @@ class Notebook:
     content_class: str
     created_at: str
     updated_at: str
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     blocks: list[NotebookBlock] = field(default_factory=list)
 
 
@@ -99,7 +99,7 @@ def create_notebook(
     document_id: str | None = None,
     owner_user_id: str = "__operator__",
     content_class: str = "user_owned",
-    metadata: dict | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> str:
     """Create a notebook. Returns the notebook_id.
 
@@ -134,7 +134,7 @@ def append_block(
     notebook_id: str,
     *,
     block_type: str,
-    content: dict,
+    content: dict[str, Any],
     ref_id: str | None = None,
 ) -> str:
     """Append a block to the end of a notebook. Block types must match
@@ -178,7 +178,7 @@ def update_block(
     notebook_id: str,
     block_id: str,
     *,
-    content: dict | None = None,
+    content: dict[str, Any] | None = None,
     ref_id: str | None = None,
     clear_ref_id: bool = False,
 ) -> bool:
