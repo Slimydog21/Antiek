@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import ModelUsagePicker from "../../components/ai/ModelUsagePicker";
+import { useOwnerModelChoice } from "../../hooks/useOwnerModelChoice";
 import {
   listInvestigations,
   startInvestigation,
@@ -52,6 +54,11 @@ export default function ConnectResearch({
   const [loading, setLoading] = useState(true);
   const [spawning, setSpawning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The auto-spawned folder is a real research launch — it spends. So the
+  // writer picks the route that runs it, the same control the research home
+  // offers. The spawn carries no parent and no chased passage, which is what
+  // the server requires before it will honour an owner-chosen route.
+  const model = useOwnerModelChoice("connect");
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +97,7 @@ export default function ConnectResearch({
       const spawned = await startInvestigation({
         question: pieceTitle.trim() || "Untitled piece",
         context: "Auto-spawned research folder backing a Write piece (SPR-09 M1).",
+        ...model.launchFields(pieceTitle.trim() || "Untitled piece"),
       });
       onConnect({
         investigationId: spawned.investigation_id,
@@ -124,6 +132,27 @@ export default function ConnectResearch({
           {error}
         </p>
       )}
+
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+          Model for the backing research
+        </span>
+        <ModelUsagePicker
+          models={model.models}
+          value={model.selectedRowId}
+          onChange={model.select}
+          includeDefault
+          defaultLabel="Default (house route)"
+          triggerLabel={model.triggerLabel}
+          triggerAriaLabel="Model for the backing research"
+          size="sm"
+        />
+        {model.state === "error" && (
+          <span className="text-[10px] font-mono text-emperor" aria-live="polite">
+            Your models couldn’t load. Default is still available.
+          </span>
+        )}
+      </div>
 
       <button
         type="button"
