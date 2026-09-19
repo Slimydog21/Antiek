@@ -29,6 +29,8 @@ The signed_token + shared_secret are NEVER reflected in API responses
 
 from __future__ import annotations
 
+import asyncio
+
 import duckdb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -256,20 +258,26 @@ def register_federation_routes(app: FastAPI) -> None:
 
         secret = req.shared_secret_hex or generate_shared_secret()
         db = _resolve_db_path()
-        with connect_write(db, purpose="federation/register_partner") as con:
-            registry = load_registry(con)
-            try:
-                record = register_partner(
-                    registry,
-                    display_name=req.display_name,
-                    substrate_url=req.substrate_url,
-                    shared_secret_hex=secret,
-                    operator_notes=req.operator_notes,
-                    partner_id=req.partner_id,
-                )
-            except PartnerIdentityError as exc:
-                raise _map_partner_error(exc) from exc
-            save_record(con, record)
+
+        def _sync() -> PartnerSubstrate:
+            with connect_write(db, purpose="federation/register_partner") as con:
+                registry = load_registry(con)
+                try:
+                    record = register_partner(
+                        registry,
+                        display_name=req.display_name,
+                        substrate_url=req.substrate_url,
+                        shared_secret_hex=secret,
+                        operator_notes=req.operator_notes,
+                        partner_id=req.partner_id,
+                    )
+                except PartnerIdentityError as exc:
+                    raise _map_partner_error(exc) from exc
+                save_record(con, record)
+            return record
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        record = await asyncio.to_thread(_sync)
 
         base = PartnerPublicResponse.from_record(record).model_dump()
         return PartnerWithSecretResponse(
@@ -287,17 +295,23 @@ def register_federation_routes(app: FastAPI) -> None:
         from runtime.db_lock import connect_write
 
         db = _resolve_db_path()
-        with connect_write(db, purpose="federation/trust_partner") as con:
-            registry = load_registry(con)
-            try:
-                record = trust_partner(
-                    registry,
-                    partner_id=partner_id,
-                    operator_notes=req.operator_notes,
-                )
-            except PartnerIdentityError as exc:
-                raise _map_partner_error(exc) from exc
-            save_record(con, record)
+
+        def _sync() -> PartnerSubstrate:
+            with connect_write(db, purpose="federation/trust_partner") as con:
+                registry = load_registry(con)
+                try:
+                    record = trust_partner(
+                        registry,
+                        partner_id=partner_id,
+                        operator_notes=req.operator_notes,
+                    )
+                except PartnerIdentityError as exc:
+                    raise _map_partner_error(exc) from exc
+                save_record(con, record)
+            return record
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        record = await asyncio.to_thread(_sync)
         return PartnerPublicResponse.from_record(record)
 
     @app.post(
@@ -311,17 +325,23 @@ def register_federation_routes(app: FastAPI) -> None:
         from runtime.db_lock import connect_write
 
         db = _resolve_db_path()
-        with connect_write(db, purpose="federation/revoke_partner") as con:
-            registry = load_registry(con)
-            try:
-                record = revoke_partner(
-                    registry,
-                    partner_id=partner_id,
-                    revocation_reason=req.revocation_reason,
-                )
-            except PartnerIdentityError as exc:
-                raise _map_partner_error(exc) from exc
-            save_record(con, record)
+
+        def _sync() -> PartnerSubstrate:
+            with connect_write(db, purpose="federation/revoke_partner") as con:
+                registry = load_registry(con)
+                try:
+                    record = revoke_partner(
+                        registry,
+                        partner_id=partner_id,
+                        revocation_reason=req.revocation_reason,
+                    )
+                except PartnerIdentityError as exc:
+                    raise _map_partner_error(exc) from exc
+                save_record(con, record)
+            return record
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        record = await asyncio.to_thread(_sync)
         return PartnerPublicResponse.from_record(record)
 
     @app.get(
@@ -402,8 +422,13 @@ def register_federation_routes(app: FastAPI) -> None:
             require_opt_in_for_outbound_citations=req.require_opt_in_for_outbound_citations,
             require_attribution_for_outbound_citations=req.require_attribution_for_outbound_citations,
         )
-        with connect_write(db, purpose="federation/update_config") as con:
-            save_federation_config(con, cfg)
+
+        def _sync() -> None:
+            with connect_write(db, purpose="federation/update_config") as con:
+                save_federation_config(con, cfg)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        await asyncio.to_thread(_sync)
         return FederationConfigResponse(
             allowed_partner_substrates=cfg.allowed_partner_substrates,
             require_opt_in_for_outbound_citations=cfg.require_opt_in_for_outbound_citations,
@@ -478,46 +503,52 @@ def register_federation_routes(app: FastAPI) -> None:
         from runtime.db_lock import connect_write
 
         db = _resolve_db_path()
-        with connect_write(db, purpose="federation/inbound_citation") as con:
-            cfg = load_federation_config(con)
-            registry = load_registry(con)
-            ledger = load_active_nonces(con)
-            outcome = accept_inbound_citation(
-                config=cfg,
-                partner_registry=registry,
-                nonce_ledger=ledger,
-                partner_id=req.partner_id,
-                token=req.token,
-            )
-            # Persist the nonce so a process restart inherits replay
-            # defense. Only on accept — refused nonces don't need to
-            # be remembered (the token they rode in on is already
-            # rejected for a different reason).
-            if outcome.accepted:
-                # The substrate's accept_inbound_citation already
-                # called nonce_ledger.remember on the in-memory ledger;
-                # we mirror that into persistent storage here. Re-claim
-                # is idempotent on first-claim, ignored on already-seen.
-                # The nonce came from the verified payload — extract
-                # it by re-verifying (we have all the inputs).
-                from substrate.cross_graph.partner_identity import (
-                    verify_partner_token,
-                )
 
-                partner = registry.latest(req.partner_id)
-                if partner is not None:
-                    payload = verify_partner_token(
-                        shared_secret_hex=partner.shared_secret_hex,
-                        token=req.token,
+        def _sync() -> InboundCitationOutcome:
+            with connect_write(db, purpose="federation/inbound_citation") as con:
+                cfg = load_federation_config(con)
+                registry = load_registry(con)
+                ledger = load_active_nonces(con)
+                outcome = accept_inbound_citation(
+                    config=cfg,
+                    partner_registry=registry,
+                    nonce_ledger=ledger,
+                    partner_id=req.partner_id,
+                    token=req.token,
+                )
+                # Persist the nonce so a process restart inherits replay
+                # defense. Only on accept — refused nonces don't need to
+                # be remembered (the token they rode in on is already
+                # rejected for a different reason).
+                if outcome.accepted:
+                    # The substrate's accept_inbound_citation already
+                    # called nonce_ledger.remember on the in-memory ledger;
+                    # we mirror that into persistent storage here. Re-claim
+                    # is idempotent on first-claim, ignored on already-seen.
+                    # The nonce came from the verified payload — extract
+                    # it by re-verifying (we have all the inputs).
+                    from substrate.cross_graph.partner_identity import (
+                        verify_partner_token,
                     )
-                    if payload is not None and isinstance(
-                        payload.get("nonce"), str,
-                    ):
-                        remember_nonce_persistent(
-                            con,
-                            nonce=payload["nonce"],
-                            partner_id=req.partner_id,
+
+                    partner = registry.latest(req.partner_id)
+                    if partner is not None:
+                        payload = verify_partner_token(
+                            shared_secret_hex=partner.shared_secret_hex,
+                            token=req.token,
                         )
+                        if payload is not None and isinstance(
+                            payload.get("nonce"), str,
+                        ):
+                            remember_nonce_persistent(
+                                con,
+                                nonce=payload["nonce"],
+                                partner_id=req.partner_id,
+                            )
+            return outcome
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        outcome = await asyncio.to_thread(_sync)
         return InboundCitationResult.from_outcome(outcome)
 
 

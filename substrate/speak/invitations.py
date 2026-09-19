@@ -5,7 +5,8 @@ subject's friends and family. Each link lands on consent + interview.
 This module:
 
   • generates a unique invite TOKEN per stakeholder (the
-    ``interview.antiek.ai/{interview_id}?token=`` link), reusing the
+    ``antiek.ai/speak/invite/{token}`` link — token IS the credential on
+    the unauth SpeakInvite route), reusing the
     existing ``interviews`` row for lifecycle (invited / in_progress /
     completed / declined / incomplete);
   • captures the consent scopes the invite must collect, matched to the
@@ -31,9 +32,6 @@ from .consent import ConsentScope
 from .events import SPEAK_INTERVIEW_INVITED, record_speak_event
 from .ids import new_invite_id
 from .schema import ensure_speak_schema
-
-# The invite-link host (the existing per-interview token-link pattern).
-INVITE_HOST = "interview.antiek.ai"
 
 
 class PublicEcosystemGated(RuntimeError):

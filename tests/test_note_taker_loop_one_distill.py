@@ -38,11 +38,16 @@ def _evidence(events_dir: str, count: int, inv: str = "inv-loop1") -> None:
 
 
 def _note_response(request, idempotency_key=None):
+    # The deposit-time groundedness bar (b7dc0ec77, min_groundedness=0.5)
+    # honestly refuses notes with no lexical entailment in the cited
+    # evidence. This note summarizes the evidence the window emitted
+    # ("Evidence answer i grounded in the corpus."), so it clears the bar
+    # on its own merit — the promote path being exercised end-to-end.
     return json.dumps(
         {
             "notes": [
                 {
-                    "text": "Gettysburg is public-domain primary text.",
+                    "text": "Gettysburg evidence answer grounded in the corpus.",
                     "confidence": "high",
                     "source_event_ids": request["source_event_ids"],
                 }
