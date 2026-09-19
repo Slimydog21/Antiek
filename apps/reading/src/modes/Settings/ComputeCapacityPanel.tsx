@@ -13,6 +13,7 @@ import {
   setComputeCapacity,
   type ComputeCapacityResponse,
   type ComputeCapacityTier,
+  type ComputeEnforcement,
 } from "../../api/settingsComputeCapacity";
 
 const TIER_LABELS: Record<ComputeCapacityTier, string> = {
@@ -20,6 +21,12 @@ const TIER_LABELS: Record<ComputeCapacityTier, string> = {
   standard: "Standard (500 ACU)",
   power: "Power (2000 ACU)",
   custom: "Custom",
+};
+
+const ENFORCEMENT_LABELS: Record<ComputeEnforcement, string> = {
+  off: "Off — meter only, starts never refused",
+  soft: "Soft — warn near/over capacity; starts still allowed",
+  hard: "Hard — refuse new starts when used ≥ monthly ACU",
 };
 
 export default function ComputeCapacityPanel() {
@@ -87,6 +94,8 @@ export default function ComputeCapacityPanel() {
       ? Math.min(100, Math.round((used / monthly) * 100))
       : null;
   const softOver = Boolean(cap?.evaluation?.soft_over);
+  const wouldHardBlock = Boolean(cap?.evaluation?.would_hard_block);
+  const enforcement = cap?.enforcement ?? "off";
 
   return (
     <div data-testid="compute-capacity-panel">
@@ -98,7 +107,8 @@ export default function ComputeCapacityPanel() {
         <p className="text-sm text-ink-mute dark:text-moonlight mt-1">
           Antiek-hosted agent CPU (ACU / month). BYO Token keys stay in Usage
           above — this slider is managed compute, not LLM cents. No fake
-          billing; used ACU is shown only when the meter has recorded starts.
+          billing; used ACU is shown only when the meter has recorded starts
+          or wall-time top-ups.
         </p>
       </div>
 
@@ -127,24 +137,64 @@ export default function ComputeCapacityPanel() {
                 <div
                   data-testid="compute-capacity-used-bar"
                   className={
-                    softOver || usedPct >= 80
-                      ? "h-full bg-amber-500"
-                      : "h-full bg-accent"
+                    wouldHardBlock
+                      ? "h-full bg-rose-500"
+                      : softOver || usedPct >= 80
+                        ? "h-full bg-amber-500"
+                        : "h-full bg-accent"
                   }
                   style={{ width: usedPct + "%" }}
                 />
               </div>
             ) : null}
-            {softOver ? (
+            {wouldHardBlock ? (
+              <p
+                role="alert"
+                data-testid="compute-capacity-hard-block"
+                className="text-xs text-rose-800 dark:text-rose-200"
+              >
+                At or over monthly capacity with hard enforcement — new
+                research starts are refused (HTTP 429) until you raise the ACU
+                limit or usage resets. BYO Token spend is separate.
+              </p>
+            ) : softOver ? (
               <p
                 role="status"
                 data-testid="compute-capacity-soft-over"
                 className="text-xs text-amber-800 dark:text-amber-200"
               >
                 Near or over monthly capacity — soft warn on new research starts.
+                {enforcement === "hard"
+                  ? " Hard refuse applies once used ≥ monthly ACU."
+                  : " Starts still allowed."}{" "}
                 BYO Token spend is separate.
               </p>
             ) : null}
+            <p
+              data-testid="compute-capacity-metering-note"
+              className="text-xs text-ink-mute dark:text-moonlight"
+            >
+              Metering: 1 ACU per investigation start, plus wall-time top-up
+              after long runs (300s quantum, capped). Not LLM token cents.
+            </p>
+          </div>
+
+          <div
+            data-testid="compute-capacity-enforcement"
+            className="rounded-md border border-rule/60 dark:border-shadow-2/40 px-3 py-2 space-y-1"
+          >
+            <div className="text-xs font-mono uppercase tracking-wider text-ink-mute dark:text-moonlight">
+              Enforcement
+            </div>
+            <p className="text-sm text-ink dark:text-bright">
+              {ENFORCEMENT_LABELS[enforcement]}
+            </p>
+            <p className="text-xs text-ink-mute dark:text-moonlight">
+              Mode is set by the operator env (
+              <span className="font-mono">ANTIEK_COMPUTE_CAPACITY_ENFORCEMENT</span>
+              ); this panel does not flip it. Current:{" "}
+              <span className="font-mono">{enforcement}</span>.
+            </p>
           </div>
 
           <div className="flex flex-wrap gap-2" role="group" aria-label="Capacity tiers">

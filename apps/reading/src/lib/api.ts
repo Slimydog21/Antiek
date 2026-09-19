@@ -7,7 +7,10 @@
 import type { Event, TypedPayload } from "../generated/types";
 import { toast } from "../components/lemon/LemonToast";
 import {
+  CapacityExhaustedError,
+  formatCapacityExhaustedToast,
   formatCapacityWarnToast,
+  parseCapacityExhaustedDetail,
   parseCapacityWarning,
   stashCapacityWarning,
 } from "./capacityWarn";
@@ -320,10 +323,19 @@ export async function startInvestigation(
     body: JSON.stringify(req),
   });
   if (!resp.ok) {
+    const body = await resp.text();
+    const exhausted = parseCapacityExhaustedDetail(resp.status, body);
+    if (exhausted) {
+      toast.err(formatCapacityExhaustedToast(exhausted), {
+        ttl: 10000,
+        target: { path: "/settings" },
+      });
+      throw new CapacityExhaustedError(exhausted);
+    }
     throw new ApiError(
       `POST /investigations failed: HTTP ${resp.status}`,
       resp.status,
-      await resp.text(),
+      body,
     );
   }
   const raw = (await resp.json()) as StartInvestigationResponse & {

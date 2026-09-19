@@ -251,7 +251,7 @@ def evaluate_capacity(capacity: ComputeCapacity) -> CapacityEvaluation:
             used_status="known",
             note="soft_warn_only" if over else "within_capacity",
         )
-    # hard — recorded for future research-start gate; still allowed until wired
+    # hard — research-start gate refuses when over (see gate_investigation_start)
     return CapacityEvaluation(
         allowed=not over,
         soft_over=over,

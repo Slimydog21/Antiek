@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { startInvestigation } from "../lib/api";
+import { CapacityExhaustedError } from "../lib/capacityWarn";
 import type { ResearchTier, UserModelChoice } from "../lib/api";
 import type { Event } from "../generated/types";
 import { useEventStream } from "./useEventStream";
@@ -164,6 +165,10 @@ export function useStartInvestigation(): StartInvestigationState {
         setStartedId(resp.investigation_id);
         return resp.investigation_id;
       } catch (e) {
+        if (e instanceof CapacityExhaustedError) {
+          setError(e.message);
+          return null;
+        }
         const msg = e instanceof Error ? e.message : String(e);
         setError(`Submit failed: ${msg}`);
         return null;

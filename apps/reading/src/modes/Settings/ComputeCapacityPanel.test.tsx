@@ -84,4 +84,27 @@ describe("ComputeCapacityPanel", () => {
       });
     });
   });
+
+  it("shows hard-block and enforcement honesty when would_hard_block", async () => {
+    vi.mocked(api.fetchComputeCapacity).mockResolvedValue({
+      ...sample,
+      used_status: "known",
+      used_compute_units: 500,
+      enforcement: "hard",
+      evaluation: {
+        ...sample.evaluation,
+        soft_over: true,
+        would_hard_block: true,
+        note: "hard_block",
+      },
+    });
+    render(<ComputeCapacityPanel />);
+    expect(await screen.findByTestId("compute-capacity-hard-block")).toBeTruthy();
+    expect(screen.getByTestId("compute-capacity-enforcement").textContent).toMatch(
+      /Hard/,
+    );
+    expect(screen.getByTestId("compute-capacity-metering-note").textContent).toMatch(
+      /wall-time/,
+    );
+  });
 });
