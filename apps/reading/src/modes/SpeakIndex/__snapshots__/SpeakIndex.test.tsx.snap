@@ -189,6 +189,12 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
             >
               Contributor shares accrue to escrow now; money begins routing once the legal review clears (G2/G3).
             </li>
+            <li
+              class="font-serif text-[13px] text-ink dark:text-bright"
+              data-testid="public-lane-synquery-gate"
+            >
+              Expert-network booking (Synquery) opens only after creation-surface PMF and an operator partnership flip — not a live booking surface today.
+            </li>
           </ol>
           <p
             class="mt-2 font-serif text-[12px] italic text-ink-mute dark:text-moonlight"
