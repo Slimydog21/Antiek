@@ -14,7 +14,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from roles.note_taker.parser import parse_notes_response  # noqa: E402
-from runtime.db_lock import connect_write  # noqa: E402
+from runtime.db_lock import connect_read  # noqa: E402
 from substrate.graph.schema import (  # noqa: E402
     _v20_configuration_shape_is_valid,
     _v20_note_taker_shape_is_valid,
@@ -31,9 +31,8 @@ def _digest(value: str) -> str:
 
 def verify(db_path: str) -> None:
     mismatches: list[str] = []
-    with connect_write(
-        db_path, purpose="deploy/note_taker_schema_verify", timeout_s=30
-    ) as con:
+    # Read-only: live verify must not race warm-writer flock (#3171–#3173 residual).
+    with connect_read(db_path) as con:
         if not _v20_configuration_shape_is_valid(con):
             mismatches.append("note_taker_configurations shape")
         if not _v20_note_taker_shape_is_valid(con):

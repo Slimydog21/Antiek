@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_read
 
 EXPECTED_COLUMNS = [
     ("outbox_sequence", "BIGINT", "NO", "nextval('write_event_outbox_sequence')"),
@@ -42,7 +42,8 @@ EXPECTED_SEQUENCE = [("write_event_outbox_sequence", 1)]
 
 
 def verify(db_path: str) -> None:
-    with connect_write(db_path, purpose="deploy/schema_verify", timeout_s=30) as con:
+    # Read-only: avoid write-lock contention with live uvicorn (#3171–#3173).
+    with connect_read(db_path) as con:
         columns = con.execute(
             "SELECT column_name, data_type, is_nullable, column_default "
             "FROM information_schema.columns WHERE table_schema='main' "
