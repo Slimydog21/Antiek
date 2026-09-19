@@ -22,6 +22,9 @@ Usage::
 
     # migrate from a custom path, overwriting any existing stored keys
     python -m tools.byot_migrate_env_keys --env-file ./secrets.env --overwrite
+
+    # store under the derived per-person owner (post-Option-A namespace)
+    python -m tools.byot_migrate_env_keys --email operator@example.com
 """
 
 from __future__ import annotations
@@ -152,6 +155,7 @@ def run_migration(
     artifact_path: str | None = None,
     key_bytes: bytes | None = None,
     key_file: str | None = None,
+    owner_user_id: str | None = None,
 ) -> MigrationResult:
     """Run the migration: parse env file, map, store.
 
@@ -169,7 +173,16 @@ def run_migration(
         Injected master key bytes (tests use this).
     key_file:
         Override key file path.
+    owner_user_id:
+        Owner namespace for the stored credentials. Defaults to the legacy
+        ``__operator__`` sentinel; pass the owner derived from the operator's
+        verified e-mail (``--email``) to align with the post-Option-A
+        settings namespace. Dispatch-level resolution
+        (``byok_key_source.py``) matches on ``pipeline_kind`` only, so either
+        owner keeps working — this is about one consistent namespace, not
+        reachability.
     """
+    owner = owner_user_id or _PROVIDER_OWNER
     env = _parse_env_file(env_file)
     result = MigrationResult()
 
@@ -201,7 +214,7 @@ def run_migration(
                 handle,
                 value,
                 pipeline_kind=pk,
-                owner_user_id=_PROVIDER_OWNER,
+                owner_user_id=owner,
                 artifact_path=artifact_path,
                 key_bytes=key_bytes,
                 key_file=key_file,
@@ -219,7 +232,7 @@ def run_migration(
     return result
 
 
-def _print_report(result: MigrationResult, env_file: str, dry_run: bool) -> None:
+def _print_report(result: MigrationResult, env_file: str, dry_run: bool, owner: str) -> None:
     prefix = "[DRY RUN] " if dry_run else ""
 
     if result.stored:
@@ -227,7 +240,7 @@ def _print_report(result: MigrationResult, env_file: str, dry_run: bool) -> None
         for handle, env_var in result.stored:
             pk = _pipeline_kind(handle)
             print(f"  {env_var} -> BYOK store as pipeline_kind={pk!r}, "
-                  f"account_handle={handle!r}, owner={_PROVIDER_OWNER!r}")
+                  f"account_handle={handle!r}, owner={owner!r}")
 
     if result.skipped_existing:
         print("\nSkipped (already in BYOK store, use --overwrite to replace):")
@@ -298,6 +311,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Overwrite existing stored credentials for the same provider handle",
     )
+    p.add_argument(
+        "--email",
+        default=None,
+        help="Operator's verified login address. When given, credentials are "
+        "stored under the owner derived from it (the post-Option-A settings "
+        "namespace) instead of the legacy '__operator__' sentinel.",
+    )
     return p
 
 
@@ -305,11 +325,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
 
+    owner_user_id: str | None = None
+    if args.email is not None:
+        from interfaces.research.api.account_memory_identity import (
+            derive_owner_from_verified_email,
+        )
+
+        owner_user_id = derive_owner_from_verified_email(args.email)
+        if owner_user_id is None:
+            print(f"error: --email {args.email!r} does not derive an owner", file=sys.stderr)
+            return 1
+
     try:
         result = run_migration(
             args.env_file,
             overwrite=args.overwrite,
             dry_run=args.dry_run,
+            owner_user_id=owner_user_id,
         )
     except FileNotFoundError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -318,7 +350,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: migration failed: {exc}", file=sys.stderr)
         return 1
 
-    _print_report(result, args.env_file, args.dry_run)
+    _print_report(result, args.env_file, args.dry_run, owner_user_id or _PROVIDER_OWNER)
 
     if result.errors:
         return 1
