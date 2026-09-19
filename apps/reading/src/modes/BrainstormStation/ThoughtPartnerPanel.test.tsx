@@ -174,4 +174,38 @@ describe("ThoughtPartnerPanel (Surface E)", () => {
       );
     });
   });
+
+  it("keeps multi-turn history across sends", async () => {
+    apiFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ shape: "SYNTHESIS", text: "first reply" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ shape: "CHALLENGE", text: "second reply" }),
+      });
+    sessionStorage.clear();
+    render(<ThoughtPartnerPanel />);
+    const input = screen.getByLabelText(/Thought partner prompt/i);
+    fireEvent.change(input, { target: { value: "first?" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Send$/i }));
+    await waitFor(() => {
+      expect(screen.getByText("first reply")).toBeTruthy();
+    });
+    const body1 = JSON.parse(apiFetch.mock.calls[0][1].body);
+    expect(body1.history).toEqual([]);
+
+    fireEvent.change(input, { target: { value: "second?" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Send$/i }));
+    await waitFor(() => {
+      expect(screen.getByText("second reply")).toBeTruthy();
+    });
+    const body2 = JSON.parse(apiFetch.mock.calls[1][1].body);
+    expect(body2.history).toEqual([
+      { question: "first?", answer: "first reply" },
+    ]);
+    expect(screen.getByTestId("thought-partner-thread")).toBeTruthy();
+    expect(screen.getAllByTestId("thought-partner-turn")).toHaveLength(2);
+  });
 });

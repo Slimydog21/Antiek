@@ -1249,8 +1249,18 @@ def _compose_context(
     )
 
 
+class ThoughtPartnerTurn(BaseModel):
+    """One prior TP turn (client session thread)."""
+
+    question: str
+    answer: str
+
+
 class ThoughtPartnerRequest(BaseModel):
-    """One-shot thought-partner invocation (master-spec §4.5 + §11.7).
+    """Thought-partner invocation (master-spec §4.5 + §11.7).
+
+    Multi-turn: optional history carries prior completed turns from the
+    client session thread (Surface E / AISidecar).
 
     AISidecar posts a free-form prompt; the substrate retrieves the most
     relevant passages from the operator's knowledge graph (CK-1 grounding),
@@ -1277,6 +1287,7 @@ class ThoughtPartnerRequest(BaseModel):
     prompt: str
     investigation_id: str | None = None
     system_context: str | None = None
+    history: list[ThoughtPartnerTurn] = Field(default_factory=list)
 
 
 def _retrieve_thought_partner_context(
@@ -5905,7 +5916,7 @@ def create_app(
         request: Request,
         req: ThoughtPartnerRequest = Body(...),
     ) -> ThoughtPartnerResponseBody:
-        """Run a single thought-partner turn through dispatch.
+        """Run a thought-partner turn through dispatch (optional multi-turn history).
 
         ``req.system_context`` is model context for the role. The model
         response text is returned verbatim; AISidecar parses any
@@ -5930,11 +5941,17 @@ def create_app(
         from interfaces.research.api.books import _owner_read_policy_tag
 
         effective_policy_tag = _owner_read_policy_tag(request)
+        history_payload = [
+            {"question": t.question, "answer": t.answer}
+            for t in (req.history or [])
+            if t.question.strip() and t.answer.strip()
+        ]
         role_prompt = compose_thought_partner_prompt(
             user_prompt=req.prompt,
             selected_notes=_retrieve_thought_partner_context(
                 req.prompt, effective_policy_tag,
             ),
+            conversation_history=history_payload,
         )
         assembled_prompt = THOUGHT_PARTNER_SYSTEM_PROMPT
         memory_context = account_memory_context(request, req.prompt)
