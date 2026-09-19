@@ -3403,8 +3403,14 @@ def create_app(
         """Move a block within a section, or to a new section.
 
         Implementation note: section_blocks has a composite PK
-        ``(section_id, block_kind, block_id)``. Moving to a new
-        section requires DELETE + INSERT under the same lock."""
+        ``(section_id, block_kind, block_id)``. Moving to a new section
+        requires DELETE + INSERT, and those two statements must be
+        **atomic**, not merely serialized. The write lock gives mutual
+        exclusion; DuckDB still autocommits each statement, so without an
+        explicit transaction a failing INSERT left the DELETE durable and
+        the block lost its original attachment with an unhandled 500."""
+        import duckdb
+
         from runtime.db_lock import connect_write
         db = _resolve_db_path()
         target_section = req.new_section_id or req.section_id
@@ -3423,18 +3429,29 @@ def create_app(
                 req.new_section_id is not None
                 and req.new_section_id != req.section_id
             ):
-                con.execute(
-                    "DELETE FROM section_blocks WHERE section_id = ? "
-                    "AND block_kind = ? AND block_id = ?",
-                    [req.section_id, req.block_kind, req.block_id],
-                )
-                con.execute(
-                    "INSERT INTO section_blocks "
-                    "(section_id, block_kind, block_id, block_index) "
-                    "VALUES (?, ?, ?, ?)",
-                    [target_section, req.block_kind, req.block_id,
-                     int(req.new_block_index)],
-                )
+                try:
+                    with con.transaction():
+                        con.execute(
+                            "DELETE FROM section_blocks WHERE section_id = ? "
+                            "AND block_kind = ? AND block_id = ?",
+                            [req.section_id, req.block_kind, req.block_id],
+                        )
+                        con.execute(
+                            "INSERT INTO section_blocks "
+                            "(section_id, block_kind, block_id, block_index) "
+                            "VALUES (?, ?, ?, ?)",
+                            [target_section, req.block_kind, req.block_id,
+                             int(req.new_block_index)],
+                        )
+                except duckdb.ConstraintException as exc:
+                    # The block is already attached to the target section.
+                    # The transaction rolled back, so the source attachment
+                    # survives; tell the caller what happened rather than
+                    # surfacing a bare 500.
+                    raise HTTPException(
+                        status_code=409,
+                        detail="block already attached to the target section",
+                    ) from exc
             else:
                 # In-section reorder: just bump the index
                 con.execute(
