@@ -94,8 +94,8 @@ class AsyncInterviewSession:
     interview_id: str
     project_id: str
     status: str
-    turns: list[dict] = field(default_factory=list)
-    must_cover: list[dict] = field(default_factory=list)
+    turns: list[dict[str, Any]] = field(default_factory=list)
+    must_cover: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def answered_question_ids(self) -> set[str]:
@@ -113,11 +113,11 @@ class AsyncInterviewSession:
             if t.get("role") == "interviewer" and t.get("question_id")
         }
 
-    def pending_questions(self) -> list[dict]:
+    def pending_questions(self) -> list[dict[str, Any]]:
         """Questions awaiting an answer: must-cover items not yet
         answered, plus interviewer follow-ups asked but not answered."""
         answered = self.answered_question_ids
-        pending: list[dict] = []
+        pending: list[dict[str, Any]] = []
         for q in self.must_cover:
             if q.get("id") and q["id"] not in answered:
                 pending.append({"id": q["id"], "text": q.get("text", "")})
@@ -141,7 +141,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-def _load_turns(con: Any, interview_id: str) -> list[dict]:
+def _load_turns(con: Any, interview_id: str) -> list[dict[str, Any]]:
     row = con.execute(
         "SELECT transcript_turns FROM interviews WHERE interview_id = ?",
         [interview_id],
@@ -151,12 +151,13 @@ def _load_turns(con: Any, interview_id: str) -> list[dict]:
     if not row[0]:
         return []
     try:
-        return json.loads(row[0])
+        parsed = json.loads(row[0])
     except (TypeError, ValueError):
         return []
+    return parsed if isinstance(parsed, list) else []
 
 
-def _save_turns(con: Any, interview_id: str, turns: list[dict], *, status: str | None = None) -> None:
+def _save_turns(con: Any, interview_id: str, turns: list[dict[str, Any]], *, status: str | None = None) -> None:
     if status is not None:
         con.execute(
             "UPDATE interviews SET transcript_turns = ?, status = ?, "
@@ -171,7 +172,7 @@ def _save_turns(con: Any, interview_id: str, turns: list[dict], *, status: str |
         )
 
 
-def _project_guide(con: Any, project_id: str) -> dict:
+def _project_guide(con: Any, project_id: str) -> dict[str, Any]:
     row = con.execute(
         "SELECT interview_guide FROM interview_projects WHERE project_id = ?",
         [project_id],
@@ -179,9 +180,10 @@ def _project_guide(con: Any, project_id: str) -> dict:
     if row is None or not row[0]:
         return {}
     try:
-        return json.loads(row[0])
+        parsed = json.loads(row[0])
     except (TypeError, ValueError):
         return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _consent_recorded(con: Any, interview_id: str) -> bool:
@@ -201,7 +203,7 @@ def start_async_interview(
     db_path: str,
     *,
     project_id: str,
-    interview_guide: dict | None = None,
+    interview_guide: dict[str, Any] | None = None,
     informant_handle: str | None = None,
     interview_id: str | None = None,
 ) -> AsyncInterviewSession:

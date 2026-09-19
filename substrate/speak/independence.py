@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from typing import Any
+
 
 def effective_key(*, independence_key: str | None, interview_id: str | None) -> str:
     """The key an attestation counts under. Explicit shared-origin key
@@ -37,7 +39,7 @@ def effective_key(*, independence_key: str | None, interview_id: str | None) -> 
     return "anon"
 
 
-def count_independent(members: Iterable[dict]) -> int:
+def count_independent(members: Iterable[dict[str, Any]]) -> int:
     """Number of INDEPENDENT attesters among ``attests`` members. Members
     are dicts with ``interview_id``, optional ``independence_key``, and
     optional ``stance`` (default 'attests')."""

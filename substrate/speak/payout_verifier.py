@@ -130,7 +130,7 @@ class InterviewGrade:
 # ---------------------------------------------------------------------------
 
 
-def _transcript_text(turns: list[dict]) -> str:
+def _transcript_text(turns: list[dict[str, Any]]) -> str:
     """Concatenate an interviewee's answers (informant turns) into one
     string the rubric / verifier scores. Interviewer prompts are excluded
     — we grade what the PERSON said, not what we asked."""
@@ -164,7 +164,7 @@ def _verifier_prompt(goal: InterviewGoal, transcript: str) -> str:
     )
 
 
-def _parse_verifier_json(raw: str) -> dict:
+def _parse_verifier_json(raw: str) -> dict[str, Any]:
     """Parse the verifier's JSON reply, tolerating fenced/extra text. A
     malformed reply is a verifier failure, not a silent 0 — the caller's
     deterministic fallback handles a missing verifier, but a verifier
@@ -172,10 +172,13 @@ def _parse_verifier_json(raw: str) -> dict:
     m = re.search(r"\{.*\}", raw, re.DOTALL)
     if not m:
         raise ValueError(f"verifier reply contained no JSON object: {raw!r}")
-    return json.loads(m.group(0))
+    parsed = json.loads(m.group(0))
+    if not isinstance(parsed, dict):
+        raise ValueError(f"verifier reply was not a JSON object")
+    return parsed
 
 
-def _deterministic_grade(goal: InterviewGoal, transcript: str) -> dict:
+def _deterministic_grade(goal: InterviewGoal, transcript: str) -> dict[str, Any]:
     """The no-model, honest fallback rubric. NOT a trained grader (rigor
     #1) — a keyword-coverage + substance heuristic:
 
@@ -242,7 +245,7 @@ def grade_interview(
     project_id: str,
     interview_id: str,
     goal: InterviewGoal,
-    transcript_turns: list[dict] | None = None,
+    transcript_turns: list[dict[str, Any]] | None = None,
     dispatch_fn: Callable[..., Any] | None = None,
 ) -> InterviewGrade:
     """Grade one interview's transcript against the requester's goal.
