@@ -19,6 +19,7 @@ Compose, do not reimplement: shared ``ThrottledClient`` (SPR-03 ban-aware),
 
 from __future__ import annotations
 
+from typing import Any
 import logging
 
 from ._common import SourceError, TextbookWork, ThrottledClient, ingest_textbook
@@ -36,7 +37,7 @@ MIT_OCW_SEARCH_URL = "https://ocw.mit.edu/api/v0/search/"
 _OCW_DEFAULT_LICENSE = "https://creativecommons.org/licenses/by-nc-sa/4.0/"
 
 
-def _declared_license(course: dict) -> str | None:
+def _declared_license(course: dict[str, Any]) -> str | None:
     """Read the course's DECLARED license, preferring the record's own field.
 
     Falls back to the canonical CC-BY-NC-SA URI only when the record omits a
@@ -51,7 +52,7 @@ def _declared_license(course: dict) -> str | None:
     return _OCW_DEFAULT_LICENSE
 
 
-def _pdf_url(course: dict) -> str | None:
+def _pdf_url(course: dict[str, Any]) -> str | None:
     """The course's textbook/material PDF URL."""
     for key in ("pdf_url", "resource_pdf_url", "download_url"):
         url = course.get(key)
@@ -60,7 +61,7 @@ def _pdf_url(course: dict) -> str | None:
     return None
 
 
-def _to_work(course: dict) -> TextbookWork | None:
+def _to_work(course: dict[str, Any]) -> TextbookWork | None:
     title = (course.get("title") or course.get("course_title") or "").strip()
     if not title:
         logger.info("mit_ocw course %s skipped: no title", course.get("id"))
@@ -115,7 +116,8 @@ def discover(
         if not isinstance(course, dict):
             continue
         # ES-style hits wrap the doc in ``_source``.
-        doc = course.get("_source") if isinstance(course.get("_source"), dict) else course
+        raw_doc = course.get("_source")
+        doc: dict[str, Any] = raw_doc if isinstance(raw_doc, dict) else course
         work = _to_work(doc)
         if work is not None:
             out.append(work)

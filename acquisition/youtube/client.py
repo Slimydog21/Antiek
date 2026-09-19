@@ -44,6 +44,7 @@ silently default a guessed track to ``"human"``.
 
 from __future__ import annotations
 
+from typing import Any
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -169,11 +170,11 @@ class YouTubeVideo:
 # ---------------------------------------------------------------------------
 
 
-def _fetch_metadata(video_id: str) -> dict:
+def _fetch_metadata(video_id: str) -> dict[str, Any]:
     """Pull video metadata via yt-dlp. Lazy import keeps the optional
     dep out of test paths that don't exercise it."""
     try:
-        from yt_dlp import YoutubeDL  # type: ignore[import-not-found]
+        from yt_dlp import YoutubeDL  # type: ignore[import-untyped]
     except ImportError as e:  # pragma: no cover
         raise ImportError(
             "acquisition.youtube requires yt-dlp. Run "
@@ -194,7 +195,7 @@ def _fetch_metadata(video_id: str) -> dict:
     return info or {}
 
 
-def _segments_from_raw(raw) -> list[TranscriptSegment]:
+def _segments_from_raw(raw: Any) -> list[TranscriptSegment]:
     """Normalize youtube-transcript-api's list-of-dicts into our
     immutable ``TranscriptSegment`` records, dropping empty lines."""
     return [
@@ -229,10 +230,10 @@ def _fetch_transcript(video_id: str) -> tuple[list[TranscriptSegment], str]:
     only the caller-injected ``video=`` seam (tests, batch) is exercised.
     """
     try:
-        from youtube_transcript_api import (  # type: ignore[import-not-found]
+        from youtube_transcript_api import (
             YouTubeTranscriptApi,
         )
-        from youtube_transcript_api._errors import (  # type: ignore[import-not-found]
+        from youtube_transcript_api._errors import (
             NoTranscriptFound,
             TranscriptsDisabled,
         )
@@ -276,7 +277,14 @@ def _fetch_transcript(video_id: str) -> tuple[list[TranscriptSegment], str]:
     # Fallback path: flat get_transcript can't report provenance →
     # honest "unknown" when captions are present.
     try:
-        raw = YouTubeTranscriptApi.get_transcript(video_id)
+        # youtube-transcript-api >= 1.0 removed the flat classmethod
+        # ``get_transcript``; ``fetch`` is the supported surface and returns
+        # FetchedTranscriptSnippet dataclasses (text/start/duration).
+        fetched = YouTubeTranscriptApi().fetch(video_id)
+        raw = [
+            {"text": s.text, "start": float(s.start), "duration": float(s.duration)}
+            for s in fetched
+        ]
     except (NoTranscriptFound, TranscriptsDisabled):
         return [], CAPTION_KIND_MISSING
     except Exception:  # pragma: no cover — defensive for transient errors

@@ -34,7 +34,9 @@ logger = logging.getLogger("acquisition.textbooks.doab")
 DOAB_SEARCH_URL = "https://directory.doabooks.org/rest/search"
 
 
-def _field(meta: list[dict] | dict | None, key: str) -> str | None:
+def _field(
+    meta: list[dict[str, Any]] | dict[str, Any] | None, key: str
+) -> str | None:
     """Pull a Dublin-Core-style field value. DOAB records carry metadata either
     as a list of ``{'key': 'dc.title', 'value': ...}`` dicts (the REST shape) or
     as a flat mapping; handle both."""
@@ -55,7 +57,7 @@ def _field(meta: list[dict] | dict | None, key: str) -> str | None:
     return None
 
 
-def _declared_license(record: dict, meta: Any) -> str | None:
+def _declared_license(record: dict[str, Any], meta: Any) -> str | None:
     """Read the per-book DECLARED license from the DOAB record.
 
     DOAB carries the license in ``dc.rights.uri`` / ``dc.rights`` (a
@@ -79,7 +81,7 @@ def _declared_license(record: dict, meta: Any) -> str | None:
     return None
 
 
-def _pdf_url(record: dict, meta: Any) -> str | None:
+def _pdf_url(record: dict[str, Any], meta: Any) -> str | None:
     """The structured OA full-text URL the DOAB record advertises. Prefer an
     explicit bitstream/handle PDF; the extraction gate in ``ingest_textbook``
     catches a link that turns out to be an HTML landing page."""
@@ -98,7 +100,7 @@ def _pdf_url(record: dict, meta: Any) -> str | None:
     return val
 
 
-def _to_work(record: dict) -> TextbookWork | None:
+def _to_work(record: dict[str, Any]) -> TextbookWork | None:
     meta = record.get("metadata", record)
     title = (_field(meta, "dc.title") or record.get("name") or record.get("title") or "").strip()
     if not title:

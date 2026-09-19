@@ -174,7 +174,8 @@ def _default_session_factory() -> Callable[[], _SessionLike]:
             ) from e
         api_key, project_id = _resolve_api_creds()
         bb = Browserbase(api_key=api_key)
-        return bb.sessions.create(project_id=project_id)
+        session: _SessionLike = bb.sessions.create(project_id=project_id)
+        return session
 
     return make_session
 

@@ -30,6 +30,7 @@ Compose, do not reimplement: shared ``ThrottledClient`` (SPR-03 ban-aware),
 
 from __future__ import annotations
 
+from typing import Any
 import logging
 
 from ._common import SourceError, TextbookWork, ThrottledClient, ingest_textbook
@@ -77,7 +78,7 @@ _LICENSE_CODE_TO_STRING = {
 }
 
 
-def _declared_license(item: dict) -> str | None:
+def _declared_license(item: dict[str, Any]) -> str | None:
     """Read this item's DECLARED license, preferring a canonical CC URI, then a
     code normalized to the CC short-code string classify() understands.
 
@@ -104,7 +105,7 @@ def _declared_license(item: dict) -> str | None:
     return None
 
 
-def _to_work(item: dict) -> TextbookWork | None:
+def _to_work(item: dict[str, Any]) -> TextbookWork | None:
     title = (item.get("title") or item.get("name") or "").strip()
     if not title:
         logger.info("libretexts item %s skipped: no title", item.get("id"))

@@ -121,7 +121,7 @@ def parse_works_response(payload: dict[str, Any]) -> list[PaperRecord]:
 
 def _http_post(
     url: str, body: dict[str, Any], *, api_key: str | None, client: httpx.Client | None
-) -> dict:
+) -> dict[str, Any]:
     # HOST-GLOBAL arXiv GOVERNANCE (SPR-09 host-based seam): ``url`` is
     # env/param-overridable (``ANTIEK_CORE_BASE_URL`` / ``base_url``), so the
     # actual HTTP send is routed through ``govern_if_arxiv`` on the resolved URL.
@@ -156,7 +156,8 @@ def _http_post(
 
             r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
     r.raise_for_status()
-    return r.json()
+    payload: dict[str, Any] = r.json()
+    return payload
 
 
 def search_works(

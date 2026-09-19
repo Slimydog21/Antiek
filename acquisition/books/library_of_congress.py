@@ -23,6 +23,7 @@ NO raw ``requests``/``httpx``: every fetch is via the SPR-03 throttle.
 
 from __future__ import annotations
 
+from typing import Any
 import logging
 import re
 
@@ -70,7 +71,7 @@ _COPYRIGHT_CLAIM_RE = re.compile(
 )
 
 
-def _rights_strings(item: dict) -> list[str]:
+def _rights_strings(item: dict[str, Any]) -> list[str]:
     out: list[str] = []
     for key in ("rights", "rights_information", "rights_advisory"):
         val = item.get(key)
@@ -83,7 +84,7 @@ def _rights_strings(item: dict) -> list[str]:
     return out
 
 
-def loc_rights_input(item: dict) -> tuple[str | None, str | None]:
+def loc_rights_input(item: dict[str, Any]) -> tuple[str | None, str | None]:
     """THE one LoC rights-statement → classify-input mapping. Returns
     (license_uri, pd_signal); both None when PD is NOT established → classify()
     gates. Deny-by-default: an explicit copyright claim / negated-PD phrase /
@@ -109,7 +110,7 @@ def loc_rights_input(item: dict) -> tuple[str | None, str | None]:
     return None, None
 
 
-def _pdf_url(item: dict) -> str | None:
+def _pdf_url(item: dict[str, Any]) -> str | None:
     """Find a PDF resource URL on a loc.gov item record."""
     for res in item.get("resources") or []:
         if not isinstance(res, dict):
@@ -122,7 +123,7 @@ def _pdf_url(item: dict) -> str | None:
     return pdf if isinstance(pdf, str) and pdf else None
 
 
-def item_to_candidate(item: dict) -> BookCandidate | None:
+def item_to_candidate(item: dict[str, Any]) -> BookCandidate | None:
     """Build a candidate from one loc.gov item record. A non-PD/unclear rights
     statement still yields a candidate (gated by classify at ingest) so the
     negative branch is testable; an item with no PDF resource is skipped."""

@@ -20,6 +20,7 @@ cache writer doesn't block legal-gate decisions.
 
 from __future__ import annotations
 
+from typing import Any
 import hashlib
 import json
 from dataclasses import asdict
@@ -71,7 +72,7 @@ def lookup(
     *,
     db_path: str,
     now: datetime | None = None,
-) -> list[dict] | None:
+) -> list[dict[str, Any]] | None:
     """Return the cached proposals list (as a list of dicts ready to
     re-hydrate into DiscoveryProposed) if the key is present AND
     not expired. None otherwise.
@@ -107,7 +108,8 @@ def lookup(
     if expires_at <= now:
         return None
     try:
-        return json.loads(proposals_json)
+        parsed: list[dict[str, Any]] | None = json.loads(proposals_json)
+        return parsed
     except (ValueError, TypeError):
         return None
 
@@ -115,7 +117,7 @@ def lookup(
 def store(
     key: str,
     *,
-    proposals: list,
+    proposals: list[Any],
     query: str,
     investigation_id: str,
     provider: str = "exa",

@@ -25,6 +25,7 @@ publications (not ``*.substack.com``) that still expose ``/feed`` are supported
 """
 from __future__ import annotations
 
+from typing import Any
 import json
 from dataclasses import dataclass
 
@@ -48,7 +49,7 @@ class SubscriptionManifestError(ValueError):
     """Raised on a malformed manifest entry — names the offending entry."""
 
 
-def resolve_feed_url(entry: dict) -> str:
+def resolve_feed_url(entry: dict[str, Any]) -> str:
     """Resolve an entry to its feed URL deterministically.
 
     - explicit ``feed_url`` → returned as-is;
@@ -59,10 +60,10 @@ def resolve_feed_url(entry: dict) -> str:
     """
     feed_url = entry.get("feed_url")
     if feed_url:
-        return feed_url
+        return str(feed_url)
     base_url = entry.get("base_url")
     if base_url:
-        base = base_url.rstrip("/")
+        base = str(base_url).rstrip("/")
         if base.endswith("/feed"):
             return base
         return base + "/feed"
@@ -72,7 +73,7 @@ def resolve_feed_url(entry: dict) -> str:
     )
 
 
-def _parse_entry(entry, index: int) -> Subscription:
+def _parse_entry(entry: dict[str, Any], index: int) -> Subscription:
     if not isinstance(entry, dict):
         raise SubscriptionManifestError(
             f"publications[{index}] is not an object: {entry!r}"
@@ -125,8 +126,8 @@ def ingest_subscriptions(
     investigation_id: str,
     db_path: str | None = None,
     max_posts: int | None = None,
-    embedder=None,
-    client=None,
+    embedder: Any = None,
+    client: Any = None,
 ) -> list[PublicationIngestSummary]:
     """Driver: load the manifest and ingest every publication's feed.
 

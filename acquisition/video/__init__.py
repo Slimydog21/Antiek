@@ -31,7 +31,7 @@ import shutil
 import subprocess
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional, Protocol
+from typing import Any, Optional, Protocol
 
 # Default uniform sampling interval. Most operator-facing videos
 # (lectures, podcasts, interviews) have 30s as a reasonable
@@ -172,7 +172,7 @@ class StubFrameExtractor:
 
     name: str = "stub_extractor"
     canned_data_uri: str = "data:image/png;base64,AAAA"
-    calls: list[dict] = field(default_factory=list)
+    calls: list[dict[str, Any]] = field(default_factory=list)
 
     def extract(
         self,

@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 try:
-    from bs4 import BeautifulSoup, Tag  # type: ignore[import-not-found]
+    from bs4 import BeautifulSoup, Tag
 except ImportError as e:  # pragma: no cover
     raise ImportError(
         "acquisition.urls.extract requires beautifulsoup4. "
@@ -35,7 +35,7 @@ except ImportError as e:  # pragma: no cover
     ) from e
 
 try:
-    import html2text  # type: ignore[import-not-found]
+    import html2text
 except ImportError as e:  # pragma: no cover
     raise ImportError(
         "acquisition.urls.extract requires html2text. "
@@ -71,7 +71,7 @@ def _strip_chrome(soup: BeautifulSoup) -> None:
     sidebar."""
     for tag in soup.find_all(list(_STRIP_TAGS)):
         tag.decompose()
-    for el in soup.find_all(attrs={"role": True}):
+    for el in soup.find_all(role=True):
         if el.get("role") in _STRIP_ROLES:
             el.decompose()
 
@@ -85,7 +85,7 @@ def _pick_main(soup: BeautifulSoup) -> Tag:
     main = soup.find("main")
     if main and len(main.get_text(strip=True)) > 100:
         return main
-    role_main = soup.find(attrs={"role": "main"})
+    role_main = soup.find(role="main")
     if role_main and len(role_main.get_text(strip=True)) > 100:
         return role_main
 
@@ -108,8 +108,9 @@ def _pick_main(soup: BeautifulSoup) -> Tag:
 
 def _resolve_title(soup: BeautifulSoup) -> str | None:
     og = soup.find("meta", attrs={"property": "og:title"})
-    if og and og.get("content"):
-        return og["content"].strip()
+    og_content = og.get("content") if og else None
+    if og and og_content:
+        return str(og_content).strip()
     title = soup.find("title")
     if title and title.get_text(strip=True):
         return title.get_text(strip=True)
@@ -120,20 +121,22 @@ def _resolve_title(soup: BeautifulSoup) -> str | None:
 
 
 def _resolve_author(soup: BeautifulSoup) -> str | None:
-    for sel in [
-        {"name": "author"},
-        {"property": "article:author"},
-        {"name": "byl"},  # NYT
+    for key, value in [
+        ("name", "author"),
+        ("property", "article:author"),
+        ("name", "byl"),  # NYT
     ]:
-        meta = soup.find("meta", attrs=sel)
-        if meta and meta.get("content"):
-            return meta["content"].strip()
-    sch = soup.find(attrs={"itemprop": "author"})
+        meta = soup.find("meta", attrs={key: value})
+        meta_content = meta.get("content") if meta else None
+        if meta and meta_content:
+            return str(meta_content).strip()
+    sch = soup.find(itemprop="author")
     if sch:
-        name = sch.find(attrs={"itemprop": "name"})
-        if name and name.get_text(strip=True):
-            return name.get_text(strip=True)
-        txt = sch.get_text(strip=True)
+        name = sch.find(itemprop="name")
+        name_text = str(name.get_text(strip=True)) if name else ""
+        if name_text:
+            return name_text
+        txt = str(sch.get_text(strip=True))
         if txt:
             return txt
     return None

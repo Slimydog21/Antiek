@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from processing.embedding.embed import EmbeddingProvider
 
-from .licenses import LicenseResolution, license_basis_string
+from acquisition.licenses_core import LicenseResolution, license_basis_string
 
 logger = logging.getLogger(__name__)
 

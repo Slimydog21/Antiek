@@ -55,9 +55,9 @@ import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
-import requests
+import requests  # type: ignore[import-untyped]
 
 if TYPE_CHECKING:
     from substrate.source_throttle import SourceThrottle as SourceThrottleT
@@ -255,14 +255,18 @@ class SourceClient:
                 time.sleep(wait)
             self._last_request_at = time.monotonic()
 
-    def get_json(self, url: str, *, params: dict | None = None) -> dict:
+    def get_json(
+        self, url: str, *, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         resp = self._request(url, params=params)
-        return resp.json()
+        payload: dict[str, Any] = resp.json()
+        return payload
 
     def get_bytes(self, url: str) -> bytes:
-        return self._request(url).content
+        content: bytes = self._request(url).content
+        return content
 
-    def _request(self, url: str, *, params: dict | None = None) -> requests.Response:
+    def _request(self, url: str, *, params: dict[str, Any] | None = None) -> requests.Response:
         # Host-global arXiv governance (SPR-09 root fix): this connector's own
         # in-process throttle (``self._throttle``) governs its Gutenberg /
         # archive.org spacing — UNCHANGED. The send is ADDITIONALLY routed
@@ -324,13 +328,13 @@ class SourceError(RuntimeError):
 # ---------------------------------------------------------------------------
 
 
-def _gutenberg_author(book: dict) -> str | None:
+def _gutenberg_author(book: dict[str, Any]) -> str | None:
     authors = book.get("authors") or []
     names = [a.get("name") for a in authors if a.get("name")]
     return "; ".join(names) if names else None
 
 
-def _select_format(formats: dict) -> tuple[str, str] | None:
+def _select_format(formats: dict[str, Any]) -> tuple[str, str] | None:
     """Choose an ingestible (url, format-kind) from Gutendex's mime→url map.
 
     Prefers a direct PDF when offered; otherwise falls back to plain text,
@@ -379,7 +383,7 @@ def strip_gutenberg_boilerplate(text: str) -> str:
     return text.strip()
 
 
-def _gutenberg_pd_basis(book: dict) -> str | None:
+def _gutenberg_pd_basis(book: dict[str, Any]) -> str | None:
     """Map Gutenberg's per-book ``copyright`` flag to a license_basis.
 
     Gutendex exposes ``copyright`` as a tri-state: ``False`` (Gutenberg
@@ -412,7 +416,7 @@ def gutenberg_candidates(
     returned; everything else is logged and skipped. Pages through
     Gutendex as needed to fill ``limit`` from public-domain PDF works.
     """
-    params: dict = {}
+    params: dict[str, Any] = {}
     if subject:
         params["topic"] = subject
     if search:
@@ -422,7 +426,7 @@ def gutenberg_candidates(
 
     out: list[PublicDomainWork] = []
     url: str | None = GUTENDEX_BASE
-    next_params: dict | None = params
+    next_params: dict[str, Any] | None = params
     while url and len(out) < limit:
         page = client.get_json(url, params=next_params)
         for book in page.get("results", []):
@@ -437,7 +441,7 @@ def gutenberg_candidates(
     return out
 
 
-def _gutenberg_work(book: dict) -> PublicDomainWork | None:
+def _gutenberg_work(book: dict[str, Any]) -> PublicDomainWork | None:
     title = (book.get("title") or "").strip()
     if not title:
         logger.info("gutenberg book %s skipped: no title", book.get("id"))
@@ -520,7 +524,7 @@ _ARCHIVE_COPYRIGHT_CLAIM_RE = re.compile(
 )
 
 
-def _archive_pd_basis(meta: dict, identifier: str) -> str | None:
+def _archive_pd_basis(meta: dict[str, Any], identifier: str) -> str | None:
     fields = []
     for key in ("rights", "licenseurl", "possible-copyright-status"):
         val = meta.get(key)
@@ -546,7 +550,7 @@ def _archive_pd_basis(meta: dict, identifier: str) -> str | None:
     return None
 
 
-def _archive_pdf_url(identifier: str, files: Iterable[dict]) -> str | None:
+def _archive_pdf_url(identifier: str, files: Iterable[dict[str, Any]]) -> str | None:
     for f in files:
         name = f.get("name", "")
         if isinstance(name, str) and name.lower().endswith(".pdf"):
@@ -632,8 +636,8 @@ def _resolve_unicode_font() -> str:
     vendored font is somehow missing we raise rather than silently degrade to
     a non-Greek font.
     """
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.pdfbase import pdfmetrics  # type: ignore[import-untyped]
+    from reportlab.pdfbase.ttfonts import TTFont  # type: ignore[import-untyped]
 
     if _VENDORED_FONT_NAME in pdfmetrics.getRegisteredFontNames():
         return _VENDORED_FONT_NAME
@@ -655,9 +659,9 @@ def text_to_pdf(text: str, *, title: str | None = None) -> bytes:
     Long lines are wrapped; the title is set in the PDF info dict so
     ``read_pdf`` recovers it.
     """
-    from reportlab.lib.pagesizes import letter
-    from reportlab.lib.units import inch
-    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter  # type: ignore[import-untyped]
+    from reportlab.lib.units import inch  # type: ignore[import-untyped]
+    from reportlab.pdfgen import canvas  # type: ignore[import-untyped]
 
     font_name = _resolve_unicode_font()
     buf = io.BytesIO()
@@ -675,7 +679,7 @@ def text_to_pdf(text: str, *, title: str | None = None) -> bytes:
     y = top
     c.setFont(font_name, font_size)
 
-    def _newpage():
+    def _newpage() -> None:
         nonlocal y
         c.showPage()
         c.setFont(font_name, font_size)
@@ -743,7 +747,7 @@ def ingest_work(
     *,
     investigation_id: str = "inv-library",
     db_path: str | None = None,
-    embedder=None,
+    embedder: Any = None,
 ) -> IngestOutcome:
     """Download ``work`` and ingest it as a servable public-domain book.
 

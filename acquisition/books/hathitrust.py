@@ -22,6 +22,7 @@ NO raw ``requests``/``httpx``: every fetch is via the SPR-03 throttle.
 
 from __future__ import annotations
 
+from typing import Any
 import logging
 
 from .pd_connector_base import BookCandidate, ThrottledFetcher
@@ -62,7 +63,7 @@ def hathi_rights_input(rights_code: str | None) -> tuple[str | None, str | None]
     return None, None
 
 
-def _normalize_bib_item(item: dict) -> dict | None:
+def _normalize_bib_item(item: dict[str, Any]) -> dict[str, str | None] | None:
     """Pull (htid, rights_code) out of a HathiTrust bib 'items' entry."""
     htid = item.get("htid") or item.get("fromRecord")
     rights = item.get("rightsCode") or item.get("rights")
@@ -71,7 +72,7 @@ def _normalize_bib_item(item: dict) -> dict | None:
     return {"htid": str(htid), "rights": rights}
 
 
-def candidate_from_bib(record: dict, *, record_id: str) -> BookCandidate | None:
+def candidate_from_bib(record: dict[str, Any], *, record_id: str) -> BookCandidate | None:
     """Build a candidate from one HathiTrust bib record. The record's first
     item's rights code drives :func:`hathi_rights_input`; OCLC/ISBN from the bib
     record drive dedup. A non-PD record still becomes a candidate (gated by

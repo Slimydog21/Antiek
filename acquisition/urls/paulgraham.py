@@ -32,6 +32,7 @@ a daemon/queue/second-runtime.
 """
 from __future__ import annotations
 
+from typing import Any, TYPE_CHECKING
 import json
 import os
 import re
@@ -42,6 +43,9 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from urllib.parse import urldefrag, urljoin, urlparse
+
+if TYPE_CHECKING:
+    from processing.embedding.embed import EmbeddingProvider
 
 # Repo root on path for direct invocation (mirrors adapter.py).
 _PKG_ROOT = os.path.dirname(
@@ -260,7 +264,7 @@ class EssayQuality:
     ingested: bool
     skipped_reason: str | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "url": self.url,
             "document_id": self.document_id,
@@ -350,7 +354,7 @@ class RunSummary:
     # than silently degrading the lawful-acquisition posture.
     warnings: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "discovered": self.discovered,
             "fetched": self.fetched,
@@ -406,7 +410,7 @@ def run(
     *,
     investigation_id: str,
     db_path: str | None = None,
-    embedder: object | None = None,
+    embedder: EmbeddingProvider | None = None,
     # M1 injection seams (tests/offline):
     articles_html: bytes | str | None = None,
     robots_txt: str | None = None,

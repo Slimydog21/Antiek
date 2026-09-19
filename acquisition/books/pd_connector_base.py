@@ -45,7 +45,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-import requests
+import requests  # type: ignore[import-untyped]
 
 from acquisition.licenses_core import ClassificationResult, classify
 
@@ -122,17 +122,22 @@ class ThrottledFetcher:
                 time.sleep(wait)
             self._last_request_at = time.monotonic()
 
-    def get_json(self, url: str, *, params: dict | None = None) -> dict:
-        return self._request(url, params=params).json()
+    def get_json(
+        self, url: str, *, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = self._request(url, params=params).json()
+        return payload
 
-    def get_text(self, url: str, *, params: dict | None = None) -> str:
-        return self._request(url, params=params).text
+    def get_text(self, url: str, *, params: dict[str, Any] | None = None) -> str:
+        text: str = self._request(url, params=params).text
+        return text
 
-    def get_bytes(self, url: str, *, params: dict | None = None) -> bytes:
-        return self._request(url, params=params).content
+    def get_bytes(self, url: str, *, params: dict[str, Any] | None = None) -> bytes:
+        content: bytes = self._request(url, params=params).content
+        return content
 
     def _request(
-        self, url: str, *, params: dict | None = None
+        self, url: str, *, params: dict[str, Any] | None = None
     ) -> requests.Response:
         last_exc: Exception | None = None
         for attempt in range(self._max_retries):

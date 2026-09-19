@@ -27,6 +27,7 @@ What this module does NOT do:
 
 from __future__ import annotations
 
+from typing import Any
 import hashlib
 import os
 import sys
@@ -101,7 +102,7 @@ class DiscoveryProposed:
     # Defaults to {} on the runtime dataclass for ergonomic
     # construction in tests; the underlying payload's
     # `provider_specific` defaults the same.
-    provider_specific: dict = field(default_factory=dict)
+    provider_specific: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -333,7 +334,7 @@ def _default_db_path_or_none() -> str | None:
         return None
 
 
-def _hydrate_proposed(d: dict) -> DiscoveryProposed:
+def _hydrate_proposed(d: dict[str, Any]) -> DiscoveryProposed:
     """Rebuild a DiscoveryProposed dataclass from a cached dict.
 
     Spec §14.7 read precedence: prefer ``provider_specific["response_id"]``
@@ -436,7 +437,7 @@ def _emit_proposed(
     # (autoprompt_string, subpages, exa_filter, etc.) joins here
     # without bumping the schema. Top-level `provider_response_id`
     # stays for backward-compat reads of v6-v8 events.
-    provider_specific: dict = {}
+    provider_specific: dict[str, Any] = {}
     if r.provider_response_id is not None:
         provider_specific["response_id"] = r.provider_response_id
     payload = DiscoveryProposedPayload(

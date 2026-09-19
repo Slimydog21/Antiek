@@ -63,6 +63,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from runtime.db_lock import LockedConnection, connect_write
 from substrate.graph import default_db_path, ensure_initialized
@@ -163,7 +164,7 @@ def _record_fetch_audit(
         )
 
 
-def _read_doc_row(con: LockedConnection, document_id: str) -> dict | None:
+def _read_doc_row(con: LockedConnection, document_id: str) -> dict[str, Any] | None:
     """Return ``{license_uri, content_class, metadata}`` for the row, or None
     when the row is absent. Raises ``ValueError`` on malformed metadata JSON —
     we never blind-overwrite a row whose rights metadata we cannot safely read."""
@@ -175,7 +176,7 @@ def _read_doc_row(con: LockedConnection, document_id: str) -> dict | None:
         return None
     content_class, raw_meta = row
     if raw_meta is None:
-        metadata: dict = {}
+        metadata: dict[str, Any] = {}
     elif isinstance(raw_meta, dict):
         metadata = raw_meta
     else:
@@ -199,7 +200,7 @@ def store_pdf_for_arxiv_row(
     fetched: FetchedPdf,
     *,
     db_path: str | None = None,
-    embedder=None,
+    embedder: Any = None,
     extract_text: PdfTextExtractor | None = None,
     min_word_count: int = MIN_BODY_WORD_COUNT,
     now: Callable[[], datetime] | None = None,
@@ -236,7 +237,7 @@ def store_pdf_for_arxiv_row(
     if extract_text is None:
         from acquisition.books.reader import read_pdf
 
-        extract_text = read_pdf  # type: ignore[assignment]
+        extract_text = read_pdf
     if embedder is None:
         from processing.embedding.embed import default_embedding_provider
 

@@ -44,7 +44,7 @@ def _clean(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _orcid_or_none(author: dict) -> str | None:
+def _orcid_or_none(author: dict[str, Any]) -> str | None:
     """The author's ORCID, normalised to a non-empty string or ``None``.
 
     Never invents one: an absent / empty ``author.orcid`` returns ``None`` so the
@@ -53,7 +53,7 @@ def _orcid_or_none(author: dict) -> str | None:
     return orcid or None
 
 
-def parse_authorships(raw_work: dict) -> list[EnrichedAuthor]:
+def parse_authorships(raw_work: dict[str, Any]) -> list[EnrichedAuthor]:
     """Map an OpenAlex work's ``authorships`` -> ordered ``EnrichedAuthor`` rows.
 
     ``raw_work`` is the FULL raw OpenAlex work dict (as returned by

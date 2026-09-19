@@ -195,7 +195,7 @@ def fetch_pdf(
     )
 
     owns_client = client is None
-    if owns_client:
+    if client is None:
         # REDIRECT-SAFE (SPR-09 round-5): arxiv.org/pdf 302-redirects (versioned
         # /pdf/<id>vN, .pdf) — still arXiv hosts. The hook-carrying client governs
         # each arXiv redirect hop; the outer governor governs the initial hop. The

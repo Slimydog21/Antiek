@@ -89,7 +89,7 @@ class XApiClient:
             key_file=self.key_file,
         )
 
-    def _http_get(self, path: str, params: dict[str, Any]) -> dict:
+    def _http_get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         """LIVE, fixture-validated-only edge. Issues a GET with the BYOK bearer.
 
         The bearer is read from the SecretStr ONLY to build the header dict; it is
@@ -118,11 +118,13 @@ class XApiClient:
 
         def _send() -> str:
             with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-                return resp.read().decode("utf-8")
+                payload: str = resp.read().decode("utf-8")
+                return payload
 
         try:
             body = govern_if_arxiv(url, _send)
-            return json.loads(body)
+            parsed: dict[str, Any] = json.loads(body)
+            return parsed
         except urllib.error.HTTPError as e:  # 401 / 429 / 4xx / 5xx
             # NEVER include the key or the full URL: only the numeric status.
             raise XApiError(f"X API HTTP {e.code}") from None
@@ -130,7 +132,7 @@ class XApiClient:
             raise XApiError(f"X API network error: {e.reason}") from None
 
     # ── live fetch surfaces (live-unverified; covered by fixtures via parse_*) ──
-    def recent_search(self, query: str) -> list[dict]:
+    def recent_search(self, query: str) -> list[dict[str, Any]]:
         """Recent-search: return the raw tweet objects across up to ``max_pages``.
 
         Bounded by ``max_pages`` so an operator-invoked run cannot fan out
@@ -141,14 +143,14 @@ class XApiClient:
             {"query": query, "max_results": self.page_size},
         )
 
-    def user_timeline(self, user_id: str) -> list[dict]:
+    def user_timeline(self, user_id: str) -> list[dict[str, Any]]:
         """A user's recent tweets (the general-feed source)."""
         return self._paged(
             f"/users/{user_id}/tweets",
             {"max_results": self.page_size},
         )
 
-    def conversation(self, conversation_id: str) -> list[dict]:
+    def conversation(self, conversation_id: str) -> list[dict[str, Any]]:
         """All tweets in one conversation/thread (the thread-specific source)."""
         return self._paged(
             "/tweets/search/recent",
@@ -158,8 +160,8 @@ class XApiClient:
             },
         )
 
-    def _paged(self, path: str, base_params: dict[str, Any]) -> list[dict]:
-        out: list[dict] = []
+    def _paged(self, path: str, base_params: dict[str, Any]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
         params = dict(base_params)
         # X API v2 fields we ask for so the parser has author handle + timestamps.
         params.setdefault(
@@ -185,17 +187,17 @@ class XApiClient:
 # ───────────────────────────────────────────────────────────────────────────
 
 
-def parse_search_response(page: dict) -> list[dict]:
+def parse_search_response(page: dict[str, Any]) -> list[dict[str, Any]]:
     """Flatten one X API v2 page into a list of tweet dicts enriched with the
     author username/verified from the ``includes.users`` expansion.
 
     Pure: takes a parsed JSON page (a fixture in tests), returns plain dicts. No
     network, no key, deterministic."""
     data = page.get("data") or []
-    users_by_id: dict[str, dict] = {}
+    users_by_id: dict[str, dict[str, Any]] = {}
     for u in (page.get("includes") or {}).get("users") or []:
         users_by_id[str(u.get("id"))] = u
-    enriched: list[dict] = []
+    enriched: list[dict[str, Any]] = []
     for tw in data:
         author = users_by_id.get(str(tw.get("author_id")), {})
         enriched.append(
@@ -213,7 +215,7 @@ def parse_search_response(page: dict) -> list[dict]:
 
 
 def to_thread(
-    tweets: list[dict],
+    tweets: list[dict[str, Any]],
     *,
     thread_url: str,
     root_tweet_id: str,

@@ -43,6 +43,7 @@ only-writer invariant, architecture_notes §2.3).
 
 from __future__ import annotations
 
+from typing import Any
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -87,7 +88,7 @@ class OaiPersistResult:
         return self.inserted + self.updated
 
 
-def _record_metadata(record: ArxivOaiRecord) -> dict:
+def _record_metadata(record: ArxivOaiRecord) -> dict[str, Any]:
     """The provenance + rights payload stamped into ``documents.metadata``.
 
     Carries the AUTHORITATIVE OAI ``<license>`` URI, the resolved census tier,

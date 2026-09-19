@@ -51,6 +51,7 @@ write to a rights field.
 
 from __future__ import annotations
 
+from typing import Any
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -145,7 +146,9 @@ class _CoverageTally:
 # ---------------------------------------------------------------------------
 
 
-def build_enrichment(raw_work: dict, *, fetched_at: datetime | None = None) -> dict:
+def build_enrichment(
+    raw_work: dict[str, Any], *, fetched_at: datetime | None = None
+) -> dict[str, Any]:
     """Build the ``openalex_enrichment`` metadata payload from a raw work dict.
 
     PURE: no network, no DB. ``raw_work`` is the full OpenAlex work JSON (as
@@ -190,7 +193,9 @@ def build_enrichment(raw_work: dict, *, fetched_at: datetime | None = None) -> d
     }
 
 
-def merge_enrichment(existing_metadata: dict, enrichment: dict) -> dict:
+def merge_enrichment(
+    existing_metadata: dict[str, Any], enrichment: dict[str, Any]
+) -> dict[str, Any]:
     """Return a NEW metadata dict = existing + the single enrichment key.
 
     ADDITIVE MERGE ONLY (the load-bearing invariant): the existing metadata is
@@ -219,7 +224,7 @@ def merge_enrichment(existing_metadata: dict, enrichment: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _load_metadata(con: LockedConnection, document_id: str) -> dict | None:
+def _load_metadata(con: LockedConnection, document_id: str) -> dict[str, Any] | None:
     """Read + parse the existing ``documents.metadata`` JSON for a row.
 
     Returns the parsed dict, or ``None`` when the row is absent. Raises
@@ -237,7 +242,8 @@ def _load_metadata(con: LockedConnection, document_id: str) -> dict | None:
     if isinstance(raw, dict):
         return raw
     try:
-        return json.loads(raw)
+        parsed: dict[str, Any] | None = json.loads(raw)
+        return parsed
     except (json.JSONDecodeError, TypeError) as exc:
         raise ValueError(f"malformed metadata JSON for {document_id}") from exc
 
