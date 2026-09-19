@@ -1,8 +1,8 @@
 import "./animations.css";
-import Werner from "../../Werner";
+import BrainMascot from "../../BrainMascot";
 
 /**
- * Werner the penguin, tobogganing — used as a loading spinner.
+ * The Antiek brain, tobogganing — used as a loading spinner.
  *
  * Brand § 10: ~6 fps wobble, rotate -3°/+3° at 200ms intervals;
  * speed lines flicker. Use for the streaming-investigation banner
@@ -11,7 +11,7 @@ import Werner from "../../Werner";
  * Sizes 24 / 32 / 64 are the recommended steps. Anything in between
  * works because the SVG scales.
  *
- * Core mark delegated to <Werner mood="idle" /> + --werner-* tokens
+ * Core mark delegated to <BrainMascot mood="idle" /> + --werner-* tokens
  * for any remaining accents. No more parallel geometry fork.
  */
 type Props = {
@@ -49,14 +49,14 @@ export default function WernerTobogganSpinner({
           <line x1="0" y1="22" x2="10" y2="22" />
           <line x1="0" y1="30" x2="16" y2="30" />
         </g>
-        {/* Toboggan slat only — Werner supplies the leaning penguin body */}
+        {/* Toboggan slat only — BrainMascot supplies the leaning body */}
         <g className="werner-toboggan">
           <rect x="14" y="32" width="38" height="3" rx="1" fill="var(--werner-coat)" />
           <line x1="18" y1="36" x2="18" y2="40" stroke="var(--werner-coat)" strokeWidth="1.5" />
           <line x1="48" y1="36" x2="48" y2="40" stroke="var(--werner-coat)" strokeWidth="1.5" />
         </g>
       </svg>
-      <Werner mood="idle" size={size} className="werner-toboggan" style={{ position: "absolute", left: "25%", top: "8%" }} />
+      <BrainMascot mood="idle" size={size} className="werner-toboggan" style={{ position: "absolute", left: "25%", top: "8%" }} />
     </span>
   );
 }

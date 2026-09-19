@@ -29,9 +29,9 @@ import { useEffect, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 import type { CSSProperties } from "react";
 
-import type { WernerMood } from "../design/tokens";
+import type { MascotMood } from "../design/tokens";
 import type { SceneMood } from "../scene/mood";
-import { wernerMoodForScene } from "./wernerSceneMap";
+import { mascotMoodForScene } from "./mascotSceneMap";
 
 import brainIdle from "./mascot-brain/01_hero_front_transparent.png";
 import brainClosed from "./mascot-brain/blink_closed_transparent.png";
@@ -53,7 +53,7 @@ const POSE: Record<(typeof MOODS)[number], string> = {
 };
 
 type Props = {
-  mood?: WernerMood;
+  mood?: MascotMood;
   scene?: SceneMood;
   size?: number;
   label?: string;
@@ -76,7 +76,7 @@ export default function BrainMascot({
   className,
   style,
 }: Props) {
-  const effectiveMood = mood ?? (scene ? wernerMoodForScene(scene) : "idle");
+  const effectiveMood = mood ?? (scene ? mascotMoodForScene(scene) : "idle");
   const reduceMotion = (useReducedMotion() ?? false) === true;
 
   // Dev runtime guard — the mechanical half of U-02, same as Werner's.

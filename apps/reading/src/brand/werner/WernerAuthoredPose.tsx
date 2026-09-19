@@ -1,18 +1,18 @@
 import type { CSSProperties } from "react";
 
-import wernerHeadTilt from "./poses/werner_head_tilt_v1_transparent.png";
-import wernerSleeping from "./poses/werner_sleeping_v1_transparent.png";
+import mascotHeadTilt from "../mascot-brain/authored/mascot_head_tilt_v1_transparent.png";
+import mascotSleeping from "../mascot-brain/authored/mascot_sleeping_v1_transparent.png";
 
 /**
  * Authored illustration poses used inside sanctioned animated wrappers.
  *
- * These are not product moods. `Werner.tsx` retains the complete four-mood
+ * These are not product moods. `BrainMascot` retains the complete four-mood
  * public contract; this private vocabulary prevents wrappers from importing
  * pose files directly or substituting a semantically unrelated mood.
  */
 const AUTHORED_POSE = {
-  headTilt: wernerHeadTilt,
-  sleeping: wernerSleeping,
+  headTilt: mascotHeadTilt,
+  sleeping: mascotSleeping,
 } as const;
 
 type Props = {

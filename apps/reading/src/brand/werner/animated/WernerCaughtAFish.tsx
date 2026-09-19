@@ -1,8 +1,8 @@
 import "./animations.css";
-import Werner from "../../Werner";
+import BrainMascot from "../../BrainMascot";
 
 /**
- * Werner the penguin, caught a fish — one-shot completion celebration.
+ * The Antiek brain, caught a fish — one-shot completion celebration.
  *
  * Brand § 10: flipper raise + sparkle scale 0 → 1 → 0 over 800ms.
  * No loop. Use for the "investigation complete" toast / banner.
@@ -11,7 +11,7 @@ import Werner from "../../Werner";
  * One-shot CSS animations restart only on remount, so the
  * `key` prop should change per fire (e.g., per investigation id).
  *
- * Core mark delegated to <Werner mood="celebrate" /> + --werner-* tokens
+ * Core mark delegated to <BrainMascot mood="celebrate" /> + --werner-* tokens
  * for any remaining accents. No more parallel geometry fork.
  */
 type Props = { size?: number; label?: string };
@@ -29,8 +29,8 @@ export default function WernerCaughtAFish({
     >
       {/* Core mark now single-source from canonical at celebrate fidelity.
           The fish flipper + sparkle chrome remain pose-specific overlays
-          positioned to sit on the delegated Werner. */}
-      <Werner mood="celebrate" size={size} />
+          positioned to sit on the delegated BrainMascot. */}
+      <BrainMascot mood="celebrate" size={size} />
       {/* Pose chrome overlays — minimal absolute SVGs for fish + sparkle only.
           The penguin body itself is fully delegated; no geometry duplication. */}
       <svg
