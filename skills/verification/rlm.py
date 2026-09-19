@@ -22,24 +22,14 @@ verifier gate is in ``verify_layer_answers``.
 
 from __future__ import annotations
 
-import os
-import sys
 from collections import Counter
 from collections.abc import Callable
 from typing import Any
 
-try:
-    from ...constants import (
-        RLM_VERIFY_AGREEMENT_MIN,
-        RLM_VERIFY_REDISPATCH_COUNT,
-    )
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import (  # type: ignore[no-redef]
-        RLM_VERIFY_AGREEMENT_MIN,
-        RLM_VERIFY_REDISPATCH_COUNT,
-    )
+from substrate.constants import (
+    RLM_VERIFY_AGREEMENT_MIN,
+    RLM_VERIFY_REDISPATCH_COUNT,
+)
 
 from .types import VerificationResult
 

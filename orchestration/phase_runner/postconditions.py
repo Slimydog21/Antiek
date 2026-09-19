@@ -44,26 +44,14 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-try:
-    from ...event_log import trajectory
-    from ...schemas import (
-        ActionType,
-        AutoPatchAppliedPayload,
-        Event,
-        MasterMdWrittenPayload,
-        SynthesizeDeliveredPayload,
-    )
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.event_log import trajectory  # type: ignore[no-redef]
-    from substrate.schemas import (  # type: ignore[no-redef]
-        ActionType,
-        AutoPatchAppliedPayload,
-        Event,
-        MasterMdWrittenPayload,
-        SynthesizeDeliveredPayload,
-    )
+from substrate.event_log import trajectory
+from substrate.schemas import (
+    ActionType,
+    AutoPatchAppliedPayload,
+    Event,
+    MasterMdWrittenPayload,
+    SynthesizeDeliveredPayload,
+)
 
 from ..phase_log import PhaseAssertionError, PhaseLog
 

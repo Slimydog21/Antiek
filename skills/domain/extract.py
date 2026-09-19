@@ -61,7 +61,7 @@ def _ke_repair_enabled() -> bool:
 
 def _try_parse_json(
     raw: str,
-) -> tuple[dict | None, json.JSONDecodeError | None]:
+) -> tuple[dict[str, Any] | None, json.JSONDecodeError | None]:
     """Strict JSON parse + brace-slice fallback. Returns
     ``(parsed_dict, None)`` on success; ``(None, error)`` on failure.
 
@@ -106,7 +106,7 @@ def extract_findings(
     thesis: Any,
     domain: str,
     llm_call: LLMCall,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Call the injected ``llm_call`` to extract findings for one
     domain. Returns the parsed dict (sections → finding lists) or
     ``None`` on transport / parse / retry-also-failed.
@@ -168,13 +168,13 @@ class ExtractionResult:
 
     domains_matched: list[str] = field(default_factory=list)
     patched_skills: dict[str, list[str]] = field(default_factory=dict)
-    findings_extracted: dict[str, dict] = field(default_factory=dict)
+    findings_extracted: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @property
     def any_patched(self) -> bool:
         return any(self.patched_skills.values())
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "domains_matched": list(self.domains_matched),
             "patched_skills": {k: list(v) for k, v in self.patched_skills.items()},

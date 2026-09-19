@@ -13,6 +13,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 # Per rlm_integration_spec.md proposed constants (Section F additions).
 RLM_DOC_THRESHOLD_TOKENS: int = 64_000  # documents above this use RLM mode
@@ -94,7 +95,7 @@ class RLMSession:
 
     state: RLMSessionState
     sub_llms: list[SubLLMWithTools] = field(default_factory=list)
-    iterations: list[dict] = field(default_factory=list)
+    iterations: list[dict[str, Any]] = field(default_factory=list)
 
     def record_iteration(self, *, summary: str, cost_usd: Decimal) -> None:
         """Record one iteration's outcome. Enforces the session cost
