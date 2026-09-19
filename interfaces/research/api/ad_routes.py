@@ -206,6 +206,7 @@ class WebsiteAdsHonesty(BaseModel):
 
     docs/decisions/applovin-website-mvp-attribution-ledger-2026-09-17.md
     docs/decisions/ads-rank01-pricing-settlement-gate-2026-09-18.md
+    docs/decisions/ads-paid-fill-gated-honesty-2026-09-19.md
     """
 
     surface: Literal["website"]
@@ -219,6 +220,10 @@ class WebsiteAdsHonesty(BaseModel):
     settlement_open: bool
     settlement_path: str
     settlement_requires: list[str]
+    paid_fill_gated: bool
+    paid_fill_requires: list[str]
+    paid_fill_default: Literal["unpriced_zero"]
+    applovin_alignment: Literal["antiek_owned_creatives_no_max_sdk"]
     speak_contributor_share: float
     speak_platform_share: float
     money_model: str
@@ -226,6 +231,7 @@ class WebsiteAdsHonesty(BaseModel):
     decision_ref: str
     spec_ref: str
     rank01_decision_ref: str
+    paid_fill_decision_ref: str
 
 
 class MultiEdgeFillResponse(BaseModel):

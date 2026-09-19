@@ -33,6 +33,11 @@ def test_website_ads_honesty_shape():
     assert h["settlement_open"] is False
     assert h["settlement_path"] == "settle_fill_decision"
     assert "rank_0_1_pricing_authority_ref" in h["settlement_requires"]
+    assert h["paid_fill_gated"] is True
+    assert h["paid_fill_default"] == "unpriced_zero"
+    assert h["applovin_alignment"] == "antiek_owned_creatives_no_max_sdk"
+    assert "active_advertiser_id" in h["paid_fill_requires"]
+    assert "paid-fill-gated" in h["paid_fill_decision_ref"]
 
 
 def test_assert_unpriced_zero_rejects_fake_cents():
@@ -97,3 +102,5 @@ def test_trust_center_endpoint_publishes_website_ads(isolated_db):
     body = resp.json()
     assert body["website_ads"]["serving_model"] == "antiek_owned_creatives"
     assert body["website_ads"]["max_sdk_on_web"] is False
+    assert body["website_ads"]["paid_fill_gated"] is True
+    assert body["website_ads"]["paid_fill_default"] == "unpriced_zero"

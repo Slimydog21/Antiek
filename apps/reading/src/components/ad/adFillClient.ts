@@ -77,6 +77,10 @@ export interface WebsiteAdsHonesty {
   settlement_open?: boolean;
   settlement_path?: string;
   settlement_requires?: string[];
+  paid_fill_gated?: boolean;
+  paid_fill_requires?: string[];
+  paid_fill_default?: string;
+  applovin_alignment?: string;
   speak_contributor_share: number;
   speak_platform_share: number;
   money_model: string;
@@ -84,6 +88,7 @@ export interface WebsiteAdsHonesty {
   decision_ref: string;
   spec_ref: string;
   rank01_decision_ref?: string;
+  paid_fill_decision_ref?: string;
 }
 
 export interface FillResult {
@@ -182,6 +187,7 @@ function parseHonesty(value: unknown): WebsiteAdsHonesty | undefined {
   if (typeof value.pricing_gate !== "string") return undefined;
   if (typeof value.legal_gate !== "string") return undefined;
   if ("settlement_open" in value && value.settlement_open !== false) return undefined;
+  if ("paid_fill_gated" in value && value.paid_fill_gated !== true) return undefined;
   if (typeof value.speak_contributor_share !== "number") return undefined;
   if (typeof value.speak_platform_share !== "number") return undefined;
   if (typeof value.money_model !== "string") return undefined;
