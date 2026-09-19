@@ -9,7 +9,7 @@
 # Writes /tmp/antiek-swarm-review-{claude,glmf,grok}.txt — no secrets.
 # Cite: docs/anti-ek-cli-swarm.md
 set -euo pipefail
-export PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.kimi-code/bin:$PATH"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:$HOME/.kimi-code/bin:$PATH"
 
 MODE="review"
 BASE="origin/main"
