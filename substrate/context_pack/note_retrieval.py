@@ -17,6 +17,7 @@ investigation) can pass ``restrict_node_ids`` to narrow it.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -98,10 +99,8 @@ def _row_to_note(row: Any, *, has_embedding: bool) -> RetrievedNote:
     node_id, node_type, label, metadata, created_at, similarity = row
     confidence = "unknown"
     if metadata:
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             confidence = json.loads(metadata).get("confidence", "unknown")
-        except (TypeError, ValueError):
-            pass
     return RetrievedNote(
         node_id=node_id, node_type=node_type, text=label,
         similarity=float(similarity or 0.0), confidence=confidence,

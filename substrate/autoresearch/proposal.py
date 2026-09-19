@@ -14,12 +14,11 @@ operator can audit *why* a config came to be.
 
 from __future__ import annotations
 
-from typing import Any
-
 import enum
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 
 def _now_iso() -> str:
@@ -65,7 +64,7 @@ class ConfigProposal:
         return self.score - self.baseline_score
 
 
-class OperatorVerdictKind(str, enum.Enum):
+class OperatorVerdictKind(enum.StrEnum):
     ACCEPT = "accept"
     REJECT = "reject"
     MODIFY = "modify"

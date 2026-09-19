@@ -174,7 +174,7 @@ def _parse_verifier_json(raw: str) -> dict[str, Any]:
         raise ValueError(f"verifier reply contained no JSON object: {raw!r}")
     parsed = json.loads(m.group(0))
     if not isinstance(parsed, dict):
-        raise ValueError(f"verifier reply was not a JSON object")
+        raise ValueError("verifier reply was not a JSON object")
     return parsed
 
 

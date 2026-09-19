@@ -37,6 +37,7 @@ specified here.
 
 from __future__ import annotations
 
+import contextlib
 import enum
 import hashlib
 import hmac
@@ -81,7 +82,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class PartnerTrustState(str, enum.Enum):
+class PartnerTrustState(enum.StrEnum):
     """Three-state machine for a partner-substrate identity record."""
 
     PENDING_HANDSHAKE = "pending_handshake"
@@ -387,7 +388,7 @@ def ensure_table(con: Any) -> None:
     ``substrate/graph/schema.py`` and runs at boot via ``init_database``;
     this is a no-op on a fully-initialized DB. Read-only connections
     fail silently — matching the federation_config_store posture."""
-    try:
+    with contextlib.suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS federation_partners (
@@ -407,8 +408,6 @@ def ensure_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
 
 
 def _ts(s: str) -> str:

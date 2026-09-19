@@ -65,7 +65,10 @@ except ImportError:  # pragma: no cover — direct-script fallback
         SYNTHESIS_CONTEXT_BUDGET_TOKENS,
     )
     from event_log import emit_typed  # type: ignore[no-redef,import-not-found]
-    from schemas import ContextLayer, ContextPackAssembledPayload  # type: ignore[no-redef,import-not-found]
+    from schemas import (  # type: ignore[no-redef,import-not-found]
+        ContextLayer,
+        ContextPackAssembledPayload,
+    )
 
 
 # ---------------------------------------------------------------------------

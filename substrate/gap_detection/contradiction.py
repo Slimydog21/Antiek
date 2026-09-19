@@ -60,7 +60,7 @@ def negation_verifier(a: str, b: str) -> bool:
 def _cosine(u: Sequence[float], v: Sequence[float]) -> float:
     if not u or not v:
         return 0.0
-    dot = sum(x * y for x, y in zip(u, v))
+    dot = sum(x * y for x, y in zip(u, v, strict=False))
     nu = math.sqrt(sum(x * x for x in u))
     nv = math.sqrt(sum(y * y for y in v))
     return dot / (nu * nv) if nu and nv else 0.0

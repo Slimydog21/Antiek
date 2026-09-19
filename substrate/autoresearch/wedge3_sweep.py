@@ -20,10 +20,9 @@ production wires `score_against_outcomes_table`, tests use stubs.
 
 from __future__ import annotations
 
-from typing import Any
-
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from .proposal import CohortWindow, ConfigProposal, SweepAxes
 

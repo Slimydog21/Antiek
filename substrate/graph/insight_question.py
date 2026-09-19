@@ -48,9 +48,8 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import TYPE_CHECKING
 from collections.abc import Callable, Sequence
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 if TYPE_CHECKING:
     from substrate.contracts.nodes import KnowledgeUnitContract, ServabilityTag
@@ -191,7 +190,7 @@ def _node_type_of_source(relation: str) -> str:
     return spec.source_type
 
 
-def _with_connection(
+def _with_connection[_T](
     con: LockedConnection | None, purpose: str, fn: Callable[[LockedConnection], _T]
 ) -> _T:
     """Run ``fn(con)`` either on the caller's connection (caller owns the
@@ -496,7 +495,7 @@ def _dedup_check(
     extraction_confidence: float,
     provider: Any,
     dedup_rate: Any,
-) -> "DuplicateMatch | None":
+) -> DuplicateMatch | None:
     """Run the candidate through the SPR-07 detector against scoped existing
     units; on a match, record the ``duplicate_of`` edge + count it; return the
     ``DuplicateMatch`` (or None). Increments ``dedup_rate`` once per attempt
@@ -542,7 +541,7 @@ def _scoped_existing_units(
     node_type: str,
     investigation_id: str,
     source_document_id: str | None,
-) -> "list[ExistingUnit]":
+) -> list[ExistingUnit]:
     """Read the already-deposited units in the candidate's provenance SCOPE
     (same investigation, or the same grounding document) and project them onto
     ``substrate.unit_dedup.ExistingUnit``. The detector's scope guard also
@@ -874,7 +873,7 @@ def promote_from_marginalia_event(
 
 def servability_tag_for(
     content_class: str | None, *, taken_down: bool = False
-) -> "ServabilityTag":
+) -> ServabilityTag:
     """Read the §9.0 classifier's answer for a unit grounded on a source of
     this ``content_class`` and return a ``ServabilityTag``. This does NOT
     re-derive deny-by-default — it asks ``substrate.books.servability`` (the
@@ -910,7 +909,7 @@ def knowledge_unit_of(
     content_class: str | None = None,
     taken_down: bool = False,
     score_groundedness: bool = False,
-) -> "KnowledgeUnitContract":
+) -> KnowledgeUnitContract:
     """Project a deposited insight/question node (already written by
     ``promote_insight``/``promote_question``) onto a ``KnowledgeUnitContract``.
 

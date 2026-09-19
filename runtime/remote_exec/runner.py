@@ -43,6 +43,9 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 try:
+    from substrate.event_log import log_event, seal_investigation
+    from substrate.schemas.events import ActionType
+
     from ..research_runner.budget import BudgetManager
     from ..research_runner.protocol import (
         BudgetExceeded,
@@ -63,8 +66,6 @@ try:
         RemoteSignal,
         Sandbox,
     )
-    from substrate.event_log import log_event, seal_investigation
-    from substrate.schemas.events import ActionType
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))

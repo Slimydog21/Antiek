@@ -29,6 +29,7 @@ must not slip it.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -342,10 +343,8 @@ def get_notebook(con: Any, notebook_id: str) -> Notebook | None:
     ) = row
     metadata = {}
     if md:
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             metadata = json.loads(md)
-        except (TypeError, ValueError):
-            pass
 
     block_rows = con.execute(
         """

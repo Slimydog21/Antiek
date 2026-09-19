@@ -74,7 +74,7 @@ MIN_WORDS_PER_NOTE: int = 50
 MAX_SOURCE_TIER_FOR_HARD_CLAIM: int = 3
 
 
-class QualityGateOutcome(str, enum.Enum):
+class QualityGateOutcome(enum.StrEnum):
     """Three-way outcome. PASS lets attribution flow; REJECT and
     SOFT_REJECT block it. SOFT_REJECT permits operator override."""
 
@@ -83,7 +83,7 @@ class QualityGateOutcome(str, enum.Enum):
     REJECT = "reject"
 
 
-class QualityFailureReason(str, enum.Enum):
+class QualityFailureReason(enum.StrEnum):
     """Why a note failed. Exposed in audit events so the operator
     can see which discipline is being violated."""
 

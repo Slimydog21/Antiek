@@ -19,8 +19,9 @@ Live activation gates per master-spec §9.0 + §9.4:
 
 from __future__ import annotations
 
-import duckdb
 from typing import Any
+
+import duckdb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 

@@ -28,12 +28,13 @@ from typing import Any
 
 try:
     from runtime.db_lock import connect_write
-    from .protocol import StepEvent
     from substrate.graph.insight_question import (
         graph_db_path,
         promote_insight,
         promote_question,
     )
+
+    from .protocol import StepEvent
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))

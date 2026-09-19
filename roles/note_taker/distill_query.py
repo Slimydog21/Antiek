@@ -29,9 +29,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 try:
+    from runtime.db_lock import connect_read
     from substrate.event_log import trajectory
     from substrate.graph.insight_question import graph_db_path
-    from runtime.db_lock import connect_read
     from substrate.schemas.events import ActionType
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))

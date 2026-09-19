@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from typing import Generic, TypeVar
+from typing import TypeVar
 
 from substrate.errors import SubstrateError, WriterContended
 from substrate.result_helpers import checked_budget_charge
@@ -61,7 +61,7 @@ T = TypeVar("T")
 DEFAULT_ACQUIRE_TIMEOUT_S = 30.0
 
 
-class OwnershipHandle(Generic[T]):
+class OwnershipHandle[T]:
     """Single-owner, serialized-write handle over an in-process mutable
     value of type ``T``.
 

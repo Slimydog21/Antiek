@@ -22,6 +22,7 @@ try:
     from substrate.event_log import emit_typed
     from substrate.graph.insight_question import promote_insight, promote_question
     from substrate.schemas.events import NoteEmergedPayload, QuestionIdentifiedPayload
+
     from .distill import Distillation, Distiller
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))

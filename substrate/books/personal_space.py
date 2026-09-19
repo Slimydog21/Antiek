@@ -277,11 +277,11 @@ def _salient_terms(texts: Sequence[str], *, top_k: int = 3) -> list[str]:
 
 def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     dot = 0.0
-    for x, y in zip(a, b):
+    for x, y in zip(a, b, strict=False):
         dot += float(x) * float(y)
     na = 0.0
     nb = 0.0
-    for x, y in zip(a, b):
+    for x, y in zip(a, b, strict=False):
         na += float(x) * float(x)
         nb += float(y) * float(y)
     if na == 0.0 or nb == 0.0:

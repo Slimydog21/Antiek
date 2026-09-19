@@ -30,14 +30,14 @@ typed ``error.code``.
 
 from __future__ import annotations
 
-import duckdb
 from collections.abc import Callable
 from typing import Any
+
+import duckdb
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from substrate.ad_inventory.advertiser_onboarding import (
-    AdvertiserRegistry,
     AdvertiserOnboardingError,
     AdvertiserRecord,
     activate_advertiser,

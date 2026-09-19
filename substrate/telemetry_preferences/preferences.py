@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import os
 import sqlite3
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 
 def _now_iso() -> str:

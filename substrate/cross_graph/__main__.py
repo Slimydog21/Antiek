@@ -36,13 +36,11 @@ Output: compact table by default; ``--json`` for machine-parseable."""
 
 from __future__ import annotations
 
-from typing import Any
-
-from collections.abc import Callable
-
 import argparse
 import json
 import sys
+from collections.abc import Callable
+from typing import Any
 
 from substrate.cross_graph.federation import FederationConfig
 from substrate.cross_graph.federation_config_store import (
@@ -52,8 +50,8 @@ from substrate.cross_graph.federation_config_store import (
     save_config as save_federation_config,
 )
 from substrate.cross_graph.partner_identity import (
-    PartnerRegistry,
     PartnerIdentityError,
+    PartnerRegistry,
     PartnerSubstrate,
     generate_shared_secret,
     load_registry,

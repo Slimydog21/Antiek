@@ -334,7 +334,7 @@ def _aggregate(
     }
     split = apportion_cents(pos_weights, attributed_cents)
 
-    lines = tuple(
+    return tuple(
         AccrualLine(
             arxiv_id=arxiv_id,
             author_position=int(pos),
@@ -344,7 +344,6 @@ def _aggregate(
         )
         for pos in sorted_positions
     )
-    return lines
 
 
 # ---------------------------------------------------------------------------

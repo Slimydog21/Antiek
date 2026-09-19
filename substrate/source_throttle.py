@@ -40,8 +40,7 @@ Time + sleep are injectable so CI is deterministic and never sleeps for real.
 
 from __future__ import annotations
 
-from typing import Any
-
+import contextlib
 import json
 import os
 import random
@@ -49,6 +48,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # Default per-source spacing. A research-batch tool is not latency-sensitive,
 # so a courteous floor keeps us off any rate-limiter's radar. OA polite pools
@@ -276,10 +276,8 @@ class SourceThrottle:
         if headers:
             retry_after = headers.get("Retry-After") or headers.get("retry-after")
             if retry_after:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     backoff = max(backoff, float(int(str(retry_after).strip())))
-                except (ValueError, TypeError):
-                    pass
         all_state = self._read_all()
         state = self._source_state(all_state, source)
         state.banned_until = self._now() + backoff

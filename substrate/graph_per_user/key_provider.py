@@ -7,12 +7,10 @@ abstraction; production wires AWS KMS / GCP Cloud KMS / Vault.
 
 from __future__ import annotations
 
-from typing import Any
-
 import secrets
 import threading
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class KeyProviderError(Exception):

@@ -32,11 +32,10 @@ omitting the flag prints a clear refusal."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import argparse
 import json
 import sys
+from collections.abc import Callable
 
 from substrate.ad_inventory.advertiser_onboarding import (
     AdvertiserOnboardingError,

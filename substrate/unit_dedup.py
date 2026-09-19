@@ -75,10 +75,9 @@ over this file is empty by construction).
 
 from __future__ import annotations
 
-from typing import Any
-
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 # Tier 2 reuses the ONE embedding path. Imported lazily inside the function
 # (mirroring insight_question._default_provider) so a test can install a hash
@@ -200,12 +199,7 @@ def _shares_scope(candidate: CandidateUnit, existing: ExistingUnit) -> bool:
     unit; we read it, we do not invent it."""
     if candidate.investigation_id and candidate.investigation_id == existing.investigation_id:
         return True
-    if (
-        candidate.source_document_id
-        and candidate.source_document_id == existing.source_document_id
-    ):
-        return True
-    return False
+    return bool(candidate.source_document_id and candidate.source_document_id == existing.source_document_id)
 
 
 def _tier1_match(

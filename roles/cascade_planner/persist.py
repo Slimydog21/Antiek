@@ -19,9 +19,10 @@ import sys
 from typing import Any
 
 try:
+    from runtime.db_lock import connect_read, connect_write
     from substrate.graph.insight_question import graph_db_path, promote_question
     from substrate.graph.ops import insert_edge
-    from runtime.db_lock import connect_read, connect_write
+
     from .tree_contract import ApprovalState, PlanNode, PlanTree
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))

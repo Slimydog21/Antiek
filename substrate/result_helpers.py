@@ -96,7 +96,7 @@ def try_decode_json(
         )
 
 
-def try_parse_model(
+def try_parse_model[M: BaseModel](
     model_cls: type[M], data: Any, *, schema_version: int = 0
 ) -> Result[M, SubstrateError]:
     """Validate ``data`` into a Pydantic model, returning
@@ -157,7 +157,7 @@ def checked_budget_charge(
     return Ok(value=new_spend)
 
 
-def try_call(
+def try_call[T](
     fn: Callable[[], T],
     *,
     on_error: Callable[[Exception], SubstrateError],

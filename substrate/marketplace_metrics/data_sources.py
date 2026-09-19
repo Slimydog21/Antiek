@@ -15,10 +15,8 @@ get replaced with real queries — the call sites do not change.
 
 from __future__ import annotations
 
-from typing import Any
-
 from collections.abc import Mapping
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class _DBConn(Protocol):

@@ -18,10 +18,8 @@ the bridge fires correctly without making real network calls.
 
 from __future__ import annotations
 
-from typing import Any
-
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 import httpx
 

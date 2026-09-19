@@ -21,9 +21,8 @@ change rather than an architecture change.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from . import LegalGateVerdict
@@ -86,7 +85,7 @@ class RegistryBackedLegalGate:
             else registry.BANNED_CONTENT_HASH_PREFIXES
         )
 
-    def check_url(self, url: str) -> "LegalGateVerdict":
+    def check_url(self, url: str) -> LegalGateVerdict:
         """Implements the `LegalGate.check_url` protocol method.
 
         Today checks only the URL's host against
@@ -120,7 +119,7 @@ class RegistryBackedLegalGate:
         title: str = "",
         source_corpus: str = "",
         content_hash: str = "",
-    ) -> "LegalGateVerdict":
+    ) -> LegalGateVerdict:
         """Fuller-metadata check. Used by ingestion paths that have
         author/title/corpus/hash at the time of the gate
         consultation. Routes through the full `document_blocked_reason`

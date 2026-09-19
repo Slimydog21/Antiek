@@ -22,12 +22,10 @@ computes a reward or touches the trainer.
 
 from __future__ import annotations
 
-from typing import Any
-
 import os
 import sys
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 try:
     from ..event_log import emit_typed

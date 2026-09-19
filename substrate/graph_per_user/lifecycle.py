@@ -46,7 +46,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class PerUserStorageEventKind(str, enum.Enum):
+class PerUserStorageEventKind(enum.StrEnum):
     CREATED = "created"
     OPENED = "opened"
     CLOSED = "closed"

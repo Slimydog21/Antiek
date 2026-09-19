@@ -77,7 +77,7 @@ def _safe_div(num: int, denom: int) -> float:
 
 
 def score_against_labels(
-    labelled_pastes: Iterable["LabelledPaste"],
+    labelled_pastes: Iterable[LabelledPaste],
     *,
     extracted_for_doc: Callable[[str], tuple[list[str], list[str]]],
     judge: SemanticJudge,

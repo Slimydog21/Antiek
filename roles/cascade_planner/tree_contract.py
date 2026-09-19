@@ -22,9 +22,9 @@ An edit to an approved plan **re-opens the gate** — re-approval is required.
 """
 
 from __future__ import annotations
-from collections.abc import Iterator
 
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any

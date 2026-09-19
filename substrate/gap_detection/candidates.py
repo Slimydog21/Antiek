@@ -19,8 +19,6 @@ straight into SPR-05's ``plan_from_gap`` seed interface.
 
 from __future__ import annotations
 
-from typing import Any
-
 import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass, field

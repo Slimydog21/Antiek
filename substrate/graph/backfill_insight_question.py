@@ -33,7 +33,11 @@ from typing import Any
 
 try:
     from ..event_log import default_events_dir, trajectory
-    from ..runtime.db_lock import LockedConnection, connect_read, connect_write  # type: ignore[import-untyped]
+    from ..runtime.db_lock import (  # type: ignore[import-untyped]
+        LockedConnection,
+        connect_read,
+        connect_write,
+    )
     from ..schemas.events import ActionType
     from .insight_question import (
         graph_db_path,

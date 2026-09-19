@@ -33,11 +33,9 @@ Tests inject ``MockVisionProvider`` (also in this module).
 
 from __future__ import annotations
 
-from typing import Any
-
 import os
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 import httpx
 

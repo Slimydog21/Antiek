@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-class VendorClass(str, enum.Enum):
+class VendorClass(enum.StrEnum):
     """The coarse classes the multi-cloud opt-in operates on."""
 
     LLM = "llm"

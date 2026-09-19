@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 from typing import Any, Protocol
 
+
 class InverseHandler(Protocol):
     """Restore a single target to ``prev_state``."""
 

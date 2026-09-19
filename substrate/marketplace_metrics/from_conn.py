@@ -7,9 +7,8 @@ optional operator overrides.
 
 from __future__ import annotations
 
-from typing import Any
-
 from collections.abc import Mapping
+from typing import Any
 
 from .advertiser_retention import compute_advertiser_retention
 from .creator_distribution import compute_creator_distribution

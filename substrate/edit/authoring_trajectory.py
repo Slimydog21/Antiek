@@ -18,18 +18,19 @@ log always yields the same trajectory.
 
 from __future__ import annotations
 
-from typing import Any
-
 import os
 import sys
 from dataclasses import dataclass, field
+from typing import Any
 
 try:
     from ..event_log import trajectory as _read_trajectory
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.event_log import trajectory as _read_trajectory  # type: ignore[no-redef,unused-ignore]
+    from substrate.event_log import (
+        trajectory as _read_trajectory,  # type: ignore[no-redef,unused-ignore]
+    )
 
 
 # action_type → coarse authoring step kind. Block composition (SPR-01),

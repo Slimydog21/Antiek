@@ -88,7 +88,7 @@ from substrate.constants import SERVABLE_CONTENT_CLASSES
 # ---------------------------------------------------------------------------
 
 
-class KeyType(str, enum.Enum):
+class KeyType(enum.StrEnum):
     """Which identifier established a record's identity, precedence-high first.
 
     This is the ONE identity-precedence enum. The orchestrator's cross-source
@@ -121,7 +121,7 @@ _PRECEDENCE: tuple[KeyType, ...] = (
 )
 
 
-class Confidence(str, enum.Enum):
+class Confidence(enum.StrEnum):
     HIGH = "high"
     LOW = "low"
 

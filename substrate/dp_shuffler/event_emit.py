@@ -9,8 +9,6 @@ this bridge is invoked — the contract is enforced at the source.
 
 from __future__ import annotations
 
-from typing import Any
-
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime

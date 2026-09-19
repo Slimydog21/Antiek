@@ -7,11 +7,10 @@ surfaces User A as a candidate interview subject for User B.
 
 from __future__ import annotations
 
-from typing import Any
-
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 
 def _now_iso() -> str:

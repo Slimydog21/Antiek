@@ -32,11 +32,10 @@ its first line.
 
 from __future__ import annotations
 
-from typing import Any
-
 import json
 import os
 import sys
+from typing import Any
 
 try:
     from ..loop_3.trajectory_harvest import HarvestedTrajectory

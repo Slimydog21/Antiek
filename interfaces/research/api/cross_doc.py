@@ -91,7 +91,7 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     degenerate case shouldn't fire a cross-doc link anyway."""
     if not a or not b:
         return 0.0
-    num = sum(x * y for x, y in zip(a, b))
+    num = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(x * x for x in b))
     if na == 0.0 or nb == 0.0:

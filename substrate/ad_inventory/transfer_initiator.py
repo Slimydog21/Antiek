@@ -26,6 +26,7 @@ The initiator NEVER catches & swallows provider exceptions silently —
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -67,7 +68,7 @@ def ensure_table(con: Any) -> None:
     """Defensive table-creation. The canonical schema definition lives
     in ``substrate/graph/schema.py``; this is a no-op on a fully-
     initialized DB. Read-only connections fail silently."""
-    try:
+    with contextlib.suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS payout_transfers (
@@ -85,8 +86,6 @@ def ensure_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
 
 
 def _record(

@@ -49,8 +49,8 @@ import fcntl
 import os
 import time
 from collections.abc import Iterable, Iterator, Sequence
-from typing import Any, Literal, Protocol, runtime_checkable
 from types import TracebackType
+from typing import Any, Literal, Protocol, runtime_checkable
 
 import duckdb
 
@@ -89,10 +89,8 @@ def _stale_pid_check(lock_path: str) -> None:
     try:
         os.kill(pid, 0)
     except (ProcessLookupError, PermissionError):
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(lock_path)
-        except OSError:
-            pass
 
 
 class WriteLockTimeout(RuntimeError):
@@ -163,14 +161,10 @@ def _log_write_event(
                 con.close()
         finally:
             if acquired:
-                try:
+                with contextlib.suppress(OSError):
                     fcntl.flock(fd, fcntl.LOCK_UN)
-                except OSError:
-                    pass
-            try:
+            with contextlib.suppress(OSError):
                 os.close(fd)
-            except OSError:
-                pass
     except Exception as e:  # pragma: no cover — observability is best-effort
         # If write_log doesn't exist yet (pre-migration), or any other failure,
         # don't propagate. A single line on stderr is enough for ops.
@@ -215,7 +209,7 @@ class LockedConnection:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._con, name)
 
-    def __enter__(self) -> "LockedConnection":
+    def __enter__(self) -> LockedConnection:
         return self
 
     def __exit__(
@@ -241,10 +235,8 @@ class LockedConnection:
             try:
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
             finally:
-                try:
+                with contextlib.suppress(OSError):
                     os.close(self._lock_fd)
-                except OSError:
-                    pass
         # Log AFTER the lock is released, on a fresh connection (briefly
         # re-locked). The main pipeline never blocks on this.
         if self._db_path:
@@ -318,10 +310,8 @@ def connect_write(
     except WriteLockTimeout:
         raise
     except Exception:
-        try:
+        with contextlib.suppress(OSError):
             os.close(fd)
-        except OSError:
-            pass
         raise
 
     # Stamp pid + purpose + ISO timestamp for ops debugging — best-effort.
@@ -454,7 +444,7 @@ class WriteCoordinator(Protocol):
     Callers select the active coordinator via `init_db.get_write_coordinator()`.
     """
 
-    def acquire_write_context(self, purpose: str) -> Iterator["WriteContext"]: ...
+    def acquire_write_context(self, purpose: str) -> Iterator[WriteContext]: ...
 
 
 class FlockWriteCoordinator:
@@ -534,10 +524,8 @@ class FlockWriteCoordinator:
                         )
                     time.sleep(0.1)
         except Exception:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(fd)
-            except OSError:
-                pass
             raise
         try:
             os.ftruncate(fd, 0)

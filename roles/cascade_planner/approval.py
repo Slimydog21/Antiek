@@ -23,9 +23,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 try:
+    from runtime.db_lock import connect_read, connect_write
     from substrate.event_log import log_event
     from substrate.graph.insight_question import graph_db_path
-    from runtime.db_lock import connect_read, connect_write
+
     from .persist import _json
     from .tree_contract import PlanTree
 except ImportError:  # pragma: no cover

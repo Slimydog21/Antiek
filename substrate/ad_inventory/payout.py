@@ -36,7 +36,7 @@ PLATFORM_CUT = Decimal("0.30")  # per master-spec §9.0.1 (80/20 Perplexity benc
 DEFAULT_PER_DOCUMENT_DAILY_CAP_USD = Decimal("50.00")  # per §9.7 anti-gaming
 
 
-class RevShareKind(str, enum.Enum):
+class RevShareKind(enum.StrEnum):
     CREATOR = "creator"  # user-as-IP-holder
     PUBLISHER = "publisher"  # pre-onboarded IP holder (§9.10)
     PLATFORM = "platform"  # Antiek's 30% cut
@@ -222,14 +222,13 @@ def distribute_with_gates(
         if d.amount_usd_cents <= KYC_PAYOUT_FLOOR_USD_CENTS:
             router.gates_by_decision_id[d.decision_id] = "rolled_over"
             continue
-        if kyc_registry is not None:
-            if not can_settle(
-                kyc_registry,
-                recipient_ref=d.recipient_ref,
-                amount_usd_cents=d.amount_usd_cents,
-            ):
-                router.gates_by_decision_id[d.decision_id] = "gated_kyc"
-                continue
+        if kyc_registry is not None and not can_settle(
+            kyc_registry,
+            recipient_ref=d.recipient_ref,
+            amount_usd_cents=d.amount_usd_cents,
+        ):
+            router.gates_by_decision_id[d.decision_id] = "gated_kyc"
+            continue
         router.gates_by_decision_id[d.decision_id] = "admitted"
 
     return decisions

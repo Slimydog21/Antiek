@@ -43,13 +43,12 @@ store engine, no service, no queue, no second runtime.
 
 from __future__ import annotations
 
-from typing import Any
-
 import json
 import os
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # The dedup-key set per source is bounded so the checkpoint file cannot grow
 # without limit over a long-running continuous engine (a source with millions

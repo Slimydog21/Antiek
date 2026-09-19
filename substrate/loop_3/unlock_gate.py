@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import enum
 import os
 from dataclasses import dataclass, field
+from typing import Any
 
 
-class Loop3UnlockCriterion(str, enum.Enum):
+class Loop3UnlockCriterion(enum.StrEnum):
     """The five criteria from `docs/loop_3_unlock_criteria.md`."""
 
     TRAJECTORY_VOLUME = "trajectory_volume"

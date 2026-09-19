@@ -61,6 +61,7 @@ Quick start::
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -472,10 +473,8 @@ def search_graph(query: str, top_k: int = 5) -> str:
     except Exception as e:
         return f"search_graph error: {e!r}"
     finally:
-        try:
+        with contextlib.suppress(Exception):
             con.close()
-        except Exception:
-            pass
 
     return _format_graph_search_result(result, query=query)
 

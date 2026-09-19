@@ -39,9 +39,9 @@ from dataclasses import dataclass
 from typing import Any
 
 try:
+    from runtime.db_lock import connect_write
     from substrate.event_log import emit_typed
     from substrate.graph.insight_question import graph_db_path, promote_question
-    from runtime.db_lock import connect_write
     from substrate.schemas.events import NoteRefinedPayload, QuestionEscalatedToResearchPayload
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))

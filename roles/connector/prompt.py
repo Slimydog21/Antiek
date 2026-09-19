@@ -187,8 +187,7 @@ def render_user_template(
 ) -> str:
     out = CONNECTOR_USER_TEMPLATE
     out = out.replace("{{mappings_block}}", mappings_block or "(empty)")
-    out = out.replace("{{paths_block}}", paths_block or "(empty)")
-    return out
+    return out.replace("{{paths_block}}", paths_block or "(empty)")
 
 
 def render_full_prompt(

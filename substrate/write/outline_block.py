@@ -54,6 +54,7 @@ from typing import Any, Literal
 
 try:
     from runtime.db_lock import LockedConnection
+
     from ..event_log import emit_typed
     from ..graph.ops import new_random_id
 except ImportError:  # pragma: no cover — direct-script fallback
@@ -378,12 +379,11 @@ def move_block(
         raise OutlineBlockError(f"outline block not found: {outline_block_id!r}")
     from_section_id, from_index = row[0], int(row[1])
     # Validate the target section exists (reparent target).
-    if to_section_id != from_section_id:
-        if con.execute(
-            "SELECT 1 FROM deliverable_sections WHERE section_id = ?",
-            [to_section_id],
-        ).fetchone() is None:
-            raise OutlineBlockError(f"target section not found: {to_section_id!r}")
+    if to_section_id != from_section_id and con.execute(
+        "SELECT 1 FROM deliverable_sections WHERE section_id = ?",
+        [to_section_id],
+    ).fetchone() is None:
+        raise OutlineBlockError(f"target section not found: {to_section_id!r}")
     con.execute(
         "UPDATE outline_blocks SET section_id = ?, block_index = ? "
         "WHERE outline_block_id = ?",

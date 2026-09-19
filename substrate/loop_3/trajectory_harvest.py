@@ -6,10 +6,9 @@ format. Loop-3-gated; runs only after unlock."""
 
 from __future__ import annotations
 
-from typing import Any
-
 import json
 from dataclasses import dataclass, field
+from typing import Any
 
 from .unlock_gate import check_unlocked
 

@@ -8,9 +8,8 @@ the DB.
 
 from __future__ import annotations
 
-from typing import Any
-
 from dataclasses import dataclass
+from typing import Any
 
 from substrate.dp_shuffler.epsilon_registry import EpsilonRegistry
 

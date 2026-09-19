@@ -17,14 +17,13 @@ passage scores 1.0; a heavily-slopped one scores 0.0.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import enum
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 
-class ViolationKind(str, enum.Enum):
+class ViolationKind(enum.StrEnum):
     BULLET_ABUSE = "bullet_abuse"
     EM_DASH_OVERUSE = "em_dash_overuse"
     SLOP_BOILERPLATE = "slop_boilerplate"

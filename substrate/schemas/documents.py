@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 # NOTE: ``resolve_license`` is imported LAZILY inside ``classify_tier`` rather
 # than at module top. ``substrate.schemas`` sits at the BOTTOM of the
@@ -44,7 +44,7 @@ from enum import Enum
 # semantics without dragging acquisition into substrate's import graph.
 
 
-class RightsTier(str, Enum):
+class RightsTier(StrEnum):
     """The three rights tiers the census partitions arXiv into.
 
     ``str`` mixin so a tier serialises to its value in JSON/CSV census output

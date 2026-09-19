@@ -19,6 +19,7 @@ cannot ignore the dispatch budget. This scheduler:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -116,10 +117,8 @@ class AsyncNoteScheduler:
         while not self._stop:
             async with self._cond:
                 if not self._pending:
-                    try:
+                    with contextlib.suppress(TimeoutError):
                         await asyncio.wait_for(self._cond.wait(), timeout=self._debounce_s)
-                    except TimeoutError:
-                        pass
                 if self._stop:
                     return
             await asyncio.sleep(0)  # let debounce window accrue coalescing

@@ -36,6 +36,7 @@ escrow.
 
 from __future__ import annotations
 
+import contextlib
 import enum
 import uuid
 from dataclasses import dataclass, field
@@ -54,7 +55,7 @@ KYC_PAYOUT_FLOOR_USD_CENTS: int = 1000
 KYC_EXPIRY_DAYS: int = 7
 
 
-class KycState(str, enum.Enum):
+class KycState(enum.StrEnum):
     """Five-state machine. ``REJECTED`` is terminal."""
 
     NOT_STARTED = "not_started"
@@ -285,7 +286,7 @@ def ensure_table(con: Any) -> None:
     """Defensive table-creation. Canonical schema in
     ``substrate/graph/schema.py`` (V5 chunk shipped alongside this
     module). Read-only connections fail silently."""
-    try:
+    with contextlib.suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS kyc_status (
@@ -303,8 +304,6 @@ def ensure_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
 
 
 def save_record(con: Any, record: KycRecord) -> str:

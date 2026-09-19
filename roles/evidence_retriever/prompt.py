@@ -149,8 +149,7 @@ def render_user_template(
     out = out.replace("{{evidence_type_required}}", evidence_type_required)
     out = out.replace("{{top_k}}", str(int(top_k)))
     out = out.replace("{{chunks_block}}", chunks_block or "(no chunks)")
-    out = out.replace("{{subgraph_block}}", subgraph_block or "(no subgraph)")
-    return out
+    return out.replace("{{subgraph_block}}", subgraph_block or "(no subgraph)")
 
 
 def render_full_prompt(

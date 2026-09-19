@@ -133,12 +133,11 @@ def score_inventory_match(
     if targeting.target_sub_sectors and context.sub_sector is not None:
         if context.sub_sector in targeting.target_sub_sectors:
             score += WEIGHT_SUB_SECTOR_MATCH
-    if targeting.target_audience_intents and context.audience_intents:
-        if any(
-            i in targeting.target_audience_intents
-            for i in context.audience_intents
-        ):
-            score += WEIGHT_AUDIENCE_INTENT_MATCH
+    if targeting.target_audience_intents and context.audience_intents and any(
+        i in targeting.target_audience_intents
+        for i in context.audience_intents
+    ):
+        score += WEIGHT_AUDIENCE_INTENT_MATCH
     return score
 
 

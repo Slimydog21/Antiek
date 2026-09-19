@@ -32,6 +32,7 @@ content; the seq determinism is verified against the shipped rule.
 """
 
 from __future__ import annotations
+
 from collections.abc import Callable
 
 from .prompt import DEFAULT_CHALLENGE_PROMPT

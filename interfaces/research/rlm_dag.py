@@ -336,7 +336,7 @@ def execute_dag(
         total_calls += len(prompts)
         layer_answers: dict[str, str] = {
             nid: result
-            for nid, result in zip(node_ids_this_layer, batch_results)
+            for nid, result in zip(node_ids_this_layer, batch_results, strict=False)
         }
 
         for node in layer:

@@ -14,12 +14,12 @@ embedder is injected (``EmbeddingModel`` protocol from
 """
 
 from __future__ import annotations
-from typing import Any
 
 import os
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 try:
     from substrate.constants import DECOMPOSER_PARAPHRASE_COSINE_MAX
@@ -51,7 +51,7 @@ class ParaphraseFlag:
 def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     """Plain Python cosine — keeps the module dependency-free for the
     test path that injects deterministic stub embeddings."""
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = sum(x * x for x in a) ** 0.5
     nb = sum(y * y for y in b) ** 0.5
     if na == 0.0 or nb == 0.0:

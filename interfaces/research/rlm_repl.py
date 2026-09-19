@@ -371,9 +371,7 @@ class RLMRepl:
         """True when ``answer["ready"]`` is set OR iteration cap hit."""
         if self.answer.get("ready"):
             return True
-        if self.iteration >= self.max_iterations:
-            return True
-        return False
+        return self.iteration >= self.max_iterations
 
     def final_answer(self) -> str:
         """Extract the final answer. Call after the loop terminates."""

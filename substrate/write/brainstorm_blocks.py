@@ -29,6 +29,7 @@ from typing import Any
 
 try:
     from runtime.db_lock import LockedConnection
+
     from ..graph.ops import content_addressed_id
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))

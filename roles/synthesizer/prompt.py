@@ -199,8 +199,7 @@ def render_user_template(
     out = out.replace("{{decomposition_block}}", decomposition_block or "(no decomposition)")
     out = out.replace("{{evidence_block}}", evidence_block or "(no evidence)")
     out = out.replace("{{parameters_block}}", parameters_block or "(no parameters)")
-    out = out.replace("{{substrate_block}}", substrate_block or "(no substrate)")
-    return out
+    return out.replace("{{substrate_block}}", substrate_block or "(no substrate)")
 
 
 def render_full_prompt(

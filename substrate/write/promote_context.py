@@ -30,6 +30,7 @@ from typing import Literal
 
 try:
     from runtime.db_lock import LockedConnection
+
     from ..graph.ops import insert_deliverable, insert_section
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))

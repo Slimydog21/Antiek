@@ -40,8 +40,9 @@ import sys
 from typing import Any
 
 try:
-    from ..research_runner.promotion_funnel import PromotionFunnel
     from runtime.db_lock import connect_write
+
+    from ..research_runner.promotion_funnel import PromotionFunnel
     from ..research_runner.protocol import StepEvent
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))

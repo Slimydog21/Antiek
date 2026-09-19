@@ -42,11 +42,10 @@ light (stdlib only) so the meta-check can run in pytest-free environments too.
 
 from __future__ import annotations
 
-from typing import Any
-
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # The registry directory is this package's own directory.
 REGISTRY_DIR = Path(__file__).resolve().parent
