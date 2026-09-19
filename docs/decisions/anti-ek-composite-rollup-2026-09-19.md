@@ -33,7 +33,7 @@
 | Speak | 100 | Honesty / invite / coexist signed off this programme |
 | Ads | 94 | Rank-0 honesty, fills nonblock; **AppLovin / paid fill still open** — no fake CPM |
 | BYOT/ACU | 88 | #3184 soft-warn + used ACU dogfood; no wall-time top-up; no Stripe |
-| Thinking Partner | 99 | #3185 multiturn + SERVABLE mount + TalkToBook unify + Lego; voice→park residual |
+| Thinking Partner | 100 | #3185 multiturn + SERVABLE mount + TalkToBook unify + Lego + #voice-park-tp |
 | Notebook | 93 | AutoNotebook + daily-loop + outline→Write auto-import |
 | TurboPuffer | 90 | Mini hybrid_ready + #3182 `/health`; prod no key; **`production_default_mount=false`** by design |
 | HTML-native | 93 | #3183 artifact.html + #3186 PDF→sanitized sidecar; **OCR/scanned PDF residual** |
@@ -53,7 +53,7 @@ Prior agent trajectory claims of “composite ~97” after sequential arcs were 
 4. **OCR / scanned PDF → HTML** — #3186 covers text-layer pypdf only.
 5. **`turbopuffer_production_default_mount=false`** — intentional until env+key+promote; prod currently has no TurboPuffer API key.
 6. **BYOT wall-time top-up on completion** — deferred; 1 ACU = investigation start remains.
-7. **Voice → park → discuss TP** end-to-end polish (blocks TP 100).
+7. ~~Voice → park → discuss TP~~ — shipped voice-park-tp-discuss-2026-09-19.
 8. **TalkToBook book-scoped path** still separate HTTP from library `/thought-partner` (dual structure — keep).
 
 ## Closed this programme (do not re-open as gaps)

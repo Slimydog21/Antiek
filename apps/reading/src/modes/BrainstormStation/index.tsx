@@ -9,6 +9,7 @@ import {
   type ParkedQuestionEntry,
 } from "../../lib/api";
 import ParkedQuestion from "./ParkedQuestion";
+import { composeThoughtPartnerSystemContext } from "../../components/ai/thoughtPartnerSeed";
 import { THOUGHT_PARTNER_SEED_EVENT } from "./ThoughtPartnerPanel";
 import WatchForLaterFolder from "./WatchForLaterFolder";
 
@@ -70,6 +71,7 @@ export default function BrainstormStation() {
             `Discuss this parked question — challenge, synthesize, or extend:
 
 ${text}`,
+          system_context: composeThoughtPartnerSystemContext(),
           source_label: `parked · ${selected.question_id}`,
         },
       }),
