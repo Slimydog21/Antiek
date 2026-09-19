@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-import yaml  # type: ignore[import]
+import yaml  # type: ignore[import,unused-ignore]
 
 # Package-relative imports with a fall-back for direct-script execution.
 try:

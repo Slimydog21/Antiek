@@ -62,7 +62,7 @@ except ImportError:  # pragma: no cover
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from dispatch.base import (  # type: ignore[no-redef]
+    from dispatch.base import (  # type: ignore[no-redef,import-not-found]
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
