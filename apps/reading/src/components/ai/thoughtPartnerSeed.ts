@@ -1,7 +1,7 @@
 /**
  * Shared thought-partner seed event (Surface E + AISidecar + future hosts).
  * Cite: master-spec §4.5 — parked question / selection seeds the partner.
- * SERVABLE reading mount: composeThoughtPartnerSystemContext (#3135 dual structure).
+ * SERVABLE reading mount: composeThoughtPartnerSystemContext (issue 3135 dual structure).
  */
 import { formatReadingFocusSystemContext } from "../../lib/readingFocus";
 import { workspaceContextPrompt } from "./aiActions";

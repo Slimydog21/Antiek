@@ -1,7 +1,7 @@
 /**
  * Reading focus bus — SERVABLE book/page mount for Thought Partner.
  *
- * Cite: #3135 (TP hybrid / gated→DuckDB only); ThoughtPartnerRequest.system_context;
+ * Cite: issue 3135 (TP hybrid / gated→DuckDB only); ThoughtPartnerRequest.system_context;
  * BookReader (modes/Reading) ownerReadable / servable_full_text; dual structure.
  *
  * The reader publishes the open book + page. Thought Partner (AISidecar,

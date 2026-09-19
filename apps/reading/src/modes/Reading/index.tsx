@@ -190,7 +190,7 @@ export default function BookReader() {
   );
 
   // TP SERVABLE mount — BEFORE any early returns (Rules of Hooks).
-  // Gated books never publish page body (dual structure / #3135 class).
+  // Gated books never publish page body (dual structure / issue-3135 class).
   useEffect(() => {
     if (!documentId) {
       clearReadingFocus();
