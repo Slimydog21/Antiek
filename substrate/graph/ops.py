@@ -36,35 +36,35 @@ from datetime import UTC, datetime
 from typing import Any
 
 try:
-    from ...constants import (
+    from ..constants import (
         PERSONAL_READING_CONTENT_CLASS,
         THIRD_PARTY_DOCUMENT_TYPES,
     )
-    from ...event_log import emit_typed
-    from ...runtime.db_lock import LockedConnection
-    from ...schemas import (
+    from ..event_log import emit_typed
+    from ..runtime.db_lock import LockedConnection  # type: ignore[import-untyped]
+    from ..schemas import (
         GraphEdgeInsertedPayload,
         GraphNodeInsertedPayload,
     )
-    from ...schemas.events import DocumentContentClassDefaultedPayload
+    from ..schemas.events import DocumentContentClassDefaultedPayload
     from .embedding_meta import record_chunk_embedding_meta
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
-    from substrate.constants import (  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
+    from substrate.constants import (
         PERSONAL_READING_CONTENT_CLASS,
         THIRD_PARTY_DOCUMENT_TYPES,
     )
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.graph.embedding_meta import (  # type: ignore[no-redef]
+    from substrate.event_log import emit_typed
+    from substrate.graph.embedding_meta import (
         record_chunk_embedding_meta,
     )
-    from substrate.schemas import (  # type: ignore[no-redef]
+    from substrate.schemas import (
         GraphEdgeInsertedPayload,
         GraphNodeInsertedPayload,
     )
-    from substrate.schemas.events import (  # type: ignore[no-redef]
+    from substrate.schemas.events import (
         DocumentContentClassDefaultedPayload,
     )
 

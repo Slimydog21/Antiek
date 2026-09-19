@@ -32,9 +32,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 try:
-    from ...event_log import default_events_dir, trajectory
-    from ...runtime.db_lock import LockedConnection, connect_read, connect_write
-    from ...schemas.events import ActionType
+    from ..event_log import default_events_dir, trajectory
+    from ..runtime.db_lock import LockedConnection, connect_read, connect_write  # type: ignore[import-untyped]
+    from ..schemas.events import ActionType
     from .insight_question import (
         graph_db_path,
         insight_node_id,
@@ -46,13 +46,13 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import (  # type: ignore[no-redef]
+    from runtime.db_lock import (
         LockedConnection,
         connect_read,
         connect_write,
     )
-    from substrate.event_log import default_events_dir, trajectory  # type: ignore[no-redef]
-    from substrate.graph.insight_question import (  # type: ignore[no-redef]
+    from substrate.event_log import default_events_dir, trajectory
+    from substrate.graph.insight_question import (
         graph_db_path,
         insight_node_id,
         promote_from_marginalia_event,
@@ -60,7 +60,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
         promote_from_question_event,
         question_node_id,
     )
-    from substrate.schemas.events import ActionType  # type: ignore[no-redef]
+    from substrate.schemas.events import ActionType
 
 _NOTE_ACTION = ActionType.NOTE_EMERGED.value
 _QUESTION_ACTION = ActionType.QUESTION_IDENTIFIED.value
@@ -84,9 +84,9 @@ class BackfillReport:
     marginalia_already_present: int = 0
     dry_run: bool = False
     investigations: int = 0
-    errors: list = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> dict[str, Any]:
         return {
             "dry_run": self.dry_run,
             "investigations": self.investigations,
@@ -117,7 +117,7 @@ def _investigation_ids(events_dir: str) -> list[str]:
     return sorted(set(out))
 
 
-def _iter_candidates(events_dir: str) -> Iterator[tuple[str, dict]]:
+def _iter_candidates(events_dir: str) -> Iterator[tuple[str, dict[str, Any]]]:
     """Yield ``(kind, event)`` for every note.emerged / question.identified
     event across all investigations. ``kind`` is ``"note"`` or
     ``"question"``."""
@@ -132,7 +132,7 @@ def _iter_candidates(events_dir: str) -> Iterator[tuple[str, dict]]:
                 yield "marginalia", event
 
 
-def _candidate_node_id(kind: str, event: dict) -> str | None:
+def _candidate_node_id(kind: str, event: dict[str, Any]) -> str | None:
     payload = event.get("payload")
     if isinstance(payload, str):
         import json
@@ -152,7 +152,7 @@ def _candidate_node_id(kind: str, event: dict) -> str | None:
     return question_node_id(text) if isinstance(text, str) and text.strip() else None
 
 
-def _existing_node_ids(read_con, node_ids: set[str]) -> set[str]:
+def _existing_node_ids(read_con: Any, node_ids: set[str]) -> set[str]:
     if not node_ids:
         return set()
     ids = list(node_ids)
@@ -194,11 +194,11 @@ def backfill(
                  and (nid := _candidate_node_id(k, e))}
         m_ids = {nid for k, e in candidates if k == "marginalia"
                  and (nid := _candidate_node_id(k, e))}
-        con = connect_read(db_path)
+        read_con = connect_read(db_path)
         try:
-            present = _existing_node_ids(con, note_ids | q_ids | m_ids)
+            present = _existing_node_ids(read_con, note_ids | q_ids | m_ids)
         finally:
-            con.close()
+            read_con.close()
         report.notes_already_present = len(note_ids & present)
         report.questions_already_present = len(q_ids & present)
         report.marginalia_already_present = len(m_ids & present)
@@ -260,7 +260,7 @@ def backfill(
     return report
 
 
-def main(argv: list | None = None) -> int:  # pragma: no cover — CLI
+def main(argv: list[str] | None = None) -> int:  # pragma: no cover — CLI
     import argparse
     import json
 

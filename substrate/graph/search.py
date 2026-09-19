@@ -48,7 +48,7 @@ _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES = (
 )
 
 try:
-    from ...runtime.db_lock import connect_read  # type: ignore[import-not-found]
+    from ..runtime.db_lock import connect_read  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))

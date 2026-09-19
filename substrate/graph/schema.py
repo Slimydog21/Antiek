@@ -47,11 +47,11 @@ import duckdb
 # Import the canonical write-locker from Sprint 1 day-2. Same flock
 # discipline; this is the Quack v2.0 swap point.
 try:
-    from ...runtime.db_lock import LockedConnection, connect_write
+    from ..runtime.db_lock import LockedConnection, connect_write  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection, connect_write  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection, connect_write
 
 
 # The schema script. Idempotent — every CREATE uses IF NOT EXISTS so
