@@ -110,13 +110,13 @@ afterEach(() => {
   investigationStub.events = [];
 });
 
-function insight(node_id: string, text: string): DistilledNode {
+function insight(node_id: string, text: string, source_document_id: string | null = "doc-1"): DistilledNode {
   return {
     node_id,
     kind: "insight",
     text,
     confidence: "high",
-    source_document_id: "doc-1",
+    source_document_id,
     refinement_count: 0,
     escalated: false,
     reserved_child_investigation_id: null,
@@ -180,6 +180,15 @@ describe("AutoNotebook — renders real graph content (M1)", () => {
     expect(outline.querySelector('[data-outline-section="questions"]')).toBeTruthy();
     // Title is the research question — not invented.
     expect(screen.getByText("What is the moat?")).toBeTruthy();
+    expect(
+      screen.getByTestId("auto-notebook-outline").querySelector('a[href="#notebook-section-insights"]'),
+    ).toBeTruthy();
+    expect(screen.getByTestId("auto-notebook-import-write").getAttribute("href")).toContain(
+      "investigation=inv-1",
+    );
+    expect(screen.getByTestId("auto-notebook-citation-link").getAttribute("href")).toBe(
+      "/read/doc-1",
+    );
   });
 });
 
@@ -243,7 +252,8 @@ describe("AutoNotebook — honest empty state (M1, rigor #1)", () => {
     // Daily-loop polish: empty is not a dead end.
     expect(screen.getByTestId("notebook-loop-nav")).toBeTruthy();
     const write = screen.getByTestId("auto-notebook-continue-write");
-    expect(write.getAttribute("href")).toBe("/write?investigation=inv-empty");
+    expect(write.getAttribute("href")).toContain("investigation=inv-empty");
+    expect(write.getAttribute("href")).toContain("title=");
   });
 });
 

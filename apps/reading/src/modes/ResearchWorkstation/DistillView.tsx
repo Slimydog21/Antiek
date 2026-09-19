@@ -72,9 +72,17 @@ export default function DistillView({ investigationId, running, onChase }: Disti
     void load();
   }, [load]);
 
+  // Daily-loop continuity: AutoNotebook "distill" → /inv/:id#distill
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hash !== "#distill") return;
+    const el = document.getElementById("distill");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [state.kind]);
+
   if (state.kind === "loading") {
     return (
-      <div className="flex items-center gap-2 px-4 py-6" role="status" aria-live="polite">
+      <div id="distill" data-testid="distill-view" className="flex items-center gap-2 px-4 py-6" role="status" aria-live="polite">
         <Thinking size={28} label="Gathering the insights and questions" status="reading the graph…" />
       </div>
     );
@@ -82,7 +90,7 @@ export default function DistillView({ investigationId, running, onChase }: Disti
 
   if (state.kind === "error") {
     return (
-      <div className="px-4 py-6">
+      <div id="distill" data-testid="distill-view" className="px-4 py-6">
         <AIActionFailure
           title="Couldn’t load the insights and questions"
           reason={state.reason}
@@ -97,7 +105,7 @@ export default function DistillView({ investigationId, running, onChase }: Disti
   // Honest no-result (M4): nothing distilled — the common no-provider case.
   if (insights.length === 0 && questions.length === 0) {
     return (
-      <div className="px-4 py-6">
+      <div id="distill" data-testid="distill-view" className="px-4 py-6">
         <AIActionFailure
           title={
             running
@@ -114,7 +122,7 @@ export default function DistillView({ investigationId, running, onChase }: Disti
   }
 
   return (
-    <div className="flex flex-col gap-5 px-4 py-4">
+    <div id="distill" data-testid="distill-view" className="flex flex-col gap-5 px-4 py-4">
       <OpenAutoNotebookLink investigationId={investigationId} />
       {running && (
         <p className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">

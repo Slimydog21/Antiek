@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import {
   getDistillation,
@@ -17,7 +17,7 @@ import {
   type AutoNotebook as DerivedNotebook,
   type AutoNotebookSection,
 } from "./deriveAutoNotebook";
-import NotebookLoopNav from "./NotebookLoopNav";
+import NotebookLoopNav, { writeHandoffHref } from "./NotebookLoopNav";
 
 /**
  * AutoNotebook — the auto-generated, always-current narrative VIEW of a
@@ -218,7 +218,11 @@ function AutoNotebookBody({
     // invent a section/insight/question.
     return (
       <article className="max-w-3xl mx-auto px-8 py-12">
-        <NotebookLoopNav investigationId={investigationId} canWrite={false} />
+        <NotebookLoopNav
+          investigationId={investigationId}
+          canWrite={false}
+          writeTitle={notebook.title}
+        />
 
         <div className="max-w-md mx-auto text-center space-y-3">
           <h1 className="text-2xl font-serif text-ink dark:text-bright leading-tight">
@@ -244,12 +248,22 @@ function AutoNotebookBody({
         <NotebookLoopNav
           investigationId={notebook.investigationId}
           canWrite
+          writeTitle={notebook.title}
         />
         <h1 className="text-2xl font-serif text-ink dark:text-bright leading-tight">
           {notebook.title}
         </h1>
         <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
           generated from this research’s graph · regenerates as you work
+        </p>
+        <p className="pt-1">
+          <Link
+            to={writeHandoffHref(notebook.investigationId, notebook.title)}
+            data-testid="auto-notebook-import-write"
+            className="inline-flex font-mono text-[11px] uppercase tracking-wider text-aurora underline-offset-2 hover:underline"
+          >
+            Import outline into Write →
+          </Link>
         </p>
       </header>
 
@@ -271,7 +285,12 @@ function AutoNotebookBody({
               data-outline-section={s.kind}
               className="text-[13px] font-serif text-ink-soft dark:text-starlight"
             >
-              {s.heading}
+              <a
+                href={`#notebook-section-${s.kind}`}
+                className="underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+              >
+                {s.heading}
+              </a>
             </li>
           ))}
         </ul>
@@ -308,7 +327,7 @@ function SectionView({
     // emits this section when synthesis has content.
     if (!synthesis) return null;
     return (
-      <section data-section="synthesis">
+      <section id="notebook-section-synthesis" data-section="synthesis">
         <MasterMdViewer synthesis={synthesis} />
       </section>
     );
@@ -316,7 +335,7 @@ function SectionView({
 
   // Insights / open-questions sections — graph leaves, read-only.
   return (
-    <section data-section={section.kind}>
+    <section id={`notebook-section-${section.kind}`} data-section={section.kind}>
       <h2 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
         {section.heading}
       </h2>
@@ -340,7 +359,13 @@ function SectionView({
                   className="mt-0.5 font-mono text-[11px] text-shadow-1 dark:text-moonlight"
                   data-testid="auto-notebook-citation"
                 >
-                  source: {e.sourceDocumentId}
+                  <Link
+                    to={`/read/${encodeURIComponent(e.sourceDocumentId)}`}
+                    className="underline-offset-2 hover:underline text-aurora"
+                    data-testid="auto-notebook-citation-link"
+                  >
+                    open source in reader →
+                  </Link>
                 </p>
               )}
               {e.escalated && (

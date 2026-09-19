@@ -48,6 +48,7 @@ export default function WriteHome() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const fromInvestigation = (searchParams.get("investigation") || "").trim() || null;
+  const titleFromQuery = (searchParams.get("title") || "").trim();
 
   const [detail, setDetail] = useState<DeliverableDetailResponse | null>(null);
   const [pieces, setPieces] = useState<DeliverableSummary[]>([]);
@@ -126,11 +127,17 @@ export default function WriteHome() {
   // created WITH its backing investigation_root_id set (the link is set at
   // creation; M1 reads it back to verify it exists).
   const [starting, setStarting] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
+  const [newTitle, setNewTitle] = useState(titleFromQuery);
   // Open-ended project type (M4): freeform text the AI interprets; presets seed.
   const [projectType, setProjectType] = useState<{ freeform: string; kind: DeliverableKind }>(
     { freeform: "", kind: "general_essay" },
   );
+
+  // AutoNotebook → Write continuity: honor ?title= from notebook handoff.
+  useEffect(() => {
+    if (!titleFromQuery) return;
+    setNewTitle((prev) => (prev.trim() ? prev : titleFromQuery));
+  }, [titleFromQuery]);
 
   async function createWithConnection(resolved: { investigationId: string; label: string }) {
     if (!newTitle.trim()) return;
@@ -200,6 +207,17 @@ export default function WriteHome() {
           {/* M1: the connect-to-research step. Pick a project (imports its
               blocks onto the canvas) or none (auto-spawns + links a folder).
               Either way the piece is created WITH investigation_root_id set. */}
+          {fromInvestigation ? (
+            <p
+              data-testid="write-from-notebook-banner"
+              className="rounded border border-aurora/40 bg-ice-1 px-3 py-2 text-xs text-ink dark:bg-charcoal-1 dark:text-bright"
+            >
+              Continuing from auto-notebook — title is prefilled when the notebook
+              sent one. Connect the highlighted research to import its outline when
+              a depositable synthesis exists (else an empty linked piece). No
+              invented sections.
+            </p>
+          ) : null}
           {newTitle.trim() ? (
             <ConnectResearch
               pieceTitle={newTitle}
@@ -209,7 +227,9 @@ export default function WriteHome() {
             />
           ) : (
             <p className="text-xs italic text-ink-mute dark:text-moonlight">
-              Name the piece to choose a research project to connect it to.
+              {fromInvestigation
+                ? "Name the piece (or keep editing the prefilled title) to connect and import the outline."
+                : "Name the piece to choose a research project to connect it to."}
             </p>
           )}
           {starting && (

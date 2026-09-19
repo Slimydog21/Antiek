@@ -39,12 +39,12 @@ Earlier same-day arcs already on the tip ancestry (not all first-parent of `de48
 | Ads | 98 | Rank-0/#3156 + settle/#3163 + **paid_fill_gated** ACTIVE-advertiser scaffold; default $0 unpriced; no MAX/CPM invention |
 | BYOT/ACU | 98 | #3184 soft-warn + #3189 wall + **hard-refuse UX** (structured 429 + Settings enforcement/wall honesty); no Stripe |
 | Thinking Partner | 100 | Multiturn + SERVABLE + TalkToBook unify + Lego + voice-park (#3191) |
-| Notebook | 94 | AutoNotebook + daily-loop + outline→Write; polish residual thin |
+| Notebook | 98 | AutoNotebook + daily-loop + outline→Write + **continuity polish** (title handoff, citation→reader, distill #, NotebooksIndex honesty) |
 | TurboPuffer | 95 | Mini+prod hybrid_ready + key; **`production_default_mount=false`** by design |
 | HTML-native | 97 | artifact.html + pypdf + DeepSeek-OCR prefer + brew/apt fallback |
 | CLI / Herdr | 96 | #3180–#3181; Herdr w7 present (not invented) |
 
-**Composite (equal-weight mean of 13 surfaces) = 1262/13 ≈ 97.08 → report **~97**.**
+**Composite (equal-weight mean of 13 surfaces) = 1266/13 ≈ 97.38 → report **~97**.**
 
 Prior “~94” leave-off on tip `440dc2ba…` remains the forensic figure *for that tip*. This leave-off re-derives on `7bfff594…` after #3189–#3192 and live prod TPuf key evidence.
 
@@ -70,8 +70,9 @@ Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywh
 
 1. **Operator:** G2 counsel sign-off / Synquery flag / email outreach (not code).
 2. **Product ask:** `production_default_mount` promote? AppLovin live demand?
-3. **Code residual:** Notebook ~94 polish (next after BYOT hard-refuse UX).
-4. Otherwise ops residuals only — do not invent Synquery/G2/email/mount/CPM.
+3. ~~Notebook continuity~~ — shipped (title handoff / citations / distill #).
+4. **Code residual:** thin surfaces only (e.g. CLI/Herdr polish) or **ops** residuals.
+5. Do not invent Synquery/G2/email/mount/CPM.
 
 ## Leave-off
 
