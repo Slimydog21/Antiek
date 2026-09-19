@@ -81,4 +81,19 @@ export {
   type TargetChoreographyOptions,
 } from "./choreography";
 
+export {
+  emoteForExperience,
+  emitWernerExperience,
+  installReactionBus,
+  WERNER_EXPERIENCE_EVENT,
+  type ProductExperience,
+  type WernerExperienceDetail,
+  type ReactionBusOptions,
+} from "./reactionBus";
+
+export {
+  notifyPointerIdleEdge,
+  notifyShellFailure,
+} from "./shellExperienceSignals";
+
 export { default as WernerRig, type WernerRigProps } from "./WernerRig";

@@ -1,5 +1,5 @@
 import "./animations.css";
-import Werner from "../../Werner";
+import BrainMascot from "../../BrainMascot";
 
 /**
  * Werner the penguin, sleeping — idle screen / empty state.
@@ -9,7 +9,7 @@ import Werner from "../../Werner";
  * routes with no current activity (no active investigation, no
  * outcomes graded, no notebooks).
  *
- * Core mark delegated to <Werner mood="empty" /> + --werner-* tokens
+ * Core mark delegated to <BrainMascot mood="empty" /> + --werner-* tokens
  * for any remaining accents. No more parallel geometry fork.
  */
 type Props = { size?: number; label?: string };
@@ -27,7 +27,7 @@ export default function WernerSleeping({
     >
       {/* Core mark delegated; the curled pose is approximated by empty mood
           at large size. The zZz chrome and breath class remain on the wrapper. */}
-      <Werner mood="empty" size={size} className="werner-sleep-body" />
+      <BrainMascot mood="empty" size={size} className="werner-sleep-body" />
       {/* Three zZz letters drifting up + fading (pose chrome only). */}
       <svg
         viewBox="0 0 64 64"

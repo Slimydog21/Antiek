@@ -17,7 +17,7 @@
  * not reach for Daytona.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { PanelHost } from "../../workspace/PanelHost";
@@ -44,6 +44,8 @@ import SessionSourceReceipt from "./SessionSourceReceipt";
 import Canvas from "./Canvas/Canvas";
 import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
+import { LoadingGameHost } from "../../arcade/host";
+import { emitWernerExperience } from "../../werner";
 
 interface PlanState {
   rootNodeId: string;
@@ -134,6 +136,7 @@ function Workspace() {
       track("deep_research_cascade_launched", {
         session_id: r.session_id,
       });
+      emitWernerExperience({ experience: "deep_research_start" });
       setSessionId(r.session_id);
     });
 
@@ -297,6 +300,19 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   // overlay, dismissed back to the canvas.
   const [openNode, setOpenNode] = useState<DistilledNode | null>(null);
 
+  // Living Werner + wait-state easter egg: announce DR lifecycle to the mascot
+  // reaction bus, and offer Paperclip Zombies only while work is still live
+  // (I4 — opt-in host, readiness always wins).
+  useEffect(() => {
+    if (session.loading && session.researches.length === 0) {
+      emitWernerExperience({ experience: "deep_research_start" });
+      return;
+    }
+    if (session.allTerminal && session.researches.length > 0) {
+      emitWernerExperience({ experience: "deep_research_complete" });
+    }
+  }, [session.loading, session.allTerminal, session.researches.length]);
+
   const steer = (iid: string) => async (kind: SteerKind, payload?: Record<string, unknown>) => {
     setSteering(iid);
     try {
@@ -304,6 +320,7 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
     } catch {
       // The next poll reflects the authoritative state; a failed steer is
       // surfaced by the research not changing — no optimistic lie.
+      emitWernerExperience({ experience: "deep_research_error" });
     } finally {
       setSteering(null);
     }
@@ -319,6 +336,13 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
         <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
           they’re starting in parallel
         </p>
+        <LoadingGameHost
+          waiting
+          ready={false}
+          game="zombies"
+          primaryControlLabel="Stay with research"
+          className="mt-4"
+        />
       </div>
     );
   }
@@ -355,12 +379,22 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
     );
   }
 
+  const waitLive = !session.allTerminal && session.researches.length > 0;
+
   return (
     <div className="flex flex-col gap-3">
       <SessionSourceReceipt
         policy={session.sourcePolicy}
         execution={session.sourcePolicyExecution}
       />
+      {waitLive && (
+        <LoadingGameHost
+          waiting
+          ready={session.allTerminal}
+          game="zombies"
+          primaryControlLabel="Stay with research"
+        />
+      )}
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-sm font-semibold text-ink dark:text-bright">
           {session.researches.length} researches

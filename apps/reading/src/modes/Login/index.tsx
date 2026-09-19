@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import wernerDefault from "../../brand/werner/poses/anchor/werner_default_v5_nano_corrected.png";
+import brainDefault from "../../brand/mascot-brain/01_hero_front_transparent.png";
 import { LemonButton, LemonInput } from "../../components/lemon";
 import {
   authCallbackErrorDisplay,
@@ -15,13 +15,13 @@ import { track, trackException } from "../../lib/analytics";
 
 /**
  * Login surface — Antiek's owned login page (H6 ship, 2026-05-21
- * PostHog-style auth decision; reskinned to the Werner / Antarctic
+ * PostHog-style auth decision; reskinned to the brain / Antiek
  * brand from the May-21 redesign).
  *
  * Visual identity:
  *   - Day mode = ice-2 page, ice-0 card, sun-yellow border, ink shadow
  *   - Night mode = space-2 page, charcoal-2 card, sun-yellow border, sun-deep shadow
- *   - Werner the penguin mark at the top (mark-180, round)
+ *   - the brain mark at the top (mark-180, round)
  *   - Headline in Charter serif (font-serif); subhead in Inter (font-sans)
  *   - LemonInput + LemonButton primary (sun fill)
  *
@@ -102,11 +102,11 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-ice-2 dark:bg-space-2 px-4 font-sans">
       <div className="w-full max-w-md">
-        {/* Werner mark + wordmark */}
+        {/* brain mark + wordmark */}
         <div className="flex flex-col items-center mb-7">
           <img
-            src={wernerDefault}
-            alt="Werner"
+            src={brainDefault}
+            alt="Antiek"
             width={88}
             height={88}
             className="rounded-full border-edge border-sun shadow-z2 dark:shadow-z2-night bg-ice-0 dark:bg-charcoal-2"

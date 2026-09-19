@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import Werner from "../../brand/Werner";
+import BrainMascot from "../../brand/BrainMascot";
 import { LemonButton } from "../../components/lemon";
 import { startInvestigation } from "../../lib/api";
 import {
@@ -88,7 +88,7 @@ export default function Biography() {
     <div className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
       <div className="mx-auto max-w-2xl px-6 py-12">
         <header className="mb-8 flex items-start gap-3">
-          <Werner mood="idle" size={52} label="" />
+          <BrainMascot mood="idle" size={52} label="" />
           <div>
             <h1 className="font-serif text-3xl font-semibold text-ink dark:text-bright">
               Write someone&rsquo;s biography
@@ -234,7 +234,7 @@ function BiographyOnboarding({
     <div className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
       <div className="mx-auto max-w-2xl px-6 py-12">
         <header className="mb-7 flex items-start gap-3">
-          <Werner mood="celebrate" size={52} label="" />
+          <BrainMascot mood="celebrate" size={52} label="" />
           <div>
             <h1 className="font-serif text-3xl font-semibold text-ink dark:text-bright">
               {who}&rsquo;s biography is started
