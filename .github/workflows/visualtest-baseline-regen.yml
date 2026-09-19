@@ -1,0 +1,56 @@
+name: visualtest-baseline-regen
+
+# Regenerates the lost-pixel baseline set IN THE CI ENVIRONMENT and
+# uploads it as an artifact. Baselines must be minted on the same
+# OS/font stack that the checking runs use (visualtest.yml:
+# ubuntu-22.04 + Node 20 + lost-pixel's playwright-core chromium);
+# baselines minted on any other host (e.g. macOS) can carry platform
+# rendering deltas that red every subsequent CI comparison.
+#
+# Usage (issue #3089): dispatch on a branch, download the artifact,
+# overlay apps/reading/.lostpixel/baseline/ into the tree, commit, and
+# let the PR's visualtest run verify the new baselines against the
+# same environment that minted them.
+#
+# Why an artifact instead of a bot commit: the default GITHUB_TOKEN
+# may not have contents:write on this repo; keeping the workflow
+# read-only makes it safe to keep as a standing maintenance tool.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: visualtest-baseline-regen-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regen:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/reading
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Install reading-app deps
+        run: npm ci
+
+      - name: Install Playwright chromium (Lost-Pixel uses it)
+        run: node node_modules/lost-pixel/node_modules/playwright-core/cli.js install chromium --with-deps
+
+      - name: Regenerate baselines (update mode)
+        run: npm run visualtest:update
+
+      - name: Upload regenerated baselines
+        uses: actions/upload-artifact@v4
+        with:
+          name: lostpixel-baselines-${{ github.run_number }}
+          path: apps/reading/.lostpixel/baseline/
+          retention-days: 7
+          if-no-files-found: error
