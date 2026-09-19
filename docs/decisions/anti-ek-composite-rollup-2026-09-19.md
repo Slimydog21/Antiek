@@ -42,9 +42,9 @@ Earlier same-day arcs already on the tip ancestry (not all first-parent of `de48
 | Notebook | 98 | AutoNotebook + daily-loop + outline→Write + **continuity polish** (title handoff, citation→reader, distill #, NotebooksIndex honesty) |
 | TurboPuffer | 95 | Mini+prod hybrid_ready + key; **`production_default_mount=false`** by design |
 | HTML-native | 97 | artifact.html + pypdf + DeepSeek-OCR prefer + brew/apt fallback |
-| CLI / Herdr | 96 | #3180–#3181; Herdr w7 present (not invented) |
+| CLI / Herdr | 99 | #3180–#3181 + **inventory honesty** (probe tip, w7 tab labels, wrapper alias, full-diff default) |
 
-**Composite (equal-weight mean of 13 surfaces) = 1266/13 ≈ 97.38 → report **~97**.**
+**Composite (equal-weight mean of 13 surfaces) = 1269/13 ≈ 97.62 → report **~98**.**
 
 Prior “~94” leave-off on tip `440dc2ba…` remains the forensic figure *for that tip*. This leave-off re-derives on `7bfff594…` after #3189–#3192 and live prod TPuf key evidence.
 
@@ -71,8 +71,9 @@ Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywh
 1. **Operator:** G2 counsel sign-off / Synquery flag / email outreach (not code).
 2. **Product ask:** `production_default_mount` promote? AppLovin live demand?
 3. ~~Notebook continuity~~ — shipped (title handoff / citations / distill #).
-4. **Code residual:** thin surfaces only (e.g. CLI/Herdr polish) or **ops** residuals.
-5. Do not invent Synquery/G2/email/mount/CPM.
+4. ~~CLI/Herdr inventory~~ — shipped (probe tip + w7 tabs + wrapper).
+5. **Code residual:** HTML ~97 / Plans ~95 / Specs ~97 / Code ~96 / TPuf ~95 (no mount flip).
+6. Do not invent Synquery/G2/email/mount/CPM.
 
 ## Leave-off
 

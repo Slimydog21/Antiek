@@ -36,8 +36,8 @@ Implementer and Adversary should not be the same binary when parallelizing.
 ## Herdr Antiek w7
 
 Main server workspace: **`w7` / Antiek**. Role tabs use CLI names (`claude`,
-`codex`, …); topic tabs for feature lanes. See canonical playbook — do not
-invent Herdr features.
+`glmf`, `kimi`, …); topic tabs for feature lanes. `--check` inventories live
+w7 labels. See canonical playbook — do not invent Herdr features.
 
 ## Review prompt skeleton (paste + attach diff)
 
@@ -57,7 +57,7 @@ Do not suggest weakening gates. Do not invent missing context.
 ## Parallel review recipe
 
 ```bash
-cd /Users/slimydog/Antiek/deploy-main-20260917
+cd /private/tmp/antiek-main-probe
 ./scripts/anti-ek-swarm-review.sh --check
 ./scripts/anti-ek-swarm-review.sh origin/main
 # → /tmp/antiek-swarm-review-{claude,glmf,grok}.txt
@@ -72,7 +72,7 @@ Do **not** block forever on a single hung pytest shard if the other shards passe
 ## Antiek Mini dogfood context
 
 - Work via SSH: `slimydog@100.106.253.49`
-- Dogfood tree: `/Users/slimydog/Antiek/deploy-main-20260917`
+- Dogfood tip-sync tree: `/private/tmp/antiek-main-probe` (platform: `/Users/slimydog/Antiek/platform`)
 - Shared DuckDB + isolated events: `scripts/start-shared-duckdb-mac-mini.sh`
 - Owner session: `scripts/mac-mini-owner-dev-login.sh` (never print tokens)
 - Canonical repo: `Slimydog21/Antiek`
