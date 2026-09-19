@@ -22,7 +22,6 @@ from __future__ import annotations
 from typing import Any
 
 from substrate.contracts.anti_ek_honesty import assert_g2_synquery_honesty_shape
-
 from substrate.speak import gate_status as _gs
 
 SPEAK_RESIDUAL_REF = "docs/decisions/speak-residual-100-2026-09-18.md"

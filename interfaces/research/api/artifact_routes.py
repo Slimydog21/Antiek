@@ -18,10 +18,10 @@ if _PKG_ROOT not in sys.path:
 
 from services.html_projection.context import Provenance, RenderContext  # noqa: E402
 from services.html_projection.gate import ScriptViolation, assert_script_free  # noqa: E402
+from services.html_projection.renderer import render  # noqa: E402
 from substrate.contracts.anti_ek_honesty import (  # noqa: E402
     html_projection_response_headers,
 )
-from services.html_projection.renderer import render  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
     build_body,

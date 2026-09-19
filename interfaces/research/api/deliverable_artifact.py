@@ -24,11 +24,11 @@ from services.html_projection.adapters.deliverable import (
     DeliverableSection,
     adapt_deliverable,
 )
-from substrate.contracts.anti_ek_honesty import html_projection_response_headers
 from services.html_projection.context import RenderContext
 from services.html_projection.gate import ScriptViolation, assert_script_free
 from services.html_projection.renderer import render
 from services.html_projection.routing_map import EXPORT_FORMATS, ExportItem, emit
+from substrate.contracts.anti_ek_honesty import html_projection_response_headers
 
 _log = logging.getLogger(__name__)
 

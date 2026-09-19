@@ -32,7 +32,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from substrate.contracts.anti_ek_honesty import assert_capacity_exhausted_shape
 from substrate.compute_capacity.store import (
     CapacityEvaluation,
     ComputeCapacity,
@@ -41,6 +40,7 @@ from substrate.compute_capacity.store import (
     get_capacity,
     set_capacity,
 )
+from substrate.contracts.anti_ek_honesty import assert_capacity_exhausted_shape
 
 ACU_PER_INVESTIGATION_START = 1
 # Completion top-up: +1 ACU per full quantum of wall time (not dollars).
