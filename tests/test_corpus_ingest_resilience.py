@@ -55,8 +55,10 @@ def test_pd_discovery_source_error_is_isolated(monkeypatch):
 
     monkeypatch.setattr(pd, "gutenberg_candidates", _boom)
 
+    # Gutendex discovery path (no explicit ids — explicit ids take the
+    # gutenberg_direct_works cache path, which never calls gutenberg_candidates).
     out = rci._public_domain_candidates(
-        subject=None, search_term=None, ids=[1], curated=False,
+        subject=None, search_term=None, ids=None, curated=False,
         limit=1, investigation_id="inv-test", min_interval_s=0.0,
     )
     assert out == []

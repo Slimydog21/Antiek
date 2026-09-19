@@ -212,7 +212,8 @@ def test_owner_ask_book_reads_own_gated_content(
         "the owner's own gated/personal body must reach the model context"
     )
     assert body["answer_id"].startswith("evt-")
-    # Golden legacy wire shape: no selected-model fields are introduced.
+    # Golden wire shape: the thought_partner role's shape tag rides along;
+    # no selected-model fields are introduced.
     assert body == {
         "answer_id": body["answer_id"],
         "capture_status": "captured",
@@ -220,6 +221,7 @@ def test_owner_ask_book_reads_own_gated_content(
         "citations": body["citations"],
         "grounded": True,
         "context_chunk_count": 1,
+        "shape": "synthesis",
     }
 
 

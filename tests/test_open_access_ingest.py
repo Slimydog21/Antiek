@@ -53,6 +53,8 @@ _PDF_BYTES = text_to_pdf(_PDF_TEXT, title="OA Test Paper")
 
 
 class _StubEmbedder:
+    dimension = 16
+
     def encode(self, text: str) -> list[float]:
         h = abs(hash(text)) % 64
         v = [0.0] * 16
