@@ -161,7 +161,8 @@ def emit_groundedness_scored(
     scored_claims: int,
     total_claims: int,
     supported_threshold: float,
-    per_claim: list[dict[str, Any]] | None = None,
+    # ClaimGroundednessVerdict (pydantic) or already-serialized dicts.
+    per_claim: list[Any] | None = None,
     notes: str = "",
     parent_event_id: str | None = None,
 ) -> str | None:
