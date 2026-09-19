@@ -1,9 +1,9 @@
 # Anti-Ek composite rollup (2026-09-19)
 
-**Tip verified (live 2026-09-19 12:09 Asia/Riyadh)**: `762087d9b38983519a53d39e44dcd4bc856bc9b1`
-- Prod `https://api.antiek.ai/health`: `build_sha` match tip; `flywheel_ready=false`; `knowledge_reuse_count=0`; duckdb ok schema 40.
-- Mac Mini dogfood `:8000/health`: restored via `scripts/start-shared-duckdb-mac-mini.sh` on `deploy-main-20260917`; `build_sha` match tip; was lagging `7f665826` (100% CPU uvicorn); after restart healthy, `flywheel_ready=false`.
-- Deploy tag `deploy-main-20260917` @ tip. Deploy flock residuals #3171–#3173 merged.
+**Tip verified (live 2026-09-19 12:14 Asia/Riyadh)**: `23622452cb17fdcb92f65fb60b8d9fc00e6b9d0e`
+- Prod `https://api.antiek.ai/health`: `build_sha`=`23622452…` (#3174 deployed); `flywheel_ready=false`; duckdb ok schema 40.
+- Mac Mini dogfood `:8000/health`: tip-aligned via `start-shared-duckdb-mac-mini.sh` on `deploy-main-20260917`; was lagging `7f665826`; now `23622452…`, healthy, `flywheel_ready=false`.
+- #3174 outline→Write auto-import merged+deployed. Deploy flock #3171–#3173 prior.
 
 **Standing**: always merge+deploy; dual structure; no fake money. Cite Herdr Antiek w7, master-product-spec, anti-ek-vision-map.
 
