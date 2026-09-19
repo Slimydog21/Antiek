@@ -32,6 +32,7 @@ import {
 } from "../../api/composerProjection";
 import AddModelPanel from "./AddModelPanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
+import UsagePanel from "./UsagePanel";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
@@ -62,10 +63,10 @@ export default function Settings() {
   );
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [estimating, setEstimating] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "decision">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "decision" | "usage">("overview");
 
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    const tabs = ["overview", "decision"] as const;
+    const tabs = ["overview", "decision", "usage"] as const;
     const current = tabs.indexOf(activeTab);
     let next = current;
     if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
@@ -171,6 +172,19 @@ export default function Settings() {
               className={`px-3 py-2 text-sm font-semibold ${activeTab === "decision" ? "border-b-2 border-ink text-ink dark:border-bright dark:text-bright" : "text-ink-soft dark:text-starlight"}`}
             >
               Decision tree
+            </button>
+            <button
+              id="settings-usage-tab"
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "usage"}
+              aria-controls="settings-usage-panel"
+              tabIndex={activeTab === "usage" ? 0 : -1}
+              onClick={() => setActiveTab("usage")}
+              onKeyDown={onTabKeyDown}
+              className={`px-3 py-2 text-sm font-semibold ${activeTab === "usage" ? "border-b-2 border-ink text-ink dark:border-bright dark:text-bright" : "text-ink-soft dark:text-starlight"}`}
+            >
+              Usage
             </button>
           </div>
         </header>
@@ -447,6 +461,15 @@ export default function Settings() {
             <li>Keyboard map customisation + layout export</li>
           </ul>
         </LemonCard>
+          </div>
+        ) : activeTab === "usage" ? (
+          <div
+            id="settings-usage-panel"
+            role="tabpanel"
+            aria-labelledby="settings-usage-tab"
+            tabIndex={0}
+          >
+            <UsagePanel />
           </div>
         ) : (
           <div

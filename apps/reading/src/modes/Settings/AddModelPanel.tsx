@@ -8,6 +8,10 @@ import {
   type ProviderKind,
   type UserModelRow,
 } from "../../api/settingsModels";
+import {
+  fetchKeyBalance,
+  type KeyBalanceResponse,
+} from "../../api/settingsUsage";
 
 /**
  * AddModelPanel — user-added model providers (BYOK).
@@ -27,6 +31,12 @@ export default function AddModelPanel() {
   const [models, setModels] = useState<UserModelRow[] | null>(null);
   const [staleRegistered, setStaleRegistered] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [balances, setBalances] = useState<Record<string, KeyBalanceResponse>>(
+    {},
+  );
+  const [balanceErrors, setBalanceErrors] = useState<Record<string, string>>(
+    {},
+  );
   const [kind, setKind] = useState<ProviderKind>("openai_compat");
   const [displayName, setDisplayName] = useState("");
   const [modelId, setModelId] = useState("");
@@ -49,6 +59,38 @@ export default function AddModelPanel() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  useEffect(() => {
+    if (models === null) return;
+    let cancelled = false;
+    for (const m of models) {
+      void fetchKeyBalance(m.id).then(
+        (res) => {
+          if (!cancelled) {
+            setBalances((prev) => ({ ...prev, [m.id]: res }));
+            setBalanceErrors((prev) => {
+              if (!(m.id in prev)) return prev;
+              const next = { ...prev };
+              delete next[m.id];
+              return next;
+            });
+          }
+        },
+        (caught) => {
+          if (!cancelled) {
+            setBalanceErrors((prev) => ({
+              ...prev,
+              [m.id]:
+                caught instanceof Error ? caught.message : String(caught),
+            }));
+          }
+        },
+      );
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [models]);
 
   const needsBaseUrl = kind === "openai_compat";
   const canSubmit =
@@ -143,6 +185,10 @@ export default function AddModelPanel() {
                   </span>
                 </span>
                 <span className="flex items-center gap-3">
+                  <BalanceChip
+                    balance={balances[m.id]}
+                    error={balanceErrors[m.id]}
+                  />
                   <span
                     className={
                       m.key_present
@@ -257,5 +303,70 @@ export default function AddModelPanel() {
         )}
       </div>
     </LemonCard>
+  );
+}
+
+const usd = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+});
+
+/** Compact per-key balance chip. Known balances show the provider figure;
+ *  a degraded adapter or failed fetch shows "unavailable" with the honest
+ *  note on hover — never an invented $0.00. */
+function BalanceChip({
+  balance,
+  error,
+}: {
+  balance: KeyBalanceResponse | undefined;
+  error: string | undefined;
+}) {
+  if (error !== undefined) {
+    return (
+      <span
+        title={error}
+        data-testid="balance-chip-unavailable"
+        className="text-amber-700 dark:text-amber-300"
+      >
+        balance unavailable
+      </span>
+    );
+  }
+  if (balance === undefined) {
+    return (
+      <span
+        role="status"
+        className="text-ink-soft dark:text-starlight"
+      >
+        balance…
+      </span>
+    );
+  }
+  if (balance.kind === "unavailable") {
+    return (
+      <span
+        title={balance.note ?? undefined}
+        className="text-amber-700 dark:text-amber-300"
+      >
+        balance unavailable
+      </span>
+    );
+  }
+  return (
+    <span
+      title={balance.note ?? undefined}
+      className={
+        balance.balance_usd === null
+          ? "text-amber-700 dark:text-amber-300"
+          : "text-emerald-700 dark:text-emerald-300"
+      }
+    >
+      balance{" "}
+      {balance.balance_usd === null
+        ? "unknown"
+        : usd.format(balance.balance_usd)}
+    </span>
   );
 }
