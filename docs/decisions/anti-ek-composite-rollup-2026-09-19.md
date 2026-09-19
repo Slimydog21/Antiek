@@ -1,10 +1,10 @@
 # Anti-Ek composite rollup (2026-09-19 leave-off)
 
-**Tip verified (live 2026-09-19 ~19:50 Asia/Riyadh)**: parent `7da3fb3432c1d6590712a9d7a6e500bb4c03c13a` (#3220); Specs honesty contracts PR lands atop (see leave-off tip after merge).
+**Tip verified (live 2026-09-19 20:44 Asia/Riyadh)**: `85ca2006de37b4a104646fa3e98538c99b86fc41` (#3223 Specs honesty API contracts)
 
 | Host | Evidence |
 |------|----------|
-| Mac Mini dogfood `:8000/health` | tip-aligned probe `/private/tmp/antiek-main-probe` after merge+deploy |
+| Mac Mini dogfood `:8000/health` | `build_sha=85ca2006…`, `status=ok`, tip-aligned probe `/private/tmp/antiek-main-probe` |
 | Prod `api.antiek.ai/health` | tip SHA; `turbopuffer_api_key_present=true`, `turbopuffer_hybrid_ready=true`; **`turbopuffer_production_default_mount=false`** (intentional) |
 | CLI swarm | Herdr Antiek **w7** focused; `./scripts/anti-ek-swarm-review.sh --check` → `core_ready=true` (#3218) |
 
@@ -26,7 +26,7 @@ First-parent / merge tips that moved grades **after** the prior leave-off tip `7
 | #3218 | CLI/Herdr inventory honesty (probe tip, w7 tabs, wrapper) | [cli-herdr-inventory-honesty-2026-09-19](./cli-herdr-inventory-honesty-2026-09-19.md) |
 | #3219 | Write/Notebook inline `artifact.html` + projection header | [html-writing-asset-inline-2026-09-19](./html-writing-asset-inline-2026-09-19.md) |
 | #3220 | Plans tip honesty (leave-off / rollup / index) | [anti-ek-plans-tip-honesty-2026-09-19](./anti-ek-plans-tip-honesty-2026-09-19.md) |
-| Specs | Honesty API contracts + `anti_ek_honesty` + contract tests | [anti-ek-specs-honesty-contracts-2026-09-19](./anti-ek-specs-honesty-contracts-2026-09-19.md) · [specs catalog](../specs/anti-ek-honesty-api-contracts-2026-09-19.md) |
+| #3223 | Specs honesty API contracts + `anti_ek_honesty` + contract tests | [anti-ek-specs-honesty-contracts-2026-09-19](./anti-ek-specs-honesty-contracts-2026-09-19.md) · [specs catalog](../specs/anti-ek-honesty-api-contracts-2026-09-19.md) |
 
 **Prod TPuf key** present — raises TurboPuffer / Production without flipping `production_default_mount`.
 
@@ -96,4 +96,4 @@ Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywh
 
 ## Leave-off
 
-Infra green after Specs contracts merge+deploy. Mini tip-aligned. Dual structure intact. No fake money. Specs tip-honest (~99).
+Infra green on tip `85ca2006…`. Mini+prod tip-aligned. Dual structure intact. No fake money. Specs tip-honest (~99).
