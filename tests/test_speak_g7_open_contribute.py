@@ -105,3 +105,41 @@ def test_open_contribute_unauth_when_operator_auth_on(client, monkeypatch):
     # Private mutate still blocked
     blocked = client.post("/speak/projects", json={"title": "Nope"})
     assert blocked.status_code in (401, 403)
+
+
+def test_open_contribute_is_rate_limited(client, monkeypatch):
+    """The one anonymous write door onto the single-writer DB is bounded.
+
+    Regression: this endpoint is waved through the operator-auth middleware by
+    a bare POST path-shape match, takes ``connect_write`` on the DuckDB the
+    whole service shares under ``--workers 1``, and had no throttle of any
+    kind — while ``GET /speak/feed`` publishes the ``project_id`` an anonymous
+    caller needs to reach it. Unbounded writes there starve every other
+    writer, including the nightly backup and the corpus ingest.
+    """
+    from interfaces.research.api.auth import reset_auth_throttles
+    from interfaces.research.api.speak_routes import (
+        _OPEN_CONTRIBUTE_GLOBAL_LIMIT,
+        _OPEN_CONTRIBUTE_PER_IP_LIMIT,
+    )
+
+    reset_auth_throttles()
+    monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_ECOSYSTEM", "1")
+    pub = client.post(
+        "/speak/projects",
+        json={
+            "title": "Theo Bakery",
+            "subject_ref": "Uncle Theo",
+            "publish_intent": "will_be_public",
+        },
+    ).json()
+    path = f"/speak/projects/{pub['project_id']}/open-contribute"
+
+    limit = min(_OPEN_CONTRIBUTE_PER_IP_LIMIT, _OPEN_CONTRIBUTE_GLOBAL_LIMIT)
+    codes = [client.post(path).status_code for _ in range(limit + 3)]
+
+    assert codes[:limit] == [201] * limit, f"first {limit} should mint: {codes}"
+    assert codes[limit:] == [429] * 3, f"the rest must be throttled: {codes}"
+
+    reset_auth_throttles()
+    assert client.post(path).status_code == 201, "window reset must re-open the door"
