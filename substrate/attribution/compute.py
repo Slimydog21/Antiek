@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 import duckdb
 
@@ -68,8 +69,7 @@ class SynthesisAttributionResult:
 
 
 def _build_claims(
-    con: duckdb.DuckDBPyConnection,
-    thesis_components: list[dict],
+    thesis_components: list[dict[str, Any]],
     chunk_to_doc: Mapping[str, str],
     doc_to_tier: Mapping[str, int],
 ) -> list[AttributionClaim]:
@@ -211,7 +211,7 @@ def compute_attribution_for_synthesis(
     finally:
         con.close()
 
-    claims = _build_claims(None, thesis_components, chunk_to_doc, doc_to_tier)
+    claims = _build_claims(thesis_components, chunk_to_doc, doc_to_tier)
 
     a_shares = attribution_option_a(claims)
     b_shares = attribution_option_b(claims)

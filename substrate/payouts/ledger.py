@@ -201,7 +201,7 @@ class PaperReadAccrual:
 # ---------------------------------------------------------------------------
 
 
-def _load_metadata(con: Any, document_id: str) -> dict | None:
+def _load_metadata(con: Any, document_id: str) -> dict[str, Any] | None:
     """Read + parse ``documents.metadata`` JSON for a row. Returns the parsed
     dict, ``{}`` for a NULL metadata, or ``None`` when the row is absent. Raises
     ``ValueError`` on malformed JSON. Mirrors
@@ -219,12 +219,15 @@ def _load_metadata(con: Any, document_id: str) -> dict | None:
     if isinstance(raw, dict):
         return raw
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
     except (json.JSONDecodeError, TypeError) as exc:
         raise ValueError(f"malformed metadata JSON for {document_id}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(f"malformed metadata JSON for {document_id}")
+    return parsed
 
 
-def _resolved_authors(meta: dict) -> list[dict]:
+def _resolved_authors(meta: dict[str, Any]) -> list[dict[str, Any]]:
     """The persisted OpenAlex author list (read, never re-fetched). Returns the
     list of ``{orcid, author_position, display_name}`` dicts, or ``[]`` when the
     enrichment key is absent OR the authors list is empty/missing — BOTH common
@@ -266,10 +269,17 @@ def _accrual_id(event_ref: str, author_position: int) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _position_sort_key(author: dict[str, Any]) -> int:
+    """Sort authors by their 0-based byline position; malformed/missing
+    positions sort last (1_000_000) rather than crashing the split."""
+    position = author.get("author_position")
+    return position if isinstance(position, int) else 1_000_000
+
+
 def _aggregate(
     *,
     arxiv_id: str,
-    authors: list[dict],
+    authors: list[dict[str, Any]],
     attributed_cents: int,
 ) -> tuple[AccrualLine, ...]:
     """Split ``attributed_cents`` across authors (default EQUAL), conserved to
@@ -292,7 +302,7 @@ def _aggregate(
     # M3: equal (default, versioned) split across author positions, keyed by the
     # 0-based author_position the author dict carries (NOT the list index — the
     # ledger key is the byline position OpenAlex assigned).
-    by_position: dict[str, dict] = {}
+    by_position: dict[str, dict[str, Any]] = {}
     for a in authors:
         pos = a.get("author_position")
         if not isinstance(pos, int) or pos < 0:
@@ -433,14 +443,7 @@ def accrue_paper_read(
                 "author_position": a.get("author_position"),
                 "orcid": a.get("orcid"),
             }
-            for a in sorted(
-                authors,
-                key=lambda x: (
-                    x.get("author_position")
-                    if isinstance(x.get("author_position"), int)
-                    else 1_000_000
-                ),
-            )
+            for a in sorted(authors, key=_position_sort_key)
         ],
     }
     inputs_json = _canonical_json(inputs)
