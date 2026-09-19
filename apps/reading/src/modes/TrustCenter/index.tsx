@@ -32,6 +32,10 @@ interface WebsiteAdsHonesty {
   settlement_open?: boolean;
   settlement_path?: string;
   settlement_requires?: string[];
+  paid_fill_gated?: boolean;
+  paid_fill_requires?: string[];
+  paid_fill_default?: string;
+  applovin_alignment?: string;
   speak_contributor_share: number;
   speak_platform_share: number;
   money_model: string;
@@ -39,6 +43,7 @@ interface WebsiteAdsHonesty {
   decision_ref: string;
   spec_ref: string;
   rank01_decision_ref?: string;
+  paid_fill_decision_ref?: string;
 }
 
 interface TrustCenterData {
@@ -172,7 +177,7 @@ export default function TrustCenter() {
               </Section>
 
               {data.website_ads && (
-                <Section title="Website advertising (Rank 0)">
+                <Section title="Website advertising (Rank 0 / paid-fill gated)">
                   <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
                     Antiek serves its own creatives on the website. There is no
                     AppLovin MAX SDK on web. Fills default to unpriced $0. Rank 0.1 settlement requires an explicit
@@ -220,6 +225,23 @@ export default function TrustCenter() {
                         <li>
                           Settled requires:{" "}
                           {data.website_ads.settlement_requires.join(" · ")}
+                        </li>
+                      )}
+                    <li data-testid="trust-paid-fill-gated">
+                      Paid fill gated:{" "}
+                      {data.website_ads.paid_fill_gated === false ? "no" : "yes"}
+                      {data.website_ads.paid_fill_default
+                        ? ` · default ${data.website_ads.paid_fill_default}`
+                        : ""}
+                      {data.website_ads.applovin_alignment
+                        ? ` · ${data.website_ads.applovin_alignment}`
+                        : ""}
+                    </li>
+                    {data.website_ads.paid_fill_requires &&
+                      data.website_ads.paid_fill_requires.length > 0 && (
+                        <li>
+                          Paid fill requires:{" "}
+                          {data.website_ads.paid_fill_requires.join(" · ")}
                         </li>
                       )}
                     <li>

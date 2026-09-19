@@ -14,9 +14,17 @@ from substrate.ad_inventory.fill_settlement import (
     FillSettlementError,
     settle_fill_decision,
 )
+from substrate.ad_inventory.advertiser_onboarding import (
+    activate_advertiser,
+    approve_advertiser,
+    save_record,
+    submit_application,
+)
 from substrate.ad_inventory.rank0_honesty import (
+    PAID_FILL_REQUIRES,
     SETTLEMENT_REQUIRES,
     SettlementGateError,
+    assert_paid_fill_advertiser_active,
     assert_settlement_allowed,
     website_ads_honesty,
 )
@@ -62,6 +70,27 @@ def _seed_ad_fill(con):
     )
 
 
+
+def _seed_active_advertiser(con, advertiser_id: str = "adv:acme"):
+    """PENDING → APPROVED → ACTIVE under legal gate (no invented budget cents)."""
+    from substrate.ad_inventory.advertiser_onboarding import AdvertiserRegistry
+
+    registry = AdvertiserRegistry()
+    pending = submit_application(
+        registry,
+        display_name="Acme",
+        contact_email="ads@example.com",
+        verticals=("research",),
+        audience_intents=("academic",),
+        advertiser_id=advertiser_id,
+    )
+    aid = pending.advertiser_id
+    approve_advertiser(registry, advertiser_id=aid)
+    activate_advertiser(registry, advertiser_id=aid, legal_gate_passed=True)
+    for rec in registry.records:
+        save_record(con, rec)
+    return aid
+
 def _seed_house_fill(con):
     return decide_fills(
         con,
@@ -91,6 +120,9 @@ def test_honesty_envelope_rank01_gates_closed():
     assert h["price_status_default"] == "unpriced"
     assert h["revenue_usd_cents_until_pricing"] == 0
     assert "rank01" in h["rank01_decision_ref"]
+    assert h["paid_fill_gated"] is True
+    assert h["paid_fill_requires"] == list(PAID_FILL_REQUIRES)
+    assert h["applovin_alignment"] == "antiek_owned_creatives_no_max_sdk"
 
 
 def test_assert_settlement_denied_without_legal():
@@ -118,6 +150,22 @@ def test_assert_settlement_denied_zero_cents():
             legal_gate_passed=True,
             pricing_authority_ref="budget:acme",
         )
+
+
+def test_assert_paid_fill_requires_active():
+    with pytest.raises(SettlementGateError, match="advertiser_id required"):
+        assert_paid_fill_advertiser_active(
+            advertiser_id=None, advertiser_status="active"
+        )
+    with pytest.raises(SettlementGateError, match="not active"):
+        assert_paid_fill_advertiser_active(
+            advertiser_id="adv:acme", advertiser_status="approved"
+        )
+    assert_paid_fill_advertiser_active(
+        advertiser_id="adv:acme", advertiser_status="active"
+    )
+
+
 
 
 def test_decide_fills_stays_unpriced_zero(db):
@@ -153,16 +201,46 @@ def test_settle_denied_for_house_only(db):
             )
 
 
+def test_settle_denied_without_advertiser(db):
+    with connect_write(db, purpose="test:settle-deny-adv", timeout_s=10) as con:
+        d = _seed_ad_fill(con)
+        with pytest.raises(SettlementGateError, match="advertiser_id required"):
+            settle_fill_decision(
+                con,
+                decision_id=d.decision_id,
+                revenue_usd_cents=250,
+                legal_gate_passed=True,
+                pricing_authority_ref="budget:acme",
+                advertiser_id=None,
+            )
+
+
+def test_settle_denied_for_non_active_advertiser(db):
+    with connect_write(db, purpose="test:settle-deny-status", timeout_s=10) as con:
+        d = _seed_ad_fill(con)
+        # unknown id → not active
+        with pytest.raises(SettlementGateError, match="not active"):
+            settle_fill_decision(
+                con,
+                decision_id=d.decision_id,
+                revenue_usd_cents=250,
+                legal_gate_passed=True,
+                pricing_authority_ref="budget:acme",
+                advertiser_id="adv:unknown",
+            )
+
+
 def test_settle_ok_with_legal_and_authority(db):
     with connect_write(db, purpose="test:settle-ok", timeout_s=10) as con:
         d = _seed_ad_fill(con)
+        aid = _seed_active_advertiser(con, advertiser_id="adv:acme")
         settled = settle_fill_decision(
             con,
             decision_id=d.decision_id,
             revenue_usd_cents=250,
             legal_gate_passed=True,
             pricing_authority_ref="budget:acme-2026-09",
-            advertiser_id="adv:acme",
+            advertiser_id=aid,
         )
         assert settled.price_status == "settled"
         assert settled.revenue_usd_cents == 250
@@ -173,6 +251,7 @@ def test_settle_ok_with_legal_and_authority(db):
             revenue_usd_cents=250,
             legal_gate_passed=True,
             pricing_authority_ref="budget:acme-2026-09",
+            advertiser_id=aid,
         )
         assert again.price_status == "settled"
         assert again.revenue_usd_cents == 250
@@ -191,12 +270,14 @@ def test_resolve_window_value_only_when_settled(db):
             )
             == 0
         )
+        aid = _seed_active_advertiser(con, advertiser_id="adv:acme-resolve")
         settle_fill_decision(
             con,
             decision_id=d.decision_id,
             revenue_usd_cents=400,
             legal_gate_passed=True,
             pricing_authority_ref="budget:acme",
+            advertiser_id=aid,
         )
         assert (
             resolve_window_value_cents(
@@ -232,3 +313,5 @@ def test_fills_api_honesty_reports_settlement_closed(db):
     assert h["settlement_open"] is False
     assert h["settlement_path"] == "settle_fill_decision"
     assert "rank_0_1_pricing_authority_ref" in h["settlement_requires"]
+    assert h["paid_fill_gated"] is True
+    assert "active_advertiser_id" in h["paid_fill_requires"]

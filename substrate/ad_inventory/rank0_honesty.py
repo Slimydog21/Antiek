@@ -7,10 +7,14 @@ Single source of truth for the website monetization posture:
 - ``revenue_usd_cents`` stays 0 and ``price_status`` stays ``unpriced`` until
   Rank 0.1 pricing authority + Rank 0.2 legal gate clear via
   ``settle_fill_decision`` (never via ``decide_fills``).
+- Paid fills are **gated**: ACTIVE advertiser + legal + pricing authority
+  before any settled cents (``paid_fill_gated``).
 - Speak / contributor escrow is 70% of *settled* revenue only — never invented.
 
 Cited by: docs/decisions/applovin-website-mvp-attribution-ledger-2026-09-17.md
 Ranks: docs/specs/ad-v1-scalable-2026-08-12.md Rank 0–1.
+Paid path: docs/decisions/ads-paid-fill-gated-honesty-2026-09-19.md
+PRs: #3156 (Rank 0 honesty), #3163 (Rank 0.1 settle gate).
 """
 
 from __future__ import annotations
@@ -23,6 +27,9 @@ DECISION_REF = (
 SPEC_REF = "docs/specs/ad-v1-scalable-2026-08-12.md"
 RANK01_DECISION_REF = (
     "docs/decisions/ads-rank01-pricing-settlement-gate-2026-09-18.md"
+)
+PAID_FILL_DECISION_REF = (
+    "docs/decisions/ads-paid-fill-gated-honesty-2026-09-19.md"
 )
 
 # Platform / contributor split — master-spec §9.1. Applies only after
@@ -43,6 +50,16 @@ SETTLEMENT_REQUIRES: tuple[str, ...] = (
     "not_house_only_fill",
 )
 
+# Paid-fill path (lead-gen / sponsor bill) — stricter than house render.
+PAID_FILL_REQUIRES: tuple[str, ...] = (
+    "active_advertiser_id",
+    "rank_0_2_legal_gate_passed",
+    "rank_0_1_pricing_authority_ref",
+    "revenue_usd_cents_gt_0",
+    "not_house_only_fill",
+    "antiek_owned_creatives_no_max_sdk",
+)
+
 
 class SettlementGateError(ValueError):
     """Attempted to settle without Rank 0.1 / 0.2 gates."""
@@ -54,7 +71,8 @@ def website_ads_honesty() -> dict[str, Any]:
     Pure / side-effect free. Callers embed this dict; they never invent
     revenue from it. ``settlement_open`` stays False until an operator
     actually settles a fill via the gated API — the envelope does not
-    flip itself.
+    flip itself. ``paid_fill_gated`` is always True: the paid path exists
+    only behind legal + ACTIVE advertiser + pricing authority.
     """
     return {
         "surface": "website",
@@ -68,6 +86,10 @@ def website_ads_honesty() -> dict[str, Any]:
         "settlement_open": False,
         "settlement_path": "settle_fill_decision",
         "settlement_requires": list(SETTLEMENT_REQUIRES),
+        "paid_fill_gated": True,
+        "paid_fill_requires": list(PAID_FILL_REQUIRES),
+        "paid_fill_default": "unpriced_zero",
+        "applovin_alignment": "antiek_owned_creatives_no_max_sdk",
         "speak_contributor_share": SPEAK_CONTRIBUTOR_SHARE,
         "speak_platform_share": SPEAK_PLATFORM_SHARE,
         "money_model": "no_fake_cents_until_settled_pricing",
@@ -75,6 +97,7 @@ def website_ads_honesty() -> dict[str, Any]:
         "decision_ref": DECISION_REF,
         "spec_ref": SPEC_REF,
         "rank01_decision_ref": RANK01_DECISION_REF,
+        "paid_fill_decision_ref": PAID_FILL_DECISION_REF,
     }
 
 
@@ -116,15 +139,44 @@ def assert_settlement_allowed(
         )
 
 
+def assert_paid_fill_advertiser_active(
+    *,
+    advertiser_id: str | None,
+    advertiser_status: str | None,
+) -> None:
+    """Deny paid settlement unless an ACTIVE advertiser is named.
+
+    Does not invent budgets or cents — only checks admission state
+    (``activate_advertiser`` / Rank 0.2). Unknown or non-ACTIVE
+    advertisers cannot be billed.
+    """
+    aid = (advertiser_id or "").strip()
+    if not aid:
+        raise SettlementGateError(
+            "paid fill denied: advertiser_id required "
+            "(ACTIVE lead-gen / sponsor registry row)"
+        )
+    status = (advertiser_status or "").strip().lower()
+    if status != "active":
+        raise SettlementGateError(
+            f"paid fill denied: advertiser_id {aid!r} status "
+            f"{status or 'missing'!r} is not active "
+            "(activate_advertiser + legal gate required)"
+        )
+
+
 __all__ = [
     "DECISION_REF",
     "FILL_LADDER",
+    "PAID_FILL_DECISION_REF",
+    "PAID_FILL_REQUIRES",
     "RANK01_DECISION_REF",
     "SETTLEMENT_REQUIRES",
     "SPEAK_CONTRIBUTOR_SHARE",
     "SPEAK_PLATFORM_SHARE",
     "SPEC_REF",
     "SettlementGateError",
+    "assert_paid_fill_advertiser_active",
     "assert_settlement_allowed",
     "assert_unpriced_zero",
     "website_ads_honesty",

@@ -2,4 +2,4 @@
 
 Canonical scorecard + residuals: [`anti-ek-composite-rollup-2026-09-19.md`](./anti-ek-composite-rollup-2026-09-19.md).
 
-**Tip**: `7bfff594ce4584bd296c9bb84a86443162aee47a` · Composite forensic **~96** · Literal 100 blocked by AppLovin / G2 / email / TPuf `production_default_mount` product promote.
+**Tip**: (see rollup after merge) · Composite forensic **~97** · Ads **98** (`paid_fill_gated`) · Literal 100 blocked by AppLovin live demand / G2 / email / TPuf `production_default_mount` product promote.
