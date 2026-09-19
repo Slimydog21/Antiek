@@ -430,11 +430,11 @@ class TurbopufferSubstrate:
         # Small exports: require exact approx. SERVABLE-scale (>100): accept strong
         # sample verify when approx is unknown/0; if approx is partial (0 < n <
         # payload), poll briefly then fail — that is real under-count, not lag.
-        def _read_meta():
+        def _read_meta() -> tuple[Any, Any]:
             metadata = ns.metadata(timeout=30.0)
             schema = getattr(metadata, "schema_", {})
             text_schema = schema.get("text") if isinstance(schema, dict) else None
-            fts = getattr(text_schema, "full_text_search", None)
+            fts: Any = getattr(text_schema, "full_text_search", None)
             if isinstance(text_schema, dict):
                 fts = text_schema.get("full_text_search")
             return getattr(metadata, "approx_row_count", None), fts
