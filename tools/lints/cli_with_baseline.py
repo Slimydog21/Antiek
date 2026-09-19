@@ -55,6 +55,12 @@ from tools.lints.baseline import (
     load_baseline,
     write_baseline,
 )
+from tools.lints.no_blocking_write_in_async import (
+    Violation as BlockingWriteInAsyncViolation,
+)
+from tools.lints.no_blocking_write_in_async import (
+    scan_paths as scan_blocking_write_in_async,
+)
 from tools.lints.no_raise_in_substrate_writers import (
     Violation,
 )
@@ -107,6 +113,14 @@ def _unbounded_external_call_to_key(v: object) -> ViolationKey:
     )
 
 
+def _blocking_write_in_async_to_key(v: object) -> ViolationKey:
+    assert isinstance(v, BlockingWriteInAsyncViolation)
+    return ViolationKey(
+        path=str(v.path), line=v.line, col=v.col,
+        kind=f"blocking-write-in-async:{v.call}",
+    )
+
+
 def _seam_under_lock_to_key(v: object) -> ViolationKey:
     assert isinstance(v, SeamUnderLockViolation)
     return ViolationKey(
@@ -135,6 +149,11 @@ LINT_REGISTRY: dict[str, tuple[
         scan_seam_under_lock,
         _seam_under_lock_to_key,
         "no_seam_call_under_write_lock",
+    ),
+    "blocking_write_in_async": (
+        scan_blocking_write_in_async,
+        _blocking_write_in_async_to_key,
+        "no_blocking_write_in_async",
     ),
 }
 

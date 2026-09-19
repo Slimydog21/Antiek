@@ -1,0 +1,73 @@
+# Write-lock async floor — forward gate on DuckDB writes that block the
+# uvicorn event loop.
+#
+# `runtime.db_lock.connect_write` polls with `time.sleep` while it waits for the
+# in-process gate and the sidecar flock. Called from an `async def` body it runs
+# that sleep on the event-loop thread, so the single uvicorn worker (--workers 1,
+# because DuckDB is single-writer) stops serving everything, /health included.
+#
+# The gate is BASELINED: `tools/lints/baselines/no_blocking_write_in_async.json`
+# grandfathers the call sites that already existed when it was turned on, and
+# only a NEW one reds. The same shrink-only rule as every other baseline in
+# tools/lints/ applies — see tools/lints/README.md. `--check-stale` means a
+# migrated call site also reds until its baseline entry is removed, so the
+# enumeration stays honest in both directions.
+#
+# This lives in its own workflow rather than as a step in resilience_floor.yml
+# because its path filter has to cover interfaces/ and substrate/ — where the
+# async handlers are — and widening resilience_floor's filter would change which
+# PRs every other gate in that file runs on.
+#
+# The lint is stdlib-only (ast, dataclasses, pathlib), so there is no install
+# step; adding one would only add a failure mode. The bite tests
+# (tests/test_no_blocking_write_in_async.py) are not re-run here — ci.yml already
+# runs the whole tests/ tree in its four shards.
+
+name: write-lock-async-floor
+
+on:
+  pull_request:
+    paths:
+      - 'interfaces/**/*.py'
+      - 'substrate/**/*.py'
+      - 'runtime/**/*.py'
+      - 'orchestration/**/*.py'
+      - 'roles/**/*.py'
+      - 'acquisition/**/*.py'
+      - 'compounding/**/*.py'
+      - 'tools/lints/no_blocking_write_in_async.py'
+      - 'tools/lints/cli_with_baseline.py'
+      - 'tools/lints/baselines/no_blocking_write_in_async.json'
+      - 'tests/test_no_blocking_write_in_async.py'
+      - '.github/workflows/write_lock_async_floor.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'interfaces/**/*.py'
+      - 'substrate/**/*.py'
+      - 'tools/lints/no_blocking_write_in_async.py'
+      - 'tools/lints/baselines/no_blocking_write_in_async.json'
+
+jobs:
+  write-lock-async-gate:
+    runs-on: ubuntu-latest
+    env:
+      # Must match the --paths used to capture the committed baseline, or
+      # enforce sees a different violation set than the one grandfathered.
+      SCOPE_DIRS: >-
+        acquisition compounding interfaces middleware orchestration
+        processing roles runtime services substrate tools
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Enforce — no blocking DuckDB write on the event loop
+        run: |
+          python -m tools.lints.cli_with_baseline enforce blocking_write_in_async \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_blocking_write_in_async.json \
+            --check-stale

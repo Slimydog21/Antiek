@@ -97,6 +97,40 @@ dropped from its draft 4541/4792 and the mypy number rose from 1185).
 the older ARE-11 substrate-floor allow-lists consumed by
 `substrate_floor.yml`; the same shrink-only rule applies to them.)
 
+### `baselines/no_blocking_write_in_async.json` — 48 entries (2026-09-19)
+
+Captured by `no_blocking_write_in_async` and enforced by
+`.github/workflows/write_lock_async_floor.yml`. Each entry is one
+`connect_write()` acquired on the uvicorn event loop, where its
+`time.sleep` poll for the flock blocks every other request on the
+single worker — the shape behind the incident that held the lock
+about five and a half hours and starved `/health`. The fix per site is
+the one already adopted in `ad_routes.py` and `agent_work_routes.py`
+(see `docs/decisions/ads-fills-write-lock-nonblock-2026-09-18.md`):
+move the locked section into a sync `def`, dispatch it with
+`asyncio.to_thread`, pass a short `timeout_s`, and answer
+`WriteLockTimeout` with a 503.
+
+So this baseline is not only debt made visible; it is the work list.
+Where it sits today:
+
+| Path | Entries |
+|---|---|
+| `interfaces/research/api/app.py` | 32 |
+| `interfaces/research/api/federation.py` | 5 |
+| `substrate/multimedia/knowledge_registration.py` | 3 |
+| `interfaces/research/api/wrestling.py` | 2 |
+| `interfaces/research/api/account_memory_routes.py` | 1 |
+| `interfaces/research/api/feedback_routes.py` | 1 |
+| `interfaces/research/api/settings_compute_capacity.py` | 1 |
+| `interfaces/research/api/settings_tiers.py` | 1 |
+| `interfaces/research/api/upload_routes.py` | 1 |
+| `substrate/research_bridge/ingest_file.py` | 1 |
+
+The capture and enforce `--paths` must stay identical or enforce judges
+a different file set than the one grandfathered; the workflow's
+`SCOPE_DIRS` is the single copy of that list.
+
 ### Initial-floor re-baseline (2026-06-02 · foundation-merge event)
 
 **This is the single, explicit, named exception to the never-grow rule —
