@@ -1,4 +1,10 @@
-"""Authenticated browser API for immutable artifact feedback threads."""
+"""Authenticated browser API for immutable artifact feedback threads.
+
+Handlers are synchronous ``def`` on purpose: each takes the DuckDB write lock
+(the read path too — ``get_thread`` runs the idempotent schema DDL), and a
+blocking lock wait inside ``async def`` stalls the whole single-worker event
+loop. Lock waits are bounded (``interactive_lock_timeout_s``) and map to 503.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +17,7 @@ from fastapi import APIRouter, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from runtime.db_lock import connect_write
+from runtime.db_lock import WriteLockTimeout, connect_write, interactive_lock_timeout_s
 from substrate.feedback.anchor import ArtifactAnchorMismatch
 from substrate.feedback.domain import ArtifactVersionRef, NodeTextAnchor
 from substrate.feedback.service import (
@@ -21,6 +27,8 @@ from substrate.feedback.service import (
 )
 from substrate.feedback.store import CreateThreadCommand, FeedbackStore, ThreadView
 from substrate.graph import default_db_path, ensure_initialized
+
+from .write_lock_http import write_lock_busy
 
 feedback_router = APIRouter(tags=["artifact-feedback"])
 
@@ -123,7 +131,7 @@ def _require_enabled() -> None:
     "/artifacts/{artifact_id}/versions/{version}/feedback/threads",
     status_code=201,
 )
-async def create_feedback(
+def create_feedback(
     artifact_id: str,
     version: int,
     body: CreateFeedbackIn,
@@ -184,18 +192,23 @@ async def create_feedback(
 
 
 @feedback_router.get("/feedback/threads/{thread_id}")
-async def get_feedback(
+def get_feedback(
     thread_id: str,
     request: Request,
     if_none_match: Annotated[str | None, Header(alias="If-None-Match")] = None,
 ) -> Response:
     _require_enabled()
-    with connect_write(_db_path(), purpose="feedback/read") as con:
-        thread = FeedbackStore().get_thread(
-            con,
-            owner_user_id=_owner(request),
-            thread_id=thread_id,
-        )
+    try:
+        with connect_write(
+            _db_path(), timeout_s=interactive_lock_timeout_s(), purpose="feedback/read"
+        ) as con:
+            thread = FeedbackStore().get_thread(
+                con,
+                owner_user_id=_owner(request),
+                thread_id=thread_id,
+            )
+    except WriteLockTimeout as exc:
+        raise write_lock_busy(exc) from exc
     if thread is None:
         raise HTTPException(status_code=404, detail="feedback thread not found")
     payload = _thread_payload(thread)
@@ -210,7 +223,7 @@ async def get_feedback(
 
 
 @feedback_router.post("/feedback/threads/{thread_id}/resolve")
-async def resolve_feedback(
+def resolve_feedback(
     thread_id: str,
     request: Request,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,

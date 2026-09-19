@@ -45,6 +45,14 @@ def test_arxiv_oai_sync_service_pins_state_and_runs_incremental_cli():
         "{{ antiek_state_dir }}/reports/source_census.json"
     ) in service
     assert "ReadWritePaths={{ antiek_state_dir }} /tmp /var/tmp" in service
+    # 2026-09-05 outage fix: the pass is wall-clock bounded and resumable, and
+    # the unit yields the box to the API instead of starving it.
+    assert "--max-seconds {{ antiek_arxiv_oai_sync_max_seconds | default(5400) }}" in service
+    assert "--batch-size {{ antiek_arxiv_oai_sync_batch_size | default(2000) }}" in service
+    assert "Nice=15" in service
+    assert "IOSchedulingClass=idle" in service
+    assert "CPUWeight=25" in service
+    assert "TimeoutStartSec=21600" in service
 
 
 def test_arxiv_oai_sync_timer_is_persistent_daily_timer():

@@ -1,4 +1,11 @@
-"""Bridge-only HTTP transport for canonical agent work."""
+"""Bridge-only HTTP transport for canonical agent work.
+
+Handlers are deliberately synchronous ``def``: every one takes the DuckDB
+write lock, and a blocking lock wait inside an ``async def`` stalls the single
+uvicorn worker's event loop for every other request (2026-09-05 outage). FastAPI
+runs sync handlers in its threadpool; the lock wait is bounded by
+``interactive_lock_timeout_s`` and surfaces as 503 + Retry-After.
+"""
 
 from __future__ import annotations
 
@@ -28,10 +35,12 @@ from substrate.agent_work.service import (
     mark_agent_work_working,
     renew_agent_work_lease,
 )
+from runtime.db_lock import WriteLockTimeout
 from substrate.agent_work.store import LeaseConflict, WorkLease, WorkProgress
 from substrate.graph import default_db_path, ensure_initialized
 
 from .bridge_auth import BridgePrincipal, authenticate_bridge
+from .write_lock_http import write_lock_busy
 
 agent_work_router = APIRouter(prefix="/internal/agent-work", tags=["agent-work-bridge"])
 
@@ -162,7 +171,7 @@ def _lease_payload(lease: WorkLease) -> dict[str, Any]:
 
 
 @agent_work_router.post("/lease")
-async def lease_work(
+def lease_work(
     body: LeaseIn,
     principal: Annotated[BridgePrincipal, Depends(authenticate_bridge)],
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
@@ -171,23 +180,26 @@ async def lease_work(
     _require_scope(principal, "lease")
     key = _idempotency_key(idempotency_key)
     lease_digest = hashlib.sha256(f"{principal.credential_id}\0{key}".encode()).hexdigest()
-    lease = lease_agent_work(
-        _db_path(),
-        LeaseWorkCommand(
-            logical_worker_id=principal.logical_worker_id,
-            bridge_credential_id=principal.credential_id,
-            bridge_instance_id=body.bridge_instance_id,
-            lease_id=f"lse-{lease_digest[:24]}",
-            lease_seconds=body.lease_seconds,
-            idempotency_key=key,
-            now=datetime.now(UTC),
-        ),
-    )
+    try:
+        lease = lease_agent_work(
+            _db_path(),
+            LeaseWorkCommand(
+                logical_worker_id=principal.logical_worker_id,
+                bridge_credential_id=principal.credential_id,
+                bridge_instance_id=body.bridge_instance_id,
+                lease_id=f"lse-{lease_digest[:24]}",
+                lease_seconds=body.lease_seconds,
+                idempotency_key=key,
+                now=datetime.now(UTC),
+            ),
+        )
+    except WriteLockTimeout as exc:
+        raise write_lock_busy(exc) from exc
     return None if lease is None else _lease_payload(lease)
 
 
 @agent_work_router.post("/{work_id}/leases/{lease_id}/submitted")
-async def mark_submitted(
+def mark_submitted(
     work_id: str,
     lease_id: str,
     body: SubmittedIn,
@@ -212,6 +224,8 @@ async def mark_submitted(
                 now=datetime.now(UTC),
             ),
         )
+    except WriteLockTimeout as exc:
+        raise write_lock_busy(exc) from exc
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:
@@ -226,7 +240,7 @@ async def mark_submitted(
 
 
 @agent_work_router.post("/{work_id}/leases/{lease_id}/renew")
-async def renew_lease(
+def renew_lease(
     work_id: str,
     lease_id: str,
     body: RenewIn,
@@ -249,6 +263,8 @@ async def renew_lease(
                 now=datetime.now(UTC),
             ),
         )
+    except WriteLockTimeout as exc:
+        raise write_lock_busy(exc) from exc
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:
@@ -274,7 +290,7 @@ def _progress_payload(result: WorkProgress) -> dict[str, Any]:
 
 
 @agent_work_router.post("/{work_id}/leases/{lease_id}/acknowledged")
-async def mark_acknowledged(
+def mark_acknowledged(
     work_id: str,
     lease_id: str,
     body: AcknowledgedIn,
@@ -297,6 +313,8 @@ async def mark_acknowledged(
                 now=datetime.now(UTC),
             ),
         )
+    except WriteLockTimeout as exc:
+        raise write_lock_busy(exc) from exc
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:
@@ -305,7 +323,7 @@ async def mark_acknowledged(
 
 
 @agent_work_router.post("/{work_id}/leases/{lease_id}/working")
-async def mark_working(
+def mark_working(
     work_id: str,
     lease_id: str,
     body: ProgressIn,
@@ -327,6 +345,8 @@ async def mark_working(
                 now=datetime.now(UTC),
             ),
         )
+    except WriteLockTimeout as exc:
+        raise write_lock_busy(exc) from exc
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:
@@ -335,7 +355,7 @@ async def mark_working(
 
 
 @agent_work_router.post("/{work_id}/leases/{lease_id}/result")
-async def complete_result(
+def complete_result(
     work_id: str,
     lease_id: str,
     body: ResultIn,
@@ -399,6 +419,8 @@ async def complete_result(
                     now=datetime.now(UTC),
                 ),
             )
+    except WriteLockTimeout as exc:
+        raise write_lock_busy(exc) from exc
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:

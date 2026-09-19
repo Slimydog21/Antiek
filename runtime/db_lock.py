@@ -58,6 +58,27 @@ import duckdb
 
 DEFAULT_TIMEOUT_S = 300  # 5 minutes — long enough for a 200-paper ingest
 
+# Interactive (request-path) callers must NOT wait the ingest-scale default.
+# A 30s-cadence bridge poller that blocks 300s per call inside the single
+# uvicorn worker turned every long ingest into an API outage (2026-09-05:
+# four consecutive ~6h daily blackouts while the arXiv bulk sync held the
+# lock). Request handlers wait this long, then surface 503 + Retry-After so
+# the caller backs off while the single writer finishes.
+INTERACTIVE_TIMEOUT_ENV = "ANTIEK_DB_INTERACTIVE_LOCK_TIMEOUT_S"
+INTERACTIVE_TIMEOUT_S = 5.0
+
+
+def interactive_lock_timeout_s() -> float:
+    """Write-lock wait budget for request-path callers (env-tunable, >0)."""
+    raw = os.environ.get(INTERACTIVE_TIMEOUT_ENV, "").strip()
+    if not raw:
+        return INTERACTIVE_TIMEOUT_S
+    try:
+        value = float(raw)
+    except ValueError:
+        return INTERACTIVE_TIMEOUT_S
+    return value if value > 0 else INTERACTIVE_TIMEOUT_S
+
 # Sentinel db_path used by the internal write_log logger to skip recursive
 # logging. (We do NOT log the log writes themselves; that would be an
 # observability liability without paying for itself.)

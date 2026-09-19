@@ -30,12 +30,21 @@ Environment="ANTIEK_ARXIV_OAI_STATE_PATH={{ antiek_state_dir }}/arxiv_oai_harves
 Environment="ANTIEK_ARXIV_OAI_SYNC_PATH={{ antiek_state_dir }}/arxiv_oai_sync.json"
 
 ExecStartPre=/usr/bin/mkdir -p {{ antiek_state_dir }}/reports
-ExecStart={{ antiek_install_dir }}/.venv/bin/python -m tools.arxiv_oai_sync incremental --bulk --census-json {{ antiek_state_dir }}/reports/arxiv_oai_census.json
+ExecStart={{ antiek_install_dir }}/.venv/bin/python -m tools.arxiv_oai_sync incremental --bulk --census-json {{ antiek_state_dir }}/reports/arxiv_oai_census.json --max-seconds {{ antiek_arxiv_oai_sync_max_seconds | default(5400) }} --batch-size {{ antiek_arxiv_oai_sync_batch_size | default(2000) }}
 ExecStartPost={{ antiek_install_dir }}/.venv/bin/python -m tools.source_census --source arxiv --db-path {{ antiek_state_dir }}/antiek.duckdb --out {{ antiek_state_dir }}/reports/source_census.json
 
 StandardOutput=journal
 StandardError=journal
+# Hard backstop only. The tool pauses itself at --max-seconds (default 90 min)
+# and resumes from its cursor next night; a sync that reaches this limit is a
+# bug, not a plan. Before 2026-09-05 the unbounded pass ran to this limit
+# every night, holding the substrate write lock and taking the API down ~6h/day.
 TimeoutStartSec=21600
+
+# The API shares this 4-vCPU box; the sync yields CPU and disk to it.
+Nice=15
+IOSchedulingClass=idle
+CPUWeight=25
 
 NoNewPrivileges=true
 PrivateTmp=true

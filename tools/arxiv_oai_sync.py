@@ -62,7 +62,8 @@ import json
 import logging
 import os
 import sys
-from collections.abc import Iterator, Sequence
+import time
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -84,7 +85,7 @@ from acquisition.arxiv.oai_persist import (  # noqa: E402
 )
 from acquisition.arxiv.oai_pmh import default_harvest_state_path  # noqa: E402
 from acquisition.arxiv.oai_records import build_census  # noqa: E402
-from runtime.db_lock import connect_write  # noqa: E402
+from runtime.db_lock import DEFAULT_TIMEOUT_S, connect_write  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.schemas.documents import ArxivOaiRecord, RightsCensus  # noqa: E402
 
@@ -121,18 +122,28 @@ class SyncCheckpoint:
 
     last_successful_datestamp: str | None = None
     last_harvested_at: str | None = None
+    # Within-corpus resume point for a bulk pass that hit its wall-clock
+    # budget: {"snapshot": identity, "from_date", "until_date", "lines",
+    # "bulk_max_datestamp", "bulk_complete"}. None once a pass completes
+    # cleanly (the high-water mark then carries the across-run state).
+    bulk_cursor: dict | None = None
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "last_successful_datestamp": self.last_successful_datestamp,
             "last_harvested_at": self.last_harvested_at,
         }
+        if self.bulk_cursor is not None:
+            d["bulk_cursor"] = self.bulk_cursor
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> SyncCheckpoint:
+        cursor = d.get("bulk_cursor")
         return cls(
             last_successful_datestamp=d.get("last_successful_datestamp"),
             last_harvested_at=d.get("last_harvested_at"),
+            bulk_cursor=cursor if isinstance(cursor, dict) else None,
         )
 
 
@@ -213,28 +224,132 @@ def _track_high_water(
         yield record
 
 
+DEFAULT_PERSIST_BATCH_SIZE = 2000
+
+
+class SyncBudgetExhausted(Exception):
+    """The wall-clock budget elapsed before the pass completed.
+
+    Raised between batches (never mid-batch, so every persisted row is a
+    complete upsert). Carries the resume facts the caller checkpoints.
+    ``bulk_complete`` distinguishes "still streaming the snapshot" from "the
+    snapshot finished; only the OAI tail was cut" — the latter resumes straight
+    into the tail next run instead of re-streaming millions of lines.
+    """
+
+    def __init__(
+        self,
+        *,
+        lines_consumed: int,
+        bulk_max_datestamp: str | None,
+        bulk_complete: bool,
+        persist: OaiPersistResult,
+    ) -> None:
+        super().__init__(
+            "sync paused: wall-clock budget exhausted after "
+            f"{lines_consumed} snapshot lines ("
+            f"{'OAI tail' if bulk_complete else 'bulk stage'} interrupted)"
+        )
+        self.lines_consumed = lines_consumed
+        self.bulk_max_datestamp = bulk_max_datestamp
+        self.bulk_complete = bulk_complete
+        self.persist = persist
+
+
+class _CountingLines:
+    """Iterate a text stream, skipping the first ``skip`` raw lines and
+    counting every raw line handed downstream (filtered, malformed and
+    blank lines included) so the count is an exact resume offset."""
+
+    def __init__(self, fh: Iterable[str], *, skip: int = 0) -> None:
+        self._fh = fh
+        self._skip = max(0, int(skip))
+        self.consumed = self._skip
+
+    def __iter__(self) -> Iterator[str]:
+        it = iter(self._fh)
+        for _ in range(self._skip):
+            if next(it, None) is None:
+                return
+        for line in it:
+            self.consumed += 1
+            yield line
+
+
 def _persist_tap(
-    records: Iterator[ArxivOaiRecord], con, tally: dict
+    records: Iterator[ArxivOaiRecord],
+    db_path: str,
+    tally: dict,
+    *,
+    batch_size: int = DEFAULT_PERSIST_BATCH_SIZE,
+    lock_timeout_s: float = DEFAULT_TIMEOUT_S,
+    on_batch: Callable[[], None] | None = None,
 ) -> Iterator[ArxivOaiRecord]:
     """Pass records through unchanged while UPSERTing each LIVE one into the
-    documents store on the passed (already write-locked) connection.
+    documents store in batches, holding the write lock ONLY while a batch is
+    being written.
 
-    This is the M3/M5 persistence stage: it instruments the SAME single stream
-    the census folds, so the corpus lands row-by-row as records flow (never
-    holding the whole backfill in memory, never iterating twice). Deleted
-    tombstones are passed through to the census/high-water stages but NOT
+    WHY batches: the single-writer lock is process-global. One lock around a
+    multi-hour stream (2.5M snapshot lines at ~100 rows/s, or an OAI tail that
+    sleeps 3.5s per page on the network) starves every API write — on
+    2026-09-05 this took the whole API down for ~6h a day, four days running.
+    Buffering ``batch_size`` records, then lock → upsert → release, keeps each
+    critical section to seconds and lets request-path writers interleave.
+
+    Ordering: records are yielded downstream (census / high-water) only AFTER
+    their batch is durable, and a crash mid-batch propagates before any
+    checkpoint is written — the "high-water never advances on a partial run"
+    invariant is unchanged. ``on_batch`` runs after each release and may raise
+    ``SyncBudgetExhausted`` to pause between batches.
+
+    Tombstones pass through to the census/high-water stages but are NOT
     persisted (they carry no metadata; a tombstone is not a corpus row).
-    ``tally`` accumulates the inserted/updated/skipped counts in place so the
-    caller can report them after the harvest completes.
+    ``tally`` accumulates inserted/updated/skipped in place.
     """
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+
+    def _flush(batch: list[ArxivOaiRecord]) -> None:
+        live = [r for r in batch if not r.deleted]
+        tally["skipped_deleted"] += len(batch) - len(live)
+        if live:
+            with connect_write(
+                db_path, timeout_s=lock_timeout_s, purpose="acquisition/arxiv_oai_sync"
+            ) as con:
+                for record in live:
+                    if persist_oai_record(con, record):
+                        tally["inserted"] += 1
+                    else:
+                        tally["updated"] += 1
+        if on_batch is not None:
+            on_batch()
+
+    batch: list[ArxivOaiRecord] = []
     for record in records:
-        if record.deleted:
-            tally["skipped_deleted"] += 1
-        elif persist_oai_record(con, record):
-            tally["inserted"] += 1
-        else:
-            tally["updated"] += 1
-        yield record
+        batch.append(record)
+        if len(batch) >= batch_size:
+            _flush(batch)
+            yield from batch
+            batch = []
+    if batch:
+        _flush(batch)
+        yield from batch
+
+
+def _snapshot_identity(path: str) -> dict:
+    """Stable identity of a snapshot file for cursor validity (a re-downloaded
+    or replaced snapshot must never be resumed by a stale line offset)."""
+    p = Path(path)
+    st = p.stat()
+    return {"path": str(p.resolve()), "size": st.st_size, "mtime_ns": st.st_mtime_ns}
+
+
+def _tally_result(tally: dict) -> OaiPersistResult:
+    return OaiPersistResult(
+        inserted=tally["inserted"],
+        updated=tally["updated"],
+        skipped_deleted=tally["skipped_deleted"],
+    )
 
 
 @dataclass(frozen=True)
@@ -270,6 +385,8 @@ def run_sync(
     resume: bool = True,
     harvested_at: datetime | None = None,
     db_path: str | None = None,
+    batch_size: int = DEFAULT_PERSIST_BATCH_SIZE,
+    lock_timeout_s: float = DEFAULT_TIMEOUT_S,
 ) -> SyncResult:
     """Run one harvest, PERSIST it to the documents store, fold it into a census,
     then advance the high-water mark on clean completion.
@@ -286,8 +403,8 @@ def run_sync(
     internals.
 
     ``db_path`` resolves the documents store (honoring ``ANTIEK_DUCKDB_PATH``);
-    the harvest is upserted into it under ONE write lock for the whole pass —
-    each LIVE record landing as a ``doc-arxiv-<id>`` row keyed by arxiv_id (M5
+    the harvest is upserted into it in write-locked BATCHES (the lock is never
+    held across a network wait) — each LIVE record landing as a ``doc-arxiv-<id>`` row keyed by arxiv_id (M5
     corpus-present), re-ingesting an id UPDATEing in place rather than
     duplicating (M3). The persist stage taps the SAME stream the census folds, so
     a backfill streams to the DB row-by-row without holding the corpus in memory.
@@ -300,6 +417,7 @@ def run_sync(
     never advances the across-run mark — the next run re-covers the same window
     via the harvester's own resume cursor, and ``arxiv_id`` keys keep the
     re-cover idempotent (the re-covered rows UPDATE, they don't duplicate).
+    Rows already flushed before the crash stay (idempotent upserts).
     """
     checkpoint = read_checkpoint(sync_state_path)
     if mode == "incremental":
@@ -321,29 +439,30 @@ def run_sync(
 
     resolved_db = ensure_initialized(db_path or default_db_path())
 
-    # One write lock wraps the WHOLE harvest: build_census drives the stream to
-    # completion (or propagates a crash) while the instrumented pipeline records
-    # the max datestamp (_track_high_water) and upserts each live record into the
-    # documents store (_persist_tap), all on the single locked connection. The
-    # lock closes — releasing the writer — before the checkpoint is written, and
-    # a crash mid-harvest propagates out of the `with` BEFORE write_checkpoint.
-    with connect_write(resolved_db, purpose="acquisition/arxiv_oai_sync") as con:
-        census = build_census(
-            _persist_tap(
-                _track_high_water(
-                    harvester.harvest(
-                        from_date=from_date, until_date=until_date, resume=resume
-                    ),
-                    high_water,
+    # build_census drives the stream to completion (or propagates a crash)
+    # while the instrumented pipeline records the max datestamp
+    # (_track_high_water) and upserts each live record into the documents
+    # store (_persist_tap) — taking the write lock per BATCH, never across the
+    # network-bound harvest. A crash mid-harvest propagates out of build_census
+    # BEFORE write_checkpoint.
+    census = build_census(
+        _persist_tap(
+            _track_high_water(
+                harvester.harvest(
+                    from_date=from_date, until_date=until_date, resume=resume
                 ),
-                con,
-                persist_tally,
+                high_water,
             ),
-            metadata_prefix=metadata_prefix,
-            from_date=from_date,
-            until_date=until_date,
-            harvested_at=at,
-        )
+            resolved_db,
+            persist_tally,
+            batch_size=batch_size,
+            lock_timeout_s=lock_timeout_s,
+        ),
+        metadata_prefix=metadata_prefix,
+        from_date=from_date,
+        until_date=until_date,
+        harvested_at=at,
+    )
 
     seen = high_water["max_datestamp"]
     prior = checkpoint.last_successful_datestamp
@@ -367,11 +486,7 @@ def run_sync(
         previous_datestamp=prior,
         new_datestamp=new_datestamp,
         advanced=advanced,
-        persist=OaiPersistResult(
-            inserted=persist_tally["inserted"],
-            updated=persist_tally["updated"],
-            skipped_deleted=persist_tally["skipped_deleted"],
-        ),
+        persist=_tally_result(persist_tally),
     )
 
 
@@ -387,6 +502,11 @@ def run_bulk_sync(
     harvested_at: datetime | None = None,
     db_path: str | None = None,
     oai_tail: bool = True,
+    batch_size: int = DEFAULT_PERSIST_BATCH_SIZE,
+    max_seconds: float | None = None,
+    lock_timeout_s: float = DEFAULT_TIMEOUT_S,
+    bulk_resume: bool = True,
+    clock: Callable[[], float] = time.monotonic,
 ) -> SyncResult:
     """Bulk-dump-aware sync: stream the free metadata snapshot, then OAI tail.
 
@@ -415,6 +535,18 @@ def run_bulk_sync(
          ``test_crash_mid_harvest_does_not_advance_high_water`` invariant).
          The OAI mid-harvest cursor still covers an interrupted OAI tail.
 
+    Lock discipline + budget (2026-09-05 outage fix): rows are upserted in
+    write-locked batches of ``batch_size`` (the lock is released between
+    batches, so API writers interleave), and when ``max_seconds`` elapses the
+    pass PAUSES between batches with :class:`SyncBudgetExhausted` after
+    checkpointing a ``bulk_cursor`` (snapshot identity + raw-line offset +
+    bulk max datestamp). The next run with the same snapshot/window resumes at
+    that offset (``bulk_resume``), so a corpus larger than one night's budget
+    converges over several nights instead of restarting from line 0 every
+    night and never finishing. The high-water mark does NOT advance on a
+    pause; it advances only on the run that completes both stages, which also
+    clears the cursor.
+
     ``bulk_snapshot_path`` must already exist (the CLI's ``ensure_bulk_snapshot``
     / ``--bulk-snapshot`` resolves it before calling). NO network is opened to
     arXiv hosts on the bulk half; the OAI tail reuses the harvester's governed
@@ -439,21 +571,56 @@ def run_bulk_sync(
 
     resolved_db = ensure_initialized(db_path or default_db_path())
 
+    snapshot_identity = _snapshot_identity(bulk_snapshot_path)
+    cursor = checkpoint.bulk_cursor
+    if not (
+        bulk_resume
+        and cursor is not None
+        and cursor.get("snapshot") == snapshot_identity
+        and cursor.get("from_date") == from_date
+        and cursor.get("until_date") == until_date
+    ):
+        cursor = None
+    skip_lines = int(cursor.get("lines", 0)) if cursor else 0
+    # Bulk progress shared between the stream and the budget hook.
+    progress: dict = {
+        "lines": skip_lines,
+        "bulk_max": cursor.get("bulk_max_datestamp") if cursor else None,
+        "bulk_complete": bool(cursor.get("bulk_complete")) if cursor else False,
+    }
+    deadline = None if max_seconds is None else clock() + max_seconds
+
     def _bulk_stream() -> Iterator[ArxivOaiRecord]:
+        if progress["bulk_complete"]:
+            return  # a prior run finished the snapshot; only the tail is left
         with open_bulk_snapshot(bulk_snapshot_path) as fh:
-            yield from iter_bulk_oai_records(
-                fh, since=from_date, until=until_date
+            lines = _CountingLines(fh, skip=skip_lines)
+            for record in iter_bulk_oai_records(
+                lines, since=from_date, until=until_date
+            ):
+                progress["lines"] = lines.consumed
+                yield record
+            progress["lines"] = lines.consumed
+        progress["bulk_complete"] = True
+
+    def _on_batch() -> None:
+        if deadline is not None and clock() >= deadline:
+            raise SyncBudgetExhausted(
+                lines_consumed=progress["lines"],
+                bulk_max_datestamp=progress["bulk_max"],
+                bulk_complete=progress["bulk_complete"],
+                persist=_tally_result(persist_tally),
             )
 
     def _combined() -> Iterator[ArxivOaiRecord]:
         # Stage 1: bulk snapshot (local I/O, no arXiv requests).
-        bulk_max: str | None = None
         for record in _bulk_stream():
             if record.datestamp and (
-                bulk_max is None or record.datestamp > bulk_max
+                progress["bulk_max"] is None or record.datestamp > progress["bulk_max"]
             ):
-                bulk_max = record.datestamp
+                progress["bulk_max"] = record.datestamp
             yield record
+        bulk_max: str | None = progress["bulk_max"]
 
         if not oai_tail:
             return
@@ -473,32 +640,56 @@ def run_bulk_sync(
             from_date=oai_from, until_date=until_date, resume=resume
         )
 
-    # One write lock wraps BOTH stages: a crash mid-bulk OR mid-OAI-tail
-    # propagates out of the `with` BEFORE write_checkpoint — the across-run
-    # mark never advances on a partial run.
-    with connect_write(resolved_db, purpose="acquisition/arxiv_oai_sync") as con:
+    # A crash mid-bulk OR mid-OAI-tail propagates out of build_census BEFORE
+    # write_checkpoint — the across-run mark never advances on a partial run.
+    # A budget pause is the one partial outcome that DOES checkpoint: the
+    # within-corpus cursor (never the high-water mark).
+    try:
         census = build_census(
             _persist_tap(
                 _track_high_water(_combined(), high_water),
-                con,
+                resolved_db,
                 persist_tally,
+                batch_size=batch_size,
+                lock_timeout_s=lock_timeout_s,
+                on_batch=_on_batch,
             ),
             metadata_prefix=metadata_prefix,
             from_date=from_date,
             until_date=until_date,
             harvested_at=at,
         )
+    except SyncBudgetExhausted as paused:
+        write_checkpoint(
+            sync_state_path,
+            SyncCheckpoint(
+                last_successful_datestamp=checkpoint.last_successful_datestamp,
+                last_harvested_at=checkpoint.last_harvested_at,
+                bulk_cursor={
+                    "snapshot": snapshot_identity,
+                    "from_date": from_date,
+                    "until_date": until_date,
+                    "lines": paused.lines_consumed,
+                    "bulk_max_datestamp": paused.bulk_max_datestamp,
+                    "bulk_complete": paused.bulk_complete,
+                    "paused_at": at.isoformat(),
+                },
+            ),
+        )
+        raise
 
     seen = high_water["max_datestamp"]
     prior = checkpoint.last_successful_datestamp
     advanced = seen is not None and (prior is None or seen > prior)
     new_datestamp = seen if advanced else prior
 
+    # Clean completion: the cursor is spent; the high-water mark carries on.
     write_checkpoint(
         sync_state_path,
         SyncCheckpoint(
             last_successful_datestamp=new_datestamp,
             last_harvested_at=at.isoformat(),
+            bulk_cursor=None,
         ),
     )
 
@@ -509,11 +700,7 @@ def run_bulk_sync(
         previous_datestamp=prior,
         new_datestamp=new_datestamp,
         advanced=advanced,
-        persist=OaiPersistResult(
-            inserted=persist_tally["inserted"],
-            updated=persist_tally["updated"],
-            skipped_deleted=persist_tally["skipped_deleted"],
-        ),
+        persist=_tally_result(persist_tally),
     )
 
 
@@ -635,6 +822,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="documents store path (default: ANTIEK_DUCKDB_PATH or the resolved "
              "graph DB); the harvested metadata corpus is upserted here",
     )
+    p.add_argument(
+        "--batch-size", type=int, default=DEFAULT_PERSIST_BATCH_SIZE,
+        help="records upserted per write-lock acquisition (the lock is "
+             f"released between batches; default {DEFAULT_PERSIST_BATCH_SIZE})",
+    )
+    p.add_argument(
+        "--max-seconds", type=float, default=None,
+        help="with --bulk: wall-clock budget; the pass pauses between batches "
+             "once elapsed, checkpoints a resume cursor, and exits 0 (the "
+             "next run continues from that offset). Default: unbounded",
+    )
+    p.add_argument(
+        "--no-bulk-resume", action="store_true",
+        help="with --bulk: ignore a persisted bulk resume cursor and stream "
+             "the snapshot window from its first line",
+    )
+    p.add_argument(
+        "--lock-timeout", type=float, default=DEFAULT_TIMEOUT_S,
+        help="seconds to wait for the substrate write lock per batch "
+             f"(default {DEFAULT_TIMEOUT_S})",
+    )
     return p
 
 
@@ -687,6 +895,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 resume=not args.no_resume,
                 db_path=args.db_path,
                 oai_tail=not args.bulk_only,
+                batch_size=args.batch_size,
+                max_seconds=args.max_seconds,
+                lock_timeout_s=args.lock_timeout,
+                bulk_resume=not args.no_bulk_resume,
             )
         else:
             result = run_sync(
@@ -697,7 +909,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sync_state_path=default_sync_state_path(),
                 resume=not args.no_resume,
                 db_path=args.db_path,
+                batch_size=args.batch_size,
+                lock_timeout_s=args.lock_timeout,
             )
+    except SyncBudgetExhausted as paused:
+        # A planned pause, not a failure: rows flushed so far are durable, the
+        # resume cursor is checkpointed, the high-water mark is untouched.
+        # Exit 0 keeps the oneshot unit green; the timer continues tomorrow.
+        p = paused.persist
+        print(
+            f"\npaused: {paused} — persisted {p.persisted} rows this run "
+            f"({p.inserted} new, {p.updated} updated; {p.skipped_deleted} "
+            "tombstones skipped); resume cursor checkpointed, high-water mark "
+            "unchanged"
+        )
+        return 0
     except ArxivBanned as exc:
         # The throttle ban sentinel is active — PAUSE, do not re-hit the
         # endpoint (re-hitting is the bug that IP-banned the box). The mid-harvest

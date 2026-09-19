@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_write, interactive_lock_timeout_s
 from substrate.agent_work.domain import MarkAcknowledged, MarkWorking, ResultKind
 from substrate.agent_work.store import (
     AgentWorkStore,
@@ -157,7 +157,7 @@ def lease_agent_work(
 ) -> WorkLease | None:
     """Atomically lease, audit, and exactly replay one polling command."""
     request_sha256 = _lease_request_sha256(command)
-    with connect_write(db_path, purpose="agent_work/lease") as con:  # noqa: SIM117
+    with connect_write(db_path, timeout_s=interactive_lock_timeout_s(), purpose="agent_work/lease") as con:  # noqa: SIM117
         with eventful_transaction(con, "unused-until-work-load"):
             init_feedback_schema(con)
             receipt = con.execute(
@@ -302,7 +302,7 @@ def renew_agent_work_lease(
             sort_keys=True,
         ).encode("utf-8")
     ).hexdigest()
-    with connect_write(db_path, purpose="agent_work/renew") as con:  # noqa: SIM117
+    with connect_write(db_path, timeout_s=interactive_lock_timeout_s(), purpose="agent_work/renew") as con:  # noqa: SIM117
         with eventful_transaction(con, "unused-until-work-load"):
             init_feedback_schema(con)
             receipt = con.execute(
@@ -391,7 +391,7 @@ def _mark_agent_work_progress(
             sort_keys=True,
         ).encode("utf-8")
     ).hexdigest()
-    with connect_write(db_path, purpose=f"agent_work/{command_kind}") as con:  # noqa: SIM117
+    with connect_write(db_path, timeout_s=interactive_lock_timeout_s(), purpose=f"agent_work/{command_kind}") as con:  # noqa: SIM117
         with eventful_transaction(con, "unused-until-work-load"):
             init_feedback_schema(con)
             receipt = con.execute(
@@ -545,7 +545,7 @@ def mark_agent_work_submitted(
 ) -> WorkProgress:
     """Atomically record, audit, and exactly replay adapter submission."""
     request_sha256 = _submitted_request_sha256(command)
-    with connect_write(db_path, purpose="agent_work/submitted") as con:  # noqa: SIM117
+    with connect_write(db_path, timeout_s=interactive_lock_timeout_s(), purpose="agent_work/submitted") as con:  # noqa: SIM117
         with eventful_transaction(con, "unused-until-work-load"):
             init_feedback_schema(con)
             receipt = con.execute(
@@ -679,7 +679,7 @@ def complete_agent_reply(
 ) -> ReplyCompletion:
     """Atomically append, audit, and exactly replay one agent reply."""
     request_sha256 = _request_sha256(command)
-    with connect_write(db_path, purpose="agent_work/reply") as con:  # noqa: SIM117
+    with connect_write(db_path, timeout_s=interactive_lock_timeout_s(), purpose="agent_work/reply") as con:  # noqa: SIM117
         with eventful_transaction(con, "unused-until-work-load"):
             init_feedback_schema(con)
             receipt = con.execute(
@@ -801,7 +801,7 @@ def complete_agent_failure(
             sort_keys=True,
         ).encode("utf-8")
     ).hexdigest()
-    with connect_write(db_path, purpose="agent_work/failure") as con:  # noqa: SIM117
+    with connect_write(db_path, timeout_s=interactive_lock_timeout_s(), purpose="agent_work/failure") as con:  # noqa: SIM117
         with eventful_transaction(con, "unused-until-work-load"):
             init_feedback_schema(con)
             receipt = con.execute(
@@ -935,7 +935,7 @@ def complete_agent_disposition(
         if command.kind == "decline"
         else ResultKind.APPROVAL_REQUEST
     )
-    with connect_write(db_path, purpose="agent_work/disposition") as con:  # noqa: SIM117
+    with connect_write(db_path, timeout_s=interactive_lock_timeout_s(), purpose="agent_work/disposition") as con:  # noqa: SIM117
         with eventful_transaction(con, "unused-until-work-load"):
             init_feedback_schema(con)
             receipt = con.execute(

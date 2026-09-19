@@ -7,7 +7,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from runtime.db_lock import LockedConnection, connect_write
+from runtime.db_lock import LockedConnection, connect_write, interactive_lock_timeout_s
 from substrate.feedback.anchor import validate_artifact_anchor
 from substrate.feedback.schema import init_feedback_schema
 from substrate.feedback.store import CreateThreadCommand, FeedbackStore, ThreadView
@@ -91,7 +91,7 @@ def create_feedback_thread(
     checkpoint: Callable[[str], None] | None = None,
 ) -> ThreadView:
     """Commit an already validated command (internal orchestration seam)."""
-    with connect_write(db_path, purpose="feedback/create") as con:  # noqa: SIM117
+    with connect_write(db_path, timeout_s=interactive_lock_timeout_s(), purpose="feedback/create") as con:  # noqa: SIM117
         with eventful_transaction(con, command.investigation_id):
             return _persist_feedback_thread(con, command, checkpoint=checkpoint)
 
@@ -103,7 +103,7 @@ def create_artifact_feedback(
     checkpoint: Callable[[str], None] | None = None,
 ) -> ThreadView:
     """Validate immutable ownership/bytes/node anchor, then commit feedback."""
-    with connect_write(db_path, purpose="feedback/create_validated") as con:  # noqa: SIM117
+    with connect_write(db_path, timeout_s=interactive_lock_timeout_s(), purpose="feedback/create_validated") as con:  # noqa: SIM117
         with eventful_transaction(con, command.investigation_id):
             validated = validate_artifact_anchor(
                 con,
@@ -135,7 +135,7 @@ def resolve_feedback_thread(db_path: str, command: ResolveThreadCommand) -> Thre
             sort_keys=True,
         ).encode()
     ).hexdigest()
-    with connect_write(db_path, purpose="feedback/resolve") as con:  # noqa: SIM117
+    with connect_write(db_path, timeout_s=interactive_lock_timeout_s(), purpose="feedback/resolve") as con:  # noqa: SIM117
         with eventful_transaction(con, "unused-until-thread-load"):
             init_feedback_schema(con)
             receipt = con.execute(
