@@ -61,10 +61,9 @@ import hashlib
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from substrate.ad_inventory.frame_attention import apportion_cents
-from substrate.constants import UNATTRIBUTED_RIGHTS_BUCKET
 from substrate.payouts.split import SPLIT_POLICY_VERSION, equal_split
 from substrate.rights.ad_eligibility import ads_allowed
 from substrate.rights.arxiv_tiers import resolve_tier
@@ -151,7 +150,7 @@ class AccrualLine:
 
     arxiv_id: str
     author_position: int
-    orcid: Optional[str]
+    orcid: str | None
     attribution_kind: str
     amount_cents: int
 
@@ -168,7 +167,7 @@ class PaperReadAccrual:
     event_ref: str
     ad_event_id: str
     document_id: str
-    arxiv_id: Optional[str]
+    arxiv_id: str | None
     attributed_cents: int
     lines: tuple[AccrualLine, ...]
     accruable: bool
@@ -202,7 +201,7 @@ class PaperReadAccrual:
 # ---------------------------------------------------------------------------
 
 
-def _load_metadata(con: Any, document_id: str) -> Optional[dict]:
+def _load_metadata(con: Any, document_id: str) -> dict | None:
     """Read + parse ``documents.metadata`` JSON for a row. Returns the parsed
     dict, ``{}`` for a NULL metadata, or ``None`` when the row is absent. Raises
     ``ValueError`` on malformed JSON. Mirrors
@@ -349,7 +348,7 @@ def accrue_paper_read(
     document_id: str,
     revenue_cents: int,
     ad_event_id: str,
-    impression_ids: Optional[Sequence[str]] = None,
+    impression_ids: Sequence[str] | None = None,
 ) -> PaperReadAccrual:
     """Accrue one T1 paper read's attributed ad revenue to the per-author
     ledger, append-only and conserved to the cent. INTERNAL accounting only —
@@ -500,7 +499,7 @@ def accrue_paper_read(
 
 
 def _not_accruable(
-    ad_event_id: str, document_id: str, arxiv_id: Optional[str], reason: str
+    ad_event_id: str, document_id: str, arxiv_id: str | None, reason: str
 ) -> PaperReadAccrual:
     """A non-accruable outcome — nothing written, conserves trivially (0 == 0).
     This is the T1-only / non-arXiv / zero-revenue gate's honest result."""
@@ -562,7 +561,7 @@ def _load_event(con: Any, event_ref: str) -> PaperReadAccrual:
 # ---------------------------------------------------------------------------
 
 
-def reconcile(con: Any, arxiv_id: Optional[str] = None) -> dict[str, int]:
+def reconcile(con: Any, arxiv_id: str | None = None) -> dict[str, int]:
     """Read-only: Σ author cents + Σ unattributed cents (+ Σ attributed cents)
     over the ledger, optionally scoped to one ``arxiv_id``, so a caller can
     assert author + unattributed == attributed (the M2 invariant).

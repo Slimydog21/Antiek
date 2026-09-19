@@ -17,13 +17,12 @@ from __future__ import annotations
 import enum
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Optional
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 CREATOR_REV_SHARE = Decimal("0.70")  # per master-spec §13.5 + §13.9
@@ -46,7 +45,7 @@ class RevShareDecision:
     kind: RevShareKind
     recipient_ref: str  # user_id, ip_holder_id, or "__platform__"
     amount_usd_cents: int
-    document_id: Optional[str]
+    document_id: str | None
     requires_escrow: bool  # True if publisher is pre_onboarded / invited
     capped_to_daily_limit: bool  # True if the §9.7 cap reduced the payout
     decided_at: str = field(default_factory=_now_iso)
@@ -159,7 +158,7 @@ def distribute_with_gates(
     impression_id: str,
     ad_revenue_usd_cents: int,
     attribution_shares: dict[str, float],
-    document_to_recipient: dict[str, tuple["RevShareKind", str, bool]],
+    document_to_recipient: dict[str, tuple[RevShareKind, str, bool]],
     kyc_registry=None,  # type: Optional[KycRegistry]
     fraud_verdict=None,  # type: Optional[FraudVerdict]
 ) -> list[RevShareDecision]:
@@ -186,7 +185,8 @@ def distribute_with_gates(
     impressions were blocked from settlement and why."""
     # Defer imports to avoid hard coupling at module-load time.
     from substrate.billing.kyc import (
-        KYC_PAYOUT_FLOOR_USD_CENTS, KycState, can_settle,
+        KYC_PAYOUT_FLOOR_USD_CENTS,
+        can_settle,
     )
 
     fraud_blocked = False

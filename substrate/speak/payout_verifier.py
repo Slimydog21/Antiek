@@ -65,11 +65,12 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Callable, Optional
+from typing import Any
 
-from .contributor import AccrualLine, accrue_contributions, DEFAULT_SLOP_THRESHOLD
+from .contributor import DEFAULT_SLOP_THRESHOLD, AccrualLine, accrue_contributions
 from .events import SPEAK_INTERVIEW_GRADED, record_speak_event
 from .schema import ensure_speak_schema
 
@@ -241,8 +242,8 @@ def grade_interview(
     project_id: str,
     interview_id: str,
     goal: InterviewGoal,
-    transcript_turns: Optional[list[dict]] = None,
-    dispatch_fn: Optional[Callable[..., Any]] = None,
+    transcript_turns: list[dict] | None = None,
+    dispatch_fn: Callable[..., Any] | None = None,
 ) -> InterviewGrade:
     """Grade one interview's transcript against the requester's goal.
 
@@ -339,7 +340,7 @@ def _persist_grade(con: Any, goal: InterviewGoal, grade: InterviewGrade) -> None
     )
 
 
-def get_grade(con: Any, interview_id: str) -> Optional[InterviewGrade]:
+def get_grade(con: Any, interview_id: str) -> InterviewGrade | None:
     row = con.execute(
         "SELECT interview_id, project_id, score, passed, honest, gamed_risk, "
         "rationale, graded_by FROM speak_interview_grades WHERE interview_id = ?",
@@ -384,8 +385,8 @@ def release_payout(
     project_id: str,
     goal: InterviewGoal,
     ad_revenue_usd: Decimal,
-    publication_id: Optional[str] = None,
-    impression_ref: Optional[str] = None,
+    publication_id: str | None = None,
+    impression_ref: str | None = None,
 ) -> PayoutRelease:
     """Release graded payout for a project's interviews, routed through §9.
 
