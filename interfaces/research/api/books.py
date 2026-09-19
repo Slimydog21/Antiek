@@ -555,6 +555,9 @@ class AskBookResponse(BaseModel):
     grounded: bool
     context_chunk_count: int
     model_receipt: ModelReceipt | None = None
+    # thought_partner shape (challenge|synthesis|extension) — same role as
+    # POST /thought-partner. Null only on the ungrounded no-context branch.
+    shape: str | None = None
 
 
 class ModelOperationStatus(BaseModel):
@@ -1351,6 +1354,7 @@ def register_book_routes(app: FastAPI) -> None:
                 )
                 if selected_choice is not None and dispatch_result is not None else None
             ),
+            shape=getattr(result, "shape", None),
         )
         if selected_choice is None:
             response.model_fields_set.discard("model_receipt")

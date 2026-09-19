@@ -296,6 +296,8 @@ export interface AskBookResponse {
   grounded: boolean;
   context_chunk_count: number;
   model_receipt?: BookModelReceipt | null;
+  /** thought_partner shape — same role as /thought-partner. */
+  shape?: string | null;
 }
 
 export type BookModelOperationState =
