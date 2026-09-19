@@ -44,6 +44,7 @@ WHAT THE CONTRACT ACTUALLY IS, now that the seam is joined
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from collections.abc import Mapping, Sequence
 
@@ -72,8 +73,12 @@ from runtime.research_runner.contained_gather import (
     REQUEST_PATH,
     make_contained_gather_loop,
 )
-from runtime.research_runner.host_local import LoopContext, make_contract_gather_stub
-from runtime.research_runner.protocol import BudgetCap, ResearchPlan
+from runtime.research_runner.host_local import (
+    HostLocalRunner,
+    LoopContext,
+    make_contract_gather_stub,
+)
+from runtime.research_runner.protocol import BudgetCap, ResearchPlan, StopResearch
 
 # ---------------------------------------------------------------------------
 # Test doubles: a backend that records what it was asked to do.
@@ -419,8 +424,6 @@ class TestSingleWriterPreserved:
         the single serialized writer. Driving the contained loop through the
         real runner shows every promotable result arriving there and nowhere
         else."""
-        from runtime.research_runner.host_local import HostLocalRunner
-
         backend = RecordingBackend()
         loop_fn = make_contained_gather_loop(backend, steps=2)
         promoted: list = []
@@ -496,3 +499,213 @@ class TestRunnerIsNotSwapped:
     def test_factory_symbols_still_imported_in_cascade(self) -> None:
         assert cascade_mod.build_execution_backend is build_execution_backend
         assert cascade_mod.BACKEND_ENV == "ANTIEK_EXEC_BACKEND"
+
+
+# ---------------------------------------------------------------------------
+# The factory→loop join itself
+# ---------------------------------------------------------------------------
+
+
+class TestFactoryReturnsTheContainedLoop:
+    """Everything above proves the contained loop drives a backend, and that
+    the flag reaches ``build_execution_backend``. Neither proves the factory
+    *returns that loop*: every test in ``TestFlagSetDrivesTheBackend`` builds
+    ``make_contained_gather_loop`` itself. A ``_research_loop_factory`` that
+    built the backend and then returned the stub anyway — the exact shape of
+    the bug this lane removed from ``launch``, relocated one frame up — passed
+    the rest of this file untouched. It does not pass these.
+    """
+
+    def test_flag_set_returns_a_loop_that_drives_the_backend(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = RecordingBackend()
+        monkeypatch.setenv(BACKEND_ENV, "local")
+        monkeypatch.delenv("ANTIEK_DRW_GATHER", raising=False)
+        monkeypatch.setattr(
+            cascade_mod, "build_execution_backend", lambda *a, **k: backend
+        )
+
+        events = asyncio.run(_drain(cascade_mod._research_loop_factory(), _ctx()))
+
+        kinds = [name for name, _ in backend.calls]
+        assert kinds.count("create") == 1, "the returned loop never provisioned"
+        assert kinds.count("exec") == 2, "the returned loop never executed"
+        assert kinds[-1] == "destroy"
+        assert {e.data.get("gather_mode") for e in events} == {"exec_backend"}
+
+    def test_the_factory_keeps_the_stub_budget_arithmetic(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two passes at a cent each, same as ``make_contract_gather_stub``.
+        The swap is meant to be invisible to the ledger; a factory that passed
+        different *steps* or *cost_per_step* would change what a cascade costs
+        the moment the flag went on."""
+        backend = RecordingBackend()
+        monkeypatch.setenv(BACKEND_ENV, "local")
+        monkeypatch.delenv("ANTIEK_DRW_GATHER", raising=False)
+        monkeypatch.setattr(
+            cascade_mod, "build_execution_backend", lambda *a, **k: backend
+        )
+
+        contained = asyncio.run(_drain(cascade_mod._research_loop_factory(), _ctx()))
+        stub = asyncio.run(
+            _drain(make_contract_gather_stub(steps=2, cost_per_step=0.01), _ctx())
+        )
+
+        assert [e.cost_usd for e in contained] == [e.cost_usd for e in stub]
+        assert [e.kind for e in contained] == [e.kind for e in stub]
+
+
+# ---------------------------------------------------------------------------
+# Cooperative steering still reaches a step that runs off-process
+# ---------------------------------------------------------------------------
+
+
+class _RequestHistoryBackend(RecordingBackend):
+    """Keeps every request payload that crossed ``put_file``, so a test can
+    assert on what the contained program would actually have read rather than
+    only on the fact that a write happened."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.requests: list[dict] = []
+
+    async def create(
+        self,
+        profile: WorkspaceProfile,
+        *,
+        limits: ResourceLimits,
+        net_policy: NetPolicy,
+    ) -> RecordingWorkspace:
+        self.calls.append(("create", (profile.image, net_policy.kind)))
+        outer = self
+
+        class _Recording(RecordingWorkspace):
+            async def put_file(self, path: str, content: bytes) -> None:
+                await super().put_file(path, content)
+                if path == REQUEST_PATH:
+                    outer.requests.append(json.loads(content.decode("utf-8")))
+
+        return _Recording(f"ws-{len(self.calls)}", self.calls)
+
+
+class TestSteeringStillReachesTheContainedStep:
+    """``ctx.checkpoint()`` is the single point at which pause / stop /
+    redirect take effect. Moving the work off-process is only safe if that
+    point survives the move, and nothing above exercised it: a loop that read
+    ``ctx.sub_question`` directly and never awaited the checkpoint produced
+    byte-identical events and an identical call sequence."""
+
+    def test_a_redirect_between_passes_rewrites_the_input_channel(self) -> None:
+        backend = _RequestHistoryBackend()
+        loop_fn = make_contained_gather_loop(backend, steps=2)
+        ctx = _ctx("original question")
+
+        async def drive() -> None:
+            seen = 0
+            async for ev in loop_fn(ctx):
+                if ev.kind == "step":
+                    seen += 1
+                    if seen == 1:
+                        ctx.request_redirect("redirected question")
+
+        asyncio.run(drive())
+
+        asked = [r["sub_question"] for r in backend.requests]
+        assert asked == [
+            "original question",
+            "original question",
+            "redirected question",
+        ], asked
+
+    def test_stop_halts_before_the_next_exec_and_still_destroys(self) -> None:
+        backend = RecordingBackend()
+        loop_fn = make_contained_gather_loop(backend, steps=3)
+        ctx = _ctx()
+
+        async def drive() -> None:
+            async for ev in loop_fn(ctx):
+                if ev.kind == "step":
+                    ctx.request_stop()
+
+        with pytest.raises(StopResearch):
+            asyncio.run(drive())
+
+        kinds = [name for name, _ in backend.calls]
+        assert kinds.count("exec") == 1, "a pass ran after the operator stopped"
+        assert ("destroy", "ws-1") in backend.calls, "workspace leaked on stop"
+
+
+# ---------------------------------------------------------------------------
+# What the note reports is what the workspace produced
+# ---------------------------------------------------------------------------
+
+
+class TestNoteIsDerivedFromTheArtifact:
+    def test_pass_count_comes_from_the_artifact_not_the_step_count(self) -> None:
+        """``RecordingWorkspace`` writes exactly one record per ``exec``, so
+        under it ``len(records) == steps`` and a note that simply reported
+        *steps* would be indistinguishable from one that read the export. This
+        double writes two records per pass, which separates them."""
+
+        class _ChattyWorkspace(RecordingWorkspace):
+            async def exec(
+                self,
+                argv: Sequence[str],
+                *,
+                timeout_s: float,
+                env: Mapping[str, str] | None = None,
+                cwd: str | None = None,
+                stdin: bytes | None = None,
+            ) -> ExecResult:
+                result = await super().exec(argv, timeout_s=timeout_s)
+                self._files[ARTIFACT_PATH] += b'{"step": 99, "uid": 65534}\n'
+                return result
+
+        class _ChattyBackend(RecordingBackend):
+            async def create(
+                self,
+                profile: WorkspaceProfile,
+                *,
+                limits: ResourceLimits,
+                net_policy: NetPolicy,
+            ) -> RecordingWorkspace:
+                self.calls.append(("create", (profile.image, net_policy.kind)))
+                return _ChattyWorkspace(f"ws-{len(self.calls)}", self.calls)
+
+        backend = _ChattyBackend()
+        events = asyncio.run(_drain(make_contained_gather_loop(backend, steps=2), _ctx()))
+
+        note = next(e for e in events if e.kind == "note")
+        assert note.data["contained_passes"] == 4
+
+
+# ---------------------------------------------------------------------------
+# The ledger
+# ---------------------------------------------------------------------------
+
+
+class TestBudgetIsChargedForContainedWork:
+    def test_each_contained_pass_charges_the_step_budget(self, tmp_path) -> None:
+        """``HostLocalRunner`` charges from the cost each step reports. A
+        contained pass that reported nothing would run agent code for free and
+        no aggregate cap would ever halt the cascade."""
+        backend = RecordingBackend()
+        loop_fn = make_contained_gather_loop(backend, steps=3, cost_per_step=0.02)
+
+        async def scenario() -> float:
+            runner = HostLocalRunner(
+                loop_fn, seal_on_complete=False, events_dir=str(tmp_path)
+            )
+            plan = ResearchPlan(
+                investigation_id="inv-budget",
+                sub_question="what did the contained work cost?",
+                budget=BudgetCap(cost_usd=1.0, max_steps=50),
+            )
+            handle = await runner.start("inv-budget", plan)
+            async for _ in runner.stream(handle):
+                pass
+            return runner.budget.spent("inv-budget")
+
+        assert asyncio.run(scenario()) == pytest.approx(0.06)
