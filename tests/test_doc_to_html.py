@@ -186,7 +186,7 @@ def test_convert_to_markdown_raises_when_both_fail(sample_pdf: Path):
     with patch(
         "acquisition.doc_to_html.converter.subprocess.run",
         side_effect=_mock_subprocess_run_all_fail,
-    ), pytest.raises(ConversionError, match="both anydoc and docling failed"):
+    ), pytest.raises(ConversionError, match="anydoc, docling"):
         convert_to_markdown(sample_pdf)
 
 
@@ -880,3 +880,103 @@ def test_ssrf_route_rejects_loopback_source_url(api_env: dict, api_client: TestC
     resp = api_client.post("/ingest/asset", data={"source_url": "http://127.0.0.1:8001/health", "fair_use_class": "public"})
     assert resp.status_code == 422
     assert "non-public" in resp.text or "loopback" in resp.text or "not allowed" in resp.text or "public" in resp.text
+
+
+def _text_pdf_bytes(page_text: str = "Hello Antiek PDF sidecar world.") -> bytes:
+    from acquisition.books.public_domain import text_to_pdf
+    return text_to_pdf(page_text, title="Sidecar Smoke")
+
+
+def test_convert_treats_empty_anydoc_as_failure_and_uses_docling(sample_pdf: Path):
+    """Whitespace-only anydoc stdout must not short-circuit the fallback chain."""
+    from acquisition.doc_to_html.converter import convert_to_markdown_with_engine
+
+    def _empty_anydoc_then_docling(cmd, *args, **kwargs):
+        if "anydoc" in cmd[0]:
+            return MockCompletedProcess(returncode=0, stdout="   \n\t  ")
+        return MockCompletedProcess(
+            returncode=0,
+            stdout="# From docling\n\nReal content here.",
+        )
+
+    with patch("subprocess.run", side_effect=_empty_anydoc_then_docling):
+        md, engine = convert_to_markdown_with_engine(sample_pdf)
+    assert engine == "docling"
+    assert "Real content" in md
+
+
+def test_convert_falls_back_to_pypdf_when_clis_fail(tmp_path: Path):
+    """Text-layer PDF: anydoc+docling fail → pypdf extracts markdown."""
+    from acquisition.doc_to_html.converter import convert_to_markdown_with_engine
+
+    pdf_path = tmp_path / "texty.pdf"
+    pdf_path.write_bytes(_text_pdf_bytes("Alpha bravo charlie delta echo."))
+
+    def _all_cli_fail(cmd, *args, **kwargs):
+        return MockCompletedProcess(returncode=1, stdout="", stderr="boom")
+
+    with patch("subprocess.run", side_effect=_all_cli_fail):
+        md, engine = convert_to_markdown_with_engine(pdf_path, fmt="pdf")
+    assert engine == "pypdf"
+    assert len(md.strip()) > 10
+
+
+def test_convert_raises_when_pdf_has_no_text_layer(sample_pdf: Path):
+    """Empty catalog PDF: CLIs fail and pypdf finds no words → ConversionError."""
+    from acquisition.doc_to_html.converter import ConversionError, convert_to_markdown
+
+    def _all_cli_fail(cmd, *args, **kwargs):
+        return MockCompletedProcess(returncode=1, stdout="", stderr="nope")
+
+    with patch("subprocess.run", side_effect=_all_cli_fail):
+        with pytest.raises(ConversionError, match="pypdf"):
+            convert_to_markdown(sample_pdf, fmt="pdf")
+
+
+def test_ingest_asset_pypdf_path_stores_reader_html(db_env: dict, tmp_path: Path):
+    """End-to-end: CLI fail → pypdf → document_reader_html sidecar present."""
+    from acquisition.doc_to_html.converter import ingest_asset
+
+    pdf_path = tmp_path / "upload.pdf"
+    pdf_path.write_bytes(_text_pdf_bytes("Sidecar body text for the reader."))
+
+    def _all_cli_fail(cmd, *args, **kwargs):
+        return MockCompletedProcess(returncode=1, stdout="", stderr="nope")
+
+    with patch(
+        "acquisition.doc_to_html.converter.subprocess.run",
+        side_effect=_all_cli_fail,
+    ):
+        result = ingest_asset(
+            source_uri="https://example.com/upload.pdf",
+            bytes_path=pdf_path,
+            kind="pdf",
+            provenance={"fair_use_class": "public", "license_note": "personal upload"},
+            owner_user_id="owner-test",
+        )
+    assert result["reader_html_url"].endswith("/reader-html")
+    doc_id = result["document_id"]
+    con = duckdb.connect(db_env["db_path"])
+    try:
+        row = con.execute(
+            "SELECT sanitizer_version, source_kind, length(html_body) "
+            "FROM document_reader_html WHERE document_id = ?",
+            [doc_id],
+        ).fetchone()
+        meta = con.execute(
+            "SELECT metadata FROM documents WHERE document_id = ?",
+            [doc_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert row is not None
+    assert row[0] == SANITIZER_VERSION
+    assert row[1] == "doc_pdf"
+    assert row[2] > 20
+    assert meta is not None
+    import json as _json
+    md = meta[0] if isinstance(meta[0], dict) else _json.loads(meta[0])
+    assert md.get("converter_engine") == "pypdf" or (
+        isinstance(md.get("provenance"), dict)
+        and md["provenance"].get("converter_engine") == "pypdf"
+    )
