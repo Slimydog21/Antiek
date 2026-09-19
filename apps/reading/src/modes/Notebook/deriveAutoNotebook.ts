@@ -5,19 +5,9 @@ import type { ParsedSynthesis } from "../../lib/synthesisParser";
  * deriveAutoNotebook — the PURE derivation behind the auto-notebook
  * (SPR-06 M1, PROPOSED resolution; operator sign-off pending).
  *
- * ⚠️ PROPOSED — SIGN-OFF PENDING. The "notebook = the auto-generated,
- * always-current narrative VIEW of the workstation's insight/question graph"
- * definition is the operator's PROPOSED resolution, NOT a ratified feature.
- * This whole surface is built behind a "proposed (sign-off pending)" banner and
- * stays a DERIVED, REVERSIBLE view — there is NO new persisted store, NO new
- * writes (single-writer DuckDB untouched), and removing the route + banner
- * reverts cleanly. See docs/decisions/spr-06-auto-notebook-proposed.md and the
- * roadmap open-questions register. Do NOT make this a hard dependency of any
- * other sprint; it is a cuttable leaf.
- *
- * WHAT THIS IS: a pure function from the EXISTING graph (the investigation's
- * distillation — insights + open-questions, read via getDistillation — plus the
- * parsed synthesis, parsed by synthesisParser) to a narrative OUTLINE + SECTIONS.
+ * ✅ RATIFIED 2026-09-18 — notebook = auto-generated narrative VIEW of the
+ * investigation graph. DERIVED only (no new DuckDB store). See
+ * docs/decisions/spr-06-auto-notebook-proposed.md.
  * It re-derives on every call, so when the React wrapper re-fetches on a graph
  * change (the event stream the workstation already uses) the outline + sections
  * flip to the new graph state. It is the document lens over the same graph the
@@ -45,6 +35,8 @@ export interface AutoNotebookEntry {
   kind: string;
   /** A question the graph couldn't resolve — flagged "needs more research". */
   escalated: boolean;
+  /** Grounding document id from the graph (citation cue); null when ungrounded. */
+  sourceDocumentId: string | null;
 }
 
 export type AutoNotebookSectionKind = "synthesis" | "insights" | "questions";
@@ -102,6 +94,7 @@ function entryFrom(n: DistilledNode): AutoNotebookEntry {
     text: n.text,
     kind: n.kind,
     escalated: n.escalated,
+    sourceDocumentId: n.source_document_id ?? null,
   };
 }
 

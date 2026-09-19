@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import BrainMascot from "../../BrainMascot";
-import type { WernerMood } from "../../../design/tokens";
+import type { MascotMood } from "../../../design/tokens";
 import "./semantic-reactions.css";
 
 type SemanticReactionKind = "curious" | "happy" | "dizzy" | "hit";
@@ -13,7 +13,7 @@ const DURATION_MS: Record<SemanticReactionKind, number> = {
   hit: 800,
 };
 
-const MOOD: Record<SemanticReactionKind, WernerMood> = {
+const MOOD: Record<SemanticReactionKind, MascotMood> = {
   curious: "thinking",
   happy: "idle",
   dizzy: "empty",

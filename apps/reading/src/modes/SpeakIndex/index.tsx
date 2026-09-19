@@ -11,8 +11,11 @@ import {
   type FeedItem,
   type RememberedPerson,
 } from "../../lib/speakApi";
+import { PRIVATE_ECON_COPY } from "../../lib/speakVocab";
 import PublicLane from "../Speak/lanes/PublicLane";
+import PushesLane from "../Speak/lanes/PushesLane";
 import YoursLane from "../Speak/lanes/YoursLane";
+import { PUSHES_COPY } from "../../lib/speakVocab";
 import AIActionFailure from "../../shared/AIActionFailure";
 
 /**
@@ -40,7 +43,7 @@ import AIActionFailure from "../../shared/AIActionFailure";
  * the two Wave-2 builders never collide on this file. The lanes receive
  * state as PROPS; they do not fetch.)
  */
-type Tab = "yours" | "public";
+type Tab = "yours" | "public" | "pushes";
 
 export default function SpeakIndex() {
   const navigate = useNavigate();
@@ -151,6 +154,12 @@ export default function SpeakIndex() {
             {submitting ? "Starting…" : "Start their story"}
           </LemonButton>
         </form>
+        <p
+          className="mb-6 font-serif text-[12px] text-ink-mute dark:text-moonlight"
+          data-testid="private-econ-create-notice"
+        >
+          {PRIVATE_ECON_COPY.createDefaultsPrivate}
+        </p>
 
         {createFailed && (
           <div className="mb-6">
@@ -194,6 +203,20 @@ export default function SpeakIndex() {
           >
             Public remembrances
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "pushes"}
+            onClick={() => setTab("pushes")}
+            className={`-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider ${
+              tab === "pushes"
+                ? "border-sun text-ink dark:text-bright"
+                : "border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
+            }`}
+            data-testid="speak-tab-pushes"
+          >
+            {PUSHES_COPY.tabLabel}
+          </button>
         </div>
 
         {/* The tab BODIES are extracted into lane files (SPR-01 M2). The
@@ -201,8 +224,10 @@ export default function SpeakIndex() {
             props; YoursLane is SPR-02's, PublicLane is SPR-03's. */}
         {tab === "yours" ? (
           <YoursLane loading={loading} people={people} />
-        ) : (
+        ) : tab === "public" ? (
           <PublicLane feedLoading={feedLoading} feed={feed} />
+        ) : (
+          <PushesLane />
         )}
       </div>
     </div>

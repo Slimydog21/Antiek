@@ -15,7 +15,23 @@ from pathlib import Path
 PRIME_AGENT_BINARY_ENV = "ANTIEK_PRIME_AGENT_BIN"
 DEFAULT_PRIME_AGENT_BINARY = "prime-agent"
 MINIMUM_VERSION = (0, 7, 0)
-MAXIMUM_VERSION = (0, 8, 0)
+# Exclusive upper bound. Prime Agent is pre-1.0, so an open ceiling would let an
+# unreviewed breaking change reach production silently; the bound only moves after the
+# wire contract is re-proved against the new line.
+#
+# Raised 0.8.0 -> 0.10.0 on 2026-09-18 against prime-agent 0.9.4, on this evidence:
+#   * Upstream's shipped CHANGELOG marks exactly two Breaking entries between 0.8.0 and
+#     0.9.4, both confined to generic MCP OAuth credential binding and the MCP
+#     catalog-name override. This integration contains no MCP surface, so neither
+#     applies. 0.9.0 carries no Breaking entries at all.
+#   * Every flag in _PRINT_FLAGS and _RPC_FLAGS is still present in 0.9.4 --help; the
+#     capability probe below enforces that at runtime rather than trusting this note.
+#   * The JSONL-RPC records this integration parses are unchanged in 0.9.4:
+#     turn_end carries `message`, and the assistant message still carries provider,
+#     model, stopReason and usage{input,output,cacheRead,cacheWrite,cost{total}}.
+#     tests/test_prime_agent_wire_contract.py pins those field names so that a future
+#     upstream rename fails a test here instead of silently zeroing the spend ledger.
+MAXIMUM_VERSION = (0, 10, 0)
 _MAX_BUNDLE_FILES = 4096
 _MAX_BUNDLE_BYTES = 256 * 1024 * 1024
 _BUNDLED_RUNTIME_PACKAGES = (
@@ -123,8 +139,12 @@ def verify_prime_agent_installation(
         raise PrimeAgentUnavailable("prime-agent returned an unparseable version")
     version = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
     if not MINIMUM_VERSION <= version < MAXIMUM_VERSION:
+        supported = (
+            f">={'.'.join(map(str, MINIMUM_VERSION))},"
+            f"<{'.'.join(map(str, MAXIMUM_VERSION))}"
+        )
         raise PrimeAgentUnavailable(
-            f"prime-agent version {'.'.join(map(str, version))} is outside >=0.7.0,<0.8.0"
+            f"prime-agent version {'.'.join(map(str, version))} is outside {supported}"
         )
     help_tokens = frozenset(
         _HELP_TOKEN_RE.findall(_probe(provisional, ("--help",), environ=environ))

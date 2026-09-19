@@ -8,12 +8,14 @@ a silent downgrade would *weaken an isolation guarantee* the caller declared.
 Isolation downgrades must be an explicit operator choice (change the env var),
 never an availability accident.
 
-The factory accepts ``seal_on_complete`` and ``retrieval_substrate`` so the
-cascade launch site can forward its runner kwargs through without a signature
+The factory accepts ``seal_on_complete`` and ``retrieval_substrate`` so a
+caller holding a bag of runner kwargs can forward them without a signature
 mismatch — they are carried for call-site compatibility and logged, not applied
 to the ``ExecutionBackend`` (which has no concept of sealing or substrate reuse;
 those are research-runner concerns). This is the MINIMAL reconciliation the spec
-flags in S4.
+flags in S4. No caller forwards them today: the cascade's call site moved into
+``_research_loop_factory``, which builds the backend before a runner exists and
+so has nothing to pass.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ logger = logging.getLogger("antiek.exec_backend.factory")
 #: Env var that selects the backend.  Unset → ``"local"``.
 BACKEND_ENV: str = "ANTIEK_EXEC_BACKEND"
 
-_VALID_KINDS: frozenset[str] = frozenset({"local"})
+_VALID_KINDS: frozenset[str] = frozenset({"local", "docker"})
 
 
 def build_execution_backend(
@@ -44,8 +46,8 @@ def build_execution_backend(
 
     * ``kind`` — explicit override (tests pass this); ``None`` defers to the env
       var; absent both, the default is ``"local"`` (``LocalProcessBackend``).
-    * ``seal_on_complete`` / ``retrieval_substrate`` — accepted so the cascade
-      launch site can forward its runner kwargs without a ``TypeError``; they are
+    * ``seal_on_complete`` / ``retrieval_substrate`` — accepted so a caller can
+      forward runner kwargs without a ``TypeError``; they are
       **not** applied to the backend (``ExecutionBackend`` has no concept of
       sealing or substrate reuse). Logged once at DEBUG so an operator can trace
       the forwarding.
@@ -74,14 +76,33 @@ def build_execution_backend(
             sorted(kwargs.keys()),
         )
 
+    selected_via = f"${BACKEND_ENV}={effective!r}" if kind is None else f"kind={kind!r}"
+
     if effective == "local":
         backend: ExecutionBackend = LocalProcessBackend()
         backend.probe()
-        logger.info(
-            "ExecutionBackend selected: %s (via %s)",
-            backend.name,
-            f"${BACKEND_ENV}={effective!r}" if kind is None else f"kind={kind!r}",
-        )
+        logger.info("ExecutionBackend selected: %s (via %s)", backend.name, selected_via)
+        return backend
+
+    if effective == "docker":
+        # Local import, the idiom of ``runtime/remote_exec/factory.py``'s
+        # ``_default_provider_factory``: the default path reaches a local
+        # backend without this function importing the docker adapter. That is
+        # not yet observable process-wide, because ``__init__`` re-exports
+        # ``DockerBackend`` eagerly and anything importing this package has
+        # therefore already loaded it; the nested import is what keeps the
+        # factory itself independent of the adapter, and what makes the default
+        # path docker-free the moment that re-export goes lazy.
+        from .docker_backend import DockerBackend
+
+        # ``probe`` is the loud gate. A missing CLI or an unreachable daemon
+        # raises ``BackendUnavailable`` from here and the caller gets nothing
+        # — never a LocalProcessBackend wearing docker's name, which would run
+        # untrusted agent code on the bare host while the operator believed it
+        # was contained.
+        backend = DockerBackend()
+        backend.probe()
+        logger.info("ExecutionBackend selected: %s (via %s)", backend.name, selected_via)
         return backend
 
     raise BackendUnavailable(

@@ -19,8 +19,8 @@ Acceptance for the lane (brief, no live network):
 - a missing or invalid ``acquisition_attestation`` → 4xx.
 
 Plus magic-over-extension sniffing is pinned independently, and the §5.2 hazard
-holds (the books full-text endpoint keeps serving an uploaded doc as
-``content_format="text"`` — the sidecar is the sole HTML trust carrier).
+holds (``documents.metadata`` is never the HTML trust carrier; rights-released
+books full-text prefers the version-current sidecar as ``content_format="html"``).
 """
 
 from __future__ import annotations
@@ -921,27 +921,90 @@ def test_personal_reading_upload_not_publicly_servable(temp_substrate, client):
 
 
 # ---------------------------------------------------------------------------
-# §5.2 hazard: the books full-text endpoint keeps serving uploads as "text"
+# §5.2 + #3101: metadata unstamped; rights-released full-text prefers sidecar html
 # ---------------------------------------------------------------------------
 
 
-def test_uploaded_doc_books_fulltext_still_text(temp_substrate, client, monkeypatch):
-    """Storing the sidecar must NOT stamp documents.metadata with the trusted
-    bit, or the books full-text endpoint would label the raw_text as html and
-    the reader would innerHTML it (the stored-XSS-adjacent defect this lane
-    guards). The two trust contracts stay disjoint."""
+def test_upload_binds_book_asset_for_bookreader(temp_substrate, client):
+    """Owned uploads must resolve on GET /books/{id} so /read/:id BookReader works.
+
+    Regression for the Sources → Open in reader 404: reader-html alone is not
+    enough — BookReader loads detail via the books surface, which keys off
+    book_assets. user_owned also remains publicly full-text servable so the
+    highlight → spin-research path can seed from the passage body.
+    """
+    resp = client.post(
+        "/sources/upload",
+        files={"file": ("note.html", b"<h1>Owned Note</h1><p>Highlight me for spin.</p>", "text/html")},
+        data={"acquisition_attestation": "user_owned", "title": "Owned Note"},
+    )
+    assert resp.status_code == 201, resp.text
+    document_id = resp.json()["document_id"]
+    assert resp.json()["reader_html_available"] is True
+
+    detail = client.get(f"/books/{document_id}")
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["document_id"] == document_id
+    assert body["title"] == "Owned Note"
+    assert body["servable_full_text"] is True
+    assert body["license_basis"] == "user_owned"
+    assert body["page_count"] >= 1
+
+    full = client.get(f"/books/{document_id}/full-text")
+    assert full.status_code == 200, full.text
+    assert "Highlight me for spin" in (full.json().get("full_text") or "")
+
+    spin = client.post(
+        f"/books/{document_id}/spin-research",
+        json={"page_index": 0, "passage_text": "Highlight me for spin"},
+    )
+    assert spin.status_code == 202, spin.text
+    assert spin.json()["investigation_id"].startswith("inv-")
+
+
+def test_uploaded_doc_books_fulltext_prefers_reader_html_sidecar(
+    temp_substrate, client, monkeypatch
+):
+    """Books full-text must NOT trust documents.metadata for HTML — sidecar is
+    the sole carrier. When the sidecar is present + version-current, owner /
+    servable full-text prefer that sanitized body as content_format=html so
+    BookReader /read/:id renders HTML-native uploads (not text fallback)."""
     resp = client.post(
         "/sources/upload",
         files={"file": ("page.html", b"<p>Body for hazard test.</p>", "text/html")},
         data={"acquisition_attestation": "personal_reading"},
     )
     document_id = resp.json()["document_id"]
+
+    # Sidecar present must not unlock personal_reading on the public books path.
+    public = client.get(f"/books/{document_id}/full-text")
+    assert public.status_code == 200
+    pb = public.json()
+    assert pb.get("full_text") is None
+    assert pb.get("content_format") == "text"
+
     _as_owner(monkeypatch)
 
     owner = client.get(f"/books/{document_id}/owner-full-text")
     assert owner.status_code == 200
     ob = owner.json()
-    assert ob["content_format"] == "text"  # NOT html — metadata not trust-stamped
+    assert ob["content_format"] == "html"
+    assert "<p>" in (ob.get("full_text") or "")
+    # Metadata remains unstamped (disjoint trust contracts).
+    from runtime.db_lock import connect_read
+    from substrate.books.html_sanitizer import is_trusted_sanitized
+    from substrate.graph import default_db_path
+
+    con = connect_read(default_db_path())
+    try:
+        meta = con.execute(
+            "SELECT metadata FROM documents WHERE document_id = ?",
+            [document_id],
+        ).fetchone()[0]
+    finally:
+        con.close()
+    assert is_trusted_sanitized(meta) is False
 
 
 # ---------------------------------------------------------------------------

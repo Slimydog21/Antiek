@@ -360,9 +360,13 @@ def test_serve_unknown_document():
 
 def test_books_fulltext_contract_stays_disjoint():
     """§5.2 hazard: storing a sidecar must NOT stamp documents.metadata, or
-    serve.py would label the markdown raw_text as content_format='html' and
-    ReadingColumn would innerHTML markdown. The URL doc's books full-text
-    path must still serve content_format='text'."""
+    serve.py would label the markdown raw_text as content_format='html'.
+
+    This asserts the *core* serve_full_text contract (metadata-gated). The
+    HTTP books endpoints may still prefer the version-current sidecar as
+    content_format=html after rights release (#3101) — see
+    test_reader_html_api.test_url_doc_books_fulltext_prefers_reader_html_sidecar.
+    """
     db, con = _open_db()
     try:
         _insert_url_doc(con)

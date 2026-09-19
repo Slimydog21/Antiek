@@ -18,20 +18,22 @@ import type { TraceTarget } from "./writeApi";
  */
 
 const {
-  listDeliverablesMock, getTraceTargetMock, listInvestigationsMock,
-  startInvestigationMock, createDeliverableMock,
+  listDeliverablesMock, getDeliverableMock, getTraceTargetMock, listInvestigationsMock,
+  startInvestigationMock, createDeliverableMock, createFromInvestigationMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
+  getDeliverableMock: vi.fn(),
   getTraceTargetMock: vi.fn(),
   listInvestigationsMock: vi.fn(),
   startInvestigationMock: vi.fn(),
   createDeliverableMock: vi.fn(),
+  createFromInvestigationMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
   ...(await orig<typeof import("../../lib/api")>()),
   listDeliverables: listDeliverablesMock,
-  getDeliverable: vi.fn().mockResolvedValue(null),
+  getDeliverable: getDeliverableMock,
   createDeliverable: createDeliverableMock,
   listInvestigations: listInvestigationsMock,
   startInvestigation: startInvestigationMock,
@@ -40,12 +42,15 @@ vi.mock("../../lib/api", async (orig) => ({
 vi.mock("./writeApi", async (orig) => ({
   ...(await orig<typeof import("./writeApi")>()),
   getTraceTarget: getTraceTargetMock,
+  createDeliverableFromInvestigation: createFromInvestigationMock,
 }));
 
+import { ApiError } from "../../lib/api";
 import WriteHome from "./WriteHome";
 
 beforeEach(() => {
   listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
+  getDeliverableMock.mockReset().mockResolvedValue(null);
   getTraceTargetMock.mockReset();
   listInvestigationsMock.mockReset().mockResolvedValue({ count: 0, investigations: [] });
   startInvestigationMock.mockReset().mockResolvedValue({
@@ -56,6 +61,9 @@ beforeEach(() => {
     investigation_root_id: "inv-spawned", status: "draft",
     created_at: null, updated_at: null, section_count: 0,
   });
+  createFromInvestigationMock.mockReset().mockRejectedValue(
+    new ApiError("POST /write/deliverables/from-investigation failed: HTTP 404", 404, "no_synthesis"),
+  );
   // WriteHome now renders through GlassSurface (SPR-03 M2 landing-glass home /
   // M3 solid open-piece), which reads prefers-reduced-motion via
   // window.matchMedia. jsdom lacks it; stub the default (motion allowed → the
@@ -184,5 +192,76 @@ describe("WriteHome — the re-homed door", () => {
     // It did NOT navigate to a dead reader page.
     expect(screen.queryByText("READER")).toBeNull();
     alertSpy.mockRestore();
+  });
+
+  it("outline→Write: connects via from-investigation when synthesis exists", async () => {
+    listInvestigationsMock.mockResolvedValue({
+      count: 1,
+      investigations: [{
+        investigation_id: "inv-notebook",
+        question: "What compounds?",
+        status: "completed",
+        spawned_by_daemon: false,
+      }],
+    });
+    createFromInvestigationMock.mockResolvedValue({
+      deliverable_id: "dlv-seeded",
+      section_id: "sec-1",
+      block_count: 3,
+      dangling_count: 0,
+      source_node_count: 3,
+      insufficient_evidence: false,
+      synthesis_id: "syn-1",
+      synthesis_status: "passed",
+      synthesis_recommendation: null,
+    });
+    mountAt("/write?investigation=inv-notebook");
+    const title = await screen.findByPlaceholderText(/what are you writing/i);
+    await userEvent.type(title, "Compounding memo");
+    expect(await screen.findByTestId("connect-research-preferred")).toBeTruthy();
+    await userEvent.click(await screen.findByText(/What compounds/i));
+    await waitFor(() => expect(createFromInvestigationMock).toHaveBeenCalled());
+    expect(createFromInvestigationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        investigation_id: "inv-notebook",
+        title: "Compounding memo",
+      }),
+    );
+    expect(createDeliverableMock).not.toHaveBeenCalled();
+  });
+
+  it("notebook→Write continuity: prefills title and shows banner", async () => {
+    listInvestigationsMock.mockResolvedValue({
+      count: 1,
+      investigations: [{
+        investigation_id: "inv-notebook",
+        question: "What is the moat?",
+        status: "completed",
+        spawned_by_daemon: false,
+      }],
+    });
+    mountAt("/write?investigation=inv-notebook&title=Moat%20memo");
+    const title = await screen.findByPlaceholderText(/what are you writing/i);
+    expect((title as HTMLInputElement).value).toBe("Moat memo");
+    expect(screen.getByTestId("write-from-notebook-banner")).toBeTruthy();
+    expect(await screen.findByTestId("connect-research-preferred")).toBeTruthy();
+  });
+
+  it("open piece: View HTML points at deliverable artifact.html (inline projection)", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-1",
+      title: "Moat memo",
+      deliverable_kind: "general_essay",
+      investigation_root_id: "inv-1",
+      status: "draft",
+      created_at: null,
+      updated_at: null,
+      section_count: 1,
+      sections: [],
+    });
+    mountAt("/write/dlv-1");
+    expect(await screen.findByText("Moat memo")).toBeTruthy();
+    const link = await screen.findByTestId("artifact-view-html");
+    expect(link.getAttribute("href")).toBe("/api/deliverables/dlv-1/artifact.html");
   });
 });

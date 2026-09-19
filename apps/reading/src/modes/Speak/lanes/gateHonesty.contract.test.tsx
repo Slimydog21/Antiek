@@ -38,6 +38,7 @@ const FLAG_NAMES = [
   "ANTIEK_SPEAK_PUBLIC_ECOSYSTEM",
   "ANTIEK_SPEAK_PUBLIC_PUBLISHING",
   "ANTIEK_STRIPE_PROVIDER",
+  "ANTIEK_SYNQUERY_ENABLED",
 ];
 
 describe("speakVocab — gate-honesty contract", () => {

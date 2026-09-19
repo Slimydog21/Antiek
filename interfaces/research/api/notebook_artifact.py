@@ -1,10 +1,12 @@
 """Notebook artifact export route (HPRJ SPR-06).
 
+``GET /api/notebooks/{notebook_id}/artifact.html`` — browser-inline,
+script-free HTML projection (daily-use View HTML).
+
 ``GET /api/notebooks/{notebook_id}/artifact?format=html|antiek|antiek_html`` —
-exports a notebook (the Read surface) as a portable, signed, rights-safe
-artifact, mirroring the synthesis export route. The rights filter lives in the
-EXPORT adapter (`adapt_notebook_for_export`, which pre-resolves refs and
-cite-only's non-servable sources); the routing map emits the format.
+download / signed export (``format=html`` stays ``attachment``).
+
+Rights filter lives in ``adapt_notebook_for_export``; zero-script gate in-route.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from services.html_projection.context import RenderContext
 from services.html_projection.gate import ScriptViolation, assert_script_free
 from services.html_projection.renderer import render
 from services.html_projection.routing_map import EXPORT_FORMATS, ExportItem, emit
+from substrate.contracts.anti_ek_honesty import html_projection_response_headers
 
 _log = logging.getLogger(__name__)
 
@@ -103,8 +106,49 @@ def resolve_notebook_export(
     )
 
 
+
+def _script_free_html(html: str) -> str:
+    try:
+        assert_script_free(html)
+    except ScriptViolation as err:
+        raise HTTPException(
+            status_code=500,
+            detail="artifact failed the zero-script gate; refused",
+        ) from err
+    return html
+
+
+def _html_headers(*, filename: str, inline: bool) -> dict[str, str]:
+    return html_projection_response_headers(
+        filename=filename,
+        disposition="inline" if inline else "attachment",
+    )
+
+
 def register_notebook_artifact_routes(app: FastAPI) -> None:
-    """Mount ``GET /api/notebooks/{id}/artifact``. One call from create_app."""
+    """Mount notebook artifact view + export. One call from create_app."""
+
+    def _doc_model(source: NotebookExportSource) -> dict[str, Any]:
+        resolved_refs: dict[str, ResolvedRefData] = source.resolved_refs
+        return adapt_notebook_for_export(
+            source.content_tiptap, title=source.title, resolved_refs=resolved_refs
+        )
+
+    @app.get("/api/notebooks/{notebook_id}/artifact.html", tags=["notebooks"])
+    async def notebook_artifact_html(notebook_id: str) -> Response:
+        """Daily-use HTML-native view — inline, script-free (not a download)."""
+        source = resolve_notebook_export(notebook_id)
+        if source is None:
+            raise HTTPException(
+                status_code=404, detail=f"notebook {notebook_id!r} not found"
+            )
+        html = _script_free_html(render(_doc_model(source), RenderContext()))
+        return HTMLResponse(
+            content=html,
+            headers=_html_headers(
+                filename=f"notebook-{notebook_id}.html", inline=True
+            ),
+        )
 
     @app.get("/api/notebooks/{notebook_id}/artifact", tags=["notebooks"])
     async def notebook_artifact(notebook_id: str, format: str = "html") -> Response:
@@ -119,27 +163,15 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
                 detail=f"unknown format {format!r}; valid: {list(EXPORT_FORMATS)}",
             )
         # The rights-filtering pre-resolve happens here (the only path).
-        resolved_refs: dict[str, ResolvedRefData] = source.resolved_refs
-        doc_model = adapt_notebook_for_export(
-            source.content_tiptap, title=source.title, resolved_refs=resolved_refs
-        )
+        doc_model = _doc_model(source)
 
         if format == "html":
-            html = render(doc_model, RenderContext())
-            try:
-                assert_script_free(html)
-            except ScriptViolation as err:
-                raise HTTPException(
-                    status_code=500,
-                    detail="artifact failed the zero-script gate; refused",
-                ) from err
+            html = _script_free_html(render(doc_model, RenderContext()))
             return HTMLResponse(
                 content=html,
-                headers={
-                    "Content-Disposition": (
-                        f'attachment; filename="notebook-{notebook_id}.html"'
-                    )
-                },
+                headers=_html_headers(
+                    filename=f"notebook-{notebook_id}.html", inline=False
+                ),
             )
 
         from services.antiek_format.signature import ensure_keypair

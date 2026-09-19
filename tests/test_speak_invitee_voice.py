@@ -64,14 +64,18 @@ def client(monkeypatch):
     return TestClient(app)
 
 
-def _token_from_link(link: str) -> str:
-    return link.split("token=", 1)[1]
-
-
 def _invited_token(client) -> str:
     pid = client.post("/speak/projects", json={"title": "Dad's biography"}).json()["project_id"]
     iv = client.post(f"/speak/projects/{pid}/invites", json={"informant_email": "aunt@x.com"}).json()
-    return _token_from_link(iv["link"])
+    # Prefer explicit token field (SpeakInvite door); fall back to legacy ?token=.
+    if iv.get("token"):
+        return iv["token"]
+    link = iv.get("link") or ""
+    if "token=" in link:
+        return link.split("token=", 1)[1]
+    if "/speak/invite/" in link:
+        return link.rstrip("/").rsplit("/", 1)[-1]
+    raise AssertionError(f"invite missing token: {iv}")
 
 
 def test_invitee_voice_bridges_to_an_answer(client, monkeypatch):

@@ -94,3 +94,23 @@ def test_get_artifact_blocks_after_insight(api_env):
     assert len(blocks) >= 1
     assert blocks[0]["investigation_id"] == "inv-blocks"
     assert blocks[0]["kind"] in ("insight", "question", "synthesis")
+
+
+def test_get_artifact_html_inline_script_free(api_env):
+    """Daily-use HTML-native view: inline disposition + zero-script projection."""
+    promote_insight(
+        text="HTML-native research finding.",
+        investigation_id="inv-html-view",
+        confidence="moderate",
+        source_document_id="doc-1",
+    )
+    client = _client()
+    resp = client.get("/research/inv-html-view/artifact.html")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers.get("content-type", "")
+    disp = resp.headers.get("content-disposition", "")
+    assert "inline" in disp
+    assert "attachment" not in disp
+    assert "HTML-native research finding" in resp.text
+    assert "<script" not in resp.text.lower()
+    assert resp.headers.get("x-antiek-html-projection") == "script-free; disposition=inline"

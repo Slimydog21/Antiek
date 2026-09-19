@@ -1,9 +1,9 @@
 /**
  * AutoNotebook.test.tsx — SPR-06 M1, the auto-notebook surface
- * (PROPOSED — sign-off pending).
+ * (RATIFIED).
  *
  * Pins:
- *   - the "proposed (sign-off pending)" banner renders on the auto view;
+ *   - the proposed banner is gone (ratified);
  *   - the dynamic outline + sections render from REAL graph content
  *     (getDistillation), and FLIP when the graph changes (the load-bearing
  *     graph-change re-derive — distillation [insight A, question B] → add
@@ -29,9 +29,10 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { Event } from "../../generated/types";
 import type { DistilledNode } from "../../lib/api";
 
-const { getDistillationMock, getChunkMock } = vi.hoisted(() => ({
+const { getDistillationMock, getChunkMock, getPromptTelemetryMock } = vi.hoisted(() => ({
   getDistillationMock: vi.fn(),
   getChunkMock: vi.fn(),
+  getPromptTelemetryMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => {
@@ -40,6 +41,7 @@ vi.mock("../../lib/api", async (orig) => {
     ...actual,
     getDistillation: getDistillationMock,
     getChunk: getChunkMock,
+    getPromptTelemetry: getPromptTelemetryMock,
   };
 });
 
@@ -82,19 +84,39 @@ import AutoNotebook from "./AutoNotebook";
 afterEach(() => {
   cleanup();
   getDistillationMock.mockReset();
+  getPromptTelemetryMock.mockReset();
+  getPromptTelemetryMock.mockResolvedValue({
+    investigation_id: "inv-1",
+    question: "What is liberty?",
+    call_count: 1,
+    total_cost_usd: 0.001,
+    total_latency_ms: 500,
+    prompt_bodies_stored: false,
+    calls: [{
+      role: "decomposer",
+      provider: "deepseek",
+      model: "deepseek-chat",
+      finish_reason: "stop",
+      latency_ms: 500,
+      cost_usd: 0.001,
+      prompt_hash: "abcd",
+      input_tokens: 10,
+      output_tokens: 20,
+    }],
+  });
   getChunkMock.mockReset();
   investigationStub.status = "completed";
   investigationStub.question = "What is the moat?";
   investigationStub.events = [];
 });
 
-function insight(node_id: string, text: string): DistilledNode {
+function insight(node_id: string, text: string, source_document_id: string | null = "doc-1"): DistilledNode {
   return {
     node_id,
     kind: "insight",
     text,
     confidence: "high",
-    source_document_id: "doc-1",
+    source_document_id,
     refinement_count: 0,
     escalated: false,
     reserved_child_investigation_id: null,
@@ -126,21 +148,19 @@ function renderAt(investigationId: string) {
   );
 }
 
-describe("AutoNotebook — the proposed banner (M1, rigor #1 honesty)", () => {
-  it("renders the 'proposed — sign-off pending' banner on the auto view", async () => {
+describe("AutoNotebook — ratified shell (no proposed banner)", () => {
+  it("renders the auto-notebook shell without a proposed banner", async () => {
     getDistillationMock.mockResolvedValue({
       investigation_id: "inv-1",
-      insights: [insight("i1", "GPUs gate scale.")],
+      insights: [],
       questions: [],
     });
     renderAt("inv-1");
-    const banner = await screen.findByTestId("auto-notebook-proposed-banner");
-    expect(banner).toBeTruthy();
-    expect(banner.textContent).toMatch(/proposed/i);
-    expect(banner.textContent).toMatch(/sign-off pending/i);
-    expect(banner.textContent).toMatch(/isn.t ratified yet/i);
+    expect(await screen.findByTestId("auto-notebook-shell")).toBeTruthy();
+    expect(screen.queryByTestId("auto-notebook-proposed-banner")).toBeNull();
   });
 });
+
 
 describe("AutoNotebook — renders real graph content (M1)", () => {
   it("derives the outline + sections from the distillation", async () => {
@@ -160,6 +180,15 @@ describe("AutoNotebook — renders real graph content (M1)", () => {
     expect(outline.querySelector('[data-outline-section="questions"]')).toBeTruthy();
     // Title is the research question — not invented.
     expect(screen.getByText("What is the moat?")).toBeTruthy();
+    expect(
+      screen.getByTestId("auto-notebook-outline").querySelector('a[href="#notebook-section-insights"]'),
+    ).toBeTruthy();
+    expect(screen.getByTestId("auto-notebook-import-write").getAttribute("href")).toContain(
+      "investigation=inv-1",
+    );
+    expect(screen.getByTestId("auto-notebook-citation-link").getAttribute("href")).toBe(
+      "/read/doc-1",
+    );
   });
 });
 
@@ -217,10 +246,14 @@ describe("AutoNotebook — honest empty state (M1, rigor #1)", () => {
         screen.getByText(/nothing in the graph to narrate yet/i),
       ).toBeTruthy(),
     );
-    // The banner is still present (it's the auto view).
-    expect(screen.getByTestId("auto-notebook-proposed-banner")).toBeTruthy();
+    expect(screen.queryByTestId("auto-notebook-proposed-banner")).toBeNull();
     // No outline / fabricated sections.
     expect(screen.queryByTestId("auto-notebook-outline")).toBeNull();
+    // Daily-loop polish: empty is not a dead end.
+    expect(screen.getByTestId("notebook-loop-nav")).toBeTruthy();
+    const write = screen.getByTestId("auto-notebook-continue-write");
+    expect(write.getAttribute("href")).toContain("investigation=inv-empty");
+    expect(write.getAttribute("href")).toContain("title=");
   });
 });
 

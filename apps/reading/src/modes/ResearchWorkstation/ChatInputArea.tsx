@@ -1,8 +1,10 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import ModelUsagePicker from "../../components/ai/ModelUsagePicker";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
+import { useOwnerModelChoice } from "../../hooks/useOwnerModelChoice";
 import { track, trackException } from "../../lib/analytics";
 import { startInvestigation } from "../../lib/api";
 
@@ -39,6 +41,14 @@ export default function ChatInputArea({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const model = useOwnerModelChoice("chat");
+  const { launchFields } = model;
+  // An owner-chosen route is accepted only on a ROOT research: the server
+  // refuses a start that carries both a model choice and a parent or a chased
+  // passage (422 owner_model_root_required, app.py:2374). So the control is
+  // offered on the root composer and is absent — not disabled, not ignored —
+  // when this composer is opened as a child of something else.
+  const rootLaunch = !parentInvestigationId && !spawnContext;
 
   const submit = useCallback(async () => {
     const q = question.trim();
@@ -53,6 +63,7 @@ export default function ChatInputArea({
         question: q,
         parent_investigation_id: parentInvestigationId,
         spawn_context: spawnContext,
+        ...(rootLaunch ? launchFields(q) : {}),
       });
       track("investigation_started", {
         question_length: q.length,
@@ -72,7 +83,15 @@ export default function ChatInputArea({
     } finally {
       setBusy(false);
     }
-  }, [question, parentInvestigationId, spawnContext, navigate, onSubmitted]);
+  }, [
+    question,
+    parentInvestigationId,
+    spawnContext,
+    navigate,
+    onSubmitted,
+    rootLaunch,
+    launchFields,
+  ]);
 
   return (
     <div className="h-full flex flex-col p-3 bg-ice-1 dark:bg-charcoal-2 text-ink dark:text-bright">
@@ -92,6 +111,28 @@ export default function ChatInputArea({
           <div className="text-xs font-mono text-emperor mt-2">{error}</div>
         )}
       </div>
+      {rootLaunch && (
+        <div className="mt-2 flex items-center gap-2">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+            Model for this research
+          </span>
+          <ModelUsagePicker
+            models={model.models}
+            value={model.selectedRowId}
+            onChange={model.select}
+            includeDefault
+            defaultLabel="Default (house route)"
+            triggerLabel={model.triggerLabel}
+            triggerAriaLabel="Model for this research"
+            size="sm"
+          />
+          {model.state === "error" && (
+            <span className="text-[10px] font-mono text-emperor" aria-live="polite">
+              Your models couldn’t load. Default is still available.
+            </span>
+          )}
+        </div>
+      )}
       <div className="mt-2 flex items-center justify-between gap-3">
         <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
           <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-[10px] font-mono bg-ice-0 dark:bg-charcoal-1 shadow-[2px_2px_0_0_#0F1419] dark:shadow-[2px_2px_0_0_#8A7300] mr-1.5">⌘ ↵</kbd>

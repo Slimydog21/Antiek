@@ -301,7 +301,9 @@ export const werner = {
 
 /** Exactly the four moods the restraint rule permits. Used only in the four named
    slots; never mid-content, never more than one on screen. */
-export type WernerMood = "idle" | "thinking" | "empty" | "celebrate";
+export type MascotMood = "idle" | "thinking" | "empty" | "celebrate";
+/** @deprecated penguin-era name, kept one release so external importers do not snap. */
+export type WernerMood = MascotMood;
 
 /** Reserved-use accents — use sparingly; never substitute for sun. */
 export const accent = {

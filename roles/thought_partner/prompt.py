@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
+
+# Bound prior turns folded into the prompt (TalkToBook / book_qa parity).
+MAX_HISTORY_TURNS = 8
 
 THOUGHT_PARTNER_SYSTEM_PROMPT = """\
 You are the thought-partner role in Antiek's Brainstorming Workstation
@@ -51,6 +55,7 @@ def compose_thought_partner_prompt(
     user_prompt: str,
     selected_notes: list[dict[str, Any]],
     sector_style_guide: str | None = None,
+    conversation_history: Sequence[dict[str, str]] | None = None,
 ) -> str:
     """Compose the per-call prompt for the thought-partner role.
 
@@ -60,6 +65,7 @@ def compose_thought_partner_prompt(
             confidence} from the user's private graph
         sector_style_guide: optional output from `style_extractor` role
             (master-spec §5.3); injects sector vocabulary + cadence
+        conversation_history: optional prior turns [{question, answer}]
     """
     notes_block = "\n\n".join(
         f"NOTE {n.get('note_id')}: {n.get('note_text', '')}"
@@ -69,7 +75,21 @@ def compose_thought_partner_prompt(
         f"\n\nSECTOR STYLE GUIDE:\n{sector_style_guide}"
         if sector_style_guide else ""
     )
+    history = list(conversation_history or [])
+    history_block = ""
+    if history:
+        lines = ["CONVERSATION SO FAR:"]
+        for turn in history[-MAX_HISTORY_TURNS:]:
+            q = (turn.get("question") or "").strip()
+            a = (turn.get("answer") or "").strip()
+            if not q or not a:
+                continue
+            lines.append(f"User: {q}")
+            lines.append(f"Thought partner: {a}")
+        if len(lines) > 1:
+            history_block = "\n".join(lines) + "\n\n"
     return (
+        f"{history_block}"
         f"USER PROMPT: {user_prompt}\n\n"
         f"SELECTED NOTES:\n{notes_block}"
         f"{style_block}\n\n"

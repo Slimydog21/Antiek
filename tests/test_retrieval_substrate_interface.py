@@ -241,16 +241,29 @@ def test_read_only_no_row_count_change(seeded_db, kind):
 
 @pytest.mark.parametrize("kind", ["turbopuffer", "ducklake"])
 def test_credential_gated_adapters_skip(seeded_db, kind):
-    """Without credentials, the vendor adapters self-report skipped and return
-    the honest-empty search() shape rather than crashing."""
+    """Without credentials, vendor adapters self-report skipped.
+
+    DuckLake returns the honest-empty shape. TurboPuffer (SERVABLE hybrid)
+    falls back to DuckDB SoT ``search()`` so cascade/reuse still works when
+    the env gate is on but the key is absent — dual structure, never crash.
+    """
     db, emb, _ = seeded_db
     sub = make_substrate(kind, db, model=emb)
     try:
         assert sub.status == "skipped — no credentials"
         assert sub.skipped is True
         res = sub.query("anything", top_k=5)
-        assert res["results"] == []
-        assert res["status"] == "skipped — no credentials"
+        if kind == "turbopuffer":
+            assert res["status"] == "degraded — brute_force"
+            assert res.get("degraded_reason") == "no credentials"
+            # DuckDB SoT may return rows; vendor was not required.
+            assert "results" in res
+            empty = sub.query("anything", top_k=5, allow_fallback=False)
+            assert empty["results"] == []
+            assert empty["status"] == "skipped — no credentials"
+        else:
+            assert res["results"] == []
+            assert res["status"] == "skipped — no credentials"
     finally:
         sub.close()
 

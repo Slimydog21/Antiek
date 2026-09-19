@@ -17,6 +17,7 @@ import PasteIngest from "./PasteIngest";
 import StartResearch from "./StartResearch";
 import SuggestedResearch from "./SuggestedResearch";
 import ThinkingStream from "./ThinkingStream";
+import CapacitySoftWarnBanner from "../../components/CapacitySoftWarnBanner";
 
 /**
  * Mode A — Research Workstation (S5 redesign → Living-Roadmap SPR-05 M3).
@@ -194,6 +195,8 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
       ref={centerRef}
       className="h-full overflow-y-auto relative"
     >
+      <CapacitySoftWarnBanner investigationId={investigationId} />
+
       <CenterContent investigation={investigation} onChaseQuestion={onChaseQuestion} />
       <HighlightToolbar
         scopeRef={centerRef}

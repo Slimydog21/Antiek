@@ -1,0 +1,63 @@
+import { useEffect, useState } from "react";
+
+import {
+  formatCapacityWarnToast,
+  takeCapacityWarning,
+  type CapacityWarning,
+} from "../lib/capacityWarn";
+
+/** Inline soft-warn for InvestigationCenter (session stash from spin / POST). */
+export default function CapacitySoftWarnBanner({
+  investigationId,
+  initial,
+}: {
+  investigationId: string;
+  initial?: CapacityWarning | null;
+}) {
+  const [warn, setWarn] = useState<CapacityWarning | null>(initial ?? null);
+
+  useEffect(() => {
+    if (initial) {
+      setWarn(initial);
+      return;
+    }
+    setWarn(takeCapacityWarning(investigationId));
+  }, [investigationId, initial]);
+
+  if (!warn) return null;
+
+  const used = warn.used_compute_units;
+  const monthly = warn.monthly_compute_units;
+  const ratio =
+    used != null && monthly != null && monthly > 0 ? used / monthly : null;
+  const pct = ratio == null ? 0 : Math.min(100, Math.round(ratio * 100));
+
+  return (
+    <div
+      role="status"
+      data-testid="capacity-soft-warn-banner"
+      className="mx-3 mt-3 rounded-md border border-amber-300/80 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-600/50 dark:bg-amber-950/40 dark:text-amber-100"
+    >
+      <div className="font-medium">Agent compute capacity</div>
+      <p className="mt-0.5 text-[13px] leading-snug opacity-90">
+        {formatCapacityWarnToast(warn)}
+      </p>
+      {ratio != null ? (
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-amber-200/70 dark:bg-amber-900/60">
+          <div
+            className="h-full bg-amber-500 dark:bg-amber-400"
+            style={{ width: pct + "%" }}
+            data-testid="capacity-soft-warn-bar"
+          />
+        </div>
+      ) : null}
+      <button
+        type="button"
+        className="mt-2 text-[11px] font-mono uppercase tracking-wider underline opacity-70 hover:opacity-100"
+        onClick={() => setWarn(null)}
+      >
+        Dismiss
+      </button>
+    </div>
+  );
+}

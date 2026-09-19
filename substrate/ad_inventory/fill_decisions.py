@@ -149,7 +149,8 @@ def decide_fills(
         raise ValueError("fill selector must return exactly one fill per requested edge")
 
     # There is deliberately no CPM-to-impression-price conversion here.  Until
-    # a billing authority supplies a settled price, every fill is unpriced $0.
+    # Rank 0.1 ``settle_fill_decision`` records a gated settled price, every
+    # fill is unpriced $0 (render decision ≠ bill).
     revenue_usd_cents = 0
     price_status = "unpriced"
     decision_id = f"fill-{fingerprint[:24]}"
@@ -206,9 +207,52 @@ def _from_row(row: tuple[Any, ...], *, replayed: bool) -> FillDecision:
     )
 
 
+
+def lookup_fill_decision(
+    con: Any,
+    *,
+    owner_user_id: str,
+    window_id: str,
+    document_id: str | None,
+    page_index: int | None,
+    lens: str,
+    positions: Sequence[str],
+) -> FillDecision | None:
+    """Read-path exact-retry lookup (no write flock).
+
+    Does **not** call ``ensure_table`` — CREATE needs a writer. Missing table
+    or missing row → ``None`` so the caller can attempt a short-timeout write.
+    Cite: #3121 LazyRW coexist; #3153 invite landing on read path.
+    """
+    fingerprint = _fingerprint(
+        owner_user_id=owner_user_id,
+        window_id=window_id,
+        document_id=document_id,
+        page_index=page_index,
+        lens=lens,
+        positions=tuple(positions),
+    )
+    try:
+        existing = con.execute(
+            """
+            SELECT decision_id, owner_user_id, window_id, document_id, page_index,
+                   lens, positions_json, fills_json, revenue_usd_cents, price_status
+            FROM ad_fill_decisions WHERE request_fingerprint = ?
+            """,
+            [fingerprint],
+        ).fetchone()
+    except Exception:
+        # Catalog missing / LazyRW mutation surface / etc. → treat as miss.
+        return None
+    if existing is None:
+        return None
+    return _from_row(existing, replayed=True)
+
+
 __all__ = [
     "FillDecision",
     "FillDecisionConflictError",
     "decide_fills",
     "ensure_table",
+    "lookup_fill_decision",
 ]

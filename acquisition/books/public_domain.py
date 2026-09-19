@@ -437,6 +437,58 @@ def gutenberg_candidates(
     return out
 
 
+_KNOWN_GUTENBERG_TITLES: dict[int, tuple[str, str | None]] = {
+    11: ("Alice's Adventures in Wonderland", 'Lewis Carroll'),
+    84: ('Frankenstein; Or, The Modern Prometheus', 'Mary Wollstonecraft Shelley'),
+    98: ('A Tale of Two Cities', 'Charles Dickens'),
+    1080: ('A Modest Proposal', 'Jonathan Swift'),
+    1342: ('Pride and Prejudice', 'Jane Austen'),
+    1497: ('The Republic', 'Plato'),
+    1656: ('Apology', 'Plato'),
+    1661: ('The Adventures of Sherlock Holmes', 'Arthur Conan Doyle'),
+    2009: ('On the Origin of Species', 'Charles Darwin'),
+    2680: ('Meditations', 'Marcus Aurelius'),
+    2701: ('Moby Dick; Or, The Whale', 'Herman Melville'),
+    61364: ('Crystallizing Public Opinion', 'Edward L. Bernays'),
+}
+
+def gutenberg_direct_works(ids: Sequence[int]) -> list[PublicDomainWork]:
+    """Build PD works from Project Gutenberg cache URLs (no Gutendex).
+
+    Used when Gutendex is unreachable or when the operator passes explicit
+    ``--pd-ids`` / ``--ids``. Rights basis cites the per-ebook Gutenberg
+    license header carried in every ``pg{{id}}.txt`` cache file (same US-PD
+    assertion Gutendex surfaces as ``copyright=false``). Prefer
+    ``gutenberg.org`` (verified reachable from Mini); format is plain text
+    rendered to PDF by ``ingest_work``.
+    """
+    works: list[PublicDomainWork] = []
+    for book_id in ids:
+        title, author = _KNOWN_GUTENBERG_TITLES.get(
+            int(book_id), (f"Project Gutenberg eBook #{book_id}", None)
+        )
+        works.append(
+            PublicDomainWork(
+                source="project_gutenberg",
+                source_id=str(book_id),
+                title=title,
+                author=author,
+                source_uri=f"https://www.gutenberg.org/ebooks/{book_id}",
+                download_url=(
+                    f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
+                ),
+                download_format="text",
+                pd_basis=(
+                    f"Project Gutenberg eBook #{book_id}; US public domain per "
+                    f"Gutenberg license header in pg{book_id}.txt "
+                    f"(direct cache; gutendex bypass)"
+                ),
+                subjects=(),
+            )
+        )
+    return works
+
+
 def _gutenberg_work(book: dict) -> PublicDomainWork | None:
     title = (book.get("title") or "").strip()
     if not title:

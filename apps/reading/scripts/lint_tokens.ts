@@ -33,7 +33,13 @@ const ALLOW_FILES = new Set<string>([
   "src/design/tokens.css",
 ]);
 
-const HEX = /#[0-9a-fA-F]{3,8}\b/g;
+// Match real CSS hex colours, not GitHub issue refs. 6/8-digit forms are
+// always flagged; 3/4-digit forms only when they contain an a–f letter, so
+// `#3135` (an issue reference) passes while `#fff` / `#dead` still fail.
+// Known blind spot, accepted: all-numeric 3/4-digit colours like #333 slip
+// through — cheap colours are rare next to the issue-ref false positives.
+const HEX =
+  /#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?\b|#(?=[0-9a-fA-F]{3,4}\b)(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{3,4}\b/g;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

@@ -284,6 +284,18 @@ class RemoteResearchRunner:
                         "events_dir=%s: %r", iid, self._events_dir, e)
                 except Exception:
                     pass  # a broken log channel must not break the finish path
+        # BYOT wall-time ACU top-up (#3139/#3140/#3184) — best-effort.
+        if getattr(st, "started", False):
+            try:
+                from substrate.compute_capacity.acu_meter import (
+                    maybe_commit_investigation_wall_topup,
+                )
+
+                maybe_commit_investigation_wall_topup(
+                    iid, db_path=self._outbox_db_path
+                )
+            except Exception:
+                pass
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 

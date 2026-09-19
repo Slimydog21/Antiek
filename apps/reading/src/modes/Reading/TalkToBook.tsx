@@ -26,7 +26,9 @@ const isRouteEligible = (model: UserModelRow) =>
 
 /**
  * TalkToBook — the floating bookmark: a book-level MULTI-TURN conversation
- * (Read SPR-08 M2).
+ * (Read SPR-08 M2) on the shared ``thought_partner`` role (same as Surface E /
+ * AISidecar / Dialogue). Book-scoped retrieval + page citations stay on
+ * ``POST /books/{id}/ask`` — dual structure, one partner personality.
  *
  * This is the NEW book-level surface (the SPR-04 selection FloatMenu Dialogue
  * stays ONE-SHOT — it is NOT converted). A persistent conversation that:
@@ -218,6 +220,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
         res.answer_id,
         res.capture_status,
         res.model_receipt,
+        res.shape,
       );
     } catch (e: unknown) {
       if (e instanceof SelectedBookModelUnavailableError) {
@@ -245,10 +248,10 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
         type="button"
         data-testid="talk-to-book-bookmark"
         onClick={() => setOpen(true)}
-        title="Talk to this book"
+        title="Thought partner — this book"
         className="fixed bottom-6 right-6 z-30 flex min-h-11 items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-serif text-white shadow-lg hover:opacity-90"
       >
-        Talk to this book
+        Thought partner
         {turnCount > 0 && (
           <span className="rounded-full bg-white/25 px-1.5 text-[11px] font-mono" data-testid="talk-turn-count">
             {turnCount}
@@ -262,11 +265,11 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
     <aside
       data-testid="talk-to-book"
       className="fixed bottom-3 left-3 right-3 z-30 flex max-h-[75vh] flex-col rounded-lg border border-rule bg-ice-0 shadow-2xl dark:border-charcoal-1 dark:bg-charcoal-2 sm:bottom-6 sm:left-auto sm:right-6 sm:w-96"
-      aria-label="Talk to this book"
+      aria-label="Thought partner for this book"
     >
       <header className="flex items-center justify-between gap-2 border-b border-rule dark:border-charcoal-1 px-3 py-2">
         <span className="text-[13px] font-serif text-ink dark:text-bright truncate">
-          Talk to “{title ?? "this book"}”
+          Thought partner · “{title ?? "this book"}”
         </span>
         <div className="flex items-center gap-2 shrink-0">
           {turnCount > 0 && (
@@ -318,9 +321,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 flex flex-col gap-3">
         {thread.messages.length === 0 && (
           <p className="text-[13px] text-shadow-1 dark:text-moonlight italic">
-            Ask anything about this book. Answers cite the pages they come from —
-            click a citation to jump there.
-          </p>
+            Same thought partner as Surface E — grounded on this book's passages. Answers cite pages; click a citation to jump there.</p>
         )}
         {thread.messages.map((m) => (
           <div key={m.id}>
@@ -509,8 +510,13 @@ function TalkMessageView({
       </p>
       {message.answer !== null && (
         <div className="rounded-md bg-ice-2 dark:bg-charcoal-1 px-2.5 py-2">
-          <span className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-0.5">
-            the book
+          <span
+            className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-0.5"
+            data-testid="talk-to-book-shape"
+          >
+            {message.shape
+              ? `thought partner · ${message.shape}`
+              : "thought partner · this book"}
           </span>
           <p className="text-[13px] text-ink dark:text-bright whitespace-pre-wrap leading-relaxed">
             {message.answer}

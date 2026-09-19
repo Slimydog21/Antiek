@@ -31,9 +31,10 @@ import logging
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import Any, Literal, cast
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
@@ -388,6 +389,7 @@ class SpinResearchResponse(BaseModel):
     gated: bool
     servability: str
     seed_preview: str
+    capacity_warning: dict[str, object] | None = None
 
 
 class ImpressionItem(BaseModel):
@@ -431,6 +433,53 @@ class FullTextResponse(BaseModel):
     canonical_url: str | None = None
     license: str | None = None
     content_format: Literal["text", "html"] = "text"
+
+
+
+def _prefer_reader_html_body(
+    con: Any,
+    document_id: str,
+    result: ServeResult,
+    *,
+    owner: bool,
+) -> ServeResult:
+    """Upgrade a rights-released body to the trusted reader-html sidecar.
+
+    Uploads deliberately do NOT stamp ``documents.metadata`` with sanitizer
+    provenance (sidecar is the sole HTML trust carrier — see upload_routes).
+    BookReader reads ``/books/{id}/(owner-)full-text``, so without this bridge
+    owned uploads render as ``content_format=text`` even when
+    ``document_reader_html`` is present and version-current.
+
+    Only substitutes when rights already released ``full_text`` AND the
+    sidecar row is version-current. Queries the sidecar table directly (does
+    not re-enter ``serve_reader_html`` / ``serve_full_text_guarded``) because
+    the caller already proved the rights ring. ``owner`` is retained for call-
+    site clarity; rights are not re-derived here.
+    """
+    del owner  # rights already decided by caller; keep kw for call-site clarity
+    if result.full_text is None:
+        return result
+    from substrate.books.html_sanitizer import SANITIZER_VERSION
+
+    row = con.execute(
+        """
+        SELECT html_body, sanitizer_version
+        FROM document_reader_html
+        WHERE document_id = ?
+        """,
+        [document_id],
+    ).fetchone()
+    if row is None:
+        return result
+    html_body, version = row
+    if version != SANITIZER_VERSION or not html_body:
+        return result
+    return replace(
+        result,
+        full_text=html_body,
+        content_format="html",
+    )
 
 
 def _full_text_response(result: ServeResult) -> FullTextResponse:
@@ -506,6 +555,9 @@ class AskBookResponse(BaseModel):
     grounded: bool
     context_chunk_count: int
     model_receipt: ModelReceipt | None = None
+    # thought_partner shape (challenge|synthesis|extension) — same role as
+    # POST /thought-partner. Null only on the ungrounded no-context branch.
+    shape: str | None = None
 
 
 class ModelOperationStatus(BaseModel):
@@ -858,6 +910,7 @@ def register_book_routes(app: FastAPI) -> None:
         con = connect_read(db)
         try:
             result = serve_full_text_guarded(con, document_id)
+            result = _prefer_reader_html_body(con, document_id, result, owner=False)
         finally:
             con.close()
         if not result.found:
@@ -896,6 +949,7 @@ def register_book_routes(app: FastAPI) -> None:
         con = connect_read(db)
         try:
             result = serve_full_text_guarded(con, document_id, owner=True)
+            result = _prefer_reader_html_body(con, document_id, result, owner=True)
         finally:
             con.close()
         if not result.found:
@@ -933,7 +987,12 @@ def register_book_routes(app: FastAPI) -> None:
         status_code=202,
         tags=["books"],
     )
-    async def spin_research(document_id: str, req: SpinResearchRequest) -> SpinResearchResponse:
+    async def spin_research(
+        document_id: str,
+        req: SpinResearchRequest,
+        request: Request,
+        response: Response,
+    ) -> SpinResearchResponse:
         """Spin a deep research from a book passage (Read SPR-08).
 
         Builds the GATE-SAFE seed server-side (a gated book contributes
@@ -943,6 +1002,15 @@ def register_book_routes(app: FastAPI) -> None:
         seed is built and consumed here so gated full text never crosses
         into a research via the browser.
         """
+        from .compute_capacity_gate import (
+            attach_capacity_warn_header,
+            commit_start_acu,
+            run_capacity_precheck,
+            warning_body,
+        )
+
+        capacity_gate = run_capacity_precheck(request)
+
         from runtime.db_lock import connect_read
         from substrate.books.passage_research import (
             build_research_seed,
@@ -952,7 +1020,27 @@ def register_book_routes(app: FastAPI) -> None:
         from substrate.schemas import InvestigationStartRequestedPayload
 
         db = _resolve_db_path()
-        con = connect_read(db)
+        # Transient DuckDB RO/RW config clashes with note-taker recovery or
+        # reuse inject: brief retry before hard-failing the spin.
+        con = None
+        last_exc: Exception | None = None
+        for _attempt in range(8):
+            try:
+                con = connect_read(db)
+                break
+            except Exception as exc:  # noqa: BLE001 — duckdb ConnectionException
+                last_exc = exc
+                if "different configuration" not in str(exc):
+                    raise
+                import asyncio as _asyncio
+
+                await _asyncio.sleep(0.05 * (_attempt + 1))
+        if con is None:
+            assert last_exc is not None
+            raise HTTPException(
+                status_code=503,
+                detail=f"graph_temporarily_unavailable: {last_exc}",
+            ) from last_exc
         try:
             seed = build_research_seed(
                 con,
@@ -978,17 +1066,47 @@ def register_book_routes(app: FastAPI) -> None:
             ),
             role="read/spin_research",
             policy_id="read/books/spin_research",
+            document_id=document_id,
         )
         if event_id is None:
             raise HTTPException(
                 status_code=503,
                 detail="Event log is disabled (ANTIEK_EVENTS_DISABLED).",
             )
+        # Broadcast so the in-process Loop 1 orchestrator (subscribed to
+        # investigation.start_requested) actually starts. emit_typed alone
+        # only appends the jsonl — same wake-up as POST /investigations and
+        # watch-for-later escalation. Without this, inv-* stays forever
+        # in_progress under isolated-events dogfood (no separate consumer).
+        from substrate.event_log import trajectory
+        from substrate.schemas import Event
+
+        bus = getattr(app.state, "broadcaster", None)
+        if bus is not None:
+            for row in reversed(trajectory(investigation_id)):
+                if row.get("event_id") == event_id:
+                    try:
+                        await bus.broadcast(Event.model_validate(row))
+                    except Exception:  # pragma: no cover — diagnostic
+                        logger.exception(
+                            "spin_research broadcast failed inv=%s event=%s",
+                            investigation_id,
+                            event_id,
+                        )
+                    break
         link_passage_to_research(
             document_id=document_id,
             page_index=req.page_index,
             investigation_id=investigation_id,
         )
+        post_gate = commit_start_acu(
+            request,
+            investigation_id=investigation_id,
+            reason="spin_research",
+        )
+        warn_gate = post_gate if post_gate.verdict == "soft_warn" else capacity_gate
+        attach_capacity_warn_header(response, warn_gate)
+
         return SpinResearchResponse(
             investigation_id=investigation_id,
             document_id=document_id,
@@ -996,6 +1114,7 @@ def register_book_routes(app: FastAPI) -> None:
             gated=seed.gated,
             servability=seed.servability,
             seed_preview=seed.seed_text[:240] + ("…" if len(seed.seed_text) > 240 else ""),
+            capacity_warning=warning_body(warn_gate),
         )
 
     # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited, gate-safe) ──
@@ -1235,6 +1354,7 @@ def register_book_routes(app: FastAPI) -> None:
                 )
                 if selected_choice is not None and dispatch_result is not None else None
             ),
+            shape=getattr(result, "shape", None),
         )
         if selected_choice is None:
             response.model_fields_set.discard("model_receipt")

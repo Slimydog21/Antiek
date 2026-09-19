@@ -31,7 +31,7 @@ describe("Sources document upload", () => {
     fireEvent.change(input, { target: { files: [new File(["body"], "held.pdf", { type: "application/pdf" })] } });
     expect(uploadSourceMock).not.toHaveBeenCalled();
     expect((screen.getByRole("button", { name: "Upload and convert" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByLabelText(/I lawfully hold this copy/));
+    fireEvent.click(screen.getByLabelText(/I confirm the attestation above/));
     expect((screen.getByRole("button", { name: "Upload and convert" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -40,9 +40,10 @@ describe("Sources document upload", () => {
     renderSources();
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["body"], "held.pdf")] } });
-    fireEvent.click(screen.getByLabelText(/I lawfully hold this copy/));
+    fireEvent.click(screen.getByLabelText(/I confirm the attestation above/));
     fireEvent.click(screen.getByRole("button", { name: "Upload and convert" }));
     await waitFor(() => expect(uploadSourceMock).toHaveBeenCalledTimes(1));
+    expect(uploadSourceMock.mock.calls[0][1]).toBe("personal_reading");
     fireEvent.click(await screen.findByRole("button", { name: "Open in reader" }));
     expect(await screen.findByText("Canonical reader")).toBeTruthy();
   });
@@ -53,7 +54,7 @@ describe("Sources document upload", () => {
     renderSources();
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["A"], "first.pdf")] } });
-    fireEvent.click(screen.getByLabelText(/I lawfully hold this copy/));
+    fireEvent.click(screen.getByLabelText(/I confirm the attestation above/));
     fireEvent.click(screen.getByRole("button", { name: "Upload and convert" }));
 
     const chooser = screen.getByRole("button", { name: /Document selected/ }) as HTMLButtonElement;

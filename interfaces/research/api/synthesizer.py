@@ -36,6 +36,7 @@ Failure-mode discipline:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -61,7 +62,7 @@ from roles.synthesizer import (  # noqa: E402
     parse_synthesizer_response,
     render_full_prompt,
 )
-from substrate.dispatch import ProviderError, dispatch  # noqa: E402
+from substrate.dispatch import dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
@@ -394,7 +395,7 @@ def _dispatch_once(prompt: str, event: Event, *, attempt: int = 0) -> tuple[str 
             model_override=model_override,
         )
         return result.text, f"{result.provider}/{result.model}"
-    except (ProviderError, KeyError) as exc:
+    except Exception as exc:  # ProviderError/KeyError/OwnerByot*/etc.
         print(
             f"synthesizer.handle: dispatch failed — "
             f"{type(exc).__name__}: {exc}",
@@ -512,7 +513,8 @@ def make_synthesizer_handler(
             parameters_block=req.parameters_block,
             substrate_block=req.substrate_block,
         )
-        first_result, policy_id = _dispatch_and_parse(
+        first_result, policy_id = await asyncio.to_thread(
+            _dispatch_and_parse,
             first_prompt,
             event,
             canonical_chunk_ids=canonical_chunk_ids,
@@ -563,7 +565,8 @@ def make_synthesizer_handler(
             latest_result = revised_result
             return _result_to_claims(revised_result)
 
-        loop_result: ConstraintLoopResult = run_constraint_loop(
+        loop_result: ConstraintLoopResult = await asyncio.to_thread(
+            run_constraint_loop,
             investigation_id=event.investigation_id,
             initial_claims=_result_to_claims(first_result),
             constraints=list(req.constraints),

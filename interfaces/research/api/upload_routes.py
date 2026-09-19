@@ -503,6 +503,31 @@ def _extract_office_bounded(file_bytes: bytes, filename: str | None) -> str:
             raise HTTPException(status_code=422, detail=_CONVERSION_ERROR) from exc
 
 
+
+def _estimate_page_count(raw_text: str | None, *, detected_kind: str) -> int:
+    """Best-effort page_count for the book_assets row BookReader needs.
+
+    PDF markdown from ``read_pdf`` carries ``## Page N`` anchors — count those.
+    Everything else is a single logical page (or a cheap char heuristic) so
+    ``GET /books/{id}`` can return a honest non-zero structure without claiming
+    PDF pagination the body does not have.
+    """
+    body = raw_text or ""
+    if not body.strip():
+        return 1
+    markers = 0
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## Page ") and stripped[8:].split(None, 1)[0].isdigit():
+            markers += 1
+    if markers > 0:
+        return markers
+    if detected_kind == "pdf":
+        # Fallback when markers were stripped — rough ~2k chars/page.
+        return max(1, (len(body) + 1999) // 2000)
+    return 1
+
+
 def register_upload_routes(app: FastAPI) -> None:
     """Mount ``POST /sources/upload``. Mirrors ``register_reader_html_routes`` —
     one call from ``create_app``."""
@@ -612,8 +637,8 @@ def register_upload_routes(app: FastAPI) -> None:
         # strip_trust_markers (W2 mandatory) — a client can never relay a forged
         # content_sanitized bit through it. The §5.2 hazard is held: we do NOT
         # stamp sanitized_html_provenance() into documents.metadata (the sidecar
-        # is the sole trust carrier for reader bodies); the books full-text
-        # endpoint therefore keeps serving this doc as content_format="text".
+        # is the sole trust carrier). books.py prefers that sidecar body as
+        # content_format="html" when serving full-text — never by trusting metadata.
         metadata = strip_trust_markers(
             {
                 "source": "upload",
@@ -628,32 +653,52 @@ def register_upload_routes(app: FastAPI) -> None:
         db_path = default_db_path()
         ensure_initialized(db_path)
 
-        with connect_write(db_path, purpose="sources/upload") as con:
-            insert_document(
-                con,
-                document_id=document_id,
-                source_tier=2,
-                document_type="upload",
-                source_uri=source_url,
-                title=title,
-                author=author,
-                published_at=None,
-                investigation_id=None,
-                raw_text=raw_text,
-                metadata=metadata,
-                content_class=content_class,
-                on_conflict="ignore",
-            )
-            # The ONLY writer for the reader-HTML sidecar. Sanitizes INSIDE the
-            # call and stamps SANITIZER_VERSION in the same INSERT — the stored
-            # body is version-provenance-trusted by construction.
-            store_reader_html(
-                con,
-                document_id=document_id,
-                main_html=html_body,
-                source_kind=_SOURCE_KIND[detected_kind],
-                source_url=source_url,
-            )
+        from substrate.books.model import upsert_book_asset
+
+        def _sync() -> None:
+            with connect_write(db_path, purpose="sources/upload") as con:
+                insert_document(
+                    con,
+                    document_id=document_id,
+                    source_tier=2,
+                    document_type="upload",
+                    source_uri=source_url,
+                    title=title,
+                    author=author,
+                    published_at=None,
+                    investigation_id=None,
+                    raw_text=raw_text,
+                    metadata=metadata,
+                    content_class=content_class,
+                    on_conflict="ignore",
+                )
+                # The ONLY writer for the reader-HTML sidecar. Sanitizes INSIDE the
+                # call and stamps SANITIZER_VERSION in the same INSERT — the stored
+                # body is version-provenance-trusted by construction.
+                store_reader_html(
+                    con,
+                    document_id=document_id,
+                    main_html=html_body,
+                    source_kind=_SOURCE_KIND[detected_kind],
+                    source_url=source_url,
+                )
+                # Bind the upload into the Read workflow book surface so
+                # ``GET /books/{id}`` / ``/read/:id`` (BookReader) resolve. Without
+                # this row the Sources "Open in reader" button 404s even though
+                # reader-html is available — the polished highlight→spin path only
+                # worked on wrestle. Idempotent on re-upload (same as the sidecar).
+                upsert_book_asset(
+                    con,
+                    document_id=document_id,
+                    toc=[],
+                    page_count=_estimate_page_count(raw_text, detected_kind=detected_kind),
+                    pagination_scheme="pdf_page",
+                    provenance=f"sources/upload:{detected_kind}",
+                    license_basis=acquisition_attestation,
+                )
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        await run_in_threadpool(_sync)
 
         return UploadResponse(
             document_id=document_id,

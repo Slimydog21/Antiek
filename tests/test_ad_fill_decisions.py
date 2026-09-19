@@ -77,7 +77,9 @@ def test_multi_edge_fill_uses_only_active_advertiser_inventory(isolated_db):
     assert {fill["ad"]["inventory_id"] for fill in body["fills"]} == {"inv-1"}
     assert all(fill["revenue_usd_cents"] == 0 for fill in body["fills"])
     assert all(fill["price_status"] == "unpriced" for fill in body["fills"])
-    assert set(body) == {"window_id", "fills"}
+    assert set(body) == {"window_id", "fills", "honesty"}
+    assert body["honesty"]["max_sdk_on_web"] is False
+    assert body["honesty"]["revenue_usd_cents_until_pricing"] == 0
 
 
 @pytest.mark.parametrize("status", ["approved", "suspended", "churned"])

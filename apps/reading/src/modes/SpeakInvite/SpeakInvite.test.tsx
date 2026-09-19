@@ -26,6 +26,7 @@ const NOT_CONSENTED = {
   project_id: "p1",
   project_title: "Grandma Rosa's story",
   subject_ref: "Grandma Rosa",
+  publish_intent: "private_never_published",
   required_consent_scopes: ["record", "publish"],
   granted_consent_scopes: [],
   status: "invited",
@@ -230,4 +231,25 @@ describe("SpeakInvite — phone-first, voice-first", () => {
     // The mic is gone (we committed to text); no decorative recorder lingers.
     expect(screen.queryByText(/tap to talk/i)).toBeNull();
   });
+
+  it("shows unmistakable NO EARNINGS banner on a private project before consent", async () => {
+    apiFetchMock.mockResolvedValue(landingResponse(NOT_CONSENTED));
+    mount();
+    expect(await screen.findByTestId("private-econ-notice")).toBeTruthy();
+    expect(
+      screen.getByText(/you will NOT make money on this private project/i),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("public-econ-notice")).toBeNull();
+  });
+
+  it("shows public can-earn notice when publish_intent is will_be_public", async () => {
+    apiFetchMock.mockResolvedValue(
+      landingResponse({ ...NOT_CONSENTED, publish_intent: "will_be_public" }),
+    );
+    mount();
+    expect(await screen.findByTestId("public-econ-notice")).toBeTruthy();
+    expect(screen.getByText(/contributors can earn via the 70% split/i)).toBeTruthy();
+    expect(screen.queryByTestId("private-econ-notice")).toBeNull();
+  });
+
 });

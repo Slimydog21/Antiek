@@ -212,7 +212,8 @@ def test_owner_ask_book_reads_own_gated_content(
         "the owner's own gated/personal body must reach the model context"
     )
     assert body["answer_id"].startswith("evt-")
-    # Golden legacy wire shape: no selected-model fields are introduced.
+    # Golden wire shape: the thought_partner role's shape tag rides along;
+    # no selected-model fields are introduced.
     assert body == {
         "answer_id": body["answer_id"],
         "capture_status": "captured",
@@ -220,6 +221,7 @@ def test_owner_ask_book_reads_own_gated_content(
         "citations": body["citations"],
         "grounded": True,
         "context_chunk_count": 1,
+        "shape": "synthesis",
     }
 
 
@@ -405,8 +407,17 @@ def test_signed_session_owner_model_executes_exact_route_and_refuses_cross_owner
         ("post", "/books/model-operations/talk-owner-a-1/cancel"),
     ):
         refused_shared = getattr(client, method)(path, cookies=shared_cookie)
-        assert refused_shared.status_code == 401
-        assert refused_shared.json() == {"detail": "authentication_required"}
+        # The shared sentinel no longer short-circuits at the identity gate. With a
+        # verified session e-mail it resolves to a distinct derived owner, so it is
+        # treated exactly like any other non-owner (owner-b above) and gets the same
+        # existence-hiding 404 rather than a distinguishable 401.
+        #
+        # The property under test is preserved and slightly strengthened: a session that
+        # does not own this operation can neither see nor act on it, and every non-owner
+        # now gets an identical response, so the status code stops signalling WHICH class
+        # of caller was refused.
+        assert refused_shared.status_code == 404
+        assert refused_shared.json() == {"detail": "model_operation_not_found"}
     refused = client.post(
         "/books/doc-owner-model/ask",
         cookies=other_cookie,

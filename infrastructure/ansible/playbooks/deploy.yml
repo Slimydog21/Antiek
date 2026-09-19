@@ -75,6 +75,30 @@
       when: git_pull.after is defined
       tags: [code, systemd]
 
+    # secrets.env EnvironmentFile= overrides unit Environment= for the same
+    # key — keep ANTIEK_BUILD_SHA in secrets aligned with tip or /health lies.
+    - name: sync ANTIEK_BUILD_SHA into secrets.env (EnvironmentFile wins)
+      ansible.builtin.lineinfile:
+        path: "{{ antiek_secrets_file }}"
+        regexp: "^ANTIEK_BUILD_SHA="
+        line: "ANTIEK_BUILD_SHA={{ antiek_build_sha }}"
+        create: false
+      when: antiek_build_sha is defined
+      tags: [code, systemd]
+
+    - name: sync BUILD_SHA systemd drop-in (clear stale overrides)
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/antiek.service.d/build-sha.conf
+        content: |
+          [Service]
+          Environment=ANTIEK_BUILD_SHA={{ antiek_build_sha }}
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_build_sha_dropin
+      when: antiek_build_sha is defined
+      tags: [code, systemd]
+
     # ── 2. Refresh dependencies ──────────────────────────────────────────
     # `pip install -e` is fast when nothing changed (just re-reads
     # pyproject.toml and the existing egg-info), so running it
@@ -82,8 +106,9 @@
     - name: refresh editable install + extras
       ansible.builtin.pip:
         # docs: firecrawl-anydoc binding (Office/ODF/RTF/CSV ingest); pdf also
-        # carries pypdfium2 (DeepSeek-OCR-2 scanned-PDF rasterization).
-        name: "{{ antiek_install_dir }}[pdf,urls,embedding,docs]"
+        # carries pypdfium2 (DeepSeek-OCR-2 scanned-PDF rasterization);
+        # turbopuffer_shadow: SERVABLE hybrid SDK for /health hybrid_ready.
+        name: "{{ antiek_install_dir }}[pdf,urls,embedding,docs,turbopuffer_shadow]"
         editable: true
         virtualenv: "{{ antiek_install_dir }}/.venv"
       become_user: "{{ antiek_user }}"
@@ -191,7 +216,7 @@
     - name: systemd daemon-reload if any unit changed
       ansible.builtin.systemd:
         daemon_reload: true
-      when: antiek_unit.changed or antiek_continuous_unit.changed or antiek_arxiv_oai_sync_unit.changed or antiek_arxiv_oai_sync_timer.changed or antiek_backup_unit.changed or antiek_backup_timer.changed or antiek_backup_freshness_unit.changed or antiek_backup_freshness_timer.changed
+      when: antiek_unit.changed or antiek_continuous_unit.changed or antiek_arxiv_oai_sync_unit.changed or antiek_arxiv_oai_sync_timer.changed or antiek_backup_unit.changed or antiek_backup_timer.changed or antiek_backup_freshness_unit.changed or antiek_backup_freshness_timer.changed or (antiek_build_sha_dropin is defined and antiek_build_sha_dropin.changed)
       tags: [systemd]
 
     - name: enable antiek-continuous-research.service
@@ -448,6 +473,39 @@
     # The API startup path is deliberately read-only, so deploying code alone
     # does not apply newly-added DuckDB tables or columns. The initializer is
     # idempotent and uses the same writer coordination as request DML.
+    #
+    # Single-writer deploy hygiene (2026-09-19): stop the live process BEFORE
+    # migrate/verify. Uvicorn (and warm-writer keepalive, ANTIEK_WRITE_KEEPALIVE_S)
+    # otherwise hold DuckDB / flock and ansible schema tasks time out — the
+    # recurring failed=1 seen across #3166–#3169 deploys. Cite
+    # docs/decisions/anti-ek-composite-rollup-2026-09-19.md + ads-warm-writer-keepalive.
+    - name: stop antiek before schema migrate (release DuckDB + warm flock)
+      ansible.builtin.systemd:
+        name: antiek.service
+        state: stopped
+      tags: [code]
+
+    # Warm-writer / uvicorn can take a beat to release flock after stop.
+    # Poll until the write.lock is free so migrate/verify do not WriteLockTimeout.
+    - name: wait for DuckDB write.lock release after stop
+      ansible.builtin.shell: |
+        set -e
+        LOCK="{{ antiek_state_dir }}/antiek.duckdb.write.lock"
+        for i in $(seq 1 30); do
+          if ! lsof "$LOCK" >/dev/null 2>&1; then
+            echo "lock_free after ${i}s"
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "lock still held after 30s" >&2
+        lsof "$LOCK" >&2 || true
+        exit 1
+      args:
+        executable: /bin/bash
+      changed_when: false
+      tags: [code]
+
     - name: migrate and verify graph schema before restarting into new code
       block:
         - name: initialize graph schema
@@ -459,6 +517,8 @@
               - --db-path
               - "{{ antiek_state_dir }}/antiek.duckdb"
             chdir: "{{ antiek_install_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
           become_user: "{{ antiek_user }}"
           changed_when: false
 
@@ -470,6 +530,8 @@
               - --db-path
               - "{{ antiek_state_dir }}/antiek.duckdb"
             chdir: "{{ antiek_install_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
           become_user: "{{ antiek_user }}"
           changed_when: false
 
@@ -481,6 +543,8 @@
               - --db-path
               - "{{ antiek_state_dir }}/antiek.duckdb"
             chdir: "{{ antiek_install_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
           become_user: "{{ antiek_user }}"
           changed_when: false
 
@@ -492,6 +556,8 @@
               - --db-path
               - "{{ antiek_state_dir }}/antiek.duckdb"
             chdir: "{{ antiek_install_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
           become_user: "{{ antiek_user }}"
           changed_when: false
 
@@ -520,8 +586,9 @@
       tags: [verify]
 
     # Re-run the same fail-closed contract during verify-only playbook runs.
-    # The tool coordinates with application writers; task retries also cover
-    # the narrow cross-process DuckDB-open race after service startup.
+    # Verifiers are connect_read (2026-09-19) so they no longer contend for the
+    # warm-writer flock; retries remain for post-restart DuckDB attach races.
+    # Cite #3171–#3173 + docs/decisions/deploy-verify-readonly-2026-09-19.md.
     - name: verify crash-recoverable write outbox schema on live service
       ansible.builtin.command:
         argv:
@@ -530,10 +597,12 @@
           - --db-path
           - "{{ antiek_state_dir }}/antiek.duckdb"
         chdir: "{{ antiek_install_dir }}"
+      environment:
+        ANTIEK_WRITE_KEEPALIVE_S: "0"
       become_user: "{{ antiek_user }}"
       register: live_write_outbox_schema
-      retries: 3
-      delay: 2
+      retries: 12
+      delay: 5
       until: live_write_outbox_schema.rc == 0
       changed_when: false
       tags: [verify]
@@ -546,10 +615,12 @@
           - --db-path
           - "{{ antiek_state_dir }}/antiek.duckdb"
         chdir: "{{ antiek_install_dir }}"
+      environment:
+        ANTIEK_WRITE_KEEPALIVE_S: "0"
       become_user: "{{ antiek_user }}"
       register: live_event_consumer_schema
-      retries: 3
-      delay: 2
+      retries: 12
+      delay: 5
       until: live_event_consumer_schema.rc == 0
       changed_when: false
       tags: [verify]
@@ -562,10 +633,12 @@
           - --db-path
           - "{{ antiek_state_dir }}/antiek.duckdb"
         chdir: "{{ antiek_install_dir }}"
+      environment:
+        ANTIEK_WRITE_KEEPALIVE_S: "0"
       become_user: "{{ antiek_user }}"
       register: live_note_taker_schema
-      retries: 3
-      delay: 2
+      retries: 12
+      delay: 5
       until: live_note_taker_schema.rc == 0
       changed_when: false
       tags: [verify]
@@ -660,7 +733,7 @@
     - name: prod-parity assert — deployed SHA == box HEAD + providers live
       ansible.builtin.command:
         cmd: >-
-          python {{ playbook_dir }}/../../../tools/prod_parity/check.py
+          python3 {{ playbook_dir }}/../../../tools/prod_parity/check.py
           --url https://{{ api_domain }}
           --expected-sha {{ antiek_expected_sha }}
       delegate_to: localhost

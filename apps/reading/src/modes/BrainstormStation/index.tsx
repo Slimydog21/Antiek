@@ -9,6 +9,8 @@ import {
   type ParkedQuestionEntry,
 } from "../../lib/api";
 import ParkedQuestion from "./ParkedQuestion";
+import { composeThoughtPartnerSystemContext } from "../../components/ai/thoughtPartnerSeed";
+import { THOUGHT_PARTNER_SEED_EVENT } from "./ThoughtPartnerPanel";
 import WatchForLaterFolder from "./WatchForLaterFolder";
 
 /**
@@ -55,6 +57,26 @@ export default function BrainstormStation() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // Surface E active component: selecting a parked question seeds the
+  // thought-partner pane (and AISidecar if open) with the question text.
+  useEffect(() => {
+    if (!selected) return;
+    const text = (selected.question_text || "").trim();
+    if (!text) return;
+    window.dispatchEvent(
+      new CustomEvent(THOUGHT_PARTNER_SEED_EVENT, {
+        detail: {
+          prompt:
+            `Discuss this parked question — challenge, synthesize, or extend:
+
+${text}`,
+          system_context: composeThoughtPartnerSystemContext(),
+          source_label: `parked · ${selected.question_id}`,
+        },
+      }),
+    );
+  }, [selected]);
 
   const handleLaunch = useCallback(
     async (q: ParkedQuestionEntry) => {

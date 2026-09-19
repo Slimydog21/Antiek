@@ -29,6 +29,7 @@ Failure-mode discipline (mirrors decomposer + evidence_retriever):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -49,7 +50,7 @@ from roles.parameter_extractor import (  # noqa: E402
     parse_parameter_extractor_response,
     render_full_prompt,
 )
-from substrate.dispatch import ProviderError, dispatch  # noqa: E402
+from substrate.dispatch import dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
@@ -165,7 +166,7 @@ def _dispatch_and_parse(
         )
         response_text = result.text
         policy_id = f"{result.provider}/{result.model}"
-    except (ProviderError, KeyError) as exc:
+    except Exception as exc:  # ProviderError/KeyError/OwnerByot*/etc.
         print(
             f"parameter_extractor.handle: dispatch failed — "
             f"{type(exc).__name__}: {exc}",
@@ -206,7 +207,8 @@ def make_parameter_extractor_handler(
         canonical_chunk_ids = _extract_canonical_chunk_ids(evidence_block)
 
         prompt = render_full_prompt(evidence_block=evidence_block)
-        result, policy_id = _dispatch_and_parse(
+        result, policy_id = await asyncio.to_thread(
+            _dispatch_and_parse,
             prompt,
             event,
             canonical_chunk_ids=canonical_chunk_ids,

@@ -36,6 +36,7 @@ parameter_extractor):
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from collections.abc import Awaitable, Callable
@@ -57,7 +58,7 @@ from roles.connector import (  # noqa: E402
     render_paths_block,
 )
 from runtime.db_lock import connect_read  # noqa: E402
-from substrate.dispatch import ProviderError, dispatch  # noqa: E402
+from substrate.dispatch import dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.graph.traverse import (  # noqa: E402
@@ -229,7 +230,7 @@ def _dispatch_and_parse(
                       parent_event_id=event.event_id)
         response_text = result.text
         policy_id = f"{result.provider}/{result.model}"
-    except (ProviderError, KeyError) as exc:
+    except Exception as exc:  # ProviderError/KeyError/OwnerByot*/etc.
         print(
             f"connector.handle: dispatch failed — "
             f"{type(exc).__name__}: {exc}",
@@ -325,7 +326,8 @@ def make_connector_handler(
         )
 
         # ── 3. Dispatch + parse ──
-        result, policy_id = _dispatch_and_parse(
+        result, policy_id = await asyncio.to_thread(
+            _dispatch_and_parse,
             prompt,
             event,
             canonical_node_ids=canonical_node_ids,

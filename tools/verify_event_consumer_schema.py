@@ -13,7 +13,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from runtime.db_lock import connect_write  # noqa: E402
+from runtime.db_lock import connect_read  # noqa: E402
 from substrate.graph.schema import (  # noqa: E402
     _V19_EVENT_REQUIRED_SHAPE,
     _V19_FRONTIER_REQUIRED_SHAPE,
@@ -28,7 +28,8 @@ SUPPORTED_ACTIONS = {"note.emerged", "question.identified", "marginalia.noted"}
 
 def verify(db_path: str) -> None:
     mismatches: list[str] = []
-    with connect_write(db_path, purpose="deploy/event_consumer_schema_verify", timeout_s=30) as con:
+    # Read-only: live verify must not race warm-writer flock (#3171–#3173 residual).
+    with connect_read(db_path) as con:
         event_shape = {
             row[0]: (row[1], row[2], row[3])
             for row in con.execute("DESCRIBE event_consumer_events").fetchall()
