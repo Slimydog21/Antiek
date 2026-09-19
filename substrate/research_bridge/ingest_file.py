@@ -24,6 +24,7 @@ links it to the original).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import sys
@@ -203,11 +204,21 @@ async def distill_ingested_document(
     immediately yields insight/question nodes. A coroutine, so ingest itself
     returns without blocking on distillation; the caller schedules this."""
     from roles.note_taker.document_pass import run_document_pass
-    con = connect_write(db_path or graph_db_path(), purpose="ingest_distill")
-    try:
-        return await run_document_pass(
-            result.document_id, result.text, investigation_id=investigation_id,
-            distiller=distiller, chunk_ids=result.chunk_ids, events_dir=events_dir, con=con,
-        )
-    finally:
-        con.close()
+
+    def _sync() -> Any:
+        con = connect_write(db_path or graph_db_path(), purpose="ingest_distill")
+        try:
+            # run_document_pass's only await is an internal to_thread of
+            # distiller.distill, so it runs safely on a fresh loop in this
+            # worker thread while the flock wait stays off the event loop
+            # (#3111 to_thread class).
+            return asyncio.run(
+                run_document_pass(
+                    result.document_id, result.text, investigation_id=investigation_id,
+                    distiller=distiller, chunk_ids=result.chunk_ids, events_dir=events_dir, con=con,
+                )
+            )
+        finally:
+            con.close()
+
+    return await asyncio.to_thread(_sync)

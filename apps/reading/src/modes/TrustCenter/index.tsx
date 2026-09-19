@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import { PUBLIC_LANE_LABELS } from "../../lib/speakVocab";
 
 /**
  * Trust Center (master-spec §13.7 + PostHog Wedge 7).
@@ -18,12 +20,55 @@ import { apiFetch } from "../../lib/api";
  * the cap.
  */
 
+interface WebsiteAdsHonesty {
+  surface: string;
+  serving_model: string;
+  max_sdk_on_web: boolean;
+  fill_ladder: string[];
+  price_status_default: string;
+  revenue_usd_cents_until_pricing: number;
+  pricing_gate: string;
+  legal_gate: string;
+  settlement_open?: boolean;
+  settlement_path?: string;
+  settlement_requires?: string[];
+  paid_fill_gated?: boolean;
+  paid_fill_requires?: string[];
+  paid_fill_default?: string;
+  applovin_alignment?: string;
+  speak_contributor_share: number;
+  speak_platform_share: number;
+  money_model: string;
+  disbursement: string;
+  decision_ref: string;
+  spec_ref: string;
+  rank01_decision_ref?: string;
+  paid_fill_decision_ref?: string;
+}
+
+interface SpeakEconomicsHonesty {
+  surface?: string;
+  g2_counsel_gated?: boolean;
+  g3_opt_in_gated?: boolean;
+  public_publishing?: string;
+  disbursement?: string;
+  money_model?: string;
+  paid_today?: boolean;
+  synquery_partnership?: string;
+  synquery_gated?: boolean;
+  g2_requires?: string[];
+  synquery_requires?: string[];
+  decision_refs?: string[];
+}
+
 interface TrustCenterData {
   differential_privacy_epsilon_budgets: Record<string, number>;
   deletion_sla_days: number;
   substrate_controls: string[];
   compliance_frameworks: string[];
   loop_3_unlock_status: Record<string, boolean>;
+  website_ads?: WebsiteAdsHonesty;
+  speak_economics?: SpeakEconomicsHonesty;
 }
 
 const EPSILON_CAP = 10;
@@ -64,6 +109,23 @@ export default function TrustCenter() {
               substrate; if a bullet is wrong, the bullet is wrong.
             </p>
           </header>
+
+          <aside
+            className="rounded-md border-2 border-ink bg-ice-0 p-4 dark:border-charcoal-1 dark:bg-charcoal-1"
+            data-testid="trust-speak-browse-link"
+          >
+            <p className="text-sm text-ink dark:text-bright leading-relaxed">
+              {PUBLIC_LANE_LABELS.discoverBrowseBlurb}
+            </p>
+            <p className="mt-2">
+              <Link
+                to="/speak/browse"
+                className="font-mono text-[12px] text-sun-deep underline dark:text-sun"
+              >
+                {PUBLIC_LANE_LABELS.discoverBrowseLink}
+              </Link>
+            </p>
+          </aside>
 
           {error && (
             <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
@@ -129,6 +191,163 @@ export default function TrustCenter() {
                   ))}
                 </ul>
               </Section>
+
+              {data.website_ads && (
+                <Section title="Website advertising (Rank 0 / paid-fill gated)">
+                  <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
+                    Antiek serves its own creatives on the website. There is no
+                    AppLovin MAX SDK on web. Fills default to unpriced $0. Rank 0.1 settlement requires an explicit
+                    pricing authority plus Rank 0.2 legal gate — never invented cents — Speak&apos;s
+                    70% contributor share accrues only from settled revenue,
+                    never invented cents.
+                  </p>
+                  <ul
+                    className="text-sm text-ink dark:text-bright space-y-1 list-disc pl-5"
+                    data-testid="trust-website-ads"
+                  >
+                    <li>
+                      Serving model:{" "}
+                      <code className="font-mono text-[12px]">
+                        {data.website_ads.serving_model}
+                      </code>{" "}
+                      (MAX on web:{" "}
+                      {data.website_ads.max_sdk_on_web ? "yes" : "no"})
+                    </li>
+                    <li>
+                      Fill ladder:{" "}
+                      {data.website_ads.fill_ladder.join(" → ")}
+                    </li>
+                    <li>
+                      Default price status:{" "}
+                      <code className="font-mono text-[12px]">
+                        {data.website_ads.price_status_default}
+                      </code>{" "}
+                      / revenue until pricing: $
+                      {(data.website_ads.revenue_usd_cents_until_pricing / 100).toFixed(2)}
+                    </li>
+                    <li>
+                      Gates: {data.website_ads.pricing_gate} ·{" "}
+                      {data.website_ads.legal_gate}
+                    </li>
+                    <li>
+                      Settlement open:{" "}
+                      {data.website_ads.settlement_open ? "yes" : "no"}
+                      {data.website_ads.settlement_path
+                        ? ` · path ${data.website_ads.settlement_path}`
+                        : ""}
+                    </li>
+                    {data.website_ads.settlement_requires &&
+                      data.website_ads.settlement_requires.length > 0 && (
+                        <li>
+                          Settled requires:{" "}
+                          {data.website_ads.settlement_requires.join(" · ")}
+                        </li>
+                      )}
+                    <li data-testid="trust-paid-fill-gated">
+                      Paid fill gated:{" "}
+                      {data.website_ads.paid_fill_gated === false ? "no" : "yes"}
+                      {data.website_ads.paid_fill_default
+                        ? ` · default ${data.website_ads.paid_fill_default}`
+                        : ""}
+                      {data.website_ads.applovin_alignment
+                        ? ` · ${data.website_ads.applovin_alignment}`
+                        : ""}
+                    </li>
+                    {data.website_ads.paid_fill_requires &&
+                      data.website_ads.paid_fill_requires.length > 0 && (
+                        <li>
+                          Paid fill requires:{" "}
+                          {data.website_ads.paid_fill_requires.join(" · ")}
+                        </li>
+                      )}
+                    <li>
+                      Speak escrow split (settled only):{" "}
+                      {Math.round(data.website_ads.speak_contributor_share * 100)}%
+                      contributors /{" "}
+                      {Math.round(data.website_ads.speak_platform_share * 100)}%
+                      platform
+                    </li>
+                    <li>
+                      Money model:{" "}
+                      <code className="font-mono text-[12px]">
+                        {data.website_ads.money_model}
+                      </code>
+                    </li>
+                    <li>
+                      Disbursement:{" "}
+                      <code className="font-mono text-[12px]">
+                        {data.website_ads.disbursement}
+                      </code>
+                    </li>
+                  </ul>
+                  <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                    {data.website_ads.decision_ref}
+                  </p>
+                </Section>
+              )}
+
+              {data.speak_economics && (
+                <Section title="Speak economics · G2 counsel · Synquery">
+                  <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
+                    Contributor shares accrue to escrow now; cash does not
+                    route until G2 counsel + G3 opt-in clear. Synquery expert
+                    network is partnership-gated — not a live booking surface
+                    until the operator enables it after creation-surface PMF.
+                    Nothing here invents a paid-today promise.
+                  </p>
+                  <ul
+                    className="text-sm text-ink dark:text-bright space-y-1 list-disc pl-5"
+                    data-testid="trust-speak-economics"
+                  >
+                    <li data-testid="trust-g2-counsel-gated">
+                      G2 counsel gated:{" "}
+                      {data.speak_economics.g2_counsel_gated === false
+                        ? "no (publishing live)"
+                        : "yes"}
+                      {data.speak_economics.public_publishing
+                        ? ` · publishing ${data.speak_economics.public_publishing}`
+                        : ""}
+                    </li>
+                    <li>
+                      Disbursement:{" "}
+                      <code className="font-mono text-[12px]">
+                        {data.speak_economics.disbursement ?? "gated"}
+                      </code>
+                      {data.speak_economics.paid_today === true
+                        ? " · paid today: yes"
+                        : " · paid today: no"}
+                    </li>
+                    <li data-testid="trust-synquery-gated">
+                      Synquery partnership:{" "}
+                      {data.speak_economics.synquery_partnership ?? "gated"}
+                      {data.speak_economics.synquery_gated === false
+                        ? " (flag live)"
+                        : " (gated)"}
+                    </li>
+                    <li>
+                      Money model:{" "}
+                      <code className="font-mono text-[12px]">
+                        {data.speak_economics.money_model ??
+                          "accrue_escrow_now_disburse_after_legal_review"}
+                      </code>
+                    </li>
+                    {data.speak_economics.g2_requires &&
+                      data.speak_economics.g2_requires.length > 0 && (
+                        <li>
+                          G2 requires:{" "}
+                          {data.speak_economics.g2_requires.join(" · ")}
+                        </li>
+                      )}
+                    {data.speak_economics.synquery_requires &&
+                      data.speak_economics.synquery_requires.length > 0 && (
+                        <li>
+                          Synquery requires:{" "}
+                          {data.speak_economics.synquery_requires.join(" · ")}
+                        </li>
+                      )}
+                  </ul>
+                </Section>
+              )}
 
               <Section title="Loop 3 (RL training) unlock criteria">
                 <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">

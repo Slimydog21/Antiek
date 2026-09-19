@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  historyPayload,
+  normalizeThoughtPartnerShape,
+  useThoughtPartnerThread,
+} from "../hooks/useThoughtPartnerThread";
 
 import { apiFetch } from "../lib/api";
 import { WernerThinking } from "../brand/werner/animated";
@@ -8,9 +13,13 @@ import ContextPicker from "./ai/ContextPicker";
 import {
   dispatchAiAction,
   parseAssistantReply,
-  workspaceContextPrompt,
 } from "./ai/aiActions";
 import type { DispatchedAction } from "./ai/aiActions";
+import {
+  THOUGHT_PARTNER_SEED_EVENT,
+  type ThoughtPartnerSeedDetail,
+  composeThoughtPartnerSystemContext,
+} from "./ai/thoughtPartnerSeed";
 
 /**
  * Ubiquitous AI Sidecar (PostHog Wedge 4, master-spec §5.6 + §4.6).
@@ -52,11 +61,6 @@ interface DispatchEvent {
   fell_back: boolean;
 }
 
-interface ThoughtPartnerReply {
-  shape: "CHALLENGE" | "SYNTHESIS" | "EXTENSION";
-  text: string;
-}
-
 export default function AISidecar() {
   // S8 refactor: when AISidecar is mounted as a PanelKind, the
   // workspace mounts/unmounts it directly — being mounted IS "open".
@@ -71,7 +75,7 @@ export default function AISidecar() {
   // picker). When non-empty it OVERRIDES the opaque workspaceContextPrompt()
   // so /thought-partner grounds on exactly what the operator @-selected.
   const [composedContext, setComposedContext] = useState<string>("");
-  const [reply, setReply] = useState<ThoughtPartnerReply | null>(null);
+  const thread = useThoughtPartnerThread();
   const [pending, setPending] = useState<boolean>(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   // Read SPR-07 — the rabbit hole answers in text OR audio per preference.
@@ -90,6 +94,24 @@ export default function AISidecar() {
   const [aiLog, setAiLog] = useState<DispatchedAction[]>([]);
 
   const period = useMemo_period();
+
+  // Shared seed bus (BrainstormStation parked question, etc.).
+  useEffect(() => {
+    const onSeed = (ev: Event) => {
+      const detail = (ev as CustomEvent<ThoughtPartnerSeedDetail>).detail;
+      if (!detail) return;
+      if (typeof detail.prompt === "string" && detail.prompt.trim()) {
+        setDraft(detail.prompt.trim());
+      }
+      if (typeof detail.system_context === "string") {
+        setComposedContext(detail.system_context);
+      }
+      queueMicrotask(() => inputRef.current?.focus());
+    };
+    window.addEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
+    return () => window.removeEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
+  }, []);
+
 
   const reloadContext = useCallback(async () => {
     try {
@@ -169,74 +191,58 @@ export default function AISidecar() {
 
   const sendThoughtPartner = async () => {
     if (!draft.trim() || pending) return;
+    const prompt = draft.trim();
     setPending(true);
-    setReply(null);
+    const history = historyPayload(thread.messages);
+    const messageId = thread.startTurn(prompt);
+    setDraft("");
     try {
-      // S8 WP-8.4 — ship workspace context as part of the request so
-      // the assistant can reference what's currently visible to the
-      // operator. The substrate's /thought-partner endpoint passes
-      // `system_context` through to the underlying model as a
-      // pre-prompt (substrate-side concern; we add to the request
-      // optimistically — older deployments ignore the field).
       const resp = await apiFetch("/thought-partner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           investigation_id: "__sidecar__",
-          prompt: draft,
-          system_context: composedContext.trim()
-            ? composedContext
-            : workspaceContextPrompt(),
+          prompt,
+          history,
+          system_context: composeThoughtPartnerSystemContext(
+            composedContext.trim() ? composedContext : null,
+          ),
         }),
       });
       if (!resp.ok) {
-        setReply({
-          shape: "CHALLENGE",
-          text: `Thought-partner unavailable (HTTP ${resp.status}).`,
-        });
+        thread.failTurn(
+          messageId,
+          `Thought-partner unavailable (HTTP ${resp.status}).`,
+        );
         return;
       }
       const data = await resp.json();
       const rawText: string = data.text ?? data.body ?? JSON.stringify(data);
-      // S8 WP-8.4 acceptance: "When the AI asks 'open this PDF', it
-      // dispatches a workspace open() action." Parse the structured
-      // @@actions block out of the reply, dispatch each, and surface
-      // the executed actions as a transparency log below the prose.
       const { prose, actions, parseErrors } = parseAssistantReply(rawText);
-      setReply({
-        shape: data.shape ?? "SYNTHESIS",
-        text: prose,
-      });
+      thread.completeTurn(
+        messageId,
+        prose || rawText,
+        normalizeThoughtPartnerShape(data.shape),
+      );
       if (actions.length > 0) {
-        // Pass AiActionContext so each dispatched action emits a typed
-        // ``ai.action.applied`` event to the substrate event log per
-        // master-spec §5.5 + §13.8 + PostHog Wedge 4. The investigation
-        // bucket is the sidecar's pseudo-id ``__sidecar__`` (same id
-        // used in the /thought-partner request above), giving Wedge 5
-        // trajectory replay a single scrubbable timeline for all
-        // sidecar-driven UI actions. operator_prompt truncated to the
-        // substrate's max_length=2000 to avoid validation rejection on
-        // long pastes.
         const ctx = {
-          operator_prompt: draft.slice(0, 2000),
+          operator_prompt: prompt.slice(0, 2000),
           investigation_id: "__sidecar__",
         };
         const dispatched = actions.map((a) => dispatchAiAction(a, ctx));
         setAiLog((prev) => [...dispatched, ...prev].slice(0, 20));
       }
       if (parseErrors.length > 0 && import.meta.env.DEV) {
-        // eslint-disable-next-line no-console
-        console.warn("[ai] action parse errors:", parseErrors);
+        console.warn("[AISidecar] @@actions parse errors", parseErrors);
       }
     } catch (e: unknown) {
-      setReply({
-        shape: "CHALLENGE",
-        text: e instanceof Error ? e.message : String(e),
-      });
+      const msg = e instanceof Error ? e.message : String(e);
+      thread.failTurn(messageId, msg);
     } finally {
       setPending(false);
     }
   };
+
 
   const freePct = usage
     ? Math.min(
@@ -321,38 +327,76 @@ export default function AISidecar() {
                 "Send"
               )}
             </button>
-            {reply && (
-              <div className="border border-rule dark:border-charcoal-1 rounded p-2 space-y-1.5 bg-ice-1 dark:bg-charcoal-2">
+                        {thread.messages.length > 0 && (
+              <div className="space-y-2" data-testid="thought-partner-thread">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
-                    {reply.shape}
+                    Thread · {thread.messages.length}
                   </p>
-                  {/* Reply mode: text (read) or audio (auto-spoken). The
-                      text is always shown; this only governs auto-speak. */}
-                  <div className="flex items-center gap-1" role="group" aria-label="Reply mode">
-                    {(["text", "audio"] as const).map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        aria-pressed={replyMode === m}
-                        onClick={() => setReplyMode(m)}
-                        className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                          replyMode === m
-                            ? "bg-ink text-white"
-                            : "text-shadow-1 dark:text-moonlight hover:bg-ice-3 dark:hover:bg-charcoal-1"
-                        }`}
-                      >
-                        {m}
-                      </button>
-                    ))}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1" role="group" aria-label="Reply mode">
+                      {(["text", "audio"] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          aria-pressed={replyMode === m}
+                          onClick={() => setReplyMode(m)}
+                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                            replyMode === m
+                              ? "bg-ink text-white"
+                              : "text-shadow-1 dark:text-moonlight hover:bg-ice-3 dark:hover:bg-charcoal-1"
+                          }`}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      className="text-[10px] font-mono underline text-ink-mute"
+                      onClick={() => thread.clear()}
+                      data-testid="thought-partner-clear-thread"
+                    >
+                      Clear
+                    </button>
                   </div>
                 </div>
-                <p className="text-xs text-ink dark:text-bright whitespace-pre-wrap">
-                  {reply.text}
-                </p>
-                {reply.text.trim() && (
-                  <SpokenReply text={reply.text} autoPlay={replyMode === "audio"} />
-                )}
+                <ul className="space-y-2" aria-label="Thought partner thread">
+                  {thread.messages.map((msg) => (
+                    <li
+                      key={msg.id}
+                      className="border border-rule dark:border-charcoal-1 rounded p-2 space-y-1.5 bg-ice-1 dark:bg-charcoal-2"
+                      data-testid="thought-partner-turn"
+                    >
+                      <p className="text-[11px] text-ink-mute dark:text-moonlight">
+                        You: {msg.question}
+                      </p>
+                      {msg.answer == null ? (
+                        <p className="text-[11px] italic" data-testid="thought-partner-pending">
+                          Thinking…
+                        </p>
+                      ) : (
+                        <>
+                          <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                            {msg.shape ?? "SYNTHESIS"}
+                          </p>
+                          <p className="text-xs text-ink dark:text-bright whitespace-pre-wrap">
+                            {msg.answer}
+                          </p>
+                          {msg.answer.trim() && (
+                            <SpokenReply
+                              text={msg.answer}
+                              autoPlay={
+                                replyMode === "audio" &&
+                                msg.id === thread.messages[thread.messages.length - 1]?.id
+                              }
+                            />
+                          )}
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 

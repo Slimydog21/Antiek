@@ -82,3 +82,24 @@ def test_unknown_format_400_and_missing_404(monkeypatch):
     assert _client().get("/api/deliverables/dlv-1/artifact?format=pdf").status_code == 400
     monkeypatch.setattr(mod, "resolve_deliverable_export", lambda did, **kw: None)
     assert _client().get("/api/deliverables/none/artifact").status_code == 404
+
+
+def test_artifact_html_inline_script_free_and_honest(monkeypatch):
+    """View HTML path: inline disposition + projection header; rights hold."""
+    monkeypatch.setattr(mod, "resolve_deliverable_export", lambda did, **kw: _source())
+    r = _client().get("/api/deliverables/dlv-1/artifact.html")
+    assert r.status_code == 200
+    assert "inline" in r.headers["content-disposition"]
+    assert r.headers.get("x-antiek-html-projection") == "script-free; disposition=inline"
+    assert "OPERATOR PROSE" in r.text
+    assert "SECRET DELIVERABLE TEXT" not in r.text
+    assert "<script" not in r.text.lower()
+
+
+def test_format_html_stays_attachment(monkeypatch):
+    """Download path remains attachment — distinct from View HTML."""
+    monkeypatch.setattr(mod, "resolve_deliverable_export", lambda did, **kw: _source())
+    r = _client().get("/api/deliverables/dlv-1/artifact?format=html")
+    assert r.status_code == 200
+    assert "attachment" in r.headers["content-disposition"]
+    assert r.headers.get("x-antiek-html-projection") == "script-free; disposition=attachment"

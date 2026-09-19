@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 _PKG_ROOT = os.path.dirname(
@@ -15,11 +16,19 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from services.html_projection.context import Provenance, RenderContext  # noqa: E402
+from services.html_projection.gate import ScriptViolation, assert_script_free  # noqa: E402
+from services.html_projection.renderer import render  # noqa: E402
+from substrate.contracts.anti_ek_honesty import (  # noqa: E402
+    html_projection_response_headers,
+)
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
+    build_body,
     export_research_artifact,
     import_agent_notes,
     list_outline_blocks,
+    research_projection_doc_model,
 )
 from substrate.research_artifact.store import ResearchArtifactStore  # noqa: E402
 
@@ -122,6 +131,50 @@ async def post_import_notes(investigation_id: str, body: ImportNotesIn) -> Impor
         notes_imported=res.notes_imported,
         notes_skipped_duplicate=res.notes_skipped_duplicate,
         event_ids=res.event_ids,
+    )
+
+
+
+@artifact_router.get(
+    "/{investigation_id}/artifact.html",
+    response_class=HTMLResponse,
+    summary="HTML-native research outcome view (script-free projection)",
+)
+async def get_artifact_html(investigation_id: str, request: Request) -> HTMLResponse:
+    """Serve Profile B research findings as a script-free HTML projection.
+
+    DuckDB/graph remains source of truth; this is a Lemon/HTML projection for
+    daily reading (html-first thesis). Rights-aware synthesis excerpt follows
+    ``build_body`` (§9.0). Distinct from POST ``/artifact/export`` which writes
+    the editable agent-channel HTML (may include note-taking script) to disk.
+    """
+    try:
+        body = build_body(investigation_id, db_path=_db())
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    doc_model = research_projection_doc_model(body)
+    ctx = RenderContext(
+        provenance=Provenance(
+            document_id=investigation_id,
+            title=body.problem_question or investigation_id,
+            content_class="research_artifact",
+            schema_version="1",
+        )
+    )
+    html = render(doc_model, ctx)
+    try:
+        assert_script_free(html)
+    except ScriptViolation as err:
+        raise HTTPException(
+            status_code=500,
+            detail="artifact failed the zero-script gate; refused",
+        ) from err
+    return HTMLResponse(
+        content=html,
+        headers=html_projection_response_headers(
+            filename=f"research-{investigation_id}.html",
+            disposition="inline",
+        ),
     )
 
 

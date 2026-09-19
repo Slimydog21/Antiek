@@ -504,6 +504,11 @@ PER_EVIDENCE_TIMEOUT = 300.0
 
 # ANT-DRL-03: bounded parallel Phase 2 retrieves (default 4 per spec
 # open question). Override via ANTIEK_PHASE_2_CONCURRENCY for profiling.
+# Default 4: one slot per typical Round-1 sub-question. Mini dogfood
+# (inv-0d863d4e73cc) proved retrieves already run in parallel — phase-2
+# wall ≈ max(provider latency), not sum. Raising concurrency above N
+# sub-questions does not shrink wall; cut per-call latency instead
+# (evidence Xiaomi prefer + compact JSON).
 PHASE_2_MAX_CONCURRENCY = max(
     1,
     int(os.environ.get("ANTIEK_PHASE_2_CONCURRENCY", "4")),
@@ -521,6 +526,7 @@ class InvestigationContext:
     investigation_id: str
     question: str
     context: str = ""
+    document_id: str | None = None
     topic_slug: str | None = None
     max_sub_questions: int = 8
     decomposition: DecomposeQuestionDeliveredPayload | None = None
@@ -1731,6 +1737,23 @@ async def _run_investigation(
     """Walk all 9 phases. On any phase failure, emits
     ``investigation.failed`` and returns. On success, emits
     ``investigation.completed`` with the synthesis verdict."""
+    # AFF SPR-06 reuse half — Mini dogfood daily path is spin-research →
+    # Loop One (not HostLocalRunner). Emit knowledge.reused before phase 1
+    # so /health flywheel_ready can become honest once compounding runs.
+    # Offloaded: retrieval may load embedders / touch DuckDB.
+    try:
+        from substrate.flywheel.investigation_start_reuse import (
+            maybe_reuse_prior_knowledge_at_start,
+        )
+
+        await asyncio.to_thread(
+            maybe_reuse_prior_knowledge_at_start,
+            investigation_id=ctx.investigation_id,
+            question_text=ctx.question,
+            source_document_id=ctx.document_id,
+        )
+    except Exception:
+        pass
     phases: list[Callable[[], Coroutine[Any, Any, bool]]] = [
         lambda: _run_phase_1(ctx, broadcaster, coordinator),
         lambda: _run_phase_2(ctx, broadcaster, coordinator),
@@ -1944,6 +1967,7 @@ def make_loop_one_handler(
             investigation_id=event.investigation_id,
             question=req.question,
             context=req.context,
+            document_id=event.document_id,
             topic_slug=req.topic_slug,
             max_sub_questions=req.max_sub_questions,
             chase_mode=req.chase_mode,

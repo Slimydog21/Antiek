@@ -184,12 +184,21 @@ class XTwitterConnector(PasteKeyConnector):
     ) -> list[dict[str, Any]]:
         """Recent-search wrapper: ``GET /2/tweets/search/recent``.
 
-        Returns the raw ``data`` array of tweet objects. ``max_results`` is a
-        hard ceiling of 25 (the product-level bound for the settings surface);
-        the key's own tier may impose a lower effective limit (a 429 pauses the
-        governor). X's documented rate limit for recent-search is 450 req / 15
-        min at the app level (75 req / 15 min per-user); the governor enforces
-        the conservative 25 req / 15 min host-global ceiling.
+        Returns flat tweet records — ``tweet_id``, ``text``, ``author_handle``,
+        ``created_at``, ``conversation_id`` — rather than the vendor's own
+        tweet objects. X keys a tweet by ``id`` and names its author only by
+        ``author_id``; the handle a reader needs arrives separately, in the
+        ``includes.users`` expansion this call now asks for. Handing a caller
+        the raw objects therefore hands it a join it cannot do once the
+        envelope is gone, so :func:`_flatten_search_page` does the join here
+        and every caller gets a record it can render.
+
+        ``max_results`` is a hard ceiling of 25 (the product-level bound for
+        the settings surface); the key's own tier may impose a lower effective
+        limit (a 429 pauses the governor). X's documented rate limit for
+        recent-search is 450 req / 15 min at the app level (75 req / 15 min
+        per-user); the governor enforces the conservative 25 req / 15 min
+        host-global ceiling.
         """
         if not query or not query.strip():
             raise ValueError("query must be a non-empty string")
@@ -201,12 +210,11 @@ class XTwitterConnector(PasteKeyConnector):
                 "query": query,
                 "max_results": str(max_results),
                 "tweet.fields": "created_at,author_id,conversation_id",
+                "expansions": "author_id",
+                "user.fields": "username",
             },
         )
-        data = payload.get("data")
-        if not isinstance(data, list):
-            return []
-        return data
+        return _flatten_search_page(payload)
 
     def close(self) -> None:
         """Close the held httpx client — only if this connector created it."""
@@ -218,6 +226,51 @@ class XTwitterConnector(PasteKeyConnector):
 
     def __exit__(self, *exc: object) -> None:
         self.close()
+
+
+def _flatten_search_page(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Join one recent-search page's tweets to their expanded authors.
+
+    Pure: a parsed page in, plain records out — no network, no key, no clock,
+    so a fixture exercises it exactly as a live page would. The five keys are
+    named as ``acquisition.twitter.api_client.parse_search_response`` names
+    them, and carry the same meaning, because the two lanes read the same
+    endpoint and a reader downstream should not have to ask which client
+    fetched a tweet. They are a subset of it, not a drop-in for it: the
+    acquisition record also carries ``author_verified`` and
+    ``referenced_tweets``, which ingest needs and a candidate list does not,
+    so code that consumes one is not safe to point at the other unread. The
+    parse is duplicated rather than imported: ``acquisition`` builds on
+    ``runtime.connectors``, and reaching back up from here would invert that
+    and drag the acquisition adapter into a connector that promises to stay
+    box-bounded.
+
+    A tweet X declines to expand keeps its row and loses only the handle.
+    """
+    data = payload.get("data")
+    if not isinstance(data, list):
+        return []
+    users: dict[str, dict[str, Any]] = {}
+    includes = payload.get("includes")
+    if isinstance(includes, dict) and isinstance(includes.get("users"), list):
+        for user in includes["users"]:
+            if isinstance(user, dict) and user.get("id") is not None:
+                users[str(user["id"])] = user
+    records: list[dict[str, Any]] = []
+    for tweet in data:
+        if not isinstance(tweet, dict):
+            continue
+        author = users.get(str(tweet.get("author_id")), {})
+        records.append(
+            {
+                "tweet_id": str(tweet.get("id", "")),
+                "text": str(tweet.get("text", "")),
+                "author_handle": str(author.get("username", "")).lstrip("@"),
+                "created_at": tweet.get("created_at"),
+                "conversation_id": tweet.get("conversation_id"),
+            }
+        )
+    return records
 
 
 __all__ = [

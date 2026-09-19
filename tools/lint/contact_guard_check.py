@@ -94,6 +94,8 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
     {
         "substrate/auth/email_provider.py",
         "substrate/payouts/contact_guard.py",
+        # Invitee-directed Speak re-ping (NOT author payout mail).
+        "substrate/speak/reping_mail.py",
     }
 )
 

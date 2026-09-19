@@ -121,18 +121,79 @@ class Verdict:
 
 # ── Individual checks ──
 
+@dataclass(frozen=True)
+class _UrlopenResult:
+    """A urllib outcome in the ``.status_code`` / ``.headers`` shape the arXiv
+    throttle reads for its 429 ban sentinel.
+
+    ``urllib.request.urlopen`` raises ``HTTPError`` on a 4xx rather than
+    returning it, so a 429 handed straight back through the governor would
+    escape ``note_response`` and the ban sentinel would never arm — the failure
+    this check exists to catch. ``_send`` therefore converts both outcomes into
+    this one shape and the HTTPError is re-read from ``error`` afterwards.
+    """
+
+    status_code: int
+    headers: dict[str, str]
+    body: bytes
+    error: urllib.error.HTTPError | None = None
+
+
 def _check_endpoint_health(base_url: str, timeout: float = 15.0) -> Check:
-    """GET the OAI-PMH Identify verb. Verifies the endpoint is reachable and
-    returns valid OAI-PMH XML."""
+    """GET the OAI-PMH Identify verb through the host-global arXiv governor.
+    Verifies the endpoint is reachable and returns valid OAI-PMH XML.
+
+    The verifier probes the SAME host production harvests
+    (``oaipmh.arxiv.org``), and arXiv bans by IP, so an ungoverned probe here
+    competes with a running harvest for the one-per-three-seconds budget and can
+    itself trip the ban it is meant to report. Routing the send through
+    ``govern_if_arxiv`` on the canonical throttle means the probe (a) waits its
+    turn behind any other arXiv job on this box, (b) arms the ban sentinel if it
+    draws a 429, and (c) refuses to egress at all while a ban is already armed —
+    reporting that state instead of deepening it.
+    """
+    from acquisition.arxiv.client import default_user_agent
+    from acquisition.arxiv.rate_governor import canonical_arxiv_throttle, govern_if_arxiv
+    from acquisition.arxiv.throttle import ArxivBanned
 
     url = f"{base_url}?verb=Identify"
     try:
         req = urllib.request.Request(
             url,
-            headers={"User-Agent": "Antiek-Verifier/0.1 (tools.arxiv_verify)"},
+            headers={"User-Agent": default_user_agent()},
         )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = resp.read()
+
+        def _send() -> _UrlopenResult:
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    return _UrlopenResult(
+                        status_code=int(getattr(resp, "status", 200) or 200),
+                        headers=dict(getattr(resp, "headers", None) or {}),
+                        body=resp.read(),
+                    )
+            except urllib.error.HTTPError as http_err:
+                # Returned, not raised, so the governor's note_response sees the
+                # status and a 429 arms the sentinel. Re-read from .error below.
+                return _UrlopenResult(
+                    status_code=int(http_err.code),
+                    headers=dict(http_err.headers or {}),
+                    body=b"",
+                    error=http_err,
+                )
+
+        try:
+            sent = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
+        except ArxivBanned:
+            # A ban is already armed. Probing now would extend it; the honest
+            # verdict is that the endpoint was deliberately NOT probed.
+            return Check(
+                name="endpoint_health",
+                passed=False,
+                detail="ban sentinel armed, endpoint not probed",
+            )
+        if sent.error is not None:
+            raise sent.error
+        body = sent.body
         root = ET.fromstring(body)
         ns = {"oai": "http://www.openarchives.org/OAI/2.0/"}
         repo = root.find(".//oai:repositoryName", ns)

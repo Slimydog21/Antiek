@@ -94,7 +94,7 @@ type Story = StoryObj<typeof meta>;
 export const ModelChoice: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Talk to this book" }));
+    await userEvent.click(await canvas.findByRole("button", { name: /Thought partner/ }));
     const chooser = await canvas.findByRole("combobox", { name: "Model for this answer" });
     await expect(chooser).toBeVisible();
     await userEvent.click(within(chooser).getByRole("button"));

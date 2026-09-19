@@ -256,10 +256,50 @@ def test_parse_null_sub_question_without_expected_still_rejected():
         parse_evidence_response(json.dumps(payload))
 
 
-def test_parse_missing_answer_rejected():
+def test_parse_missing_answer_coerced_to_empty():
+    """Mini dogfood: models omit/null ``answer``; empty string is honest."""
     payload = _good_response()
     del payload["answer"]
-    with pytest.raises(EvidenceValidationError, match="answer"):
+    payload["insufficient_evidence"] = True
+    payload["supporting_claims"] = []
+    result = parse_evidence_response(json.dumps(payload))
+    assert result.answer == ""
+    assert result.insufficient_evidence is True
+
+
+def test_parse_null_answer_coerced_to_empty():
+    payload = _good_response()
+    payload["answer"] = None
+    payload["insufficient_evidence"] = True
+    payload["supporting_claims"] = []
+    result = parse_evidence_response(json.dumps(payload))
+    assert result.answer == ""
+
+
+def test_parse_null_claims_and_gaps_coerced_to_empty_lists():
+    payload = _good_response()
+    payload["answer"] = ""
+    payload["supporting_claims"] = None
+    payload["evidentiary_gaps"] = None
+    payload["insufficient_evidence"] = True
+    result = parse_evidence_response(json.dumps(payload))
+    assert result.supporting_claims == ()
+    assert result.evidentiary_gaps == ()
+
+
+def test_parse_insufficient_evidence_string_bool_coerced():
+    payload = _good_response()
+    payload["insufficient_evidence"] = "true"
+    payload["supporting_claims"] = []
+    payload["answer"] = ""
+    result = parse_evidence_response(json.dumps(payload))
+    assert result.insufficient_evidence is True
+
+
+def test_parse_answer_object_still_rejected():
+    payload = _good_response()
+    payload["answer"] = {"text": "nope"}
+    with pytest.raises(EvidenceValidationError, match="answer must be a string"):
         parse_evidence_response(json.dumps(payload))
 
 
@@ -379,15 +419,9 @@ def test_parse_evidentiary_gaps_not_a_list_rejected():
 
 def test_parse_insufficient_evidence_wrong_type_rejected():
     payload = _good_response()
-    payload["insufficient_evidence"] = "false"  # string, not bool
+    payload["insufficient_evidence"] = ["not", "a", "bool"]
     with pytest.raises(EvidenceValidationError, match="insufficient_evidence"):
         parse_evidence_response(json.dumps(payload))
-
-
-# ---------------------------------------------------------------------------
-# Closed-set sanity (drift catcher — the bridge will assert these
-# equal schema Literals when Sprint 7's payloads land).
-# ---------------------------------------------------------------------------
 
 
 def test_evidence_types_canonical_three():

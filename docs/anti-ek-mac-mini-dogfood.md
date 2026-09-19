@@ -12,6 +12,13 @@ with:
   plus `ANTIEK_DISABLE_EVENT_PROJECTOR_RECOVERY=1` so a 2GB event log does not
   block boot.
 
+- **Shared TurboPuffer shadow** — `ANTIEK_TURBOPUFFER_MANIFEST_DIR=$HOME/.antiek/turbopuffer-shadow`
+  so `active.json` / hybrid_ready survive tip-sync worktree swaps (same
+  durability class as DuckDB). See `docs/decisions/mac-mini-dogfood-durable-tpuf-2026-09-19.md`.
+- **Flywheel seed** — `~/.antiek/flywheel-seed/*.jsonl` (real `knowledge.reused`
+  trajectories only). Copied into isolated events when that dir has no reuse
+  evidence yet — keeps `/health` flywheel_ready without scanning the 2GB log.
+
 ## Start
 
 ```bash
@@ -26,6 +33,17 @@ Local HTTP also needs (already set by the start script / `.env` for Mini dogfood
 
 - `ANTIEK_COOKIE_INSECURE=1` — browsers drop `Secure` cookies on `http://`
 - `ANTIEK_FRONTEND_BASE_URL=http://127.0.0.1:5173` — post-login redirect to Vite
+
+## /health under agent-work lease load
+
+`GET /health` returns the **startup-cached** DuckDB snapshot and never takes
+the DuckDB write lock. Agent-work bridge routes (`/internal/agent-work/*`)
+run `ensure_initialized` + lease writes via `asyncio.to_thread` so a single
+uvicorn worker keeps answering `/health` while herdr-bridge polls lease
+(same class of fix as Loop One offload).
+
+Prod incident 2026-09-18: `arxiv_oai_sync` held `antiek.duckdb.write.lock`
+for hours; sync `lease_work` blocked the event loop → `/health` timeouts.
 
 ## Loop One consumer (no separate process)
 
@@ -157,6 +175,19 @@ python -m tools.backfill_book_reader_html --db-path ~/.antiek/research_graph.duc
 
 Research MASTER.md and writing assets are not yet on this path.
 
+## Highlight Deep-research notebook (UI)
+
+Two equivalent dogfood entry points on `/read/:id`:
+
+1. **Select a passage** then FloatMenu **Deep-research** -> `POST /books/{id}/spin-research` with the selection -> navigate `/inv/:id`.
+2. **Research this page** button -> same endpoint (selection text if any, else page seed).
+
+Both broadcast `investigation.start_requested` so Loop One runs in-process.
+Citations / auto-notebook fill once phases deliver (providers must be keyed).
+If Phase 1 fails (empty decompose), `/inv/:id` shows `failed` with reason -- honest empty notebook, not invented citations.
+
+When `zai` is unregistered on Mini, decomposer falls through to `deepseek` / `xiaomi`. A `finish_reason=length` reply is retried once at 16384 tokens so truncated JSON does not strand the vertical slice.
+
 ## Highlight → Research this → notebook (API chain)
 
 With owner cookie or Bearer:
@@ -171,3 +202,28 @@ With owner cookie or Bearer:
 
 Vite proxies `/books`, `/sources`, `/investigations`, `/auth`, etc. to
 `:8000` so the SPA does not parse HTML as JSON.
+
+
+## Auto-notebook (ratified 2026-09-18)
+
+Derived narrative view of one research graph (SPR-06). DuckDB holds distill +
+synthesis truth; UI projects via `deriveAutoNotebook` — no notebook write API.
+
+1. Open `/inv/$INV` (completed or in-progress distill).
+2. Click **Open notebook →** or go to `/notebook/auto/$INV`.
+3. Outline/sections re-derive from `GET /research/{id}/distill` + synthesis.
+   Insights show `source: <document_id>` when grounded.
+4. Empty graph → honest empty state (never invented citations).
+
+
+## Note-taker → distill (Loop One)
+
+Note-taker qualifies Loop One delivers (`evidence.retrieve.delivered`,
+`synthesize.delivered`, …). After each window it promotes `note.emerged`
+→ insight nodes (works with projector recovery disabled).
+
+Check: `GET /research/$INV/distill` after ≥ threshold qualifying events.
+
+## Flywheel / knowledge reuse (Loop One)
+
+Spin-research to Loop One calls substrate.flywheel.investigation_start_reuse at investigation start (AFF SPR-06). After at least one knowledge.reused event in ANTIEK_RESEARCH_EVENTS_DIR, /health reports flywheel_ready true. Cascade/HostLocalRunner already had this hook; Mini daily-use needed the Loop One wire.

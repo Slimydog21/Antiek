@@ -540,28 +540,14 @@ def _dispatch_authoritative(
         try:
             provider = get_provider(provider_name)
         except KeyError as e:
+            # Unregistered = no key / not bootstrapped. Skip quietly to the
+            # next chain link — do NOT emit finish_reason=error dispatch.call
+            # (looked like a live outage when the real bug was missing env).
             last_error = ProviderError(
                 f"provider {provider_name!r} is not registered "
                 f"(no API key / not bootstrapped); falling back. {e}",
                 provider=provider_name, model=model_name or "<none>",
                 latency_ms=0, retryable=True,
-            )
-            _emit_dispatch_call(
-                investigation_id=investigation_id,
-                parent_event_id=parent_event_id,
-                role=role,
-                tier=tier_name,
-                provider=provider_name,
-                model=model_name,
-                usage=NormalizedUsage(input_tokens=0, output_tokens=0),
-                cost_usd=0.0,
-                latency_ms=0,
-                verification_required=verification_required,
-                fallback_chain_index=chain_index,
-                prompt_hash=prompt_hash,
-                finish_reason="error",
-                context_pack_event_id=context_pack_event_id,
-                nd_scope=nd_scope,
             )
             current = current.fallback
             chain_index += 1

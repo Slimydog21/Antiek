@@ -437,8 +437,12 @@ export default function Login() {
           )}
         </div>
 
-        <footer className="antiek-login__footer">
-          <span>Private by default</span><span aria-hidden="true">·</span><a href="/trust">How Antiek protects your work</a>
+        <footer className="antiek-login__footer" data-testid="login-speak-browse-link">
+          <span>Private by default</span>
+          <span aria-hidden="true">·</span>
+          <a href="/trust">How Antiek protects your work</a>
+          <span aria-hidden="true">·</span>
+          <a href="/speak/browse">Browse public remembrances</a>
         </footer>
       </section>
 

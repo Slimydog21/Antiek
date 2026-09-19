@@ -36,6 +36,7 @@ import contextlib
 import os
 import sys
 import threading
+import time
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
@@ -71,6 +72,11 @@ SUBSCRIBED_ACTION_TYPES: tuple[str, ...] = (
     ActionType.DISTILLATION_DELIVERED.value,
     ActionType.CLAIM_GROUNDING_CHECK_PASSED.value,
     ActionType.CLAIM_GROUNDING_CHECK_FAILED.value,
+    ActionType.EVIDENCE_RETRIEVE_DELIVERED.value,
+    ActionType.SYNTHESIZE_DELIVERED.value,
+    ActionType.DECOMPOSE_QUESTION_DELIVERED.value,
+    ActionType.CONNECTOR_DELIVERED.value,
+    ActionType.PARAMETER_EXTRACT_DELIVERED.value,
 )
 
 # Default synthesis cadence. The role prompt is tuned for short
@@ -107,12 +113,26 @@ def _default_replay_service(
         request: dict[str, Any], *, idempotency_key: str
     ) -> Any:
         del idempotency_key
-        return dispatch(
+        result = dispatch(
             request["prompt"],
             "note_taker",
             investigation_id=request["investigation_id"],
             parent_event_id=request["source_event_ids"][-1],
         )
+        if getattr(result, "finish_reason", None) == "length":
+            print(
+                "note_taker.replay: finish_reason=length — "
+                "retrying once with max_tokens=16384",
+                flush=True,
+            )
+            result = dispatch(
+                request["prompt"],
+                "note_taker",
+                investigation_id=request["investigation_id"],
+                parent_event_id=request["source_event_ids"][-1],
+                max_tokens=16384,
+            )
+        return result
 
     return DurableNoteTakerReplay(
         durable_dispatch,
@@ -127,7 +147,7 @@ def start_replay_recovery(
     db_path: str | None = None,
     events_dir: str | None = None,
     stop_event: threading.Event | None = None,
-    poll_interval_s: float = 0.5,
+    poll_interval_s: float = 2.0,
 ) -> threading.Thread:
     """Continuously catch up every physical stream without blocking startup."""
     if poll_interval_s <= 0:
@@ -153,6 +173,12 @@ def start_replay_recovery(
                         f"{investigation_id}: {exc!r}",
                         file=sys.stderr,
                     )
+                # Fairness gap so fills / lease peers can acquire (#3164 class).
+                yield_s = float(
+                    os.environ.get("ANTIEK_NOTE_TAKER_REPLAY_LOCK_YIELD_S", "1.0") or "1.0"
+                )
+                if yield_s > 0 and not os.environ.get("PYTEST_CURRENT_TEST"):
+                    time.sleep(yield_s)
             stop.wait(poll_interval_s)
 
     thread = threading.Thread(target=recover, name="note-taker-replay-recovery", daemon=True)

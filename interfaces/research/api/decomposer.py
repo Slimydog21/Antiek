@@ -56,7 +56,7 @@ from roles.decomposer import (  # noqa: E402
     regenerate_instruction,
     render_full_prompt,
 )
-from substrate.dispatch import ProviderError, dispatch  # noqa: E402
+from substrate.dispatch import dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.graph.search import EmbeddingModel  # noqa: E402
 from substrate.schemas import (  # noqa: E402
@@ -276,6 +276,12 @@ def make_decomposer_handler(
 # Dispatch + parse + emit helpers
 # ---------------------------------------------------------------------------
 
+# First-call output budget for decomposer. Must match (or exceed) the
+# pro tier default in substrate/dispatch/config.yaml. DeepSeek V4 Pro
+# Mini dogfood: ~11.5k completion tokens for a full 4–8 SQ JSON; 8192
+# truncated mid-JSON (finish_reason=length) and forced a long retry.
+DECOMPOSER_OUTPUT_MAX_TOKENS = 16384
+
 
 def _dispatch_and_parse(
     prompt: str,
@@ -287,19 +293,55 @@ def _dispatch_and_parse(
     ``(DecompositionResult, policy_id)`` on success, ``(None, fallback_id)``
     when the call or the parse failed. The fallback policy_id marks
     the failure shape for trajectory filtering.
+
+    First call uses ``DECOMPOSER_OUTPUT_MAX_TOKENS`` (16384) so deepseek
+    can finish a full 4–8 SQ JSON without ``finish_reason=length``. A
+    length-retry at the same budget remains as a safety net only.
     """
     try:
         from .research_owner_dispatch import dispatch_loop_one
-        result = dispatch_loop_one(prompt, "decomposer", investigation_id=event.investigation_id,
-                                   semantic_call_id="phase1", attempt=0) or dispatch(
+
+        result = dispatch_loop_one(
+            prompt,
+            "decomposer",
+            investigation_id=event.investigation_id,
+            semantic_call_id="phase1",
+            attempt=0,
+        ) or dispatch(
             prompt,
             "decomposer",
             investigation_id=event.investigation_id,
             parent_event_id=event.event_id,
+            max_tokens=DECOMPOSER_OUTPUT_MAX_TOKENS,
         )
+        if getattr(result, "finish_reason", None) == "length":
+            # Safety net only — happy path should succeed on first call
+            # after DECOMPOSER_OUTPUT_MAX_TOKENS / pro tier raise.
+            print(
+                f"decomposer.handle[{label}]: finish_reason=length — "
+                f"retrying once with max_tokens={DECOMPOSER_OUTPUT_MAX_TOKENS}",
+                flush=True,
+            )
+            truncated = result
+            try:
+                result = dispatch(
+                    prompt,
+                    "decomposer",
+                    investigation_id=event.investigation_id,
+                    parent_event_id=event.event_id,
+                    max_tokens=DECOMPOSER_OUTPUT_MAX_TOKENS,
+                )
+            except Exception as retry_exc:  # noqa: BLE001
+                print(
+                    f"decomposer.handle[{label}]: length-retry failed — "
+                    f"{type(retry_exc).__name__}: {retry_exc}; "
+                    "using truncated first response",
+                    flush=True,
+                )
+                result = truncated
         response_text = result.text
         policy_id = f"{result.provider}/{result.model}"
-    except (ProviderError, KeyError) as exc:
+    except Exception as exc:  # ProviderError/KeyError/OwnerByot*/etc.
         print(
             f"decomposer.handle[{label}]: dispatch failed — "
             f"{type(exc).__name__}: {exc}",

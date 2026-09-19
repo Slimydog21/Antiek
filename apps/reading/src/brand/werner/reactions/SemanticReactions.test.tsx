@@ -96,12 +96,16 @@ describe("Werner semantic reactions", () => {
   });
 
   it("keeps the authored-pose rasters private to the authored-pose map", () => {
+    // The penguin pose rasters are gone. The authored-pose map keeps its OWN
+    // rasters, separate from the four product moods, so this invariant stays
+    // exactly as strict as it was: precisely one module may import an authored
+    // pose directly, and no wrapper can substitute an unrelated pose behind it.
     expect(
       sourceFiles("src")
         .filter((path) => !/\.(?:test|stories)\.[cm]?[jt]sx?$/.test(path))
         .filter((path) =>
           readFileSync(path, "utf8").includes(
-            "werner_head_tilt_v1_transparent.png",
+            "authored/mascot_head_tilt_v1_transparent.png",
           ),
         ),
     ).toEqual([join("src", "brand", "werner", "WernerAuthoredPose.tsx")]);

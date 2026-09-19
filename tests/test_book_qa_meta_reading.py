@@ -203,7 +203,7 @@ def test_talk_to_book_answer_cites_pages(db):
         result = answer_book_question(
             con, document_id="doc-talk", question="what is on page one?",
             model=StubEmbedding(), investigation_id="read-doc-talk",
-            config=_config_for("user_agent"),
+            config=_config_for("thought_partner"),
         )
     finally:
         con.close()
@@ -230,7 +230,7 @@ def test_talk_to_book_cannot_cite_withheld_region(db):
             con, document_id="doc-withheld",
             question="quantum passage about entanglement",
             model=StubEmbedding(), investigation_id="read-doc-withheld",
-            config=_config_for("user_agent"),
+            config=_config_for("thought_partner"),
         )
     finally:
         con.close()
@@ -258,7 +258,7 @@ def test_talk_to_book_no_extractable_text_fails_gracefully(db):
         result = answer_book_question(
             con, document_id="doc-scanned", question="what is this about?",
             model=StubEmbedding(), investigation_id="read-doc-scanned",
-            config=_config_for("user_agent"),
+            config=_config_for("thought_partner"),
             authorized_dispatch=_must_not_dispatch,
         )
     finally:
@@ -284,7 +284,7 @@ def test_talk_to_book_approximate_page_is_labelled(db):
         result = answer_book_question(
             con, document_id="doc-chapter", question="overview?",
             model=StubEmbedding(), investigation_id="read-doc-chapter",
-            config=_config_for("user_agent"),
+            config=_config_for("thought_partner"),
         )
     finally:
         con.close()
@@ -538,3 +538,31 @@ def test_search_excludes_restricted_in_document_ids_scope(db):
         con.close()
     docs = {r["document_id"] for r in res["results"]}
     assert "doc-scope-restricted" not in docs
+
+
+def test_talk_to_book_dispatches_thought_partner_role(db):
+    """Unify residual: TalkToBook uses the thought_partner role (same as
+    Surface E / sidecar / Dialogue), not a separate user_agent personality."""
+    from substrate.books.book_qa import answer_book_question
+
+    _book_with_pages(db, "doc-tp-unify")
+    provider = register_fake(
+        '{"shape":"synthesis","synthesis_text":"From the passages.","challenges":[],"extensions":[]}'
+    )
+    con = connect_read(db)
+    try:
+        result = answer_book_question(
+            con, document_id="doc-tp-unify", question="what is covered?",
+            model=StubEmbedding(), investigation_id="read-doc-tp-unify",
+            config=_config_for("thought_partner"),
+        )
+    finally:
+        con.close()
+    assert result.grounded is True
+    assert result.shape == "synthesis"
+    assert "From the passages" in result.answer
+    assert provider.prompts, "model must have been called"
+    prompt = provider.prompts[0]
+    assert "SELECTED NOTES:" in prompt
+    assert "thought-partner" in prompt.lower() or "CHALLENGE" in prompt
+    assert "USER PROMPT:" in prompt

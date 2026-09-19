@@ -38,6 +38,7 @@ import AddModelPanel from "./AddModelPanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
 import ToolConnectionsPanel from "./ToolConnectionsPanel";
 import UsagePanel from "./UsagePanel";
+import ComputeCapacityPanel from "./ComputeCapacityPanel";
 import LineupPanel from "./LineupPanel";
 
 /**
@@ -512,6 +513,7 @@ export default function Settings() {
         <AddModelPanel />
 
         <UsagePanel />
+        <ComputeCapacityPanel />
 
         <ToolConnectionsPanel />
 

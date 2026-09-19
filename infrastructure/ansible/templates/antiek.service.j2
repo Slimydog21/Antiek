@@ -50,6 +50,7 @@ Environment="PATH={{ antiek_install_dir }}/.venv/bin:/usr/bin:/bin"
 Environment="ANTIEK_STATE_DIR={{ antiek_state_dir }}"
 Environment="ANTIEK_DUCKDB_PATH={{ antiek_state_dir }}/antiek.duckdb"
 Environment="ANTIEK_EVENT_LOG_DIR={{ antiek_state_dir }}/research_events"
+Environment="ANTIEK_RESEARCH_EVENTS_DIR={{ antiek_state_dir }}/research_events"
 Environment="ANTIEK_KNOWLEDGE_SKILLS_DIR={{ antiek_state_dir }}/knowledge_skills"
 Environment="ANTIEK_RESEARCH_DIR={{ antiek_state_dir }}/research"
 
@@ -81,17 +82,32 @@ Environment="TORCH_HOME={{ antiek_state_dir }}/cache/torch"
 # `git rev-parse HEAD` of the install dir, which IS the deployed checkout.
 {% if antiek_build_sha is defined and antiek_build_sha %}
 Environment="ANTIEK_BUILD_SHA={{ antiek_build_sha }}"
+
+# Speak G7 — open contribution for will_be_public projects
+# (stranger self-serve mint via /speak/projects/{id}/open-contribute).
+# Private projects stay invite-only; G2/G3 still gate publish/disburse.
+Environment="ANTIEK_SPEAK_PUBLIC_ECOSYSTEM=1"
 {% endif %}
 
 # ── THE LOAD-BEARING LINE ────────────────────────────────────────────────
 # --workers 1 — DO NOT CHANGE without first migrating off DuckDB.
 # --timeout-keep-alive 900 — matches the orchestrator's longest await.
+# --timeout-graceful-shutdown 30 — on SIGTERM (deploy restart) uvicorn
+#   stops accepting, finishes in-flight requests for up to 30s, then
+#   exits. Without the bound, an idle keep-alive connection (900s
+#   lifetime above) can stall the drain until systemd SIGKILLs, turning
+#   a clean drain into a hard kill.
 ExecStart={{ antiek_install_dir }}/.venv/bin/uvicorn \
     interfaces.research.api.app:app \
     --host 127.0.0.1 \
     --port {{ uvicorn_port }} \
     --workers 1 \
-    --timeout-keep-alive 900
+    --timeout-keep-alive 900 \
+    --timeout-graceful-shutdown 30
+
+# Drain budget + margin: SIGTERM, up to 30s graceful drain, then SIGKILL.
+# Explicit so the deploy's stop-before-migrate step has a known ceiling.
+TimeoutStopSec=45
 
 # Restart automatically if the process dies (most likely cause: an
 # unhandled exception in a role bridge). 10s pause prevents tight crash

@@ -14,6 +14,11 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 
 from interfaces.research.api import settings_models_admin as models_admin
+from interfaces.research.api.account_memory_identity import (
+    FORBIDDEN_OWNERS,
+    OPERATOR_STORAGE_SENTINEL,
+    derive_owner_from_verified_email,
+)
 from runtime.research_runner.byot_provider_catalog import (
     get_model_variant,
     get_provider_preset,
@@ -45,6 +50,14 @@ _AUTHENTICATED_METHODS = frozenset({
     "cloudflare_service_token",
     "bearer_token",
 })
+# Of the authenticated methods, only these prove that a HUMAN verified the address now
+# carried on request.state.user_email: the session cookie is minted only after magic-link
+# or passkey proof plus the operator allowlist, and Cloudflare Access asserts a verified
+# identity. The other two are machine credentials, so the e-mail fallback below must not
+# be reachable from them even if an address were somehow attached — a robot holding a
+# service token must not be handed a person's key to spend.
+_HUMAN_VERIFIED_METHODS = frozenset({"antiek_session_cookie", "cloudflare_access_email"})
+
 _ACTION = "read.talk_to_book"
 
 
@@ -57,17 +70,45 @@ class OwnerByotOutcomeUnknown(OwnerByotDispatchUnavailable):
 
 
 def authenticated_distinct_owner(request: Request) -> str:
+    """Resolve the person whose credential and budget this request may spend.
+
+    Refusing ``__operator__`` outright is correct in principle — a storage sentinel
+    shared by every operator-authenticated path cannot name whose money is being spent —
+    but it is also what every production login mints, so this predicate refused 100% of
+    real requests. All four owner-paid entry points (talk-to-book ask at ``books.py``,
+    the book research spin, the cascade launch, and ``POST /investigations``) turned that
+    refusal into a 409 or a 422, which made the whole BYOT promise — bring your key, then
+    use it — unreachable while looking like a validation error.
+
+    So fall back exactly as ``account_memory_identity`` does, through the SAME derivation
+    so one person is one owner across memory and spend: a session-cookie request has had
+    its address verified and allowlist-checked by the auth middleware.
+
+    This fails closed where it should. ``cloudflare_service_token`` and ``bearer_token``
+    are machine callers that carry no address (``app.py:1592`` and ``:1603`` pass none),
+    so they still raise — a machine must not spend a person's key on their behalf.
+    """
     state = getattr(request, "state", None)
     method = getattr(state, "auth_method", None)
     owner = getattr(state, "user_id", None)
-    if (
-        method not in _AUTHENTICATED_METHODS
-        or not isinstance(owner, str)
-        or not owner.strip()
-        or owner.strip() == "__operator__"
-    ):
+    if method not in _AUTHENTICATED_METHODS or not isinstance(owner, str) or not owner.strip():
         raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
-    return owner.strip()
+
+    normalized = owner.strip()
+    if normalized.casefold() not in FORBIDDEN_OWNERS:
+        return normalized
+
+    # A shared or machine identity. Only the single-operator storage sentinel, on a
+    # human-verified method, can be resolved to a person; "shared", "service" and
+    # "local" get no fallback, matching account_memory_identity exactly so that the two
+    # predicates cannot disagree about who a person is.
+    if normalized.casefold() != OPERATOR_STORAGE_SENTINEL or method not in _HUMAN_VERIFIED_METHODS:
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+
+    derived = derive_owner_from_verified_email(getattr(state, "user_email", None))
+    if derived is None:
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    return derived
 
 
 def dispatch_talk_to_book_byot(
@@ -85,10 +126,16 @@ def dispatch_talk_to_book_byot(
     resource_authority_guard: Callable[[], AbstractContextManager[str]] | None = None,
     config: DispatchConfig | None = None,
     usage_ledger: ByotUsageLedger | None = None,
-    role: str = "user_agent",
+    role: str = "thought_partner",
     action: str = _ACTION,
 ) -> tuple[DispatchResult, DispatchAuthority]:
-    """Revalidate, freeze, and execute exactly one owner-paid model rung."""
+    """Revalidate, freeze, and execute exactly one owner-paid model rung.
+
+    The default role is ``thought_partner``: the Talk-to-Book ask path (the
+    caller that relies on the default) answers through the SAME role as
+    Surface E / AISidecar / Dialogue since the role unify — an owner-paid
+    rung is not a second partner personality. Loop One callers pass their
+    own role explicitly."""
     try:
         authority, exact_config, frozen_route = _freeze_current_authority(
             app=app,

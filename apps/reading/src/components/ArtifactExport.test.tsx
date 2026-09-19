@@ -27,6 +27,13 @@ describe("ArtifactExport", () => {
     expect(screen.getByRole("button", { name: ".antiek.html" })).toBeTruthy();
   });
 
+  it("offers View HTML linking the inline artifact.html projection", () => {
+    render(<ArtifactExport basePath="/api/syntheses/x" filenamePrefix="synthesis-x" />);
+    const link = screen.getByTestId("artifact-view-html") as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("/api/syntheses/x/artifact.html");
+    expect(link.getAttribute("target")).toBe("_blank");
+  });
+
   it("fires the multi-format route for the clicked format", async () => {
     apiFetchMock.mockResolvedValue({
       ok: true,

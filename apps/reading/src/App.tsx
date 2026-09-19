@@ -50,6 +50,7 @@ import Sources from "./modes/Sources";
 import SpeakConsole from "./modes/Speak";
 import SpeakIndex from "./modes/SpeakIndex";
 import SpeakInvite from "./modes/SpeakInvite";
+import SpeakPublicBrowse from "./modes/SpeakPublicBrowse";
 import Stats from "./modes/Stats";
 import TrustCenter from "./modes/TrustCenter";
 import Explain from "./modes/Explain";
@@ -141,7 +142,7 @@ function AuthenticatedRoutes() {
         <Route path="/create/:deliverableId" element={<CreationStudio />} />
         <Route path="/brainstorm" element={<BrainstormStation />} />
         <Route path="/notebooks" element={<NotebooksIndex />} />
-        {/* SPR-06 — the auto-notebook (PROPOSED — sign-off pending). The
+        {/* SPR-06 — the auto-notebook (RATIFIED 2026-09-18). The
             derived, always-current narrative VIEW of one research's
             insight/question graph, behind a visible "proposed" banner. A
             REVERSIBLE leaf: removing this route + AutoNotebook.tsx reverts to
@@ -256,6 +257,8 @@ export default function App() {
             family is a source, not an account; the URL token is their
             credential). Must precede the RequireAuth catch-all. */}
         <Route path="/speak/invite/:token" element={<SpeakInvite />} />
+        {/* Unauthenticated public remembrances browse (read-only). */}
+        <Route path="/speak/browse" element={<SpeakPublicBrowse />} />
         {/* S9 — popout panel windows render outside AppShell. The
             popout app handles its own chrome; no NavRail/Topbar/
             PanelLayout wrapping. */}

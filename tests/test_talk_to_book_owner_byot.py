@@ -63,12 +63,12 @@ def _registry() -> None:
 def _config() -> DispatchConfig:
     pricing = TierPricing()
     fallback = TierConfig(
-        "user_agent__fallback", "house", "house-model", 200, 0.1, 1000, pricing,
+        "thought_partner__fallback", "house", "house-model", 200, 0.1, 1000, pricing,
     )
     tier = TierConfig(
         "pro", "house", "house-model", 200, 0.1, 1000, pricing, fallback,
     )
-    return DispatchConfig({"user_agent": "pro"}, {"pro": tier})
+    return DispatchConfig({"thought_partner": "pro"}, {"pro": tier})
 
 
 def _authority_fixture(monkeypatch: pytest.MonkeyPatch):

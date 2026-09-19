@@ -149,6 +149,21 @@ class HealthResponse(BaseModel):
     # compounded (and before the first probe).
     flywheel_ready: bool = False
     knowledge_reuse_count: int = 0
+    # TurboPuffer SERVABLE hybrid (dogfood) — honest, never faked.
+    # hybrid_ready requires env+key+active pointer; production_default_mount
+    # stays False until deliberately flipped in a future decision.
+    turbopuffer_servable_enabled: bool = False
+    turbopuffer_shadow_enabled: bool = False
+    turbopuffer_api_key_present: bool = False
+    turbopuffer_active_pointer: bool = False
+    turbopuffer_pointer_context_ok: bool | None = None
+    turbopuffer_hybrid_ready: bool = False
+    turbopuffer_resolved_kind: str = "brute_force"
+    turbopuffer_indexed_row_count: int | None = None
+    turbopuffer_content_hash: str | None = None
+    turbopuffer_duckdb_is_sot: bool = True
+    turbopuffer_thought_partner_hybrid_wired: bool = True
+    turbopuffer_production_default_mount: bool = False
     # GF-7: startup read-only health snapshot for the graph DuckDB file.
     # This is intentionally separate from ``status`` so /health can keep
     # responding while surfacing DB corruption/missing-schema/missing-file states.
@@ -252,6 +267,33 @@ def _probe_flywheel() -> tuple[bool, int]:
         # (False, 0) rather than failing the whole /health over a probe,
         # mirroring _resolve_build_sha's swallow-to-"unknown".
         return (False, 0)
+
+
+def _probe_turbopuffer() -> dict[str, Any]:
+    """Cheap TurboPuffer dogfood snapshot for /health (no vendor network)."""
+    try:
+        from substrate.graph import default_db_path
+        from substrate.graph.retrieval_adapters.turbopuffer import (
+            probe_turbopuffer_health,
+        )
+
+        return probe_turbopuffer_health(db_path=default_db_path())
+    except Exception as exc:
+        return {
+            "servable_enabled": False,
+            "shadow_enabled": False,
+            "api_key_present": False,
+            "active_pointer_file": False,
+            "active_pointer_context_ok": None,
+            "hybrid_ready": False,
+            "resolved_kind": "brute_force",
+            "indexed_row_count": None,
+            "content_hash": None,
+            "duckdb_is_sot": True,
+            "thought_partner_hybrid_wired": True,
+            "production_default_mount": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
 
 
 def _probe_graph_duckdb() -> DuckDBHealth:
@@ -440,6 +482,9 @@ class InvestigationStartResponse(BaseModel):
     start_event_id: str
     operation_id: str | None = None
     owner_model_status: str | None = None
+    # ACU soft-warn when near/over managed compute capacity. Null when
+    # enforcement=off or within budget. Never invents dollars.
+    capacity_warning: dict[str, object] | None = None
 
 
 class RubricScore(BaseModel):
@@ -1216,8 +1261,18 @@ def _compose_context(
     )
 
 
+class ThoughtPartnerTurn(BaseModel):
+    """One prior TP turn (client session thread)."""
+
+    question: str
+    answer: str
+
+
 class ThoughtPartnerRequest(BaseModel):
-    """One-shot thought-partner invocation (master-spec §4.5 + §11.7).
+    """Thought-partner invocation (master-spec §4.5 + §11.7).
+
+    Multi-turn: optional history carries prior completed turns from the
+    client session thread (Surface E / AISidecar).
 
     AISidecar posts a free-form prompt; the substrate retrieves the most
     relevant passages from the operator's knowledge graph (CK-1 grounding),
@@ -1244,46 +1299,69 @@ class ThoughtPartnerRequest(BaseModel):
     prompt: str
     investigation_id: str | None = None
     system_context: str | None = None
+    history: list[ThoughtPartnerTurn] = Field(default_factory=list)
 
 
 def _retrieve_thought_partner_context(
     prompt: str, policy_tag: str, *, top_k: int = 8,
-) -> list[dict[str, Any]]:
-    """Retrieve the most semantically-relevant passages from the operator's
-    knowledge graph for ``prompt`` and map them to the thought-partner
-    role's ``selected_notes`` shape (CK-1: the "ask your library" grounding
-    — Cursor's auto-context analog).
+) -> tuple[list[dict[str, Any]], str | None, str | None]:
+    """Retrieve library notes for Thought Partner + honesty status.
 
-    §9.0-gated by ``policy_tag`` (see ThoughtPartnerRequest). Read-only
-    (connect_read) — the corpus is never mutated (§16 single-writer).
-    Degraded posture, never raises: connect_read on a fresh/absent graph
-    raises (read-only cannot create), which yields an honest empty list so
-    the model still answers, just without library grounding. The embedding
-    model is constructed INSIDE the connect_read block so an absent graph
-    short-circuits before paying the sentence-transformers load (keeps the
-    endpoint fast on a cold box and keeps tests hermetic)."""
+    Returns ``(selected_notes, retrieval_status, degraded_reason)``.
+    Status mirrors ``TurbopufferSubstrate.query`` / DuckDB search honesty:
+    ``servable`` / ``shadow`` / ``degraded — brute_force`` /
+    ``duckdb — non_servable_policy`` / ``duckdb — brute_force_kind`` /
+    ``empty — graph_unavailable``. Never invents hybrid success.
+
+    §9.0-gated by ``policy_tag``. Read-only. Degraded posture, never raises.
+    When ``ANTIEK_TURBOPUFFER_SERVABLE`` + key resolve hybrid kind
+    ``turbopuffer``, uses SERVABLE hybrid (same gate as cascade/flywheel).
+    Non-``attribution_eligible`` stays DuckDB SoT inside the adapter.
+    """
     from runtime.db_lock import connect_read
     from substrate.graph import default_db_path
+    from substrate.graph.retrieval_substrate import (
+        make_substrate_from_con,
+        resolve_reuse_substrate_kind,
+    )
     from substrate.graph.search import SentenceTransformerEmbedding, search
 
     try:
-        with connect_read(default_db_path()) as con:
+        db_path = default_db_path()
+        with connect_read(db_path) as con:
             model = SentenceTransformerEmbedding()
-            retrieved = search(
-                con, prompt, model=model, top_k=top_k, policy_tag=policy_tag,
-            )
+            kind = resolve_reuse_substrate_kind()
+            if kind == "turbopuffer":
+                sub = make_substrate_from_con(
+                    "turbopuffer", con, model=model, db_path=db_path,
+                )
+                retrieved = sub.query(
+                    prompt, top_k=top_k, policy_tag=policy_tag,
+                )
+            else:
+                retrieved = {
+                    **search(
+                        con, prompt, model=model, top_k=top_k, policy_tag=policy_tag,
+                    ),
+                    "status": "duckdb — brute_force_kind",
+                }
     except Exception:
-        return []
+        return [], "empty — graph_unavailable", "connect_read_or_embed_failed"
+    status = retrieved.get("status")
+    if not isinstance(status, str) or not status:
+        status = "unknown"
+    degraded = retrieved.get("degraded_reason")
+    degraded_s = degraded if isinstance(degraded, str) else None
     notes: list[dict[str, Any]] = []
     for hit in retrieved.get("results", []):
         doc_id = hit.get("document_id")
         notes.append({
             "note_id": hit.get("chunk_id"),
-            "note_text": hit.get("chunk_text", ""),  # search() emits "chunk_text" (graph/search.py:260); the prior "text" key never existed, so every retrieved note mapped to empty string and starved the model of library grounding.
+            "note_text": hit.get("chunk_text", ""),
             "source_event_ids": [doc_id] if doc_id else [],
             "confidence": float(hit.get("similarity") or 0.0),
         })
-    return notes
+    return notes, status, degraded_s
 
 
 class CrossGraphCitationRequest(BaseModel):
@@ -1453,6 +1531,12 @@ def create_app(
         "/.well-known/mcp-tools.json",
         # Machine-to-machine multimedia gateway verifies its own fixed bearer.
         "/multimedia/tts-gateway/synthesize",
+        # Speak public browse (Anti-Ek Speak): read-only feed +
+        # opportunities for logged-out visitors. Sibling to
+        # /speak/invite/ (token door). Open-contribute is a
+        # separate POST path match below (G7 mint).
+        "/speak/feed",
+        "/speak/opportunities",
     }
     _OPERATOR_TOKEN_ENV = "ANTIEK_OPERATOR_TOKEN"
     _OPERATOR_EMAIL_ENV = "ANTIEK_OPERATOR_EMAIL"
@@ -1519,6 +1603,20 @@ def create_app(
         # middleware lets the prefix through. See
         # interfaces/research/api/speak_routes.py + docs/decisions/speak_workflow.md.
         if request.url.path.startswith("/speak/invite/"):
+            return await call_next(request)
+        # G7 open contribution: POST /speak/projects/{id}/open-contribute
+        # Self-serve mint for will_be_public only (handler enforces).
+        _p = request.url.path
+        if (
+            request.method == "POST"
+            and _p.startswith("/speak/projects/")
+            and _p.endswith("/open-contribute")
+            and _p.count("/") == 4
+        ):
+            return await call_next(request)
+        # Read-only public Speak browse (logged-out). Exact paths also
+        # listed in _OPERATOR_AUTH_OPEN_PATHS; keep both in sync.
+        if request.url.path in ("/speak/feed", "/speak/opportunities"):
             return await call_next(request)
 
         # Once a path validates the caller, populate request.state with
@@ -1745,6 +1843,8 @@ def create_app(
     # store (the store's first API consumer; see settings_privacy.py).
     from .settings_privacy import register_settings_privacy_routes
     register_settings_privacy_routes(app)
+    from .settings_compute_capacity import register_settings_compute_capacity_routes
+    register_settings_compute_capacity_routes(app)
     from .research_tool_search import register_research_tool_search_routes
     register_research_tool_search_routes(app)
     # Own Your Mind P0 — trust wedge. Read-only provenance explain surfaces
@@ -1777,6 +1877,8 @@ def create_app(
     # (?format=html|antiek|antiek_html). Rights filter in adapt_notebook_for_export.
     from .notebook_artifact import register_notebook_artifact_routes
     register_notebook_artifact_routes(app)
+    from .prompt_telemetry import register_prompt_telemetry_routes
+    register_prompt_telemetry_routes(app)
     # HPRJ SPR-06 — deliverable (Write surface) export: GET /api/deliverables/{id}/artifact
     from .deliverable_artifact import register_deliverable_artifact_routes
     register_deliverable_artifact_routes(app)
@@ -1804,12 +1906,16 @@ def create_app(
     # dispatch via the in-process mock pass register_providers=False
     # so this startup pass doesn't see operator credentials.
     if register_providers:
-        from substrate.dispatch.providers import register_default_providers
-        app.state.registered_providers = register_default_providers(quiet=True)
         from interfaces.research.api.boot_providers import (
+            load_dispatch_env_files,
             log_zero_providers_warning_if_needed,
         )
+        from substrate.dispatch.providers import register_default_providers
 
+        # Auto-load platform/.env (and ANTIEK_ENV_FILE) so Mini restarts
+        # without a manual `source` still register deepseek/xiaomi/…
+        load_dispatch_env_files()
+        app.state.registered_providers = register_default_providers(quiet=True)
         log_zero_providers_warning_if_needed(app.state.registered_providers)
     else:
         app.state.registered_providers = set()
@@ -1824,6 +1930,7 @@ def create_app(
     # initialize/create the DB; missing/corrupt/unreadable states are exposed
     # in /health rather than crashing app construction.
     app.state.duckdb_health = _probe_graph_duckdb()
+    app.state.turbopuffer_health = _probe_turbopuffer()
 
     # SPR-11: flywheel-liveness snapshot (read-only, never raises), reported on
     # /health so prod-parity can red a deployed-but-dead flywheel. DEFERRED to
@@ -1945,15 +2052,39 @@ def create_app(
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
-        # Deferred flywheel probe (see create_app): scan the event log at most
-        # once, on the first /health request, then reuse the snapshot — so
-        # importing this module never pays the scan.
-        if not getattr(app.state, "_flywheel_probed", False):
-            (
-                app.state.flywheel_ready,
-                app.state.knowledge_reuse_count,
-            ) = _probe_flywheel()
-            app.state._flywheel_probed = True
+        # Deferred flywheel probe (see create_app): never block /health on the
+        # event-log scan or any DuckDB write path. Kick a background to_thread
+        # once; return last-known (default False/0) until it finishes. DuckDB
+        # fields always come from the startup-cached app.state.duckdb_health
+        # snapshot — /health must stay responsive under agent-work lease load.
+        import time as _time
+
+        _now = _time.monotonic()
+        _probed = getattr(app.state, "_flywheel_probed", False)
+        _ready = getattr(app.state, "flywheel_ready", False)
+        _last = float(getattr(app.state, "_flywheel_probe_mono", 0.0) or 0.0)
+        # Re-probe when never probed, OR when still false after cooldown — so an
+        # honest seed (knowledge.reused landed) can flip /health without waiting
+        # for a process restart. Once true, keep the memoized snapshot.
+        _cooldown_s = 30.0
+        _should = (not _probed) or (not _ready and (_now - _last) >= _cooldown_s)
+        if _should and not getattr(app.state, "_flywheel_probe_started", False):
+            app.state._flywheel_probe_started = True
+            app.state._flywheel_probe_mono = _now
+
+            async def _flywheel_bg() -> None:
+                try:
+                    ready, count = await asyncio.to_thread(_probe_flywheel)
+                    app.state.flywheel_ready = ready
+                    app.state.knowledge_reuse_count = count
+                finally:
+                    app.state._flywheel_probed = True
+                    app.state._flywheel_probe_started = False
+
+            # Keep a reference on app.state: an unreferenced create_task can
+            # be GC'd mid-run, and the handle lets tests/shutdown await the
+            # probe deterministically instead of polling.
+            app.state._flywheel_probe_task = asyncio.create_task(_flywheel_bg())
         duckdb_health = app.state.duckdb_health
         registered_providers = {
             str(provider)
@@ -1972,6 +2103,66 @@ def create_app(
             build_sha=getattr(app.state, "build_sha", "unknown"),
             flywheel_ready=getattr(app.state, "flywheel_ready", False),
             knowledge_reuse_count=getattr(app.state, "knowledge_reuse_count", 0),
+            turbopuffer_servable_enabled=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "servable_enabled"
+                )
+            ),
+            turbopuffer_shadow_enabled=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "shadow_enabled"
+                )
+            ),
+            turbopuffer_api_key_present=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "api_key_present"
+                )
+            ),
+            turbopuffer_active_pointer=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "active_pointer_file"
+                )
+            ),
+            turbopuffer_pointer_context_ok=(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "active_pointer_context_ok"
+                )
+            ),
+            turbopuffer_hybrid_ready=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "hybrid_ready"
+                )
+            ),
+            turbopuffer_resolved_kind=str(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "resolved_kind", "brute_force"
+                )
+            ),
+            turbopuffer_indexed_row_count=(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "indexed_row_count"
+                )
+            ),
+            turbopuffer_content_hash=(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "content_hash"
+                )
+            ),
+            turbopuffer_duckdb_is_sot=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "duckdb_is_sot", True
+                )
+            ),
+            turbopuffer_thought_partner_hybrid_wired=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "thought_partner_hybrid_wired", True
+                )
+            ),
+            turbopuffer_production_default_mount=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "production_default_mount", False
+                )
+            ),
             duckdb_ready=duckdb_health.ready,
             duckdb_status=duckdb_health.status,
             duckdb_schema_present=duckdb_health.schema_present,
@@ -2085,7 +2276,7 @@ def create_app(
                             "filed_document_id + target_investigation_id."
                         ),
                     )
-                try:
+                def _sync() -> None:
                     with connect_write(
                         default_db_path(), purpose="api:file_document"
                     ) as con:
@@ -2105,6 +2296,10 @@ def create_app(
                             "WHERE document_id = ?",
                             [target_inv, filed_doc],
                         )
+
+                try:
+                    # flock wait off the uvicorn loop (#3111 to_thread class).
+                    await asyncio.to_thread(_sync)
                 except HTTPException:
                     raise
                 except Exception as exc:  # the write IS the point — surface it
@@ -2165,12 +2360,17 @@ def create_app(
             )
 
         db_path = default_db_path()
-        try:
+
+        def _sync() -> str:
             with connect_write(db_path, purpose="api:ai_undo") as con:
-                undone_event_id = undo_ai_action(
+                return undo_ai_action(
                     con,
                     applied_event=applied_event,
                 )
+
+        try:
+            # flock wait off the uvicorn loop (#3111 to_thread class).
+            undone_event_id = await asyncio.to_thread(_sync)
         except AIActionError as exc:
             raise HTTPException(
                 status_code=422,
@@ -2278,6 +2478,7 @@ def create_app(
     async def post_investigation(
         req: InvestigationStartRequest,
         request: Request,
+        response: Response,
     ) -> InvestigationStartResponse:
         """Cold-question entry point. Emits
         ``INVESTIGATION_START_REQUESTED`` into the trajectory; the
@@ -2285,6 +2486,16 @@ def create_app(
         spawns the per-investigation coroutine that drives phases
         1-9. Returns the investigation_id + start_event_id
         immediately so the caller can poll status."""
+        from .compute_capacity_gate import (
+            attach_capacity_warn_header,
+            commit_start_acu,
+            run_capacity_precheck,
+            warning_body,
+        )
+
+        # Antiek-hosted ACU gate (1 ACU / start). Hard refuse only when
+        # ANTIEK_COMPUTE_CAPACITY_ENFORCEMENT=hard and used >= limit.
+        capacity_gate = run_capacity_precheck(request)
         # Lazy import — avoid pulling InvestigationStartRequestedPayload
         # at module import time so test setups that monkey-patch the
         # schema layer (drift tests) don't see a partially-initialized
@@ -2457,6 +2668,15 @@ def create_app(
                         raise HTTPException(status_code=503, detail="owner_model_start_pending") from None
                 break
 
+        # Meter 1 ACU for this start (idempotent on investigation_id).
+        post_gate = commit_start_acu(
+            request,
+            investigation_id=investigation_id,
+            reason="post_investigations",
+        )
+        warn_gate = post_gate if post_gate.verdict == "soft_warn" else capacity_gate
+        attach_capacity_warn_header(response, warn_gate)
+
         return InvestigationStartResponse(
             investigation_id=investigation_id,
             status="started",
@@ -2467,6 +2687,7 @@ def create_app(
             # durably queues the launch, so do not call this "accepted".
             owner_model_status=("replayed" if replay_event_id is not None else "queued")
             if operation_id is not None else None,
+            capacity_warning=warning_body(warn_gate),
         )
 
     @app.get(
@@ -3046,20 +3267,25 @@ def create_app(
         from substrate.graph.ops import insert_deliverable
 
         db = _resolve_db_path()
-        with connect_write(db, purpose="deliverables/create") as con:
-            did = insert_deliverable(
-                con,
-                title=req.title,
-                deliverable_kind=req.deliverable_kind,
-                investigation_root_id=req.investigation_root_id,
-            )
-            row = con.execute(
-                "SELECT deliverable_id, title, deliverable_kind, "
-                "investigation_root_id, status, "
-                "strftime(created_at, '%Y-%m-%dT%H:%M:%S'), "
-                "strftime(updated_at, '%Y-%m-%dT%H:%M:%S') "
-                "FROM deliverables WHERE deliverable_id = ?", [did],
-            ).fetchone()
+
+        def _sync() -> Any:
+            with connect_write(db, purpose="deliverables/create") as con:
+                did = insert_deliverable(
+                    con,
+                    title=req.title,
+                    deliverable_kind=req.deliverable_kind,
+                    investigation_root_id=req.investigation_root_id,
+                )
+                return con.execute(
+                    "SELECT deliverable_id, title, deliverable_kind, "
+                    "investigation_root_id, status, "
+                    "strftime(created_at, '%Y-%m-%dT%H:%M:%S'), "
+                    "strftime(updated_at, '%Y-%m-%dT%H:%M:%S') "
+                    "FROM deliverables WHERE deliverable_id = ?", [did],
+                ).fetchone()
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        row = await asyncio.to_thread(_sync)
         return DeliverableSummary(
             deliverable_id=row[0], title=row[1], deliverable_kind=row[2],
             investigation_root_id=row[3], status=row[4],
@@ -3145,23 +3371,28 @@ def create_app(
         from substrate.graph.ops import insert_section
 
         db = _resolve_db_path()
-        with connect_write(db, purpose="sections/create") as con:
-            # Verify deliverable exists
-            row = con.execute(
-                "SELECT 1 FROM deliverables WHERE deliverable_id = ?",
-                [req.deliverable_id],
-            ).fetchone()
-            if row is None:
-                raise HTTPException(
-                    status_code=404, detail="deliverable not found",
+
+        def _sync() -> str:
+            with connect_write(db, purpose="sections/create") as con:
+                # Verify deliverable exists
+                row = con.execute(
+                    "SELECT 1 FROM deliverables WHERE deliverable_id = ?",
+                    [req.deliverable_id],
+                ).fetchone()
+                if row is None:
+                    raise HTTPException(
+                        status_code=404, detail="deliverable not found",
+                    )
+                return insert_section(
+                    con,
+                    deliverable_id=req.deliverable_id,
+                    section_index=req.section_index,
+                    title=req.title,
+                    parent_section_id=req.parent_section_id,
                 )
-            sid = insert_section(
-                con,
-                deliverable_id=req.deliverable_id,
-                section_index=req.section_index,
-                title=req.title,
-                parent_section_id=req.parent_section_id,
-            )
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        sid = await asyncio.to_thread(_sync)
         return SectionResponse(
             section_id=sid, deliverable_id=req.deliverable_id,
             parent_section_id=req.parent_section_id,
@@ -3175,22 +3406,27 @@ def create_app(
         from substrate.graph.ops import attach_block_to_section
 
         db = _resolve_db_path()
-        with connect_write(db, purpose="sections/attach_block") as con:
-            row = con.execute(
-                "SELECT 1 FROM deliverable_sections WHERE section_id = ?",
-                [req.section_id],
-            ).fetchone()
-            if row is None:
-                raise HTTPException(
-                    status_code=404, detail="section not found",
+
+        def _sync() -> None:
+            with connect_write(db, purpose="sections/attach_block") as con:
+                row = con.execute(
+                    "SELECT 1 FROM deliverable_sections WHERE section_id = ?",
+                    [req.section_id],
+                ).fetchone()
+                if row is None:
+                    raise HTTPException(
+                        status_code=404, detail="section not found",
+                    )
+                attach_block_to_section(
+                    con,
+                    section_id=req.section_id,
+                    block_kind=req.block_kind,
+                    block_id=req.block_id,
+                    block_index=req.block_index,
                 )
-            attach_block_to_section(
-                con,
-                section_id=req.section_id,
-                block_kind=req.block_kind,
-                block_id=req.block_id,
-                block_index=req.block_index,
-            )
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        await asyncio.to_thread(_sync)
         return {"status": "attached"}
 
     # ── Sprint 14: block search + reorder + twitter ─────────────────
@@ -3247,41 +3483,46 @@ def create_app(
         from runtime.db_lock import connect_write
         db = _resolve_db_path()
         target_section = req.new_section_id or req.section_id
-        with connect_write(db, purpose="sections/reorder") as con:
-            # Validate target section exists
-            row = con.execute(
-                "SELECT 1 FROM deliverable_sections WHERE section_id = ?",
-                [target_section],
-            ).fetchone()
-            if row is None:
-                raise HTTPException(
-                    status_code=404, detail="target section not found",
-                )
-            # If moving across sections, DELETE old + INSERT new
-            if (
-                req.new_section_id is not None
-                and req.new_section_id != req.section_id
-            ):
-                con.execute(
-                    "DELETE FROM section_blocks WHERE section_id = ? "
-                    "AND block_kind = ? AND block_id = ?",
-                    [req.section_id, req.block_kind, req.block_id],
-                )
-                con.execute(
-                    "INSERT INTO section_blocks "
-                    "(section_id, block_kind, block_id, block_index) "
-                    "VALUES (?, ?, ?, ?)",
-                    [target_section, req.block_kind, req.block_id,
-                     int(req.new_block_index)],
-                )
-            else:
-                # In-section reorder: just bump the index
-                con.execute(
-                    "UPDATE section_blocks SET block_index = ? "
-                    "WHERE section_id = ? AND block_kind = ? AND block_id = ?",
-                    [int(req.new_block_index), req.section_id,
-                     req.block_kind, req.block_id],
-                )
+
+        def _sync() -> None:
+            with connect_write(db, purpose="sections/reorder") as con:
+                # Validate target section exists
+                row = con.execute(
+                    "SELECT 1 FROM deliverable_sections WHERE section_id = ?",
+                    [target_section],
+                ).fetchone()
+                if row is None:
+                    raise HTTPException(
+                        status_code=404, detail="target section not found",
+                    )
+                # If moving across sections, DELETE old + INSERT new
+                if (
+                    req.new_section_id is not None
+                    and req.new_section_id != req.section_id
+                ):
+                    con.execute(
+                        "DELETE FROM section_blocks WHERE section_id = ? "
+                        "AND block_kind = ? AND block_id = ?",
+                        [req.section_id, req.block_kind, req.block_id],
+                    )
+                    con.execute(
+                        "INSERT INTO section_blocks "
+                        "(section_id, block_kind, block_id, block_index) "
+                        "VALUES (?, ?, ?, ?)",
+                        [target_section, req.block_kind, req.block_id,
+                         int(req.new_block_index)],
+                    )
+                else:
+                    # In-section reorder: just bump the index
+                    con.execute(
+                        "UPDATE section_blocks SET block_index = ? "
+                        "WHERE section_id = ? AND block_kind = ? AND block_id = ?",
+                        [int(req.new_block_index), req.section_id,
+                         req.block_kind, req.block_id],
+                    )
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        await asyncio.to_thread(_sync)
         return {"status": "reordered"}
 
     @app.post(
@@ -3334,81 +3575,87 @@ def create_app(
         )
 
         db = _resolve_db_path()
-        with connect_write(db, purpose="sections/prose_update") as con:
-            row = con.execute(
-                "SELECT deliverable_id FROM deliverable_sections "
-                "WHERE section_id = ?", [section_id],
-            ).fetchone()
-            if row is None:
-                raise HTTPException(
-                    status_code=404, detail="section not found",
-                )
-            deliverable_id = row[0]
-            claim_node_id: str | None = None
-            claim_event_id: str | None = None
-            with eventful_transaction(con, req.investigation_id):
-                update_section_prose(
-                    con, section_id=section_id, prose_text=req.prose_text,
-                )
-                if req.promote_to_graph:
-                    label = req.prose_text.strip().splitlines()[0]
-                    if len(label) > 160:
-                        label = label[:159] + "…"
-                    claim_node_id = content_addressed_id(
-                        "node", f"{label}|claim|cross_domain"
+
+        def _sync() -> tuple[str | None, str | None]:
+            with connect_write(db, purpose="sections/prose_update") as con:
+                row = con.execute(
+                    "SELECT deliverable_id FROM deliverable_sections "
+                    "WHERE section_id = ?", [section_id],
+                ).fetchone()
+                if row is None:
+                    raise HTTPException(
+                        status_code=404, detail="section not found",
                     )
-                    node_existed = con.execute(
-                        "SELECT 1 FROM nodes WHERE node_id=?", [claim_node_id]
-                    ).fetchone() is not None
-                    insert_node(
-                        con, canonical_label=label, node_type="claim",
-                        graph_scope="cross_domain",
-                        investigation_id=req.investigation_id,
-                        metadata={
-                            "source": "operator_asserted",
-                            "deliverable_id": deliverable_id,
-                            "section_id": section_id,
-                            "policy_id": f"operator/{deliverable_id}",
-                            "cited_chunk_ids": req.cited_chunk_ids,
-                        },
-                        on_conflict="ignore",
-                        node_id=claim_node_id, emit_event=False,
+                deliverable_id = row[0]
+                claim_node_id: str | None = None
+                claim_event_id: str | None = None
+                with eventful_transaction(con, req.investigation_id):
+                    update_section_prose(
+                        con, section_id=section_id, prose_text=req.prose_text,
                     )
-                    if not node_existed:
-                        node_event = build_typed_envelope(
+                    if req.promote_to_graph:
+                        label = req.prose_text.strip().splitlines()[0]
+                        if len(label) > 160:
+                            label = label[:159] + "…"
+                        claim_node_id = content_addressed_id(
+                            "node", f"{label}|claim|cross_domain"
+                        )
+                        node_existed = con.execute(
+                            "SELECT 1 FROM nodes WHERE node_id=?", [claim_node_id]
+                        ).fetchone() is not None
+                        insert_node(
+                            con, canonical_label=label, node_type="claim",
+                            graph_scope="cross_domain",
+                            investigation_id=req.investigation_id,
+                            metadata={
+                                "source": "operator_asserted",
+                                "deliverable_id": deliverable_id,
+                                "section_id": section_id,
+                                "policy_id": f"operator/{deliverable_id}",
+                                "cited_chunk_ids": req.cited_chunk_ids,
+                            },
+                            on_conflict="ignore",
+                            node_id=claim_node_id, emit_event=False,
+                        )
+                        if not node_existed:
+                            node_event = build_typed_envelope(
+                                req.investigation_id,
+                                GraphNodeInsertedPayload(
+                                    node_id=claim_node_id, canonical_label=label,
+                                    node_type="claim", graph_scope="cross_domain",
+                                    has_embedding=False,
+                                ), role="connector",
+                            )
+                            enqueue_event(
+                                con, operation_id=f"graph.node:{node_event.event_id}",
+                                aggregate_kind="graph_node", aggregate_id=claim_node_id,
+                                event=node_event,
+                            )
+                        claim_event = build_typed_envelope(
                             req.investigation_id,
-                            GraphNodeInsertedPayload(
-                                node_id=claim_node_id, canonical_label=label,
-                                node_type="claim", graph_scope="cross_domain",
-                                has_embedding=False,
-                            ), role="connector",
+                            ClaimAssertedByOperatorPayload(
+                                deliverable_id=deliverable_id,
+                                section_id=section_id,
+                                claim_text=req.prose_text,
+                                original_text=req.original_text,
+                                node_id=claim_node_id,
+                                source_tier=5,
+                                cited_chunk_ids=req.cited_chunk_ids,
+                            ),
+                            role="creation_surface",
+                            policy_id=f"operator/{deliverable_id}",
                         )
-                        enqueue_event(
-                            con, operation_id=f"graph.node:{node_event.event_id}",
-                            aggregate_kind="graph_node", aggregate_id=claim_node_id,
-                            event=node_event,
+                        claim_event_id = enqueue_event(
+                            con, operation_id=f"claim.asserted:{claim_event.event_id}",
+                            aggregate_kind="deliverable_section", aggregate_id=section_id,
+                            event=claim_event,
                         )
-                    claim_event = build_typed_envelope(
-                        req.investigation_id,
-                        ClaimAssertedByOperatorPayload(
-                            deliverable_id=deliverable_id,
-                            section_id=section_id,
-                            claim_text=req.prose_text,
-                            original_text=req.original_text,
-                            node_id=claim_node_id,
-                            source_tier=5,
-                            cited_chunk_ids=req.cited_chunk_ids,
-                        ),
-                        role="creation_surface",
-                        policy_id=f"operator/{deliverable_id}",
-                    )
-                    claim_event_id = enqueue_event(
-                        con, operation_id=f"claim.asserted:{claim_event.event_id}",
-                        aggregate_kind="deliverable_section", aggregate_id=section_id,
-                        event=claim_event,
-                    )
-            if req.promote_to_graph:
-                dispatch_pending_best_effort(con, req.investigation_id)
+                if req.promote_to_graph:
+                    dispatch_pending_best_effort(con, req.investigation_id)
+            return claim_node_id, claim_event_id
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        claim_node_id, claim_event_id = await asyncio.to_thread(_sync)
 
         if req.promote_to_graph and claim_node_id is not None:
             return UpdateSectionProseResponse(
@@ -3960,19 +4207,25 @@ def create_app(
             "must_cover": req.must_cover,
             "framing": req.framing or "",
         }
-        with connect_write(db, purpose="interview_projects/create") as con:
-            pid = insert_interview_project(
-                con,
-                title=req.title,
-                topic_description=req.topic_description,
-                deliverable_id=req.deliverable_id,
-                interview_guide=guide,
-            )
-            row = con.execute(
-                "SELECT title, topic_description, deliverable_id, "
-                "strftime(created_at, '%Y-%m-%dT%H:%M:%S') "
-                "FROM interview_projects WHERE project_id = ?", [pid],
-            ).fetchone()
+
+        def _sync() -> tuple[str, Any]:
+            with connect_write(db, purpose="interview_projects/create") as con:
+                pid = insert_interview_project(
+                    con,
+                    title=req.title,
+                    topic_description=req.topic_description,
+                    deliverable_id=req.deliverable_id,
+                    interview_guide=guide,
+                )
+                row = con.execute(
+                    "SELECT title, topic_description, deliverable_id, "
+                    "strftime(created_at, '%Y-%m-%dT%H:%M:%S') "
+                    "FROM interview_projects WHERE project_id = ?", [pid],
+                ).fetchone()
+            return pid, row
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        pid, row = await asyncio.to_thread(_sync)
         return InterviewProjectSummary(
             project_id=pid, title=row[0], topic_description=row[1],
             deliverable_id=row[2], must_cover=req.must_cover,
@@ -4072,26 +4325,32 @@ def create_app(
         from substrate.graph.ops import insert_interview
 
         db = _resolve_db_path()
-        with connect_write(db, purpose="interviews/invite") as con:
-            project_row = con.execute(
-                "SELECT 1 FROM interview_projects WHERE project_id = ?",
-                [req.project_id],
-            ).fetchone()
-            if project_row is None:
-                raise HTTPException(
-                    status_code=404, detail="interview project not found",
+
+        def _sync() -> tuple[str, Any]:
+            with connect_write(db, purpose="interviews/invite") as con:
+                project_row = con.execute(
+                    "SELECT 1 FROM interview_projects WHERE project_id = ?",
+                    [req.project_id],
+                ).fetchone()
+                if project_row is None:
+                    raise HTTPException(
+                        status_code=404, detail="interview project not found",
+                    )
+                iid = insert_interview(
+                    con,
+                    project_id=req.project_id,
+                    informant_handle=req.informant_handle,
+                    informant_email=req.informant_email,
                 )
-            iid = insert_interview(
-                con,
-                project_id=req.project_id,
-                informant_handle=req.informant_handle,
-                informant_email=req.informant_email,
-            )
-            row = con.execute(
-                "SELECT informant_handle, informant_email, status, "
-                "strftime(invited_at, '%Y-%m-%dT%H:%M:%S') "
-                "FROM interviews WHERE interview_id = ?", [iid],
-            ).fetchone()
+                row = con.execute(
+                    "SELECT informant_handle, informant_email, status, "
+                    "strftime(invited_at, '%Y-%m-%dT%H:%M:%S') "
+                    "FROM interviews WHERE interview_id = ?", [iid],
+                ).fetchone()
+            return iid, row
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        iid, row = await asyncio.to_thread(_sync)
         return InterviewSummary(
             interview_id=iid, project_id=req.project_id,
             informant_handle=row[0], informant_email=row[1],
@@ -4156,20 +4415,26 @@ def create_app(
         from substrate.graph.ops import append_interview_turn
 
         db = _resolve_db_path()
-        with connect_write(db, purpose="interviews/turn") as con:
-            try:
-                count = append_interview_turn(
-                    con,
-                    interview_id=interview_id,
-                    role=req.role,
-                    text=req.text,
-                )
-            except ValueError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-            (status,) = con.execute(
-                "SELECT status FROM interviews WHERE interview_id = ?",
-                [interview_id],
-            ).fetchone()
+
+        def _sync() -> tuple[int, Any]:
+            with connect_write(db, purpose="interviews/turn") as con:
+                try:
+                    count = append_interview_turn(
+                        con,
+                        interview_id=interview_id,
+                        role=req.role,
+                        text=req.text,
+                    )
+                except ValueError as exc:
+                    raise HTTPException(status_code=404, detail=str(exc)) from exc
+                (status,) = con.execute(
+                    "SELECT status FROM interviews WHERE interview_id = ?",
+                    [interview_id],
+                ).fetchone()
+            return count, status
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        count, status = await asyncio.to_thread(_sync)
         return InterviewTurnResponse(
             interview_id=interview_id, turn_count=count, status=status,
         )
@@ -4186,28 +4451,33 @@ def create_app(
         from substrate.graph.ops import complete_interview
 
         db = _resolve_db_path()
-        with connect_write(db, purpose="interviews/complete") as con:
-            row = con.execute(
-                "SELECT 1 FROM interviews WHERE interview_id = ?",
-                [interview_id],
-            ).fetchone()
-            if row is None:
-                raise HTTPException(
-                    status_code=404, detail="interview not found",
+
+        def _sync() -> Any:
+            with connect_write(db, purpose="interviews/complete") as con:
+                row = con.execute(
+                    "SELECT 1 FROM interviews WHERE interview_id = ?",
+                    [interview_id],
+                ).fetchone()
+                if row is None:
+                    raise HTTPException(
+                        status_code=404, detail="interview not found",
+                    )
+                complete_interview(
+                    con,
+                    interview_id=interview_id,
+                    transcript_document_id=req.transcript_document_id,
                 )
-            complete_interview(
-                con,
-                interview_id=interview_id,
-                transcript_document_id=req.transcript_document_id,
-            )
-            r = con.execute(
-                "SELECT project_id, informant_handle, informant_email, "
-                "status, strftime(invited_at, '%Y-%m-%dT%H:%M:%S'), "
-                "strftime(started_at, '%Y-%m-%dT%H:%M:%S'), "
-                "strftime(completed_at, '%Y-%m-%dT%H:%M:%S'), "
-                "transcript_turns "
-                "FROM interviews WHERE interview_id = ?", [interview_id],
-            ).fetchone()
+                return con.execute(
+                    "SELECT project_id, informant_handle, informant_email, "
+                    "status, strftime(invited_at, '%Y-%m-%dT%H:%M:%S'), "
+                    "strftime(started_at, '%Y-%m-%dT%H:%M:%S'), "
+                    "strftime(completed_at, '%Y-%m-%dT%H:%M:%S'), "
+                    "transcript_turns "
+                    "FROM interviews WHERE interview_id = ?", [interview_id],
+                ).fetchone()
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        r = await asyncio.to_thread(_sync)
         import json as _json
         turn_count = 0
         if r[7]:
@@ -4514,14 +4784,19 @@ def create_app(
         from substrate.ip_holders import create_pre_onboarded, get
 
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:create_publisher") as con:
-            ip_holder_id = create_pre_onboarded(
-                con,
-                display_name=req.display_name,
-                legal_contact_email=req.legal_contact_email,
-                metadata=req.metadata,
-            )
-            h = get(con, ip_holder_id)
+
+        def _sync() -> Any:
+            with connect_write(db_path, purpose="api:create_publisher") as con:
+                ip_holder_id = create_pre_onboarded(
+                    con,
+                    display_name=req.display_name,
+                    legal_contact_email=req.legal_contact_email,
+                    metadata=req.metadata,
+                )
+                return get(con, ip_holder_id)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        h = await asyncio.to_thread(_sync)
         if h is None:
             raise HTTPException(status_code=500, detail="failed to create publisher")
         return _holder_to_response(h)
@@ -4535,8 +4810,13 @@ def create_app(
         from substrate.ip_holders import list_all
 
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:list_publishers") as con:
-            holders = list_all(con, status=status)
+
+        def _sync() -> Any:
+            with connect_write(db_path, purpose="api:list_publishers") as con:
+                return list_all(con, status=status)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        holders = await asyncio.to_thread(_sync)
         return PublisherListResponse(
             count=len(holders),
             publishers=[_holder_to_response(h) for h in holders],
@@ -4549,8 +4829,13 @@ def create_app(
         from substrate.ip_holders import get
 
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:get_publisher") as con:
-            h = get(con, ip_holder_id)
+
+        def _sync() -> Any:
+            with connect_write(db_path, purpose="api:get_publisher") as con:
+                return get(con, ip_holder_id)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        h = await asyncio.to_thread(_sync)
         if h is None:
             raise HTTPException(status_code=404, detail="publisher not found")
         return _holder_to_response(h)
@@ -4567,9 +4852,14 @@ def create_app(
         from substrate.ip_holders import get, mark_invited
 
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:notify_publisher") as con:
-            mark_invited(con, ip_holder_id)
-            h = get(con, ip_holder_id)
+
+        def _sync() -> Any:
+            with connect_write(db_path, purpose="api:notify_publisher") as con:
+                mark_invited(con, ip_holder_id)
+                return get(con, ip_holder_id)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        h = await asyncio.to_thread(_sync)
         if h is None:
             raise HTTPException(status_code=404, detail="publisher not found")
         return _holder_to_response(h)
@@ -4588,12 +4878,17 @@ def create_app(
         from substrate.ip_holders import claim, get
 
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:claim_publisher") as con:
-            claim(
-                con, ip_holder_id,
-                stripe_connect_account_id=req.stripe_connect_account_id,
-            )
-            h = get(con, ip_holder_id)
+
+        def _sync() -> Any:
+            with connect_write(db_path, purpose="api:claim_publisher") as con:
+                claim(
+                    con, ip_holder_id,
+                    stripe_connect_account_id=req.stripe_connect_account_id,
+                )
+                return get(con, ip_holder_id)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        h = await asyncio.to_thread(_sync)
         if h is None:
             raise HTTPException(status_code=404, detail="publisher not found")
         return _holder_to_response(h)
@@ -4607,9 +4902,14 @@ def create_app(
         from substrate.ip_holders import get, opt_out
 
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:opt_out_publisher") as con:
-            opt_out(con, ip_holder_id)
-            h = get(con, ip_holder_id)
+
+        def _sync() -> Any:
+            with connect_write(db_path, purpose="api:opt_out_publisher") as con:
+                opt_out(con, ip_holder_id)
+                return get(con, ip_holder_id)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        h = await asyncio.to_thread(_sync)
         if h is None:
             raise HTTPException(status_code=404, detail="publisher not found")
         return _holder_to_response(h)
@@ -4677,7 +4977,8 @@ def create_app(
         from substrate.notebooks import create_notebook, get_notebook
 
         db_path = default_db_path()
-        try:
+
+        def _sync() -> Any:
             with connect_write(db_path, purpose="api:create_notebook") as con:
                 nb_id = create_notebook(
                     con,
@@ -4686,7 +4987,11 @@ def create_app(
                     document_id=req.document_id,
                     content_class=req.content_class,
                 )
-                nb = get_notebook(con, nb_id)
+                return get_notebook(con, nb_id)
+
+        try:
+            # flock wait off the uvicorn loop (#3111 to_thread class).
+            nb = await asyncio.to_thread(_sync)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if nb is None:
@@ -4704,13 +5009,18 @@ def create_app(
         from substrate.notebooks import list_notebooks
 
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:list_notebooks") as con:
-            nbs = list_notebooks(
-                con,
-                investigation_id=investigation_id,
-                document_id=document_id,
-                limit=limit,
-            )
+
+        def _sync() -> Any:
+            with connect_write(db_path, purpose="api:list_notebooks") as con:
+                return list_notebooks(
+                    con,
+                    investigation_id=investigation_id,
+                    document_id=document_id,
+                    limit=limit,
+                )
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        nbs = await asyncio.to_thread(_sync)
         return NotebookListResponse(
             count=len(nbs),
             notebooks=[_notebook_to_response(nb) for nb in nbs],
@@ -4723,8 +5033,13 @@ def create_app(
         from substrate.notebooks import get_notebook
 
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:get_notebook") as con:
-            nb = get_notebook(con, notebook_id)
+
+        def _sync() -> Any:
+            with connect_write(db_path, purpose="api:get_notebook") as con:
+                return get_notebook(con, notebook_id)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        nb = await asyncio.to_thread(_sync)
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
@@ -4743,7 +5058,8 @@ def create_app(
         from substrate.notebooks import append_block, get_notebook
 
         db_path = default_db_path()
-        try:
+
+        def _sync() -> Any:
             with connect_write(db_path, purpose="api:append_notebook_block") as con:
                 append_block(
                     con, notebook_id,
@@ -4751,7 +5067,11 @@ def create_app(
                     content=req.content,
                     ref_id=req.ref_id,
                 )
-                nb = get_notebook(con, notebook_id)
+                return get_notebook(con, notebook_id)
+
+        try:
+            # flock wait off the uvicorn loop (#3111 to_thread class).
+            nb = await asyncio.to_thread(_sync)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if nb is None:
@@ -4776,21 +5096,26 @@ def create_app(
         from substrate.notebooks import get_notebook, update_block
 
         db_path = default_db_path()
-        with connect_write(
-            db_path, purpose="api:patch_notebook_block",
-        ) as con:
-            updated = update_block(
-                con, notebook_id, block_id,
-                content=req.content,
-                ref_id=req.ref_id,
-                clear_ref_id=req.clear_ref_id,
-            )
-            if not updated:
-                raise HTTPException(
-                    status_code=404,
-                    detail="notebook or block not found",
+
+        def _sync() -> Any:
+            with connect_write(
+                db_path, purpose="api:patch_notebook_block",
+            ) as con:
+                updated = update_block(
+                    con, notebook_id, block_id,
+                    content=req.content,
+                    ref_id=req.ref_id,
+                    clear_ref_id=req.clear_ref_id,
                 )
-            nb = get_notebook(con, notebook_id)
+                if not updated:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="notebook or block not found",
+                    )
+                return get_notebook(con, notebook_id)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        nb = await asyncio.to_thread(_sync)
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
@@ -4811,16 +5136,21 @@ def create_app(
         from substrate.notebooks import delete_block, get_notebook
 
         db_path = default_db_path()
-        with connect_write(
-            db_path, purpose="api:delete_notebook_block",
-        ) as con:
-            deleted = delete_block(con, notebook_id, block_id)
-            if not deleted:
-                raise HTTPException(
-                    status_code=404,
-                    detail="notebook or block not found",
-                )
-            nb = get_notebook(con, notebook_id)
+
+        def _sync() -> Any:
+            with connect_write(
+                db_path, purpose="api:delete_notebook_block",
+            ) as con:
+                deleted = delete_block(con, notebook_id, block_id)
+                if not deleted:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="notebook or block not found",
+                    )
+                return get_notebook(con, notebook_id)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        nb = await asyncio.to_thread(_sync)
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
@@ -4841,7 +5171,8 @@ def create_app(
         from substrate.notebooks import get_notebook, reorder_blocks
 
         db_path = default_db_path()
-        try:
+
+        def _sync() -> Any:
             with connect_write(
                 db_path, purpose="api:reorder_notebook_blocks",
             ) as con:
@@ -4857,7 +5188,11 @@ def create_app(
                     con, notebook_id,
                     ordered_block_ids=req.ordered_block_ids,
                 )
-                nb = get_notebook(con, notebook_id)
+                return get_notebook(con, notebook_id)
+
+        try:
+            # flock wait off the uvicorn loop (#3111 to_thread class).
+            nb = await asyncio.to_thread(_sync)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if nb is None:
@@ -4903,63 +5238,68 @@ def create_app(
         incoming_is_empty = is_effectively_empty(req.doc)
 
         db_path = default_db_path()
-        with connect_write(
-            db_path, purpose="api:put_notebook_content",
-        ) as con:
-            existing = get_notebook(con, notebook_id)
-            if existing is None:
-                raise HTTPException(
-                    status_code=404, detail="notebook not found",
+
+        def _sync() -> Any:
+            with connect_write(
+                db_path, purpose="api:put_notebook_content",
+            ) as con:
+                existing = get_notebook(con, notebook_id)
+                if existing is None:
+                    raise HTTPException(
+                        status_code=404, detail="notebook not found",
+                    )
+                # ── SPR-01 empty-doc floor ──────────────────────────────────
+                # A fresh/unhydrated editor seeds ``<p></p>`` and its first
+                # autosave PUTs that near-empty doc; the atomic replace below
+                # would DELETE every persisted block and destroy the operator's
+                # notes. Refuse to replace ≥1 persisted blocks with a doc that
+                # carries no real content. This check reads ``existing.blocks``,
+                # loaded on the same ``con`` inside the same write lock, so it is
+                # inside the replace's transaction boundary and cannot race a
+                # concurrent writer (DuckDB single-writer, --workers 1). A
+                # legitimate full-doc replace (any doc with real content) is
+                # unaffected — see ``is_effectively_empty``.
+                existing_block_count = len(existing.blocks)
+                if incoming_is_empty and existing_block_count >= 1:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "empty_doc_would_destroy_blocks",
+                            "message": (
+                                "Refusing to replace "
+                                f"{existing_block_count} persisted block(s) with "
+                                "an empty document. This usually means the editor "
+                                "autosaved before it hydrated from the substrate. "
+                                "Reload the notebook, then edit."
+                            ),
+                            "existing_block_count": existing_block_count,
+                        },
+                    )
+                # Atomic replace: drop all existing blocks, then re-insert
+                # in order. Both operations sit inside the single
+                # connect_write lock so a concurrent read never sees a
+                # partial state.
+                con.execute(
+                    "DELETE FROM notebook_blocks WHERE notebook_id = ?",
+                    [notebook_id],
                 )
-            # ── SPR-01 empty-doc floor ──────────────────────────────────
-            # A fresh/unhydrated editor seeds ``<p></p>`` and its first
-            # autosave PUTs that near-empty doc; the atomic replace below
-            # would DELETE every persisted block and destroy the operator's
-            # notes. Refuse to replace ≥1 persisted blocks with a doc that
-            # carries no real content. This check reads ``existing.blocks``,
-            # loaded on the same ``con`` inside the same write lock, so it is
-            # inside the replace's transaction boundary and cannot race a
-            # concurrent writer (DuckDB single-writer, --workers 1). A
-            # legitimate full-doc replace (any doc with real content) is
-            # unaffected — see ``is_effectively_empty``.
-            existing_block_count = len(existing.blocks)
-            if incoming_is_empty and existing_block_count >= 1:
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "code": "empty_doc_would_destroy_blocks",
-                        "message": (
-                            "Refusing to replace "
-                            f"{existing_block_count} persisted block(s) with "
-                            "an empty document. This usually means the editor "
-                            "autosaved before it hydrated from the substrate. "
-                            "Reload the notebook, then edit."
-                        ),
-                        "existing_block_count": existing_block_count,
-                    },
+                for block in decomposed:
+                    append_block(
+                        con,
+                        notebook_id=notebook_id,
+                        block_type=block.block_type,
+                        ref_id=block.ref_id,
+                        content=block.content_json,
+                    )
+                con.execute(
+                    "UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP "
+                    "WHERE notebook_id = ?",
+                    [notebook_id],
                 )
-            # Atomic replace: drop all existing blocks, then re-insert
-            # in order. Both operations sit inside the single
-            # connect_write lock so a concurrent read never sees a
-            # partial state.
-            con.execute(
-                "DELETE FROM notebook_blocks WHERE notebook_id = ?",
-                [notebook_id],
-            )
-            for block in decomposed:
-                append_block(
-                    con,
-                    notebook_id=notebook_id,
-                    block_type=block.block_type,
-                    ref_id=block.ref_id,
-                    content=block.content_json,
-                )
-            con.execute(
-                "UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP "
-                "WHERE notebook_id = ?",
-                [notebook_id],
-            )
-            nb = get_notebook(con, notebook_id)
+                return get_notebook(con, notebook_id)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        nb = await asyncio.to_thread(_sync)
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
@@ -4986,8 +5326,13 @@ def create_app(
         from substrate.notebooks.tiptap_codec import compose
 
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:get_notebook_content") as con:
-            nb = get_notebook(con, notebook_id)
+
+        def _sync() -> Any:
+            with connect_write(db_path, purpose="api:get_notebook_content") as con:
+                return get_notebook(con, notebook_id)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        nb = await asyncio.to_thread(_sync)
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         doc = compose(
@@ -5024,89 +5369,99 @@ def create_app(
         )
 
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:promote_notebook_public") as con:
-            existing = get_notebook(con, notebook_id)
-            if existing is None:
-                raise HTTPException(
-                    status_code=404, detail="notebook not found",
+
+        def _sync() -> tuple[Any, Any, Any]:
+            with connect_write(db_path, purpose="api:promote_notebook_public") as con:
+                existing = get_notebook(con, notebook_id)
+                if existing is None:
+                    raise HTTPException(
+                        status_code=404, detail="notebook not found",
+                    )
+
+                # Compute the quality-gate verdict from the current
+                # notebook state. Always run the gate so the event log
+                # captures the verdict, even for force=true paths.
+                inputs = gather_quality_gate_inputs(con, existing)
+                verdict = evaluate_notebook_for_public(
+                    text_content=inputs.text_content,
+                    cited_chunk_tiers=inputs.cited_chunk_tiers,
+                    corpus_sector_terms=inputs.corpus_sector_terms,
+                    rubric_score=rubric_score,
                 )
 
-            # Compute the quality-gate verdict from the current
-            # notebook state. Always run the gate so the event log
-            # captures the verdict, even for force=true paths.
-            inputs = gather_quality_gate_inputs(con, existing)
-            verdict = evaluate_notebook_for_public(
-                text_content=inputs.text_content,
-                cited_chunk_tiers=inputs.cited_chunk_tiers,
-                corpus_sector_terms=inputs.corpus_sector_terms,
-                rubric_score=rubric_score,
+                nb = None
+                if verdict.accepted or force:
+                    promote_to_public(con, notebook_id)
+                    nb = get_notebook(con, notebook_id)
+            return verdict, existing, nb
+
+        # flock wait off the uvicorn loop (#3111 to_thread class). The
+        # broadcast below is async, so it runs after the lock releases —
+        # the event still carries the verdict before any 422 is raised.
+        verdict, existing, nb = await asyncio.to_thread(_sync)
+
+        # Emit the typed quality_gate.evaluated event for the
+        # promotion attempt — both success and failure paths.
+        try:
+            import uuid as _uuid
+            from datetime import datetime as _dt
+
+            from substrate.schemas.events import (
+                ActionType as _AT,
+            )
+            from substrate.schemas.events import (
+                Event as _TypedEvent,
+            )
+            from substrate.schemas.events import (
+                QualityGateEvaluatedPayload,
             )
 
-            # Emit the typed quality_gate.evaluated event for the
-            # promotion attempt — both success and failure paths.
-            try:
-                import uuid as _uuid
-                from datetime import datetime as _dt
+            payload = QualityGateEvaluatedPayload(
+                target_kind="notebook",
+                target_id=notebook_id,
+                accepted=verdict.accepted,
+                verification_passed=verdict.verification.passed,
+                voice_style_passed=verdict.voice_style.passed,
+                source_tier_passed=verdict.source_tier.passed,
+                em_dash_density=verdict.voice_style.em_dash_density_per_1k_chars,
+                padding_phrase_count=verdict.voice_style.padding_phrase_count,
+                sector_vocab_overlap=verdict.voice_style.sector_vocab_overlap,
+                min_tier_cited=verdict.source_tier.min_tier_cited,
+                pct_tier_1_or_2=verdict.source_tier.pct_tier_1_or_2,
+                reasons=[r.value for r in verdict.reasons],
+            )
+            evt = _TypedEvent(
+                event_id=f"evt-{_uuid.uuid4().hex[:12]}",
+                investigation_id=(
+                    existing.investigation_id or "__no_investigation__"
+                ),
+                action_type=_AT.QUALITY_GATE_EVALUATED,
+                payload=payload,
+                param_version="api-v0",
+                emitted_at=_dt.now(UTC),
+            )
+            bus_obj = getattr(app.state, "broadcaster", None)
+            if bus_obj is not None:
+                await bus_obj.broadcast(evt)
+        except Exception:  # pragma: no cover — never block on emission
+            pass
 
-                from substrate.schemas.events import (
-                    ActionType as _AT,
-                )
-                from substrate.schemas.events import (
-                    Event as _TypedEvent,
-                )
-                from substrate.schemas.events import (
-                    QualityGateEvaluatedPayload,
-                )
-
-                payload = QualityGateEvaluatedPayload(
-                    target_kind="notebook",
-                    target_id=notebook_id,
-                    accepted=verdict.accepted,
-                    verification_passed=verdict.verification.passed,
-                    voice_style_passed=verdict.voice_style.passed,
-                    source_tier_passed=verdict.source_tier.passed,
-                    em_dash_density=verdict.voice_style.em_dash_density_per_1k_chars,
-                    padding_phrase_count=verdict.voice_style.padding_phrase_count,
-                    sector_vocab_overlap=verdict.voice_style.sector_vocab_overlap,
-                    min_tier_cited=verdict.source_tier.min_tier_cited,
-                    pct_tier_1_or_2=verdict.source_tier.pct_tier_1_or_2,
-                    reasons=[r.value for r in verdict.reasons],
-                )
-                evt = _TypedEvent(
-                    event_id=f"evt-{_uuid.uuid4().hex[:12]}",
-                    investigation_id=(
-                        existing.investigation_id or "__no_investigation__"
+        if not verdict.accepted and not force:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "quality_gate_failed",
+                    "message": (
+                        "Notebook did not pass the §13.9 quality "
+                        "gate. Re-edit and retry, or override with "
+                        "force=true."
                     ),
-                    action_type=_AT.QUALITY_GATE_EVALUATED,
-                    payload=payload,
-                    param_version="api-v0",
-                    emitted_at=_dt.now(UTC),
-                )
-                bus_obj = getattr(app.state, "broadcaster", None)
-                if bus_obj is not None:
-                    await bus_obj.broadcast(evt)
-            except Exception:  # pragma: no cover — never block on emission
-                pass
-
-            if not verdict.accepted and not force:
-                raise HTTPException(
-                    status_code=422,
-                    detail={
-                        "code": "quality_gate_failed",
-                        "message": (
-                            "Notebook did not pass the §13.9 quality "
-                            "gate. Re-edit and retry, or override with "
-                            "force=true."
-                        ),
-                        "reasons": [r.value for r in verdict.reasons],
-                        "verification_passed": verdict.verification.passed,
-                        "voice_style_passed": verdict.voice_style.passed,
-                        "source_tier_passed": verdict.source_tier.passed,
-                    },
-                )
-
-            promote_to_public(con, notebook_id)
-            nb = get_notebook(con, notebook_id)
+                    "reasons": [r.value for r in verdict.reasons],
+                    "verification_passed": verdict.verification.passed,
+                    "voice_style_passed": verdict.voice_style.passed,
+                    "source_tier_passed": verdict.source_tier.passed,
+                },
+            )
 
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
@@ -5461,33 +5816,38 @@ def create_app(
 
         outcome_id = f"out-{_uuid.uuid4().hex[:12]}"
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:post_outcome") as con:
-            con.execute(
-                "INSERT INTO outcomes ("
-                "outcome_id, synthesis_id, observer, "
-                "thesis_outcomes, falsification_outcomes, "
-                "execution_risk_outcomes, decision_alignment, notes"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    outcome_id,
-                    req.synthesis_id,
-                    req.observer,
-                    _json.dumps(req.thesis_outcomes),
-                    _json.dumps(req.falsification_outcomes),
-                    _json.dumps(req.execution_risk_outcomes),
-                    (
-                        _json.dumps(req.decision_alignment)
-                        if req.decision_alignment is not None
-                        else None
-                    ),
-                    req.notes,
-                ],
-            )
-            row = con.execute(
-                "SELECT outcome_id, synthesis_id, observer, observed_at "
-                "FROM outcomes WHERE outcome_id = ?",
-                [outcome_id],
-            ).fetchone()
+
+        def _sync() -> Any:
+            with connect_write(db_path, purpose="api:post_outcome") as con:
+                con.execute(
+                    "INSERT INTO outcomes ("
+                    "outcome_id, synthesis_id, observer, "
+                    "thesis_outcomes, falsification_outcomes, "
+                    "execution_risk_outcomes, decision_alignment, notes"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        outcome_id,
+                        req.synthesis_id,
+                        req.observer,
+                        _json.dumps(req.thesis_outcomes),
+                        _json.dumps(req.falsification_outcomes),
+                        _json.dumps(req.execution_risk_outcomes),
+                        (
+                            _json.dumps(req.decision_alignment)
+                            if req.decision_alignment is not None
+                            else None
+                        ),
+                        req.notes,
+                    ],
+                )
+                return con.execute(
+                    "SELECT outcome_id, synthesis_id, observer, observed_at "
+                    "FROM outcomes WHERE outcome_id = ?",
+                    [outcome_id],
+                ).fetchone()
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        row = await asyncio.to_thread(_sync)
 
         # Emit the typed outcome.recorded event so the trajectory
         # captures the grade. The OutcomeRecordedPayload is the
@@ -5746,6 +6106,10 @@ def create_app(
     class ThoughtPartnerResponseBody(BaseModel):
         shape: str  # "challenge" | "synthesis" | "extension"
         text: str
+        # Library grounding honesty — never invents hybrid success.
+        # status mirrors substrate.query (servable|shadow|degraded — brute_force|…).
+        library_retrieval_status: str | None = None
+        library_retrieval_degraded_reason: str | None = None
 
     @app.post(
         "/thought-partner",
@@ -5755,7 +6119,7 @@ def create_app(
         request: Request,
         req: ThoughtPartnerRequest = Body(...),
     ) -> ThoughtPartnerResponseBody:
-        """Run a single thought-partner turn through dispatch.
+        """Run a thought-partner turn through dispatch (optional multi-turn history).
 
         ``req.system_context`` is model context for the role. The model
         response text is returned verbatim; AISidecar parses any
@@ -5780,11 +6144,18 @@ def create_app(
         from interfaces.research.api.books import _owner_read_policy_tag
 
         effective_policy_tag = _owner_read_policy_tag(request)
+        history_payload = [
+            {"question": t.question, "answer": t.answer}
+            for t in (req.history or [])
+            if t.question.strip() and t.answer.strip()
+        ]
+        selected_notes, lib_status, lib_degraded = _retrieve_thought_partner_context(
+            req.prompt, effective_policy_tag,
+        )
         role_prompt = compose_thought_partner_prompt(
             user_prompt=req.prompt,
-            selected_notes=_retrieve_thought_partner_context(
-                req.prompt, effective_policy_tag,
-            ),
+            selected_notes=selected_notes,
+            conversation_history=history_payload,
         )
         assembled_prompt = THOUGHT_PARTNER_SYSTEM_PROMPT
         memory_context = account_memory_context(request, req.prompt)
@@ -5816,6 +6187,8 @@ def create_app(
         return ThoughtPartnerResponseBody(
             shape=parsed.shape,
             text=result.text,
+            library_retrieval_status=lib_status,
+            library_retrieval_degraded_reason=lib_degraded,
         )
 
     # ── CK-3 inline autocomplete endpoint (cursor-for-knowledge) ──
@@ -5953,13 +6326,17 @@ def create_app(
                 },
             ) from exc
 
-        with connect_write(
-            default_db_path(), purpose="loop_3:set_criterion",
-        ) as con:
-            set_criterion(
-                con, criterion=criterion, met=req.met, note=req.note,
-            )
-            snap = snapshot(con)
+        def _sync() -> Any:
+            with connect_write(
+                default_db_path(), purpose="loop_3:set_criterion",
+            ) as con:
+                set_criterion(
+                    con, criterion=criterion, met=req.met, note=req.note,
+                )
+                return snapshot(con)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        snap = await asyncio.to_thread(_sync)
         return Loop3StatusResponse(
             criteria=snap.criteria,
             notes=snap.notes,
@@ -6113,11 +6490,15 @@ def create_app(
                 req.require_attribution_for_outbound_citations
             ),
         )
-        with connect_write(
-            default_db_path(), purpose="cross_graph:save_federation_config",
-        ) as con:
-            save_config(con, cfg)
-            final = load_config(con)
+        def _sync() -> Any:
+            with connect_write(
+                default_db_path(), purpose="cross_graph:save_federation_config",
+            ) as con:
+                save_config(con, cfg)
+                return load_config(con)
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        final = await asyncio.to_thread(_sync)
         return FederationConfigResponse(
             allowed_partner_substrates=list(final.allowed_partner_substrates),
             require_opt_in_for_outbound_citations=(
@@ -6256,22 +6637,27 @@ def create_app(
 
         user_id = getattr(request.state, "user_id", None) or "__operator__"
         request_id = f"del-{_uuid.uuid4().hex[:12]}"
-        with connect_write(
-            default_db_path(), purpose="api:deletion_request",
-        ) as con:
-            con.execute(
-                """
-                INSERT INTO deletion_requests (
-                    request_id, user_id, status, reason
-                ) VALUES (?, ?, 'pending', ?)
-                """,
-                [request_id, user_id, req.reason],
-            )
-            row = con.execute(
-                "SELECT request_id, user_id, status, requested_at, "
-                "updated_at, reason FROM deletion_requests WHERE request_id = ?",
-                [request_id],
-            ).fetchone()
+
+        def _sync() -> Any:
+            with connect_write(
+                default_db_path(), purpose="api:deletion_request",
+            ) as con:
+                con.execute(
+                    """
+                    INSERT INTO deletion_requests (
+                        request_id, user_id, status, reason
+                    ) VALUES (?, ?, 'pending', ?)
+                    """,
+                    [request_id, user_id, req.reason],
+                )
+                return con.execute(
+                    "SELECT request_id, user_id, status, requested_at, "
+                    "updated_at, reason FROM deletion_requests WHERE request_id = ?",
+                    [request_id],
+                ).fetchone()
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        row = await asyncio.to_thread(_sync)
         return _deletion_request_row_to_response(row)
 
     @app.get(
@@ -6317,49 +6703,54 @@ def create_app(
         from substrate.graph import default_db_path
 
         user_id = getattr(request.state, "user_id", None) or "__operator__"
-        with connect_write(
-            default_db_path(), purpose="api:cancel_deletion",
-        ) as con:
-            row = con.execute(
-                "SELECT request_id, user_id, status FROM deletion_requests "
-                "WHERE request_id = ?",
-                [request_id],
-            ).fetchone()
-            if row is None:
-                raise HTTPException(
-                    status_code=404, detail="deletion request not found",
+
+        def _sync() -> Any:
+            with connect_write(
+                default_db_path(), purpose="api:cancel_deletion",
+            ) as con:
+                row = con.execute(
+                    "SELECT request_id, user_id, status FROM deletion_requests "
+                    "WHERE request_id = ?",
+                    [request_id],
+                ).fetchone()
+                if row is None:
+                    raise HTTPException(
+                        status_code=404, detail="deletion request not found",
+                    )
+                if row[1] != user_id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="only the originating user can cancel",
+                    )
+                if row[2] != "pending":
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "wrong_status",
+                            "message": (
+                                f"cannot cancel — current status is "
+                                f"{row[2]!r}; cancellation only valid in "
+                                "the 'pending' state"
+                            ),
+                        },
+                    )
+                con.execute(
+                    """
+                    UPDATE deletion_requests
+                    SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+                    WHERE request_id = ?
+                    """,
+                    [request_id],
                 )
-            if row[1] != user_id:
-                raise HTTPException(
-                    status_code=403,
-                    detail="only the originating user can cancel",
-                )
-            if row[2] != "pending":
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "code": "wrong_status",
-                        "message": (
-                            f"cannot cancel — current status is "
-                            f"{row[2]!r}; cancellation only valid in "
-                            "the 'pending' state"
-                        ),
-                    },
-                )
-            con.execute(
-                """
-                UPDATE deletion_requests
-                SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
-                WHERE request_id = ?
-                """,
-                [request_id],
-            )
-            updated = con.execute(
-                "SELECT request_id, user_id, status, requested_at, "
-                "updated_at, reason FROM deletion_requests "
-                "WHERE request_id = ?",
-                [request_id],
-            ).fetchone()
+                return con.execute(
+                    "SELECT request_id, user_id, status, requested_at, "
+                    "updated_at, reason FROM deletion_requests "
+                    "WHERE request_id = ?",
+                    [request_id],
+                ).fetchone()
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        updated = await asyncio.to_thread(_sync)
         return _deletion_request_row_to_response(updated)
 
     # ── Sprint 30+ substrate stats summary (§13.7 audit) ──
@@ -6617,6 +7008,8 @@ def create_app(
         substrate_controls: list[str]
         compliance_frameworks: list[str]
         loop_3_unlock_status: dict[str, bool]
+        website_ads: dict[str, Any]
+        speak_economics: dict[str, Any]
 
     @app.get(
         "/trust-center",
@@ -6646,6 +7039,9 @@ def create_app(
                 "eval_headroom": False,
             }
 
+        from substrate.ad_inventory.rank0_honesty import website_ads_honesty
+        from substrate.speak.g2_synquery_honesty import g2_synquery_honesty
+
         return TrustCenterPublication(
             differential_privacy_epsilon_budgets={
                 "skill_invocation_frequency": 2.0,
@@ -6668,6 +7064,8 @@ def create_app(
                 "SOC 2 Type II — deferred (not required for consumer Phase 1)",
             ],
             loop_3_unlock_status=loop_3_status,
+            website_ads=website_ads_honesty(),
+            speak_economics=g2_synquery_honesty(),
         )
 
     # ── Speak workflow (specs/speak/) — the fourth workflow's REST
@@ -6902,10 +7300,31 @@ def create_app(
         if worker is not None:
             worker.join(timeout=1.0)
 
+
+    def _recover_stranded_dispatch() -> None:
+        from .stranded_dispatch_recovery import start_stranded_dispatch_recovery
+
+        stop = threading.Event()
+        app.state.stranded_dispatch_recovery_stop = stop
+        app.state.stranded_dispatch_recovery_worker = start_stranded_dispatch_recovery(
+            stop_event=stop,
+        )
+
+    def _stop_stranded_dispatch() -> None:
+        stop = getattr(app.state, "stranded_dispatch_recovery_stop", None)
+        worker = getattr(app.state, "stranded_dispatch_recovery_worker", None)
+        if stop is not None:
+            stop.set()
+        if worker is not None:
+            worker.join(timeout=1.0)
+
+
     app.router.on_startup.append(_recover_knowledge_event_projector)
     app.router.on_startup.append(_recover_note_taker_replay)
+    app.router.on_startup.append(_recover_stranded_dispatch)
     app.router.on_shutdown.append(_stop_knowledge_event_projector)
     app.router.on_shutdown.append(_stop_note_taker_replay)
+    app.router.on_shutdown.append(_stop_stranded_dispatch)
     return app
 
 

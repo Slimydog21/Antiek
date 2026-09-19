@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   getDistillation,
@@ -71,9 +72,17 @@ export default function DistillView({ investigationId, running, onChase }: Disti
     void load();
   }, [load]);
 
+  // Daily-loop continuity: AutoNotebook "distill" → /inv/:id#distill
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hash !== "#distill") return;
+    const el = document.getElementById("distill");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [state.kind]);
+
   if (state.kind === "loading") {
     return (
-      <div className="flex items-center gap-2 px-4 py-6" role="status" aria-live="polite">
+      <div id="distill" data-testid="distill-view" className="flex items-center gap-2 px-4 py-6" role="status" aria-live="polite">
         <Thinking size={28} label="Gathering the insights and questions" status="reading the graph…" />
       </div>
     );
@@ -81,7 +90,7 @@ export default function DistillView({ investigationId, running, onChase }: Disti
 
   if (state.kind === "error") {
     return (
-      <div className="px-4 py-6">
+      <div id="distill" data-testid="distill-view" className="px-4 py-6">
         <AIActionFailure
           title="Couldn’t load the insights and questions"
           reason={state.reason}
@@ -96,7 +105,7 @@ export default function DistillView({ investigationId, running, onChase }: Disti
   // Honest no-result (M4): nothing distilled — the common no-provider case.
   if (insights.length === 0 && questions.length === 0) {
     return (
-      <div className="px-4 py-6">
+      <div id="distill" data-testid="distill-view" className="px-4 py-6">
         <AIActionFailure
           title={
             running
@@ -107,12 +116,14 @@ export default function DistillView({ investigationId, running, onChase }: Disti
           onRetry={() => void load()}
           retryLabel="Check again"
         />
+        <OpenAutoNotebookLink investigationId={investigationId} />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-5 px-4 py-4">
+    <div id="distill" data-testid="distill-view" className="flex flex-col gap-5 px-4 py-4">
+      <OpenAutoNotebookLink investigationId={investigationId} />
       {running && (
         <p className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
           still working — this is what’s distilled so far
@@ -288,4 +299,20 @@ function Grounding({ node }: { node: DistilledNode }) {
     return <span className="font-mono italic">no source on record</span>;
   }
   return <span className="font-mono">grounded in a source</span>;
+}
+
+
+/** Dogfood path: research → auto-notebook (SPR-06 ratified). Derived view only. */
+function OpenAutoNotebookLink({ investigationId }: { investigationId: string }) {
+  return (
+    <p className="px-0 pt-1">
+      <Link
+        to={`/notebook/auto/${encodeURIComponent(investigationId)}`}
+        data-testid="open-auto-notebook"
+        className="font-mono text-[11px] uppercase tracking-wider text-aurora underline-offset-2 hover:underline"
+      >
+        Open auto-notebook →
+      </Link>
+    </p>
+  );
 }

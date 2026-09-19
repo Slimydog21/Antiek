@@ -62,7 +62,7 @@ from roles.synthesizer import (  # noqa: E402
     parse_synthesizer_response,
     render_full_prompt,
 )
-from substrate.dispatch import ProviderError, dispatch  # noqa: E402
+from substrate.dispatch import dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
@@ -395,7 +395,7 @@ def _dispatch_once(prompt: str, event: Event, *, attempt: int = 0) -> tuple[str 
             model_override=model_override,
         )
         return result.text, f"{result.provider}/{result.model}"
-    except (ProviderError, KeyError) as exc:
+    except Exception as exc:  # ProviderError/KeyError/OwnerByot*/etc.
         print(
             f"synthesizer.handle: dispatch failed — "
             f"{type(exc).__name__}: {exc}",

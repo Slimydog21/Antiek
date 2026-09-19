@@ -1,11 +1,14 @@
 # Anti-Ek multi-CLI swarm playbook
 
 Mac Mini (`slimydog@100.106.253.49`) playbook for a three-role swarm:
-**Implementer → Reviewer → Adversary/rights**. Verified 2026-09-17 on this
-machine. **Never print API keys, tokens, or values from `~/.config/ai-keys` / `.env`.**
+**Implementer → Reviewer → Adversary/rights**. Re-verified **2026-09-19**
+on this machine. **Never print API keys, tokens, or values from
+`~/.config/ai-keys` / `.env`.**
 
 Companion stub (shorter): [`docs/swarm/anti-ek-mac-mini-cli-swarm.md`](./swarm/anti-ek-mac-mini-cli-swarm.md).
-Helper: [`scripts/anti-ek-swarm-review.sh`](../scripts/anti-ek-swarm-review.sh).
+Helper: [`scripts/anti-ek-swarm-review.sh`](../scripts/anti-ek-swarm-review.sh)
+(`--check` readiness smoke; default parallel review; `--dry-run`).
+Deprecated alias [`scripts/swarm-review-pr.sh`](../scripts/swarm-review-pr.sh) now **execs** the same script (do not use the old homebrew-first / `glmf-codex exec` path).
 
 ## Dual-structure rule (read this first)
 
@@ -30,23 +33,74 @@ Mini dogfood: [`docs/anti-ek-mac-mini-dogfood.md`](./anti-ek-mac-mini-dogfood.md
 ## PATH (required)
 
 ```bash
-export PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.kimi-code/bin:$PATH"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:$HOME/.kimi-code/bin:$PATH"
 ```
 
-Binaries on this Mini (2026-09-17):
+SSH sessions often lack Homebrew + kimi unless you export this. The swarm
+script exports it for you.
+
+Binaries on this Mini (**2026-09-19** probe):
 
 | CLI | Path | Version |
 |-----|------|---------|
-| `claude` | `/opt/homebrew/bin/claude` | Claude Code 2.1.42 |
-| `grok` | `~/.local/bin/grok` | grok 1.0.30 |
-| `glm-codex` | `~/.local/bin/glm-codex` | Codex CLI 0.154.0 |
-| `glmf-codex` | `~/.local/bin/glmf-codex` | Codex CLI 0.154.0 |
-| `codex` | `~/.local/bin/codex` | Codex CLI 0.154.0 |
-| `mimo` | `~/.local/bin/mimo` | 0.1.0 |
-| `kimi` | `~/.kimi-code/bin/kimi` | 0.43.0 |
+| `claude` | `~/.local/bin/claude` (also `/opt/homebrew/bin/claude`) | Claude Code **2.1.278** |
+| `grok` | `~/.local/bin/grok` | grok **1.0.30** |
+| `glm-codex` | `~/.local/bin/glm-codex` | Codex CLI **0.154.0** |
+| `glmf-codex` | `~/.local/bin/glmf-codex` | Codex CLI **0.154.0** |
+| `codex` | `~/.local/bin/codex` | Codex CLI **0.154.0** |
+| `mimo` | `~/.local/bin/mimo` | **0.1.0** |
+| `kimi` | `~/.kimi-code/bin/kimi` | **2.0.0** (needs `~/.kimi-code/bin` on PATH) |
+| `herdr` | `~/.local/bin/herdr` | **0.9.0** |
 | `gh` | `/opt/homebrew/bin/gh` | installed |
 
-Worktree: `/Users/slimydog/Antiek/.worktrees/anti-ek-use-main-20260917`
+**Dogfood tip-sync worktree (preferred for Anti-Ek recursive perfection):**
+`/private/tmp/antiek-main-probe`
+
+Deploy / ansible companion (inventory + `.venv`):
+`/Users/slimydog/Antiek/platform`
+
+Legacy dogfood trees (may lag tip; still OK when present):
+`/Users/slimydog/Antiek/deploy-main-20260917`,
+`/Users/slimydog/Antiek/.worktrees/anti-ek-use-main-20260917`
+
+## Herdr — Antiek workspace **w7** (convention, not a new feature)
+
+Herdr is already the operator's terminal workspace manager. Do **not** invent
+Herdr product features — use existing `herdr workspace` / `herdr tab` / `herdr
+pane` socket helpers.
+
+| Fact | Value |
+|------|-------|
+| Canonical Antiek server workspace | **`w7`**, label **`Antiek`** |
+| Focus | `herdr workspace focus w7` (only when the operator asked you to drive Herdr) |
+| List tabs | `herdr tab list` → filter `workspace_id == "w7"` |
+
+**Observed w7 tab convention (re-probed 2026-09-19 evening, 14 tabs):**
+
+| Tab label | Role in the swarm |
+|-----------|-------------------|
+| `claude` | Reviewer (careful). |
+| `glmf` | Implementer / mechanical review (`glmf-codex`). |
+| `kimi` | Reviewer backup. |
+| `deepseek` | Alternate implementer / adversary. |
+| `herdr` | Ops / Herdr itself — not for Antiek app code. |
+| `PR Sweep` / `PRs` | Merge-train / PR hygiene. |
+| Topic tabs (`mascot`, `passkey`, `algos and graph`, `prime-driver`, …) | Feature lanes — one concern per tab. |
+
+`--check` prints live `w7_tab_labels=…` and soft-WARNs if `claude` / `glmf|codex|glm` / `herdr` role-ish tabs are absent. It does **not** create or rename tabs.
+
+**Naming rule:** lowercase CLI binary name for role tabs (`claude`, `codex`,
+`grok` if added); short topic labels for feature work. Do not rename the
+operator's tabs unless asked. Agents coordinating a swarm review should write
+artifacts under `/tmp/antiek-swarm-review-*.txt` and may paste summaries into
+the matching role tab — they must not spawn dozens of new tabs.
+
+Readiness smoke (no model tokens):
+
+```bash
+./scripts/anti-ek-swarm-review.sh --check
+# → /tmp/antiek-swarm-check.txt  (core_ready=true|false)
+```
 
 ## Role split (speed + quality)
 
@@ -64,7 +118,7 @@ Use **three different binaries**. Do not let the implementer grade its own patch
 - **claude** — careful review. `claude -p "..."` with the diff in the prompt (or `--print`). Best Reviewer.
 - **grok** — product/UI critique. `grok -p "..."` (`--single`). Ask whether `/read/:id` actually gets HTML-native rendering, empty states, rights copy.
 - **mimo** — alternate implementer. `mimo run "..."`. Use when glm/claude is busy or you want a second patch sketch.
-- **kimi** — print mode works: `kimi -p "..." --output-format text`. Use if Claude is saturated; do not assume tool use in `-p` without `--auto`.
+- **kimi** — print mode works: `kimi -p "..." --output-format text`. Use if Claude is saturated; do not assume tool use in `-p` without `--auto`. Requires `~/.kimi-code/bin` on PATH.
 - **codex** (upstream) — same shape as glm forks: `codex review` / `codex exec`. Use as extra Adversary if glm slots are full.
 
 Assign **at least two different CLIs** as Reviewer on any merge-bound PR.
@@ -104,14 +158,14 @@ Equivalent flag: `grok --single "..."`. Headless agent (stdio) is `grok agent st
 
 ```bash
 # Mechanical review of git changes vs main (no need to stuff the diff in argv)
-glmf-codex review --base origin/main "Antiek PR review. High-confidence only. Dual-structure: DuckDB truth, HTML sidecar projection. §9 rights, no metadata HTML-trust stamp."
+glmf-codex review --base origin/main
 
 # Fast implement
 glmf-codex exec "On this branch, add a public-path assertion to tests/test_sources_upload.py: personal_reading upload must not serve content_format=html on GET /books/{id}/full-text."
 
 # Fallbacks
-glm-codex review --base origin/main "..."
-codex review --base origin/main "..."
+glm-codex review --base origin/main
+codex review --base origin/main
 ```
 
 `review` is noninteractive by design. `exec` will read the tree with tools —
@@ -130,6 +184,7 @@ Noninteractive auto-approve (only if you intend writes): `--dangerously-skip-per
 ### Kimi — print mode (works)
 
 ```bash
+export PATH="$HOME/.kimi-code/bin:$PATH"
 kimi -p "Review this Antiek diff. High-confidence only.
 
 $(git diff origin/main...HEAD)" --output-format text
@@ -140,10 +195,12 @@ $(git diff origin/main...HEAD)" --output-format text
 ## Parallel review recipe
 
 ```bash
-export PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.kimi-code/bin:$PATH"
-cd /Users/slimydog/Antiek/.worktrees/anti-ek-use-main-20260917   # or current PR worktree
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:$HOME/.kimi-code/bin:$PATH"
+cd /private/tmp/antiek-main-probe   # preferred tip-sync dogfood (or current PR worktree)
+./scripts/anti-ek-swarm-review.sh --check           # readiness first (CLI + w7 tabs + worktree tips)
 ./scripts/anti-ek-swarm-review.sh origin/main
 # writes /tmp/antiek-swarm-review-{claude,glmf,grok}.txt — no secrets
+./scripts/anti-ek-swarm-review.sh --dry-run origin/main   # plan only
 ```
 
 Manual (product files only, exclude swarm docs):
@@ -181,6 +238,9 @@ wait
 Fold **only** high-confidence trivial fixes onto the PR branch. No force-push
 if another executor is merging. `git fetch` first.
 
+The swarm script truncates prompt diffs above ~200KB (`ANTIEK_SWARM_MAX_DIFF_BYTES`)
+so argv-stuffed reviews do not fail silently on large branches.
+
 ## CI merge bar (standing)
 
 Merge when **tsc + vitest + keystone + mypy/ruff** (and visual if present) pass.
@@ -193,3 +253,4 @@ passed (same bar as PR #3100).
 - Shared DuckDB + isolated events: `scripts/start-shared-duckdb-mac-mini.sh`
 - Owner session: `scripts/mac-mini-owner-dev-login.sh` (never print tokens)
 - Another agent may already be on the PR branch — `git fetch`; do not force-push.
+- Herdr Antiek **w7** is the main server workspace for this workstream.

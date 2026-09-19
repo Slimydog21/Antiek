@@ -655,46 +655,50 @@ def register_upload_routes(app: FastAPI) -> None:
 
         from substrate.books.model import upsert_book_asset
 
-        with connect_write(db_path, purpose="sources/upload") as con:
-            insert_document(
-                con,
-                document_id=document_id,
-                source_tier=2,
-                document_type="upload",
-                source_uri=source_url,
-                title=title,
-                author=author,
-                published_at=None,
-                investigation_id=None,
-                raw_text=raw_text,
-                metadata=metadata,
-                content_class=content_class,
-                on_conflict="ignore",
-            )
-            # The ONLY writer for the reader-HTML sidecar. Sanitizes INSIDE the
-            # call and stamps SANITIZER_VERSION in the same INSERT — the stored
-            # body is version-provenance-trusted by construction.
-            store_reader_html(
-                con,
-                document_id=document_id,
-                main_html=html_body,
-                source_kind=_SOURCE_KIND[detected_kind],
-                source_url=source_url,
-            )
-            # Bind the upload into the Read workflow book surface so
-            # ``GET /books/{id}`` / ``/read/:id`` (BookReader) resolve. Without
-            # this row the Sources "Open in reader" button 404s even though
-            # reader-html is available — the polished highlight→spin path only
-            # worked on wrestle. Idempotent on re-upload (same as the sidecar).
-            upsert_book_asset(
-                con,
-                document_id=document_id,
-                toc=[],
-                page_count=_estimate_page_count(raw_text, detected_kind=detected_kind),
-                pagination_scheme="pdf_page",
-                provenance=f"sources/upload:{detected_kind}",
-                license_basis=acquisition_attestation,
-            )
+        def _sync() -> None:
+            with connect_write(db_path, purpose="sources/upload") as con:
+                insert_document(
+                    con,
+                    document_id=document_id,
+                    source_tier=2,
+                    document_type="upload",
+                    source_uri=source_url,
+                    title=title,
+                    author=author,
+                    published_at=None,
+                    investigation_id=None,
+                    raw_text=raw_text,
+                    metadata=metadata,
+                    content_class=content_class,
+                    on_conflict="ignore",
+                )
+                # The ONLY writer for the reader-HTML sidecar. Sanitizes INSIDE the
+                # call and stamps SANITIZER_VERSION in the same INSERT — the stored
+                # body is version-provenance-trusted by construction.
+                store_reader_html(
+                    con,
+                    document_id=document_id,
+                    main_html=html_body,
+                    source_kind=_SOURCE_KIND[detected_kind],
+                    source_url=source_url,
+                )
+                # Bind the upload into the Read workflow book surface so
+                # ``GET /books/{id}`` / ``/read/:id`` (BookReader) resolve. Without
+                # this row the Sources "Open in reader" button 404s even though
+                # reader-html is available — the polished highlight→spin path only
+                # worked on wrestle. Idempotent on re-upload (same as the sidecar).
+                upsert_book_asset(
+                    con,
+                    document_id=document_id,
+                    toc=[],
+                    page_count=_estimate_page_count(raw_text, detected_kind=detected_kind),
+                    pagination_scheme="pdf_page",
+                    provenance=f"sources/upload:{detected_kind}",
+                    license_basis=acquisition_attestation,
+                )
+
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        await run_in_threadpool(_sync)
 
         return UploadResponse(
             document_id=document_id,

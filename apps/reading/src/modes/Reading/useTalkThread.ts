@@ -52,6 +52,8 @@ export interface TalkMessage {
   model_operation_state?: BookModelOperationState | "requesting";
   operation_not_found_checks?: number;
   operation_first_not_found_at?: number;
+  /** thought_partner shape when the turn used the unified role. */
+  shape?: string | null;
 }
 
 export interface TalkBranch {
@@ -119,6 +121,7 @@ export interface UseTalkThread {
     answerId: string | null,
     captureStatus: "captured" | "unavailable",
     modelReceipt?: BookModelReceipt | null,
+    shape?: string | null,
   ) => void;
   setModelOperationState: (messageId: string, state: BookModelOperationState) => void;
   markModelOperationNotFound: (messageId: string) => void;
@@ -205,6 +208,7 @@ export function useTalkThread(documentId: string): UseTalkThread {
       answerId: string | null,
       captureStatus: "captured" | "unavailable",
       modelReceipt?: BookModelReceipt | null,
+      shape?: string | null,
     ) => {
       mutateActive((msgs) =>
         msgs.map((m) => (m.id === messageId ? {
@@ -215,6 +219,7 @@ export function useTalkThread(documentId: string): UseTalkThread {
           answer_id: answerId ?? undefined,
           capture_unavailable: captureStatus === "unavailable",
           model_operation_state: undefined,
+          shape: shape ?? undefined,
           model_receipt: modelReceipt ? {
             authority: modelReceipt.authority,
             requested_provider_id: modelReceipt.requested_provider_id,

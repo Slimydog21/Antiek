@@ -5,6 +5,15 @@
 // gate fails CI and the TS side breaks at the type level.
 
 import type { Event, TypedPayload } from "../generated/types";
+import { toast } from "../components/lemon/LemonToast";
+import {
+  CapacityExhaustedError,
+  formatCapacityExhaustedToast,
+  formatCapacityWarnToast,
+  parseCapacityExhaustedDetail,
+  parseCapacityWarning,
+  stashCapacityWarning,
+} from "./capacityWarn";
 
 // Mirrors the FastAPI response model. Not in substrate/schemas because
 // this is an API-layer concern (the typed event itself is what gets
@@ -53,12 +62,43 @@ function authHeaders(extra?: HeadersInit): Record<string, string> {
   return merged;
 }
 
+/** Resolve a root-relative API path against {@link API_BASE}.
+ *
+ * WHY THIS EXISTS. In production the app is served from Cloudflare Pages
+ * (antiek.ai) while the substrate answers on a different origin
+ * (api.antiek.ai), and Pages carries no `_redirects`, no `_routes.json` and no
+ * Functions proxy — so a bare `"/speak/projects"` resolves against the Pages
+ * origin and returns the SPA shell, never the API. In development the Vite
+ * proxy makes the same string work, which is exactly why the mistake survived:
+ * it is invisible locally and total in production.
+ *
+ * Doing this here rather than at the call sites is deliberate. There were 146
+ * bare calls against 92 correctly-prefixed ones; prefixing each by hand is a
+ * large diff that fixes today's call sites and silently accepts tomorrow's.
+ * One resolution point cannot drift.
+ *
+ * Idempotent by construction. With `API_BASE` empty (dev) the path is returned
+ * unchanged, so the Vite proxy keeps working. With `API_BASE` set, an already
+ * prefixed call is an absolute URL, does not start with "/", and is left alone.
+ * Protocol-relative "//host/path" is a real absolute URL and is also left alone.
+ */
+export function resolveApiUrl(path: string): string {
+  if (!API_BASE) return path;
+  if (!path.startsWith("/") || path.startsWith("//")) return path;
+  return `${API_BASE}${path}`;
+}
+
 /** ``fetch`` wrapper that sends session cookies (``credentials: include``).
  * Exported for new mode components that need direct API access
  * outside the typed helper functions (e.g. OperatorDashboard,
- * PrivacyDashboard, Notebook). */
+ * PrivacyDashboard, Notebook).
+ *
+ * A string argument is resolved through {@link resolveApiUrl}. `Request` and
+ * `URL` arguments are already resolved by the caller and are passed through
+ * untouched — rebuilding a `Request` here would silently drop its body. */
 export function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  return fetch(input, {
+  const target = typeof input === "string" ? resolveApiUrl(input) : input;
+  return fetch(target, {
     ...(init ?? {}),
     headers: authHeaders(init?.headers),
     credentials: "include",
@@ -270,6 +310,7 @@ export interface StartInvestigationResponse {
   start_event_id: string;
   operation_id?: string;
   owner_model_status?: "queued" | "replayed";
+  capacity_warning?: import("./capacityWarn").CapacityWarning | null;
 }
 
 /** POST /investigations — kick off a cold research investigation. */
@@ -282,13 +323,37 @@ export async function startInvestigation(
     body: JSON.stringify(req),
   });
   if (!resp.ok) {
+    const body = await resp.text();
+    const exhausted = parseCapacityExhaustedDetail(resp.status, body);
+    if (exhausted) {
+      toast.err(formatCapacityExhaustedToast(exhausted), {
+        ttl: 10000,
+        target: { path: "/settings" },
+      });
+      throw new CapacityExhaustedError(exhausted);
+    }
     throw new ApiError(
       `POST /investigations failed: HTTP ${resp.status}`,
       resp.status,
-      await resp.text(),
+      body,
     );
   }
-  return resp.json();
+  const raw = (await resp.json()) as StartInvestigationResponse & {
+    capacity_warning?: unknown;
+  };
+  const capacity_warning = parseCapacityWarning(raw.capacity_warning);
+  const out: StartInvestigationResponse = {
+    ...raw,
+    capacity_warning,
+  };
+  if (capacity_warning) {
+    stashCapacityWarning(out.investigation_id, capacity_warning);
+    toast.warn(formatCapacityWarnToast(capacity_warning), {
+      ttl: 8000,
+      target: { path: "/inv/" + encodeURIComponent(out.investigation_id) },
+    });
+  }
+  return out;
 }
 
 export interface InvestigationSummary {
@@ -1255,6 +1320,51 @@ export interface ChallengeNoteResponse {
   escalated: boolean;
   /** The reserved (un-launched) child research id, when escalated. */
   reserved_child_investigation_id?: string | null;
+}
+
+
+/** Prompt / question telemetry from the investigation trajectory (event-log SoT).
+ *  Full prompt bodies are not stored on dispatch.call — only prompt_hash +
+ *  the opening research question from start_requested. */
+export interface PromptCallTelemetry {
+  event_id?: string | null;
+  emitted_at?: string | null;
+  role: string;
+  provider: string;
+  model: string;
+  tier?: string | null;
+  finish_reason?: string | null;
+  latency_ms: number;
+  cost_usd: number;
+  prompt_hash?: string | null;
+  input_tokens: number;
+  output_tokens: number;
+}
+
+export interface PromptTelemetryResponse {
+  investigation_id: string;
+  question: string | null;
+  call_count: number;
+  total_cost_usd: number;
+  total_latency_ms: number;
+  calls: PromptCallTelemetry[];
+  prompt_bodies_stored: boolean;
+}
+
+export async function getPromptTelemetry(
+  investigationId: string,
+): Promise<PromptTelemetryResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/investigations/${encodeURIComponent(investigationId)}/prompt-telemetry`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /investigations/{id}/prompt-telemetry failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
 }
 
 /** POST /research/notes/{nodeId}/challenge — drive the shipped living-note

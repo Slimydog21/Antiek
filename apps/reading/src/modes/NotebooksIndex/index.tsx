@@ -115,6 +115,17 @@ export default function NotebooksIndex() {
               region embeds, question cards, and substrate refs.
               Promote-to-public is gated on the §13.9 quality gate.
             </p>
+            <p
+              data-testid="notebooks-index-auto-honesty"
+              className="text-sm text-ink-soft dark:text-starlight leading-relaxed rounded border border-rule dark:border-charcoal-1 px-3 py-2"
+            >
+              TipTap notebooks below are manual. The daily-loop{" "}
+              <strong className="font-medium text-ink dark:text-bright">auto-notebook</strong>{" "}
+              for a research is a derived view at{" "}
+              <code className="font-mono text-[12px]">/notebook/auto/&lt;research-id&gt;</code>{" "}
+              (distill + synthesis → outline; no separate notebook write API). Open it from Distill
+              or research, then continue into Write.
+            </p>
           </header>
 
           <section className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-3">

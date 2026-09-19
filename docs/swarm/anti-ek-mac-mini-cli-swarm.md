@@ -9,27 +9,35 @@ Canonical playbook with Mini-verified invocations: [`docs/anti-ek-cli-swarm.md`]
 | CLI | Binary | Noninteractive |
 |-----|--------|----------------|
 | Claude Code | `claude` | `claude -p "..."` / `--print` |
-| Grok Build | `grok` | check `grok --help` |
-| GLM Codex | `glm-codex` | `glm-codex exec ...` |
-| GLMF Codex | `glmf-codex` | `glmf-codex exec ...` |
-| Codex | `codex` | `codex exec ...` |
+| Grok Build | `grok` | `grok --single "..."` / `grok -p` |
+| GLM Codex | `glm-codex` | `glm-codex review` / `exec` |
+| GLMF Codex | `glmf-codex` | `glmf-codex review` / `exec` |
+| Codex | `codex` | `codex review` / `exec` |
 | MiMo | `mimo` | `mimo run ...` |
-| Kimi | `~/.kimi-code/bin/kimi` | `kimi ...` (add to PATH) |
+| Kimi | `~/.kimi-code/bin/kimi` | `kimi -p ...` (add to PATH) |
+| Herdr | `herdr` | `herdr workspace` / `tab` (Antiek **w7**) |
 
 ```bash
-export PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.kimi-code/bin:$PATH"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:$HOME/.kimi-code/bin:$PATH"
+./scripts/anti-ek-swarm-review.sh --check
 ```
 
 ## Roles → model assignment (default)
 
 | Role | Job | Preferred CLI | Backup |
 |------|-----|---------------|--------|
-| **Implementer** | Write/fix code on a branch | `claude -p` or `grok` | `glm-codex exec` |
-| **Reviewer** | Diff review: correctness, §9 gates, tests | `claude -p` + `glmf-codex exec` | `glm-codex` / `kimi` |
-| **Adversary** | Attack rights leaks, XSS, auth bypass, DuckDB races | `mimo run` or `codex exec` | `glmf-codex` |
+| **Implementer** | Write/fix code on a branch | `glmf-codex exec` | `mimo run` / `glm-codex` |
+| **Reviewer** | Diff review: correctness, §9 gates, tests | `claude -p` | `kimi -p` |
+| **Adversary** | Attack rights leaks, XSS, auth bypass, DuckDB races + product/UI | `grok --single` + `codex review` | `mimo run` |
 
 Assign **at least two different CLIs** for Reviewer on any merge-bound PR.
 Implementer and Adversary should not be the same binary when parallelizing.
+
+## Herdr Antiek w7
+
+Main server workspace: **`w7` / Antiek**. Role tabs use CLI names (`claude`,
+`glmf`, `kimi`, …); topic tabs for feature lanes. `--check` inventories live
+w7 labels. See canonical playbook — do not invent Herdr features.
 
 ## Review prompt skeleton (paste + attach diff)
 
@@ -40,6 +48,7 @@ You are reviewing an Antiek PR diff. Focus ONLY on high-confidence issues:
 3) Auth: unauthenticated_local must not gain owner_read
 4) DuckDB: no second writer; no prod DB reset
 5) Secrets: no tokens in logs/docs
+5b) Dual-structure: DuckDB is truth; HTML sidecar is a projection
 
 Output: (a) blocking findings with file:line (b) non-blocking nits (c) LGTM if clean.
 Do not suggest weakening gates. Do not invent missing context.
@@ -48,22 +57,10 @@ Do not suggest weakening gates. Do not invent missing context.
 ## Parallel review recipe
 
 ```bash
-# From worktree with PR checked out:
-git diff origin/main...HEAD > /tmp/pr.diff
-PROMPT="$(cat docs/swarm/anti-ek-mac-mini-cli-swarm.md | sed -n "/Review prompt skeleton/,/^## Parallel/p" | head -n -2)"
-
-# Terminal A
-claude -p "$PROMPT
-
-$(cat /tmp/pr.diff)" > /tmp/review-claude.txt 2>&1 &
-
-# Terminal B
-glmf-codex exec "Review this Antiek diff. $PROMPT
-
-$(cat /tmp/pr.diff)" > /tmp/review-glmf.txt 2>&1 &
-
-wait
-# Fold only high-confidence fixes; then merge when CI bar is met.
+cd /private/tmp/antiek-main-probe
+./scripts/anti-ek-swarm-review.sh --check
+./scripts/anti-ek-swarm-review.sh origin/main
+# → /tmp/antiek-swarm-review-{claude,glmf,grok}.txt
 ```
 
 ## CI merge bar (standing)
@@ -75,6 +72,7 @@ Do **not** block forever on a single hung pytest shard if the other shards passe
 ## Antiek Mini dogfood context
 
 - Work via SSH: `slimydog@100.106.253.49`
+- Dogfood tip-sync tree: `/private/tmp/antiek-main-probe` (platform: `/Users/slimydog/Antiek/platform`)
 - Shared DuckDB + isolated events: `scripts/start-shared-duckdb-mac-mini.sh`
 - Owner session: `scripts/mac-mini-owner-dev-login.sh` (never print tokens)
 - Canonical repo: `Slimydog21/Antiek`

@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { LemonButton } from "../../components/lemon";
 import type { EconomicsView, PayoutReleaseView } from "../../lib/speakApi";
-import { GATE_PHRASES, PAYOUT_COPY } from "../../lib/speakVocab";
+import { GATE_PHRASES, PAYOUT_COPY, PRIVATE_ECON_COPY } from "../../lib/speakVocab";
 
 /**
  * SpeakSettings — the one calm tap (Product Depth SPR-08 M4).
@@ -132,7 +132,7 @@ export default function SpeakSettings({
         <div className="mt-2 grid grid-cols-2 gap-2">
           <MatrixCell
             title="Invite-only · kept private"
-            body="You invite the people who knew them. Nothing is published; you carry the cost. No earnings split."
+            body={PRIVATE_ECON_COPY.operatorPrivateMatrixBody}
             active={!willBePublic}
           />
           <MatrixCell
@@ -208,10 +208,11 @@ export default function SpeakSettings({
             )}
           </>
         ) : (
-          <p className="mt-1 font-serif text-[13px] text-ink dark:text-bright">
-            A private story isn't monetised, so there's no contributor split —
-            you carry the cost. Make it public to share earnings 70% with the
-            people who contributed.
+          <p
+            className="mt-1 font-serif text-[13px] font-semibold text-ink dark:text-bright"
+            data-testid="private-econ-settings-notice"
+          >
+            {PRIVATE_ECON_COPY.operatorPrivateNoSplit}
           </p>
         )}
       </section>

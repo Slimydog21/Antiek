@@ -78,6 +78,19 @@
         #    900s timeouts match the systemd unit's
         #    --timeout-keep-alive.
         reverse_proxy @api_routes localhost:{{ uvicorn_port }} {
+            # Deploy-window 502 guard (2026-09-19). During
+            # `systemctl restart antiek` the upstream socket is briefly
+            # refused; Caddy's default is to fail fast with 502, which
+            # clients (e.g. the mac-mini herdr bridge) see as a burst at
+            # every deploy. Hold each request and retry the dial for up
+            # to 90s instead — the request completes once uvicorn rebinds.
+            # Retrying a refused dial is safe for ANY method: the
+            # connection never opened, so zero request bytes were sent.
+            # 90s covers stop + idempotent migrate + uvicorn boot on a
+            # typical deploy; a genuinely dead backend still 502s, just
+            # after the try budget instead of instantly.
+            lb_try_duration 90s
+            lb_try_interval 250ms
             transport http {
                 read_timeout 900s
                 write_timeout 900s

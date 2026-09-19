@@ -32,6 +32,7 @@ from services.html_projection.adapters.synthesis import (
 from services.html_projection.context import Provenance, RenderContext
 from services.html_projection.gate import ScriptViolation, assert_script_free
 from services.html_projection.renderer import render
+from substrate.contracts.anti_ek_honesty import html_projection_response_headers
 
 _log = logging.getLogger(__name__)
 
@@ -169,11 +170,10 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
             ) from err
         return HTMLResponse(
             content=html,
-            headers={
-                "Content-Disposition": (
-                    f'attachment; filename="synthesis-{synthesis_id}.html"'
-                )
-            },
+            headers=html_projection_response_headers(
+                filename=f"synthesis-{synthesis_id}.html",
+                disposition="inline",
+            ),
         )
 
     @app.get("/api/syntheses/{synthesis_id}/artifact", tags=["syntheses"])
@@ -226,11 +226,10 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
                 ) from err
             return HTMLResponse(
                 content=html,
-                headers={
-                    "Content-Disposition": (
-                        f'attachment; filename="synthesis-{synthesis_id}.html"'
-                    )
-                },
+                headers=html_projection_response_headers(
+                    filename=f"synthesis-{synthesis_id}.html",
+                    disposition="attachment",
+                ),
             )
 
         # Signed formats — emit the rights-filtered doc-model through the routing

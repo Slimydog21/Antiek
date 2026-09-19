@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 from datetime import UTC, datetime
@@ -28,7 +29,13 @@ from substrate.agent_work.service import (
     mark_agent_work_working,
     renew_agent_work_lease,
 )
-from substrate.agent_work.store import LeaseConflict, WorkLease, WorkProgress
+from substrate.agent_work.store import (
+    LeaseConflict,
+    LeaseRenewal,
+    ReplyCompletion,
+    WorkLease,
+    WorkProgress,
+)
 from substrate.graph import default_db_path, ensure_initialized
 
 from .bridge_auth import BridgePrincipal, authenticate_bridge
@@ -118,6 +125,27 @@ def _idempotency_key(value: str | None) -> str:
     return key
 
 
+
+def _lock_yield_s() -> float:
+    """Seconds to sleep after a write-holding agent-work handler returns.
+
+    Lock is already released when ``asyncio.to_thread`` completes; yielding
+    before the HTTP response returns delays the bridge's next poll so
+    ``POST /api/ad/fills`` (and peers) can acquire the flock (#3112 yield
+    class; #3111 to_thread keeps the event loop responsive during the hold).
+    """
+    raw = os.environ.get("ANTIEK_AGENT_WORK_LOCK_YIELD_S", "3.0").strip()
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 3.0
+
+
+async def _yield_write_lock_for_peers() -> None:
+    delay = _lock_yield_s()
+    if delay > 0.0:
+        await asyncio.sleep(delay)
+
 def _require_scope(principal: BridgePrincipal, scope: str) -> None:
     if scope not in principal.scopes:
         raise HTTPException(
@@ -127,6 +155,7 @@ def _require_scope(principal: BridgePrincipal, scope: str) -> None:
 
 
 def _db_path() -> str:
+    """Resolve + ensure schema. Sync — must run via asyncio.to_thread from handlers."""
     path = default_db_path()
     ensure_initialized(path)
     return path
@@ -161,6 +190,16 @@ def _lease_payload(lease: WorkLease) -> dict[str, Any]:
     }
 
 
+def _progress_payload(result: WorkProgress) -> dict[str, Any]:
+    return {
+        "work_id": result.work_id,
+        "thread_id": result.thread_id,
+        "state": result.state,
+        "attempt_no": result.attempt_no,
+        "lease_id": result.lease_id,
+    }
+
+
 @agent_work_router.post("/lease")
 async def lease_work(
     body: LeaseIn,
@@ -171,18 +210,23 @@ async def lease_work(
     _require_scope(principal, "lease")
     key = _idempotency_key(idempotency_key)
     lease_digest = hashlib.sha256(f"{principal.credential_id}\0{key}".encode()).hexdigest()
-    lease = lease_agent_work(
-        _db_path(),
-        LeaseWorkCommand(
-            logical_worker_id=principal.logical_worker_id,
-            bridge_credential_id=principal.credential_id,
-            bridge_instance_id=body.bridge_instance_id,
-            lease_id=f"lse-{lease_digest[:24]}",
-            lease_seconds=body.lease_seconds,
-            idempotency_key=key,
-            now=datetime.now(UTC),
-        ),
+    cmd = LeaseWorkCommand(
+        logical_worker_id=principal.logical_worker_id,
+        bridge_credential_id=principal.credential_id,
+        bridge_instance_id=body.bridge_instance_id,
+        lease_id=f"lse-{lease_digest[:24]}",
+        lease_seconds=body.lease_seconds,
+        idempotency_key=key,
+        now=datetime.now(UTC),
     )
+
+    def _sync() -> WorkLease | None:
+        return lease_agent_work(_db_path(), cmd)
+
+    # Offload ensure_initialized + lease write lock off the uvicorn loop (#3108/#3111).
+    lease = await asyncio.to_thread(_sync)
+    # Lock released; yield so fills / note_taker peers can acquire (#3112 class).
+    await _yield_write_lock_for_peers()
     return None if lease is None else _lease_payload(lease)
 
 
@@ -197,21 +241,24 @@ async def mark_submitted(
     _require_enabled()
     _require_scope(principal, "submitted")
     key = _idempotency_key(idempotency_key)
+    cmd = MarkSubmittedCommand(
+        work_id=work_id,
+        lease_id=lease_id,
+        attempt_no=body.attempt_no,
+        logical_worker_id=principal.logical_worker_id,
+        bridge_credential_id=principal.credential_id,
+        adapter_version=body.adapter_version,
+        herdr_target_observed=body.herdr_target_observed,
+        idempotency_key=key,
+        now=datetime.now(UTC),
+    )
+
+    def _sync() -> WorkProgress:
+        return mark_agent_work_submitted(_db_path(), cmd)
+
     try:
-        result = mark_agent_work_submitted(
-            _db_path(),
-            MarkSubmittedCommand(
-                work_id=work_id,
-                lease_id=lease_id,
-                attempt_no=body.attempt_no,
-                logical_worker_id=principal.logical_worker_id,
-                bridge_credential_id=principal.credential_id,
-                adapter_version=body.adapter_version,
-                herdr_target_observed=body.herdr_target_observed,
-                idempotency_key=key,
-                now=datetime.now(UTC),
-            ),
-        )
+        result = await asyncio.to_thread(_sync)
+        await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:
@@ -235,20 +282,23 @@ async def renew_lease(
 ) -> dict[str, Any]:
     _require_enabled()
     _require_scope(principal, "renew")
+    cmd = RenewLeaseCommand(
+        work_id=work_id,
+        lease_id=lease_id,
+        attempt_no=body.attempt_no,
+        logical_worker_id=principal.logical_worker_id,
+        bridge_credential_id=principal.credential_id,
+        lease_seconds=body.lease_seconds,
+        idempotency_key=_idempotency_key(idempotency_key),
+        now=datetime.now(UTC),
+    )
+
+    def _sync() -> LeaseRenewal:
+        return renew_agent_work_lease(_db_path(), cmd)
+
     try:
-        result = renew_agent_work_lease(
-            _db_path(),
-            RenewLeaseCommand(
-                work_id=work_id,
-                lease_id=lease_id,
-                attempt_no=body.attempt_no,
-                logical_worker_id=principal.logical_worker_id,
-                bridge_credential_id=principal.credential_id,
-                lease_seconds=body.lease_seconds,
-                idempotency_key=_idempotency_key(idempotency_key),
-                now=datetime.now(UTC),
-            ),
-        )
+        result = await asyncio.to_thread(_sync)
+        await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:
@@ -263,16 +313,6 @@ async def renew_lease(
     }
 
 
-def _progress_payload(result: WorkProgress) -> dict[str, Any]:
-    return {
-        "work_id": result.work_id,
-        "thread_id": result.thread_id,
-        "state": result.state,
-        "attempt_no": result.attempt_no,
-        "lease_id": result.lease_id,
-    }
-
-
 @agent_work_router.post("/{work_id}/leases/{lease_id}/acknowledged")
 async def mark_acknowledged(
     work_id: str,
@@ -283,20 +323,23 @@ async def mark_acknowledged(
 ) -> dict[str, Any]:
     _require_enabled()
     _require_scope(principal, "working")
+    cmd = MarkAcknowledgedCommand(
+        work_id=work_id,
+        lease_id=lease_id,
+        attempt_no=body.attempt_no,
+        logical_worker_id=principal.logical_worker_id,
+        bridge_credential_id=principal.credential_id,
+        transport_receipt_sha256=body.transport_receipt_sha256,
+        idempotency_key=_idempotency_key(idempotency_key),
+        now=datetime.now(UTC),
+    )
+
+    def _sync() -> WorkProgress:
+        return mark_agent_work_acknowledged(_db_path(), cmd)
+
     try:
-        result = mark_agent_work_acknowledged(
-            _db_path(),
-            MarkAcknowledgedCommand(
-                work_id=work_id,
-                lease_id=lease_id,
-                attempt_no=body.attempt_no,
-                logical_worker_id=principal.logical_worker_id,
-                bridge_credential_id=principal.credential_id,
-                transport_receipt_sha256=body.transport_receipt_sha256,
-                idempotency_key=_idempotency_key(idempotency_key),
-                now=datetime.now(UTC),
-            ),
-        )
+        result = await asyncio.to_thread(_sync)
+        await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:
@@ -314,19 +357,22 @@ async def mark_working(
 ) -> dict[str, Any]:
     _require_enabled()
     _require_scope(principal, "working")
+    cmd = MarkWorkingCommand(
+        work_id=work_id,
+        lease_id=lease_id,
+        attempt_no=body.attempt_no,
+        logical_worker_id=principal.logical_worker_id,
+        bridge_credential_id=principal.credential_id,
+        idempotency_key=_idempotency_key(idempotency_key),
+        now=datetime.now(UTC),
+    )
+
+    def _sync() -> WorkProgress:
+        return mark_agent_work_working(_db_path(), cmd)
+
     try:
-        result = mark_agent_work_working(
-            _db_path(),
-            MarkWorkingCommand(
-                work_id=work_id,
-                lease_id=lease_id,
-                attempt_no=body.attempt_no,
-                logical_worker_id=principal.logical_worker_id,
-                bridge_credential_id=principal.credential_id,
-                idempotency_key=_idempotency_key(idempotency_key),
-                now=datetime.now(UTC),
-            ),
-        )
+        result = await asyncio.to_thread(_sync)
+        await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:
@@ -346,59 +392,75 @@ async def complete_result(
     _require_scope(principal, "result")
     key = _idempotency_key(idempotency_key)
     result_digest = hashlib.sha256(f"{principal.credential_id}\0{key}".encode()).hexdigest()
+
+    def _sync_reply() -> ReplyCompletion:
+        assert isinstance(body, ReplyResultIn)
+        return complete_agent_reply(
+            _db_path(),
+            CompleteReplyCommand(
+                work_id=work_id,
+                lease_id=lease_id,
+                attempt_no=body.attempt_no,
+                logical_worker_id=principal.logical_worker_id,
+                bridge_credential_id=principal.credential_id,
+                context_sha256=body.context_sha256,
+                reply_item_id=f"fit-{result_digest[:24]}",
+                reply_markdown=body.reply_markdown,
+                agent_id=principal.logical_worker_id,
+                idempotency_key=key,
+                now=datetime.now(UTC),
+            ),
+        )
+
+    def _sync_failure() -> WorkProgress:
+        assert isinstance(body, FailureResultIn)
+        return complete_agent_failure(
+            _db_path(),
+            CompleteFailureCommand(
+                work_id=work_id,
+                lease_id=lease_id,
+                attempt_no=body.attempt_no,
+                logical_worker_id=principal.logical_worker_id,
+                bridge_credential_id=principal.credential_id,
+                context_sha256=body.context_sha256,
+                error_code=body.error_code,
+                retryable=body.retryable,
+                idempotency_key=key,
+                now=datetime.now(UTC),
+            ),
+        )
+
+    def _sync_disposition() -> ReplyCompletion:
+        assert isinstance(body, DispositionResultIn)
+        return complete_agent_disposition(
+            _db_path(),
+            CompleteDispositionCommand(
+                work_id=work_id,
+                lease_id=lease_id,
+                attempt_no=body.attempt_no,
+                logical_worker_id=principal.logical_worker_id,
+                bridge_credential_id=principal.credential_id,
+                context_sha256=body.context_sha256,
+                kind=body.kind,
+                message_item_id=f"fit-{result_digest[:24]}",
+                message_markdown=body.message_markdown,
+                agent_id=principal.logical_worker_id,
+                idempotency_key=key,
+                now=datetime.now(UTC),
+            ),
+        )
+
     try:
         if isinstance(body, ReplyResultIn):
-            result = complete_agent_reply(
-                _db_path(),
-                CompleteReplyCommand(
-                    work_id=work_id,
-                    lease_id=lease_id,
-                    attempt_no=body.attempt_no,
-                    logical_worker_id=principal.logical_worker_id,
-                    bridge_credential_id=principal.credential_id,
-                    context_sha256=body.context_sha256,
-                    reply_item_id=f"fit-{result_digest[:24]}",
-                    reply_markdown=body.reply_markdown,
-                    agent_id=principal.logical_worker_id,
-                    idempotency_key=key,
-                    now=datetime.now(UTC),
-                ),
-            )
+            result = await asyncio.to_thread(_sync_reply)
+            await _yield_write_lock_for_peers()
         elif isinstance(body, FailureResultIn):
-            progress = complete_agent_failure(
-                _db_path(),
-                CompleteFailureCommand(
-                    work_id=work_id,
-                    lease_id=lease_id,
-                    attempt_no=body.attempt_no,
-                    logical_worker_id=principal.logical_worker_id,
-                    bridge_credential_id=principal.credential_id,
-                    context_sha256=body.context_sha256,
-                    error_code=body.error_code,
-                    retryable=body.retryable,
-                    idempotency_key=key,
-                    now=datetime.now(UTC),
-                ),
-            )
+            progress = await asyncio.to_thread(_sync_failure)
+            await _yield_write_lock_for_peers()
             return _progress_payload(progress)
         else:
-            result = complete_agent_disposition(
-                _db_path(),
-                CompleteDispositionCommand(
-                    work_id=work_id,
-                    lease_id=lease_id,
-                    attempt_no=body.attempt_no,
-                    logical_worker_id=principal.logical_worker_id,
-                    bridge_credential_id=principal.credential_id,
-                    context_sha256=body.context_sha256,
-                    kind=body.kind,
-                    message_item_id=f"fit-{result_digest[:24]}",
-                    message_markdown=body.message_markdown,
-                    agent_id=principal.logical_worker_id,
-                    idempotency_key=key,
-                    now=datetime.now(UTC),
-                ),
-            )
+            result = await asyncio.to_thread(_sync_disposition)
+            await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
     except ValueError as exc:

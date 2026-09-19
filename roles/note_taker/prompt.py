@@ -52,6 +52,15 @@ Respond with JSON only — no prose before or after, no markdown fences:
 5. **Skip the obvious.** Don't note what's already explicit in a
    single distillation.delivered event. The compressed doc should
    add value over re-reading the trajectory.
+6. **Entail the document / evidence — not the tooling.** Prefer notes
+   whose wording a careful reader could verify against the document
+   excerpts and evidence answers in the window (names, dates, quoted
+   phrases, concrete findings). Avoid process-meta notes about
+   parse failures, empty connectors, or pipeline outages unless the
+   note ALSO restates the document fact that failure blocked.
+7. **Passage-aligned lexicon.** When document excerpts are provided,
+   reuse distinctive terms from those excerpts in the note text so
+   the claim is lexically grounded — not a generic ops summary.
 
 If the recent wrestling didn't produce anything genuinely emergent
 yet, return ``{"notes": []}`` — empty arrays are valid output.

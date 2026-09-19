@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 
 import { LemonButton, LemonTextarea } from "../../components/lemon";
 import { saveVoiceNote, transcribeAudio } from "../../api/books";
+import {
+  THOUGHT_PARTNER_SEED_EVENT,
+  composeThoughtPartnerSystemContext,
+} from "../../components/ai/thoughtPartnerSeed";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
 
 /**
@@ -14,6 +18,10 @@ import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
  * transcript before it becomes a note (the server also refuses an
  * unconfirmed transcript). Mic-permission-denied degrades to a clear
  * message, never a crash — and the reader can still type.
+ *
+ * After save, question-shaped parks seed the Thought Partner bus with
+ * the SERVABLE reading mount (composeThoughtPartnerSystemContext) so
+ * discuss stays on the reading path (voice → park → discuss).
  */
 
 export interface VoiceNoteProps {
@@ -31,6 +39,8 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState(0);
+  const [parkedTexts, setParkedTexts] = useState<string[]>([]);
+  const [parkedIds, setParkedIds] = useState<string[]>([]);
 
   // When a recording finishes, transcribe it.
   useEffect(() => {
@@ -55,6 +65,22 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
     };
   }, [recorder.state, recorder.blob]);
 
+  const seedThoughtPartner = (texts: string[], ids: string[]) => {
+    const q = (texts[0] || "").trim();
+    if (!q) return;
+    const qid = ids[0] || "voice";
+    window.dispatchEvent(
+      new CustomEvent(THOUGHT_PARTNER_SEED_EVENT, {
+        detail: {
+          prompt:
+            `Discuss this parked question from a voice note — challenge, synthesize, or extend:\n\n${q}`,
+          system_context: composeThoughtPartnerSystemContext(),
+          source_label: `voice-park · ${qid} · p.${pageIndex + 1}`,
+        },
+      }),
+    );
+  };
+
   const save = async () => {
     if (!transcript.trim()) return;
     setPhase("saving");
@@ -66,8 +92,16 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
         investigation_id: investigationId,
       });
       setSavedCount(res.note_count);
+      const texts = res.parked_question_texts ?? [];
+      const ids = res.parked_question_ids ?? [];
+      setParkedTexts(texts);
+      setParkedIds(ids);
       setPhase("saved");
       onSaved?.(res.note_count);
+      // Auto-seed TP when something parked — reading mount included.
+      if (texts.length > 0) {
+        seedThoughtPartner(texts, ids);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
       setPhase("correcting");
@@ -78,6 +112,8 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
     recorder.reset();
     setTranscript("");
     setError(null);
+    setParkedTexts([]);
+    setParkedIds([]);
     setPhase("capture");
   };
 
@@ -143,13 +179,33 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
       )}
 
       {phase === "saved" && (
-        <div className="flex items-center gap-2">
-          <p className="text-xs text-ink dark:text-bright">
-            Saved — {savedCount} {savedCount === 1 ? "note" : "notes"} distilled from this thought.
-          </p>
-          <LemonButton type="button" variant="tertiary" size="sm" onClick={restart}>
-            Another
-          </LemonButton>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-xs text-ink dark:text-bright">
+              Saved — {savedCount} {savedCount === 1 ? "note" : "notes"} distilled
+              {parkedTexts.length > 0
+                ? ` · ${parkedTexts.length} parked for discuss`
+                : ""}.
+            </p>
+            <LemonButton type="button" variant="tertiary" size="sm" onClick={restart}>
+              Another
+            </LemonButton>
+          </div>
+          {parkedTexts.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <LemonButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => seedThoughtPartner(parkedTexts, parkedIds)}
+              >
+                Discuss in Thought Partner
+              </LemonButton>
+              <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
+                Seeds Surface E / sidecar with this page&apos;s reading mount
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>
