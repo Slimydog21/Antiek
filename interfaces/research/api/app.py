@@ -149,6 +149,15 @@ class HealthResponse(BaseModel):
     # compounded (and before the first probe).
     flywheel_ready: bool = False
     knowledge_reuse_count: int = 0
+    # TurboPuffer SERVABLE hybrid (dogfood) — honest, never faked.
+    # hybrid_ready requires env+key+active pointer; production_default_mount
+    # stays False until deliberately flipped in a future decision.
+    turbopuffer_servable_enabled: bool = False
+    turbopuffer_api_key_present: bool = False
+    turbopuffer_active_pointer: bool = False
+    turbopuffer_hybrid_ready: bool = False
+    turbopuffer_resolved_kind: str = "brute_force"
+    turbopuffer_production_default_mount: bool = False
     # GF-7: startup read-only health snapshot for the graph DuckDB file.
     # This is intentionally separate from ``status`` so /health can keep
     # responding while surfacing DB corruption/missing-schema/missing-file states.
@@ -252,6 +261,27 @@ def _probe_flywheel() -> tuple[bool, int]:
         # (False, 0) rather than failing the whole /health over a probe,
         # mirroring _resolve_build_sha's swallow-to-"unknown".
         return (False, 0)
+
+
+def _probe_turbopuffer() -> dict[str, Any]:
+    """Cheap TurboPuffer dogfood snapshot for /health (no vendor network)."""
+    try:
+        from substrate.graph import default_db_path
+        from substrate.graph.retrieval_adapters.turbopuffer import (
+            probe_turbopuffer_health,
+        )
+
+        return probe_turbopuffer_health(db_path=default_db_path())
+    except Exception as exc:
+        return {
+            "servable_enabled": False,
+            "api_key_present": False,
+            "active_pointer_file": False,
+            "hybrid_ready": False,
+            "resolved_kind": "brute_force",
+            "production_default_mount": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
 
 
 def _probe_graph_duckdb() -> DuckDBHealth:
@@ -1264,17 +1294,37 @@ def _retrieve_thought_partner_context(
     the model still answers, just without library grounding. The embedding
     model is constructed INSIDE the connect_read block so an absent graph
     short-circuits before paying the sentence-transformers load (keeps the
-    endpoint fast on a cold box and keeps tests hermetic)."""
+    endpoint fast on a cold box and keeps tests hermetic).
+
+    When ``ANTIEK_TURBOPUFFER_SERVABLE`` + ``TURBOPUFFER_API_KEY`` resolve
+    hybrid kind ``turbopuffer``, library grounding uses the SERVABLE hybrid
+    substrate (same gate as cascade/flywheel reuse). Non-``attribution_eligible``
+    policies stay DuckDB SoT inside the adapter — gated never hits TurboPuffer.
+    """
     from runtime.db_lock import connect_read
     from substrate.graph import default_db_path
+    from substrate.graph.retrieval_substrate import (
+        make_substrate_from_con,
+        resolve_reuse_substrate_kind,
+    )
     from substrate.graph.search import SentenceTransformerEmbedding, search
 
     try:
-        with connect_read(default_db_path()) as con:
+        db_path = default_db_path()
+        with connect_read(db_path) as con:
             model = SentenceTransformerEmbedding()
-            retrieved = search(
-                con, prompt, model=model, top_k=top_k, policy_tag=policy_tag,
-            )
+            kind = resolve_reuse_substrate_kind()
+            if kind == "turbopuffer":
+                sub = make_substrate_from_con(
+                    "turbopuffer", con, model=model, db_path=db_path,
+                )
+                retrieved = sub.query(
+                    prompt, top_k=top_k, policy_tag=policy_tag,
+                )
+            else:
+                retrieved = search(
+                    con, prompt, model=model, top_k=top_k, policy_tag=policy_tag,
+                )
     except Exception:
         return []
     notes: list[dict[str, Any]] = []
@@ -1855,6 +1905,7 @@ def create_app(
     # initialize/create the DB; missing/corrupt/unreadable states are exposed
     # in /health rather than crashing app construction.
     app.state.duckdb_health = _probe_graph_duckdb()
+    app.state.turbopuffer_health = _probe_turbopuffer()
 
     # SPR-11: flywheel-liveness snapshot (read-only, never raises), reported on
     # /health so prod-parity can red a deployed-but-dead flywheel. DEFERRED to
@@ -2024,6 +2075,32 @@ def create_app(
             build_sha=getattr(app.state, "build_sha", "unknown"),
             flywheel_ready=getattr(app.state, "flywheel_ready", False),
             knowledge_reuse_count=getattr(app.state, "knowledge_reuse_count", 0),
+            turbopuffer_servable_enabled=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "servable_enabled"
+                )
+            ),
+            turbopuffer_api_key_present=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "api_key_present"
+                )
+            ),
+            turbopuffer_active_pointer=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "active_pointer_file"
+                )
+            ),
+            turbopuffer_hybrid_ready=bool(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "hybrid_ready"
+                )
+            ),
+            turbopuffer_resolved_kind=str(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
+                    "resolved_kind", "brute_force"
+                )
+            ),
+            turbopuffer_production_default_mount=False,
             duckdb_ready=duckdb_health.ready,
             duckdb_status=duckdb_health.status,
             duckdb_schema_present=duckdb_health.schema_present,

@@ -41,6 +41,10 @@ export ANTIEK_DUCKDB_PATH="$SHARED_DB"
 # in-process via EventBroadcaster after spin-research / POST /investigations.
 export ANTIEK_DISABLE_EVENT_PROJECTOR_RECOVERY=1
 export ANTIEK_BUILD_SHA="$(git rev-parse HEAD)"
+# TurboPuffer promote pointer lives under the worktree dogfood tree.
+export ANTIEK_TURBOPUFFER_MANIFEST_DIR="${ANTIEK_TURBOPUFFER_MANIFEST_DIR:-$WT/.antiek/turbopuffer-shadow}"
+# SERVABLE hybrid for reuse + Thought Partner (keys from platform/.env).
+: "${ANTIEK_TURBOPUFFER_SERVABLE:=}"
 export ANTIEK_WEBAUTHN_RP_ID=localhost
 export ANTIEK_WEBAUTHN_ORIGINS="http://127.0.0.1:5173,http://localhost:5173"
 # Local HTTP dogfood: Secure cookies would be dropped by the browser on :5173/:8000.
