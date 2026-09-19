@@ -53,3 +53,11 @@ Shipped `docs/decisions/g2-synquery-honesty-2026-09-19.md`: Trust Center
 `speak_economics` + opportunities honesty now publish `g2_counsel_gated`,
 `synquery_gated`, `paid_today=false`. Still **no** counsel flip, Synquery
 partnership invention, or disbursement open. Operator list (1)–(2) unchanged.
+
+## Addendum 2026-09-19 — Specs contract catalog
+
+Cross-surface honesty field shapes (Ads / Speak G2·Synquery / BYOT capacity /
+HTML `artifact.html`) frozen in
+[`docs/specs/anti-ek-honesty-api-contracts-2026-09-19.md`](../specs/anti-ek-honesty-api-contracts-2026-09-19.md)
++ `substrate.contracts.anti_ek_honesty`. Speak residual-100 deferred list
+unchanged — still operator gates, not Specs invent.
