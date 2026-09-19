@@ -49,10 +49,12 @@ def default_manifest_dir() -> Path:
 def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
     """Cheap /health snapshot — no vendor network, never raises.
 
-    Reports env+key+pointer-file honesty. ``hybrid_ready`` is True only when
-    SERVABLE env is on, API key present, and an ``active.json`` pointer file
-    exists. Does **not** flip ``production_default_mount`` (stays False).
-    Context-matching of pointer↔db is best-effort when ``db_path`` is given.
+    Reports env+key+pointer-file honesty plus shadow flag, pointer context
+    match, and ``indexed_row_count`` from the promote manifest when present.
+    ``hybrid_ready`` is True only when resolved kind is turbopuffer, an
+    ``active.json`` pointer exists, and context match is not False. Does
+    **not** flip ``production_default_mount`` (stays False). Context-matching
+    of pointer↔db is best-effort when ``db_path`` is given.
     """
     from substrate.graph.retrieval_substrate import resolve_reuse_substrate_kind
 
@@ -86,6 +88,17 @@ def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
         hybrid_ready = bool(
             kind == "turbopuffer" and pointer_file and (pointer_ctx_ok is not False)
         )
+        indexed_row_count: int | None = None
+        if content_hash:
+            manifest_path = mdir / f"{content_hash}.json"
+            if manifest_path.is_file():
+                try:
+                    man = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    raw_rc = man.get("row_count")
+                    if isinstance(raw_rc, int) and raw_rc >= 0:
+                        indexed_row_count = raw_rc
+                except Exception:
+                    indexed_row_count = None
         return {
             "servable_enabled": servable,
             "shadow_enabled": shadow,
@@ -95,6 +108,7 @@ def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
             "active_pointer_context_ok": pointer_ctx_ok,
             "active_namespace": active_ns,
             "content_hash": content_hash,
+            "indexed_row_count": indexed_row_count,
             "resolved_kind": kind,
             "hybrid_ready": hybrid_ready,
             "thought_partner_hybrid_wired": True,
@@ -111,6 +125,7 @@ def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
             "active_pointer_context_ok": None,
             "active_namespace": None,
             "content_hash": None,
+            "indexed_row_count": None,
             "resolved_kind": "brute_force",
             "hybrid_ready": False,
             "thought_partner_hybrid_wired": True,

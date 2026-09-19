@@ -32,3 +32,10 @@ status (`production_default_mount` stayed an opaque False inside the adapter).
 
 TP UI library grounding can hit the SERVABLE hybrid when env+key+promote are
 live. Operators see dogfood status on `/health` without grepping manifests.
+
+## Addendum 2026-09-19b — corpus + retrieval status honesty
+
+See [tpuf-health-corpus-honesty-2026-09-19.md](./tpuf-health-corpus-honesty-2026-09-19.md):
+`/health` now surfaces shadow flag, pointer context match, indexed row_count,
+and Thought Partner returns `library_retrieval_status` without inventing hybrid
+success. Mount remains False.

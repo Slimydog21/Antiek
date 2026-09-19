@@ -104,11 +104,13 @@ def test_retrieve_tp_uses_hybrid_query_when_env(monkeypatch):
 
     # Re-import path: function closes over imports at call time — patch modules
     # that the function imports inside the body.
-    notes = app_mod._retrieve_thought_partner_context(
+    notes, status, degraded = app_mod._retrieve_thought_partner_context(
         "corpus question", "attribution_eligible",
     )
     assert notes[0]["note_text"] == "SERVABLE hybrid hit"
     assert notes[0]["note_id"] == "c1"
+    assert status == "servable"
+    assert degraded is None
 
 
 def test_retrieve_tp_operator_only_still_maps_via_hybrid_adapter(monkeypatch):
@@ -150,6 +152,43 @@ def test_retrieve_tp_operator_only_still_maps_via_hybrid_adapter(monkeypatch):
     monkeypatch.setattr(rs, "resolve_reuse_substrate_kind", lambda: "turbopuffer")
     monkeypatch.setattr(rs, "make_substrate_from_con", lambda *a, **k: _Sub())
 
-    notes = app_mod._retrieve_thought_partner_context("q", "operator_only")
+    notes, status, degraded = app_mod._retrieve_thought_partner_context("q", "operator_only")
     assert seen["policy_tag"] == "operator_only"
     assert notes[0]["note_text"] == "private duckdb path"
+    assert status == "duckdb — non_servable_policy"
+
+def test_probe_indexed_row_count_from_manifest(monkeypatch, tmp_path):
+    """Corpus scale honesty — row_count from promote manifest, not invented."""
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_SERVABLE", "1")
+    monkeypatch.setenv("TURBOPUFFER_API_KEY", "test-key")
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_MANIFEST_DIR", str(tmp_path))
+    ch = "a" * 64
+    (tmp_path / "active.json").write_text(
+        f'{{"active_namespace":"ns","content_hash":"{ch}","context":{{}}}}',
+        encoding="utf-8",
+    )
+    (tmp_path / f"{ch}.json").write_text(
+        f'{{"content_hash":"{ch}","namespace":"ns","row_count":42,"status":"staged"}}',
+        encoding="utf-8",
+    )
+    snap = probe_turbopuffer_health()
+    assert snap["indexed_row_count"] == 42
+    assert snap["content_hash"] == ch
+    assert snap["production_default_mount"] is False
+    assert snap["shadow_enabled"] is False
+
+
+def test_probe_never_claims_production_default_mount(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_SERVABLE", "1")
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_SHADOW_ENABLED", "1")
+    monkeypatch.setenv("TURBOPUFFER_API_KEY", "k")
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_MANIFEST_DIR", str(tmp_path))
+    (tmp_path / "active.json").write_text(
+        '{"active_namespace":"ns","content_hash":"abc","context":{}}',
+        encoding="utf-8",
+    )
+    snap = probe_turbopuffer_health()
+    assert snap["production_default_mount"] is False
+    assert snap["shadow_enabled"] is True
+    assert snap["duckdb_is_sot"] is True
+
