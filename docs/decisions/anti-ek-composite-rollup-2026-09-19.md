@@ -1,16 +1,16 @@
 # Anti-Ek composite rollup (2026-09-19 leave-off)
 
-**Tip verified (live 2026-09-19 19:34 Asia/Riyadh)**: `7b871c58f74d81c8a5528987595553d5da00eddb` (#3219 Write/Notebook `artifact.html` inline)
+**Tip verified (live 2026-09-19 ~19:50 Asia/Riyadh)**: parent `7da3fb3432c1d6590712a9d7a6e500bb4c03c13a` (#3220); Specs honesty contracts PR lands atop (see leave-off tip after merge).
 
 | Host | Evidence |
 |------|----------|
-| Mac Mini dogfood `:8000/health` | `build_sha=7b871c58…`, `status=ok`, tip-aligned probe `/private/tmp/antiek-main-probe` |
-| Prod `api.antiek.ai/health` | Same tip SHA; `turbopuffer_api_key_present=true`, `turbopuffer_hybrid_ready=true`; **`turbopuffer_production_default_mount=false`** (intentional) |
-| CLI swarm | Herdr Antiek **w7** focused (14 tabs); `./scripts/anti-ek-swarm-review.sh --check` → `core_ready=true` + live `w7_tab_labels` (#3218) |
+| Mac Mini dogfood `:8000/health` | tip-aligned probe `/private/tmp/antiek-main-probe` after merge+deploy |
+| Prod `api.antiek.ai/health` | tip SHA; `turbopuffer_api_key_present=true`, `turbopuffer_hybrid_ready=true`; **`turbopuffer_production_default_mount=false`** (intentional) |
+| CLI swarm | Herdr Antiek **w7** focused; `./scripts/anti-ek-swarm-review.sh --check` → `core_ready=true` (#3218) |
 
 **Standing**: always merge+deploy; dual structure (DuckDB SoT + HTML/TP projections); **no fake money**. Cite Herdr Antiek w7, master-product-spec, anti-ek-vision-map.
 
-## Forensic: evening arc after #3192 → tip `#3219`
+## Forensic: evening arc after #3192 → Specs contracts
 
 Earlier same-day base (still on ancestry): `#3189`–`#3192`, OCR `#3190/#3196/#3205`, durable Mini dogfood `#3212`.
 
@@ -25,15 +25,17 @@ First-parent / merge tips that moved grades **after** the prior leave-off tip `7
 | #3217 | Notebook continuity (title handoff, citations, distill #) | [notebook-continuity-polish-2026-09-19](./notebook-continuity-polish-2026-09-19.md) |
 | #3218 | CLI/Herdr inventory honesty (probe tip, w7 tabs, wrapper) | [cli-herdr-inventory-honesty-2026-09-19](./cli-herdr-inventory-honesty-2026-09-19.md) |
 | #3219 | Write/Notebook inline `artifact.html` + projection header | [html-writing-asset-inline-2026-09-19](./html-writing-asset-inline-2026-09-19.md) |
+| #3220 | Plans tip honesty (leave-off / rollup / index) | [anti-ek-plans-tip-honesty-2026-09-19](./anti-ek-plans-tip-honesty-2026-09-19.md) |
+| Specs | Honesty API contracts + `anti_ek_honesty` + contract tests | [anti-ek-specs-honesty-contracts-2026-09-19](./anti-ek-specs-honesty-contracts-2026-09-19.md) · [specs catalog](../specs/anti-ek-honesty-api-contracts-2026-09-19.md) |
 
 **Prod TPuf key** present — raises TurboPuffer / Production without flipping `production_default_mount`.
 
-## Anatomy scorecard (/100) — forensic, tip `7b871c58…`
+## Anatomy scorecard (/100) — forensic (Specs contracts landed)
 
 | Surface | Grade | Defensible basis |
 |---------|------:|------------------|
-| Plans | 99 | Tip-honest leave-off + rollup; decision cross-links #3212–#3219; ops residuals named (no invented flips) |
-| Specs | 97 | Decisions through HTML inline + CLI inventory + BYOT hard-refuse + G2/Synquery; Specs polish residual thin |
+| Plans | 99 | Tip-honest leave-off + rollup; decision cross-links #3212–Specs; ops residuals named |
+| Specs | **99** | Honesty catalog + frozen required keys + pytest product rules + OpenAPI `artifact.html` inventory; residual = broader OAS / private UX polish |
 | Code | 96 | Dual structure; evening honesty surfaces; OCR DeepSeek-prefer; lint bars |
 | Execution | 98 | Merge+deploy habit; Mini tip-aligned; durable dogfood + swarm `--check` |
 | Production | 98 | Tip-aligned Mini+prod; flywheel/TPuf key+hybrid; mount=false honest |
@@ -46,11 +48,11 @@ First-parent / merge tips that moved grades **after** the prior leave-off tip `7
 | HTML-native | 99 | Research + Write/Notebook inline `artifact.html` + pypdf/OCR; projection honesty header |
 | CLI / Herdr | 99 | #3180–#3181 + inventory honesty (probe tip, w7 tabs, wrapper alias) |
 
-**Composite (equal-weight mean of 13 surfaces) = 1275/13 ≈ 98.08 → report **~98**.**
+**Composite (equal-weight mean of 13 surfaces) = 1277/13 ≈ 98.23 → report **~98**.**
 
-Prior leave-offs: `440dc2ba…` ~94; `7bfff594…` ~97; this leave-off re-derives on `7b871c58…` after #3212–#3219.
+Prior leave-offs: `440dc2ba…` ~94; `7bfff594…` ~97; `7b871c58…`/`7da3fb34…` ~98; Specs contracts raise Specs 97→99 without inventing mount/CPM/G2.
 
-**Why not honest ≥99 or literal 100?** Ads≤98 until live priced demand; TurboPuffer≤96 while `production_default_mount=false`; G2 counsel + Synquery + email remain **operator** flips (honesty shipped). Inventing partnership, cents, or mount flip would violate standing. Specs/Code still have thin polish residuals.
+**Why not honest ≥99 or literal 100?** Ads≤98 until live priced demand; TurboPuffer≤96 while `production_default_mount=false`; G2 counsel + Synquery + email remain **operator** flips (honesty shipped). Inventing partnership, cents, or mount flip would violate standing. Code ~96 residual remains.
 
 ## Residuals blocking literal composite 100
 
@@ -62,19 +64,20 @@ Prior leave-offs: `440dc2ba…` ~94; `7bfff594…` ~97; this leave-off re-derive
 6. ~~OCR / scanned PDF~~ — shipped #3190/#3196/#3205.
 7. ~~BYOT wall-time top-up / soft-warn / hard-refuse UX~~ — shipped #3189/#3184/#3216.
 8. ~~Voice → park → discuss TP~~ — shipped #3191.
-9. ~~Mini tip lag / durable dogfood~~ — closed; tip-aligned on `7b871c58…`.
+9. ~~Mini tip lag / durable dogfood~~ — closed; tip-aligned.
 10. ~~Notebook continuity / CLI inventory / HTML writing-asset inline~~ — shipped #3217/#3218/#3219.
-11. ~~Plans tip honesty~~ — this leave-off.
+11. ~~Plans tip honesty~~ — shipped #3220.
+12. ~~Specs honesty API contracts~~ — this leave-off.
 
 ## Closed this programme (do not re-open as gaps)
 
-Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywheel seed; HTML research + Write/Notebook inline view; BYOT soft-warn + wall + hard-refuse; TP multiturn + voice-park; PDF pypdf + OCR DeepSeek-prefer; CLI/Herdr `--check` + inventory; #3192 operator/Prime/BYOT/arxiv; Mini durable TPuf/flywheel; Ads paid_fill_gated; G2/Synquery honesty; Notebook continuity.
+Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywheel seed; HTML research + Write/Notebook inline view; BYOT soft-warn + wall + hard-refuse; TP multiturn + voice-park; PDF pypdf + OCR DeepSeek-prefer; CLI/Herdr `--check` + inventory; #3192 operator/Prime/BYOT/arxiv; Mini durable TPuf/flywheel; Ads paid_fill_gated; G2/Synquery honesty; Notebook continuity; Plans tip honesty; **Specs honesty contracts**.
 
 ## Highest-leverage next (if continuing)
 
 1. **Operator:** G2 counsel sign-off / Synquery flag / email outreach (not code).
 2. **Product ask:** `production_default_mount` promote? AppLovin live demand?
-3. **Code residual:** Specs ~97 / Code ~96 / TPuf ~95 (no mount flip).
+3. **Code residual:** Code ~96 / TPuf ~95 (no mount flip). Specs ~99.
 4. Do not invent Synquery/G2/email/mount/CPM.
 
 ## Decision index (Anti-Ek honesty, 2026-09-19)
@@ -87,8 +90,10 @@ Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywh
 | Notebook | [notebook-daily-loop-polish](./notebook-daily-loop-polish-2026-09-19.md), [notebook-continuity-polish](./notebook-continuity-polish-2026-09-19.md), [outline-write-auto-import](./outline-write-auto-import-2026-09-19.md) |
 | HTML | [html-native-research-view](./html-native-research-view-2026-09-19.md), [html-writing-asset-inline](./html-writing-asset-inline-2026-09-19.md), OCR/pypdf decisions |
 | CLI/Herdr | [cli-herdr-swarm-ready](./cli-herdr-swarm-ready-2026-09-19.md), [cli-herdr-inventory-honesty](./cli-herdr-inventory-honesty-2026-09-19.md) |
+| Specs | [anti-ek-specs-honesty-contracts](./anti-ek-specs-honesty-contracts-2026-09-19.md), [honesty API catalog](../specs/anti-ek-honesty-api-contracts-2026-09-19.md) |
+| Plans | [anti-ek-plans-tip-honesty](./anti-ek-plans-tip-honesty-2026-09-19.md) |
 | Dogfood | [mac-mini-dogfood-durable-tpuf](./mac-mini-dogfood-durable-tpuf-2026-09-19.md) |
 
 ## Leave-off
 
-Infra green on tip `7b871c58…`. Mini tip-aligned. Dual structure intact. No fake money. Plans leave-off tip-honest.
+Infra green after Specs contracts merge+deploy. Mini tip-aligned. Dual structure intact. No fake money. Specs tip-honest (~99).

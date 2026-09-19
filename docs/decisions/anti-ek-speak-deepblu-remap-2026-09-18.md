@@ -153,3 +153,15 @@ Both pushes reuse existing invite / feed machinery (`speak_invites`, PublicLane,
 3. **Continuous ping (private)** — evidence→new questions→invitee nudges; reuse open-question / follow-up paths; consent-scoped.
 4. **Dual push** — (a) public profile-matched “what you’d add value to”; (b) private friend invites — productize on existing invite/feed, G7 for open public.
 5. Thin glue only if needed so community `voice_note` on research/book investigations resolve to an `ip_holder` for AccrualContract — still no new ledger.
+
+## Addendum 2026-09-19 — honesty envelopes vs private UX residual
+
+**Honesty envelopes shipped** (#3214 Trust/opportunities `g2_counsel_gated` /
+`synquery_gated`; #3213 Ads `paid_fill_gated`; Specs catalog
+`docs/specs/anti-ek-honesty-api-contracts-2026-09-19.md`). Those close the
+**Specs/API contract** gap for Speak economics.
+
+**Still open (product UX, not Specs invent):** private / never-published Speak
+surfaces making “will NOT make money” unmistakable on every invitee door —
+named above as “not yet fully productized.” Do not re-open as “G2/Synquery
+honesty missing”; that is closed. Do not invent partnership or payout.
