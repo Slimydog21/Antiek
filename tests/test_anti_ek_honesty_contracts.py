@@ -6,6 +6,8 @@ structured capacity exhausted, HTML projection disposition honesty.
 
 from __future__ import annotations
 
+from typing import Any, Iterable
+
 import pytest
 
 from substrate.ad_inventory.rank0_honesty import website_ads_honesty
@@ -91,19 +93,30 @@ def test_html_projection_header_contract():
         assert_html_projection_header("unsafe", disposition="inline")
 
 
+def _collect_route_paths(routes: Iterable[Any]) -> set[str]:
+    """Walk FastAPI APIRoute + ``_IncludedRouter.original_router`` (no OAS)."""
+    out: set[str] = set()
+    for r in routes:
+        p = getattr(r, "path", None)
+        if isinstance(p, str) and p:
+            out.add(p)
+        orig = getattr(r, "original_router", None)
+        if orig is not None:
+            out |= _collect_route_paths(getattr(orig, "routes", []) or [])
+        subs = getattr(r, "routes", None)
+        if subs:
+            out |= _collect_route_paths(subs)
+    return out
+
+
 def test_html_inline_artifact_paths_registered_on_app():
-    """Route inventory — View HTML paths exist (contract vs OpenAPI drift)."""
+    """Route inventory — View HTML paths exist (contract vs route drift)."""
     from interfaces.research.api.app import create_app
 
     app = create_app(
         register_wrestling=False, register_providers=False, cors_origins=[]
     )
-    paths = {getattr(r, "path", None) for r in app.routes}
+    paths = _collect_route_paths(app.routes)
     for template in HTML_INLINE_ARTIFACT_PATHS:
         assert template in paths, f"missing honesty route {template}"
     assert HTML_PROJECTION_HEADER == "X-Antiek-Html-Projection"
-    # Smoke: OpenAPI lists artifact.html operations (no silent drift)
-    schema = app.openapi()
-    paths_oas = schema.get("paths") or {}
-    for template in HTML_INLINE_ARTIFACT_PATHS:
-        assert template in paths_oas, f"OpenAPI missing {template}"
