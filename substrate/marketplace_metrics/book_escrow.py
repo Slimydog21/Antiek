@@ -84,7 +84,7 @@ def _resolve_ip_holder(con: Any, document_id: str) -> str | None:
     ).fetchone()
     if row is None:
         return None
-    return row[0]
+    return str(row[0]) if row[0] is not None else None
 
 
 def _accrue_payouts_ledger(
@@ -246,7 +246,7 @@ def accrue_reading_session(
         ad_revenue_usd_cents=revenue_cents,
         attribution_shares={document_id: 1.0},
         document_to_recipient={
-            document_id: (RevShareKind.PUBLISHER, holder_id, True)
+            document_id: (RevShareKind.PUBLISHER, bucket, True)
         },
     )
 
@@ -279,7 +279,7 @@ def accrue_reading_session(
         )
 
     return AccrualResult(
-        document_id=document_id, ip_holder_id=holder_id,
+        document_id=document_id, ip_holder_id=bucket,
         revenue_cents=revenue_cents, accrued_to_escrow_cents=accrued,
         attention_impressions=attention, unattributed=False,
         reason="accrued_to_publisher_escrow",
