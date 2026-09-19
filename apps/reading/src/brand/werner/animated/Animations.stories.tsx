@@ -7,7 +7,8 @@ import {
   WernerTobogganSpinner,
   WernerWaddle,
 } from ".";
-import Werner, { type WernerMood } from "../../Werner";
+import BrainMascot from "../../BrainMascot";
+import type { MascotMood } from "../../../design/tokens";
 import {
   WernerCurious,
   WernerDizzy,
@@ -184,7 +185,7 @@ export const SemanticReactions: Story = {
 /* U-02 — the canonical single-component moods at the three critical sizes.
    16 px tests favicon legibility. 28 px is the rail. 120 px proves
    expression. The same canonical raster mapping serves every size. */
-const moods: WernerMood[] = ["idle", "thinking", "empty", "celebrate"];
+const moods: MascotMood[] = ["idle", "thinking", "empty", "celebrate"];
 const sizes = [16, 28, 120];
 
 export const CanonicalMoods: Story = {
@@ -206,7 +207,7 @@ export const CanonicalMoods: Story = {
             <div className="flex items-end gap-8">
               {sizes.map((s) => (
                 <div key={s} className="flex flex-col items-center gap-1.5">
-                  <Werner mood={m} size={s} />
+                  <BrainMascot mood={m} size={s} />
                   <div className="font-mono text-[10px] text-ink-mute">
                     {s}px
                   </div>

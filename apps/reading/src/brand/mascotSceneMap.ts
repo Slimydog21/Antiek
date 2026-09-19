@@ -1,11 +1,11 @@
-import type { WernerMood } from "../design/tokens";
+import type { MascotMood } from "../design/tokens";
 import type { SceneArt } from "../scene/useSceneArt";
 import { moodKey, type DayPart, type SceneMood, type Weather } from "../scene/mood";
 
 export type ArtPresence = "live" | "fallback";
 
-export interface WernerSceneCue {
-  mood: WernerMood;
+export interface MascotSceneCue {
+  mood: MascotMood;
   sceneKey: string;
   artPresence: ArtPresence;
   reason: string;
@@ -14,13 +14,13 @@ export interface WernerSceneCue {
 
 export interface PoseGap {
   sceneKey: string;
-  fallbackMood: WernerMood;
+  fallbackMood: MascotMood;
   wantedPose: string;
   note: string;
 }
 
 type CueCell = {
-  mood: WernerMood;
+  mood: MascotMood;
   reason: string;
 };
 
@@ -158,10 +158,10 @@ function artPresenceFrom(sceneArt?: Pick<SceneArt, "isFallback"> | null): ArtPre
   return sceneArt?.isFallback ? "fallback" : "live";
 }
 
-export function wernerForScene(
+export function mascotForScene(
   scene: SceneMood,
   sceneArt?: Pick<SceneArt, "isFallback"> | null,
-): WernerSceneCue {
+): MascotSceneCue {
   const artPresence = artPresenceFrom(sceneArt);
   const cell = (artPresence === "fallback" ? FALLBACK_CUES : LIVE_CUES)[scene.dayPart][
     scene.weather
@@ -176,6 +176,6 @@ export function wernerForScene(
   };
 }
 
-export function wernerMoodForScene(scene: SceneMood): WernerMood {
-  return wernerForScene(scene).mood;
+export function mascotMoodForScene(scene: SceneMood): MascotMood {
+  return mascotForScene(scene).mood;
 }

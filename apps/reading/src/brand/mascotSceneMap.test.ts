@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   POSE_GAPS,
-  wernerForScene,
-  wernerMoodForScene,
+  mascotForScene,
+  mascotMoodForScene,
   type ArtPresence,
-} from "./wernerSceneMap";
+} from "./mascotSceneMap";
 import { moodKey, type DayPart, type SceneMood, type Weather } from "../scene/mood";
 
 const DAY_PARTS = ["dawn", "day", "dusk", "night"] satisfies readonly DayPart[];
@@ -17,11 +17,11 @@ const ALL_SCENES: readonly SceneMood[] = DAY_PARTS.flatMap((dayPart) =>
   WEATHERS.map((weather) => ({ dayPart, weather })),
 );
 
-describe("wernerSceneMap", () => {
+describe("mascotSceneMap", () => {
   it("is total over the imported SceneMood axes and live/fallback art presence", () => {
     for (const scene of ALL_SCENES) {
       for (const presence of ART_PRESENCES) {
-        const cue = wernerForScene(scene, { isFallback: presence === "fallback" });
+        const cue = mascotForScene(scene, { isFallback: presence === "fallback" });
         expect(cue.sceneKey).toBe(moodKey(scene));
         expect(cue.artPresence).toBe(presence);
         expect(cue.reason).toBeTruthy();
@@ -32,15 +32,15 @@ describe("wernerSceneMap", () => {
 
   it("emits only the four sanctioned Werner moods", () => {
     for (const scene of ALL_SCENES) {
-      expect(WERNER_MOODS).toContain(wernerForScene(scene).mood);
-      expect(WERNER_MOODS).toContain(wernerForScene(scene, { isFallback: true }).mood);
-      expect(wernerMoodForScene(scene)).toBe(wernerForScene(scene).mood);
+      expect(WERNER_MOODS).toContain(mascotForScene(scene).mood);
+      expect(WERNER_MOODS).toContain(mascotForScene(scene, { isFallback: true }).mood);
+      expect(mascotMoodForScene(scene)).toBe(mascotForScene(scene).mood);
     }
   });
 
   it("keeps fallback states companionable, not alarming", () => {
     for (const scene of ALL_SCENES) {
-      const cue = wernerForScene(scene, { isFallback: true });
+      const cue = mascotForScene(scene, { isFallback: true });
       const text = `${cue.reason} ${cue.companionCopy}`.toLowerCase();
       expect(text).toContain("procedural");
       expect(text).not.toContain("error");
@@ -56,7 +56,7 @@ describe("wernerSceneMap", () => {
       expect(realKeys.has(gap.sceneKey)).toBe(true);
       const scene = ALL_SCENES.find((candidate) => moodKey(candidate) === gap.sceneKey);
       expect(scene).toBeDefined();
-      expect(wernerForScene(scene as SceneMood).mood).toBe(gap.fallbackMood);
+      expect(mascotForScene(scene as SceneMood).mood).toBe(gap.fallbackMood);
       expect(gap.wantedPose).toBeTruthy();
       expect(gap.note).toBeTruthy();
     }
