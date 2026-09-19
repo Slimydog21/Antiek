@@ -41,6 +41,29 @@ describe("ComputeCapacityPanel", () => {
       expect(screen.getByText(/used=unmetered/)).toBeTruthy();
     });
     expect(screen.getByTestId("compute-capacity-slider")).toBeTruthy();
+    expect(screen.getByTestId("compute-capacity-used-label").textContent).toMatch(
+      /unmetered/,
+    );
+  });
+
+  it("shows used ACU bar when meter is known", async () => {
+    vi.mocked(api.fetchComputeCapacity).mockResolvedValue({
+      ...sample,
+      used_status: "known",
+      used_compute_units: 420,
+      enforcement: "soft",
+      evaluation: {
+        ...sample.evaluation,
+        soft_over: true,
+        note: "soft_over",
+      },
+    });
+    render(<ComputeCapacityPanel />);
+    expect(await screen.findByTestId("compute-capacity-used-bar")).toBeTruthy();
+    expect(screen.getByTestId("compute-capacity-used-label").textContent).toContain(
+      "420 / 500 ACU",
+    );
+    expect(screen.getByTestId("compute-capacity-soft-over")).toBeTruthy();
   });
 
   it("applies starter tier", async () => {

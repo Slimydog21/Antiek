@@ -8,6 +8,12 @@
  */
 
 import { API_BASE, apiFetch } from "../lib/api";
+import { toast } from "../components/lemon/LemonToast";
+import {
+  formatCapacityWarnToast,
+  parseCapacityWarning,
+  stashCapacityWarning,
+} from "../lib/capacityWarn";
 
 export type Servability =
   | "public_domain"
@@ -195,6 +201,8 @@ export interface SpinResearchResponse {
   gated: boolean;
   servability: Servability | string;
   seed_preview: string;
+  /** Present when enforcement is soft/hard and used >= 80% monthly ACU. */
+  capacity_warning?: import("../lib/capacityWarn").CapacityWarning | null;
 }
 
 /** Spin a deep research from a book passage (Read SPR-08). The seed is
@@ -213,7 +221,25 @@ export async function spinResearch(
   });
   if (resp.status === 404) throw new Error("book_not_found");
   if (!resp.ok) throw new Error(`POST /books/{id}/spin-research: HTTP ${resp.status}`);
-  return (await resp.json()) as SpinResearchResponse;
+  const raw = (await resp.json()) as Record<string, unknown>;
+  const capacity_warning = parseCapacityWarning(raw.capacity_warning);
+  const out: SpinResearchResponse = {
+    investigation_id: String(raw.investigation_id),
+    document_id: String(raw.document_id),
+    page_index: Number(raw.page_index),
+    gated: Boolean(raw.gated),
+    servability: raw.servability as Servability | string,
+    seed_preview: String(raw.seed_preview ?? ""),
+    capacity_warning,
+  };
+  if (capacity_warning) {
+    stashCapacityWarning(out.investigation_id, capacity_warning);
+    toast.warn(formatCapacityWarnToast(capacity_warning), {
+      ttl: 8000,
+      target: { path: "/inv/" + encodeURIComponent(out.investigation_id) },
+    });
+  }
+  return out;
 }
 
 export interface CuratedBook {
