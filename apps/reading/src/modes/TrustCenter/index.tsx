@@ -46,6 +46,21 @@ interface WebsiteAdsHonesty {
   paid_fill_decision_ref?: string;
 }
 
+interface SpeakEconomicsHonesty {
+  surface?: string;
+  g2_counsel_gated?: boolean;
+  g3_opt_in_gated?: boolean;
+  public_publishing?: string;
+  disbursement?: string;
+  money_model?: string;
+  paid_today?: boolean;
+  synquery_partnership?: string;
+  synquery_gated?: boolean;
+  g2_requires?: string[];
+  synquery_requires?: string[];
+  decision_refs?: string[];
+}
+
 interface TrustCenterData {
   differential_privacy_epsilon_budgets: Record<string, number>;
   deletion_sla_days: number;
@@ -53,6 +68,7 @@ interface TrustCenterData {
   compliance_frameworks: string[];
   loop_3_unlock_status: Record<string, boolean>;
   website_ads?: WebsiteAdsHonesty;
+  speak_economics?: SpeakEconomicsHonesty;
 }
 
 const EPSILON_CAP = 10;
@@ -267,6 +283,69 @@ export default function TrustCenter() {
                   <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
                     {data.website_ads.decision_ref}
                   </p>
+                </Section>
+              )}
+
+              {data.speak_economics && (
+                <Section title="Speak economics · G2 counsel · Synquery">
+                  <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
+                    Contributor shares accrue to escrow now; cash does not
+                    route until G2 counsel + G3 opt-in clear. Synquery expert
+                    network is partnership-gated — not a live booking surface
+                    until the operator enables it after creation-surface PMF.
+                    Nothing here invents a paid-today promise.
+                  </p>
+                  <ul
+                    className="text-sm text-ink dark:text-bright space-y-1 list-disc pl-5"
+                    data-testid="trust-speak-economics"
+                  >
+                    <li data-testid="trust-g2-counsel-gated">
+                      G2 counsel gated:{" "}
+                      {data.speak_economics.g2_counsel_gated === false
+                        ? "no (publishing live)"
+                        : "yes"}
+                      {data.speak_economics.public_publishing
+                        ? ` · publishing ${data.speak_economics.public_publishing}`
+                        : ""}
+                    </li>
+                    <li>
+                      Disbursement:{" "}
+                      <code className="font-mono text-[12px]">
+                        {data.speak_economics.disbursement ?? "gated"}
+                      </code>
+                      {data.speak_economics.paid_today === true
+                        ? " · paid today: yes"
+                        : " · paid today: no"}
+                    </li>
+                    <li data-testid="trust-synquery-gated">
+                      Synquery partnership:{" "}
+                      {data.speak_economics.synquery_partnership ?? "gated"}
+                      {data.speak_economics.synquery_gated === false
+                        ? " (flag live)"
+                        : " (gated)"}
+                    </li>
+                    <li>
+                      Money model:{" "}
+                      <code className="font-mono text-[12px]">
+                        {data.speak_economics.money_model ??
+                          "accrue_escrow_now_disburse_after_legal_review"}
+                      </code>
+                    </li>
+                    {data.speak_economics.g2_requires &&
+                      data.speak_economics.g2_requires.length > 0 && (
+                        <li>
+                          G2 requires:{" "}
+                          {data.speak_economics.g2_requires.join(" · ")}
+                        </li>
+                      )}
+                    {data.speak_economics.synquery_requires &&
+                      data.speak_economics.synquery_requires.length > 0 && (
+                        <li>
+                          Synquery requires:{" "}
+                          {data.speak_economics.synquery_requires.join(" · ")}
+                        </li>
+                      )}
+                  </ul>
                 </Section>
               )}
 

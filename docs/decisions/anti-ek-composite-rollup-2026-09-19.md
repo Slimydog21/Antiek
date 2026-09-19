@@ -30,12 +30,12 @@ Earlier same-day arcs already on the tip ancestry (not all first-parent of `de48
 
 | Surface | Grade | Defensible basis |
 |---------|------:|------------------|
-| Plans | 93 | Vision map + daily loop; residuals named (AppLovin / G2 / mount) |
-| Specs | 96 | Dense `docs/decisions/*` through #3192 + OCR/BYOT/TP/voice decisions |
+| Plans | 95 | Vision map + daily loop; G2/Synquery honesty shipped; ops residuals named |
+| Specs | 97 | Decisions through paid-fill + g2-synquery honesty; residual-100 addendum |
 | Code | 96 | Dual structure; #3192 operator/BYOT/Prime/arxiv/exec; OCR DeepSeek-prefer |
 | Execution | 98 | Merge+deploy habit; Mini tip-aligned; durable dogfood TPuf/flywheel start (#this) |
 | Production | 98 | Tip-aligned Mini+prod; flywheel_ready; TPuf key+hybrid_ready; mount=false honest |
-| Speak | 100 | Honesty / invite / coexist signed off |
+| Speak | 100 | Residual-100 + Trust/opportunities G2/Synquery honesty; accrue≠paid |
 | Ads | 98 | Rank-0/#3156 + settle/#3163 + **paid_fill_gated** ACTIVE-advertiser scaffold; default $0 unpriced; no MAX/CPM invention |
 | BYOT/ACU | 94 | #3184 soft-warn + #3189 wall top-up + #3192 owner dispatch / X+YT search; no Stripe |
 | Thinking Partner | 100 | Multiturn + SERVABLE + TalkToBook unify + Lego + voice-park (#3191) |
@@ -44,16 +44,16 @@ Earlier same-day arcs already on the tip ancestry (not all first-parent of `de48
 | HTML-native | 97 | artifact.html + pypdf + DeepSeek-OCR prefer + brew/apt fallback |
 | CLI / Herdr | 96 | #3180–#3181; Herdr w7 present (not invented) |
 
-**Composite (equal-weight mean of 13 surfaces) = 1255/13 ≈ 96.54 → report **~97**.**
+**Composite (equal-weight mean of 13 surfaces) = 1258/13 ≈ 96.77 → report **~97**.**
 
 Prior “~94” leave-off on tip `440dc2ba…` remains the forensic figure *for that tip*. This leave-off re-derives on `7bfff594…` after #3189–#3192 and live prod TPuf key evidence.
 
-**Why not honest ≥99 or literal 100?** Ads≤98 until live priced demand (scaffold gated, still no CPM invention), TurboPuffer≤96 while `production_default_mount=false`, and G2/email operator surfaces remain. Inventing cents or flipping mount without a product promote would violate standing.
+**Why not honest ≥99 or literal 100?** Ads≤98 until live priced demand; TurboPuffer≤96 while `production_default_mount=false`; G2 counsel + Synquery + email remain **operator** flips (honesty shipped). Inventing partnership, cents, or mount flip would violate standing.
 
 ## Residuals blocking literal composite 100
 
 1. **AppLovin live demand / priced CPM** — product still open; **paid_fill_gated scaffold shipped** (no fake CPM).
-2. **G2 counsel / Synquery partnership** — product decision, not code-only.
+2. **G2 counsel sign-off / Synquery enable** — **operator/legal** (honesty shipped; no code flip).
 3. **Email re-ping / first-cohort publisher outreach** — operator/G2, not code-only.
 4. **`turbopuffer_production_default_mount=false`** — intentional until promote decision (key+hybrid already live).
 5. **TalkToBook book-scoped path** still separate HTTP from library `/thought-partner` (dual structure — keep).
@@ -68,9 +68,9 @@ Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywh
 
 ## Highest-leverage next (if continuing)
 
-1. **Product ask:** promote `production_default_mount`? (only if intentional — do not flip in code alone.)
-2. **AppLovin live demand** — product; paid_fill_gated honesty shipped; no fake money.
-3. Otherwise **stop** — composite ~96 is the honest code-only ceiling with Ads/G2/mount open.
+1. **Operator:** G2 counsel sign-off / Synquery flag / email outreach (not code).
+2. **Product ask:** `production_default_mount` promote? AppLovin live demand?
+3. Otherwise **stop** — composite ~97 is the honest **code ceiling** with ops residuals only.
 
 ## Leave-off
 

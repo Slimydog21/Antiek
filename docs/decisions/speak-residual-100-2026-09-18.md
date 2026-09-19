@@ -45,3 +45,11 @@ regression against spr-10 / escrow / spine.
 
 Stranger browse + invitee + operator surfaces state accrue-now / disburse-later
 without promising cash today. Private no-earnings UX unchanged.
+
+
+## Addendum 2026-09-19 — Trust + Synquery honesty
+
+Shipped `docs/decisions/g2-synquery-honesty-2026-09-19.md`: Trust Center
+`speak_economics` + opportunities honesty now publish `g2_counsel_gated`,
+`synquery_gated`, `paid_today=false`. Still **no** counsel flip, Synquery
+partnership invention, or disbursement open. Operator list (1)–(2) unchanged.

@@ -6785,6 +6785,7 @@ def create_app(
         compliance_frameworks: list[str]
         loop_3_unlock_status: dict[str, bool]
         website_ads: dict[str, Any]
+        speak_economics: dict[str, Any]
 
     @app.get(
         "/trust-center",
@@ -6815,6 +6816,7 @@ def create_app(
             }
 
         from substrate.ad_inventory.rank0_honesty import website_ads_honesty
+        from substrate.speak.g2_synquery_honesty import g2_synquery_honesty
 
         return TrustCenterPublication(
             differential_privacy_epsilon_budgets={
@@ -6839,6 +6841,7 @@ def create_app(
             ],
             loop_3_unlock_status=loop_3_status,
             website_ads=website_ads_honesty(),
+            speak_economics=g2_synquery_honesty(),
         )
 
     # ── Speak workflow (specs/speak/) — the fourth workflow's REST

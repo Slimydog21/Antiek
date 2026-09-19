@@ -43,6 +43,7 @@ class TrustCenterPayload:
     compliance_frameworks: tuple[str, ...]
     loop_3_unlock_status: dict[str, bool]
     website_ads: dict[str, Any]
+    speak_economics: dict[str, Any]
 
     def as_dict(self) -> dict:
         return {
@@ -54,6 +55,7 @@ class TrustCenterPayload:
             "compliance_frameworks": list(self.compliance_frameworks),
             "loop_3_unlock_status": dict(self.loop_3_unlock_status),
             "website_ads": dict(self.website_ads),
+            "speak_economics": dict(self.speak_economics),
         }
 
 
@@ -77,6 +79,7 @@ def build_publication(
         for s in reg.list_surfaces()
     }
     from substrate.ad_inventory.rank0_honesty import website_ads_honesty
+    from substrate.speak.g2_synquery_honesty import g2_synquery_honesty
 
     return TrustCenterPayload(
         differential_privacy_epsilon_budgets=surfaces,
@@ -91,6 +94,7 @@ def build_publication(
             "eval_headroom": False,
         }),
         website_ads=website_ads_honesty(),
+        speak_economics=g2_synquery_honesty(),
     )
 
 
