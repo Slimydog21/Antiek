@@ -128,7 +128,7 @@ def _html_headers(*, filename: str, inline: bool) -> dict[str, str]:
 def register_notebook_artifact_routes(app: FastAPI) -> None:
     """Mount notebook artifact view + export. One call from create_app."""
 
-    def _doc_model(source: NotebookExportSource):
+    def _doc_model(source: NotebookExportSource) -> dict[str, Any]:
         resolved_refs: dict[str, ResolvedRefData] = source.resolved_refs
         return adapt_notebook_for_export(
             source.content_tiptap, title=source.title, resolved_refs=resolved_refs
