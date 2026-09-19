@@ -10,7 +10,7 @@
  * one chokepoint — never invent a model when none is installed.
  */
 
-import { openEngagementSession } from "../../api/engagement";
+import { openEngagementSession, type CitationProvenanceRequest, type CitationProvenanceReceipt } from "../../api/engagement";
 import { fetchDecisionTreeSelection } from "../../api/settings";
 import { openDeepResearchFromHighlight } from "../../workspace/deepResearchWindow";
 import { pushRecentDeepResearchSpawnId } from "../../workspace/recentDeepResearchSpawns";
@@ -32,6 +32,7 @@ export type LaunchFloatingDeepResearchInput = {
    * When omitted, server normalizes to deep.
    */
   research_tier?: "fast" | "deep" | "wrestle" | null;
+  citation_provenance?: CitationProvenanceRequest;
 };
 
 export type LaunchFloatingDeepResearchResult = {
@@ -63,6 +64,7 @@ export type LaunchFloatingDeepResearchResult = {
    * payload seamless_highlight_dr).
    */
   seamless_highlight_dr: true;
+  citation_provenance: CitationProvenanceReceipt | null;
 };
 
 /**
@@ -121,6 +123,7 @@ export async function launchFloatingDeepResearch(
     references: refs.length ? refs : undefined,
     view_mode: mode === "full" ? "full" : "floating",
     research_tier: researchTier,
+    citation_provenance: input.citation_provenance,
   });
 
   if (session.view_format !== "html") {
@@ -154,6 +157,7 @@ export async function launchFloatingDeepResearch(
     mode: mode === "full" ? "full" : "floating",
     // Residual (jk): carry tier into session host chrome payload.
     research_tier: resolvedTier,
+    citation_provenance: session.citation_provenance ?? undefined,
   });
 
   // Residual (ob): keep spawn id for collective multi-select after window close.
@@ -174,5 +178,6 @@ export async function launchFloatingDeepResearch(
     usage_event: session.usage_event ?? null,
     // Residual (afx): highlight → floating DR path honesty.
     seamless_highlight_dr: true,
+    citation_provenance: session.citation_provenance ?? null,
   };
 }

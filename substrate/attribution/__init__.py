@@ -20,6 +20,7 @@ from .compute import (
     AttributionResult,
     SynthesisAttributionResult,
     compute_attribution_for_synthesis,
+    compute_attribution_for_synthesis_authorized,
 )
 
 __all__ = [
@@ -32,4 +33,5 @@ __all__ = [
     "attribution_option_b",
     "attribution_option_c",
     "compute_attribution_for_synthesis",
+    "compute_attribution_for_synthesis_authorized",
 ]

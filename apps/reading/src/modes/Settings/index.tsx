@@ -65,6 +65,7 @@ import {
   type DecisionTreeSelectionResponse,
   type DepthTierResponse,
   type ModelRow,
+  type ModelsResponse,
   type NotDiamondAdvisoryResponse,
   type PromptCostEstimateResponse,
   type RegisteredModelsResponse,
@@ -137,6 +138,7 @@ export default function Settings() {
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const [models, setModels] = useState<ModelRow[] | null>(null);
+  const [modelAuthority, setModelAuthority] = useState<ModelsResponse | null>(null);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [budget, setBudget] = useState<BudgetResponse | null>(null);
   const [budgetError, setBudgetError] = useState<string | null>(null);
@@ -322,6 +324,7 @@ export default function Settings() {
         const m = await fetchSettingsModels();
         if (!cancelled) {
           setModels(m.models);
+          setModelAuthority(m);
           const firstReady = m.models.find((r) => r.ready && r.primary_model);
           if (firstReady?.primary_model) {
             setSelectedProvider(firstReady.provider_id);
@@ -460,6 +463,16 @@ export default function Settings() {
     };
   }, [leaderboardWeek]);
 
+  async function refreshModelAuthority() {
+    try {
+      const refreshed = await fetchSettingsModels();
+      setModels(refreshed.models);
+      setModelAuthority(refreshed);
+    } catch (error) {
+      setModelsError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   async function onRegisterModel() {
     // Residual (auv): pure gate — model + provider required · never auto-route.
     const gate = registerModelReadiness({
@@ -483,6 +496,7 @@ export default function Settings() {
         throw new Error("registered models view_format must be html");
       }
       setRegistered(rm);
+      await refreshModelAuthority();
       if (gate.select_as_driver) {
         setSelectedModel(gate.model_id);
         setSelectedProvider(gate.provider_id);
@@ -727,6 +741,7 @@ export default function Settings() {
         provider_id: provider,
       });
       setTree(result);
+      await refreshModelAuthority();
       setSelectedModel(mid);
       setSelectedProvider(provider);
       // Residual (adu): NotDiamond advisory install provenance (never authority).
@@ -770,6 +785,7 @@ export default function Settings() {
         provider_id: gate.provider_id,
       });
       setTree(result);
+      await refreshModelAuthority();
       setSelectedModel(gate.model_id);
       setSelectedProvider(gate.provider_id);
       // Residual (adu): provenance for decision-tree status honesty.
@@ -826,6 +842,7 @@ export default function Settings() {
         throw new Error("depth tier view_format must be html");
       }
       setDepth(d);
+      await refreshModelAuthority();
       const hints = d.projection_hints;
       const nextIn =
         hints?.input_chars != null ? hints.input_chars : inputChars;
@@ -1068,6 +1085,7 @@ export default function Settings() {
         live_env: twinSeedLive?.live_env,
         use_dispatch: twinSeedLive?.use_dispatch,
         injector_installed: twinSeedLive?.injector_installed,
+        cost_projection_ready: twinSeedLive?.cost_projection_ready,
         offline_honest: twinSeedLive?.offline_honest,
         live_env_flag: twinSeedLive?.live_env_flag,
         use_dispatch_env_flag: twinSeedLive?.use_dispatch_env_flag,
@@ -1076,6 +1094,7 @@ export default function Settings() {
       twinSeedLive?.live_env,
       twinSeedLive?.use_dispatch,
       twinSeedLive?.injector_installed,
+      twinSeedLive?.cost_projection_ready,
       twinSeedLive?.offline_honest,
       twinSeedLive?.live_env_flag,
       twinSeedLive?.use_dispatch_env_flag,
@@ -1172,6 +1191,7 @@ export default function Settings() {
         provider_id: selectedProvider.trim() || null,
       });
       setTree(res);
+      await refreshModelAuthority();
       // Residual (adu): manual install provenance.
       setDriverInstallProvenance({ source: "manual", task_class: null });
     } catch (e) {
@@ -1197,6 +1217,7 @@ export default function Settings() {
     try {
       const res = await clearDecisionTreeSelection();
       setTree(res);
+      await refreshModelAuthority();
       // Residual (adu): clear install provenance with driver.
       setDriverInstallProvenance({ source: null, task_class: null });
     } catch (e) {
@@ -1277,7 +1298,7 @@ export default function Settings() {
                           : "text-amber-700 dark:text-amber-300"
                       }
                     >
-                      {m.ready ? "ready" : "not registered"}
+                      {m.ready ? "boot-ready adapter" : "configured · adapter not boot-ready"}
                     </span>
                     {m.tier_bindings.length > 0 && (
                       <span className="w-full text-[11px] text-ink-soft dark:text-starlight">
@@ -1293,9 +1314,44 @@ export default function Settings() {
                 ))}
               </ul>
             )}
+            {modelAuthority && (
+              <section
+                className="space-y-2 rounded border border-ink/20 p-3 dark:border-bright/20"
+                data-testid="model-authority-matrix"
+                data-view-format="html"
+              >
+                <h3 className="font-mono text-xs font-semibold uppercase tracking-wide">
+                  Execution authority
+                </h3>
+                <p className="text-[11px] font-mono text-ink-soft dark:text-starlight">
+                  Configured ≠ boot-ready adapter ≠ operator-added unverified ≠ decision-tree selected ≠ selected for cascade launch.
+                </p>
+                <ul className="space-y-1 font-mono text-[12px]" data-testid="cascade-target-authority">
+                  {modelAuthority.cascade_targets.map((target) => (
+                    <li key={target.research_tier} data-state={target.state}>
+                      {target.research_tier}: {target.state === "selected_for_cascade_launch"
+                        ? `selected for cascade launch · ${target.provider_id}/${target.model_id} · candidate ${target.candidate_rank}`
+                        : `unavailable · ${target.reason}`}
+                    </li>
+                  ))}
+                </ul>
+                {modelAuthority.operator_models.length > 0 && (
+                  <ul className="space-y-1 font-mono text-[12px]" data-testid="operator-model-authority">
+                    {modelAuthority.operator_models.map((entry) => (
+                      <li key={`${entry.provider_id}/${entry.model_id}`} data-state={entry.state} data-authority-scope={entry.authority_scope}>
+                        {entry.provider_id}/{entry.model_id} · operator-added unverified
+                        {entry.provider_adapter_boot_ready ? " · provider adapter boot-ready" : " · provider adapter not boot-ready"}
+                        {entry.decision_tree_selected ? " · decision-tree selected (process-global; not account-scoped or cascade authority)" : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
             <p className="text-[11px] text-ink-soft dark:text-starlight font-serif italic">
-              Adding API keys / new models remains operator-gated. Decision-tree
-              install below is process-local (same process as dispatch).
+              Adding API keys / new models remains operator-gated. Boot-ready
+              means adapter registration only; it does not prove quota, model
+              entitlement, or a successful live call.
             </p>
           </div>
         </LemonCard>
@@ -1648,9 +1704,10 @@ export default function Settings() {
             data-propose-not-promote="true"
           >
             <p className="text-sm text-ink dark:text-bright">
-              Select the model driver for this process. Install writes the
-              choice into the decision-tree registry so research dispatch can
-              apply provider+model overrides. Cost projection still uses the
+              Select a model preference for compatible prompt paths in this
+              process. Cascade research launch independently resolves its exact
+              boot-attested target; this selection is not cascade authority.
+              Cost projection still uses the
               PR 440 settings estimate API (never invents $0). Explicit operator
               install only · never auto-route (NotDiamond advisory only · L7 ·
               Antiek-bench propose≠promote).
@@ -2276,11 +2333,18 @@ export default function Settings() {
                 data-injector-installed={String(
                   twinSeedLive.injector_installed,
                 )}
+                data-cost-projection-ready={String(
+                  twinSeedLive.cost_projection_ready === true,
+                )}
+                data-projected-max-cents={String(
+                  twinSeedLive.projected_max_cents ?? "",
+                )}
                 // Residual (aec): composite L3 readiness (all gates + not offline-only).
                 data-l3-live-ready={String(
                   twinSeedLive.live_env === true &&
                     twinSeedLive.use_dispatch === true &&
                     twinSeedLive.injector_installed === true &&
+                    twinSeedLive.cost_projection_ready === true &&
                     twinSeedLive.offline_honest === false,
                 )}
                 data-l3-gates-live-env={String(twinSeedLive.live_env === true)}
@@ -2289,6 +2353,9 @@ export default function Settings() {
                 )}
                 data-l3-gates-injector={String(
                   twinSeedLive.injector_installed === true,
+                )}
+                data-l3-gates-cost-projection={String(
+                  twinSeedLive.cost_projection_ready === true,
                 )}
                 role="status"
               >
@@ -2306,6 +2373,11 @@ export default function Settings() {
                   <code>{twinSeedLive.use_dispatch_env_flag}</code>=
                   {String(twinSeedLive.use_dispatch)} · injector=
                   {String(twinSeedLive.injector_installed)}
+                  {" · "}cost_projection=
+                  {String(twinSeedLive.cost_projection_ready === true)}
+                  {twinSeedLive.projected_max_cents != null
+                    ? ` (${twinSeedLive.projected_max_cents}¢ projected max)`
+                    : ""}
                 </p>
                 <p
                   data-testid="twin-seed-live-l3-gate-matrix"
@@ -2313,6 +2385,7 @@ export default function Settings() {
                     twinSeedLive.live_env === true &&
                       twinSeedLive.use_dispatch === true &&
                       twinSeedLive.injector_installed === true &&
+                      twinSeedLive.cost_projection_ready === true &&
                       twinSeedLive.offline_honest === false,
                   )}
                 >
@@ -2320,14 +2393,17 @@ export default function Settings() {
                   {twinSeedLive.live_env === true ? "on" : "off"} · use_dispatch=
                   {twinSeedLive.use_dispatch === true ? "on" : "off"} · injector=
                   {twinSeedLive.injector_installed === true ? "on" : "off"} ·
+                  cost_projection=
+                  {twinSeedLive.cost_projection_ready === true ? "on" : "off"} ·
                   live_ready=
                   {twinSeedLive.live_env === true &&
                   twinSeedLive.use_dispatch === true &&
                   twinSeedLive.injector_installed === true &&
+                  twinSeedLive.cost_projection_ready === true &&
                   twinSeedLive.offline_honest === false
                     ? "true"
                     : "false"}{" "}
-                  (all three + offline_honest=false required)
+                  (all execution and cost gates + offline_honest=false required)
                 </p>
                 {twinSeedLive.notes.map((n) => (
                   <p key={n} className="opacity-80">
@@ -2936,6 +3012,13 @@ export default function Settings() {
                   value={nd.suggestion_week_id || leaderboardWeek || "—"}
                 />
                 <Row
+                  label="Measurement status"
+                  value={
+                    nd.measurement_status ||
+                    (nd.suggested_model_id ? "MEASURED" : "NOT MEASURED")
+                  }
+                />
+                <Row
                   label="Suggested model"
                   value={
                     nd.suggested_model_id
@@ -2944,7 +3027,7 @@ export default function Settings() {
                             ? ` (${nd.recommended_mean_score})`
                             : ""
                         }`
-                      : "—"
+                      : "NOT MEASURED"
                   }
                 />
                 <Row
@@ -5441,10 +5524,10 @@ export default function Settings() {
               </li>
               <li
                 id="collective-live-council-status"
-                data-deferred="l6-collective"
+                data-runtime-gate="l6-collective"
                 data-testid="settings-deferred-l6"
               >
-                L6 live multi-agent council — offline merge unit only today ·{" "}
+                L6 multi-agent council — substrate shipped; paid runtime requires server-bound ledger + executor ·{" "}
                 <a
                   href={capabilityGuidanceLinks.collectiveCouncil}
                   data-testid="settings-deferred-l6-checklist-link"

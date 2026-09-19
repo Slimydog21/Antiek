@@ -7,6 +7,10 @@ import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
+import {
+  ResearchRunCeilingApproval,
+  type ResearchRunAuthorization,
+} from "../../components/engagement/ResearchRunCeilingApproval";
 
 /**
  * SuggestedResearch — the §7 compounding flywheel, surfaced (SPR-09).
@@ -227,6 +231,8 @@ function SuggestionCard({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ reason: string | null } | null>(null);
+  const [runAuthorization, setRunAuthorization] =
+    useState<ResearchRunAuthorization>({ approved: false, ceilingUsd: null, projection: null });
 
   const chase = useCallback(async () => {
     // Hand off to the caller's chase gesture when a parent is in context —
@@ -235,6 +241,10 @@ function SuggestionCard({
     if (onChaseGesture) {
       onChaseGesture({ text: suggestion.question, key: suggestion.key });
       onLaunched(null);
+      return;
+    }
+    if (!runAuthorization.approved || runAuthorization.ceilingUsd == null) {
+      setError({ reason: "Review and approve an initial-run hard ceiling." });
       return;
     }
     // The monitor lane: no parent → launch a standalone research through the
@@ -249,6 +259,7 @@ function SuggestionCard({
         ...(suggestion.source_investigation_id
           ? { parent_investigation_id: suggestion.source_investigation_id }
           : {}),
+        approved_run_ceiling_usd: runAuthorization.ceilingUsd,
       });
       if (suggestion.source_investigation_id) {
         recordSpawnRelationship(resp.investigation_id, suggestion.source_investigation_id);
@@ -260,7 +271,7 @@ function SuggestionCard({
     } finally {
       setBusy(false);
     }
-  }, [onChaseGesture, onLaunched, suggestion]);
+  }, [onChaseGesture, onLaunched, runAuthorization, suggestion]);
 
   return (
     <article
@@ -299,12 +310,22 @@ function SuggestionCard({
         </div>
       )}
 
+      {!onChaseGesture ? (
+        <ResearchRunCeilingApproval
+          promptText={`${suggestion.question}\n${suggestion.suggested_retrieval ?? ""}`}
+          researchTier="deep"
+          disabled={busy}
+          onAuthorizationChange={setRunAuthorization}
+          className="mt-2"
+        />
+      ) : null}
+
       <div className="mt-2 flex items-center justify-end">
         <LemonButton
           variant="secondary"
           size="sm"
           onClick={() => void chase()}
-          disabled={busy || !canLaunch}
+          disabled={busy || !canLaunch || (!onChaseGesture && !runAuthorization.approved)}
           title={canLaunch ? undefined : "Sign in to chase a thread."}
         >
           {busy ? "Chasing…" : "Chase this"}

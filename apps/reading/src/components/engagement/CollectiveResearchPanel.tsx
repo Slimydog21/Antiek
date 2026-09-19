@@ -79,6 +79,8 @@ import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchCollectiveResearch,
+  createCollectiveManifest,
+  projectCollectiveManifest,
   mergeSpawnOutputs,
   seedTwinNotes,
   type CollectiveResponse,
@@ -90,18 +92,14 @@ import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
 import {
-  getLastCollectiveUnitMembership,
-  restoreCollectiveSelection,
-  storeCollectiveUnitMembership,
-  type CollectiveUnitMembership,
-} from "../../workspace/collectiveUnitMembership";
-import {
   clearRecentDeepResearchSpawnIds,
   listRecentDeepResearchSpawnIds,
 } from "../../workspace/recentDeepResearchSpawns";
 import type { WindowMode } from "../../workspace/windowsStore";
 import { openWindow } from "../windows/openWindow";
+import { openHostedDocumentPanel } from "../../workspace/actions";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
+import { LiveCouncilPanel } from "./LiveCouncilPanel";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -212,8 +210,6 @@ export function CollectiveResearchPanel({
   const recentCount = recentRing.length;
   /** Residual (ol): skip re-auto-selecting same newest after operator clears. */
   const lastAutoSelectedRecent = useRef<string | null>(null);
-  /** Residual (ql): only auto-restore last unit once per mount (operator clear sticks). */
-  const didAutoRestoreUnit = useRef(false);
 
   // Auto-select preferred spawn once when available (residual cn).
   useEffect(() => {
@@ -241,26 +237,6 @@ export function CollectiveResearchPanel({
     availableSpawnIds,
   ]);
 
-  // Residual (ql): auto-restore last cohesive unit multi-select once when
-  // available list is known. Do not depend on selected.length so operator clear
-  // does not re-restore. preferredSpawnId wins; require ≥2 restored ids.
-  useEffect(() => {
-    if (didAutoRestoreUnit.current) return;
-    if ((preferredSpawnId || "").trim()) return;
-    if (availableSpawnIds.length < 1) return;
-    const last = getLastCollectiveUnitMembership();
-    const restored = restoreCollectiveSelection(last, availableSpawnIds);
-    if (restored.length < 2 || !last) return;
-    didAutoRestoreUnit.current = true;
-    setSelected((prev) => (prev.length > 0 ? prev : restored));
-    setMembershipStatus({
-      collective_id: last.collective_id,
-      spawn_count: last.spawn_ids.length,
-      restored_count: restored.length,
-      action: "restored",
-      document_id: last.document_id,
-    });
-  }, [preferredSpawnId, availableSpawnIds]);
 
   const [unit, setUnit] = useState<CollectiveResponse | null>(null);
   const [docMerge, setDocMerge] = useState<MergeProductResponse | null>(null);
@@ -300,13 +276,6 @@ export function CollectiveResearchPanel({
    * Residual (py): last cohesive unit membership chrome (sessionStorage).
    * Restored selection is an intersection with availableSpawnIds.
    */
-  const [membershipStatus, setMembershipStatus] = useState<{
-    collective_id: string;
-    spawn_count: number;
-    restored_count: number;
-    action: "stored" | "restored" | "none";
-    document_id?: string | null;
-  } | null>(null);
   /**
    * Residual (afn): last multi-select helper mode for path audit
    * (Select open assembly honesty · machine-readable).
@@ -456,74 +425,31 @@ export function CollectiveResearchPanel({
     setLastSelectMode("open");
   }, [availableSpawnIds, openSet]);
 
-  /** Residual (py): remember unit membership after merge / analysis / continue. */
+  /** Legacy tab-local membership persistence is retired; manifests are server-owned. */
   const rememberUnitMembership = useCallback(
     (
       collectiveId: string,
       spawnIds: readonly string[],
       opts?: { document_id?: string | null },
-    ): CollectiveUnitMembership | null => {
-      const m = storeCollectiveUnitMembership({
-        collective_id: collectiveId,
-        spawn_ids: spawnIds,
-        parent_asset_id: parentAssetId,
-        document_id: opts?.document_id ?? null,
-      });
-      if (m) {
-        setMembershipStatus({
-          collective_id: m.collective_id,
-          spawn_count: m.spawn_ids.length,
-          restored_count: 0,
-          action: "stored",
-          document_id: m.document_id,
-        });
-      }
-      return m;
+    ): null => {
+      void collectiveId; void spawnIds; void opts;
+      return null;
     },
-    [parentAssetId],
+    [],
   );
-
-  /**
-   * Residual (py): restore last cohesive unit multi-select (intersection with
-   * available). After continue-as-unit re-entry, one click restores the set.
-   */
-  const restoreLastUnitSelection = useCallback(() => {
-    const last = getLastCollectiveUnitMembership();
-    if (!last) {
-      setError("No cohesive unit membership stored in this session");
-      return;
-    }
-    const restored = restoreCollectiveSelection(last, availableSpawnIds);
-    if (restored.length < 1) {
-      setError(
-        `Last unit ${last.collective_id} has no spawn_ids still available (${last.spawn_ids.length} stored)`,
-      );
-      setMembershipStatus({
-        collective_id: last.collective_id,
-        spawn_count: last.spawn_ids.length,
-        restored_count: 0,
-        action: "restored",
-        document_id: last.document_id,
-      });
-      return;
-    }
-    setSelected(restored);
-    setError(null);
-    setMembershipStatus({
-      collective_id: last.collective_id,
-      spawn_count: last.spawn_ids.length,
-      restored_count: restored.length,
-      action: "restored",
-      document_id: last.document_id,
-    });
-  }, [availableSpawnIds]);
 
   const mergeCollective = useCallback(async () => {
     if (selected.length < 1) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await fetchCollectiveResearch({ spawn_ids: selected });
+      const manifest = await createCollectiveManifest(selected);
+      const projected = await projectCollectiveManifest(manifest.manifest_id);
+      const result = {
+        ...projected,
+        manifest_id: manifest.manifest_id,
+        workspace_resume_ref: { manifest_id: manifest.manifest_id },
+      };
       if (result.view_format !== "html") {
         throw new Error("collective view_format must be html");
       }
@@ -795,7 +721,7 @@ export function CollectiveResearchPanel({
       data-view-format="html"
       data-testid="collective-research-panel"
       data-auto-open-draft={autoOpenDraft ? "true" : "false"}
-      data-l6-live-multiagent="deferred"
+      data-l6-live-multiagent="operator-gated"
       data-offline-merge-unit="true"
       data-parent-asset-id={String(parentAssetId || "").trim() || ""}
       data-selected-count={String(selected.length)}
@@ -806,21 +732,21 @@ export function CollectiveResearchPanel({
     >
       <header>
         <h2>Collective deep research</h2>
-        {/* Residual (vx/wi): L6 live multi-agent deferred honesty + checklist deep-link. */}
+        {/* L6 is implemented but remains inert until the live executor is bound. */}
         <p
           className="meta font-mono text-[11px] opacity-80"
           data-testid="collective-l6-honesty"
-          data-l6-live-multiagent="deferred"
+          data-l6-live-multiagent="operator-gated"
           data-offline-merge-unit="true"
           role="status"
         >
-          L6 live multi-agent council: deferred · offline merge unit only · never
+          L6 live multi-agent council: operator-gated · offline merge remains available · never
           silent live council ·{" "}
           <a
             href={capabilityGuidanceLinks.collectiveCouncil}
             data-testid="collective-l6-checklist-link"
             className="underline opacity-90 hover:opacity-100"
-            title="L6 live multi-agent deferred — dual-gate checklist (offline merge unit only)"
+            title="L6 live multi-agent operator gate — offline merge remains available"
           >
             L6 checklist
           </a>
@@ -1057,20 +983,6 @@ export function CollectiveResearchPanel({
         >
           Clear recent ({recentCount})
         </button>
-        {/* Residual (py/afl): restore last cohesive unit multi-select + path. */}
-        <button
-          type="button"
-          data-testid="collective-restore-last-unit"
-          onClick={() => restoreLastUnitSelection()}
-          disabled={busy}
-          // Residual (afl): unit membership restore path honesty.
-          data-l6-live-multiagent="deferred"
-          data-view-format="html"
-          data-seamless-unit-restore="true"
-          title="Restore multi-select from last cohesive unit membership (sessionStorage · offline unit · not live L6 council)"
-        >
-          Restore last unit
-        </button>
         <span
           className="text-[11px] font-mono opacity-70"
           data-testid="collective-selection-count"
@@ -1128,44 +1040,6 @@ export function CollectiveResearchPanel({
             Select recent path · multi-select assembly · selected=
             {selected.length}/{recentInAvailable} recent_ring · L6 live
             multi-agent deferred · seamless select recent
-          </span>
-        ) : null}
-        {membershipStatus ? (
-          <span
-            className="text-[11px] font-mono opacity-80 w-full"
-            data-testid="collective-unit-membership-status"
-            data-action={membershipStatus.action}
-            data-collective-id={membershipStatus.collective_id}
-            data-spawn-count={String(membershipStatus.spawn_count)}
-            data-restored-count={String(membershipStatus.restored_count)}
-            data-document-id={membershipStatus.document_id ?? ""}
-            data-view-format="html"
-            // Residual (adj): offline cohesive unit only — L6 live multi-agent deferred.
-            data-l6-live-multiagent="deferred"
-            data-research-tier={researchTier || ""}
-            // Residual (afl): membership restore/store path honesty.
-            data-seamless-unit-restore={String(
-              membershipStatus.action === "restored",
-            )}
-            data-parent-asset-id={
-              String(parentAssetId || "").trim() || ""
-            }
-            role="status"
-          >
-            Unit membership · {membershipStatus.action} · id=
-            {membershipStatus.collective_id} · stored=
-            {membershipStatus.spawn_count}
-            {membershipStatus.action === "restored"
-              ? ` · restored=${membershipStatus.restored_count}`
-              : ""}
-            {researchTier ? ` · tier=${researchTier}` : ""}
-            {membershipStatus.document_id
-              ? ` · doc=${membershipStatus.document_id}`
-              : ""}{" "}
-            · L6 live multi-agent deferred
-            {membershipStatus.action === "restored"
-              ? " · seamless unit restore"
-              : ""}
           </span>
         ) : null}
       </div>
@@ -1344,6 +1218,12 @@ export function CollectiveResearchPanel({
               : "Select ≥2 spawns for multi-agent written analysis"}
       </p>
 
+      <LiveCouncilPanel
+        selectedSpawnIds={selected}
+        collectiveId={unit?.collective_id ?? null}
+        parentAssetId={parentAssetId}
+      />
+
       {error ? (
         <p className="error" role="alert">
           {error}
@@ -1359,6 +1239,7 @@ export function CollectiveResearchPanel({
             data-spawn-count={String(unit.spawn_count ?? 0)}
             data-twin-count={String(unit.twin_count ?? 0)}
             data-ref-count={String(unit.ref_count ?? 0)}
+            data-citation-count={String(unit.citation_evidence_count ?? unit.citation_evidence?.length ?? 0)}
             data-research-tiers={(unit.research_tiers || []).join(",")}
             data-recommended-research-tier={
               unit.recommended_research_tier || ""
@@ -1370,6 +1251,7 @@ export function CollectiveResearchPanel({
           >
             Collective unit · spawns={unit.spawn_count ?? 0} · twins=
             {unit.twin_count ?? 0} · refs={unit.ref_count ?? 0}
+            {` · citations=${unit.citation_evidence_count ?? unit.citation_evidence?.length ?? 0}`}
             {unit.recommended_research_tier
               ? ` · tier=${unit.recommended_research_tier}`
               : ""}
@@ -1390,6 +1272,29 @@ export function CollectiveResearchPanel({
               </>
             ) : null}
           </p>
+          {(unit.citation_evidence ?? []).length > 0 ? (
+            <ul data-testid="collective-citation-evidence">
+              {(unit.citation_evidence ?? []).map((item) => (
+                <li key={item.receipt_sha256}>
+                  validated citation · document {item.document_id} · claim {item.claim_id} · receipt {item.receipt_sha256.slice(0, 12)}
+                  {" "}
+                  <button
+                    type="button"
+                    data-testid={`collective-open-citation-${item.receipt_sha256}`}
+                    data-document-id={item.document_id}
+                    onClick={() => openHostedDocumentPanel({
+                      documentId: item.document_id,
+                      chunkIds: item.chunk_ids,
+                      citationReceiptSha256: item.receipt_sha256,
+                      title: `Citation · claim ${item.claim_id}`,
+                    })}
+                  >
+                    Open evidence
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <pre className="prompt-block" data-testid="collective-prompt-block">
             {unit.prompt_block}
           </pre>
@@ -1406,50 +1311,15 @@ export function CollectiveResearchPanel({
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
                 title="Open cohesive unit prompt as floating HTML window (no invented document_id · never PDF)"
                 onClick={() => {
-                  const cid =
-                    String(unit.collective_id || "").trim() || "collective";
-                  const id = `collective_unit:${cid}:${Date.now().toString(36)}`;
-                  const html = buildCollectiveUnitPromptHtml({
-                    collectiveId: cid,
-                    promptBlock: unit.prompt_block || "",
-                    spawnCount: unit.spawn_count,
-                    twinCount: unit.twin_count,
-                    refCount: unit.ref_count,
-                    researchTier: unit.recommended_research_tier || researchTier,
-                    spawnIds: selected,
-                  });
+                  const id = String(unit.manifest_id || "");
                   openWindow(
-                    "hosted_html_document",
-                    {
-                      document_id: id,
-                      title: `Collective unit · ${cid}`,
-                      html,
-                      view_format: "html",
-                      source: "collective_unit_prompt",
-                      research_tier:
-                        unit.recommended_research_tier || researchTier || null,
-                      collective_id: cid,
-                      spawn_count: unit.spawn_count ?? selected.length,
-                    },
+                    "collective_unit", { resume_ref: { manifest_id: id } },
                     {
                       id: `win:collective_unit:${id}`,
                       title: "Collective unit",
                       mode: "floating",
                     },
                   );
-                  // Residual (aht): recursive note-taker substrate for unit HTML float.
-                  void seedTwinNotes({
-                    asset_id: id,
-                    title: `Collective unit · ${cid}`,
-                    body_text: (
-                      `Port path: multi-spawn cohesive unit prompt (offline · never invent live L6 council).\n\n` +
-                      (unit.prompt_block || "")
-                    ).slice(0, 2200),
-                    include_html: false,
-                    force_offline: true,
-                  }).catch(() => {
-                    /* non-fatal twin seed */
-                  });
                 }}
               >
                 Open float (unit HTML)
@@ -1466,29 +1336,9 @@ export function CollectiveResearchPanel({
                 onClick={() => {
                   const cid =
                     String(unit.collective_id || "").trim() || "collective";
-                  const id = `collective_unit:${cid}:full:${Date.now().toString(36)}`;
-                  const html = buildCollectiveUnitPromptHtml({
-                    collectiveId: cid,
-                    promptBlock: unit.prompt_block || "",
-                    spawnCount: unit.spawn_count,
-                    twinCount: unit.twin_count,
-                    refCount: unit.ref_count,
-                    researchTier: unit.recommended_research_tier || researchTier,
-                    spawnIds: selected,
-                  });
+                  const id = String(unit.manifest_id || "");
                   openWindow(
-                    "hosted_html_document",
-                    {
-                      document_id: id,
-                      title: `Collective unit · ${cid} (full)`,
-                      html,
-                      view_format: "html",
-                      source: "collective_unit_prompt",
-                      research_tier:
-                        unit.recommended_research_tier || researchTier || null,
-                      collective_id: cid,
-                      spawn_count: unit.spawn_count ?? selected.length,
-                    },
+                    "collective_unit", { resume_ref: { manifest_id: id } },
                     {
                       id: `win:collective_unit:${id}:full`,
                       title: "Collective unit (full)",

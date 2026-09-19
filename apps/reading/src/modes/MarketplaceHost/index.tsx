@@ -595,6 +595,8 @@ export default function MarketplaceHost({
     book_id?: string | null;
     /** Residual (apk): free vs purchased honesty for HostedHtml float twin seed. */
     is_free?: boolean | null;
+    /** Set only for documents the account host resolver can reconstruct. */
+    backend_guaranteed_resume?: true;
   }) {
     if ((opts.view_format || "html") !== "html" || !opts.html) return;
     // Residual (ahr): resolve subjects from catalog entry when book_id known.
@@ -622,6 +624,14 @@ export default function MarketplaceHost({
         source: opts.source || "marketplace_host",
         subjects: fromCatalog || undefined,
         is_free: resolvedIsFree,
+        ...(opts.backend_guaranteed_resume
+          ? {
+              resume_ref: {
+                resolver: "hosted_document" as const,
+                document_id: opts.document_id,
+              },
+            }
+          : {}),
       },
       {
         id: `win:hosted:${opts.document_id}`,
@@ -892,6 +902,7 @@ export default function MarketplaceHost({
           // Residual (apl): free/purchased honesty into float twin seed.
           is_free: resolveLibraryIsFree(doc),
           book_id: hosted.book_id || doc.document_id,
+          backend_guaranteed_resume: true,
         });
         return;
       }
@@ -932,6 +943,7 @@ export default function MarketplaceHost({
         // Residual (apl): free/purchased honesty into float twin seed.
         is_free: resolveLibraryIsFree(doc),
         book_id: documentId,
+        backend_guaranteed_resume: true,
       });
       // Residual (ach): offline twin seed after library rehydrate so recursive
       // note-taker substrate joins library-opened books (parity host/purchase gj).
@@ -1060,6 +1072,7 @@ export default function MarketplaceHost({
           // Residual (apk): free host path honesty into float twin seed.
           is_free:
             entries.find((e) => e.book_id === bookId)?.is_free ?? true,
+          backend_guaranteed_resume: true,
         });
       }
     } catch (e) {
@@ -1125,6 +1138,7 @@ export default function MarketplaceHost({
           subjects: entry.subjects || null,
           // Residual (apk): purchased path never claims free.
           is_free: false,
+          backend_guaranteed_resume: true,
         });
       }
     } catch (e) {
@@ -2441,6 +2455,7 @@ export default function MarketplaceHost({
                   is_free:
                     entries.find((e) => e.book_id === hosted.book_id)
                       ?.is_free ?? null,
+                  backend_guaranteed_resume: true,
                 });
               }}
               className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"

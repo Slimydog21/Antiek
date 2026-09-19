@@ -55,14 +55,14 @@ from typing import Any
 
 import httpx
 
-logger = logging.getLogger("antiek.acquisition.arxiv.pdf_fetch")
-
 from acquisition.arxiv.client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT
 from acquisition.arxiv.throttle import (  # noqa: F401  (re-export for callers)
     ArxivBanned,
     ArxivThrottle,
 )
 from acquisition.openaccess.unpaywall import NotAPdf, _looks_like_pdf
+
+logger = logging.getLogger("antiek.acquisition.arxiv.pdf_fetch")
 
 # Conservative byte bounds for a single arXiv paper PDF. The lower bound rejects a
 # truncated / error body that still starts with the magic bytes; the upper bound
@@ -100,6 +100,7 @@ class FetchedPdf:
     content: bytes
     sha256: str
     byte_size: int
+    policy_receipt: dict[str, Any] | None = None
 
 
 def _pdf_url(arxiv_id: str) -> str:
@@ -108,9 +109,7 @@ def _pdf_url(arxiv_id: str) -> str:
     return f"https://arxiv.org/pdf/{arxiv_id}"
 
 
-def _record_fetch_audit(
-    audit_con: Any, fetched: FetchedPdf
-) -> None:
+def _record_fetch_audit(audit_con: Any, fetched: FetchedPdf) -> None:
     """SPR-09 M4 — record an ``arxiv.fetch`` leg after a successful, verified,
     throttled fetch. Defensively isolated: a failure in the audit layer must NEVER
     break the fetch (wrap + log). §9.0: we record provenance refs (source_url,
@@ -205,6 +204,7 @@ def fetch_pdf(
         # Govern arXiv redirect hops the CALLER's client follows, too.
         install_arxiv_request_hook(client, throttle=throttle)
     try:
+
         def _send() -> httpx.Response:
             return client.get(
                 url,
@@ -260,6 +260,13 @@ def fetch_pdf(
         content=content,
         sha256=digest,
         byte_size=size,
+        policy_receipt={
+            "governor": "host_global_arxiv_rate_governor",
+            "min_spacing_s": throttle._min_spacing,
+            "default_ban_backoff_s": throttle._default_ban_backoff,
+            "redirect_policy": "every_arxiv_hop_governed",
+            "rate_limit_policy": "persist_429_ban_and_do_not_retry",
+        },
     )
     # SPR-09 M4 — audit the successful fetch (FETCH leg of the compliance trace),
     # only when the caller supplied a write-locked connection. Defensively

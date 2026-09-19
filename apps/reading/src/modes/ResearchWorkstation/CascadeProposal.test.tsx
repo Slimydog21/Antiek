@@ -24,13 +24,23 @@ const {
   editPlanMock,
   approvePlanMock,
   launchPlanMock,
+  getLaunchAttemptStatusMock,
   getBudgetDefaultsMock,
+  getGatherStatusMock,
+  getCascadeDriverReadinessMock,
+  listLegalPolicyDispatchLeasesMock,
+  recoverLegalPolicyDispatchLeaseMock,
 } = vi.hoisted(() => ({
   createPlanMock: vi.fn(),
   editPlanMock: vi.fn(),
   approvePlanMock: vi.fn(),
   launchPlanMock: vi.fn(),
+  getLaunchAttemptStatusMock: vi.fn(),
   getBudgetDefaultsMock: vi.fn(),
+  getGatherStatusMock: vi.fn(),
+  getCascadeDriverReadinessMock: vi.fn(),
+  listLegalPolicyDispatchLeasesMock: vi.fn(),
+  recoverLegalPolicyDispatchLeaseMock: vi.fn(),
 }));
 
 vi.mock("../../api/research", async (orig) => {
@@ -41,9 +51,30 @@ vi.mock("../../api/research", async (orig) => {
     editPlan: editPlanMock,
     approvePlan: approvePlanMock,
     launchPlan: launchPlanMock,
+    getLaunchAttemptStatus: getLaunchAttemptStatusMock,
     getBudgetDefaults: getBudgetDefaultsMock,
+    getGatherStatus: getGatherStatusMock,
+    getCascadeDriverReadiness: getCascadeDriverReadinessMock,
+    listLegalPolicyDispatchLeases: listLegalPolicyDispatchLeasesMock,
+    recoverLegalPolicyDispatchLease: recoverLegalPolicyDispatchLeaseMock,
   };
 });
+
+vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: ({ researchTier }: { researchTier: string }) => (
+    <div data-testid="cascade-driver">Driver tier: {researchTier}</div>
+  ),
+}));
+vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => ({
+  ResearchLaunchBudgetPanel: ({ researchTier, onResearchTierChange }: {
+    researchTier: string;
+    onResearchTierChange?: (tier: "wrestle") => void;
+  }) => (
+    <div data-testid="cascade-budget">Budget tier: {researchTier}
+      <button onClick={() => onResearchTierChange?.("wrestle")}>Pick wrestle</button>
+    </div>
+  ),
+}));
 
 import CascadeProposal from "./CascadeProposal";
 
@@ -80,12 +111,42 @@ const CREATE_RESP: CreatePlanResponse = {
 };
 
 beforeEach(() => {
+  sessionStorage.clear();
   createPlanMock.mockReset();
   editPlanMock.mockReset();
   approvePlanMock.mockReset();
   launchPlanMock.mockReset();
+  getLaunchAttemptStatusMock.mockReset();
+  getLaunchAttemptStatusMock.mockResolvedValue({
+    plan_id: "q-pn-root",
+    session_id: "session-unknown",
+    state: "claimed",
+    response_integrity: null,
+    session_authority_present: true,
+    launch_evidence_present: true,
+    action: "inspect_session",
+  });
   getBudgetDefaultsMock.mockReset();
+  getGatherStatusMock.mockReset();
+  listLegalPolicyDispatchLeasesMock.mockReset();
+  recoverLegalPolicyDispatchLeaseMock.mockReset();
   getBudgetDefaultsMock.mockResolvedValue({ per_research_cost_usd: 0.5, per_research_max_steps: 50 });
+  getGatherStatusMock.mockResolvedValue({
+    view_format: "html", product_panel: "research_gather_status",
+    configured_mode: "exa", gather_mode: "exa_reasoning", network_retrieval: true,
+    exa_key_installed: true, legal_gate_bypassed: false, launch_ready: true,
+    legal_policy: { schema_version: 1, policy_snapshot_sha256: "a".repeat(64), issuer_state: "configured", write_enforcement_version: 1, read_enforcement_version: 1, migration_state: "current", production_defensible: true, reason_code: null },
+    production_defensible: true, stub_requires_acknowledgment: false,
+  });
+  getCascadeDriverReadinessMock.mockImplementation(async (researchTier: string) => ({
+    research_tier: researchTier, ready: true, provider: "xiaomi", model: "mimo-v2.5-pro",
+    candidate_rank: 2, availability_source: "boot_registered_providers",
+    reason: "MiMo workhorse fallback",
+  }));
+  listLegalPolicyDispatchLeasesMock.mockResolvedValue({ count: 0, leases: [] });
+  recoverLegalPolicyDispatchLeaseMock.mockResolvedValue({
+    lease_id: "lease-1", recovered: true, idempotency_replayed: false,
+  });
 });
 afterEach(() => cleanup());
 
@@ -164,6 +225,36 @@ describe("CascadeProposal — propose the sub-question tree (M1)", () => {
 });
 
 describe("CascadeProposal — trim + gated launch (M2)", () => {
+  it("locks stub launch until the operator explicitly acknowledges no retrieval", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    getGatherStatusMock.mockResolvedValueOnce({
+      view_format: "html", product_panel: "research_gather_status",
+      configured_mode: "stub", gather_mode: "contract_stub", network_retrieval: false,
+      exa_key_installed: false, legal_gate_bypassed: false, launch_ready: true,
+      legal_policy: { schema_version: 1, policy_snapshot_sha256: null, issuer_state: "not_configured", write_enforcement_version: 1, read_enforcement_version: 1, migration_state: "current", production_defensible: false, reason_code: "global_policy_issuer_not_configured" },
+      production_defensible: false, stub_requires_acknowledgment: true,
+    });
+    launchPlanMock.mockResolvedValue({ session_id: "session-stub" });
+    renderProposal();
+    const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
+    expect((launch as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect((launch as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(launch);
+    await waitFor(() => expect(launchPlanMock).toHaveBeenCalledWith("q-pn-root", {
+      expected_gather_mode: "contract_stub", allow_contract_stub: true, research_tier: "deep",
+    }, expect.any(String)));
+  });
+
+  it("fails closed when gather readiness is malformed", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    // getGatherStatus performs runtime validation centrally; malformed JSON is
+    // exposed to consumers as a rejected readiness request.
+    getGatherStatusMock.mockRejectedValueOnce(new Error("invalid gather readiness response"));
+    renderProposal();
+    await screen.findByText(/could not be verified/i);
+    expect((screen.getByRole("button", { name: /Start 3 researches/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
   it("removes a sub-question through the SPR-05 edit contract", async () => {
     createPlanMock.mockResolvedValue(CREATE_RESP);
     const reduced: PlanResponse = {
@@ -201,8 +292,86 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
     fireEvent.click(launch);
     await waitFor(() => expect(approvePlanMock).toHaveBeenCalledWith("q-pn-root"));
-    await waitFor(() => expect(launchPlanMock).toHaveBeenCalledWith("q-pn-root"));
+    await waitFor(() => expect(launchPlanMock).toHaveBeenCalledWith("q-pn-root", {
+      expected_gather_mode: "exa_reasoning",
+      allow_contract_stub: false,
+      research_tier: "deep",
+    }, expect.any(String)));
     await waitFor(() => expect(onLaunched).toHaveBeenCalledWith("session-q-pn-root"));
+  });
+
+  it("launches the newly reviewed tier rather than a stale callback tier", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    approvePlanMock.mockResolvedValue({ launchable: true });
+    launchPlanMock.mockResolvedValue({ session_id: "session-wrestle" });
+    renderProposal();
+    await screen.findByRole("button", { name: /Start 3 researches/i });
+    fireEvent.click(screen.getByRole("button", { name: "Pick wrestle" }));
+    await waitFor(() => expect(
+      (screen.getByRole("button", { name: /Start 3 researches/i }) as HTMLButtonElement).disabled,
+    ).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: /Start 3 researches/i }));
+    await waitFor(() => expect(launchPlanMock).toHaveBeenCalledWith(
+      "q-pn-root",
+      expect.objectContaining({ research_tier: "wrestle" }),
+      expect.any(String),
+    ));
+  });
+
+  it("retries an ambiguous launch with the same durable attempt key", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    approvePlanMock.mockResolvedValue({
+      root_node_id: "q-pn-root",
+      approval: { state: "approved", approved_at: "t", approved_by: "x", plan_version: 1 },
+      launchable: true,
+    });
+    launchPlanMock
+      .mockRejectedValueOnce(new Error("response lost"))
+      .mockResolvedValueOnce({ session_id: "recovered-session" });
+    const { onLaunched } = renderProposal();
+    fireEvent.click(await screen.findByRole("button", { name: /Start 3 researches/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(launchPlanMock).toHaveBeenCalledTimes(2));
+    const firstKey = launchPlanMock.mock.calls[0][2];
+    const retryKey = launchPlanMock.mock.calls[1][2];
+    expect(firstKey).toEqual(expect.any(String));
+    expect(retryKey).toBe(firstKey);
+    expect(approvePlanMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onLaunched).toHaveBeenCalledWith("recovered-session"));
+  });
+
+  it("cannot edit or rotate authority while a launch is in flight", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    approvePlanMock.mockResolvedValue({ launchable: true });
+    let finishLaunch: ((value: { session_id: string }) => void) | undefined;
+    launchPlanMock.mockImplementation(() => new Promise((resolve) => {
+      finishLaunch = resolve;
+    }));
+    renderProposal();
+    fireEvent.click(await screen.findByRole("button", { name: /Start 3 researches/i }));
+    await waitFor(() => expect(launchPlanMock).toHaveBeenCalledTimes(1));
+    const key = launchPlanMock.mock.calls[0][2];
+    const removeButtons = screen.getAllByRole("button", { name: "remove" });
+    expect(removeButtons.every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    fireEvent.click(removeButtons[0]);
+    expect(editPlanMock).not.toHaveBeenCalled();
+    expect(launchPlanMock.mock.calls[0][2]).toBe(key);
+    finishLaunch?.({ session_id: "session-in-flight" });
+  });
+
+  it("never redispatches an unknown launch and offers the existing session", async () => {
+    const { LaunchOutcomeUnknownError } = await import("../../api/research");
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    approvePlanMock.mockResolvedValue({ launchable: true });
+    launchPlanMock.mockRejectedValue(new LaunchOutcomeUnknownError("session-unknown"));
+    const { onLaunched } = renderProposal();
+    fireEvent.click(await screen.findByRole("button", { name: /Start 3 researches/i }));
+    const inspect = await screen.findByRole("button", { name: "Inspect existing session" });
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(launchPlanMock).toHaveBeenCalledTimes(1);
+    fireEvent.click(inspect);
+    expect(onLaunched).toHaveBeenCalledWith("session-unknown");
+    expect(launchPlanMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -281,7 +450,11 @@ describe("CascadeProposal — renders the planner's REAL output, no placeholders
     // Launch approves the CURRENT (edited) tree, then launches it.
     fireEvent.click(await screen.findByRole("button", { name: /Start 3 researches/i }));
     await waitFor(() => expect(approvePlanMock).toHaveBeenCalledWith("q-pn-root"));
-    await waitFor(() => expect(launchPlanMock).toHaveBeenCalledWith("q-pn-root"));
+    await waitFor(() => expect(launchPlanMock).toHaveBeenCalledWith("q-pn-root", {
+      expected_gather_mode: "exa_reasoning",
+      allow_contract_stub: false,
+      research_tier: "deep",
+    }, expect.any(String)));
     await waitFor(() => expect(onLaunched).toHaveBeenCalledWith("sess-edited"));
   });
 });
@@ -345,5 +518,33 @@ describe("CascadeProposal — honest failure surface (M4)", () => {
     expect(await screen.findByText(/single focused question/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Ask this question" }));
     expect(onFallBackToAsk).toHaveBeenCalledOnce();
+  });
+
+  it("offers recovery only for server-attested terminal dispatch leases", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    listLegalPolicyDispatchLeasesMock.mockResolvedValue({
+      count: 2,
+      leases: [
+        {
+          lease_id: "lease-active", holder_investigation_id: "child-a",
+          acquired_at: "2026-01-01", diagnostic_deadline: "2026-01-01",
+          recovery_state: "active", terminal_action: null,
+        },
+        {
+          lease_id: "lease-1", holder_investigation_id: "child-b",
+          acquired_at: "2026-01-01", diagnostic_deadline: "2026-01-01",
+          recovery_state: "terminal_recoverable",
+          terminal_action: "investigation.completed",
+        },
+      ],
+    });
+    renderProposal();
+    expect(await screen.findByText(/elapsed time cannot release/i)).toBeTruthy();
+    const recover = screen.getByRole("button", { name: "Recover terminal run" });
+    fireEvent.click(recover);
+    fireEvent.click(recover);
+    await waitFor(() => expect(recoverLegalPolicyDispatchLeaseMock).toHaveBeenCalledOnce());
+    expect(recoverLegalPolicyDispatchLeaseMock.mock.calls[0]?.[0]).toBe("q-pn-root");
+    expect(recoverLegalPolicyDispatchLeaseMock.mock.calls[0]?.[1]).toBe("lease-1");
   });
 });

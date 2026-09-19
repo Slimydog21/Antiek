@@ -40,6 +40,25 @@ vi.mock("../../lib/api", async (orig) => {
   return { ...actual, startInvestigation: startInvestigationMock };
 });
 
+vi.mock("../../components/engagement/ResearchRunCeilingApproval", async () => {
+  const { useLayoutEffect } = await import("react");
+  return {
+    ResearchRunCeilingApproval: ({ onAuthorizationChange, onResearchTierChange }: {
+      onAuthorizationChange: (value: unknown) => void;
+      onResearchTierChange?: (tier: string) => void;
+    }) => {
+      useLayoutEffect(() => {
+        onAuthorizationChange({ approved: true, ceilingUsd: 1.25, projection: null });
+      }, [onAuthorizationChange]);
+      return (
+        <div data-testid="research-run-authorization-stub">
+          <button data-testid="research-launch-tier-wrestle" onClick={() => onResearchTierChange?.("wrestle")}>Wrestle budget tier</button>
+        </div>
+      );
+    },
+  };
+});
+
 const fetchDepthTiersMock = vi.hoisted(() =>
   vi.fn(async () => ({
     active_depth_tier: null as string | null,

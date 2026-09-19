@@ -24,6 +24,7 @@ from .host_local import (
     DEFAULT_MAX_CONCURRENCY,
     HostLocalRunner,
     LoopContext,
+    make_authorized_multi_source_gather_loop,
     make_contract_gather_stub,
     make_demo_loop,
     make_exa_gather_loop,
@@ -52,6 +53,7 @@ __all__ = [
     # impls + machinery
     "HostLocalRunner", "LoopContext", "make_demo_loop",
     "make_contract_gather_stub", "make_exa_gather_loop",
+    "make_authorized_multi_source_gather_loop",
     "DEFAULT_MAX_CONCURRENCY",
     "BudgetManager", "PromotionFunnel",
     # gated

@@ -15,16 +15,18 @@ Exercises the gates the sprint page names at the HTTP edge:
 
 from __future__ import annotations
 
-import json
 import os
 import tempfile
-from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
 from orchestration.continuous import DAEMON_SPAWN_POLICY_ID
+from substrate.event_log import log_event_authorized
+from substrate.investigation_streams import resolve_writable_investigation_stream
+from substrate.investigation_tenancy import InvestigationAuthority
 
 
 @pytest.fixture
@@ -43,17 +45,14 @@ def env(monkeypatch):
 
 def _write(events: str, investigation_id: str, action_type: str, payload: dict,
            *, policy_id: str = "operator-cli") -> None:
-    path = os.path.join(events, f"{investigation_id}.jsonl")
-    row = {
-        "event_id": f"evt-{investigation_id}-{action_type}",
-        "investigation_id": investigation_id,
-        "action_type": action_type,
-        "policy_id": policy_id,
-        "emitted_at": datetime.now(UTC).isoformat(),
-        "payload": payload,
-    }
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(row) + "\n")
+    authority = InvestigationAuthority("__operator__", investigation_id, Path(events))
+    resolve_writable_investigation_stream(authority)
+    log_event_authorized(
+        authority,
+        action_type,
+        payload=payload,
+        policy_id=policy_id,
+    )
 
 
 def _gap(desc: str, hint: str | None = None) -> dict:

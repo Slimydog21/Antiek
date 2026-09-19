@@ -43,6 +43,17 @@ const {
     count: 1,
     providers_ready: true,
     source: "test",
+    cascade_targets: ["fast", "deep", "wrestle"].map((research_tier) => ({
+      research_tier,
+      state: "unavailable",
+      provider_id: null,
+      model_id: null,
+      candidate_rank: null,
+      availability_source: "boot_registered_providers",
+      reason: "no boot-ready cascade provider",
+    })),
+    operator_models: [],
+    authority_notes: [],
   };
   const defaultUsageSummary = {
     event_count: 2,
@@ -595,6 +606,46 @@ describe("Settings SPR-01 + decision-tree install", () => {
       notes: ["no decision-tree selection installed in this process"],
       source: "test",
     });
+  });
+
+  it("distinguishes configured, boot-ready, operator-added, selected, and cascade authority", async () => {
+    fetchSettingsModels.mockResolvedValueOnce({
+      models: [{
+        provider_id: "openai_chat",
+        ready: true,
+        tier_bindings: [],
+        primary_model: null,
+        notes: null,
+      }],
+      count: 1,
+      providers_ready: true,
+      source: "test",
+      cascade_targets: [{
+        research_tier: "deep",
+        state: "selected_for_cascade_launch",
+        provider_id: "openai_chat",
+        model_id: "gpt-5.6-terra",
+        candidate_rank: 1,
+        availability_source: "boot_registered_providers",
+        reason: "preferred boot-ready target",
+      }],
+      operator_models: [{
+        model_id: "local-choice",
+        provider_id: "xiaomi",
+        state: "operator_added_unverified",
+        decision_tree_selected: true,
+        provider_adapter_boot_ready: true,
+        authority_scope: "process_global_operator_registry",
+      }],
+      authority_notes: [],
+    });
+    render(<Settings />);
+    const matrix = await screen.findByTestId("model-authority-matrix");
+    expect(matrix.textContent).toMatch(/configured.*boot-ready adapter.*operator-added unverified.*decision-tree selected.*selected for cascade launch/i);
+    expect(screen.getByTestId("cascade-target-authority").textContent).toMatch(/openai_chat\/gpt-5\.6-terra/);
+    expect(screen.getByTestId("operator-model-authority").textContent).toMatch(/local-choice.*operator-added unverified.*decision-tree selected \(process-global; not account-scoped or cascade authority\)/i);
+    expect(screen.queryByText(/^ready$/i)).toBeNull();
+    expect(screen.getByText(/^boot-ready adapter$/i)).toBeTruthy();
   });
 
   it("surfaces offline-honest twin seed live status (hs)", async () => {
@@ -1151,7 +1202,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("settings-deferred-l5").getAttribute("data-deferred")).toBe(
       "l5-payment",
     );
-    expect(screen.getByTestId("settings-deferred-l6").getAttribute("data-deferred")).toBe(
+    expect(screen.getByTestId("settings-deferred-l6").getAttribute("data-runtime-gate")).toBe(
       "l6-collective",
     );
     expect(screen.getByTestId("settings-deferred-l7").getAttribute("data-deferred")).toBe(

@@ -210,14 +210,13 @@ def _resolve_region_text_from_db(
     except Exception:
         return None
     try:
-        row = con.execute(
-            "SELECT text FROM chunks WHERE chunk_id = ?", [chunk_id]
-        ).fetchone()
+        from substrate.legal_gate.read import read_legacy_chunk_text
+
+        return read_legacy_chunk_text(con, chunk_id)
     except Exception:
         return None
     finally:
         con.close()
-    return row[0] if row else None
 
 
 def _resolve_region_text_from_trajectory(
@@ -671,6 +670,12 @@ def register_handlers(
     and stub providers. Production code uses ``None`` and gets the
     defaults from ``substrate/graph.default_db_path()`` +
     ``processing/embedding.default_embedding_provider()``."""
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+        # These legacy event handlers accept scalar investigation IDs and can
+        # mirror or dispatch source text without an InvestigationAuthority.
+        # Activation therefore leaves them inert until the typed authorized
+        # replacement is installed; silent fallback would bypass legal reads.
+        return
     broadcaster.register_handler(
         ActionType.DISTILLATION_REQUESTED.value,
         make_distillation_handler(broadcaster, db_path=db_path),

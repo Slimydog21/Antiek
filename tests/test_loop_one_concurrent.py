@@ -44,8 +44,13 @@ from substrate.dispatch import (  # noqa: E402
     register_provider,
     reset_provider_registry,
 )
-from substrate.event_log import trajectory  # noqa: E402
+from substrate.event_log import trajectory_authorized  # noqa: E402
+from substrate.investigation_tenancy import InvestigationAuthority  # noqa: E402
 from substrate.schemas import ActionType, Event  # noqa: E402
+from tests.research_quote_support import (  # noqa: E402
+    async_signed_body,
+    configure_research_quote_authority,
+)
 
 # ---------------------------------------------------------------------------
 # Per-investigation tag-based stub provider
@@ -232,6 +237,22 @@ class _PerInvestigationStub:
 
     def __init__(self):
         self.call_count: dict[str, int] = {}
+        self._idempotent_responses: dict[str, RawProviderResponse] = {}
+
+    def call_idempotent(
+        self, *, model, prompt, max_tokens, temperature, idempotency_key
+    ) -> RawProviderResponse:
+        existing = self._idempotent_responses.get(idempotency_key)
+        if existing is not None:
+            return existing
+        response = self.call(
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        self._idempotent_responses[idempotency_key] = response
+        return response
 
     def _extract_inv_id(self, prompt: str) -> str:
         """Find the investigation_id by looking for the decomposer
@@ -300,7 +321,16 @@ class _PerInvestigationStub:
 
 
 def _all_role_config() -> DispatchConfig:
-    pricing = TierPricing(input_per_mtok=0.0, output_per_mtok=0.0)
+    pricing = TierPricing(
+        input_per_mtok=0.01,
+        output_per_mtok=0.02,
+        cached_input_per_mtok=0.001,
+        currency="USD",
+        billing_unit="per_million_tokens",
+        source_url="https://provider.example/pricing",
+        verified_at="2026-01-01T00:00:00Z",
+        expires_at="2099-01-01T00:00:00Z",
+    )
     tier = TierConfig(
         name="pro", provider="concurrent-stub", model="stub-model",
         max_tokens=4096, temperature=0.1, context_budget_tokens=128_000,
@@ -359,6 +389,7 @@ def _pin_canonical_chunks(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _isolate_state(tmp_path, monkeypatch):
+    configure_research_quote_authority(monkeypatch, tmp_path)
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "graph.duckdb"))
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
@@ -402,14 +433,16 @@ async def async_client(app_and_bus):
 async def _post_investigation(
     ac, *, investigation_id: str, question: str, topic_slug: str,
 ) -> None:
+    payload = {
+        "question": question,
+        "investigation_id": investigation_id,
+        "topic_slug": topic_slug,
+        "max_sub_questions": 4,
+        "approved_run_ceiling_usd": 1.0,
+    }
     r = await ac.post(
         "/investigations",
-        json={
-            "question": question,
-            "investigation_id": investigation_id,
-            "topic_slug": topic_slug,
-            "max_sub_questions": 4,
-        },
+        json=await async_signed_body(ac, "/investigations/quote", payload),
     )
     assert r.status_code == 202, r.text
 
@@ -614,7 +647,7 @@ async def test_handler_fan_out_no_lost_events(
         ActionType.INVESTIGATION_COMPLETED.value: 1,
     }
     for inv in inv_ids:
-        rows = trajectory(inv)
+        rows = trajectory_authorized(InvestigationAuthority("__operator__", inv))
         counts: dict[str, int] = {}
         for r in rows:
             at = r.get("action_type")
@@ -676,7 +709,7 @@ async def test_concurrent_skill_patches_both_findings_recorded(
     # Trajectory: both investigations emitted auto_patch_applied
     # with "quantum-computing-knowledge" patched.
     for inv in inv_ids:
-        rows = trajectory(inv)
+        rows = trajectory_authorized(InvestigationAuthority("__operator__", inv))
         auto_patch_events = [
             Event.model_validate(r) for r in rows
             if r["action_type"] == ActionType.AUTO_PATCH_APPLIED.value

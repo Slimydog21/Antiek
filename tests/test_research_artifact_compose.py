@@ -9,6 +9,7 @@ import pytest
 
 from substrate.graph import ensure_initialized
 from substrate.graph.insight_question import promote_insight
+from substrate.research_artifact.authority import OPERATOR_ACCOUNT_ID
 from substrate.research_artifact.compose import compose_artifacts
 
 
@@ -34,6 +35,7 @@ def test_compose_two_investigations(compose_env):
         )
     res = compose_artifacts(
         ["inv-a", "inv-b"],
+        account_id=OPERATOR_ACCOUNT_ID,
         db_path=compose_env["db"],
         events_dir=compose_env["events"],
     )

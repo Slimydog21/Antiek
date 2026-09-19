@@ -44,6 +44,7 @@ from runtime.research_runner.protocol import StepEvent
 from substrate.event_log import trajectory
 from substrate.graph.retrieval_substrate import make_substrate
 from substrate.graph.schema import init_database_at_path
+from substrate.multi_user.auth import operator_claims
 
 _BODY = (
     "Neutral atom qubit error rate suppression improved materially this "
@@ -130,6 +131,7 @@ async def test_real_funnel_deposit_then_host_local_reuse_injects(emb, tmp_path) 
         [funnel.promoted_node_ids[0]],
     ).fetchone()
     import json
+
     node_meta = json.loads(meta[0]) if meta and meta[0] else {}
     assert node_meta.get("chunk_id") == "chunk-e2e", (
         "funnel did not ground the note on a chunk (#263 regressed)"
@@ -140,6 +142,7 @@ async def test_real_funnel_deposit_then_host_local_reuse_injects(emb, tmp_path) 
     try:
         runner2 = HostLocalRunner(
             make_contract_gather_stub(steps=1, cost_per_step=0.0),
+            claims=operator_claims(),
             events_dir=events_dir,
             seal_on_complete=False,
             retrieval_substrate=sub,

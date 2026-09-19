@@ -82,6 +82,8 @@ export type SessionFlywheelPanelProps = {
    * after complete, session||context pack tier wins.
    */
   researchTier?: "fast" | "deep" | "wrestle" | string | null;
+  /** Claim challenges may persist only a separate candidate output. */
+  candidateOnly?: boolean;
 };
 
 export function SessionFlywheelPanel({
@@ -89,9 +91,10 @@ export function SessionFlywheelPanel({
   defaultOutputText = "",
   onCompleted,
   researchTier = null,
+  candidateOnly = false,
 }: SessionFlywheelPanelProps) {
   const [output, setOutput] = useState(defaultOutputText);
-  const [recordTwins, setRecordTwins] = useState(true);
+  const [recordTwins, setRecordTwins] = useState(!candidateOnly);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SessionFlywheelResponse | null>(null);
@@ -118,7 +121,7 @@ export function SessionFlywheelPanel({
       return;
     }
     // Residual (ant): budget-before-fire on session land complete.
-    if (budgetWarn && !forceOverBudget) {
+    if (!candidateOnly && budgetWarn && !forceOverBudget) {
       setError(
         "Projected cost may exceed remaining daily budget — enable force override or reduce scope before complete flywheel.",
       );
@@ -130,8 +133,8 @@ export function SessionFlywheelPanel({
       const out = await completeSessionFlywheel({
         session_id: sid,
         output_text: text,
-        record_twins: recordTwins,
-        include_twin_promote: recordTwins,
+        record_twins: candidateOnly ? false : recordTwins,
+        include_twin_promote: candidateOnly ? false : recordTwins,
       });
       if (out.view_format !== "html") {
         throw new Error("flywheel view_format must be html");
@@ -150,6 +153,7 @@ export function SessionFlywheelPanel({
     onCompleted,
     budgetWarn,
     forceOverBudget,
+    candidateOnly,
   ]);
   const flywheelTwinCount = (r: SessionFlywheelResponse): number => {
     const ctx = r.context;
@@ -205,7 +209,9 @@ export function SessionFlywheelPanel({
           Complete session flywheel
         </h2>
         <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-          Land output → twins/context pack → usage events for Antiek-bench
+          {candidateOnly
+            ? "Save output as a separate claim-review candidate; no merge or promotion"
+            : "Land output → twins/context pack → usage events for Antiek-bench"}
         </p>
         {/* Residual (ii/np): Settings + dual-gate checklist (flywheel prep). */}
         <p className="text-[11px] font-mono space-x-3">
@@ -294,7 +300,7 @@ export function SessionFlywheelPanel({
         placeholder="Synthesis / findings to record for this session…"
         className="w-full rounded border border-ink/20 bg-transparent px-2 py-1 text-[12px] font-mono dark:border-bright/20"
       />
-      <label className="flex items-center gap-2 text-[11px] font-mono">
+      {!candidateOnly ? <label className="flex items-center gap-2 text-[11px] font-mono">
         <input
           type="checkbox"
           data-testid="session-flywheel-record-twins"
@@ -303,9 +309,9 @@ export function SessionFlywheelPanel({
           disabled={busy}
         />
         Record twin notes + promote to context
-      </label>
+      </label> : null}
       {/* Residual (ant): budget foresight before session flywheel complete. */}
-      <div
+      {!candidateOnly ? <div
         className="space-y-2"
         data-testid="session-flywheel-budget-mount"
         data-view-format="html"
@@ -341,7 +347,7 @@ export function SessionFlywheelPanel({
             Force complete flywheel despite budget projection
           </label>
         ) : null}
-      </div>
+      </div> : null}
       <button
         type="button"
         data-testid="session-flywheel-complete"
@@ -349,17 +355,19 @@ export function SessionFlywheelPanel({
         disabled={
           busy ||
           output.trim().length < 3 ||
-          (budgetWarn && !forceOverBudget)
+          (!candidateOnly && budgetWarn && !forceOverBudget)
         }
         onClick={() => void complete()}
         className="rounded border border-ink/30 px-2 py-1 text-[12px] font-mono hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
         title={
-          budgetWarn && !forceOverBudget
+          !candidateOnly && budgetWarn && !forceOverBudget
             ? "Over budget — enable force override before complete flywheel"
-            : "Land output → twins/context pack → usage events"
+            : candidateOnly
+              ? "Save separate claim-review candidate"
+              : "Land output → twins/context pack → usage events"
         }
       >
-        {busy ? "Completing…" : "Complete flywheel"}
+        {busy ? "Completing…" : candidateOnly ? "Save separate candidate" : "Complete flywheel"}
       </button>
       {error ? (
         <p className="text-[11px] font-mono text-emperor" role="alert">

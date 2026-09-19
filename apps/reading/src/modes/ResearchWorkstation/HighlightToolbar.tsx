@@ -1,8 +1,9 @@
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
-import type { FloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
+import type { FloatMenuSelection, SelectionProvenance } from "../shared/FloatMenu/useFloatMenuSelection";
 import { useSettingsResearchTier } from "../../lib/useSettingsResearchTier";
 import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearch";
+import { toast } from "../../components/lemon/LemonToast";
 
 /**
  * HighlightToolbar — the Research-synthesis HOST for the shared
@@ -17,12 +18,39 @@ import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearc
  * Why a host adapter and not FloatMenu directly in the page: FloatMenu is
  * host-agnostic (it takes a rect prop, reads no DOM, imports nothing from
  * reading-physics) so Read/Write/Speak can mount it too. The DOM↔graph
- * provenance resolution is per-surface, so each host owns it; here a raw
- * synthesis selection has no resolved chunk yet (the synthesis prose isn't a
- * single chunk), so provenance is left empty — the NOTE records null chunk
- * honestly. A future enhancement maps a selection over a cited claim to its
- * chunk; the seam is `resolveProvenance` below.
+ * provenance resolution is per-surface, so each host owns it. Only a range
+ * wholly inside one cited claim receives provenance; free prose and cross-claim
+ * ranges remain explicitly uncited rather than borrowing a nearby citation.
  */
+function boundaryElement(node: Node): Element | null {
+  return node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
+}
+
+export function resolveSynthesisSelectionProvenance(range: Range): SelectionProvenance {
+  const start = boundaryElement(range.startContainer)?.closest<HTMLElement>("[data-claim-id]") ?? null;
+  const end = boundaryElement(range.endContainer)?.closest<HTMLElement>("[data-claim-id]") ?? null;
+  if (!start || start !== end || !start.contains(range.commonAncestorContainer)) return {};
+  const claimId = (start.dataset.claimId || "").trim();
+  if (!claimId) return {};
+  let value: unknown;
+  try { value = JSON.parse(start.dataset.citedChunkIds || "[]"); } catch { return {}; }
+  if (!Array.isArray(value)) return {};
+  const chunkIds = value.filter((id): id is string => typeof id === "string" && id.length > 0 && id.trim() === id);
+  if (chunkIds.length === 0 || chunkIds.length !== value.length || new Set(chunkIds).size !== chunkIds.length) return {};
+  return { claimId, chunkId: chunkIds[0], chunkIds };
+}
+
+function citationEnvelope(selection: FloatMenuSelection, assetId: string) {
+  const claimId = selection.provenance.claimId?.trim();
+  const chunkIds = selection.provenance.chunkIds;
+  return claimId && chunkIds?.length ? {
+    source_kind: "synthesis_claim" as const,
+    source_asset_id: assetId,
+    claim_id: claimId,
+    chunk_ids: [...chunkIds],
+  } : undefined;
+}
+
 export default function HighlightToolbar({
   scopeRef,
   onChaseThis,
@@ -36,7 +64,7 @@ export default function HighlightToolbar({
    * when absent the menu still positions but actions that need an id no-op. */
   investigationId?: string;
 }) {
-  const selection = useFloatMenuSelection({ scopeRef });
+  const selection = useFloatMenuSelection({ scopeRef, resolveProvenance: resolveSynthesisSelectionProvenance });
   const { researchTier } = useSettingsResearchTier();
 
   return (
@@ -53,6 +81,7 @@ export default function HighlightToolbar({
         if (safeSpawnText === null) return;
         const assetId = (investigationId || "").trim() || "__research__";
         const viewMode = opts?.viewMode === "full" ? "full" : "floating";
+        const citationProvenance = citationEnvelope(_sel, assetId);
         void (async () => {
           try {
             await launchFloatingDeepResearch({
@@ -61,9 +90,16 @@ export default function HighlightToolbar({
               goal_hint: "Deep-research the highlighted synthesis passage",
               view_mode: viewMode,
               research_tier: researchTier,
+              citation_provenance: citationProvenance,
             });
-          } catch {
-            onChaseThis(safeSpawnText);
+          } catch (reason: unknown) {
+            // A cited launch must never degrade into the legacy uncited writer;
+            // that would bypass server citation authorization after rejection.
+            if (citationProvenance) {
+              toast.err(reason instanceof Error ? reason.message : "Cited evidence could not be authorized");
+            } else {
+              onChaseThis(safeSpawnText);
+            }
           }
         })();
       }}

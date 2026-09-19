@@ -12,12 +12,12 @@ This module is the public entry point used by the API and by Phase
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Mapping, Optional
 
 import duckdb
 
-from substrate.event_log import emit_typed
+from substrate.event_log import emit_typed, emit_typed_authorized_strict
 from substrate.graph import default_db_path, ensure_initialized
 
 from .algorithms import (
@@ -51,7 +51,7 @@ class AttributionResult:
     document_count: int
     claim_count: int
     # document_id → ip_holder_id (or None when the document has no owner).
-    document_ip_holders: Mapping[str, Optional[str]] = field(default_factory=dict)
+    document_ip_holders: Mapping[str, str | None] = field(default_factory=dict)
     # ip_holder_id → status word (pre_onboarded | invited | claimed | opted_out).
     document_ip_holder_status: Mapping[str, str] = field(default_factory=dict)
 
@@ -94,9 +94,10 @@ def _build_claims(
 def compute_attribution_for_synthesis(
     synthesis_id: str,
     *,
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
     emit_event: bool = False,
-    investigation_id: Optional[str] = None,
+    investigation_id: str | None = None,
+    _authority: object | None = None,
 ) -> SynthesisAttributionResult:
     """Compute attribution for one archived synthesis. Returns all
     three algorithms' results.
@@ -110,14 +111,32 @@ def compute_attribution_for_synthesis(
     ensure_initialized(resolved)
     con = duckdb.connect(resolved, read_only=True)
     try:
+        where = "synthesis_id = ?"
+        params: list[object] = [synthesis_id]
+        if _authority is not None:
+            from substrate.graph.tenancy import assert_graph_authority_read
+            from substrate.investigation_tenancy import InvestigationAuthority
+
+            if not isinstance(_authority, InvestigationAuthority):
+                raise TypeError("attribution requires InvestigationAuthority")
+            assert_graph_authority_read(con, _authority)
+            if (
+                investigation_id is not None
+                and investigation_id != _authority.investigation_id
+            ):
+                raise ValueError("attribution investigation authority mismatch")
+            where += " AND account_digest = ? AND investigation_digest = ?"
+            params.extend(
+                [_authority.account_digest, _authority.investigation_digest]
+            )
         row = con.execute(
-            "SELECT synthesis_id, target_question, thesis, investigation_id "
-            "FROM syntheses WHERE synthesis_id = ?",
-            [synthesis_id],
+            "SELECT synthesis_id, target_question, thesis, investigation_id, "
+            "account_digest, investigation_digest FROM syntheses WHERE " + where,
+            params,
         ).fetchone()
         if row is None:
             raise ValueError(f"synthesis {synthesis_id!r} not found")
-        _, target_question, thesis_json, syn_inv_id = row
+        _, target_question, thesis_json, syn_inv_id = row[:4]
         if not thesis_json:
             thesis = {}
         else:
@@ -131,31 +150,52 @@ def compute_attribution_for_synthesis(
         for comp in thesis_components:
             for cid in comp.get("supporting_chunk_ids") or []:
                 all_chunk_ids.add(cid)
-        if all_chunk_ids:
-            placeholders = ",".join("?" for _ in all_chunk_ids)
-            chunk_rows = con.execute(
-                f"SELECT chunk_id, document_id FROM chunks "
-                f"WHERE chunk_id IN ({placeholders})",
-                list(all_chunk_ids),
-            ).fetchall()
-        else:
-            chunk_rows = []
-        chunk_to_doc: dict[str, str] = {r[0]: r[1] for r in chunk_rows}
+        if _authority is not None and all_chunk_ids:
+            manifest_chunk_ids = {
+                manifest_row[0]
+                for manifest_row in con.execute(
+                    "SELECT entity_id FROM synthesis_substrate_manifest "
+                    "WHERE synthesis_id = ? AND entity_kind = 'chunk'",
+                    [synthesis_id],
+                ).fetchall()
+            }
+            all_chunk_ids.intersection_update(manifest_chunk_ids)
+            thesis_components = [
+                {
+                    **component,
+                    "supporting_chunk_ids": [
+                        chunk_id
+                        for chunk_id in component.get("supporting_chunk_ids") or []
+                        if chunk_id in manifest_chunk_ids
+                    ],
+                }
+                for component in thesis_components
+            ]
+        import os
 
-        doc_ids = set(chunk_to_doc.values())
-        if doc_ids:
-            placeholders = ",".join("?" for _ in doc_ids)
-            doc_rows = con.execute(
-                f"SELECT document_id, source_tier, title, content_class, ip_holder_id "
-                f"FROM documents WHERE document_id IN ({placeholders})",
-                list(doc_ids),
-            ).fetchall()
-        else:
-            doc_rows = []
-        doc_to_tier: dict[str, int] = {r[0]: int(r[1]) for r in doc_rows}
-        doc_to_title: dict[str, str] = {r[0]: (r[2] or "") for r in doc_rows}
-        doc_to_content_class: dict[str, Optional[str]] = {r[0]: r[3] for r in doc_rows}
-        doc_to_ip_holder: dict[str, Optional[str]] = {r[0]: r[4] for r in doc_rows}
+        from substrate.legal_gate.read import attribution_sources_compatibility
+
+        chunk_to_doc, documents = attribution_sources_compatibility(
+            con,
+            all_chunk_ids,
+            authority=_authority,
+            enforce=(
+                _authority is not None
+                or os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1"
+            ),
+        )
+        doc_to_tier: dict[str, int] = {
+            key: int(value["source_tier"]) for key, value in documents.items()
+        }
+        doc_to_title: dict[str, str] = {
+            key: (value["title"] or "") for key, value in documents.items()
+        }
+        doc_to_content_class: dict[str, str | None] = {
+            key: value["content_class"] for key, value in documents.items()
+        }
+        doc_to_ip_holder: dict[str, str | None] = {
+            key: value["ip_holder_id"] for key, value in documents.items()
+        }
 
         # §9.0 retrieval-time gating, on the SURFACED (attribution) path.
         # Two content_classes must NOT surface into an attribution-triggering
@@ -218,11 +258,11 @@ def compute_attribution_for_synthesis(
     c_shares = attribution_option_c(claims)
 
     def _r(algo: str, shares: dict[str, float]) -> AttributionResult:
-        owners = {k: doc_to_ip_holder.get(k) for k in shares.keys()}
+        owners = {k: doc_to_ip_holder.get(k) for k in shares}
         return AttributionResult(
             algorithm=algo,
             shares=shares,
-            document_titles={k: doc_to_title.get(k, "") for k in shares.keys()},
+            document_titles={k: doc_to_title.get(k, "") for k in shares},
             document_count=len(shares),
             claim_count=len(claims),
             document_ip_holders=owners,
@@ -254,20 +294,47 @@ def compute_attribution_for_synthesis(
                 len(a_shares), len(b_shares), len(c_shares),
             ),
         )
-        emit_typed(
-            investigation_id or syn_inv_id or "__operator__",
-            payload,
-            synthesis_id=synthesis_id,
-            role="attribution",
-            policy_id="attribution/phase1",
-        )
+        event_kwargs = {
+            "synthesis_id": synthesis_id,
+            "role": "attribution",
+            "policy_id": "attribution/phase1",
+        }
+        if _authority is None:
+            emit_typed(
+                investigation_id or syn_inv_id or "__operator__",
+                payload,
+                **event_kwargs,
+            )
+        else:
+            emit_typed_authorized_strict(
+                _authority,
+                payload,
+                **event_kwargs,
+            )
 
     return result
+
+
+def compute_attribution_for_synthesis_authorized(
+    authority: object,
+    synthesis_id: str,
+    *,
+    db_path: str | None = None,
+    emit_event: bool = False,
+) -> SynthesisAttributionResult:
+    """Compute attribution only through an exact synthesis authority."""
+    return compute_attribution_for_synthesis(
+        synthesis_id,
+        db_path=db_path,
+        emit_event=emit_event,
+        _authority=authority,
+    )
 
 
 __all__ = [
     "AttributionResult",
     "SynthesisAttributionResult",
     "compute_attribution_for_synthesis",
+    "compute_attribution_for_synthesis_authorized",
     "ALGORITHMS",
 ]

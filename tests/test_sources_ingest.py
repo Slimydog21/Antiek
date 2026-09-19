@@ -19,7 +19,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from interfaces.research.api.app import (
+from interfaces.research.api.app import (  # noqa: E402
     _detect_source_kind,
     _extract_arxiv_id,
     create_app,
@@ -108,23 +108,41 @@ def _client(temp_substrate):
     return TestClient(app)
 
 
-def test_ingest_youtube_endpoint_calls_adapter(monkeypatch, temp_substrate):
-    """Endpoint must route youtube URLs to acquisition.youtube.ingest_youtube
-    and surface the result in the response body."""
-    from dataclasses import dataclass
+def _allow_operator_domain(temp_substrate, domain: str) -> None:
+    from datetime import UTC, datetime
 
-    @dataclass
-    class _R:
-        document_id: str = "doc-yt-abc"
-        document_loaded_event_id: str = "evt-1"
-        chunks_written: int = 5
-        skipped_reason: str | None = None
-        title: str = "Mock Video Title"
-        chunk_ids: list = None
-        node_ids: list = None
+    from runtime.db_lock import connect_write
+    from substrate.graph import ensure_initialized
+    from substrate.investigation_streams import initialize_composite_stream
+    from substrate.investigation_tenancy import InvestigationAuthority
+    from substrate.legal_gate.policy_store import account_policy_authority, append_policy_event
 
+    authority = InvestigationAuthority("__operator__", "__operator__")
+    initialize_composite_stream(authority)
+    ensure_initialized(temp_substrate["db_path"])
+    with connect_write(temp_substrate["db_path"], purpose="test_allow_url_domain") as con:
+        append_policy_event(
+            con,
+            account_policy_authority(authority),
+            scope_kind="account",
+            matcher_kind="domain",
+            matcher_value=domain,
+            decision="allow",
+            citation_ref="test-license",
+            issuer_id="test-operator",
+            reason_code="licensed_source",
+            effective_at=datetime.now(UTC),
+        )
+
+
+def test_ingest_youtube_endpoint_fails_closed_before_legacy_adapter(monkeypatch, temp_substrate):
     import acquisition.youtube as _yt
-    monkeypatch.setattr(_yt, "ingest_youtube", lambda *a, **kw: _R())
+
+    monkeypatch.setattr(
+        _yt,
+        "ingest_youtube",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("legacy writer invoked")),
+    )
 
     client = _client(temp_substrate)
     resp = client.post(
@@ -133,64 +151,19 @@ def test_ingest_youtube_endpoint_calls_adapter(monkeypatch, temp_substrate):
     )
     assert resp.status_code == 202
     body = resp.json()
-    assert body["status"] == "ingested"
+    assert body["status"] == "error"
     assert body["detected_kind"] == "youtube"
-    assert body["document_id"] == "doc-yt-abc"
-    assert body["chunks_written"] == 5
-    assert body["title"] == "Mock Video Title"
+    assert "legal_admission_required" in body["error_message"]
 
 
-def test_ingest_youtube_skipped_when_no_chunks(monkeypatch, temp_substrate):
-    """Skipped_reason from the adapter must round-trip into the response."""
-    from dataclasses import dataclass
-
-    @dataclass
-    class _R:
-        document_id: str = "doc-yt-abc"
-        document_loaded_event_id: str = "evt-1"
-        chunks_written: int = 0
-        skipped_reason: str = "no_transcript"
-        title: str = "No-Transcript Video"
-        chunk_ids: list = None
-        node_ids: list = None
-
-    import acquisition.youtube as _yt
-    monkeypatch.setattr(_yt, "ingest_youtube", lambda *a, **kw: _R())
-
-    client = _client(temp_substrate)
-    resp = client.post(
-        "/sources/ingest",
-        json={"url": "https://youtube.com/watch?v=x"},
-    )
-    assert resp.status_code == 202
-    body = resp.json()
-    assert body["status"] == "skipped"
-    assert body["skipped_reason"] == "no_transcript"
-
-
-def test_ingest_podcast_endpoint_aggregates_episodes(monkeypatch, temp_substrate):
-    """Podcast ingest must report episodes_processed + episodes_ingested
-    as the sum across the feed."""
-    from dataclasses import dataclass
-
-    @dataclass
-    class _Ep:
-        document_id: str
-        episode_id: str
-        chunks_written: int
-        skipped_reason: str | None
-        title: str
-        chunk_ids: list = None
-        node_ids: list = None
-        document_loaded_event_id: str = "evt-pod"
-
-    results = [
-        _Ep("doc-pod-1", "ep-1", 12, None, "Ep 1"),
-        _Ep("doc-pod-2", "ep-2", 0, "no_transcript", "Ep 2"),
-        _Ep("doc-pod-3", "ep-3", 8, None, "Ep 3"),
-    ]
+def test_ingest_podcast_endpoint_fails_closed_before_legacy_adapter(monkeypatch, temp_substrate):
     import acquisition.podcasts as _pod
-    monkeypatch.setattr(_pod, "ingest_feed", lambda *a, **kw: results)
+
+    monkeypatch.setattr(
+        _pod,
+        "ingest_feed",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("legacy writer invoked")),
+    )
 
     client = _client(temp_substrate)
     resp = client.post(
@@ -199,11 +172,9 @@ def test_ingest_podcast_endpoint_aggregates_episodes(monkeypatch, temp_substrate
     )
     assert resp.status_code == 202
     body = resp.json()
-    assert body["status"] == "ingested"
+    assert body["status"] == "error"
     assert body["detected_kind"] == "podcast"
-    assert body["episodes_processed"] == 3
-    assert body["episodes_ingested"] == 2
-    assert body["chunks_written"] == 20  # 12 + 0 + 8
+    assert "legal_admission_required" in body["error_message"]
 
 
 def test_ingest_url_endpoint_default(monkeypatch, temp_substrate):
@@ -221,8 +192,16 @@ def test_ingest_url_endpoint_default(monkeypatch, temp_substrate):
         node_ids: list = None
 
     import acquisition.urls as _urls
-    monkeypatch.setattr(_urls, "ingest_url", lambda *a, **kw: _R())
 
+    captured = {}
+
+    def fake_ingest(*args, **kwargs):
+        captured.update(kwargs)
+        return _R()
+
+    monkeypatch.setattr(_urls, "ingest_url", fake_ingest)
+
+    _allow_operator_domain(temp_substrate, "example.com")
     client = _client(temp_substrate)
     resp = client.post(
         "/sources/ingest",
@@ -233,6 +212,62 @@ def test_ingest_url_endpoint_default(monkeypatch, temp_substrate):
     assert body["status"] == "ingested"
     assert body["detected_kind"] == "url"
     assert body["document_id"] == "doc-url-abc"
+    assert captured["authority"].account_id == "__operator__"
+    assert captured["authority"].investigation_id == "__operator__"
+
+
+def test_ingest_url_without_explicit_allow_is_zero_fetch(monkeypatch, temp_substrate):
+    import acquisition.urls as _urls
+
+    monkeypatch.setattr(
+        _urls,
+        "ingest_url",
+        lambda *_args, **_kwargs: pytest.fail("URL fetch ran without explicit policy allow"),
+    )
+    response = _client(temp_substrate).post(
+        "/sources/ingest", json={"url": "https://example.com/article"}
+    )
+    assert response.status_code == 202
+    assert response.json()["status"] == "skipped"
+    assert response.json()["skipped_reason"] == "legal_policy:no_explicit_external_allow"
+
+
+def test_ingest_url_scalar_id_cannot_cross_authenticated_account(monkeypatch, temp_substrate):
+    from interfaces.research.api.investigation_access import (
+        RequestInvestigationAuthority,
+    )
+    from substrate.investigation_streams import initialize_composite_stream
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    bob = InvestigationAuthority("bob", "shared-investigation")
+    initialize_composite_stream(bob)
+    alice = InvestigationAuthority("alice", "shared-investigation")
+    app_module = sys.modules["interfaces.research.api.app"]
+    monkeypatch.setattr(
+        app_module,
+        "authority_from_request",
+        lambda _request, _investigation_id: RequestInvestigationAuthority(
+            alice, frozenset({"research:write"}), "session"
+        ),
+    )
+    import acquisition.urls as _urls
+
+    monkeypatch.setattr(
+        _urls,
+        "ingest_url",
+        lambda *_args, **_kwargs: pytest.fail("cross-account adapter call"),
+    )
+    response = _client(temp_substrate).post(
+        "/sources/ingest",
+        json={
+            "url": "https://example.com/article",
+            "investigation_id": "shared-investigation",
+        },
+    )
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "error"
+    assert "InvestigationAccessDenied" in body["error_message"]
 
 
 def test_ingest_arxiv_invalid_id_returns_error(monkeypatch, temp_substrate):
@@ -272,8 +307,10 @@ def test_ingest_with_explicit_kind_overrides_detection(monkeypatch, temp_substra
         node_ids: list = None
 
     import acquisition.urls as _urls
+
     monkeypatch.setattr(_urls, "ingest_url", lambda *a, **kw: _R())
 
+    _allow_operator_domain(temp_substrate, "arxiv.org")
     client = _client(temp_substrate)
     # An arxiv URL forced to be ingested as a plain URL
     resp = client.post(

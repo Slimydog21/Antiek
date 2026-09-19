@@ -38,7 +38,13 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from substrate.event_log import emit_typed, trajectory
+from substrate.event_log import (
+    emit_typed,
+    emit_typed_authorized,
+    trajectory,
+    trajectory_authorized,
+)
+from substrate.investigation_tenancy import InvestigationAuthority
 from substrate.schemas.events import QuestionEscalatedToResearchPayload
 
 from .servability import ServabilityStatus
@@ -138,21 +144,26 @@ def link_passage_to_research(
     page_index: int,
     investigation_id: str,
     parent_investigation_id: str = "read-spin",
+    authority: InvestigationAuthority | None = None,
 ) -> str | None:
     """Record that a passage spawned a research. Reuses the existing
     ``question.escalated_to_research`` event — the passage is the
     "question", the research is the child investigation. Returns the
     event_id."""
-    return emit_typed(
-        parent_investigation_id,
-        QuestionEscalatedToResearchPayload(
+    payload = QuestionEscalatedToResearchPayload(
             question_id=passage_id(document_id, page_index),
             child_investigation_id=investigation_id,
-        ),
+        )
+    kwargs = dict(
         document_id=document_id,
         role="read/spin_research",
         policy_id="read/books/spin_research",
     )
+    if authority is not None:
+        if authority.investigation_id != parent_investigation_id:
+            raise ValueError("passage link crosses authorized investigation stream")
+        return emit_typed_authorized(authority, payload, **kwargs)
+    return emit_typed(parent_investigation_id, payload, **kwargs)
 
 
 def researches_for_passage(
@@ -160,13 +171,21 @@ def researches_for_passage(
     page_index: int,
     *,
     parent_investigation_id: str = "read-spin",
+    authority: InvestigationAuthority | None = None,
 ) -> list[str]:
     """Forward link: the child research investigation_ids spawned from a
     passage. Surfaced in the reader as 'this passage spawned N
     researches'."""
     pid = passage_id(document_id, page_index)
     out: list[str] = []
-    for e in trajectory(parent_investigation_id):
+    if authority is not None and authority.investigation_id != parent_investigation_id:
+        raise ValueError("passage read crosses authorized investigation stream")
+    rows = (
+        trajectory_authorized(authority)
+        if authority is not None
+        else trajectory(parent_investigation_id)
+    )
+    for e in rows:
         if (
             e.get("action_type") == "question.escalated_to_research"
             and e.get("payload", {}).get("question_id") == pid

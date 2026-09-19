@@ -24,11 +24,23 @@ def test_twin_seed_live_status_offline_default() -> None:
     assert "offline-honest" in " ".join(payload["notes"]).lower()
 
 
-def test_twin_seed_live_status_surfaces_installed_fn() -> None:
+def test_twin_seed_live_status_ignores_legacy_fn_without_budgeted_execution() -> None:
     configure_twin_seed_live(lambda _t, _b: [("insight", "x")])
+    payload = er.twin_seed_live_status_payload(environ={"ANTIEK_TWIN_SEED_LIVE": "1"})
+    assert payload["offline_honest"] is True
+    assert payload["injector_installed"] is False
+    assert payload["live_env"] is True
+
+
+def test_twin_seed_live_status_requires_full_execution_and_projection() -> None:
     payload = er.twin_seed_live_status_payload(
-        environ={"ANTIEK_TWIN_SEED_LIVE": "1"}
+        environ={
+            "ANTIEK_TWIN_SEED_LIVE": "1",
+            "ANTIEK_TWIN_SEED_USE_DISPATCH": "1",
+        },
+        execution_installed=True,
+        projected_max_cents=8,
     )
     assert payload["offline_honest"] is False
     assert payload["injector_installed"] is True
-    assert payload["live_env"] is True
+    assert payload["cost_projection_ready"] is True

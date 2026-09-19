@@ -58,7 +58,7 @@ from roles.connector import (  # noqa: E402
 )
 from runtime.db_lock import connect_read  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
-from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.event_log import emit_typed, trajectory_contextual  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.graph.traverse import (  # noqa: E402
     dfs_with_depth,
@@ -399,7 +399,7 @@ async def _broadcast_emitted(
 ) -> None:
     if emitted_event_id is None:
         return
-    for row in reversed(trajectory(event.investigation_id)):
+    for row in reversed(trajectory_contextual(event.investigation_id)):
         if row.get("event_id") == emitted_event_id:
             try:
                 emitted = Event.model_validate(row)

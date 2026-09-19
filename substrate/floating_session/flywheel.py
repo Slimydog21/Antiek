@@ -37,8 +37,7 @@ class SessionFlywheelResult:
             "view_format": self.view_format,
             "prompt_block": self.context.prompt_block(),
             # Residual (jt): surface session research_tier for Antiek-bench.
-            "research_tier": getattr(self.session, "research_tier", None)
-            or "deep",
+            "research_tier": getattr(self.session, "research_tier", None) or "deep",
         }
 
 

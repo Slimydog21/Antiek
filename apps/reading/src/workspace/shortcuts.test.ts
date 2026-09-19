@@ -248,14 +248,14 @@ describe("shortcuts boot-hydration — M2 reload-persistence (the live handler r
   });
 
   it("a persisted custom binding fires after a fresh install WITHOUT any AssignHotkey surface mounted", () => {
-    // Simulate a prior session: a custom ⌥J → /inv/persisted is in localStorage.
+    // Simulate a prior session: a closed, assignable ⌘. binding is persisted.
     setCustomHotkeys([]); // live map empty (as on a cold boot)
     writeCustomHotkeys({
       schemaVersion: 1,
       bindings: [
         {
           id: "p1",
-          spec: "alt+j",
+          spec: "mod+.",
           route: "/inv/persisted",
           entityId: "persisted",
           entityKind: "investigation",
@@ -269,12 +269,12 @@ describe("shortcuts boot-hydration — M2 reload-persistence (the live handler r
     const uninstall = installShortcuts(navigate as never);
 
     // The live map now holds the persisted binding (no consumer mounted).
-    expect(getCustomHotkeys().some((b) => b.spec === "alt+j")).toBe(true);
+    expect(getCustomHotkeys().some((b) => b.spec === "mod+.")).toBe(true);
 
     // Pressing it navigates — identical to clicking the entity.
     const evt = new KeyboardEvent("keydown", {
-      key: "j",
-      altKey: true,
+      key: ".",
+      metaKey: true,
       bubbles: true,
       cancelable: true,
     });

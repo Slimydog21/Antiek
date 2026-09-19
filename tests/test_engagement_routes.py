@@ -18,7 +18,7 @@ from interfaces.research.api.engagement_routes import (  # noqa: E402
     register_engagement_routes,
     reset_engagement_stores,
 )
-from substrate.engagement_spine import record_twin_insight  # noqa: E402
+from substrate.engagement_spine import complete_spawn, record_twin_insight  # noqa: E402
 
 
 @pytest.fixture
@@ -89,6 +89,8 @@ def test_spawn_attach_context_collective(client):
         },
     )
     spawn2 = r4.json()["spawn_id"]
+    complete_spawn(spawn_id, store=eng_mod._eng(), output_text="Attention research synthesis.")
+    complete_spawn(spawn2, store=eng_mod._eng(), output_text="Residual research synthesis.")
     r5 = client.post(
         "/engagement/collective",
         json={"spawn_ids": [spawn_id, spawn2], "include_twin_promote": True},

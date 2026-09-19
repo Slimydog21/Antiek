@@ -47,6 +47,34 @@ def count_added_edges_since(con: Any, since: datetime) -> int:
     return int(n)
 
 
+def _authorized_edge_scope(authority: Any) -> tuple[str, list[Any]]:
+    from substrate.constants import SERVABLE_CONTENT_CLASSES
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    if not isinstance(authority, InvestigationAuthority):
+        raise TypeError("backtest edge scope requires InvestigationAuthority")
+    public_classes = sorted(SERVABLE_CONTENT_CLASSES - {"user_owned"})
+    placeholders = ",".join("?" for _ in public_classes)
+    return (
+        "((account_digest = ? AND investigation_digest = ?) OR "
+        "(account_digest IS NULL AND investigation_digest IS NULL AND "
+        "source_document_id IN (SELECT document_id FROM documents "
+        f"WHERE content_class IN ({placeholders}))))",
+        [authority.account_digest, authority.investigation_digest, *public_classes],
+    )
+
+
+def count_added_edges_since_authorized(
+    con: Any, since: datetime, authority: Any
+) -> int:
+    scope, params = _authorized_edge_scope(authority)
+    (n,) = con.execute(
+        "SELECT COUNT(*) FROM edges WHERE extracted_at > ? AND " + scope,
+        [_naive_utc(since), *params],
+    ).fetchone()
+    return int(n)
+
+
 def count_superseded_edges_since(con: Any, since: datetime) -> int:
     """Number of edges closed (``valid_until > since``) after the
     synthesis was archived. ``superseded_by`` may be null when the
@@ -55,6 +83,18 @@ def count_superseded_edges_since(con: Any, since: datetime) -> int:
         "SELECT COUNT(*) FROM edges "
         "WHERE valid_until IS NOT NULL AND valid_until > ?",
         [_naive_utc(since)],
+    ).fetchone()
+    return int(n)
+
+
+def count_superseded_edges_since_authorized(
+    con: Any, since: datetime, authority: Any
+) -> int:
+    scope, params = _authorized_edge_scope(authority)
+    (n,) = con.execute(
+        "SELECT COUNT(*) FROM edges WHERE valid_until IS NOT NULL "
+        "AND valid_until > ? AND " + scope,
+        [_naive_utc(since), *params],
     ).fetchone()
     return int(n)
 
@@ -158,6 +198,17 @@ def load_outcomes_for_synthesis(
             "notes": r[7],
         })
     return out
+
+
+def load_outcomes_for_synthesis_authorized(
+    con: Any, authority: Any, synthesis_id: str
+) -> list[dict]:
+    """Load outcome children only after the exact synthesis parent succeeds."""
+    from middleware.archive import load_synthesis_authorized
+
+    if load_synthesis_authorized(con, authority, synthesis_id) is None:
+        raise KeyError(f"synthesis_id not found: {synthesis_id!r}")
+    return load_outcomes_for_synthesis(con, synthesis_id)
 
 
 # ---------------------------------------------------------------------------

@@ -20,11 +20,14 @@ import {
   getSession,
   TERMINAL_STATES,
   type ResearchStatus,
+  type GatherReport,
   type SessionCost,
 } from "../../api/research";
 
 export interface SessionView {
   researches: ResearchStatus[];
+  gatherReports: GatherReport[];
+  gatherReportErrors: { investigation_id: string; code: "gather_report_invalid" }[];
   cost: SessionCost | null;
   live: boolean;
   allTerminal: boolean;
@@ -35,6 +38,8 @@ export interface SessionView {
 
 const EMPTY: SessionView = {
   researches: [],
+  gatherReports: [],
+  gatherReportErrors: [],
   cost: null,
   live: false,
   allTerminal: false,
@@ -67,6 +72,8 @@ export function useResearchSession(
           s.researches.length > 0;
         setView({
           researches: s.researches,
+          gatherReports: s.gather_reports ?? [],
+          gatherReportErrors: s.gather_report_errors ?? [],
           cost: s.cost ?? null,
           live: s.live,
           allTerminal,

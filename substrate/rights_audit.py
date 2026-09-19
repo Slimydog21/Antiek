@@ -38,6 +38,7 @@ from typing import Any
 
 from substrate.books.servability import is_servable_full_text, servability_of
 from substrate.books.serve import ServeResult, serve_full_text
+from substrate.legal_gate.read import book_serve_document_compatibility
 
 # Violation reason tokens. Stable strings the orchestrator + SPR-10 + the test
 # suite key off — named here so they have one home and can't drift per-caller.
@@ -107,19 +108,14 @@ def audit_batch(
     audited = servable = gated = 0
 
     for document_id in document_ids:
-        row = con.execute(
-            """
-            SELECT d.content_class, COALESCE(b.taken_down, FALSE)
-            FROM documents d
-            LEFT JOIN book_assets b ON d.document_id = b.document_id
-            WHERE d.document_id = ?
-            """,
-            [document_id],
-        ).fetchone()
-        if row is None:
+        document = book_serve_document_compatibility(
+            con, document_id, authority=None, enforce=False
+        )
+        if document is None:
             continue
         audited += 1
-        content_class, taken_down = row[0], bool(row[1])
+        content_class = document["content_class"]
+        taken_down = document["taken_down"]
         status = servability_of(content_class, taken_down=taken_down)
         class_is_servable = is_servable_full_text(status)
 

@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 33;
+export const EVENT_SCHEMA_VERSION = 46;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -77,6 +77,23 @@ export const ActionType = {
   PIPELINE_TERMINATED: "pipeline.terminated",
   KE_LLM_RESPONSE_FAILED: "knowledge_extraction.llm_response.failed",
   DISPATCH_CALL: "dispatch.call",
+  RESEARCH_CALL_RESERVED: "research.call_reserved",
+  RESEARCH_CALL_SETTLED: "research.call_settled",
+  RESEARCH_CALL_RELEASED: "research.call_released",
+  RESEARCH_DELEGATION_RESERVED: "research.delegation_reserved",
+  RESEARCH_DELEGATION_ISSUED: "research.delegation_issued",
+  RESEARCH_DELEGATION_ACCEPTED: "research.delegation_accepted",
+  RESEARCH_DELEGATION_RELEASED: "research.delegation_released",
+  RESEARCH_DELEGATION_SETTLED: "research.delegation_settled",
+  INVESTIGATION_EXECUTION_CLAIMED: "investigation.execution_claimed",
+  INVESTIGATION_EXECUTION_RENEWED: "investigation.execution_renewed",
+  INVESTIGATION_EXECUTION_TAKEN_OVER: "investigation.execution_taken_over",
+  INVESTIGATION_EXECUTION_COMPLETED: "investigation.execution_completed",
+  INVESTIGATION_PROJECTION_REQUESTED: "investigation.projection_requested",
+  INVESTIGATION_PROJECTION_EFFECT_RECORDED: "investigation.projection_effect_recorded",
+  INVESTIGATION_PROJECTION_FAILED: "investigation.projection_failed",
+  INVESTIGATION_PROJECTION_COMPLETED: "investigation.projection_completed",
+  GATHER_REPORT_RECORDED: "gather.report_recorded",
   CONTEXT_PACK_ASSEMBLED: "context_pack.assembled",
   KNOWLEDGE_REUSED: "knowledge.reused",
   REUSE_GATED: "reuse.gated",
@@ -142,6 +159,8 @@ export const ActionType = {
   SOURCE_READ: "source.read",
   READ_META_READING_GENERATED: "read.meta_reading.generated",
   DOCUMENT_FILED_INTO_INVESTIGATION: "document.filed_into_investigation",
+  DOCUMENT_CITATION_POSITION_SET: "document.citation_position_set",
+  WORKSPACE_RESUME_CHECKPOINT_SET: "workspace.resume_checkpoint.set",
   GROUNDEDNESS_SCORED: "groundedness.scored",
   GROUNDEDNESS_FAILED: "groundedness.failed",
   DOCUMENT_CONTENT_CLASS_DEFAULTED: "document.content_class_defaulted",
@@ -206,6 +225,18 @@ export interface ContextLayer {
 }
 
 /**
+ * Source-research boundary carried with one injected knowledge unit.
+ */
+export interface ReusedUnitSourceQualification {
+  unit_id: string;
+  source_investigation_id: string;
+  state: "complete" | "partial" | "unknown";
+  source_successes: number[];
+  total_leaves: number;
+  partial_leaf_count: number;
+}
+
+/**
  * A typed unit of distilled truth. Embedded inside
  * ``DistillationDeliveredPayload.claims`` and referenced by
  * challenge / grounding-check events via ``claim_id``.
@@ -228,7 +259,7 @@ export interface Claim {
 export interface RecursiveContextUnitReceipt {
   unit_id: string;
   text_digest: string;
-  authority: "engagement_twin" | "depth_graph";
+  authority: "engagement_twin" | "depth_graph" | "artifact_note";
   owner_scope_digest: string;
 }
 
@@ -469,6 +500,7 @@ export interface ThesisComponent {
   confidence: "high" | "moderate" | "low" | "unknown";
   supporting_chunk_ids?: string[];
   supporting_path_indices?: number[];
+  supporting_inherited_unit_ids?: string[];
   confidence_basis?: string | null;
   effective_source_tier?: number | null;
   hedging_required?: boolean;
@@ -577,8 +609,57 @@ export interface ClaimGroundednessVerdict {
   claim: string;
   score: number;
   supported: boolean;
+  relation?: "entailed" | "contradicted" | "not_established" | null;
   cited_chunk_ids?: string[];
   rationale?: string;
+}
+
+/**
+ * One closed, source-text-free semantic workspace reference.
+ */
+export type WorkspaceResumeEntry =
+  | { kind: "stats" }
+  | { kind: "library" }
+  | { kind: "subaction"; workflow: "research" | "read" | "write" | "speak" }
+  | { kind: "research_artifact"; investigation_id: string }
+  | { kind: "hosted_html_document"; resolver: "hosted_document" | "engagement_document"; document_id: string }
+  | { kind: "deep_research_session"; session_id: string }
+  | { kind: "collective_unit"; manifest_id: string }
+  | { kind: "ancestry_interrogation"; investigation_id: string; manifest_id: string; receipt_id: string }
+  | { kind: "collective_council"; plan_id: string };
+
+export interface ResearchQuotedRoute {
+  role: string;
+  fallback_index: number;
+  logical_tier_name: "flash" | "pro" | "synthesis" | "verify" | "local";
+  provider: string;
+  model: string;
+  route_tier_name: string;
+  max_output_tokens: number;
+  temperature: number;
+  context_budget_tokens: number;
+  pricing_fingerprint: string;
+  input_per_mtok: number;
+  output_per_mtok: number;
+  cached_input_per_mtok: number;
+  currency: "USD";
+  billing_unit: "per_million_tokens";
+  source_url: string;
+  verified_at: string;
+  expires_at: string;
+}
+
+/**
+ * Secret-free terminal truth for one source in canonical gather order.
+ */
+export interface GatherSourceReportReceipt {
+  source: "exa" | "parallel" | "arxiv" | "substack";
+  status: "succeeded" | "failed" | "unknown" | "skipped";
+  document_ids?: string[];
+  actual_cost_micros?: number;
+  tokens?: number;
+  provider_receipt_id?: string | null;
+  failure_code?: string | null;
 }
 
 /**
@@ -617,6 +698,225 @@ export interface DispatchCallPayload {
   parent_run_id?: string | null;
   feature_label?: string | null;
   session_id?: string | null;
+}
+
+/**
+ * Durable capacity hold committed before one interactive provider call.
+ */
+export interface ResearchCallReservedPayload {
+  action_type: "research.call_reserved";
+  reservation_id: string;
+  request_sha256: string;
+  target_role: string;
+  tier: "flash" | "pro" | "synthesis" | "verify" | "local";
+  provider: string;
+  model: string;
+  route_tier_name: string;
+  fallback_chain_index: number;
+  prompt_hash: string;
+  max_tokens: number;
+  temperature: number;
+  context_budget_tokens: number;
+  verification_required?: boolean;
+  context_pack_event_id?: string | null;
+  projected_max_cost_usd: number;
+  provider_idempotency_key_sha256: string;
+  parent_request_event_id?: string | null;
+  research_quote_id: string;
+  research_route_manifest_fingerprint: string;
+  pricing_fingerprint: string;
+}
+
+/**
+ * Terminal receipt binding a reservation to canonical realized spend.
+ */
+export interface ResearchCallSettledPayload {
+  action_type: "research.call_settled";
+  reservation_id: string;
+  reservation_event_id: string;
+  request_sha256: string;
+  dispatch_call_event_id: string;
+  actual_cost_usd: number;
+  exceeded_reservation?: boolean;
+}
+
+/**
+ * Terminal no-call receipt; only provably unattempted calls may release.
+ */
+export interface ResearchCallReleasedPayload {
+  action_type: "research.call_released";
+  reservation_id: string;
+  reservation_event_id: string;
+  request_sha256: string;
+  reason: "provider_unregistered" | "circuit_open" | "route_disallowed" | "provider_call_not_attempted";
+  error_sha256?: string | null;
+}
+
+/**
+ * Root-stream capacity hold committed before a child quote is issued.
+ */
+export interface ResearchDelegationReservedPayload {
+  action_type: "research.delegation_reserved";
+  delegation_id: string;
+  operation_sha256: string;
+  root_investigation_id: string;
+  root_quote_id: string;
+  parent_investigation_id: string;
+  parent_quote_id: string;
+  child_investigation_id: string;
+  generation: number;
+  delegated_ceiling_usd: number;
+  route_manifest_fingerprint: string;
+}
+
+/**
+ * Non-bearer receipt proving the quote minted for one root hold.
+ */
+export interface ResearchDelegationIssuedPayload {
+  action_type: "research.delegation_issued";
+  delegation_id: string;
+  reservation_event_id: string;
+  quote_id: string;
+  quote_payload_sha256: string;
+  quote_expires_at_ms: number;
+}
+
+/**
+ * Root receipt binding issued authority to the immutable child start.
+ */
+export interface ResearchDelegationAcceptedPayload {
+  action_type: "research.delegation_accepted";
+  delegation_id: string;
+  reservation_event_id: string;
+  issued_event_id: string;
+  child_investigation_id: string;
+  child_start_event_id: string;
+  child_start_sha256: string;
+}
+
+/**
+ * Terminal release permitted only when no quote was issued.
+ */
+export interface ResearchDelegationReleasedPayload {
+  action_type: "research.delegation_released";
+  delegation_id: string;
+  reservation_event_id: string;
+  reason: "quote_not_issued" | "signing_authority_unavailable";
+  error_sha256?: string | null;
+}
+
+/**
+ * Terminal root receipt returning unused child allocation capacity.
+ */
+export interface ResearchDelegationSettledPayload {
+  action_type: "research.delegation_settled";
+  delegation_id: string;
+  reservation_event_id: string;
+  accepted_event_id: string;
+  child_terminal_event_id: string;
+  actual_cost_usd: number;
+}
+
+export interface InvestigationExecutionClaimedPayload {
+  action_type: "investigation.execution_claimed";
+  execution_id: string;
+  start_event_id: string;
+  generation?: 1;
+  holder_digest: string;
+  claimed_at_ms: number;
+  expires_at_ms: number;
+}
+
+export interface InvestigationExecutionRenewedPayload {
+  action_type: "investigation.execution_renewed";
+  execution_id: string;
+  prior_receipt_event_id: string;
+  generation: number;
+  holder_digest: string;
+  renewed_at_ms: number;
+  expires_at_ms: number;
+}
+
+export interface InvestigationExecutionTakenOverPayload {
+  action_type: "investigation.execution_taken_over";
+  execution_id: string;
+  prior_receipt_event_id: string;
+  prior_generation: number;
+  generation: number;
+  prior_holder_digest: string;
+  holder_digest: string;
+  prior_expires_at_ms: number;
+  clock_skew_margin_ms: number;
+  taken_over_at_ms: number;
+  expires_at_ms: number;
+}
+
+export interface InvestigationExecutionCompletedPayload {
+  action_type: "investigation.execution_completed";
+  execution_id: string;
+  lease_receipt_event_id: string;
+  generation: number;
+  holder_digest: string;
+  terminal_event_id: string;
+  terminal_sha256: string;
+  completed_at_ms: number;
+}
+
+export interface InvestigationProjectionRequestedPayload {
+  action_type: "investigation.projection_requested";
+  projection_id: string;
+  execution_id: string;
+  synthesis_event_id: string;
+  input_sha256: string;
+  expected_effects?: ("synthesis_archive" | "html_artifact")[];
+}
+
+export interface InvestigationProjectionEffectRecordedPayload {
+  action_type: "investigation.projection_effect_recorded";
+  projection_id: string;
+  request_event_id: string;
+  effect: "synthesis_archive" | "html_artifact";
+  disposition: "complete" | "not_configured";
+  effect_ref?: string | null;
+  effect_sha256?: string | null;
+}
+
+/**
+ * Retryable, prose-free failure truth for one terminal projection effect.
+ */
+export interface InvestigationProjectionFailedPayload {
+  action_type: "investigation.projection_failed";
+  projection_id: string;
+  request_event_id: string;
+  effect: "synthesis_archive" | "html_artifact";
+  failure_code: "mutation_failed" | "verification_failed";
+  retryable?: true;
+}
+
+export interface InvestigationProjectionCompletedPayload {
+  action_type: "investigation.projection_completed";
+  projection_id: string;
+  request_event_id: string;
+  synthesis_effect_event_id: string;
+  html_effect_event_id: string;
+  effects_sha256: string;
+}
+
+/**
+ * Durable reviewed composite report used by restart recovery and HTML UI.
+ */
+export interface GatherReportRecordedPayload {
+  action_type: "gather.report_recorded";
+  contract_version?: 1;
+  launch_fingerprint: string;
+  plan_fingerprint: string;
+  legal_policy_snapshot_sha256: string;
+  receipts: GatherSourceReportReceipt[];
+  document_ids?: string[];
+  minimum_evidence_documents: number;
+  evidence_complete: boolean;
+  partial: boolean;
+  unknown_outcome: boolean;
 }
 
 /**
@@ -690,6 +990,7 @@ export interface KnowledgeReusedPayload {
   decisions: string[];
   source_investigation_ids: string[];
   context_pack_event_id: string;
+  source_qualifications?: ReusedUnitSourceQualification[] | null;
 }
 
 /**
@@ -1539,6 +1840,7 @@ export interface SynthesizeRequestedPayload {
   parameters_block: string;
   substrate_block: string;
   constraints?: ConstraintSpec[];
+  inherited_support_by_chunk?: Record<string, string[]>;
 }
 
 /**
@@ -1603,6 +1905,28 @@ export interface InvestigationStartRequestedPayload {
   chase_value?: number;
   chase_budget_usd?: number;
   research_tier?: "fast" | "deep" | "wrestle" | null;
+  approved_run_ceiling_usd?: number | null;
+  research_quote_id?: string | null;
+  research_quote_payload_sha256?: string | null;
+  research_route_manifest_fingerprint?: string | null;
+  research_quote_expires_at_ms?: number | null;
+  research_route_manifest?: ResearchQuotedRoute[] | null;
+  selected_driver_role?: string | null;
+  selected_driver_provider?: string | null;
+  selected_driver_model?: string | null;
+  selected_driver_pricing_fingerprint?: string | null;
+  research_workload_plan_sha256?: string | null;
+  research_projected_max_cost_usd?: number | null;
+  research_daily_budget_hold_id?: string | null;
+  research_daily_budget_date_stamp?: string | null;
+  research_daily_budget_cap_usd?: number | null;
+  source_question_id?: string | null;
+  reservation_event_id?: string | null;
+  research_delegated_from_quote_id?: string | null;
+  research_delegation_id?: string | null;
+  research_root_investigation_id?: string | null;
+  research_root_quote_id?: string | null;
+  research_delegation_generation?: number | null;
 }
 
 /**
@@ -1664,7 +1988,7 @@ export interface InvestigationSpawnedFromPayload {
  */
 export interface InvestigationChaseHaltedPayload {
   action_type: "investigation.chase_halted";
-  reason: "depth_reached" | "duration_reached" | "budget_exceeded" | "no_open_questions" | "chase_disabled";
+  reason: "depth_reached" | "duration_reached" | "budget_exceeded" | "no_open_questions" | "chase_disabled" | "quote_authority_unavailable";
   depth_reached?: number;
   duration_seconds?: number;
   cost_total_usd?: number;
@@ -2417,9 +2741,9 @@ export interface SeamSpeakToReadPayload {
 }
 
 /**
- * write → speak. **PROVISIONAL.** Commission interviews from an outline
- * gap. Typed so the trajectory can carry it, but the seam is the weakest and
- * off the SPR-08 critical path; the receiving Speak side is unspecified.
+ * write → speak. Commission interviews from a node-backed outline gap.
+ * Speak retains and resolves the question node reference without copying its
+ * text into the handoff.
  */
 export interface SeamWriteToSpeakPayload {
   entity_id: string;
@@ -2647,11 +2971,53 @@ export interface DocumentFiledIntoInvestigationPayload {
 }
 
 /**
+ * Source-text-free, receipt-bound reading position command.
+ */
+export interface DocumentCitationPositionSetPayload {
+  action_type: "document.citation_position_set";
+  receipt_sha256: string;
+  index: number;
+  anchor_count: number;
+  mutation_key_sha256: string;
+  request_sha256: string;
+}
+
+/**
+ * Optimistic account checkpoint; deliberately contains no source text.
+ */
+export interface WorkspaceResumeCheckpointSetPayload {
+  action_type: "workspace.resume_checkpoint.set";
+  schema_version?: 1;
+  revision: number;
+  base_revision: number;
+  entries: WorkspaceResumeEntry[];
+  mutation_key_sha256: string;
+  request_sha256: string;
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
 export type TypedPayload =
   | DispatchCallPayload
+  | ResearchCallReservedPayload
+  | ResearchCallSettledPayload
+  | ResearchCallReleasedPayload
+  | ResearchDelegationReservedPayload
+  | ResearchDelegationIssuedPayload
+  | ResearchDelegationAcceptedPayload
+  | ResearchDelegationReleasedPayload
+  | ResearchDelegationSettledPayload
+  | InvestigationExecutionClaimedPayload
+  | InvestigationExecutionRenewedPayload
+  | InvestigationExecutionTakenOverPayload
+  | InvestigationExecutionCompletedPayload
+  | InvestigationProjectionRequestedPayload
+  | InvestigationProjectionEffectRecordedPayload
+  | InvestigationProjectionFailedPayload
+  | InvestigationProjectionCompletedPayload
+  | GatherReportRecordedPayload
   | WorkerIdentityPayload
   | ContextPackAssembledPayload
   | KnowledgeReusedPayload
@@ -2765,7 +3131,9 @@ export type TypedPayload =
   | BlockPositionPayload
   | SourceReadPayload
   | ReadMetaReadingGeneratedPayload
-  | DocumentFiledIntoInvestigationPayload;
+  | DocumentFiledIntoInvestigationPayload
+  | DocumentCitationPositionSetPayload
+  | WorkspaceResumeCheckpointSetPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -2790,6 +3158,7 @@ export interface Event {
   schema_version?: number;
   emitted_at: string;
   document_id?: string | null;
+  execution_generation?: number | null;
 }
 
 export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
@@ -2820,6 +3189,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "dispatch.call",
   "distillation.delivered",
   "distillation.requested",
+  "document.citation_position_set",
   "document.content_class_defaulted",
   "document.filed_into_investigation",
   "document.loaded",
@@ -2835,6 +3205,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "federation.partner.revoked",
   "federation.partner.trusted",
   "fetch.fallback.escalated",
+  "gather.report_recorded",
   "graph.edge.inserted",
   "graph.node.inserted",
   "graph.staleness.flagged",
@@ -2849,7 +3220,15 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "groundedness.scored",
   "investigation.chase_halted",
   "investigation.completed",
+  "investigation.execution_claimed",
+  "investigation.execution_completed",
+  "investigation.execution_renewed",
+  "investigation.execution_taken_over",
   "investigation.failed",
+  "investigation.projection_completed",
+  "investigation.projection_effect_recorded",
+  "investigation.projection_failed",
+  "investigation.projection_requested",
   "investigation.spawned_from",
   "investigation.start_requested",
   "knowledge.reused",
@@ -2873,6 +3252,14 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "question.identified",
   "question.resolved_by_doc",
   "read.meta_reading.generated",
+  "research.call_released",
+  "research.call_reserved",
+  "research.call_settled",
+  "research.delegation_accepted",
+  "research.delegation_issued",
+  "research.delegation_released",
+  "research.delegation_reserved",
+  "research.delegation_settled",
   "reuse.gated",
   "rev_share.decided",
   "rlm.bridge.decided",
@@ -2906,6 +3293,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "visual.role_failed",
   "voice.captured",
   "worker.identity",
+  "workspace.resume_checkpoint.set",
 ]);
 
 export const WRESTLING_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
@@ -2914,6 +3302,7 @@ export const WRESTLING_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionTyp
   "claim.grounding_check_passed",
   "distillation.delivered",
   "distillation.requested",
+  "document.citation_position_set",
   "document.loaded",
   "document.region_selected",
   "note.compressed_doc_written",

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 import HostedHtmlDocumentHost, {
   resolveHostedResearchSelection,
+  validatedHostedCitationEvidence,
 } from "./HostedHtmlDocumentHost";
 
 const launchFloatingDeepResearch = vi.fn<(...args: unknown[]) => unknown>();
@@ -15,6 +16,11 @@ const parsePublicationRefs = vi.fn((raw: string) =>
 );
 const collectDeepResearchSpawnIds = vi.fn<typeof import("../../workspace/collectDeepResearchSpawnIds").collectDeepResearchSpawnIds>(() => []);
 const listRecentDeepResearchSpawnIds = vi.fn<typeof import("../../workspace/collectDeepResearchSpawnIds").collectDeepResearchSpawnIds>(() => []);
+const openHostedDocumentPanel = vi.fn<(...args: unknown[]) => unknown>();
+
+vi.mock("../../workspace/actions", () => ({
+  openHostedDocumentPanel: (...args: unknown[]) => openHostedDocumentPanel(...args),
+}));
 
 vi.mock("./windowHostContext", () => ({
   useInWindow: () => undefined,
@@ -203,6 +209,7 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
     launchFloatingDeepResearch.mockReset();
+    openHostedDocumentPanel.mockReset();
     hydratePublicationRefs.mockReset();
     collectDeepResearchSpawnIds.mockReset();
     collectDeepResearchSpawnIds.mockReturnValue([]);
@@ -228,6 +235,121 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
         .map((s) => s.trim())
         .filter(Boolean),
     );
+  });
+
+  it("renders host-owned controls only for closed citation DTOs", () => {
+    const citation = {
+      source_kind: "synthesis_claim",
+      source_asset_id: "asset-1",
+      claim_id: "7",
+      chunk_ids: ["chunk-1"],
+      document_id: "doc-source",
+      receipt_sha256: "c".repeat(64),
+    };
+    expect(validatedHostedCitationEvidence([{ ...citation, extra: "no" }])).toEqual([]);
+    expect(validatedHostedCitationEvidence([
+      citation,
+      { ...citation, document_id: "digest-collision" },
+    ])).toEqual([]);
+    render(
+      <HostedHtmlDocumentHost
+        document_id="merge-1"
+        title="Merge"
+        view_format="html"
+        html="<article><p>Merged body</p><button>stored trap</button></article>"
+        citation_evidence={[citation]}
+      />,
+    );
+    expect(screen.getByTestId("hosted-html-body").querySelector("button")).toBeNull();
+    const control = screen.getByTestId(`hosted-html-open-citation-${"c".repeat(64)}`);
+    fireEvent.click(control);
+    expect(openHostedDocumentPanel).toHaveBeenCalledWith({
+      documentId: "doc-source",
+      chunkIds: ["chunk-1"],
+      citationReceiptSha256: "c".repeat(64),
+      title: "Citation · claim 7",
+    });
+  });
+
+  it("scrolls only to an opaque server-derived anchor inside its HTML root", async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const anchor = `antiek-chunk-${"e".repeat(64)}`;
+    const secondAnchor = `antiek-chunk-${"f".repeat(64)}`;
+    render(
+      <HostedHtmlDocumentHost
+        document_id="doc-anchor"
+        title="Anchored"
+        view_format="html"
+        html={`<p id="${anchor}" data-antiek-chunk-anchor="true">First evidence</p><p id="${secondAnchor}" data-antiek-chunk-anchor="true">Second evidence</p><p class="citation-evidence-active">stored spoof</p>`}
+        initial_anchor_id={anchor}
+        citation_anchor_ids={[anchor, secondAnchor]}
+      />,
+    );
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: "center", behavior: "smooth" }));
+    expect(screen.getByTestId("hosted-html-body").querySelector("p:last-child")?.classList.contains("citation-evidence-active")).toBe(false);
+    expect(screen.getByTestId("hosted-html-citation-position").textContent).toBe("Evidence 1 of 2");
+    const first = document.getElementById(anchor)!;
+    const second = document.getElementById(secondAnchor)!;
+    expect(first.getAttribute("data-citation-active")).toBe("true");
+    expect(first.getAttribute("aria-current")).toBe("location");
+    expect(document.activeElement).toBe(first);
+    expect(second.getAttribute("data-citation-evidence")).toBe("true");
+    const overview = screen.getByTestId("hosted-html-citation-overview");
+    expect(overview.textContent).toBe("Evidence overviewEvidence 1Evidence 2");
+    expect(overview.textContent).not.toMatch(/First evidence|Second evidence/);
+    expect(screen.getByTestId("hosted-html-citation-overview-0").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("hosted-html-citation-overview-0").hasAttribute("aria-current")).toBe(false);
+    fireEvent.keyDown(first, { key: "ArrowRight" });
+    await waitFor(() => expect(second.getAttribute("data-citation-active")).toBe("true"));
+    expect(first.hasAttribute("data-citation-active")).toBe(false);
+    expect(screen.getByTestId("hosted-html-citation-position").textContent).toBe("Evidence 2 of 2");
+    expect(document.activeElement).toBe(second);
+    expect(fireEvent.keyDown(second, { key: "ArrowRight" })).toBe(false);
+    expect(screen.getByTestId("hosted-html-citation-position").textContent).toBe("Evidence 2 of 2");
+    fireEvent.click(screen.getByTestId("hosted-html-citation-overview-0"));
+    await waitFor(() => expect(first.getAttribute("data-citation-active")).toBe("true"));
+    expect(screen.getByTestId("hosted-html-citation-position").textContent).toBe("Evidence 1 of 2");
+  });
+
+  it("does not navigate from a standalone anchor when the complete mapping fails", () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
+    const anchor = `antiek-chunk-${"9".repeat(64)}`;
+    render(
+      <HostedHtmlDocumentHost
+        document_id="doc-invalid-map"
+        title="Invalid map"
+        view_format="html"
+        html={`<p id="${anchor}" data-antiek-chunk-anchor="true">Evidence</p>`}
+        initial_anchor_id={anchor}
+        citation_anchor_ids={[anchor, anchor]}
+      />,
+    );
+    expect(screen.queryByTestId("hosted-html-citation-traversal")).toBeNull();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("uses non-animated evidence scroll when reduced motion is requested", async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn(() => ({ matches: true })) as unknown as typeof window.matchMedia;
+    const anchor = `antiek-chunk-${"8".repeat(64)}`;
+    render(
+      <HostedHtmlDocumentHost
+        document_id="doc-reduced"
+        title="Reduced motion"
+        view_format="html"
+        html={`<p id="${anchor}" data-antiek-chunk-anchor="true">Evidence</p>`}
+        citation_anchor_ids={[anchor]}
+      />,
+    );
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: "center", behavior: "auto" }));
+    window.matchMedia = originalMatchMedia;
   });
 
   it("renders HTML body for hosted book", () => {
@@ -1158,9 +1280,9 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(honesty.getAttribute("data-twin-seed-path")).toBe(
       "collective_written_analysis",
     );
-    expect(honesty.getAttribute("data-l6-live-council")).toBe("deferred");
+    expect(honesty.getAttribute("data-l6-live-council")).toBe("separate_operator_gate");
     expect(honesty.textContent).toMatch(/multi-agent/i);
-    expect(honesty.textContent).toMatch(/L6 live council deferred/i);
+    expect(honesty.textContent).toMatch(/separate server-truth operator gate/i);
     expect(
       screen
         .getByTestId("hosted-html-collective-analysis-l6-future-link")

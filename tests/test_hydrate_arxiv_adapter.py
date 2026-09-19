@@ -23,6 +23,7 @@ from substrate.engagement_spine import (  # noqa: E402
     arxiv_metadata_fetch_publication,
     hydrate_with_arxiv_adapter,
 )
+from substrate.engagement_spine.hydrate import hydrate_reference  # noqa: E402
 
 
 @dataclass
@@ -30,8 +31,7 @@ class _FakePaper:
     arxiv_id: str = "1706.03762"
     title: str = "Attention Is All You Need"
     abstract: str = (
-        "We propose the Transformer, a model architecture based solely on "
-        "attention mechanisms."
+        "We propose the Transformer, a model architecture based solely on attention mechanisms."
     )
     abs_url: str = "https://arxiv.org/abs/1706.03762"
     authors: list[str] | None = None
@@ -41,7 +41,7 @@ class _FakePaper:
             self.authors = ["Vaswani", "Shazeer"]
 
 
-def test_arxiv_adapter_lands_abstract():
+def test_arxiv_adapter_lands_abstract_without_false_body_hydration():
     store = InMemoryEngagementStore()
 
     def fetch_by_id(arxiv_id: str):
@@ -54,7 +54,9 @@ def test_arxiv_adapter_lands_abstract():
         fetch_by_id=fetch_by_id,
         include_html=True,
     )
-    assert asset.fetched is True
+    assert asset.fetched is False
+    assert asset.hydrated is False
+    assert asset.hydration_status == "abstract_only"
     assert "Attention Is All You Need" in asset.title
     assert "Transformer" in asset.body_text
     assert "Vaswani" in asset.body_text
@@ -77,7 +79,8 @@ def test_arxiv_adapter_without_injector_identity_only_for_non_wired_path():
     assert asset.view_format == "html"
 
 
-def test_api_hydrate_with_injected_arxiv_fetch():
+def test_api_hydrate_with_injected_arxiv_fetch(monkeypatch):
+    monkeypatch.setenv("ANTIEK_HYDRATE_LIVE_ARXIV", "1")
     reset_engagement_stores()
     eng_mod.hydrate_fetch_publication = None
     eng_mod.hydrate_arxiv_fetch_by_id = lambda arxiv_id: _FakePaper(arxiv_id=arxiv_id)
@@ -95,7 +98,9 @@ def test_api_hydrate_with_injected_arxiv_fetch():
         )
         assert r1.status_code == 200, r1.text
         b1 = r1.json()
-        assert b1["fetched"] is True
+        assert b1["fetched"] is False
+        assert b1["hydrated"] is False
+        assert b1["hydration_status"] == "abstract_only"
         assert "Attention Is All You Need" in b1["title"]
         assert b1["view_format"] == "html"
         assert b1["html"]
@@ -105,10 +110,31 @@ def test_api_hydrate_with_injected_arxiv_fetch():
         )
         assert r2.status_code == 200
         assert r2.json()["asset_id"] == b1["asset_id"]
-        assert r2.json()["fetched"] is True
+        assert r2.json()["fetched"] is False
     finally:
         eng_mod.hydrate_arxiv_fetch_by_id = None
         eng_mod.hydrate_fetch_publication = None
+
+
+def test_api_body_injector_without_env_gate_performs_zero_requests(monkeypatch):
+    monkeypatch.delenv("ANTIEK_HYDRATE_LIVE_ARXIV", raising=False)
+    reset_engagement_stores()
+    calls: list[str] = []
+    eng_mod.hydrate_arxiv_fetch_body = lambda arxiv_id: calls.append(arxiv_id)
+    eng_mod.hydrate_arxiv_fetch_by_id = lambda arxiv_id: calls.append(arxiv_id)
+    app = FastAPI()
+    register_engagement_routes(app)
+    try:
+        response = TestClient(app).post(
+            "/engagement/hydrate-ref",
+            json={"reference": "arxiv:1706.03762", "seed_twins": False},
+        )
+        assert response.status_code == 200
+        assert response.json()["hydrated"] is False
+        assert calls == []
+    finally:
+        eng_mod.hydrate_arxiv_fetch_body = None
+        eng_mod.hydrate_arxiv_fetch_by_id = None
 
 
 def test_adapter_builder_refuses_silent_network():
@@ -121,3 +147,19 @@ def test_adapter_builder_refuses_silent_network():
         raise AssertionError("expected RuntimeError")
     except RuntimeError as exc:
         assert "silent" in str(exc).lower() or "injected" in str(exc).lower()
+
+
+def test_generic_injector_cannot_self_assert_body_complete() -> None:
+    asset = hydrate_reference(
+        "arxiv:1706.03762",
+        store=InMemoryEngagementStore(),
+        fetch_publication=lambda _ref: {
+            "title": "Unverified",
+            "body_text": "This is not a canonically hosted paper body.",
+            "hydration_status": "body_complete",
+        },
+        seed_twins=False,
+    )
+    assert asset.hydrated is False
+    assert asset.fetched is False
+    assert asset.hydration_status == "body_unavailable"

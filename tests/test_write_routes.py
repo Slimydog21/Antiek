@@ -180,15 +180,17 @@ def test_question_commission_repairs_event_after_append_failure(client, seed, mo
     block_id = _place_question(client, seed)
     path = f"/write/blocks/{block_id}/speak-handoffs"
     headers = {"Idempotency-Key": "commission-repair"}
-    real_append = write_routes.append_event_once
+    real_append = write_routes.append_event_once_authorized
     monkeypatch.setattr(
         write_routes,
-        "append_event_once",
-        lambda _event: (_ for _ in ()).throw(RuntimeError("event store unavailable")),
+        "append_event_once_authorized",
+        lambda _authority, _event: (_ for _ in ()).throw(
+            RuntimeError("event store unavailable")
+        ),
     )
     with pytest.raises(RuntimeError, match="event store unavailable"):
         client.post(path, headers=headers, json={"deliverable_id": seed["deliverable_id"]})
-    monkeypatch.setattr(write_routes, "append_event_once", real_append)
+    monkeypatch.setattr(write_routes, "append_event_once_authorized", real_append)
     repaired = client.post(
         path, headers=headers, json={"deliverable_id": seed["deliverable_id"]}
     )

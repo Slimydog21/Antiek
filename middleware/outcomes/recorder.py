@@ -142,3 +142,74 @@ def record_outcome_via_db(con: Any, record: OutcomeRecord) -> str:
         ],
     )
     return record.outcome_id
+
+
+def record_outcome_authorized(
+    con: Any, authority: Any, record: OutcomeRecord
+) -> str:
+    """Persist an outcome only when its synthesis parent matches authority."""
+    from substrate.graph.tenancy import assert_graph_authority
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    if not isinstance(authority, InvestigationAuthority):
+        raise TypeError("outcome recording requires InvestigationAuthority")
+    assert_graph_authority(con, authority)
+    parent = con.execute(
+        "SELECT synthesis_id, investigation_id, account_digest, "
+        "investigation_digest FROM syntheses WHERE synthesis_id = ? "
+        "AND account_digest = ? AND investigation_digest = ?",
+        [
+            record.synthesis_id,
+            authority.account_digest,
+            authority.investigation_digest,
+        ],
+    ).fetchone()
+    if parent is None:
+        raise KeyError(f"synthesis_id not found: {record.synthesis_id!r}")
+    return record_outcome_via_db(con, record)
+
+
+def record_outcome_payload_authorized(
+    con: Any,
+    authority: Any,
+    *,
+    outcome_id: str,
+    synthesis_id: str,
+    observer: str,
+    thesis_outcomes: list[dict[str, Any]],
+    falsification_outcomes: list[dict[str, Any]],
+    execution_risk_outcomes: list[dict[str, Any]],
+    decision_alignment: dict[str, Any] | None,
+    notes: str | None,
+) -> str:
+    """Authority-safe compatibility writer for the API's historical payload."""
+    from substrate.graph.tenancy import assert_graph_authority
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    if not isinstance(authority, InvestigationAuthority):
+        raise TypeError("outcome recording requires InvestigationAuthority")
+    assert_graph_authority(con, authority)
+    parent = con.execute(
+        "SELECT synthesis_id, investigation_id, account_digest, "
+        "investigation_digest FROM syntheses WHERE synthesis_id = ? "
+        "AND account_digest = ? AND investigation_digest = ?",
+        [synthesis_id, authority.account_digest, authority.investigation_digest],
+    ).fetchone()
+    if parent is None:
+        raise KeyError(f"synthesis_id not found: {synthesis_id!r}")
+    con.execute(
+        "INSERT INTO outcomes (outcome_id, synthesis_id, observer, "
+        "thesis_outcomes, falsification_outcomes, execution_risk_outcomes, "
+        "decision_alignment, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            outcome_id,
+            synthesis_id,
+            observer,
+            json.dumps(thesis_outcomes),
+            json.dumps(falsification_outcomes),
+            json.dumps(execution_risk_outcomes),
+            json.dumps(decision_alignment) if decision_alignment is not None else None,
+            notes,
+        ],
+    )
+    return outcome_id

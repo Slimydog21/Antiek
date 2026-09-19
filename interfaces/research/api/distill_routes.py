@@ -33,8 +33,8 @@ from __future__ import annotations
 import os
 import sys
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -42,10 +42,16 @@ if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from roles.challenger import ChallengeUnavailable, make_dispatch_resolver  # noqa: E402
-from roles.note_taker import distillation_for  # noqa: E402
-from roles.note_taker.living_note import challenge_note  # noqa: E402
+from roles.note_taker import distillation_for_authorized  # noqa: E402
+from roles.note_taker.living_note import challenge_note_authorized  # noqa: E402
 from runtime.db_lock import connect_read  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
+from substrate.graph.tenancy import assert_graph_authority_read  # noqa: E402
+from substrate.investigation_streams import (  # noqa: E402
+    resolve_investigation_stream,
+    resolve_writable_investigation_stream,
+)
+from substrate.investigation_tenancy import InvestigationOwnershipConflict  # noqa: E402
 
 distill_router = APIRouter(prefix="/research", tags=["distill"])
 
@@ -81,7 +87,8 @@ class DistillationOut(BaseModel):
 
 
 class ChallengeRequest(BaseModel):
-    investigation_id: str = Field(..., min_length=1)
+    model_config = ConfigDict(extra="forbid")
+
     challenge_text: str = Field(default="", max_length=2000)
 
 
@@ -92,6 +99,7 @@ class ChallengeOut(BaseModel):
     superseded: bool = False        # a stale refinement lost the seq race
     new_text: str | None = None
     escalated: bool = False
+    escalated_question_id: str | None = None
     reserved_child_investigation_id: str | None = None
 
 
@@ -101,11 +109,12 @@ class ChallengeOut(BaseModel):
 
 
 @distill_router.get("/{investigation_id}/distill", response_model=DistillationOut)
-async def get_distillation(investigation_id: str) -> DistillationOut:
+async def get_distillation(investigation_id: str, request: Request) -> DistillationOut:
     """The durable product of a research: its insights + open questions, from
     the graph. Empty lists are a valid result (no notes yet / no provider) —
     the surface renders the honest no-result state, not canned content."""
-    view = distillation_for(investigation_id, db_path=_db())
+    authority = _request_authority(request, investigation_id, writable=False)
+    view = distillation_for_authorized(authority, db_path=_db())
     return DistillationOut(
         investigation_id=investigation_id,
         insights=[DistilledNodeOut(**vars(n)) for n in view.insights],
@@ -118,20 +127,25 @@ async def get_distillation(investigation_id: str) -> DistillationOut:
 # ---------------------------------------------------------------------------
 
 
-@distill_router.post("/notes/{node_id}/challenge", response_model=ChallengeOut)
-async def challenge(node_id: str, req: ChallengeRequest) -> ChallengeOut:
+@distill_router.post(
+    "/{investigation_id}/notes/{node_id}/challenge", response_model=ChallengeOut
+)
+async def challenge(
+    investigation_id: str, node_id: str, req: ChallengeRequest, request: Request
+) -> ChallengeOut:
     """Challenge a note. Drives the shipped living-note path; the route does
     not re-implement the seq rule — it only supplies the next monotonic seq
     so a user challenge beats a stale background refinement."""
-    seq = _next_seq(node_id)
-    resolver = make_dispatch_resolver(req.investigation_id)
+    authority = _request_authority(request, investigation_id, writable=True)
+    seq = _next_seq_authorized(authority, node_id)
     try:
-        result = challenge_note(
+        resolver = make_dispatch_resolver(investigation_id)
+        result = challenge_note_authorized(
+            authority,
             node_id,
             req.challenge_text,
             resolver=resolver,
             seq=seq,
-            investigation_id=req.investigation_id,
         )
     except ChallengeUnavailable as exc:
         # No model configured — honest no-key state, never a fabricated
@@ -139,7 +153,7 @@ async def challenge(node_id: str, req: ChallengeRequest) -> ChallengeOut:
         raise HTTPException(
             status_code=503,
             detail=f"no model is configured to weigh this challenge: {exc}",
-        )
+        ) from exc
     except ValueError as exc:
         # ``note.refined`` / ``question.escalated_to_research`` require the
         # note's source document on the envelope (schema invariant §9.1). A
@@ -150,7 +164,7 @@ async def challenge(node_id: str, req: ChallengeRequest) -> ChallengeOut:
         raise HTTPException(
             status_code=422,
             detail=f"this note can't be challenged yet — it has no source on record: {exc}",
-        )
+        ) from exc
     if not result.applied and not result.escalated and not result.superseded:
         # The node id did not resolve to a note in the graph.
         raise HTTPException(status_code=404, detail="no such note")
@@ -160,11 +174,27 @@ async def challenge(node_id: str, req: ChallengeRequest) -> ChallengeOut:
         superseded=result.superseded,
         new_text=result.new_text,
         escalated=result.escalated,
+        escalated_question_id=result.escalated_question_id,
         reserved_child_investigation_id=result.reserved_child_investigation_id,
     )
 
 
-def _next_seq(node_id: str) -> int:
+def _request_authority(request: Request, investigation_id: str, *, writable: bool):
+    """Derive the sole investigation identity from authenticated claims."""
+    from .investigation_access import authority_from_request
+
+    authority = authority_from_request(request, investigation_id).authority
+    try:
+        if writable:
+            resolve_writable_investigation_stream(authority)
+        else:
+            resolve_investigation_stream(authority)
+    except InvestigationOwnershipConflict as exc:
+        raise HTTPException(status_code=404, detail="investigation not found") from exc
+    return authority
+
+
+def _next_seq_authorized(authority, node_id: str) -> int:
     """The next monotonic seq for this node: one past the last applied seq it
     recorded (``metadata.last_update_seq``). Read-only — the write happens
     inside ``challenge_note`` under the single-writer lock. A note never
@@ -175,8 +205,12 @@ def _next_seq(node_id: str) -> int:
     wins" intent for an explicit user action."""
     con = connect_read(_db())
     try:
+        assert_graph_authority_read(con, authority)
         row = con.execute(
-            "SELECT metadata FROM nodes WHERE node_id = ?", [node_id]
+            "SELECT membership_metadata FROM investigation_node_memberships "
+            "WHERE account_digest = ? AND investigation_digest = ? "
+            "AND node_id = ? AND role IN ('insight', 'note') ORDER BY role LIMIT 1",
+            [authority.account_digest, authority.investigation_digest, node_id],
         ).fetchone()
     finally:
         con.close()
@@ -187,4 +221,7 @@ def _next_seq(node_id: str) -> int:
         meta = json.loads(row[0])
     except (TypeError, ValueError):
         return 1
-    return int(meta.get("last_update_seq", 0) or 0) + 1
+    try:
+        return int(meta.get("last_update_seq", 0) or 0) + 1
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("graph membership sequence is invalid") from exc

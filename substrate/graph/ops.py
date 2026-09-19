@@ -121,9 +121,10 @@ OnConflict = str  # "error" | "ignore"
 def _exists(con: Any, table: str, id_col: str, id_val: str) -> bool:
     """Check whether a row with the given id exists. Used by
     ``on_conflict='ignore'`` paths to make inserts idempotent."""
-    return con.execute(
-        f"SELECT 1 FROM {table} WHERE {id_col} = ? LIMIT 1", [id_val]
-    ).fetchone() is not None
+    return (
+        con.execute(f"SELECT 1 FROM {table} WHERE {id_col} = ? LIMIT 1", [id_val]).fetchone()
+        is not None
+    )
 
 
 def insert_document(
@@ -141,6 +142,7 @@ def insert_document(
     metadata: Any | None = None,
     content_class: str | None = None,
     ip_holder_id: str | None = None,
+    owner_user_id: str | None = "__operator__",
     on_conflict: OnConflict = "error",
     events_dir: str | None = None,
 ) -> str:
@@ -211,12 +213,22 @@ def insert_document(
         "INSERT INTO documents "
         "(document_id, source_uri, title, author, published_at, "
         " source_tier, document_type, investigation_id, raw_text, metadata, "
-        " content_class, ip_holder_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " content_class, ip_holder_id, owner_user_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            document_id, source_uri, title, author, published_at,
-            int(source_tier), document_type, investigation_id, raw_text,
-            _maybe_json(metadata), content_class, ip_holder_id,
+            document_id,
+            source_uri,
+            title,
+            author,
+            published_at,
+            int(source_tier),
+            document_type,
+            investigation_id,
+            raw_text,
+            _maybe_json(metadata),
+            content_class,
+            ip_holder_id,
+            owner_user_id,
         ],
     )
 
@@ -237,6 +249,184 @@ def insert_document(
             events_dir=events_dir,
         )
     return document_id
+
+
+def insert_document_admitted(
+    con: LockedConnection,
+    authority: Any,
+    *,
+    admission_receipt_id: str,
+    admitted_content_sha256: str,
+    **document: Any,
+) -> str:
+    """Insert an external document only under its exact owner receipt."""
+    from substrate.investigation_tenancy import InvestigationAuthority
+    from substrate.legal_gate.admission import require_allowed_receipt
+    from substrate.legal_gate.policy_store import LegalPolicyDenied, account_policy_authority
+
+    if not isinstance(authority, InvestigationAuthority):
+        raise TypeError("admitted document insertion requires InvestigationAuthority")
+    document_id = document.get("document_id")
+    if not isinstance(document_id, str) or not document_id:
+        raise ValueError("admitted document insertion requires document_id")
+    raw_text = document.get("raw_text")
+    if not isinstance(raw_text, str):
+        raise LegalPolicyDenied("admitted external document requires exact staged text")
+    actual_digest = hashlib.sha256(raw_text.encode()).hexdigest()
+    if actual_digest != admitted_content_sha256.removeprefix("sha256:").lower():
+        raise LegalPolicyDenied("admitted document bytes do not match receipt")
+    require_allowed_receipt(
+        con,
+        account_policy_authority(authority),
+        receipt_id=admission_receipt_id,
+        document_id=document_id,
+        investigation_digest=authority.investigation_digest,
+        content_sha256=admitted_content_sha256,
+    )
+    existing = con.execute(
+        "SELECT raw_text FROM documents WHERE document_id = ?", [document_id]
+    ).fetchone()
+    if existing is not None:
+        stored_text = existing[0]
+        if (
+            not isinstance(stored_text, str)
+            or hashlib.sha256(stored_text.encode()).hexdigest() != actual_digest
+        ):
+            raise LegalPolicyDenied("existing document bytes conflict with admission receipt")
+    document.setdefault("owner_user_id", authority.account_id)
+    inserted_id = insert_document(con, **document)
+    persisted = con.execute(
+        "SELECT raw_text FROM documents WHERE document_id = ?", [document_id]
+    ).fetchone()
+    if (
+        persisted is None
+        or not isinstance(persisted[0], str)
+        or hashlib.sha256(persisted[0].encode()).hexdigest() != actual_digest
+    ):
+        raise LegalPolicyDenied("persisted document bytes do not match admission receipt")
+    reseal_admitted_document(
+        con,
+        authority,
+        admission_receipt_id=admission_receipt_id,
+        admitted_content_sha256=admitted_content_sha256,
+        document_id=document_id,
+    )
+    _seal_admitted_chunk_manifest(
+        con,
+        authority,
+        receipt_id=admission_receipt_id,
+        document_id=document_id,
+    )
+    return inserted_id
+
+
+def reseal_admitted_document(
+    con: LockedConnection,
+    authority: Any,
+    *,
+    admission_receipt_id: str,
+    admitted_content_sha256: str,
+    document_id: str,
+) -> None:
+    """Seal an authority-approved custody row after a legitimate mutation."""
+    from substrate.legal_gate.admission import (
+        document_custody_seal_values,
+        require_allowed_receipt,
+    )
+    from substrate.legal_gate.policy_store import account_policy_authority
+
+    require_allowed_receipt(
+        con,
+        account_policy_authority(authority),
+        receipt_id=admission_receipt_id,
+        document_id=document_id,
+        investigation_digest=authority.investigation_digest,
+        content_sha256=admitted_content_sha256,
+    )
+    row = con.execute(
+        "SELECT source_uri, title, author, published_at, source_tier, document_type, "
+        "investigation_id, raw_text, metadata, content_class, ip_holder_id, owner_user_id "
+        "FROM documents WHERE document_id = ?",
+        [document_id],
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("admitted document disappeared before custody seal")
+    fields = (
+        "source_uri",
+        "title",
+        "author",
+        "published_at",
+        "source_tier",
+        "document_type",
+        "investigation_id",
+        "raw_text",
+        "metadata",
+        "content_class",
+        "ip_holder_id",
+        "owner_user_id",
+    )
+    state_sha256, seal_fingerprint = document_custody_seal_values(
+        receipt_id=admission_receipt_id,
+        document_id=document_id,
+        account_digest=authority.account_digest,
+        investigation_digest=authority.investigation_digest,
+        state=dict(zip(fields, row, strict=True)),
+    )
+    con.execute(
+        "INSERT INTO legal_document_custody_seals "
+        "(receipt_id, document_id, state_sha256, seal_fingerprint) "
+        "VALUES (?, ?, ?, ?) ON CONFLICT (document_id) DO UPDATE SET "
+        "receipt_id = EXCLUDED.receipt_id, state_sha256 = EXCLUDED.state_sha256, "
+        "seal_fingerprint = EXCLUDED.seal_fingerprint",
+        [admission_receipt_id, document_id, state_sha256, seal_fingerprint],
+    )
+
+
+def seal_existing_admitted_state(
+    con: LockedConnection,
+    authority: Any,
+    *,
+    admission_receipt_id: str,
+    admitted_content_sha256: str,
+    document_id: str,
+) -> None:
+    """Seal a cited legacy document and its current chunks during migration."""
+    reseal_admitted_document(
+        con,
+        authority,
+        admission_receipt_id=admission_receipt_id,
+        admitted_content_sha256=admitted_content_sha256,
+        document_id=document_id,
+    )
+    rows = con.execute(
+        "SELECT chunk_id, chunk_index, section_path, text, token_count "
+        "FROM chunks WHERE document_id = ? ORDER BY chunk_index, chunk_id",
+        [document_id],
+    ).fetchall()
+    for chunk_id, chunk_index, section_path, text, token_count in rows:
+        if not isinstance(text, str):
+            raise RuntimeError("legacy admitted chunk has no text")
+        con.execute(
+            "INSERT INTO legal_chunk_admissions "
+            "(receipt_id, chunk_id, document_id, chunk_index, section_path, "
+            "token_count, text_sha256) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT DO NOTHING",
+            [
+                admission_receipt_id,
+                chunk_id,
+                document_id,
+                int(chunk_index),
+                section_path,
+                int(token_count),
+                hashlib.sha256(text.encode()).hexdigest(),
+            ],
+        )
+    _seal_admitted_chunk_manifest(
+        con,
+        authority,
+        receipt_id=admission_receipt_id,
+        document_id=document_id,
+    )
 
 
 # Secondary indexes on the documents gate columns. DuckDB 1.5.2 cannot
@@ -310,9 +500,7 @@ def update_document_gate_columns(
         # Recreate even if the UPDATE raised, so a failed mutation never
         # leaves the table without its gate indexes.
         for col, idx in zip(touched_indexed, indexes, strict=True):
-            con.execute(
-                f"CREATE INDEX IF NOT EXISTS {idx} ON documents({col})"
-            )
+            con.execute(f"CREATE INDEX IF NOT EXISTS {idx} ON documents({col})")
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +539,11 @@ def insert_chunk(
         "(chunk_id, document_id, chunk_index, section_path, text, embedding, token_count) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
-            cid, document_id, int(chunk_index), section_path, text,
+            cid,
+            document_id,
+            int(chunk_index),
+            section_path,
+            text,
             list(embedding) if embedding is not None else None,
             int(token_count),
         ],
@@ -359,6 +551,111 @@ def insert_chunk(
     if embedding is not None and embedding_provider is not None:
         record_chunk_embedding_meta(con, chunk_id=cid, provider=embedding_provider)
     return cid
+
+
+def delete_document_chunks(con: LockedConnection, document_id: str) -> None:
+    """Delete unreferenced compatibility chunks under the graph write lock."""
+    _assert_write_locked(con)
+    con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
+
+
+def insert_chunk_admitted(
+    con: LockedConnection,
+    authority: Any,
+    *,
+    admission_receipt_id: str,
+    admitted_content_sha256: str,
+    **chunk: Any,
+) -> str:
+    """Insert external document bytes only while an allowed receipt is visible."""
+    from substrate.investigation_tenancy import InvestigationAuthority
+    from substrate.legal_gate.admission import require_allowed_receipt
+    from substrate.legal_gate.policy_store import LegalPolicyDenied, account_policy_authority
+
+    if not isinstance(authority, InvestigationAuthority):
+        raise TypeError("admitted chunk insertion requires InvestigationAuthority")
+    document_id = chunk.get("document_id")
+    if not isinstance(document_id, str) or not document_id:
+        raise ValueError("admitted chunk insertion requires document_id")
+    chunk_text = chunk.get("text")
+    stored = con.execute(
+        "SELECT raw_text FROM documents WHERE document_id = ?", [document_id]
+    ).fetchone()
+    if (
+        not isinstance(chunk_text, str)
+        or stored is None
+        or not isinstance(stored[0], str)
+        or chunk_text not in stored[0]
+    ):
+        raise LegalPolicyDenied("admitted chunk is not derived from staged document")
+    require_allowed_receipt(
+        con,
+        account_policy_authority(authority),
+        receipt_id=admission_receipt_id,
+        document_id=document_id,
+        investigation_digest=authority.investigation_digest,
+        content_sha256=admitted_content_sha256,
+    )
+    chunk_id = insert_chunk(con, **chunk)
+    section_path = chunk.get("section_path")
+    token_count = int(chunk.get("token_count", 0))
+    chunk_index = int(chunk.get("chunk_index", 0))
+    text_sha256 = hashlib.sha256(chunk_text.encode()).hexdigest()
+    con.execute(
+        "INSERT INTO legal_chunk_admissions "
+        "(receipt_id, chunk_id, document_id, chunk_index, section_path, token_count, "
+        "text_sha256) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+        [
+            admission_receipt_id,
+            chunk_id,
+            document_id,
+            chunk_index,
+            section_path,
+            token_count,
+            text_sha256,
+        ],
+    )
+    _seal_admitted_chunk_manifest(
+        con,
+        authority,
+        receipt_id=admission_receipt_id,
+        document_id=document_id,
+    )
+    return chunk_id
+
+
+def _seal_admitted_chunk_manifest(
+    con: LockedConnection,
+    authority: Any,
+    *,
+    receipt_id: str,
+    document_id: str,
+) -> None:
+    """Seal the complete receipt manifest after every atomic admission step."""
+    from substrate.legal_gate.admission import chunk_manifest_seal_values
+
+    rows = con.execute(
+        "SELECT chunk_id, chunk_index, section_path, token_count, text_sha256 "
+        "FROM legal_chunk_admissions WHERE receipt_id = ? AND document_id = ? "
+        "ORDER BY chunk_index, chunk_id",
+        [receipt_id, document_id],
+    ).fetchall()
+    count, manifest_sha256, seal_fingerprint = chunk_manifest_seal_values(
+        receipt_id=receipt_id,
+        document_id=document_id,
+        account_digest=authority.account_digest,
+        investigation_digest=authority.investigation_digest,
+        rows=rows,
+    )
+    con.execute(
+        "INSERT INTO legal_chunk_manifest_seals "
+        "(receipt_id, document_id, chunk_count, manifest_sha256, seal_fingerprint) "
+        "VALUES (?, ?, ?, ?, ?) ON CONFLICT (receipt_id) DO UPDATE SET "
+        "document_id = EXCLUDED.document_id, chunk_count = EXCLUDED.chunk_count, "
+        "manifest_sha256 = EXCLUDED.manifest_sha256, "
+        "seal_fingerprint = EXCLUDED.seal_fingerprint",
+        [receipt_id, document_id, count, manifest_sha256, seal_fingerprint],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -396,9 +693,12 @@ def insert_node(
         "(node_id, canonical_label, node_type, embedding, graph_scope, metadata) "
         "VALUES (?, ?, ?, ?, ?, ?)",
         [
-            nid, canonical_label, node_type,
+            nid,
+            canonical_label,
+            node_type,
             list(embedding) if embedding is not None else None,
-            graph_scope, _maybe_json(metadata),
+            graph_scope,
+            _maybe_json(metadata),
         ],
     )
     # Typed event AFTER the row commits — the Pydantic Literal validators
@@ -466,10 +766,18 @@ def insert_edge(
         " graph_scope, investigation_id, metadata) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            eid, source_node_id, target_node_id, relation, chunk_id,
-            source_document_id, int(source_tier), float(extraction_confidence),
+            eid,
+            source_node_id,
+            target_node_id,
+            relation,
+            chunk_id,
+            source_document_id,
+            int(source_tier),
+            float(extraction_confidence),
             valid_from or datetime(1970, 1, 1),
-            graph_scope, investigation_id, _maybe_json(metadata),
+            graph_scope,
+            investigation_id,
+            _maybe_json(metadata),
         ],
     )
     emit_typed(
@@ -492,14 +800,154 @@ def insert_edge(
     return eid
 
 
+def insert_edge_authorized(
+    con: LockedConnection,
+    authority: Any,
+    *,
+    source_node_id: str,
+    target_node_id: str,
+    relation: str,
+    source_tier: int,
+    extraction_confidence: float,
+    graph_scope: str,
+    chunk_id: str | None = None,
+    source_document_id: str | None = None,
+    valid_from: datetime | None = None,
+    metadata: Any | None = None,
+    edge_id: str | None = None,
+    parent_event_id: str | None = None,
+    on_conflict: OnConflict = "error",
+) -> str:
+    """Insert exact-authority provenance without accepting scalar identity."""
+    from substrate.event_log import emit_typed_authorized_strict
+    from substrate.graph.tenancy import graph_key, initialize_graph_authority
+    from substrate.investigation_streams import resolve_investigation_stream
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    _assert_write_locked(con)
+    if not isinstance(authority, InvestigationAuthority):
+        raise TypeError("authorized edge insertion requires InvestigationAuthority")
+    resolve_investigation_stream(authority)
+    initialize_graph_authority(con, authority)
+    valid_at = valid_from or datetime(1970, 1, 1)
+    metadata_json = (
+        None
+        if metadata is None
+        else json.dumps(metadata, sort_keys=True, separators=(",", ":"), default=str)
+    )
+    eid = edge_id or content_addressed_id(
+        "edge",
+        "|".join(
+            (
+                graph_key(authority),
+                source_node_id,
+                relation,
+                target_node_id,
+                chunk_id or "-",
+            )
+        ),
+    )
+    expected = (
+        source_node_id,
+        target_node_id,
+        relation,
+        chunk_id,
+        source_document_id,
+        int(source_tier),
+        float(extraction_confidence),
+        valid_at,
+        graph_scope,
+        authority.investigation_id,
+        metadata_json,
+        authority.account_digest,
+        authority.investigation_digest,
+    )
+    existing = con.execute(
+        "SELECT source_node_id, target_node_id, relation, chunk_id, "
+        "source_document_id, source_tier, extraction_confidence, valid_from, "
+        "graph_scope, investigation_id, metadata, account_digest, "
+        "investigation_digest FROM edges WHERE edge_id = ?",
+        [eid],
+    ).fetchall()
+    if existing:
+        if on_conflict != "ignore":
+            raise ValueError("authorized edge already exists")
+        if existing != [expected]:
+            from substrate.graph.tenancy import GraphAuthorityConflict
+
+            raise GraphAuthorityConflict("authorized edge replay conflicts with stored row")
+        return eid
+
+    con.execute(
+        "INSERT INTO edges "
+        "(edge_id, source_node_id, target_node_id, relation, chunk_id, "
+        "source_document_id, source_tier, extraction_confidence, valid_from, "
+        "graph_scope, investigation_id, metadata, account_digest, "
+        "investigation_digest) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [eid, *expected],
+    )
+    emit_typed_authorized_strict(
+        authority,
+        GraphEdgeInsertedPayload(
+            edge_id=eid,
+            source_node_id=source_node_id,
+            target_node_id=target_node_id,
+            relation=relation,
+            source_document_id=source_document_id,
+            chunk_id=chunk_id,
+            source_tier=int(source_tier),
+            extraction_confidence=float(extraction_confidence),
+            graph_scope=graph_scope,  # type: ignore[arg-type]
+        ),
+        parent_event_id=parent_event_id,
+        role="connector",
+    )
+    return eid
+
+
+def insert_edge_admitted(
+    con: LockedConnection,
+    authority: Any,
+    *,
+    admission_receipt_id: str,
+    source_document_id: str,
+    admitted_content_sha256: str,
+    **edge: Any,
+) -> str:
+    """Insert external provenance only under the source document's receipt."""
+    from substrate.investigation_tenancy import InvestigationAuthority
+    from substrate.legal_gate.admission import require_allowed_receipt
+    from substrate.legal_gate.policy_store import account_policy_authority
+
+    if not isinstance(authority, InvestigationAuthority):
+        raise TypeError("admitted edge insertion requires InvestigationAuthority")
+    require_allowed_receipt(
+        con,
+        account_policy_authority(authority),
+        receipt_id=admission_receipt_id,
+        document_id=source_document_id,
+        investigation_digest=authority.investigation_digest,
+        content_sha256=admitted_content_sha256,
+    )
+    return insert_edge_authorized(
+        con,
+        authority,
+        source_document_id=source_document_id,
+        **edge,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Deliverables (Sprint 13 — creation surface)
 # ---------------------------------------------------------------------------
 
 
 _DELIVERABLE_KINDS = (
-    "research_memo", "book_chapter", "biography_section",
-    "investor_brief", "general_essay",
+    "research_memo",
+    "book_chapter",
+    "biography_section",
+    "investor_brief",
+    "general_essay",
 )
 
 
@@ -518,8 +966,7 @@ def insert_deliverable(
     _assert_write_locked(con)
     if deliverable_kind not in _DELIVERABLE_KINDS:
         raise ValueError(
-            f"deliverable_kind must be one of {_DELIVERABLE_KINDS}, "
-            f"got {deliverable_kind!r}"
+            f"deliverable_kind must be one of {_DELIVERABLE_KINDS}, got {deliverable_kind!r}"
         )
     did = deliverable_id or new_random_id("dlv")
     con.execute(
@@ -527,8 +974,7 @@ def insert_deliverable(
         "(deliverable_id, title, deliverable_kind, investigation_root_id, "
         " owner_user_id, metadata) "
         "VALUES (?, ?, ?, ?, ?, ?)",
-        [did, title, deliverable_kind, investigation_root_id,
-         owner_user_id, _maybe_json(metadata)],
+        [did, title, deliverable_kind, investigation_root_id, owner_user_id, _maybe_json(metadata)],
     )
     return did
 
@@ -552,8 +998,15 @@ def insert_section(
         "(section_id, deliverable_id, parent_section_id, section_index, "
         " title, prose_text, prose_provenance) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [sid, deliverable_id, parent_section_id, int(section_index),
-         title, prose_text, _maybe_json(prose_provenance)],
+        [
+            sid,
+            deliverable_id,
+            parent_section_id,
+            int(section_index),
+            title,
+            prose_text,
+            _maybe_json(prose_provenance),
+        ],
     )
     return sid
 
@@ -646,8 +1099,14 @@ def insert_interview_project(
         "(project_id, title, topic_description, deliverable_id, "
         " interview_guide, owner_user_id) "
         "VALUES (?, ?, ?, ?, ?, ?)",
-        [pid, title, topic_description, deliverable_id,
-         _maybe_json(interview_guide), owner_user_id],
+        [
+            pid,
+            title,
+            topic_description,
+            deliverable_id,
+            _maybe_json(interview_guide),
+            owner_user_id,
+        ],
     )
     return pid
 
@@ -686,8 +1145,8 @@ def append_interview_turn(
     if role not in ("interviewer", "informant"):
         raise ValueError(f"unknown turn role: {role!r}")
     row = con.execute(
-        "SELECT transcript_turns, status FROM interviews "
-        "WHERE interview_id = ?", [interview_id],
+        "SELECT transcript_turns, status FROM interviews WHERE interview_id = ?",
+        [interview_id],
     ).fetchone()
     if row is None:
         raise ValueError(f"interview {interview_id!r} not found")
@@ -698,11 +1157,13 @@ def append_interview_turn(
             turns = json.loads(existing_json)
         except (TypeError, ValueError):
             turns = []
-    turns.append({
-        "role": role,
-        "text": text,
-        "ts": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-    })
+    turns.append(
+        {
+            "role": role,
+            "text": text,
+            "ts": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        }
+    )
     new_status = "in_progress" if status == "invited" else status
     started_at_sql = "CURRENT_TIMESTAMP" if status == "invited" else "started_at"
     con.execute(

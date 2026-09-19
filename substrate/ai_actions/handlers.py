@@ -19,7 +19,6 @@ the optimistic-concurrency check in ``actions.py`` already rejected.
 
 from __future__ import annotations
 
-import json
 from typing import Any, Protocol
 
 
@@ -75,40 +74,22 @@ def _notebook_block_handler(
     content = prev_state.get("content_json") or {}
     if not isinstance(content, (dict, list)):
         content = {}
-    content_json_str = json.dumps(content)
+    notebook_id = prev_state.get("notebook_id")
+    account_id = prev_state.get("account_id")
+    if not isinstance(notebook_id, str) or not isinstance(account_id, str):
+        raise ValueError("prev_state missing notebook authority")
+    from substrate.notebooks import restore_block
+    from substrate.notebooks.authority import NotebookAccountAuthority
 
-    row = con.execute(
-        "SELECT 1 FROM notebook_blocks WHERE block_id = ?",
-        [block_id],
-    ).fetchone()
-    if row is None:
-        # The block was deleted in the AI action — re-insert it. The
-        # block_index is whatever was last recorded; if a later
-        # operator action shifted indexes, this re-insert may collide
-        # at the OS level on the PK, but block_id is unique so the
-        # PK is intact. We accept that the order may differ from the
-        # pre-AI state when concurrent shifts happened.
-        notebook_id = prev_state.get("notebook_id")
-        block_index = prev_state.get("block_index", 0)
-        if not notebook_id:
-            raise ValueError("prev_state missing notebook_id for re-insert")
-        con.execute(
-            """
-            INSERT INTO notebook_blocks (
-                block_id, notebook_id, block_index, block_type, ref_id, content_json
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            [block_id, notebook_id, block_index, block_type, ref_id, content_json_str],
-        )
-    else:
-        con.execute(
-            """
-            UPDATE notebook_blocks
-            SET block_type = ?, ref_id = ?, content_json = ?
-            WHERE block_id = ?
-            """,
-            [block_type, ref_id, content_json_str, block_id],
-        )
+    restore_block(
+        con,
+        NotebookAccountAuthority(account_id).notebook(notebook_id),
+        block_id,
+        block_index=int(prev_state.get("block_index", 0)),
+        block_type=block_type,
+        ref_id=ref_id,
+        content=content,
+    )
 
 
 def _notebook_handler(
@@ -123,20 +104,18 @@ def _notebook_handler(
     Block content is owned by ``_notebook_block_handler`` — this only
     flips the notebook-level fields the AI could have changed.
     """
-    title = prev_state.get("title")
-    content_class = prev_state.get("content_class")
-    if title is not None:
-        con.execute(
-            "UPDATE notebooks SET title = ?, updated_at = CURRENT_TIMESTAMP "
-            "WHERE notebook_id = ?",
-            [title, target_id],
-        )
-    if content_class is not None:
-        con.execute(
-            "UPDATE notebooks SET content_class = ?, updated_at = CURRENT_TIMESTAMP "
-            "WHERE notebook_id = ?",
-            [content_class, target_id],
-        )
+    account_id = prev_state.get("account_id")
+    if not isinstance(account_id, str):
+        raise ValueError("prev_state missing notebook authority")
+    from substrate.notebooks import restore_notebook_metadata
+    from substrate.notebooks.authority import NotebookAccountAuthority
+
+    restore_notebook_metadata(
+        con,
+        NotebookAccountAuthority(account_id).notebook(target_id),
+        title=prev_state.get("title"),
+        content_class=prev_state.get("content_class"),
+    )
 
 
 def _ui_layout_handler(

@@ -28,6 +28,7 @@ import pytest
 from processing.embedding.embed import HashEmbedding
 from runtime.db_lock import connect_write
 from runtime.research_runner import PromotionFunnel
+from runtime.research_runner.promotion_funnel import _promotion_metadata
 from runtime.research_runner.protocol import StepEvent
 from substrate.context_pack.knowledge_reuse import retrieve_prior_units
 from substrate.graph.insight_question import knowledge_unit_of
@@ -45,6 +46,20 @@ _NOTE = (
     "Neutral-atom two-qubit gate error rate fell below the 1e-3 threshold "
     "this quarter, a scaling milestone."
 )
+
+
+def test_promotion_metadata_preserves_only_well_formed_inherited_citations() -> None:
+    event = StepEvent(
+        "leaf-1",
+        1,
+        "note",
+        text="attested",
+        data={"inherited_unit_ids": ["unit-1"]},
+    )
+    assert _promotion_metadata(event)["inherited_unit_ids"] == ["unit-1"]
+    event.data["inherited_unit_ids"] = ["unit-1", "unit-1"]
+    with pytest.raises(ValueError, match="invalid inherited unit citations"):
+        _promotion_metadata(event)
 
 
 def _seed_doc_with_chunk(db_path: str, emb: HashEmbedding, *, doc_id: str, chunk_id: str) -> None:

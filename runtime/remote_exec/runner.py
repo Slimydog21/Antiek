@@ -40,9 +40,20 @@ import logging
 import os
 import sys
 from collections.abc import Awaitable, Callable
+from pathlib import Path
+
+from substrate.investigation_streams import (
+    initialize_composite_stream,
+    resolve_investigation_stream,
+)
+from substrate.investigation_tenancy import (
+    InvestigationAuthority,
+    default_tenancy_root,
+)
+from substrate.multi_user.auth import UserClaims
 
 try:
-    from ...event_log import log_event, seal_investigation
+    from ...event_log import log_event_authorized, seal_investigation_authorized
     from ...schemas.events import ActionType
     from ..research_runner.budget import BudgetManager
     from ..research_runner.protocol import (
@@ -87,7 +98,10 @@ except ImportError:  # pragma: no cover — direct-script fallback
         Status,
         StepEvent,
     )
-    from substrate.event_log import log_event, seal_investigation  # type: ignore[no-redef]
+    from substrate.event_log import (  # type: ignore[no-redef]
+        log_event_authorized,
+        seal_investigation_authorized,
+    )
     from substrate.schemas.events import ActionType  # type: ignore[no-redef]
 
 
@@ -137,17 +151,37 @@ class RemoteResearchRunner:
         self,
         provider: RemoteExecProvider,
         *,
+        claims: UserClaims,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         budget: BudgetManager | None = None,
         events_dir: str | None = None,
         seal_on_complete: bool = True,
         on_emit: Callable[[StepEvent], Awaitable[None]] | None = None,
     ):
+        if not isinstance(claims, UserClaims):
+            raise TypeError("claims must be validated UserClaims")
+        if (
+            not isinstance(claims.user_id, str)
+            or not claims.user_id.strip()
+            or claims.user_id != claims.user_id.strip()
+            or not isinstance(claims.scopes, frozenset)
+            or not all(isinstance(scope, str) and scope for scope in claims.scopes)
+            or not isinstance(claims.issued_at, str)
+            or not claims.issued_at
+        ):
+            raise ValueError("claims must be validated UserClaims")
         self._provider = provider
+        self._claims = claims
+        self._event_role = "operator" if "operator" in claims.scopes else "user_agent"
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self.max_concurrency = max_concurrency
         self.budget = budget or BudgetManager()
         self._events_dir = events_dir
+        self._tenancy_root = (
+            Path(events_dir).expanduser().resolve(strict=False)
+            if events_dir
+            else default_tenancy_root()
+        )
         self._seal_on_complete = seal_on_complete
         self._on_emit = on_emit
         self._states: dict[str, _RemoteState] = {}
@@ -155,16 +189,25 @@ class RemoteResearchRunner:
     # -- protocol: start -----------------------------------------------
 
     async def start(self, investigation_id: str, plan: ResearchPlan) -> Handle:
+        if plan.investigation_id != investigation_id:
+            raise ValueError("plan investigation_id does not match start authority")
+        if plan.parent_investigation_id:
+            resolve_investigation_stream(self._authority(plan.parent_investigation_id))
+        initialize_composite_stream(self._authority(investigation_id))
         st = _RemoteState(plan)
         self._states[investigation_id] = st
         self.budget.register(investigation_id, plan.budget.cost_usd)
 
         if plan.parent_investigation_id:
-            log_event(
-                investigation_id, ActionType.INVESTIGATION_SPAWNED_FROM,
-                payload={"parent_investigation_id": plan.parent_investigation_id,
-                         "sub_question": plan.sub_question},
-                role="user_agent", events_dir=self._events_dir,
+            self._log_event(
+                investigation_id,
+                ActionType.INVESTIGATION_SPAWNED_FROM,
+                payload={
+                    "parent_investigation_id": plan.parent_investigation_id,
+                    "sub_question": plan.sub_question,
+                },
+                role=self._event_role,
+                events_dir=self._events_dir,
             )
 
         # Aggregate-cap gate: refuse the launch with a surfaced reason rather
@@ -174,31 +217,51 @@ class RemoteResearchRunner:
             reason = self.budget.launch_block_reason()
             st.state = RunState.BUDGET_HALTED
             st.error = reason
-            log_event(investigation_id, ActionType.INVESTIGATION_CHASE_HALTED,
-                      payload={"reason": "aggregate_budget", "detail": reason},
-                      role="user_agent", events_dir=self._events_dir)
-            await st.queue.put(StepEvent(investigation_id, 0, "status",
-                                         text=reason, state=RunState.BUDGET_HALTED))
-            await st.queue.put(StepEvent(investigation_id, 0, "done",
-                                         state=RunState.BUDGET_HALTED))
+            self._log_event(
+                investigation_id,
+                ActionType.INVESTIGATION_CHASE_HALTED,
+                payload={"reason": "aggregate_budget", "detail": reason},
+                role=self._event_role,
+                events_dir=self._events_dir,
+            )
+            await st.queue.put(
+                StepEvent(investigation_id, 0, "status", text=reason, state=RunState.BUDGET_HALTED)
+            )
+            await st.queue.put(StepEvent(investigation_id, 0, "done", state=RunState.BUDGET_HALTED))
             await st.queue.put(_STREAM_DONE)
             return Handle(investigation_id)
 
         st.task = asyncio.create_task(self._run(st))
         return Handle(investigation_id)
 
+    @property
+    def tenancy_root(self) -> Path:
+        return self._tenancy_root
+
+    def _authority(self, investigation_id: str) -> InvestigationAuthority:
+        return InvestigationAuthority(self._claims.user_id, investigation_id, self._tenancy_root)
+
+    def _log_event(self, investigation_id: str, action: ActionType, **kwargs):
+        kwargs.pop("events_dir", None)
+        return log_event_authorized(self._authority(investigation_id), action, **kwargs)
+
     # -- the per-leaf coroutine ----------------------------------------
 
     async def _run(self, st: _RemoteState) -> None:
         iid = st.plan.investigation_id
-        async with self._semaphore:        # cap on concurrent sandboxes
+        async with self._semaphore:  # cap on concurrent sandboxes
             st.started = True
             st.state = RunState.RUNNING
-            log_event(iid, ActionType.INVESTIGATION_START_REQUESTED,
-                      payload={"sub_question": st.sub_question, "runner": "remote_exec"},
-                      role="user_agent", events_dir=self._events_dir)
-            await self._push(st, StepEvent(iid, 0, "status", text="running",
-                                           state=RunState.RUNNING))
+            self._log_event(
+                iid,
+                ActionType.INVESTIGATION_START_REQUESTED,
+                payload={"sub_question": st.sub_question, "runner": "remote_exec"},
+                role=self._event_role,
+                events_dir=self._events_dir,
+            )
+            await self._push(
+                st, StepEvent(iid, 0, "status", text="running", state=RunState.RUNNING)
+            )
             try:
                 st.sandbox = await self._provider.provision(st.plan)
                 async for rev in self._provider.run(st.sandbox, st.plan):
@@ -207,8 +270,11 @@ class RemoteResearchRunner:
                     # halt arm below.
                     if rev.cost_usd or rev.tokens:
                         record_remote_dispatch(
-                            investigation_id=iid, event=rev, budget=self.budget,
+                            investigation_id=iid,
+                            event=rev,
+                            budget=self.budget,
                             events_dir=self._events_dir,
+                            authority=self._authority(iid),
                         )
                     if rev.kind == "step" and self.budget.steps(iid) > st.plan.budget.max_steps:
                         raise BudgetExceeded(
@@ -217,35 +283,54 @@ class RemoteResearchRunner:
                         )
                     # Map RemoteStepEvent → StepEvent 1:1. Identical shape;
                     # SPR-06/09 cannot tell which runner produced it.
-                    await self._push(st, StepEvent(
-                        investigation_id=iid, seq=rev.seq, kind=rev.kind,
-                        text=rev.text, cost_usd=rev.cost_usd, tokens=rev.tokens,
-                        state=RunState.RUNNING, data=dict(rev.data),
-                    ))
+                    await self._push(
+                        st,
+                        StepEvent(
+                            investigation_id=iid,
+                            seq=rev.seq,
+                            kind=rev.kind,
+                            text=rev.text,
+                            cost_usd=rev.cost_usd,
+                            tokens=rev.tokens,
+                            state=RunState.RUNNING,
+                            data=dict(rev.data),
+                        ),
+                    )
             except BudgetExceeded as exc:
                 st.state = RunState.BUDGET_HALTED
                 st.error = str(exc)
-                log_event(iid, ActionType.INVESTIGATION_CHASE_HALTED,
-                          payload={"reason": exc.scope, "detail": str(exc),
-                                   "spent_usd": self.budget.spent(iid)},
-                          role="user_agent", events_dir=self._events_dir)
+                self._log_event(
+                    iid,
+                    ActionType.INVESTIGATION_CHASE_HALTED,
+                    payload={
+                        "reason": exc.scope,
+                        "detail": str(exc),
+                        "spent_usd": self.budget.spent(iid),
+                    },
+                    role=self._event_role,
+                    events_dir=self._events_dir,
+                )
                 await self._finish(st, None, None, halted=True)
                 return
             except asyncio.CancelledError:
                 st.state = RunState.STOPPED
-                await self._finish(st, ActionType.INVESTIGATION_COMPLETED,
-                                   {"outcome": "cancelled"})
+                await self._finish(st, ActionType.INVESTIGATION_COMPLETED, {"outcome": "cancelled"})
                 raise
             except (RemoteExecProviderError, Exception) as exc:
                 # One leaf failing — including a provider/provision/runtime
                 # error — must not kill its siblings.
                 st.state = RunState.FAILED
                 st.error = f"{type(exc).__name__}: {exc}"
-                log_event(iid, ActionType.INVESTIGATION_FAILED,
-                          payload={"error": st.error}, role="user_agent",
-                          events_dir=self._events_dir)
-                await self._push(st, StepEvent(iid, 0, "error", text=st.error,
-                                               state=RunState.FAILED))
+                self._log_event(
+                    iid,
+                    ActionType.INVESTIGATION_FAILED,
+                    payload={"error": st.error},
+                    role=self._event_role,
+                    events_dir=self._events_dir,
+                )
+                await self._push(
+                    st, StepEvent(iid, 0, "error", text=st.error, state=RunState.FAILED)
+                )
                 await self._finish(st, None, None, already_logged=True)
                 return
             st.state = RunState.DONE
@@ -262,16 +347,24 @@ class RemoteResearchRunner:
         # A leaf that finishes any way must not leak a sandbox.
         await self._teardown(st)
         if action is not None and not already_logged:
-            log_event(iid, action, payload=payload or {}, role="user_agent",
-                      events_dir=self._events_dir)
+            self._log_event(
+                iid,
+                action,
+                payload=payload or {},
+                role=self._event_role,
+                events_dir=self._events_dir,
+            )
         if self._seal_on_complete:
             try:
-                seal_investigation(iid, events_dir=self._events_dir)
+                seal_investigation_authorized(self._authority(iid))
             except Exception as e:  # seal is best-effort
                 try:
                     logger.warning(
-                        "investigation seal failed (best-effort): iid=%s "
-                        "events_dir=%s: %r", iid, self._events_dir, e)
+                        "investigation seal failed (best-effort): iid=%s events_dir=%s: %r",
+                        iid,
+                        self._events_dir,
+                        e,
+                    )
                 except Exception:
                     pass  # a broken log channel must not break the finish path
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
@@ -292,7 +385,10 @@ class RemoteResearchRunner:
                     "sandbox teardown failed (best-effort, NOT retried — "
                     "st.torn_down already set): sandbox_id=%s "
                     "investigation_id=%s: %r",
-                    st.sandbox.sandbox_id, st.plan.investigation_id, e)
+                    st.sandbox.sandbox_id,
+                    st.plan.investigation_id,
+                    e,
+                )
             except Exception:
                 pass  # a broken log channel must not break teardown isolation
 
@@ -377,9 +473,7 @@ class RemoteResearchRunner:
         # cancelled leaf never leaks a sandbox (rigor: the negative test).
         if st.sandbox is not None:
             try:
-                await self._provider.steer(
-                    st.sandbox, RemoteCommand(signal=RemoteSignal.STOP)
-                )
+                await self._provider.steer(st.sandbox, RemoteCommand(signal=RemoteSignal.STOP))
             except Exception:  # pragma: no cover
                 pass
         if st.task is not None:

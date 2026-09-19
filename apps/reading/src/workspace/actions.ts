@@ -21,7 +21,7 @@ import type { PanelMode } from "./panel.types";
 /** Open the notebook at `notebookId` (or create a new untitled
  *  notebook if absent). Default mode is "floating" so the operator can
  *  drag it aside while continuing to read. S5+ consumers wire this
- *  from MasterMdViewer claim chips, PdfViewer regions, and ClaimCard.
+ *  from MasterMdViewer claim chips, canonical hosted-document regions, and ClaimCard.
  *
  *  Two notebook surfaces exist (see PanelRegistry):
  *    - "Notebook"        substrate-backed block model (legacy on main)
@@ -52,17 +52,22 @@ export function openNotebook(opts: {
   );
 }
 
-/** Open a PDF region as a floating PDF panel jumped to a page. */
-export function openPdfPanel(opts: {
+/** Open a canonical hosted HTML document; page remains provenance chrome. */
+export function openHostedDocumentPanel(opts: {
   documentId: string;
+  chunkIds?: string[];
+  citationReceiptSha256?: string;
   page?: number;
   title?: string;
 }): string {
-  const id = `pdf:${opts.documentId}${opts.page ? `:p${opts.page}` : ""}`;
+  const receipt = opts.citationReceiptSha256 && /^[a-f0-9]{64}$/.test(opts.citationReceiptSha256)
+    ? `:citation:${opts.citationReceiptSha256}`
+    : "";
+  const id = `hosted-document:${opts.documentId}${opts.page ? `:p${opts.page}` : ""}${receipt}`;
   return useWorkspace.getState().open(
-    "PdfViewer",
-    { documentId: opts.documentId, initialPage: opts.page },
-    { mode: "floating", title: opts.title ?? `PDF · ${opts.documentId.slice(-6)}`, id },
+    "HostedDocument",
+    { documentId: opts.documentId, initialPage: opts.page, citationChunkIds: opts.chunkIds ?? [], citationReceiptSha256: receipt ? opts.citationReceiptSha256 : undefined },
+    { mode: "floating", title: opts.title ?? `Document · ${opts.documentId.slice(-6)}`, id },
   );
 }
 
@@ -71,14 +76,22 @@ export function openClaimInspector(opts: {
   claimId: string;
   investigationId: string;
   documentId?: string;
+  claimIndex?: number;
+  contentHash?: string;
+  sessionGeneration?: number;
 }): string {
-  const id = `claim:${opts.claimId}`;
+  const identity = opts.contentHash && Number.isInteger(opts.claimIndex)
+    ? `${opts.contentHash}:${opts.claimIndex}`
+    : opts.claimId;
+  const id = `claim:${opts.sessionGeneration ?? "legacy"}:${identity}`;
   return useWorkspace.getState().open(
     "ClaimInspector",
     {
       claimId: opts.claimId,
       investigationId: opts.investigationId,
       documentId: opts.documentId,
+      claimIndex: opts.claimIndex,
+      contentHash: opts.contentHash,
     },
     { mode: "floating", title: "Claim", id },
   );

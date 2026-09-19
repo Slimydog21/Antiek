@@ -76,13 +76,14 @@ def test_hydrate_with_injector_lands_body():
         fetch_publication=fetch,
         include_html=True,
     )
-    assert asset.fetched is True
-    assert asset.offline_honest is False
+    assert asset.fetched is False
+    assert asset.hydrated is False
+    assert asset.offline_honest is True
     assert "Attention Is All You Need" in asset.title
     assert "Transformer" in asset.body_text
     assert asset.html
     assert "Attention" in asset.html
-    assert "body landed via injector" in asset.html.lower()
+    assert "offline-honest identity" in asset.html.lower()
 
 
 def test_asset_id_stable():
@@ -92,9 +93,7 @@ def test_asset_id_stable():
     assert r1.kind == "arxiv"
     assert r2.kind == "arxiv"
     assert asset_id_for_ref(r1) == asset_id_for_ref(r2)
-    assert asset_id_for_ref(r1) == asset_id_for_ref(
-        parse_source_reference(r1.raw)
-    )
+    assert asset_id_for_ref(r1) == asset_id_for_ref(parse_source_reference(r1.raw))
 
 
 def test_api_hydrate_double_run_stable(client):
@@ -117,8 +116,12 @@ def test_api_hydrate_double_run_stable(client):
     assert b2["view_format"] == "html"
 
 
-def test_api_hydrate_with_injected_fetcher(client):
+def test_api_generic_substack_fetcher_without_env_is_zero_request(client):
+    calls = 0
+
     def fetch(ref):
+        nonlocal calls
+        calls += 1
         return {
             "title": "Injected Substack Post",
             "body_text": "Deep research needs recursive twin notes.",
@@ -134,8 +137,8 @@ def test_api_hydrate_with_injected_fetcher(client):
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["fetched"] is True
-    assert "Injected Substack" in body["title"]
-    assert "recursive twin" in body["body_text"]
+    assert body["fetched"] is False
+    assert body["hydrated"] is False
+    assert calls == 0
     assert body["view_format"] == "html"
     assert "application/pdf" not in (body.get("html") or "").lower()

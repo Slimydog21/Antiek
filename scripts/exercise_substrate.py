@@ -140,15 +140,18 @@ def exercise(db_path: str) -> dict:
         get_notebook,
         promote_to_public,
     )
+    from substrate.notebooks.authority import operator_notebook_authority
 
     with connect_write(db_path, purpose="exercise:nb_create") as con:
+        notebook_authority = operator_notebook_authority("nb-demo-0")
         nb_id = create_notebook(
             con,
+            notebook_authority,
             title="Neutral-atom platforms: 100-qubit error rate snapshot",
             investigation_id="inv-demo-0",
         )
         append_block(
-            con, nb_id, block_type="prose",
+            con, notebook_authority, block_type="prose",
             content={
                 "text": (
                     "Neutral-atom platforms have reached gate error rates "
@@ -161,11 +164,11 @@ def exercise(db_path: str) -> dict:
             },
         )
         append_block(
-            con, nb_id, block_type="region_embed",
+            con, notebook_authority, block_type="region_embed",
             content={"caption": "Tier-1 reference: Lukin lab"},
             ref_id=tier1_chunk_id,
         )
-        nb = get_notebook(con, nb_id)
+        nb = get_notebook(con, notebook_authority)
         inputs = gather_quality_gate_inputs(con, nb)
     verdict = evaluate_notebook_for_public(
         text_content=inputs.text_content,
@@ -176,7 +179,7 @@ def exercise(db_path: str) -> dict:
     line(f"gate verdict: accepted={verdict.accepted}")
     if verdict.accepted:
         with connect_write(db_path, purpose="exercise:nb_promote") as con:
-            promote_to_public(con, nb_id)
+            promote_to_public(con, notebook_authority)
         line(f"notebook {nb_id} promoted to user_public_contribution")
     summary["notebook_promoted"] = verdict.accepted
 

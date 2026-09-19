@@ -40,10 +40,10 @@ is not invoked here — that's a separate signal layer.
 
 from __future__ import annotations
 
-import enum
-import re
-from dataclasses import dataclass, field
-from typing import Any, Optional
+import os
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Any
 
 # Master-spec §5.4 — at most 2 em-dashes per thesis-shaped artifact.
 # Note-level threshold is more permissive (4) since notes can chain.
@@ -74,7 +74,7 @@ MIN_WORDS_PER_NOTE: int = 50
 MAX_SOURCE_TIER_FOR_HARD_CLAIM: int = 3
 
 
-class QualityGateOutcome(str, enum.Enum):
+class QualityGateOutcome(StrEnum):
     """Three-way outcome. PASS lets attribution flow; REJECT and
     SOFT_REJECT block it. SOFT_REJECT permits operator override."""
 
@@ -83,7 +83,7 @@ class QualityGateOutcome(str, enum.Enum):
     REJECT = "reject"
 
 
-class QualityFailureReason(str, enum.Enum):
+class QualityFailureReason(StrEnum):
     """Why a note failed. Exposed in audit events so the operator
     can see which discipline is being violated."""
 
@@ -157,20 +157,12 @@ def _lookup_source_tiers(
     chunks resolve to None (treated as ungrounded)."""
     if not chunk_ids:
         return {}
-    placeholders = ",".join(["?"] * len(chunk_ids))
-    rows = con.execute(
-        f"""
-        SELECT c.chunk_id, d.source_tier
-        FROM chunks c
-        LEFT JOIN documents d ON d.document_id = c.document_id
-        WHERE c.chunk_id IN ({placeholders})
-        """,
-        list(chunk_ids),
-    ).fetchall()
-    found: dict[str, int | None] = {
-        cid: int(tier) if tier is not None else None
-        for cid, tier in rows
-    }
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+        found: dict[str, int | None] = {}
+    else:
+        from substrate.legal_gate.read import legacy_public_graph_source_tiers
+
+        found = legacy_public_graph_source_tiers(con, chunk_ids)
     # Fill missing chunks with None.
     for cid in chunk_ids:
         found.setdefault(cid, None)

@@ -195,6 +195,10 @@ export function openMidnightOilDepositWindow(
       html: deposit.html,
       view_format: "html",
       source: "midnight_oil_deposit",
+      resume_ref: {
+        resolver: "engagement_document",
+        document_id: docId,
+      },
     },
     {
       id: `win:moil-deposit:${docKey}${idSuffix}`,
@@ -791,6 +795,11 @@ export default function MidnightOil() {
 
   async function onRetryGraphAdmission() {
     if (!job || !admissionRetryable || admissionRetryBusy) return;
+    const retrySnapshot = {
+      jobId: job.job_id,
+      state: job.graph_projection_state,
+      reason: job.graph_projection_reason,
+    };
     setAdmissionRetryBusy(true);
     setError(null);
     try {
@@ -800,9 +809,13 @@ export default function MidnightOil() {
       }
       setJob((current) => {
         if (!current || current.job_id !== refreshed.job_id) return current;
+        // A refresh or another action may have installed newer durable truth
+        // while this request was in flight. Only replace the exact state from
+        // which this retry was launched; otherwise require an explicit refresh.
         if (
-          current.graph_projection_state !== "pending" &&
-          refreshed.graph_projection_state === "pending"
+          current.job_id !== retrySnapshot.jobId ||
+          current.graph_projection_state !== retrySnapshot.state ||
+          current.graph_projection_reason !== retrySnapshot.reason
         ) {
           return current;
         }
@@ -1619,6 +1632,10 @@ export default function MidnightOil() {
                           title: `Midnight Oil · ${job.job_id}`,
                           view_format: "html",
                           source: "midnight_oil_deposit",
+                          resume_ref: {
+                            resolver: "engagement_document",
+                            document_id: job.deposit_document_id,
+                          },
                         },
                         {
                           id: `win:moil-deposit:${job.deposit_document_id}`,

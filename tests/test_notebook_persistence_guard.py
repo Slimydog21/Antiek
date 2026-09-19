@@ -120,6 +120,20 @@ def test_is_effectively_empty(doc, expected_empty):
 # ── M1: reproduce the loss (RED on pre-fix code) ───────────────────────
 
 
+def _put_doc(client, notebook_id: str, doc: dict, mutation_key: str):
+    current = client.get(f"/notebooks/{notebook_id}/content")
+    assert current.status_code == 200, current.text
+    return client.put(
+        f"/notebooks/{notebook_id}/content",
+        json={
+            "schema_version": 1,
+            "base_revision": current.json()["revision"],
+            "mutation_key": mutation_key,
+            "doc": doc,
+        },
+    )
+
+
 def test_fresh_browser_autosave_does_not_destroy_persisted_blocks(isolated_db):
     """M1 keystone — the reproduced data-loss.
 
@@ -137,9 +151,7 @@ def test_fresh_browser_autosave_does_not_destroy_persisted_blocks(isolated_db):
     assert _block_texts(before) == texts
 
     # The fresh browser's first autosave: a near-empty doc.
-    resp = client.put(
-        f"/notebooks/{nb_id}/content", json={"doc": FRESH_EDITOR_EMPTY_DOC}
-    )
+    resp = _put_doc(client, nb_id, FRESH_EDITOR_EMPTY_DOC, "fresh-empty")
 
     after = client.get(f"/notebooks/{nb_id}").json()["blocks"]
     # The load-bearing data-loss assertion: block count before vs after.
@@ -182,7 +194,7 @@ def test_guard_rejects_every_empty_shape_over_persisted_blocks(isolated_db, empt
     editor could send is refused when the notebook has persisted blocks."""
     client = _client()
     nb_id, texts = _seed_notebook_with_blocks(client, 3)
-    resp = client.put(f"/notebooks/{nb_id}/content", json={"doc": empty_doc})
+    resp = _put_doc(client, nb_id, empty_doc, "empty-shape")
     assert resp.status_code == 409, resp.text
     body = resp.json()["detail"]
     assert body["code"] == "empty_doc_would_destroy_blocks"
@@ -199,9 +211,7 @@ def test_empty_doc_into_empty_notebook_is_allowed(isolated_db):
     nb_id = client.post(
         "/notebooks", json={"title": "blank", "investigation_id": "inv-1"}
     ).json()["notebook_id"]
-    resp = client.put(
-        f"/notebooks/{nb_id}/content", json={"doc": FRESH_EDITOR_EMPTY_DOC}
-    )
+    resp = _put_doc(client, nb_id, FRESH_EDITOR_EMPTY_DOC, "empty-noop")
     assert resp.status_code == 200, resp.text
 
 
@@ -225,7 +235,7 @@ def test_legitimate_full_doc_replace_still_works(isolated_db):
              "content": [{"type": "text", "text": "Entirely new prose."}]},
         ],
     }
-    resp = client.put(f"/notebooks/{nb_id}/content", json={"doc": new_doc})
+    resp = _put_doc(client, nb_id, new_doc, "replace-two")
     assert resp.status_code == 200, resp.text
 
     after = client.get(f"/notebooks/{nb_id}").json()["blocks"]
@@ -246,7 +256,7 @@ def test_replace_with_single_real_block_works(isolated_db):
              "content": [{"type": "text", "text": "The one surviving idea."}]}
         ],
     }
-    resp = client.put(f"/notebooks/{nb_id}/content", json={"doc": one_real})
+    resp = _put_doc(client, nb_id, one_real, "replace-one")
     assert resp.status_code == 200, resp.text
     after = client.get(f"/notebooks/{nb_id}").json()["blocks"]
     assert _block_texts(after) == ["The one surviving idea."]
@@ -303,7 +313,7 @@ def test_hydration_get_returns_composed_doc(isolated_db):
         "/notebooks", json={"title": "rich", "investigation_id": "inv-1"}
     ).json()["notebook_id"]
     # Persist the rich doc through the real PUT path (decompose).
-    put = client.put(f"/notebooks/{nb_id}/content", json={"doc": RICH_DOC})
+    put = _put_doc(client, nb_id, RICH_DOC, "rich-doc")
     assert put.status_code == 200, put.text
 
     # Hydrate through the new GET (compose).

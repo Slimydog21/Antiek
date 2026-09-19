@@ -18,6 +18,8 @@ import hashlib
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import httpx
@@ -30,6 +32,7 @@ from orchestration.session_evidence_pack import build_session_evidence_pack
 from processing.embedding import _reset_default_provider, set_default_embedding_provider
 from roles.cascade_planner import SubQuestion, approve_plan, build_plan, persist_tree
 from roles.cascade_planner.persist import load_tree
+from runtime.db_lock import connect_write
 from runtime.research_runner import (
     HostLocalRunner,
     PromotionFunnel,
@@ -41,7 +44,16 @@ from runtime.research_runner.promotion_funnel import _promotion_metadata
 from runtime.research_runner.protocol import StepEvent
 from substrate.dispatch.base import NormalizedUsage
 from substrate.graph.schema import init_database_at_path
+from substrate.investigation_streams import initialize_composite_stream
+from substrate.investigation_tenancy import InvestigationAuthority, bind_legacy_stream_lease
 from substrate.legal_gate import LegalGate, PermissiveLegalGate
+from substrate.legal_gate.policy_store import (
+    LegalPolicyDenied,
+    account_policy_authority,
+    append_policy_event,
+)
+from substrate.legal_gate.readiness import legal_policy_readiness
+from substrate.multi_user.auth import operator_claims
 
 # ── shared helpers ─────────────────────────────────────────────────
 
@@ -177,9 +189,7 @@ def test_promotion_metadata_maps_document_id_to_source_document_id():
 
 
 def test_promotion_metadata_without_document_id_adds_no_source():
-    ev = StepEvent(
-        "leaf-1", 1, "note", text="stub note", data={"gather_mode": "contract_stub"}
-    )
+    ev = StepEvent("leaf-1", 1, "note", text="stub note", data={"gather_mode": "contract_stub"})
     meta = _promotion_metadata(ev)
     assert "source_document_id" not in meta
 
@@ -223,9 +233,7 @@ def test_factory_exa_is_case_insensitive(monkeypatch):
 
 
 def test_exa_discover_emits_proposals(isolated_env):
-    cli = _mock_exa_client(
-        [{"results": [_exa_result("https://example.com/x", title="X")]}]
-    )
+    cli = _mock_exa_client([{"results": [_exa_result("https://example.com/x", title="X")]}])
     proposals = discover(
         query="test query",
         investigation_id="inv-1",
@@ -264,6 +272,34 @@ def test_promote_discovery_ingested_returns_doc_url(isolated_env, monkeypatch):
     assert _discovery_id("https://example.com/x", "inv-1", "q").startswith("disc-exa-")
 
 
+def test_promote_discovery_reports_staged_policy_denial_as_rejection(isolated_env, monkeypatch):
+    _patch_ingest_url(
+        monkeypatch,
+        lambda *a, **k: FakeIngestResult(
+            document_id="doc-url-denied",
+            chunks_written=0,
+            skipped_reason="legal_policy:no_explicit_external_allow",
+        ),
+    )
+    cli = _mock_exa_client([{"results": [_exa_result("https://example.com/x")]}])
+    [proposal] = discover(
+        query="q",
+        investigation_id="inv-1",
+        client=cli,
+        events_dir=isolated_env["events_dir"],
+        use_cache=False,
+    )
+    result = promote_discovery(
+        proposal,
+        investigation_id="inv-1",
+        legal_gate=_bypass_gate(),
+        events_dir=isolated_env["events_dir"],
+    )
+    assert result.decision == "rejected_by_legal_gate"
+    assert result.document_id is None
+    assert result.legal_gate_kind == "durable_document_policy"
+
+
 # ── M1 / M4(a): loop provenance ─────────────────────────────────────
 
 
@@ -295,7 +331,10 @@ async def test_exa_gather_loop_emits_provenance_steps(isolated_env, monkeypatch)
         events_dir=isolated_env["events_dir"],
     )
     runner = HostLocalRunner(
-        loop_fn, events_dir=isolated_env["events_dir"], seal_on_complete=False
+        loop_fn,
+        claims=operator_claims(),
+        events_dir=isolated_env["events_dir"],
+        seal_on_complete=False,
     )
     plan = ResearchPlan(investigation_id="leaf-exa", sub_question="exa gather topic")
     handle = await runner.start("leaf-exa", plan)
@@ -321,12 +360,8 @@ async def test_exa_gather_loop_emits_provenance_steps(isolated_env, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_exa_reasoning_mode_consumes_context_at_dispatch_boundary(
-    isolated_env, monkeypatch
-):
-    cli = _mock_exa_client(
-        [{"results": [_exa_result("https://example.com/reasoned")]}]
-    )
+async def test_exa_reasoning_mode_consumes_context_at_dispatch_boundary(isolated_env, monkeypatch):
+    cli = _mock_exa_client([{"results": [_exa_result("https://example.com/reasoned")]}])
     _patch_ingest_url(
         monkeypatch,
         lambda url, **kwargs: FakeIngestResult(document_id="doc-url-reasoned"),
@@ -354,7 +389,10 @@ async def test_exa_reasoning_mode_consumes_context_at_dispatch_boundary(
         reasoning_dispatch_fn=fake_dispatch,
     )
     runner = HostLocalRunner(
-        loop_fn, events_dir=isolated_env["events_dir"], seal_on_complete=False
+        loop_fn,
+        claims=operator_claims(),
+        events_dir=isolated_env["events_dir"],
+        seal_on_complete=False,
     )
     plan = ResearchPlan(investigation_id="leaf-reasoned", sub_question="reason this")
     handle = await runner.start(plan.investigation_id, plan)
@@ -363,14 +401,16 @@ async def test_exa_reasoning_mode_consumes_context_at_dispatch_boundary(
     assert captured["context_pack_event_id"] is None
     assert "EXPLICIT RESEARCH QUESTION:\nreason this" in str(captured["prompt"])
     reasoned_notes = [
-        event for event in events
+        event
+        for event in events
         if event.kind == "note" and event.data.get("gather_mode") == "exa_reasoning"
     ]
     assert len(reasoned_notes) == 1
     assert reasoned_notes[0].text == "Grounded finding"
     assert reasoned_notes[0].data["document_id"] == "doc-url-reasoned"
     reasoning_steps = [
-        event for event in events
+        event
+        for event in events
         if event.kind == "step" and event.data.get("gather_mode") == "exa_reasoning"
     ]
     assert reasoning_steps[0].tokens == 100
@@ -404,11 +444,12 @@ async def test_exa_reasoning_fails_when_ingested_sources_have_no_snippets(
         reasoning_dispatch_fn=forbidden_dispatch,
     )
     runner = HostLocalRunner(
-        loop_fn, events_dir=isolated_env["events_dir"], seal_on_complete=False
+        loop_fn,
+        claims=operator_claims(),
+        events_dir=isolated_env["events_dir"],
+        seal_on_complete=False,
     )
-    plan = ResearchPlan(
-        investigation_id="leaf-no-snippet", sub_question="reason this"
-    )
+    plan = ResearchPlan(investigation_id="leaf-no-snippet", sub_question="reason this")
     handle = await runner.start(plan.investigation_id, plan)
     events = [event async for event in runner.stream(handle)]
 
@@ -426,15 +467,11 @@ class _RejectAllGate:
     def check_url(self, url: str):
         from substrate.legal_gate import LegalGateVerdict
 
-        return LegalGateVerdict(
-            allowed=False, reason="test reject", gate_kind="placeholder"
-        )
+        return LegalGateVerdict(allowed=False, reason="test reject", gate_kind="placeholder")
 
 
 @pytest.mark.asyncio
-async def test_exa_gather_loop_legal_reject_records_decision_no_doc(
-    isolated_env, monkeypatch
-):
+async def test_exa_gather_loop_legal_reject_records_decision_no_doc(isolated_env, monkeypatch):
     # ingest_url must NEVER be called when the gate rejects; wire it to blow up
     # so a regression that bypasses the gate is caught loudly.
     def exploding_ingest(*a, **k):
@@ -450,7 +487,10 @@ async def test_exa_gather_loop_legal_reject_records_decision_no_doc(
         events_dir=isolated_env["events_dir"],
     )
     runner = HostLocalRunner(
-        loop_fn, events_dir=isolated_env["events_dir"], seal_on_complete=False
+        loop_fn,
+        claims=operator_claims(),
+        events_dir=isolated_env["events_dir"],
+        seal_on_complete=False,
     )
     plan = ResearchPlan(investigation_id="leaf-rej", sub_question="rejected topic")
     handle = await runner.start("leaf-rej", plan)
@@ -478,7 +518,10 @@ async def test_exa_gather_loop_empty_proposals_is_graceful(isolated_env):
         events_dir=isolated_env["events_dir"],
     )
     runner = HostLocalRunner(
-        loop_fn, events_dir=isolated_env["events_dir"], seal_on_complete=False
+        loop_fn,
+        claims=operator_claims(),
+        events_dir=isolated_env["events_dir"],
+        seal_on_complete=False,
     )
     plan = ResearchPlan(investigation_id="leaf-empty", sub_question="nothing found")
     handle = await runner.start("leaf-empty", plan)
@@ -494,9 +537,147 @@ async def test_exa_gather_loop_empty_proposals_is_graceful(isolated_env):
 
 
 @pytest.mark.asyncio
-async def test_exa_gather_loop_discover_raise_fails_leaf_cleanly(
-    isolated_env, monkeypatch
-):
+async def test_snapshot_drift_refuses_before_first_provider_request(graph_env, monkeypatch):
+    calls = {"discover": 0}
+
+    def counted_discover(*args, **kwargs):
+        calls["discover"] += 1
+        raise AssertionError("provider request ran after legal-policy drift")
+
+    monkeypatch.setattr("acquisition.search.exa.discover", counted_discover)
+    investigation = InvestigationAuthority(
+        operator_claims().user_id, "leaf-policy-drift", Path(graph_env["events"])
+    )
+    initialize_composite_stream(investigation)
+    authority = account_policy_authority(investigation)
+    con = connect_write(graph_env["db"], purpose="test_exa_policy_drift")
+    try:
+        reviewed = legal_policy_readiness(con, authority).policy_snapshot_sha256
+        assert reviewed is not None
+        append_policy_event(
+            con,
+            authority,
+            scope_kind="account",
+            matcher_kind="domain",
+            matcher_value="example.com",
+            decision="deny",
+            citation_ref="case:provider-drift",
+            issuer_id="operator",
+            reason_code="operator_deny",
+            effective_at=datetime.now(UTC),
+        )
+    finally:
+        con.close()
+
+    loop_fn = make_exa_gather_loop(
+        db_path=graph_env["db"],
+        events_dir=graph_env["events"],
+        authority=investigation,
+        expected_policy_snapshot_sha256=reviewed,
+    )
+    runner = HostLocalRunner(
+        loop_fn,
+        claims=operator_claims(),
+        events_dir=graph_env["events"],
+        seal_on_complete=False,
+    )
+    handle = await runner.start(
+        "leaf-policy-drift",
+        ResearchPlan(investigation_id="leaf-policy-drift", sub_question="policy drift"),
+    )
+    events = [event async for event in runner.stream(handle)]
+    assert calls["discover"] == 0
+    errors = [event for event in events if event.kind == "error"]
+    assert len(errors) == 1
+    assert "legal-policy snapshot changed" in errors[0].text
+
+
+@pytest.mark.asyncio
+async def test_snapshot_bound_allowed_promotion_uses_leaf_authority(graph_env, monkeypatch):
+    root = InvestigationAuthority(
+        operator_claims().user_id, "plan-policy-allow", Path(graph_env["events"])
+    )
+    leaf = InvestigationAuthority(
+        operator_claims().user_id, "leaf-policy-allow", Path(graph_env["events"])
+    )
+    initialize_composite_stream(root)
+    initialize_composite_stream(leaf)
+    con = connect_write(graph_env["db"], purpose="test_exa_policy_allow")
+    try:
+        policy_authority = account_policy_authority(root)
+        append_policy_event(
+            con,
+            policy_authority,
+            scope_kind="account",
+            matcher_kind="domain",
+            matcher_value="example.com",
+            decision="allow",
+            citation_ref="license:provider-allow",
+            issuer_id="operator",
+            reason_code="licensed_source",
+            effective_at=datetime.now(UTC),
+        )
+        reviewed = legal_policy_readiness(con, policy_authority).policy_snapshot_sha256
+        assert reviewed is not None
+    finally:
+        con.close()
+
+    seen: dict[str, object] = {}
+
+    def fake_ingest(url, *, investigation_id, authority, **kwargs):
+        seen.update(url=url, investigation_id=investigation_id, authority=authority)
+        policy_con = connect_write(graph_env["db"], purpose="test_mid_dispatch_policy_change")
+        try:
+            with pytest.raises(LegalPolicyDenied, match="active provider dispatch"):
+                append_policy_event(
+                    policy_con,
+                    account_policy_authority(authority),
+                    scope_kind="account",
+                    matcher_kind="domain",
+                    matcher_value="example.com",
+                    decision="deny",
+                    citation_ref="case:mid-dispatch",
+                    issuer_id="operator",
+                    reason_code="operator_deny",
+                    effective_at=datetime.now(UTC),
+                )
+        finally:
+            policy_con.close()
+        seen["policy_change_blocked"] = True
+        return FakeIngestResult(document_id="doc-url-policy-allow")
+
+    _patch_ingest_url(monkeypatch, fake_ingest)
+    loop_fn = make_exa_gather_loop(
+        top_k=1,
+        client=_mock_exa_client(
+            [{"results": [_exa_result("https://example.com/paper")]}]
+        ),
+        db_path=graph_env["db"],
+        events_dir=graph_env["events"],
+        authority=root,
+        expected_policy_snapshot_sha256=reviewed,
+    )
+    runner = HostLocalRunner(
+        loop_fn,
+        claims=operator_claims(),
+        events_dir=graph_env["events"],
+        seal_on_complete=False,
+    )
+    handle = await runner.start(
+        leaf.investigation_id,
+        ResearchPlan(investigation_id=leaf.investigation_id, sub_question="allowed source"),
+    )
+    events = [event async for event in runner.stream(handle)]
+    assert not [event for event in events if event.kind == "error"]
+    assert seen["investigation_id"] == leaf.investigation_id
+    assert isinstance(seen["authority"], InvestigationAuthority)
+    assert seen["authority"].investigation_id == leaf.investigation_id
+    assert seen["authority"].account_id == root.account_id
+    assert seen["policy_change_blocked"] is True
+
+
+@pytest.mark.asyncio
+async def test_exa_gather_loop_discover_raise_fails_leaf_cleanly(isolated_env, monkeypatch):
     """A ``discover``-level raise (e.g. ``DiscoveryBudgetExceeded`` from
     ``check_and_reserve``) must fail this single leaf cleanly: the runner
     catch-all marks it FAILED and emits an ``error`` event, and the loop
@@ -529,7 +710,10 @@ async def test_exa_gather_loop_discover_raise_fails_leaf_cleanly(
         events_dir=isolated_env["events_dir"],
     )
     runner = HostLocalRunner(
-        loop_fn, events_dir=isolated_env["events_dir"], seal_on_complete=False
+        loop_fn,
+        claims=operator_claims(),
+        events_dir=isolated_env["events_dir"],
+        seal_on_complete=False,
     )
     plan = ResearchPlan(investigation_id="leaf-raise", sub_question="budget blown")
     handle = await runner.start("leaf-raise", plan)
@@ -585,6 +769,12 @@ async def test_exa_gather_pack_uses_doc_url_not_placeholder(graph_env, monkeypat
         events_dir=graph_env["events"],
     )
 
+    bind_legacy_stream_lease(
+        InvestigationAuthority(
+            operator_claims().user_id, "session-pack", Path(graph_env["events"])
+        ),
+        provenance="test_plan_start",
+    )
     tree = build_plan("pack fidelity problem", decomposer=_Dec(["sub q"])).tree
     root_id = persist_tree(
         tree,
@@ -608,12 +798,14 @@ async def test_exa_gather_pack_uses_doc_url_not_placeholder(graph_env, monkeypat
     funnel = PromotionFunnel(db_path=graph_env["db"], embedding_provider=_FakeEmbedding())
     runner = HostLocalRunner(
         loop_fn,
+        claims=operator_claims(),
         events_dir=graph_env["events"],
         seal_on_complete=False,
         on_emit=funnel.submit,
     )
     session = CascadeSession(
         "session-pack",
+        claims=operator_claims(),
         runner=runner,
         funnel=funnel,
         events_dir=graph_env["events"],
@@ -631,6 +823,7 @@ async def test_exa_gather_pack_uses_doc_url_not_placeholder(graph_env, monkeypat
     # content_hash stable across two builds of the same session.
     rebuilt = build_session_evidence_pack(
         "session-pack",
+        owner_user_id=operator_claims().user_id,
         events_dir=graph_env["events"],
         db_path=graph_env["db"],
         researches=[("leaf-pack-0", "sub q")],

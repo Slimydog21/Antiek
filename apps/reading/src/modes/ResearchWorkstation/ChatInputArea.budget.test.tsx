@@ -30,6 +30,7 @@ const {
     tier: "pro",
     provider: null,
     model: null,
+    pricing_fingerprint: "price-test-v1",
   })),
   fetchDecisionTreeSelection: vi.fn(async () => ({
     model_id: null,
@@ -69,6 +70,15 @@ vi.mock("../../lib/api", async (importOriginal) => {
 });
 
 const startInvestigationMock = vi.mocked(startInvestigation);
+
+async function approveInitialRunCeiling(value = "1.25") {
+  fireEvent.change(screen.getByLabelText("Initial-run hard ceiling (USD)"), {
+    target: { value },
+  });
+  const checkbox = screen.getByLabelText("Approve initial-run hard ceiling") as HTMLInputElement;
+  await waitFor(() => expect(checkbox.disabled).toBe(false));
+  fireEvent.click(checkbox);
+}
 
 describe("ChatInputArea budget projection (bq)", () => {
   beforeEach(() => {
@@ -142,6 +152,7 @@ describe("ChatInputArea budget projection (bq)", () => {
     const ta = screen.getByPlaceholderText(/what do you want to research/i);
     await userEvent.type(ta, "Follow-up wrestle across the open investigation");
     fireEvent.click(screen.getByTestId("research-launch-tier-wrestle"));
+    await approveInitialRunCeiling();
     // Ask enables once question is ≥3 chars.
     await waitFor(() => {
       expect(
@@ -155,6 +166,7 @@ describe("ChatInputArea budget projection (bq)", () => {
         expect.objectContaining({
           research_tier: "wrestle",
           question: expect.stringMatching(/Follow-up wrestle/),
+          approved_run_ceiling_usd: 1.25,
         }),
       );
     });
@@ -193,6 +205,7 @@ describe("ChatInputArea budget projection (bq)", () => {
     ).toBe("settings");
     const ta = screen.getByPlaceholderText(/what do you want to research/i);
     await userEvent.type(ta, "Chat follow-up inherits Settings wrestle depth");
+    await approveInitialRunCeiling();
     await waitFor(() => {
       expect(
         (screen.getByRole("button", { name: /ask/i }) as HTMLButtonElement)
@@ -202,7 +215,7 @@ describe("ChatInputArea budget projection (bq)", () => {
     fireEvent.click(screen.getByRole("button", { name: /ask/i }));
     await waitFor(() => {
       expect(startInvestigationMock).toHaveBeenCalledWith(
-        expect.objectContaining({ research_tier: "wrestle" }),
+        expect.objectContaining({ research_tier: "wrestle", approved_run_ceiling_usd: 1.25 }),
       );
     });
   });

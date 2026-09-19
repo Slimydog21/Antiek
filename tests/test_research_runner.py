@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -34,8 +35,10 @@ from runtime.research_runner import (
     make_demo_loop,
 )
 from runtime.research_runner.host_local import LoopContext
-from substrate.event_log import trajectory
+from substrate.event_log import trajectory_authorized
 from substrate.graph.schema import init_database_at_path
+from substrate.investigation_tenancy import InvestigationAuthority
+from substrate.multi_user.auth import operator_claims
 from substrate.schemas.events import ActionType
 
 
@@ -67,18 +70,29 @@ def _plan(i: int, **kw) -> ResearchPlan:
     return ResearchPlan(investigation_id=f"inv-{i}", sub_question=f"question {i}", **kw)
 
 
+def _trajectory(investigation_id: str, events_dir: str):
+    return trajectory_authorized(
+        InvestigationAuthority(operator_claims().user_id, investigation_id, Path(events_dir))
+    )
+
+
 # --------------------------------------------------------------------------
 # M1 — protocol conformance
 # --------------------------------------------------------------------------
 
 
 def test_hostlocal_satisfies_protocol():
-    r = HostLocalRunner(make_demo_loop())
+    r = HostLocalRunner(make_demo_loop(), claims=operator_claims())
     assert isinstance(r, ResearchRunner)
 
 
 async def test_start_returns_handle_and_streams_to_done(events_dir):
-    r = HostLocalRunner(make_demo_loop(steps=2), events_dir=events_dir, seal_on_complete=False)
+    r = HostLocalRunner(
+        make_demo_loop(steps=2),
+        claims=operator_claims(),
+        events_dir=events_dir,
+        seal_on_complete=False,
+    )
     h = await r.start("inv-0", _plan(0))
     kinds = [ev.kind async for ev in r.stream(h)]
     assert kinds[-1] == "done"
@@ -94,8 +108,7 @@ async def test_start_returns_handle_and_streams_to_done(events_dir):
 async def test_twenty_concurrent_isolated_and_one_failure_isolated(events_dir):
     # One of the 20 loops raises mid-flight; its siblings must still finish.
     def loop_for(i):
-        return make_demo_loop(steps=3, delay_s=0.001,
-                              fail_on_step=1 if i == 7 else None)
+        return make_demo_loop(steps=3, delay_s=0.001, fail_on_step=1 if i == 7 else None)
 
     # A runner whose loop_fn dispatches per-investigation behavior.
     async def dispatch_loop(ctx: LoopContext):
@@ -103,12 +116,19 @@ async def test_twenty_concurrent_isolated_and_one_failure_isolated(events_dir):
         async for ev in loop_for(idx)(ctx):
             yield ev
 
-    r = HostLocalRunner(dispatch_loop, max_concurrency=20, events_dir=events_dir,
-                        seal_on_complete=False)
+    r = HostLocalRunner(
+        dispatch_loop,
+        claims=operator_claims(),
+        max_concurrency=20,
+        events_dir=events_dir,
+        seal_on_complete=False,
+    )
     handles = [await r.start(f"inv-{i}", _plan(i)) for i in range(20)]
+
     # Drain every stream concurrently.
     async def drain(h):
         return [ev async for ev in r.stream(h)]
+
     await asyncio.gather(*(drain(h) for h in handles))
     await r.join()
 
@@ -117,10 +137,10 @@ async def test_twenty_concurrent_isolated_and_one_failure_isolated(events_dir):
     assert all(s == RunState.DONE for i, s in enumerate(states) if i != 7), states
 
     # 20 isolated, uncorrupted JSONL trajectories — read each back.
-    files = sorted(f for f in os.listdir(events_dir) if f.endswith(".jsonl"))
+    files = sorted(Path(events_dir).glob("streams/v1/*/*.jsonl"))
     assert len(files) == 20
     for i in range(20):
-        rows = trajectory(f"inv-{i}", events_dir=events_dir)
+        rows = _trajectory(f"inv-{i}", events_dir)
         assert rows, f"inv-{i} empty trajectory"
         actions = {row["action_type"] for row in rows}
         assert ActionType.INVESTIGATION_START_REQUESTED.value in actions
@@ -134,16 +154,27 @@ async def test_browse_loops_never_write_the_graph(events_dir, monkeypatch):
     # proof that a browse loop has no graph-write path of its own.
     db = os.path.join(tempfile.mkdtemp(), "graph.duckdb")
     init_database_at_path(db)
-    r = HostLocalRunner(make_demo_loop(steps=2), events_dir=events_dir, seal_on_complete=False)
+    r = HostLocalRunner(
+        make_demo_loop(steps=2),
+        claims=operator_claims(),
+        events_dir=events_dir,
+        seal_on_complete=False,
+    )
     handles = [await r.start(f"inv-{i}", _plan(i)) for i in range(5)]
 
     async def drain(h):
         return [ev async for ev in r.stream(h)]
+
     await asyncio.gather(*(drain(h) for h in handles))
     await r.join()
     con = connect_read(db)
     try:
-        assert con.execute("SELECT count(*) FROM nodes WHERE node_type IN ('insight','question')").fetchone()[0] == 0
+        assert (
+            con.execute(
+                "SELECT count(*) FROM nodes WHERE node_type IN ('insight','question')"
+            ).fetchone()[0]
+            == 0
+        )
     finally:
         con.close()
 
@@ -161,25 +192,33 @@ async def test_promotion_funnel_serialized_no_lock_timeout(events_dir):
 
     r = HostLocalRunner(
         make_demo_loop(steps=2, emit_note=True),
-        max_concurrency=20, events_dir=events_dir, seal_on_complete=False,
+        claims=operator_claims(),
+        max_concurrency=20,
+        events_dir=events_dir,
+        seal_on_complete=False,
         on_emit=funnel.submit,
     )
     handles = [await r.start(f"inv-{i}", _plan(i)) for i in range(20)]
 
     async def drain(h):
         return [ev async for ev in r.stream(h)]
+
     await asyncio.gather(*(drain(h) for h in handles))
     await r.join()
     await funnel.drain_and_stop()
 
-    assert funnel.errors == [], funnel.errors          # zero lock timeouts/errors
-    assert funnel.promoted_insights == 20              # one note each
-    assert funnel.promoted_questions == 20             # one question each
+    assert funnel.errors == [], funnel.errors  # zero lock timeouts/errors
+    assert funnel.promoted_insights == 20  # one note each
+    assert funnel.promoted_questions == 20  # one question each
     con = connect_read(db)
     try:
-        assert con.execute("SELECT count(*) FROM nodes WHERE node_type='insight'").fetchone()[0] == 20
+        assert (
+            con.execute("SELECT count(*) FROM nodes WHERE node_type='insight'").fetchone()[0] == 20
+        )
         # write_log recorded every serialized promotion.
-        n_log = con.execute("SELECT count(*) FROM write_log WHERE purpose='promotion_funnel'").fetchone()[0]
+        n_log = con.execute(
+            "SELECT count(*) FROM write_log WHERE purpose='promotion_funnel'"
+        ).fetchone()[0]
         assert n_log >= 20
     finally:
         con.close()
@@ -194,6 +233,7 @@ async def test_contract_gather_stub_promotes_note_via_funnel(events_dir):
 
     r = HostLocalRunner(
         make_contract_gather_stub(steps=2, cost_per_step=0.01),
+        claims=operator_claims(),
         events_dir=events_dir,
         seal_on_complete=False,
         on_emit=funnel.submit,
@@ -216,31 +256,37 @@ async def test_contract_gather_stub_promotes_note_via_funnel(events_dir):
 
 
 async def test_pause_resume(events_dir):
-    r = HostLocalRunner(make_demo_loop(steps=5, delay_s=0.02), events_dir=events_dir,
-                        seal_on_complete=False)
+    r = HostLocalRunner(
+        make_demo_loop(steps=5, delay_s=0.02),
+        claims=operator_claims(),
+        events_dir=events_dir,
+        seal_on_complete=False,
+    )
     h = await r.start("inv-0", _plan(0))
     await asyncio.sleep(0.01)
     await r.steer(h, Command(CommandKind.PAUSE))
     await asyncio.sleep(0.05)
     paused_steps = r.cost(h).steps
     await asyncio.sleep(0.05)
-    assert r.cost(h).steps == paused_steps           # made no progress while paused
+    assert r.cost(h).steps == paused_steps  # made no progress while paused
     assert r.status(h).state == RunState.PAUSED
     await r.steer(h, Command(CommandKind.RESUME))
     _ = [ev async for ev in r.stream(h)]
     assert r.status(h).state == RunState.DONE
-    assert r.cost(h).steps > paused_steps            # progressed after resume
+    assert r.cost(h).steps > paused_steps  # progressed after resume
 
 
 async def test_stop_seals_and_transitions(events_dir):
-    r = HostLocalRunner(make_demo_loop(steps=50, delay_s=0.01), events_dir=events_dir)
+    r = HostLocalRunner(
+        make_demo_loop(steps=50, delay_s=0.01), claims=operator_claims(), events_dir=events_dir
+    )
     h = await r.start("inv-0", _plan(0))
     await asyncio.sleep(0.02)
     await r.steer(h, Command(CommandKind.STOP))
     _ = [ev async for ev in r.stream(h)]
     assert r.status(h).state == RunState.STOPPED
     # JSONL was sealed (or remains valid) — trajectory reads back.
-    rows = trajectory("inv-0", events_dir=events_dir)
+    rows = _trajectory("inv-0", events_dir)
     assert any(row["action_type"] == ActionType.INVESTIGATION_COMPLETED.value for row in rows)
 
 
@@ -254,7 +300,9 @@ async def test_redirect_changes_sub_question(events_dir):
             await asyncio.sleep(0.01)
             yield ctx.step(f"on {sub_q}", cost_usd=0.0)
 
-    r = HostLocalRunner(watching_loop, events_dir=events_dir, seal_on_complete=False)
+    r = HostLocalRunner(
+        watching_loop, claims=operator_claims(), events_dir=events_dir, seal_on_complete=False
+    )
     h = await r.start("inv-0", _plan(0))
     await asyncio.sleep(0.015)
     await r.steer(h, Command(CommandKind.REDIRECT, {"sub_question": "redirected!"}))
@@ -264,19 +312,29 @@ async def test_redirect_changes_sub_question(events_dir):
 
 
 async def test_deepen_raises_cap_and_queues_followup(events_dir):
-    r = HostLocalRunner(make_demo_loop(steps=2, delay_s=0.02),
-                        events_dir=events_dir, seal_on_complete=False)
+    r = HostLocalRunner(
+        make_demo_loop(steps=2, delay_s=0.02),
+        claims=operator_claims(),
+        events_dir=events_dir,
+        seal_on_complete=False,
+    )
     h = await r.start("inv-0", _plan(0, budget=BudgetCap(cost_usd=0.10)))
     await asyncio.sleep(0.01)
-    await r.steer(h, Command(CommandKind.DEEPEN,
-                             {"extra_budget_usd": 0.50, "follow_up": "go deeper on X"}))
+    await r.steer(
+        h, Command(CommandKind.DEEPEN, {"extra_budget_usd": 0.50, "follow_up": "go deeper on X"})
+    )
     _ = [ev async for ev in r.stream(h)]
     assert r.cost(h).cap_usd == pytest.approx(0.60)
     assert "go deeper on X" in r.status(h).follow_ups
 
 
 async def test_command_after_finish_is_noop(events_dir):
-    r = HostLocalRunner(make_demo_loop(steps=1), events_dir=events_dir, seal_on_complete=False)
+    r = HostLocalRunner(
+        make_demo_loop(steps=1),
+        claims=operator_claims(),
+        events_dir=events_dir,
+        seal_on_complete=False,
+    )
     h = await r.start("inv-0", _plan(0))
     _ = [ev async for ev in r.stream(h)]
     assert r.status(h).state == RunState.DONE
@@ -292,23 +350,34 @@ async def test_command_after_finish_is_noop(events_dir):
 
 
 async def test_tiny_cap_halts_and_emits_chase_halted(events_dir):
-    r = HostLocalRunner(make_demo_loop(steps=20, cost_per_step=0.10),
-                        events_dir=events_dir, seal_on_complete=False)
+    r = HostLocalRunner(
+        make_demo_loop(steps=20, cost_per_step=0.10),
+        claims=operator_claims(),
+        events_dir=events_dir,
+        seal_on_complete=False,
+    )
     h = await r.start("inv-0", _plan(0, budget=BudgetCap(cost_usd=0.25)))
     _ = [ev async for ev in r.stream(h)]
     assert r.status(h).state == RunState.BUDGET_HALTED
-    rows = trajectory("inv-0", events_dir=events_dir)
-    halts = [row for row in rows if row["action_type"] == ActionType.INVESTIGATION_CHASE_HALTED.value]
+    rows = _trajectory("inv-0", events_dir)
+    halts = [
+        row for row in rows if row["action_type"] == ActionType.INVESTIGATION_CHASE_HALTED.value
+    ]
     assert halts and halts[0]["payload"]["reason"] == "per_research"
 
 
 async def test_aggregate_cap_blocks_next_launch(events_dir):
     # Aggregate cap small enough that the first research's spend exhausts it.
     budget = BudgetManager(aggregate_cap_usd=0.30)
-    r = HostLocalRunner(make_demo_loop(steps=5, cost_per_step=0.10),
-                        budget=budget, events_dir=events_dir, seal_on_complete=False)
+    r = HostLocalRunner(
+        make_demo_loop(steps=5, cost_per_step=0.10),
+        claims=operator_claims(),
+        budget=budget,
+        events_dir=events_dir,
+        seal_on_complete=False,
+    )
     h0 = await r.start("inv-0", _plan(0, budget=BudgetCap(cost_usd=10.0)))
-    _ = [ev async for ev in r.stream(h0)]            # spends past 0.30 aggregate
+    _ = [ev async for ev in r.stream(h0)]  # spends past 0.30 aggregate
     # Next launch is blocked with a surfaced reason.
     h1 = await r.start("inv-1", _plan(1, budget=BudgetCap(cost_usd=10.0)))
     st = r.status(h1)
@@ -328,7 +397,9 @@ async def test_cost_reconciles_with_reported_steps(events_dir):
             reported.append(c)
             yield ctx.step(f"s{i}", cost_usd=c, tokens=5)
 
-    r = HostLocalRunner(costed_loop, events_dir=events_dir, seal_on_complete=False)
+    r = HostLocalRunner(
+        costed_loop, claims=operator_claims(), events_dir=events_dir, seal_on_complete=False
+    )
     h = await r.start("inv-0", _plan(0, budget=BudgetCap(cost_usd=10.0)))
     _ = [ev async for ev in r.stream(h)]
     assert r.cost(h).spent_usd == pytest.approx(sum(reported))
@@ -341,12 +412,12 @@ async def test_cost_reconciles_with_reported_steps(events_dir):
 
 
 async def test_daytona_gated():
-    assert daytona_enabled() is False                # flag OFF by default
-    d = DaytonaRunner()                              # construction is safe
-    assert isinstance(d, ResearchRunner)             # conforms to the protocol
+    assert daytona_enabled() is False  # flag OFF by default
+    d = DaytonaRunner()  # construction is safe
+    assert isinstance(d, ResearchRunner)  # conforms to the protocol
     with pytest.raises(DaytonaGatedError) as ei:
         await d.start("inv-0", _plan(0))
-    assert "§16" in str(ei.value)                    # documents the unlock
+    assert "§16" in str(ei.value)  # documents the unlock
     # steer/cancel are also guarded.
     with pytest.raises(DaytonaGatedError):
         await d.cancel(_DummyHandle())
@@ -355,6 +426,7 @@ async def test_daytona_gated():
 def test_no_daytona_sdk_dependency():
     # The stub must not import any Daytona SDK at module load.
     import sys
+
     assert not any("daytona_sdk" in m or m == "daytona" for m in sys.modules)
 
 

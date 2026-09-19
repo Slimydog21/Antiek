@@ -67,6 +67,7 @@ from datetime import UTC, datetime
 from runtime.db_lock import LockedConnection, connect_write
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.ops import update_document_gate_columns
+from substrate.legal_gate.read import read_document_metadata_compatibility
 from substrate.rights import RightsTier, resolve_tier
 
 from .adapter import arxiv_doc_id
@@ -167,13 +168,13 @@ def _read_doc_row(con: LockedConnection, document_id: str) -> dict | None:
     """Return ``{license_uri, content_class, metadata}`` for the row, or None
     when the row is absent. Raises ``ValueError`` on malformed metadata JSON —
     we never blind-overwrite a row whose rights metadata we cannot safely read."""
-    row = con.execute(
-        "SELECT content_class, metadata FROM documents WHERE document_id = ? LIMIT 1",
-        [document_id],
-    ).fetchone()
-    if row is None:
+    document = read_document_metadata_compatibility(
+        con, document_id, authority=None, enforce=False
+    )
+    if document is None:
         return None
-    content_class, raw_meta = row
+    content_class = document["content_class"]
+    raw_meta = document["metadata"]
     if raw_meta is None:
         metadata: dict = {}
     elif isinstance(raw_meta, dict):

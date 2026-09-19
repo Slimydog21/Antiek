@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from .authority import ArtifactAuthority
 from .build_body import build_body
-from .paths import artifact_path_for
 
 
 @dataclass(frozen=True)
@@ -21,14 +21,15 @@ class OutlineBlockRef:
 def list_outline_blocks(
     investigation_id: str,
     *,
+    authority: ArtifactAuthority,
     db_path: str | None = None,
     events_dir: str | None = None,
     artifact_path: Path | None = None,
 ) -> list[OutlineBlockRef]:
-    body = build_body(
-        investigation_id, db_path=db_path, events_dir=events_dir
-    )
-    ap = str(artifact_path or artifact_path_for(investigation_id))
+    body = build_body(investigation_id, authority=authority, db_path=db_path, events_dir=events_dir)
+    if authority.investigation_id != investigation_id:
+        raise ValueError("artifact authority investigation mismatch")
+    ap = str(artifact_path or authority.artifact_path())
     blocks: list[OutlineBlockRef] = []
     for ins in body.insights:
         blocks.append(

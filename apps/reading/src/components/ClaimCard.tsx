@@ -40,8 +40,7 @@ interface ClaimCardProps {
    *  the claim text when set. */
   grounding?: GroundingStatus;
   /** Called when the operator clicks the "↪ region" affordance on a
-   *  passed status. Future hookup: scroll the PdfViewer to the
-   *  located region. */
+   *  passed status. Future hookup: locate the cited region in canonical HTML. */
   onLocateRegion?: (regionId: string) => void;
 }
 
@@ -137,25 +136,6 @@ export default function ClaimCard({
         >
           add to notebook
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            // S6 WP-6.3 acceptance — "Clicking a claim chip opens it
-            // as a floating panel near the cursor. Two claims can be
-            // inspected at once — the operator drags one aside."
-            import("../workspace/actions").then(({ openClaimInspector }) => {
-              openClaimInspector({
-                claimId: claim.claim_id,
-                investigationId,
-                documentId,
-              });
-            });
-          }}
-          className="text-[11px] px-2 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-sun/15 dark:hover:bg-sun/10 transition-colors"
-          title="Open as floating inspector panel"
-        >
-          inspect
-        </button>
         {error && (
           <span className="text-[10px] font-mono text-emperor">{error}</span>
         )}
@@ -172,7 +152,7 @@ export default function ClaimCard({
  * Renders the grounder's verdict inline on the claim card.
  *
  * - Passed → green ✓ with the located region as a clickable chip
- *   that calls ``onLocateRegion`` (future: PdfViewer scroll-to).
+ *   that calls ``onLocateRegion`` (future: canonical HTML region location).
  * - Failed → amber/red ⚠ with the failure reason + searched-region
  *   count for transparency.
  * - Pending → neutral spinner until the verdict event arrives.

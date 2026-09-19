@@ -53,6 +53,7 @@ export type ResearchLaunchBudgetProjection = {
   estimatedUsdHigh: number | null;
   remainingUsd: number | null;
   modelId: string | null;
+  pricingFingerprint: string | null;
 };
 
 /** Curated research entry tiers (not raw model ids). */
@@ -213,6 +214,7 @@ export function ResearchLaunchBudgetPanel({
       estimatedUsdHigh: estimate?.estimated_usd_high ?? null,
       remainingUsd: budget?.remaining_usd ?? null,
       modelId: tree?.model_id ?? null,
+      pricingFingerprint: estimate?.pricing_fingerprint ?? null,
     });
   }, [estimate, budget?.remaining_usd, tree?.model_id, onProjectionChange]);
 
@@ -265,6 +267,9 @@ export function ResearchLaunchBudgetPanel({
 
   useEffect(() => {
     const chars = promptText.length;
+    // Never display or propagate the prior route/prompt estimate while a new
+    // debounced request is pending. Parents use this projection to gate spend.
+    setEstimate(null);
     // Empty / tiny prompt: clear estimate honestly rather than projecting noise.
     if (chars < 3) {
       setEstimate(null);
@@ -609,6 +614,7 @@ export function ResearchLaunchBudgetPanel({
               data-research-tier={activeTier}
               data-prompt-chars={String(promptText.trim().length)}
               data-pricing-known={String(Boolean(estimate.pricing_known))}
+              data-pricing-fingerprint={estimate.pricing_fingerprint ?? ""}
               data-usd-low={
                 estimate.estimated_usd_low != null
                   ? String(estimate.estimated_usd_low)
@@ -660,6 +666,29 @@ export function ResearchLaunchBudgetPanel({
               {" · "}
               {durationBand.label} band {durationBand.bandMinutes}m
             </p>
+            {estimate.pricing_known && estimate.pricing_source_url ? (
+              <p
+                className="text-[10px] font-mono text-ink-mute dark:text-moonlight"
+                data-testid="research-launch-pricing-authority"
+                data-pricing-fingerprint={estimate.pricing_fingerprint ?? ""}
+                data-pricing-verified-at={estimate.pricing_verified_at ?? ""}
+                data-pricing-expires-at={estimate.pricing_expires_at ?? ""}
+              >
+                Pricing authority: {estimate.provider ?? "?"} / {estimate.model ?? "?"}
+                {" · "}
+                <a
+                  href={estimate.pricing_source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline"
+                >
+                  source
+                </a>
+                {estimate.pricing_expires_at
+                  ? ` · valid until ${estimate.pricing_expires_at}`
+                  : ""}
+              </p>
+            ) : null}
             <p
               className={
                 "text-[11px] font-mono " +

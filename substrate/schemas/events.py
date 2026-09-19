@@ -43,9 +43,12 @@ Schema changes are load-bearing API changes (architecture_notes.md §7).
 
 from __future__ import annotations
 
+import hashlib
+import json
+import unicodedata
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
@@ -175,6 +178,23 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 
     # ── Dispatch + context pack ──
     DISPATCH_CALL = "dispatch.call"
+    RESEARCH_CALL_RESERVED = "research.call_reserved"
+    RESEARCH_CALL_SETTLED = "research.call_settled"
+    RESEARCH_CALL_RELEASED = "research.call_released"
+    RESEARCH_DELEGATION_RESERVED = "research.delegation_reserved"
+    RESEARCH_DELEGATION_ISSUED = "research.delegation_issued"
+    RESEARCH_DELEGATION_ACCEPTED = "research.delegation_accepted"
+    RESEARCH_DELEGATION_RELEASED = "research.delegation_released"
+    RESEARCH_DELEGATION_SETTLED = "research.delegation_settled"
+    INVESTIGATION_EXECUTION_CLAIMED = "investigation.execution_claimed"
+    INVESTIGATION_EXECUTION_RENEWED = "investigation.execution_renewed"
+    INVESTIGATION_EXECUTION_TAKEN_OVER = "investigation.execution_taken_over"
+    INVESTIGATION_EXECUTION_COMPLETED = "investigation.execution_completed"
+    INVESTIGATION_PROJECTION_REQUESTED = "investigation.projection_requested"
+    INVESTIGATION_PROJECTION_EFFECT_RECORDED = "investigation.projection_effect_recorded"
+    INVESTIGATION_PROJECTION_FAILED = "investigation.projection_failed"
+    INVESTIGATION_PROJECTION_COMPLETED = "investigation.projection_completed"
+    GATHER_REPORT_RECORDED = "gather.report_recorded"
     CONTEXT_PACK_ASSEMBLED = "context_pack.assembled"
     # AFF SPR-06 — the flywheel's reuse half. Emitted once per investigation
     # start, recording which prior knowledge units were retrieved + injected
@@ -457,6 +477,8 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     #    untouched (immutable on filing). 1:N — a document belongs to 0..1
     #    investigation (documents.investigation_id). specs SPR-13.
     DOCUMENT_FILED_INTO_INVESTIGATION = "document.filed_into_investigation"
+    DOCUMENT_CITATION_POSITION_SET = "document.citation_position_set"
+    WORKSPACE_RESUME_CHECKPOINT_SET = "workspace.resume_checkpoint.set"
 
     # ── Foundation v2 SPR-02 — groundedness eval (truth axis) + the
     #    failure event that replaces the Phase-6 except-pass swallow.
@@ -747,10 +769,40 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 #     operator-reviewed count and agreement without mutating old trajectory rows.
 # v33: Recursive context unit receipts carry owner_scope_digest so outcome
 #      endpoints can reject cross-owner event references. 2026-07-12.
+# v34: Durable citation traversal position is a typed, source-text-free,
+#      receipt-bound idempotent command. 2026-07-15.
+# v35: Account workspace resume is a closed, reference-only checkpoint. It
+#      carries semantic window references and idempotency digests only.
+# v36: Workspace resume admits resolver-qualified hosted HTML document
+#      references while continuing to exclude HTML and renderer props.
+# v37: Interactive research calls gain an immutable launch ceiling plus
+#      typed reserve/settle/release receipts for crash-safe pre-call spend
+#      authority. Existing starts remain readable with a null ceiling.
+# v38: Paid interactive starts can carry a server-verified quote receipt and
+#      the complete ordered role/primary/fallback route manifest authorized by
+#      that quote. Historical and non-interactive starts remain readable.
+# v39: Recursive research quote delegation gains root-scoped reserve, issue,
+#      accept, release, and settle receipts so child authority is conserved
+#      atomically across crash replay and concurrent orchestrators.
+# v40: Paid investigation execution gains generation-fenced claim, renewal,
+#      takeover, and completion receipts. Event envelopes may identify the
+#      execution generation that authorized a mutation.
+# v41: Successful paid investigations gain explicit synthesis/HTML projection
+#      request, effect, and completion receipts before terminal publication.
+# v42: Retryable terminal-projection failures gain privacy-safe typed receipts
+#      without converting an incomplete execution lease into terminal truth.
 # v32: Context-pack events can carry a text-free canonical recursive-note
 #      assembly receipt and identify the distinct recursive_notes layer.
 #      2026-07-12.
-EVENT_SCHEMA_VERSION: int = 33
+# v43: SPR-DRL-16 durable, restart-recoverable multi-source gather report.
+# v44: SPR-DRL-19 knowledge.reused can carry one exact, secret-free source
+#      coverage qualification per injected unit. Historical v25 events remain
+#      readable because the joined receipt list is optional.
+# v45: SPR-DRL-21 synthesis requests carry the pack-authenticated inherited
+#      support reachability map and thesis components attest only reachable IDs.
+# v46: SPR-DRL-24 per-claim groundedness verdicts may carry a typed advisory
+#      entailment relation. Historical verdicts remain readable with null.
+EVENT_SCHEMA_VERSION: int = 46
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -835,9 +887,7 @@ class RouteReceipt(_PayloadBase):
 
     route_receipt_id: str
     task_kind: str
-    objective: Literal["quality", "cost", "latency", "balanced", "operator_selected"] = (
-        "balanced"
-    )
+    objective: Literal["quality", "cost", "latency", "balanced", "operator_selected"] = "balanced"
     override: Literal["none", "manual", "fallback"] = "none"
     candidate_models: tuple[RouteReceiptCandidate, ...] = Field(default_factory=tuple)
     selected: RouteReceiptSelection
@@ -887,6 +937,307 @@ class DispatchCallPayload(_PayloadBase):
     session_id: str | None = None
 
 
+_SHA256_HEX_PATTERN = r"^[a-f0-9]{64}$"
+
+
+class ResearchCallReservedPayload(_PayloadBase):
+    """Durable capacity hold committed before one interactive provider call."""
+
+    action_type: Literal[ActionType.RESEARCH_CALL_RESERVED] = ActionType.RESEARCH_CALL_RESERVED
+    reservation_id: str = Field(min_length=1, max_length=200)
+    request_sha256: str = Field(pattern=_SHA256_HEX_PATTERN)
+    target_role: str = Field(min_length=1, max_length=100)
+    tier: Literal["flash", "pro", "synthesis", "verify", "local"]
+    provider: str = Field(min_length=1, max_length=200)
+    model: str = Field(min_length=1, max_length=300)
+    route_tier_name: str = Field(min_length=1, max_length=200)
+    fallback_chain_index: int = Field(ge=0)
+    prompt_hash: str = Field(pattern=r"^sha256:[a-f0-9]{12}$")
+    max_tokens: int = Field(ge=1)
+    temperature: float = Field(ge=0.0, le=2.0)
+    context_budget_tokens: int = Field(gt=0)
+    verification_required: bool = False
+    context_pack_event_id: str | None = Field(default=None, max_length=512)
+    projected_max_cost_usd: float = Field(gt=0.0, le=100_000.0)
+    provider_idempotency_key_sha256: str = Field(pattern=_SHA256_HEX_PATTERN)
+    parent_request_event_id: str | None = Field(default=None, max_length=512)
+    research_quote_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    research_route_manifest_fingerprint: str = Field(pattern=_SHA256_HEX_PATTERN)
+    pricing_fingerprint: str = Field(pattern=_SHA256_HEX_PATTERN)
+
+
+class ResearchCallSettledPayload(_PayloadBase):
+    """Terminal receipt binding a reservation to canonical realized spend."""
+
+    action_type: Literal[ActionType.RESEARCH_CALL_SETTLED] = ActionType.RESEARCH_CALL_SETTLED
+    reservation_id: str = Field(min_length=1, max_length=200)
+    reservation_event_id: str = Field(min_length=1, max_length=512)
+    request_sha256: str = Field(pattern=_SHA256_HEX_PATTERN)
+    dispatch_call_event_id: str = Field(min_length=1, max_length=512)
+    actual_cost_usd: float = Field(ge=0.0, le=100_000.0)
+    exceeded_reservation: bool = False
+
+
+class ResearchCallReleasedPayload(_PayloadBase):
+    """Terminal no-call receipt; only provably unattempted calls may release."""
+
+    action_type: Literal[ActionType.RESEARCH_CALL_RELEASED] = ActionType.RESEARCH_CALL_RELEASED
+    reservation_id: str = Field(min_length=1, max_length=200)
+    reservation_event_id: str = Field(min_length=1, max_length=512)
+    request_sha256: str = Field(pattern=_SHA256_HEX_PATTERN)
+    reason: Literal[
+        "provider_unregistered",
+        "circuit_open",
+        "route_disallowed",
+        "provider_call_not_attempted",
+    ]
+    error_sha256: str | None = Field(default=None, pattern=_SHA256_HEX_PATTERN)
+
+
+class ResearchDelegationReservedPayload(_PayloadBase):
+    """Root-stream capacity hold committed before a child quote is issued."""
+
+    action_type: Literal[ActionType.RESEARCH_DELEGATION_RESERVED] = (
+        ActionType.RESEARCH_DELEGATION_RESERVED
+    )
+    delegation_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    operation_sha256: str = Field(pattern=_SHA256_HEX_PATTERN)
+    root_investigation_id: str = Field(min_length=1, max_length=200)
+    root_quote_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    parent_investigation_id: str = Field(min_length=1, max_length=200)
+    parent_quote_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    child_investigation_id: str = Field(min_length=1, max_length=200)
+    generation: int = Field(ge=1, le=10_000)
+    delegated_ceiling_usd: float = Field(gt=0.0, le=100.0)
+    route_manifest_fingerprint: str = Field(pattern=_SHA256_HEX_PATTERN)
+
+
+class ResearchDelegationIssuedPayload(_PayloadBase):
+    """Non-bearer receipt proving the quote minted for one root hold."""
+
+    action_type: Literal[ActionType.RESEARCH_DELEGATION_ISSUED] = (
+        ActionType.RESEARCH_DELEGATION_ISSUED
+    )
+    delegation_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    reservation_event_id: str = Field(min_length=1, max_length=512)
+    quote_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    quote_payload_sha256: str = Field(pattern=_SHA256_HEX_PATTERN)
+    quote_expires_at_ms: int = Field(gt=0)
+
+
+class ResearchDelegationAcceptedPayload(_PayloadBase):
+    """Root receipt binding issued authority to the immutable child start."""
+
+    action_type: Literal[ActionType.RESEARCH_DELEGATION_ACCEPTED] = (
+        ActionType.RESEARCH_DELEGATION_ACCEPTED
+    )
+    delegation_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    reservation_event_id: str = Field(min_length=1, max_length=512)
+    issued_event_id: str = Field(min_length=1, max_length=512)
+    child_investigation_id: str = Field(min_length=1, max_length=200)
+    child_start_event_id: str = Field(min_length=1, max_length=512)
+    child_start_sha256: str = Field(pattern=_SHA256_HEX_PATTERN)
+
+
+class ResearchDelegationReleasedPayload(_PayloadBase):
+    """Terminal release permitted only when no quote was issued."""
+
+    action_type: Literal[ActionType.RESEARCH_DELEGATION_RELEASED] = (
+        ActionType.RESEARCH_DELEGATION_RELEASED
+    )
+    delegation_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    reservation_event_id: str = Field(min_length=1, max_length=512)
+    reason: Literal["quote_not_issued", "signing_authority_unavailable"]
+    error_sha256: str | None = Field(default=None, pattern=_SHA256_HEX_PATTERN)
+
+
+class ResearchDelegationSettledPayload(_PayloadBase):
+    """Terminal root receipt returning unused child allocation capacity."""
+
+    action_type: Literal[ActionType.RESEARCH_DELEGATION_SETTLED] = (
+        ActionType.RESEARCH_DELEGATION_SETTLED
+    )
+    delegation_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    reservation_event_id: str = Field(min_length=1, max_length=512)
+    accepted_event_id: str = Field(min_length=1, max_length=512)
+    child_terminal_event_id: str = Field(min_length=1, max_length=512)
+    actual_cost_usd: float = Field(ge=0.0, le=100.0)
+
+
+class InvestigationExecutionClaimedPayload(_PayloadBase):
+    action_type: Literal[ActionType.INVESTIGATION_EXECUTION_CLAIMED] = (
+        ActionType.INVESTIGATION_EXECUTION_CLAIMED
+    )
+    execution_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    start_event_id: str = Field(min_length=1, max_length=512)
+    generation: Literal[1] = 1
+    holder_digest: str = Field(pattern=_SHA256_HEX_PATTERN)
+    claimed_at_ms: int = Field(gt=0)
+    expires_at_ms: int = Field(gt=0)
+
+
+class InvestigationExecutionRenewedPayload(_PayloadBase):
+    action_type: Literal[ActionType.INVESTIGATION_EXECUTION_RENEWED] = (
+        ActionType.INVESTIGATION_EXECUTION_RENEWED
+    )
+    execution_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    prior_receipt_event_id: str = Field(min_length=1, max_length=512)
+    generation: int = Field(ge=1, le=1_000_000)
+    holder_digest: str = Field(pattern=_SHA256_HEX_PATTERN)
+    renewed_at_ms: int = Field(gt=0)
+    expires_at_ms: int = Field(gt=0)
+
+
+class InvestigationExecutionTakenOverPayload(_PayloadBase):
+    action_type: Literal[ActionType.INVESTIGATION_EXECUTION_TAKEN_OVER] = (
+        ActionType.INVESTIGATION_EXECUTION_TAKEN_OVER
+    )
+    execution_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    prior_receipt_event_id: str = Field(min_length=1, max_length=512)
+    prior_generation: int = Field(ge=1, le=999_999)
+    generation: int = Field(ge=2, le=1_000_000)
+    prior_holder_digest: str = Field(pattern=_SHA256_HEX_PATTERN)
+    holder_digest: str = Field(pattern=_SHA256_HEX_PATTERN)
+    prior_expires_at_ms: int = Field(gt=0)
+    clock_skew_margin_ms: int = Field(ge=0, le=60_000)
+    taken_over_at_ms: int = Field(gt=0)
+    expires_at_ms: int = Field(gt=0)
+
+
+class InvestigationExecutionCompletedPayload(_PayloadBase):
+    action_type: Literal[ActionType.INVESTIGATION_EXECUTION_COMPLETED] = (
+        ActionType.INVESTIGATION_EXECUTION_COMPLETED
+    )
+    execution_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    lease_receipt_event_id: str = Field(min_length=1, max_length=512)
+    generation: int = Field(ge=1, le=1_000_000)
+    holder_digest: str = Field(pattern=_SHA256_HEX_PATTERN)
+    terminal_event_id: str = Field(min_length=1, max_length=512)
+    terminal_sha256: str = Field(pattern=_SHA256_HEX_PATTERN)
+    completed_at_ms: int = Field(gt=0)
+
+
+class InvestigationProjectionRequestedPayload(_PayloadBase):
+    action_type: Literal[ActionType.INVESTIGATION_PROJECTION_REQUESTED] = (
+        ActionType.INVESTIGATION_PROJECTION_REQUESTED
+    )
+    projection_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    execution_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    synthesis_event_id: str = Field(min_length=1, max_length=512)
+    input_sha256: str = Field(pattern=_SHA256_HEX_PATTERN)
+    expected_effects: tuple[Literal["synthesis_archive", "html_artifact"], ...] = (
+        "synthesis_archive",
+        "html_artifact",
+    )
+
+
+class InvestigationProjectionEffectRecordedPayload(_PayloadBase):
+    action_type: Literal[ActionType.INVESTIGATION_PROJECTION_EFFECT_RECORDED] = (
+        ActionType.INVESTIGATION_PROJECTION_EFFECT_RECORDED
+    )
+    projection_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    request_event_id: str = Field(min_length=1, max_length=512)
+    effect: Literal["synthesis_archive", "html_artifact"]
+    disposition: Literal["complete", "not_configured"]
+    effect_ref: str | None = Field(default=None, min_length=1, max_length=1024)
+    effect_sha256: str | None = Field(default=None, pattern=_SHA256_HEX_PATTERN)
+
+    @model_validator(mode="after")
+    def _validate_effect_disposition(self) -> Self:
+        if self.disposition == "complete":
+            if self.effect_ref is None or self.effect_sha256 is None:
+                raise ValueError("complete projection effect requires proof")
+        elif self.effect != "html_artifact" or (
+            self.effect_ref is not None or self.effect_sha256 is not None
+        ):
+            raise ValueError("only HTML projection may be not configured")
+        return self
+
+
+class InvestigationProjectionFailedPayload(_PayloadBase):
+    """Retryable, prose-free failure truth for one terminal projection effect."""
+
+    action_type: Literal[ActionType.INVESTIGATION_PROJECTION_FAILED] = (
+        ActionType.INVESTIGATION_PROJECTION_FAILED
+    )
+    projection_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    request_event_id: str = Field(min_length=1, max_length=512)
+    effect: Literal["synthesis_archive", "html_artifact"]
+    failure_code: Literal["mutation_failed", "verification_failed"]
+    retryable: Literal[True] = True
+
+
+class InvestigationProjectionCompletedPayload(_PayloadBase):
+    action_type: Literal[ActionType.INVESTIGATION_PROJECTION_COMPLETED] = (
+        ActionType.INVESTIGATION_PROJECTION_COMPLETED
+    )
+    projection_id: str = Field(pattern=_SHA256_HEX_PATTERN)
+    request_event_id: str = Field(min_length=1, max_length=512)
+    synthesis_effect_event_id: str = Field(min_length=1, max_length=512)
+    html_effect_event_id: str = Field(min_length=1, max_length=512)
+    effects_sha256: str = Field(pattern=_SHA256_HEX_PATTERN)
+
+
+class GatherSourceReportReceipt(_PayloadBase):
+    """Secret-free terminal truth for one source in canonical gather order."""
+
+    source: Literal["exa", "parallel", "arxiv", "substack"]
+    status: Literal["succeeded", "failed", "unknown", "skipped"]
+    document_ids: tuple[str, ...] = Field(default=(), max_length=50)
+    actual_cost_micros: int = Field(default=0, ge=0)
+    tokens: int = Field(default=0, ge=0)
+    provider_receipt_id: str | None = Field(default=None, min_length=1, max_length=512)
+    failure_code: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class GatherReportRecordedPayload(_PayloadBase):
+    """Durable reviewed composite report used by restart recovery and HTML UI."""
+
+    action_type: Literal[ActionType.GATHER_REPORT_RECORDED] = ActionType.GATHER_REPORT_RECORDED
+    contract_version: Literal[1] = 1
+    launch_fingerprint: str = Field(pattern=_SHA256_HEX_PATTERN)
+    plan_fingerprint: str = Field(pattern=_SHA256_HEX_PATTERN)
+    legal_policy_snapshot_sha256: str = Field(pattern=_SHA256_HEX_PATTERN)
+    receipts: tuple[GatherSourceReportReceipt, ...] = Field(min_length=4, max_length=4)
+    document_ids: tuple[str, ...] = Field(default=(), max_length=100)
+    minimum_evidence_documents: int = Field(ge=1, le=100)
+    evidence_complete: bool
+    partial: bool
+    unknown_outcome: bool
+
+    @model_validator(mode="after")
+    def _validate_report_truth(self) -> Self:
+        if tuple(receipt.source for receipt in self.receipts) != (
+            "exa",
+            "parallel",
+            "arxiv",
+            "substack",
+        ):
+            raise ValueError("gather receipts must use canonical source order")
+        if self.unknown_outcome != any(receipt.status == "unknown" for receipt in self.receipts):
+            raise ValueError("unknown_outcome must match source receipts")
+        if self.evidence_complete and self.unknown_outcome:
+            raise ValueError("unknown gather cannot be evidence-complete")
+        receipt_documents = tuple(
+            dict.fromkeys(
+                document_id for receipt in self.receipts for document_id in receipt.document_ids
+            )
+        )
+        if self.document_ids != receipt_documents:
+            raise ValueError("report documents must equal the ordered receipt union")
+        expected_complete = (
+            len(self.document_ids) >= self.minimum_evidence_documents and not self.unknown_outcome
+        )
+        if self.evidence_complete != expected_complete:
+            raise ValueError("evidence_complete must match admitted document coverage")
+        expected_partial = expected_complete and any(
+            receipt.status != "succeeded" for receipt in self.receipts
+        )
+        if self.partial != expected_partial:
+            raise ValueError("partial must match terminal source coverage")
+        return self
+
+
 class WorkerIdentityPayload(_PayloadBase):
     """Records the registration of a first-class worker by the worker registry
     (antiek-yegge-execute SPR-04, not yet built). One event per spawn.
@@ -903,9 +1254,7 @@ class WorkerIdentityPayload(_PayloadBase):
     parent_worker_id: str | None = None
     role: str
     session_id: str
-    spawn_kind: Literal[
-        "subprocess", "asyncio_task", "thread", "role_invocation", "variant"
-    ]
+    spawn_kind: Literal["subprocess", "asyncio_task", "thread", "role_invocation", "variant"]
     expected_lifetime_s: int | None = Field(default=None, ge=0)
     context_hash: str | None = None
 
@@ -918,8 +1267,14 @@ class ContextLayer(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal[
-        "session", "long_term_skill", "reuse", "recursive_notes", "graph_evidence", "style_guide",
-        "phase_metadata", "param_version_stamp",
+        "session",
+        "long_term_skill",
+        "reuse",
+        "recursive_notes",
+        "graph_evidence",
+        "style_guide",
+        "phase_metadata",
+        "param_version_stamp",
     ]
     source: str
     tokens: int = Field(ge=0)
@@ -974,7 +1329,7 @@ class RecursiveContextUnitReceipt(BaseModel):
 
     unit_id: str
     text_digest: str = Field(min_length=64, max_length=64)
-    authority: Literal["engagement_twin", "depth_graph"]
+    authority: Literal["engagement_twin", "depth_graph", "artifact_note"]
     owner_scope_digest: str = Field(min_length=64, max_length=64)
 
 
@@ -1009,6 +1364,41 @@ class ContextPackAssembledPayload(_PayloadBase):
     recursive_context: RecursiveContextAssemblyReceipt | None = None
 
 
+class ReusedUnitSourceQualification(_PayloadBase):
+    """Source-research boundary carried with one injected knowledge unit."""
+
+    unit_id: str = Field(min_length=1, max_length=512)
+    source_investigation_id: str = Field(min_length=1, max_length=512)
+    state: Literal["complete", "partial", "unknown"]
+    source_successes: list[int] = Field(min_length=4, max_length=4)
+    total_leaves: int = Field(ge=0, le=100)
+    partial_leaf_count: int = Field(ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _validate_truth(self) -> Self:
+        if any(value < 0 or value > self.total_leaves for value in self.source_successes):
+            raise ValueError("reuse source successes exceed total leaves")
+        if self.partial_leaf_count > self.total_leaves:
+            raise ValueError("reuse partial leaf count exceeds total leaves")
+        if self.state == "unknown" and (
+            self.total_leaves != 0 or self.partial_leaf_count != 0 or any(self.source_successes)
+        ):
+            raise ValueError("unknown reuse qualification cannot claim coverage")
+        if self.state == "complete" and (
+            self.total_leaves == 0
+            or self.partial_leaf_count != 0
+            or any(value != self.total_leaves for value in self.source_successes)
+        ):
+            raise ValueError("complete reuse qualification is inconsistent")
+        if self.state == "partial" and (
+            self.total_leaves == 0
+            or self.partial_leaf_count == 0
+            or all(value == self.total_leaves for value in self.source_successes)
+        ):
+            raise ValueError("partial reuse qualification is inconsistent")
+        return self
+
+
 class KnowledgeReusedPayload(_PayloadBase):
     """AFF SPR-06 — emitted once per investigation start by
     ``substrate/context_pack/knowledge_reuse.py`` after the reuse layer is
@@ -1039,6 +1429,28 @@ class KnowledgeReusedPayload(_PayloadBase):
     decisions: list[str]
     source_investigation_ids: list[str]
     context_pack_event_id: str
+    source_qualifications: list[ReusedUnitSourceQualification] | None = None
+
+    @model_validator(mode="after")
+    def _validate_source_qualifications(self) -> Self:
+        if self.source_qualifications is None:
+            return self
+        if len(self.source_qualifications) != len(self.reused_unit_ids):
+            raise ValueError("reuse source qualifications must match injected units")
+        if [item.unit_id for item in self.source_qualifications] != self.reused_unit_ids:
+            raise ValueError("reuse source qualification order must match injected units")
+        injected_sources = [
+            source_id
+            for decision, source_id in zip(
+                self.decisions, self.source_investigation_ids, strict=True
+            )
+            if decision == "injected"
+        ]
+        if [
+            item.source_investigation_id for item in self.source_qualifications
+        ] != injected_sources:
+            raise ValueError("reuse source qualifications must match injected decision sources")
+        return self
 
 
 # The reasons a unit can be EXCLUDED from reuse by the SPR-08 trust gate. A
@@ -1151,7 +1563,9 @@ class ClaimChallengeRaisedPayload(_PayloadBase):
 
 
 class ClaimGroundingCheckPassedPayload(_PayloadBase):
-    action_type: Literal[ActionType.CLAIM_GROUNDING_CHECK_PASSED] = ActionType.CLAIM_GROUNDING_CHECK_PASSED
+    action_type: Literal[ActionType.CLAIM_GROUNDING_CHECK_PASSED] = (
+        ActionType.CLAIM_GROUNDING_CHECK_PASSED
+    )
     claim_id: str | None = None  # None for externally-supplied claims
     claim_text: str
     located_region_id: str
@@ -1159,7 +1573,9 @@ class ClaimGroundingCheckPassedPayload(_PayloadBase):
 
 
 class ClaimGroundingCheckFailedPayload(_PayloadBase):
-    action_type: Literal[ActionType.CLAIM_GROUNDING_CHECK_FAILED] = ActionType.CLAIM_GROUNDING_CHECK_FAILED
+    action_type: Literal[ActionType.CLAIM_GROUNDING_CHECK_FAILED] = (
+        ActionType.CLAIM_GROUNDING_CHECK_FAILED
+    )
     claim_id: str | None = None  # None for externally-supplied claims
     claim_text: str
     reason: Literal["absent_from_source", "paraphrased_not_stated", "out_of_scope", "ambiguous"]
@@ -1191,7 +1607,9 @@ class NoteRefinedPayload(_PayloadBase):
 
 
 class NoteCompressedDocWrittenPayload(_PayloadBase):
-    action_type: Literal[ActionType.NOTE_COMPRESSED_DOC_WRITTEN] = ActionType.NOTE_COMPRESSED_DOC_WRITTEN
+    action_type: Literal[ActionType.NOTE_COMPRESSED_DOC_WRITTEN] = (
+        ActionType.NOTE_COMPRESSED_DOC_WRITTEN
+    )
     output_path: str
     note_count: int = Field(ge=0)
     byte_size: int = Field(ge=0)
@@ -1208,7 +1626,9 @@ class QuestionIdentifiedPayload(_PayloadBase):
 
 
 class QuestionEscalatedToResearchPayload(_PayloadBase):
-    action_type: Literal[ActionType.QUESTION_ESCALATED_TO_RESEARCH] = ActionType.QUESTION_ESCALATED_TO_RESEARCH
+    action_type: Literal[ActionType.QUESTION_ESCALATED_TO_RESEARCH] = (
+        ActionType.QUESTION_ESCALATED_TO_RESEARCH
+    )
     question_id: str
     child_investigation_id: str
 
@@ -1223,7 +1643,9 @@ class QuestionResolvedByDocPayload(_PayloadBase):
 
 
 class CrossDocQuestionAnsweredPayload(_PayloadBase):
-    action_type: Literal[ActionType.CROSS_DOC_QUESTION_ANSWERED] = ActionType.CROSS_DOC_QUESTION_ANSWERED
+    action_type: Literal[ActionType.CROSS_DOC_QUESTION_ANSWERED] = (
+        ActionType.CROSS_DOC_QUESTION_ANSWERED
+    )
     question_id: str
     question_document_id: str
     answer_document_id: str
@@ -1262,11 +1684,11 @@ class UserEditDistillationPayload(_PayloadBase):
 # emerging pattern justifies it; adding a Literal value requires a
 # schema version bump if it changes the discriminator's value space.
 ArtifactKind = Literal[
-    "comparison_grid",          # N candidate distillations / framings side-by-side
+    "comparison_grid",  # N candidate distillations / framings side-by-side
     "knob_slider_exploration",  # parameter-space exploration of competing claims
-    "claim_triage",             # Linear-style triage of emergent questions or claims
-    "model_parameter_explorer", # knob-and-slider over a model's parameters
-    "other",                    # escape hatch — must be replaced with a named kind once the pattern stabilizes
+    "claim_triage",  # Linear-style triage of emergent questions or claims
+    "model_parameter_explorer",  # knob-and-slider over a model's parameters
+    "other",  # escape hatch — must be replaced with a named kind once the pattern stabilizes
 ]
 
 
@@ -1306,7 +1728,9 @@ class ArtifactInteractedPayload(_PayloadBase):
 # defensible-but-fuzzy substring path; ``default`` is the conservative
 # tier-4 fallback when no signal is available.
 TierClassificationMethod = Literal[
-    "document_type_lookup", "keyword_fallback", "default",
+    "document_type_lookup",
+    "keyword_fallback",
+    "default",
 ]
 
 # Methods the per-chunk hedging downgrade may use.
@@ -1454,7 +1878,9 @@ class SubstrateManifestWrittenPayload(_PayloadBase):
     the ``synthesis_substrate_manifest`` table). The envelope's
     ``synthesis_id`` links back to the synthesis."""
 
-    action_type: Literal[ActionType.SUBSTRATE_MANIFEST_WRITTEN] = ActionType.SUBSTRATE_MANIFEST_WRITTEN
+    action_type: Literal[ActionType.SUBSTRATE_MANIFEST_WRITTEN] = (
+        ActionType.SUBSTRATE_MANIFEST_WRITTEN
+    )
     synthesis_timestamp: datetime
     manifest_rows_written: int = Field(ge=0)
     # entity_kind ('document' | 'chunk' | 'node' | 'edge') → count.
@@ -1596,12 +2022,12 @@ ConstraintKind = Literal[
 # vocabulary verbatim so a migrated trajectory's status filters
 # (``status NOT IN ('passed', 'single_pass')``) still work unchanged.
 ConstraintLoopStatus = Literal[
-    "single_pass",            # no constraints applied; one-shot through
-    "passed",                 # iterated until all hard constraints satisfied
-    "regressed",              # violations got worse across iterations
-    "max_iterations_reached", # burned the 3-iteration budget without clearing
-    "escalated",              # preflight conflict — constraints contradictory
-    "preflight_failed",       # constraints contradictory before any iteration
+    "single_pass",  # no constraints applied; one-shot through
+    "passed",  # iterated until all hard constraints satisfied
+    "regressed",  # violations got worse across iterations
+    "max_iterations_reached",  # burned the 3-iteration budget without clearing
+    "escalated",  # preflight conflict — constraints contradictory
+    "preflight_failed",  # constraints contradictory before any iteration
 ]
 
 
@@ -1610,7 +2036,9 @@ class ConstraintViolationFoundPayload(_PayloadBase):
     event per violation per iteration — a synthesis can produce many
     of these inside a single constraint loop pass."""
 
-    action_type: Literal[ActionType.CONSTRAINT_VIOLATION_FOUND] = ActionType.CONSTRAINT_VIOLATION_FOUND
+    action_type: Literal[ActionType.CONSTRAINT_VIOLATION_FOUND] = (
+        ActionType.CONSTRAINT_VIOLATION_FOUND
+    )
     constraint_id: str
     strictness: ConstraintStrictness
     constraint_kind: ConstraintKind
@@ -1626,7 +2054,9 @@ class ConstraintRevisionTriggeredPayload(_PayloadBase):
     a downstream cohort analysis correlate which constraint kinds
     consume the most iterations."""
 
-    action_type: Literal[ActionType.CONSTRAINT_REVISION_TRIGGERED] = ActionType.CONSTRAINT_REVISION_TRIGGERED
+    action_type: Literal[ActionType.CONSTRAINT_REVISION_TRIGGERED] = (
+        ActionType.CONSTRAINT_REVISION_TRIGGERED
+    )
     iteration: int = Field(ge=0)
     triggering_constraint_ids: list[str]
 
@@ -1649,15 +2079,25 @@ class ConstraintLoopResolvedPayload(_PayloadBase):
 # cohort.py wording verbatim so migrated backtest queries work
 # unchanged once the on-disk outcomes table lands.
 ThesisOutcomeStatus = Literal[
-    "confirmed", "partially_confirmed", "disconfirmed", "unresolved",
+    "confirmed",
+    "partially_confirmed",
+    "disconfirmed",
+    "unresolved",
 ]
 ExecutionRiskSeverity = Literal[
-    "critical", "high", "moderate", "low", "none",
+    "critical",
+    "high",
+    "moderate",
+    "low",
+    "none",
 ]
 DecisionRecommendation = Literal["proceed", "pass", "conditional"]
 ActualDecision = Literal["proceed", "pass", "conditional", "not_observed"]
 ProceedOutcome = Literal[
-    "confirmed", "partially_confirmed", "disconfirmed", "not_observed",
+    "confirmed",
+    "partially_confirmed",
+    "disconfirmed",
+    "not_observed",
 ]
 
 
@@ -1764,6 +2204,7 @@ class ClaimGroundednessVerdict(BaseModel):
     claim: str
     score: float = Field(ge=0.0, le=1.0)
     supported: bool
+    relation: Literal["entailed", "contradicted", "not_established"] | None = None
     cited_chunk_ids: list[str] = Field(default_factory=list)
     rationale: str = ""
 
@@ -1935,9 +2376,7 @@ class DecomposerRegeneratedPayload(_PayloadBase):
     upstream's hard cap) but surfaces the failure mode on the
     trajectory."""
 
-    action_type: Literal[ActionType.DECOMPOSER_REGENERATED] = (
-        ActionType.DECOMPOSER_REGENERATED
-    )
+    action_type: Literal[ActionType.DECOMPOSER_REGENERATED] = ActionType.DECOMPOSER_REGENERATED
     flagged_after_regen: list[ParaphraseFlagRecord]
     still_flagged: bool
 
@@ -2091,9 +2530,21 @@ class ThesisComponent(BaseModel):
     confidence: ConfidenceLevel
     supporting_chunk_ids: list[str] = Field(default_factory=list)
     supporting_path_indices: list[int] = Field(default_factory=list)
+    supporting_inherited_unit_ids: list[str] = Field(default_factory=list, max_length=100)
     confidence_basis: str | None = None
     effective_source_tier: int | None = Field(default=None, ge=1, le=5)
     hedging_required: bool = False
+
+    @model_validator(mode="after")
+    def _validate_inherited_support(self) -> Self:
+        if len(set(self.supporting_inherited_unit_ids)) != len(self.supporting_inherited_unit_ids):
+            raise ValueError("supporting inherited unit IDs must be unique")
+        if any(
+            not unit_id.strip() or len(unit_id) > 512
+            for unit_id in self.supporting_inherited_unit_ids
+        ):
+            raise ValueError("supporting inherited unit ID is invalid")
+        return self
 
 
 class FalsificationCondition(BaseModel):
@@ -2224,6 +2675,29 @@ class AuditFindingPayload(_PayloadBase):
 # ---------------------------------------------------------------------------
 
 
+class ResearchQuotedRoute(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    role: str = Field(min_length=1, max_length=128)
+    fallback_index: int = Field(ge=0)
+    logical_tier_name: Literal["flash", "pro", "synthesis", "verify", "local"]
+    provider: str = Field(min_length=1, max_length=256)
+    model: str = Field(min_length=1, max_length=512)
+    route_tier_name: str = Field(min_length=1, max_length=200)
+    max_output_tokens: int = Field(gt=0)
+    temperature: float = Field(ge=0.0, le=2.0)
+    context_budget_tokens: int = Field(gt=0)
+    pricing_fingerprint: str = Field(min_length=64, max_length=64)
+    input_per_mtok: float = Field(gt=0.0)
+    output_per_mtok: float = Field(gt=0.0)
+    cached_input_per_mtok: float = Field(ge=0.0)
+    currency: Literal["USD"]
+    billing_unit: Literal["per_million_tokens"]
+    source_url: str = Field(min_length=1, max_length=2048)
+    verified_at: str = Field(min_length=1, max_length=64)
+    expires_at: str = Field(min_length=1, max_length=64)
+
+
 class InvestigationStartRequestedPayload(_PayloadBase):
     """Cold-question entry point. The orchestrator subscribes to this
     action_type and spawns a per-investigation coroutine that walks
@@ -2283,6 +2757,144 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # meaning for the research-runner lane is UNCHANGED — see
     # substrate/dispatch/research_tier.py.
     research_tier: Literal["fast", "deep", "wrestle"] | None = None
+    # Explicit hard ceiling for initial interactive provider calls. Null keeps
+    # historical and non-interactive starts readable but is fail-closed for the
+    # reserve-before-call primitive; launch transport must record consent.
+    approved_run_ceiling_usd: float | None = Field(default=None, gt=0.0, le=100.0)
+    research_quote_id: str | None = Field(default=None, min_length=64, max_length=64)
+    research_quote_payload_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    research_route_manifest_fingerprint: str | None = Field(
+        default=None, min_length=64, max_length=64
+    )
+    research_quote_expires_at_ms: int | None = Field(default=None, gt=0)
+    research_route_manifest: tuple[ResearchQuotedRoute, ...] | None = None
+    selected_driver_role: str | None = Field(default=None, min_length=1, max_length=128)
+    selected_driver_provider: str | None = Field(default=None, min_length=1, max_length=256)
+    selected_driver_model: str | None = Field(default=None, min_length=1, max_length=512)
+    selected_driver_pricing_fingerprint: str | None = Field(
+        default=None, pattern=_SHA256_HEX_PATTERN
+    )
+    research_workload_plan_sha256: str | None = Field(default=None, pattern=_SHA256_HEX_PATTERN)
+    research_projected_max_cost_usd: float | None = Field(default=None, gt=0.0, le=10_000.0)
+    # Account-scoped daily authority acquired before this start became durable.
+    # Persist the original cap and UTC ledger date so terminal reconciliation
+    # never consults mutable environment configuration.
+    research_daily_budget_hold_id: str | None = Field(default=None, pattern=_SHA256_HEX_PATTERN)
+    research_daily_budget_date_stamp: str | None = Field(default=None, pattern=r"^[0-9]{8}$")
+    research_daily_budget_cap_usd: float | None = Field(default=None, gt=0.0, le=10_000.0)
+    # Explicit reserved-question launch provenance. These remain null for
+    # ordinary cold questions and raw-highlight children. When populated,
+    # the transport has proven the exact parent reservation event and derives
+    # the child id server-side rather than accepting it from the browser.
+    source_question_id: str | None = None
+    reservation_event_id: str | None = None
+    research_delegated_from_quote_id: str | None = Field(default=None, min_length=64, max_length=64)
+    research_delegation_id: str | None = Field(default=None, pattern=_SHA256_HEX_PATTERN)
+    research_root_investigation_id: str | None = Field(default=None, min_length=1, max_length=200)
+    research_root_quote_id: str | None = Field(default=None, pattern=_SHA256_HEX_PATTERN)
+    research_delegation_generation: int | None = Field(default=None, ge=1, le=10_000)
+
+    @model_validator(mode="after")
+    def _validate_research_quote_receipt(self) -> InvestigationStartRequestedPayload:
+        receipt = (
+            self.research_quote_id,
+            self.research_quote_payload_sha256,
+            self.research_route_manifest_fingerprint,
+            self.research_quote_expires_at_ms,
+            self.research_route_manifest,
+        )
+        if any(value is not None for value in receipt) and not all(
+            value is not None for value in receipt
+        ):
+            raise ValueError("research quote receipt must be complete")
+        projection = (
+            self.research_workload_plan_sha256,
+            self.research_projected_max_cost_usd,
+        )
+        if any(value is not None for value in projection) and not all(
+            value is not None for value in projection
+        ):
+            raise ValueError("research whole-run projection receipt must be complete")
+        if all(value is not None for value in projection) and not all(
+            value is not None for value in receipt
+        ):
+            raise ValueError("research whole-run projection requires a quote receipt")
+        daily_authority = (
+            self.research_daily_budget_hold_id,
+            self.research_daily_budget_date_stamp,
+            self.research_daily_budget_cap_usd,
+        )
+        if any(value is not None for value in daily_authority) and not all(
+            value is not None for value in daily_authority
+        ):
+            raise ValueError("research daily budget authority must be complete")
+        if all(value is not None for value in daily_authority):
+            if not all(value is not None for value in receipt):
+                raise ValueError("research daily budget authority requires a quote receipt")
+            if self.research_daily_budget_hold_id != self.research_quote_id:
+                raise ValueError("research daily budget hold must match its quote")
+        if self.research_route_manifest is None:
+            if any(
+                value is not None
+                for value in (
+                    self.research_delegated_from_quote_id,
+                    self.research_delegation_id,
+                    self.research_root_investigation_id,
+                    self.research_root_quote_id,
+                    self.research_delegation_generation,
+                )
+            ):
+                raise ValueError("delegated research requires a quote receipt")
+            return self
+        delegation = (
+            self.research_delegated_from_quote_id,
+            self.research_delegation_id,
+            self.research_root_investigation_id,
+            self.research_root_quote_id,
+            self.research_delegation_generation,
+        )
+        if any(value is not None for value in delegation) and not all(
+            value is not None for value in delegation
+        ):
+            raise ValueError("delegated research authority must be complete")
+        if self.research_delegated_from_quote_id is not None and not (
+            self.parent_investigation_id and self.spawn_context
+        ):
+            raise ValueError("delegated research requires parent provenance")
+        keys = [(row.role, row.fallback_index) for row in self.research_route_manifest]
+        if not keys or keys != sorted(keys) or len(keys) != len(set(keys)):
+            raise ValueError("research quote manifest must be non-empty and canonical")
+        body = [row.model_dump(mode="json") for row in self.research_route_manifest]
+        canonical = json.dumps(
+            body, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+        fingerprint = hashlib.sha256(
+            b"antiek.research-route-manifest.v1\x00" + canonical
+        ).hexdigest()
+        if fingerprint != self.research_route_manifest_fingerprint:
+            raise ValueError("research quote manifest fingerprint mismatch")
+        selected_driver = (
+            self.selected_driver_role,
+            self.selected_driver_provider,
+            self.selected_driver_model,
+            self.selected_driver_pricing_fingerprint,
+        )
+        if any(value is not None for value in selected_driver) and not all(
+            value is not None for value in selected_driver
+        ):
+            raise ValueError("selected research driver identity must be complete")
+        if all(value is not None for value in selected_driver):
+            matches = [
+                row
+                for row in self.research_route_manifest
+                if row.role == self.selected_driver_role
+                and row.provider == self.selected_driver_provider
+                and row.model == self.selected_driver_model
+                and row.pricing_fingerprint == self.selected_driver_pricing_fingerprint
+            ]
+            if len(matches) != 1:
+                raise ValueError("selected research driver must match one quoted manifest route")
+        return self
 
 
 class InvestigationChaseHaltedPayload(_PayloadBase):
@@ -2303,6 +2915,7 @@ class InvestigationChaseHaltedPayload(_PayloadBase):
         "budget_exceeded",
         "no_open_questions",
         "chase_disabled",
+        "quote_authority_unavailable",
     ]
     depth_reached: int = Field(default=0, ge=0)
     duration_seconds: float = Field(default=0.0, ge=0.0)
@@ -2385,9 +2998,7 @@ class InvestigationCompletedPayload(_PayloadBase):
     the synthesis verdict + the constraint-loop verdict so a single
     event suffices to report outcome to a dashboard."""
 
-    action_type: Literal[ActionType.INVESTIGATION_COMPLETED] = (
-        ActionType.INVESTIGATION_COMPLETED
-    )
+    action_type: Literal[ActionType.INVESTIGATION_COMPLETED] = ActionType.INVESTIGATION_COMPLETED
     thesis_summary: str
     implicit_recommendation: SynthesisRecommendation
     constraint_loop_status: ConstraintLoopStatus
@@ -2403,9 +3014,7 @@ class InvestigationFailedPayload(_PayloadBase):
     is the diagnostic string (postcondition failure message, exception
     repr, etc.)."""
 
-    action_type: Literal[ActionType.INVESTIGATION_FAILED] = (
-        ActionType.INVESTIGATION_FAILED
-    )
+    action_type: Literal[ActionType.INVESTIGATION_FAILED] = ActionType.INVESTIGATION_FAILED
     phase: int = Field(ge=1, le=9)
     reason: str
     last_completed_phase: int | None = Field(default=None, ge=1, le=9)
@@ -2510,6 +3119,20 @@ class SynthesizeRequestedPayload(_PayloadBase):
     # these directly to gate the synthesizer's output. Empty list ⇒
     # ``single_pass`` loop terminus.
     constraints: list[ConstraintSpec] = Field(default_factory=list)
+    inherited_support_by_chunk: dict[str, list[str]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_inherited_support(self) -> Self:
+        if len(self.inherited_support_by_chunk) > 1000:
+            raise ValueError("inherited support chunk map exceeds policy limit")
+        for chunk_id, unit_ids in self.inherited_support_by_chunk.items():
+            if not chunk_id.strip() or len(chunk_id) > 512:
+                raise ValueError("inherited support map contains an invalid chunk ID")
+            if len(unit_ids) > 100 or len(set(unit_ids)) != len(unit_ids):
+                raise ValueError("inherited support map contains invalid unit citations")
+            if any(not unit_id.strip() or len(unit_id) > 512 for unit_id in unit_ids):
+                raise ValueError("inherited support map contains an invalid unit ID")
+        return self
 
 
 class ParameterExtractRequestedPayload(_PayloadBase):
@@ -2690,9 +3313,7 @@ class SkillPatchGateDecidedPayload(_PayloadBase):
     mutates files.
     """
 
-    action_type: Literal[ActionType.SKILL_PATCH_GATE_DECIDED] = (
-        ActionType.SKILL_PATCH_GATE_DECIDED
-    )
+    action_type: Literal[ActionType.SKILL_PATCH_GATE_DECIDED] = ActionType.SKILL_PATCH_GATE_DECIDED
     synthesis_id: str
     patch_id: str
     mode: str
@@ -2817,9 +3438,7 @@ class QualityGateEvaluatedPayload(_PayloadBase):
     visible counts on the Trust Center.
     """
 
-    action_type: Literal[ActionType.QUALITY_GATE_EVALUATED] = (
-        ActionType.QUALITY_GATE_EVALUATED
-    )
+    action_type: Literal[ActionType.QUALITY_GATE_EVALUATED] = ActionType.QUALITY_GATE_EVALUATED
     target_kind: Literal["notebook", "synthesis_page", "creator_note"]
     target_id: str
     accepted: bool
@@ -2988,9 +3607,7 @@ class VisualFrameIdentifiedPayload(_PayloadBase):
     role was asked to look at — the actual image bytes never appear
     in payloads (they live in the document store)."""
 
-    action_type: Literal[ActionType.VISUAL_FRAME_IDENTIFIED] = (
-        ActionType.VISUAL_FRAME_IDENTIFIED
-    )
+    action_type: Literal[ActionType.VISUAL_FRAME_IDENTIFIED] = ActionType.VISUAL_FRAME_IDENTIFIED
     document_id: str
     frame_source: Literal["still", "video"]
     page_or_frame_id: str
@@ -3005,9 +3622,7 @@ class VisualClaimsExtractedPayload(_PayloadBase):
     is normalized [0, 1] coords. ``frame_summary`` is the role's one-
     sentence summary."""
 
-    action_type: Literal[ActionType.VISUAL_CLAIMS_EXTRACTED] = (
-        ActionType.VISUAL_CLAIMS_EXTRACTED
-    )
+    action_type: Literal[ActionType.VISUAL_CLAIMS_EXTRACTED] = ActionType.VISUAL_CLAIMS_EXTRACTED
     document_id: str
     page_or_frame_id: str
     frame_summary: str
@@ -3023,9 +3638,7 @@ class VisualRoleFailedPayload(_PayloadBase):
     the raw model output (could leak unstructured prose) — the
     parser's error class names land here instead."""
 
-    action_type: Literal[ActionType.VISUAL_ROLE_FAILED] = (
-        ActionType.VISUAL_ROLE_FAILED
-    )
+    action_type: Literal[ActionType.VISUAL_ROLE_FAILED] = ActionType.VISUAL_ROLE_FAILED
     document_id: str
     page_or_frame_id: str
     failure_kind: Literal[
@@ -3049,9 +3662,7 @@ class SkillRulePromotedPayload(_PayloadBase):
     provenance.
     """
 
-    action_type: Literal[ActionType.SKILL_RULE_PROMOTED] = (
-        ActionType.SKILL_RULE_PROMOTED
-    )
+    action_type: Literal[ActionType.SKILL_RULE_PROMOTED] = ActionType.SKILL_RULE_PROMOTED
     rule_id: str
     rule_text: str
     rule_kind: str
@@ -3210,9 +3821,7 @@ class FetchFallbackEscalatedPayload(_PayloadBase):
     (fallback > primary) or hit a paywall/captcha (fallback ≈ primary).
     """
 
-    action_type: Literal[ActionType.FETCH_FALLBACK_ESCALATED] = (
-        ActionType.FETCH_FALLBACK_ESCALATED
-    )
+    action_type: Literal[ActionType.FETCH_FALLBACK_ESCALATED] = ActionType.FETCH_FALLBACK_ESCALATED
     url: str
     primary_fetcher: Literal["httpx"] = "httpx"
     primary_word_count: int = Field(ge=0)
@@ -3396,8 +4005,12 @@ class OutlineBlockPlacedPayload(_PayloadBase):
     deliverable_id: str
     section_id: str
     block_kind: Literal[
-        "insight", "open_question", "operator_note", "claim",
-        "user_authored", "synthesized",
+        "insight",
+        "open_question",
+        "operator_note",
+        "claim",
+        "user_authored",
+        "synthesized",
     ]
     provenance_kind: Literal["graph_node", "user_authored", "synthesized", "brainstorm"]
     node_id: str | None = None
@@ -3974,181 +4587,513 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
     target_question: str = ""
 
 
+class DocumentCitationPositionSetPayload(_PayloadBase):
+    """Source-text-free, receipt-bound reading position command."""
+
+    action_type: Literal[ActionType.DOCUMENT_CITATION_POSITION_SET] = (
+        ActionType.DOCUMENT_CITATION_POSITION_SET
+    )
+    receipt_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    index: int = Field(ge=0, le=63)
+    anchor_count: int = Field(ge=1, le=64)
+    mutation_key_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    request_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class WorkspaceResumeEntry(_PayloadBase):
+    """One closed, source-text-free semantic workspace reference."""
+
+    kind: Literal[
+        "stats",
+        "library",
+        "subaction",
+        "research_artifact",
+        "hosted_html_document",
+        "deep_research_session",
+        "collective_unit",
+        "ancestry_interrogation",
+        "collective_council",
+    ]
+    workflow: Literal["research", "read", "write", "speak"] | None = None
+    investigation_id: str | None = Field(default=None, min_length=1, max_length=512)
+    resolver: Literal["hosted_document", "engagement_document"] | None = None
+    document_id: str | None = Field(default=None, min_length=1, max_length=512)
+    session_id: str | None = Field(default=None, min_length=1, max_length=512)
+    manifest_id: str | None = Field(default=None, min_length=1, max_length=512)
+    receipt_id: str | None = Field(default=None, min_length=1, max_length=512)
+    plan_id: str | None = Field(default=None, min_length=1, max_length=512)
+
+    @model_validator(mode="after")
+    def _closed_shape(self) -> WorkspaceResumeEntry:
+        fields = {
+            "workflow": self.workflow,
+            "investigation_id": self.investigation_id,
+            "resolver": self.resolver,
+            "document_id": self.document_id,
+            "session_id": self.session_id,
+            "manifest_id": self.manifest_id,
+            "receipt_id": self.receipt_id,
+            "plan_id": self.plan_id,
+        }
+        if self.kind == "ancestry_interrogation":
+            required = {"investigation_id", "manifest_id", "receipt_id"}
+            if (
+                any(fields[key] is None for key in required)
+                or any(value is not None for key, value in fields.items() if key not in required)
+                or not self._valid_reference_id(self.investigation_id or "")
+                or not self._valid_reference_id(self.manifest_id or "")
+                or not self._valid_reference_id(self.receipt_id or "")
+            ):
+                raise ValueError(
+                    "ancestry_interrogation requires investigation_id, manifest_id, and receipt_id only"
+                )
+            return self
+        if self.kind == "collective_unit":
+            if (
+                self.manifest_id is None
+                or any(value is not None for key, value in fields.items() if key != "manifest_id")
+                or not self._valid_reference_id(self.manifest_id)
+            ):
+                raise ValueError("collective_unit requires manifest_id only")
+            return self
+        if self.kind == "collective_council":
+            if (
+                self.plan_id is None
+                or any(value is not None for key, value in fields.items() if key != "plan_id")
+                or not self._valid_reference_id(self.plan_id)
+            ):
+                raise ValueError("collective_council requires plan_id only")
+            return self
+        if self.kind == "subaction":
+            if (
+                self.workflow is None
+                or self.investigation_id is not None
+                or self.resolver is not None
+                or self.document_id is not None
+                or self.session_id is not None
+                or self.manifest_id is not None
+                or self.plan_id is not None
+                or self.receipt_id is not None
+            ):
+                raise ValueError("subaction requires workflow only")
+        elif self.kind == "research_artifact":
+            if (
+                self.investigation_id is None
+                or self.workflow is not None
+                or self.resolver is not None
+                or self.document_id is not None
+                or self.session_id is not None
+                or self.manifest_id is not None
+                or self.plan_id is not None
+                or self.receipt_id is not None
+            ):
+                raise ValueError("research_artifact requires investigation_id only")
+        elif self.kind == "hosted_html_document":
+            if (
+                self.resolver is None
+                or self.document_id is None
+                or self.workflow is not None
+                or self.investigation_id is not None
+                or self.session_id is not None
+                or self.manifest_id is not None
+                or self.plan_id is not None
+                or self.receipt_id is not None
+                or self.document_id != self.document_id.strip()
+                or len(self.document_id.encode("utf-8")) > 512
+                or any(unicodedata.category(character) == "Cc" for character in self.document_id)
+            ):
+                raise ValueError(
+                    "hosted_html_document requires a valid resolver and document_id only"
+                )
+        elif self.kind == "deep_research_session":
+            if (
+                self.session_id is None
+                or self.workflow is not None
+                or self.investigation_id is not None
+                or self.resolver is not None
+                or self.document_id is not None
+                or self.manifest_id is not None
+                or self.plan_id is not None
+                or self.receipt_id is not None
+                or self.session_id != self.session_id.strip()
+                or len(self.session_id.encode("utf-8")) > 512
+                or any(unicodedata.category(character) == "Cc" for character in self.session_id)
+            ):
+                raise ValueError("deep_research_session requires a valid session_id only")
+        elif (
+            self.workflow is not None
+            or self.investigation_id is not None
+            or self.resolver is not None
+            or self.document_id is not None
+            or self.session_id is not None
+            or self.manifest_id is not None
+            or self.plan_id is not None
+            or self.receipt_id is not None
+        ):
+            raise ValueError("reference kind carries no additional fields")
+        return self
+
+    @staticmethod
+    def _valid_reference_id(value: str) -> bool:
+        return (
+            value == value.strip()
+            and len(value.encode("utf-8")) <= 512
+            and not any(unicodedata.category(character) == "Cc" for character in value)
+        )
+
+
+class WorkspaceResumeCheckpointSetPayload(_PayloadBase):
+    """Optimistic account checkpoint; deliberately contains no source text."""
+
+    action_type: Literal[ActionType.WORKSPACE_RESUME_CHECKPOINT_SET] = (
+        ActionType.WORKSPACE_RESUME_CHECKPOINT_SET
+    )
+    schema_version: Literal[1] = 1
+    revision: int = Field(ge=1)
+    base_revision: int = Field(ge=0)
+    entries: tuple[WorkspaceResumeEntry, ...] = Field(max_length=8)
+    mutation_key_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    request_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    @field_serializer("entries")
+    def _serialize_closed_entries(
+        self, entries: tuple[WorkspaceResumeEntry, ...]
+    ) -> list[dict[str, object]]:
+        return [entry.model_dump(mode="json", exclude_none=True) for entry in entries]
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | SkillPatchGateDecidedPayload | SkillPatchGateReviewedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    DispatchCallPayload
+    | ResearchCallReservedPayload
+    | ResearchCallSettledPayload
+    | ResearchCallReleasedPayload
+    | ResearchDelegationReservedPayload
+    | ResearchDelegationIssuedPayload
+    | ResearchDelegationAcceptedPayload
+    | ResearchDelegationReleasedPayload
+    | ResearchDelegationSettledPayload
+    | InvestigationExecutionClaimedPayload
+    | InvestigationExecutionRenewedPayload
+    | InvestigationExecutionTakenOverPayload
+    | InvestigationExecutionCompletedPayload
+    | InvestigationProjectionRequestedPayload
+    | InvestigationProjectionEffectRecordedPayload
+    | InvestigationProjectionFailedPayload
+    | InvestigationProjectionCompletedPayload
+    | GatherReportRecordedPayload
+    | WorkerIdentityPayload
+    | ContextPackAssembledPayload
+    | KnowledgeReusedPayload
+    | ReuseGatedPayload
+    | DocumentLoadedPayload
+    | DocumentRegionSelectedPayload
+    | DistillationRequestedPayload
+    | DistillationDeliveredPayload
+    | ClaimChallengeRaisedPayload
+    | ClaimGroundingCheckPassedPayload
+    | ClaimGroundingCheckFailedPayload
+    | NoteEmergedPayload
+    | NoteRefinedPayload
+    | NoteCompressedDocWrittenPayload
+    | QuestionIdentifiedPayload
+    | QuestionEscalatedToResearchPayload
+    | QuestionResolvedByDocPayload
+    | CrossDocQuestionAnsweredPayload
+    | UserAcceptDistillationPayload
+    | UserRejectDistillationPayload
+    | UserEditDistillationPayload
+    | ArtifactGeneratedPayload
+    | ArtifactInteractedPayload
+    | TierAssignedPayload
+    | TierOverriddenPayload
+    | TierRewriteBulkPayload
+    | StalenessFlaggedPayload
+    | StalenessResolvePayload
+    | SynthesisArchivedPayload
+    | SubstrateManifestWrittenPayload
+    | SupersessionApplyPayload
+    | SupersessionDismissPayload
+    | SupersessionCoexistPayload
+    | GraphNodeInsertedPayload
+    | GraphEdgeInsertedPayload
+    | ConstraintViolationFoundPayload
+    | ConstraintRevisionTriggeredPayload
+    | ConstraintLoopResolvedPayload
+    | OutcomeRecordedPayload
+    | RubricScoredPayload
+    | GroundednessScoredPayload
+    | GroundednessFailedPayload
+    | PhaseEnterPayload
+    | PhaseExitPayload
+    | PhaseVerifyPayload
+    | DecomposeQuestionRequestedPayload
+    | DecomposeQuestionDeliveredPayload
+    | DecomposerParaphraseFlaggedPayload
+    | DecomposerRegeneratedPayload
+    | MasterMdWrittenPayload
+    | MasterMdSkippedPayload
+    | SkillPatchGateDecidedPayload
+    | SkillPatchGateReviewedPayload
+    | AutoPatchAppliedPayload
+    | AutoPatchSkippedPayload
+    | EvidenceRetrieveRequestedPayload
+    | EvidenceRetrieveDeliveredPayload
+    | ParameterExtractRequestedPayload
+    | ParameterExtractDeliveredPayload
+    | ConnectorRequestedPayload
+    | ConnectorDeliveredPayload
+    | SynthesizeRequestedPayload
+    | SynthesizeDeliveredPayload
+    | AuditFindingPayload
+    | InvestigationStartRequestedPayload
+    | InvestigationCompletedPayload
+    | InvestigationFailedPayload
+    | InvestigationSpawnedFromPayload
+    | InvestigationChaseHaltedPayload
+    | ClaimAssertedByOperatorPayload
+    | PageAttributionComputedPayload
+    | RLMBridgeDecidedPayload
+    | QualityGateEvaluatedPayload
+    | CrossGraphCitationRecordedPayload
+    | RevShareDecidedPayload
+    | PreferenceObservationRecordedPayload
+    | SkillRulePromotedPayload
+    | DiscoveryProposedPayload
+    | DiscoverySelectedPayload
+    | FetchFallbackEscalatedPayload
+    | VerifierLookupPayload
+    | FederationPartnerRegisteredPayload
+    | FederationPartnerTrustedPayload
+    | FederationPartnerRevokedPayload
+    | FederationOutboundCitationEmittedPayload
+    | FederationInboundCitationAcceptedPayload
+    | FederationInboundCitationRefusedPayload
+    | VisualFrameIdentifiedPayload
+    | VisualClaimsExtractedPayload
+    | VisualRoleFailedPayload
+    | AIActionAppliedPayload
+    | AIActionUndonePayload
+    | DPRoutedPayload
+    | OutlineBlockPlacedPayload
+    | OutlineBlockMovedPayload
+    | OutlineBlockRemovedPayload
+    | BookServabilityChangedPayload
+    | BookTakenDownPayload
+    | DocumentContentClassDefaultedPayload
+    | EditCapturedPayload
+    | SectionDraftGeneratedPayload
+    | SeamResearchToReadPayload
+    | SeamReadToResearchPayload
+    | SeamReadToWritePayload
+    | SeamWriteToReadPayload
+    | SeamSpeakToWritePayload
+    | SeamSpeakToReadPayload
+    | SeamWriteToSpeakPayload
+    | VoiceCapturedPayload
+    | MarginaliaNotedPayload
+    | BlockPositionPayload
+    | SourceReadPayload
+    | ReadMetaReadingGeneratedPayload
+    | DocumentFiledIntoInvestigationPayload
+    | DocumentCitationPositionSetPayload
+    | WorkspaceResumeCheckpointSetPayload,
     Field(discriminator="action_type"),
 ]
 
 
 # Action types currently covered by the typed union. Read-side
 # reconstruction switches on this set: typed if member, dict otherwise.
-TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
-    ActionType.DISPATCH_CALL.value,
-    # antiek-yegge-execute SPR-01 — worker registration (future registry, SPR-04).
-    ActionType.WORKER_IDENTITY.value,
-    ActionType.CONTEXT_PACK_ASSEMBLED.value,
-    # AFF SPR-06 — flywheel reuse half.
-    ActionType.KNOWLEDGE_REUSED.value,
-    # AFF SPR-08 — trust gate on reuse (one event per excluded unit).
-    ActionType.REUSE_GATED.value,
-    ActionType.DOCUMENT_LOADED.value,
-    ActionType.DOCUMENT_REGION_SELECTED.value,
-    ActionType.DISTILLATION_REQUESTED.value,
-    ActionType.DISTILLATION_DELIVERED.value,
-    ActionType.CLAIM_CHALLENGE_RAISED.value,
-    ActionType.CLAIM_GROUNDING_CHECK_PASSED.value,
-    ActionType.CLAIM_GROUNDING_CHECK_FAILED.value,
-    ActionType.NOTE_EMERGED.value,
-    ActionType.NOTE_REFINED.value,
-    ActionType.NOTE_COMPRESSED_DOC_WRITTEN.value,
-    ActionType.QUESTION_IDENTIFIED.value,
-    ActionType.QUESTION_ESCALATED_TO_RESEARCH.value,
-    ActionType.QUESTION_RESOLVED_BY_DOC.value,
-    ActionType.CROSS_DOC_QUESTION_ANSWERED.value,
-    ActionType.USER_ACCEPT_DISTILLATION.value,
-    ActionType.USER_REJECT_DISTILLATION.value,
-    ActionType.USER_EDIT_DISTILLATION.value,
-    ActionType.ARTIFACT_GENERATED.value,
-    ActionType.ARTIFACT_INTERACTED.value,
-    ActionType.GRAPH_TIER_ASSIGNED.value,
-    ActionType.GRAPH_TIER_OVERRIDDEN.value,
-    ActionType.TIER_REWRITE_BULK.value,
-    ActionType.GRAPH_STALENESS_FLAGGED.value,
-    ActionType.STALENESS_RESOLVE.value,
-    ActionType.SYNTHESIS_ARCHIVED.value,
-    ActionType.SUBSTRATE_MANIFEST_WRITTEN.value,
-    ActionType.SUPERSESSION_APPLY.value,
-    ActionType.SUPERSESSION_DISMISS.value,
-    ActionType.SUPERSESSION_COEXIST.value,
-    ActionType.GRAPH_NODE_INSERTED.value,
-    ActionType.GRAPH_EDGE_INSERTED.value,
-    ActionType.CONSTRAINT_VIOLATION_FOUND.value,
-    ActionType.CONSTRAINT_REVISION_TRIGGERED.value,
-    ActionType.CONSTRAINT_LOOP_RESOLVED.value,
-    ActionType.OUTCOME_RECORDED.value,
-    ActionType.RUBRIC_SCORED.value,
-    # Foundation v2 SPR-02 — groundedness eval (truth axis) + the failure
-    # event that replaces the Phase-6 except-pass swallow.
-    ActionType.GROUNDEDNESS_SCORED.value,
-    ActionType.GROUNDEDNESS_FAILED.value,
-    ActionType.PHASE_ENTER.value,
-    ActionType.PHASE_EXIT.value,
-    ActionType.PHASE_VERIFY.value,
-    ActionType.DECOMPOSE_QUESTION_REQUESTED.value,
-    ActionType.DECOMPOSE_QUESTION_DELIVERED.value,
-    ActionType.DECOMPOSER_PARAPHRASE_FLAGGED.value,
-    ActionType.DECOMPOSER_REGENERATED.value,
-    ActionType.MASTER_MD_WRITTEN.value,
-    ActionType.MASTER_MD_SKIPPED.value,
-    ActionType.SKILL_PATCH_GATE_DECIDED.value,
-    ActionType.SKILL_PATCH_GATE_REVIEWED.value,
-    ActionType.AUTO_PATCH_APPLIED.value,
-    ActionType.AUTO_PATCH_SKIPPED.value,
-    ActionType.EVIDENCE_RETRIEVE_REQUESTED.value,
-    ActionType.EVIDENCE_RETRIEVE_DELIVERED.value,
-    ActionType.PARAMETER_EXTRACT_REQUESTED.value,
-    ActionType.PARAMETER_EXTRACT_DELIVERED.value,
-    ActionType.CONNECTOR_REQUESTED.value,
-    ActionType.CONNECTOR_DELIVERED.value,
-    ActionType.SYNTHESIZE_REQUESTED.value,
-    ActionType.SYNTHESIZE_DELIVERED.value,
-    ActionType.AUDIT_FINDING_EMITTED.value,
-    ActionType.INVESTIGATION_START_REQUESTED.value,
-    ActionType.INVESTIGATION_COMPLETED.value,
-    ActionType.INVESTIGATION_FAILED.value,
-    ActionType.INVESTIGATION_SPAWNED_FROM.value,
-    ActionType.INVESTIGATION_CHASE_HALTED.value,
-    ActionType.CLAIM_ASSERTED_BY_OPERATOR.value,
-    ActionType.PAGE_ATTRIBUTION_COMPUTED.value,
-    ActionType.RLM_BRIDGE_DECIDED.value,
-    ActionType.QUALITY_GATE_EVALUATED.value,
-    ActionType.CROSS_GRAPH_CITATION_RECORDED.value,
-    ActionType.REV_SHARE_DECIDED.value,
-    ActionType.PREFERENCE_OBSERVATION_RECORDED.value,
-    ActionType.SKILL_RULE_PROMOTED.value,
-    # Sprint 18 — Exa/Browserbase substrate-only precursor.
-    ActionType.DISCOVERY_PROPOSED.value,
-    ActionType.DISCOVERY_SELECTED.value,
-    ActionType.FETCH_FALLBACK_ESCALATED.value,
-    # Wedge 3 — verifier-tier external corroboration primitive.
-    ActionType.VERIFIER_LOOKUP.value,
-    # Sprint 30+ thread 1 — federation audit trail.
-    ActionType.FEDERATION_PARTNER_REGISTERED.value,
-    ActionType.FEDERATION_PARTNER_TRUSTED.value,
-    ActionType.FEDERATION_PARTNER_REVOKED.value,
-    ActionType.FEDERATION_OUTBOUND_CITATION_EMITTED.value,
-    ActionType.FEDERATION_INBOUND_CITATION_ACCEPTED.value,
-    ActionType.FEDERATION_INBOUND_CITATION_REFUSED.value,
-    # Sprint 30+ thread 4 — visual role audit trail.
-    ActionType.VISUAL_FRAME_IDENTIFIED.value,
-    ActionType.VISUAL_CLAIMS_EXTRACTED.value,
-    ActionType.VISUAL_ROLE_FAILED.value,
-    # PostHog Wedge 4 — AI sidecar undoable actions.
-    ActionType.AI_ACTION_APPLIED.value,
-    ActionType.AI_ACTION_UNDONE.value,
-    # DP shuffler production routing.
-    ActionType.DP_ROUTED.value,
-    # Write workflow SPR-01 — outline composition audit trail.
-    ActionType.OUTLINE_BLOCK_PLACED.value,
-    ActionType.OUTLINE_BLOCK_MOVED.value,
-    ActionType.OUTLINE_BLOCK_REMOVED.value,
-    # Write workflow SPR-02 — edit capture.
-    ActionType.EDIT_CAPTURED.value,
-    # Write workflow SPR-09 — draft provenance persistence (X-ray).
-    ActionType.SECTION_DRAFT_GENERATED.value,
-    # Personal-Reading Lane SPR-01 — deny-by-default ingest classification.
-    ActionType.DOCUMENT_CONTENT_CLASS_DEFAULTED.value,
-    # antiek-unified SPR-03 — cross-workflow seam handoffs.
-    ActionType.SEAM_RESEARCH_TO_READ.value,
-    ActionType.SEAM_READ_TO_RESEARCH.value,
-    ActionType.SEAM_READ_TO_WRITE.value,
-    ActionType.SEAM_WRITE_TO_READ.value,
-    ActionType.SEAM_SPEAK_TO_WRITE.value,
-    ActionType.SEAM_SPEAK_TO_READ.value,
-    ActionType.SEAM_WRITE_TO_SPEAK.value,
-    # Living Roadmap SPR-14 — voice-in capture provenance.
-    ActionType.VOICE_CAPTURED.value,
-    # Living Roadmap SPR-04 — highlight → float-menu user NOTE provenance.
-    ActionType.MARGINALIA_NOTED.value,
-    # Living Roadmap SPR-03 — block-canvas position persistence.
-    ActionType.BLOCK_POSITIONED.value,
-    # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
-    ActionType.SOURCE_READ.value,
-    # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
-    ActionType.READ_META_READING_GENERATED.value,
-    # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.
-    ActionType.DOCUMENT_FILED_INTO_INVESTIGATION.value,
-})
+TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset(
+    {
+        ActionType.DISPATCH_CALL.value,
+        ActionType.RESEARCH_CALL_RESERVED.value,
+        ActionType.RESEARCH_CALL_SETTLED.value,
+        ActionType.RESEARCH_CALL_RELEASED.value,
+        ActionType.RESEARCH_DELEGATION_RESERVED.value,
+        ActionType.RESEARCH_DELEGATION_ISSUED.value,
+        ActionType.RESEARCH_DELEGATION_ACCEPTED.value,
+        ActionType.RESEARCH_DELEGATION_RELEASED.value,
+        ActionType.RESEARCH_DELEGATION_SETTLED.value,
+        ActionType.INVESTIGATION_EXECUTION_CLAIMED.value,
+        ActionType.INVESTIGATION_EXECUTION_RENEWED.value,
+        ActionType.INVESTIGATION_EXECUTION_TAKEN_OVER.value,
+        ActionType.INVESTIGATION_EXECUTION_COMPLETED.value,
+        ActionType.INVESTIGATION_PROJECTION_REQUESTED.value,
+        ActionType.INVESTIGATION_PROJECTION_EFFECT_RECORDED.value,
+        ActionType.INVESTIGATION_PROJECTION_FAILED.value,
+        ActionType.INVESTIGATION_PROJECTION_COMPLETED.value,
+        ActionType.GATHER_REPORT_RECORDED.value,
+        # antiek-yegge-execute SPR-01 — worker registration (future registry, SPR-04).
+        ActionType.WORKER_IDENTITY.value,
+        ActionType.CONTEXT_PACK_ASSEMBLED.value,
+        # AFF SPR-06 — flywheel reuse half.
+        ActionType.KNOWLEDGE_REUSED.value,
+        # AFF SPR-08 — trust gate on reuse (one event per excluded unit).
+        ActionType.REUSE_GATED.value,
+        ActionType.DOCUMENT_LOADED.value,
+        ActionType.DOCUMENT_REGION_SELECTED.value,
+        ActionType.DISTILLATION_REQUESTED.value,
+        ActionType.DISTILLATION_DELIVERED.value,
+        ActionType.CLAIM_CHALLENGE_RAISED.value,
+        ActionType.CLAIM_GROUNDING_CHECK_PASSED.value,
+        ActionType.CLAIM_GROUNDING_CHECK_FAILED.value,
+        ActionType.NOTE_EMERGED.value,
+        ActionType.NOTE_REFINED.value,
+        ActionType.NOTE_COMPRESSED_DOC_WRITTEN.value,
+        ActionType.QUESTION_IDENTIFIED.value,
+        ActionType.QUESTION_ESCALATED_TO_RESEARCH.value,
+        ActionType.QUESTION_RESOLVED_BY_DOC.value,
+        ActionType.CROSS_DOC_QUESTION_ANSWERED.value,
+        ActionType.USER_ACCEPT_DISTILLATION.value,
+        ActionType.USER_REJECT_DISTILLATION.value,
+        ActionType.USER_EDIT_DISTILLATION.value,
+        ActionType.ARTIFACT_GENERATED.value,
+        ActionType.ARTIFACT_INTERACTED.value,
+        ActionType.GRAPH_TIER_ASSIGNED.value,
+        ActionType.GRAPH_TIER_OVERRIDDEN.value,
+        ActionType.TIER_REWRITE_BULK.value,
+        ActionType.GRAPH_STALENESS_FLAGGED.value,
+        ActionType.STALENESS_RESOLVE.value,
+        ActionType.SYNTHESIS_ARCHIVED.value,
+        ActionType.SUBSTRATE_MANIFEST_WRITTEN.value,
+        ActionType.SUPERSESSION_APPLY.value,
+        ActionType.SUPERSESSION_DISMISS.value,
+        ActionType.SUPERSESSION_COEXIST.value,
+        ActionType.GRAPH_NODE_INSERTED.value,
+        ActionType.GRAPH_EDGE_INSERTED.value,
+        ActionType.CONSTRAINT_VIOLATION_FOUND.value,
+        ActionType.CONSTRAINT_REVISION_TRIGGERED.value,
+        ActionType.CONSTRAINT_LOOP_RESOLVED.value,
+        ActionType.OUTCOME_RECORDED.value,
+        ActionType.RUBRIC_SCORED.value,
+        # Foundation v2 SPR-02 — groundedness eval (truth axis) + the failure
+        # event that replaces the Phase-6 except-pass swallow.
+        ActionType.GROUNDEDNESS_SCORED.value,
+        ActionType.GROUNDEDNESS_FAILED.value,
+        ActionType.PHASE_ENTER.value,
+        ActionType.PHASE_EXIT.value,
+        ActionType.PHASE_VERIFY.value,
+        ActionType.DECOMPOSE_QUESTION_REQUESTED.value,
+        ActionType.DECOMPOSE_QUESTION_DELIVERED.value,
+        ActionType.DECOMPOSER_PARAPHRASE_FLAGGED.value,
+        ActionType.DECOMPOSER_REGENERATED.value,
+        ActionType.MASTER_MD_WRITTEN.value,
+        ActionType.MASTER_MD_SKIPPED.value,
+        ActionType.SKILL_PATCH_GATE_DECIDED.value,
+        ActionType.SKILL_PATCH_GATE_REVIEWED.value,
+        ActionType.AUTO_PATCH_APPLIED.value,
+        ActionType.AUTO_PATCH_SKIPPED.value,
+        ActionType.EVIDENCE_RETRIEVE_REQUESTED.value,
+        ActionType.EVIDENCE_RETRIEVE_DELIVERED.value,
+        ActionType.PARAMETER_EXTRACT_REQUESTED.value,
+        ActionType.PARAMETER_EXTRACT_DELIVERED.value,
+        ActionType.CONNECTOR_REQUESTED.value,
+        ActionType.CONNECTOR_DELIVERED.value,
+        ActionType.SYNTHESIZE_REQUESTED.value,
+        ActionType.SYNTHESIZE_DELIVERED.value,
+        ActionType.AUDIT_FINDING_EMITTED.value,
+        ActionType.INVESTIGATION_START_REQUESTED.value,
+        ActionType.INVESTIGATION_COMPLETED.value,
+        ActionType.INVESTIGATION_FAILED.value,
+        ActionType.INVESTIGATION_SPAWNED_FROM.value,
+        ActionType.INVESTIGATION_CHASE_HALTED.value,
+        ActionType.CLAIM_ASSERTED_BY_OPERATOR.value,
+        ActionType.PAGE_ATTRIBUTION_COMPUTED.value,
+        ActionType.RLM_BRIDGE_DECIDED.value,
+        ActionType.QUALITY_GATE_EVALUATED.value,
+        ActionType.CROSS_GRAPH_CITATION_RECORDED.value,
+        ActionType.REV_SHARE_DECIDED.value,
+        ActionType.PREFERENCE_OBSERVATION_RECORDED.value,
+        ActionType.SKILL_RULE_PROMOTED.value,
+        # Sprint 18 — Exa/Browserbase substrate-only precursor.
+        ActionType.DISCOVERY_PROPOSED.value,
+        ActionType.DISCOVERY_SELECTED.value,
+        ActionType.FETCH_FALLBACK_ESCALATED.value,
+        # Wedge 3 — verifier-tier external corroboration primitive.
+        ActionType.VERIFIER_LOOKUP.value,
+        # Sprint 30+ thread 1 — federation audit trail.
+        ActionType.FEDERATION_PARTNER_REGISTERED.value,
+        ActionType.FEDERATION_PARTNER_TRUSTED.value,
+        ActionType.FEDERATION_PARTNER_REVOKED.value,
+        ActionType.FEDERATION_OUTBOUND_CITATION_EMITTED.value,
+        ActionType.FEDERATION_INBOUND_CITATION_ACCEPTED.value,
+        ActionType.FEDERATION_INBOUND_CITATION_REFUSED.value,
+        # Sprint 30+ thread 4 — visual role audit trail.
+        ActionType.VISUAL_FRAME_IDENTIFIED.value,
+        ActionType.VISUAL_CLAIMS_EXTRACTED.value,
+        ActionType.VISUAL_ROLE_FAILED.value,
+        # PostHog Wedge 4 — AI sidecar undoable actions.
+        ActionType.AI_ACTION_APPLIED.value,
+        ActionType.AI_ACTION_UNDONE.value,
+        # DP shuffler production routing.
+        ActionType.DP_ROUTED.value,
+        # Write workflow SPR-01 — outline composition audit trail.
+        ActionType.OUTLINE_BLOCK_PLACED.value,
+        ActionType.OUTLINE_BLOCK_MOVED.value,
+        ActionType.OUTLINE_BLOCK_REMOVED.value,
+        # Write workflow SPR-02 — edit capture.
+        ActionType.EDIT_CAPTURED.value,
+        # Write workflow SPR-09 — draft provenance persistence (X-ray).
+        ActionType.SECTION_DRAFT_GENERATED.value,
+        # Personal-Reading Lane SPR-01 — deny-by-default ingest classification.
+        ActionType.DOCUMENT_CONTENT_CLASS_DEFAULTED.value,
+        # antiek-unified SPR-03 — cross-workflow seam handoffs.
+        ActionType.SEAM_RESEARCH_TO_READ.value,
+        ActionType.SEAM_READ_TO_RESEARCH.value,
+        ActionType.SEAM_READ_TO_WRITE.value,
+        ActionType.SEAM_WRITE_TO_READ.value,
+        ActionType.SEAM_SPEAK_TO_WRITE.value,
+        ActionType.SEAM_SPEAK_TO_READ.value,
+        ActionType.SEAM_WRITE_TO_SPEAK.value,
+        # Living Roadmap SPR-14 — voice-in capture provenance.
+        ActionType.VOICE_CAPTURED.value,
+        # Living Roadmap SPR-04 — highlight → float-menu user NOTE provenance.
+        ActionType.MARGINALIA_NOTED.value,
+        # Living Roadmap SPR-03 — block-canvas position persistence.
+        ActionType.BLOCK_POSITIONED.value,
+        # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
+        ActionType.SOURCE_READ.value,
+        # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
+        ActionType.READ_META_READING_GENERATED.value,
+        # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.
+        ActionType.DOCUMENT_FILED_INTO_INVESTIGATION.value,
+        ActionType.DOCUMENT_CITATION_POSITION_SET.value,
+        ActionType.WORKSPACE_RESUME_CHECKPOINT_SET.value,
+    }
+)
 
 
 # Wrestling action types that REQUIRE document_id on the Event envelope.
 # Enforced by the Event model_validator below.
-WRESTLING_ACTION_TYPES: frozenset[str] = frozenset({
-    ActionType.DOCUMENT_LOADED.value,
-    ActionType.DOCUMENT_REGION_SELECTED.value,
-    ActionType.DISTILLATION_REQUESTED.value,
-    ActionType.DISTILLATION_DELIVERED.value,
-    ActionType.CLAIM_CHALLENGE_RAISED.value,
-    ActionType.CLAIM_GROUNDING_CHECK_PASSED.value,
-    ActionType.CLAIM_GROUNDING_CHECK_FAILED.value,
-    ActionType.NOTE_EMERGED.value,
-    ActionType.NOTE_REFINED.value,
-    ActionType.NOTE_COMPRESSED_DOC_WRITTEN.value,
-    ActionType.QUESTION_IDENTIFIED.value,
-    ActionType.QUESTION_ESCALATED_TO_RESEARCH.value,
-    ActionType.QUESTION_RESOLVED_BY_DOC.value,
-    ActionType.USER_ACCEPT_DISTILLATION.value,
-    ActionType.USER_REJECT_DISTILLATION.value,
-    ActionType.USER_EDIT_DISTILLATION.value,
-    # CROSS_DOC_QUESTION_ANSWERED is NOT in this set — it spans two
-    # documents, both of which live in the payload. The envelope's
-    # document_id is left null for this variant.
-})
+WRESTLING_ACTION_TYPES: frozenset[str] = frozenset(
+    {
+        ActionType.DOCUMENT_LOADED.value,
+        ActionType.DOCUMENT_REGION_SELECTED.value,
+        ActionType.DISTILLATION_REQUESTED.value,
+        ActionType.DISTILLATION_DELIVERED.value,
+        ActionType.CLAIM_CHALLENGE_RAISED.value,
+        ActionType.CLAIM_GROUNDING_CHECK_PASSED.value,
+        ActionType.CLAIM_GROUNDING_CHECK_FAILED.value,
+        ActionType.NOTE_EMERGED.value,
+        ActionType.NOTE_REFINED.value,
+        ActionType.NOTE_COMPRESSED_DOC_WRITTEN.value,
+        ActionType.QUESTION_IDENTIFIED.value,
+        ActionType.QUESTION_ESCALATED_TO_RESEARCH.value,
+        ActionType.QUESTION_RESOLVED_BY_DOC.value,
+        ActionType.USER_ACCEPT_DISTILLATION.value,
+        ActionType.USER_REJECT_DISTILLATION.value,
+        ActionType.USER_EDIT_DISTILLATION.value,
+        ActionType.DOCUMENT_CITATION_POSITION_SET.value,
+        # CROSS_DOC_QUESTION_ANSWERED is NOT in this set — it spans two
+        # documents, both of which live in the payload. The envelope's
+        # document_id is left null for this variant.
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -4181,6 +5126,7 @@ class Event(BaseModel):
     schema_version: int = EVENT_SCHEMA_VERSION
     emitted_at: datetime
     document_id: str | None = None
+    execution_generation: int | None = Field(default=None, ge=1, le=1_000_000)
 
     @model_validator(mode="after")
     def _check_action_type_matches_payload(self) -> Event:
@@ -4188,7 +5134,11 @@ class Event(BaseModel):
         # the check works whether action_type was passed as the enum or as
         # the underlying string (use_enum_values=True converts to str on
         # serialization but Pydantic stores the enum during validation).
-        top = self.action_type.value if isinstance(self.action_type, ActionType) else str(self.action_type)
+        top = (
+            self.action_type.value
+            if isinstance(self.action_type, ActionType)
+            else str(self.action_type)
+        )
         pl = self.payload.action_type
         pl_str = pl.value if isinstance(pl, ActionType) else str(pl)
         if top != pl_str:
@@ -4200,7 +5150,11 @@ class Event(BaseModel):
 
     @model_validator(mode="after")
     def _check_wrestling_requires_document_id(self) -> Event:
-        at = self.action_type.value if isinstance(self.action_type, ActionType) else str(self.action_type)
+        at = (
+            self.action_type.value
+            if isinstance(self.action_type, ActionType)
+            else str(self.action_type)
+        )
         if at in WRESTLING_ACTION_TYPES and not self.document_id:
             raise ValueError(
                 f"Event with action_type {at!r} is a wrestling-loop event and requires "
@@ -4236,6 +5190,24 @@ __all__ = [
     "ArtifactKind",
     # Dispatch + context pack
     "DispatchCallPayload",
+    "ResearchCallReservedPayload",
+    "ResearchCallSettledPayload",
+    "ResearchCallReleasedPayload",
+    "ResearchDelegationReservedPayload",
+    "ResearchDelegationIssuedPayload",
+    "ResearchDelegationAcceptedPayload",
+    "ResearchDelegationReleasedPayload",
+    "ResearchDelegationSettledPayload",
+    "InvestigationExecutionClaimedPayload",
+    "InvestigationExecutionRenewedPayload",
+    "InvestigationExecutionTakenOverPayload",
+    "InvestigationExecutionCompletedPayload",
+    "InvestigationProjectionRequestedPayload",
+    "InvestigationProjectionEffectRecordedPayload",
+    "InvestigationProjectionFailedPayload",
+    "InvestigationProjectionCompletedPayload",
+    "GatherSourceReportReceipt",
+    "GatherReportRecordedPayload",
     "ContextPackAssembledPayload",
     "RecursiveContextAssemblyReceipt",
     "RecursiveContextUnitReceipt",
@@ -4434,4 +5406,7 @@ __all__ = [
     "ReadMetaReadingGeneratedPayload",
     # Filing a personal-space doc into a research project SPR-13 (v22 bump)
     "DocumentFiledIntoInvestigationPayload",
+    "DocumentCitationPositionSetPayload",
+    "WorkspaceResumeEntry",
+    "WorkspaceResumeCheckpointSetPayload",
 ]

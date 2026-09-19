@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -28,6 +29,8 @@ from runtime.research_runner import (
     make_demo_loop,
 )
 from substrate.graph.schema import init_database_at_path
+from substrate.investigation_tenancy import InvestigationAuthority, bind_legacy_stream_lease
+from substrate.multi_user.auth import operator_claims
 
 
 class _FakeEmbedding:
@@ -68,6 +71,10 @@ def env(monkeypatch):
 
 
 def _approved_plan(env, subs=("sub one", "sub two")):
+    bind_legacy_stream_lease(
+        InvestigationAuthority(operator_claims().user_id, "session-1", Path(env["events"])),
+        provenance="test_plan_start",
+    )
     tree = build_plan("the problem", decomposer=_Dec(list(subs))).tree
     root_id = persist_tree(
         tree,
@@ -97,17 +104,35 @@ def _make_session(env):
     funnel = PromotionFunnel(db_path=env["db"], embedding_provider=_FakeEmbedding())
     runner = HostLocalRunner(
         make_demo_loop(steps=2, emit_note=True),
+        claims=operator_claims(),
         events_dir=env["events"],
         seal_on_complete=False,
         on_emit=funnel.submit,
     )
     return CascadeSession(
         "session-1",
+        claims=operator_claims(),
         runner=runner,
         funnel=funnel,
         events_dir=env["events"],
         db_path=env["db"],
     )
+
+
+def test_session_refuses_runner_with_different_tenancy_root(env, tmp_path):
+    runner = HostLocalRunner(
+        make_demo_loop(steps=0),
+        claims=operator_claims(),
+        events_dir=str(tmp_path / "other-events"),
+    )
+    with pytest.raises(ValueError, match="tenancy roots must match"):
+        CascadeSession(
+            "session-mismatch",
+            claims=operator_claims(),
+            runner=runner,
+            events_dir=env["events"],
+            db_path=env["db"],
+        )
 
 
 async def _drain(session: CascadeSession):
@@ -123,7 +148,15 @@ async def test_session_reconstructs_from_event_log(env):
     await _drain(session)
     await session.join_and_merge()
 
-    recovery = reconstruct_session("session-1", events_dir=env["events"])
+    recovery = reconstruct_session(
+        "session-1",
+        events_dir=env["events"],
+        authority=InvestigationAuthority(
+            operator_claims().user_id,
+            "session-1",
+            Path(env["events"]),
+        ),
+    )
     assert {r.investigation_id for r in recovery.researches} == {
         "leaf-0",
         "leaf-1",

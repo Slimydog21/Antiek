@@ -26,6 +26,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Literal
 
@@ -39,6 +40,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from substrate.graph.ops import insert_deliverable, insert_section  # type: ignore[no-redef]
 
 from substrate.event_log import trajectory
+from substrate.schemas.events import OutlineBlockPlacedPayload
 
 from .outline_block import emit_block_placed, place_block
 
@@ -152,6 +154,57 @@ def _ensure_placement_events(
         )
 
 
+def _stage_placement_events(
+    con: LockedConnection,
+    authority: object,
+    *,
+    synthesis_id: str,
+    synthesis_timestamp: datetime,
+    deliverable_id: str,
+    section_id: str,
+    blocks: list[tuple[str, str, str | None, int]],
+) -> None:
+    from substrate.event_log import prepare_typed_event, trajectory_authorized
+    from substrate.synthesis_event_outbox import (
+        stable_synthesis_event_id,
+        stage_synthesis_event,
+    )
+
+    rows = trajectory_authorized(authority)
+    existing_blocks = {
+        row.get("payload", {}).get("outline_block_id")
+        for row in rows
+        if row.get("action_type") == "outline_block.placed"
+        and row.get("payload", {}).get("deliverable_id") == deliverable_id
+        and row.get("payload", {}).get("section_id") == section_id
+    }
+    for block_id, block_kind, node_id, index in blocks:
+        if block_id in existing_blocks:
+            continue
+        event = prepare_typed_event(
+            authority.investigation_id,
+            OutlineBlockPlacedPayload(
+                outline_block_id=block_id,
+                deliverable_id=deliverable_id,
+                section_id=section_id,
+                block_kind=block_kind,
+                provenance_kind="graph_node",
+                node_id=node_id,
+                block_index=index,
+            ),
+            event_id=stable_synthesis_event_id(
+                authority,
+                synthesis_id,
+                "outline_block.placed",
+                logical_key=block_id,
+            ),
+            synthesis_id=synthesis_id,
+            role="write_composition",
+            emitted_at=synthesis_timestamp,
+        )
+        stage_synthesis_event(con, authority, event)
+
+
 def promote_to_outline(
     con: LockedConnection,
     *,
@@ -196,6 +249,7 @@ def promote_investigation_to_deliverable(
     *,
     deliverable_kind: str,
     title: str | None = None,
+    _authority: object | None = None,
 ) -> InvestigationPromoteResult | InvestigationPromotionRefusal | None:
     """Promote a completed investigation's synthesis into a seed deliverable
     (specs/write WV-SPR-01 M2) — the compounding flywheel's missing writing
@@ -233,17 +287,36 @@ def promote_investigation_to_deliverable(
     #      archived_at would wrongly win. synthesis_timestamp is NOT NULL.
     #    syntheses.investigation_id is a free TEXT (no FK), so an arbitrary id
     #    is a legitimate "no synthesis" → the caller (route) returns 404.
+    where = "investigation_id = ? AND status != 'draft'"
+    params: list[object] = [investigation_id]
+    if _authority is not None:
+        from substrate.graph.tenancy import assert_graph_authority
+        from substrate.investigation_tenancy import InvestigationAuthority
+
+        if not isinstance(_authority, InvestigationAuthority):
+            raise TypeError("writing promotion requires InvestigationAuthority")
+        if _authority.investigation_id != investigation_id:
+            raise ValueError("writing promotion investigation authority mismatch")
+        where += " AND account_digest = ? AND investigation_digest = ?"
+        params.extend(
+            [_authority.account_digest, _authority.investigation_digest]
+        )
     syn = con.execute(
-        "SELECT synthesis_id, target_question, implicit_recommendation, status "
-        "FROM syntheses WHERE investigation_id = ? AND status != 'draft' "
+        "SELECT synthesis_id, target_question, implicit_recommendation, status, "
+        "synthesis_timestamp "
+        "FROM syntheses WHERE " + where + " "
         "ORDER BY synthesis_timestamp DESC, synthesis_id DESC LIMIT 1",
-        [investigation_id],
+        params,
     ).fetchone()
     if syn is None:
         return None
-    synthesis_id, target_question, recommendation, synthesis_status = (
-        syn[0], syn[1], syn[2], syn[3]
+    if _authority is not None:
+        assert_graph_authority(con, _authority)
+    synthesis_id, target_question, recommendation, synthesis_status, synthesis_timestamp = (
+        syn[0], syn[1], syn[2], syn[3], syn[4]
     )
+    if synthesis_timestamp.tzinfo is None:
+        synthesis_timestamp = synthesis_timestamp.replace(tzinfo=UTC)
 
     # 2. The synthesis's pinned source NODES — the distilled-truth units the
     #    writing outline is built from (manifest entity_kind='node').
@@ -292,12 +365,28 @@ def promote_investigation_to_deliverable(
                 [sid],
             ).fetchall()
         ]
-        _ensure_placement_events(
-            investigation_id=investigation_id,
-            deliverable_id=did,
-            section_id=sid,
-            blocks=placed_blocks,
-        )
+        if _authority is None:
+            _ensure_placement_events(
+                investigation_id=investigation_id,
+                deliverable_id=did,
+                section_id=sid,
+                blocks=placed_blocks,
+            )
+        else:
+            from substrate.synthesis_event_outbox import (
+                reconcile_synthesis_events,
+            )
+
+            _stage_placement_events(
+                con,
+                _authority,
+                synthesis_id=synthesis_id,
+                synthesis_timestamp=synthesis_timestamp,
+                deliverable_id=did,
+                section_id=sid,
+                blocks=placed_blocks,
+            )
+            reconcile_synthesis_events(con, _authority)
         return InvestigationPromoteResult(
             deliverable_id=did,
             section_id=sid,
@@ -395,17 +484,32 @@ def promote_investigation_to_deliverable(
             )
             block_ids.append(obid)
             placed_blocks.append((obid, block_kind, node_id, index))
+        if _authority is not None:
+            _stage_placement_events(
+                con,
+                _authority,
+                synthesis_id=synthesis_id,
+                synthesis_timestamp=synthesis_timestamp,
+                deliverable_id=did,
+                section_id=sid,
+                blocks=placed_blocks,
+            )
         con.execute("COMMIT")
     except Exception:
         con.execute("ROLLBACK")
         raise
 
-    _ensure_placement_events(
-        investigation_id=investigation_id,
-        deliverable_id=did,
-        section_id=sid,
-        blocks=placed_blocks,
-    )
+    if _authority is None:
+        _ensure_placement_events(
+            investigation_id=investigation_id,
+            deliverable_id=did,
+            section_id=sid,
+            blocks=placed_blocks,
+        )
+    else:
+        from substrate.synthesis_event_outbox import reconcile_synthesis_events
+
+        reconcile_synthesis_events(con, _authority)
 
     return InvestigationPromoteResult(
         deliverable_id=did,
@@ -417,4 +521,27 @@ def promote_investigation_to_deliverable(
         synthesis_id=synthesis_id,
         synthesis_status=synthesis_status,
         synthesis_recommendation=recommendation,
+    )
+
+
+def promote_investigation_to_deliverable_authorized(
+    con: LockedConnection,
+    authority: object,
+    *,
+    deliverable_kind: str,
+    title: str | None = None,
+) -> InvestigationPromoteResult | InvestigationPromotionRefusal | None:
+    """Promote only the synthesis parent owned by exact authority."""
+    from substrate.event_log import require_event_persistence
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    if not isinstance(authority, InvestigationAuthority):
+        raise TypeError("writing promotion requires InvestigationAuthority")
+    require_event_persistence()
+    return promote_investigation_to_deliverable(
+        con,
+        authority.investigation_id,
+        deliverable_kind=deliverable_kind,
+        title=title,
+        _authority=authority,
     )

@@ -212,8 +212,8 @@ class RetrievedUnit:
     question. ``unit_id`` and ``source_investigation_id`` are surfaced flat for
     the provenance marker + the event payload."""
 
-    unit: Any                 # KnowledgeUnitContract (imported lazily; see below)
-    similarity: float         # cosine vs the question text; the REAL score
+    unit: Any  # KnowledgeUnitContract (imported lazily; see below)
+    similarity: float  # cosine vs the question text; the REAL score
     # D2 (owner-private reuse): the DOCUMENT-SIDE content_class + taken_down of
     # the unit's source, stamped at retrieval from the documents/book_assets
     # join. These are the OWNER-READ track inputs — distinct from the serve-side
@@ -221,6 +221,12 @@ class RetrievedUnit:
     # owner cannot lawfully reuse the unit (deny-by-default, same as public).
     content_class: str | None = None
     taken_down: bool = False
+    # SPR-DRL-19: source-coverage qualification. Carries the state (complete /
+    # partial / unknown) + per-source success ratios + partial-leaf count from
+    # the source investigation's archived coverage. None before qualification
+    # runs; ``SourceCoverageQualification.unknown()`` for units without archive
+    # evidence. Every unit gets qualified before token budgeting.
+    coverage_qualification: Any = None  # SourceCoverageQualification | None
 
     @property
     def unit_id(self) -> str:
@@ -255,10 +261,7 @@ class RetrievedUnit:
         cannot lawfully reuse what they cannot read (deny-by-default)."""
         from substrate.constants import PERSONAL_READABLE_CONTENT_CLASSES
 
-        return (
-            not self.taken_down
-            and self.content_class in PERSONAL_READABLE_CONTENT_CLASSES
-        )
+        return not self.taken_down and self.content_class in PERSONAL_READABLE_CONTENT_CLASSES
 
 
 @dataclass(frozen=True)
@@ -288,8 +291,8 @@ class ReuseCoverage:
     on the ``reuse.gated`` events; ``dropped_by_trust_gate`` is the single
     headline "how much was filtered" count SPR-09 reads off coverage directly."""
 
-    retrieved: int            # PRE-gate total retrieved (post top-k cap)
-    injected: int             # cleared the gate AND §9.0 + relevance AND fit the budget
+    retrieved: int  # PRE-gate total retrieved (post top-k cap)
+    injected: int  # cleared the gate AND §9.0 + relevance AND fit the budget
     dropped_not_servable: int
     dropped_over_budget: int
     dropped_low_relevance: int
@@ -298,6 +301,97 @@ class ReuseCoverage:
     @property
     def fully_covered(self) -> bool:
         return self.dropped_over_budget == 0
+
+
+# ---------------------------------------------------------------------------
+# SPR-DRL-19 — source-coverage qualification
+# ---------------------------------------------------------------------------
+
+
+class SourceCoverageQualificationError(Exception):
+    """Raised when authenticated archive state is malformed or conflicting."""
+
+
+def _qualify_units(
+    units: list[RetrievedUnit],
+    authority: Any,
+    con: Any,
+) -> list[RetrievedUnit]:
+    """Attach a source-coverage qualification to every unit.
+
+    Batch-resolves archive rows for unique source investigations under the
+    given authority, then qualifies each unit. Missing archive rows become
+    unknown; invalid or conflicting rows raise ``SourceCoverageQualificationError``
+    (the reuse boundary fails closed on malformed authenticated state).
+
+    Same-named Alice/Bob investigations cannot cross-resolve because the
+    deterministic synthesis ID is derived from the account-specific graph key.
+    Duplicated source investigations share one lookup result.
+    """
+    from substrate.source_coverage import (
+        ArchivedSourceCoverageEnvelope,
+        SourceCoverageQualification,
+    )
+
+    try:
+        from middleware.archive import resolve_source_coverage_qualifications
+    except ImportError:
+        from middleware.archive.archive import (
+            resolve_source_coverage_qualifications,  # type: ignore[no-redef]
+        )
+
+    if not units:
+        return units
+
+    unique_source_ids = frozenset(ru.source_investigation_id for ru in units)
+    try:
+        archive_rows = resolve_source_coverage_qualifications(con, authority, unique_source_ids)
+    except Exception as exc:
+        raise SourceCoverageQualificationError(
+            "authorized source coverage qualification is unavailable"
+        ) from exc
+
+    # Build a cache: source_investigation_id → SourceCoverageQualification
+    qual_cache: dict[str, Any] = {}
+    for src_id, row in archive_rows.items():
+        if row is None:
+            qual_cache[src_id] = SourceCoverageQualification.unknown()
+            continue
+        if not isinstance(row, dict) or not {
+            "schema_version",
+            "pack_schema_version",
+            "coverage",
+        }.intersection(row):
+            # The substrate slot predates the coverage envelope and may carry
+            # unrelated legacy JSON. Absence of envelope markers is unknown,
+            # never malformed evidence and never complete coverage.
+            qual_cache[src_id] = SourceCoverageQualification.unknown()
+            continue
+        try:
+            envelope = ArchivedSourceCoverageEnvelope.model_validate(row)
+            qual_cache[src_id] = (
+                SourceCoverageQualification.from_envelope(envelope)
+                if envelope.coverage is not None
+                else SourceCoverageQualification.unknown()
+            )
+        except Exception as exc:
+            raise SourceCoverageQualificationError(
+                f"malformed or conflicting archive coverage for investigation {src_id!r}: {exc}"
+            ) from exc
+
+    out: list[RetrievedUnit] = []
+    for ru in units:
+        qual = qual_cache.get(ru.source_investigation_id, SourceCoverageQualification.unknown())
+        out.append(
+            RetrievedUnit(
+                unit=ru.unit,
+                similarity=ru.similarity,
+                content_class=ru.content_class,
+                taken_down=ru.taken_down,
+                coverage_qualification=qual,
+            )
+        )
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +435,7 @@ def retrieve_prior_units(
     question_text: str,
     limit: int = DEFAULT_RETRIEVE_LIMIT,
     policy_tag: str = "attribution_eligible",
+    authority: Any | None = None,
 ) -> list[RetrievedUnit]:
     """Retrieve prior knowledge units ranked by similarity to ``question_text``.
 
@@ -367,9 +462,12 @@ def retrieve_prior_units(
     # top-level import would pull graph internals into context_pack at import
     # time. Lazy keeps the dependency at call time only.
     try:
-        from ..graph.insight_question import knowledge_unit_of
+        from ..graph.insight_question import knowledge_unit_of, servability_tag_for
     except ImportError:  # pragma: no cover — direct-script fallback
-        from graph.insight_question import knowledge_unit_of  # type: ignore[import-not-found,no-redef]  # noqa: I001
+        from graph.insight_question import (  # type: ignore[import-not-found,no-redef]  # noqa: I001
+            knowledge_unit_of,
+            servability_tag_for,
+        )
 
     if not question_text or not question_text.strip():
         return []
@@ -379,10 +477,19 @@ def retrieve_prior_units(
     # through the swappable retrieval seam, so an operator who swaps the
     # substrate swaps this path too. Failures here must not crash ``start`` — a
     # retrieval seam hiccup degrades to "no reuse", never a dead investigation.
-    try:
-        retrieval_substrate.query(question_text, top_k=max(1, int(limit)), policy_tag=policy_tag)
-    except Exception:  # pragma: no cover — seam hiccup degrades to no-reuse
-        return []
+    strict = os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1"
+    if strict:
+        from substrate.investigation_tenancy import InvestigationAuthority
+
+        if not isinstance(authority, InvestigationAuthority):
+            return []
+    else:
+        try:
+            retrieval_substrate.query(
+                question_text, top_k=max(1, int(limit)), policy_tag=policy_tag
+            )
+        except Exception:  # pragma: no cover — seam hiccup degrades to no-reuse
+            return []
 
     con = _substrate_connection(retrieval_substrate)
     model = _substrate_model(retrieval_substrate)
@@ -392,27 +499,29 @@ def retrieve_prior_units(
     sim_expr = cosine_similarity_sql("embedding", query_vec, dim)
 
     try:
-        rows = con.execute(
-            f"SELECT node_id, content_class_of_unit.content_class, "
-            f"       content_class_of_unit.taken_down, similarity FROM ("
-            f"  SELECT node_id, {sim_expr} AS similarity "
-            f"  FROM nodes "
-            f"  WHERE node_type IN ('insight', 'question') AND embedding IS NOT NULL "
-            f"  ORDER BY similarity DESC, node_id ASC LIMIT ?"
-            f") AS ranked "
-            f"LEFT JOIN ("
-            f"  SELECT e.source_node_id AS nid, d.content_class AS content_class, "
-            f"         COALESCE(b.taken_down, FALSE) AS taken_down "
-            f"  FROM edges e JOIN documents d ON e.source_document_id = d.document_id "
-            f"  LEFT JOIN book_assets b ON d.document_id = b.document_id "
-            f"  WHERE e.relation = 'supported_by' AND e.source_document_id IS NOT NULL"
-            f") AS content_class_of_unit ON ranked.node_id = content_class_of_unit.nid",
-            [int(limit)],
-        ).fetchall()
+        if strict:
+            rows = [
+                (r[0], None, False, r[1])
+                for r in con.execute(
+                    f"SELECT n.node_id, {sim_expr} AS similarity FROM nodes n "
+                    f"WHERE n.node_type IN ('insight', 'question') "
+                    f"AND n.embedding IS NOT NULL AND EXISTS ("
+                    f"SELECT 1 FROM investigation_node_memberships m "
+                    f"WHERE m.node_id = n.node_id AND m.account_digest = ?) "
+                    f"ORDER BY similarity DESC, n.node_id ASC LIMIT ?",
+                    [authority.account_digest, int(limit)],
+                ).fetchall()
+            ]
+        else:
+            from substrate.legal_gate.read import legacy_knowledge_reuse_rows
+
+            rows = legacy_knowledge_reuse_rows(con, similarity_sql=sim_expr, limit=int(limit))
     except Exception:
         # The content_class join depends on the deposit having a supported_by
         # edge; fall back to a plain node-similarity scan (content_class then
         # resolves via knowledge_unit_of's metadata fallback / None).
+        if strict:
+            return []
         rows = [
             (r[0], None, False, r[1])
             for r in con.execute(
@@ -432,7 +541,10 @@ def retrieve_prior_units(
             # the slot rather than re-scoring. The lexical backend is
             # deterministic, so deposit-time and gate-time scores are identical.
             unit = knowledge_unit_of(
-                con, node_id, content_class=content_class, score_groundedness=True
+                con,
+                node_id,
+                content_class=("restricted_pending_opt_in" if strict else content_class),
+                score_groundedness=not strict,
             )
         except ValueError:
             # A node with no claim→chunk→doc grounding is not a depositable
@@ -449,24 +561,105 @@ def retrieve_prior_units(
         if content_class is None:
             src_doc = getattr(unit.provenance, "source_document_id", None)
             if src_doc:
-                cc_row = con.execute(
-                    "SELECT content_class FROM documents WHERE document_id = ? LIMIT 1",
-                    [src_doc],
-                ).fetchone()
-                if cc_row and cc_row[0]:
-                    content_class = str(cc_row[0])
+                if strict:
+                    from substrate.investigation_tenancy import InvestigationAuthority
+                    from substrate.legal_gate.read import (
+                        document_investigation_hint,
+                        read_chunks,
+                        read_document,
+                    )
+
+                    source_investigation = document_investigation_hint(con, str(src_doc))
+                    if not source_investigation:
+                        continue
+                    source_authority = InvestigationAuthority(
+                        authority.account_id, source_investigation, authority.root
+                    )
+                    try:
+                        document = read_document(con, source_authority, str(src_doc))
+                        admitted_chunks = read_chunks(con, source_authority, str(src_doc))
+                    except Exception:
+                        continue
+                    cited_chunk = getattr(unit.provenance, "chunk_id", None)
+                    cited = next(
+                        (
+                            chunk
+                            for chunk in admitted_chunks
+                            if str(chunk["chunk_id"]) == str(cited_chunk)
+                        ),
+                        None,
+                    )
+                    if cited_chunk and cited is None:
+                        continue
+                    from substrate.eval.groundedness import score_claim
+
+                    verdict = score_claim(
+                        unit.text,
+                        [] if cited is None else [str(cited["text"])],
+                        cited_chunk_ids=[] if cited is None else [str(cited_chunk)],
+                    )
+                    content_class = document.get("content_class")
+                    book = con.execute(
+                        "SELECT COALESCE(taken_down, FALSE) FROM book_assets WHERE document_id = ?",
+                        [src_doc],
+                    ).fetchone()
+                    taken_down = bool(book[0]) if book is not None else False
+                    unit = unit.model_copy(
+                        update={
+                            "groundedness_score": verdict.score,
+                            "servability": servability_tag_for(
+                                content_class, taken_down=taken_down
+                            ),
+                        }
+                    )
+                else:
+                    from substrate.legal_gate.read import read_document_compatibility
+
+                    document = read_document_compatibility(
+                        con, str(src_doc), authority=None, enforce=False
+                    )
+                    if document and document.get("content_class"):
+                        content_class = str(document["content_class"])
         # D2: stamp the DOCUMENT-SIDE content_class + taken_down so the trust
         # gate's owner-private branch (owner_readable) can admit a personal_reading-
         # derived unit on the owner path without touching the public bar.
-        out.append(RetrievedUnit(
-            unit=unit,
-            similarity=float(similarity or 0.0),
-            content_class=content_class,
-            taken_down=bool(taken_down),
-        ))
+        out.append(
+            RetrievedUnit(
+                unit=unit,
+                similarity=float(similarity or 0.0),
+                content_class=content_class,
+                taken_down=bool(taken_down),
+            )
+        )
 
     # Stable order: similarity desc, then unit id asc (deterministic ties).
     out.sort(key=lambda ru: (-ru.similarity, ru.unit_id))
+
+    # SPR-DRL-19: attach source-coverage qualifications. On the authenticated
+    # production path (authority present), batch-resolve archive rows for unique
+    # source investigations and qualify each unit. Missing archive → unknown;
+    # malformed archive → SourceCoverageQualificationError (fail closed).
+    # Legacy unauthenticated callers (authority=None) → all unknown.
+    if authority is not None:
+        try:
+            out = _qualify_units(out, authority, con)
+        except SourceCoverageQualificationError:
+            raise
+    else:
+        # Legacy unauthenticated callers: explicit unknown qualification.
+        from substrate.source_coverage import SourceCoverageQualification
+
+        out = [
+            RetrievedUnit(
+                unit=ru.unit,
+                similarity=ru.similarity,
+                content_class=ru.content_class,
+                taken_down=ru.taken_down,
+                coverage_qualification=SourceCoverageQualification.unknown(),
+            )
+            for ru in out
+        ]
+
     return out
 
 
@@ -484,22 +677,45 @@ def reuse_token_budget(role: str, pack_budget: int | None = None) -> int:
 
 
 def render_unit(unit_ru: RetrievedUnit) -> str:
-    """One reused unit's rendered line, with its provenance marker.
+    """One reused unit's rendered line, with its provenance marker and
+    source-coverage qualification.
 
-    The marker carries the three things a role + a downstream audit need to see
-    exactly what was reused (M2 acceptance — a regex over the pack finds all
-    three for each injected unit):
+    The provenance marker carries the three things a role + a downstream audit
+    need to see exactly what was reused (M2 acceptance):
 
       * source ``investigation_id`` (where the unit came from),
       * the unit's ``id`` (the content-addressed retrieval key),
       * the cosine ``similarity`` score (the REAL score, to 4 dp).
 
-    Stable format so the regex + the token accounting are reproducible."""
+    SPR-DRL-19: the qualification marker carries the source-coverage state
+    (complete / partial / unknown) and per-source success ratios. This marker
+    is injected BEFORE token budgeting so disclosure consumes the same enforced
+    reuse budget as claim text. Stable format so the regex + the token
+    accounting are reproducible."""
     tag = "INSIGHT" if unit_ru.unit.node_type == "insight" else "QUESTION"
+    from substrate.source_coverage import SourceCoverageQualification
+
+    qual = unit_ru.coverage_qualification or SourceCoverageQualification.unknown()
+    if qual.state != "unknown":
+        ratios = ",".join(
+            f"{src}:{r}"
+            for src, r in zip(
+                ("exa", "parallel", "arxiv", "substack"),
+                qual.source_ratios,
+                strict=True,
+            )
+        )
+        if qual.state == "partial":
+            qual_marker = f" [source_coverage=partial leaves={qual.partial_leaf_count}/{qual.total_leaves} {ratios}]"
+        else:
+            qual_marker = f" [source_coverage=complete {ratios}]"
+    else:
+        qual_marker = " [source_coverage=unknown]"
     return (
         f"- [{tag}] {unit_ru.text} "
         f"[reuse src_investigation={unit_ru.source_investigation_id} "
         f"unit_id={unit_ru.unit_id} similarity={unit_ru.similarity:.4f}]"
+        f"{qual_marker}"
     )
 
 
@@ -535,17 +751,25 @@ def select_units_within_budget(
             # First unit that doesn't fit: drop it AND every lower-ranked unit
             # (the selection is a PREFIX of the ranked order, so the highest-
             # ranked are never dropped). Matches SPR-04's break semantics.
-            decisions.append(UnitDecision(
-                unit_id=ru.unit_id, source_investigation_id=ru.source_investigation_id,
-                similarity=ru.similarity, decision=DECISION_OVER_BUDGET,
-            ))
+            decisions.append(
+                UnitDecision(
+                    unit_id=ru.unit_id,
+                    source_investigation_id=ru.source_investigation_id,
+                    similarity=ru.similarity,
+                    decision=DECISION_OVER_BUDGET,
+                )
+            )
             continue
         selected.append(ru)
         used += cost
-        decisions.append(UnitDecision(
-            unit_id=ru.unit_id, source_investigation_id=ru.source_investigation_id,
-            similarity=ru.similarity, decision=DECISION_INJECTED,
-        ))
+        decisions.append(
+            UnitDecision(
+                unit_id=ru.unit_id,
+                source_investigation_id=ru.source_investigation_id,
+                similarity=ru.similarity,
+                decision=DECISION_INJECTED,
+            )
+        )
     return selected, decisions
 
 
@@ -593,22 +817,33 @@ def partition_units(
         readable = ru.owner_readable if owner else ru.serves_full_text
         if not readable:
             n_not_servable += 1
-            decisions.append(UnitDecision(
-                unit_id=ru.unit_id, source_investigation_id=ru.source_investigation_id,
-                similarity=ru.similarity, decision=DECISION_NOT_SERVABLE,
-            ))
+            decisions.append(
+                UnitDecision(
+                    unit_id=ru.unit_id,
+                    source_investigation_id=ru.source_investigation_id,
+                    similarity=ru.similarity,
+                    decision=DECISION_NOT_SERVABLE,
+                )
+            )
             continue
         if ru.similarity < relevance_floor:
             n_low_rel += 1
-            decisions.append(UnitDecision(
-                unit_id=ru.unit_id, source_investigation_id=ru.source_investigation_id,
-                similarity=ru.similarity, decision=DECISION_LOW_RELEVANCE,
-            ))
+            decisions.append(
+                UnitDecision(
+                    unit_id=ru.unit_id,
+                    source_investigation_id=ru.source_investigation_id,
+                    similarity=ru.similarity,
+                    decision=DECISION_LOW_RELEVANCE,
+                )
+            )
             continue
         servable_relevant.append(ru)
 
     selected, budget_decisions = select_units_within_budget(
-        servable_relevant, budget=budget, counter=counter, header_text=header_text,
+        servable_relevant,
+        budget=budget,
+        counter=counter,
+        header_text=header_text,
     )
     decisions.extend(budget_decisions)
 
@@ -638,8 +873,12 @@ def build_reuse_layer(
     empty-event path fires)."""
     counter = counter or DefaultTokenCounter()
     injected, decisions, coverage = partition_units(
-        units, budget=token_budget, counter=counter,
-        header_text=_REUSE_HEADER, relevance_floor=relevance_floor, owner=owner,
+        units,
+        budget=token_budget,
+        counter=counter,
+        header_text=_REUSE_HEADER,
+        relevance_floor=relevance_floor,
+        owner=owner,
     )
     if not injected:
         return None, injected, decisions, coverage
@@ -754,9 +993,7 @@ def assemble_context_pack_with_reuse(
             filter_reusable,
         )
 
-        threshold = (
-            reuse_threshold if reuse_threshold is not None else REUSE_GROUNDEDNESS_THRESHOLD
-        )
+        threshold = reuse_threshold if reuse_threshold is not None else REUSE_GROUNDEDNESS_THRESHOLD
         candidate_units, gate_decisions = filter_reusable(
             units,
             investigation_id=investigation_id,
@@ -767,14 +1004,20 @@ def assemble_context_pack_with_reuse(
         )
 
     coverage = ReuseCoverage(
-        retrieved=len(candidate_units), injected=0,
-        dropped_not_servable=0, dropped_over_budget=0, dropped_low_relevance=0,
+        retrieved=len(candidate_units),
+        injected=0,
+        dropped_not_servable=0,
+        dropped_over_budget=0,
+        dropped_low_relevance=0,
     )
 
     if include_reuse:
         budget = reuse_token_budget(role, target_tokens)
         reuse_layer, injected, decisions, coverage = build_reuse_layer(
-            candidate_units, token_budget=budget, counter=counter, relevance_floor=relevance_floor,
+            candidate_units,
+            token_budget=budget,
+            counter=counter,
+            relevance_floor=relevance_floor,
             owner=owner,
         )
         if reuse_layer is not None:
@@ -880,10 +1123,29 @@ def _emit_knowledge_reused(
     decision). Parented to / carrying the ``CONTEXT_PACK_ASSEMBLED`` event id."""
     try:
         from ..event_log import emit_typed
-        from ..schemas.events import KnowledgeReusedPayload
+        from ..schemas.events import KnowledgeReusedPayload, ReusedUnitSourceQualification
     except ImportError:  # pragma: no cover — direct-script fallback
         from event_log import emit_typed  # type: ignore[import-not-found,no-redef]
-        from schemas.events import KnowledgeReusedPayload  # type: ignore[import-not-found,no-redef]
+        from schemas.events import (  # type: ignore[import-not-found,no-redef]
+            KnowledgeReusedPayload,
+            ReusedUnitSourceQualification,
+        )
+
+    from substrate.source_coverage import SourceCoverageQualification
+
+    qualifications = []
+    for ru in injected:
+        qualification = ru.coverage_qualification or SourceCoverageQualification.unknown()
+        qualifications.append(
+            ReusedUnitSourceQualification(
+                unit_id=ru.unit_id,
+                source_investigation_id=ru.source_investigation_id,
+                state=qualification.state,
+                source_successes=list(qualification.source_successes),
+                total_leaves=qualification.total_leaves,
+                partial_leaf_count=qualification.partial_leaf_count,
+            )
+        )
 
     payload = KnowledgeReusedPayload(
         reused_unit_ids=[ru.unit_id for ru in injected],
@@ -891,6 +1153,7 @@ def _emit_knowledge_reused(
         decisions=[d.decision for d in decisions],
         source_investigation_ids=[d.source_investigation_id for d in decisions],
         context_pack_event_id=context_pack_event_id or "",
+        source_qualifications=qualifications,
     )
     return emit_typed(
         investigation_id,

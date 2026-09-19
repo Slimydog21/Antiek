@@ -57,10 +57,13 @@ export default function BrainstormStation() {
   }, [reload]);
 
   const handleLaunch = useCallback(
-    async (q: ParkedQuestionEntry) => {
+    async (q: ParkedQuestionEntry, approvedRunCeilingUsd: number) => {
       setLaunching(true);
       try {
-        const handle = await launchParkedQuestion(q.question_id);
+        const handle = await launchParkedQuestion(
+          q.question_id,
+          approvedRunCeilingUsd,
+        );
         track("brainstorm_question_launched");
         // The folder reloads to hide this question (now sharpened);
         // operator follows the launched investigation in Mode A.
@@ -103,7 +106,7 @@ export default function BrainstormStation() {
           <ParkedQuestion
             question={selected}
             launching={launching}
-            onLaunch={() => handleLaunch(selected)}
+            onLaunch={(ceiling) => handleLaunch(selected, ceiling)}
           />
         ) : (
           <EmptyState parkedCount={parked.length} />

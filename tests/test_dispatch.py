@@ -40,6 +40,7 @@ sys.path.insert(0, os.path.dirname(_HERE))
 from substrate.dispatch import (  # noqa: E402
     DispatchConfig,
     NormalizedUsage,
+    ProviderCallNotAttempted,
     ProviderError,
     RawProviderResponse,
     TierConfig,
@@ -348,6 +349,26 @@ def test_dispatch_raises_when_all_tiers_fail(_events_dir):
     assert len(rows) == 2
     for row in rows:
         assert row["payload"]["finish_reason"] == "error"
+
+
+def test_route_allowlist_rejects_before_provider_or_event_side_effects(_events_dir):
+    primary = _MockAnthropicProvider()
+    fallback = _MockOpenAICompatProvider()
+    register_provider(primary)
+    register_provider(fallback)
+
+    with pytest.raises(ProviderCallNotAttempted, match="outside the signed allowlist"):
+        dispatch(
+            "must remain pinned",
+            "synthesizer",
+            investigation_id="inv-route-authority",
+            config=_two_tier_config(),
+            allowed_routes=frozenset({"mock-openai-compat/mimo-flash"}),
+        )
+
+    assert primary.calls == []
+    assert fallback.calls == []
+    assert trajectory("inv-route-authority") == []
 
 
 def test_unknown_role_raises(_events_dir):

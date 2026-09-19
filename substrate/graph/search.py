@@ -288,6 +288,58 @@ def search(
     }
 
 
+def search_authorized(
+    con: Any,
+    authority: Any,
+    query: str,
+    *,
+    model: EmbeddingModel,
+    top_k: int = 5,
+    source_tier_max: int | None = None,
+    document_ids: Sequence[str] | None = None,
+    with_edges: bool = False,
+) -> dict[str, Any]:
+    """Search only documents with a currently valid exact-owner admission.
+
+    Semantic node matches are withheld here until their complete provenance
+    closure is legal-admission-aware; returning fewer results is fail-safe.
+    """
+    from substrate.investigation_tenancy import InvestigationAuthority
+    from substrate.legal_gate.policy_store import LegalPolicyDenied
+    from substrate.legal_gate.read import read_chunks, readable_document_ids
+
+    if not isinstance(authority, InvestigationAuthority):
+        raise TypeError("authorized legal search requires InvestigationAuthority")
+    candidates = None if document_ids is None else list(document_ids)
+    readable = readable_document_ids(con, authority, candidate_ids=candidates)
+    result = search(
+        con,
+        query,
+        model=model,
+        top_k=top_k,
+        source_tier_max=source_tier_max,
+        document_ids=readable,
+        with_edges=with_edges,
+        policy_tag="private_research",
+    )
+    readable_chunk_ids: set[str] = set()
+    for document_id in readable:
+        try:
+            readable_chunk_ids.update(
+                str(chunk["chunk_id"])
+                for chunk in read_chunks(con, authority, str(document_id))
+            )
+        except LegalPolicyDenied:
+            continue
+    result["results"] = [
+        item
+        for item in result.get("results", [])
+        if str(item.get("chunk_id")) in readable_chunk_ids
+    ]
+    result["node_matches"] = []
+    return result
+
+
 def _fetch_edges_and_nodes(
     con: Any, chunk_id: str, *, policy_tag: str = "attribution_eligible",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -405,6 +457,58 @@ def search_nodes_by_label(
     return [
         {"node_id": r[0], "node_type": r[1], "label": r[2]}
         for r in rows
+    ]
+
+
+def search_nodes_by_label_authorized(
+    con: Any,
+    authority: Any,
+    query: str,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    """Compose public rights provenance with exact private membership."""
+    from substrate.graph.tenancy import assert_graph_authority_read
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    if not isinstance(authority, InvestigationAuthority):
+        raise TypeError("authorized node search requires InvestigationAuthority")
+    if limit < 1:
+        raise ValueError("authorized node search limit must be positive")
+    assert_graph_authority_read(con, authority)
+    # Until derived-node provenance is closed over legal document admissions,
+    # only exact-member user notes may be searched by label. Claims, insights,
+    # and questions without a rechecked source fail closed.
+    rows = con.execute(
+        "SELECT n.node_id, n.node_type, "
+        "COALESCE((SELECT json_extract_string(m.membership_metadata, "
+        "'$.canonical_text') FROM investigation_node_memberships m "
+        "WHERE m.account_digest = ? AND m.investigation_digest = ? "
+        "AND m.node_id = n.node_id ORDER BY m.role LIMIT 1), "
+        "n.canonical_label) AS visible_label "
+        "FROM nodes n WHERE (n.canonical_label ILIKE ? OR EXISTS ("
+        "SELECT 1 FROM investigation_node_memberships sm "
+        "WHERE sm.account_digest = ? AND sm.investigation_digest = ? "
+        "AND sm.node_id = n.node_id AND json_extract_string("
+        "sm.membership_metadata, '$.canonical_text') ILIKE ?)) AND ("
+        "EXISTS (SELECT 1 FROM investigation_node_memberships m "
+        "WHERE m.account_digest = ? AND m.investigation_digest = ? "
+        "AND m.node_id = n.node_id AND m.role = 'note') "
+        "ORDER BY n.degree_cached DESC, n.created_at DESC, n.node_id LIMIT ?",
+        [
+            authority.account_digest,
+            authority.investigation_digest,
+            f"%{query}%",
+            authority.account_digest,
+            authority.investigation_digest,
+            f"%{query}%",
+            authority.account_digest,
+            authority.investigation_digest,
+            int(limit),
+        ],
+    ).fetchall()
+    return [
+        {"node_id": row[0], "node_type": row[1], "label": row[2]}
+        for row in rows
     ]
 
 

@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -41,6 +42,9 @@ from substrate.books.personal_space import (  # noqa: E402
     list_personal_assets,
     match_document_to_investigations,
 )
+from substrate.event_log import log_event_authorized  # noqa: E402
+from substrate.investigation_streams import initialize_composite_stream  # noqa: E402
+from substrate.investigation_tenancy import InvestigationAuthority  # noqa: E402
 
 # ── A keyword-semantic embedding stub ─────────────────────────────────
 # Fixed term axis: a text's vector is the (normalized) count of each axis term
@@ -156,6 +160,31 @@ def test_m1_lists_created_deliverables_and_saved_reads_newest_first(events_dir):
     routes = {a.asset_id: a.open_route for a in assets}
     assert routes["a2"] == "/read/meta-reading/a2"
     assert routes["read:dbook"] == "/read/dbook"
+
+
+def test_m1_account_authority_isolates_same_display_id(events_dir):
+    root = Path(events_dir)
+    for account_id in ("alice", "bob"):
+        authority = InvestigationAuthority(account_id, "read-meta-shared", root)
+        initialize_composite_stream(authority)
+        log_event_authorized(
+            authority,
+            "read.meta_reading.generated",
+            payload={
+                "asset_id": f"asset-{account_id}",
+                "prompt": f"Prompt for {account_id}",
+                "corpus_document_ids": [f"doc-{account_id}"],
+            },
+        )
+
+    alice = list_personal_assets(
+        authority=InvestigationAuthority("alice", "__collection__", root)
+    )
+    bob = list_personal_assets(
+        authority=InvestigationAuthority("bob", "__collection__", root)
+    )
+    assert [asset.asset_id for asset in alice] == ["asset-alice"]
+    assert [asset.asset_id for asset in bob] == ["asset-bob"]
 
 
 def test_m1_zero_assets_returns_empty_no_crash(events_dir):

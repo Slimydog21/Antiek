@@ -231,9 +231,14 @@ def test_migration_preserves_column_parity_with_fresh(tmp_path):
         finally:
             c.close()
 
-    # Migrated legacy nodes/edges columns match a freshly-created schema.
+    # V9 owns the nodes rebuild and the pre-V16 edge shape. Later additive
+    # migrations own graph-tenancy columns and are intentionally out of scope.
     assert cols(legacy, "nodes") == cols(fresh, "nodes")
-    assert cols(legacy, "edges") == cols(fresh, "edges")
+    assert cols(legacy, "edges") == [
+        column
+        for column in cols(fresh, "edges")
+        if column[0] not in {"account_digest", "investigation_digest"}
+    ]
 
 
 # --------------------------------------------------------------------------

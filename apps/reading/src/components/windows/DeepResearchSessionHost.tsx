@@ -59,6 +59,8 @@ import {
   mapResearchTierToProgressPollMs,
 } from "../../lib/researchTier";
 import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
+import { ClaimChallengeReviewPanel } from "../engagement/ClaimChallengeReviewPanel";
+import { EffectiveContextReviewPanel } from "../engagement/EffectiveContextReviewPanel";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
 import { PublicationAttachPanel } from "../engagement/PublicationAttachPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
@@ -78,8 +80,10 @@ import { researchPathChoicesReadiness } from "../../workspace/researchPathChoice
 import { buildDeepResearchWriteHref } from "../../workspace/twinWriteSeed";
 import { useWindows } from "../../workspace/windowsStore";
 import { useInWindow } from "./windowHostContext";
+import type { ResearchArtifactClaimChallengeReceipt } from "../../lib/api";
 
 export type DeepResearchSessionHostProps = {
+  resume_ref?: unknown;
   session_id?: string;
   spawn_id?: string;
   investigation_id?: string;
@@ -97,6 +101,7 @@ export type DeepResearchSessionHostProps = {
    * openDeepResearchFromHighlight (parity seamless-highlight-dr).
    */
   seamless_highlight_dr?: boolean | string;
+  claim_challenge?: ResearchArtifactClaimChallengeReceipt;
   /** Optional extra spawn ids for collective multi-select (tests / handoff). */
   available_spawn_ids?: string[];
   __windowId?: string;
@@ -234,6 +239,13 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   const seamlessHighlightDr =
     props.seamless_highlight_dr === true ||
     props.seamless_highlight_dr === "true";
+  const isClaimChallenge = Boolean(props.claim_challenge?.receipt_sha256);
+  const [claimCandidateComplete, setClaimCandidateComplete] = useState(
+    isClaimChallenge && status === "complete",
+  );
+  useEffect(() => {
+    setClaimCandidateComplete(isClaimChallenge && status === "complete");
+  }, [isClaimChallenge, props.claim_challenge?.receipt_sha256, status]);
 
   // Residual (aoe): rehydrate domain subjects from goal_hint research_domains=
   // so twin chase + intelligent search stay domain-aware inside the session.
@@ -364,7 +376,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               Path: float|full · draft merge · into parent · {pathChoices.summary}
             </p>
             {/* Residual (qv/acv/ael): Open Write twin seed + reading→research→Write path honesty. */}
-            {writeHref ? (
+            {writeHref && !isClaimChallenge ? (
               <a
                 href={writeHref}
                 data-testid="deep-research-open-write"
@@ -469,14 +481,14 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               : "")
           }
           researchTier={researchTier}
-          allowTierPick
+          allowTierPick={!isClaimChallenge}
           onResearchTierChange={setResearchTier}
         />
       </section>
 
       {/* Product mount: twin + source-ref research context for this session's
           parent asset / spawn. Panel owns fetch/attach; host only passes identity. */}
-      {props.parent_asset_id?.trim() ? (
+      {props.parent_asset_id?.trim() && !isClaimChallenge ? (
         <section
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="deep-research-research-context-mount"
@@ -499,7 +511,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         </section>
       ) : null}
 
-      {props.spawn_id?.trim() ? (
+      {props.spawn_id?.trim() && !isClaimChallenge ? (
         <section
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="deep-research-progress-mount"
@@ -525,7 +537,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         </section>
       ) : null}
 
-      {props.parent_asset_id?.trim() ? (
+      {props.parent_asset_id?.trim() && !isClaimChallenge ? (
         <section
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="deep-research-twins-mount"
@@ -568,14 +580,42 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               props.goal?.trim() ||
               (selection !== "(no selection)" ? selection : "")
             }
-            onCompleted={onContextNeedsRefresh}
+            onCompleted={(result) => {
+              onContextNeedsRefresh();
+              if (isClaimChallenge && result.status === "complete") {
+                setClaimCandidateComplete(true);
+              }
+            }}
             researchTier={researchTier}
+            candidateOnly={isClaimChallenge}
           />
         </section>
       ) : null}
 
+      {rawSessionId && props.claim_challenge && claimCandidateComplete ? (
+        <section
+          className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
+          data-testid="deep-research-claim-review-mount"
+          data-view-format="html"
+        >
+          {props.claim_challenge.schema_version === 2 ? (
+            <EffectiveContextReviewPanel
+              investigationId={props.claim_challenge.source_asset_id}
+              sessionId={rawSessionId}
+              artifactContentHash={props.claim_challenge.artifact_content_hash}
+            />
+          ) : (
+            <ClaimChallengeReviewPanel
+              investigationId={props.claim_challenge.source_asset_id}
+              sessionId={rawSessionId}
+              artifactContentHash={props.claim_challenge.artifact_content_hash}
+            />
+          )}
+        </section>
+      ) : null}
+
       {/* Residual (ck): attach knowledge-dense publications mid-session. */}
-      {props.spawn_id?.trim() ? (
+      {props.spawn_id?.trim() && !isClaimChallenge ? (
         <section
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="deep-research-publication-attach-mount"
@@ -590,7 +630,9 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
       ) : null}
 
       {/* Residual (ci/agu): one-click merge this spawn into reading parent/draft. */}
-      {props.spawn_id?.trim() && props.parent_asset_id?.trim() ? (
+      {props.spawn_id?.trim() &&
+      props.parent_asset_id?.trim() &&
+      !isClaimChallenge ? (
         <section
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="deep-research-spawn-merge-mount"
@@ -613,7 +655,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
 
       {/* Product mount (ah/ox): multi-select open + recent DR spawns. */}
       {/* Residual (anq): open-vs-recent honesty stamps (parity ResearchThis ou). */}
-      {availableSpawnIds.length > 0 ? (
+      {availableSpawnIds.length > 0 && !isClaimChallenge ? (
         <section
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="deep-research-collective-mount"

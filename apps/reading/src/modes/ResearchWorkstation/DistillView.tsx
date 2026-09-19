@@ -273,7 +273,7 @@ function InsightRow({
   const runChallenge = async () => {
     setOutcome("busy");
     try {
-      const res = await challengeNote(node.node_id, { investigation_id: investigationId });
+      const res = await challengeNote(node.node_id, investigationId);
       if (res.applied) {
         setOutcome("changed");
         await onRefined(); // refetch so the refined node text re-renders from the graph

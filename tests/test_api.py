@@ -32,12 +32,36 @@ sys.path.insert(0, os.path.dirname(_HERE))
 
 from interfaces.research.api import create_app  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
+from substrate.investigation_tenancy import (  # noqa: E402
+    InvestigationAuthority,
+    bind_legacy_stream_lease,
+)
+from substrate.multi_user.auth import operator_claims  # noqa: E402
 from substrate.schemas import EVENT_SCHEMA_VERSION  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def _events_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    events = tmp_path / "events"
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(events))
+    for investigation_id in (
+        "inv-1",
+        "inv-2",
+        "inv-3",
+        "inv-4",
+        "inv-L",
+        "inv-T",
+        "inv-WS",
+        "inv-X",
+        "inv-Y",
+        "never-existed",
+    ):
+        bind_legacy_stream_lease(
+            InvestigationAuthority(
+                operator_claims().user_id, investigation_id, events
+            ),
+            provenance="test_api_fixture",
+        )
 
 
 @pytest.fixture
@@ -222,7 +246,7 @@ def test_get_trajectory_limit_returns_last_n(client: TestClient):
 
 def test_websocket_receives_broadcast_after_post(client: TestClient):
     """End-to-end: open WS, POST event, receive the event on WS."""
-    with client.websocket_connect("/ws/events") as ws:
+    with client.websocket_connect("/ws/events?investigation_id=inv-WS") as ws:
         payload = {
             "action_type": "dispatch.call",
             "provider": "p", "model": "m", "tier": "flash", "target_role": "r",
@@ -269,7 +293,7 @@ def test_websocket_health_subscriber_count_reflects_connection(client: TestClien
     """Subscriber count goes up while WS is open, back down on close."""
     pre = client.get("/health").json()["subscriber_count"]
     assert pre == 0
-    with client.websocket_connect("/ws/events"):
+    with client.websocket_connect("/ws/events?investigation_id=inv-WS"):
         during = client.get("/health").json()["subscriber_count"]
         assert during == 1
     post = client.get("/health").json()["subscriber_count"]

@@ -65,7 +65,16 @@ if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from orchestration.phase_log import default_log_dir as phase_log_default_dir  # noqa: E402
-from substrate.event_log import default_events_dir, trajectory  # noqa: E402
+from substrate.event_log import (  # noqa: E402
+    default_events_dir,
+    trajectory,
+    trajectory_authorized,
+)
+from substrate.investigation_streams import (  # noqa: E402
+    list_authorized_investigation_ids,
+    list_operator_investigation_authorities,
+)
+from substrate.investigation_tenancy import InvestigationAuthority  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
     AutoPatchAppliedPayload,
@@ -206,14 +215,37 @@ def iter_window_events(
     start: datetime, end: datetime,
     *,
     events_dir: str | None = None,
+    authority: InvestigationAuthority | None = None,
+    global_scope: bool = False,
 ) -> Iterator[Event]:
     """Walk every persisted trajectory and yield validated ``Event``
     objects whose ``emitted_at`` lies in ``[start, end]``. Malformed
     rows are skipped silently — the report's job is to surface
     aggregate signal, not relitigate per-row corruption."""
     start, end = _naive_utc_bounds(start, end)
-    for iid in _iter_investigation_ids(events_dir):
-        for row in trajectory(iid, events_dir=events_dir):
+    stream_authorities = (
+        (
+            list_operator_investigation_authorities(authority)
+            if global_scope
+            else [
+                InvestigationAuthority(authority.account_id, iid, authority.root)
+                for iid in list_authorized_investigation_ids(
+                    authority.account_id,
+                    root=authority.root,
+                )
+            ]
+        )
+        if authority is not None
+        else _iter_investigation_ids(events_dir)
+    )
+    for stream in stream_authorities:
+        iid = stream.investigation_id if isinstance(stream, InvestigationAuthority) else stream
+        rows = (
+            trajectory_authorized(stream)
+            if isinstance(stream, InvestigationAuthority)
+            else trajectory(iid, events_dir=events_dir)
+        )
+        for row in rows:
             ts = _parse_event_ts(row.get("emitted_at"))
             if ts is None:
                 continue
@@ -632,6 +664,8 @@ def build_report(
     events_dir: str | None = None,
     log_dir: str | None = None,
     budget_dir: str | None = None,
+    authority: InvestigationAuthority | None = None,
+    global_scope: bool = False,
 ) -> WeeklyReport:
     """Aggregate all sections. Reads the entire window's event
     history into memory once and partitions it across the section
@@ -641,7 +675,15 @@ def build_report(
     guard their own public seams, while normalizing at this one keeps the
     rendered ``window`` field consistent with what was actually filtered."""
     start, end = _naive_utc_bounds(start, end)
-    events = list(iter_window_events(start, end, events_dir=events_dir))
+    events = list(
+        iter_window_events(
+            start,
+            end,
+            events_dir=events_dir,
+            authority=authority,
+            global_scope=global_scope,
+        )
+    )
     phase = collect_phase_telemetry(start, end, log_dir=log_dir)
     lifecycle = collect_investigation_lifecycle(events)
     constraint = collect_constraint_distribution(events)
@@ -909,9 +951,18 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     start, end = _resolve_window(args.since, args.until)
+    authority = (
+        None
+        if args.events_dir is not None
+        else InvestigationAuthority("__operator__", "__weekly_report__")
+    )
     report = build_report(
-        start, end,
-        events_dir=args.events_dir, log_dir=args.log_dir,
+        start,
+        end,
+        events_dir=args.events_dir,
+        log_dir=args.log_dir,
+        authority=authority,
+        global_scope=authority is not None,
     )
 
     if args.json:

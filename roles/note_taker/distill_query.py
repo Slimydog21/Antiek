@@ -150,6 +150,86 @@ def distillation_for(
     return Distillation(insights=insights, questions=questions)
 
 
+def distillation_for_authorized(
+    authority,
+    *,
+    db_path: str | None = None,
+) -> Distillation:
+    """Read only live nodes visible through the exact graph membership."""
+    from substrate.event_log import trajectory_authorized
+    from substrate.graph.tenancy import (
+        assert_graph_authority_read,
+        has_node_membership_read,
+    )
+
+    escalations: dict[str, dict] = {}
+    for row in trajectory_authorized(authority):
+        action_type = row.get("action_type")
+        payload = row.get("payload") or {}
+        if action_type == ActionType.QUESTION_ESCALATED_TO_RESEARCH.value:
+            question_id = payload.get("question_id")
+            child = payload.get("child_investigation_id")
+            if isinstance(question_id, str) and isinstance(child, str):
+                escalations[question_id] = {"reserved_child_investigation_id": child}
+
+    insights: list[DistilledNode] = []
+    questions: list[DistilledNode] = []
+    con = connect_read(db_path or graph_db_path())
+    try:
+        assert_graph_authority_read(con, authority)
+        memberships = con.execute(
+            "SELECT node_id, membership_metadata "
+            "FROM investigation_node_memberships "
+            "WHERE account_digest = ? AND investigation_digest = ? "
+            "AND role IN ('insight', 'question') ORDER BY created_at, node_id",
+            [authority.account_digest, authority.investigation_digest],
+        ).fetchall()
+        for node_id, membership_metadata_raw in memberships:
+            if not has_node_membership_read(con, authority, node_id=node_id):
+                raise RuntimeError("graph membership changed during distillation read")
+            row = con.execute(
+                "SELECT node_type, canonical_label, metadata FROM nodes WHERE node_id = ?",
+                [node_id],
+            ).fetchone()
+            if row is None:
+                continue
+            node_type, _shared_label, _shared_metadata_raw = row
+            metadata = _load_meta(membership_metadata_raw)
+            label = metadata.get("canonical_text")
+            if not isinstance(label, str) or not label:
+                raise RuntimeError("authorized graph membership lacks canonical text")
+            if node_type == "insight":
+                insights.append(
+                    DistilledNode(
+                        node_id=node_id,
+                        kind="insight",
+                        text=label,
+                        confidence=metadata.get("confidence"),
+                        source_document_id=metadata.get("source_document_id"),
+                        refinement_count=int(metadata.get("refinement_count", 0) or 0),
+                    )
+                )
+            elif node_type == "question":
+                escalation = escalations.get(node_id)
+                questions.append(
+                    DistilledNode(
+                        node_id=node_id,
+                        kind="question",
+                        text=label,
+                        source_document_id=metadata.get("source_document_id"),
+                        escalated=escalation is not None,
+                        reserved_child_investigation_id=(
+                            escalation.get("reserved_child_investigation_id")
+                            if escalation
+                            else None
+                        ),
+                    )
+                )
+    finally:
+        con.close()
+    return Distillation(insights=insights, questions=questions)
+
+
 def _load_meta(raw: Any) -> dict:
     if not raw:
         return {}

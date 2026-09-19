@@ -39,6 +39,10 @@ from services.html_projection.reader_store import invalidate_reader_projection
 from substrate.constants import SYSTEM_INVESTIGATION_ID, TAKEDOWN_CONTENT_CLASS
 from substrate.event_log import emit_typed
 from substrate.graph.ops import update_document_gate_columns
+from substrate.legal_gate.read import (
+    book_serve_document_compatibility,
+    read_document_metadata_compatibility,
+)
 from substrate.schemas.events import BookServabilityChangedPayload, BookTakenDownPayload
 
 from .servability import ServabilityStatus, servability_of
@@ -64,18 +68,14 @@ def take_down(con: LockedConnection, document_id: str, *, reason: str) -> bool:
     ``True`` when this call performed the takedown.
     """
     _require_locked(con)
-    row = con.execute(
-        """
-        SELECT d.content_class, d.raw_text, COALESCE(b.taken_down, FALSE)
-        FROM book_assets b
-        JOIN documents d ON b.document_id = d.document_id
-        WHERE b.document_id = ?
-        """,
-        [document_id],
-    ).fetchone()
-    if row is None:
+    document = book_serve_document_compatibility(
+        con, document_id, authority=None, enforce=False
+    )
+    if document is None or not document["book_registered"]:
         raise BookNotRegistered(f"{document_id} is not a registered book (no book_assets row).")
-    content_class, raw_text, already_down = row
+    content_class = document["content_class"]
+    raw_text = document["raw_text"]
+    already_down = document["taken_down"]
     if bool(already_down):
         return False
 
@@ -138,10 +138,14 @@ def take_down(con: LockedConnection, document_id: str, *, reason: str) -> bool:
         reason=f"takedown:{reason}",
         source_event_id=takedown_event_id,
     )
-    metadata_row = con.execute(
-        "SELECT metadata FROM documents WHERE document_id = ?", [document_id]
-    ).fetchone()
-    metadata = json.loads(metadata_row[0]) if metadata_row and metadata_row[0] else {}
+    metadata_document = read_document_metadata_compatibility(
+        con, document_id, authority=None, enforce=False
+    )
+    metadata = (
+        json.loads(metadata_document["metadata"])
+        if metadata_document is not None and metadata_document["metadata"]
+        else {}
+    )
     metadata.update(
         {
             "reader_projection_state": "ready",

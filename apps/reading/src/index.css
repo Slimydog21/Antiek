@@ -48,3 +48,17 @@ article ::selection {
 html, body, #root {
   height: 100%;
 }
+/* Host-owned citation emphasis. Stored HTML cannot author these classes: the
+   sanitizer mounts inert markup and HostedHtmlDocumentHost applies them only
+   to server-derived opaque anchors from the authorized mapping. */
+.citation-evidence-anchor {
+  border-inline-start: 3px solid color-mix(in srgb, #d29b24 75%, transparent);
+  padding-inline-start: 0.75rem;
+  background: color-mix(in srgb, #f4c95d 12%, transparent);
+}
+
+.citation-evidence-active {
+  outline: 2px solid #d29b24;
+  outline-offset: 4px;
+  background: color-mix(in srgb, #f4c95d 24%, transparent);
+}

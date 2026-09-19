@@ -28,8 +28,10 @@ safe state per the master-spec legal posture.
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlparse
+
+from substrate.legal_gate.read import read_document_ip_holder_compatibility
 
 
 def _normalize_isbn(isbn: str | None) -> str | None:
@@ -178,15 +180,10 @@ def apply_resolved_ip_holder(
     wins (operator-managed overrides via publisher dashboard take
     precedence over auto-resolution).
     """
-    existing = con.execute(
-        "SELECT ip_holder_id FROM documents WHERE document_id = ?",
-        [document_id],
-    ).fetchone()
-    if existing is None:
-        raise ValueError(
-            f"document_id {document_id!r} not found in documents table"
-        )
-    if existing[0]:
+    existing = read_document_ip_holder_compatibility(
+        con, document_id, authority=None, enforce=False
+    )
+    if existing:
         return  # already attributed; leave it
     con.execute(
         "UPDATE documents SET ip_holder_id = ? WHERE document_id = ?",

@@ -55,7 +55,8 @@ def _maybe_deepseek() -> OpenAICompatProvider | None:
     return OpenAICompatProvider(
         name="deepseek",
         base_url=os.environ.get(
-            "ANTIEK_DEEPSEEK_BASE_URL", "https://api.deepseek.com",
+            "ANTIEK_DEEPSEEK_BASE_URL",
+            "https://api.deepseek.com",
         ),
         api_key_env="DEEPSEEK_API_KEY",
     )
@@ -78,6 +79,22 @@ def _maybe_openrouter() -> OpenAICompatProvider | None:
         base_url="https://openrouter.ai/api/v1",
         api_key_env="OPENROUTER_API_KEY",
         chat_completions_path="/chat/completions",
+    )
+
+
+def _maybe_openai_chat() -> OpenAICompatProvider | None:
+    """OpenAI text/reasoning models through Chat Completions.
+
+    This is intentionally distinct from the speech and vision adapters:
+    registration attests only that the server received an API key. It does
+    not claim account entitlement, remaining quota, or a successful smoke.
+    """
+    if not os.environ.get("OPENAI_API_KEY", "").strip():
+        return None
+    return OpenAICompatProvider(
+        name="openai_chat",
+        base_url=os.environ.get("ANTIEK_OPENAI_BASE_URL", "https://api.openai.com"),
+        api_key_env="OPENAI_API_KEY",
     )
 
 
@@ -134,7 +151,8 @@ def _maybe_hermes() -> OpenAICompatProvider | None:
     return OpenAICompatProvider(
         name="hermes",
         base_url=os.environ.get(
-            "ANTIEK_HERMES_BASE_URL", "http://localhost:8080/v1",
+            "ANTIEK_HERMES_BASE_URL",
+            "http://localhost:8080/v1",
         ),
         api_key_env="HERMES_API_KEY",
         chat_completions_path="/chat/completions",
@@ -170,7 +188,8 @@ def _maybe_zai() -> OpenAICompatProvider | None:
     return OpenAICompatProvider(
         name="zai",
         base_url=os.environ.get(
-            "ANTIEK_ZAI_BASE_URL", "https://api.z.ai/api/paas/v4",
+            "ANTIEK_ZAI_BASE_URL",
+            "https://api.z.ai/api/paas/v4",
         ),
         api_key_env="Z_AI_API_KEY",
         chat_completions_path="/chat/completions",
@@ -197,7 +216,8 @@ def _maybe_zai_reasoning() -> OpenAICompatProvider | None:
     return OpenAICompatProvider(
         name="zai_reasoning",
         base_url=os.environ.get(
-            "ANTIEK_ZAI_BASE_URL", "https://api.z.ai/api/paas/v4",
+            "ANTIEK_ZAI_BASE_URL",
+            "https://api.z.ai/api/paas/v4",
         ),
         api_key_env="Z_AI_API_KEY",
         chat_completions_path="/chat/completions",
@@ -211,6 +231,7 @@ _DEFAULT_PROVIDERS = [
     ("deepseek", _maybe_deepseek),
     ("anthropic", _maybe_anthropic),
     ("openrouter", _maybe_openrouter),
+    ("openai_chat", _maybe_openai_chat),
     ("xiaomi", _maybe_xiaomi),
     ("hermes", _maybe_hermes),
 ]

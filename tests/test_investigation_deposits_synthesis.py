@@ -12,10 +12,16 @@ so ``syntheses`` was 0 by construction. This test pins the wiring that
 closed that gap. The role-stub harness + canned responses are reused from
 ``tests.test_loop_one_orchestrator`` (the proven Sprint-8 happy-path suite).
 """
+
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import os
 import sys
+from dataclasses import replace
+from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 import pytest
@@ -26,10 +32,15 @@ sys.path.insert(0, os.path.dirname(_HERE))
 from interfaces.research.api import EventBroadcaster, create_app  # noqa: E402
 from processing.embedding import _reset_default_provider  # noqa: E402
 from substrate.dispatch import (  # noqa: E402
+    TierPricing,
     register_provider,
     reset_provider_registry,
 )
 from substrate.schemas import ActionType  # noqa: E402
+from tests.research_quote_support import (  # noqa: E402
+    async_signed_body,
+    configure_research_quote_authority,
+)
 from tests.test_loop_one_orchestrator import (  # noqa: E402
     _CONNECTOR_RESPONSE,
     _DECOMPOSER_RESPONSE,
@@ -37,12 +48,26 @@ from tests.test_loop_one_orchestrator import (  # noqa: E402
     _PARAMETER_EXTRACTOR_RESPONSE,
     _SYNTHESIZER_RESPONSE,
     _all_role_config,
-    _await_terminal,
     _evidence_response_for,
     _patch_dispatch,
-    _post_start,
     _RoleStubProvider,
 )
+
+
+class _PaidRoleStubProvider(_RoleStubProvider):
+    def __init__(self, responses_by_tag):
+        super().__init__(responses_by_tag)
+        self._receipts = {}
+
+    def call_idempotent(self, *, model, prompt, max_tokens, temperature, idempotency_key):
+        if idempotency_key not in self._receipts:
+            self._receipts[idempotency_key] = self.call(
+                model=model,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        return self._receipts[idempotency_key]
 
 
 @pytest.fixture
@@ -71,6 +96,7 @@ def _isolate_db_and_corpus(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_PHASE_LOG_DIR", str(tmp_path / "phase_logs"))
     monkeypatch.setenv("ANTIEK_RESEARCH_DIR", str(tmp_path / "research"))
     monkeypatch.setenv("ANTIEK_KNOWLEDGE_SKILLS_DIR", str(tmp_path / "skills"))
+    configure_research_quote_authority(monkeypatch, tmp_path)
     quantum_dir = tmp_path / "skills" / "quantum-computing-knowledge"
     quantum_dir.mkdir(parents=True)
     (quantum_dir / "SKILL.md").write_text(
@@ -79,7 +105,13 @@ def _isolate_db_and_corpus(tmp_path, monkeypatch):
 
     import duckdb
 
+    from runtime.db_lock import connect_write
+    from substrate.graph.ops import seal_existing_admitted_state
     from substrate.graph.schema import init_database_at_path
+    from substrate.investigation_streams import initialize_composite_stream
+    from substrate.investigation_tenancy import InvestigationAuthority
+    from substrate.legal_gate.admission import admit_staged_document
+    from substrate.legal_gate.policy_store import account_policy_authority
 
     init_database_at_path(str(db_path))
     con = duckdb.connect(str(db_path))
@@ -87,14 +119,20 @@ def _isolate_db_and_corpus(tmp_path, monkeypatch):
         con.execute(
             "INSERT INTO documents "
             "(document_id, source_uri, title, author, source_tier, document_type, "
-            "raw_text, metadata, content_class) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "investigation_id, raw_text, metadata, content_class, owner_user_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                "doc-psi-quantum", "https://example.test/psiquantum-roadmap",
-                "PsiQuantum photonic quantum roadmap", "Antiek fixture",
-                1, "academic_paper",
+                "doc-psi-quantum",
+                "https://example.test/psiquantum-roadmap",
+                "PsiQuantum photonic quantum roadmap",
+                "Antiek fixture",
+                1,
+                "academic_paper",
+                "inv-spr03-deposit",
                 "PsiQuantum photonic quantum roadmap evidence. Quantum X holds.",
-                "{}", "restricted_pending_opt_in",
+                "{}",
+                "restricted_pending_opt_in",
+                "__operator__",
             ],
         )
         con.execute(
@@ -102,8 +140,12 @@ def _isolate_db_and_corpus(tmp_path, monkeypatch):
             "(chunk_id, document_id, chunk_index, section_path, text, token_count) "
             "VALUES (?, ?, ?, ?, ?, ?)",
             [
-                "chunk-1", "doc-psi-quantum", 0, "Fixture",
-                "PsiQuantum photonic quantum roadmap evidence: Quantum X holds.", 32,
+                "chunk-1",
+                "doc-psi-quantum",
+                0,
+                "Fixture",
+                "PsiQuantum photonic quantum roadmap evidence: Quantum X holds.",
+                32,
             ],
         )
         con.execute(
@@ -117,6 +159,31 @@ def _isolate_db_and_corpus(tmp_path, monkeypatch):
         )
     finally:
         con.close()
+
+    authority = InvestigationAuthority(
+        "__operator__", "inv-spr03-deposit", root=tmp_path / "events"
+    )
+    initialize_composite_stream(authority)
+    content = "PsiQuantum photonic quantum roadmap evidence. Quantum X holds."
+    with connect_write(
+        str(db_path), purpose="test-deposit-legal-admission", log_on_close=False
+    ) as locked_con:
+        receipt = admit_staged_document(
+            locked_con,
+            account_policy_authority(authority),
+            investigation_digest=authority.investigation_digest,
+            document_id="doc-psi-quantum",
+            provenance_class="internal_operator",
+            content_sha256=hashlib.sha256(content.encode()).hexdigest(),
+            at=datetime.now(UTC),
+        )
+        seal_existing_admitted_state(
+            locked_con,
+            authority,
+            admission_receipt_id=receipt.receipt_id,
+            admitted_content_sha256=hashlib.sha256(content.encode()).hexdigest(),
+            document_id="doc-psi-quantum",
+        )
     _reset_default_provider()
     reset_provider_registry()
     yield
@@ -126,7 +193,9 @@ def _isolate_db_and_corpus(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_investigation_deposits_synthesis_with_manifest(
-    monkeypatch, app_and_bus, async_client,
+    monkeypatch,
+    app_and_bus,
+    async_client,
 ):
     """A completed investigation deposits a syntheses row + a non-empty
     substrate manifest that joins to a real fixture document."""
@@ -140,21 +209,74 @@ async def test_investigation_deposits_synthesis_with_manifest(
             "PsiQuantum photonic quantum roadmap evidence: Quantum X holds.\n"
         ),
     )
-    register_provider(_RoleStubProvider({
-        "decomposer": _DECOMPOSER_RESPONSE,
-        "evidence_retriever": _evidence_response_for("(any sub-question)"),
-        "parameter_extractor": _PARAMETER_EXTRACTOR_RESPONSE,
-        "connector": _CONNECTOR_RESPONSE,
-        "synthesizer": _SYNTHESIZER_RESPONSE,
-        "knowledge_extractor": _KNOWLEDGE_EXTRACTION_RESPONSE,
-    }))
-    _patch_dispatch(monkeypatch, _all_role_config())
-
-    await _post_start(
-        async_client, investigation_id=inv,
-        question="Is PsiQuantum's photonic quantum roadmap defensible?",
+    register_provider(
+        _PaidRoleStubProvider(
+            {
+                "decomposer": _DECOMPOSER_RESPONSE,
+                "evidence_retriever": _evidence_response_for("(any sub-question)"),
+                "parameter_extractor": _PARAMETER_EXTRACTOR_RESPONSE,
+                "connector": _CONNECTOR_RESPONSE,
+                "synthesizer": _SYNTHESIZER_RESPONSE,
+                "knowledge_extractor": _KNOWLEDGE_EXTRACTION_RESPONSE,
+            }
+        )
     )
-    terminal = await _await_terminal(bus, inv, timeout=20.0)
+    config = _all_role_config()
+    config.tiers["pro"] = replace(
+        config.tiers["pro"],
+        pricing=TierPricing(
+            input_per_mtok=0.01,
+            output_per_mtok=0.02,
+            cached_input_per_mtok=0.001,
+            currency="USD",
+            billing_unit="per_million_tokens",
+            source_url="https://provider.example/pricing",
+            verified_at="2026-01-01T00:00:00Z",
+            expires_at="2099-01-01T00:00:00Z",
+        ),
+    )
+    _patch_dispatch(monkeypatch, config)
+
+    payload = {
+        "investigation_id": inv,
+        "question": "Is PsiQuantum's photonic quantum roadmap defensible?",
+        "topic_slug": "psi-quantum-demo",
+        "max_sub_questions": 4,
+        "approved_run_ceiling_usd": 1.0,
+    }
+    response = await async_client.post(
+        "/investigations",
+        json=await async_signed_body(async_client, "/investigations/quote", payload),
+    )
+    assert response.status_code == 202, response.text
+    from substrate.event_log import trajectory_authorized
+    from substrate.investigation_tenancy import InvestigationAuthority
+    from substrate.multi_user.auth import operator_claims
+
+    authority = InvestigationAuthority(
+        operator_claims().user_id,
+        inv,
+        root=Path(os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]),
+    )
+    terminal = None
+    deadline = asyncio.get_event_loop().time() + 20.0
+    while asyncio.get_event_loop().time() < deadline:
+        await bus.wait_for_handlers(timeout=2.0)
+        terminal = next(
+            (
+                row
+                for row in trajectory_authorized(authority)
+                if row.get("action_type")
+                in {
+                    ActionType.INVESTIGATION_COMPLETED.value,
+                    ActionType.INVESTIGATION_FAILED.value,
+                }
+            ),
+            None,
+        )
+        if terminal is not None:
+            break
+        await asyncio.sleep(0.05)
     assert terminal is not None, "no terminal event landed"
     assert terminal["action_type"] == ActionType.INVESTIGATION_COMPLETED.value
 

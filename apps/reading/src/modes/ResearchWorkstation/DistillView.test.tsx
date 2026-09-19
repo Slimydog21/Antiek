@@ -128,7 +128,7 @@ describe("DistillView — challenge a completed-research insight (M3 + M4)", () 
     await waitFor(() => expect(screen.getByText("Acme is small.")).toBeTruthy());
     fireEvent.click(screen.getByText("challenge this"));
     await waitFor(() => expect(screen.getByText("Acme is mid-sized.")).toBeTruthy());
-    expect(challengeNoteMock).toHaveBeenCalledWith("i1", { investigation_id: "inv-1" });
+    expect(challengeNoteMock).toHaveBeenCalledWith("i1", "inv-1");
     expect(getDistillationMock).toHaveBeenCalledTimes(2); // refetched after the change
   });
 

@@ -48,6 +48,11 @@ from substrate.graph.ops import (  # noqa: E402
     insert_document,
     insert_node,
 )
+from substrate.legal_gate.read import (  # noqa: E402
+    book_serve_document_compatibility,
+    read_chunk_ids_compatibility,
+    read_document_metadata_compatibility,
+)
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
 from .reader import ReadResult, TocEntry, read_pdf  # noqa: E402
@@ -158,12 +163,12 @@ def _mark_book_projection_ready(*, db_path: str, document_id: str, snapshot_path
 
     projection_hash = "sha256:" + hashlib.sha256(Path(snapshot_path).read_bytes()).hexdigest()
     with connect_write(db_path, purpose="acquisition/books/projection-ready") as con:
-        row = con.execute(
-            "SELECT metadata FROM documents WHERE document_id = ?", [document_id]
-        ).fetchone()
-        if row is None:
+        document = read_document_metadata_compatibility(
+            con, document_id, authority=None, enforce=False
+        )
+        if document is None:
             return
-        metadata = json.loads(row[0]) if row[0] else {}
+        metadata = json.loads(document["metadata"]) if document["metadata"] else {}
         metadata["reader_projection_state"] = "ready"
         metadata["reader_projection_hash"] = projection_hash
         con.execute(
@@ -179,40 +184,27 @@ def _resolve_existing_book(
 
     con = duckdb.connect(db_path, read_only=True)
     try:
-        row = con.execute(
-            """SELECT d.raw_text, d.source_uri, d.title, d.author, d.metadata,
-                      d.content_class, d.ip_holder_id, d.owner_user_id,
-                      coalesce(b.taken_down, false), coalesce(b.page_count, 0),
-                      b.toc_json
-               FROM documents d
-               LEFT JOIN book_assets b ON b.document_id = d.document_id
-               WHERE d.document_id = ?""",
-            [document_id],
-        ).fetchone()
-        if row is None:
+        document = book_serve_document_compatibility(
+            con, document_id, authority=None, enforce=False
+        )
+        if document is None:
             return None
-        chunk_ids = [
-            str(item[0])
-            for item in con.execute(
-                "SELECT chunk_id FROM chunks WHERE document_id = ? ORDER BY chunk_index",
-                [document_id],
-            ).fetchall()
-        ]
+        chunk_ids = list(read_chunk_ids_compatibility(
+            con, document_id, authority=None, enforce=False
+        ))
     finally:
         con.close()
-    (
-        markdown,
-        source_uri,
-        title,
-        author,
-        raw_metadata,
-        content_class,
-        ip_holder_id,
-        owner_scope,
-        taken_down,
-        page_count,
-        raw_toc,
-    ) = row
+    markdown = document["raw_text"]
+    source_uri = document["source_uri"]
+    title = document["title"]
+    author = document["author"]
+    raw_metadata = document["metadata"]
+    content_class = document["content_class"]
+    ip_holder_id = document["ip_holder_id"]
+    owner_scope = document["owner_user_id"]
+    taken_down = document["taken_down"]
+    page_count = document["page_count"]
+    raw_toc = document["toc_json"]
     metadata = json.loads(raw_metadata) if raw_metadata else {}
     stored_hash = str(
         metadata.get("canonical_content_hash") or "sha256:" + content_hash(str(markdown or ""))
@@ -563,13 +555,13 @@ def ingest_servable_book(
             provenance=provenance or (source_uri if isinstance(source, str) else "bytes"),
             license_basis=license_basis,
         )
-        document_row = con.execute(
-            """SELECT raw_text, source_uri, owner_user_id, metadata
-               FROM documents WHERE document_id = ?""",
-            [ingest_result.document_id],
-        ).fetchone()
+        document_row = book_serve_document_compatibility(
+            con, ingest_result.document_id, authority=None, enforce=False
+        )
         assert document_row is not None
-        rights_metadata = json.loads(document_row[3]) if document_row[3] else {}
+        rights_metadata = (
+            json.loads(document_row["metadata"]) if document_row["metadata"] else {}
+        )
         rights_metadata["reader_projection_state"] = "pending"
         rights_metadata["reader_projection_hash"] = None
         con.execute(
@@ -578,7 +570,9 @@ def ingest_servable_book(
         )
 
     assert document_row is not None
-    markdown, stored_source_uri, owner_scope, _ = document_row
+    markdown = document_row["raw_text"]
+    stored_source_uri = document_row["source_uri"]
+    owner_scope = document_row["owner_user_id"]
     canonical_content_hash = "sha256:" + content_hash(str(markdown or ""))
     status = asset.servability.value
     viewable = status not in {"gated_metadata_only", "taken_down"}

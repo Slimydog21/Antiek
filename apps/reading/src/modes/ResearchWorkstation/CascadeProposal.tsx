@@ -9,13 +9,34 @@ import {
 import Thinking from "../../shared/Thinking";
 import {
   approvePlan,
+  applyLegalPolicy,
   createPlan,
+  dryRunLegalPolicy,
   editPlan,
   getBudgetDefaults,
+  getCascadeDriverReadiness,
+  getGatherStatus,
   launchPlan,
+  listLegalPolicyDispatchLeases,
+  getLaunchAttemptStatus,
+  LaunchOutcomeUnknownError,
+  revokeLegalPolicy,
+  recoverLegalPolicyDispatchLease,
+  type GatherStatus,
+  type CascadeDriverReadiness,
+  type LegalPolicyDispatchLease,
   type PlanNode,
   type PlanTree,
 } from "../../api/research";
+import {
+  acquireCascadeLaunchAttempt,
+  clearCascadeLaunchAttempt,
+} from "../../workspace/cascadeLaunchAttempt";
+import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
+import {
+  ResearchLaunchBudgetPanel,
+  type ResearchLaunchTier,
+} from "../../components/engagement/ResearchLaunchBudgetPanel";
 
 /**
  * CascadeProposal — the Research door's "break this into sub-questions" mode
@@ -93,6 +114,123 @@ function subQuestions(tree: PlanTree): PlanNode[] {
   return leaves;
 }
 
+function LegalPolicyEditor({ rootNodeId, onChanged }: { rootNodeId: string; onChanged: () => void }) {
+  const [matcher, setMatcher] = useState("");
+  const [citation, setCitation] = useState("");
+  const [decision, setDecision] = useState<"allow" | "deny">("allow");
+  const [previewed, setPreviewed] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<{ eventId: string; matcher: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [leases, setLeases] = useState<LegalPolicyDispatchLease[]>([]);
+  const attempt = useRef<string | null>(null);
+  const recoveryAttempts = useRef(new Map<string, string>());
+  const recoveriesInFlight = useRef(new Set<string>());
+  const body = {
+    matcher_kind: "domain" as const,
+    matcher_value: matcher.trim(),
+    decision,
+    citation_ref: citation.trim(),
+    issuer_id: "account-operator",
+    reason_code: decision === "allow" ? "cited_account_allow" : "cited_account_deny",
+  };
+  const fingerprint = JSON.stringify(body);
+  const ready = Boolean(body.matcher_value && body.citation_ref);
+
+  const refreshLeases = useCallback(() => {
+    void listLegalPolicyDispatchLeases(rootNodeId)
+      .then((result) => setLeases(result.leases))
+      .catch(() => setLeases([]));
+  }, [rootNodeId]);
+  useEffect(refreshLeases, [refreshLeases]);
+
+  return (
+    <details className="rounded-hog border border-rule dark:border-charcoal-1 p-3">
+      <summary className="cursor-pointer text-xs font-mono">Manage cited retrieval policy</summary>
+      <p className="mt-2 text-[11px] text-ink-mute dark:text-moonlight">
+        A citation is evidence, not a lawyer-approval checkbox. Preview the exact account rule before applying it.
+      </p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+        <input aria-label="Policy domain" placeholder="publication.example" value={matcher}
+          onChange={(e) => { setMatcher(e.target.value); setPreviewed(null); attempt.current = null; }}
+          className="rounded border border-rule bg-transparent px-2 py-1 text-xs" />
+        <input aria-label="Policy citation" placeholder="License, terms, or decision reference" value={citation}
+          onChange={(e) => { setCitation(e.target.value); setPreviewed(null); attempt.current = null; }}
+          className="rounded border border-rule bg-transparent px-2 py-1 text-xs" />
+        <select aria-label="Policy decision" value={decision}
+          onChange={(e) => { setDecision(e.target.value as "allow" | "deny"); setPreviewed(null); attempt.current = null; }}
+          className="rounded border border-rule bg-transparent px-2 py-1 text-xs">
+          <option value="allow">Allow</option><option value="deny">Deny</option>
+        </select>
+      </div>
+      <div className="mt-2 flex gap-2">
+        <LemonButton size="sm" variant="secondary" disabled={!ready || busy} onClick={() => {
+          setBusy(true); setMessage(null);
+          void dryRunLegalPolicy(rootNodeId, body).then((p) => {
+            setPreviewed(fingerprint);
+            setMessage(p.would_append ? `Preview: append rule for ${p.normalized_matcher_value}.` : "Preview: an identical active decision already exists.");
+          }).catch((e) => setMessage(e instanceof Error ? e.message : String(e))).finally(() => setBusy(false));
+        }}>Preview</LemonButton>
+        <LemonButton size="sm" variant="primary" disabled={!ready || busy || previewed !== fingerprint} onClick={() => {
+          setBusy(true); setMessage(null); attempt.current ??= crypto.randomUUID();
+          void applyLegalPolicy(rootNodeId, body, attempt.current).then((r) => {
+            setReceipt({ eventId: r.event_id, matcher: body.matcher_value });
+            setMessage(r.idempotency_replayed ? "Recovered the prior policy update." : "Cited policy update applied.");
+            onChanged();
+          }).catch((e) => setMessage(e instanceof Error ? e.message : String(e))).finally(() => setBusy(false));
+        }}>Apply reviewed rule</LemonButton>
+        {receipt && <LemonButton size="sm" variant="tertiary" disabled={busy} onClick={() => {
+          setBusy(true); setMessage(null);
+          void revokeLegalPolicy(rootNodeId, {
+            event_id: receipt.eventId, matcher_kind: "domain", matcher_value: receipt.matcher,
+            citation_ref: `${body.citation_ref}:revoke`, issuer_id: body.issuer_id,
+            reason_code: "account_policy_revoked",
+          }, crypto.randomUUID()).then(() => {
+            setReceipt(null); setPreviewed(null); attempt.current = null;
+            setMessage("Policy event revoked."); onChanged();
+          }).catch((e) => setMessage(e instanceof Error ? e.message : String(e))).finally(() => setBusy(false));
+        }}>Revoke applied rule</LemonButton>}
+      </div>
+      {leases.length > 0 && (
+        <div className="mt-3 border-t border-rule pt-2" data-testid="policy-dispatch-leases">
+          <p className="text-[11px] font-mono">Provider dispatch recovery</p>
+          {leases.map((lease) => (
+            <div key={lease.lease_id} className="mt-1 flex items-center justify-between gap-2 text-[11px]">
+              <span>{lease.recovery_state === "terminal_recoverable"
+                ? `Terminal evidence: ${lease.terminal_action}`
+                : lease.recovery_state === "active"
+                  ? "Active — elapsed time cannot release this lease"
+                  : "Recovery evidence unavailable"}</span>
+              {lease.recovery_state === "terminal_recoverable" && (
+                <LemonButton size="sm" variant="secondary" disabled={busy} onClick={() => {
+                  if (recoveriesInFlight.current.has(lease.lease_id)) return;
+                  recoveriesInFlight.current.add(lease.lease_id);
+                  setBusy(true); setMessage(null);
+                  const key = recoveryAttempts.current.get(lease.lease_id) ?? crypto.randomUUID();
+                  recoveryAttempts.current.set(lease.lease_id, key);
+                  void recoverLegalPolicyDispatchLease(rootNodeId, lease.lease_id, key)
+                    .then((result) => {
+                      setMessage(result.idempotency_replayed
+                        ? "Recovered the prior terminal lease cleanup."
+                        : "Terminal provider lease recovered.");
+                      refreshLeases(); onChanged();
+                    })
+                    .catch((e) => setMessage(e instanceof Error ? e.message : String(e)))
+                    .finally(() => {
+                      recoveriesInFlight.current.delete(lease.lease_id);
+                      setBusy(false);
+                    });
+                }}>Recover terminal run</LemonButton>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {message && <p role="status" className="mt-2 text-[11px] font-mono">{message}</p>}
+    </details>
+  );
+}
+
 export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }: Props) {
   const [plan, setPlan] = useState<PlanState | null>(null);
   // Phase gates the human-in-the-loop: a plan block is editable ONLY once
@@ -103,20 +241,46 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
   const [failure, setFailure] = useState<ClientFailureClassification | null>(
     null,
   );
+  const [launchFailure, setLaunchFailure] = useState<ClientFailureClassification | null>(null);
+  const [unknownLaunchSession, setUnknownLaunchSession] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [perResearchCost, setPerResearchCost] = useState<number | null>(null);
+  const [gather, setGather] = useState<GatherStatus | null>(null);
+  const [gatherUnavailable, setGatherUnavailable] = useState(false);
+  const [stubAcknowledged, setStubAcknowledged] = useState(false);
+  const [researchTier, setResearchTier] = useState<ResearchLaunchTier>("deep");
+  const [driverReadiness, setDriverReadiness] = useState<CascadeDriverReadiness | null>(null);
+  const [unknownLaunchInspectable, setUnknownLaunchInspectable] = useState(false);
 
   // Propose the tree once on mount (and on an explicit retry). A ref guards
   // React 18 StrictMode's double-invoke so we don't POST two plans.
   const proposedRef = useRef(false);
+  // React state updates are asynchronous; this closes the same-tick double
+  // activation window before a paid launch request can be dispatched twice.
+  const launchInFlight = useRef(false);
+  // Retained across an ambiguous failure so a user retry recovers the same
+  // durable server attempt instead of purchasing another session.
+  const launchAttemptKey = useRef<string | null>(null);
+  const approvedForLaunchAttempt = useRef(false);
 
   const propose = useCallback(async () => {
     setPhase("proposing");
     setFailure(null);
     try {
       const r = await createPlan({ problem });
+      launchAttemptKey.current = null;
+      approvedForLaunchAttempt.current = false;
+      setUnknownLaunchSession(null);
+      setUnknownLaunchInspectable(false);
       setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: false });
+      setGatherUnavailable(false);
+      void getGatherStatus(r.root_node_id)
+        .then(setGather)
+        .catch(() => {
+          setGather(null);
+          setGatherUnavailable(true);
+        });
       setPhase("ready");
     } catch (e) {
       // Classify the backend envelope (or network throw) — never collapse to
@@ -138,22 +302,47 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       .catch(() => setPerResearchCost(null));
   }, [propose]);
 
+  useEffect(() => {
+    if (!plan || launchAttemptKey.current === null) return;
+    clearCascadeLaunchAttempt(plan.rootNodeId);
+    launchAttemptKey.current = null;
+    approvedForLaunchAttempt.current = false;
+  }, [plan, gather?.gather_mode, stubAcknowledged, researchTier]);
+
+  useEffect(() => {
+    let active = true;
+    setDriverReadiness(null);
+    void getCascadeDriverReadiness(researchTier)
+      .then((value) => { if (active) setDriverReadiness(value); })
+      .catch(() => { if (active) setDriverReadiness(null); });
+    return () => { active = false; };
+  }, [researchTier]);
+
   const applyEdit = useCallback(
     async (edit: { op: "remove" | "reword"; target_local_id: string; question?: string }) => {
-      if (!plan) return;
+      if (!plan || launchInFlight.current || phase === "launching") return;
       try {
         const r = await editPlan(plan.rootNodeId, edit);
+        clearCascadeLaunchAttempt(plan.rootNodeId);
+        launchAttemptKey.current = null;
+        approvedForLaunchAttempt.current = false;
+        setUnknownLaunchSession(null);
+        setUnknownLaunchInspectable(false);
         setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
       } catch {
         // A failed edit leaves the prior tree on screen; the next action
         // re-reads authoritative state. No optimistic lie.
       }
     },
-    [plan],
+    [plan, phase],
   );
 
   const onLaunch = useCallback(async () => {
-    if (!plan) return;
+    if (launchInFlight.current) return;
+    if (!plan || !gather || !gather.launch_ready || !driverReadiness?.ready || driverReadiness.research_tier !== researchTier) return;
+    if (gather.stub_requires_acknowledgment && !stubAcknowledged) return;
+    launchInFlight.current = true;
+    setLaunchFailure(null);
     setPhase("launching");
     try {
       // The glass-box gate: approve, then launch. approvePlan pins the
@@ -161,14 +350,54 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       // approved. We approve-then-launch in one user action because the
       // door's affordance is a single "Start these researches" — the
       // human-in-the-loop trim already happened above.
-      await approvePlan(plan.rootNodeId);
-      const r = await launchPlan(plan.rootNodeId);
+      launchAttemptKey.current ??= acquireCascadeLaunchAttempt(plan.rootNodeId, {
+        planVersion: plan.tree.approval.plan_version,
+        gatherMode: gather.gather_mode,
+        gatherPlanFingerprint: gather.reviewed_gather_plan?.fingerprint ?? null,
+        allowContractStub: gather.gather_mode === "contract_stub" && stubAcknowledged,
+        researchTier,
+      });
+      if (!approvedForLaunchAttempt.current) {
+        await approvePlan(plan.rootNodeId);
+        approvedForLaunchAttempt.current = true;
+      }
+      const r = await launchPlan(plan.rootNodeId, {
+        expected_gather_mode: gather.gather_mode,
+        expected_gather_plan_fingerprint: gather.reviewed_gather_plan?.fingerprint ?? null,
+        allow_contract_stub: gather.gather_mode === "contract_stub" && stubAcknowledged,
+        research_tier: researchTier,
+      }, launchAttemptKey.current);
+      clearCascadeLaunchAttempt(plan.rootNodeId);
+      launchAttemptKey.current = null;
+      approvedForLaunchAttempt.current = false;
       onLaunched(r.session_id);
     } catch (e) {
-      setFailure(classifyClientError(e));
+      if (e instanceof LaunchOutcomeUnknownError) {
+        setUnknownLaunchSession(e.sessionId);
+        setUnknownLaunchInspectable(false);
+        const key = launchAttemptKey.current;
+        if (key !== null) {
+          try {
+            const attempt = await getLaunchAttemptStatus(plan.rootNodeId, key);
+            if (attempt.session_id === e.sessionId && attempt.action === "inspect_session") {
+              setUnknownLaunchInspectable(true);
+            }
+          } catch {
+            // Retain the non-retry hold. Failure to reconcile is never evidence
+            // that another launch is safe.
+          }
+        }
+        setPhase("ready");
+        return;
+      }
+      // Keep the reviewed plan and attempt key. Retrying this action must ask
+      // the server to recover the same durable attempt, not create a new one.
+      setLaunchFailure(classifyClientError(e));
       setPhase("ready");
+    } finally {
+      launchInFlight.current = false;
     }
-  }, [plan, onLaunched]);
+  }, [plan, gather, stubAcknowledged, researchTier, driverReadiness, onLaunched]);
 
   // ── Proposing: the AI is breaking the problem down. ──
   if (phase === "proposing") {
@@ -249,6 +478,25 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
         </p>
       </div>
 
+      <DecisionTreeDriverBadge researchTier={researchTier} promptText={problem} />
+      <ResearchLaunchBudgetPanel
+        promptText={problem}
+        researchTier={researchTier}
+        allowTierPick
+        onResearchTierChange={setResearchTier}
+      />
+      <p
+        className="rounded border border-rule px-3 py-2 text-xs font-mono"
+        role="status"
+        data-testid="cascade-driver-readiness"
+      >
+        {driverReadiness === null || driverReadiness.research_tier !== researchTier
+          ? "Checking boot-attested model availability…"
+          : driverReadiness.ready
+            ? `Launch target: ${driverReadiness.provider}/${driverReadiness.model} · candidate ${driverReadiness.candidate_rank}`
+            : `Launch locked: ${driverReadiness.reason}`}
+      </p>
+
       <ul className="flex flex-col gap-1.5">
         {subs.map((sub) => (
           <li
@@ -302,6 +550,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
                       setDraft(sub.question);
                       setEditing(sub.local_id);
                     }}
+                    disabled={phase === "launching"}
                   >
                     edit
                   </button>
@@ -309,6 +558,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
                     type="button"
                     className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:text-emperor"
                     onClick={() => void applyEdit({ op: "remove", target_local_id: sub.local_id })}
+                    disabled={phase === "launching"}
                   >
                     remove
                   </button>
@@ -318,6 +568,41 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
           </li>
         ))}
       </ul>
+
+      <LegalPolicyEditor
+        rootNodeId={plan.rootNodeId}
+        onChanged={() => {
+          setGather(null);
+          void getGatherStatus(plan.rootNodeId)
+            .then(setGather)
+            .catch(() => setGatherUnavailable(true));
+        }}
+      />
+
+      <div
+        className="rounded-hog border border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-1 p-3 text-xs"
+        role="status"
+        data-testid="gather-launch-truth"
+        data-gather-mode={gather?.gather_mode || "unverified"}
+        data-production-defensible={gather?.production_defensible ? "true" : "false"}
+      >
+        {gatherUnavailable ? (
+          <p>Retrieval readiness could not be verified · launch remains locked.</p>
+        ) : !gather ? (
+          <p>Checking retrieval readiness…</p>
+        ) : gather.gather_mode === "contract_stub" ? (
+          <label className="flex items-start gap-2">
+            <input type="checkbox" checked={stubAcknowledged} onChange={(event) => setStubAcknowledged(event.target.checked)} />
+            <span>No network evidence will be retrieved. I explicitly accept a contract-stub run.</span>
+          </label>
+        ) : gather.gather_mode === "authorized_multi_source" ? (
+          <p>Reviewed multi-source gather: {gather.reviewed_gather_plan?.sources.join(", ") || "configuration unavailable"} · {gather.reviewed_gather_plan ? `maximum $${(gather.reviewed_gather_plan.launch_max_cost_micros / 1_000_000).toFixed(3)} across ${gather.reviewed_gather_plan.leaf_count} researches` : "launch locked"} · execution {gather.multi_source_execution_activated ? "ready" : "not yet activated"}. Partial evidence will remain visibly partial.</p>
+        ) : gather.production_defensible ? (
+          <p>Exa network retrieval ready · exact durable SQL policy snapshot will be pinned through dispatch.</p>
+        ) : (
+          <p>Exa configured but locked · {gather.legal_policy.reason_code || "durable legal-policy readiness is incomplete"}.</p>
+        )}
+      </div>
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
@@ -332,7 +617,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
             variant="primary"
             size="lg"
             onClick={() => void onLaunch()}
-            disabled={phase === "launching"}
+            disabled={phase === "launching" || Boolean(unknownLaunchSession) || !gather?.launch_ready || !driverReadiness?.ready || driverReadiness.research_tier !== researchTier || (gather.stub_requires_acknowledgment && !stubAcknowledged)}
           >
             {phase === "launching"
               ? "Starting…"
@@ -340,6 +625,25 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
           </LemonButton>
         </div>
       </div>
+      {launchFailure && (
+        <AIActionFailure
+          title="Research launch needs attention"
+          code={launchFailure.code}
+          retryable={launchFailure.retryable}
+          reason={launchFailure.message ?? null}
+          onRetry={() => void onLaunch()}
+        />
+      )}
+      {unknownLaunchSession && (
+        <div role="alert" className="text-xs font-mono text-emperor flex flex-col gap-2">
+          <p>The prior launch may already be running. Antiek will not dispatch it again automatically.</p>
+          {unknownLaunchInspectable ? <div>
+            <LemonButton variant="secondary" size="sm" onClick={() => onLaunched(unknownLaunchSession)}>
+              Inspect existing session
+            </LemonButton>
+          </div> : <p>Durable session evidence is not yet available. Operator reconciliation is required.</p>}
+        </div>
+      )}
     </div>
   );
 }

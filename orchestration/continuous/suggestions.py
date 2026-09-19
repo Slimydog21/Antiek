@@ -39,7 +39,10 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 
+from substrate.event_log import trajectory_authorized
 from substrate.event_log.events import default_events_dir, trajectory
+from substrate.investigation_streams import list_authorized_investigation_ids
+from substrate.investigation_tenancy import InvestigationAuthority
 
 from .daemon import DaemonConfig, _list_investigation_ids, scan_gaps
 from .scoring import normalize_gap_description, score_gap
@@ -88,7 +91,11 @@ class Suggestion:
     score: float
 
 
-def _chased_question_keys(events_dir: str) -> set[str]:
+def _chased_question_keys(
+    events_dir: str,
+    *,
+    authority: InvestigationAuthority | None = None,
+) -> set[str]:
     """Normalized-question keys of every research already launched.
 
     A research's START question (operator chase) or a leaf's ``sub_question``
@@ -98,8 +105,20 @@ def _chased_question_keys(events_dir: str) -> set[str]:
     question), independent of the daemon's chase-count decay. Pure read.
     """
     keys: set[str] = set()
-    for iid in _list_investigation_ids(events_dir):
-        for ev in trajectory(iid, events_dir=events_dir):
+    investigation_ids = (
+        list_authorized_investigation_ids(authority.account_id, root=authority.root)
+        if authority is not None
+        else _list_investigation_ids(events_dir)
+    )
+    for iid in investigation_ids:
+        rows = (
+            trajectory_authorized(
+                InvestigationAuthority(authority.account_id, iid, authority.root)
+            )
+            if authority is not None
+            else trajectory(iid, events_dir=events_dir)
+        )
+        for ev in rows:
             at = ev.get("action_type")
             if at not in (
                 "investigation.start_requested",
@@ -124,6 +143,7 @@ def build_suggestions(
     max_suggestions: int = DEFAULT_MAX_SUGGESTIONS,
     min_score: float = 0.0,
     now: datetime | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> list[Suggestion]:
     """Read the daemon's scored gaps and return ranked plain-language
     suggestions. Read-only: scans the event log, scores with the daemon's own
@@ -134,7 +154,7 @@ def build_suggestions(
     produced any) — the honest empty state, never a fabricated thread.
     """
     resolved = events_dir or default_events_dir()
-    if not os.path.isdir(resolved):
+    if authority is None and not os.path.isdir(resolved):
         return []
 
     # Two passes over the event log here are deliberate, not an oversight.
@@ -144,8 +164,8 @@ def build_suggestions(
     # the daemon's scan_gaps (which must stay §7.4-byte-unchanged) or
     # re-implementing gap scoring here (forking the one truth). Both are worse
     # than a second read at single-operator scale — do not "optimize" into either.
-    registry = scan_gaps(events_dir=resolved)
-    chased = _chased_question_keys(resolved)
+    registry = scan_gaps(events_dir=resolved, authority=authority)
+    chased = _chased_question_keys(resolved, authority=authority)
 
     scored: list[Suggestion] = []
     for entry in registry.values():

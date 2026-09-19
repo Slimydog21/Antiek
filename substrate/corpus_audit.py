@@ -139,6 +139,16 @@ from substrate.ingest_budget import (
     BudgetGovernor,
     BudgetState,
 )
+from substrate.legal_gate.read import (
+    corpus_audit_dangling_ip_holder_ids,
+    corpus_audit_document_ids_by_class,
+    corpus_audit_extraction_rows,
+    corpus_audit_identity_rows,
+    corpus_audit_missing_basis_ids,
+    corpus_audit_servable_basis_rows,
+    corpus_audit_summary_rows,
+    corpus_audit_training_export_ids,
+)
 from substrate.quality_gate import QualityGateResult, QualityGateVerdict
 
 # Check names — stable string ids so CI, the dashboard, and the merge step refer
@@ -317,19 +327,11 @@ def _check_servable_basis(con: Any) -> CheckResult:
     basis lives on ``book_assets``; a servable document with a NULL/empty basis
     (or no book_assets row at all) is an offender. NULL and empty-string are
     treated identically — an empty basis is no basis (a surfaced assumption)."""
-    placeholders = ", ".join("?" for _ in SERVABLE_CONTENT_CLASSES)
-    rows = con.execute(
-        f"""
-        SELECT d.document_id
-          FROM documents d
-          LEFT JOIN book_assets b ON d.document_id = b.document_id
-         WHERE d.content_class IN ({placeholders})
-           AND (b.license_basis IS NULL OR TRIM(b.license_basis) = '')
-         ORDER BY d.document_id
-        """,
-        list(SERVABLE_CONTENT_CLASSES),
-    ).fetchall()
-    offenders = [r[0] for r in rows]
+    offenders = list(
+        corpus_audit_missing_basis_ids(
+            con, servable_classes=tuple(SERVABLE_CONTENT_CLASSES)
+        )
+    )
     ok = not offenders
     return CheckResult(
         name=CHECK_SERVABLE_BASIS,
@@ -373,21 +375,13 @@ def _check_third_party_servable(con: Any) -> CheckResult:
     exists to catch — exactly the case the deny-by-default lane prevents going
     forward, asserted here against the ACCUMULATED corpus where a per-write gate
     cannot see a row a future merge introduced."""
-    tp_placeholders = ", ".join("?" for _ in THIRD_PARTY_DOCUMENT_TYPES)
-    sv_placeholders = ", ".join("?" for _ in SERVABLE_CONTENT_CLASSES)
-    rows = con.execute(
-        f"""
-        SELECT d.document_id
-          FROM documents d
-          LEFT JOIN book_assets b ON d.document_id = b.document_id
-         WHERE d.document_type IN ({tp_placeholders})
-           AND d.content_class IN ({sv_placeholders})
-           AND (b.license_basis IS NULL OR TRIM(b.license_basis) = '')
-         ORDER BY d.document_id
-        """,
-        list(THIRD_PARTY_DOCUMENT_TYPES) + list(SERVABLE_CONTENT_CLASSES),
-    ).fetchall()
-    offenders = [r[0] for r in rows]
+    offenders = list(
+        corpus_audit_missing_basis_ids(
+            con,
+            servable_classes=tuple(SERVABLE_CONTENT_CLASSES),
+            document_types=tuple(THIRD_PARTY_DOCUMENT_TYPES),
+        )
+    )
     ok = not offenders
     return CheckResult(
         name=CHECK_THIRD_PARTY_SERVABLE,
@@ -453,12 +447,9 @@ def _check_personal_nonattributable(con: Any) -> CheckResult:
     path, change the check. The three arms are belt-and-suspenders over the SAME
     lane invariant from the three surfaces (payout predicate + public-graph
     membership + public serve projection) it has to hold on simultaneously."""
-    rows = con.execute(
-        "SELECT document_id FROM documents "
-        "WHERE content_class = ? ORDER BY document_id",
-        [PERSONAL_READING_CONTENT_CLASS],
-    ).fetchall()
-    personal_ids = [r[0] for r in rows]
+    personal_ids = list(
+        corpus_audit_document_ids_by_class(con, PERSONAL_READING_CONTENT_CLASS)
+    )
 
     # arm 2 (cheap, set-membership) — does the lane class sit in the public graph?
     in_public_graph = PERSONAL_READING_CONTENT_CLASS in PUBLIC_GRAPH_CONTENT_CLASSES
@@ -600,17 +591,9 @@ def _check_personal_not_in_training_impl(
             )
             continue
         scanned.append(table)
-        rows = con.execute(
-            f"""
-            SELECT e.document_id
-              FROM "{table}" e
-              JOIN documents d ON d.document_id = e.document_id
-             WHERE d.content_class = ?
-             ORDER BY e.document_id
-            """,
-            [PERSONAL_READING_CONTENT_CLASS],
-        ).fetchall()
-        for (doc_id,) in rows:
+        for doc_id in corpus_audit_training_export_ids(
+            con, table, PERSONAL_READING_CONTENT_CLASS
+        ):
             offenders.append(f"{doc_id} (in training export '{table}')")
 
     ok = not offenders
@@ -668,13 +651,9 @@ def _check_gated_leak(con: Any) -> CheckResult:
          ``book_assets`` — composing it here mints no new rights logic, it
          cross-checks the served class against the chokepoint's own verdict."""
     # --- arm (b1): gated rows must not render ---
-    gated_ids = [
-        r[0]
-        for r in con.execute(
-            "SELECT document_id FROM documents WHERE content_class = ? ORDER BY document_id",
-            [GATED_DEFAULT_CONTENT_CLASS],
-        ).fetchall()
-    ]
+    gated_ids = list(
+        corpus_audit_document_ids_by_class(con, GATED_DEFAULT_CONTENT_CLASS)
+    )
     leaked: list[str] = []
     for doc_id in gated_ids:
         served = serve_full_text(con, doc_id)
@@ -684,17 +663,9 @@ def _check_gated_leak(con: Any) -> CheckResult:
             leaked.append(f"{doc_id} (gated body renders full text)")
 
     # --- arm (b2): a servable class over a gated basis must not render ---
-    placeholders = ", ".join("?" for _ in SERVABLE_CONTENT_CLASSES)
-    mislabel_rows = con.execute(
-        f"""
-        SELECT d.document_id, b.license_basis
-          FROM documents d
-          JOIN book_assets b ON d.document_id = b.document_id
-         WHERE d.content_class IN ({placeholders})
-         ORDER BY d.document_id
-        """,
-        list(SERVABLE_CONTENT_CLASSES),
-    ).fetchall()
+    mislabel_rows = corpus_audit_servable_basis_rows(
+        con, tuple(SERVABLE_CONTENT_CLASSES)
+    )
     for doc_id, basis in mislabel_rows:
         if not _basis_contradicts_servable(basis):
             continue
@@ -753,13 +724,7 @@ def _check_dedup(con: Any) -> CheckResult:
     a false duplicate. Two documents sharing one HIGH key is a true dedup
     failure (a merge that copied a row, or a connector that minted a second id
     for a work already present)."""
-    rows = con.execute(
-        """
-        SELECT document_id, source_uri, title, author, raw_text, metadata
-          FROM documents
-         ORDER BY document_id
-        """
-    ).fetchall()
+    rows = corpus_audit_identity_rows(con)
     seen: dict[str, str] = {}
     collisions: list[str] = []
     for document_id, source_uri, title, author, raw_text, metadata in rows:
@@ -928,9 +893,7 @@ def _check_extraction(con: Any) -> CheckResult:
     extraction was below the word floor is skipped BEFORE a documents row is
     written, so a documents row with an empty body is a real defect, not a known
     skip.)"""
-    rows = con.execute(
-        "SELECT document_id, raw_text FROM documents ORDER BY document_id"
-    ).fetchall()
+    rows = corpus_audit_extraction_rows(con)
     offenders: list[str] = []
     for document_id, raw_text in rows:
         if raw_text is None or not raw_text.strip():
@@ -1171,14 +1134,7 @@ def _check_dangling_ip_holder(con: Any) -> CheckResult:
     real ``ip_holders`` row. A NULL ip_holder_id (public-domain / unknown owner)
     is legitimate and NOT flagged — only dangling (present-but-unresolvable) ids
     are the defect."""
-    dangling: list[str] = [
-        str(doc_id)
-        for (doc_id,) in con.execute(
-            "SELECT document_id FROM documents "
-            "WHERE ip_holder_id IS NOT NULL "
-            "AND ip_holder_id NOT IN (SELECT ip_holder_id FROM ip_holders)"
-        ).fetchall()
-    ]
+    dangling = list(corpus_audit_dangling_ip_holder_ids(con))
     ok = not dangling
     return CheckResult(
         name=CHECK_DANGLING_IP_HOLDER,
@@ -1323,26 +1279,9 @@ def summarize_corpus(
     result = audit or run_audit(db_path, governor=governor)
     con = connect_read(db_path)
     try:
-        (total_docs,) = con.execute("SELECT COUNT(*) FROM documents").fetchone() or (0,)
-        (total_chunks,) = con.execute("SELECT COUNT(*) FROM chunks").fetchone() or (0,)
-        placeholders = ", ".join("?" for _ in SERVABLE_CONTENT_CLASSES)
-        (servable_docs,) = con.execute(
-            f"SELECT COUNT(*) FROM documents WHERE content_class IN ({placeholders})",
-            list(SERVABLE_CONTENT_CLASSES),
-        ).fetchone() or (0,)
-        # Gated = everything not in the servable allowlist (NULL / restricted /
-        # unrecognised) — the deny-by-default complement.
-        (gated_docs,) = con.execute(
-            f"SELECT COUNT(*) FROM documents WHERE content_class IS NULL "
-            f"OR content_class NOT IN ({placeholders})",
-            list(SERVABLE_CONTENT_CLASSES),
-        ).fetchone() or (0,)
-        by_source_rows = con.execute(
-            """
-            SELECT COALESCE(source_uri, '(unknown)') AS src, COUNT(*) AS n
-              FROM documents GROUP BY 1 ORDER BY 2 DESC, 1
-            """
-        ).fetchall()
+        total_docs, total_chunks, servable_docs, gated_docs, by_source_rows = (
+            corpus_audit_summary_rows(con, tuple(SERVABLE_CONTENT_CLASSES))
+        )
     finally:
         con.close()
     by_source = tuple((str(_source_label(src)), int(n)) for src, n in by_source_rows)

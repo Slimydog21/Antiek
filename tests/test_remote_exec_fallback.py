@@ -21,13 +21,14 @@ import logging
 from runtime.remote_exec import RemoteResearchRunner, build_research_runner, remote_exec_enabled
 from runtime.remote_exec.factory import ENABLE_ENV
 from runtime.research_runner import HostLocalRunner, make_demo_loop
+from substrate.multi_user.auth import operator_claims
 from tests.remote_exec_fakes import FakeProvider, UnavailableProvider
 
 
 def test_disabled_selects_host_local_no_warning(monkeypatch, caplog):
     monkeypatch.delenv(ENABLE_ENV, raising=False)
     with caplog.at_level(logging.WARNING, logger="antiek.remote_exec"):
-        runner = build_research_runner(loop_fn=make_demo_loop(steps=1))
+        runner = build_research_runner(claims=operator_claims(), loop_fn=make_demo_loop(steps=1))
     assert isinstance(runner, HostLocalRunner)
     # the default is silent — host-local is the sanctioned baseline
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
@@ -35,15 +36,20 @@ def test_disabled_selects_host_local_no_warning(monkeypatch, caplog):
 
 def test_explicit_disabled_overrides_env(monkeypatch):
     monkeypatch.setenv(ENABLE_ENV, "1")
-    runner = build_research_runner(loop_fn=make_demo_loop(steps=1),
-                                   enabled=False, provider=FakeProvider())
+    runner = build_research_runner(
+        claims=operator_claims(),
+        loop_fn=make_demo_loop(steps=1),
+        enabled=False,
+        provider=FakeProvider(),
+    )
     assert isinstance(runner, HostLocalRunner)
 
 
 def test_enabled_and_available_selects_remote(monkeypatch):
     monkeypatch.setenv(ENABLE_ENV, "1")
-    runner = build_research_runner(loop_fn=make_demo_loop(steps=1),
-                                   provider=FakeProvider())
+    runner = build_research_runner(
+        claims=operator_claims(), loop_fn=make_demo_loop(steps=1), provider=FakeProvider()
+    )
     assert isinstance(runner, RemoteResearchRunner)
 
 
@@ -62,8 +68,11 @@ def test_enabled_via_env_flag(monkeypatch):
 def test_unavailable_provider_falls_back_with_one_log_line(monkeypatch, caplog):
     monkeypatch.setenv(ENABLE_ENV, "1")
     with caplog.at_level(logging.WARNING, logger="antiek.remote_exec"):
-        runner = build_research_runner(loop_fn=make_demo_loop(steps=1),
-                                       provider=UnavailableProvider())
+        runner = build_research_runner(
+            claims=operator_claims(),
+            loop_fn=make_demo_loop(steps=1),
+            provider=UnavailableProvider(),
+        )
     # fell back to host-local — not a crash
     assert isinstance(runner, HostLocalRunner)
     # exactly one WARNING line, naming the fallback
@@ -78,6 +87,7 @@ def test_unavailable_via_provider_factory(monkeypatch, caplog):
     monkeypatch.setenv(ENABLE_ENV, "1")
     with caplog.at_level(logging.WARNING, logger="antiek.remote_exec"):
         runner = build_research_runner(
+            claims=operator_claims(),
             loop_fn=make_demo_loop(steps=1),
             provider_factory=lambda: UnavailableProvider(),
         )
@@ -89,13 +99,19 @@ def test_shared_budget_threaded_through_both_runners(monkeypatch):
     # The factory passes the same BudgetManager to whichever runner it picks,
     # so the aggregate cap is shared regardless of fallback.
     from runtime.research_runner import BudgetManager
+
     monkeypatch.setenv(ENABLE_ENV, "1")
     b = BudgetManager(aggregate_cap_usd=2.5)
-    remote = build_research_runner(loop_fn=make_demo_loop(steps=1),
-                                   provider=FakeProvider(), budget=b)
+    remote = build_research_runner(
+        claims=operator_claims(), loop_fn=make_demo_loop(steps=1), provider=FakeProvider(), budget=b
+    )
     assert remote.budget is b
-    fallback = build_research_runner(loop_fn=make_demo_loop(steps=1),
-                                     provider=UnavailableProvider(), budget=b)
+    fallback = build_research_runner(
+        claims=operator_claims(),
+        loop_fn=make_demo_loop(steps=1),
+        provider=UnavailableProvider(),
+        budget=b,
+    )
     assert fallback.budget is b
 
 
@@ -104,16 +120,22 @@ async def test_factory_result_is_drivable_through_protocol(monkeypatch):
     # protocol without knowing which runner it got. Exercise both.
     import os
     import tempfile
+
     monkeypatch.setenv(ENABLE_ENV, "1")
     ev = os.path.join(tempfile.mkdtemp(), "events")
     os.makedirs(ev, exist_ok=True)
     from runtime.research_runner import BudgetCap, ResearchPlan, RunState
 
     for provider in (FakeProvider(steps=1), UnavailableProvider()):
-        runner = build_research_runner(loop_fn=make_demo_loop(steps=1),
-                                       provider=provider, events_dir=ev)
-        plan = ResearchPlan(investigation_id="inv-x", sub_question="q?",
-                            budget=BudgetCap(cost_usd=1.0))
+        runner = build_research_runner(
+            claims=operator_claims(),
+            loop_fn=make_demo_loop(steps=1),
+            provider=provider,
+            events_dir=ev,
+        )
+        plan = ResearchPlan(
+            investigation_id="inv-x", sub_question="q?", budget=BudgetCap(cost_usd=1.0)
+        )
         h = await runner.start("inv-x", plan)
         events = [e async for e in runner.stream(h)]
         assert events[-1].state in (RunState.DONE, RunState.STOPPED)

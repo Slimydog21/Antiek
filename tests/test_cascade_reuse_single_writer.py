@@ -274,7 +274,15 @@ def test_real_cascade_launch_reuse_on_fires_one_knowledge_reused(seeded_client, 
     )
 
     root = _make_approved_plan(client, (_TOPIC,))
-    r = client.post(f"/research/plans/{root}/launch", json={"per_research_budget_usd": 1.0})
+    r = client.post(
+        f"/research/plans/{root}/launch",
+        json={
+            "expected_gather_mode": "contract_stub",
+            "allow_contract_stub": True,
+            "per_research_budget_usd": 1.0,
+        },
+        headers={"Idempotency-Key": "reuse-single-writer-launch"},
+    )
     assert r.status_code == 200, r.text  # (a) no ConnectionException at launch
     body = r.json()
     sid = body["session_id"]

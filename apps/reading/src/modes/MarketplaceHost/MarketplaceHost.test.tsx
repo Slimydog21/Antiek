@@ -771,6 +771,10 @@ describe("MarketplaceHost mode", () => {
         expect.objectContaining({
           document_id: "hdoc_abc",
           view_format: "html",
+          resume_ref: {
+            resolver: "hosted_document",
+            document_id: "hdoc_abc",
+          },
         }),
         expect.objectContaining({ id: "win:hosted:hdoc_abc" }),
       );
@@ -935,6 +939,10 @@ describe("MarketplaceHost mode", () => {
           document_id: "hdoc_old",
           view_format: "html",
           source: "marketplace_library_rehydrate",
+          resume_ref: {
+            resolver: "hosted_document",
+            document_id: "hdoc_old",
+          },
           // Residual (apl): free/purchased honesty into float twin seed.
           is_free: true,
         }),
@@ -1082,6 +1090,10 @@ describe("MarketplaceHost mode", () => {
     expect(call[0]).toBe("hosted_html_document");
     expect(call[1].document_id).toBe("hdoc_abc");
     expect(call[1].view_format).toBe("html");
+    expect(call[1].resume_ref).toEqual({
+      resolver: "hosted_document",
+      document_id: "hdoc_abc",
+    });
     expect(String(call[1].html)).toMatch(/truth/);
   });
 
@@ -1749,6 +1761,7 @@ describe("MarketplaceHost mode", () => {
     expect(call?.[1]?.view_format).toBe("html");
     expect(call?.[1]?.html).toContain("marketplace catalog");
     expect(call?.[1]?.source).toBe("marketplace_catalog");
+    expect(call?.[1]?.resume_ref).toBeUndefined();
   });
 
   it("filters catalog by knowledge-source chip (lx)", async () => {

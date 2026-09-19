@@ -34,7 +34,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 # Re-use the canonical verdict shape so an emitted event and an in-test
 # verdict are the same object — no parallel shape to drift.
@@ -50,26 +50,116 @@ DEFAULT_SCORER_ID: str = "groundedness-lexical-v1"
 
 # Tokens that carry no truth content; ignored when measuring coverage so
 # a claim isn't rewarded for sharing "the" with its evidence.
-_STOPWORDS = frozenset({
-    "the", "a", "an", "of", "in", "on", "for", "to", "and", "or", "is",
-    "are", "be", "was", "were", "been", "being", "this", "that", "these",
-    "those", "it", "its", "as", "at", "by", "with", "from", "into", "but",
-    "if", "then", "than", "so", "such", "which", "who", "whom", "whose",
-    "has", "have", "had", "will", "would", "can", "could", "may", "might",
-    "do", "does", "did", "their", "there", "they", "them", "we", "our",
-    "i", "you", "he", "she", "him", "her", "his", "also", "more", "most",
-    "some", "any", "all", "both", "each", "about", "over", "under",
-})
+_STOPWORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "of",
+        "in",
+        "on",
+        "for",
+        "to",
+        "and",
+        "or",
+        "is",
+        "are",
+        "be",
+        "was",
+        "were",
+        "been",
+        "being",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "as",
+        "at",
+        "by",
+        "with",
+        "from",
+        "into",
+        "but",
+        "if",
+        "then",
+        "than",
+        "so",
+        "such",
+        "which",
+        "who",
+        "whom",
+        "whose",
+        "has",
+        "have",
+        "had",
+        "will",
+        "would",
+        "can",
+        "could",
+        "may",
+        "might",
+        "do",
+        "does",
+        "did",
+        "their",
+        "there",
+        "they",
+        "them",
+        "we",
+        "our",
+        "i",
+        "you",
+        "he",
+        "she",
+        "him",
+        "her",
+        "his",
+        "also",
+        "more",
+        "most",
+        "some",
+        "any",
+        "all",
+        "both",
+        "each",
+        "about",
+        "over",
+        "under",
+    }
+)
 
 # Negation / polarity markers. A claim that asserts the OPPOSITE polarity
 # of its evidence is a contradiction even when its tokens overlap heavily
 # — this is what separates a faithful paraphrase from a confident
 # hallucination that flips the sign.
-_NEGATIONS = frozenset({
-    "not", "no", "never", "none", "cannot", "can't", "won't", "don't",
-    "doesn't", "didn't", "isn't", "aren't", "wasn't", "weren't", "nor",
-    "without", "fails", "failed", "lacks", "absent", "denies", "denied",
-})
+_NEGATIONS = frozenset(
+    {
+        "not",
+        "no",
+        "never",
+        "none",
+        "cannot",
+        "can't",
+        "won't",
+        "don't",
+        "doesn't",
+        "didn't",
+        "isn't",
+        "aren't",
+        "wasn't",
+        "weren't",
+        "nor",
+        "without",
+        "fails",
+        "failed",
+        "lacks",
+        "absent",
+        "denies",
+        "denied",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -149,9 +239,7 @@ def lexical_entailment_score(claim: str, chunk_texts: Sequence[str]) -> tuple[fl
     chunk_neg = _has_negation(_tokens(chunk_blob))
     if claim_neg != chunk_neg:
         score = min(score, 0.5) * 0.5
-        rationale_parts.append(
-            "polarity mismatch (negation flip) — contradiction penalty"
-        )
+        rationale_parts.append("polarity mismatch (negation flip) — contradiction penalty")
 
     # Fabricated-number gate — numbers the evidence never states.
     claim_nums = _numbers(claim)
@@ -162,10 +250,8 @@ def lexical_entailment_score(claim: str, chunk_texts: Sequence[str]) -> tuple[fl
             # Penalise proportionally to how many asserted numbers are
             # unsupported. All-fabricated numbers cap hard.
             unsupported_frac = len(fabricated) / len(claim_nums)
-            score *= (1.0 - 0.8 * unsupported_frac)
-            rationale_parts.append(
-                f"fabricated numerals {sorted(fabricated)} not in evidence"
-            )
+            score *= 1.0 - 0.8 * unsupported_frac
+            rationale_parts.append(f"fabricated numerals {sorted(fabricated)} not in evidence")
         else:
             rationale_parts.append("all asserted numerals present in evidence")
 
@@ -175,6 +261,23 @@ def lexical_entailment_score(claim: str, chunk_texts: Sequence[str]) -> tuple[fl
 
 # An entailment backend is a callable (claim, chunk_texts) -> (score, rationale).
 EntailmentBackend = Callable[[str, Sequence[str]], tuple[float, str]]
+EntailmentRelation = Literal["entailed", "contradicted", "not_established"]
+
+
+def _lexical_relation(
+    claim: str, chunk_texts: Sequence[str], score: float, supported_threshold: float
+) -> EntailmentRelation:
+    """Classify from the same deterministic inputs as the lexical score.
+
+    This deliberately does not inspect the human-readable rationale. Only the
+    scorer's explicit polarity rule can establish contradiction; a low score
+    alone is merely not established.
+    """
+    # The lexical polarity penalty is intentionally too coarse to establish a
+    # typed contradiction: an unrelated negated clause in either input can
+    # flip it. Only a backend with an explicit relation classifier may emit
+    # ``contradicted``.
+    return "entailed" if score >= supported_threshold else "not_established"
 
 
 def _llm_judge_backend(
@@ -226,9 +329,7 @@ def _llm_judge_backend(
         except (ValueError, TypeError, AttributeError) as exc:
             # A judge that returns unparseable output is itself a scorer
             # error — surface it, do not silently treat as grounded.
-            raise RuntimeError(
-                f"llm_judge returned unparseable verdict: {exc}"
-            ) from exc
+            raise RuntimeError(f"llm_judge returned unparseable verdict: {exc}") from exc
 
     return _judge
 
@@ -247,11 +348,26 @@ def score_claim(
     provenance (see ``provenance.resolve_claim_chunks``); this scorer
     never constructs a parallel provenance store. ``supported`` is the
     binary verdict (score ≥ threshold)."""
-    score, rationale = backend(claim, chunk_texts)
+    evaluator = getattr(backend, "evaluate", None)
+    evaluated = evaluator(claim, chunk_texts, supported_threshold) if callable(evaluator) else None
+    if evaluated is None:
+        score, rationale = backend(claim, chunk_texts)
+    else:
+        score, rationale, relation = evaluated
+    relation: EntailmentRelation | None = None
+    if evaluated is not None:
+        relation = evaluated[2]
+    elif backend is lexical_entailment_score:
+        relation = _lexical_relation(claim, chunk_texts, score, supported_threshold)
+    else:
+        backend_relation = getattr(backend, "relation_for", None)
+        if callable(backend_relation):
+            relation = backend_relation(claim, chunk_texts, supported_threshold)
     return ClaimGroundednessVerdict(
         claim=claim,
         score=score,
         supported=score >= supported_threshold,
+        relation=relation,
         cited_chunk_ids=list(cited_chunk_ids or []),
         rationale=rationale,
     )

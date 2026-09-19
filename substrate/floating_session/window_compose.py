@@ -116,6 +116,10 @@ def session_to_window_descriptor(
         payload["region_id"] = session.region_id
     if session.goal:
         payload["goal"] = session.goal
+    if session.citation_provenance:
+        payload["citation_provenance"] = dict(session.citation_provenance)
+    if session.claim_challenge:
+        payload["claim_challenge"] = dict(session.claim_challenge)
     return WindowOpenDescriptor(
         kind=DEEP_RESEARCH_WINDOW_KIND,
         mode=mode,

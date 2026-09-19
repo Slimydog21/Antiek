@@ -24,6 +24,7 @@ from substrate.engagement_spine import (
     record_twin_question,
 )
 from substrate.event_log import trajectory
+from substrate.multi_user.auth import operator_claims
 
 
 def _recursive_pack():
@@ -52,6 +53,7 @@ async def test_host_runner_exposes_recursive_prompt_at_injected_loop_boundary():
 
     runner = HostLocalRunner(
         loop,
+        claims=operator_claims(),
         recursive_notes_provider=lambda _investigation_id, _plan: _recursive_pack(),
     )
     plan = ResearchPlan(
@@ -66,14 +68,9 @@ async def test_host_runner_exposes_recursive_prompt_at_injected_loop_boundary():
     recursive_json = captured[0][captured[0].index("{", captured[0].index("## recursive_notes")) :]
     recursive_json = recursive_json[: recursive_json.index("\n\n## session")]
     decoded = json.loads(recursive_json)
-    assert decoded["units"][0]["text"] == (
-        "Which evidence would falsify the adoption thesis?"
-    )
+    assert decoded["units"][0]["text"] == ("Which evidence would falsify the adoption thesis?")
     rows = trajectory(plan.investigation_id)
-    pack_event = next(
-        row for row in rows
-        if row["action_type"] == "context_pack.assembled"
-    )
+    pack_event = next(row for row in rows if row["action_type"] == "context_pack.assembled")
     receipt = pack_event["payload"]["recursive_context"]
     assert receipt["included_units"][0]["unit_id"]
     assert "Which evidence" not in json.dumps(receipt)
@@ -91,7 +88,7 @@ async def test_red_control_without_provider_has_no_recursive_context():
         investigation_id="inv-recursive-red",
         sub_question="Assess the adoption thesis",
     )
-    runner = HostLocalRunner(loop)
+    runner = HostLocalRunner(loop, claims=operator_claims())
     await runner.start(plan.investigation_id, plan)
     await runner.join()
 
@@ -115,7 +112,9 @@ async def test_required_recursive_provider_failure_is_not_silently_dropped():
         investigation_id="inv-recursive-required-failure",
         sub_question="Assess the adoption thesis",
     )
-    runner = HostLocalRunner(loop, recursive_notes_provider=broken_provider)
+    runner = HostLocalRunner(
+        loop, claims=operator_claims(), recursive_notes_provider=broken_provider
+    )
     with pytest.raises(ValueError, match="canonical authority unavailable"):
         await runner.start(plan.investigation_id, plan)
 
@@ -191,6 +190,7 @@ async def test_prior_research_insight_reaches_next_prompt_and_durable_ranking(tm
         )
         runner = HostLocalRunner(
             observed_loop,
+            claims=operator_claims(),
             recursive_notes_provider=lambda _investigation_id, _plan, pack=pack: pack,
         )
         await runner.start(plan.investigation_id, plan)
@@ -234,6 +234,7 @@ async def test_prior_research_insight_reaches_next_prompt_and_durable_ranking(tm
     )
     final_runner = HostLocalRunner(
         loop,
+        claims=operator_claims(),
         recursive_notes_provider=lambda _investigation_id, _plan: ranked_pack,
     )
     await final_runner.start(final_plan.investigation_id, final_plan)

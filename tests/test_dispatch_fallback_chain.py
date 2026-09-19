@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,12 @@ from substrate.dispatch.base import (
     ProviderError,
     RawProviderResponse,
 )
-from substrate.dispatch.router import DispatchConfig, dispatch
+from substrate.dispatch.router import (
+    DispatchConfig,
+    TierPricing,
+    dispatch,
+    pricing_authority,
+)
 from substrate.event_log import trajectory
 from substrate.schemas import Event
 
@@ -265,6 +271,131 @@ def test_fallback_chain_is_at_least_two_layers_deep(production_config):
             f"tier {tier_name!r} chain is only {depth} link(s) deep; the "
             f"operator directive requires GLM + two backups (>= 2 links)."
         )
+
+
+def test_each_fallback_parses_its_own_pricing_without_primary_inheritance():
+    config = DispatchConfig._from_dict(
+        {
+            "tiers": {
+                "pro": {
+                    "provider": "primary",
+                    "model": "primary-model",
+                    "pricing": {
+                        "input_per_mtok": 10.0,
+                        "output_per_mtok": 20.0,
+                        "cached_input_per_mtok": 1.0,
+                    },
+                    "fallback": {
+                        "provider": "fallback-a",
+                        "model": "fallback-a-model",
+                        "pricing": {
+                            "input_per_mtok": 2.0,
+                            "output_per_mtok": 3.0,
+                            "cached_input_per_mtok": 0.5,
+                        },
+                        "fallback": {
+                            "provider": "fallback-b",
+                            "model": "fallback-b-model",
+                        },
+                    },
+                }
+            },
+            "role_tiers": {"decomposer": "pro"},
+        }
+    )
+    primary = config.tiers["pro"]
+    first = primary.fallback
+    assert first is not None
+    assert first.pricing.input_per_mtok == 2.0
+    assert first.pricing.output_per_mtok == 3.0
+    assert first.pricing.cached_input_per_mtok == 0.5
+    second = first.fallback
+    assert second is not None
+    assert second.pricing.input_per_mtok == 0.0
+    assert second.pricing.output_per_mtok == 0.0
+
+
+def test_production_fallback_pricing_is_unknown_until_operator_verifies_it(
+    production_config,
+):
+    for tier_name in ALL_TIERS_WITH_FALLBACK:
+        node = production_config.tiers[tier_name].fallback
+        while node is not None:
+            assert node.pricing.input_per_mtok == 0.0
+            assert node.pricing.output_per_mtok == 0.0
+            node = node.fallback
+
+
+def test_pricing_authority_binds_route_source_and_freshness():
+    pricing = TierPricing(
+        input_per_mtok=1.0,
+        output_per_mtok=2.0,
+        cached_input_per_mtok=0.1,
+        currency="USD",
+        billing_unit="per_million_tokens",
+        source_url="https://provider.example/pricing",
+        verified_at="2026-01-01T00:00:00Z",
+        expires_at="2027-01-01T00:00:00Z",
+    )
+    valid, reason, fingerprint = pricing_authority(
+        provider="provider-a",
+        model="model-a",
+        pricing=pricing,
+        now=datetime(2026, 7, 16, tzinfo=UTC),
+    )
+    assert valid is True
+    assert reason is None
+    assert len(fingerprint) == 64
+
+    expired, expired_reason, _ = pricing_authority(
+        provider="provider-a",
+        model="model-a",
+        pricing=pricing,
+        now=datetime(2027, 1, 1, tzinfo=UTC),
+    )
+    assert expired is False
+    assert expired_reason == "pricing authority is not currently valid"
+
+    _, _, changed = pricing_authority(
+        provider="provider-b",
+        model="model-a",
+        pricing=pricing,
+        now=datetime(2026, 7, 16, tzinfo=UTC),
+    )
+    assert changed != fingerprint
+
+    equivalent = TierPricing(
+        input_per_mtok=1,
+        output_per_mtok=2,
+        cached_input_per_mtok=0.1,
+        currency="USD",
+        billing_unit="per_million_tokens",
+        source_url="https://provider.example/pricing",
+        verified_at="2026-01-01T01:00:00+01:00",
+        expires_at="2027-01-01T01:00:00+01:00",
+    )
+    equivalent_valid, _, equivalent_fingerprint = pricing_authority(
+        provider="provider-a",
+        model="model-a",
+        pricing=equivalent,
+        now=datetime(2026, 7, 16, tzinfo=UTC),
+    )
+    assert equivalent_valid is True
+    assert equivalent_fingerprint == fingerprint
+
+    malformed = TierPricing(
+        input_per_mtok="1.0",  # type: ignore[arg-type]
+        output_per_mtok=None,  # type: ignore[arg-type]
+    )
+    malformed_valid, malformed_reason, malformed_fingerprint = pricing_authority(
+        provider="provider-a",
+        model="model-a",
+        pricing=malformed,
+        now=datetime(2026, 7, 16, tzinfo=UTC),
+    )
+    assert malformed_valid is False
+    assert malformed_reason == "pricing rates must be finite and non-negative"
+    assert len(malformed_fingerprint) == 64
 
 
 def test_routing_is_claudeless_and_direct_api(production_config):

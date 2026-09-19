@@ -99,17 +99,17 @@ def test_handoff_reuses_promoted_node_and_converges_on_retry(seam):
 
 def test_handoff_repairs_event_append_from_durable_block_receipt(seam, monkeypatch):
     client, events, _deliverable_id, section_id, _node_id = seam
-    original_append = write_routes.append_event_once
+    original_append = write_routes.append_event_once_authorized
     failures = 0
 
-    def fail_once(event):
+    def fail_once(authority, event):
         nonlocal failures
         failures += 1
         if failures == 1:
             raise OSError("simulated event store fault")
-        return original_append(event)
+        return original_append(authority, event)
 
-    monkeypatch.setattr(write_routes, "append_event_once", fail_once)
+    monkeypatch.setattr(write_routes, "append_event_once_authorized", fail_once)
     command = {
         "note_id": "note-1",
         "target_section_id": section_id,

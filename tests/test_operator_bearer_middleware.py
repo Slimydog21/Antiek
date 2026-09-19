@@ -152,7 +152,7 @@ def test_post_investigations_with_bearer_proceeds(temp_substrate, monkeypatch):
     client = _client_with_token(temp_substrate, "op_secret", monkeypatch)
     resp = client.post(
         "/investigations",
-        json={"question": "valid question for the handler"},
+        json={"question": "valid question for the handler", "approved_run_ceiling_usd": 1.0},
         headers={"Authorization": "Bearer op_secret"},
     )
     # 202 Accepted — the bearer passed and the request reached the

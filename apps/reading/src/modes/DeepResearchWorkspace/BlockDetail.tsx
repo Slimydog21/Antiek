@@ -1,9 +1,7 @@
 import { useRef } from "react";
-import { useNavigate } from "react-router-dom";
 
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
-import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
-import { startInvestigation, type DistilledNode } from "../../lib/api";
+import { type DistilledNode } from "../../lib/api";
 import { useSettingsResearchTier } from "../../lib/useSettingsResearchTier";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import {
@@ -44,7 +42,6 @@ export default function BlockDetail({
   onClose?: () => void;
 }) {
   const scopeRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
   const { researchTier } = useSettingsResearchTier();
 
   // The host resolves provenance: this node's source document grounds any note
@@ -76,15 +73,9 @@ export default function BlockDetail({
         research_tier: researchTier,
       });
     } catch {
-      // Degraded: REUSED chase path — child investigation + navigate.
-      const resp = await startInvestigation({
-        question: safeSpawnText,
-        context: safeSpawnText,
-        parent_investigation_id: investigationId,
-        spawn_context: safeSpawnText,
-      });
-      recordSpawnRelationship(resp.investigation_id, investigationId);
-      navigate(`/inv/${resp.investigation_id}`);
+      // A failed reservation/window open must not silently become a paid
+      // investigation without the explicit run-ceiling consent surface.
+      return;
     }
   }
 

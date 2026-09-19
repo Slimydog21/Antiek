@@ -24,6 +24,7 @@ from acquisition.search.exa.adapter import (  # noqa: E402
     suggest_tier,
 )
 from substrate.event_log import emit_typed  # noqa: E402
+from substrate.investigation_tenancy import InvestigationAuthority  # noqa: E402
 from substrate.legal_gate import LegalGate, default_legal_gate  # noqa: E402
 from substrate.schemas.events import (  # noqa: E402
     DiscoveryProposedPayload,
@@ -37,9 +38,7 @@ _POLICY_ID = "acquisition/search/parallel"
 
 
 def _discovery_id(url: str, investigation_id: str, query: str = "") -> str:
-    h = hashlib.sha256(
-        f"{url}\x1f{investigation_id}\x1f{query}".encode()
-    ).hexdigest()[:16]
+    h = hashlib.sha256(f"{url}\x1f{investigation_id}\x1f{query}".encode()).hexdigest()[:16]
     return f"{_DISCOVERY_ID_PREFIX}{h}"
 
 
@@ -162,6 +161,7 @@ def promote_discovery(
     db_path: str | None = None,
     embedder: object | None = None,
     events_dir: str | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> DiscoveryPromotionResult:
     """Promote a prior discovery to ingestion via ``ingest_url``."""
     if events_dir is None:
@@ -169,6 +169,8 @@ def promote_discovery(
 
         events_dir = default_discovery_events_dir()
 
+    if authority is not None and legal_gate is None:
+        raise RuntimeError("authenticated Parallel promotion requires a durable legal gate")
     gate = legal_gate or default_legal_gate()
     verdict = gate.check_url(discovery.url)
 
@@ -205,6 +207,7 @@ def promote_discovery(
             source_tier=tier,
             db_path=db_path,
             embedder=embedder,  # type: ignore[arg-type]
+            authority=authority,
         )
     except Exception as e:
         selected = DiscoverySelectedPayload(
@@ -227,6 +230,29 @@ def promote_discovery(
             selected_event_id=event_id,
             rejection_reason=f"{type(e).__name__}: {e}",
             legal_gate_kind=verdict.gate_kind,
+        )
+
+    if (ingest_result.skipped_reason or "").startswith("legal_policy:"):
+        selected = DiscoverySelectedPayload(
+            discovery_id=discovery.discovery_id,
+            document_id=None,
+            decision="rejected_by_legal_gate",
+            rejection_reason=ingest_result.skipped_reason,
+        )
+        event_id = emit_typed(
+            investigation_id,
+            selected,
+            role="acquisition",
+            policy_id=_POLICY_ID,
+            events_dir=events_dir,
+        )
+        return DiscoveryPromotionResult(
+            discovery_id=discovery.discovery_id,
+            decision="rejected_by_legal_gate",
+            document_id=None,
+            selected_event_id=event_id,
+            rejection_reason=ingest_result.skipped_reason,
+            legal_gate_kind="durable_document_policy",
         )
 
     selected = DiscoverySelectedPayload(

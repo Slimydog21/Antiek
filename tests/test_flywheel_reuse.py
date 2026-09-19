@@ -30,6 +30,7 @@ from substrate.graph.insight_question import promote_insight
 from substrate.graph.ops import insert_node
 from substrate.graph.retrieval_substrate import make_substrate
 from substrate.graph.schema import init_database_at_path
+from substrate.multi_user.auth import operator_claims
 
 _TOPIC = "neutral atom qubit error rate suppression scaling milestone"
 
@@ -52,7 +53,8 @@ def _ground_gather_note(
         doc_id = "doc-gather-public"
         chunk_id = "chunk-gather-0"
         if not con.execute(
-            "SELECT 1 FROM documents WHERE document_id = ?", [doc_id],
+            "SELECT 1 FROM documents WHERE document_id = ?",
+            [doc_id],
         ).fetchone():
             con.execute(
                 "INSERT INTO documents (document_id, title, source_tier, "
@@ -60,13 +62,17 @@ def _ground_gather_note(
                 [doc_id, "Gather public", "public_domain"],
             )
         if not con.execute(
-            "SELECT 1 FROM chunks WHERE chunk_id = ?", [chunk_id],
+            "SELECT 1 FROM chunks WHERE chunk_id = ?",
+            [chunk_id],
         ).fetchone():
             con.execute(
                 "INSERT INTO chunks (chunk_id, document_id, chunk_index, text, "
                 "embedding, token_count) VALUES (?, ?, 0, ?, ?, ?)",
                 [
-                    chunk_id, doc_id, note_text, emb.encode(note_text),
+                    chunk_id,
+                    doc_id,
+                    note_text,
+                    emb.encode(note_text),
                     max(1, len(note_text) // 4),
                 ],
             )
@@ -113,7 +119,8 @@ def _events(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_two_run_contract_gather_emits_knowledge_reused_on_second_start(
-    emb, tmp_path,
+    emb,
+    tmp_path,
 ):
     """P-15 / SPR-DRL-07: second hermetic start emits knowledge.reused."""
     db = os.path.join(tmp_path, "graph.duckdb")
@@ -125,6 +132,7 @@ async def test_two_run_contract_gather_emits_knowledge_reused_on_second_start(
 
     runner1 = HostLocalRunner(
         make_contract_gather_stub(steps=1, cost_per_step=0.0),
+        claims=operator_claims(),
         events_dir=events_dir,
         seal_on_complete=False,
         on_emit=funnel.submit,
@@ -134,17 +142,19 @@ async def test_two_run_contract_gather_emits_knowledge_reused_on_second_start(
     await runner1.join()
     await funnel.drain_and_stop()
 
-    note_text = (
-        f"[gather-stub] provisional note from inv-run-1: {_TOPIC}"
-    )
+    note_text = f"[gather-stub] provisional note from inv-run-1: {_TOPIC}"
     _ground_gather_note(
-        db, emb, investigation_id="inv-run-1", note_text=note_text,
+        db,
+        emb,
+        investigation_id="inv-run-1",
+        note_text=note_text,
     )
 
     sub = make_substrate("brute_force", db, model=emb)
     try:
         runner2 = HostLocalRunner(
             make_contract_gather_stub(steps=1, cost_per_step=0.0),
+            claims=operator_claims(),
             events_dir=events_dir,
             seal_on_complete=False,
             retrieval_substrate=sub,

@@ -128,6 +128,19 @@ def test_css_is_inlined(ctx):
     assert re.search(r"<head>.*<style>.*</style>.*</head>", html, re.DOTALL)
 
 
+def test_server_derived_chunk_anchor_is_rendered_but_arbitrary_id_is_not(ctx):
+    anchor = "antiek-chunk-" + "a" * 64
+    html = render(
+        {"content": [
+            {"type": "paragraph", "attrs": {"anchor_id": anchor}, "content": [{"type": "text", "text": "one"}]},
+            {"type": "paragraph", "attrs": {"anchor_id": "attacker"}, "content": [{"type": "text", "text": "two"}]},
+        ]},
+        ctx,
+    )
+    assert f'id="{anchor}" data-antiek-chunk-anchor="true"' in html
+    assert 'id="attacker"' not in html
+
+
 # ── Provenance footer ──
 
 

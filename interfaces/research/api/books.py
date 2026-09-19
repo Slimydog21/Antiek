@@ -26,11 +26,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Literal, cast
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
 from substrate.books.serve import ServeResult
@@ -121,6 +122,52 @@ def _owner_read_policy_tag(request: Request) -> str:
     if auth_method in _OWNER_AUTH_METHODS and len(operator_allowlist_from_env()) <= 1:
         return _OWNER_READ_POLICY_TAG
     return _PUBLIC_READ_POLICY_TAG
+
+
+def _legal_document_authority(request: Request, con: object, document_id: str):
+    """Resolve and verify exact legal-read authority when activation is on."""
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") != "1":
+        return None
+    from interfaces.research.api.investigation_access import (
+        InvestigationAccessDenied,
+        authority_from_request,
+        require_investigation_owner,
+    )
+    from substrate.legal_gate.policy_store import LegalPolicyDenied
+    from substrate.legal_gate.read import document_investigation_hint, read_document
+
+    investigation_id = document_investigation_hint(con, document_id)
+    if not investigation_id:
+        raise HTTPException(status_code=404, detail="book_not_found")
+    try:
+        access = authority_from_request(request, investigation_id)
+        require_investigation_owner(access)
+        read_document(con, access.authority, document_id)
+    except (InvestigationAccessDenied, LegalPolicyDenied, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="book_not_found") from exc
+    return access.authority
+
+
+def _legal_investigation_authority(request: Request, investigation_id: str | None):
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") != "1":
+        return None
+    from interfaces.research.api.investigation_access import (
+        InvestigationAccessDenied,
+        authority_from_request,
+        require_investigation_owner,
+    )
+
+    if not investigation_id:
+        raise HTTPException(
+            status_code=422,
+            detail="investigation_id is required for legal corpus reads",
+        )
+    try:
+        access = authority_from_request(request, investigation_id)
+        require_investigation_owner(access)
+        return access.authority
+    except InvestigationAccessDenied as exc:
+        raise HTTPException(status_code=404, detail="corpus not found") from exc
 
 # arXiv canonical-link prefix; the serve guard stamps result.canonical_url as
 # ``https://arxiv.org/abs/<arxiv_id>`` for an arXiv doc (None otherwise), so the
@@ -252,6 +299,8 @@ class CurateResponse(BaseModel):
 
 
 class SpinResearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     page_index: int = Field(ge=0)
     # The reader's selected text. For a gated book it is IGNORED server-
     # side and replaced by the bounded snippet — the seed can never carry
@@ -259,6 +308,18 @@ class SpinResearchRequest(BaseModel):
     passage_text: str | None = None
     # Residual (jm): closed research tier for investigation start event.
     research_tier: Literal["fast", "deep", "wrestle"] = "deep"
+    approved_run_ceiling_usd: float = Field(..., gt=0.0, le=100.0)
+    research_quote_token: str | None = Field(default=None, min_length=1, max_length=32768)
+
+
+class SpinResearchQuoteResponse(BaseModel):
+    quote_token: str
+    quote_id: str
+    quote_payload_sha256: str
+    route_manifest_fingerprint: str
+    issued_at_ms: int
+    expires_at_ms: int
+    approved_run_ceiling_usd: str
 
 
 class SpinResearchResponse(BaseModel):
@@ -511,22 +572,40 @@ def register_book_routes(app: FastAPI) -> None:
 
     @app.get("/books", response_model=BookListResponse, tags=["books"])
     async def list_books(
+        request: Request,
         status: Literal["servable", "gated", "all"] = "servable",
+        investigation_id: str | None = None,
     ) -> BookListResponse:
         from runtime.db_lock import connect_read
 
         db = _resolve_db_path()
         con = connect_read(db)
         try:
+            authority = _legal_investigation_authority(request, investigation_id)
             if status == "servable":
-                assets = list_book_assets(con, servable_only=True)
+                assets = list_book_assets(
+                    con, servable_only=True, authority=authority
+                )
             else:
                 # "gated" and "all" both list non-taken-down books; the
                 # servability flag on each lets the caller filter. We never
                 # widen to taken-down books on a public listing.
-                assets = list_book_assets(con, servable_only=False)
+                assets = list_book_assets(
+                    con, servable_only=False, authority=authority
+                )
                 if status == "gated":
                     assets = [a for a in assets if not a.servable_full_text]
+            if authority is not None:
+                from substrate.legal_gate.read import readable_document_ids
+
+                allowed = set(
+                    readable_document_ids(
+                        con,
+                        authority,
+                        candidate_ids=[asset.document_id for asset in assets],
+                    )
+                )
+                assets = [asset for asset in assets if asset.document_id in allowed]
         finally:
             con.close()
         summaries = [BookSummary.from_asset(a) for a in assets]
@@ -535,7 +614,12 @@ def register_book_routes(app: FastAPI) -> None:
     # Registered BEFORE /books/{document_id} so "curate" is not matched as
     # a document id.
     @app.get("/books/curate", response_model=CurateResponse, tags=["books"])
-    async def curate(prompt: str, limit: int = 20) -> CurateResponse:
+    async def curate(
+        request: Request,
+        prompt: str,
+        limit: int = 20,
+        investigation_id: str | None = None,
+    ) -> CurateResponse:
         from runtime.db_lock import connect_read
         from substrate.books.curate import curate_reading_list
         from substrate.graph.search import SentenceTransformerEmbedding
@@ -548,7 +632,19 @@ def register_book_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         con = connect_read(db)
         try:
+            authority = _legal_investigation_authority(request, investigation_id)
             curated = curate_reading_list(con, prompt, model=model, limit=limit)
+            if authority is not None:
+                from substrate.legal_gate.read import readable_document_ids
+
+                allowed = set(
+                    readable_document_ids(
+                        con,
+                        authority,
+                        candidate_ids=[item.document_id for item in curated],
+                    )
+                )
+                curated = [item for item in curated if item.document_id in allowed]
         finally:
             con.close()
         return CurateResponse(
@@ -562,13 +658,14 @@ def register_book_routes(app: FastAPI) -> None:
         )
 
     @app.get("/books/{document_id}", response_model=BookDetail, tags=["books"])
-    async def get_book(document_id: str) -> BookDetail:
+    async def get_book(document_id: str, request: Request) -> BookDetail:
         from runtime.db_lock import connect_read
 
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            asset = get_book_asset(con, document_id)
+            authority = _legal_document_authority(request, con, document_id)
+            asset = get_book_asset(con, document_id, authority=authority)
         finally:
             con.close()
         if asset is None:
@@ -580,21 +677,35 @@ def register_book_routes(app: FastAPI) -> None:
         response_model=FullTextResponse,
         tags=["books"],
     )
-    async def get_book_full_text(document_id: str) -> FullTextResponse:
+    async def get_book_full_text(document_id: str, request: Request) -> FullTextResponse:
         from runtime.db_lock import connect_read
         from substrate.books.page_anchor import page_index_from_section_path
 
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            result = serve_full_text_guarded(con, document_id)
+            authority = _legal_document_authority(request, con, document_id)
+            result = serve_full_text_guarded(
+                con, document_id, authority=authority
+            )
             chunk_rows = []
             if result.full_text is not None:
-                chunk_rows = con.execute(
-                    "SELECT chunk_id, chunk_index, section_path, text "
-                    "FROM chunks WHERE document_id = ? ORDER BY chunk_index",
-                    [document_id],
-                ).fetchall()
+                from substrate.legal_gate.read import read_chunks_compatibility
+
+                chunk_rows = [
+                    (
+                        item["chunk_id"],
+                        item["chunk_index"],
+                        item["section_path"],
+                        item["text"],
+                    )
+                    for item in read_chunks_compatibility(
+                        con,
+                        document_id,
+                        authority=authority,
+                        enforce=os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1",
+                    )
+                ]
         finally:
             con.close()
         if not result.found:
@@ -640,6 +751,7 @@ def register_book_routes(app: FastAPI) -> None:
     async def get_book_chunk_anchor(
         document_id: str,
         chunk_id: str,
+        request: Request,
     ) -> BookChunkAnchorResponse:
         from runtime.db_lock import connect_read
         from substrate.books.page_anchor import page_index_from_section_path
@@ -647,16 +759,23 @@ def register_book_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            served = serve_full_text_guarded(con, document_id)
+            authority = _legal_document_authority(request, con, document_id)
+            served = serve_full_text_guarded(
+                con, document_id, authority=authority
+            )
             if not served.found:
                 raise HTTPException(status_code=404, detail="book_not_found")
             if not served.servable or served.full_text is None:
                 raise HTTPException(status_code=403, detail="book_body_not_servable")
-            row = con.execute(
-                "SELECT section_path FROM chunks "
-                "WHERE chunk_id = ? AND document_id = ?",
-                [chunk_id, document_id],
-            ).fetchone()
+            from substrate.legal_gate.read import read_chunk_compatibility
+
+            item = read_chunk_compatibility(
+                con,
+                chunk_id,
+                authority=authority,
+                enforce=os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1",
+            )
+            row = (item[2],) if item is not None and item[4] == document_id else None
         finally:
             con.close()
         if row is None:
@@ -668,6 +787,47 @@ def register_book_routes(app: FastAPI) -> None:
             page_index=page_index,
             page_resolved=page_index is not None,
             reason="page_resolved" if page_index is not None else "page_not_resolved",
+        )
+
+    def _canonical_spin_research_command(
+        document_id: str, req: SpinResearchRequest
+    ) -> str:
+        return json.dumps(
+            {
+                "document_id": document_id,
+                "request": req.model_dump(
+                    exclude={"research_quote_token"}, mode="json"
+                ),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+
+    @app.post(
+        "/books/{document_id}/spin-research/quote",
+        response_model=SpinResearchQuoteResponse,
+        tags=["books"],
+    )
+    async def quote_spin_research(
+        document_id: str, req: SpinResearchRequest, request: Request
+    ) -> SpinResearchQuoteResponse:
+        from .research_quote_authority import issue_exact_research_quote
+
+        token, receipt, _ = issue_exact_research_quote(
+            request=request,
+            command=_canonical_spin_research_command(document_id, req),
+            research_tier=req.research_tier,
+            approved_run_ceiling_usd=req.approved_run_ceiling_usd,
+        )
+        return SpinResearchQuoteResponse(
+            quote_token=token,
+            quote_id=receipt.quote_id,
+            quote_payload_sha256=receipt.payload_sha256,
+            route_manifest_fingerprint=receipt.route_manifest_fingerprint,
+            issued_at_ms=receipt.issued_at_ms,
+            expires_at_ms=receipt.expires_at_ms,
+            approved_run_ceiling_usd=receipt.approved_run_ceiling_usd,
         )
 
     @app.post(
@@ -728,7 +888,9 @@ def register_book_routes(app: FastAPI) -> None:
         status_code=202,
         tags=["books"],
     )
-    async def spin_research(document_id: str, req: SpinResearchRequest) -> SpinResearchResponse:
+    async def spin_research(
+        document_id: str, req: SpinResearchRequest, request: Request
+    ) -> SpinResearchResponse:
         """Spin a deep research from a book passage (Read SPR-08).
 
         Builds the GATE-SAFE seed server-side (a gated book contributes
@@ -743,12 +905,34 @@ def register_book_routes(app: FastAPI) -> None:
             build_research_seed,
             link_passage_to_research,
         )
-        from substrate.event_log import emit_typed
-        from substrate.schemas import InvestigationStartRequestedPayload
+        from substrate.schemas import InvestigationStartRequestedPayload, ResearchQuotedRoute
+
+        from .investigation_access import (
+            InvestigationAccessDenied,
+            InvestigationAuthenticationRequired,
+            authority_for_investigation,
+            authority_from_request,
+            bind_new_investigation,
+            event_actor,
+        )
+        from .research_quote_authority import verify_exact_research_quote
+
+        quote_receipt, manifest = verify_exact_research_quote(
+            request=request,
+            token=req.research_quote_token,
+            command=_canonical_spin_research_command(document_id, req),
+            research_tier=req.research_tier,
+            approved_run_ceiling_usd=req.approved_run_ceiling_usd,
+        )
 
         db = _resolve_db_path()
         con = connect_read(db)
         try:
+            authority = _legal_document_authority(request, con, document_id)
+            if authority is not None:
+                from substrate.legal_gate.read import read_chunks
+
+                read_chunks(con, authority, document_id)
             seed = build_research_seed(
                 con,
                 document_id=document_id,
@@ -760,31 +944,57 @@ def register_book_routes(app: FastAPI) -> None:
         finally:
             con.close()
 
-        import uuid as _uuid
-
-        investigation_id = f"inv-{_uuid.uuid4().hex[:12]}"
+        investigation_id = f"inv-q-{quote_receipt.quote_id[:24]}"
         spawn_context = f"read: passage {document_id} p{req.page_index}"
+        try:
+            access = authority_from_request(request, investigation_id)
+            bind_new_investigation(access)
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
+        except InvestigationAccessDenied as exc:
+            raise HTTPException(status_code=404, detail="investigation not found") from exc
+        role, policy_id = event_actor(access)
         # Residual (jm): record closed research_tier on investigation start.
-        event_id = emit_typed(
+        from datetime import UTC, datetime
+
+        from substrate.event_log import append_event_once_authorized, prepare_typed_event
+
+        prepared = prepare_typed_event(
             investigation_id,
             InvestigationStartRequestedPayload(
                 question=seed.seed_text,
                 context=f"Spun from a book passage. Servability: {seed.servability}.",
                 spawn_context=spawn_context,
                 research_tier=req.research_tier,
+                approved_run_ceiling_usd=req.approved_run_ceiling_usd,
+                research_quote_id=quote_receipt.quote_id,
+                research_quote_payload_sha256=quote_receipt.payload_sha256,
+                research_route_manifest_fingerprint=(
+                    quote_receipt.route_manifest_fingerprint
+                ),
+                research_quote_expires_at_ms=quote_receipt.expires_at_ms,
+                research_route_manifest=tuple(
+                    ResearchQuotedRoute(**row.__dict__) for row in manifest.routes
+                ),
             ),
-            role="read/spin_research",
-            policy_id="read/books/spin_research",
+            event_id=f"evt-quoted-start-{quote_receipt.quote_id[:24]}",
+            role=role,
+            policy_id=policy_id,
+            emitted_at=datetime.fromtimestamp(
+                quote_receipt.issued_at_ms / 1000, tz=UTC
+            ),
         )
-        if event_id is None:
+        try:
+            append_event_once_authorized(access.authority, prepared)
+        except ValueError as exc:
             raise HTTPException(
-                status_code=503,
-                detail="Event log is disabled (ANTIEK_EVENTS_DISABLED).",
-            )
+                status_code=409, detail="research quote replay conflicts"
+            ) from exc
         link_passage_to_research(
             document_id=document_id,
             page_index=req.page_index,
             investigation_id=investigation_id,
+            authority=authority_for_investigation(access, "read-spin").authority,
         )
         return SpinResearchResponse(
             investigation_id=investigation_id,
@@ -828,6 +1038,7 @@ def register_book_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         con = connect_read(db)
         try:
+            _legal_document_authority(request, con, document_id)
             asset = get_book_asset(con, document_id)
         finally:
             con.close()
@@ -841,6 +1052,11 @@ def register_book_routes(app: FastAPI) -> None:
 
         con = connect_read(db)
         try:
+            authority = _legal_document_authority(request, con, document_id)
+            if authority is not None:
+                from substrate.legal_gate.read import read_chunks
+
+                read_chunks(con, authority, document_id)
             try:
                 result = answer_book_question(
                     con,
@@ -887,6 +1103,7 @@ def register_book_routes(app: FastAPI) -> None:
         q: str,
         limit: int = 20,
         document_id: str | None = None,
+        investigation_id: str | None = None,
     ) -> CorpusSearchResponse:
         """Search the owned corpus by a natural-language query. Wraps
         ``substrate.graph.search.search`` through the §9.0 gate. For the
@@ -901,7 +1118,11 @@ def register_book_routes(app: FastAPI) -> None:
         ingested)."""
         from runtime.db_lock import connect_read
         from substrate.books.page_anchor import page_index_from_section_path
-        from substrate.graph.search import SentenceTransformerEmbedding, search
+        from substrate.graph.search import (
+            SentenceTransformerEmbedding,
+            search,
+            search_authorized,
+        )
 
         if not q.strip():
             return CorpusSearchResponse(query=q, hits=[], count=0)
@@ -913,12 +1134,42 @@ def register_book_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            res = search(
-                con, q, model=model, top_k=max(1, limit), document_id=document_id,
-                # §9.0: privileged ONLY for the authenticated owner (resolved
-                # server-side); non-owner / unauth callers stay gated.
-                policy_tag=_owner_read_policy_tag(request),
-            )
+            if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+                from interfaces.research.api.investigation_access import (
+                    InvestigationAccessDenied,
+                    authority_from_request,
+                    require_investigation_owner,
+                )
+
+                if not investigation_id:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="investigation_id is required for legal corpus search",
+                    )
+                try:
+                    access = authority_from_request(request, investigation_id)
+                    require_investigation_owner(access)
+                except InvestigationAccessDenied as exc:
+                    raise HTTPException(status_code=404, detail="corpus not found") from exc
+                res = search_authorized(
+                    con,
+                    access.authority,
+                    q,
+                    model=model,
+                    top_k=max(1, limit),
+                    document_ids=None if document_id is None else [document_id],
+                )
+            else:
+                res = search(
+                    con,
+                    q,
+                    model=model,
+                    top_k=max(1, limit),
+                    document_id=document_id,
+                    # §9.0: privileged ONLY for the authenticated owner (resolved
+                    # server-side); non-owner / unauth callers stay gated.
+                    policy_tag=_owner_read_policy_tag(request),
+                )
         finally:
             con.close()
 
@@ -946,7 +1197,9 @@ def register_book_routes(app: FastAPI) -> None:
         status_code=201,
         tags=["books"],
     )
-    async def meta_reading(req: MetaReadingRequest) -> MetaReadingResponse:
+    async def meta_reading(
+        req: MetaReadingRequest, request: Request
+    ) -> MetaReadingResponse:
         """Generate + SAVE a one-shot, READ-ONLY, page-cited synthesis over the
         OWNED corpus (Read SPR-08 M4). INTERNET-AGNOSTIC: retrieval is ONLY
         ``search`` over owned document ids — no acquisition / open-web call. The
@@ -960,7 +1213,7 @@ def register_book_routes(app: FastAPI) -> None:
         from runtime.db_lock import connect_read
         from substrate.books.meta_reading import MetaReadingError, generate_meta_reading
         from substrate.dispatch.base import ProviderError
-        from substrate.event_log import emit_typed
+        from substrate.event_log import emit_typed_authorized
         from substrate.graph.search import SentenceTransformerEmbedding
         from substrate.schemas.events import (
             MetaReadingCitation,
@@ -974,6 +1227,20 @@ def register_book_routes(app: FastAPI) -> None:
 
         asset_id = f"mr-{_uuid.uuid4().hex[:12]}"
         investigation_id = f"read-meta-{asset_id}"
+        from .investigation_access import (
+            InvestigationAccessDenied,
+            InvestigationAuthenticationRequired,
+            authority_from_request,
+            bind_new_investigation,
+        )
+
+        try:
+            access = authority_from_request(request, investigation_id)
+            bind_new_investigation(access)
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
+        except InvestigationAccessDenied as exc:
+            raise HTTPException(status_code=404, detail="investigation not found") from exc
         db = _resolve_db_path()
         con = connect_read(db)
         try:
@@ -1012,8 +1279,8 @@ def register_book_routes(app: FastAPI) -> None:
         # promote). NOT a side-store — it rides the single-writer funnel. An
         # empty deliverable is NOT saved (nothing to re-open); honest empty.
         if not deliverable.empty:
-            event_id = emit_typed(
-                investigation_id,
+            event_id = emit_typed_authorized(
+                access.authority,
                 ReadMetaReadingGeneratedPayload(
                     asset_id=asset_id,
                     prompt=req.prompt,
@@ -1081,7 +1348,21 @@ def register_book_routes(app: FastAPI) -> None:
         except Exception:
             return None
 
-    def _personal_space_assets():
+    def _personal_space_authority(request: Request):
+        from .investigation_access import (
+            InvestigationAuthenticationRequired,
+            authority_from_request,
+        )
+
+        try:
+            return authority_from_request(
+                request,
+                "__personal_space_collection__",
+            ).authority
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
+
+    def _personal_space_assets(request: Request):
         from runtime.db_lock import connect_read
         from substrate.books.personal_space import PersonalAsset, list_personal_assets
         from substrate.engagement_spine.canonical_commit import (
@@ -1089,7 +1370,10 @@ def register_book_routes(app: FastAPI) -> None:
             load_latest_reviewed_document_model,
         )
 
-        assets = list_personal_assets(book_title_resolver=_book_title_resolver)
+        assets = list_personal_assets(
+            book_title_resolver=_book_title_resolver,
+            authority=_personal_space_authority(request),
+        )
         con = connect_read(_resolve_db_path())
         try:
             rows = con.execute(
@@ -1129,12 +1413,12 @@ def register_book_routes(app: FastAPI) -> None:
         return assets
 
     @app.get("/meta-readings", response_model=PersonalSpaceResponse, tags=["books"])
-    async def list_personal_space() -> PersonalSpaceResponse:
+    async def list_personal_space(request: Request) -> PersonalSpaceResponse:
         """List the personal-space assets — created deliverables + saved reads,
         newest first (Read SPR-13 M1). Substrate-backed (event-log scan), NOT a
         new document store. Each asset's ``open_route`` re-opens it into the
         SPR-08 meta-doc view / the SPR-07 reader."""
-        assets = _personal_space_assets()
+        assets = _personal_space_assets(request)
         return PersonalSpaceResponse(
             assets=[PersonalAssetResponse(**a.to_dict()) for a in assets],
             count=len(assets),
@@ -1145,7 +1429,7 @@ def register_book_routes(app: FastAPI) -> None:
         response_model=CategorizedSpaceResponse,
         tags=["books"],
     )
-    async def personal_space_categories() -> CategorizedSpaceResponse:
+    async def personal_space_categories(request: Request) -> CategorizedSpaceResponse:
         """Cluster the personal-space assets into SYSTEM-named categories (Read
         SPR-13 M2). The system names the categories from each cluster's salient
         terms; the user never hand-organizes folders. Deterministic on a fixed
@@ -1156,7 +1440,7 @@ def register_book_routes(app: FastAPI) -> None:
             categorize_assets,
         )
 
-        assets = _personal_space_assets()
+        assets = _personal_space_assets(request)
         try:
             from substrate.graph.search import SentenceTransformerEmbedding
 
@@ -1210,7 +1494,10 @@ def register_book_routes(app: FastAPI) -> None:
         response_model=FileSuggestionResponse,
         tags=["books"],
     )
-    async def file_suggestion(document_id: str) -> FileSuggestionResponse:
+    async def file_suggestion(
+        document_id: str,
+        request: Request,
+    ) -> FileSuggestionResponse:
         """Suggest research projects a personal-space document could be filed
         into (Read SPR-13 M3). Ranks candidate projects by the doc's semantic
         similarity to each project's question; returns matches above the
@@ -1238,7 +1525,11 @@ def register_book_routes(app: FastAPI) -> None:
         # Build the doc's match text from the personal-space asset (its own
         # deliverable text). If the id isn't a personal asset we fall back to
         # the raw document_id as the match text (still no source body).
-        assets = list_personal_assets(book_title_resolver=_book_title_resolver)
+        authority = _personal_space_authority(request)
+        assets = list_personal_assets(
+            book_title_resolver=_book_title_resolver,
+            authority=authority,
+        )
         asset = next(
             (a for a in assets if document_id in (a.asset_id, *a.document_ids)),
             None,
@@ -1248,7 +1539,11 @@ def register_book_routes(app: FastAPI) -> None:
         else:
             doc_text = document_id
 
-        matches = match_document_to_investigations(doc_text=doc_text, model=model)
+        matches = match_document_to_investigations(
+            doc_text=doc_text,
+            model=model,
+            authority=authority,
+        )
         return FileSuggestionResponse(
             document_id=document_id,
             matches=[
@@ -1269,17 +1564,33 @@ def register_book_routes(app: FastAPI) -> None:
         response_model=SavedMetaReadingResponse,
         tags=["books"],
     )
-    async def get_saved_meta_reading(asset_id: str) -> SavedMetaReadingResponse:
+    async def get_saved_meta_reading(
+        asset_id: str, request: Request
+    ) -> SavedMetaReadingResponse:
         """Re-open a saved meta-reading asset by id (Read SPR-13 M1). Reads the
         ``read.meta_reading.generated`` event off the log (the asset rides
         ``read-meta-{asset_id}``) — the substrate's source of truth, NOT a new
         store. The saved citations carry references (chunk/document/page), never
         a body; the generation-time snippet preview was not persisted, so it is
         an honest empty string on re-open (the page link still resolves)."""
-        from substrate.event_log.events import trajectory
+        from substrate.event_log.events import trajectory_authorized
+
+        from .investigation_access import (
+            InvestigationAccessDenied,
+            InvestigationAuthenticationRequired,
+            authority_from_request,
+            require_investigation_owner,
+        )
 
         investigation_id = f"read-meta-{asset_id}"
-        rows = trajectory(investigation_id)
+        try:
+            access = authority_from_request(request, investigation_id)
+            require_investigation_owner(access)
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
+        except InvestigationAccessDenied as exc:
+            raise HTTPException(status_code=404, detail="meta-reading not found") from exc
+        rows = trajectory_authorized(access.authority)
         payload = next(
             (
                 (r.get("payload") or {})

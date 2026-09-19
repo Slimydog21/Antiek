@@ -62,6 +62,7 @@ from substrate.graph.insight_question import promote_insight
 from substrate.graph.ops import insert_node
 from substrate.graph.retrieval_substrate import make_substrate
 from substrate.graph.schema import init_database
+from substrate.multi_user.auth import operator_claims
 from substrate.multi_user.graph_router import GraphRouter, resolve_personal_graph
 
 from .measure import CostToResolve, measure_investigation
@@ -342,6 +343,7 @@ async def _drive_one(
     ``ev.kind == "done"``; events land on ``{events_dir}/{investigation_id}.jsonl``."""
     runner = HostLocalRunner(
         loop_fn=make_demo_loop(steps=steps, cost_per_step=cost_per_step, delay_s=0.0),
+        claims=operator_claims(),
         events_dir=events_dir,
         retrieval_substrate=reuse_substrate,
         seal_on_complete=False,  # keep JSONL so trajectory() reads it without pyarrow

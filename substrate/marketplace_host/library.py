@@ -82,8 +82,7 @@ def _validate_sqlite_host_schema(
     tables = {
         str(row[0])
         for row in con.execute(
-            "SELECT name FROM sqlite_master "
-            "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         )
     }
     if tables != set(_SQLITE_HOST_COLUMNS):
@@ -96,9 +95,7 @@ def _validate_sqlite_host_schema(
             "AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL"
         )
     }
-    expected_objects = {
-        name: _normalize_sql(sql) for name, sql in _SQLITE_HOST_DDL.items()
-    }
+    expected_objects = {name: _normalize_sql(sql) for name, sql in _SQLITE_HOST_DDL.items()}
     if schema_objects != expected_objects:
         raise RuntimeError("marketplace host database has invalid schema objects")
     for table, expected in _SQLITE_HOST_COLUMNS.items():
@@ -142,8 +139,7 @@ def _validate_sqlite_host_schema(
     ):
         raise RuntimeError("marketplace host membership foreign key is invalid")
     membership_sql_row = con.execute(
-        "SELECT sql FROM sqlite_master "
-        "WHERE type='table' AND name='host_memberships'"
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='host_memberships'"
     ).fetchone()
     if membership_sql_row is None or "DEFERRABLE" in str(membership_sql_row[0]).upper():
         raise RuntimeError("marketplace host membership foreign key is invalid")
@@ -200,9 +196,7 @@ def verify_sqlite_host_store(path: Path) -> Path:
             ("hosted_documents", "document_id", "document"),
             ("purchase_receipts", "receipt_id", "receipt"),
         ):
-            for key, payload in con.execute(
-                f"SELECT {key_column}, payload_json FROM {table}"
-            ):
+            for key, payload in con.execute(f"SELECT {key_column}, payload_json FROM {table}"):
                 _decode_json_object(payload, label=f"{label} {key}")
     if check_rows != [("ok",)]:
         raise RuntimeError("marketplace host database failed SQLite quick_check")
@@ -219,6 +213,15 @@ class HostStore(Protocol):
     def list_membership(self, owner_id: str) -> list[str]: ...
     def put_receipt(self, receipt_id: str, receipt: dict[str, Any]) -> None: ...
     def get_receipt(self, receipt_id: str) -> dict[str, Any] | None: ...
+    def commit_purchase(
+        self,
+        *,
+        receipt_id: str,
+        receipt: dict[str, Any],
+        owner_id: str,
+        document_id: str,
+        document: dict[str, Any],
+    ) -> None: ...
 
 
 @dataclass
@@ -258,6 +261,17 @@ class InMemoryHostStore:
             row = self._receipts.get(receipt_id)
             return dict(row) if row is not None else None
 
+    def commit_purchase(self, *, receipt_id, receipt, owner_id, document_id, document) -> None:
+        with self._lock:
+            existing = self._receipts.get(receipt_id)
+            if existing is not None and existing != receipt:
+                raise ValueError("receipt_id conflicts with immutable receipt evidence")
+            self._receipts[receipt_id] = dict(receipt)
+            self._docs[document_id] = dict(document)
+            bucket = self._lib.setdefault(owner_id, [])
+            if document_id not in bucket:
+                bucket.append(document_id)
+
 
 @dataclass
 class FileHostStore:
@@ -284,6 +298,23 @@ class FileHostStore:
         data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return data
 
+    def get_document_strict(self, document_id: str) -> dict[str, Any] | None:
+        """Read one document without collapsing unsafe/corrupt storage to absence."""
+
+        safe = document_id.replace("/", "_")
+        path = self.root / "docs" / f"{safe}.json"
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            raise RuntimeError("stored hosted document is unsafe")
+        if not path.is_file():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError("stored hosted document is unavailable or corrupt") from exc
+        if not isinstance(data, dict):
+            raise RuntimeError("stored hosted document is corrupt")
+        return data
+
     def put_membership(self, owner_id: str, document_id: str) -> None:
         path = self.root / "lib" / f"{owner_id.replace('/', '_')}.json"
         ids: list[str] = []
@@ -299,6 +330,24 @@ class FileHostStore:
             return []
         return list(json.loads(path.read_text(encoding="utf-8")))
 
+    def list_membership_strict(self, owner_id: str) -> list[str]:
+        """Read exact membership rows without accepting malformed JSON shapes."""
+
+        path = self.root / "lib" / f"{owner_id.replace('/', '_')}.json"
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            raise RuntimeError("stored hosted membership is unsafe")
+        if not path.is_file():
+            return []
+        try:
+            decoded = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError("stored hosted membership is unavailable or corrupt") from exc
+        if not isinstance(decoded, list) or not all(
+            isinstance(document_id, str) for document_id in decoded
+        ):
+            raise RuntimeError("stored hosted membership is corrupt")
+        return list(decoded)
+
     def put_receipt(self, receipt_id: str, receipt: dict[str, Any]) -> None:
         safe = receipt_id.replace("/", "_")
         (self.root / "receipts" / f"{safe}.json").write_text(
@@ -312,6 +361,12 @@ class FileHostStore:
             return None
         data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return data
+
+    def commit_purchase(self, *, receipt_id, receipt, owner_id, document_id, document) -> None:
+        """Legacy file backend convergence; production uses transactional SQLite."""
+        self.put_receipt(receipt_id, receipt)
+        self.put_document(document_id, document)
+        self.put_membership(owner_id, document_id)
 
 
 @dataclass(frozen=True)
@@ -389,9 +444,7 @@ class SQLiteHostStore:
         if not isinstance(value, dict):
             raise TypeError(f"{label} must be an object")
         try:
-            return json.dumps(
-                value, sort_keys=True, separators=(",", ":"), allow_nan=False
-            )
+            return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"{label} must be JSON serializable") from exc
 
@@ -470,6 +523,41 @@ class SQLiteHostStore:
             ).fetchone()
         return None if row is None else self._decode(row[0], label="receipt")
 
+    def commit_purchase(
+        self,
+        *,
+        receipt_id: str,
+        receipt: dict[str, Any],
+        owner_id: str,
+        document_id: str,
+        document: dict[str, Any],
+    ) -> None:
+        receipt_key = self._key(receipt_id, label="receipt_id")
+        owner = self._key(owner_id, label="owner_id")
+        document_key = self._key(document_id, label="document_id")
+        receipt_payload = self._payload(receipt, label="receipt")
+        document_payload = self._payload(document, label="document")
+        with self._connect() as con:
+            stored = con.execute(
+                "SELECT payload_json FROM purchase_receipts WHERE receipt_id=?",
+                (receipt_key,),
+            ).fetchone()
+            if stored is not None and stored[0] != receipt_payload:
+                raise ValueError("receipt_id conflicts with immutable receipt evidence")
+            con.execute(
+                "INSERT OR IGNORE INTO purchase_receipts(receipt_id, payload_json) VALUES (?, ?)",
+                (receipt_key, receipt_payload),
+            )
+            con.execute(
+                "INSERT INTO hosted_documents(document_id, payload_json) VALUES (?, ?) "
+                "ON CONFLICT(document_id) DO UPDATE SET payload_json=excluded.payload_json",
+                (document_key, document_payload),
+            )
+            con.execute(
+                "INSERT OR IGNORE INTO host_memberships(owner_id, document_id) VALUES (?, ?)",
+                (owner, document_key),
+            )
+
 
 def backup_sqlite_host_store(source: Path, destination: Path) -> Path:
     """Create and validate an online-consistent marketplace store snapshot."""
@@ -485,9 +573,7 @@ def backup_sqlite_host_store(source: Path, destination: Path) -> Path:
         Path(f"{destination}-journal"),
     )
     if any(path.exists() for path in destination_bundle):
-        raise FileExistsError(
-            f"backup destination or SQLite sidecar already exists: {destination}"
-        )
+        raise FileExistsError(f"backup destination or SQLite sidecar already exists: {destination}")
     if not destination.parent.is_dir():
         raise FileNotFoundError(
             f"backup destination directory does not exist: {destination.parent}"

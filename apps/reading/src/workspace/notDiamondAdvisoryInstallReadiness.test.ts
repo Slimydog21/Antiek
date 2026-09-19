@@ -13,10 +13,11 @@ describe("notDiamondAdvisoryInstallReadiness (aut)", () => {
     expect(r.install_title).toMatch(/No advisory suggestion/i);
   });
 
-  it("is install_ready with suggestion and no dispatch authority", () => {
+  it("is install_ready only with suggestion and explicit installability", () => {
     const r = notDiamondAdvisoryInstallReadiness({
       suggested_model_id: "stub-strong",
       suggested_provider_id: "offline-stub",
+      installable: true,
     });
     expect(r.install_ready).toBe(true);
     expect(r.block_reason).toBe("ok");
@@ -50,18 +51,19 @@ describe("notDiamondAdvisoryInstallReadiness (aut)", () => {
     expect(r.install_title).toMatch(/not installable/i);
   });
 
-  it("trims whitespace and treats null installable as installable", () => {
+  it("trims whitespace and fails closed when installable is null", () => {
     const r = notDiamondAdvisoryInstallReadiness({
       suggested_model_id: "  glm-5.2  ",
       suggested_provider_id: "  zai  ",
       installable: null,
       notdiamond_is_dispatch_authority: false,
     });
-    expect(r.install_ready).toBe(true);
     expect(r.suggested_model_id).toBe("glm-5.2");
     expect(r.suggested_provider_id).toBe("zai");
-    expect(r.installable).toBe(true);
-    expect(r.summary).toMatch(/zai\/glm-5\.2/);
+    expect(r.installable).toBe(false);
+    expect(r.install_ready).toBe(false);
+    expect(r.block_reason).toBe("not_installable");
+    expect(r.summary).toMatch(/not installable/i);
   });
 
   it("dispatch authority refuses even when installable false (priority)", () => {

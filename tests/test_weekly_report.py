@@ -472,6 +472,7 @@ def test_cli_emits_json_to_file(events_dir, log_dir, tmp_path):
     output = tmp_path / "report.json"
     rc = main([
         "--since", "2026-01-01", "--until", "2026-12-31",
+        "--events-dir", events_dir,
         "--json", "--output", str(output),
     ])
     assert rc == 0

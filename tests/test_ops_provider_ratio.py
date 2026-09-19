@@ -7,7 +7,6 @@ Hermes-primary failures that the OpenRouter fallback is hiding.
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 import tempfile
@@ -43,34 +42,46 @@ def _write_dispatch_event(
     events_dir: str, inv_id: str, *,
     provider: str, finish: str = "stop",
     minutes_ago: int = 1,
+    sealed: bool = False,
 ) -> None:
-    """Append one dispatch.call event to <inv_id>.jsonl in events_dir."""
-    ts = (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat()
-    ev = {
-        "event_id": f"evt-{provider}-{finish}-{minutes_ago}",
-        "investigation_id": inv_id,
-        "action_type": "dispatch.call",
-        "created_at": ts,
-        "payload": {
-            "action_type": "dispatch.call",
-            "provider": provider,
-            "model": "any",
-            "tier": "flash",
-            "target_role": "decomposer",
-            "input_tokens": 100,
-            "output_tokens": 50,
-            "cost_usd": 0.0,
-            "latency_ms": 200,
-            "verification_required": False,
-            "fallback_chain_index": 0,
-            "prompt_hash": "sha256:test",
-            "finish_reason": finish,
-            "context_pack_event_id": None,
-        },
-    }
-    path = os.path.join(events_dir, f"{inv_id}.jsonl")
-    with open(path, "a") as fp:
-        fp.write(json.dumps(ev) + "\n")
+    """Append one authorized dispatch.call event."""
+    from pathlib import Path
+
+    from substrate.event_log import (
+        append_event_once_authorized,
+        prepare_typed_event,
+        seal_investigation_authorized,
+    )
+    from substrate.investigation_streams import resolve_writable_investigation_stream
+    from substrate.investigation_tenancy import InvestigationAuthority
+    from substrate.schemas import DispatchCallPayload
+
+    ts = datetime.now(UTC) - timedelta(minutes=minutes_ago)
+    authority = InvestigationAuthority("__operator__", inv_id, Path(events_dir))
+    resolve_writable_investigation_stream(authority)
+    event = prepare_typed_event(
+        inv_id,
+        DispatchCallPayload(
+            provider=provider,
+            model="any",
+            tier="flash",
+            target_role="decomposer",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.0,
+            latency_ms=200,
+            verification_required=False,
+            fallback_chain_index=0,
+            prompt_hash="sha256:test",
+            finish_reason=finish,
+            context_pack_event_id=None,
+        ),
+        emitted_at=ts,
+        role="operator",
+    )
+    append_event_once_authorized(authority, event)
+    if sealed:
+        seal_investigation_authorized(authority)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -118,6 +129,26 @@ def test_window_excludes_old_dispatches(temp_substrate):
     assert body["total_dispatches"] == 1
     body = client.get("/ops/provider-ratio?window_minutes=120").json()
     assert body["total_dispatches"] == 2
+
+
+def test_provider_ratio_reads_sealed_composite_parquet(temp_substrate):
+    _write_dispatch_event(
+        temp_substrate["events_dir"],
+        "inv-sealed",
+        provider="hermes",
+        finish="error",
+        sealed=True,
+    )
+    body = _client(temp_substrate).get("/ops/provider-ratio").json()
+    assert body["total_dispatches"] == 1
+    assert body["by_provider"] == [
+        {
+            "provider": "hermes",
+            "success_count": 0,
+            "error_count": 1,
+            "total": 1,
+        }
+    ]
 
 
 def test_error_dispatches_counted_separately(temp_substrate):

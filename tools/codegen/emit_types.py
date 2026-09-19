@@ -107,6 +107,7 @@ GENERATED_HEADER = """\
 # Nested helper models (referenced by payloads). Emit first.
 NESTED_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ContextLayer,
+    schema_module.ReusedUnitSourceQualification,
     schema_module.Claim,
     schema_module.RecursiveContextUnitReceipt,
     schema_module.RecursiveContextAssemblyReceipt,
@@ -138,11 +139,31 @@ NESTED_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.MetaReadingCitation,
     # Foundation v2 SPR-02 — sub-model for GroundednessScoredPayload.per_claim.
     schema_module.ClaimGroundednessVerdict,
+    schema_module.WorkspaceResumeEntry,
+    schema_module.ResearchQuotedRoute,
+    schema_module.GatherSourceReportReceipt,
 )
 
 # Payload models, in the same order as the TypedPayload union.
 PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.DispatchCallPayload,
+    schema_module.ResearchCallReservedPayload,
+    schema_module.ResearchCallSettledPayload,
+    schema_module.ResearchCallReleasedPayload,
+    schema_module.ResearchDelegationReservedPayload,
+    schema_module.ResearchDelegationIssuedPayload,
+    schema_module.ResearchDelegationAcceptedPayload,
+    schema_module.ResearchDelegationReleasedPayload,
+    schema_module.ResearchDelegationSettledPayload,
+    schema_module.InvestigationExecutionClaimedPayload,
+    schema_module.InvestigationExecutionRenewedPayload,
+    schema_module.InvestigationExecutionTakenOverPayload,
+    schema_module.InvestigationExecutionCompletedPayload,
+    schema_module.InvestigationProjectionRequestedPayload,
+    schema_module.InvestigationProjectionEffectRecordedPayload,
+    schema_module.InvestigationProjectionFailedPayload,
+    schema_module.InvestigationProjectionCompletedPayload,
+    schema_module.GatherReportRecordedPayload,
     # antiek-yegge-execute SPR-01 — worker registration (future registry, SPR-04).
     schema_module.WorkerIdentityPayload,
     schema_module.ContextPackAssembledPayload,
@@ -280,6 +301,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ReadMetaReadingGeneratedPayload,
     # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.
     schema_module.DocumentFiledIntoInvestigationPayload,
+    schema_module.DocumentCitationPositionSetPayload,
+    schema_module.WorkspaceResumeCheckpointSetPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.
@@ -446,9 +469,7 @@ def _python_to_ts_inner(tp: Any, *, field_name: str, model_name: str) -> str:
 
     if origin is dict:
         if len(args) != 2:
-            raise UnsupportedType(
-                f"{model_name}.{field_name}: dict without key+value args: {tp!r}"
-            )
+            raise UnsupportedType(f"{model_name}.{field_name}: dict without key+value args: {tp!r}")
         k_ts = _python_to_ts(args[0], field_name=field_name, model_name=model_name)
         v_ts = _python_to_ts(args[1], field_name=field_name, model_name=model_name)
         # ``Record<K, V>`` requires K to be string/number/symbol-assignable.
@@ -461,13 +482,13 @@ def _python_to_ts_inner(tp: Any, *, field_name: str, model_name: str) -> str:
         # inlined Union of 26 names. Detect by comparing the arg-name set
         # to the known PAYLOAD_MODELS set.
         non_none_args = [a for a in args if a is not type(None)]
-        arg_names = {a.__name__ for a in non_none_args
-                     if isinstance(a, type) and issubclass(a, BaseModel)}
+        arg_names = {
+            a.__name__ for a in non_none_args if isinstance(a, type) and issubclass(a, BaseModel)
+        }
         if arg_names == _payload_model_names():
             return "TypedPayload"
         return " | ".join(
-            _python_to_ts(a, field_name=field_name, model_name=model_name)
-            for a in non_none_args
+            _python_to_ts(a, field_name=field_name, model_name=model_name) for a in non_none_args
         )
 
     raise UnsupportedType(
@@ -495,6 +516,22 @@ def _emit_interface(model: type[BaseModel], lines: list[str]) -> None:
         for d_line in docstring.splitlines():
             lines.append(f" * {d_line.rstrip()}")
         lines.append(" */")
+    if name == "WorkspaceResumeEntry":
+        lines.extend(
+            [
+                'export type WorkspaceResumeEntry =',
+                '  | { kind: "stats" }',
+                '  | { kind: "library" }',
+                '  | { kind: "subaction"; workflow: "research" | "read" | "write" | "speak" }',
+                '  | { kind: "research_artifact"; investigation_id: string }',
+                '  | { kind: "hosted_html_document"; resolver: "hosted_document" | "engagement_document"; document_id: string }',
+                '  | { kind: "deep_research_session"; session_id: string }',
+                '  | { kind: "collective_unit"; manifest_id: string }',
+                '  | { kind: "ancestry_interrogation"; investigation_id: string; manifest_id: string; receipt_id: string }',
+                '  | { kind: "collective_council"; plan_id: string };',
+            ]
+        )
+        return
     lines.append(f"export interface {name} {{")
     for field_name, field in model.model_fields.items():
         annotation = field.annotation
@@ -601,13 +638,18 @@ def write(output_path: Path | None = None) -> Path:
 
 def main() -> int:
     import argparse
+
     p = argparse.ArgumentParser(description="Emit TypeScript types from Pydantic schemas")
     p.add_argument(
-        "--output", "-o", type=Path, default=None,
+        "--output",
+        "-o",
+        type=Path,
+        default=None,
         help=f"Output path (default: {DEFAULT_OUTPUT})",
     )
     p.add_argument(
-        "--stdout", action="store_true",
+        "--stdout",
+        action="store_true",
         help="Print to stdout instead of writing.",
     )
     args = p.parse_args()

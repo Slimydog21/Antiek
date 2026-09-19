@@ -95,7 +95,22 @@ def _seed_synthesis(
     backed by a document→chunk so its provenance resolves. Returns the
     node_ids in insertion order. ``nodes=()`` yields a synthesis that pinned
     nothing (the evidence-refusal case)."""
+    from substrate.graph.tenancy import (
+        GraphTenancyState,
+        initialize_graph_authority,
+        transition_graph_tenancy_state,
+    )
+    from substrate.investigation_streams import initialize_composite_stream
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    authority = InvestigationAuthority(
+        "__operator__",
+        investigation_id,
+        root=Path(os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]),
+    )
+    initialize_composite_stream(authority)
     with connect_write(default_db_path(), purpose="test/seed-synthesis") as con:
+        initialize_graph_authority(con, authority)
         node_ids: list[str] = []
         for index, (label, ntype) in enumerate(nodes):
             doc = insert_document(
@@ -114,11 +129,13 @@ def _seed_synthesis(
         con.execute(
             "INSERT INTO syntheses "
             "(synthesis_id, investigation_id, target_question, "
-            " synthesis_timestamp, status, implicit_recommendation) "
-            "VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?)",
+            " synthesis_timestamp, status, implicit_recommendation, "
+            "account_digest, investigation_digest) "
+            "VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)",
             [
                 synthesis_id, investigation_id,
                 "What does the evidence support?", status, recommendation,
+                authority.account_digest, authority.investigation_digest,
             ],
         )
         for nid in node_ids:
@@ -126,6 +143,21 @@ def _seed_synthesis(
                 "INSERT INTO synthesis_substrate_manifest "
                 "(synthesis_id, entity_kind, entity_id) VALUES (?, 'node', ?)",
                 [synthesis_id, nid],
+            )
+        state = con.execute(
+            "SELECT state FROM graph_tenancy_manifest "
+            "WHERE singleton_key = 'graph-tenancy-v1'"
+        ).fetchone()[0]
+        if state == GraphTenancyState.UNSCOPED.value:
+            transition_graph_tenancy_state(
+                con,
+                expected=GraphTenancyState.UNSCOPED,
+                desired=GraphTenancyState.COPYING,
+            )
+            transition_graph_tenancy_state(
+                con,
+                expected=GraphTenancyState.COPYING,
+                desired=GraphTenancyState.SHADOW,
             )
     return node_ids
 

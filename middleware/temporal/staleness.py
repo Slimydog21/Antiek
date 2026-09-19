@@ -28,6 +28,7 @@ from typing import Any, Literal
 try:
     from substrate.constants import RELATION_TO_CLAIM_CLASS, STALENESS_TTL_DAYS
     from substrate.event_log import emit_typed
+    from substrate.legal_gate.read import graph_edge_staleness_rows_compatibility
     from substrate.schemas import (
         StalenessFlaggedPayload,
         StalenessResolution,
@@ -38,6 +39,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from substrate.constants import RELATION_TO_CLAIM_CLASS, STALENESS_TTL_DAYS
     from substrate.event_log import emit_typed
+    from substrate.legal_gate.read import graph_edge_staleness_rows_compatibility
     from substrate.schemas import (
         StalenessFlaggedPayload,
         StalenessResolution,
@@ -196,19 +198,13 @@ def scan_graph_edge_staleness(
     now = as_of or datetime.now(UTC)
     now = now.replace(tzinfo=UTC) if now.tzinfo is None else now.astimezone(UTC)
 
-    sql = """
-        SELECT e.edge_id, e.relation, e.valid_from, e.extracted_at, d.published_at
-        FROM edges e
-        LEFT JOIN documents d ON d.document_id = e.source_document_id
-        WHERE e.valid_until IS NULL
-        ORDER BY e.edge_id ASC
-    """
-    params: list[Any] = []
-    if limit is not None:
-        sql += " LIMIT ?"
-        params.append(limit)
-
-    rows = con.execute(sql, params).fetchall()
+    rows = graph_edge_staleness_rows_compatibility(
+        con,
+        authority=None,
+        enforce=False,
+        investigation_id=investigation_id,
+        limit=limit,
+    )
     flags: list[StalenessFlag] = []
     unclassified = 0
     for edge_id, relation, valid_from, extracted_at, published_at in rows:

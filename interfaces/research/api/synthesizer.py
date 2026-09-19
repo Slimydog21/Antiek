@@ -62,7 +62,7 @@ from roles.synthesizer import (  # noqa: E402
     render_full_prompt,
 )
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
-from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.event_log import emit_typed, trajectory, trajectory_contextual  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
     Claim,
@@ -91,6 +91,7 @@ def _result_to_thesis_components(result: ThesisResult) -> list[ThesisComponent]:
             confidence=c.confidence,  # type: ignore[arg-type]
             supporting_chunk_ids=list(c.supporting_chunk_ids),
             supporting_path_indices=list(c.supporting_path_indices),
+            supporting_inherited_unit_ids=list(c.supporting_inherited_unit_ids),
             confidence_basis=c.confidence_basis,
             effective_source_tier=c.effective_source_tier,
             hedging_required=c.hedging_required,
@@ -275,6 +276,11 @@ def _canonical_refs_for_request(req: SynthesizeRequestedPayload) -> tuple[
         req.substrate_block,
         {"edge_id", "edge_ids", "path_edge_ids"},
     )
+    unavailable_support_chunks = set(req.inherited_support_by_chunk) - set(chunk_ids)
+    if unavailable_support_chunks:
+        raise SynthesizerValidationError(
+            "synthesis request inherited support map references unavailable chunks"
+        )
     return chunk_ids, node_ids, edge_ids
 
 
@@ -409,6 +415,7 @@ def _dispatch_and_parse(
     canonical_chunk_ids: tuple[str, ...] = (),
     canonical_node_ids: tuple[str, ...] = (),
     canonical_edge_ids: tuple[str, ...] = (),
+    inherited_support_by_chunk: dict[str, list[str]] | None = None,
 ) -> tuple[ThesisResult | None, str]:
     """Dispatch + parse with one self-repair retry on parse failure.
 
@@ -435,6 +442,7 @@ def _dispatch_and_parse(
             canonical_chunk_ids=canonical_chunk_ids,
             canonical_node_ids=canonical_node_ids,
             canonical_edge_ids=canonical_edge_ids,
+            inherited_support_by_chunk=inherited_support_by_chunk,
         ), policy_id
     except SynthesizerValidationError as exc:
         first_error = exc
@@ -474,6 +482,7 @@ def _dispatch_and_parse(
             canonical_chunk_ids=canonical_chunk_ids,
             canonical_node_ids=canonical_node_ids,
             canonical_edge_ids=canonical_edge_ids,
+            inherited_support_by_chunk=inherited_support_by_chunk,
         ), retry_policy
     except SynthesizerValidationError as exc2:
         print(
@@ -509,6 +518,11 @@ def make_synthesizer_handler(
             evidence_block=req.evidence_block,
             parameters_block=req.parameters_block,
             substrate_block=req.substrate_block,
+            inherited_support_block=json.dumps(
+                req.inherited_support_by_chunk,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
         )
         first_result, policy_id = _dispatch_and_parse(
             first_prompt,
@@ -516,6 +530,7 @@ def make_synthesizer_handler(
             canonical_chunk_ids=canonical_chunk_ids,
             canonical_node_ids=canonical_node_ids,
             canonical_edge_ids=canonical_edge_ids,
+            inherited_support_by_chunk=req.inherited_support_by_chunk,
         )
         if first_result is None:
             await _emit_delivered(
@@ -543,6 +558,11 @@ def make_synthesizer_handler(
                 evidence_block=req.evidence_block,
                 parameters_block=req.parameters_block,
                 substrate_block=req.substrate_block,
+                inherited_support_block=json.dumps(
+                    req.inherited_support_by_chunk,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
                 extra_user_prefix=prefix,
             )
             revised_result, _revised_policy = _dispatch_and_parse(
@@ -551,6 +571,7 @@ def make_synthesizer_handler(
                 canonical_chunk_ids=canonical_chunk_ids,
                 canonical_node_ids=canonical_node_ids,
                 canonical_edge_ids=canonical_edge_ids,
+                inherited_support_by_chunk=req.inherited_support_by_chunk,
             )
             if revised_result is None:
                 # Loop receives the previous claims unchanged. The
@@ -621,7 +642,7 @@ async def _broadcast_emitted(
 ) -> None:
     if emitted_event_id is None:
         return
-    for row in reversed(trajectory(event.investigation_id)):
+    for row in reversed(trajectory_contextual(event.investigation_id)):
         if row.get("event_id") == emitted_event_id:
             try:
                 emitted = Event.model_validate(row)

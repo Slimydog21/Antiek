@@ -74,6 +74,12 @@ def open_from_highlight_with_references(
         research_tier=normalize_research_tier(
             getattr(spawn, "research_tier", None),
         ),
+        citation_provenance=(
+            dict(spawn.citation_provenance) if spawn.citation_provenance else None
+        ),
+        claim_challenge=(
+            dict(spawn.claim_challenge) if spawn.claim_challenge else None
+        ),
     )
     session_store.put_session(_to_row(session))
     return session

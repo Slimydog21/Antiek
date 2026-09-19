@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     import duckdb
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from substrate.ad_inventory.frame_attention import FRAME_TELEMETRY_SCHEMA_VERSION
@@ -122,7 +122,11 @@ class AdFillResponse(BaseModel):
 
 
 def _resolve_asset_gate(
-    con: duckdb.DuckDBPyConnection, asset_ids: set[str]
+    con: duckdb.DuckDBPyConnection,
+    asset_ids: set[str],
+    *,
+    authorities: dict | None = None,
+    enforce: bool = False,
 ) -> dict[str, tuple[str | None, str | None]]:
     """Resolve each asset's AUTHORITATIVE (content_class, ip_holder_id) from the
     documents gate columns — server-side, never from the client hint. An asset
@@ -130,15 +134,14 @@ def _resolve_asset_gate(
     treated as ineligible by ``monetization_eligible`` (deny-by-default), so an
     unknown asset earns nothing rather than leaking earnings. Reads only the
     two gate columns — never ``raw_text`` (§9.0)."""
-    if not asset_ids:
-        return {}
-    placeholders = ",".join("?" for _ in asset_ids)
-    rows = con.execute(
-        f"SELECT document_id, content_class, ip_holder_id FROM documents "
-        f"WHERE document_id IN ({placeholders})",
-        sorted(asset_ids),
-    ).fetchall()
-    return {r[0]: (r[1], r[2]) for r in rows}
+    from substrate.legal_gate.read import resolve_asset_gates_compatibility
+
+    return resolve_asset_gates_compatibility(
+        con,
+        asset_ids,
+        authorities=authorities or {},
+        enforce=enforce,
+    )
 
 
 def resolve_window_value_cents(window_id: str) -> int:
@@ -173,7 +176,9 @@ def register_ad_routes(app: FastAPI) -> None:
         status_code=202,
         tags=["ad"],
     )
-    async def frame_telemetry(batch_in: WindowFrameBatchIn) -> FrameTelemetryResponse:
+    async def frame_telemetry(
+        batch_in: WindowFrameBatchIn, request: Request
+    ) -> FrameTelemetryResponse:
         """Accrue one window's per-second frame-attention batch (Read SPR-09).
 
         Version-gates the wire shape, deserializes into the frozen SPR-05
@@ -218,7 +223,34 @@ def register_ad_routes(app: FastAPI) -> None:
 
         con_r = connect_read(db)
         try:
-            gate = _resolve_asset_gate(con_r, asset_ids)
+            import os
+
+            strict = os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1"
+            authorities = {}
+            if strict:
+                from interfaces.research.api.investigation_access import (
+                    InvestigationAccessDenied,
+                    authority_from_request,
+                    require_investigation_owner,
+                )
+                from substrate.legal_gate.read import document_investigation_hint
+
+                for asset_id in asset_ids:
+                    investigation_id = document_investigation_hint(con_r, asset_id)
+                    if not investigation_id:
+                        continue
+                    try:
+                        access = authority_from_request(request, investigation_id)
+                        require_investigation_owner(access)
+                    except InvestigationAccessDenied:
+                        continue
+                    authorities[asset_id] = access.authority
+            gate = _resolve_asset_gate(
+                con_r,
+                asset_ids,
+                authorities=authorities,
+                enforce=strict,
+            )
         finally:
             con_r.close()
         asset_to_ip_holder: dict[str, str | None] = {

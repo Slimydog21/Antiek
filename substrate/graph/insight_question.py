@@ -46,6 +46,8 @@ owns the always-on trigger; this sprint only builds the path.
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import os
 import sys
 from collections.abc import Sequence
@@ -57,7 +59,12 @@ try:
         validate_insight_question_edge,
     )
     from ...runtime.db_lock import LockedConnection, connect_write
-    from .ops import content_addressed_id, insert_edge, insert_node
+    from .ops import (
+        content_addressed_id,
+        insert_edge,
+        insert_edge_authorized,
+        insert_node,
+    )
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
@@ -69,6 +76,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from substrate.graph.ops import (  # type: ignore[no-redef]
         content_addressed_id,
         insert_edge,
+        insert_edge_authorized,
         insert_node,
     )
 
@@ -142,6 +150,7 @@ def _add_provenance_edges(
     extraction_confidence: float,
     source_document_id: str | None,
     chunk_id: str | None,
+    authority: Any | None = None,
 ) -> tuple[list, list]:
     """Create ``relation`` edges from ``source_node_id`` to each target
     node, validating against the controlled vocabulary. Returns
@@ -156,15 +165,21 @@ def _add_provenance_edges(
             continue
         # Loud failure if the caller wires an out-of-vocabulary edge.
         validate_insight_question_edge(relation, _node_type_of_source(relation), ttype)
-        eid = insert_edge(
+        edge_writer = insert_edge_authorized if authority is not None else insert_edge
+        identity_args = (
+            {"authority": authority}
+            if authority is not None
+            else {"investigation_id": investigation_id}
+        )
+        eid = edge_writer(
             con,
+            **identity_args,
             source_node_id=source_node_id,
             target_node_id=target_id,
             relation=relation,
             source_tier=source_tier,
             extraction_confidence=extraction_confidence,
             graph_scope=_PROMOTION_GRAPH_SCOPE,
-            investigation_id=investigation_id,
             source_document_id=source_document_id,
             chunk_id=chunk_id,
             on_conflict="ignore",
@@ -197,10 +212,8 @@ def _with_connection(con: LockedConnection | None, purpose: str, fn):
             owned.execute("COMMIT")
             return result
         except Exception:
-            try:
+            with contextlib.suppress(Exception):
                 owned.execute("ROLLBACK")
-            except Exception:  # pragma: no cover
-                pass
             raise
     finally:
         owned.close()
@@ -222,6 +235,7 @@ def promote_insight(
     con: LockedConnection | None = None,
     dedup: bool = False,
     dedup_rate: Any = None,
+    _graph_authority: Any | None = None,
 ) -> str:
     """Promote an insight to a first-class ``insight`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
@@ -264,7 +278,7 @@ def promote_insight(
             {
                 "promoted_kind": "insight",
                 "confidence": confidence,
-                "canonical_text": canonical_text(text),
+                "canonical_text": text,
                 # AFF SPR-04: stamp the deposit's investigation_id into node
                 # metadata. The ``nodes`` table has no investigation_id column
                 # (it rides the GRAPH_NODE_INSERTED event envelope), but a
@@ -335,6 +349,7 @@ def promote_insight(
             extraction_confidence=edge_conf,
             source_document_id=source_document_id,
             chunk_id=chunk_id,
+            authority=_graph_authority,
         )
         if dangling:
             _record_dangling(c, nid, "supported_by", dangling)
@@ -359,6 +374,7 @@ def promote_question(
     con: LockedConnection | None = None,
     dedup: bool = False,
     dedup_rate: Any = None,
+    _graph_authority: Any | None = None,
 ) -> str:
     """Promote a question to a first-class ``question`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
@@ -378,7 +394,7 @@ def promote_question(
         node_meta.update(
             {
                 "promoted_kind": "question",
-                "canonical_text": canonical_text(text),
+                "canonical_text": text,
                 # AFF SPR-04: stamp investigation_id into node metadata. A
                 # question node grounds via asks_about/resolved_by (never
                 # supported_by), so ``knowledge_unit_of`` cannot recover the
@@ -435,12 +451,14 @@ def promote_question(
             investigation_id=investigation_id, source_tier=source_tier,
             extraction_confidence=extraction_confidence,
             source_document_id=source_document_id, chunk_id=chunk_id,
+            authority=_graph_authority,
         )
         _w2, d2 = _add_provenance_edges(
             c, source_node_id=nid, relation="resolved_by", targets=resolved_by,
             investigation_id=investigation_id, source_tier=source_tier,
             extraction_confidence=extraction_confidence,
             source_document_id=source_document_id, chunk_id=chunk_id,
+            authority=_graph_authority,
         )
         if d1:
             _record_dangling(c, nid, "asks_about", d1)
@@ -449,6 +467,138 @@ def promote_question(
         return nid
 
     return _with_connection(con, "promote_question", _do)
+
+
+def _authorized_membership_digest(
+    authority, *, node_id: str, role: str, metadata: dict[str, Any]
+) -> str:
+    import json
+
+    from .tenancy import graph_key
+
+    return hashlib.sha256(
+        b"antiek-w4-membership-v1\0"
+        + bytes.fromhex(graph_key(authority))
+        + b"\0"
+        + role.encode()
+        + b"\0"
+        + node_id.encode()
+        + b"\0"
+        + json.dumps(
+            metadata, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode()
+    ).hexdigest()
+
+
+def promote_insight_authorized(
+    authority,
+    *,
+    text: str,
+    con: LockedConnection | None = None,
+    **kwargs,
+) -> str:
+    """Promote an insight and its private visibility membership atomically."""
+    from substrate.event_log import investigation_authority_context
+    from substrate.investigation_streams import resolve_investigation_stream
+
+    from .tenancy import add_node_membership, initialize_graph_authority
+
+    if "investigation_id" in kwargs:
+        raise TypeError("authorized promotion derives investigation_id from authority")
+    if "_graph_authority" in kwargs:
+        raise TypeError("authorized promotion owns graph authority")
+    resolve_investigation_stream(authority)
+
+    def _do(c: LockedConnection) -> str:
+        initialize_graph_authority(c, authority)
+        membership_metadata = dict(kwargs.get("metadata") or {})
+        membership_metadata.update(
+            {
+                "canonical_text": text,
+                "confidence": kwargs.get("confidence", "unknown"),
+                "source_document_id": kwargs.get("source_document_id"),
+                "refinement_count": 0,
+            }
+        )
+        with investigation_authority_context(authority):
+            node_id = promote_insight(
+                text=text,
+                investigation_id=authority.investigation_id,
+                con=c,
+                _graph_authority=authority,
+                **kwargs,
+            )
+        add_node_membership(
+            c,
+            authority,
+            node_id=node_id,
+            role="insight",
+            source_row_digest=_authorized_membership_digest(
+                authority,
+                node_id=node_id,
+                role="insight",
+                metadata=membership_metadata,
+            ),
+            metadata=membership_metadata,
+        )
+        return node_id
+
+    return _with_connection(con, "promote_insight_authorized", _do)
+
+
+def promote_question_authorized(
+    authority,
+    *,
+    text: str,
+    con: LockedConnection | None = None,
+    **kwargs,
+) -> str:
+    """Promote a question and its private visibility membership atomically."""
+    from substrate.event_log import investigation_authority_context
+    from substrate.investigation_streams import resolve_investigation_stream
+
+    from .tenancy import add_node_membership, initialize_graph_authority
+
+    if "investigation_id" in kwargs:
+        raise TypeError("authorized promotion derives investigation_id from authority")
+    if "_graph_authority" in kwargs:
+        raise TypeError("authorized promotion owns graph authority")
+    resolve_investigation_stream(authority)
+
+    def _do(c: LockedConnection) -> str:
+        initialize_graph_authority(c, authority)
+        membership_metadata = dict(kwargs.get("metadata") or {})
+        membership_metadata.update(
+            {
+                "canonical_text": text,
+                "source_document_id": kwargs.get("source_document_id"),
+                "refinement_count": 0,
+            }
+        )
+        with investigation_authority_context(authority):
+            node_id = promote_question(
+                text=text,
+                investigation_id=authority.investigation_id,
+                con=c,
+                _graph_authority=authority,
+                **kwargs,
+            )
+        add_node_membership(
+            c,
+            authority,
+            node_id=node_id,
+            role="question",
+            source_row_digest=_authorized_membership_digest(
+                authority,
+                node_id=node_id,
+                role="question",
+                metadata=membership_metadata,
+            ),
+            metadata=membership_metadata,
+        )
+        return node_id
+
+    return _with_connection(con, "promote_question_authorized", _do)
 
 
 # ---------------------------------------------------------------------------
@@ -889,6 +1039,7 @@ def knowledge_unit_of(
     content_class: str | None = None,
     taken_down: bool = False,
     score_groundedness: bool = False,
+    authority: Any | None = None,
 ):
     """Project a deposited insight/question node (already written by
     ``promote_insight``/``promote_question``) onto a ``KnowledgeUnitContract``.
@@ -970,9 +1121,21 @@ def knowledge_unit_of(
             "Ensure promote_insight/promote_question stamped investigation_id."
         )
 
+    from substrate.legal_gate.read import knowledge_unit_source_compatibility
+
+    strict = os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1"
+    resolved_class, evidence_text = knowledge_unit_source_compatibility(
+        con,
+        str(source_document_id),
+        str(chunk_id),
+        authority=authority,
+        enforce=strict,
+    )
     groundedness_score: float | None = None
     if score_groundedness:
-        groundedness_score = _score_unit_groundedness(con, text, chunk_id)
+        groundedness_score = _score_unit_groundedness(
+            text, chunk_id, evidence_text=evidence_text
+        )
 
     # Resolve the content-rights class from the source document when the caller
     # did not supply one. The funnel deposits notes with no supported_by claim
@@ -984,13 +1147,8 @@ def knowledge_unit_of(
     # read-only SELECT on this connection resolves it (§16-safe). content_class
     # stays None for documents with no/NULL content_class (unknown rights
     # remain deny-by-default — the correct posture).
-    if content_class is None and source_document_id:
-        doc_cc_row = con.execute(
-            "SELECT content_class FROM documents WHERE document_id = ? LIMIT 1",
-            [source_document_id],
-        ).fetchone()
-        if doc_cc_row is not None and doc_cc_row[0]:
-            content_class = str(doc_cc_row[0])
+    if content_class is None and resolved_class:
+        content_class = resolved_class
 
 
     return KnowledgeUnitContract(
@@ -1009,7 +1167,10 @@ def knowledge_unit_of(
 
 
 def _score_unit_groundedness(
-    con: LockedConnection, unit_text: str, chunk_id: str | None
+    unit_text: str,
+    chunk_id: str | None,
+    *,
+    evidence_text: str | None,
 ) -> float:
     """Score one knowledge unit's text against the text of the chunk it is
     grounded on, using the shipped #27 lexical entailment scorer.
@@ -1022,13 +1183,7 @@ def _score_unit_groundedness(
     0.0 / not-supported — the no-evidence floor, preserved, not worked around."""
     from substrate.eval.groundedness import score_claim
 
-    chunk_texts: list[str] = []
-    if chunk_id:
-        row = con.execute(
-            "SELECT text FROM chunks WHERE chunk_id = ? LIMIT 1", [chunk_id]
-        ).fetchone()
-        if row and row[0] is not None:
-            chunk_texts.append(str(row[0]))
+    chunk_texts = [evidence_text] if evidence_text is not None else []
     verdict = score_claim(
         unit_text, chunk_texts, cited_chunk_ids=[chunk_id] if chunk_id else []
     )

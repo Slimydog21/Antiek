@@ -11,12 +11,13 @@ describe("twinSeedLiveGateReadiness (avf)", () => {
     expect(r.summary).toMatch(/deferred|offline-honest/i);
   });
 
-  it("requires all four gates for live_ready", () => {
+  it("requires all five gates for live_ready", () => {
     const almost = twinSeedLiveGateReadiness({
       live_env: true,
       use_dispatch: true,
       injector_installed: true,
       offline_honest: true,
+      cost_projection_ready: true,
     });
     expect(almost.live_ready).toBe(false);
 
@@ -25,6 +26,7 @@ describe("twinSeedLiveGateReadiness (avf)", () => {
       use_dispatch: true,
       injector_installed: true,
       offline_honest: false,
+      cost_projection_ready: true,
     });
     expect(ready.live_ready).toBe(true);
     expect(ready.offline_honest).toBe(false);
@@ -37,8 +39,21 @@ describe("twinSeedLiveGateReadiness (avf)", () => {
       use_dispatch: true,
       injector_installed: false,
       offline_honest: false,
+      cost_projection_ready: true,
     });
     expect(r.live_ready).toBe(false);
     expect(r.summary).toMatch(/injector/i);
+  });
+
+  it("fails closed when server cost projection is unavailable", () => {
+    const r = twinSeedLiveGateReadiness({
+      live_env: true,
+      use_dispatch: true,
+      injector_installed: true,
+      offline_honest: false,
+      cost_projection_ready: false,
+    });
+    expect(r.live_ready).toBe(false);
+    expect(r.summary).toMatch(/cost_projection/);
   });
 });

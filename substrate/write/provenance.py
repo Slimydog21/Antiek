@@ -31,6 +31,7 @@ their documents.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -90,6 +91,15 @@ def resolve_provenance(
             )
         block = resolved
 
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+        return ProvenanceChain(
+            outline_block_id=block.outline_block_id,
+            status="dangling",
+            provenance_kind=block.provenance_kind,
+            node_id=block.node_id,
+            detail="source authority is required for strict provenance reads",
+        )
+
     # User-originated: honest origin, no fabricated document.
     if block.is_user_originated:
         origin = {
@@ -144,12 +154,9 @@ def resolve_provenance(
     document_id: str | None = None
     document_title: str | None = None
     if chunk_ids:
-        doc_row = con.execute(
-            "SELECT c.document_id, d.title FROM chunks c "
-            "LEFT JOIN documents d ON c.document_id = d.document_id "
-            "WHERE c.chunk_id = ? LIMIT 1",
-            [chunk_ids[0]],
-        ).fetchone()
+        from substrate.legal_gate.read import legacy_chunk_document_projection
+
+        doc_row = legacy_chunk_document_projection(con, chunk_ids[0])
         if doc_row is not None:
             document_id, document_title = doc_row[0], doc_row[1]
 

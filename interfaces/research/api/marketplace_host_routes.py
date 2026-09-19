@@ -320,6 +320,7 @@ def get_catalog(
 
 def _maybe_seed_twins(
     *,
+    owner_user_id: str,
     document_id: str,
     title: str,
     body_preview: str = "",
@@ -335,9 +336,9 @@ def _maybe_seed_twins(
     try:
         from substrate.engagement_spine import seed_twins_for_asset
 
-        from .engagement_routes import get_engagement_store
+        from .engagement_routes import get_account_engagement_store
 
-        eng = get_engagement_store(create_if_missing=True)
+        eng = get_account_engagement_store(owner_user_id, create_if_missing=True)
         return seed_twins_for_asset(
             document_id,
             store=eng,
@@ -424,6 +425,7 @@ def post_host(body: HostBody, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e)) from e
     twins = (
         _maybe_seed_twins(
+            owner_user_id=owner_id,
             document_id=str(out["document_id"]),
             title=str(out["title"]),
             body_preview=(out.get("body_preview") or "")[:200],
@@ -508,6 +510,7 @@ def _purchase_host_response(
     out["receipt_id"] = receipt.receipt_id
     twins = (
         _maybe_seed_twins(
+            owner_user_id=owner_id,
             document_id=str(out["document_id"]),
             title=str(out["title"]),
             body_preview=(out.get("body_preview") or "")[:200],

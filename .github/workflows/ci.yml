@@ -260,6 +260,39 @@ jobs:
         run: |
           python tools/lint/owner_privilege_check.py
 
+      - name: Investigation-tenancy debt-growth check
+        # W1 prerequisite: retain an auditable fingerprint inventory of the
+        # still-global event/graph seams and reject every new raw stream call or
+        # account-unscoped investigation SQL predicate. The baseline records no
+        # identifiers or content and may shrink as W2-W4 migrate consumers.
+        run: |
+          python tools/lint/investigation_tenancy_check.py
+
+      - name: Graph-tenancy semantic inventory and SQL ratchet
+        # W4A: every schema table carrying investigation_id must have an
+        # explicit shared/private authority classification. Across interfaces,
+        # middleware, orchestration, roles, runtime, and substrate, no new SQL
+        # may treat the display ID as sufficient authority; exact scoped SQL
+        # carries both account_digest and investigation_digest.
+        run: |
+          python tools/lint/graph_tenancy_check.py
+
+      - name: External legal-admission writer ratchet
+        # ANT-LGL-02: acquisition connectors may not grow raw document, chunk,
+        # edge, or equivalent INSERT debt. Converted URL/Substack/arXiv paths
+        # must retain their admitted-writer seams; the baseline only shrinks as
+        # the remaining external connectors migrate.
+        run: |
+          python tools/lint/legal_admission_check.py
+
+      - name: Legal document-read semantic inventory ratchet
+        # ANT-LGL-03: freeze every raw documents/chunks reader across product
+        # code, including assembled literal SQL. The 124-site baseline is debt,
+        # not approval, and must only shrink as reader families adopt the
+        # owner-scoped revocation-aware legal read seam.
+        run: |
+          python tools/lint/legal_read_check.py
+
       - name: arXiv contact-guard check
         # SPR-09 M3: forbid a NEW provider.send( / OutboundEmail( site outside
         # the allowlist (operator magic-link auth.py + the deny-by-default

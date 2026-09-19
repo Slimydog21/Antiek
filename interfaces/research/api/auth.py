@@ -317,10 +317,9 @@ def register_auth_routes(
             # between request and click. Reject without leaking which
             # case we're in.
             return _redirect_login_error(error_code="not_authorized", next_path=next)
-        cookie = mint_session_cookie(
-            user_id="__operator__",
-            email=email,
-        )
+        from substrate.multi_user.auth import account_user_id
+
+        cookie = mint_session_cookie(user_id=account_user_id(email), email=email)
         response = RedirectResponse(url=redirect_url, status_code=302)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
@@ -351,7 +350,9 @@ def register_auth_routes(
         # invariant — same assumption the magic-link path already makes.
         allow = sorted(_resolve_allowlist())
         email = allow[0] if allow else "__operator__"
-        cookie = mint_session_cookie(user_id="__operator__", email=email)
+        from substrate.multi_user.auth import account_user_id
+
+        cookie = mint_session_cookie(user_id=account_user_id(email), email=email)
         response = RedirectResponse(url=_resolve_redirect(next), status_code=302)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,

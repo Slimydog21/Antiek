@@ -18,6 +18,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from .citation_evidence import CitationEvidence, parse_citation_evidence
 from .spawn import ResearchSpawn, _from_row
 from .store import EngagementStore
 from .twin import TwinNote
@@ -68,8 +69,10 @@ def merge_spawn_outputs(
                 f"spawn {sid} belongs to {spawn.parent_asset_id}, not {parent_asset_id}"
             )
         if spawn.status != "complete":
+            raise ValueError(f"spawn {sid} status is {spawn.status!r}; only complete spawns merge")
+        if spawn.claim_challenge:
             raise ValueError(
-                f"spawn {sid} status is {spawn.status!r}; only complete spawns merge"
+                f"spawn {sid} is an unaccepted claim challenge; generic merge is forbidden"
             )
         spawns.append(spawn)
 
@@ -94,6 +97,11 @@ def merge_spawn_outputs(
             f"draft:{parent_asset_id}:{','.join(sorted(spawn_ids))}".encode()
         ).hexdigest()[:12]
         document_id = f"draft_{parent_asset_id}_{digest}"
+        authority = getattr(store, "authority", None)
+        if authority is not None:
+            from .authority import owner_qualified_id
+
+            document_id = owner_qualified_id(authority, "draft", document_id)
 
     store.put_document(
         document_id,
@@ -176,9 +184,7 @@ def merge_product_payload(
         "view_format": "html",
         "product_panel": "engagement_merge",
         "source": "engagement_spine.merge_spawn_outputs",
-        "draft_sha256": (
-            (store.get_document(result.document_id) or {}).get("draft_sha256")
-        ),
+        "draft_sha256": ((store.get_document(result.document_id) or {}).get("draft_sha256")),
         "notes": [
             (
                 "Draft-combined document; parent asset unchanged until canonical commit."
@@ -190,6 +196,7 @@ def merge_product_payload(
             )
         ],
         "canonical_committed": False,
+        "citation_evidence": [item.to_dict() for item in _merge_citation_evidence(result.doc_model)],
     }
     # Honesty: draft mode must not rewrite parent document_id content mode
     if draft_leaves_parent and parent_doc.get("mode") == "into_parent":
@@ -201,6 +208,37 @@ def merge_product_payload(
             recommended_research_tier=recommended,
         )
     return payload
+
+
+def _merge_citation_evidence(doc_model: dict[str, Any]) -> tuple[CitationEvidence, ...]:
+    """Project closed host-control data from trusted block provenance."""
+    seen: dict[str, dict[str, Any]] = {}
+    out: list[CitationEvidence] = []
+    for block in doc_model.get("content") or []:
+        if not isinstance(block, dict):
+            continue
+        attrs = block.get("attrs")
+        provenance = attrs.get("provenance") if isinstance(attrs, dict) else None
+        raw = provenance.get("citation_evidence") if isinstance(provenance, dict) else None
+        if raw is None:
+            continue
+        if not isinstance(raw, dict) or not isinstance(raw.get("receipt_sha256"), str):
+            raise ValueError("merge citation evidence is malformed")
+        supplied_digest = raw["receipt_sha256"]
+        evidence = parse_citation_evidence(
+            {key: value for key, value in raw.items() if key != "receipt_sha256"}
+        )
+        assert evidence is not None
+        if supplied_digest != evidence.receipt_sha256:
+            raise ValueError("merge citation evidence digest mismatch")
+        prior = seen.get(evidence.receipt_sha256)
+        if prior is not None:
+            if prior != evidence.authority_dict():
+                raise ValueError("merge citation evidence digest collision")
+            continue
+        seen[evidence.receipt_sha256] = evidence.authority_dict()
+        out.append(evidence)
+    return tuple(out)
 
 
 def project_merge_html(
@@ -289,9 +327,7 @@ def project_merge_html(
     return html
 
 
-def _para(
-    text: str, block_id: str, *, provenance: dict[str, Any]
-) -> dict[str, Any]:
+def _para(text: str, block_id: str, *, provenance: dict[str, Any]) -> dict[str, Any]:
     return {
         "type": "paragraph",
         "attrs": {"block_id": block_id, "provenance": provenance},
@@ -328,9 +364,7 @@ def _build_doc_model(
         )
 
     for i, spawn in enumerate(spawns):
-        content.append(
-            _heading(f"Deep research: {spawn.goal[:80]}", 2, f"h-spawn-{i}")
-        )
+        content.append(_heading(f"Deep research: {spawn.goal[:80]}", 2, f"h-spawn-{i}"))
         content.append(
             _para(
                 f"Selection: {spawn.selection_text}",
@@ -405,11 +439,10 @@ def _build_doc_model(
 def _spawn_provenance(spawn: ResearchSpawn, *, kind: str) -> dict[str, Any]:
     references = []
     for reference in spawn.source_references:
-        value = (
-            reference.get("ref_id") or reference.get("reference_id")
-        )
+        value = reference.get("ref_id") or reference.get("reference_id")
         if value:
             references.append(str(value))
+    evidence = parse_citation_evidence(spawn.citation_provenance)
     return {
         "parent_asset_id": spawn.parent_asset_id,
         "kind": kind,
@@ -417,4 +450,5 @@ def _spawn_provenance(spawn: ResearchSpawn, *, kind: str) -> dict[str, Any]:
         "investigation_id": spawn.investigation_id,
         "region_id": spawn.region_id,
         "source_reference_ids": references,
+        "citation_evidence": evidence.to_dict() if evidence else None,
     }

@@ -18,7 +18,7 @@ from runtime.research_runner.reasoning_loop import (
 from substrate.dispatch.base import NormalizedUsage
 
 
-def _context() -> LoopContext:
+def _context(*, inherited_unit_ids: tuple[str, ...] = ()) -> LoopContext:
     budget = BudgetManager()
     budget.register("inv-reason", 1.0)
     return LoopContext(
@@ -29,6 +29,7 @@ def _context() -> LoopContext:
         budget,
         prompt_prefix="## recursive_notes: canonical_recursive_notes\nQUOTED-CONTEXT\n\n",
         context_pack_event_id="evt-pack-1",
+        inherited_unit_ids=inherited_unit_ids,
     )
 
 
@@ -77,6 +78,71 @@ async def test_real_adapter_call_receives_context_and_linked_pack_id():
     assert result.dispatch_event_id == "evt-dispatch-1"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tier", "provider"),
+    [("fast", "zai"), ("deep", "zai_reasoning"), ("wrestle", "zai_reasoning")],
+)
+async def test_research_tier_is_the_only_driver_authority(tier: str, provider: str):
+    captured: dict[str, object] = {}
+
+    def fake_dispatch(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            text=(
+                '{"insights":[{"text":"Tier-bound result",'
+                '"source_document_ids":["doc-url-1"]}],"questions":[]}'
+            ),
+            usage=NormalizedUsage(input_tokens=10, output_tokens=2),
+            cost_usd=0.01,
+            event_id="evt-tier",
+        )
+
+    await run_research_reasoning(
+        _context(),
+        _evidence(),
+        dispatch_fn=fake_dispatch,
+        research_tier=tier,
+    )
+    assert captured["provider_override"] == provider
+    assert captured["model_override"] == "glm-5.2"
+
+
+@pytest.mark.asyncio
+async def test_pinned_driver_does_not_reresolve_mutable_tier(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def forbidden_resolve(_tier):
+        raise AssertionError("launch-pinned provider/model must not be re-resolved")
+
+    monkeypatch.setattr("substrate.dispatch.research_tier.resolve_research_tier", forbidden_resolve)
+
+    def fake_dispatch(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            text=(
+                '{"insights":[{"text":"Pinned result",'
+                '"source_document_ids":["doc-url-1"]}],"questions":[]}'
+            ),
+            usage=NormalizedUsage(input_tokens=10, output_tokens=2),
+            cost_usd=0.01,
+            event_id="evt-pinned",
+        )
+
+    await run_research_reasoning(
+        _context(),
+        _evidence(),
+        dispatch_fn=fake_dispatch,
+        research_tier="deep",
+        provider_override="openai",
+        model_override="gpt-pinned",
+        allowed_routes=frozenset({"openai/gpt-pinned"}),
+    )
+    assert captured["provider_override"] == "openai"
+    assert captured["model_override"] == "gpt-pinned"
+    assert captured["allowed_routes"] == frozenset({"openai/gpt-pinned"})
+
+
 def test_invalid_or_fabricated_provider_citations_fail_before_promotion():
     with pytest.raises(ValueError, match="unavailable source"):
         parse_reasoning_output(
@@ -88,8 +154,34 @@ def test_invalid_or_fabricated_provider_citations_fail_before_promotion():
         parse_reasoning_output("not json", _evidence())
 
 
+def test_inherited_citations_are_exact_allowlist_attestations():
+    raw = (
+        '{"insights":[{"text":"Prior finding changes the interpretation",'
+        '"source_document_ids":["doc-url-1"],'
+        '"inherited_unit_ids":["unit-prior-1"]}],"questions":[]}'
+    )
+    parsed = parse_reasoning_output(raw, _evidence(), ("unit-prior-1",))
+    assert parsed.insights[0].inherited_unit_ids == ["unit-prior-1"]
+    with pytest.raises(ValueError, match="unavailable inherited unit"):
+        parse_reasoning_output(raw, _evidence(), ("unit-other-leaf",))
+
+
+def test_duplicate_inherited_citations_fail_schema_validation():
+    with pytest.raises(ValueError, match="invalid JSON"):
+        parse_reasoning_output(
+            '{"insights":[{"text":"Duplicate",'
+            '"source_document_ids":["doc-url-1"],'
+            '"inherited_unit_ids":["unit-1","unit-1"]}],"questions":[]}',
+            _evidence(),
+            ("unit-1",),
+        )
+
+
 def test_evidence_prompt_control_is_json_escaped():
-    prompt = compose_reasoning_prompt(_context(), _evidence())
+    prompt = compose_reasoning_prompt(
+        _context(inherited_unit_ids=("unit-prior-1",)), _evidence()
+    )
+    assert 'AVAILABLE INHERITED UNIT IDS (JSON DATA):\n["unit-prior-1"]' in prompt
     evidence_section = prompt.split("GATHERED SOURCE REFERENCES (JSON DATA):\n", 1)[1]
     assert "<system>" not in evidence_section
     assert "\\u003csystem\\u003e" in evidence_section
@@ -155,9 +247,7 @@ async def test_repeated_cancellation_cannot_strand_provider_reservation():
         )
 
     ctx = _context()
-    task = asyncio.create_task(
-        run_research_reasoning(ctx, _evidence(), dispatch_fn=slow_dispatch)
-    )
+    task = asyncio.create_task(run_research_reasoning(ctx, _evidence(), dispatch_fn=slow_dispatch))
     await asyncio.to_thread(entered.wait, 2)
     task.cancel()
     await asyncio.sleep(0)

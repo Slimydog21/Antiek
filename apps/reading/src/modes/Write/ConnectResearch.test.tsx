@@ -22,6 +22,18 @@ vi.mock("../../lib/api", async (orig) => ({
   startInvestigation: startInvestigationMock,
 }));
 
+vi.mock("../../components/engagement/ResearchRunCeilingApproval", async () => {
+  const { useEffect } = await import("react");
+  return {
+    ResearchRunCeilingApproval: ({ onAuthorizationChange }: { onAuthorizationChange: (value: unknown) => void }) => {
+      useEffect(() => {
+        onAuthorizationChange({ approved: true, ceilingUsd: 1.25, projection: null });
+      }, [onAuthorizationChange]);
+      return <div data-testid="research-run-authorization-stub" />;
+    },
+  };
+});
+
 import ConnectResearch from "./ConnectResearch";
 
 beforeEach(() => {
@@ -64,7 +76,7 @@ describe("ConnectResearch — M1 connect or auto-spawn", () => {
     );
     // The spawned folder is seeded with the piece title (legible, not blank).
     expect(startInvestigationMock).toHaveBeenCalledWith(
-      expect.objectContaining({ question: "My memo" }),
+      expect.objectContaining({ question: "My memo", approved_run_ceiling_usd: 1.25 }),
     );
   });
 

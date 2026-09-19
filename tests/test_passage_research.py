@@ -24,8 +24,13 @@ from substrate.books.passage_research import (
     passage_id,
     researches_for_passage,
 )
+from substrate.event_log import trajectory_authorized
 from substrate.graph.ops import insert_document
 from substrate.graph.schema import init_database
+from substrate.investigation_tenancy import InvestigationAuthority, default_tenancy_root
+from substrate.multi_user.auth import operator_claims
+from substrate.schemas import ActionType
+from tests.research_quote_support import configure_research_quote_authority
 
 _GATED_BODY = "SECRET COPYRIGHTED PASSAGE THAT MUST NOT LEAK INTO A RESEARCH SEED " * 20
 _PUBLIC_BODY = "Public domain passage text that may seed a research. " * 20
@@ -37,6 +42,7 @@ def db(monkeypatch):
     db_path = os.path.join(tmp, "graph.duckdb")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", os.path.join(tmp, "events"))
+    configure_research_quote_authority(monkeypatch, tmp)
     con = connect_write(db_path, purpose="spin-test")
     init_database(con)
     con.close()
@@ -140,17 +146,42 @@ def test_spin_research_endpoint_gate_safe(db):
 
     _register(db, "doc-gated-api", _GATED_BODY)  # gated default
     client = TestClient(create_app(register_wrestling=False, register_providers=False, cors_origins=[]))
-    resp = client.post(
-        "/books/doc-gated-api/spin-research",
-        json={"page_index": 1, "passage_text": _GATED_BODY},
-    )
+    payload = {"page_index": 1, "passage_text": _GATED_BODY, "approved_run_ceiling_usd": 1.0}
+    quote = client.post("/books/doc-gated-api/spin-research/quote", json=payload)
+    assert quote.status_code == 200, quote.text
+    resp = client.post("/books/doc-gated-api/spin-research", json={
+        **payload, "research_quote_token": quote.json()["quote_token"]
+    })
     assert resp.status_code == 202
     body = resp.json()
     assert body["gated"] is True
     assert body["investigation_id"].startswith("inv-")
     assert _GATED_BODY.strip() not in body["seed_preview"]  # full body never seeded
+    starts = [
+        row
+        for row in trajectory_authorized(
+            InvestigationAuthority(
+                operator_claims().user_id,
+                body["investigation_id"],
+                default_tenancy_root(),
+            )
+        )
+        if row["action_type"] == ActionType.INVESTIGATION_START_REQUESTED.value
+    ]
+    assert len(starts) == 1
+    assert starts[0]["payload"]["approved_run_ceiling_usd"] == 1.0
+    assert starts[0]["payload"]["research_quote_id"] == quote.json()["quote_id"]
+    assert starts[0]["payload"]["research_route_manifest"][0]["provider"] == "provider-test"
     # The two-way link was recorded.
-    assert researches_for_passage("doc-gated-api", 1) == [body["investigation_id"]]
+    assert researches_for_passage(
+        "doc-gated-api",
+        1,
+        authority=InvestigationAuthority(
+            operator_claims().user_id,
+            "read-spin",
+            default_tenancy_root(),
+        ),
+    ) == [body["investigation_id"]]
 
 
 def test_spin_research_endpoint_unknown_book_404(db):
@@ -159,8 +190,28 @@ def test_spin_research_endpoint_unknown_book_404(db):
     from interfaces.research.api.app import create_app
 
     client = TestClient(create_app(register_wrestling=False, register_providers=False, cors_origins=[]))
-    resp = client.post("/books/doc-nope/spin-research", json={"page_index": 0})
+    payload = {"page_index": 0, "approved_run_ceiling_usd": 1.0}
+    quote = client.post("/books/doc-nope/spin-research/quote", json=payload)
+    resp = client.post("/books/doc-nope/spin-research", json={
+        **payload, "research_quote_token": quote.json()["quote_token"]
+    })
     assert resp.status_code == 404
+
+
+def test_spin_research_endpoint_requires_explicit_initial_run_ceiling(db):
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.app import create_app
+
+    _register(db, "doc-ceiling-required", _GATED_BODY)
+    client = TestClient(
+        create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    )
+    resp = client.post(
+        "/books/doc-ceiling-required/spin-research",
+        json={"page_index": 0, "passage_text": "selected passage"},
+    )
+    assert resp.status_code == 422
 
 
 def test_two_way_link_between_passage_and_research(db):

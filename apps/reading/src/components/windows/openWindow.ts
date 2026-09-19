@@ -103,13 +103,25 @@ export const WINDOW_PAGES: Record<string, { title: string; renderer: WindowPageR
   // workspace/deepResearchWindow.ts.
   deep_research_session: {
     title: "Deep research",
-    renderer: lazy(() => import("./DeepResearchSessionHost")),
+    renderer: lazy(() => import("./DeepResearchSessionBridge")),
   },
   // Residual (bt): marketplace / account hosted book — HTML-first reading
   // surface in a floating window. Payload: document_id, html, title, view_format.
   hosted_html_document: {
     title: "Hosted book",
-    renderer: lazy(() => import("./HostedHtmlDocumentHost")),
+    renderer: lazy(() => import("./HostedHtmlDocumentBridge")),
+  },
+  research_artifact: {
+    title: "Research artifact",
+    renderer: lazy(() => import("./ResearchArtifactHost")),
+  },
+  collective_unit: {
+    title: "Collective research",
+    renderer: lazy(() => import("./CollectiveContinuityBridge")),
+  },
+  collective_council: {
+    title: "Research council",
+    renderer: lazy(() => import("./CollectiveContinuityBridge")),
   },
 };
 

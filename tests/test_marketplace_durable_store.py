@@ -61,9 +61,7 @@ def test_sqlite_store_round_trips_defensive_json_and_membership(tmp_path) -> Non
     assert path.stat().st_mode & 0o777 == 0o600
 
     with pytest.raises(ValueError, match="immutable receipt evidence"):
-        second.put_receipt(
-            "receipt-1", {"receipt_id": "receipt-1", "owner_id": "owner-b"}
-        )
+        second.put_receipt("receipt-1", {"receipt_id": "receipt-1", "owner_id": "owner-b"})
 
 
 def test_sqlite_store_rejects_corrupt_persisted_payload(tmp_path) -> None:
@@ -87,9 +85,7 @@ def test_sqlite_store_rejects_unknown_schema_version(tmp_path) -> None:
         SQLiteHostStore(path)
 
 
-def test_hosted_library_and_receipt_survive_fresh_app_and_store(
-    tmp_path, monkeypatch
-) -> None:
+def test_hosted_library_and_receipt_survive_fresh_app_and_store(tmp_path, monkeypatch) -> None:
     path = tmp_path / "marketplace.sqlite3"
     monkeypatch.setattr(
         hosted_document_routes,
@@ -113,14 +109,20 @@ def test_hosted_library_and_receipt_survive_fresh_app_and_store(
 
     reopened = SQLiteHostStore(path)
     second = TestClient(_app(reopened))
-    library = second.get(
-        "/marketplace/library/owner-a", headers={"x-test-user": "owner-a"}
-    )
+    library = second.get("/marketplace/library/owner-a", headers={"x-test-user": "owner-a"})
     assert library.status_code == 200
     assert {row["document_id"] for row in library.json()["documents"]} == {
         public_domain.json()["document_id"],
         purchased_body["document_id"],
     }
+    purchased_row = next(
+        row
+        for row in library.json()["documents"]
+        if row["document_id"] == purchased_body["document_id"]
+    )
+    assert purchased_row["license_class"] == "purchased"
+    assert purchased_row["is_free"] is False
+    assert library.json()["free_count"] == 1
     assert reopened.get_receipt(purchased_body["receipt_id"])["owner_id"] == "owner-a"
 
     html = second.get(
@@ -131,9 +133,7 @@ def test_hosted_library_and_receipt_survive_fresh_app_and_store(
     assert html.json()["view_format"] == "html"
     assert html.json()["projection_state"] == "ready"
 
-    hidden_library = second.get(
-        "/marketplace/library/owner-a", headers={"x-test-user": "owner-b"}
-    )
+    hidden_library = second.get("/marketplace/library/owner-a", headers={"x-test-user": "owner-b"})
     hidden_document = second.get(
         f"/hosted-documents/{purchased_body['document_id']}/html",
         headers={"x-test-user": "owner-b"},

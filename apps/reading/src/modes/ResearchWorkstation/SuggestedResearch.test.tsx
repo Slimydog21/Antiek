@@ -74,6 +74,18 @@ vi.mock("../../lib/api", async (orig) => {
   };
 });
 
+vi.mock("../../components/engagement/ResearchRunCeilingApproval", async () => {
+  const { useLayoutEffect } = await import("react");
+  return {
+    ResearchRunCeilingApproval: ({ onAuthorizationChange }: { onAuthorizationChange: (value: unknown) => void }) => {
+      useLayoutEffect(() => {
+        onAuthorizationChange({ approved: true, ceilingUsd: 1.25, projection: null });
+      }, [onAuthorizationChange]);
+      return <div data-testid="research-run-authorization-stub" />;
+    },
+  };
+});
+
 vi.mock("../../hooks/useInvestigationTree", () => ({
   recordSpawnRelationship: vi.fn(),
 }));
@@ -165,6 +177,7 @@ describe("SuggestedResearch — surfacing adds no spend / explicit click (M3)", 
     expect(startMock.mock.calls[0][0]).toMatchObject({
       question: "Chase me",
       parent_investigation_id: "inv-src1",
+      approved_run_ceiling_usd: 1.25,
     });
     // The launched research opens.
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/inv/inv-new99"));

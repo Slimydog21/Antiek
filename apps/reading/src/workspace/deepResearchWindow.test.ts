@@ -39,6 +39,7 @@ describe("openDeepResearchFromHighlight", () => {
     expect(win.payload.parent_asset_id).toBe("launch-asset");
     expect(String(win.payload.selection_text)).toContain("content-addressable");
     expect(win.payload.view_format).toBe("html");
+    expect(win.payload.workspace_resume_ref).toEqual({ session_id: FIXTURE.session_id });
   });
 
   it("re-invoke focuses the same window (stable id)", () => {
@@ -68,5 +69,11 @@ describe("openDeepResearchFromHighlight", () => {
     const win = useWindows.getState().windows[id];
     expect(win.payload.seamless_highlight_dr).toBe(true);
     expect(win.payload.view_format).toBe("html");
+  });
+
+  it("carries the validated citation receipt without deriving identity", () => {
+    const citation = { source_kind: "synthesis_claim" as const, source_asset_id: "launch-asset", claim_id: "9", chunk_ids: ["chunk-9"], document_id: "doc-9" };
+    const id = openDeepResearchFromHighlight({ ...FIXTURE, citation_provenance: citation });
+    expect(useWindows.getState().windows[id].payload.citation_provenance).toEqual(citation);
   });
 });

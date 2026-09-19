@@ -8,10 +8,12 @@
 
 import { API_BASE, apiFetch } from "../lib/api";
 import type {
+  CitationEvidence,
   CollectiveResearchUnit,
   ResearchContextPack,
   SourceReference,
 } from "../workspace/researchContextPack";
+import type { ResearchArtifactClaimChallengeReceipt } from "../lib/api";
 
 export type SpawnFromHighlightRequest = {
   asset_id: string;
@@ -24,7 +26,17 @@ export type SpawnFromHighlightRequest = {
   force_new?: boolean;
   /** Residual (ji): closed research tier for reserved spawn. */
   research_tier?: "fast" | "deep" | "wrestle" | null;
+  citation_provenance?: CitationProvenanceRequest;
 };
+
+export type CitationProvenanceRequest = {
+  source_kind: "synthesis_claim";
+  source_asset_id: string;
+  claim_id: string;
+  chunk_ids: string[];
+};
+
+export type CitationProvenanceReceipt = CitationProvenanceRequest & { document_id: string };
 
 export type SpawnResponse = {
   spawn_id: string;
@@ -37,6 +49,8 @@ export type SpawnResponse = {
   source_references: SourceReference[];
   research_tier?: "fast" | "deep" | "wrestle" | string | null;
   view_format: "html";
+  citation_provenance?: CitationProvenanceReceipt | null;
+  claim_challenge?: ResearchArtifactClaimChallengeReceipt | null;
 };
 
 export type SessionOpenRequest = SpawnFromHighlightRequest & {
@@ -55,6 +69,7 @@ export type SessionOpenResponse = {
   goal?: string;
   research_tier?: "fast" | "deep" | "wrestle" | string | null;
   view_format: "html";
+  citation_provenance?: CitationProvenanceReceipt | null;
   /**
    * Residual (nw/asu): Antiek-bench usage event recorded on open
    * (floating_deep_research | twin_chase | highlight_dr_launch) for recursive suite rewrite.
@@ -76,6 +91,8 @@ export type ResearchContextResponse = ResearchContextPack & {
 };
 
 export type CollectiveResponse = CollectiveResearchUnit & {
+  manifest_id?: string;
+  workspace_resume_ref?: { manifest_id: string };
   spawn_count: number;
   twin_count: number;
   ref_count: number;
@@ -176,6 +193,160 @@ export async function fetchCollectiveResearch(body: {
   return readJson<CollectiveResponse>(res);
 }
 
+export type CollectiveManifestReference = { schema_version: 1; manifest_id: string; collective_id: string; ordered_spawn_ids: string[]; membership_sha256: string; availability: "ready" | "unavailable"; view_format: "html" };
+
+export async function createCollectiveManifest(spawn_ids: string[]): Promise<CollectiveManifestReference> {
+  return readJson(await apiFetch(`${API_BASE}/engagement/collective-manifests`, { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ schema_version: 1, spawn_ids }) }));
+}
+
+export async function fetchCollectiveManifestReference(manifestId: string, signal?: AbortSignal): Promise<CollectiveManifestReference> {
+  return readJson(await apiFetch(`${API_BASE}/account/collective-manifest-refs/${encodeURIComponent(manifestId)}`, { signal, cache: "no-store" }));
+}
+
+export async function projectCollectiveManifest(manifestId: string, signal?: AbortSignal): Promise<CollectiveResponse & { manifest_id: string }> {
+  return readJson(await apiFetch(`${API_BASE}/engagement/collective/${encodeURIComponent(manifestId)}/project`, { method: "POST", signal, cache: "no-store" }));
+}
+
+export async function fetchCollectiveCouncilReference(planId: string, signal?: AbortSignal): Promise<unknown> {
+  return readJson(await apiFetch(`${API_BASE}/account/collective-council-refs/${encodeURIComponent(planId)}`, { signal, cache: "no-store" }));
+}
+
+export type CouncilMemberPlan = {
+  spawn_id: string;
+  investigation_id: string;
+  parent_asset_id: string;
+  role: string;
+  model_id: string;
+  projected_max_cents: number;
+  evidence_sha256: string;
+  source_ref_ids: string[];
+  twin_note_ids: string[];
+};
+
+export type CouncilPlanResponse = {
+  plan_id: string;
+  collective_id: string;
+  shared_prompt: string;
+  members: CouncilMemberPlan[];
+  synthesizer_model_id: string;
+  synthesizer_projected_max_cents: number;
+  approved_ceiling_cents: number;
+  input_sha256: string;
+  state: "preflight" | "approved" | "running" | "complete" | "failed" | "unknown";
+  approval_receipt_id?: string | null;
+};
+
+export type CouncilCallReceipt = {
+  role: string;
+  model_id: string;
+  projected_max_cents: number;
+  state: "complete" | "not_dispatched" | "unknown" | "reconciled_without_output";
+  actual_cents?: number | null;
+  provider_receipt_id?: string | null;
+  output_text?: string | null;
+  hold_id?: string | null;
+  error_type?: string | null;
+};
+
+export type CouncilResultResponse = {
+  result_id: string;
+  plan_id: string;
+  state: "complete" | "failed" | "unknown";
+  member_receipts: CouncilCallReceipt[];
+  synthesizer_receipt?: CouncilCallReceipt | null;
+  spent_cents: number;
+  held_cents: number;
+  html?: string | null;
+  result_sha256?: string;
+};
+
+export async function preflightCollectiveCouncil(body: {
+  collective_id: string;
+  shared_prompt: string;
+  members: Array<{
+    spawn_id: string;
+    role: string;
+    model_id: string;
+    projected_max_cents: number;
+  }>;
+  synthesizer_model_id: string;
+  synthesizer_projected_max_cents: number;
+  approved_ceiling_cents: number;
+}): Promise<CouncilPlanResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/council/preflight`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJson<CouncilPlanResponse>(res);
+}
+
+export async function approveCollectiveCouncil(
+  plan: CouncilPlanResponse,
+): Promise<CouncilPlanResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/council/${encodeURIComponent(plan.plan_id)}/approve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_input_sha256: plan.input_sha256,
+        approved_ceiling_cents: plan.approved_ceiling_cents,
+      }),
+    },
+  );
+  return readJson<CouncilPlanResponse>(res);
+}
+
+export async function runCollectiveCouncil(
+  planId: string,
+  maxWorkers = 4,
+): Promise<CouncilResultResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/council/${encodeURIComponent(planId)}/run`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ max_workers: maxWorkers }),
+    },
+  );
+  return readJson<CouncilResultResponse>(res);
+}
+
+export async function fetchCollectiveCouncilResult(
+  resultId: string,
+): Promise<CouncilResultResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/council/results/${encodeURIComponent(resultId)}`,
+  );
+  return readJson<CouncilResultResponse>(res);
+}
+
+export async function convergeCollectiveCouncil(body: {
+  plan_id: string;
+  result_id: string;
+  expected_result_sha256: string;
+  mode: "offline_collective" | "draft_combined" | "into_parent";
+  parent_asset_id?: string | null;
+  promotion_note_ids?: string[];
+}): Promise<Record<string, unknown>> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/council/${encodeURIComponent(body.plan_id)}/converge`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        result_id: body.result_id,
+        expected_result_sha256: body.expected_result_sha256,
+        mode: body.mode,
+        parent_asset_id: body.parent_asset_id ?? null,
+        promotion_note_ids: body.promotion_note_ids ?? [],
+      }),
+    },
+  );
+  return readJson<Record<string, unknown>>(res);
+}
+
 /** Merge completed spawns into parent or draft-combined (default draft). */
 export type MergeMode = "into_parent" | "draft_combined";
 
@@ -196,6 +367,7 @@ export type MergeProductResponse = {
   source: string;
   notes: string[];
   html?: string | null;
+  citation_evidence?: CitationEvidence[];
   /** Immutable review token for an exact draft_combined document model. */
   draft_sha256?: string | null;
   /** Legacy merge is preview authority until the explicit canonical commit. */
@@ -324,6 +496,8 @@ export type TwinSeedLiveStatusResponse = {
   live_env: boolean;
   use_dispatch: boolean;
   injector_installed: boolean;
+  cost_projection_ready?: boolean;
+  projected_max_cents?: number | null;
   live_env_flag: string;
   use_dispatch_env_flag: string;
   notes: string[];
@@ -333,6 +507,23 @@ export type TwinSeedLiveStatusResponse = {
 export async function fetchTwinSeedLiveStatus(): Promise<TwinSeedLiveStatusResponse> {
   const res = await apiFetch(`${API_BASE}/engagement/twin-seed-live-status`);
   return readJson<TwinSeedLiveStatusResponse>(res);
+}
+
+export type CollectiveCouncilStatusResponse = {
+  view_format: "html" | string;
+  product_panel: string;
+  substrate_available: boolean;
+  executor_installed: boolean;
+  ledger_installed: boolean;
+  live_ready: boolean;
+  offline_convergence_available: boolean;
+  operator_gated: boolean;
+  notes: string[];
+};
+
+export async function fetchCollectiveCouncilStatus(): Promise<CollectiveCouncilStatusResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/council/status`, { cache: "no-store" });
+  return readJson<CollectiveCouncilStatusResponse>(res);
 }
 
 /** Hydrate arxiv/substack/url into HTML-first engagement asset. */
@@ -558,6 +749,17 @@ export type TwinNotesResponse = {
     source_spawn_id?: string | null;
     investigation_id?: string | null;
     source_ref_ids?: string[];
+    origin?: string | null;
+    source_revision_sha256?: string | null;
+    seed_batch_id?: string | null;
+    seed_receipt?: {
+      provider?: string;
+      model?: string;
+      actual_cents?: number;
+      prompt_version?: string;
+      canonical_content_hash?: string;
+      dispatch_event_id?: string;
+    } | null;
   }>;
   /** Residual (la/lb): reserved spawn research_tier when seed/list scoped. */
   research_tier?: "fast" | "deep" | "wrestle" | string | null;
@@ -635,7 +837,7 @@ export async function seedTwinNotes(body: {
     usage_event?: Record<string, unknown> | null;
     usage_event_error?: string | null;
     usage_has_body?: boolean | null;
-  }
+}
 > {
   const res = await apiFetch(`${API_BASE}/engagement/twins/seed`, {
     method: "POST",
@@ -652,6 +854,28 @@ export async function seedTwinNotes(body: {
       // Residual (adq): pass explicit body honesty when known.
       has_body: body.has_body === undefined ? null : body.has_body,
     }),
+  });
+  return readJson(res);
+}
+
+export async function seedLiveTwinNotes(body: {
+  asset_id: string;
+  approval_nonce: string;
+  approved_ceiling_cents: number;
+  allowed_routes: string[];
+}): Promise<{
+  state: "live_committed" | "skipped" | "rejected" | string;
+  live_seed: boolean;
+  seeded: boolean;
+  promotion_performed: boolean;
+  view_format: "html" | string;
+  receipt: Record<string, unknown>;
+  twins?: TwinNotesResponse;
+}> {
+  const res = await apiFetch(`${API_BASE}/engagement/twins/seed-live`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
   return readJson(res);
 }

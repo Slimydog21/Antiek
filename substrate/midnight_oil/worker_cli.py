@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Literal, Protocol, cast
 
 from substrate.dispatch import DispatchConfig
+from substrate.engagement_spine.authority import EngagementAuthority
+from substrate.engagement_spine.store import EngagementStore, authorized_store
 from substrate.graph.retrieval_substrate import RetrievalSubstrate, make_substrate
 from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding
 
@@ -65,6 +67,16 @@ WorkerResult = Literal[
     "budget_halted",
     "timed_out",
 ]
+
+
+def _owner_engagement_store(
+    runtime: MidnightOilWorkerRuntime, owner_user_id: str
+) -> EngagementStore:
+    """Bind every autonomous deposit/recovery write to its durable lease owner."""
+
+    return authorized_store(
+        runtime.stores.engagement_store, EngagementAuthority(owner_user_id)
+    )
 
 
 class _ClosableRetrieval(RetrievalSubstrate, Protocol):
@@ -229,7 +241,7 @@ def _recover_leased_terminal(
         deposit = resume_terminal_deposit(
             lease.job_id,
             store=runtime.stores.jobs,
-            engagement_store=runtime.stores.engagement_store,
+            engagement_store=_owner_engagement_store(runtime, lease.owner_user_id),
         )
         _renew(runtime, lease, clock_ms=clock_ms)
         job = get_job(lease.job_id, store=runtime.stores.jobs)
@@ -242,7 +254,7 @@ def _recover_leased_terminal(
                 owner_user_id=lease.owner_user_id,
                 owner_jobs=runtime.stores.owner_jobs,
                 store=runtime.stores.jobs,
-                engagement_store=runtime.stores.engagement_store,
+                engagement_store=_owner_engagement_store(runtime, lease.owner_user_id),
                 graph_db_path=runtime.config.graph_db_path,
             )
             if job.step_evidence
@@ -791,7 +803,7 @@ def run_worker_once(
             deposit = resume_terminal_deposit(
                 lease.job_id,
                 store=runtime.stores.jobs,
-                engagement_store=runtime.stores.engagement_store,
+                engagement_store=_owner_engagement_store(runtime, lease.owner_user_id),
             )
         except Exception:
             return WorkerPhaseRecord(
@@ -885,7 +897,7 @@ def run_worker_once(
                 failed_deposit = resume_terminal_deposit(
                     lease.job_id,
                     store=runtime.stores.jobs,
-                    engagement_store=runtime.stores.engagement_store,
+                    engagement_store=_owner_engagement_store(runtime, lease.owner_user_id),
                 )
             except Exception:
                 return WorkerPhaseRecord(
@@ -947,7 +959,7 @@ def run_worker_once(
                 ambiguous_deposit = resume_terminal_deposit(
                     lease.job_id,
                     store=runtime.stores.jobs,
-                    engagement_store=runtime.stores.engagement_store,
+                    engagement_store=_owner_engagement_store(runtime, lease.owner_user_id),
                 )
             except Exception:
                 return WorkerPhaseRecord(
@@ -989,7 +1001,7 @@ def run_worker_once(
         deposit = resume_terminal_deposit(
             lease.job_id,
             store=runtime.stores.jobs,
-            engagement_store=runtime.stores.engagement_store,
+            engagement_store=_owner_engagement_store(runtime, lease.owner_user_id),
         )
     except Exception:
         return WorkerPhaseRecord(
@@ -1050,7 +1062,7 @@ def run_worker_once(
             owner_user_id=lease.owner_user_id,
             owner_jobs=runtime.stores.owner_jobs,
             store=runtime.stores.jobs,
-            engagement_store=runtime.stores.engagement_store,
+            engagement_store=_owner_engagement_store(runtime, lease.owner_user_id),
             graph_db_path=runtime.config.graph_db_path,
         )
     except GraphProjectionRefused as exc:

@@ -1,9 +1,14 @@
 import type { ParkedQuestionEntry } from "../../lib/api";
+import { useState } from "react";
+import {
+  ResearchRunCeilingApproval,
+  type ResearchRunAuthorization,
+} from "../../components/engagement/ResearchRunCeilingApproval";
 
 interface Props {
   question: ParkedQuestionEntry;
   launching: boolean;
-  onLaunch: () => void;
+  onLaunch: (approvedRunCeilingUsd: number) => void;
 }
 
 /**
@@ -23,6 +28,8 @@ export default function ParkedQuestion({
   launching,
   onLaunch,
 }: Props) {
+  const [runAuthorization, setRunAuthorization] =
+    useState<ResearchRunAuthorization>({ approved: false, ceilingUsd: null, projection: null });
   return (
     <div className="max-w-2xl mx-auto px-8 py-10 space-y-6">
       <section>
@@ -57,10 +64,21 @@ export default function ParkedQuestion({
       </section>
 
       <section className="pt-2">
+        <ResearchRunCeilingApproval
+          promptText={question.question_text}
+          researchTier="deep"
+          disabled={launching}
+          onAuthorizationChange={setRunAuthorization}
+          className="mb-3"
+        />
         <button
           type="button"
-          onClick={onLaunch}
-          disabled={launching}
+          onClick={() => {
+            if (runAuthorization.ceilingUsd != null) {
+              onLaunch(runAuthorization.ceilingUsd);
+            }
+          }}
+          disabled={launching || !runAuthorization.approved}
           className="px-4 py-2 rounded-md bg-ink text-white text-sm font-medium hover:bg-shadow-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {launching ? "Launching…" : "Launch investigation"}

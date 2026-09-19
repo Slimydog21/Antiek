@@ -487,6 +487,43 @@ describe("TwinNotesPanel", () => {
     expect(seedTwinNotes).not.toHaveBeenCalled();
   });
 
+  it("shows live seed model, cost, origin, and non-promotion truth", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 1,
+      insight_count: 1,
+      question_count: 0,
+      notes: [
+        {
+          note_id: "twin_live_1",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Live evidence proposal",
+          origin: "live_twin_seed:twin_seed_test",
+          seed_batch_id: "batch-1",
+          seed_receipt: {
+            provider: "openai",
+            model: "gpt-test",
+            actual_cents: 3,
+            prompt_version: "antiek.live-twin-seed.v1",
+          },
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+    });
+    render(<TwinNotesPanel assetId="paper" autoLoad />);
+    const receipt = await screen.findByTestId("twin-live-receipt-twin_live_1");
+    expect(receipt.textContent).toMatch(/openai\/gpt-test/);
+    expect(receipt.textContent).toMatch(/cost=3¢/);
+    expect(receipt.textContent).toMatch(/not promoted/);
+    const row = receipt.closest("li");
+    expect(row?.getAttribute("data-origin")).toBe("live_twin_seed:twin_seed_test");
+    expect(row?.getAttribute("data-seed-batch-id")).toBe("batch-1");
+  });
+
   it("offline seeds when empty and autoSeedIfEmpty (dd)", async () => {
     fetchTwinNotes.mockResolvedValue({
       asset_id: "paper",

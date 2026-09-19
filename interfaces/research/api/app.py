@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import sys
 from collections.abc import Awaitable, Callable
@@ -57,10 +58,14 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 # Ensure package root on path for direct uvicorn invocation.
-_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+_PKG_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
@@ -71,9 +76,14 @@ from roles.thought_partner import (  # noqa: E402
 )
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
-from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.event_log import (  # noqa: E402
+    emit_typed_authorized_strict,
+    require_event_persistence,
+    trajectory_authorized,
+)
 from substrate.graph import default_db_path  # noqa: E402
 from substrate.graph.health import DuckDBHealth, probe_duckdb_health  # noqa: E402
+from substrate.multi_user.auth import UserClaims  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     EVENT_SCHEMA_VERSION,
     WRESTLING_ACTION_TYPES,
@@ -83,6 +93,17 @@ from substrate.schemas import (  # noqa: E402
 )
 
 from .broadcast import EventBroadcaster  # noqa: E402
+from .investigation_access import (  # noqa: E402
+    InvestigationAccessDenied,
+    InvestigationAuthenticationRequired,
+    authority_for_investigation,
+    authority_from_claims,
+    authority_from_request,
+    bind_child_investigation,
+    bind_new_investigation,
+    event_actor,
+    require_investigation_owner,
+)
 from .marketplace_host_runtime import marketplace_host_store_from_env  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 
@@ -279,6 +300,8 @@ class InvestigationStartRequest(BaseModel):
     When supplied, the substrate emits an ``INVESTIGATION_SPAWNED_FROM``
     event recording the lineage."""
 
+    model_config = ConfigDict(extra="forbid")
+
     question: str = Field(..., min_length=3)
     context: str = ""
     topic_slug: str | None = None
@@ -306,6 +329,64 @@ class InvestigationStartRequest(BaseModel):
     # window closes (Sprint 20 verdict landed), the operator may restore a
     # "deep" default if deep-synthesizer routing is then desired.
     research_tier: Literal["fast", "deep", "wrestle"] | None = None
+    # Distinct from chase_budget_usd: immutable operator authority for every
+    # paid provider call in the initial Loop One run. There is deliberately no
+    # default; omission is absence of consent and must fail before start/bind.
+    approved_run_ceiling_usd: float = Field(..., gt=0.0, le=100.0)
+    research_quote_token: str | None = Field(default=None, min_length=32, max_length=32_768)
+    selected_driver_role: Literal["synthesizer"] | None = None
+    selected_driver_provider: str | None = Field(default=None, min_length=1, max_length=256)
+    selected_driver_model: str | None = Field(default=None, min_length=1, max_length=512)
+    selected_driver_pricing_fingerprint: str | None = Field(
+        default=None, pattern=r"^[a-f0-9]{64}$"
+    )
+
+    @model_validator(mode="after")
+    def _exact_driver_is_complete(self) -> InvestigationStartRequest:
+        driver = (
+            self.selected_driver_role,
+            self.selected_driver_provider,
+            self.selected_driver_model,
+            self.selected_driver_pricing_fingerprint,
+        )
+        if any(value is not None for value in driver) and not all(
+            value is not None for value in driver
+        ):
+            raise ValueError("selected driver identity must be complete")
+        return self
+
+
+class InvestigationQuoteResponse(BaseModel):
+    quote_token: str
+    quote_id: str
+    quote_payload_sha256: str
+    route_manifest_fingerprint: str
+    issued_at_ms: int
+    expires_at_ms: int
+    approved_run_ceiling_usd: str
+    view_format: Literal["html"] = "html"
+    spend_performed: Literal[False] = False
+
+
+class ReservedQuestionLaunchRequest(BaseModel):
+    """Closed operator command; child identity is derived from reservation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(..., min_length=3, max_length=20_000)
+    context: str = Field(default="", max_length=40_000)
+    research_tier: Literal["fast", "deep", "wrestle"]
+    approved_run_ceiling_usd: float = Field(..., gt=0.0, le=100.0)
+    approved_chase_ceiling_usd: float = Field(..., gt=0.0, le=100.0)
+    research_quote_token: str | None = Field(default=None, min_length=32, max_length=32_768)
+
+
+class ParkedQuestionLaunchRequest(BaseModel):
+    """Explicit paid-run authority for one parked-question launch."""
+
+    model_config = ConfigDict(extra="forbid")
+    approved_run_ceiling_usd: float = Field(..., gt=0.0, le=100.0)
+    research_quote_token: str | None = Field(default=None, min_length=32, max_length=32_768)
 
 
 # ── Sprint 11 additions ────────────────────────────────────────────────
@@ -496,8 +577,11 @@ class InvestigationStatusResponse(BaseModel):
 class CreateDeliverableRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=300)
     deliverable_kind: Literal[
-        "research_memo", "book_chapter", "biography_section",
-        "investor_brief", "general_essay",
+        "research_memo",
+        "book_chapter",
+        "biography_section",
+        "investor_brief",
+        "general_essay",
     ]
     investigation_root_id: str | None = None
 
@@ -756,8 +840,8 @@ class InterviewProjectSummary(BaseModel):
 
 
 class InviteInterviewRequest(BaseModel):
-    project_id: str
-    informant_handle: str | None = Field(default=None, max_length=200)
+    project_id: str = Field(..., min_length=1, max_length=512)
+    informant_handle: str | None = Field(default=None, min_length=1, max_length=200)
     informant_email: str | None = Field(default=None, max_length=320)
 
 
@@ -767,7 +851,11 @@ class InterviewSummary(BaseModel):
     informant_handle: str | None
     informant_email: str | None
     status: Literal[
-        "invited", "in_progress", "completed", "declined", "incomplete",
+        "invited",
+        "in_progress",
+        "completed",
+        "declined",
+        "incomplete",
     ]
     invited_at: str | None = None
     started_at: str | None = None
@@ -788,7 +876,7 @@ class InterviewDetailResponse(BaseModel):
     topic_description: str | None
     framing: str | None
     must_cover: list[str]
-    status: str
+    status: Literal["invited", "in_progress", "completed", "declined", "incomplete"]
     consent_recorded: bool
     transcript: list[InterviewTurnPayload] = Field(default_factory=list)
 
@@ -804,6 +892,68 @@ class InterviewTurnResponse(BaseModel):
     status: str
 
 
+class RecordInterviewConsentRequest(BaseModel):
+    granted: bool
+
+
+class IssueInterviewInviteRequest(BaseModel):
+    required_scopes: list[Literal["record", "attribute", "publish"]] = Field(
+        default_factory=lambda: ["record"], min_length=1, max_length=3
+    )
+
+
+class InterviewInviteResponse(BaseModel):
+    invite_id: str
+    interview_id: str
+    link: str
+    required_scopes: list[str]
+
+
+class InterviewMarginResponse(BaseModel):
+    schema_version: Literal[1]
+    interview_id: str
+    revision: int
+    content_sha256: str
+    body: str
+    account_scope: str
+    recovery_scope: str
+    replayed: bool = False
+
+
+class PutInterviewMarginRequest(BaseModel):
+    schema_version: Literal[1]
+    base_revision: int = Field(..., ge=0)
+    mutation_key: str = Field(..., min_length=1, max_length=200)
+    body: str = Field(..., max_length=1_000_000)
+
+
+class BindInterviewDerivationRequest(BaseModel):
+    investigation_id: str = Field(..., min_length=1, max_length=512)
+
+
+class InterviewDerivationBindingResponse(BaseModel):
+    interview_id: str
+    project_id: str
+    investigation_id: str
+    revision: int
+
+
+class InterviewDerivationStatus(BaseModel):
+    question_id: str
+    investigation_id: str
+    delivery_state: Literal["pending", "processing", "completed", "failed"]
+    document_id: str | None = None
+    attempt_count: int
+    last_error_code: str | None = None
+
+
+class InterviewDerivationReconcileResponse(BaseModel):
+    attempted: int
+    completed: int
+    pending: int
+    failed: int
+
+
 class CompleteInterviewRequest(BaseModel):
     transcript_document_id: str | None = None
 
@@ -814,7 +964,8 @@ class CompleteInterviewRequest(BaseModel):
 
 
 def _detect_source_kind(
-    url: str, explicit: str | None = None,
+    url: str,
+    explicit: str | None = None,
 ) -> str | None:
     """Auto-detect a source kind from the URL pattern. Operator can
     override via the ``kind`` field on the request. Returns the kind
@@ -905,6 +1056,7 @@ def _extract_arxiv_id(url: str) -> str | None:
     """Pull the arXiv id out of a URL like
     ``https://arxiv.org/abs/2402.03300`` (or variations)."""
     import re
+
     m = re.search(r"arxiv\.org/(?:abs|pdf)/([A-Za-z0-9.\-]+)", url)
     if m:
         # Strip ``vN`` version suffix; the arXiv client handles
@@ -935,6 +1087,7 @@ class PublisherCreateRequest(BaseModel):
 
 
 class NotebookCreateRequest(BaseModel):
+    notebook_id: str | None = Field(default=None, min_length=1, max_length=512)
     title: str
     investigation_id: str | None = None
     document_id: str | None = None
@@ -963,7 +1116,18 @@ class NotebookPutContentRequest(BaseModel):
     localStorage-only persistence.
     """
 
+    schema_version: Literal[1]
+    base_revision: int = Field(ge=0)
+    mutation_key: str = Field(min_length=1, max_length=200)
     doc: dict[str, Any]
+
+
+class NotebookAppendContentRequest(BaseModel):
+    schema_version: Literal[1]
+    account_scope: str = Field(pattern=r"^[0-9a-f]{64}$")
+    base_revision: int = Field(ge=0)
+    mutation_key: str = Field(min_length=1, max_length=200)
+    block: dict[str, Any]
 
 
 class NotebookContentResponse(BaseModel):
@@ -975,8 +1139,24 @@ class NotebookContentResponse(BaseModel):
     TipTap ProseMirror document, the exact inverse of the ``PUT`` that
     decomposes it into ``notebook_blocks`` rows."""
 
+    schema_version: Literal[1]
     notebook_id: str
+    title: str
+    investigation_id: str | None
     doc: dict[str, Any]
+    revision: int
+    content_sha256: str
+    updated_at: str
+    account_scope: str
+    recovery_scope: str
+
+
+class NotebookMutationReceiptResponse(BaseModel):
+    schema_version: Literal[1]
+    notebook_id: str
+    revision: int
+    content_sha256: str
+    replayed: bool
 
 
 class AIUndoRequest(BaseModel):
@@ -1061,9 +1241,7 @@ def _compose_autocomplete_prompt(*, prefix: str, document_context: str | None) -
     voice/vocabulary of the surrounding text. ``document_context`` is the
     client-sent open-doc context (the cursor's neighborhood); retrieval-
     augmented completion (CK-1-style grounding) is a follow-up."""
-    context_block = (
-        f"DOCUMENT CONTEXT:\n{document_context}\n\n" if document_context else ""
-    )
+    context_block = f"DOCUMENT CONTEXT:\n{document_context}\n\n" if document_context else ""
     return (
         "You are an inline autocomplete for Antiek's writing surface. "
         "Complete the text after the cursor. Return ONLY the continuation "
@@ -1130,7 +1308,9 @@ class ComposeContextResponse(BaseModel):
 
 
 def _compose_context(
-    items: list[ContextItem], *, owner: bool,
+    items: list[ContextItem],
+    *,
+    owner: bool,
 ) -> ComposeContextResponse:
     """Compose a §9.0-aware system_context from @-selected items (CK-4).
 
@@ -1175,7 +1355,9 @@ def _compose_context(
                     # (degraded posture; never propagates to the caller).
                     try:
                         result = serve_full_text_guarded(
-                            con, item.id, owner=owner,
+                            con,
+                            item.id,
+                            owner=owner,
                         )
                     except T3BodyServeError:
                         withheld.append(item.id)
@@ -1237,7 +1419,11 @@ class ThoughtPartnerRequest(BaseModel):
 
 
 def _retrieve_thought_partner_context(
-    prompt: str, policy_tag: str, *, top_k: int = 8,
+    prompt: str,
+    policy_tag: str,
+    *,
+    top_k: int = 8,
+    authority: Any | None = None,
 ) -> list[dict[str, Any]]:
     """Retrieve the most semantically-relevant passages from the operator's
     knowledge graph for ``prompt`` and map them to the thought-partner
@@ -1254,25 +1440,49 @@ def _retrieve_thought_partner_context(
     endpoint fast on a cold box and keeps tests hermetic)."""
     from runtime.db_lock import connect_read
     from substrate.graph import default_db_path
-    from substrate.graph.search import SentenceTransformerEmbedding, search
+    from substrate.graph.search import (
+        SentenceTransformerEmbedding,
+        search,
+        search_authorized,
+    )
 
     try:
         with connect_read(default_db_path()) as con:
             model = SentenceTransformerEmbedding()
-            retrieved = search(
-                con, prompt, model=model, top_k=top_k, policy_tag=policy_tag,
-            )
+            if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+                if authority is None:
+                    return []
+                retrieved = search_authorized(
+                    con,
+                    authority,
+                    prompt,
+                    model=model,
+                    top_k=top_k,
+                    policy_tag=policy_tag,
+                )
+            else:
+                retrieved = search(
+                    con,
+                    prompt,
+                    model=model,
+                    top_k=top_k,
+                    policy_tag=policy_tag,
+                )
     except Exception:
         return []
     notes: list[dict[str, Any]] = []
     for hit in retrieved.get("results", []):
         doc_id = hit.get("document_id")
-        notes.append({
-            "note_id": hit.get("chunk_id"),
-            "note_text": hit.get("chunk_text", ""),  # search() emits "chunk_text" (graph/search.py:260); the prior "text" key never existed, so every retrieved note mapped to empty string and starved the model of library grounding.
-            "source_event_ids": [doc_id] if doc_id else [],
-            "confidence": float(hit.get("similarity") or 0.0),
-        })
+        notes.append(
+            {
+                "note_id": hit.get("chunk_id"),
+                "note_text": hit.get(
+                    "chunk_text", ""
+                ),  # search() emits "chunk_text" (graph/search.py:260); the prior "text" key never existed, so every retrieved note mapped to empty string and starved the model of library grounding.
+                "source_event_ids": [doc_id] if doc_id else [],
+                "confidence": float(hit.get("similarity") or 0.0),
+            }
+        )
     return notes
 
 
@@ -1302,6 +1512,37 @@ class OutcomeRecordRequest(BaseModel):
     execution_risk_outcomes: list[dict[str, Any]] = []
     decision_alignment: dict[str, Any] | None = None
     notes: str | None = None
+
+
+def _outcome_recorded_payload(req: OutcomeRecordRequest, outcome_id: str):
+    from substrate.schemas.events import (
+        DecisionAlignment,
+        ExecutionRiskOutcome,
+        FalsificationOutcome,
+        OutcomeRecordedPayload,
+        ThesisOutcome,
+    )
+
+    def _coerce(model, items: list[dict[str, Any]]) -> list[Any]:
+        values: list[Any] = []
+        for item in items:
+            with contextlib.suppress(Exception):
+                values.append(model(**item))
+        return values
+
+    decision = None
+    if isinstance(req.decision_alignment, dict):
+        with contextlib.suppress(Exception):
+            decision = DecisionAlignment(**req.decision_alignment)
+    return OutcomeRecordedPayload(
+        outcome_id=outcome_id,
+        observer=req.observer,
+        thesis_outcomes=_coerce(ThesisOutcome, req.thesis_outcomes),
+        falsification_outcomes=_coerce(FalsificationOutcome, req.falsification_outcomes),
+        execution_risk_outcomes=_coerce(ExecutionRiskOutcome, req.execution_risk_outcomes),
+        decision_alignment=decision,
+        notes=req.notes or "",
+    )
 
 
 class AttributionComputeRequest(BaseModel):
@@ -1511,6 +1752,88 @@ def create_app(
     _CF_ACCESS_CLIENT_ID_HEADER = "Cf-Access-Client-Id"
     _SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 
+    def _request_has_operator_authority(request: Request) -> bool:
+        auth_method = str(getattr(request.state, "auth_method", ""))
+        caller_email = str(getattr(request.state, "user_email", "")).lower()
+        configured_operators = operator_allowlist_from_env(_OPERATOR_EMAIL_ENV)
+        return (
+            auth_method
+            in {
+                "unauthenticated_local",
+                "bearer_token",
+                "cloudflare_service_token",
+            }
+            or caller_email in configured_operators
+        )
+
+    @app.middleware("http")
+    async def _legal_policy_no_store_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        """Policy evidence and validation failures are never cacheable."""
+        path = request.url.path
+        account_html_reference = path.startswith("/account/html-document-refs")
+        protected = path == "/account/workspace-resume" or account_html_reference or (
+            path.startswith("/research/plans/")
+            and (path.endswith("/gather-status") or "/legal-policy/" in path)
+        )
+        if path == "/account/workspace-resume":
+            try:
+                content_length = int(request.headers.get("content-length", "0"))
+            except ValueError:
+                content_length = 16_385
+            body_too_large = content_length > 16_384
+            if request.method == "PUT" and not body_too_large:
+                # Content-Length is optional (for example, chunked HTTP). The
+                # cached body remains available to FastAPI's request parser.
+                body_too_large = len(await request.body()) > 16_384
+            if body_too_large:
+                from fastapi.responses import JSONResponse
+
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "workspace request is too large"},
+                    headers={"Cache-Control": "no-store"},
+                )
+        try:
+            response = await call_next(request)
+        except Exception:  # noqa: BLE001 — scoped fail-closed response envelope
+            if not protected:
+                raise
+            logger.exception("Unhandled protected endpoint failure")
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "legal-policy operation failed"},
+                headers={"Cache-Control": "no-store"},
+            )
+        if protected:
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.middleware("http")
+    async def _notebook_no_store_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        """Private notebook responses and handled errors are never cacheable."""
+
+        response = await call_next(request)
+        if request.url.path.startswith(
+            (
+                "/notebooks",
+                "/api/notebooks",
+                "/interviews",
+                "/interview-projects",
+                "/interview-invites",
+                "/speak/invite/",
+            )
+        ):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
     @app.middleware("http")
     async def _operator_auth_middleware(
         request: Request,
@@ -1518,16 +1841,23 @@ def create_app(
     ) -> Response:
         expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
         operator_emails = operator_allowlist_from_env(_OPERATOR_EMAIL_ENV)
-        expected_st_client_id = os.environ.get(
-            _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
-        ).strip().lower()
+        expected_st_client_id = (
+            os.environ.get(
+                _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV,
+                "",
+            )
+            .strip()
+            .lower()
+        )
         if not expected_token and not operator_emails and not expected_st_client_id:
             # Enforcement disabled. Existing tests + local dev
             # work unchanged. The request still acquires a default
             # operator identity on request.state so endpoints have a
             # uniform handle to user_id / scopes.
             from substrate.multi_user.auth import operator_claims as _oc
+
             claims = _oc()
+            request.state.user_claims = claims
             request.state.user_id = claims.user_id
             request.state.scopes = frozenset(claims.scopes)
             request.state.auth_method = "unauthenticated_local"
@@ -1552,15 +1882,12 @@ def create_app(
         # request.state. (Endpoint-side calls back into operator_claims()
         # are still safe; they fall through to the static operator
         # identity when state is absent.)
-        def _attach_operator(
-            req: Request, *, method: str, email: str | None = None
-        ) -> None:
-            from substrate.multi_user.auth import operator_claims as _oc
-            claims = _oc()
+        def _attach_claims(req: Request, *, claims: UserClaims, method: str) -> None:
+            req.state.user_claims = claims
             req.state.user_id = claims.user_id
             req.state.scopes = frozenset(claims.scopes)
             req.state.auth_method = method
-            req.state.user_email = email
+            req.state.user_email = claims.email
 
         # Path 1: Antiek-issued session cookie (magic-link login).
         # PostHog-style owned-auth path. Checked BEFORE Cloudflare
@@ -1573,26 +1900,48 @@ def create_app(
                 cookie_claims: SessionClaims | None
                 try:
                     from substrate.auth import verify_session_cookie
+
                     cookie_claims = verify_session_cookie(session_value)
                 except Exception:  # noqa: BLE001 — invalid cookie falls through
                     cookie_claims = None
                 if cookie_claims is not None:
                     cookie_email = cookie_claims.email.strip().lower()
                     if not operator_emails or cookie_email in operator_emails:
-                        _attach_operator(
-                            request,
-                            method="antiek_session_cookie",
-                            email=cookie_claims.email,
-                        )
-                        return await call_next(request)
+                        from substrate.multi_user.auth import account_claims
+
+                        try:
+                            claims = account_claims(
+                                user_id=cookie_claims.user_id,
+                                email=cookie_email,
+                            )
+                        except ValueError:
+                            claims = None
+                        if claims is not None:
+                            _attach_claims(
+                                request,
+                                claims=claims,
+                                method="antiek_session_cookie",
+                            )
+                            return await call_next(request)
 
         # Path 2: Cloudflare Access — browser SSO (email header)
         if operator_emails:
-            cf_email = request.headers.get(
-                _CF_ACCESS_EMAIL_HEADER, "",
-            ).strip().lower()
+            cf_email = (
+                request.headers.get(
+                    _CF_ACCESS_EMAIL_HEADER,
+                    "",
+                )
+                .strip()
+                .lower()
+            )
             if cf_email and cf_email in operator_emails:
-                _attach_operator(request, method="cloudflare_access_email")
+                from substrate.multi_user.auth import account_claims, account_user_id
+
+                _attach_claims(
+                    request,
+                    claims=account_claims(user_id=account_user_id(cf_email), email=cf_email),
+                    method="cloudflare_access_email",
+                )
                 return await call_next(request)
 
         # Path 3: Cloudflare Access — Service Token (machine callers)
@@ -1610,11 +1959,22 @@ def create_app(
         # boundary: anything reaching the origin with a Cf-Access-*
         # header has been validated by Cloudflare's edge.
         if expected_st_client_id:
-            cf_client_id = request.headers.get(
-                _CF_ACCESS_CLIENT_ID_HEADER, "",
-            ).strip().lower()
+            cf_client_id = (
+                request.headers.get(
+                    _CF_ACCESS_CLIENT_ID_HEADER,
+                    "",
+                )
+                .strip()
+                .lower()
+            )
             if cf_client_id and cf_client_id == expected_st_client_id:
-                _attach_operator(request, method="cloudflare_service_token")
+                from substrate.multi_user.auth import credential_claims
+
+                _attach_claims(
+                    request,
+                    claims=credential_claims(kind="cloudflare_service", credential_id=cf_client_id),
+                    method="cloudflare_service_token",
+                )
                 return await call_next(request)
 
         # Path 4: Bearer token (legacy + backstop for direct-to-origin
@@ -1624,12 +1984,20 @@ def create_app(
             scheme, _, token = auth.partition(" ")
             if scheme.lower() == "bearer" and token.strip():
                 import secrets as _secrets
+
                 if _secrets.compare_digest(token.strip(), expected_token):
-                    _attach_operator(request, method="bearer_token")
+                    from substrate.multi_user.auth import credential_claims
+
+                    _attach_claims(
+                        request,
+                        claims=credential_claims(kind="bearer", credential_id=token.strip()),
+                        method="bearer_token",
+                    )
                     return await call_next(request)
 
         from fastapi.responses import JSONResponse
-        return JSONResponse(
+
+        denied = JSONResponse(
             status_code=401,
             content={
                 "error": {
@@ -1643,12 +2011,21 @@ def create_app(
                 }
             },
         )
+        if (request.url.path == "/account/workspace-resume" or request.url.path.startswith(
+            "/account/html-document-refs"
+        ) or request.url.path == "/speak/private-write" or (
+            request.url.path.startswith("/speak/projects/")
+            and "/private-write/" in request.url.path
+        )):
+            denied.headers["Cache-Control"] = "no-store"
+        return denied
 
     # ── Magic-link auth routes (PostHog-style owned login surface) ──
     # Mounted unconditionally so /auth/request + /auth/callback are
     # reachable; the routes themselves no-op when the operator email
     # allowlist is empty, so this is safe on local dev too.
     from .auth import register_auth_routes
+
     register_auth_routes(app)
 
     # Phase 3 substrate surfaces — Sprint 23-24 advertiser onboarding +
@@ -1659,29 +2036,36 @@ def create_app(
     # CLIs. Per master-spec §13.7 audit: every state transition is
     # persisted as an append-only row in the substrate's DuckDB.
     from .advertisers import register_advertiser_routes
+
     register_advertiser_routes(app)
     from .federation import register_federation_routes
+
     register_federation_routes(app)
     # antiek-unified SPR-05 — read-only coordination surface (gate ledger +
     # 45-sprint roadmap). A VIEW over docs/operator_gate_actions.md + the five
     # specs' rosters + SPR-01's dependency DAG; GET-only, no gate-write path.
     from .coordination import register_coordination_routes
+
     register_coordination_routes(app)
     # Sprint 23-24 phase 1+2 — ad-impression emission + targeted
     # inventory select. Substrate primitives live in
     # substrate/ad_inventory/{ad_bidding,intent_targeting,payout}.
     from .ad_impressions import register_ad_impression_routes
+
     register_ad_impression_routes(app)
     # Sprint 23-24 phase 4 — creator payouts dashboard data source.
     from .creator_payouts import register_creator_payouts_routes
+
     register_creator_payouts_routes(app)
     # Sprint 23-24 phase 5 — advertiser campaign performance.
     from .campaigns import register_campaign_routes
+
     register_campaign_routes(app)
     # Read SPR-01 — servable-corpus query API. The Library (SPR-02) +
     # Reader (SPR-03) consume this; the full-text endpoint routes through
     # the deny-by-default gate in substrate/books/serve.py.
     from .books import register_book_routes
+
     register_book_routes(app)
     # Mountain Shell SPR-02 — Krea image-generation proxy. Holds the
     # KREA_API_TOKEN server-side (the browser never sees it) and brokers
@@ -1690,20 +2074,24 @@ def create_app(
     # (never a 500); SPR-04's living background renders a deterministic
     # placeholder on that signal. Touches no DuckDB / db_lock.
     from .krea_routes import register_krea_routes
+
     register_krea_routes(app)
     # Multimedia SPR-09 — dry-run asset persistence/read-model API. No live
     # provider spend; routes call deterministic planner/audio/video/steering/
     # hardening seams and persist JSON-backed asset records.
     from .multimedia_routes import register_multimedia_routes
+
     register_multimedia_routes(app)
     # Settings SPR-01 — model inventory + operator budget readout + prompt
     # cost projection (honest nulls when pricing/spend unknown).
     from .settings_budget import register_settings_budget_routes
+
     register_settings_budget_routes(app)
     # Engagement spine — research↔reading spawn/refs/context/collective +
     # floating-session flywheel (process-local store MVP; residual (w)).
     from .engagement_routes import register_engagement_routes
-    register_engagement_routes(app)
+
+    register_engagement_routes(app, unauthenticated_local=False)
     # Residual (cb): env-gated live twin seed note_taker (default no-op).
     try:
         from substrate.engagement_spine.twin_seed_live_wiring import (
@@ -1738,9 +2126,7 @@ def create_app(
         )
 
         if not isinstance(midnight_oil_dependencies, MidnightOilDependencies):
-            raise RuntimeError(
-                "enabled Midnight Oil requires validated durable dependencies"
-            )
+            raise RuntimeError("enabled Midnight Oil requires validated durable dependencies")
         register_midnight_oil_routes(app, dependencies=midnight_oil_dependencies)
     elif midnight_oil_dependencies is not None:
         raise RuntimeError("Midnight Oil dependencies supplied while the feature is disabled")
@@ -1749,43 +2135,49 @@ def create_app(
 
     from .marketplace_host_routes import register_marketplace_host_routes
 
-    if marketplace_host_store is not None and not isinstance(
-        marketplace_host_store, HostStore
-    ):
+    if marketplace_host_store is not None and not isinstance(marketplace_host_store, HostStore):
         raise RuntimeError("marketplace host store does not satisfy HostStore")
     register_marketplace_host_routes(app, store=marketplace_host_store)
     # Shared owner-bound ingest for Wrestle/private uploads; Marketplace wraps
     # the same service only after its entitlement gate.
     from .hosted_document_routes import register_hosted_document_routes
+
     register_hosted_document_routes(app)
     # Read SPR-09 — library catalog (paginated/filtered/searched view over the
     # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
     from .library import register_library_routes
+
     register_library_routes(app)
     # HPRJ SPR-05 — synthesis-artifact export: GET /api/syntheses/{id}/artifact.html.
     # Rights filter lives in the adapter (reuses SERVABLE_CONTENT_CLASSES); the
     # route wires the in-path zero-script gate + 403-with-reason on refusal.
     from .synthesis_artifact import register_synthesis_artifact_routes
+
     register_synthesis_artifact_routes(app)
     # HPRJ SPR-06 — notebook-artifact export: GET /api/notebooks/{id}/artifact
     # (?format=html|antiek|antiek_html). Rights filter in adapt_notebook_for_export.
     from .notebook_artifact import register_notebook_artifact_routes
-    register_notebook_artifact_routes(app)
+
+    register_notebook_artifact_routes(app, unauthenticated_local=False)
     # HPRJ SPR-06 — deliverable (Write surface) export: GET /api/deliverables/{id}/artifact
     from .deliverable_artifact import register_deliverable_artifact_routes
+
     register_deliverable_artifact_routes(app)
     # Read SPR-09 — ad-border surfaces: per-window frame-attention telemetry
     # (composes the SPR-05 accrual engine + the one escrow seam; accrues, never
     # disburses) + reader slot fill (house fill is the zero-buyer default).
     from .ad_routes import register_ad_routes
+
     register_ad_routes(app)
     # Read SPR-07 — text-to-speech for voice replies in the conversational
     # rabbit hole. Gated on the operator OpenAI key (503 without one).
     from .speech import register_speech_routes
+
     register_speech_routes(app)
     # Read SPR-06 — reader voice-note capture: transcribe + distill (the
     # corrected-transcript guard + note-taker dispatch).
     from .read_voice import register_read_voice_routes
+
     register_read_voice_routes(app)
 
     bus = broadcaster if broadcaster is not None else EventBroadcaster()
@@ -1799,6 +2191,7 @@ def create_app(
     # so this startup pass doesn't see operator credentials.
     if register_providers:
         from substrate.dispatch.providers import register_default_providers
+
         app.state.registered_providers = register_default_providers(quiet=True)
         from interfaces.research.api.boot_providers import (
             log_zero_providers_warning_if_needed,
@@ -1840,6 +2233,7 @@ def create_app(
         from .grounding import register_handlers as _register_grounding
         from .note_taking import register_handlers as _register_note_taking
         from .wrestling import register_handlers as _register_wrestling
+
         _register_wrestling(
             bus,
             db_path=wrestling_db_path,
@@ -1869,6 +2263,7 @@ def create_app(
         # paraphrase-guarded (one-regen-max) decomposer dispatch. Loop 1
         # starts here — the first orchestrate.py role extracted.
         from .decomposer import register_handlers as _register_decomposer
+
         _register_decomposer(bus, embedder=wrestling_embedder)
         # Evidence Retriever bridge (Sprint 7 day 1). Subscribes to
         # evidence.retrieve.requested → flash-tier dispatch → parse
@@ -1877,6 +2272,7 @@ def create_app(
         from .evidence_retriever import (
             register_handlers as _register_evidence_retriever,
         )
+
         _register_evidence_retriever(bus)
         # Parameter Extractor bridge (Sprint 7 day 2). Subscribes to
         # parameter_extract.requested → flash-tier dispatch → parse
@@ -1887,6 +2283,7 @@ def create_app(
         from .parameter_extractor import (
             register_handlers as _register_parameter_extractor,
         )
+
         _register_parameter_extractor(bus)
         # Connector bridge (Sprint 7 day 4). Subscribes to
         # connector.requested → runs substrate.graph.traverse against
@@ -1897,6 +2294,7 @@ def create_app(
         from .connector import (
             register_handlers as _register_connector,
         )
+
         _register_connector(bus, db_path=wrestling_db_path)
         # Synthesizer bridge (Sprint 7 day 5 — closes Loop 1's role
         # chain). Subscribes to synthesize.requested → dispatches the
@@ -1907,6 +2305,7 @@ def create_app(
         from .synthesizer import (
             register_handlers as _register_synthesizer,
         )
+
         _register_synthesizer(bus)
         # Loop 1 orchestrator (Sprint 8 day 3). Subscribes to
         # investigation.start_requested; drives the 9-phase sequence
@@ -1916,6 +2315,7 @@ def create_app(
         from orchestration.loop_one import (
             register_handlers as _register_loop_one,
         )
+
         _loop_coordinator = _register_loop_one(bus)
         # ANT-DRL-06: Path A convergence — DRW gather then Loop 1 tail.
         from interfaces.research.api.cascade_routes import (
@@ -1927,7 +2327,9 @@ def create_app(
             pack: SessionEvidencePack,
         ) -> None:
             await session.run_synthesis_tail(
-                pack, broadcaster=bus, coordinator=_loop_coordinator,
+                pack,
+                broadcaster=bus,
+                coordinator=_loop_coordinator,
             )
 
         set_synthesis_tail_runner(_run_cascade_synthesis_tail)
@@ -1951,12 +2353,8 @@ def create_app(
             param_version=ANTIEK_PARAM_VERSION,
             schema_version=EVENT_SCHEMA_VERSION,
             subscriber_count=bus.subscriber_count,
-            registered_providers=sorted(
-                getattr(app.state, "registered_providers", set())
-            ),
-            providers_ready=bool(
-                getattr(app.state, "registered_providers", set())
-            ),
+            registered_providers=sorted(getattr(app.state, "registered_providers", set())),
+            providers_ready=bool(getattr(app.state, "registered_providers", set())),
             build_sha=getattr(app.state, "build_sha", "unknown"),
             flywheel_ready=getattr(app.state, "flywheel_ready", False),
             knowledge_reuse_count=getattr(app.state, "knowledge_reuse_count", 0),
@@ -1972,8 +2370,20 @@ def create_app(
 
     # ── POST typed event ────────────────────────────────────────
 
+    def _require_request_owner(request: Request, investigation_id: str):
+        try:
+            access = authority_from_request(request, investigation_id)
+            require_investigation_owner(access)
+            return access
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
+        except InvestigationAccessDenied as exc:
+            raise HTTPException(status_code=404, detail="investigation not found") from exc
+
     @app.post("/events/typed", response_model=EmittedEventResponse, status_code=201)
-    async def post_typed_event(envelope: TypedEventEnvelope) -> EmittedEventResponse:
+    async def post_typed_event(
+        envelope: TypedEventEnvelope, request: Request
+    ) -> EmittedEventResponse:
         # The wrestling-vs-non-wrestling document_id requirement is
         # enforced by the Event model_validator when we construct the
         # Event for broadcast — but the emit path validates the same
@@ -1981,6 +2391,17 @@ def create_app(
         # a 422. Catch the obvious case early for a cleaner error.
         action_type = envelope.payload.action_type
         action_value = action_type.value if hasattr(action_type, "value") else str(action_type)
+        if action_value == "investigation.start_requested":
+            try:
+                access = authority_from_request(request, envelope.investigation_id)
+                bind_new_investigation(access)
+            except InvestigationAuthenticationRequired as exc:
+                raise HTTPException(status_code=401, detail="authentication required") from exc
+            except InvestigationAccessDenied as exc:
+                raise HTTPException(status_code=404, detail="investigation not found") from exc
+        else:
+            access = _require_request_owner(request, envelope.investigation_id)
+        role, policy_id = event_actor(access)
         if action_value in WRESTLING_ACTION_TYPES and not envelope.document_id:
             raise HTTPException(
                 status_code=422,
@@ -1990,37 +2411,72 @@ def create_app(
                 ),
             )
 
+        filed_doc: str | None = None
+        target_inv: str | None = None
+        if action_value == "document.filed_into_investigation":
+            from runtime.db_lock import connect_read
+
+            payload = envelope.payload.model_dump(mode="json")
+            filed_doc = payload.get("filed_document_id")
+            target_inv = payload.get("target_investigation_id")
+            if not filed_doc or not target_inv:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "document.filed_into_investigation requires "
+                        "filed_document_id + target_investigation_id."
+                    ),
+                )
+            if target_inv != envelope.investigation_id:
+                raise HTTPException(status_code=404, detail="filing target not found")
+            with connect_read(default_db_path()) as con:
+                from substrate.legal_gate.read import read_document_compatibility
+
+                document = read_document_compatibility(
+                    con,
+                    filed_doc,
+                    authority=access.authority,
+                    enforce=os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1",
+                )
+                if document is None or (
+                    document.get("owner_user_id") is not None
+                    and document.get("owner_user_id") != access.authority.account_id
+                ):
+                    raise HTTPException(
+                        status_code=404,
+                        detail="document not found; nothing filed.",
+                    )
+
         try:
-            event_id = emit_typed(
-                envelope.investigation_id,
+            require_event_persistence()
+            event_id = emit_typed_authorized_strict(
+                access.authority,
                 envelope.payload,
                 parent_event_id=envelope.parent_event_id,
                 synthesis_id=envelope.synthesis_id,
                 phase=envelope.phase,
-                role=envelope.role,
-                policy_id=envelope.policy_id,
+                role=role,
+                policy_id=policy_id,
                 document_id=envelope.document_id,
             )
-        except Exception as exc:  # Pydantic ValidationError or write error
+        except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-        if event_id is None:
-            # Events disabled via env var — surface so the client knows
-            # nothing was persisted. Distinct from a write failure.
+        except Exception as exc:
             raise HTTPException(
                 status_code=503,
-                detail="Event log is disabled (ANTIEK_EVENTS_DISABLED is set).",
-            )
+                detail="event persistence failed",
+            ) from exc
 
         # Reconstruct the Event for broadcast. The trajectory store has
         # the persisted row; we read it back rather than fabricate the
         # envelope so the broadcast frame matches the on-disk shape
         # exactly (timestamp, derived fields, etc.).
-        rows = trajectory(envelope.investigation_id)
+        rows = trajectory_authorized(access.authority)
         matching = next((r for r in rows if r.get("event_id") == event_id), None)
         if matching is not None:
             try:
                 event = Event.model_validate(matching)
+                bus.bind_event_authority(event.event_id, access.authority)
                 await bus.broadcast(event)
             except Exception:  # pragma: no cover — diagnostic only
                 # Don't fail the POST because the broadcast failed.
@@ -2060,38 +2516,33 @@ def create_app(
             # divergence between the log and the documents table).
             if action_value == "document.filed_into_investigation":
                 from runtime.db_lock import connect_write
-                from substrate.graph import default_db_path
 
-                payload = matching.get("payload") or {}
-                filed_doc = payload.get("filed_document_id")
-                target_inv = payload.get("target_investigation_id")
-                if not filed_doc or not target_inv:
-                    raise HTTPException(
-                        status_code=422,
-                        detail=(
-                            "document.filed_into_investigation requires "
-                            "filed_document_id + target_investigation_id."
-                        ),
-                    )
+                assert filed_doc is not None and target_inv is not None
                 try:
-                    with connect_write(
-                        default_db_path(), purpose="api:file_document"
-                    ) as con:
-                        existing = con.execute(
-                            "SELECT document_id FROM documents WHERE document_id = ?",
-                            [filed_doc],
-                        ).fetchone()
-                        if existing is None:
+                    with connect_write(default_db_path(), purpose="api:file_document") as con:
+                        from substrate.legal_gate.read import read_document_compatibility
+
+                        existing = read_document_compatibility(
+                            con,
+                            filed_doc,
+                            authority=access.authority,
+                            enforce=os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1",
+                        )
+                        if existing is None or (
+                            existing.get("owner_user_id") is not None
+                            and existing.get("owner_user_id")
+                            != access.authority.account_id
+                        ):
                             raise HTTPException(
                                 status_code=404,
-                                detail=f"document {filed_doc!r} not found; nothing filed.",
+                                detail="document not found; nothing filed.",
                             )
                         # 1:N — set the doc's single investigation home. ip_holder_id
                         # + the chunk/claim chain are NOT touched (link, not copy).
                         con.execute(
                             "UPDATE documents SET investigation_id = ? "
-                            "WHERE document_id = ?",
-                            [target_inv, filed_doc],
+                            "WHERE document_id = ? AND owner_user_id = ?",
+                            [target_inv, filed_doc, access.authority.account_id],
                         )
                 except HTTPException:
                     raise
@@ -2106,7 +2557,9 @@ def create_app(
     # ── GET trajectory ──────────────────────────────────────────
 
     @app.post("/ai/undo", response_model=EmittedEventResponse)
-    async def post_ai_undo(req: AIUndoRequest = Body(...)) -> EmittedEventResponse:
+    async def post_ai_undo(
+        request: Request, req: AIUndoRequest = Body(...)
+    ) -> EmittedEventResponse:
         """Undo a previously-applied AI sidecar action (§5.5 Wedge 4).
 
         Looks up the ``ai.action.applied`` event in the trajectory
@@ -2119,7 +2572,8 @@ def create_app(
         from substrate.ai_actions import AIActionError, undo_ai_action
         from substrate.graph import default_db_path
 
-        rows = trajectory(req.investigation_id)
+        access = _require_request_owner(request, req.investigation_id)
+        rows = trajectory_authorized(access.authority)
         applied_event = next(
             (r for r in rows if r.get("event_id") == req.event_id),
             None,
@@ -2153,6 +2607,13 @@ def create_app(
             )
 
         db_path = default_db_path()
+        if payload.get("target_kind") in {"notebook", "notebook_block"}:
+            previous = dict(payload.get("prev_state") or {})
+            previous["account_id"] = access.authority.account_id
+            payload = dict(payload)
+            payload["prev_state"] = previous
+            applied_event = dict(applied_event)
+            applied_event["payload"] = payload
         try:
             with connect_write(db_path, purpose="api:ai_undo") as con:
                 undone_event_id = undo_ai_action(
@@ -2189,9 +2650,11 @@ def create_app(
     @app.get("/trajectory/{investigation_id}")
     async def get_trajectory(
         investigation_id: str,
+        request: Request,
         limit: Annotated[int | None, Query(ge=1, le=10_000)] = None,
     ) -> dict[str, Any]:
-        rows = trajectory(investigation_id)
+        access = _require_request_owner(request, investigation_id)
+        rows = trajectory_authorized(access.authority)
         if limit is not None:
             rows = rows[-limit:]
         return {
@@ -2199,27 +2662,6 @@ def create_app(
             "count": len(rows),
             "events": rows,
         }
-
-    def _iter_event_log_investigation_ids() -> list[str]:
-        from substrate.event_log import default_events_dir
-
-        events_dir = default_events_dir()
-        if not os.path.isdir(events_dir):
-            return []
-        seen: set[str] = set()
-        ids: list[str] = []
-        for filename in sorted(os.listdir(events_dir)):
-            if filename.endswith(".parquet"):
-                investigation_id = filename[: -len(".parquet")]
-            elif filename.endswith(".jsonl"):
-                investigation_id = filename[: -len(".jsonl")]
-            else:
-                continue
-            if investigation_id in seen:
-                continue
-            seen.add(investigation_id)
-            ids.append(investigation_id)
-        return ids
 
     def _parse_event_emitted_at(row: dict[str, Any]) -> datetime | None:
         raw = row.get("emitted_at") or row.get("created_at") or row.get("ts")
@@ -2235,11 +2677,23 @@ def create_app(
 
     @app.get("/trajectory")
     async def get_trajectory_collection(
+        request: Request,
         limit: Annotated[int, Query(ge=1, le=10_000)] = 50,
     ) -> dict[str, Any]:
+        try:
+            collection_access = authority_from_request(request, "__collection__")
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
+        from substrate.investigation_streams import list_authorized_investigation_ids
+
         rows: list[dict[str, Any]] = []
-        for investigation_id in _iter_event_log_investigation_ids():
-            for row in trajectory(investigation_id):
+        investigation_ids = list_authorized_investigation_ids(
+            collection_access.authority.account_id,
+            root=collection_access.authority.root,
+        )
+        for investigation_id in investigation_ids:
+            access = authority_for_investigation(collection_access, investigation_id)
+            for row in trajectory_authorized(access.authority):
                 if "investigation_id" not in row:
                     row = {**row, "investigation_id": investigation_id}
                 rows.append(row)
@@ -2257,6 +2711,138 @@ def create_app(
     # investigation.start_requested and runs the 9-phase chain in
     # a detached task — POST returns immediately with the handle.
 
+    def _canonical_investigation_quote_command(req: InvestigationStartRequest) -> str:
+        import json as _json
+
+        return _json.dumps(
+            req.model_dump(exclude={"research_quote_token"}, mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+
+    def _canonical_reserved_quote_command(
+        parent_investigation_id: str,
+        question_id: str,
+        req: ReservedQuestionLaunchRequest,
+    ) -> str:
+        import json as _json
+
+        return _json.dumps(
+            {
+                "parent_investigation_id": parent_investigation_id,
+                "question_id": question_id,
+                "request": req.model_dump(
+                    exclude={"research_quote_token"}, mode="json"
+                ),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+
+    def _canonical_parked_quote_command(
+        question_id: str,
+        req: ParkedQuestionLaunchRequest,
+    ) -> str:
+        import json as _json
+
+        return _json.dumps(
+            {
+                "question_id": question_id,
+                "request": req.model_dump(
+                    exclude={"research_quote_token"}, mode="json"
+                ),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+
+    def _issue_exact_research_quote(
+        *,
+        request: Request,
+        command: str,
+        research_tier: str,
+        approved_run_ceiling_usd: float,
+        selected_driver_role: str | None = None,
+        selected_driver_provider: str | None = None,
+        selected_driver_model: str | None = None,
+        selected_driver_pricing_fingerprint: str | None = None,
+    ) -> InvestigationQuoteResponse:
+        from .research_quote_authority import issue_exact_research_quote
+
+        token, receipt, _ = issue_exact_research_quote(
+            request=request,
+            command=command,
+            research_tier=research_tier,
+            approved_run_ceiling_usd=approved_run_ceiling_usd,
+            selected_driver_role=selected_driver_role,
+            selected_driver_provider=selected_driver_provider,
+            selected_driver_model=selected_driver_model,
+            selected_driver_pricing_fingerprint=(
+                selected_driver_pricing_fingerprint
+            ),
+        )
+        return InvestigationQuoteResponse(
+            quote_token=token,
+            quote_id=receipt.quote_id,
+            quote_payload_sha256=receipt.payload_sha256,
+            route_manifest_fingerprint=receipt.route_manifest_fingerprint,
+            issued_at_ms=receipt.issued_at_ms,
+            expires_at_ms=receipt.expires_at_ms,
+            approved_run_ceiling_usd=receipt.approved_run_ceiling_usd,
+        )
+
+    def _verify_exact_research_quote(
+        *,
+        request: Request,
+        token: str | None,
+        command: str,
+        research_tier: str,
+        approved_run_ceiling_usd: float,
+        selected_driver_role: str | None = None,
+        selected_driver_provider: str | None = None,
+        selected_driver_model: str | None = None,
+        selected_driver_pricing_fingerprint: str | None = None,
+    ) -> tuple[Any, Any]:
+        from .research_quote_authority import verify_exact_research_quote
+
+        return verify_exact_research_quote(
+            request=request,
+            token=token,
+            command=command,
+            research_tier=research_tier,
+            approved_run_ceiling_usd=approved_run_ceiling_usd,
+            selected_driver_role=selected_driver_role,
+            selected_driver_provider=selected_driver_provider,
+            selected_driver_model=selected_driver_model,
+            selected_driver_pricing_fingerprint=(
+                selected_driver_pricing_fingerprint
+            ),
+        )
+
+    @app.post(
+        "/investigations/quote",
+        response_model=InvestigationQuoteResponse,
+    )
+    async def post_investigation_quote(
+        req: InvestigationStartRequest,
+        request: Request,
+    ) -> InvestigationQuoteResponse:
+        return _issue_exact_research_quote(
+            request=request,
+            command=_canonical_investigation_quote_command(req),
+            research_tier=req.research_tier or "deep",
+            approved_run_ceiling_usd=req.approved_run_ceiling_usd,
+            selected_driver_role=req.selected_driver_role,
+            selected_driver_provider=req.selected_driver_provider,
+            selected_driver_model=req.selected_driver_model,
+            selected_driver_pricing_fingerprint=(
+                req.selected_driver_pricing_fingerprint
+            ),
+        )
+
     @app.post(
         "/investigations",
         response_model=InvestigationStartResponse,
@@ -2264,6 +2850,7 @@ def create_app(
     )
     async def post_investigation(
         req: InvestigationStartRequest,
+        request: Request,
     ) -> InvestigationStartResponse:
         """Cold-question entry point. Emits
         ``INVESTIGATION_START_REQUESTED`` into the trajectory; the
@@ -2275,65 +2862,116 @@ def create_app(
         # at module import time so test setups that monkey-patch the
         # schema layer (drift tests) don't see a partially-initialized
         # module.
-        import uuid as _uuid
+        from datetime import UTC as _UTC
+        from datetime import datetime as _datetime
 
+        from substrate.event_log import (
+            append_event_once_authorized,
+            prepare_typed_event,
+        )
         from substrate.schemas import (
             InvestigationSpawnedFromPayload,
             InvestigationStartRequestedPayload,
+            ResearchQuotedRoute,
         )
 
-        investigation_id = (
-            req.investigation_id or f"inv-{_uuid.uuid4().hex[:12]}"
+        quote_receipt, manifest = _verify_exact_research_quote(
+            request=request,
+            token=req.research_quote_token,
+            command=_canonical_investigation_quote_command(req),
+            research_tier=req.research_tier or "deep",
+            approved_run_ceiling_usd=req.approved_run_ceiling_usd,
+            selected_driver_role=req.selected_driver_role,
+            selected_driver_provider=req.selected_driver_provider,
+            selected_driver_model=req.selected_driver_model,
+            selected_driver_pricing_fingerprint=(
+                req.selected_driver_pricing_fingerprint
+            ),
+        )
+        investigation_id = req.investigation_id or f"inv-q-{quote_receipt.quote_id[:24]}"
+        try:
+            if req.parent_investigation_id:
+                parent_access = authority_from_request(request, req.parent_investigation_id)
+                access = bind_child_investigation(parent_access, investigation_id)
+            else:
+                access = authority_from_request(request, investigation_id)
+                bind_new_investigation(access)
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
+        except InvestigationAccessDenied as exc:
+            raise HTTPException(status_code=404, detail="investigation not found") from exc
+        role, policy_id = event_actor(access)
+        quote_emitted_at = _datetime.fromtimestamp(
+            quote_receipt.issued_at_ms / 1000, tz=_UTC
+        )
+        prepared_start = prepare_typed_event(
+            investigation_id,
+            InvestigationStartRequestedPayload(
+                question=req.question,
+                context=req.context,
+                topic_slug=req.topic_slug,
+                max_sub_questions=req.max_sub_questions,
+                parent_investigation_id=req.parent_investigation_id,
+                spawn_context=req.spawn_context,
+                # SPR-01 M3: record the chosen research tier on the
+                # start event (queryable after the fact). The payload
+                # field is the same CLOSED set.
+                research_tier=req.research_tier,
+                approved_run_ceiling_usd=req.approved_run_ceiling_usd,
+                research_quote_id=quote_receipt.quote_id,
+                research_quote_payload_sha256=quote_receipt.payload_sha256,
+                research_route_manifest_fingerprint=(
+                    quote_receipt.route_manifest_fingerprint
+                ),
+                research_quote_expires_at_ms=quote_receipt.expires_at_ms,
+                research_route_manifest=tuple(
+                    ResearchQuotedRoute(**row.__dict__) for row in manifest.routes
+                ),
+                selected_driver_role=quote_receipt.selected_driver_role,
+                selected_driver_provider=quote_receipt.selected_driver_provider,
+                selected_driver_model=quote_receipt.selected_driver_model,
+                selected_driver_pricing_fingerprint=(
+                    quote_receipt.selected_driver_pricing_fingerprint
+                ),
+            ),
+            event_id=f"evt-quoted-start-{quote_receipt.quote_id[:24]}",
+            role=role,
+            policy_id=policy_id,
+            emitted_at=quote_emitted_at,
         )
         try:
-            event_id = emit_typed(
-                investigation_id,
-                InvestigationStartRequestedPayload(
-                    question=req.question,
-                    context=req.context,
-                    topic_slug=req.topic_slug,
-                    max_sub_questions=req.max_sub_questions,
-                    parent_investigation_id=req.parent_investigation_id,
-                    spawn_context=req.spawn_context,
-                    # SPR-01 M3: record the chosen research tier on the
-                    # start event (queryable after the fact). The payload
-                    # field is the same CLOSED set.
-                    research_tier=req.research_tier,
-                ),
-                role="operator",
-                policy_id="operator-cli",
-            )
-        except Exception as exc:  # Pydantic ValidationError
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-        if event_id is None:
-            raise HTTPException(
-                status_code=503,
-                detail="Event log is disabled (ANTIEK_EVENTS_DISABLED).",
-            )
+            event_id = append_event_once_authorized(access.authority, prepared_start)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail="research quote replay conflicts") from exc
 
         # Sprint 11: emit the spawn-lineage event when parent provided.
         # Non-fatal if it fails; the start event already encodes the
         # lineage in its own payload.
         if req.parent_investigation_id:
             with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
-                emit_typed(
-                    investigation_id,
-                    InvestigationSpawnedFromPayload(
-                        parent_investigation_id=req.parent_investigation_id,
-                        spawn_context=req.spawn_context or "",
+                append_event_once_authorized(
+                    access.authority,
+                    prepare_typed_event(
+                        investigation_id,
+                        InvestigationSpawnedFromPayload(
+                            parent_investigation_id=req.parent_investigation_id,
+                            spawn_context=req.spawn_context or "",
+                        ),
+                        event_id=f"evt-quoted-spawn-{quote_receipt.quote_id[:24]}",
+                        role=role,
+                        policy_id=policy_id,
+                        parent_event_id=event_id,
+                        emitted_at=quote_emitted_at,
                     ),
-                    role="operator",
-                    policy_id="operator-cli",
-                    parent_event_id=event_id,
                 )
 
         # Broadcast the start event so the orchestrator handler
         # subscribed to it spawns the per-investigation coroutine.
-        for row in reversed(trajectory(investigation_id)):
+        for row in reversed(trajectory_authorized(access.authority)):
             if row.get("event_id") == event_id:
                 try:
                     event = Event.model_validate(row)
+                    bus.bind_event_authority(event.event_id, access.authority)
                     await bus.broadcast(event)
                 except Exception:  # pragma: no cover — diagnostic
                     pass
@@ -2355,12 +2993,273 @@ def create_app(
             start_event_id=event_id,
         )
 
+    @app.post(
+        "/research/{parent_investigation_id}/questions/{question_id}/reserved-launch/quote",
+        response_model=InvestigationQuoteResponse,
+    )
+    async def quote_reserved_question(
+        parent_investigation_id: str,
+        question_id: str,
+        req: ReservedQuestionLaunchRequest,
+        request: Request,
+        response: Response,
+    ) -> InvestigationQuoteResponse:
+        response.headers["Cache-Control"] = "no-store"
+        try:
+            parent_access = authority_from_request(request, parent_investigation_id)
+            require_investigation_owner(parent_access)
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
+        except InvestigationAccessDenied as exc:
+            raise HTTPException(status_code=404, detail="investigation not found") from exc
+        return _issue_exact_research_quote(
+            request=request,
+            command=_canonical_reserved_quote_command(
+                parent_investigation_id, question_id, req
+            ),
+            research_tier=req.research_tier,
+            approved_run_ceiling_usd=req.approved_run_ceiling_usd,
+        )
+
+    @app.post(
+        "/research/{parent_investigation_id}/questions/{question_id}/reserved-launch",
+        response_model=InvestigationStartResponse,
+        status_code=202,
+    )
+    async def launch_reserved_question(
+        parent_investigation_id: str,
+        question_id: str,
+        req: ReservedQuestionLaunchRequest,
+        request: Request,
+        response: Response,
+    ) -> InvestigationStartResponse:
+        """Launch exactly the child reserved by one authorized challenge.
+
+        The child id is never accepted from the caller. Exact replay returns
+        the existing start receipt; a changed command conflicts.
+        """
+        response.headers["Cache-Control"] = "no-store"
+        import hashlib as _hashlib
+
+        from substrate.event_log import (
+            append_event_once_authorized,
+            prepare_typed_event,
+        )
+        from substrate.schemas import (
+            ActionType,
+            InvestigationSpawnedFromPayload,
+            InvestigationStartRequestedPayload,
+            ResearchQuotedRoute,
+        )
+
+        try:
+            parent_access = authority_from_request(request, parent_investigation_id)
+            require_investigation_owner(parent_access)
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
+        except InvestigationAccessDenied as exc:
+            raise HTTPException(status_code=404, detail="investigation not found") from exc
+
+        quote_receipt, quote_manifest = _verify_exact_research_quote(
+            request=request,
+            token=req.research_quote_token,
+            command=_canonical_reserved_quote_command(
+                parent_investigation_id, question_id, req
+            ),
+            research_tier=req.research_tier,
+            approved_run_ceiling_usd=req.approved_run_ceiling_usd,
+        )
+
+        reservations = [
+            row
+            for row in trajectory_authorized(parent_access.authority)
+            if row.get("action_type")
+            == ActionType.QUESTION_ESCALATED_TO_RESEARCH.value
+            and (row.get("payload") or {}).get("question_id") == question_id
+        ]
+        if not reservations:
+            raise HTTPException(status_code=404, detail="reserved question not found")
+        if len(reservations) != 1:
+            raise HTTPException(status_code=409, detail="question reservation is ambiguous")
+        from roles.note_taker import distillation_for_authorized
+
+        visible_questions = distillation_for_authorized(
+            parent_access.authority, db_path=default_db_path()
+        ).questions
+        if not any(node.node_id == question_id for node in visible_questions):
+            raise HTTPException(status_code=404, detail="reserved question not found")
+        reservation = reservations[0]
+        reservation_envelope = Event.model_validate(reservation)
+        child_id = (reservation.get("payload") or {}).get("child_investigation_id")
+        reservation_event_id = reservation.get("event_id")
+        if not isinstance(child_id, str) or not child_id or not isinstance(
+            reservation_event_id, str
+        ):
+            raise HTTPException(status_code=409, detail="question reservation is invalid")
+
+        from orchestration.loop_one.orchestrator import _walk_chase_chain
+
+        parent_depth, _root_id = _walk_chase_chain(
+            parent_investigation_id,
+            tenancy_root=parent_access.authority.root,
+        )
+        # chase_value is an absolute root depth. The reserved child itself is
+        # parent_depth + 1, so +2 authorizes exactly one further continuation.
+        bounded_chase_depth = parent_depth + 2
+        child_access = authority_for_investigation(parent_access, child_id)
+        expected = {
+            "question": req.question,
+            "context": req.context,
+            "parent_investigation_id": parent_investigation_id,
+            "spawn_context": req.question,
+            "research_tier": req.research_tier,
+            "approved_run_ceiling_usd": req.approved_run_ceiling_usd,
+            "chase_budget_usd": req.approved_chase_ceiling_usd,
+            "chase_mode": "depth",
+            "chase_value": bounded_chase_depth,
+            "source_question_id": question_id,
+            "reservation_event_id": reservation_event_id,
+            "research_quote_id": quote_receipt.quote_id,
+            "research_quote_payload_sha256": quote_receipt.payload_sha256,
+            "research_route_manifest_fingerprint": (
+                quote_receipt.route_manifest_fingerprint
+            ),
+            "research_quote_expires_at_ms": quote_receipt.expires_at_ms,
+            "research_route_manifest": [
+                row.__dict__ for row in quote_manifest.routes
+            ],
+        }
+        stable_suffix = _hashlib.sha256(
+            f"reserved-launch:{reservation_event_id}".encode()
+        ).hexdigest()[:24]
+        role, policy_id = event_actor(child_access)
+        try:
+            require_investigation_owner(child_access)
+        except InvestigationAccessDenied:
+            child_access = bind_child_investigation(parent_access, child_id)
+        else:
+            starts = [
+                row
+                for row in trajectory_authorized(child_access.authority)
+                if row.get("action_type") == ActionType.INVESTIGATION_START_REQUESTED.value
+            ]
+            if len(starts) != 1:
+                raise HTTPException(status_code=409, detail="reserved launch state is invalid")
+            payload = starts[0].get("payload") or {}
+            if any(payload.get(key) != value for key, value in expected.items()):
+                raise HTTPException(status_code=409, detail="reserved launch replay conflicts")
+            spawned = [
+                row
+                for row in trajectory_authorized(child_access.authority)
+                if row.get("action_type") == ActionType.INVESTIGATION_SPAWNED_FROM.value
+            ]
+            if len(spawned) > 1:
+                raise HTTPException(status_code=409, detail="reserved launch state is invalid")
+            if spawned:
+                spawn_payload = spawned[0].get("payload") or {}
+                if (
+                    spawn_payload.get("parent_investigation_id")
+                    != parent_investigation_id
+                    or spawn_payload.get("spawn_context") != req.question
+                    or spawned[0].get("parent_event_id") != starts[0].get("event_id")
+                ):
+                    raise HTTPException(
+                        status_code=409, detail="reserved launch replay conflicts"
+                    )
+            else:
+                recovered_spawn = prepare_typed_event(
+                    child_id,
+                    InvestigationSpawnedFromPayload(
+                        parent_investigation_id=parent_investigation_id,
+                        spawn_context=req.question,
+                    ),
+                    event_id=f"evt-reserved-spawn-{stable_suffix}",
+                    role=role,
+                    policy_id=policy_id,
+                    parent_event_id=str(starts[0]["event_id"]),
+                    emitted_at=reservation_envelope.emitted_at,
+                )
+                append_event_once_authorized(child_access.authority, recovered_spawn)
+                event = Event.model_validate(starts[0])
+                bus.bind_event_authority(event.event_id, child_access.authority)
+                await bus.broadcast(event)
+            return InvestigationStartResponse(
+                investigation_id=child_id,
+                status="started",
+                start_event_id=str(starts[0]["event_id"]),
+            )
+
+        prepared_start = prepare_typed_event(
+            child_id,
+            InvestigationStartRequestedPayload(
+                question=req.question,
+                context=req.context,
+                parent_investigation_id=parent_investigation_id,
+                spawn_context=req.question,
+                research_tier=req.research_tier,
+                approved_run_ceiling_usd=req.approved_run_ceiling_usd,
+                chase_budget_usd=req.approved_chase_ceiling_usd,
+                # The reserved command is explicitly a recursive-research
+                # launch. One bounded continuation makes the separately
+                # confirmed recursive ceiling operative without granting an
+                # open-ended chase.
+                chase_mode="depth",
+                chase_value=bounded_chase_depth,
+                source_question_id=question_id,
+                reservation_event_id=reservation_event_id,
+                research_quote_id=quote_receipt.quote_id,
+                research_quote_payload_sha256=quote_receipt.payload_sha256,
+                research_route_manifest_fingerprint=(
+                    quote_receipt.route_manifest_fingerprint
+                ),
+                research_quote_expires_at_ms=quote_receipt.expires_at_ms,
+                research_route_manifest=tuple(
+                    ResearchQuotedRoute(**row.__dict__)
+                    for row in quote_manifest.routes
+                ),
+            ),
+            event_id=f"evt-reserved-launch-{stable_suffix}",
+            role=role,
+            policy_id=policy_id,
+            emitted_at=reservation_envelope.emitted_at,
+        )
+        try:
+            event_id = append_event_once_authorized(child_access.authority, prepared_start)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail="reserved launch replay conflicts") from exc
+        prepared_spawn = prepare_typed_event(
+            child_id,
+            InvestigationSpawnedFromPayload(
+                parent_investigation_id=parent_investigation_id,
+                spawn_context=req.question,
+            ),
+            event_id=f"evt-reserved-spawn-{stable_suffix}",
+            role=role,
+            policy_id=policy_id,
+            parent_event_id=event_id,
+            emitted_at=reservation_envelope.emitted_at,
+        )
+        try:
+            append_event_once_authorized(child_access.authority, prepared_spawn)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail="reserved launch replay conflicts") from exc
+        for row in reversed(trajectory_authorized(child_access.authority)):
+            if row.get("event_id") == event_id:
+                event = Event.model_validate(row)
+                bus.bind_event_authority(event.event_id, child_access.authority)
+                await bus.broadcast(event)
+                break
+        return InvestigationStartResponse(
+            investigation_id=child_id, status="started", start_event_id=event_id
+        )
+
     @app.get(
         "/investigations/{investigation_id}",
         response_model=InvestigationStatusResponse,
     )
     async def get_investigation_status(
         investigation_id: str,
+        request: Request,
     ) -> InvestigationStatusResponse:
         """Phase-progression + terminal-verdict summary for one
         investigation. Distinguishes ``not_found`` (no events at all)
@@ -2368,10 +3267,18 @@ def create_app(
         from terminal states ``completed`` / ``failed``."""
         from substrate.schemas import ActionType
 
-        rows = trajectory(investigation_id)
+        try:
+            access = authority_from_request(request, investigation_id)
+            require_investigation_owner(access)
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
+        except InvestigationAccessDenied as exc:
+            raise HTTPException(status_code=404, detail="investigation not found") from exc
+        rows = trajectory_authorized(access.authority)
         if not rows:
             return InvestigationStatusResponse(
-                investigation_id=investigation_id, status="not_found",
+                investigation_id=investigation_id,
+                status="not_found",
             )
 
         completed_action = ActionType.INVESTIGATION_COMPLETED.value
@@ -2391,11 +3298,7 @@ def create_app(
                 last_delivered = at
             if last_phase is None and r.get("phase") is not None:
                 last_phase = int(r["phase"])
-            if (
-                terminal_row is not None
-                and last_delivered is not None
-                and last_phase is not None
-            ):
+            if terminal_row is not None and last_delivered is not None and last_phase is not None:
                 break
 
         # SPR-11 M3: surface the §14.4 inline-rubric verdict, READ from the
@@ -2422,9 +3325,7 @@ def create_app(
 
         if terminal_row is not None:
             status = (
-                "completed"
-                if terminal_row.get("action_type") == completed_action
-                else "failed"
+                "completed" if terminal_row.get("action_type") == completed_action else "failed"
             )
             return InvestigationStatusResponse(
                 investigation_id=investigation_id,
@@ -2453,10 +3354,9 @@ def create_app(
         response_model=InvestigationListResponse,
     )
     async def list_investigations(
+        request: Request,
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
-        status_filter: Annotated[
-            str | None, Query(alias="status")
-        ] = None,
+        status_filter: Annotated[str | None, Query(alias="status")] = None,
     ) -> InvestigationListResponse:
         """List recent investigations. Walks the events directory to
         discover all unique investigation_ids, then summarizes each
@@ -2484,16 +3384,14 @@ def create_app(
         Filter by ``status`` to narrow (one of: ``in_progress``,
         ``completed``, ``failed``, ``stopped``). Default limit 50, sorted
         newest first."""
-        import os as _os
-
         from orchestration.continuous.suggestions import policy_is_daemon
-        from substrate.event_log import default_events_dir
+        from substrate.investigation_streams import list_authorized_investigation_ids
         from substrate.schemas import ActionType
 
-        events_dir = default_events_dir()
-        if not _os.path.isdir(events_dir):
-            return InvestigationListResponse(count=0, investigations=[])
-
+        try:
+            identity = authority_from_request(request, "__list_identity_probe__")
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
         completed_action = ActionType.INVESTIGATION_COMPLETED.value
         failed_action = ActionType.INVESTIGATION_FAILED.value
         halted_action = ActionType.INVESTIGATION_CHASE_HALTED.value
@@ -2504,8 +3402,12 @@ def create_app(
         # A cascade session file carries only ``cascade.launched`` and is
         # surfaced as the grouping parent so its leaves nest under it.
         investigation_markers = {
-            start_action, spawned_action, completed_action,
-            failed_action, halted_action, "cascade.launched",
+            start_action,
+            spawned_action,
+            completed_action,
+            failed_action,
+            halted_action,
+            "cascade.launched",
         }
 
         summaries: list[InvestigationSummary] = []
@@ -2514,11 +3416,13 @@ def create_app(
         # aggregate of its leaves (working iff a leaf still works), derived in a
         # post-pass once every row is known — never a bare "working" forever.
         session_containers: set[str] = set()
-        for filename in _os.listdir(events_dir):
-            if not filename.endswith(".jsonl"):
-                continue
-            inv_id = filename[:-len(".jsonl")]
-            rows = trajectory(inv_id)
+        candidate_ids = list_authorized_investigation_ids(
+            identity.authority.account_id,
+            root=identity.authority.root,
+        )
+        for inv_id in candidate_ids:
+            access = authority_for_investigation(identity, inv_id)
+            rows = trajectory_authorized(access.authority)
             if not rows:
                 continue
             # A non-inv- file is only a research if its trajectory says so;
@@ -2550,8 +3454,13 @@ def create_app(
                 payload = r.get("payload") or {}
                 if at in (start_action, spawned_action) and policy_is_daemon(r.get("policy_id")):
                     spawned_by_daemon = True
-                if at in (start_action, spawned_action, completed_action,
-                          failed_action, halted_action):
+                if at in (
+                    start_action,
+                    spawned_action,
+                    completed_action,
+                    failed_action,
+                    halted_action,
+                ):
                     saw_own_lifecycle = True
                 if at == "cascade.launched":
                     saw_launched = True
@@ -2600,16 +3509,18 @@ def create_app(
             if saw_launched and not saw_own_lifecycle:
                 session_containers.add(inv_id)
 
-            summaries.append(InvestigationSummary(
-                investigation_id=inv_id,
-                question=question,
-                status=terminal_status,
-                started_at=started_at,
-                completed_at=completed_at,
-                cost_usd_total=round(cost_total, 6),
-                parent_investigation_id=parent_inv_id,
-                spawned_by_daemon=spawned_by_daemon,
-            ))
+            summaries.append(
+                InvestigationSummary(
+                    investigation_id=inv_id,
+                    question=question,
+                    status=terminal_status,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    cost_usd_total=round(cost_total, 6),
+                    parent_investigation_id=parent_inv_id,
+                    spawned_by_daemon=spawned_by_daemon,
+                )
+            )
 
         # Derive each session container's status from its leaves (the same
         # all-terminal logic cascade_session.reconstruct_session uses): working
@@ -2631,8 +3542,9 @@ def create_app(
                 elif leaf_states:
                     # All leaves terminal: done if any completed, else stopped
                     # (every leaf stopped/halted → the session is stopped).
-                    s.status = "completed" if any(
-                        st == "completed" for st in leaf_states) else "stopped"
+                    s.status = (
+                        "completed" if any(st == "completed" for st in leaf_states) else "stopped"
+                    )
                 # No leaves discovered yet (race just after launch): leave the
                 # honest "in_progress" the loop set.
 
@@ -2646,14 +3558,15 @@ def create_app(
         )
         summaries = summaries[:limit]
         return InvestigationListResponse(
-            count=len(summaries), investigations=summaries,
+            count=len(summaries),
+            investigations=summaries,
         )
 
     @app.get(
         "/chunks/{chunk_id}",
         response_model=ChunkResponse,
     )
-    async def get_chunk(chunk_id: str) -> ChunkResponse:
+    async def get_chunk(chunk_id: str, request: Request) -> ChunkResponse:
         """Read-only chunk fetch. Used by the web app's claim hover
         modal + SPR-04's named-source render to surface the chunk text +
         source document title for any cited chunk_id.
@@ -2687,34 +3600,39 @@ def create_app(
                 detail=f"Graph DB unreachable: {exc}",
             ) from exc
 
+        strict = os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1"
         try:
-            # LEFT JOIN book_assets so a takedown override is honoured even
-            # for a chunk of a public-domain book (taken_down wins over
-            # content_class in the projection). A document with no
-            # book_assets row coalesces to taken_down=False.
-            row = con.execute(
-                """
-                SELECT c.chunk_id, c.text, c.section_path, c.token_count,
-                       c.document_id, d.title, d.source_tier,
-                       d.content_class,
-                       COALESCE(b.taken_down, FALSE) AS taken_down,
-                       h.display_name, h.status
-                FROM chunks c
-                JOIN documents d ON c.document_id = d.document_id
-                LEFT JOIN book_assets b ON d.document_id = b.document_id
-                LEFT JOIN ip_holders h ON d.ip_holder_id = h.ip_holder_id
-                WHERE c.chunk_id = ?
-                """,
-                [chunk_id],
-            ).fetchone()
+            from substrate.legal_gate.read import (
+                chunk_investigation_hint,
+                read_chunk_compatibility,
+            )
+
+            authority = None
+            if strict:
+                investigation_id = chunk_investigation_hint(con, chunk_id) or ""
+                if not investigation_id:
+                    raise HTTPException(status_code=404, detail="chunk was not found")
+                try:
+                    access = authority_from_request(request, investigation_id)
+                    require_investigation_owner(access)
+                    authority = access.authority
+                except InvestigationAccessDenied as exc:
+                    raise HTTPException(status_code=404, detail="chunk was not found") from exc
+            row = read_chunk_compatibility(
+                con, chunk_id, authority=authority, enforce=strict
+            )
         finally:
             con.close()
 
         if row is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"chunk_id {chunk_id!r} not found",
-            )
+            if strict:
+                raise HTTPException(status_code=404, detail="chunk was not found")
+            raise HTTPException(status_code=404, detail=f"chunk_id {chunk_id!r} not found")
+
+        if strict:
+            investigation_id = str(row[11] or "")
+            if not investigation_id:
+                raise HTTPException(status_code=404, detail="chunk was not found")
 
         content_class = row[7]
         taken_down = bool(row[8])
@@ -2756,6 +3674,7 @@ def create_app(
         status_code=202,
     )
     async def post_ingest_source(
+        request: Request,
         req: IngestSourceRequest,
     ) -> IngestSourceResponse:
         """Ingest a URL into the substrate graph. Auto-detects source
@@ -2772,80 +3691,63 @@ def create_app(
             if detected == "arxiv":
                 from acquisition.arxiv import fetch_by_id as _fbi
                 from acquisition.arxiv import ingest_paper as _ip
+
                 # Extract the arXiv id from the URL if needed
                 arxiv_id = _extract_arxiv_id(req.url)
                 if not arxiv_id:
-                    raise ValueError(
-                        "Could not extract arXiv id from URL"
-                    )
+                    raise ValueError("Could not extract arXiv id from URL")
                 paper = _fbi(arxiv_id)
                 if not paper:
-                    raise ValueError(
-                        f"arXiv paper {arxiv_id!r} not found"
-                    )
+                    raise ValueError(f"arXiv paper {arxiv_id!r} not found")
+                access = authority_from_request(request, req.investigation_id)
+                try:
+                    require_investigation_owner(access)
+                except InvestigationAccessDenied:
+                    if (
+                        access.authority.account_id == "__operator__"
+                        and access.auth_method == "unauthenticated_local"
+                    ):
+                        bind_new_investigation(access)
+                    else:
+                        raise
                 arxiv_kwargs: dict[str, Any] = {
-                    "investigation_id": req.investigation_id
+                    "investigation_id": req.investigation_id,
+                    "authority": access.authority,
                 }
                 if req.source_tier is not None:
                     arxiv_kwargs["source_tier"] = req.source_tier
                 arxiv_r = _ip(paper, **arxiv_kwargs)
+                arxiv_status = getattr(
+                    arxiv_r,
+                    "status",
+                    "ingested" if arxiv_r.chunks_written > 0 else "skipped",
+                )
                 return IngestSourceResponse(
-                    status=(
-                        "ingested" if arxiv_r.chunks_written > 0 else "skipped"
-                    ),
+                    status=("ingested" if arxiv_status == "ingested" else "skipped"),
                     detected_kind="arxiv",
                     document_id=arxiv_r.document_id,
                     document_loaded_event_id=arxiv_r.document_loaded_event_id,
                     chunks_written=arxiv_r.chunks_written,
-                    title=paper.title,
+                    skipped_reason=getattr(arxiv_r, "skipped_reason", None),
+                    title=paper.title if arxiv_status == "ingested" else None,
                 )
             if detected == "youtube":
-                from acquisition.youtube import ingest_youtube
-                yt_kwargs: dict[str, Any] = {
-                    "investigation_id": req.investigation_id
-                }
-                if req.source_tier is not None:
-                    yt_kwargs["source_tier"] = req.source_tier
-                yt_r = ingest_youtube(req.url, **yt_kwargs)
                 return IngestSourceResponse(
-                    status=(
-                        "ingested" if yt_r.chunks_written > 0
-                        else "skipped"
-                    ),
+                    status="error",
                     detected_kind="youtube",
-                    document_id=yt_r.document_id,
-                    document_loaded_event_id=yt_r.document_loaded_event_id,
-                    chunks_written=yt_r.chunks_written,
-                    skipped_reason=yt_r.skipped_reason,
-                    title=yt_r.title,
+                    error_message=(
+                        "legal_admission_required: YouTube ingestion is disabled until "
+                        "its transcript writer implements atomic durable admission"
+                    ),
                 )
             if detected == "podcast":
-                from acquisition.podcasts import ingest_feed
-                podcast_kwargs: dict[str, Any] = {
-                    "investigation_id": req.investigation_id,
-                    "max_episodes": req.max_episodes,
-                }
-                if req.source_tier is not None:
-                    podcast_kwargs["source_tier"] = req.source_tier
-                results = ingest_feed(req.url, **podcast_kwargs)
-                ingested = sum(1 for r in results if r.chunks_written > 0)
-                total_chunks = sum(r.chunks_written for r in results)
-                # Report the most recent ingested episode's title as
-                # the response title (most useful operator signal).
-                title = next(
-                    (r.title for r in results if r.chunks_written > 0),
-                    results[0].title if results else None,
-                )
                 return IngestSourceResponse(
-                    status="ingested" if ingested > 0 else "skipped",
+                    status="error",
                     detected_kind="podcast",
-                    chunks_written=total_chunks,
-                    skipped_reason=(
-                        None if ingested > 0 else "no_episodes_with_transcripts"
+                    error_message=(
+                        "legal_admission_required: podcast ingestion is disabled until "
+                        "its transcript writer implements atomic durable admission"
                     ),
-                    title=title,
-                    episodes_processed=len(results),
-                    episodes_ingested=ingested,
                 )
             if detected == "twitter":
                 # The URL alone is insufficient for X — the auth wall
@@ -2871,10 +3773,9 @@ def create_app(
                 # auto-detection for a local path (a heuristic would be fragile).
                 path = os.path.expanduser(req.url)
                 if not os.path.isfile(path):
-                    raise ValueError(
-                        f"inbox path is not a readable file: {req.url!r}"
-                    )
+                    raise ValueError(f"inbox path is not a readable file: {req.url!r}")
                 from acquisition.inbox.ingest import ingest_inbox_file
+
                 inbox_kwargs: dict[str, Any] = {
                     "investigation_id": req.investigation_id,
                 }
@@ -2892,17 +3793,103 @@ def create_app(
                 )
             if detected == "url":
                 from acquisition.urls import ingest_url
+                from runtime.db_lock import connect_write
+                from substrate.graph import default_db_path, ensure_initialized
+                from substrate.legal_gate.policy_store import account_policy_authority
+                from substrate.legal_gate.readiness import (
+                    claim_policy_dispatch_lease,
+                    legal_policy_readiness,
+                    release_policy_dispatch_lease,
+                )
+
+                access = authority_from_request(request, req.investigation_id)
+                try:
+                    require_investigation_owner(access)
+                except InvestigationAccessDenied:
+                    if (
+                        access.authority.account_id == "__operator__"
+                        and access.auth_method == "unauthenticated_local"
+                    ):
+                        bind_new_investigation(access)
+                    else:
+                        raise
                 url_kwargs: dict[str, Any] = {
-                    "investigation_id": req.investigation_id
+                    "investigation_id": req.investigation_id,
+                    "authority": access.authority,
                 }
                 if req.source_tier is not None:
                     url_kwargs["source_tier"] = req.source_tier
-                url_r = ingest_url(req.url, **url_kwargs)
+                policy_db = default_db_path()
+                ensure_initialized(policy_db)
+                policy_authority = account_policy_authority(access.authority)
+                policy_con = connect_write(policy_db, purpose="sources/url/policy_dispatch")
+                try:
+                    reviewed = legal_policy_readiness(
+                        policy_con, policy_authority
+                    ).policy_snapshot_sha256
+                    if reviewed is None:
+                        raise RuntimeError("durable URL policy snapshot is unavailable")
+                    lease_id, gate = claim_policy_dispatch_lease(
+                        policy_con,
+                        policy_authority,
+                        holder_investigation_digest=access.authority.investigation_digest,
+                        holder_investigation_id=access.authority.investigation_id,
+                        expected_sha256=reviewed,
+                    )
+                finally:
+                    policy_con.close()
+                from substrate.event_log import log_event_authorized
+
+                if log_event_authorized(
+                    access.authority,
+                    "legal_policy.dispatch_claimed",
+                    payload={
+                        "lease_id": lease_id,
+                        "policy_snapshot_sha256": reviewed,
+                    },
+                    role="user_agent",
+                ) is None:
+                    raise RuntimeError("durable dispatch-claim evidence was not recorded")
+                verdict = gate.check_url(req.url)
+                if not verdict.allowed:
+                    policy_con = connect_write(
+                        policy_db, purpose="sources/url/release_denied_dispatch"
+                    )
+                    try:
+                        release_policy_dispatch_lease(
+                            policy_con,
+                            policy_authority,
+                            lease_id=lease_id,
+                            holder_investigation_digest=(
+                                access.authority.investigation_digest
+                            ),
+                        )
+                    finally:
+                        policy_con.close()
+                    return IngestSourceResponse(
+                        status="skipped",
+                        detected_kind="url",
+                        skipped_reason=f"legal_policy:{verdict.reason}",
+                    )
+                try:
+                    url_r = ingest_url(req.url, **url_kwargs)
+                finally:
+                    policy_con = connect_write(
+                        policy_db, purpose="sources/url/release_policy_dispatch"
+                    )
+                    try:
+                        release_policy_dispatch_lease(
+                            policy_con,
+                            policy_authority,
+                            lease_id=lease_id,
+                            holder_investigation_digest=(
+                                access.authority.investigation_digest
+                            ),
+                        )
+                    finally:
+                        policy_con.close()
                 return IngestSourceResponse(
-                    status=(
-                        "ingested" if url_r.chunks_written > 0
-                        else "skipped"
-                    ),
+                    status=("ingested" if url_r.chunks_written > 0 else "skipped"),
                     detected_kind="url",
                     document_id=url_r.document_id,
                     document_loaded_event_id=url_r.document_loaded_event_id,
@@ -2922,6 +3909,7 @@ def create_app(
 
     def _resolve_db_path() -> str:
         from substrate.graph import default_db_path, ensure_initialized
+
         path = default_db_path()
         ensure_initialized(path)
         return path
@@ -2944,17 +3932,24 @@ def create_app(
                 "investigation_root_id, status, "
                 "strftime(created_at, '%Y-%m-%dT%H:%M:%S'), "
                 "strftime(updated_at, '%Y-%m-%dT%H:%M:%S') "
-                "FROM deliverables WHERE deliverable_id = ?", [did],
+                "FROM deliverables WHERE deliverable_id = ?",
+                [did],
             ).fetchone()
         return DeliverableSummary(
-            deliverable_id=row[0], title=row[1], deliverable_kind=row[2],
-            investigation_root_id=row[3], status=row[4],
-            created_at=row[5], updated_at=row[6], section_count=0,
+            deliverable_id=row[0],
+            title=row[1],
+            deliverable_kind=row[2],
+            investigation_root_id=row[3],
+            status=row[4],
+            created_at=row[5],
+            updated_at=row[6],
+            section_count=0,
         )
 
     @app.get("/deliverables", response_model=DeliverableListResponse)
     async def list_deliverables(limit: int = 50) -> DeliverableListResponse:
         import duckdb
+
         db = _resolve_db_path()
         con = duckdb.connect(db, read_only=True)
         try:
@@ -2974,10 +3969,16 @@ def create_app(
             count=len(rows),
             deliverables=[
                 DeliverableSummary(
-                    deliverable_id=r[0], title=r[1], deliverable_kind=r[2],
-                    investigation_root_id=r[3], status=r[4],
-                    created_at=r[5], updated_at=r[6], section_count=r[7] or 0,
-                ) for r in rows
+                    deliverable_id=r[0],
+                    title=r[1],
+                    deliverable_kind=r[2],
+                    investigation_root_id=r[3],
+                    status=r[4],
+                    created_at=r[5],
+                    updated_at=r[6],
+                    section_count=r[7] or 0,
+                )
+                for r in rows
             ],
         )
 
@@ -2986,13 +3987,15 @@ def create_app(
         import json as _json
 
         import duckdb
+
         db = _resolve_db_path()
         con = duckdb.connect(db, read_only=True)
         try:
             head = con.execute(
                 "SELECT deliverable_id, title, deliverable_kind, status, "
                 "investigation_root_id "
-                "FROM deliverables WHERE deliverable_id = ?", [deliverable_id],
+                "FROM deliverables WHERE deliverable_id = ?",
+                [deliverable_id],
             ).fetchone()
             if head is None:
                 raise HTTPException(status_code=404, detail="deliverable not found")
@@ -3001,7 +4004,8 @@ def create_app(
                 "s.section_index, s.title, s.prose_text, s.prose_provenance, "
                 "(SELECT COUNT(*) FROM section_blocks sb WHERE sb.section_id = s.section_id) "
                 "FROM deliverable_sections s WHERE s.deliverable_id = ? "
-                "ORDER BY s.section_index ASC", [deliverable_id],
+                "ORDER BY s.section_index ASC",
+                [deliverable_id],
             ).fetchall()
         finally:
             con.close()
@@ -3013,16 +4017,25 @@ def create_app(
                     prov = _json.loads(r[6])
                 except (ValueError, TypeError):
                     prov = None
-            sections.append(SectionResponse(
-                section_id=r[0], deliverable_id=r[1],
-                parent_section_id=r[2], section_index=r[3], title=r[4],
-                prose_text=r[5], prose_provenance=prov,
-                block_count=r[7] or 0,
-            ))
+            sections.append(
+                SectionResponse(
+                    section_id=r[0],
+                    deliverable_id=r[1],
+                    parent_section_id=r[2],
+                    section_index=r[3],
+                    title=r[4],
+                    prose_text=r[5],
+                    prose_provenance=prov,
+                    block_count=r[7] or 0,
+                )
+            )
         return DeliverableDetailResponse(
-            deliverable_id=head[0], title=head[1],
-            deliverable_kind=head[2], status=head[3],
-            investigation_root_id=head[4], sections=sections,
+            deliverable_id=head[0],
+            title=head[1],
+            deliverable_kind=head[2],
+            status=head[3],
+            investigation_root_id=head[4],
+            sections=sections,
         )
 
     @app.post("/sections", response_model=SectionResponse, status_code=201)
@@ -3039,7 +4052,8 @@ def create_app(
             ).fetchone()
             if row is None:
                 raise HTTPException(
-                    status_code=404, detail="deliverable not found",
+                    status_code=404,
+                    detail="deliverable not found",
                 )
             sid = insert_section(
                 con,
@@ -3049,10 +4063,14 @@ def create_app(
                 parent_section_id=req.parent_section_id,
             )
         return SectionResponse(
-            section_id=sid, deliverable_id=req.deliverable_id,
+            section_id=sid,
+            deliverable_id=req.deliverable_id,
             parent_section_id=req.parent_section_id,
-            section_index=req.section_index, title=req.title,
-            prose_text=None, prose_provenance=None, block_count=0,
+            section_index=req.section_index,
+            title=req.title,
+            prose_text=None,
+            prose_provenance=None,
+            block_count=0,
         )
 
     @app.post("/sections/attach-block", status_code=202)
@@ -3068,7 +4086,8 @@ def create_app(
             ).fetchone()
             if row is None:
                 raise HTTPException(
-                    status_code=404, detail="section not found",
+                    status_code=404,
+                    detail="section not found",
                 )
             attach_block_to_section(
                 con,
@@ -3083,8 +4102,10 @@ def create_app(
 
     @app.get("/blocks/search", response_model=BlockSearchResponse)
     async def block_search(
+        request: Request,
         q: str = Query(default="", max_length=200),
         limit: int = Query(default=20, ge=1, le=100),
+        investigation_id: str | None = Query(default=None, max_length=200),
     ) -> BlockSearchResponse:
         """Search the operator's graph for insight/claim/note blocks to
         drag into a deliverable section. Mode C palette uses this.
@@ -3093,34 +4114,40 @@ def create_app(
         metadata. Sprint 15 swaps in cosine search via the embedding
         column so semantic matches surface."""
         import duckdb
+
         db = _resolve_db_path()
         like = f"%{q}%" if q.strip() else "%"
+        strict = os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1"
+        authority = None
+        if strict:
+            if not investigation_id:
+                raise HTTPException(status_code=422, detail="investigation_id is required")
+            authority = _require_request_owner(request, investigation_id).authority
         con = duckdb.connect(db, read_only=True)
         try:
-            rows = con.execute(
-                "SELECT n.node_id, n.canonical_label, n.node_type, "
-                "       n.metadata, d.title, d.source_tier "
-                "FROM nodes n "
-                "LEFT JOIN chunks c ON ("
-                "    CAST(json_extract_string(n.metadata, '$.chunk_id') AS VARCHAR) = c.chunk_id"
-                ") "
-                "LEFT JOIN documents d ON c.document_id = d.document_id "
-                "WHERE n.canonical_label ILIKE ? "
-                "ORDER BY n.created_at DESC LIMIT ?",
-                [like, limit],
-            ).fetchall()
+            from substrate.legal_gate.read import search_block_projections_compatibility
+
+            rows = search_block_projections_compatibility(
+                con,
+                like=like,
+                limit=limit,
+                authority=authority,
+                enforce=strict,
+            )
         finally:
             con.close()
         hits: list[BlockSearchHit] = []
         for r in rows:
-            hits.append(BlockSearchHit(
-                block_id=r[0],
-                block_kind="insight",  # all node rows surface as 'insight' here
-                label=r[1] or "(no label)",
-                body=r[1] or "",
-                source_tier=r[5],
-                document_title=r[4],
-            ))
+            hits.append(
+                BlockSearchHit(
+                    block_id=r[0],
+                    block_kind="insight",  # all node rows surface as 'insight' here
+                    label=r[1] or "(no label)",
+                    body=r[1] or "",
+                    source_tier=r[5],
+                    document_title=r[4],
+                )
+            )
         return BlockSearchResponse(count=len(hits), hits=hits)
 
     @app.post("/sections/reorder-block", status_code=202)
@@ -3131,6 +4158,7 @@ def create_app(
         ``(section_id, block_kind, block_id)``. Moving to a new
         section requires DELETE + INSERT under the same lock."""
         from runtime.db_lock import connect_write
+
         db = _resolve_db_path()
         target_section = req.new_section_id or req.section_id
         with connect_write(db, purpose="sections/reorder") as con:
@@ -3141,13 +4169,11 @@ def create_app(
             ).fetchone()
             if row is None:
                 raise HTTPException(
-                    status_code=404, detail="target section not found",
+                    status_code=404,
+                    detail="target section not found",
                 )
             # If moving across sections, DELETE old + INSERT new
-            if (
-                req.new_section_id is not None
-                and req.new_section_id != req.section_id
-            ):
+            if req.new_section_id is not None and req.new_section_id != req.section_id:
                 con.execute(
                     "DELETE FROM section_blocks WHERE section_id = ? "
                     "AND block_kind = ? AND block_id = ?",
@@ -3157,16 +4183,14 @@ def create_app(
                     "INSERT INTO section_blocks "
                     "(section_id, block_kind, block_id, block_index) "
                     "VALUES (?, ?, ?, ?)",
-                    [target_section, req.block_kind, req.block_id,
-                     int(req.new_block_index)],
+                    [target_section, req.block_kind, req.block_id, int(req.new_block_index)],
                 )
             else:
                 # In-section reorder: just bump the index
                 con.execute(
                     "UPDATE section_blocks SET block_index = ? "
                     "WHERE section_id = ? AND block_kind = ? AND block_id = ?",
-                    [int(req.new_block_index), req.section_id,
-                     req.block_kind, req.block_id],
+                    [int(req.new_block_index), req.section_id, req.block_kind, req.block_id],
                 )
         return {"status": "reordered"}
 
@@ -3182,13 +4206,12 @@ def create_app(
         ``apps/x-extension/`` POSTs to this endpoint with the DOM-
         extracted thread content."""
         from acquisition.twitter import ingest_thread_payload
+
         payload = req.model_dump()
         investigation_id = payload.pop("investigation_id")
         r = ingest_thread_payload(payload, investigation_id=investigation_id)
         return TwitterThreadIngestResponse(
-            status=(
-                "ingested" if r.chunks_written > 0 else "skipped"
-            ),
+            status=("ingested" if r.chunks_written > 0 else "skipped"),
             document_id=r.document_id,
             document_loaded_event_id=r.document_loaded_event_id,
             chunks_written=r.chunks_written,
@@ -3204,7 +4227,8 @@ def create_app(
         status_code=202,
     )
     async def patch_section_prose(
-        section_id: str, req: UpdateSectionProseRequest,
+        section_id: str,
+        req: UpdateSectionProseRequest,
     ) -> UpdateSectionProseResponse:
         """Save edited prose for a section. Optionally promote the edit
         to a first-class operator-asserted claim in the graph (master
@@ -3217,16 +4241,19 @@ def create_app(
         db = _resolve_db_path()
         with connect_write(db, purpose="sections/prose_update") as con:
             row = con.execute(
-                "SELECT deliverable_id FROM deliverable_sections "
-                "WHERE section_id = ?", [section_id],
+                "SELECT deliverable_id FROM deliverable_sections WHERE section_id = ?",
+                [section_id],
             ).fetchone()
             if row is None:
                 raise HTTPException(
-                    status_code=404, detail="section not found",
+                    status_code=404,
+                    detail="section not found",
                 )
             deliverable_id = row[0]
             update_section_prose(
-                con, section_id=section_id, prose_text=req.prose_text,
+                con,
+                section_id=section_id,
+                prose_text=req.prose_text,
             )
             claim_node_id: str | None = None
             if req.promote_to_graph:
@@ -3267,7 +4294,8 @@ def create_app(
                 cited_chunk_ids=req.cited_chunk_ids,
             )
             claim_event_id = emit_typed(
-                req.investigation_id, payload,
+                req.investigation_id,
+                payload,
                 role="creation_surface",
                 policy_id=f"operator/{deliverable_id}",
             )
@@ -3278,7 +4306,8 @@ def create_app(
                 claim_event_id=claim_event_id,
             )
         return UpdateSectionProseResponse(
-            status="saved", section_id=section_id,
+            status="saved",
+            section_id=section_id,
         )
 
     @app.get("/deliverables/{deliverable_id}/export")
@@ -3295,29 +4324,29 @@ def create_app(
         if format not in SUPPORTED:
             raise HTTPException(
                 status_code=422,
-                detail=(
-                    f"format must be one of {'|'.join(SUPPORTED)}, "
-                    f"got {format!r}"
-                ),
+                detail=(f"format must be one of {'|'.join(SUPPORTED)}, got {format!r}"),
             )
         import json as _json
 
         import duckdb
+
         db = _resolve_db_path()
         con = duckdb.connect(db, read_only=True)
         try:
             head = con.execute(
-                "SELECT title, deliverable_kind FROM deliverables "
-                "WHERE deliverable_id = ?", [deliverable_id],
+                "SELECT title, deliverable_kind FROM deliverables WHERE deliverable_id = ?",
+                [deliverable_id],
             ).fetchone()
             if head is None:
                 raise HTTPException(
-                    status_code=404, detail="deliverable not found",
+                    status_code=404,
+                    detail="deliverable not found",
                 )
             secs = con.execute(
                 "SELECT section_index, title, prose_text "
                 "FROM deliverable_sections WHERE deliverable_id = ? "
-                "ORDER BY section_index ASC", [deliverable_id],
+                "ORDER BY section_index ASC",
+                [deliverable_id],
             ).fetchall()
             # GPW SPR-04: the sellable artifact must carry its attribution. The
             # substrate stores prose_provenance (paragraph_index → block_ids,
@@ -3332,7 +4361,8 @@ def create_app(
             json_secs = con.execute(
                 "SELECT section_index, title, prose_text, prose_provenance "
                 "FROM deliverable_sections WHERE deliverable_id = ? "
-                "ORDER BY section_index ASC", [deliverable_id],
+                "ORDER BY section_index ASC",
+                [deliverable_id],
             ).fetchall()
         finally:
             con.close()
@@ -3344,6 +4374,7 @@ def create_app(
                 return _json.loads(raw)
             except (ValueError, TypeError):
                 return None
+
         title = head[0]
         kind = head[1]
         if format == "markdown":
@@ -3355,7 +4386,8 @@ def create_app(
                 lines.append("")
             content = "\n".join(lines)
             return ExportFormat(
-                format="markdown", content=content,
+                format="markdown",
+                content=content,
                 filename=f"{deliverable_id}.md",
             )
         if format == "substack":
@@ -3374,12 +4406,15 @@ def create_app(
                 lines.append("")
             content = "\n".join(lines)
             return ExportFormat(
-                format="substack", content=content,
+                format="substack",
+                content=content,
                 filename=f"{deliverable_id}.substack.md",
             )
         if format == "html":
+
             def esc(s: str | None) -> str:
                 return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
             parts = [
                 "<!doctype html>",
                 f"<html><head><meta charset='utf-8'><title>{esc(title)}</title></head><body>",
@@ -3397,7 +4432,8 @@ def create_app(
             parts.append("</body></html>")
             content = "\n".join(parts)
             return ExportFormat(
-                format="html", content=content,
+                format="html",
+                content=content,
                 filename=f"{deliverable_id}.html",
             )
         if format == "pdf":
@@ -3422,8 +4458,10 @@ def create_app(
                 ) from e
             import base64
             import io
+
             def esc(s: str | None) -> str:
                 return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
             # Researcher's-notebook print stylesheet per master-spec §5.
             # Serif body font; generous line-height; no SaaS-dashboard
             # primary blues; @page margins set for A4 with title block.
@@ -3484,8 +4522,10 @@ def create_app(
                 ) from e
             import base64
             import tempfile
+
             def esc(s: str | None) -> str:
                 return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
             book = epub.EpubBook()
             book.set_identifier(deliverable_id)
             book.set_title(title)
@@ -3494,11 +4534,7 @@ def create_app(
             for idx, sec_title, prose in secs:
                 heading = sec_title or f"Section {idx + 1}"
                 paras = (
-                    "".join(
-                        f"<p>{esc(p)}</p>"
-                        for p in (prose or "").split("\n\n")
-                        if p.strip()
-                    )
+                    "".join(f"<p>{esc(p)}</p>" for p in (prose or "").split("\n\n") if p.strip())
                     or "<p><em>(no prose yet)</em></p>"
                 )
                 chapter = epub.EpubHtml(
@@ -3526,6 +4562,7 @@ def create_app(
                     epub_bytes = fh.read()
             finally:
                 import os
+
                 with contextlib.suppress(OSError):
                     os.unlink(tmp_path)
             return ExportFormat(
@@ -3555,7 +4592,8 @@ def create_app(
             ],
         }
         return ExportFormat(
-            format="json", content=_json.dumps(bundle, indent=2),
+            format="json",
+            content=_json.dumps(bundle, indent=2),
             filename=f"{deliverable_id}.json",
         )
 
@@ -3563,6 +4601,7 @@ def create_app(
 
     @app.get("/ops/provider-ratio", response_model=ProviderRatioResponse)
     async def get_provider_ratio(
+        request: Request,
         window_minutes: int = Query(default=15, ge=1, le=1440),
         openrouter_alert_threshold: float = Query(default=0.10, ge=0.0, le=1.0),
     ) -> ProviderRatioResponse:
@@ -3571,94 +4610,54 @@ def create_app(
         polls this endpoint and routes to a webhook when
         ``alert_recommended=True`` — typical signal that the bridge has
         gone silent and OpenRouter is silently carrying inference."""
-        import json as _json
-        import os as _os
         from datetime import datetime, timedelta
 
-        from substrate.event_log import default_events_dir
+        from substrate.analytics.dispatch_rows import iter_dispatch_call_rows
+        from substrate.investigation_tenancy import InvestigationAuthority
 
-        events_dir = default_events_dir()
-        if not _os.path.isdir(events_dir):
-            return ProviderRatioResponse(
-                window_minutes=window_minutes, total_dispatches=0,
-            )
+        if not _request_has_operator_authority(request):
+            raise HTTPException(status_code=403, detail="operator authority required")
+
         cutoff = datetime.now(UTC) - timedelta(minutes=window_minutes)
 
         per_provider: dict[str, dict[str, int]] = {}
         total = 0
-        for filename in _os.listdir(events_dir):
-            if not filename.endswith(".jsonl"):
+        operator = InvestigationAuthority("__operator__", "__provider_ratio__")
+        for row in iter_dispatch_call_rows(authority=operator, global_scope=True):
+            ts = _parse_event_emitted_at(row)
+            if ts is None or ts < cutoff:
                 continue
-            path = _os.path.join(events_dir, filename)
-            try:
-                stat_mtime = datetime.fromtimestamp(
-                    _os.path.getmtime(path), tz=UTC,
-                )
-            except OSError:
-                continue
-            # Skip files entirely older than the cutoff window — saves
-            # an open() on the long tail of historical investigations.
-            if stat_mtime < cutoff:
-                continue
-            try:
-                with open(path) as fp:
-                    for line in fp:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            ev = _json.loads(line)
-                        except _json.JSONDecodeError:
-                            continue
-                        if ev.get("action_type") != "dispatch.call":
-                            continue
-                        ts_str = ev.get("created_at") or ev.get("ts")
-                        if ts_str:
-                            try:
-                                ts = datetime.fromisoformat(
-                                    ts_str.replace("Z", "+00:00")
-                                )
-                                if ts.tzinfo is None:
-                                    ts = ts.replace(tzinfo=UTC)
-                                if ts < cutoff:
-                                    continue
-                            except (ValueError, TypeError):
-                                pass
-                        payload = ev.get("payload") or {}
-                        provider = str(payload.get("provider") or "unknown")
-                        finish = str(payload.get("finish_reason") or "")
-                        bucket = per_provider.setdefault(
-                            provider, {"success": 0, "error": 0},
-                        )
-                        if finish == "error":
-                            bucket["error"] += 1
-                        else:
-                            bucket["success"] += 1
-                        total += 1
-            except OSError:
-                continue
+            provider = str(row.get("provider") or "unknown")
+            finish = str(row.get("finish_reason") or "")
+            bucket = per_provider.setdefault(
+                provider,
+                {"success": 0, "error": 0},
+            )
+            if finish == "error":
+                bucket["error"] += 1
+            else:
+                bucket["success"] += 1
+            total += 1
 
         breakdown = []
         for provider in sorted(per_provider):
             b = per_provider[provider]
-            breakdown.append(ProviderRatioBreakdown(
-                provider=provider,
-                success_count=b["success"],
-                error_count=b["error"],
-                total=b["success"] + b["error"],
-            ))
+            breakdown.append(
+                ProviderRatioBreakdown(
+                    provider=provider,
+                    success_count=b["success"],
+                    error_count=b["error"],
+                    total=b["success"] + b["error"],
+                )
+            )
 
         hermes_b = per_provider.get("hermes", {"success": 0, "error": 0})
         or_b = per_provider.get("openrouter", {"success": 0, "error": 0})
         hermes_success = hermes_b["success"]
         openrouter_total = or_b["success"] + or_b["error"]
 
-        hermes_success_fraction = (
-            hermes_success / total if total > 0 else 0.0
-        )
-        openrouter_fraction = (
-            openrouter_total / total if total > 0 else 0.0
-        )
+        hermes_success_fraction = hermes_success / total if total > 0 else 0.0
+        openrouter_fraction = openrouter_total / total if total > 0 else 0.0
 
         alert = False
         reason: str | None = None
@@ -3695,6 +4694,7 @@ def create_app(
         response_model=AttributionReportResponse,
     )
     async def get_attribution_report(
+        request: Request,
         synthesis_id: str,
         emit_event: bool = Query(default=False),
     ) -> AttributionReportResponse:
@@ -3704,12 +4704,34 @@ def create_app(
         compute pipeline also writes a ``page.attribution.computed``
         event to the log so the operator can replay the computation
         history later."""
-        from substrate.attribution import compute_attribution_for_synthesis
+        from runtime.db_lock import connect_read
+        from substrate.attribution import (
+            compute_attribution_for_synthesis_authorized,
+        )
+        from substrate.graph import default_db_path
+
         try:
-            r = compute_attribution_for_synthesis(
-                synthesis_id, emit_event=emit_event,
+            db_path = default_db_path()
+            con = connect_read(db_path)
+            try:
+                candidate = con.execute(
+                    "SELECT investigation_id, account_digest, "
+                    "investigation_digest FROM syntheses "
+                    "WHERE synthesis_id = ?",
+                    [synthesis_id],
+                ).fetchone()
+            finally:
+                con.close()
+            if candidate is None:
+                raise ValueError(f"synthesis {synthesis_id!r} not found")
+            access = authority_from_request(request, candidate[0])
+            r = compute_attribution_for_synthesis_authorized(
+                access.authority,
+                synthesis_id,
+                db_path=db_path,
+                emit_event=emit_event,
             )
-        except ValueError as exc:
+        except (InvestigationAccessDenied, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
         def _to_resp(
@@ -3742,19 +4764,25 @@ def create_app(
     )
     async def post_interview_project(
         req: CreateInterviewProjectRequest,
+        request: Request,
     ) -> InterviewProjectSummary:
 
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
         from runtime.db_lock import connect_write
-        from substrate.graph.ops import insert_interview_project
+        from substrate.interviews.store import create_project
 
         db = _resolve_db_path()
         guide = {
             "must_cover": req.must_cover,
             "framing": req.framing or "",
         }
+        authority = interview_account_authority_from_request(request)
         with connect_write(db, purpose="interview_projects/create") as con:
-            pid = insert_interview_project(
+            pid = create_project(
                 con,
+                authority,
                 title=req.title,
                 topic_description=req.topic_description,
                 deliverable_id=req.deliverable_id,
@@ -3763,32 +4791,45 @@ def create_app(
             row = con.execute(
                 "SELECT title, topic_description, deliverable_id, "
                 "strftime(created_at, '%Y-%m-%dT%H:%M:%S') "
-                "FROM interview_projects WHERE project_id = ?", [pid],
+                "FROM interview_projects_authority WHERE account_digest = ? "
+                "AND owner_user_id = ? AND project_id = ?",
+                [authority.account_digest, authority.account_id, pid],
             ).fetchone()
         return InterviewProjectSummary(
-            project_id=pid, title=row[0], topic_description=row[1],
-            deliverable_id=row[2], must_cover=req.must_cover,
-            framing=req.framing, created_at=row[3],
+            project_id=pid,
+            title=row[0],
+            topic_description=row[1],
+            deliverable_id=row[2],
+            must_cover=req.must_cover,
+            framing=req.framing,
+            created_at=row[3],
         )
 
     @app.get(
         "/interview-projects",
         response_model=list[InterviewProjectSummary],
     )
-    async def list_interview_projects() -> list[InterviewProjectSummary]:
+    async def list_interview_projects(request: Request) -> list[InterviewProjectSummary]:
         import json as _json
 
         import duckdb
+
         db = _resolve_db_path()
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
+        authority = interview_account_authority_from_request(request)
         con = duckdb.connect(db, read_only=True)
         try:
             rows = con.execute(
                 "SELECT p.project_id, p.title, p.topic_description, "
                 "p.deliverable_id, p.interview_guide, "
                 "strftime(p.created_at, '%Y-%m-%dT%H:%M:%S'), "
-                "(SELECT COUNT(*) FROM interviews i WHERE i.project_id = p.project_id), "
-                "(SELECT COUNT(*) FROM interviews i WHERE i.project_id = p.project_id AND i.status = 'completed') "
-                "FROM interview_projects p ORDER BY p.created_at DESC",
+                "(SELECT COUNT(*) FROM interviews_authority i WHERE i.account_digest = p.account_digest AND i.project_id = p.project_id), "
+                "(SELECT COUNT(*) FROM interviews_authority i WHERE i.account_digest = p.account_digest AND i.project_id = p.project_id AND i.status = 'completed') "
+                "FROM interview_projects_authority p WHERE p.account_digest = ? "
+                "AND p.owner_user_id = ? ORDER BY p.created_at DESC",
+                [authority.account_digest, authority.account_id],
             ).fetchall()
         finally:
             con.close()
@@ -3800,15 +4841,19 @@ def create_app(
                     guide = _json.loads(r[4])
                 except (ValueError, TypeError):
                     guide = {}
-            out.append(InterviewProjectSummary(
-                project_id=r[0], title=r[1], topic_description=r[2],
-                deliverable_id=r[3],
-                must_cover=list(guide.get("must_cover") or []),
-                framing=guide.get("framing"),
-                created_at=r[5],
-                interview_count=int(r[6] or 0),
-                completed_count=int(r[7] or 0),
-            ))
+            out.append(
+                InterviewProjectSummary(
+                    project_id=r[0],
+                    title=r[1],
+                    topic_description=r[2],
+                    deliverable_id=r[3],
+                    must_cover=list(guide.get("must_cover") or []),
+                    framing=guide.get("framing"),
+                    created_at=r[5],
+                    interview_count=int(r[6] or 0),
+                    completed_count=int(r[7] or 0),
+                )
+            )
         return out
 
     @app.get(
@@ -3817,11 +4862,16 @@ def create_app(
     )
     async def list_interviews_for_project(
         project_id: str,
+        request: Request,
     ) -> list[InterviewSummary]:
         """All interviews invited under one project, oldest first."""
         import duckdb
 
         db = _resolve_db_path()
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
+        authority = interview_account_authority_from_request(request)
         con = duckdb.connect(db, read_only=True)
         try:
             rows = con.execute(
@@ -3833,25 +4883,28 @@ def create_app(
                 # transcript_turns is a JSON array column; derive
                 # the count via json_array_length. NULL → 0.
                 "COALESCE(json_array_length(i.transcript_turns), 0) "
-                "FROM interviews i WHERE i.project_id = ? "
+                "FROM interviews_authority i WHERE i.account_digest = ? AND i.owner_user_id = ? "
+                "AND i.project_id = ? "
                 "ORDER BY i.invited_at",
-                [project_id],
+                [authority.account_digest, authority.account_id, project_id],
             ).fetchall()
         finally:
             con.close()
         out: list[InterviewSummary] = []
         for r in rows:
-            out.append(InterviewSummary(
-                interview_id=r[0],
-                project_id=r[1],
-                informant_handle=r[2],
-                informant_email=r[3],
-                status=r[4],
-                invited_at=r[5],
-                started_at=r[6],
-                completed_at=r[7],
-                turn_count=int(r[8] or 0),
-            ))
+            out.append(
+                InterviewSummary(
+                    interview_id=r[0],
+                    project_id=r[1],
+                    informant_handle=r[2],
+                    informant_email=r[3],
+                    status=r[4],
+                    invited_at=r[5],
+                    started_at=r[6],
+                    completed_at=r[7],
+                    turn_count=int(r[8] or 0),
+                )
+            )
         return out
 
     @app.post(
@@ -3859,55 +4912,68 @@ def create_app(
         response_model=InterviewSummary,
         status_code=201,
     )
-    async def post_invite_interview(req: InviteInterviewRequest) -> InterviewSummary:
+    async def post_invite_interview(req: InviteInterviewRequest, request: Request) -> InterviewSummary:
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
         from runtime.db_lock import connect_write
-        from substrate.graph.ops import insert_interview
+        from substrate.interviews.store import create_interview
 
         db = _resolve_db_path()
+        authority = interview_account_authority_from_request(request)
         with connect_write(db, purpose="interviews/invite") as con:
-            project_row = con.execute(
-                "SELECT 1 FROM interview_projects WHERE project_id = ?",
-                [req.project_id],
-            ).fetchone()
-            if project_row is None:
-                raise HTTPException(
-                    status_code=404, detail="interview project not found",
+            try:
+                iid = create_interview(
+                    con, authority, project_id=req.project_id,
+                    informant_handle=req.informant_handle,
+                    informant_email=req.informant_email,
                 )
-            iid = insert_interview(
-                con,
-                project_id=req.project_id,
-                informant_handle=req.informant_handle,
-                informant_email=req.informant_email,
-            )
+            except ValueError:
+                raise HTTPException(
+                    status_code=404,
+                    detail="interview project not found",
+                )
             row = con.execute(
                 "SELECT informant_handle, informant_email, status, "
                 "strftime(invited_at, '%Y-%m-%dT%H:%M:%S') "
-                "FROM interviews WHERE interview_id = ?", [iid],
+                "FROM interviews_authority WHERE account_digest = ? AND owner_user_id = ? "
+                "AND interview_id = ?",
+                [authority.account_digest, authority.account_id, iid],
             ).fetchone()
         return InterviewSummary(
-            interview_id=iid, project_id=req.project_id,
-            informant_handle=row[0], informant_email=row[1],
-            status=row[2], invited_at=row[3], turn_count=0,
+            interview_id=iid,
+            project_id=req.project_id,
+            informant_handle=row[0],
+            informant_email=row[1],
+            status=row[2],
+            invited_at=row[3],
+            turn_count=0,
         )
 
     @app.get(
         "/interviews/{interview_id}",
         response_model=InterviewDetailResponse,
     )
-    async def get_interview(interview_id: str) -> InterviewDetailResponse:
+    async def get_interview(interview_id: str, request: Request) -> InterviewDetailResponse:
         import json as _json
 
         import duckdb
+
         db = _resolve_db_path()
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
+        authority = interview_account_authority_from_request(request)
         con = duckdb.connect(db, read_only=True)
         try:
             row = con.execute(
                 "SELECT i.interview_id, i.project_id, i.status, "
                 "i.consent_recorded, i.transcript_turns, "
                 "p.title, p.topic_description, p.interview_guide "
-                "FROM interviews i "
-                "JOIN interview_projects p ON i.project_id = p.project_id "
-                "WHERE i.interview_id = ?", [interview_id],
+                "FROM interviews_authority i "
+                "JOIN interview_projects_authority p ON i.account_digest = p.account_digest AND i.project_id = p.project_id "
+                "WHERE i.account_digest = ? AND i.owner_user_id = ? AND i.interview_id = ?",
+                [authority.account_digest, authority.account_id, interview_id],
             ).fetchone()
         finally:
             con.close()
@@ -3921,14 +4987,14 @@ def create_app(
         if row[4]:
             try:
                 raw_turns = _json.loads(row[4])
-                turns = [
-                    InterviewTurnPayload(**t) for t in raw_turns if isinstance(t, dict)
-                ]
+                turns = [InterviewTurnPayload(**t) for t in raw_turns if isinstance(t, dict)]
             except (ValueError, TypeError):
                 turns = []
         return InterviewDetailResponse(
-            interview_id=row[0], project_id=row[1],
-            project_title=row[5], topic_description=row[6],
+            interview_id=row[0],
+            project_id=row[1],
+            project_title=row[5],
+            topic_description=row[6],
             framing=guide.get("framing"),
             must_cover=list(guide.get("must_cover") or []),
             status=row[2],
@@ -3937,33 +5003,288 @@ def create_app(
         )
 
     @app.post(
+        "/interviews/{interview_id}/invites",
+        response_model=InterviewInviteResponse,
+        status_code=201,
+    )
+    async def post_interview_invite(
+        interview_id: str,
+        req: IssueInterviewInviteRequest,
+        request: Request,
+    ) -> InterviewInviteResponse:
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
+        from runtime.db_lock import connect_write
+        from substrate.interviews.capability import issue_invite
+
+        authority = interview_account_authority_from_request(request)
+        with connect_write(_resolve_db_path(), purpose="interviews/invite-capability") as con:
+            try:
+                issued = issue_invite(
+                    con, authority, interview_id=interview_id,
+                    required_scopes=tuple(dict.fromkeys(req.required_scopes)),
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail="interview not found") from exc
+        return InterviewInviteResponse(
+            invite_id=issued.invite_id,
+            interview_id=interview_id,
+            link=f"/speak/invite/{issued.token}",
+            required_scopes=list(dict.fromkeys(req.required_scopes)),
+        )
+
+    @app.get(
+        "/interviews/{interview_id}/margin",
+        response_model=InterviewMarginResponse,
+    )
+    async def get_interview_margin(
+        interview_id: str, request: Request
+    ) -> InterviewMarginResponse:
+        import duckdb
+
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
+        from substrate.interviews.margin import get_margin
+
+        authority = interview_account_authority_from_request(request).interview(interview_id)
+        con = duckdb.connect(_resolve_db_path(), read_only=True)
+        try:
+            margin = get_margin(con, authority)
+        finally:
+            con.close()
+        if margin is None:
+            raise HTTPException(status_code=404, detail="interview not found")
+        return InterviewMarginResponse(
+            **margin.__dict__, account_scope=authority.account_digest,
+            recovery_scope=authority.recovery_scope,
+        )
+
+    @app.put(
+        "/interviews/{interview_id}/margin",
+        response_model=InterviewMarginResponse,
+    )
+    async def put_interview_margin(
+        interview_id: str, req: PutInterviewMarginRequest, request: Request
+    ) -> InterviewMarginResponse:
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
+        from runtime.db_lock import connect_write
+        from substrate.interviews.margin import MarginConflict, put_margin
+
+        authority = interview_account_authority_from_request(request).interview(interview_id)
+        try:
+            with connect_write(_resolve_db_path(), purpose="interviews/margin") as con:
+                margin = put_margin(
+                    con, authority, schema_version=req.schema_version,
+                    base_revision=req.base_revision, mutation_key=req.mutation_key,
+                    body=req.body,
+                )
+        except MarginConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": exc.code, "revision": exc.revision,
+                        "content_sha256": exc.content_sha256},
+            ) from exc
+        if margin is None:
+            raise HTTPException(status_code=404, detail="interview not found")
+        return InterviewMarginResponse(
+            **margin.__dict__, account_scope=authority.account_digest,
+            recovery_scope=authority.recovery_scope,
+        )
+
+    @app.delete("/interview-invites/{invite_id}", status_code=204)
+    async def delete_interview_invite(invite_id: str, request: Request) -> Response:
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
+        from runtime.db_lock import connect_write
+        from substrate.interviews.capability import revoke_invite
+
+        authority = interview_account_authority_from_request(request)
+        with connect_write(_resolve_db_path(), purpose="interviews/revoke-capability") as con:
+            if not revoke_invite(con, authority, invite_id=invite_id):
+                raise HTTPException(status_code=404, detail="interview invite not found")
+        return Response(status_code=204)
+
+    @app.put(
+        "/interviews/{interview_id}/derivation-target",
+        response_model=InterviewDerivationBindingResponse,
+    )
+    async def put_interview_derivation_target(
+        interview_id: str,
+        req: BindInterviewDerivationRequest,
+        request: Request,
+    ) -> InterviewDerivationBindingResponse:
+        """Authorize one exact Research destination for this interview project."""
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
+        from runtime.db_lock import connect_write
+        from substrate.interviews.derivation import DerivationConflict, bind_project
+        from substrate.investigation_streams import resolve_writable_investigation_stream
+        from substrate.investigation_tenancy import InvestigationAuthority
+
+        authority = interview_account_authority_from_request(request)
+        # Reject foreign/missing interview IDs before causing filesystem state.
+        with connect_write(_resolve_db_path(), purpose="interviews/derivation-authorize") as con:
+            row = con.execute(
+                "SELECT project_id FROM interviews_authority WHERE account_digest = ? "
+                "AND owner_user_id = ? AND interview_id = ?",
+                [authority.account_digest, authority.account_id, interview_id],
+            ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="interview not found")
+        target = InvestigationAuthority(authority.account_id, req.investigation_id)
+        # Allocation proves the exact account-qualified stream is writable. The
+        # binding call revalidates project ownership after this external step.
+        resolve_writable_investigation_stream(target)
+        try:
+            with connect_write(_resolve_db_path(), purpose="interviews/derivation-target") as con:
+                revision = bind_project(
+                    con, authority, project_id=str(row[0]), investigation=target
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="interview not found") from exc
+        except DerivationConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return InterviewDerivationBindingResponse(
+            interview_id=interview_id,
+            project_id=str(row[0]),
+            investigation_id=target.investigation_id,
+            revision=revision,
+        )
+
+    @app.get(
+        "/interviews/{interview_id}/derivations",
+        response_model=list[InterviewDerivationStatus],
+    )
+    async def get_interview_derivations(
+        interview_id: str, request: Request
+    ) -> list[InterviewDerivationStatus]:
+        import duckdb
+
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
+
+        authority = interview_account_authority_from_request(request)
+        con = duckdb.connect(_resolve_db_path(), read_only=True)
+        try:
+            parent = con.execute(
+                "SELECT 1 FROM interviews_authority WHERE account_digest = ? "
+                "AND owner_user_id = ? AND interview_id = ?",
+                [authority.account_digest, authority.account_id, interview_id],
+            ).fetchone()
+            if parent is None:
+                raise HTTPException(status_code=404, detail="interview not found")
+            rows = con.execute(
+                "SELECT question_id, investigation_id, delivery_state, document_id, "
+                "attempt_count, last_error_code FROM interview_answer_derivations "
+                "WHERE account_digest = ? AND owner_user_id = ? AND interview_id = ? "
+                "ORDER BY created_at, question_id",
+                [authority.account_digest, authority.account_id, interview_id],
+            ).fetchall()
+        finally:
+            con.close()
+        return [
+            InterviewDerivationStatus(
+                question_id=str(row[0]), investigation_id=str(row[1]),
+                delivery_state=row[2], document_id=row[3],
+                attempt_count=int(row[4]), last_error_code=row[5],
+            )
+            for row in rows
+        ]
+
+    @app.post(
+        "/interviews/{interview_id}/derivations/reconcile",
+        response_model=InterviewDerivationReconcileResponse,
+    )
+    async def post_interview_derivation_reconcile(
+        interview_id: str, request: Request
+    ) -> InterviewDerivationReconcileResponse:
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
+        from runtime.db_lock import connect_write
+        from substrate.interviews.reconcile import reconcile_answer_derivations
+
+        authority = interview_account_authority_from_request(request)
+        try:
+            with connect_write(
+                _resolve_db_path(), purpose="interviews/derivation-reconcile"
+            ) as con:
+                result = reconcile_answer_derivations(
+                    con, authority, interview_id=interview_id
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="interview not found") from exc
+        return InterviewDerivationReconcileResponse(**result.__dict__)
+
+    @app.post(
+        "/interviews/{interview_id}/consent",
+        status_code=200,
+    )
+    async def post_interview_consent(
+        interview_id: str,
+        req: RecordInterviewConsentRequest,
+        request: Request,
+    ) -> dict[str, object]:
+        """Record consent witnessed by the authenticated operator."""
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
+        from runtime.db_lock import connect_write
+        from substrate.interviews.store import InterviewStateConflict, record_consent
+
+        authority = interview_account_authority_from_request(request)
+        with connect_write(_resolve_db_path(), purpose="interviews/consent") as con:
+            try:
+                found = record_consent(
+                    con, authority, interview_id=interview_id, granted=req.granted
+                )
+            except InterviewStateConflict as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if not found:
+            raise HTTPException(status_code=404, detail="interview not found")
+        return {"interview_id": interview_id, "consent_recorded": req.granted}
+
+    @app.post(
         "/interviews/{interview_id}/turn",
         response_model=InterviewTurnResponse,
         status_code=202,
     )
     async def post_interview_turn(
-        interview_id: str, req: InterviewTurnRequest,
+        interview_id: str,
+        req: InterviewTurnRequest,
+        request: Request,
     ) -> InterviewTurnResponse:
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
         from runtime.db_lock import connect_write
-        from substrate.graph.ops import append_interview_turn
+        from substrate.interviews.store import InterviewStateConflict, append_turn
 
         db = _resolve_db_path()
+        authority = interview_account_authority_from_request(request)
         with connect_write(db, purpose="interviews/turn") as con:
             try:
-                count = append_interview_turn(
-                    con,
+                count, status = append_turn(
+                    con, authority,
                     interview_id=interview_id,
                     role=req.role,
                     text=req.text,
                 )
+            except InterviewStateConflict as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
             except ValueError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
-            (status,) = con.execute(
-                "SELECT status FROM interviews WHERE interview_id = ?",
-                [interview_id],
-            ).fetchone()
         return InterviewTurnResponse(
-            interview_id=interview_id, turn_count=count, status=status,
+            interview_id=interview_id,
+            turn_count=count,
+            status=status,
         )
 
     @app.post(
@@ -3972,35 +5293,43 @@ def create_app(
         status_code=202,
     )
     async def post_complete_interview(
-        interview_id: str, req: CompleteInterviewRequest,
+        interview_id: str,
+        req: CompleteInterviewRequest,
+        request: Request,
     ) -> InterviewSummary:
+        from interfaces.research.api.interview_access import (
+            interview_account_authority_from_request,
+        )
         from runtime.db_lock import connect_write
-        from substrate.graph.ops import complete_interview
+        from substrate.interviews.store import InterviewStateConflict, complete
 
         db = _resolve_db_path()
+        authority = interview_account_authority_from_request(request)
         with connect_write(db, purpose="interviews/complete") as con:
-            row = con.execute(
-                "SELECT 1 FROM interviews WHERE interview_id = ?",
-                [interview_id],
-            ).fetchone()
-            if row is None:
-                raise HTTPException(
-                    status_code=404, detail="interview not found",
+            try:
+                found = complete(
+                    con, authority, interview_id=interview_id,
+                    transcript_document_id=req.transcript_document_id,
                 )
-            complete_interview(
-                con,
-                interview_id=interview_id,
-                transcript_document_id=req.transcript_document_id,
-            )
+            except InterviewStateConflict as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            if not found:
+                raise HTTPException(
+                    status_code=404,
+                    detail="interview not found",
+                )
             r = con.execute(
                 "SELECT project_id, informant_handle, informant_email, "
                 "status, strftime(invited_at, '%Y-%m-%dT%H:%M:%S'), "
                 "strftime(started_at, '%Y-%m-%dT%H:%M:%S'), "
                 "strftime(completed_at, '%Y-%m-%dT%H:%M:%S'), "
                 "transcript_turns "
-                "FROM interviews WHERE interview_id = ?", [interview_id],
+                "FROM interviews_authority WHERE account_digest = ? AND owner_user_id = ? "
+                "AND interview_id = ?",
+                [authority.account_digest, authority.account_id, interview_id],
             ).fetchone()
         import json as _json
+
         turn_count = 0
         if r[7]:
             try:
@@ -4008,9 +5337,14 @@ def create_app(
             except (ValueError, TypeError):
                 turn_count = 0
         return InterviewSummary(
-            interview_id=interview_id, project_id=r[0],
-            informant_handle=r[1], informant_email=r[2], status=r[3],
-            invited_at=r[4], started_at=r[5], completed_at=r[6],
+            interview_id=interview_id,
+            project_id=r[0],
+            informant_handle=r[1],
+            informant_email=r[2],
+            status=r[3],
+            invited_at=r[4],
+            started_at=r[5],
+            completed_at=r[6],
             turn_count=turn_count,
         )
 
@@ -4027,6 +5361,7 @@ def create_app(
         operator records client-side, transcribes client-side or
         via OpenAI directly, and posts the transcript."""
         from acquisition.voice import ingest_voice_note
+
         r = ingest_voice_note(
             req.transcript,
             investigation_id=req.investigation_id,
@@ -4035,9 +5370,7 @@ def create_app(
             language=req.language,
         )
         return VoiceNoteIngestResponse(
-            status=(
-                "ingested" if r.chunks_written > 0 else "skipped"
-            ),
+            status=("ingested" if r.chunks_written > 0 else "skipped"),
             document_id=r.document_id,
             document_loaded_event_id=r.document_loaded_event_id,
             chunks_written=r.chunks_written,
@@ -4052,6 +5385,64 @@ def create_app(
         ws: WebSocket,
         investigation_id: str | None = Query(default=None),
     ) -> None:
+        if not investigation_id:
+            await ws.close(code=4404, reason="investigation not found")
+            return
+        claims: UserClaims | None = None
+        expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
+        operator_emails = operator_allowlist_from_env(_OPERATOR_EMAIL_ENV)
+        expected_st_client_id = (
+            os.environ.get(_OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "").strip().lower()
+        )
+        if not expected_token and not operator_emails and not expected_st_client_id:
+            from substrate.multi_user.auth import operator_claims
+
+            claims = operator_claims()
+        else:
+            session_value = ws.cookies.get(_SESSION_COOKIE_NAME, "")
+            if session_value and os.environ.get("ANTIEK_AUTH_SECRET", "").strip():
+                try:
+                    from substrate.auth import verify_session_cookie
+                    from substrate.multi_user.auth import account_claims
+
+                    cookie = verify_session_cookie(session_value)
+                    email = cookie.email.strip().lower()
+                    if not operator_emails or email in operator_emails:
+                        claims = account_claims(user_id=cookie.user_id, email=email)
+                except Exception:  # noqa: BLE001 - invalid credential is denied below
+                    claims = None
+            cf_email = ws.headers.get(_CF_ACCESS_EMAIL_HEADER, "").strip().lower()
+            if claims is None and cf_email and cf_email in operator_emails:
+                from substrate.multi_user.auth import account_claims, account_user_id
+
+                claims = account_claims(user_id=account_user_id(cf_email), email=cf_email)
+            cf_client_id = ws.headers.get(_CF_ACCESS_CLIENT_ID_HEADER, "").strip().lower()
+            auth = ws.headers.get("Authorization", "")
+            scheme, _, token = auth.partition(" ")
+            import secrets as _secrets
+
+            if claims is None and expected_st_client_id and cf_client_id == expected_st_client_id:
+                from substrate.multi_user.auth import credential_claims
+
+                claims = credential_claims(kind="cloudflare_service", credential_id=cf_client_id)
+            if (
+                claims is None
+                and expected_token
+                and scheme.lower() == "bearer"
+                and token.strip()
+                and _secrets.compare_digest(token.strip(), expected_token)
+            ):
+                from substrate.multi_user.auth import credential_claims
+
+                claims = credential_claims(kind="bearer", credential_id=token.strip())
+        if claims is None:
+            await ws.close(code=4401, reason="authentication required")
+            return
+        try:
+            require_investigation_owner(authority_from_claims(claims, investigation_id))
+        except InvestigationAccessDenied:
+            await ws.close(code=4404, reason="investigation not found")
+            return
         await ws.accept()
         sub = await bus.subscribe(ws, investigation_id=investigation_id)
         try:
@@ -4082,6 +5473,7 @@ def create_app(
 
     class ParkedQuestionEntry(BaseModel):
         """A single parked question in the watch-for-later folder."""
+
         question_id: str
         question_text: str
         source_investigation_id: str
@@ -4096,19 +5488,19 @@ def create_app(
 
     @app.get("/watch-for-later", response_model=WatchForLaterResponse)
     async def list_watch_for_later(
+        request: Request,
         limit: Annotated[int, Query(ge=1, le=500)] = 100,
     ) -> WatchForLaterResponse:
         """List unsharpened open questions across all investigations.
         Renders as the watch-for-later folder in the Brainstorming
         Workstation (master-spec §4.5)."""
-        import os as _os
-
-        from substrate.event_log import default_events_dir
+        from substrate.investigation_streams import list_authorized_investigation_ids
         from substrate.schemas import ActionType
 
-        events_dir = default_events_dir()
-        if not _os.path.isdir(events_dir):
-            return WatchForLaterResponse(count=0, questions=[])
+        try:
+            identity = authority_from_request(request, "__watch_identity_probe__")
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
 
         qi_action = ActionType.QUESTION_IDENTIFIED.value
         esc_action = ActionType.QUESTION_ESCALATED_TO_RESEARCH.value
@@ -4119,11 +5511,14 @@ def create_app(
         parked: dict[str, ParkedQuestionEntry] = {}
         sharpened_ids: set[str] = set()
 
-        for filename in _os.listdir(events_dir):
-            if not filename.startswith("inv-") or not filename.endswith(".jsonl"):
+        for src_inv in list_authorized_investigation_ids(
+            identity.authority.account_id,
+            root=identity.authority.root,
+        ):
+            if not src_inv.startswith("inv-"):
                 continue
-            src_inv = filename[:-len(".jsonl")]
-            for r in trajectory(src_inv):
+            source_access = authority_for_investigation(identity, src_inv)
+            for r in trajectory_authorized(source_access.authority):
                 at = r.get("action_type")
                 payload = r.get("payload") or {}
                 qid = payload.get("question_id")
@@ -4149,12 +5544,36 @@ def create_app(
         return WatchForLaterResponse(count=len(unsharpened), questions=unsharpened)
 
     @app.post(
+        "/watch-for-later/{question_id}/launch/quote",
+        response_model=InvestigationQuoteResponse,
+    )
+    async def quote_parked_question(
+        question_id: str,
+        req: ParkedQuestionLaunchRequest,
+        request: Request,
+        response: Response,
+    ) -> InvestigationQuoteResponse:
+        response.headers["Cache-Control"] = "no-store"
+        try:
+            authority_from_request(request, "__watch_identity_probe__")
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
+        return _issue_exact_research_quote(
+            request=request,
+            command=_canonical_parked_quote_command(question_id, req),
+            research_tier="deep",
+            approved_run_ceiling_usd=req.approved_run_ceiling_usd,
+        )
+
+    @app.post(
         "/watch-for-later/{question_id}/launch",
         response_model=InvestigationStartResponse,
         status_code=202,
     )
     async def launch_parked_question(
         question_id: str,
+        req: ParkedQuestionLaunchRequest,
+        request: Request,
     ) -> InvestigationStartResponse:
         """Launch an investigation seeded by a parked question. Looks up
         the question.identified event by question_id, posts a new
@@ -4162,88 +5581,121 @@ def create_app(
         question.escalated_to_research tying parent question to new
         investigation. The watch-for-later folder hides the question on
         the next refresh because it is now sharpened."""
-        import os as _os
-        import uuid as _uuid
+        from datetime import UTC as _UTC
+        from datetime import datetime as _datetime
 
-        from substrate.event_log import default_events_dir
+        from substrate.event_log import append_event_once_authorized, prepare_typed_event
+        from substrate.investigation_streams import list_authorized_investigation_ids
         from substrate.schemas import (
             ActionType,
             InvestigationStartRequestedPayload,
             QuestionEscalatedToResearchPayload,
+            ResearchQuotedRoute,
         )
 
-        events_dir = default_events_dir()
-        if not _os.path.isdir(events_dir):
-            raise HTTPException(status_code=404, detail="No events directory")
-
+        try:
+            identity = authority_from_request(request, "__watch_identity_probe__")
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
+        quote_receipt, quote_manifest = _verify_exact_research_quote(
+            request=request,
+            token=req.research_quote_token,
+            command=_canonical_parked_quote_command(question_id, req),
+            research_tier="deep",
+            approved_run_ceiling_usd=req.approved_run_ceiling_usd,
+        )
         found_text: str | None = None
         found_source_inv: str | None = None
+        found_source_access = None
         qi_action = ActionType.QUESTION_IDENTIFIED.value
-        for filename in _os.listdir(events_dir):
-            if not filename.startswith("inv-") or not filename.endswith(".jsonl"):
+        for src_inv in list_authorized_investigation_ids(
+            identity.authority.account_id,
+            root=identity.authority.root,
+        ):
+            if not src_inv.startswith("inv-"):
                 continue
-            src_inv = filename[:-len(".jsonl")]
-            for r in trajectory(src_inv):
+            source_access = authority_for_investigation(identity, src_inv)
+            for r in trajectory_authorized(source_access.authority):
                 payload = r.get("payload") or {}
-                if (
-                    r.get("action_type") == qi_action
-                    and payload.get("question_id") == question_id
-                ):
+                if r.get("action_type") == qi_action and payload.get("question_id") == question_id:
                     found_text = payload.get("question_text")
                     found_source_inv = src_inv
+                    found_source_access = source_access
                     break
             if found_text is not None:
                 break
 
-        if found_text is None or found_source_inv is None:
+        if found_text is None or found_source_inv is None or found_source_access is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"No parked question with question_id={question_id}",
             )
 
-        child_inv_id = f"inv-{_uuid.uuid4().hex[:12]}"
+        child_inv_id = f"inv-q-{quote_receipt.quote_id[:24]}"
         try:
-            start_event_id = emit_typed(
+            child_access = bind_child_investigation(
+                found_source_access, child_inv_id
+            )
+            role, policy_id = event_actor(child_access)
+            emitted_at = _datetime.fromtimestamp(
+                quote_receipt.issued_at_ms / 1000, tz=_UTC
+            )
+            start_event_id = append_event_once_authorized(
+                child_access.authority,
+                prepare_typed_event(
                 child_inv_id,
                 InvestigationStartRequestedPayload(
                     question=found_text,
                     context=(
-                        f"Launched from watch-for-later folder "
-                        f"(parent question_id={question_id})"
+                        f"Launched from watch-for-later folder (parent question_id={question_id})"
                     ),
                     parent_investigation_id=found_source_inv,
                     spawn_context=f"watch-for-later/{question_id}",
+                    approved_run_ceiling_usd=req.approved_run_ceiling_usd,
+                    research_quote_id=quote_receipt.quote_id,
+                    research_quote_payload_sha256=quote_receipt.payload_sha256,
+                    research_route_manifest_fingerprint=(
+                        quote_receipt.route_manifest_fingerprint
+                    ),
+                    research_quote_expires_at_ms=quote_receipt.expires_at_ms,
+                    research_route_manifest=tuple(
+                        ResearchQuotedRoute(**row.__dict__)
+                        for row in quote_manifest.routes
+                    ),
                 ),
-                role="operator",
-                policy_id="operator/brainstorm",
+                event_id=f"evt-parked-start-{quote_receipt.quote_id[:24]}",
+                role=role,
+                policy_id=policy_id,
+                emitted_at=emitted_at,
+                ),
             )
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-        if start_event_id is None:
-            raise HTTPException(
-                status_code=503,
-                detail="Event log is disabled (ANTIEK_EVENTS_DISABLED).",
-            )
-
         # Emit the escalation event into the SOURCE investigation so
         # subsequent /watch-for-later calls correctly hide this question.
         with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
-            emit_typed(
+            append_event_once_authorized(
+                found_source_access.authority,
+                prepare_typed_event(
                 found_source_inv,
                 QuestionEscalatedToResearchPayload(
                     question_id=question_id,
                     child_investigation_id=child_inv_id,
                 ),
+                event_id=f"evt-parked-escalation-{quote_receipt.quote_id[:24]}",
                 role="operator",
                 policy_id="operator/brainstorm",
+                emitted_at=emitted_at,
+                ),
             )
 
         # Broadcast the start event so the Loop 1 orchestrator picks it up.
-        for row in reversed(trajectory(child_inv_id)):
+        for row in reversed(trajectory_authorized(child_access.authority)):
             if row.get("event_id") == start_event_id:
                 try:
                     event = Event.model_validate(row)
+                    bus.bind_event_authority(event.event_id, child_access.authority)
                     await bus.broadcast(event)
                 except Exception:  # pragma: no cover — diagnostic
                     pass
@@ -4371,7 +5823,8 @@ def create_app(
 
     @app.post("/publishers/{ip_holder_id}/claim", response_model=PublisherResponse)
     async def claim_publisher(
-        ip_holder_id: str, req: PublisherClaimRequest,
+        ip_holder_id: str,
+        req: PublisherClaimRequest,
     ) -> PublisherResponse:
         """Publisher claims account via documented process. Unlocks
         the Stripe Connect payout path per §9.10."""
@@ -4382,7 +5835,8 @@ def create_app(
         db_path = default_db_path()
         with connect_write(db_path, purpose="api:claim_publisher") as con:
             claim(
-                con, ip_holder_id,
+                con,
+                ip_holder_id,
                 stripe_connect_account_id=req.stripe_connect_account_id,
             )
             h = get(con, ip_holder_id)
@@ -4412,6 +5866,41 @@ def create_app(
     # are live-pulled at render time, not denormalized — per §13.2
     # substrate-is-source-of-truth invariant.
 
+    from substrate.notebooks import NotebookCorruptError
+
+    from .notebook_access import (
+        NotebookAuthenticationRequired,
+        notebook_account_authority_from_request,
+    )
+
+    def _notebook_account(request: Request):
+        try:
+            return notebook_account_authority_from_request(request)
+        except NotebookAuthenticationRequired as exc:
+            raise HTTPException(
+                status_code=401,
+                detail="authentication required",
+            ) from exc
+
+    @app.exception_handler(NotebookCorruptError)
+    async def _notebook_corrupt_handler(
+        request: Request,
+        exc: NotebookCorruptError,
+    ) -> Response:
+        del request, exc
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": {
+                    "code": "notebook_unavailable",
+                    "message": "notebook is temporarily unavailable",
+                }
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
     class NotebookBlockResponse(BaseModel):
         block_id: str
         block_index: int
@@ -4426,6 +5915,9 @@ def create_app(
         investigation_id: str | None
         document_id: str | None
         content_class: str
+        schema_version: Literal[1]
+        revision: int
+        content_sha256: str
         created_at: str
         updated_at: str
         blocks: list[NotebookBlockResponse]
@@ -4441,6 +5933,9 @@ def create_app(
             investigation_id=nb.investigation_id,
             document_id=nb.document_id,
             content_class=nb.content_class,
+            schema_version=nb.schema_version,
+            revision=nb.revision,
+            content_sha256=nb.content_sha256,
             created_at=nb.created_at,
             updated_at=nb.updated_at,
             blocks=[
@@ -4462,23 +5957,39 @@ def create_app(
         status_code=201,
     )
     async def post_notebook(
+        request: Request,
         req: NotebookCreateRequest = Body(...),
     ) -> NotebookResponse:
+        import uuid as _uuid
+
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
-        from substrate.notebooks import create_notebook, get_notebook
+        from substrate.notebooks import (
+            NotebookAlreadyExists,
+            create_notebook,
+            get_notebook,
+        )
 
         db_path = default_db_path()
+        account = _notebook_account(request)
+        notebook_id = req.notebook_id or f"nb-{_uuid.uuid4().hex[:12]}"
+        authority = account.notebook(notebook_id)
         try:
             with connect_write(db_path, purpose="api:create_notebook") as con:
-                nb_id = create_notebook(
+                create_notebook(
                     con,
+                    authority,
                     title=req.title,
                     investigation_id=req.investigation_id,
                     document_id=req.document_id,
                     content_class=req.content_class,
                 )
-                nb = get_notebook(con, nb_id)
+                nb = get_notebook(con, authority)
+        except NotebookAlreadyExists as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "notebook_already_exists"},
+            ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if nb is None:
@@ -4487,18 +5998,21 @@ def create_app(
 
     @app.get("/notebooks", response_model=NotebookListResponse)
     async def list_notebooks_endpoint(
+        request: Request,
         investigation_id: Annotated[str | None, Query()] = None,
         document_id: Annotated[str | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
     ) -> NotebookListResponse:
-        from runtime.db_lock import connect_write
+        from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
         from substrate.notebooks import list_notebooks
 
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:list_notebooks") as con:
+        account = _notebook_account(request)
+        with connect_read(db_path) as con:
             nbs = list_notebooks(
                 con,
+                account,
                 investigation_id=investigation_id,
                 document_id=document_id,
                 limit=limit,
@@ -4509,14 +6023,18 @@ def create_app(
         )
 
     @app.get("/notebooks/{notebook_id}", response_model=NotebookResponse)
-    async def get_notebook_endpoint(notebook_id: str) -> NotebookResponse:
-        from runtime.db_lock import connect_write
+    async def get_notebook_endpoint(
+        notebook_id: str,
+        request: Request,
+    ) -> NotebookResponse:
+        from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
         from substrate.notebooks import get_notebook
 
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:get_notebook") as con:
-            nb = get_notebook(con, notebook_id)
+        authority = _notebook_account(request).notebook(notebook_id)
+        with connect_read(db_path) as con:
+            nb = get_notebook(con, authority)
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
@@ -4528,22 +6046,31 @@ def create_app(
     )
     async def append_notebook_block(
         notebook_id: str,
+        request: Request,
         req: NotebookAppendBlockRequest = Body(...),
     ) -> NotebookResponse:
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
-        from substrate.notebooks import append_block, get_notebook
+        from substrate.notebooks import (
+            NotebookNotFoundError,
+            append_block,
+            get_notebook,
+        )
 
         db_path = default_db_path()
+        authority = _notebook_account(request).notebook(notebook_id)
         try:
             with connect_write(db_path, purpose="api:append_notebook_block") as con:
                 append_block(
-                    con, notebook_id,
+                    con,
+                    authority,
                     block_type=req.block_type,
                     content=req.content,
                     ref_id=req.ref_id,
                 )
-                nb = get_notebook(con, notebook_id)
+                nb = get_notebook(con, authority)
+        except NotebookNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="notebook not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if nb is None:
@@ -4557,6 +6084,7 @@ def create_app(
     async def patch_notebook_block(
         notebook_id: str,
         block_id: str,
+        request: Request,
         req: NotebookUpdateBlockRequest = Body(...),
     ) -> NotebookResponse:
         """Update one block in place. content + ref_id are optional;
@@ -4568,11 +6096,15 @@ def create_app(
         from substrate.notebooks import get_notebook, update_block
 
         db_path = default_db_path()
+        authority = _notebook_account(request).notebook(notebook_id)
         with connect_write(
-            db_path, purpose="api:patch_notebook_block",
+            db_path,
+            purpose="api:patch_notebook_block",
         ) as con:
             updated = update_block(
-                con, notebook_id, block_id,
+                con,
+                authority,
+                block_id,
                 content=req.content,
                 ref_id=req.ref_id,
                 clear_ref_id=req.clear_ref_id,
@@ -4582,7 +6114,7 @@ def create_app(
                     status_code=404,
                     detail="notebook or block not found",
                 )
-            nb = get_notebook(con, notebook_id)
+            nb = get_notebook(con, authority)
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
@@ -4592,7 +6124,9 @@ def create_app(
         response_model=NotebookResponse,
     )
     async def delete_notebook_block(
-        notebook_id: str, block_id: str,
+        notebook_id: str,
+        block_id: str,
+        request: Request,
     ) -> NotebookResponse:
         """Delete one block from a notebook. Per master-spec §13.2
         substrate-is-source-of-truth: this deletes the row, not just
@@ -4603,16 +6137,18 @@ def create_app(
         from substrate.notebooks import delete_block, get_notebook
 
         db_path = default_db_path()
+        authority = _notebook_account(request).notebook(notebook_id)
         with connect_write(
-            db_path, purpose="api:delete_notebook_block",
+            db_path,
+            purpose="api:delete_notebook_block",
         ) as con:
-            deleted = delete_block(con, notebook_id, block_id)
+            deleted = delete_block(con, authority, block_id)
             if not deleted:
                 raise HTTPException(
                     status_code=404,
                     detail="notebook or block not found",
                 )
-            nb = get_notebook(con, notebook_id)
+            nb = get_notebook(con, authority)
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
@@ -4623,6 +6159,7 @@ def create_app(
     )
     async def reorder_notebook_blocks(
         notebook_id: str,
+        request: Request,
         req: NotebookReorderBlocksRequest = Body(...),
     ) -> NotebookResponse:
         """Re-order a notebook's blocks. The request body must carry
@@ -4630,26 +6167,36 @@ def create_app(
         reorders return 422 with the missing/unknown ids surfaced."""
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
-        from substrate.notebooks import get_notebook, reorder_blocks
+        from substrate.notebooks import (
+            NotebookNotFoundError,
+            get_notebook,
+            reorder_blocks,
+        )
 
         db_path = default_db_path()
+        authority = _notebook_account(request).notebook(notebook_id)
         try:
             with connect_write(
-                db_path, purpose="api:reorder_notebook_blocks",
+                db_path,
+                purpose="api:reorder_notebook_blocks",
             ) as con:
                 # Confirm the notebook exists before reordering so the
                 # error path returns 404 for missing notebooks rather
                 # than the more confusing "permutation mismatch" 422.
-                existing = get_notebook(con, notebook_id)
+                existing = get_notebook(con, authority)
                 if existing is None:
                     raise HTTPException(
-                        status_code=404, detail="notebook not found",
+                        status_code=404,
+                        detail="notebook not found",
                     )
                 reorder_blocks(
-                    con, notebook_id,
+                    con,
+                    authority,
                     ordered_block_ids=req.ordered_block_ids,
                 )
-                nb = get_notebook(con, notebook_id)
+                nb = get_notebook(con, authority)
+        except NotebookNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="notebook not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if nb is None:
@@ -4658,103 +6205,127 @@ def create_app(
 
     @app.put(
         "/notebooks/{notebook_id}/content",
-        response_model=NotebookResponse,
+        response_model=NotebookMutationReceiptResponse,
     )
     async def put_notebook_content(
         notebook_id: str,
+        request: Request,
         req: NotebookPutContentRequest = Body(...),
-    ) -> NotebookResponse:
-        """Atomic-replace a notebook's content from a TipTap document.
-
-        The autosave path in ``apps/reading/src/modes/Notebook/Editor.tsx``
-        POSTs here every ~1.5 s of idle. The substrate decomposes the
-        TipTap doc into ``notebook_blocks`` rows under a single write
-        lock — substrate-citation block ``ref_id`` columns are
-        populated from the corresponding node attrs so the
-        renderer's fetch-at-render-time path stays intact.
-        """
+    ) -> NotebookMutationReceiptResponse:
+        """Conditionally replace the canonical TipTap document."""
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
         from substrate.notebooks import (
-            append_block,
-            get_notebook,
+            NotebookEmptyDocumentConflict,
+            NotebookMutationConflict,
+            NotebookNotFoundError,
+            replace_document,
         )
-        from substrate.notebooks.tiptap_codec import (
-            decompose,
-            is_effectively_empty,
-        )
-
-        try:
-            decomposed = decompose(req.doc)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-        # Empty-doc floor (SPR-01 data-loss guard). Computed up front so the
-        # decision is cheap; enforced INSIDE the write lock below against the
-        # live persisted-block count so it can't be raced.
-        incoming_is_empty = is_effectively_empty(req.doc)
 
         db_path = default_db_path()
-        with connect_write(
-            db_path, purpose="api:put_notebook_content",
-        ) as con:
-            existing = get_notebook(con, notebook_id)
-            if existing is None:
-                raise HTTPException(
-                    status_code=404, detail="notebook not found",
-                )
-            # ── SPR-01 empty-doc floor ──────────────────────────────────
-            # A fresh/unhydrated editor seeds ``<p></p>`` and its first
-            # autosave PUTs that near-empty doc; the atomic replace below
-            # would DELETE every persisted block and destroy the operator's
-            # notes. Refuse to replace ≥1 persisted blocks with a doc that
-            # carries no real content. This check reads ``existing.blocks``,
-            # loaded on the same ``con`` inside the same write lock, so it is
-            # inside the replace's transaction boundary and cannot race a
-            # concurrent writer (DuckDB single-writer, --workers 1). A
-            # legitimate full-doc replace (any doc with real content) is
-            # unaffected — see ``is_effectively_empty``.
-            existing_block_count = len(existing.blocks)
-            if incoming_is_empty and existing_block_count >= 1:
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "code": "empty_doc_would_destroy_blocks",
-                        "message": (
-                            "Refusing to replace "
-                            f"{existing_block_count} persisted block(s) with "
-                            "an empty document. This usually means the editor "
-                            "autosaved before it hydrated from the substrate. "
-                            "Reload the notebook, then edit."
-                        ),
-                        "existing_block_count": existing_block_count,
-                    },
-                )
-            # Atomic replace: drop all existing blocks, then re-insert
-            # in order. Both operations sit inside the single
-            # connect_write lock so a concurrent read never sees a
-            # partial state.
-            con.execute(
-                "DELETE FROM notebook_blocks WHERE notebook_id = ?",
-                [notebook_id],
-            )
-            for block in decomposed:
-                append_block(
+        authority = _notebook_account(request).notebook(notebook_id)
+        try:
+            with connect_write(
+                db_path,
+                purpose="api:put_notebook_content",
+            ) as con:
+                receipt = replace_document(
                     con,
-                    notebook_id=notebook_id,
-                    block_type=block.block_type,
-                    ref_id=block.ref_id,
-                    content=block.content_json,
+                    authority,
+                    schema_version=req.schema_version,
+                    base_revision=req.base_revision,
+                    mutation_key=req.mutation_key,
+                    doc=req.doc,
                 )
-            con.execute(
-                "UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP "
-                "WHERE notebook_id = ?",
-                [notebook_id],
+        except NotebookEmptyDocumentConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": exc.code,
+                    "revision": exc.revision,
+                    "content_sha256": exc.content_sha256,
+                    "existing_block_count": exc.existing_block_count,
+                },
+            ) from exc
+        except NotebookMutationConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": exc.code,
+                    "revision": exc.revision,
+                    "content_sha256": exc.content_sha256,
+                },
+            ) from exc
+        except NotebookNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="notebook not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return NotebookMutationReceiptResponse(
+            schema_version=1,
+            notebook_id=receipt.notebook_id,
+            revision=receipt.revision,
+            content_sha256=receipt.content_sha256,
+            replayed=receipt.replayed,
+        )
+
+    @app.post(
+        "/notebooks/{notebook_id}/content/append",
+        response_model=NotebookMutationReceiptResponse,
+    )
+    async def append_notebook_content(
+        notebook_id: str,
+        request: Request,
+        req: NotebookAppendContentRequest = Body(...),
+    ) -> NotebookMutationReceiptResponse:
+        """Atomically append one TipTap block under request-derived authority."""
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import (
+            NotebookMutationConflict,
+            NotebookNotFoundError,
+            append_document_block,
+        )
+
+        authority = _notebook_account(request).notebook(notebook_id)
+        import hmac as _hmac
+
+        if not _hmac.compare_digest(req.account_scope, authority.account_digest):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "notebook_authority_changed"},
             )
-            nb = get_notebook(con, notebook_id)
-        if nb is None:
-            raise HTTPException(status_code=404, detail="notebook not found")
-        return _notebook_to_response(nb)
+        try:
+            with connect_write(
+                default_db_path(), purpose="api:append_notebook_content"
+            ) as con:
+                receipt = append_document_block(
+                    con,
+                    authority,
+                    schema_version=req.schema_version,
+                    base_revision=req.base_revision,
+                    mutation_key=req.mutation_key,
+                    block=req.block,
+                )
+        except NotebookMutationConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": exc.code,
+                    "revision": exc.revision,
+                    "content_sha256": exc.content_sha256,
+                },
+            ) from exc
+        except NotebookNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="notebook not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return NotebookMutationReceiptResponse(
+            schema_version=1,
+            notebook_id=receipt.notebook_id,
+            revision=receipt.revision,
+            content_sha256=receipt.content_sha256,
+            replayed=receipt.replayed,
+        )
 
     @app.get(
         "/notebooks/{notebook_id}/content",
@@ -4762,6 +6333,7 @@ def create_app(
     )
     async def get_notebook_content(
         notebook_id: str,
+        request: Request,
     ) -> NotebookContentResponse:
         """SPR-01 hydration GET — return the composed TipTap document for a
         notebook so the editor seeds from the substrate, not localStorage.
@@ -4772,20 +6344,30 @@ def create_app(
         ``tiptap_codec.compose`` (the same function the export route uses).
         Access gating is identical to ``GET /notebooks/{id}`` — 404 for a
         missing notebook, no widened exposure."""
-        from runtime.db_lock import connect_write
+        from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
         from substrate.notebooks import get_notebook
         from substrate.notebooks.tiptap_codec import compose
 
         db_path = default_db_path()
-        with connect_write(db_path, purpose="api:get_notebook_content") as con:
-            nb = get_notebook(con, notebook_id)
+        authority = _notebook_account(request).notebook(notebook_id)
+        with connect_read(db_path) as con:
+            nb = get_notebook(con, authority)
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
-        doc = compose(
-            [{"content_json": b.content_json} for b in nb.blocks]
+        doc = compose([{"content_json": b.content_json} for b in nb.blocks])
+        return NotebookContentResponse(
+            schema_version=1,
+            notebook_id=notebook_id,
+            title=nb.title,
+            investigation_id=nb.investigation_id,
+            doc=doc,
+            revision=nb.revision,
+            content_sha256=nb.content_sha256,
+            updated_at=nb.updated_at,
+            account_scope=authority.account_digest,
+            recovery_scope=authority.recovery_scope,
         )
-        return NotebookContentResponse(notebook_id=notebook_id, doc=doc)
 
     @app.post(
         "/notebooks/{notebook_id}/promote-public",
@@ -4793,6 +6375,7 @@ def create_app(
     )
     async def promote_notebook_to_public(
         notebook_id: str,
+        request: Request,
         rubric_score: float = Query(default=0.8, ge=0.0, le=1.0),
         force: bool = Query(default=False),
     ) -> NotebookResponse:
@@ -4816,11 +6399,13 @@ def create_app(
         )
 
         db_path = default_db_path()
+        authority = _notebook_account(request).notebook(notebook_id)
         with connect_write(db_path, purpose="api:promote_notebook_public") as con:
-            existing = get_notebook(con, notebook_id)
+            existing = get_notebook(con, authority)
             if existing is None:
                 raise HTTPException(
-                    status_code=404, detail="notebook not found",
+                    status_code=404,
+                    detail="notebook not found",
                 )
 
             # Compute the quality-gate verdict from the current
@@ -4866,9 +6451,7 @@ def create_app(
                 )
                 evt = _TypedEvent(
                     event_id=f"evt-{_uuid.uuid4().hex[:12]}",
-                    investigation_id=(
-                        existing.investigation_id or "__no_investigation__"
-                    ),
+                    investigation_id=(existing.investigation_id or "__no_investigation__"),
                     action_type=_AT.QUALITY_GATE_EVALUATED,
                     payload=payload,
                     param_version="api-v0",
@@ -4897,8 +6480,8 @@ def create_app(
                     },
                 )
 
-            promote_to_public(con, notebook_id)
-            nb = get_notebook(con, notebook_id)
+            promote_to_public(con, authority)
+            nb = get_notebook(con, authority)
 
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
@@ -4926,6 +6509,7 @@ def create_app(
         req: QualityGateEvaluationRequest = Body(...),
     ) -> QualityGateEvaluationResponse:
         from compounding.quality_gate import evaluate_notebook_for_public
+
         verdict = evaluate_notebook_for_public(
             text_content=req.text_content,
             cited_chunk_tiers=req.cited_chunk_tiers,
@@ -4936,10 +6520,11 @@ def create_app(
         # caller identified the target — generic ad-hoc evaluations
         # bypass the trajectory to keep it focused on real publication
         # decisions (§13.7 audit).
-        if (
-            req.target_id is not None
-            and req.target_kind in {"notebook", "synthesis_page", "creator_note"}
-        ):
+        if req.target_id is not None and req.target_kind in {
+            "notebook",
+            "synthesis_page",
+            "creator_note",
+        }:
             try:
                 import uuid as _uuid
                 from datetime import datetime as _dt
@@ -5044,12 +6629,21 @@ def create_app(
         from tools.stripe_connect.pricing import PricingTier
 
         agg = BillingAggregate()
-        if user_id != "__operator__":
-            return agg
+        from substrate.investigation_streams import list_authorized_investigation_ids
+        from substrate.investigation_tenancy import InvestigationAuthority
 
+        collection = InvestigationAuthority(user_id, "__billing_collection__")
         start, end = _billing_period_bounds(period)
-        for investigation_id in _iter_event_log_investigation_ids():
-            for row in trajectory(investigation_id):
+        for investigation_id in list_authorized_investigation_ids(
+            user_id,
+            root=collection.root,
+        ):
+            authority = InvestigationAuthority(
+                user_id,
+                investigation_id,
+                collection.root,
+            )
+            for row in trajectory_authorized(authority):
                 emitted_at = _parse_event_emitted_at(row)
                 if emitted_at is None:
                     continue
@@ -5065,7 +6659,7 @@ def create_app(
                     continue
                 record = record_dispatch_for_billing(
                     agg,
-                    user_id="__operator__",
+                    user_id=user_id,
                     tier=PricingTier.PAID_PRIVATE,
                     raw_token_cost_usd=Decimal(str(payload.cost_usd)),
                     token_count=payload.input_tokens + payload.output_tokens,
@@ -5082,7 +6676,9 @@ def create_app(
         response_model=BillingSummaryResponse,
     )
     async def billing_summary(
-        user_id: str, period: str,
+        user_id: str,
+        period: str,
+        request: Request,
     ) -> BillingSummaryResponse:
         """Per-user-month billing summary. Period format: YYYY-MM.
 
@@ -5094,13 +6690,18 @@ def create_app(
         from substrate.billing.aggregator import aggregate_period
         from tools.stripe_connect.pricing import FREE_TIER_MONTHLY_TOKEN_CAP
 
+        caller_id = str(getattr(request.state, "user_id", ""))
+        if caller_id != user_id and not _request_has_operator_authority(request):
+            raise HTTPException(status_code=403, detail="billing authority required")
+
         agg = _billing_aggregate_from_dispatch_calls(
             user_id=user_id,
             period=period,
         )
         summary = aggregate_period(agg, user_id=user_id, period=period)
         free_remaining = max(
-            0, FREE_TIER_MONTHLY_TOKEN_CAP - summary.free_tokens_consumed,
+            0,
+            FREE_TIER_MONTHLY_TOKEN_CAP - summary.free_tokens_consumed,
         )
         return BillingSummaryResponse(
             user_id=summary.user_id,
@@ -5194,6 +6795,7 @@ def create_app(
             compute_attribution_option_b,
             compute_attribution_option_c,
         )
+
         if req.algorithm == "option_a":
             r = compute_attribution_option_a(
                 page_id=req.page_id,
@@ -5240,146 +6842,98 @@ def create_app(
         response_model=OutcomeRecordResponse,
     )
     async def post_outcome(
+        request: Request,
         req: OutcomeRecordRequest = Body(...),
     ) -> OutcomeRecordResponse:
         """Record an operator-graded outcome for a synthesis page.
         Per master-spec §13.8: outcomes feed the Phase 8 skill-growth
         gate (compounding/skill_growth/gate.py)."""
-        import json as _json
         import uuid as _uuid
 
+        from middleware.outcomes import record_outcome_payload_authorized
         from runtime.db_lock import connect_write
+        from substrate.event_log import prepare_typed_event, require_event_persistence
         from substrate.graph import default_db_path
+        from substrate.synthesis_event_outbox import (
+            reconcile_synthesis_events,
+            stable_synthesis_event_id,
+            stage_synthesis_event,
+        )
 
         outcome_id = f"out-{_uuid.uuid4().hex[:12]}"
         db_path = default_db_path()
+        require_event_persistence()
         with connect_write(db_path, purpose="api:post_outcome") as con:
-            con.execute(
-                "INSERT INTO outcomes ("
-                "outcome_id, synthesis_id, observer, "
-                "thesis_outcomes, falsification_outcomes, "
-                "execution_risk_outcomes, decision_alignment, notes"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    outcome_id,
-                    req.synthesis_id,
-                    req.observer,
-                    _json.dumps(req.thesis_outcomes),
-                    _json.dumps(req.falsification_outcomes),
-                    _json.dumps(req.execution_risk_outcomes),
-                    (
-                        _json.dumps(req.decision_alignment)
-                        if req.decision_alignment is not None
-                        else None
-                    ),
-                    req.notes,
-                ],
-            )
-            row = con.execute(
-                "SELECT outcome_id, synthesis_id, observer, observed_at "
-                "FROM outcomes WHERE outcome_id = ?",
-                [outcome_id],
+            candidate = con.execute(
+                "SELECT investigation_id, account_digest, investigation_digest "
+                "FROM syntheses WHERE synthesis_id = ?",
+                [req.synthesis_id],
             ).fetchone()
+            if candidate is None:
+                raise HTTPException(status_code=404, detail="synthesis not found")
+            access = authority_from_request(request, candidate[0])
+            con.execute("BEGIN TRANSACTION")
+            try:
+                record_outcome_payload_authorized(
+                    con,
+                    access.authority,
+                    outcome_id=outcome_id,
+                    synthesis_id=req.synthesis_id,
+                    observer=req.observer,
+                    thesis_outcomes=req.thesis_outcomes,
+                    falsification_outcomes=req.falsification_outcomes,
+                    execution_risk_outcomes=req.execution_risk_outcomes,
+                    decision_alignment=req.decision_alignment,
+                    notes=req.notes,
+                )
+            except KeyError as exc:
+                con.execute("ROLLBACK")
+                raise HTTPException(status_code=404, detail="synthesis not found") from exc
+            try:
+                payload = _outcome_recorded_payload(req, outcome_id)
+                prepared_event = prepare_typed_event(
+                    access.authority.investigation_id,
+                    payload,
+                    event_id=stable_synthesis_event_id(
+                        access.authority,
+                        req.synthesis_id,
+                        "outcome.recorded",
+                        logical_key=outcome_id,
+                    ),
+                    synthesis_id=req.synthesis_id,
+                    role="outcome_recorder",
+                    policy_id="outcomes/api-v1",
+                )
+                stage_synthesis_event(con, access.authority, prepared_event)
+                row = con.execute(
+                    "SELECT outcome_id, synthesis_id, observer, observed_at "
+                    "FROM outcomes WHERE outcome_id = ?",
+                    [outcome_id],
+                ).fetchone()
+                con.execute("COMMIT")
+            except Exception:
+                con.execute("ROLLBACK")
+                raise
+            reconcile_synthesis_events(con, access.authority)
+            event_delivered = con.execute(
+                "SELECT delivery_state = 'delivered' "
+                "FROM synthesis_event_outbox WHERE event_id = ?",
+                [prepared_event.event_id],
+            ).fetchone() == (True,)
 
-        # Emit the typed outcome.recorded event so the trajectory
+        # Broadcast the same typed outcome.recorded envelope so live clients
         # captures the grade. The OutcomeRecordedPayload is the
         # canonical schema (mirrors the outcomes table 1:1 per the
         # drift test in tests/test_middleware_outcomes.py).
-        try:
-            from datetime import datetime as _dt
-
-            from substrate.schemas.events import (
-                ActionType as _AT,
-            )
-            from substrate.schemas.events import (
-                DecisionAlignment as _DA,
-            )
-            from substrate.schemas.events import (
-                Event as _TypedEvent,
-            )
-            from substrate.schemas.events import (
-                ExecutionRiskOutcome as _ERO,
-            )
-            from substrate.schemas.events import (
-                FalsificationOutcome as _FO,
-            )
-            from substrate.schemas.events import (
-                OutcomeRecordedPayload as _ORP,
-            )
-            from substrate.schemas.events import (
-                ThesisOutcome as _TO,
-            )
-
-            def _coerce_thesis(
-                items: list[dict[str, Any]] | None,
-            ) -> list[Any]:
-                out: list[Any] = []
-                for item in items or []:
-                    if isinstance(item, dict):
-                        with contextlib.suppress(Exception):
-                            out.append(_TO(**item))
-                return out
-
-            def _coerce_falsification(
-                items: list[dict[str, Any]] | None,
-            ) -> list[Any]:
-                out: list[Any] = []
-                for item in items or []:
-                    if isinstance(item, dict):
-                        with contextlib.suppress(Exception):
-                            out.append(_FO(**item))
-                return out
-
-            def _coerce_risk(
-                items: list[dict[str, Any]] | None,
-            ) -> list[Any]:
-                out: list[Any] = []
-                for item in items or []:
-                    if isinstance(item, dict):
-                        with contextlib.suppress(Exception):
-                            out.append(_ERO(**item))
-                return out
-
-            decision_alignment_obj: _DA | None = None
-            if isinstance(req.decision_alignment, dict):
-                try:
-                    decision_alignment_obj = _DA(**req.decision_alignment)
-                except Exception:
-                    decision_alignment_obj = None
-
-            payload = _ORP(
-                outcome_id=outcome_id,
-                observer=req.observer,
-                thesis_outcomes=_coerce_thesis(req.thesis_outcomes),
-                falsification_outcomes=_coerce_falsification(
-                    req.falsification_outcomes,
-                ),
-                execution_risk_outcomes=_coerce_risk(req.execution_risk_outcomes),
-                decision_alignment=decision_alignment_obj,
-                notes=(req.notes or ""),
-            )
-            evt = _TypedEvent(
-                event_id=f"evt-{_uuid.uuid4().hex[:12]}",
-                investigation_id="__outcomes__",
-                synthesis_id=req.synthesis_id,
-                action_type=_AT.OUTCOME_RECORDED,
-                payload=payload,
-                param_version="api-v0",
-                emitted_at=_dt.now(UTC),
-            )
-            bus_obj = getattr(app.state, "broadcaster", None)
-            if bus_obj is not None:
-                await bus_obj.broadcast(evt)
-        except Exception:  # pragma: no cover — emit must never block writes
-            pass
+        bus_obj = getattr(app.state, "broadcaster", None)
+        if bus_obj is not None and event_delivered:
+            await bus_obj.broadcast(prepared_event)
 
         return OutcomeRecordResponse(
             outcome_id=row[0],
             synthesis_id=row[1],
             observer=row[2],
-            observed_at=(
-                row[3].isoformat() if hasattr(row[3], "isoformat") else str(row[3])
-            ),
+            observed_at=(row[3].isoformat() if hasattr(row[3], "isoformat") else str(row[3])),
         )
 
     class OutcomeRecentRow(BaseModel):
@@ -5396,6 +6950,7 @@ def create_app(
         response_model=OutcomeRecentListResponse,
     )
     async def list_recent_outcomes(
+        request: Request,
         limit: int = Query(default=50, ge=1, le=500),
         observer: str | None = Query(default=None),
     ) -> OutcomeRecentListResponse:
@@ -5405,18 +6960,18 @@ def create_app(
         from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
 
-        clauses: list[str] = []
-        params: list[Any] = []
+        access = authority_from_request(request, "__outcomes__")
+        clauses: list[str] = ["s.account_digest = ?"]
+        params: list[Any] = [access.authority.account_digest]
         if observer is not None:
-            clauses.append("observer = ?")
+            clauses.append("o.observer = ?")
             params.append(observer)
-        where = ""
-        if clauses:
-            where = " WHERE " + " AND ".join(clauses)
+        where = " WHERE " + " AND ".join(clauses)
         sql = (
-            "SELECT outcome_id, synthesis_id, observer, observed_at "
-            "FROM outcomes" + where +
-            " ORDER BY observed_at DESC LIMIT ?"
+            "SELECT o.outcome_id, o.synthesis_id, o.observer, o.observed_at "
+            "FROM outcomes o JOIN syntheses s ON s.synthesis_id = o.synthesis_id"
+            + where
+            + " ORDER BY o.observed_at DESC LIMIT ?"
         )
         params.append(limit)
         try:
@@ -5426,30 +6981,44 @@ def create_app(
             rows = []
         out: list[OutcomeRecentRow] = []
         for r in rows:
-            out.append(OutcomeRecentRow(
-                outcome_id=r[0],
-                synthesis_id=r[1],
-                observer=r[2],
-                observed_at=(
-                    r[3].isoformat() if hasattr(r[3], "isoformat") else str(r[3])
-                ),
-            ))
+            out.append(
+                OutcomeRecentRow(
+                    outcome_id=r[0],
+                    synthesis_id=r[1],
+                    observer=r[2],
+                    observed_at=(r[3].isoformat() if hasattr(r[3], "isoformat") else str(r[3])),
+                )
+            )
         return OutcomeRecentListResponse(outcomes=out)
 
     @app.get(
         "/outcomes/{synthesis_id}",
         response_model=OutcomeListResponse,
     )
-    async def get_outcomes(synthesis_id: str) -> OutcomeListResponse:
+    async def get_outcomes(synthesis_id: str, request: Request) -> OutcomeListResponse:
         """All outcomes recorded for a synthesis page, oldest first."""
-        from middleware.backtest.db import load_outcomes_for_synthesis
+        from middleware.backtest.db import load_outcomes_for_synthesis_authorized
         from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
 
         with connect_read(default_db_path()) as con:
-            outcomes = load_outcomes_for_synthesis(con, synthesis_id)
+            candidate = con.execute(
+                "SELECT investigation_id, account_digest, investigation_digest "
+                "FROM syntheses WHERE synthesis_id = ?",
+                [synthesis_id],
+            ).fetchone()
+            if candidate is None:
+                raise HTTPException(status_code=404, detail="synthesis not found")
+            access = authority_from_request(request, candidate[0])
+            try:
+                outcomes = load_outcomes_for_synthesis_authorized(
+                    con, access.authority, synthesis_id
+                )
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail="synthesis not found") from exc
         return OutcomeListResponse(
-            synthesis_id=synthesis_id, outcomes=outcomes,
+            synthesis_id=synthesis_id,
+            outcomes=outcomes,
         )
 
     # ── Sprint 30+ cross-graph citation endpoint (§13.9) ──
@@ -5563,7 +7132,8 @@ def create_app(
         pull restricted / personal_reading passages into the model context."""
         if not req.prompt.strip():
             raise HTTPException(
-                status_code=400, detail="prompt must not be empty",
+                status_code=400,
+                detail="prompt must not be empty",
             )
         # §9.0 gate is SERVER-DERIVED, never client-controlled (CWE-862).
         # Reuse the one reviewed owner-read resolver so the gate cannot
@@ -5572,18 +7142,22 @@ def create_app(
         from interfaces.research.api.books import _owner_read_policy_tag
 
         effective_policy_tag = _owner_read_policy_tag(request)
+        legal_authority = None
+        if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+            if not req.investigation_id:
+                raise HTTPException(status_code=422, detail="investigation_id is required")
+            legal_authority = _require_request_owner(request, req.investigation_id).authority
         role_prompt = compose_thought_partner_prompt(
             user_prompt=req.prompt,
             selected_notes=_retrieve_thought_partner_context(
-                req.prompt, effective_policy_tag,
+                req.prompt,
+                effective_policy_tag,
+                authority=legal_authority,
             ),
         )
         assembled_prompt = THOUGHT_PARTNER_SYSTEM_PROMPT
         if req.system_context:
-            assembled_prompt += (
-                "\n\nSYSTEM CONTEXT:\n"
-                + req.system_context
-            )
+            assembled_prompt += "\n\nSYSTEM CONTEXT:\n" + req.system_context
         assembled_prompt += "\n\n" + role_prompt
         try:
             result = dispatch(
@@ -5592,7 +7166,9 @@ def create_app(
                 investigation_id=req.investigation_id or "__sidecar__",
             )
         except (ProviderError, KeyError) as exc:
-            raise HTTPException(status_code=503, detail=f"thought_partner_unavailable: {exc}") from exc
+            raise HTTPException(
+                status_code=503, detail=f"thought_partner_unavailable: {exc}"
+            ) from exc
 
         parsed = parse_thought_partner_response(result.text)
         return ThoughtPartnerResponseBody(
@@ -5611,10 +7187,12 @@ def create_app(
         ``document_context``; retrieval-augmented completion is a follow-up."""
         if not req.prefix.strip():
             raise HTTPException(
-                status_code=400, detail="prefix must not be empty",
+                status_code=400,
+                detail="prefix must not be empty",
             )
         prompt = _compose_autocomplete_prompt(
-            prefix=req.prefix, document_context=req.document_context,
+            prefix=req.prefix,
+            document_context=req.document_context,
         )
         try:
             result = dispatch(
@@ -5625,7 +7203,8 @@ def create_app(
             )
         except (ProviderError, KeyError) as exc:
             raise HTTPException(
-                status_code=503, detail=f"complete_unavailable: {exc}",
+                status_code=503,
+                detail=f"complete_unavailable: {exc}",
             ) from exc
         return CompleteResponse(text=result.text or "")
 
@@ -5670,6 +7249,7 @@ def create_app(
         auth_method = getattr(state, "auth_method", None) if state else None
         if user_id is None or scopes is None:
             from substrate.multi_user.auth import operator_claims as _oc
+
             claims = _oc()
             user_id = claims.user_id
             scopes = claims.scopes
@@ -5736,10 +7316,14 @@ def create_app(
             ) from exc
 
         with connect_write(
-            default_db_path(), purpose="loop_3:set_criterion",
+            default_db_path(),
+            purpose="loop_3:set_criterion",
         ) as con:
             set_criterion(
-                con, criterion=criterion, met=req.met, note=req.note,
+                con,
+                criterion=criterion,
+                met=req.met,
+                note=req.note,
             )
             snap = snapshot(con)
         return Loop3StatusResponse(
@@ -5794,8 +7378,7 @@ def create_app(
         sql = (
             "SELECT transfer_attempt_id, decision_id, stripe_transfer_id, "
             "recipient_account_id, amount_usd_cents, status, note, "
-            "initiated_at FROM payout_transfers" + where +
-            " ORDER BY initiated_at DESC LIMIT ?"
+            "initiated_at FROM payout_transfers" + where + " ORDER BY initiated_at DESC LIMIT ?"
         )
         params.append(limit)
         try:
@@ -5805,19 +7388,22 @@ def create_app(
             rows = []
         out: list[PayoutTransferResponse] = []
         for r in rows:
-            out.append(PayoutTransferResponse(
-                transfer_attempt_id=r[0],
-                decision_id=r[1],
-                stripe_transfer_id=r[2],
-                recipient_account_id=r[3],
-                amount_usd_cents=int(r[4]),
-                status=r[5],
-                note=r[6],
-                initiated_at=(
-                    r[7].isoformat() if r[7] is not None and hasattr(r[7], "isoformat")
-                    else (str(r[7]) if r[7] is not None else None)
-                ),
-            ))
+            out.append(
+                PayoutTransferResponse(
+                    transfer_attempt_id=r[0],
+                    decision_id=r[1],
+                    stripe_transfer_id=r[2],
+                    recipient_account_id=r[3],
+                    amount_usd_cents=int(r[4]),
+                    status=r[5],
+                    note=r[6],
+                    initiated_at=(
+                        r[7].isoformat()
+                        if r[7] is not None and hasattr(r[7], "isoformat")
+                        else (str(r[7]) if r[7] is not None else None)
+                    ),
+                )
+            )
         return PayoutTransferListResponse(transfers=out)
 
     # ── Sprint 30+ federation config endpoints (§13.9 Phase 3) ──
@@ -5842,9 +7428,7 @@ def create_app(
             cfg = load_config(con)
         return FederationConfigResponse(
             allowed_partner_substrates=list(cfg.allowed_partner_substrates),
-            require_opt_in_for_outbound_citations=(
-                cfg.require_opt_in_for_outbound_citations
-            ),
+            require_opt_in_for_outbound_citations=(cfg.require_opt_in_for_outbound_citations),
             require_attribution_for_outbound_citations=(
                 cfg.require_attribution_for_outbound_citations
             ),
@@ -5878,33 +7462,27 @@ def create_app(
                     status_code=422,
                     detail={
                         "code": "invalid_partner_id",
-                        "message": (
-                            f"partner substrate id {p!r} must match "
-                            f"[a-zA-Z0-9_-]+ "
-                        ),
+                        "message": (f"partner substrate id {p!r} must match [a-zA-Z0-9_-]+ "),
                     },
                 )
             cleaned.append(p)
 
         cfg = FederationConfig(
             allowed_partner_substrates=tuple(cleaned),
-            require_opt_in_for_outbound_citations=(
-                req.require_opt_in_for_outbound_citations
-            ),
+            require_opt_in_for_outbound_citations=(req.require_opt_in_for_outbound_citations),
             require_attribution_for_outbound_citations=(
                 req.require_attribution_for_outbound_citations
             ),
         )
         with connect_write(
-            default_db_path(), purpose="cross_graph:save_federation_config",
+            default_db_path(),
+            purpose="cross_graph:save_federation_config",
         ) as con:
             save_config(con, cfg)
             final = load_config(con)
         return FederationConfigResponse(
             allowed_partner_substrates=list(final.allowed_partner_substrates),
-            require_opt_in_for_outbound_citations=(
-                final.require_opt_in_for_outbound_citations
-            ),
+            require_opt_in_for_outbound_citations=(final.require_opt_in_for_outbound_citations),
             require_attribution_for_outbound_citations=(
                 final.require_attribution_for_outbound_citations
             ),
@@ -5932,7 +7510,7 @@ def create_app(
         "/backtest/{synthesis_id}",
         response_model=BacktestReportResponse,
     )
-    async def get_backtest_report(synthesis_id: str) -> BacktestReportResponse:
+    async def get_backtest_report(synthesis_id: str, request: Request) -> BacktestReportResponse:
         """Compute a backtest report for an archived synthesis. Per
         master-spec §13.8: the report answers 'how has the substrate
         changed under this conclusion since the synthesis was
@@ -5944,7 +7522,7 @@ def create_app(
         from substrate.graph import default_db_path
 
         try:
-            from middleware.backtest.analysis import backtest
+            from middleware.backtest.analysis import backtest_authorized
         except ImportError as exc:
             raise HTTPException(
                 status_code=503,
@@ -5953,7 +7531,16 @@ def create_app(
 
         try:
             with connect_read(default_db_path()) as con:
-                report = backtest(con, synthesis_id)
+                candidate = con.execute(
+                    "SELECT investigation_id, account_digest, "
+                    "investigation_digest FROM syntheses "
+                    "WHERE synthesis_id = ?",
+                    [synthesis_id],
+                ).fetchone()
+                if candidate is None:
+                    raise KeyError(synthesis_id)
+                access = authority_from_request(request, candidate[0])
+                report = backtest_authorized(con, access.authority, synthesis_id)
         except FileNotFoundError as exc:
             raise HTTPException(
                 status_code=404,
@@ -5981,9 +7568,7 @@ def create_app(
             cited_edges_now_superseded=[
                 dataclasses.asdict(e) for e in report.cited_edges_now_superseded
             ],
-            chunks_retired_downward=[
-                dataclasses.asdict(c) for c in report.chunks_retired_downward
-            ],
+            chunks_retired_downward=[dataclasses.asdict(c) for c in report.chunks_retired_downward],
             outcomes=list(report.outcomes),
         )
 
@@ -6008,14 +7593,8 @@ def create_app(
             request_id=row[0],
             user_id=row[1],
             status=row[2],
-            requested_at=(
-                row[3].isoformat() if hasattr(row[3], "isoformat")
-                else str(row[3])
-            ),
-            updated_at=(
-                row[4].isoformat() if hasattr(row[4], "isoformat")
-                else str(row[4])
-            ),
+            requested_at=(row[3].isoformat() if hasattr(row[3], "isoformat") else str(row[3])),
+            updated_at=(row[4].isoformat() if hasattr(row[4], "isoformat") else str(row[4])),
             reason=row[5],
         )
 
@@ -6039,7 +7618,8 @@ def create_app(
         user_id = getattr(request.state, "user_id", None) or "__operator__"
         request_id = f"del-{_uuid.uuid4().hex[:12]}"
         with connect_write(
-            default_db_path(), purpose="api:deletion_request",
+            default_db_path(),
+            purpose="api:deletion_request",
         ) as con:
             con.execute(
                 """
@@ -6080,9 +7660,7 @@ def create_app(
         except Exception:
             rows = []
         return DeletionRequestListResponse(
-            requests=[
-                _deletion_request_row_to_response(r) for r in rows
-            ],
+            requests=[_deletion_request_row_to_response(r) for r in rows],
         )
 
     @app.post(
@@ -6090,7 +7668,8 @@ def create_app(
         response_model=DeletionRequestResponse,
     )
     async def cancel_deletion_request(
-        request_id: str, request: Request,
+        request_id: str,
+        request: Request,
     ) -> DeletionRequestResponse:
         """Cancel a pending deletion request. Only the originating
         user can cancel their own request, and only while it's
@@ -6100,16 +7679,17 @@ def create_app(
 
         user_id = getattr(request.state, "user_id", None) or "__operator__"
         with connect_write(
-            default_db_path(), purpose="api:cancel_deletion",
+            default_db_path(),
+            purpose="api:cancel_deletion",
         ) as con:
             row = con.execute(
-                "SELECT request_id, user_id, status FROM deletion_requests "
-                "WHERE request_id = ?",
+                "SELECT request_id, user_id, status FROM deletion_requests WHERE request_id = ?",
                 [request_id],
             ).fetchone()
             if row is None:
                 raise HTTPException(
-                    status_code=404, detail="deletion request not found",
+                    status_code=404,
+                    detail="deletion request not found",
                 )
             if row[1] != user_id:
                 raise HTTPException(
@@ -6188,9 +7768,7 @@ def create_app(
             with connect_read(default_db_path()) as con:
                 for key, table in TABLES:
                     try:
-                        row = con.execute(
-                            f"SELECT COUNT(*) FROM {table}"
-                        ).fetchone()
+                        row = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
                         counts[key] = int(row[0]) if row else 0
                     except Exception:
                         # Table missing — substrate is partially
@@ -6224,6 +7802,7 @@ def create_app(
         response_model=DocumentListResponse,
     )
     async def list_documents(
+        request: Request,
         source_tier: int | None = Query(default=None, ge=1, le=5),
         investigation_id: str | None = Query(default=None),
         limit: int = Query(default=200, ge=1, le=2000),
@@ -6234,41 +7813,50 @@ def create_app(
         from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
 
-        clauses: list[str] = []
-        params: list[Any] = []
-        if source_tier is not None:
-            clauses.append("source_tier = ?")
-            params.append(source_tier)
-        if investigation_id is not None:
-            clauses.append("investigation_id = ?")
-            params.append(investigation_id)
-        where = ""
-        if clauses:
-            where = " WHERE " + " AND ".join(clauses)
-        sql = (
-            "SELECT document_id, title, source_uri, document_type, "
-            "source_tier, investigation_id, content_class, ip_holder_id "
-            "FROM documents" + where +
-            " ORDER BY document_id DESC LIMIT ?"
-        )
-        params.append(limit)
+        strict = os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1"
         try:
             with connect_read(default_db_path()) as con:
-                rows = con.execute(sql, params).fetchall()
+                authority = None
+                if strict:
+                    if not investigation_id:
+                        raise HTTPException(
+                            status_code=422,
+                            detail="investigation_id is required for legal document reads",
+                        )
+                    try:
+                        access = authority_from_request(request, investigation_id)
+                        require_investigation_owner(access)
+                        authority = access.authority
+                    except InvestigationAccessDenied as exc:
+                        raise HTTPException(status_code=404, detail="documents not found") from exc
+                from substrate.legal_gate.read import list_documents_compatibility
+
+                rows = list_documents_compatibility(
+                    con,
+                    authority=authority,
+                    enforce=strict,
+                    source_tier=source_tier,
+                    investigation_id=investigation_id,
+                    limit=limit,
+                )
+        except HTTPException:
+            raise
         except Exception:
             rows = []
         out: list[DocumentSummary] = []
         for r in rows:
-            out.append(DocumentSummary(
-                document_id=r[0],
-                title=r[1],
-                source_uri=r[2],
-                document_type=r[3],
-                source_tier=int(r[4]),
-                investigation_id=r[5],
-                content_class=r[6],
-                ip_holder_id=r[7],
-            ))
+            out.append(
+                DocumentSummary(
+                    document_id=r[0],
+                    title=r[1],
+                    source_uri=r[2],
+                    document_type=r[3],
+                    source_tier=int(r[4]),
+                    investigation_id=r[5],
+                    content_class=r[6],
+                    ip_holder_id=r[7],
+                )
+            )
         return DocumentListResponse(documents=out)
 
     # ── Sprint 30+ shared-substrate skill rule listing (§13.2) ──
@@ -6317,7 +7905,8 @@ def create_app(
             source_user_count=int(row[5]),
             confidence=row[6],
             extracted_at=(
-                row[7].isoformat() if row[7] is not None and hasattr(row[7], "isoformat")
+                row[7].isoformat()
+                if row[7] is not None and hasattr(row[7], "isoformat")
                 else (str(row[7]) if row[7] is not None else None)
             ),
         )
@@ -6360,9 +7949,7 @@ def create_app(
             "SELECT rule_id, rule_text, rule_kind, domain, "
             "epsilon_budget_consumed, source_user_count, confidence, "
             "extracted_at "
-            "FROM skill_rules"
-            + where
-            + " ORDER BY extracted_at DESC LIMIT ?"
+            "FROM skill_rules" + where + " ORDER BY extracted_at DESC LIMIT ?"
         )
         params.append(limit)
 
@@ -6371,19 +7958,22 @@ def create_app(
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
             for r in rows:
-                rules.append(SkillRuleResponse(
-                    rule_id=r[0],
-                    rule_text=r[1],
-                    rule_kind=r[2],
-                    domain=r[3],
-                    epsilon_budget_consumed=float(r[4]),
-                    source_user_count=int(r[5]),
-                    confidence=r[6],
-                    extracted_at=(
-                        r[7].isoformat() if r[7] is not None and hasattr(r[7], "isoformat")
-                        else (str(r[7]) if r[7] is not None else None)
-                    ),
-                ))
+                rules.append(
+                    SkillRuleResponse(
+                        rule_id=r[0],
+                        rule_text=r[1],
+                        rule_kind=r[2],
+                        domain=r[3],
+                        epsilon_budget_consumed=float(r[4]),
+                        source_user_count=int(r[5]),
+                        confidence=r[6],
+                        extracted_at=(
+                            r[7].isoformat()
+                            if r[7] is not None and hasattr(r[7], "isoformat")
+                            else (str(r[7]) if r[7] is not None else None)
+                        ),
+                    )
+                )
         except Exception:
             # The skill_rules table is created lazily by the writer.
             # An empty/missing table is a normal pre-promotion state;
@@ -6459,6 +8049,7 @@ def create_app(
     #    operator-auth middleware above covers it). See
     #    docs/decisions/speak_workflow.md.
     from interfaces.research.api.speak_routes import speak_router
+
     app.include_router(speak_router)
 
     # Cross-workflow thread navigation (antiek-unified SPR-06). Read-only:
@@ -6468,12 +8059,14 @@ def create_app(
     # ThreadBreadcrumb + ThreadJump in apps/reading/src/shell/. See
     # substrate/seams/thread.py.
     from interfaces.research.api.thread import make_router as make_thread_router
+
     app.include_router(make_thread_router())
 
     # Write workflow REST surface (specs/write/). Net-new router, same
     # one-line inclusion discipline as speak_routes so this hot factory
     # stays mergeable. Wires substrate/write + substrate/edit to HTTP.
     from interfaces.research.api.write_routes import write_router
+
     app.include_router(write_router)
 
     # Deep Research Workspace transport (specs/deep-research-workspace/
@@ -6481,6 +8074,7 @@ def create_app(
     # SPR-09 glass-box monitor consumes — same one-line inclusion discipline.
     # Wires the SPR-05 planner + SPR-02 runner + SPR-06 CascadeSession to HTTP.
     from interfaces.research.api.cascade_routes import cascade_router
+
     app.include_router(cascade_router)
 
     # Distill surface (specs/product-depth/ SPR-03). Reads the shipped
@@ -6489,12 +8083,18 @@ def create_app(
     # only graph write (a challenge) serializes through runtime/db_lock
     # inside roles.note_taker.living_note; this router adds no second writer.
     from interfaces.research.api.distill_routes import distill_router
+
     app.include_router(distill_router)
 
     # ResearchArtifact HTML transport (ANT-AHT SPR-AHT-06). Export, outline
     # blocks, and agent-note import — same one-line inclusion discipline.
     from interfaces.research.api.artifact_routes import artifact_router
+
     app.include_router(artifact_router)
+
+    from interfaces.research.api.workspace_resume_routes import workspace_resume_router
+
+    app.include_router(workspace_resume_router)
 
     # Supersession review surface (GF-5/GF-6 activation). Turns detected
     # contradictions into a review queue — the other half of the detection
@@ -6502,9 +8102,11 @@ def create_app(
     # discipline; carries no per-handler auth (global middleware gates the
     # operator workstation, matching write_routes).
     from interfaces.research.api.supersession_routes import supersession_router
+
     app.include_router(supersession_router)
 
     from interfaces.research.api.graph_routes import graph_router
+
     app.include_router(graph_router)
 
     return app

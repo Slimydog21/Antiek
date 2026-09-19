@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,7 +17,9 @@ from interfaces.research.api.app import create_app
 def isolated_db(monkeypatch):
     tmpdir = tempfile.mkdtemp(prefix="antiek-backtest-")
     db_path = os.path.join(tmpdir, "antiek.duckdb")
+    events_dir = os.path.join(tmpdir, "events")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", events_dir)
     try:
         from substrate.graph import ensure_initialized
         ensure_initialized(db_path)
@@ -40,14 +43,44 @@ def test_backtest_existing_synthesis_returns_report(isolated_db):
     events) yields a report — counters report 0 across the board
     because nothing has changed since it landed."""
     from runtime.db_lock import connect_write
+    from substrate.graph.tenancy import (
+        GraphTenancyState,
+        initialize_graph_authority,
+        transition_graph_tenancy_state,
+    )
+    from substrate.investigation_streams import initialize_composite_stream
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    authority = InvestigationAuthority(
+        "__operator__",
+        "inv-backtest-fresh",
+        root=Path(os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]),
+    )
+    initialize_composite_stream(authority)
 
     with connect_write(isolated_db, purpose="test:seed_syn") as con:
+        initialize_graph_authority(con, authority)
         con.execute(
             "INSERT INTO syntheses ("
-            "synthesis_id, target_question, synthesis_timestamp, "
-            "status, implicit_recommendation"
-            ") VALUES ('syn-fresh', 'test', CURRENT_TIMESTAMP, "
-            "'draft', 'undetermined')",
+            "synthesis_id, investigation_id, target_question, synthesis_timestamp, "
+            "status, implicit_recommendation, account_digest, investigation_digest"
+            ") VALUES ('syn-fresh', ?, 'test', CURRENT_TIMESTAMP, "
+            "'draft', 'undetermined', ?, ?)",
+            [
+                authority.investigation_id,
+                authority.account_digest,
+                authority.investigation_digest,
+            ],
+        )
+        transition_graph_tenancy_state(
+            con,
+            expected=GraphTenancyState.UNSCOPED,
+            desired=GraphTenancyState.COPYING,
+        )
+        transition_graph_tenancy_state(
+            con,
+            expected=GraphTenancyState.COPYING,
+            desired=GraphTenancyState.SHADOW,
         )
     client = _client()
     resp = client.get("/backtest/syn-fresh")

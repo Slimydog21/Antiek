@@ -3,9 +3,8 @@ import { create } from "zustand";
 /**
  * Tiny store of the operator's pinned project-tree items.
  *
- * S4 keeps this purely in-memory — pinning survives a navigation but not a
- * page reload. S9 lands localStorage persistence (key
- * `antiek.workspace.global.pinned`).
+ * This remains purely in-memory: pinning survives navigation in the current
+ * tab but not a page reload or account switch.
  *
  * A "pin" is an opaque string id: `investigation:inv-abc-123`,
  * `document:doc-pdf-…`, `notebook:nb-…`. Membership-only; no ordering

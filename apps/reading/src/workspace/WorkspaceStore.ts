@@ -1,8 +1,8 @@
 /**
  * WorkspaceStore — Zustand store backing the workspace panel system.
  *
- * In-memory only in S3. URL + localStorage persistence + popout
- * cross-window sync land in S9. Until then a page reload resets state.
+ * Panel descriptors are deliberately in-memory only. Cross-reload semantic
+ * windows use the authenticated closed checkpoint, not this store.
  *
  * Actions (every state change goes through one of these — never mutate
  * the snapshot directly):
@@ -45,8 +45,6 @@ import type {
   PanelMode,
   WorkspaceSnapshot,
 } from "./panel.types";
-import { project, writeScope } from "./persistence";
-import type { PersistScope } from "./persistence";
 
 export type OpenOptions = {
   mode?: PanelMode;
@@ -270,55 +268,3 @@ export const useWorkspace = create<Store>()((set, get) => ({
 
   reset: () => set({ ...EMPTY_SNAPSHOT }),
 }));
-
-/**
- * Subscribe persistence: every time the workspace changes, write a
- * debounced (250 ms) snapshot to localStorage under the current scope.
- *
- * The scope is mutable — the AppShell-level hydration hook updates it
- * when the route or investigation id changes. Default scope is
- * "global" so that even unscoped writes have a home.
- *
- * Call `setPersistScope({...})` to retarget; `disablePersistence()` to
- * turn writes off entirely (used by tests + by the popout windows).
- */
-let activeScope: PersistScope = { kind: "global" };
-let persistenceEnabled = true;
-let pendingWrite: ReturnType<typeof setTimeout> | null = null;
-
-export function setPersistScope(scope: PersistScope): void {
-  activeScope = scope;
-}
-export function getPersistScope(): PersistScope {
-  return activeScope;
-}
-export function disablePersistence(): void {
-  persistenceEnabled = false;
-  if (pendingWrite) {
-    clearTimeout(pendingWrite);
-    pendingWrite = null;
-  }
-}
-export function enablePersistence(): void {
-  persistenceEnabled = true;
-}
-
-useWorkspace.subscribe((state, prev) => {
-  if (!persistenceEnabled) return;
-  // Cheap reference-equality check on the bits we care about — avoid
-  // writing on every store mutation if the persisted slice didn't move.
-  if (
-    state.panels === prev.panels &&
-    state.dockLeftIds === prev.dockLeftIds &&
-    state.dockRightIds === prev.dockRightIds &&
-    state.dockBottomIds === prev.dockBottomIds &&
-    state.dockBottomHeight === prev.dockBottomHeight
-  ) {
-    return;
-  }
-  if (pendingWrite) clearTimeout(pendingWrite);
-  pendingWrite = setTimeout(() => {
-    pendingWrite = null;
-    writeScope(activeScope, project(useWorkspace.getState()));
-  }, 250);
-});

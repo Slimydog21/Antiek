@@ -12,7 +12,7 @@ from typing import Any
 
 from .catalog import Catalog, CatalogEntry
 from .host import HostResult, host_into_account
-from .library import AccountLibrary, HostStore
+from .library import AccountLibrary, HostStore, InMemoryHostStore
 from .purchase import ManualPurchaseReceipt, PurchaseReceipt
 from .view import project_hosted_book_html
 
@@ -134,8 +134,7 @@ def record_purchase_and_host(
 
     if not opaque and not session:
         raise ValueError(
-            "opaque_reference or checkout_session_id is required "
-            "(never invent paid entitlement)"
+            "opaque_reference or checkout_session_id is required (never invent paid entitlement)"
         )
 
     if session and not opaque:
@@ -150,10 +149,24 @@ def record_purchase_and_host(
                 "checkout entitlement is not live_payment — refusing host "
                 "(never invent paid entitlement)",
                 code="l5_entitlement_not_live",
-                payment_path=str(
-                    getattr(entitlement, "payment_path", "manual_receipt_only")
-                ),
+                payment_path=str(getattr(entitlement, "payment_path", "manual_receipt_only")),
             )
+        if entitlement.checkout_session_id != session:
+            raise ValueError("checkout entitlement session conflicts with request")
+        if entitlement.owner_id != owner_id or entitlement.book_id != book_id:
+            raise ValueError("checkout entitlement owner or book conflicts with request")
+        if entry.price_minor is None or entry.currency is None:
+            raise LivePaymentDeferredError(
+                "catalog lacks operator-ratified live commercial terms",
+                code="l5_commercial_terms_unratified",
+                payment_path="live_checkout",
+            )
+        if (
+            entitlement.amount_minor != entry.price_minor
+            or entitlement.currency != entry.currency
+            or entitlement.title != entry.title
+        ):
+            raise ValueError("checkout entitlement commercial terms conflict with catalog")
         # Host still needs an opaque store receipt for library membership.
         opaque = (entitlement.opaque_reference or "").strip() or f"live_checkout:{session}"
         payment_path = "live_checkout"
@@ -161,19 +174,45 @@ def record_purchase_and_host(
         note = f"{note} · live_checkout={session}" if note else f"live_checkout={session}"
 
     adapter = ManualPurchaseReceipt(store=store)
-    receipt = adapter.record_receipt(
+    receipt = adapter.build_receipt(
         book_id=book_id,
         owner_id=owner_id,
         opaque_reference=opaque,
         note=note,
     )
-    result = host_book_into_account(
+    receipt_row = {
+        "receipt_id": receipt.receipt_id,
+        "book_id": receipt.book_id,
+        "owner_id": receipt.owner_id,
+        "opaque_reference": receipt.opaque_reference,
+        "note": receipt.note,
+    }
+    staged = InMemoryHostStore()
+    staged.put_receipt(receipt.receipt_id, receipt_row)
+    preview = host_book_into_account(
         owner_id=owner_id,
-        store=store,
+        store=staged,
         book_id=book_id,
         catalog=catalog,
         content=content,
         receipt_id=receipt.receipt_id,
+    )
+    document = staged.get_document(preview.host.document_id)
+    if document is None:
+        raise RuntimeError("staged purchased document is missing")
+    store.commit_purchase(
+        receipt_id=receipt.receipt_id,
+        receipt=receipt_row,
+        owner_id=owner_id,
+        document_id=preview.host.document_id,
+        document=document,
+    )
+    library = AccountLibrary.load(owner_id, store=store)
+    html = project_hosted_book_html(preview.host.document_id, store=store)
+    result = MarketplaceHostProductResult(
+        host=preview.host,
+        library_document_ids=tuple(library.document_ids),
+        html=html,
     )
     # Stamp live-payment honesty on result dict path without inventing free count.
     # MarketplaceHostProductResult is frozen — callers inspect receipt + path notes.
@@ -286,18 +325,12 @@ def project_catalog_html(
         by_source[src] = by_source.get(src, 0) + 1
         for s in e.subjects:
             by_subject[s] = by_subject.get(s, 0) + 1
-    source_line = " · ".join(
-        f"{k}={v}" for k, v in sorted(by_source.items())
-    ) or "(none)"
-    subject_line = " · ".join(
-        f"{k}={v}" for k, v in sorted(by_subject.items())
-    ) or "(none)"
+    source_line = " · ".join(f"{k}={v}" for k, v in sorted(by_source.items())) or "(none)"
+    subject_line = " · ".join(f"{k}={v}" for k, v in sorted(by_subject.items())) or "(none)"
     # Residual (abi): free / PD counts on filtered projection (parity API free_count).
     # Residual (abo): free_count is is_free only (parity abn API honesty — not AND/OR PD).
     free_count = sum(1 for e in filtered if e.is_free)
-    public_domain_count = sum(
-        1 for e in filtered if e.license_class == "public_domain"
-    )
+    public_domain_count = sum(1 for e in filtered if e.license_class == "public_domain")
 
     blocks: list[dict[str, Any]] = [
         {

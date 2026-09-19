@@ -16,7 +16,7 @@ import type { PanelKind } from "./panel.types";
  * S3 only registers the three Fake* demo renderers used by the
  * Workspace/Demo Storybook story. S5+ adds real surfaces:
  *   - S5: InvestigationSidebar, Trajectory, MasterMdViewer, Chat, Chase
- *   - S6: PdfViewer, Notes, CrossDocs, ClaimInspector
+ *   - S6: document viewer compatibility, Notes, CrossDocs, ClaimInspector
  *   - S7: Notebook
  *   - S8: AISidecar, CommandPalette
  *   - S4: ProjectTree
@@ -29,12 +29,11 @@ import { FakeSidebar } from "./__fakes__/FakeSidebar";
 
 // Eager imports for renderers that ALSO appear as direct main-slot
 // children of routes (RW imports MasterMdViewer + TrajectoryView,
-// WrestleApp imports PdfViewer, App.tsx imports Notebook + Stats).
+// WrestleApp renders hosted HTML; App.tsx imports Notebook + Stats).
 // Marking these as `lazy()` here while they're statically imported
 // elsewhere defeats the code-split — vite warns "dynamic import will
 // not move module into another chunk." Make the registry match
 // reality: these renderers ship in the main bundle either way.
-import PdfViewer from "../components/PdfViewer";
 import NotebookPage from "../modes/Notebook";
 import MasterMdViewer from "../modes/ResearchWorkstation/MasterMdViewer";
 import TrajectoryView from "../modes/ResearchWorkstation/TrajectoryView";
@@ -42,6 +41,8 @@ import Stats from "../modes/Stats";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Renderer = ComponentType<any> | LazyExoticComponent<ComponentType<any>>;
+
+const HostedDocumentPanel = lazy(() => import("../components/HostedDocumentPanel"));
 
 export const PanelRegistry: Record<PanelKind, Renderer> = {
   // S3 — demo only
@@ -62,13 +63,13 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   // successor to Chase/ChaseSlideOver). Panel-only → lazy.
   ChaseThread: lazy(() => import("../modes/ResearchWorkstation/ChaseThread")),
 
-  // S6 — wrestling-workstation surfaces. PdfViewer is a direct child
-  // of WrestleApp's main slot → eager. Notes / CrossDocs /
-  // ClaimInspector are panel-only → lazy.
-  PdfViewer,
+  // Canonical hosted HTML document. PdfViewer is retained only as a persisted
+  // descriptor migration alias; neither entry loads source PDF bytes.
+  HostedDocument: HostedDocumentPanel,
+  PdfViewer: HostedDocumentPanel,
   Notes: lazy(() => import("../components/NotesPanel")),
   CrossDocs: lazy(() => import("../components/CrossDocSidebar")),
-  ClaimInspector: lazy(() => import("../components/ClaimCard")),
+  ClaimInspector: lazy(() => import("../components/ClaimSupportInspector")),
 
   // S7 — Notebook is also rendered at /notebook/:id (static App.tsx
   // import), so eager. NotebookEditor is panel-only → lazy (the TipTap
@@ -100,6 +101,7 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   // S10 row 10.10 — retired Interview panels that do not post audio.
   InterviewTranscript: lazy(() => import("../modes/Interview/InterviewTranscript")),
   InterviewNotes: lazy(() => import("../modes/Interview/InterviewNotes")),
+  PrivateWrite: lazy(() => import("../modes/Write/PrivateWriteWorkstation")),
 
   // S7 WP-7.3 — ImageBlock "open as panel" target
   Lightbox: lazy(() => import("../components/Lightbox")),

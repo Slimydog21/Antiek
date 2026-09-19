@@ -32,10 +32,12 @@ import hashlib
 import logging
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
 import interfaces.research.api.cascade_routes as cr
+from interfaces.research.api.investigation_access import authority_from_claims
 from orchestration.cascade_session import (
     SYNTHESIS_TAIL_FAILED,
     CascadeSession,
@@ -52,6 +54,8 @@ from runtime.research_runner import (
 )
 from substrate.event_log import trajectory
 from substrate.graph.schema import init_database_at_path
+from substrate.investigation_tenancy import InvestigationAuthority, bind_legacy_stream_lease
+from substrate.multi_user.auth import operator_claims
 
 # --------------------------------------------------------------------------
 # Hermetic fixtures (mirrors tests/test_cascade_session.py — no live keys)
@@ -104,17 +108,25 @@ def env(monkeypatch):
 
 
 def _approved_plan(env, subs=("sub one",), session_id="session-1"):
+    bind_legacy_stream_lease(
+        InvestigationAuthority(operator_claims().user_id, session_id, Path(env["events"])),
+        provenance="test_plan_start",
+    )
     tree = build_plan("the problem", decomposer=_Dec(list(subs))).tree
     root_id = persist_tree(
-        tree, investigation_id=session_id,
-        embedding_provider=_FakeEmbedding(), db_path=env["db"],
+        tree,
+        investigation_id=session_id,
+        embedding_provider=_FakeEmbedding(),
+        db_path=env["db"],
     )
-    approve_plan(root_id, approver="operator",
-                 investigation_id=session_id, db_path=env["db"])
+    approve_plan(root_id, approver="operator", investigation_id=session_id, db_path=env["db"])
     loaded = load_tree(root_id, db_path=env["db"])
     leaves = [
-        Leaf(investigation_id=f"{session_id}-leaf-{i}", sub_question=c.question,
-             question_node_id=c.graph_node_id)
+        Leaf(
+            investigation_id=f"{session_id}-leaf-{i}",
+            sub_question=c.question,
+            question_node_id=c.graph_node_id,
+        )
         for i, c in enumerate(loaded.root.children)
     ]
     return root_id, leaves
@@ -124,12 +136,19 @@ def _make_session(env, session_id="session-1"):
     funnel = PromotionFunnel(db_path=env["db"], embedding_provider=_FakeEmbedding())
     runner = HostLocalRunner(
         make_demo_loop(steps=1, emit_note=True),
+        claims=operator_claims(),
         events_dir=env["events"],
         seal_on_complete=False,
         on_emit=funnel.submit,
     )
-    return CascadeSession(session_id, runner=runner, funnel=funnel,
-                          events_dir=env["events"], db_path=env["db"])
+    return CascadeSession(
+        session_id,
+        claims=operator_claims(),
+        runner=runner,
+        funnel=funnel,
+        events_dir=env["events"],
+        db_path=env["db"],
+    )
 
 
 async def _drain(session: CascadeSession):
@@ -211,7 +230,10 @@ async def test_session_status_exposes_failed_synthesis_tail(env):
     # Register in the live registry so session_status takes the live branch.
     cr._SESSIONS[session.session_id] = session
     try:
-        resp = await cr.session_status(session.session_id)
+        resp = cr._session_status_authorized(
+            session.session_id,
+            authority_from_claims(operator_claims(), session.session_id),
+        )
     finally:
         cr._SESSIONS.pop(session.session_id, None)
 
@@ -252,7 +274,10 @@ async def test_session_status_happy_path_no_error(env, monkeypatch):
 
     cr._SESSIONS[session.session_id] = session
     try:
-        resp = await cr.session_status(session.session_id)
+        resp = cr._session_status_authorized(
+            session.session_id,
+            authority_from_claims(operator_claims(), session.session_id),
+        )
     finally:
         cr._SESSIONS.pop(session.session_id, None)
 

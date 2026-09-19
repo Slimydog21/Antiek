@@ -56,11 +56,9 @@ from decimal import Decimal
 from enum import Enum
 
 from substrate.event_log.events import (
-    default_events_dir,
-)
-from substrate.event_log.events import (
     trajectory as _trajectory,
 )
+from substrate.investigation_tenancy import InvestigationAuthority
 from substrate.schemas.events import ActionType
 from substrate.speak.economics_mode import (
     MARGIN_PRIVATE_PUBLISHED,
@@ -214,14 +212,40 @@ def _iter_dispatch_payloads(
     events_dir: str,
     *,
     investigation_ids: Iterable[str] | None = None,
+    authority: InvestigationAuthority | None = None,
+    global_scope: bool = False,
 ) -> Iterable[Mapping[str, object]]:
     """Yield the ``payload`` dict of every ``DISPATCH_CALL`` event under
     ``events_dir`` (or the given investigations). Reads via the canonical
     :func:`substrate.event_log.events.trajectory` — never a second store."""
     import os
 
+    from substrate.event_log import trajectory_authorized
+    from substrate.investigation_streams import (
+        list_authorized_investigation_ids,
+        list_operator_investigation_authorities,
+    )
+
     dispatch = ActionType.DISPATCH_CALL.value
-    if investigation_ids is None:
+    if authority is not None:
+        stream_authorities = (
+            list_operator_investigation_authorities(authority)
+            if global_scope
+            else [
+                InvestigationAuthority(authority.account_id, iid, authority.root)
+                for iid in list_authorized_investigation_ids(
+                    authority.account_id,
+                    root=authority.root,
+                )
+            ]
+        )
+        selected = set(investigation_ids) if investigation_ids is not None else None
+        stream_authorities = [
+            item
+            for item in stream_authorities
+            if selected is None or item.investigation_id in selected
+        ]
+    elif investigation_ids is None:
         if not os.path.isdir(events_dir):
             return
         ids: list[str] = []
@@ -233,13 +257,26 @@ def _iter_dispatch_payloads(
         # De-dup (an investigation may have both a JSONL and a sealed Parquet;
         # trajectory() prefers the Parquet, so reading the id once is correct).
         investigation_ids = sorted(set(ids))
-
-    seen: set[str] = set()
-    for iid in investigation_ids:
-        if iid in seen:
+        stream_authorities = list(investigation_ids)
+    else:
+        stream_authorities = list(investigation_ids)
+    seen: set[tuple[str, str]] = set()
+    for stream_authority in stream_authorities:
+        if isinstance(stream_authority, InvestigationAuthority):
+            iid = stream_authority.investigation_id
+            identity = (stream_authority.account_id, iid)
+        else:
+            iid = stream_authority
+            identity = ("__fixture__", iid)
+        if identity in seen:
             continue
-        seen.add(iid)
-        for row in _trajectory(iid, events_dir=events_dir):
+        seen.add(identity)
+        rows = (
+            trajectory_authorized(stream_authority)
+            if authority is not None
+            else _trajectory(iid, events_dir=events_dir)
+        )
+        for row in rows:
             if row.get("action_type") != dispatch:
                 continue
             payload = row.get("payload")
@@ -303,6 +340,8 @@ def build_cost_view(
     *,
     events_dir: str | None = None,
     investigation_ids: Iterable[str] | None = None,
+    authority: InvestigationAuthority | None = None,
+    global_scope: bool = False,
 ) -> CostView:
     """Aggregate realized ``DispatchCall`` cost per workflow + in aggregate.
 
@@ -311,13 +350,20 @@ def build_cost_view(
     portion by ``payload.provider``. Idle ⇒ every figure is ``$0`` (no fabricated
     baseline). The aggregate equals the sum of the per-workflow raw costs by
     construction (asserted in the test)."""
-    d = events_dir or default_events_dir()
+    if authority is None and events_dir is None:
+        raise ValueError("cost view requires an explicit authority or fixture events_dir")
+    d = events_dir or str(authority.root)
 
     raw: dict[Workflow, Decimal] = {wf: Decimal("0") for wf in Workflow}
     counts: dict[Workflow, int] = {wf: 0 for wf in Workflow}
     remote: dict[Workflow, Decimal] = {wf: Decimal("0") for wf in Workflow}
 
-    for payload in _iter_dispatch_payloads(d, investigation_ids=investigation_ids):
+    for payload in _iter_dispatch_payloads(
+        d,
+        investigation_ids=investigation_ids,
+        authority=authority,
+        global_scope=global_scope,
+    ):
         role = payload.get("target_role")
         wf = workflow_for_role(role if isinstance(role, str) else None)
         cost = _to_decimal_usd(payload.get("cost_usd"))

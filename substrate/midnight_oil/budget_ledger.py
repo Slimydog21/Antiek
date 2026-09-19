@@ -916,6 +916,7 @@ class BudgetLedger:
         projected_max_cents: int,
         call: Callable[[], tuple[T, int]],
         *,
+        after_hold: Callable[[CallHold], None] | None = None,
         before_settle: Callable[[T, int], None] | None = None,
     ) -> tuple[T, RemainingBalance]:
         """Execute *call* with budget guard.
@@ -936,6 +937,16 @@ class BudgetLedger:
           the exact ``CallHold``.  The hold remains open (fail closed).
         """
         hold = self.reserve_call(run_id, role, projected_max_cents)
+
+        # This seam is still provably pre-dispatch.  It lets a caller bind
+        # its durable operation row to the exact hold and perform a final
+        # authority check without manufacturing an ambiguous provider state.
+        if after_hold is not None:
+            try:
+                after_hold(hold)
+            except BaseException:
+                self._release_hold(hold)
+                raise
 
         def raise_unknown(error: Exception) -> NoReturn:
             try:
@@ -964,8 +975,36 @@ class BudgetLedger:
                 before_settle(result, actual_cents)
             except Exception as checkpoint_error:
                 raise_unknown(checkpoint_error)
-        balance = self.settle(hold, actual_cents)
+        try:
+            balance = self.settle(hold, actual_cents)
+        except Exception as settlement_error:
+            # Provider dispatch and return are both known. A bookkeeping
+            # failure cannot establish zero spend, so quarantine the full
+            # projected hold for explicit reconciliation.
+            raise_unknown(settlement_error)
         return result, balance
+
+    def release_proven_not_dispatched(self, hold_id: str) -> RemainingBalance:
+        """Release one open hold after the caller proves no call occurred.
+
+        This is the restart counterpart to ``CallNotDispatched``.  It must
+        only be used when a caller-specific durable pre-dispatch marker is
+        absent; an unknown provider outcome must use ``resolve_unknown``.
+        """
+        if not isinstance(hold_id, str) or not hold_id.strip():
+            raise ValueError("hold_id is required")
+        self._release_hold(CallHold(hold_id, "", "", 0))
+        con = connect_read(self._db_path)
+        try:
+            row = con.execute(
+                "SELECT run_id FROM midnight_oil_call_holds WHERE hold_id = ?",
+                [hold_id],
+            ).fetchone()
+        finally:
+            con.close()
+        if row is None:
+            raise ReservationNotFound(hold_id)
+        return self.balance(str(row[0]))
 
     # -----------------------------------------------------------------------
     # Internal helpers

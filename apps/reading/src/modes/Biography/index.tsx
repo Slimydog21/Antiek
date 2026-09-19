@@ -10,6 +10,10 @@ import {
   type BiographyComposition,
 } from "../../lib/speakApi";
 import AIActionFailure from "../../shared/AIActionFailure";
+import {
+  ResearchRunCeilingApproval,
+  type ResearchRunAuthorization,
+} from "../../components/engagement/ResearchRunCeilingApproval";
 
 /**
  * Biography — the dedicated landing for the biography TEMPLATE (SPR-11).
@@ -41,6 +45,8 @@ export default function Biography() {
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState(false);
   const [composed, setComposed] = useState<BiographyComposition | null>(null);
+  const [runAuthorization, setRunAuthorization] =
+    useState<ResearchRunAuthorization>({ approved: false, ceilingUsd: null, projection: null });
 
   // Start a biography: provision the three surfaces over the ONE graph.
   //   1. the Research folder — startInvestigation → investigation_id (the
@@ -51,7 +57,7 @@ export default function Biography() {
   // Write document.
   const start = useCallback(async () => {
     const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmed || !runAuthorization.approved || runAuthorization.ceilingUsd == null) return;
     setSubmitting(true);
     setFailed(false);
     try {
@@ -59,6 +65,7 @@ export default function Biography() {
         question: `The life and story of ${trimmed}.`,
         context:
           "A biography: gather what is known, written, and remembered about this person.",
+        approved_run_ceiling_usd: runAuthorization.ceilingUsd,
       });
       const comp = await createBiography({
         investigationId: research.investigation_id,
@@ -70,7 +77,7 @@ export default function Biography() {
     } finally {
       setSubmitting(false);
     }
-  }, [name]);
+  }, [name, runAuthorization]);
 
   if (composed) {
     return (
@@ -142,10 +149,18 @@ export default function Biography() {
           <LemonButton
             type="submit"
             variant="primary"
-            disabled={submitting || !name.trim()}
+            disabled={submitting || !name.trim() || !runAuthorization.approved}
           >
             {submitting ? "Setting it up…" : "Start a biography"}
           </LemonButton>
+          <div className="basis-full">
+            <ResearchRunCeilingApproval
+              promptText={`The life and story of ${name.trim()}.`}
+              researchTier="deep"
+              disabled={submitting}
+              onAuthorizationChange={setRunAuthorization}
+            />
+          </div>
         </form>
 
         {failed && (

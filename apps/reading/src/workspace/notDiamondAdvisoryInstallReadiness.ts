@@ -4,7 +4,7 @@
  * Installs the weekly advisory pick into the decision-tree only.
  * Never grants NotDiamond dispatch authority (L7 · advisory forever).
  * Requires non-empty suggested_model_id and notdiamond_is_dispatch_authority
- * must be false. installable defaults true when unset.
+ * must be false. Missing installability evidence fails closed.
  *
  * Parity aun decisionTreeInstallReadiness · never invents model id.
  */
@@ -22,7 +22,7 @@ export type NotDiamondAdvisoryInstallReadiness = {
   suggested_provider_id: string;
   /** Server flag — if true, install_ready is always false. */
   notdiamond_is_dispatch_authority: boolean;
-  /** When false, install_ready is false. Undefined/null → treat as installable. */
+  /** Only an explicit true permits install readiness. */
   installable: boolean;
   install_ready: boolean;
   block_reason: NotDiamondAdvisoryInstallBlockReason;
@@ -51,8 +51,7 @@ export function notDiamondAdvisoryInstallReadiness(opts: {
   const has_suggested_provider = Boolean(suggested_provider_id);
   const notdiamond_is_dispatch_authority =
     opts.notdiamond_is_dispatch_authority === true;
-  // installable defaults true when unset (server may omit the field).
-  const installable = opts.installable !== false;
+  const installable = opts.installable === true;
 
   let block_reason: NotDiamondAdvisoryInstallBlockReason = "ok";
   if (notdiamond_is_dispatch_authority) {

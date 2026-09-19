@@ -53,6 +53,7 @@ import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -61,9 +62,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("acquisition.arxiv.adapter")
 
 # Repo root on path for direct invocation.
-_PKG_ROOT = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-)
+_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
@@ -83,9 +82,14 @@ from substrate.graph import (  # noqa: E402
 )
 from substrate.graph.ops import (  # noqa: E402
     insert_chunk,
+    insert_chunk_admitted,
     insert_document,
+    insert_document_admitted,
     insert_node,
 )
+from substrate.investigation_tenancy import InvestigationAuthority  # noqa: E402
+from substrate.legal_gate.admission import admit_staged_document  # noqa: E402
+from substrate.legal_gate.policy_store import account_policy_authority  # noqa: E402
 from substrate.rights.register import (  # noqa: E402
     SourceKind,
     register_source_document,
@@ -146,6 +150,9 @@ class IngestResult:
     node_ids: list[str] = field(default_factory=list)
     document_loaded_event_id: str | None = None
     chunks_written: int = 0
+    status: str = "ingested"
+    skipped_reason: str | None = None
+    admission_receipt_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +191,7 @@ def ingest_paper(
     source_tier: int = DEFAULT_ARXIV_SOURCE_TIER,
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> IngestResult:
     """Ingest one arXiv abstract into the substrate.
 
@@ -212,13 +220,15 @@ def ingest_paper(
         page_count=None,
         source_uri=paper.abs_url,
     )
-    event_id = emit_typed(
-        investigation_id,
-        payload,
-        document_id=document_id,
-        role="acquisition",
-        policy_id="acquisition/arxiv",
-    )
+    event_id: str | None = None
+    if authority is None:
+        event_id = emit_typed(
+            investigation_id,
+            payload,
+            document_id=document_id,
+            role="acquisition",
+            policy_id="acquisition/arxiv",
+        )
 
     # Open the DB. ensure_initialized creates the file + schema if
     # this is the operator's first ingest.
@@ -237,8 +247,45 @@ def ingest_paper(
     from runtime.db_lock import connect_write
 
     with connect_write(resolved_db_path, purpose="acquisition/arxiv") as con:
-        insert_document(
+        admission_receipt_id: str | None = None
+        if authority is not None:
+            if authority.investigation_id != investigation_id:
+                raise ValueError("arXiv admission authority does not match investigation")
+            con.execute("BEGIN TRANSACTION")
+            admission = admit_staged_document(
+                con,
+                account_policy_authority(authority),
+                investigation_digest=authority.investigation_digest,
+                document_id=document_id,
+                provenance_class="external_network",
+                canonical_url=paper.abs_url,
+                title=paper.title,
+                author=", ".join(paper.authors),
+                source_corpus="arxiv",
+                content_sha256=chash,
+                at=datetime.now(UTC),
+            )
+            admission_receipt_id = admission.receipt_id
+            if admission.decision != "allow":
+                con.execute("COMMIT")
+                return IngestResult(
+                    document_id=document_id,
+                    status="skipped",
+                    skipped_reason=f"legal_policy:{admission.reason_code or 'deny'}",
+                    admission_receipt_id=admission.receipt_id,
+                )
+        document_insert = insert_document_admitted if authority is not None else insert_document
+        document_insert(
             con,
+            **(
+                {
+                    "authority": authority,
+                    "admission_receipt_id": admission_receipt_id,
+                    "admitted_content_sha256": chash,
+                }
+                if authority is not None
+                else {}
+            ),
             document_id=document_id,
             source_tier=int(source_tier),
             document_type="academic_paper",
@@ -265,8 +312,18 @@ def ingest_paper(
         )
 
         for i, chunk in enumerate(chunks):
-            chunk_id = insert_chunk(
+            chunk_insert = insert_chunk_admitted if authority is not None else insert_chunk
+            chunk_id = chunk_insert(
                 con,
+                **(
+                    {
+                        "authority": authority,
+                        "admission_receipt_id": admission_receipt_id,
+                        "admitted_content_sha256": chash,
+                    }
+                    if authority is not None
+                    else {}
+                ),
                 document_id=document_id,
                 chunk_index=i,
                 text=chunk.text,
@@ -283,6 +340,10 @@ def ingest_paper(
             if not label:
                 label = f"{paper.arxiv_id}#{i}"
 
+            # Defer authorized semantic extraction until after commit; the
+            # legacy node writer emits JSONL immediately and cannot roll back.
+            if authority is not None:
+                continue
             node_id = insert_node(
                 con,
                 canonical_label=label,
@@ -301,12 +362,36 @@ def ingest_paper(
             )
             node_ids.append(node_id)
 
+        if authority is not None:
+            con.execute("COMMIT")
+
+    if authority is not None:
+        try:
+            event_id = emit_typed(
+                investigation_id,
+                payload,
+                document_id=document_id,
+                role="acquisition",
+                policy_id="acquisition/arxiv",
+            )
+        except Exception:
+            return IngestResult(
+                document_id=document_id,
+                chunk_ids=chunk_ids,
+                node_ids=node_ids,
+                chunks_written=chunks_written,
+                status="ingested",
+                skipped_reason="post_commit_publication_pending",
+                admission_receipt_id=admission_receipt_id,
+            )
+
     return IngestResult(
         document_id=document_id,
         chunk_ids=chunk_ids,
         node_ids=node_ids,
         document_loaded_event_id=event_id,
         chunks_written=chunks_written,
+        admission_receipt_id=admission_receipt_id,
     )
 
 
@@ -371,6 +456,7 @@ def _default_fetch_pdf(arxiv_id: str) -> bytes:
     # matches (else the initial hop would be double-waited) — pin the canonical.
     throttle = canonical_arxiv_throttle()
     with arxiv_governed_client(throttle=throttle) as c:
+
         def _send() -> httpx.Response:
             return c.get(
                 url,
@@ -482,10 +568,7 @@ def ingest_paper_with_rights(
         # An empty PDF would land a 0-word document and silently gate it on
         # low_word_count; surface the fetch failure instead of ingesting a
         # husk that looks like a rights decision.
-        raise ValueError(
-            f"empty PDF bytes for {paper.arxiv_id} — fetch failed or paper "
-            "has no PDF"
-        )
+        raise ValueError(f"empty PDF bytes for {paper.arxiv_id} — fetch failed or paper has no PDF")
 
     result = ingest_servable_book(
         pdf_bytes,

@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any, cast
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from services.html_projection.adapters.synthesis import (
@@ -122,7 +123,7 @@ def _thesis_claim_chunks(
 
 
 def resolve_synthesis_export(
-    synthesis_id: str, *, db_path: str | None = None
+    synthesis_id: str, *, db_path: str | None = None, _authority: Any | None = None
 ) -> SynthesisExport | None:
     """Build a ``SynthesisExport`` from the graph, or None if it does not exist.
 
@@ -137,25 +138,37 @@ def resolve_synthesis_export(
     db = db_path or _resolve_db_path()
     con = connect_read(db)
     try:
+        where = "synthesis_id = ?"
+        params: list[Any] = [synthesis_id]
+        if _authority is not None:
+            from substrate.graph.tenancy import assert_graph_authority_read
+            from substrate.investigation_tenancy import InvestigationAuthority
+
+            if not isinstance(_authority, InvestigationAuthority):
+                raise TypeError("synthesis export requires InvestigationAuthority")
+            assert_graph_authority_read(con, _authority)
+            where += " AND account_digest = ? AND investigation_digest = ?"
+            params.extend([_authority.account_digest, _authority.investigation_digest])
         row = con.execute(
             "SELECT synthesis_id, target_question, thesis_text, "
-            "implicit_recommendation, model_versions, parameters, thesis "
-            "FROM syntheses WHERE synthesis_id = ?",
-            [synthesis_id],
+            "implicit_recommendation, model_versions, parameters, thesis, "
+            "account_digest, investigation_digest "
+            "FROM syntheses WHERE " + where,
+            params,
         ).fetchone()
         if row is None:
             return None
-        chunk_rows = con.execute(
-            "SELECT m.entity_id, c.document_id, d.title, d.content_class, "
-            "d.ip_holder_id, c.text, COALESCE(b.taken_down, FALSE) "
-            "FROM synthesis_substrate_manifest m "
-            "JOIN chunks c ON c.chunk_id = m.entity_id "
-            "JOIN documents d ON d.document_id = c.document_id "
-            "LEFT JOIN book_assets b ON b.document_id = d.document_id "
-            "WHERE m.synthesis_id = ? AND m.entity_kind = 'chunk' "
-            "ORDER BY m.entity_id",
-            [synthesis_id],
-        ).fetchall()
+        from substrate.legal_gate.read import read_synthesis_manifest_chunks
+
+        chunk_rows = read_synthesis_manifest_chunks(
+            con,
+            synthesis_id,
+            authority=_authority,
+            enforce=(
+                _authority is not None
+                or os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1"
+            ),
+        )
         edge_rows = con.execute(
             "SELECT m.entity_id, e.source_node_id, e.target_node_id "
             "FROM synthesis_substrate_manifest m "
@@ -164,6 +177,13 @@ def resolve_synthesis_export(
             "ORDER BY m.entity_id",
             [synthesis_id],
         ).fetchall()
+        if _authority is not None:
+            from middleware.archive.archive import _authorized_edge_ids
+
+            authorized_edge_ids = _authorized_edge_ids(
+                con, _authority, (row[0] for row in edge_rows)
+            )
+            edge_rows = [row for row in edge_rows if row[0] in authorized_edge_ids]
     finally:
         con.close()
 
@@ -223,17 +243,51 @@ def resolve_synthesis_export(
     )
 
 
+def resolve_synthesis_export_for_account(
+    synthesis_id: str, account_id: str, *, db_path: str | None = None
+) -> SynthesisExport | None:
+    """Resolve an export only after reconstructing exact parent authority."""
+    from runtime.db_lock import connect_read
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    db = db_path or _resolve_db_path()
+    con = connect_read(db)
+    try:
+        row = con.execute(
+            "SELECT investigation_id, account_digest, investigation_digest "
+            "FROM syntheses WHERE synthesis_id = ?",
+            [synthesis_id],
+        ).fetchone()
+    finally:
+        con.close()
+    if row is None:
+        return None
+    authority = InvestigationAuthority(account_id, row[0])
+    return resolve_synthesis_export(synthesis_id, db_path=db, _authority=authority)
+
+
+def _request_account_id(request: Request) -> str:
+    from substrate.multi_user.auth import UserClaims
+
+    claims = getattr(request.state, "user_claims", None)
+    if (
+        not isinstance(claims, UserClaims)
+        or getattr(request.state, "user_id", None) != claims.user_id
+        or getattr(request.state, "scopes", None) != claims.scopes
+    ):
+        raise HTTPException(status_code=401, detail="authentication required")
+    return claims.user_id
+
+
 def register_synthesis_artifact_routes(app: FastAPI) -> None:
     """Mount ``GET /api/syntheses/{id}/artifact.html``. One call from
     ``create_app``."""
 
     @app.get("/api/syntheses/{synthesis_id}/artifact.html", tags=["syntheses"])
-    async def synthesis_artifact(synthesis_id: str) -> Response:
-        export = resolve_synthesis_export(synthesis_id)
+    async def synthesis_artifact(synthesis_id: str, request: Request) -> Response:
+        export = resolve_synthesis_export_for_account(synthesis_id, _request_account_id(request))
         if export is None:
-            raise HTTPException(
-                status_code=404, detail=f"synthesis {synthesis_id!r} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"synthesis {synthesis_id!r} not found")
         try:
             doc_model = adapt_synthesis(export)
         except RightsRefusal as refusal:
@@ -270,14 +324,14 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
         return HTMLResponse(
             content=html,
             headers={
-                "Content-Disposition": (
-                    f'attachment; filename="synthesis-{synthesis_id}.html"'
-                )
+                "Content-Disposition": (f'attachment; filename="synthesis-{synthesis_id}.html"')
             },
         )
 
     @app.get("/api/syntheses/{synthesis_id}/artifact", tags=["syntheses"])
-    async def synthesis_artifact_format(synthesis_id: str, format: str = "html") -> Response:
+    async def synthesis_artifact_format(
+        synthesis_id: str, request: Request, format: str = "html"
+    ) -> Response:
         """Export a synthesis as html / antiek / antiek_html through the SPR-06
         M4 routing map. The rights filter is applied in adapt_synthesis (the
         doc-model is already cite-only-filtered before emission); the signed
@@ -285,11 +339,9 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
         restriction; 404 missing; 400 unknown format."""
         from services.html_projection.routing_map import EXPORT_FORMATS, ExportItem, emit
 
-        export = resolve_synthesis_export(synthesis_id)
+        export = resolve_synthesis_export_for_account(synthesis_id, _request_account_id(request))
         if export is None:
-            raise HTTPException(
-                status_code=404, detail=f"synthesis {synthesis_id!r} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"synthesis {synthesis_id!r} not found")
         if format not in EXPORT_FORMATS:
             raise HTTPException(
                 status_code=400,
@@ -327,9 +379,7 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
             return HTMLResponse(
                 content=html,
                 headers={
-                    "Content-Disposition": (
-                        f'attachment; filename="synthesis-{synthesis_id}.html"'
-                    )
+                    "Content-Disposition": (f'attachment; filename="synthesis-{synthesis_id}.html"')
                 },
             )
 
@@ -369,4 +419,8 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
         )
 
 
-__all__ = ["register_synthesis_artifact_routes", "resolve_synthesis_export"]
+__all__ = [
+    "register_synthesis_artifact_routes",
+    "resolve_synthesis_export",
+    "resolve_synthesis_export_for_account",
+]

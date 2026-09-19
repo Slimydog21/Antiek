@@ -25,10 +25,12 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from substrate.event_log import default_events_dir, trajectory
+from substrate.event_log import default_events_dir, trajectory, trajectory_authorized
+from substrate.investigation_streams import list_authorized_investigation_ids
+from substrate.investigation_tenancy import InvestigationAuthority
 from substrate.seams.contracts import EntityKind, Workflow
 from substrate.seams.thread import (
     Thread,
@@ -109,7 +111,11 @@ class ThreadResponse(BaseModel):
         )
 
 
-def _collect_seam_events(events_dir: str | None = None) -> list[dict[str, object]]:
+def _collect_seam_events(
+    events_dir: str | None = None,
+    *,
+    authority: InvestigationAuthority | None = None,
+) -> list[dict[str, object]]:
     """Scan every investigation's event log for ``seam.*`` events. Read-only.
 
     Linear scan across the per-investigation files; fine for a single operator
@@ -117,6 +123,21 @@ def _collect_seam_events(events_dir: str | None = None) -> list[dict[str, object
     ``reconstruct_thread`` filters by node id.
     """
     d = events_dir or default_events_dir()
+    if authority is not None:
+        seam_events: list[dict[str, object]] = []
+        for investigation_id in list_authorized_investigation_ids(
+            authority.account_id,
+            root=authority.root,
+        ):
+            stream_authority = InvestigationAuthority(
+                authority.account_id,
+                investigation_id,
+                authority.root,
+            )
+            for row in trajectory_authorized(stream_authority):
+                if str(row.get("action_type") or "") in _SEAM_ACTION_TYPES:
+                    seam_events.append(row)
+        return seam_events
     if not os.path.isdir(d):
         return []
     seam_events: list[dict[str, object]] = []
@@ -142,6 +163,7 @@ def build_thread(
     *,
     events_dir: str | None = None,
     origin_entity_kind: EntityKind | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> Thread:
     """Reconstruct ``node_id``'s thread from the event log. Read-only.
 
@@ -150,7 +172,7 @@ def build_thread(
     before returning — a thread over copied entities must never be served (the
     breadcrumb's warrant, defensibility #5).
     """
-    seam_events = _collect_seam_events(events_dir=events_dir)
+    seam_events = _collect_seam_events(events_dir=events_dir, authority=authority)
     thread = reconstruct_thread(
         node_id,
         seam_events=seam_events,
@@ -169,11 +191,24 @@ def make_router(*, events_dir: str | None = None) -> APIRouter:
     router = APIRouter(tags=["thread"])
 
     @router.get("/thread/{node_id}", response_model=ThreadResponse)
-    async def get_thread(node_id: str) -> ThreadResponse:
+    async def get_thread(node_id: str, request: Request) -> ThreadResponse:
         if not node_id.strip():
             raise HTTPException(status_code=400, detail="node_id is required")
+        from .investigation_access import (
+            InvestigationAuthenticationRequired,
+            authority_from_request,
+        )
+
         try:
-            thread = build_thread(node_id, events_dir=events_dir)
+            access = authority_from_request(request, "__thread_collection__")
+        except InvestigationAuthenticationRequired as exc:
+            raise HTTPException(status_code=401, detail="authentication required") from exc
+        try:
+            thread = build_thread(
+                node_id,
+                events_dir=events_dir,
+                authority=access.authority,
+            )
         except AssertionError as exc:
             # The no-duplicate guard failed — the thread holds a copy. Refusing
             # to serve is correct: a breadcrumb over forked entities lies.

@@ -106,6 +106,10 @@ SYNTHESIZER_USER_TEMPLATE = """
 
 {{evidence_block}}
 
+## Inherited support reachable from each evidence chunk (JSON data)
+
+{{inherited_support_block}}
+
 ## Parameter Extractor constraints
 
 {{parameters_block}}
@@ -129,6 +133,7 @@ Produce a single JSON object conforming to the output schema. No prose outside t
       "confidence_basis": "optional one-line justification for the confidence assignment",
       "supporting_chunk_ids": ["chunk_id_1", "chunk_id_2"],
       "supporting_path_indices": [0, 2],
+      "supporting_inherited_unit_ids": ["unit_id_explicitly_used_by_chunk_id_1"],
       "effective_source_tier": 2,
       "hedging_required": false
     }
@@ -170,7 +175,7 @@ Produce a single JSON object conforming to the output schema. No prose outside t
 
 Field rules:
 - Top-level keys are EXACTLY `thesis_summary`, `thesis_components`, `falsification_conditions`, `execution_risks`, `implicit_recommendation`, `constraint_compliance`, `reasoning_paths_used`, and optionally `conviction_level` — nothing else.
-- `thesis_components[*]` has EXACTLY `claim`, `confidence`, `supporting_chunk_ids`, `supporting_path_indices` (required) plus optionally `confidence_basis`, `effective_source_tier`, `hedging_required`.
+- `thesis_components[*]` has EXACTLY `claim`, `confidence`, `supporting_chunk_ids`, `supporting_path_indices`, `supporting_inherited_unit_ids` (required) plus optionally `confidence_basis`, `effective_source_tier`, `hedging_required`. An inherited ID may appear only when reachable through one of that same component's `supporting_chunk_ids`; use an empty array when no inherited unit supports the claim.
 - `confidence` enum is EXACTLY `high | moderate | low | unknown` — NOT `medium`.
 - `falsification_conditions[*]` has EXACTLY `condition` and `specific_observable` (required), optionally `timeframe`. NOT `evidence_required` or `falsifying_evidence`.
 - `execution_risks[*]` has EXACTLY `risk` and `severity_if_manifested` (required), optionally `leading_indicator`. The severity enum is EXACTLY `critical | high | moderate | low`.
@@ -189,6 +194,7 @@ def render_user_template(
     evidence_block: str,
     parameters_block: str,
     substrate_block: str,
+    inherited_support_block: str = "(none)",
 ) -> str:
     """Substitute the five placeholders. ``str.replace`` (not
     ``.format``) so the JSON example block survives."""
@@ -196,9 +202,11 @@ def render_user_template(
     out = out.replace("{{question}}", question or "(no question)")
     out = out.replace("{{decomposition_block}}", decomposition_block or "(no decomposition)")
     out = out.replace("{{evidence_block}}", evidence_block or "(no evidence)")
+    out = out.replace(
+        "{{inherited_support_block}}", inherited_support_block or "(none)"
+    )
     out = out.replace("{{parameters_block}}", parameters_block or "(no parameters)")
-    out = out.replace("{{substrate_block}}", substrate_block or "(no substrate)")
-    return out
+    return out.replace("{{substrate_block}}", substrate_block or "(no substrate)")
 
 
 def render_full_prompt(
@@ -208,6 +216,7 @@ def render_full_prompt(
     evidence_block: str,
     parameters_block: str,
     substrate_block: str,
+    inherited_support_block: str = "(none)",
     extra_user_prefix: str = "",
 ) -> str:
     """Concatenate system + user. ``extra_user_prefix`` is what the
@@ -220,6 +229,7 @@ def render_full_prompt(
         evidence_block=evidence_block,
         parameters_block=parameters_block,
         substrate_block=substrate_block,
+        inherited_support_block=inherited_support_block,
     )
     if extra_user_prefix:
         user = extra_user_prefix.strip() + "\n\n" + user

@@ -26,20 +26,20 @@ future maintainer of this connector cannot pass the wrong class because this
 connector passes none. A leaked-servable post is the §9.0 catastrophe; a single
 policy location is the most defensible guard against it.
 """
+
 from __future__ import annotations
 
 import os
 import sys
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import httpx
 
 # Repo root on path for direct invocation (mirrors podcasts/urls adapters).
-_PKG_ROOT = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-)
+_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
@@ -62,9 +62,14 @@ from substrate.graph import (  # noqa: E402
 from substrate.graph.ops import (  # noqa: E402
     _exists,
     insert_chunk,
+    insert_chunk_admitted,
     insert_document,
+    insert_document_admitted,
     insert_node,
 )
+from substrate.investigation_tenancy import InvestigationAuthority  # noqa: E402
+from substrate.legal_gate.admission import admit_staged_document  # noqa: E402
+from substrate.legal_gate.policy_store import account_policy_authority  # noqa: E402
 from substrate.rights.register import (  # noqa: E402
     SourceKind,
     register_source_document,
@@ -102,6 +107,8 @@ class IngestResult:
     truncated: bool = False
     truncation_reason: str = "none"
     title: str | None = None
+    skipped_reason: str | None = None
+    admission_receipt_id: str | None = None
 
 
 def ingest_post(
@@ -112,6 +119,7 @@ def ingest_post(
     db_path: str | None = None,
     source_tier: int = DEFAULT_SUBSTACK_SOURCE_TIER,
     embedder: EmbeddingProvider | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> IngestResult:
     """Ingest a single Substack post into documents + chunks + nodes.
 
@@ -135,13 +143,15 @@ def ingest_post(
         page_count=None,
         source_uri=post.post_url or publication.feed_url,
     )
-    event_id = emit_typed(
-        investigation_id,
-        payload,
-        document_id=document_id,
-        role="acquisition",
-        policy_id="acquisition/substack",
-    )
+    event_id: str | None = None
+    if authority is None:
+        event_id = emit_typed(
+            investigation_id,
+            payload,
+            document_id=document_id,
+            role="acquisition",
+            policy_id="acquisition/substack",
+        )
 
     ensure_initialized(resolved_db_path)
     chunks: list[Chunk] = chunk_markdown(full_text)
@@ -150,6 +160,37 @@ def ingest_post(
     emb = embedder or default_embedding_provider()
 
     with connect_write(resolved_db_path, purpose="acquisition/substack") as con:
+        admission_receipt_id: str | None = None
+        if authority is not None:
+            if authority.investigation_id != investigation_id:
+                raise ValueError("Substack admission authority does not match investigation")
+            con.execute("BEGIN TRANSACTION")
+            admission = admit_staged_document(
+                con,
+                account_policy_authority(authority),
+                investigation_digest=authority.investigation_digest,
+                document_id=document_id,
+                provenance_class="external_network",
+                canonical_url=post.post_url or publication.feed_url,
+                title=post.title,
+                author=post.author or "",
+                source_corpus=publication.title or "substack",
+                content_sha256=chash,
+                at=datetime.now(UTC),
+            )
+            admission_receipt_id = admission.receipt_id
+            if admission.decision != "allow":
+                con.execute("COMMIT")
+                return IngestResult(
+                    document_id=document_id,
+                    guid=post.guid,
+                    status="skipped",
+                    truncated=post.truncated,
+                    truncation_reason=post.truncation_reason,
+                    title=None,
+                    skipped_reason=f"legal_policy:{admission.reason_code or 'deny'}",
+                    admission_receipt_id=admission.receipt_id,
+                )
         # Dedup probe — keyed on the DOCUMENT, the same authority
         # insert_document(on_conflict="ignore") keys on (its `_exists` check on
         # documents.document_id at substrate/graph/ops.py). insert_document
@@ -163,8 +204,18 @@ def ingest_post(
         # Document presence is exactly the predicate insert_document dedups on,
         # so "only a fresh document reaches the chunk loop" holds for all bodies.
         already_present = _exists(con, "documents", "document_id", document_id)
-        insert_document(
+        document_insert = insert_document_admitted if authority is not None else insert_document
+        document_insert(
             con,
+            **(
+                {
+                    "authority": authority,
+                    "admission_receipt_id": admission_receipt_id,
+                    "admitted_content_sha256": chash,
+                }
+                if authority is not None
+                else {}
+            ),
             document_id=document_id,
             source_tier=int(source_tier),
             document_type="newsletter_post",
@@ -180,9 +231,7 @@ def ingest_post(
                 "guid": post.guid,
                 "author": post.author,
                 "post_url": post.post_url,
-                "published_at": post.published_at.isoformat()
-                if post.published_at
-                else None,
+                "published_at": post.published_at.isoformat() if post.published_at else None,
                 "truncated": post.truncated,
                 "truncation_reason": post.truncation_reason,
             },
@@ -201,6 +250,8 @@ def ingest_post(
                 content_class=PERSONAL_READING_CONTENT_CLASS,
             )
         if already_present:
+            if authority is not None:
+                con.execute("COMMIT")
             return IngestResult(
                 document_id=document_id,
                 guid=post.guid,
@@ -209,11 +260,22 @@ def ingest_post(
                 truncated=post.truncated,
                 truncation_reason=post.truncation_reason,
                 title=post.title,
+                admission_receipt_id=admission_receipt_id,
             )
 
         for i, chunk in enumerate(chunks):
-            chunk_id = insert_chunk(
+            chunk_insert = insert_chunk_admitted if authority is not None else insert_chunk
+            chunk_id = chunk_insert(
                 con,
+                **(
+                    {
+                        "authority": authority,
+                        "admission_receipt_id": admission_receipt_id,
+                        "admitted_content_sha256": chash,
+                    }
+                    if authority is not None
+                    else {}
+                ),
                 document_id=document_id,
                 chunk_index=i,
                 text=chunk.text,
@@ -229,6 +291,10 @@ def ingest_post(
                 label = label[: _NODE_LABEL_MAX - 1] + "…"
             if not label:
                 label = f"{post.guid}#{i}"
+            # Defer authorized semantic extraction until after commit; the
+            # legacy node writer emits JSONL immediately and cannot roll back.
+            if authority is not None:
+                continue
             insert_node(
                 con,
                 canonical_label=label,
@@ -247,6 +313,32 @@ def ingest_post(
                 on_conflict="ignore",
             )
 
+        if authority is not None:
+            con.execute("COMMIT")
+
+    if authority is not None:
+        try:
+            event_id = emit_typed(
+                investigation_id,
+                payload,
+                document_id=document_id,
+                role="acquisition",
+                policy_id="acquisition/substack",
+            )
+        except Exception:
+            return IngestResult(
+                document_id=document_id,
+                guid=post.guid,
+                status="ingested",
+                chunk_ids=chunk_ids,
+                chunks_written=chunks_written,
+                truncated=post.truncated,
+                truncation_reason=post.truncation_reason,
+                title=post.title,
+                skipped_reason="post_commit_publication_pending",
+                admission_receipt_id=admission_receipt_id,
+            )
+
     return IngestResult(
         document_id=document_id,
         guid=post.guid,
@@ -257,6 +349,7 @@ def ingest_post(
         truncated=post.truncated,
         truncation_reason=post.truncation_reason,
         title=post.title,
+        admission_receipt_id=admission_receipt_id,
     )
 
 
@@ -295,6 +388,7 @@ def ingest_publication_feed(
     source_tier: int = DEFAULT_SUBSTACK_SOURCE_TIER,
     embedder: EmbeddingProvider | None = None,
     client: httpx.Client | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> PublicationIngestSummary:
     """Fetch one publication feed and ingest every post.
 
@@ -311,6 +405,7 @@ def ingest_publication_feed(
                 db_path=db_path,
                 source_tier=source_tier,
                 embedder=embedder,
+                authority=authority,
             )
         )
     return PublicationIngestSummary(

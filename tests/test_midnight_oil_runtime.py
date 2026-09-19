@@ -29,6 +29,8 @@ from substrate.dispatch import (
     register_provider,
     reset_provider_registry,
 )
+from substrate.engagement_spine.authority import operator_engagement_authority
+from substrate.engagement_spine.store import authorized_store
 from substrate.graph import ensure_initialized
 from substrate.graph.ops import insert_chunk, insert_document
 from substrate.midnight_oil.contracts import canonical_source_receipt_id
@@ -238,7 +240,7 @@ def test_canonical_merge_commit_is_exact_revisioned_and_idempotent(
     path, environment, _ = _runtime_files(tmp_path)
     app = create_midnight_oil_production_app(path, environ=environment)
     client = TestClient(app)
-    store = app.state.engagement_store
+    store = authorized_store(app.state.engagement_store, operator_engagement_authority())
     store.put_document(
         "source-paper",
         {"title": "Source paper", "body_text": "Immutable source body."},
@@ -316,10 +318,11 @@ def test_canonical_merge_commit_is_exact_revisioned_and_idempotent(
     prose = canonical["sections"][-1]["prose_text"]
     assert "Reviewed research output." in prose
     assert "Later mutable spawn output." not in prose
-    assert store.get_document("source-paper") == {
-        "title": "Source paper",
-        "body_text": "Immutable source body.",
-    }
+    preserved_source = store.get_document("source-paper")
+    assert preserved_source is not None
+    assert preserved_source["title"] == "Source paper"
+    assert preserved_source["body_text"] == "Immutable source body."
+    assert preserved_source["display_document_id"] == "source-paper"
     revision = client.get("/engagement/merge/revision/dlv-reviewed-draft")
     assert revision.status_code == 200
     assert revision.json()["revision"] == first.json()["new_revision"]
@@ -398,7 +401,7 @@ def test_canonical_merge_commit_is_exact_revisioned_and_idempotent(
     ]
     repair_draft_id = f"{draft['document_id']}-twin-repair"
     store.put_document(repair_draft_id, reviewed_document)
-    original_replace_twins = store.replace_twins_for_origin
+    original_replace_twins = store.base.replace_twins_for_origin
 
     def fail_twin_write(
         asset_id: str, origin: str, notes: list[dict[str, Any]]
@@ -406,7 +409,7 @@ def test_canonical_merge_commit_is_exact_revisioned_and_idempotent(
         del asset_id, origin, notes
         raise OSError("injected canonical twin persistence failure")
 
-    monkeypatch.setattr(store, "replace_twins_for_origin", fail_twin_write)
+    monkeypatch.setattr(store.base, "replace_twins_for_origin", fail_twin_write)
     repair_body = {
         **body,
         "draft_document_id": repair_draft_id,
@@ -419,7 +422,7 @@ def test_canonical_merge_commit_is_exact_revisioned_and_idempotent(
     failed_revision = client.get(
         "/engagement/merge/revision/dlv-twin-repair"
     ).json()["revision"]
-    monkeypatch.setattr(store, "replace_twins_for_origin", original_replace_twins)
+    monkeypatch.setattr(store.base, "replace_twins_for_origin", original_replace_twins)
     repaired_commit = client.post("/engagement/merge/commit", json=repair_body)
     assert repaired_commit.status_code == 200
     assert repaired_commit.json()["new_revision"] == failed_revision
@@ -623,7 +626,7 @@ def test_canonical_merge_commit_rolls_back_after_mid_transaction_failure(
     path, environment, _ = _runtime_files(tmp_path)
     app = create_midnight_oil_production_app(path, environ=environment)
     client = TestClient(app)
-    store = app.state.engagement_store
+    store = authorized_store(app.state.engagement_store, operator_engagement_authority())
     spawn = spawn_from_highlight(
         HighlightSelection(asset_id="atomic-source", selection_text="Atomic claim"),
         store=store,

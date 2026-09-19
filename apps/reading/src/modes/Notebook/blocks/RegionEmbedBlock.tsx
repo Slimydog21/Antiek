@@ -4,12 +4,18 @@ import type { NodeViewProps } from "@tiptap/react";
 import { stringAttr, intAttr } from "./attrHelpers";
 
 import LemonCard from "../../../components/lemon/LemonCard";
-import { openPdfPanel } from "../../../workspace/actions";
+import { openHostedDocumentPanel } from "../../../workspace/actions";
+
+export const REGION_RECAPTURE_COPY = "no caption · open the canonical document to recapture the region";
+
+export function openRegionDocument(documentId: string, page: number | null): string {
+  return openHostedDocumentPanel({ documentId, page: page ?? undefined });
+}
 
 /**
  * Region-embed block — references a PDF region by document_id + page.
  * Renders a placeholder card with an "Open at page" affordance that
- * opens the PdfViewer as a floating panel jumped to the page.
+ * opens canonical hosted HTML while preserving the source page as provenance.
  */
 function RegionEmbedNodeView({ node, deleteNode }: NodeViewProps) {
   const documentId = (node.attrs.document_id as string | null) ?? null;
@@ -31,7 +37,7 @@ function RegionEmbedNodeView({ node, deleteNode }: NodeViewProps) {
               {documentId && (
                 <button
                   type="button"
-                  onClick={() => openPdfPanel({ documentId, page: page ?? undefined })}
+                  onClick={() => openRegionDocument(documentId, page)}
                   className="text-[11px] text-sun-deep dark:text-sun hover:underline"
                 >
                   Open at page
@@ -55,7 +61,7 @@ function RegionEmbedNodeView({ node, deleteNode }: NodeViewProps) {
           </p>
         ) : (
           <p className="font-mono text-[12px] text-ink-mute dark:text-moonlight italic">
-            no caption · open the PDF to recapture the region
+            {REGION_RECAPTURE_COPY}
           </p>
         )}
       </LemonCard>

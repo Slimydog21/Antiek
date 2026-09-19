@@ -69,6 +69,7 @@ import {
   buildResearchContextWriteHref,
 } from "../../workspace/twinWriteSeed";
 import { openWindow } from "../windows/openWindow";
+import { openHostedDocumentPanel } from "../../workspace/actions";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 /** Pure twin-kind metrics for recursive note-taker substrate (residual ff). */
@@ -593,6 +594,7 @@ export function ResearchContextPanel({
           <p className="counts">
             twins={pack.twin_count ?? pack.twin_units?.length ?? 0} · refs=
             {pack.ref_count ?? pack.source_references?.length ?? 0}
+            {` · citations=${pack.citation_evidence_count ?? pack.citation_evidence?.length ?? 0}`}
             {pack.research_tier ? ` · tier=${pack.research_tier}` : ""}
           </p>
           {/* Residual (ff/arr): recursive note-taker metrics + substrate readiness. */}
@@ -663,6 +665,33 @@ export function ResearchContextPanel({
               </li>
             ))}
           </ul>
+          {(pack.citation_evidence ?? []).length > 0 ? (
+            <ul
+              className="citations"
+              data-testid="research-context-citation-evidence"
+              data-citation-count={String(pack.citation_evidence_count ?? pack.citation_evidence?.length ?? 0)}
+            >
+              {(pack.citation_evidence ?? []).map((item) => (
+                <li key={item.receipt_sha256}>
+                  <strong>[validated citation]</strong> document {item.document_id} · claim {item.claim_id} · {item.chunk_ids.length} chunk{item.chunk_ids.length === 1 ? "" : "s"} · receipt {item.receipt_sha256.slice(0, 12)}
+                  {" "}
+                  <button
+                    type="button"
+                    data-testid={`research-context-open-citation-${item.receipt_sha256}`}
+                    data-document-id={item.document_id}
+                    onClick={() => openHostedDocumentPanel({
+                      documentId: item.document_id,
+                      chunkIds: item.chunk_ids,
+                      citationReceiptSha256: item.receipt_sha256,
+                      title: `Citation · claim ${item.claim_id}`,
+                    })}
+                  >
+                    Open evidence
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <pre className="prompt-block" data-testid="prompt-block">
             {pack.prompt_block}
           </pre>

@@ -73,6 +73,7 @@ export interface StartInvestigationState {
     spawnContext?: string;
     /** SPR-01 M3: curated fast/deep tier from the research entry. */
     researchTier?: ResearchTier;
+    approvedRunCeilingUsd: number;
   }) => Promise<string | null>;
   /** Reset back to idle (e.g. after the caller has navigated away). */
   reset: () => void;
@@ -138,6 +139,7 @@ export function useStartInvestigation(): StartInvestigationState {
       parentInvestigationId?: string;
       spawnContext?: string;
       researchTier?: ResearchTier;
+      approvedRunCeilingUsd: number;
     }): Promise<string | null> => {
       const q = input.question.trim();
       if (!q || q.length < 3) {
@@ -153,6 +155,7 @@ export function useStartInvestigation(): StartInvestigationState {
           spawn_context: input.spawnContext,
           // Omitted when undefined → server defaults to "deep".
           research_tier: input.researchTier,
+          approved_run_ceiling_usd: input.approvedRunCeilingUsd,
         });
         setStartedId(resp.investigation_id);
         return resp.investigation_id;

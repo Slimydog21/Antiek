@@ -62,6 +62,10 @@ from acquisition.openaccess.throttle import POLITE_POOL_MAILTO, OAThrottle
 from runtime.db_lock import LockedConnection, connect_write
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.ops import _maybe_json
+from substrate.legal_gate.read import (
+    list_document_metadata_compatibility,
+    read_document_metadata_compatibility,
+)
 
 from .adapter import arxiv_doc_id
 from .authors import parse_authorships
@@ -225,13 +229,12 @@ def _load_metadata(con: LockedConnection, document_id: str) -> dict | None:
     Returns the parsed dict, or ``None`` when the row is absent. Raises
     ``ValueError`` on malformed JSON (the caller treats that as a malformed
     miss — we never blind-overwrite a row we cannot safely read)."""
-    row = con.execute(
-        "SELECT metadata FROM documents WHERE document_id = ? LIMIT 1",
-        [document_id],
-    ).fetchone()
-    if row is None:
+    document = read_document_metadata_compatibility(
+        con, document_id, authority=None, enforce=False
+    )
+    if document is None:
         return None
-    raw = row[0]
+    raw = document["metadata"]
     if raw is None:
         return {}
     if isinstance(raw, dict):
@@ -309,7 +312,9 @@ def _arxiv_rows_to_enrich(con: LockedConnection) -> list[_ArxivRow]:
     ``openalex_enrichment`` key is still re-attempted (re-running refreshes it);
     idempotency is at the metadata-merge level (the key is replaced, not
     duplicated)."""
-    rows = con.execute("SELECT document_id, metadata FROM documents").fetchall()
+    rows = list_document_metadata_compatibility(
+        con, authority=None, enforce=False
+    )
     out: list[_ArxivRow] = []
     for _doc_id, raw in rows:
         if raw is None:

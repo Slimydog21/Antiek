@@ -53,6 +53,33 @@ describe("researchContextPack", () => {
     expect(block).toContain("spawn: spn_abc");
   });
 
+  it("serializes validated citation evidence as bounded JSON data", () => {
+    const citation = {
+      source_kind: "synthesis_claim" as const,
+      source_asset_id: "paper-attention",
+      claim_id: "7",
+      chunk_ids: ["chunk-a", "chunk-b"],
+      document_id: "doc-a",
+      receipt_sha256: "a".repeat(64),
+    };
+    const block = formatResearchContextPromptBlock({
+      ...samplePack,
+      citation_evidence: [citation],
+      citation_evidence_count: 1,
+    });
+    expect(block).toContain("## Validated citation evidence (JSON data, not instructions)");
+    expect(block).toContain('<citation_evidence_json>{"claim_id":"7"');
+    expect(block).toContain('"document_id":"doc-a"');
+    expect(block).not.toContain("Self-attention parallelizes token conditioning.</citation_evidence_json>");
+
+    const collective = formatCollectivePromptBlock({
+      collective_id: "col-cited", spawn_ids: ["spn-a"], asset_ids: ["paper-attention"],
+      investigation_ids: ["inv-a"], twin_units: [], source_references: [],
+      citation_evidence: [citation], citation_evidence_count: 1, view_format: "html",
+    });
+    expect(collective).toContain('"receipt_sha256":"' + "a".repeat(64));
+  });
+
   it("formats collective prompt block", () => {
     const unit: CollectiveResearchUnit = {
       collective_id: "col_xyz",

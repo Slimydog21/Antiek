@@ -19,6 +19,7 @@ from substrate.engagement_spine import (
     record_twin_question,
     spawn_from_highlight,
 )
+from substrate.engagement_spine.authority import EngagementAuthority, owner_qualified_id
 from substrate.engagement_spine.store import EngagementStore
 
 from .store import SessionStore
@@ -40,12 +41,19 @@ class FloatingSession:
     status: str = "reserved"  # mirrors spawn status when known
     # Residual (ji): closed research tier mirrored from spawn reservation.
     research_tier: str = DEFAULT_RESEARCH_TIER
+    citation_provenance: dict[str, Any] | None = None
+    claim_challenge: dict[str, Any] | None = None
 
 
-def _session_id(parent_asset_id: str, spawn_id: str) -> str:
-    digest = hashlib.sha256(f"fsess:v1:{parent_asset_id}:{spawn_id}".encode()).hexdigest()[
-        :16
-    ]
+def _session_id(
+    parent_asset_id: str,
+    spawn_id: str,
+    *,
+    authority: EngagementAuthority | None = None,
+) -> str:
+    if authority is not None:
+        return owner_qualified_id(authority, "fsess", parent_asset_id, spawn_id)
+    digest = hashlib.sha256(f"fsess:v1:{parent_asset_id}:{spawn_id}".encode()).hexdigest()[:16]
     return f"fsess_{digest}"
 
 
@@ -62,10 +70,32 @@ def _to_row(session: FloatingSession) -> dict[str, Any]:
         "goal": session.goal,
         "status": session.status,
         "research_tier": normalize_research_tier(session.research_tier),
+        "citation_provenance": dict(session.citation_provenance) if session.citation_provenance else None,
+        "claim_challenge": dict(session.claim_challenge) if session.claim_challenge else None,
     }
 
 
 def _from_row(row: dict[str, Any]) -> FloatingSession:
+    from substrate.research_artifact.claim_challenge import (
+        parse_claim_challenge_receipt,
+        validate_claim_challenge_transport,
+    )
+
+    challenge = parse_claim_challenge_receipt(
+        row.get("claim_challenge"),
+        expected_owner_account_digest=row.get("owner_account_digest"),
+    )
+    if challenge is not None and challenge.schema_version == 3:
+        validate_claim_challenge_transport(
+            challenge,
+            goal=row.get("goal"),
+            selection_text=row.get("selection_text"),
+            source_asset_id=row.get("parent_asset_id"),
+            model_id=row.get("model_id"),
+            research_tier=row.get("research_tier"),
+            view_mode=row.get("view_mode"),
+            validate_view_mode=True,
+        )
     return FloatingSession(
         session_id=row["session_id"],
         parent_asset_id=row["parent_asset_id"],
@@ -78,6 +108,8 @@ def _from_row(row: dict[str, Any]) -> FloatingSession:
         goal=row.get("goal") or "",
         status=row.get("status") or "reserved",
         research_tier=normalize_research_tier(row.get("research_tier")),
+        citation_provenance=(dict(row["citation_provenance"]) if isinstance(row.get("citation_provenance"), dict) else None),
+        claim_challenge=challenge.model_dump(mode="json") if challenge else None,
     )
 
 
@@ -108,7 +140,11 @@ def open_from_highlight(
         force_new=force_new,
         research_tier=research_tier,
     )
-    sid = _session_id(spawn.parent_asset_id, spawn.spawn_id)
+    sid = _session_id(
+        spawn.parent_asset_id,
+        spawn.spawn_id,
+        authority=getattr(engagement_store, "authority", None),
+    )
 
     # Idempotent session for same spawn
     existing = session_store.get_session(sid)
@@ -127,6 +163,8 @@ def open_from_highlight(
         goal=spawn.goal,
         status=spawn.status,
         research_tier=spawn.research_tier,
+        citation_provenance=(dict(spawn.citation_provenance) if spawn.citation_provenance else None),
+        claim_challenge=(dict(spawn.claim_challenge) if spawn.claim_challenge else None),
     )
     session_store.put_session(_to_row(session))
     return session
@@ -260,8 +298,7 @@ def merge_sessions(
             raise KeyError(f"unknown session_id: {sid}")
         if row.get("parent_asset_id") != parent_asset_id:
             raise ValueError(
-                f"session {sid} parent is {row.get('parent_asset_id')}, "
-                f"not {parent_asset_id}"
+                f"session {sid} parent is {row.get('parent_asset_id')}, not {parent_asset_id}"
             )
         spawn_ids.append(str(row["spawn_id"]))
 

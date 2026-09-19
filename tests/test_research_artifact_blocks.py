@@ -9,6 +9,7 @@ import pytest
 
 from substrate.graph import ensure_initialized
 from substrate.graph.insight_question import promote_insight, promote_question
+from substrate.research_artifact.authority import operator_authority
 from substrate.research_artifact.blocks import list_outline_blocks
 
 
@@ -28,7 +29,10 @@ def test_blocks_match_distill_count(blocks_env):
     promote_insight(text="I1", investigation_id="inv-b", source_document_id="d")
     promote_question(text="Q1", investigation_id="inv-b", source_document_id="d")
     blocks = list_outline_blocks(
-        "inv-b", db_path=blocks_env["db"], events_dir=blocks_env["events"]
+        "inv-b",
+        authority=operator_authority("inv-b"),
+        db_path=blocks_env["db"],
+        events_dir=blocks_env["events"],
     )
     assert len(blocks) == 2
     kinds = {b.kind for b in blocks}

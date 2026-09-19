@@ -12,6 +12,7 @@ export type TwinSeedLiveGateReadiness = {
   live_env: boolean;
   use_dispatch: boolean;
   injector_installed: boolean;
+  cost_projection_ready: boolean;
   server_offline_honest: boolean;
   live_env_flag: string;
   use_dispatch_env_flag: string;
@@ -32,6 +33,7 @@ export function twinSeedLiveGateReadiness(opts: {
   live_env?: boolean | null;
   use_dispatch?: boolean | null;
   injector_installed?: boolean | null;
+  cost_projection_ready?: boolean | null;
   offline_honest?: boolean | null;
   live_env_flag?: string | null;
   use_dispatch_env_flag?: string | null;
@@ -39,6 +41,7 @@ export function twinSeedLiveGateReadiness(opts: {
   const live_env = opts.live_env === true;
   const use_dispatch = opts.use_dispatch === true;
   const injector_installed = opts.injector_installed === true;
+  const cost_projection_ready = opts.cost_projection_ready === true;
   const server_offline_honest = opts.offline_honest !== false;
   // When status is null/unknown, treat offline_honest as true (safe default).
   const offline_honest_input =
@@ -48,6 +51,7 @@ export function twinSeedLiveGateReadiness(opts: {
     live_env &&
     use_dispatch &&
     injector_installed &&
+    cost_projection_ready &&
     offline_honest_input === false;
 
   const offline_honest = !live_ready;
@@ -68,6 +72,7 @@ export function twinSeedLiveGateReadiness(opts: {
     if (!live_env) missing.push("live_env");
     if (!use_dispatch) missing.push("use_dispatch");
     if (!injector_installed) missing.push("injector");
+    if (!cost_projection_ready) missing.push("cost_projection");
     if (offline_honest_input) missing.push("still_offline_honest");
     summary = `L3 twin seed deferred · offline-honest · missing=${missing.join(",") || "unknown"} · never enables live from Settings`;
   }
@@ -76,6 +81,7 @@ export function twinSeedLiveGateReadiness(opts: {
     live_env,
     use_dispatch,
     injector_installed,
+    cost_projection_ready,
     server_offline_honest,
     live_env_flag,
     use_dispatch_env_flag,

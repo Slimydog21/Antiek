@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -32,11 +33,28 @@ sys.path.insert(0, os.path.dirname(_HERE))
 from interfaces.research.api import EventBroadcaster, create_app  # noqa: E402
 from processing.embedding import _reset_default_provider  # noqa: E402
 from substrate.dispatch import (  # noqa: E402
+    TierConfig,
+    TierPricing,
     register_provider,
     reset_provider_registry,
 )
-from substrate.event_log import emit_typed, trajectory  # noqa: E402
-from substrate.schemas import ActionType  # noqa: E402
+from substrate.event_log import emit_typed, trajectory, trajectory_authorized  # noqa: E402
+from substrate.investigation_tenancy import (  # noqa: E402
+    InvestigationAuthority,
+    bind_legacy_stream_lease,
+)
+from substrate.multi_user.auth import operator_claims  # noqa: E402
+from substrate.schemas import ActionType, QuestionIdentifiedPayload  # noqa: E402
+from tests.research_quote_support import (  # noqa: E402
+    async_signed_body,
+    configure_research_quote_authority,
+)
+
+
+def _authorized_trajectory(investigation_id: str):
+    return trajectory_authorized(
+        InvestigationAuthority(operator_claims().user_id, investigation_id)
+    )
 
 # Reuse the stub provider + canned responses from the orchestrator
 # end-to-end test — same shape applies here.
@@ -53,6 +71,10 @@ from tests.test_loop_one_orchestrator import (  # noqa: E402
 )
 
 
+def _bind_operator(investigation_id: str) -> None:
+    bind_legacy_stream_lease(InvestigationAuthority("__operator__", investigation_id))
+
+
 @pytest.fixture(autouse=True)
 def _isolate_state(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
@@ -61,6 +83,7 @@ def _isolate_state(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_PHASE_LOG_DIR", str(tmp_path / "phase_logs"))
     monkeypatch.setenv("ANTIEK_RESEARCH_DIR", str(tmp_path / "research"))
     monkeypatch.setenv("ANTIEK_KNOWLEDGE_SKILLS_DIR", str(tmp_path / "skills"))
+    configure_research_quote_authority(monkeypatch, tmp_path)
     quantum_dir = tmp_path / "skills" / "quantum-computing-knowledge"
     quantum_dir.mkdir(parents=True)
     (quantum_dir / "SKILL.md").write_text(
@@ -94,6 +117,44 @@ async def async_client(app_and_bus):
         yield ac
 
 
+async def _post_signed(client, payload):
+    return await client.post(
+        "/investigations",
+        json=await async_signed_body(client, "/investigations/quote", payload),
+    )
+
+
+def _priced_config(config):
+    pricing = TierPricing(
+        input_per_mtok=1.0,
+        output_per_mtok=2.0,
+        cached_input_per_mtok=0.1,
+        currency="USD",
+        billing_unit="per_million_tokens",
+        source_url="https://provider.example/pricing",
+        verified_at="2026-01-01T00:00:00Z",
+        expires_at="2099-01-01T00:00:00Z",
+    )
+
+    def price(route: TierConfig | None):
+        if route is None:
+            return None
+        return replace(route, pricing=pricing, fallback=price(route.fallback))
+
+    return replace(
+        config,
+        tiers={name: price(route) for name, route in config.tiers.items()},
+    )
+
+
+class _IdempotentRoleStub(_RoleStubProvider):
+    idempotency_guaranteed = True
+
+    def call_idempotent(self, *, idempotency_key, **kwargs):
+        assert idempotency_key.startswith("antiek-research-v1-")
+        return self.call(**kwargs)
+
+
 # ---------------------------------------------------------------------------
 # 1-3. POST shape
 # ---------------------------------------------------------------------------
@@ -101,12 +162,13 @@ async def async_client(app_and_bus):
 
 @pytest.mark.asyncio
 async def test_post_explicit_id_returns_handle(async_client):
-    r = await async_client.post(
-        "/investigations",
-        json={
+    r = await _post_signed(
+        async_client,
+        {
             "question": "Will TSMC dominate N2 yield by 2027?",
             "topic_slug": "tsmc-n2",
             "investigation_id": "inv-explicit",
+            "approved_run_ceiling_usd": 1.0,
         },
     )
     assert r.status_code == 202, r.text
@@ -118,9 +180,9 @@ async def test_post_explicit_id_returns_handle(async_client):
 
 @pytest.mark.asyncio
 async def test_post_auto_generates_id(async_client):
-    r = await async_client.post(
-        "/investigations",
-        json={"question": "Will TSMC dominate N2 by 2027?"},
+    r = await _post_signed(
+        async_client,
+        {"question": "Will TSMC dominate N2 by 2027?", "approved_run_ceiling_usd": 1.0},
     )
     assert r.status_code == 202
     body = r.json()
@@ -138,21 +200,78 @@ async def test_post_validates_question_length(async_client):
 
 @pytest.mark.asyncio
 async def test_post_emits_typed_start_event_into_trajectory(async_client):
-    r = await async_client.post(
-        "/investigations",
-        json={
+    r = await _post_signed(
+        async_client,
+        {
             "question": "What's the load-bearing constraint on X?",
             "investigation_id": "inv-evt",
+            "approved_run_ceiling_usd": 1.0,
         },
     )
     assert r.status_code == 202
-    rows = trajectory("inv-evt")
+    rows = _authorized_trajectory("inv-evt")
     start_rows = [
         x for x in rows
         if x["action_type"] == ActionType.INVESTIGATION_START_REQUESTED.value
     ]
     assert len(start_rows) == 1
     assert start_rows[0]["role"] == "operator"
+    assert start_rows[0]["payload"]["approved_run_ceiling_usd"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_post_requires_explicit_initial_run_ceiling_before_start(async_client):
+    r = await async_client.post(
+        "/investigations",
+        json={"question": "No implicit paid-call authority"},
+    )
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_parked_question_launch_requires_and_persists_initial_run_ceiling(
+    async_client,
+):
+    source_id = "inv-parked-source"
+    _bind_operator(source_id)
+    emit_typed(
+        source_id,
+        QuestionIdentifiedPayload(
+            question_id="q-parked-ceiling",
+            question_text="Which evidence should this parked question chase?",
+        ),
+        role="operator",
+        policy_id="operator/test",
+        document_id="doc-parked-source",
+    )
+
+    denied = await async_client.post(
+        "/watch-for-later/q-parked-ceiling/launch",
+        json={},
+    )
+    assert denied.status_code == 422
+
+    launched = await async_client.post(
+        "/watch-for-later/q-parked-ceiling/launch",
+        json=await async_signed_body(
+            async_client,
+            "/watch-for-later/q-parked-ceiling/launch/quote",
+            {"approved_run_ceiling_usd": 1.25},
+        ),
+    )
+    assert launched.status_code == 202, launched.text
+    child_id = launched.json()["investigation_id"]
+    starts = [
+        row
+        for row in _authorized_trajectory(child_id)
+        if row["action_type"] == ActionType.INVESTIGATION_START_REQUESTED.value
+    ]
+    assert len(starts) == 1
+    assert starts[0]["payload"]["approved_run_ceiling_usd"] == 1.25
+    assert starts[0]["payload"]["research_quote_id"]
+    assert starts[0]["payload"]["research_route_manifest"][0]["provider"] == (
+        "provider-test"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -163,10 +282,8 @@ async def test_post_emits_typed_start_event_into_trajectory(async_client):
 @pytest.mark.asyncio
 async def test_get_not_found_when_no_events(async_client):
     r = await async_client.get("/investigations/inv-missing")
-    assert r.status_code == 200
-    body = r.json()
-    assert body["status"] == "not_found"
-    assert body["investigation_id"] == "inv-missing"
+    assert r.status_code == 404
+    assert r.json()["detail"] == "investigation not found"
 
 
 @pytest.mark.asyncio
@@ -177,6 +294,7 @@ async def test_get_in_progress_for_started_but_unfinished(async_client):
     # chance to run; assert the GET correctly captures phase 1 fail
     # OR in_progress depending on timing.
     from substrate.schemas import InvestigationStartRequestedPayload
+    _bind_operator("inv-prog")
     emit_typed(
         "inv-prog",
         InvestigationStartRequestedPayload(
@@ -198,6 +316,7 @@ async def test_get_completed_after_terminal_event(async_client):
         InvestigationCompletedPayload,
         InvestigationStartRequestedPayload,
     )
+    _bind_operator("inv-done")
     emit_typed(
         "inv-done",
         InvestigationStartRequestedPayload(
@@ -243,6 +362,7 @@ async def test_get_surfaces_persisted_rubric_score_with_subscores(async_client):
     from middleware.outcomes import emit_rubric_scored
     from substrate.schemas import InvestigationStartRequestedPayload
 
+    _bind_operator("inv-rubric")
     emit_typed(
         "inv-rubric",
         InvestigationStartRequestedPayload(
@@ -282,6 +402,7 @@ async def test_get_rubric_score_null_subscores_for_freeform_note(async_client):
     from middleware.outcomes import emit_rubric_scored
     from substrate.schemas import InvestigationStartRequestedPayload
 
+    _bind_operator("inv-rubric-floor")
     emit_typed(
         "inv-rubric-floor",
         InvestigationStartRequestedPayload(
@@ -317,6 +438,7 @@ async def test_get_failed_after_failed_event(async_client):
         InvestigationFailedPayload,
         InvestigationStartRequestedPayload,
     )
+    _bind_operator("inv-fail")
     emit_typed(
         "inv-fail",
         InvestigationStartRequestedPayload(
@@ -372,7 +494,7 @@ async def test_end_to_end_post_drives_orchestrator(
         ),
     )
 
-    register_provider(_RoleStubProvider({
+    register_provider(_IdempotentRoleStub({
         "decomposer": _DECOMPOSER_RESPONSE,
         "evidence_retriever": _evidence_response_for("(any sub-question)"),
         "parameter_extractor": _PARAMETER_EXTRACTOR_RESPONSE,
@@ -380,15 +502,16 @@ async def test_end_to_end_post_drives_orchestrator(
         "synthesizer": _SYNTHESIZER_RESPONSE,
         "knowledge_extractor": _KNOWLEDGE_EXTRACTION_RESPONSE,
     }))
-    _patch_dispatch(monkeypatch, _all_role_config())
+    _patch_dispatch(monkeypatch, _priced_config(_all_role_config()))
 
-    post_resp = await async_client.post(
-        "/investigations",
-        json={
+    post_resp = await _post_signed(
+        async_client,
+        {
             "question": "Is PsiQuantum's photonic quantum roadmap defensible?",
             "topic_slug": "psi-quantum-via-rest",
             "max_sub_questions": 4,
             "investigation_id": "inv-rest-e2e",
+            "approved_run_ceiling_usd": 1.0,
         },
     )
     assert post_resp.status_code == 202
@@ -421,16 +544,17 @@ async def test_post_records_research_tier_on_start_event(async_client):
     """The fast/deep tier the operator chose rides on the start payload and
     is persisted on the INVESTIGATION_START_REQUESTED event — the M3
     'recorded on the investigation' acceptance."""
-    r = await async_client.post(
-        "/investigations",
-        json={
+    r = await _post_signed(
+        async_client,
+        {
             "question": "Does the moat compound with more dispatches?",
             "investigation_id": "inv-tier-fast",
             "research_tier": "fast",
+            "approved_run_ceiling_usd": 1.0,
         },
     )
     assert r.status_code == 202, r.text
-    rows = trajectory("inv-tier-fast")
+    rows = _authorized_trajectory("inv-tier-fast")
     start = [
         x for x in rows
         if x["action_type"] == ActionType.INVESTIGATION_START_REQUESTED.value
@@ -451,16 +575,17 @@ async def test_post_wrestle_records_start_event_and_bench_usage(async_client):
     reset_bench_usage_store()
     store = get_bench_usage_store(create_if_missing=True)
     before = len(list_usage_events(store=store))
-    r = await async_client.post(
-        "/investigations",
-        json={
+    r = await _post_signed(
+        async_client,
+        {
             "question": "Wrestle multi-hop across the corpus with care.",
             "investigation_id": "inv-tier-wrestle-gx",
             "research_tier": "wrestle",
+            "approved_run_ceiling_usd": 1.0,
         },
     )
     assert r.status_code == 202, r.text
-    rows = trajectory("inv-tier-wrestle-gx")
+    rows = _authorized_trajectory("inv-tier-wrestle-gx")
     start = [
         x
         for x in rows
@@ -506,12 +631,13 @@ def test_record_investigation_start_usage_helper_gx():
 async def test_get_status_surfaces_chosen_research_tier(async_client):
     """GET /investigations/{id} reads the chosen tier back out — queryable
     after the fact, not recomputed."""
-    await async_client.post(
-        "/investigations",
-        json={
+    await _post_signed(
+        async_client,
+        {
             "question": "Trace how this idea evolved across sources.",
             "investigation_id": "inv-tier-deep",
             "research_tier": "deep",
+            "approved_run_ceiling_usd": 1.0,
         },
     )
     r = await async_client.get("/investigations/inv-tier-deep")
@@ -530,11 +656,12 @@ async def test_research_tier_records_none_when_omitted_per_14_4(async_client):
     (normalize_research_tier(None) -> 'deep'); only the recorded/echoed value
     is None. An explicit pick is still recorded + overrides — see
     test_synthesizer_measurement_window_14_4.py."""
-    await async_client.post(
-        "/investigations",
-        json={
+    await _post_signed(
+        async_client,
+        {
             "question": "What is the strongest counter-argument here?",
             "investigation_id": "inv-tier-default",
+            "approved_run_ceiling_usd": 1.0,
         },
     )
     r = await async_client.get("/investigations/inv-tier-default")
@@ -556,6 +683,7 @@ async def test_legacy_investigation_without_tier_reads_null(async_client):
     disk. The GET must then read research_tier back as None."""
     from substrate.event_log import log_event
 
+    _bind_operator("inv-legacy")
     # Raw start payload with NO research_tier key — the pre-field shape.
     # (matches InvestigationStartRequestedPayload minus the field that
     #  didn't exist yet; the discriminator action_type is still present so
@@ -608,12 +736,13 @@ async def test_no_provider_surfaces_terminal_failure_not_hang(
     # Deliberately register NOTHING — this is the keys-absent posture.
     reset_provider_registry()
 
-    post_resp = await async_client.post(
-        "/investigations",
-        json={
+    post_resp = await _post_signed(
+        async_client,
+        {
             "question": "Will the Ask button do anything without a provider?",
             "investigation_id": "inv-no-provider",
             "max_sub_questions": 2,
+            "approved_run_ceiling_usd": 1.0,
         },
     )
     assert post_resp.status_code == 202

@@ -189,13 +189,14 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
   // escalation id when the question escalated — launch INTO it (no
   // orphan), else mint fresh. One launch path either way.
   const onChaseQuestion = useCallback(
-    (q: { text: string; reserved_child_investigation_id?: string | null }) => {
+    (q: { node_id?: string; text: string; reserved_child_investigation_id?: string | null }) => {
       openPanel(
         "ChaseThread",
         {
           spawnContext: q.text,
           parentInvestigationId: investigationId,
           reservedChildId: q.reserved_child_investigation_id ?? null,
+          reservedQuestionId: q.reserved_child_investigation_id ? q.node_id ?? null : null,
         },
         { mode: "floating", title: "Follow this" },
       );
@@ -377,6 +378,7 @@ function CenterContent({
 }: {
   investigation: InvestigationState;
   onChaseQuestion: (q: {
+    node_id?: string;
     text: string;
     reserved_child_investigation_id?: string | null;
   }) => void;

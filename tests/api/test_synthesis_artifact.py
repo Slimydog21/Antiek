@@ -41,7 +41,18 @@ PERSONAL = SourceRef(
 
 
 def _client() -> TestClient:
+    from substrate.multi_user.auth import operator_claims
+
     app = FastAPI()
+
+    @app.middleware("http")
+    async def _test_identity(request, call_next):
+        claims = operator_claims()
+        request.state.user_claims = claims
+        request.state.user_id = claims.user_id
+        request.state.scopes = claims.scopes
+        return await call_next(request)
+
     mod.register_synthesis_artifact_routes(app)
     return TestClient(app)
 
@@ -129,9 +140,7 @@ def test_resolver_takedown_override_never_embeds_chunk_text(tmp_path):
     db_path = _insert_synthesis_fixture(tmp_path, _delivered_thesis(chunk_ids=["chunk-cited"]))
     con = duckdb.connect(db_path)
     try:
-        con.execute(
-            "INSERT INTO book_assets (document_id, taken_down) VALUES ('doc-cited', TRUE)"
-        )
+        con.execute("INSERT INTO book_assets (document_id, taken_down) VALUES ('doc-cited', TRUE)")
     finally:
         con.close()
 
@@ -181,9 +190,7 @@ def test_resolver_malformed_thesis_never_inherits_manifest_sources(tmp_path):
 
     assert export is not None
     assert export.claims == []
-    assert export.provenance_warnings == [
-        "Archived synthesis payload could not be validated."
-    ]
+    assert export.provenance_warnings == ["Archived synthesis payload could not be validated."]
     assert mod.adapt_synthesis(export)["metadata"]["provenance"]["complete"] is False
 
 
@@ -325,10 +332,8 @@ def test_resolver_empty_component_claim_adds_warning(tmp_path):
 
 
 def test_allowed_synthesis_200_gate_clean(monkeypatch):
-    exp = SynthesisExport(
-        synthesis_id="s1", target_question="Q?", claims=[Claim("A", [SERVABLE])]
-    )
-    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    exp = SynthesisExport(synthesis_id="s1", target_question="Q?", claims=[Claim("A", [SERVABLE])])
+    monkeypatch.setattr(mod, "resolve_synthesis_export_for_account", lambda sid, account_id, **kw: exp)
     r = _client().get("/api/syntheses/s1/artifact.html")
     assert r.status_code == 200
     assert "attachment" in r.headers["content-disposition"]
@@ -344,7 +349,7 @@ def test_restricted_synthesis_403_with_reason(monkeypatch):
         restricted=True,
         restriction_reason="owner withheld this synthesis",
     )
-    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    monkeypatch.setattr(mod, "resolve_synthesis_export_for_account", lambda sid, account_id, **kw: exp)
     r = _client().get("/api/syntheses/s2/artifact.html")
     assert r.status_code == 403
     body = r.json()
@@ -358,7 +363,7 @@ def test_mixed_rights_cite_only_marked(monkeypatch):
         target_question="Q?",
         claims=[Claim("A", [SERVABLE, PERSONAL])],
     )
-    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    monkeypatch.setattr(mod, "resolve_synthesis_export_for_account", lambda sid, account_id, **kw: exp)
     r = _client().get("/api/syntheses/s3/artifact.html")
     assert r.status_code == 200
     assert "PUBLIC DOMAIN TEXT" in r.text  # servable embedded
@@ -367,18 +372,37 @@ def test_mixed_rights_cite_only_marked(monkeypatch):
 
 
 def test_not_found_404(monkeypatch):
-    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: None)
+    monkeypatch.setattr(mod, "resolve_synthesis_export_for_account", lambda sid, account_id, **kw: None)
     r = _client().get("/api/syntheses/nope/artifact.html")
     assert r.status_code == 404
+
+
+def test_scalar_user_alias_cannot_override_validated_claims(monkeypatch):
+    from substrate.multi_user.auth import operator_claims
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _mismatched_identity(request, call_next):
+        claims = operator_claims()
+        request.state.user_claims = claims
+        request.state.user_id = "mallory"
+        request.state.scopes = claims.scopes
+        return await call_next(request)
+
+    monkeypatch.setattr(
+        mod, "resolve_synthesis_export_for_account", lambda *args, **kwargs: None
+    )
+    mod.register_synthesis_artifact_routes(app)
+    response = TestClient(app).get("/api/syntheses/opaque/artifact.html")
+    assert response.status_code == 401
 
 
 def test_poisoned_render_is_refused(monkeypatch):
     # Prove the gate is wired in the route, not decorative: a render that
     # emits a script must be refused (500), never served as a 200.
-    exp = SynthesisExport(
-        synthesis_id="s4", target_question="Q?", claims=[Claim("A", [SERVABLE])]
-    )
-    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    exp = SynthesisExport(synthesis_id="s4", target_question="Q?", claims=[Claim("A", [SERVABLE])])
+    monkeypatch.setattr(mod, "resolve_synthesis_export_for_account", lambda sid, account_id, **kw: exp)
     monkeypatch.setattr(
         mod,
         "render",
@@ -396,7 +420,7 @@ def test_export_antiek_format_is_a_valid_signed_container(monkeypatch, tmp_path)
     from services.antiek_format import read_antiek
 
     exp = SynthesisExport(synthesis_id="s10", target_question="Q?", claims=[Claim("A", [SERVABLE])])
-    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    monkeypatch.setattr(mod, "resolve_synthesis_export_for_account", lambda sid, account_id, **kw: exp)
     monkeypatch.setattr(mod, "_resolve_db_path", lambda: str(tmp_path / "graph.duckdb"))
     r = _client().get("/api/syntheses/s10/artifact?format=antiek")
     assert r.status_code == 200
@@ -409,7 +433,7 @@ def test_export_antiek_html_verifies(monkeypatch, tmp_path):
     from services.antiek_format.single_file import verify_single_file_html
 
     exp = SynthesisExport(synthesis_id="s11", target_question="Q?", claims=[Claim("A", [SERVABLE])])
-    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    monkeypatch.setattr(mod, "resolve_synthesis_export_for_account", lambda sid, account_id, **kw: exp)
     monkeypatch.setattr(mod, "_resolve_db_path", lambda: str(tmp_path / "g.duckdb"))
     r = _client().get("/api/syntheses/s11/artifact?format=antiek_html")
     assert r.status_code == 200
@@ -419,14 +443,14 @@ def test_export_antiek_html_verifies(monkeypatch, tmp_path):
 
 def test_export_default_html_via_routing_route(monkeypatch):
     exp = SynthesisExport(synthesis_id="s12", target_question="Q?", claims=[Claim("A", [SERVABLE])])
-    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    monkeypatch.setattr(mod, "resolve_synthesis_export_for_account", lambda sid, account_id, **kw: exp)
     r = _client().get("/api/syntheses/s12/artifact?format=html")
     assert r.status_code == 200 and "PUBLIC DOMAIN TEXT" in r.text
 
 
 def test_export_unknown_format_is_400(monkeypatch):
     exp = SynthesisExport(synthesis_id="s13", target_question="Q?")
-    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    monkeypatch.setattr(mod, "resolve_synthesis_export_for_account", lambda sid, account_id, **kw: exp)
     assert _client().get("/api/syntheses/s13/artifact?format=pdf").status_code == 400
 
 
@@ -434,7 +458,7 @@ def test_export_restricted_is_403_for_any_format(monkeypatch, tmp_path):
     exp = SynthesisExport(
         synthesis_id="s14", target_question="Q?", restricted=True, restriction_reason="withheld"
     )
-    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    monkeypatch.setattr(mod, "resolve_synthesis_export_for_account", lambda sid, account_id, **kw: exp)
     monkeypatch.setattr(mod, "_resolve_db_path", lambda: str(tmp_path / "g.duckdb"))
     assert _client().get("/api/syntheses/s14/artifact?format=antiek").status_code == 403
 
@@ -443,7 +467,7 @@ def test_antiek_export_does_not_leak_personal_reading(monkeypatch, tmp_path):
     # The rights filter must hold through the .antiek container path: the
     # secret passage must not be in the signed container bytes.
     exp = SynthesisExport(synthesis_id="s15", target_question="Q?", claims=[Claim("A", [PERSONAL])])
-    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    monkeypatch.setattr(mod, "resolve_synthesis_export_for_account", lambda sid, account_id, **kw: exp)
     monkeypatch.setattr(mod, "_resolve_db_path", lambda: str(tmp_path / "g.duckdb"))
     r = _client().get("/api/syntheses/s15/artifact?format=antiek")
     assert r.status_code == 200

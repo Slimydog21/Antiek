@@ -43,6 +43,7 @@ def test_groundedness_faithful_claim_scores_high():
     verdict = score_claim(_FAITHFUL_CLAIM, [_CHUNK], cited_chunk_ids=["c1"])
     assert verdict.score >= DEFAULT_SUPPORTED_THRESHOLD, verdict
     assert verdict.supported is True
+    assert verdict.relation == "entailed"
     assert verdict.cited_chunk_ids == ["c1"]
 
 
@@ -55,6 +56,7 @@ def test_groundedness_hallucinated_claim_scores_low():
     )
     assert verdict.score < DEFAULT_SUPPORTED_THRESHOLD, verdict
     assert verdict.supported is False
+    assert verdict.relation == "not_established"
 
 
 def test_groundedness_hallucinated_fail_before_pass_after():
@@ -89,6 +91,7 @@ def test_groundedness_no_citation_floors_at_zero():
     verdict = score_claim(_FAITHFUL_CLAIM, [], cited_chunk_ids=[])
     assert verdict.score == 0.0
     assert verdict.supported is False
+    assert verdict.relation == "not_established"
 
 
 def test_groundedness_lexical_is_deterministic():

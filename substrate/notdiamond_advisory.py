@@ -36,60 +36,26 @@ def kill_switch_enabled() -> bool:
     return raw not in ("", "0", "false", "off", "no", "disabled")
 
 
-# Offline measured-wedge fallback when no leaderboard run exists yet.
-# Not a live ND cloud recommendation — honest stub until Wave-1 adapter.
-OFFLINE_ADVISORY_SUGGESTION: dict[str, str] = {
-    "suggested_model_id": "stub-strong",
-    "suggested_provider_id": "offline-stub",
-    "suggestion_source": "notdiamond_advisory.offline_fallback",
-}
-
-
 def resolve_advisory_suggestion(
     *,
     store: Any | None = None,
     week_id: str | None = None,
 ) -> dict[str, Any]:
-    """Resolve an *advisory* model suggestion for Settings install (residual br).
+    """Return no ND suggestion until measured ND evidence is joined explicitly.
 
-    Preference order:
-    1. Antiek-bench weekly leaderboard top model when ``store`` + ``week_id`` given
-    2. Offline static fallback (stub-strong)
-
-    Never grants dispatch authority. Never calls NotDiamond HTTP.
+    Antiek-bench is separate comparative evidence, not a substitute NotDiamond
+    recommendation. A static model placeholder must never become installable.
     """
+    _ = store
     suggestion: dict[str, Any] = {
-        "suggested_model_id": OFFLINE_ADVISORY_SUGGESTION["suggested_model_id"],
-        "suggested_provider_id": OFFLINE_ADVISORY_SUGGESTION[
-            "suggested_provider_id"
-        ],
-        "suggestion_source": OFFLINE_ADVISORY_SUGGESTION["suggestion_source"],
+        "suggested_model_id": None,
+        "suggested_provider_id": None,
+        "suggestion_source": "notdiamond_advisory.not_measured",
         "suggestion_week_id": (week_id or "").strip() or None,
+        "measurement_status": "NOT MEASURED",
         "notdiamond_is_dispatch_authority": False,
-        "installable": True,
+        "installable": False,
     }
-    if store is not None and week_id and week_id.strip():
-        try:
-            from substrate.antiek_bench import settings_leaderboard_payload
-
-            lb = settings_leaderboard_payload(
-                week_id.strip(), store=store, include_html=False
-            )
-            mid = lb.get("recommended_model_id")
-            if mid:
-                suggestion["suggested_model_id"] = str(mid)
-                suggestion["suggested_provider_id"] = (
-                    suggestion["suggested_provider_id"] or "offline-stub"
-                )
-                suggestion["suggestion_source"] = (
-                    "antiek_bench.leaderboard.recommended_model_id"
-                )
-                suggestion["recommended_mean_score"] = lb.get(
-                    "recommended_mean_score"
-                )
-        except Exception:
-            # Fall through to offline static suggestion — never fail closed on UI.
-            pass
     return suggestion
 
 
@@ -130,14 +96,15 @@ def notdiamond_advisory_payload(
         "suggested_provider_id": suggestion.get("suggested_provider_id"),
         "suggestion_source": suggestion.get("suggestion_source"),
         "suggestion_week_id": suggestion.get("suggestion_week_id"),
+        "measurement_status": suggestion.get("measurement_status"),
         "recommended_mean_score": suggestion.get("recommended_mean_score"),
         "installable": bool(suggestion.get("installable")),
         "notes": [
             "Advisory GO (measured wedge only) — recommend model/tier; call-site may ignore.",
             "Authority REJECT under §16 — NotDiamond must not own dispatch.",
             "Kill-switch ANTIEK_NOTDIAMOND defaults off; enabling does not grant authority.",
-            "suggested_model_id is advisory for decision-tree install only — never auto-routes.",
-            "Live ND Wave-1 adapter is out of scope; offline/leaderboard suggestion only.",
+            "Missing ND evidence is NOT MEASURED and cannot be installed.",
+            "Antiek-bench is comparative evidence, never relabeled as a NotDiamond suggestion.",
         ],
     }
     if include_html:
@@ -160,6 +127,7 @@ def project_notdiamond_advisory_html(payload: dict[str, Any] | None = None) -> s
         f"{'enabled' if p.get('kill_switch_enabled') else 'off (default)'}",
         f"Suggested model (advisory): {p.get('suggested_model_id') or '—'} "
         f"via {p.get('suggestion_source') or '—'}",
+        f"Measurement status: {p.get('measurement_status') or 'NOT MEASURED'}",
         f"Source: {p.get('source')} ({p.get('verdict_date')})",
         "view: HTML — NotDiamond is not the dispatch authority.",
     ]

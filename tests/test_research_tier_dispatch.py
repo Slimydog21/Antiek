@@ -33,6 +33,7 @@ from substrate.dispatch.research_tier import (  # noqa: E402
     DEFAULT_RESEARCH_TIER,
     RESEARCH_TIERS,
     normalize_research_tier,
+    resolve_available_research_tier,
     resolve_research_tier,
 )
 from substrate.dispatch.router import (  # noqa: E402
@@ -43,8 +44,12 @@ from substrate.dispatch.router import (  # noqa: E402
 )
 
 _ALL_KEYS = (
-    "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
-    "XIAOMI_API_KEY", "HERMES_API_KEY", "OPENAI_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENROUTER_API_KEY",
+    "XIAOMI_API_KEY",
+    "HERMES_API_KEY",
+    "OPENAI_API_KEY",
     "Z_AI_API_KEY",
 )
 
@@ -90,6 +95,21 @@ def test_mimo_registers_only_when_its_key_present(monkeypatch):
     assert get_provider("xiaomi").name == "xiaomi"
 
 
+def test_openai_chat_registers_only_when_its_key_present(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-fake")
+    registered = register_default_providers(quiet=True)
+    assert registered == {"openai_chat"}
+    provider = get_provider("openai_chat")
+    assert provider.base_url + provider.chat_completions_path == (
+        "https://api.openai.com/v1/chat/completions"
+    )
+
+
+def test_openai_chat_does_not_register_for_whitespace_key(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "  \t")
+    assert register_default_providers(quiet=True) == set()
+
+
 def test_both_deep_and_fast_register_together(monkeypatch):
     """The two research-tier providers register side-by-side from their
     own env-read keys."""
@@ -117,7 +137,8 @@ def test_mimo_url_does_not_double_v1(monkeypatch):
 def test_deepseek_base_url_is_env_overridable(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-fake")
     monkeypatch.setenv(
-        "ANTIEK_DEEPSEEK_BASE_URL", "https://proxy.example.com",
+        "ANTIEK_DEEPSEEK_BASE_URL",
+        "https://proxy.example.com",
     )
     register_default_providers(quiet=True)
     assert get_provider("deepseek").base_url == "https://proxy.example.com"
@@ -134,13 +155,16 @@ def _mock_client(text: str) -> httpx.Client:
             json={
                 "id": "chatcmpl-mock",
                 "object": "chat.completion",
-                "choices": [{
-                    "index": 0,
-                    "message": {"role": "assistant", "content": text},
-                    "finish_reason": "stop",
-                }],
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": text},
+                        "finish_reason": "stop",
+                    }
+                ],
                 "usage": {
-                    "prompt_tokens": 10, "completion_tokens": 5,
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
                     "total_tokens": 15,
                 },
             },
@@ -149,26 +173,33 @@ def _mock_client(text: str) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler), timeout=5.0)
 
 
-@pytest.mark.parametrize("provider_name,model,base", [
-    ("deepseek", "deepseek-v4-pro", "https://api.deepseek.com"),
-    ("xiaomi", "mimo-v2.5-pro", "https://api.mimo.xiaomi.com/v1"),
-])
+@pytest.mark.parametrize(
+    "provider_name,model,base",
+    [
+        ("deepseek", "deepseek-v4-pro", "https://api.deepseek.com"),
+        ("xiaomi", "mimo-v2.5-pro", "https://api.mimo.xiaomi.com/v1"),
+    ],
+)
 def test_smoke_completion_routes_to_each(provider_name, model, base):
     """MOCKED smoke: a prompt sent to each research-tier provider returns
     a parsed completion. Proves the adapter wiring + response parse for
     DeepSeek V4 Pro and MiMo V2.5 Pro; it does NOT prove a live key works
     (that is operator-bound)."""
     p = OpenAICompatProvider(
-        name=provider_name, base_url=base, api_key="mock-key",
+        name=provider_name,
+        base_url=base,
+        api_key="mock-key",
         client=_mock_client(f"completion from {model}"),
         chat_completions_path=(
-            "/chat/completions" if provider_name == "xiaomi"
-            else "/v1/chat/completions"
+            "/chat/completions" if provider_name == "xiaomi" else "/v1/chat/completions"
         ),
     )
     register_provider(p)
     raw = get_provider(provider_name).call(
-        model=model, prompt="ping", max_tokens=16, temperature=0.2,
+        model=model,
+        prompt="ping",
+        max_tokens=16,
+        temperature=0.2,
     )
     assert raw.text == f"completion from {model}"
     assert raw.finish_reason == "stop"
@@ -224,6 +255,31 @@ def test_every_tier_has_a_why_rationale():
         assert target.why and target.why.strip()
 
 
+@pytest.mark.parametrize(
+    ("tier", "model"),
+    [("fast", "gpt-5.6-luna"), ("deep", "gpt-5.6-terra"), ("wrestle", "gpt-5.6-sol")],
+)
+def test_boot_ready_openai_is_preferred_by_tier(tier, model):
+    target = resolve_available_research_tier(tier, {"openai_chat", "xiaomi"})
+    assert target.provider == "openai_chat"
+    assert target.model == model
+    assert target.candidate_rank == 1
+    assert target.availability_source == "boot_registered_providers"
+
+
+@pytest.mark.parametrize("tier", RESEARCH_TIERS)
+def test_mimo_is_the_only_exhausted_account_safe_fallback(tier):
+    target = resolve_available_research_tier(tier, {"xiaomi", "zai", "zai_reasoning", "deepseek"})
+    assert target.provider == "xiaomi"
+    assert target.model == "mimo-v2.5-pro"
+    assert target.candidate_rank == 2
+
+
+def test_no_boot_ready_candidate_fails_closed():
+    with pytest.raises(ValueError, match="no boot-ready provider"):
+        resolve_available_research_tier("deep", {"zai", "deepseek"})
+
+
 def test_resolved_provider_matches_a_bootstrap_registerable_name(monkeypatch):
     """The tier→provider map must point at providers bootstrap can
     actually register — a tier mapping to an unregistered provider name is
@@ -260,14 +316,18 @@ class _NamedStubProvider:
 
     def call(self, *, model, prompt, max_tokens, temperature):
         from substrate.dispatch import RawProviderResponse
+
         self.calls.append(model)
         return RawProviderResponse(
-            text=f"{self.name}:{model}", raw_usage={}, finish_reason="stop",
+            text=f"{self.name}:{model}",
+            raw_usage={},
+            finish_reason="stop",
             latency_ms=1,
         )
 
     def normalize_usage(self, raw_usage):
         from substrate.dispatch import NormalizedUsage
+
         return NormalizedUsage(input_tokens=0, output_tokens=0)
 
 
@@ -278,8 +338,12 @@ def _tier_config_for_override():
     from substrate.dispatch import DispatchConfig, TierConfig
 
     synth = TierConfig(
-        name="synthesis", provider="hermes", model="grok-4.3",
-        max_tokens=64, temperature=0.2, context_budget_tokens=1000,
+        name="synthesis",
+        provider="hermes",
+        model="grok-4.3",
+        max_tokens=64,
+        temperature=0.2,
+        context_budget_tokens=1000,
     )
     return DispatchConfig(
         role_tiers={"synthesizer": "synthesis"},
@@ -303,7 +367,10 @@ def test_route_override_changes_which_provider_is_called(monkeypatch):
 
     # No override → config primary (hermes).
     r1 = dispatch(
-        "q", "synthesizer", investigation_id="inv-x", config=config,
+        "q",
+        "synthesizer",
+        investigation_id="inv-x",
+        config=config,
     )
     assert r1.provider == "hermes"
     assert hermes.calls and not zai_reasoning.calls
@@ -311,8 +378,12 @@ def test_route_override_changes_which_provider_is_called(monkeypatch):
     # Override resolved from the 'deep' tier → DeepSeek V4 Pro.
     target = resolve_research_tier("deep")
     r2 = dispatch(
-        "q", "synthesizer", investigation_id="inv-x", config=config,
-        provider_override=target.provider, model_override=target.model,
+        "q",
+        "synthesizer",
+        investigation_id="inv-x",
+        config=config,
+        provider_override=target.provider,
+        model_override=target.model,
     )
     assert r2.provider == "zai_reasoning"
     assert r2.model == "glm-5.2"
@@ -330,7 +401,10 @@ def test_partial_override_is_ignored_not_guessed(monkeypatch):
     register_provider(hermes)
     config = _tier_config_for_override()
     r = dispatch(
-        "q", "synthesizer", investigation_id="inv-x", config=config,
+        "q",
+        "synthesizer",
+        investigation_id="inv-x",
+        config=config,
         provider_override="deepseek",  # no model_override
     )
     assert r.provider == "hermes"  # override ignored
@@ -346,12 +420,20 @@ def test_override_falls_back_when_override_provider_unregistered(monkeypatch):
     # Primary 'synthesis' overridden to an unregistered provider, with a
     # registered 'hermes' fallback.
     fallback = TierConfig(
-        name="synthesis__fallback", provider="hermes", model="grok-4.3",
-        max_tokens=64, temperature=0.2, context_budget_tokens=1000,
+        name="synthesis__fallback",
+        provider="hermes",
+        model="grok-4.3",
+        max_tokens=64,
+        temperature=0.2,
+        context_budget_tokens=1000,
     )
     synth = TierConfig(
-        name="synthesis", provider="hermes", model="grok-4.3",
-        max_tokens=64, temperature=0.2, context_budget_tokens=1000,
+        name="synthesis",
+        provider="hermes",
+        model="grok-4.3",
+        max_tokens=64,
+        temperature=0.2,
+        context_budget_tokens=1000,
         fallback=fallback,
     )
     config = DispatchConfig(
@@ -361,8 +443,12 @@ def test_override_falls_back_when_override_provider_unregistered(monkeypatch):
     register_provider(_NamedStubProvider("hermes"))
     # 'deepseek' deliberately NOT registered.
     r = dispatch(
-        "q", "synthesizer", investigation_id="inv-x", config=config,
-        provider_override="deepseek", model_override="deepseek-v4-pro",
+        "q",
+        "synthesizer",
+        investigation_id="inv-x",
+        config=config,
+        provider_override="deepseek",
+        model_override="deepseek-v4-pro",
     )
     # Override primary raised KeyError (unregistered) → fell back to hermes.
     assert r.provider == "hermes"
@@ -408,8 +494,11 @@ def _emit_start_with_tier(investigation_id: str, tier: str) -> None:
     emit_typed(
         investigation_id,
         InvestigationStartRequestedPayload(
-            question="seam test", context="", topic_slug=None,
-            max_sub_questions=4, research_tier=tier,  # type: ignore[arg-type]
+            question="seam test",
+            context="",
+            topic_slug=None,
+            max_sub_questions=4,
+            research_tier=tier,  # type: ignore[arg-type]
         ),
         role="operator",
     )
@@ -423,8 +512,12 @@ def _synthesizer_config_with_hermes_primary():
     from substrate.dispatch import DispatchConfig, TierConfig
 
     synth = TierConfig(
-        name="synthesis", provider="hermes", model="grok-4.3",
-        max_tokens=64, temperature=0.2, context_budget_tokens=1000,
+        name="synthesis",
+        provider="hermes",
+        model="grok-4.3",
+        max_tokens=64,
+        temperature=0.2,
+        context_budget_tokens=1000,
     )
     return DispatchConfig(
         role_tiers={"synthesizer": "synthesis"},
@@ -441,7 +534,8 @@ def _seam_events_dir(tmp_path, monkeypatch):
 
 
 def test_seam_recorded_deep_tier_does_NOT_displace_synthesizer(
-    monkeypatch, _seam_events_dir,
+    monkeypatch,
+    _seam_events_dir,
 ):
     """SEAM case 1 — REWRITTEN for §14.4 (SPR-01 / Foundation).
 
@@ -465,7 +559,8 @@ def test_seam_recorded_deep_tier_does_NOT_displace_synthesizer(
     from interfaces.research.api import synthesizer as synth_mod
 
     monkeypatch.setattr(
-        router.DispatchConfig, "from_yaml",
+        router.DispatchConfig,
+        "from_yaml",
         classmethod(lambda cls, path: _synthesizer_config_with_hermes_primary()),
     )
     hermes = _NamedStubProvider("hermes")
@@ -479,7 +574,8 @@ def test_seam_recorded_deep_tier_does_NOT_displace_synthesizer(
     assert (prov, model) == (None, None)
 
     text, policy_id = synth_mod._dispatch_once(
-        "synthesize this", _StartEventStub("inv-seam-deep"),
+        "synthesize this",
+        _StartEventStub("inv-seam-deep"),
     )
     # Synthesizer stayed on the config primary, NOT on the live deepseek.
     assert policy_id == "hermes/grok-4.3"
@@ -489,7 +585,8 @@ def test_seam_recorded_deep_tier_does_NOT_displace_synthesizer(
 
 
 def test_seam_recorded_fast_tier_does_NOT_displace_synthesizer(
-    monkeypatch, _seam_events_dir,
+    monkeypatch,
+    _seam_events_dir,
 ):
     """SEAM case 2 — REWRITTEN for §14.4 (SPR-01 / Foundation sharpen).
 
@@ -515,13 +612,14 @@ def test_seam_recorded_fast_tier_does_NOT_displace_synthesizer(
     from interfaces.research.api import synthesizer as synth_mod
 
     monkeypatch.setattr(
-        router.DispatchConfig, "from_yaml",
+        router.DispatchConfig,
+        "from_yaml",
         classmethod(lambda cls, path: _synthesizer_config_with_hermes_primary()),
     )
     hermes = _NamedStubProvider("hermes")
     mimo = _NamedStubProvider("xiaomi")
     register_provider(hermes)  # config primary
-    register_provider(mimo)    # the 'fast' tier provider IS live
+    register_provider(mimo)  # the 'fast' tier provider IS live
 
     _emit_start_with_tier("inv-seam-fast", "fast")
     # The override declines: during the §14.4 window the pin holds for fast.
@@ -529,7 +627,8 @@ def test_seam_recorded_fast_tier_does_NOT_displace_synthesizer(
     assert (prov, model) == (None, None)
 
     text, policy_id = synth_mod._dispatch_once(
-        "synthesize this", _StartEventStub("inv-seam-fast"),
+        "synthesize this",
+        _StartEventStub("inv-seam-fast"),
     )
     # Synthesizer stayed on the config primary, NOT on the live MiMo.
     assert policy_id == "hermes/grok-4.3"
@@ -539,7 +638,8 @@ def test_seam_recorded_fast_tier_does_NOT_displace_synthesizer(
 
 
 def test_explicit_deep_keeps_research_lane_but_not_synthesizer(
-    monkeypatch, _seam_events_dir,
+    monkeypatch,
+    _seam_events_dir,
 ):
     """M4 — role separation, both halves in one test for legibility.
 
@@ -553,7 +653,8 @@ def test_explicit_deep_keeps_research_lane_but_not_synthesizer(
     from interfaces.research.api import synthesizer as synth_mod
 
     monkeypatch.setattr(
-        router.DispatchConfig, "from_yaml",
+        router.DispatchConfig,
+        "from_yaml",
         classmethod(lambda cls, path: _synthesizer_config_with_hermes_primary()),
     )
     hermes = _NamedStubProvider("hermes")
@@ -572,14 +673,16 @@ def test_explicit_deep_keeps_research_lane_but_not_synthesizer(
     _emit_start_with_tier("inv-explicit-deep-sep", "deep")
     assert synth_mod._research_tier_override("inv-explicit-deep-sep") == (None, None)
     text, policy_id = synth_mod._dispatch_once(
-        "synthesize this", _StartEventStub("inv-explicit-deep-sep"),
+        "synthesize this",
+        _StartEventStub("inv-explicit-deep-sep"),
     )
     assert policy_id == "hermes/grok-4.3"  # config primary, NOT zai_reasoning
     assert not zai_reasoning.calls
 
 
 def test_explicit_fast_keeps_research_lane_but_not_synthesizer(
-    monkeypatch, _seam_events_dir,
+    monkeypatch,
+    _seam_events_dir,
 ):
     """M4 (sharpen) — the fast-lane twin of the deep role-separation test.
 
@@ -594,7 +697,8 @@ def test_explicit_fast_keeps_research_lane_but_not_synthesizer(
     from interfaces.research.api import synthesizer as synth_mod
 
     monkeypatch.setattr(
-        router.DispatchConfig, "from_yaml",
+        router.DispatchConfig,
+        "from_yaml",
         classmethod(lambda cls, path: _synthesizer_config_with_hermes_primary()),
     )
     hermes = _NamedStubProvider("hermes")
@@ -610,14 +714,16 @@ def test_explicit_fast_keeps_research_lane_but_not_synthesizer(
     _emit_start_with_tier("inv-explicit-fast-sep", "fast")
     assert synth_mod._research_tier_override("inv-explicit-fast-sep") == (None, None)
     text, policy_id = synth_mod._dispatch_once(
-        "synthesize this", _StartEventStub("inv-explicit-fast-sep"),
+        "synthesize this",
+        _StartEventStub("inv-explicit-fast-sep"),
     )
     assert policy_id == "hermes/grok-4.3"  # config primary, NOT zai
     assert not zai.calls
 
 
 def test_seam_recorded_tier_provider_unregistered_uses_config_primary(
-    monkeypatch, _seam_events_dir,
+    monkeypatch,
+    _seam_events_dir,
 ):
     """SEAM case 3 — THE regression guard, proved directly: a recorded tier
     whose provider is NOT registered must NOT displace the config's own
@@ -630,7 +736,8 @@ def test_seam_recorded_tier_provider_unregistered_uses_config_primary(
     from interfaces.research.api import synthesizer as synth_mod
 
     monkeypatch.setattr(
-        router.DispatchConfig, "from_yaml",
+        router.DispatchConfig,
+        "from_yaml",
         classmethod(lambda cls, path: _synthesizer_config_with_hermes_primary()),
     )
     hermes = _NamedStubProvider("hermes")
@@ -646,7 +753,8 @@ def test_seam_recorded_tier_provider_unregistered_uses_config_primary(
     # And prove the downstream effect: the synthesizer dispatch lands on the
     # config primary, NOT on an absent deepseek that would have failed over.
     text, policy_id = synth_mod._dispatch_once(
-        "synthesize this", _StartEventStub("inv-seam-absent"),
+        "synthesize this",
+        _StartEventStub("inv-seam-absent"),
     )
     assert policy_id == "hermes/grok-4.3"
     assert hermes.calls == ["grok-4.3"]

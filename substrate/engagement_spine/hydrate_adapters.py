@@ -22,7 +22,7 @@ def arxiv_metadata_fetch_publication(
     *,
     fetch_by_id: Callable[[str], Any] | None = None,
 ) -> FetchPublication:
-    """Build a fetch_publication callable that lands arXiv abstracts as body.
+    """Build a metadata callable that exposes an arXiv abstract honestly.
 
     When ``fetch_by_id`` is None and the call is for an arxiv ref, raises
     so callers must inject a client (honest no silent network).
@@ -36,9 +36,7 @@ def arxiv_metadata_fetch_publication(
         if not arxiv_id:
             return {}
         if fetch_by_id is None:
-            raise RuntimeError(
-                "arxiv fetch_by_id not injected — refuse silent live network"
-            )
+            raise RuntimeError("arxiv fetch_by_id not injected — refuse silent live network")
         paper = fetch_by_id(arxiv_id)
         # Support dataclass ArxivPaper or plain dict
         if hasattr(paper, "title"):
@@ -63,6 +61,13 @@ def arxiv_metadata_fetch_publication(
             "abstract": abstract.strip(),
             "canonical_url": abs_url or f"https://arxiv.org/abs/{arxiv_id}",
             "source": "acquisition.arxiv",
+            "hydration_status": "abstract_only" if abstract.strip() else "metadata_only",
+            "hydration_receipt": {
+                "kind": "arxiv_metadata",
+                "arxiv_id": arxiv_id,
+                "canonical_url": abs_url or f"https://arxiv.org/abs/{arxiv_id}",
+                "body_available": False,
+            },
         }
 
     return _fetch
@@ -86,27 +91,18 @@ def substack_post_fetch_publication(
         if not url:
             return {}
         if fetch_post is None:
-            raise RuntimeError(
-                "substack fetch_post not injected — refuse silent live network"
-            )
+            raise RuntimeError("substack fetch_post not injected — refuse silent live network")
         post = fetch_post(str(url))
         if hasattr(post, "title"):
             title = str(post.title or "")
-            body = str(
-                post.body_markdown
-                or post.body_html
-                or ""
-            )
+            body = str(post.body_markdown or post.body_html or "")
             post_url = getattr(post, "post_url", None) or url
             author = str(post.author or "")
             truncated = bool(getattr(post, "truncated", False))
         elif isinstance(post, dict):
             title = str(post.get("title") or "")
             body = str(
-                post.get("body_markdown")
-                or post.get("body_html")
-                or post.get("body_text")
-                or ""
+                post.get("body_markdown") or post.get("body_html") or post.get("body_text") or ""
             )
             post_url = post.get("post_url") or post.get("canonical_url") or url
             author = str(post.get("author") or "")
@@ -187,13 +183,9 @@ def hydrate_with_publication_adapters(
 
     adapters: list[FetchPublication] = []
     if arxiv_fetch_by_id is not None:
-        adapters.append(
-            arxiv_metadata_fetch_publication(fetch_by_id=arxiv_fetch_by_id)
-        )
+        adapters.append(arxiv_metadata_fetch_publication(fetch_by_id=arxiv_fetch_by_id))
     if substack_fetch_post is not None:
-        adapters.append(
-            substack_post_fetch_publication(fetch_post=substack_fetch_post)
-        )
+        adapters.append(substack_post_fetch_publication(fetch_post=substack_fetch_post))
     fetch = compose_fetch_publication(*adapters) if adapters else None
     return hydrate_reference(
         raw,

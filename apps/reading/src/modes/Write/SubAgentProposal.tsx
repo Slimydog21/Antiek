@@ -3,6 +3,10 @@ import { useEffect, useState } from "react";
 import { startInvestigation } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
+import {
+  ResearchRunCeilingApproval,
+  type ResearchRunAuthorization,
+} from "../../components/engagement/ResearchRunCeilingApproval";
 import { searchRepository, type RepositoryHit } from "./writeApi";
 
 /**
@@ -43,6 +47,8 @@ export default function SubAgentProposal({
   const [searching, setSearching] = useState(true);
   const [spawning, setSpawning] = useState(false);
   const [failure, setFailure] = useState<{ reason: string | null } | null>(null);
+  const [runAuthorization, setRunAuthorization] =
+    useState<ResearchRunAuthorization>({ approved: false, ceilingUsd: null, projection: null });
 
   // Launch the search over the claim (the "search" half of search+strengthen).
   useEffect(() => {
@@ -64,6 +70,7 @@ export default function SubAgentProposal({
   }, [claimText]);
 
   async function accept() {
+    if (!runAuthorization.approved || runAuthorization.ceilingUsd == null) return;
     setSpawning(true);
     setFailure(null);
     try {
@@ -73,6 +80,7 @@ export default function SubAgentProposal({
         question: `Strengthen: ${claimText}`,
         spawn_context: claimText,
         parent_investigation_id: parentInvestigationId,
+        approved_run_ceiling_usd: runAuthorization.ceilingUsd,
       });
       onAccept(child.investigation_id);
     } catch (e) {
@@ -125,7 +133,7 @@ export default function SubAgentProposal({
             <button
               type="button"
               onClick={() => void accept()}
-              disabled={spawning}
+              disabled={spawning || !runAuthorization.approved}
               className="rounded bg-ink px-3 py-1.5 text-xs text-white hover:bg-shadow-2 disabled:bg-glacial-1 dark:disabled:bg-slate-1"
             >
               {spawning ? "Spinning…" : "Accept — spin a sub-agent"}
@@ -139,6 +147,13 @@ export default function SubAgentProposal({
               Reject
             </button>
           </div>
+          <ResearchRunCeilingApproval
+            promptText={`Strengthen: ${claimText}`}
+            researchTier="deep"
+            disabled={spawning}
+            onAuthorizationChange={setRunAuthorization}
+            className="mt-3"
+          />
         </>
       )}
     </div>

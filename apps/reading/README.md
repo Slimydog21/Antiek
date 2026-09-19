@@ -71,14 +71,14 @@ src/
 
   workspace/                  THE PANEL SYSTEM
     panel.types.ts            PanelKind + PanelDescriptor + WorkspaceSnapshot
-    WorkspaceStore.ts         Zustand store + persistence subscriber
+    WorkspaceStore.ts         in-memory Zustand panel store
     panelLayoutLogic.ts       pure layout math (z-stacking, clamp, defaults)
     PanelLayout.tsx           orchestrator (left/right/bottom docks + floating)
     PanelLayoutPanel.tsx      renders one panel (floating motion / docked CSS)
     PanelHandle.tsx           drag grip + pin + kebab dropdown
     PanelRegistry.tsx         PanelKind → React.lazy(() => import(…))
-    persistence.ts            localStorage scopes + URL ?ws= encoder
-    useWorkspaceHydration.ts  apply global→route→investigation→URL on nav
+    persistence.ts            legacy cleanup + closed hotkey preference
+    useWorkspaceHydration.ts  reset on nav + same-tab pinned continuity
     shortcuts.ts              ⌘K, ⌘B, ⌘/, ⌘[, ⌘], ⌘W, G+I/W/N/R
     actions.ts                openNotebook, openPdfPanel, openClaimInspector
     popout.ts                 window.open + BroadcastChannel sync
@@ -150,9 +150,9 @@ npm run visualtest:update # rebaseline (commit the .png changes)
   shown alongside.
 - Pop out into a real OS window (via `window.open` + BroadcastChannel
   sync); close to re-dock at the popout's last position.
-- Persistent layout across reloads — per-route + per-investigation
-  scopes layered at hydration.
-- `?ws=<base64>` shareable layout URLs (Cmd+K → "Copy shareable layout").
+- Panel layouts are in-memory only; route changes retain pinned panels in the
+  current tab, while reloads reconstruct from starters and the authenticated
+  semantic-window checkpoint.
 - Notebook editor (TipTap): 5 custom blocks + slash menu + autosave
   to localStorage + optimistic-concurrency conflict detection.
 - Werner brand palette: layered glacial whites by day, ten-step night

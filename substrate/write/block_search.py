@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -69,7 +70,7 @@ def _text_score(query: str, label: str) -> float:
 def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     return dot / (na * nb) if na and nb else 0.0
@@ -114,6 +115,8 @@ def search_blocks(
 
     ``con`` is any duckdb connection (read-only is fine). Ranking is
     documented above and deterministic."""
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+        return []
     # Base candidate set, narrowed by folder membership if requested.
     if folder_id is not None:
         if not _folders_schema_exists(con):
@@ -144,12 +147,9 @@ def search_blocks(
         document_id = document_title = source_tier = None
         chunk_id = _node_chunk_id(metadata)
         if chunk_id is not None:
-            doc_row = con.execute(
-                "SELECT c.document_id, d.title, d.source_tier FROM chunks c "
-                "LEFT JOIN documents d ON c.document_id = d.document_id "
-                "WHERE c.chunk_id = ? LIMIT 1",
-                [chunk_id],
-            ).fetchone()
+            from substrate.legal_gate.read import legacy_chunk_document_projection
+
+            doc_row = legacy_chunk_document_projection(con, chunk_id)
             if doc_row is not None:
                 document_id, document_title, source_tier = doc_row
 
@@ -161,10 +161,9 @@ def search_blocks(
             meta_doc = _node_source_document_id(metadata)
             if meta_doc is not None:
                 document_id = meta_doc
-                doc_row = con.execute(
-                    "SELECT title, source_tier FROM documents WHERE document_id = ? LIMIT 1",
-                    [meta_doc],
-                ).fetchone()
+                from substrate.legal_gate.read import legacy_document_title_tier
+
+                doc_row = legacy_document_title_tier(con, meta_doc)
                 if doc_row is not None:
                     document_title, source_tier = doc_row
 

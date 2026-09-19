@@ -22,40 +22,35 @@ export type PanelMode =
  * PanelRegistry maps each entry to a React component (or React.lazy).
  *
  * S3 only "Fake*" entries (the demo scene). S5+ adds real surfaces
- * (InvestigationSidebar, Trajectory, Chat, Chase, PdfViewer, Notes,
+ * (InvestigationSidebar, Trajectory, Chat, Chase, HostedDocument, Notes,
  * CrossDocs, ClaimInspector, Notebook, AISidecar, CommandPalette, …).
  *
  * Stored on disk eventually (S9 persistence), so renames are
  * load-bearing. Prefer adding new kinds over renaming existing ones.
  */
-export type PanelKind =
-  | "FakeSidebar"
-  | "FakeNotebook"
-  | "FakeChat"
-  | "InvestigationSidebar"
-  | "Trajectory"
-  | "MasterMdViewer"
-  | "Chat"
-  | "Chase"
-  | "ChaseThread"
-  | "PdfViewer"
-  | "Notes"
-  | "CrossDocs"
-  | "ClaimInspector"
-  | "Notebook"
-  | "NotebookEditor"
-  | "AISidecar"
-  | "CommandPalette"
-  | "ProjectTree"
-  | "Stats"
-  | "DeliverableSidebar"
-  | "BlockPalette"
-  | "ReplayStepList"
-  | "InterviewTranscript"
-  | "InterviewNotes"
-  | "Lightbox"
-  | "BrainstormWatchList"
-  | "BrainstormThoughtPartner";
+export const PANEL_KINDS = [
+  "FakeSidebar", "FakeNotebook", "FakeChat", "InvestigationSidebar",
+  "Trajectory", "MasterMdViewer", "Chat", "Chase", "ChaseThread",
+  "HostedDocument",
+  // Persisted-layout compatibility only. New product and AI actions must not
+  // create it; PanelRegistry maps it to canonical hosted HTML.
+  "PdfViewer",
+  "Notes", "CrossDocs", "ClaimInspector", "Notebook", "NotebookEditor",
+  "AISidecar", "CommandPalette", "ProjectTree", "Stats", "DeliverableSidebar",
+  "BlockPalette", "ReplayStepList", "InterviewTranscript", "InterviewNotes",
+  "PrivateWrite",
+  "Lightbox", "BrainstormWatchList", "BrainstormThoughtPartner",
+] as const;
+
+export type PanelKind = (typeof PANEL_KINDS)[number];
+
+export function isPanelKind(value: unknown): value is PanelKind {
+  return typeof value === "string" && (PANEL_KINDS as readonly string[]).includes(value);
+}
+
+export function isAiOpenablePanelKind(value: unknown): value is Exclude<PanelKind, "PdfViewer"> {
+  return isPanelKind(value) && value !== "PdfViewer";
+}
 
 export type PanelDescriptor = {
   /** Stable id. e.g. "InvestigationSidebar:default", "Chat:inv-abc:42". */

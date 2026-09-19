@@ -198,6 +198,208 @@ def challenge_note(
             c.close()
 
 
+def _authorized_membership(con, authority, node_id: str) -> tuple[str, dict] | None:
+    from substrate.graph.tenancy import assert_graph_authority
+
+    assert_graph_authority(con, authority)
+    row = con.execute(
+        "SELECT role, membership_metadata FROM investigation_node_memberships "
+        "WHERE account_digest = ? AND investigation_digest = ? AND node_id = ? "
+        "AND role IN ('insight', 'note') ORDER BY role LIMIT 1",
+        [authority.account_digest, authority.investigation_digest, node_id],
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        metadata = json.loads(row[1])
+    except (TypeError, ValueError) as exc:
+        from substrate.graph.tenancy import GraphAuthorityConflict
+
+        raise GraphAuthorityConflict("graph membership metadata is invalid") from exc
+    if not isinstance(metadata, dict):
+        from substrate.graph.tenancy import GraphAuthorityConflict
+
+        raise GraphAuthorityConflict("graph membership metadata is invalid")
+    return str(row[0]), metadata
+
+
+def apply_refinement_authorized(
+    authority,
+    note_node_id: str,
+    new_text: str,
+    *,
+    seq: int,
+    reason: str = "challenge",
+    document_id: str | None = None,
+    con: Any = None,
+) -> ChallengeResult:
+    """Refine only one exact membership; shared node storage stays immutable."""
+    from substrate.event_log import emit_typed_authorized_strict
+    from substrate.investigation_streams import resolve_investigation_stream
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    if not isinstance(authority, InvestigationAuthority):
+        raise TypeError("authorized refinement requires InvestigationAuthority")
+    if not isinstance(seq, int) or isinstance(seq, bool) or seq < 0:
+        raise ValueError("authorized refinement seq must be a non-negative integer")
+    refined = new_text.strip()
+    if not refined:
+        raise ValueError("authorized refinement text must not be blank")
+    resolve_investigation_stream(authority)
+    owned = con is None
+    c = _open(con)
+    if owned:
+        c.execute("BEGIN")
+    try:
+        membership = _authorized_membership(c, authority, note_node_id)
+        if membership is None:
+            return ChallengeResult(note_node_id, applied=False)
+        role, metadata = membership
+        previous = metadata.get("canonical_text")
+        if not isinstance(previous, str) or not previous:
+            from substrate.graph.tenancy import GraphAuthorityConflict
+
+            raise GraphAuthorityConflict("graph membership lacks canonical text")
+        document_id = document_id or metadata.get("source_document_id")
+        if not isinstance(document_id, str) or not document_id.strip():
+            raise ValueError("authorized refinement requires a grounded document")
+        last_seq = int(metadata.get("last_update_seq", -1))
+        wins = seq > last_seq
+        emit_typed_authorized_strict(
+            authority,
+            NoteRefinedPayload(
+                note_id=note_node_id,
+                previous_text=previous,
+                new_text=refined,
+                refinement_reason=reason,
+            ),
+            role="note_taker",
+            document_id=document_id,
+        )
+        if wins:
+            metadata["canonical_text"] = refined
+            metadata["last_update_seq"] = seq
+            metadata["refinement_count"] = int(
+                metadata.get("refinement_count", 0) or 0
+            ) + 1
+            c.execute(
+                "UPDATE investigation_node_memberships "
+                "SET membership_metadata = ? WHERE account_digest = ? "
+                "AND investigation_digest = ? AND node_id = ? AND role = ?",
+                [
+                    json.dumps(
+                        metadata,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        ensure_ascii=False,
+                    ),
+                    authority.account_digest,
+                    authority.investigation_digest,
+                    note_node_id,
+                    role,
+                ],
+            )
+        result = ChallengeResult(
+            note_node_id,
+            applied=wins,
+            superseded=not wins,
+            new_text=refined if wins else None,
+        )
+        if owned:
+            c.execute("COMMIT")
+        return result
+    except Exception:
+        if owned:
+            c.execute("ROLLBACK")
+        raise
+    finally:
+        if owned:
+            c.close()
+
+
+def challenge_note_authorized(
+    authority,
+    note_node_id: str,
+    challenge_text: str,
+    *,
+    resolver: Resolver,
+    seq: int,
+    document_id: str | None = None,
+    embedding_provider: Any = None,
+    con: Any = None,
+) -> ChallengeResult:
+    """Resolve or escalate a challenge inside one exact graph authority."""
+    from substrate.event_log import emit_typed_authorized_strict
+    from substrate.graph.insight_question import promote_question_authorized
+    from substrate.investigation_streams import resolve_investigation_stream
+
+    resolve_investigation_stream(authority)
+    owned = con is None
+    c = _open(con)
+    if owned:
+        c.execute("BEGIN")
+    try:
+        membership = _authorized_membership(c, authority, note_node_id)
+        if membership is None:
+            return ChallengeResult(note_node_id, applied=False)
+        _role, metadata = membership
+        previous = metadata.get("canonical_text")
+        if not isinstance(previous, str) or not previous:
+            from substrate.graph.tenancy import GraphAuthorityConflict
+
+            raise GraphAuthorityConflict("graph membership lacks canonical text")
+        document_id = document_id or metadata.get("source_document_id")
+        if not isinstance(document_id, str) or not document_id.strip():
+            raise ValueError("authorized challenge requires a grounded document")
+        resolved_text = resolver(previous, challenge_text)
+        if resolved_text is not None and resolved_text.strip():
+            result = apply_refinement_authorized(
+                authority,
+                note_node_id,
+                resolved_text,
+                seq=seq,
+                reason="challenge_resolved",
+                document_id=document_id,
+                con=c,
+            )
+        else:
+            question_id = promote_question_authorized(
+                authority,
+                text=challenge_text,
+                asks_about=[note_node_id],
+                metadata={"raised_by_challenge_of": note_node_id},
+                embedding_provider=embedding_provider,
+                con=c,
+            )
+            reserved_child = "inv-" + uuid.uuid4().hex[:16]
+            emit_typed_authorized_strict(
+                authority,
+                QuestionEscalatedToResearchPayload(
+                    question_id=question_id,
+                    child_investigation_id=reserved_child,
+                ),
+                role="note_taker",
+                document_id=document_id,
+            )
+            result = ChallengeResult(
+                note_node_id,
+                applied=False,
+                escalated=True,
+                escalated_question_id=question_id,
+                reserved_child_investigation_id=reserved_child,
+            )
+        if owned:
+            c.execute("COMMIT")
+        return result
+    except Exception:
+        if owned:
+            c.execute("ROLLBACK")
+        raise
+    finally:
+        if owned:
+            c.close()
+
+
 def _is_node_target(node_id: str) -> bool:
     # asks_about may point at an insight node; the vocabulary allows
     # question --asks_about--> insight. Always true for our promoted notes.

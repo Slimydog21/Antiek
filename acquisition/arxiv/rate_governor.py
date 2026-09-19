@@ -79,6 +79,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     )
 
 _ResponseT = TypeVar("_ResponseT", bound=_ResponseLike)
+_AnyResponseT = TypeVar("_AnyResponseT")
 
 
 class _HttpxClientKwargs(TypedDict, total=False):
@@ -442,12 +443,12 @@ class ArxivRateGovernor:
                 _release_initial_hop(token)
 
 
-def governed_request[ResponseT: _ResponseLike](
-    send: Callable[[], ResponseT],
+def governed_request(  # noqa: UP047 -- package supports Python 3.11
+    send: Callable[[], _ResponseT],
     *,
     governor: ArxivRateGovernor | None = None,
     throttle: ArxivThrottle | None = None,
-) -> ResponseT:
+) -> _ResponseT:
     """Convenience seam: route one arXiv send through a host-global governor.
 
     Pass an existing ``governor`` to reuse its throttle + lock, or pass a
@@ -459,13 +460,13 @@ def governed_request[ResponseT: _ResponseLike](
     return gov.governed_request(send)
 
 
-def govern_if_arxiv[ResponseT](
+def govern_if_arxiv(  # noqa: UP047 -- package supports Python 3.11
     url: str,
-    send: Callable[[], ResponseT],
+    send: Callable[[], _AnyResponseT],
     *,
     throttle: ArxivThrottle | None = None,
     governor: ArxivRateGovernor | None = None,
-) -> ResponseT:
+) -> _AnyResponseT:
     """THE ROOT host-based runtime gate (SPR-09 round-4).
 
     The FETCH-boundary helper every external-PDF/HTTP fetcher that can resolve
@@ -502,7 +503,8 @@ def govern_if_arxiv[ResponseT](
         eff_throttle = throttle if throttle is not None else canonical_arxiv_throttle()
         governed_send = cast("Callable[[], _ResponseLike]", send)
         return cast(
-            "ResponseT", governed_request(governed_send, governor=governor, throttle=eff_throttle)
+            "_AnyResponseT",
+            governed_request(governed_send, governor=governor, throttle=eff_throttle),
         )
     return send()
 

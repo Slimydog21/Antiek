@@ -16,9 +16,9 @@ import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { fetchDepthTiers } from "../../api/settings";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import {
-  ResearchLaunchBudgetPanel,
-  type ResearchLaunchBudgetProjection,
-} from "../../components/engagement/ResearchLaunchBudgetPanel";
+  ResearchRunCeilingApproval,
+  type ResearchRunAuthorization,
+} from "../../components/engagement/ResearchRunCeilingApproval";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
@@ -187,8 +187,11 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // Residual (df): soft-gate Ask when budget projection would exceed.
   const [budgetWarn, setBudgetWarn] = useState(false);
   const [forceOverBudget, setForceOverBudget] = useState(false);
-  const onProjectionChange = useCallback((p: ResearchLaunchBudgetProjection) => {
-    setBudgetWarn(p.wouldExceedBudget === true);
+  const [runAuthorization, setRunAuthorization] =
+    useState<ResearchRunAuthorization>({ approved: false, ceilingUsd: null, projection: null });
+  const onRunAuthorizationChange = useCallback((next: ResearchRunAuthorization) => {
+    setRunAuthorization(next);
+    setBudgetWarn(next.projection?.wouldExceedBudget === true);
   }, []);
 
   // Residual (gt): Settings depth-tier → ResearchTier once on mount.
@@ -240,6 +243,9 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
       // Soft gate — do not start investigation without explicit force.
       return;
     }
+    if (!runAuthorization.approved || runAuthorization.ceilingUsd == null) {
+      return;
+    }
     const refs = parsePublicationRefs(pubRefs);
     setPubRefStatus(null);
     let launchQuestion = question;
@@ -257,6 +263,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
     const id = await submit({
       question: launchQuestion,
       researchTier: tier,
+      approvedRunCeilingUsd: runAuthorization.ceilingUsd,
     });
     if (id) {
       // Keep the human-authored prompt until navigation unmounts this surface.
@@ -264,7 +271,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
       // the failure transition and can destroy the operator's recoverable input.
       // Publication refs likewise remain visible for follow-up asks.
     }
-  }, [submit, question, tier, pubRefs, budgetWarn, forceOverBudget]);
+  }, [submit, question, tier, pubRefs, budgetWarn, forceOverBudget, runAuthorization]);
 
   const fillExample = useCallback((prompt: string) => {
     setQuestion(prompt);
@@ -752,16 +759,23 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 Knowledge-dense pubs in projection:{" "}
                 <strong>{countPublicationRefs(pubRefs)}</strong> ref
                 {countPublicationRefs(pubRefs) === 1 ? "" : "s"} · chars=
-                {composeDriverPromptText(question, pubRefs).length} · soft budget
+                {questionWithPublicationRefs(
+                  question,
+                  parsePublicationRefs(pubRefs),
+                ).length} · soft budget
                 below
               </p>
             ) : null}
-            <ResearchLaunchBudgetPanel
-              promptText={composeDriverPromptText(question, pubRefs)}
+            <ResearchRunCeilingApproval
+              promptText={questionWithPublicationRefs(
+                question,
+                parsePublicationRefs(pubRefs),
+              )}
               researchTier={tier}
               allowTierPick
               onResearchTierChange={setTier}
-              onProjectionChange={onProjectionChange}
+              onAuthorizationChange={onRunAuthorizationChange}
+              disabled={busy}
             />
           </div>
           {budgetWarn ? (

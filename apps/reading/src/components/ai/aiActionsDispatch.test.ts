@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { dispatchAiAction, parseAssistantReply } from "./aiActions";
+const apiHarness = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }));
+vi.mock("../../lib/api", async (original) => {
+  const actual = await original<typeof import("../../lib/api")>();
+  return { ...actual, getNotebookContent: apiHarness.get, appendNotebookContent: apiHarness.put };
+});
+
+import { dispatchAiAction, dispatchAiActionAsync, parseAssistantReply } from "./aiActions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { EMPTY_SNAPSHOT } from "../../workspace/panel.types";
 
@@ -13,8 +19,7 @@ import { EMPTY_SNAPSHOT } from "../../workspace/panel.types";
  * behavior: an assistant reply containing @@actions, when piped
  * through both stages, produces the expected store mutation.
  *
- * Spec acceptance (S8 WP-8.4): "When the AI asks 'open this PDF',
- * it dispatches a workspace open(PdfViewer, ...) action."
+ * Document actions use HostedDocument; PDF bytes are ingest-only.
  */
 
 beforeEach(() => {
@@ -23,6 +28,8 @@ beforeEach(() => {
   // Silence the deferred LemonToast dynamic-import — we test the
   // dispatched action records, not the toast renderer.
   vi.useFakeTimers();
+  apiHarness.get.mockReset();
+  apiHarness.put.mockReset();
 });
 
 afterEach(() => {
@@ -30,6 +37,12 @@ afterEach(() => {
 });
 
 describe("AI tool-call · full dispatch round-trip", () => {
+  it("direct dispatch rejects retired and unknown panels before workspace mutation", () => {
+    expect(() => dispatchAiAction({ kind: "open_panel", panel_kind: "PdfViewer" })).toThrow(/retired panel_kind/i);
+    expect(() => dispatchAiAction({ kind: "open_panel", panel_kind: "MadeUp" as never })).toThrow(/retired panel_kind/i);
+    expect(Object.keys(useWorkspace.getState().panels)).toHaveLength(0);
+  });
+
   it("open_panel mutates the workspace store + the panel becomes present", () => {
     const reply =
       "Opening the relevant PDF.\n\n@@actions\n" +
@@ -153,14 +166,18 @@ describe("AI tool-call · full dispatch round-trip", () => {
     expect(useWorkspace.getState().panels[chaseId].kind).toBe("Chase");
   });
 
-  it("add_to_notebook writes to localStorage + bumps etag + dispatches the same-window event", () => {
+  it("add_to_notebook performs an acknowledged conditional server mutation", async () => {
     const nbId = "ai-test-nb-" + Math.random().toString(36).slice(2, 8);
-    const events: Array<{ notebookId: string; etag: number }> = [];
-    const listener = (e: Event) => {
-      const ce = e as CustomEvent<{ notebookId: string; etag: number }>;
-      if (ce.detail) events.push(ce.detail);
-    };
-    window.addEventListener("antiek:notebook:appended", listener);
+    apiHarness.get.mockResolvedValue({
+      notebook_id: nbId, title: "", investigation_id: null,
+      doc: { type: "doc", content: [{ type: "paragraph" }] },
+      revision: 4, content_sha256: "a".repeat(64), updated_at: "",
+      account_scope: "b".repeat(64), recovery_scope: "c".repeat(64),
+    });
+    apiHarness.put.mockResolvedValue({
+      schema_version: 1, notebook_id: nbId, revision: 5,
+      content_sha256: "d".repeat(64), replayed: false,
+    });
 
     const { actions } = parseAssistantReply(
       "x\n\n@@actions\n" +
@@ -173,23 +190,18 @@ describe("AI tool-call · full dispatch round-trip", () => {
         ]) +
         "\n@@end",
     );
-    dispatchAiAction(actions[0]);
-
-    const stored = window.localStorage.getItem("antiek.notebook." + nbId);
-    expect(stored).toContain("antiek-note");
-    expect(stored).toContain("hi from AI");
-
-    const etag = window.localStorage.getItem(
-      "antiek.notebook." + nbId + ".etag",
+    const record = await dispatchAiActionAsync(actions[0]);
+    expect(record.label).toContain("Added a note");
+    expect(apiHarness.put).toHaveBeenCalledWith(
+      nbId,
+      expect.objectContaining({
+        schema_version: 1,
+        account_scope: "b".repeat(64),
+        base_revision: 4,
+        mutation_key: expect.any(String),
+        block: { type: "noteBlock", attrs: { note_id: null, text: "hi from AI" } },
+      }),
     );
-    expect(parseInt(etag ?? "0", 10)).toBeGreaterThan(0);
-
-    expect(events).toHaveLength(1);
-    expect(events[0].notebookId).toBe(nbId);
-
-    window.removeEventListener("antiek:notebook:appended", listener);
-    window.localStorage.removeItem("antiek.notebook." + nbId);
-    window.localStorage.removeItem("antiek.notebook." + nbId + ".etag");
   });
 
   it("toast dispatches the lemon toast queue (dynamic import resolves)", async () => {

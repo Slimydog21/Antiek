@@ -1,150 +1,117 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  applyOver,
-  buildShareableUrl,
-  clearAll,
-  clearScope,
-  decodeWsParam,
-  encodeWsParam,
-  project,
-  readScope,
-  readWsFromUrl,
-  writeScope,
+  readCustomHotkeys,
+  retireLegacyWorkspaceSnapshots,
 } from "./persistence";
-import type { PersistedSnapshot } from "./persistence";
-import { EMPTY_SNAPSHOT } from "./panel.types";
 
-const SAMPLE: PersistedSnapshot = {
+const HOTKEY_KEY = "antiek.workspace.custom-hotkeys";
+const VALID_HOTKEYS = {
   schemaVersion: 1,
-  panels: {
-    "demo:one": {
-      id: "demo:one",
-      kind: "FakeSidebar",
-      props: {},
-      mode: "docked-left",
-      zIndex: 1,
-      rect: { x: 100, y: 100, width: 400, height: 300 },
-      size: { width: 320, height: 0 },
-      pinned: true,
-      title: "One",
-    },
-    "demo:two": {
-      id: "demo:two",
-      kind: "FakeNotebook",
-      props: {},
-      mode: "floating",
-      zIndex: 5,
-      rect: { x: 200, y: 200, width: 600, height: 480 },
-      size: { width: 320, height: 0 },
-      pinned: false,
-      title: "Two",
-    },
-  },
-  dockLeftIds: ["demo:one"],
-  dockRightIds: [],
-  dockBottomIds: [],
-  dockBottomHeight: 220,
+  bindings: [{
+    id: "binding-1",
+    spec: "mod+.",
+    route: "/inv/inv-1",
+    entityId: "inv-1",
+    entityKind: "investigation",
+    label: "Investigation one",
+  }],
 };
 
 beforeEach(() => {
-  clearAll();
+  vi.restoreAllMocks();
+  window.localStorage.clear();
+  window.history.replaceState({}, "", "/");
 });
 
-afterEach(() => {
-  clearAll();
-});
-
-describe("persistence — encode/decode URL", () => {
-  it("encode + decode round-trips the snapshot", () => {
-    const raw = encodeWsParam(SAMPLE);
-    expect(raw).toBeTruthy();
-    expect(typeof raw).toBe("string");
-    const back = decodeWsParam(raw);
-    expect(back).not.toBeNull();
-    expect(back?.dockLeftIds).toEqual(["demo:one"]);
-    expect(back?.panels["demo:one"].title).toBe("One");
-  });
-
-  it("rejects malformed base64", () => {
-    expect(decodeWsParam("not-base64!@#$")).toBeNull();
-  });
-
-  it("rejects mismatched schemaVersion", () => {
-    const raw = btoa(JSON.stringify({ ...SAMPLE, schemaVersion: 99 }));
-    expect(decodeWsParam(raw)).toBeNull();
-  });
-
-  it("buildShareableUrl includes ?ws= and pathname", () => {
-    const url = buildShareableUrl(SAMPLE);
-    expect(url).toContain("?ws=");
-    expect(url).toContain(window.location.pathname);
-  });
-
-  it("readWsFromUrl returns null when no ws param", () => {
-    expect(readWsFromUrl()).toBeNull();
-  });
-});
-
-describe("persistence — localStorage scopes", () => {
-  it("writes + reads the global scope", () => {
-    writeScope({ kind: "global" }, SAMPLE);
-    const back = readScope({ kind: "global" });
-    expect(back?.dockLeftIds).toEqual(["demo:one"]);
-  });
-
-  it("writes + reads route scope independently of global", () => {
-    writeScope({ kind: "global" }, SAMPLE);
-    writeScope({ kind: "route", route: "/wrestle" }, {
-      ...SAMPLE,
-      dockRightIds: ["other:notes"],
+describe("legacy workspace retirement", () => {
+  it("deletes hostile layouts without reading values or touching preferences", () => {
+    const hostile = JSON.stringify({
+      panels: { foreign: { props: { html: "<script>x</script>", prompt: "secret", sourceUrl: "https://foreign", investigationId: "other", nested: { arbitrary: true } } } },
     });
-    expect(readScope({ kind: "global" })?.dockRightIds).toEqual([]);
-    expect(readScope({ kind: "route", route: "/wrestle" })?.dockRightIds).toEqual([
-      "other:notes",
-    ]);
+    window.localStorage.setItem("antiek.workspace.global", hostile);
+    window.localStorage.setItem("antiek.workspace.route./inv/:id", hostile);
+    window.localStorage.setItem("antiek.workspace.inv.foreign", hostile);
+    window.localStorage.setItem(HOTKEY_KEY, JSON.stringify(VALID_HOTKEYS));
+    window.localStorage.setItem("antiek.notebook.draft", "keep");
+
+    const getItem = vi.spyOn(Storage.prototype, "getItem");
+    retireLegacyWorkspaceSnapshots();
+    retireLegacyWorkspaceSnapshots();
+
+    expect(getItem).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem("antiek.workspace.global")).toBeNull();
+    expect(window.localStorage.getItem("antiek.workspace.route./inv/:id")).toBeNull();
+    expect(window.localStorage.getItem("antiek.workspace.inv.foreign")).toBeNull();
+    expect(window.localStorage.getItem(HOTKEY_KEY)).toBe(JSON.stringify(VALID_HOTKEYS));
+    expect(window.localStorage.getItem("antiek.notebook.draft")).toBe("keep");
   });
 
-  it("clearScope removes only the targeted scope", () => {
-    writeScope({ kind: "global" }, SAMPLE);
-    writeScope({ kind: "route", route: "/r" }, SAMPLE);
-    clearScope({ kind: "global" });
-    expect(readScope({ kind: "global" })).toBeNull();
-    expect(readScope({ kind: "route", route: "/r" })).not.toBeNull();
+  it.each([
+    "valid-looking",
+    "%not-base64%",
+    "",
+    "x".repeat(100_000),
+  ])("removes opaque ws value without decoding (case %#)", (value) => {
+    window.history.replaceState({}, "", `/read?keep=a%2Bb&ws=${value}&other=two#section%201`);
+    const atobSpy = vi.spyOn(globalThis, "atob");
+    retireLegacyWorkspaceSnapshots();
+    expect(atobSpy).not.toHaveBeenCalled();
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe(
+      "/read?keep=a%2Bb&other=two#section%201",
+    );
   });
 
-  it("clearAll wipes every antiek.workspace.* key", () => {
-    writeScope({ kind: "global" }, SAMPLE);
-    writeScope({ kind: "route", route: "/r" }, SAMPLE);
-    writeScope({ kind: "investigation", id: "inv-1" }, SAMPLE);
-    const n = clearAll();
-    expect(n).toBe(3);
-    expect(readScope({ kind: "global" })).toBeNull();
+  it("removes duplicate and empty ws parameters while preserving other order and hash", () => {
+    window.history.replaceState({}, "", "/read?first=1&ws=&middle=2&ws=duplicate&last=3#hash");
+    retireLegacyWorkspaceSnapshots();
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe(
+      "/read?first=1&middle=2&last=3#hash",
+    );
+  });
+
+  it("removes a bare ws segment without an equals sign", () => {
+    window.history.replaceState({}, "", "/read?first=1&ws&last=3#hash");
+    retireLegacyWorkspaceSnapshots();
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe(
+      "/read?first=1&last=3#hash",
+    );
+  });
+
+  it("preserves unrelated query bytes rather than normalizing their encoding", () => {
+    window.history.replaceState({}, "", "/read?space=a%20b&plus=a+b&tilde=~&ws=opaque&encoded=%2f%2F#h%20x");
+    retireLegacyWorkspaceSnapshots();
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe(
+      "/read?space=a%20b&plus=a+b&tilde=~&encoded=%2f%2F#h%20x",
+    );
+  });
+
+  it("fails closed when storage cleanup and history replacement throw", () => {
+    window.localStorage.setItem("antiek.workspace.global", "hostile");
+    window.history.replaceState({}, "", "/?ws=opaque&keep=1#h");
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => { throw new Error("blocked"); });
+    vi.spyOn(window.history, "replaceState").mockImplementation(() => { throw new Error("blocked"); });
+    expect(() => retireLegacyWorkspaceSnapshots()).not.toThrow();
   });
 });
 
-describe("persistence — project + applyOver", () => {
-  it("project strips transient state", () => {
-    const fully = { ...EMPTY_SNAPSHOT, ...SAMPLE, focusedPanelId: "demo:one", zCounter: 99 };
-    const persisted = project(fully);
-    expect("focusedPanelId" in persisted).toBe(false);
-    expect("zCounter" in persisted).toBe(false);
-    expect(persisted.schemaVersion).toBe(1);
+describe("closed custom-hotkey preference", () => {
+  it("accepts the exact existing v1 schema", () => {
+    window.localStorage.setItem(HOTKEY_KEY, JSON.stringify(VALID_HOTKEYS));
+    expect(readCustomHotkeys()).toEqual(VALID_HOTKEYS);
   });
 
-  it("applyOver merges panels + re-derives floatingIds + zCounter", () => {
-    const layered = applyOver({ ...EMPTY_SNAPSHOT }, SAMPLE);
-    // demo:two is floating with z=5 → should appear in floatingIds
-    expect(layered.floatingIds).toContain("demo:two");
-    // zCounter re-derived from max(z) = 5
-    expect(layered.zCounter).toBe(5);
-  });
-
-  it("applyOver returns base unchanged on schemaVersion mismatch", () => {
-    const layered = applyOver(
-      { ...EMPTY_SNAPSHOT },
-      { ...SAMPLE, schemaVersion: 99 as 1 },
-    );
-    expect(Object.keys(layered.panels)).toHaveLength(0);
+  it.each([
+    { ...VALID_HOTKEYS, extra: true },
+    { ...VALID_HOTKEYS, bindings: [{ ...VALID_HOTKEYS.bindings[0], extra: true }] },
+    { ...VALID_HOTKEYS, bindings: [{ ...VALID_HOTKEYS.bindings[0], entityKind: "admin" }] },
+    { ...VALID_HOTKEYS, bindings: [{ ...VALID_HOTKEYS.bindings[0], route: "https://foreign.example" }] },
+    { ...VALID_HOTKEYS, bindings: [{ ...VALID_HOTKEYS.bindings[0], spec: "mod+k" }] },
+    { ...VALID_HOTKEYS, bindings: [{ ...VALID_HOTKEYS.bindings[0], spec: "MOD+." }] },
+    { ...VALID_HOTKEYS, bindings: [VALID_HOTKEYS.bindings[0], VALID_HOTKEYS.bindings[0]] },
+    { ...VALID_HOTKEYS, bindings: Array.from({ length: 101 }, () => VALID_HOTKEYS.bindings[0]) },
+  ])("rejects permissive or unbounded envelopes", (value) => {
+    window.localStorage.setItem(HOTKEY_KEY, JSON.stringify(value));
+    expect(readCustomHotkeys()).toEqual({ schemaVersion: 1, bindings: [] });
   });
 });

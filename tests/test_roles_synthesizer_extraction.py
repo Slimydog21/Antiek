@@ -450,6 +450,39 @@ def test_component_rejects_fabricated_chunk_ids_with_canonical_set():
     )
     assert out.thesis_components[0].supporting_chunk_ids == ("chunk-1",)
 
+
+def test_component_inherited_support_must_be_reachable_through_its_chunks():
+    payload = _good_thesis()
+    payload["thesis_components"][0]["supporting_chunk_ids"] = ["chunk-1"]
+    payload["thesis_components"][0]["supporting_inherited_unit_ids"] = ["unit-1"]
+    out = parse_synthesizer_response(
+        json.dumps(payload),
+        canonical_chunk_ids={"chunk-1", "chunk-2"},
+        inherited_support_by_chunk={"chunk-1": ["unit-1"], "chunk-2": ["unit-2"]},
+    )
+    assert out.thesis_components[0].supporting_inherited_unit_ids == ("unit-1",)
+
+    payload["thesis_components"][0]["supporting_inherited_unit_ids"] = ["unit-2"]
+    with pytest.raises(SynthesizerValidationError, match="not reachable"):
+        parse_synthesizer_response(
+            json.dumps(payload),
+            canonical_chunk_ids={"chunk-1", "chunk-2"},
+            inherited_support_by_chunk={"chunk-1": ["unit-1"], "chunk-2": ["unit-2"]},
+        )
+
+
+def test_component_rejects_duplicate_inherited_support():
+    payload = _good_thesis()
+    payload["thesis_components"][0]["supporting_inherited_unit_ids"] = [
+        "unit-1", "unit-1"
+    ]
+    with pytest.raises(SynthesizerValidationError, match="must be unique"):
+        parse_synthesizer_response(
+            json.dumps(payload),
+            inherited_support_by_chunk={"chunk-1": ["unit-1"]},
+        )
+
+    payload["thesis_components"][0].pop("supporting_inherited_unit_ids")
     payload["thesis_components"][0]["supporting_chunk_ids"] = ["chunk-fake"]
     payload["thesis_components"][0]["supporting_path_indices"] = []
     with pytest.raises(SynthesizerValidationError, match="provenance"):

@@ -117,9 +117,13 @@ def test_put_content_replaces_existing_blocks(tmp_path, monkeypatch):
             {"type": "claim_card", "attrs": {"claim_id": "c-1"}},
         ],
     }
-    r = client.put(f"/notebooks/{nb_id}/content", json={"doc": doc})
+    revision = client.get(f"/notebooks/{nb_id}/content").json()["revision"]
+    r = client.put(
+        f"/notebooks/{nb_id}/content",
+        json={"schema_version": 1, "base_revision": revision, "mutation_key": "replace-two", "doc": doc},
+    )
     assert r.status_code == 200, r.text
-    blocks = r.json()["blocks"]
+    blocks = client.get(f"/notebooks/{nb_id}").json()["blocks"]
     assert len(blocks) == 2
     assert blocks[0]["block_type"] == "prose"
     assert blocks[1]["block_type"] == "claim_card"
@@ -131,7 +135,7 @@ def test_put_content_unknown_notebook_404(tmp_path, monkeypatch):
     client = _client()
     r = client.put(
         "/notebooks/does-not-exist/content",
-        json={"doc": {"type": "doc", "content": []}},
+        json={"schema_version": 1, "base_revision": 0, "mutation_key": "missing", "doc": {"type": "doc", "content": []}},
     )
     assert r.status_code == 404
 
@@ -143,6 +147,6 @@ def test_put_content_malformed_doc_422(tmp_path, monkeypatch):
     nb_id = r.json()["notebook_id"]
     r = client.put(
         f"/notebooks/{nb_id}/content",
-        json={"doc": {"type": "not_a_doc"}},
+        json={"schema_version": 1, "base_revision": 0, "mutation_key": "malformed", "doc": {"type": "not_a_doc"}},
     )
     assert r.status_code == 422

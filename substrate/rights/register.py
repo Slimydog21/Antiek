@@ -37,6 +37,7 @@ from substrate.constants import (
     PERSONAL_READING_CONTENT_CLASS,
 )
 from substrate.graph.ops import update_document_gate_columns
+from substrate.legal_gate.read import document_custody_exists
 
 
 class SourceKind(StrEnum):
@@ -149,10 +150,7 @@ def register_source_document(
     """
     _require_locked(con)
 
-    exists = con.execute(
-        "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1", [document_id]
-    ).fetchone()
-    if exists is None:
+    if not document_custody_exists(con, document_id):
         raise ValueError(
             f"{document_id} has no documents row — insert the document before "
             "registering its rights (acquisition inserts, then registers)."

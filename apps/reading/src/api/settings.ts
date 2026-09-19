@@ -13,6 +13,24 @@ export interface ModelsResponse {
   count: number;
   providers_ready: boolean;
   source: string;
+  cascade_targets: Array<{
+    research_tier: "fast" | "deep" | "wrestle";
+    state: "selected_for_cascade_launch" | "unavailable";
+    provider_id: string | null;
+    model_id: string | null;
+    candidate_rank: number | null;
+    availability_source: "boot_registered_providers";
+    reason: string;
+  }>;
+  operator_models: Array<{
+    model_id: string;
+    provider_id: string;
+    state: "operator_added_unverified";
+    decision_tree_selected: boolean;
+    provider_adapter_boot_ready: boolean;
+    authority_scope: "process_global_operator_registry";
+  }>;
+  authority_notes: string[];
 }
 
 export interface BudgetResponse {
@@ -43,6 +61,10 @@ export interface PromptCostEstimateResponse {
   tier: string | null;
   provider: string | null;
   model: string | null;
+  pricing_fingerprint?: string | null;
+  pricing_source_url?: string | null;
+  pricing_verified_at?: string | null;
+  pricing_expires_at?: string | null;
 }
 
 async function readJson<T>(res: Response): Promise<T> {
@@ -101,9 +123,42 @@ export async function registerSettingsModel(opts: {
   return readJson<RegisteredModelsResponse>(res);
 }
 
+export function validateModelsResponse(value: unknown): ModelsResponse {
+  if (typeof value !== "object" || value === null) throw new Error("invalid models authority response");
+  const row = value as Record<string, unknown>;
+  if (!Array.isArray(row.models) || !Array.isArray(row.cascade_targets) || !Array.isArray(row.operator_models) || !Array.isArray(row.authority_notes)) {
+    throw new Error("models authority response is incomplete");
+  }
+  const tiers = new Set<string>();
+  for (const raw of row.cascade_targets) {
+    if (typeof raw !== "object" || raw === null) throw new Error("invalid cascade target authority");
+    const target = raw as Record<string, unknown>;
+    if (target.research_tier !== "fast" && target.research_tier !== "deep" && target.research_tier !== "wrestle") throw new Error("invalid cascade target tier");
+    if (tiers.has(target.research_tier)) throw new Error("duplicate cascade target tier");
+    tiers.add(target.research_tier);
+    if (target.availability_source !== "boot_registered_providers" || typeof target.reason !== "string") throw new Error("invalid cascade target authority source");
+    if (target.state === "selected_for_cascade_launch") {
+      if (typeof target.provider_id !== "string" || !target.provider_id || typeof target.model_id !== "string" || !target.model_id || typeof target.candidate_rank !== "number" || !Number.isInteger(target.candidate_rank) || target.candidate_rank < 1) {
+        throw new Error("selected cascade target is incomplete");
+      }
+    } else if (target.state === "unavailable") {
+      if (target.provider_id !== null || target.model_id !== null || target.candidate_rank !== null) throw new Error("unavailable cascade target invented a route");
+    } else throw new Error("invalid cascade target state");
+  }
+  if (tiers.size !== 3) throw new Error("models authority response must cover all research tiers");
+  for (const raw of row.operator_models) {
+    if (typeof raw !== "object" || raw === null) throw new Error("invalid operator model authority");
+    const entry = raw as Record<string, unknown>;
+    if (entry.state !== "operator_added_unverified" || entry.authority_scope !== "process_global_operator_registry" || typeof entry.model_id !== "string" || !entry.model_id || typeof entry.provider_id !== "string" || !entry.provider_id || typeof entry.decision_tree_selected !== "boolean" || typeof entry.provider_adapter_boot_ready !== "boolean") {
+      throw new Error("invalid operator model authority");
+    }
+  }
+  return value as ModelsResponse;
+}
+
 export async function fetchSettingsModels(): Promise<ModelsResponse> {
   const res = await apiFetch(`${API_BASE}/settings/models`);
-  return readJson<ModelsResponse>(res);
+  return validateModelsResponse(await readJson<unknown>(res));
 }
 
 export async function fetchSettingsBudget(): Promise<BudgetResponse> {
@@ -457,6 +512,7 @@ export type NotDiamondAdvisoryResponse = {
   suggested_provider_id?: string | null;
   suggestion_source?: string | null;
   suggestion_week_id?: string | null;
+  measurement_status?: string;
   recommended_mean_score?: number | null;
   installable?: boolean;
   dispatch_owner: string;

@@ -6,7 +6,7 @@ describe("collectiveContinueUnitReadiness (aul)", () => {
     const r = collectiveContinueUnitReadiness({});
     expect(r.unit_continue_ready).toBe(false);
     expect(r.seamless_unit_continue).toBe(false);
-    expect(r.l6_live_multiagent).toBe("deferred");
+    expect(r.l6_live_multiagent).toBe("separate_operator_gate");
     expect(r.html_first).toBe(true);
     expect(r.never_pdf_view).toBe(true);
   });
@@ -22,7 +22,7 @@ describe("collectiveContinueUnitReadiness (aul)", () => {
     expect(r.seamless_unit_continue).toBe(true);
     expect(r.spawn_count).toBe(3);
     expect(r.open_title_float).toMatch(/never PDF/i);
-    expect(r.open_title_full).toMatch(/L6/i);
+    expect(r.open_title_full).toMatch(/separate operator gate/i);
   });
 
   it("counts spawn_ids when spawn_count omitted", () => {

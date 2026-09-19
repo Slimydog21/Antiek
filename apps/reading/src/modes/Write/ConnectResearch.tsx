@@ -5,6 +5,10 @@ import {
   startInvestigation,
   type InvestigationSummary,
 } from "../../lib/api";
+import {
+  ResearchRunCeilingApproval,
+  type ResearchRunAuthorization,
+} from "../../components/engagement/ResearchRunCeilingApproval";
 
 /**
  * ConnectResearch — the M1 connect step (Write SPR-09).
@@ -49,6 +53,8 @@ export default function ConnectResearch({
   const [loading, setLoading] = useState(true);
   const [spawning, setSpawning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [runAuthorization, setRunAuthorization] =
+    useState<ResearchRunAuthorization>({ approved: false, ceilingUsd: null, projection: null });
 
   useEffect(() => {
     let cancelled = false;
@@ -77,7 +83,7 @@ export default function ConnectResearch({
   }
 
   async function connectNone() {
-    if (disabled || spawning) return;
+    if (disabled || spawning || !runAuthorization.approved || runAuthorization.ceilingUsd == null) return;
     setSpawning(true);
     setError(null);
     try {
@@ -87,6 +93,7 @@ export default function ConnectResearch({
       const spawned = await startInvestigation({
         question: pieceTitle.trim() || "Untitled piece",
         context: "Auto-spawned research folder backing a Write piece (SPR-09 M1).",
+        approved_run_ceiling_usd: runAuthorization.ceilingUsd,
       });
       onConnect({
         investigationId: spawned.investigation_id,
@@ -125,7 +132,7 @@ export default function ConnectResearch({
       <button
         type="button"
         onClick={() => void connectNone()}
-        disabled={disabled || spawning}
+        disabled={disabled || spawning || !runAuthorization.approved}
         className="w-full rounded border border-dashed border-rule px-3 py-2 text-left text-sm hover:border-ocean disabled:opacity-60 dark:border-charcoal-1"
       >
         <span className="font-medium text-ink dark:text-bright">
@@ -135,6 +142,12 @@ export default function ConnectResearch({
           We'll auto-spawn a backing research folder and link it.
         </span>
       </button>
+      <ResearchRunCeilingApproval
+        promptText={pieceTitle.trim() || "Untitled piece"}
+        researchTier="deep"
+        disabled={disabled || spawning}
+        onAuthorizationChange={setRunAuthorization}
+      />
 
       {loading ? (
         <p className="text-xs italic text-ink-mute dark:text-moonlight">

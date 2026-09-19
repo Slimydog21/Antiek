@@ -115,9 +115,13 @@ vi.mock("../engagement/PublicationAttachPanel", () => ({
 vi.mock("../engagement/SessionFlywheelPanel", () => ({
   SessionFlywheelPanel: (props: {
     sessionId: string;
+    candidateOnly?: boolean;
     onCompleted?: (r: { status: string }) => void;
   }) => (
-    <div data-testid="session-flywheel-panel-stub">
+    <div
+      data-testid="session-flywheel-panel-stub"
+      data-candidate-only={String(Boolean(props.candidateOnly))}
+    >
       {props.sessionId}
       {props.onCompleted ? (
         <button
@@ -480,6 +484,46 @@ describe("DeepResearchSessionHost", () => {
         "data-poll-ms",
       ),
     ).toBe("4000");
+  });
+
+  it("keeps claim challenge windows candidate-only and free of auto-mutation panels", () => {
+    render(
+      <DeepResearchSessionHost
+        {...FIXTURE}
+        claim_challenge={{
+          schema_version: 1,
+          owner_account_digest: "d".repeat(64),
+          source_asset_id: "launch-asset",
+          artifact_content_hash: "a".repeat(64),
+          synthesis_event_id: "synth-1",
+          claim_index: 0,
+          claim_id: "artifact-v2:claim",
+          claim_sha256: "b".repeat(64),
+          evaluation_event_id: "ground-1",
+          scorer_id: "groundedness-nli-v1",
+          relation: "contradicted",
+          score: 0.1,
+          evidence_receipt_sha256s: [],
+          model_id: "launch-model",
+          research_tier: "deep",
+          goal_sha256: "c".repeat(64),
+          receipt_sha256: "e".repeat(64),
+        }}
+      />,
+    );
+    expect(screen.queryByTestId("deep-research-progress-mount")).toBeNull();
+    expect(screen.queryByTestId("deep-research-twins-mount")).toBeNull();
+    expect(screen.queryByTestId("deep-research-publication-attach-mount")).toBeNull();
+    expect(screen.queryByTestId("deep-research-spawn-merge-mount")).toBeNull();
+    expect(
+      screen.getByTestId("session-flywheel-panel-stub").getAttribute(
+        "data-candidate-only",
+      ),
+    ).toBe("true");
+    expect(screen.queryByTestId("deep-research-claim-review-mount")).toBeNull();
+    fireEvent.click(screen.getByTestId("session-flywheel-notify"));
+    expect(screen.getByTestId("deep-research-claim-review-mount")).toBeTruthy();
+    expect(screen.getByTestId("claim-challenge-review-panel")).toBeTruthy();
   });
 
   it("wrestle research_tier uses 8s progress poll cadence (jo)", () => {

@@ -214,6 +214,11 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.USER_REJECT_DELTA]: null,
   [ActionType.USER_MODIFY_DELTA]: null,
   [ActionType.DISPATCH_CALL]: null, // the cost meter aggregates these; never a line
+  // Durable money-state receipts feed budget views and reconciliation. They
+  // are not research progress beats and must not create narrator noise.
+  [ActionType.RESEARCH_CALL_RESERVED]: null,
+  [ActionType.RESEARCH_CALL_SETTLED]: null,
+  [ActionType.RESEARCH_CALL_RELEASED]: null,
   [ActionType.CONTEXT_PACK_ASSEMBLED]: null,
   [ActionType.GRAPH_TIER_ASSIGNED]: null,
   [ActionType.QUESTION_RESOLVED_BY_DOC]: null,
@@ -300,6 +305,13 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   // beat. The doc joins the project's substrate, but the narration belongs to
   // the personal space, not the investigation's progress stream.
   [ActionType.DOCUMENT_FILED_INTO_INVESTIGATION]: null,
+  // Reference-only reading/workspace control events are UI state, not
+  // research-progress narration. Neither carries source prose.
+  [ActionType.DOCUMENT_CITATION_POSITION_SET]: null,
+  [ActionType.WORKSPACE_RESUME_CHECKPOINT_SET]: null,
+  // DRL-16 — the dedicated receipt panel renders this structured report;
+  // duplicating it as prose in the thinking stream would obscure partial truth.
+  [ActionType.GATHER_REPORT_RECORDED]: null,
   // SPR-02 — claim-groundedness (truth-axis) quality signals. Observability-
   // only this sprint and sibling to the suppressed RUBRIC_SCORED form-axis
   // signal: the engine's per-synthesis quality telemetry, not a reader-facing

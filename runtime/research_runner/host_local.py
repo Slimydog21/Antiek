@@ -41,16 +41,34 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import os
+import re
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+
+from substrate.investigation_streams import (
+    initialize_composite_stream,
+    resolve_investigation_stream,
+)
+from substrate.investigation_tenancy import (
+    InvestigationAuthority,
+    default_tenancy_root,
+)
+from substrate.multi_user.auth import UserClaims
 
 if TYPE_CHECKING:
     from substrate.context_pack import ContextPack, RecursiveNotesPack
+    from substrate.context_pack.knowledge_reuse import PackWithReuse
 
 try:
-    from ...event_log import log_event, seal_investigation  # type: ignore[import-not-found]
+    from ...event_log import (  # type: ignore[import-not-found]
+        investigation_authority_context,
+        log_event_authorized,
+        seal_investigation_authorized,
+    )
     from ...schemas.events import ActionType  # type: ignore[import-not-found]
     from .budget import BudgetManager, BudgetReservation
     from .protocol import (
@@ -81,7 +99,11 @@ except ImportError:  # pragma: no cover — direct-script fallback
         StepEvent,
         StopResearch,
     )
-    from substrate.event_log import log_event, seal_investigation
+    from substrate.event_log import (
+        investigation_authority_context,
+        log_event_authorized,
+        seal_investigation_authorized,
+    )
     from substrate.schemas.events import ActionType
 
 
@@ -106,19 +128,33 @@ class LoopContext:
         *,
         prompt_prefix: str = "",
         context_pack_event_id: str | None = None,
+        inherited_unit_ids: tuple[str, ...] = (),
     ):
+        if len(inherited_unit_ids) > 100:
+            raise ValueError("inherited reuse allowlist exceeds policy limit")
+        if len(set(inherited_unit_ids)) != len(inherited_unit_ids):
+            raise ValueError("inherited reuse allowlist contains duplicate IDs")
+        if any(
+            not isinstance(unit_id, str)
+            or not unit_id.strip()
+            or unit_id != unit_id.strip()
+            or len(unit_id) > 512
+            for unit_id in inherited_unit_ids
+        ):
+            raise ValueError("inherited reuse allowlist contains an invalid ID")
         self.plan = plan
         self.investigation_id = plan.investigation_id
         self.sub_question = plan.sub_question
         self._budget = budget
         self._seq = 0
         self._resume = asyncio.Event()
-        self._resume.set()                # starts un-paused
+        self._resume.set()  # starts un-paused
         self._stop = False
         self._pending_redirect: str | None = None
         self.paused = False
         self.prompt_prefix = prompt_prefix
         self.context_pack_event_id = context_pack_event_id
+        self.inherited_unit_ids = inherited_unit_ids
 
     # -- steering (mutated by the runner from steer()) -----------------
 
@@ -132,7 +168,7 @@ class LoopContext:
 
     def request_stop(self) -> None:
         self._stop = True
-        self._resume.set()                # unblock a paused loop so it can stop
+        self._resume.set()  # unblock a paused loop so it can stop
 
     def request_redirect(self, sub_question: str) -> None:
         self._pending_redirect = sub_question
@@ -166,8 +202,15 @@ class LoopContext:
         tokens: int = 0,
         **data: Any,
     ) -> StepEvent:
-        return StepEvent(self.investigation_id, self._next_seq(), "step",
-                         text=text, cost_usd=cost_usd, tokens=tokens, data=data)
+        return StepEvent(
+            self.investigation_id,
+            self._next_seq(),
+            "step",
+            text=text,
+            cost_usd=cost_usd,
+            tokens=tokens,
+            data=data,
+        )
 
     def note(self, text: str, **data: Any) -> StepEvent:
         return StepEvent(self.investigation_id, self._next_seq(), "note", text=text, data=data)
@@ -209,6 +252,7 @@ class _ResearchState:
         self.follow_ups: list[str] = []
         self.started = False
         self.startup_context: ContextPack | None = None
+        self.startup_reuse_unit_ids: tuple[str, ...] = ()
 
 
 class HostLocalRunner:
@@ -218,6 +262,7 @@ class HostLocalRunner:
         self,
         loop_fn: Callable[[LoopContext], AsyncIterator[StepEvent]],
         *,
+        claims: UserClaims,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         budget: BudgetManager | None = None,
         events_dir: str | None = None,
@@ -225,14 +270,32 @@ class HostLocalRunner:
         on_emit: Callable[[StepEvent], Awaitable[None]] | None = None,
         retrieval_substrate: object | None = None,
         reuse_role: str = "user_agent",
-        recursive_notes_provider: Callable[[str, ResearchPlan], RecursiveNotesPack]
-        | None = None,
+        recursive_notes_provider: Callable[[str, ResearchPlan], RecursiveNotesPack] | None = None,
     ):
+        if not isinstance(claims, UserClaims):
+            raise TypeError("claims must be validated UserClaims")
+        if (
+            not isinstance(claims.user_id, str)
+            or not claims.user_id.strip()
+            or claims.user_id != claims.user_id.strip()
+            or not isinstance(claims.scopes, frozenset)
+            or not all(isinstance(scope, str) and scope for scope in claims.scopes)
+            or not isinstance(claims.issued_at, str)
+            or not claims.issued_at
+        ):
+            raise ValueError("claims must be validated UserClaims")
         self._loop_fn = loop_fn
+        self._claims = claims
+        self._event_role = "operator" if "operator" in claims.scopes else "user_agent"
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self.max_concurrency = max_concurrency
         self.budget = budget or BudgetManager()
         self._events_dir = events_dir
+        self._tenancy_root = (
+            Path(events_dir).expanduser().resolve(strict=False)
+            if events_dir
+            else default_tenancy_root()
+        )
         self._seal_on_complete = seal_on_complete
         # Optional async hook the promotion funnel subscribes to so notes /
         # questions get drained as they are emitted.
@@ -254,16 +317,25 @@ class HostLocalRunner:
     # -- protocol: start -----------------------------------------------
 
     async def start(self, investigation_id: str, plan: ResearchPlan) -> Handle:
+        if plan.investigation_id != investigation_id:
+            raise ValueError("plan investigation_id does not match start authority")
+        if plan.parent_investigation_id:
+            resolve_investigation_stream(self._authority(plan.parent_investigation_id))
+        initialize_composite_stream(self._authority(investigation_id))
         st = _ResearchState(plan)
         self._states[investigation_id] = st
         self.budget.register(investigation_id, plan.budget.cost_usd)
 
         if plan.parent_investigation_id:
-            log_event(
-                investigation_id, ActionType.INVESTIGATION_SPAWNED_FROM,
-                payload={"parent_investigation_id": plan.parent_investigation_id,
-                         "sub_question": plan.sub_question},
-                role="user_agent", events_dir=self._events_dir,
+            self._log_event(
+                investigation_id,
+                ActionType.INVESTIGATION_SPAWNED_FROM,
+                payload={
+                    "parent_investigation_id": plan.parent_investigation_id,
+                    "sub_question": plan.sub_question,
+                },
+                role=self._event_role,
+                events_dir=self._events_dir,
             )
 
         # Aggregate-cap gate: refuse the launch with a surfaced reason rather
@@ -272,13 +344,17 @@ class HostLocalRunner:
             reason = self.budget.launch_block_reason()
             st.state = RunState.BUDGET_HALTED
             st.error = reason
-            log_event(investigation_id, ActionType.INVESTIGATION_CHASE_HALTED,
-                      payload={"reason": "aggregate_budget", "detail": reason},
-                      role="user_agent", events_dir=self._events_dir)
-            await st.queue.put(StepEvent(investigation_id, 0, "status",
-                                         text=reason, state=RunState.BUDGET_HALTED))
-            await st.queue.put(StepEvent(investigation_id, 0, "done",
-                                         state=RunState.BUDGET_HALTED))
+            self._log_event(
+                investigation_id,
+                ActionType.INVESTIGATION_CHASE_HALTED,
+                payload={"reason": "aggregate_budget", "detail": reason},
+                role=self._event_role,
+                events_dir=self._events_dir,
+            )
+            await st.queue.put(
+                StepEvent(investigation_id, 0, "status", text=reason, state=RunState.BUDGET_HALTED)
+            )
+            await st.queue.put(StepEvent(investigation_id, 0, "done", state=RunState.BUDGET_HALTED))
             await st.queue.put(_STREAM_DONE)
             return Handle(investigation_id)
 
@@ -287,14 +363,28 @@ class HostLocalRunner:
         # event land before the first StepEvent the loop emits). No-op unless a
         # RetrievalSubstrate was injected; non-fatal on any failure (a retrieval
         # hiccup must degrade to "no reuse", never a dead investigation).
-        st.startup_context = self._maybe_reuse_prior_knowledge(investigation_id, plan)
+        startup = self._maybe_reuse_prior_knowledge(investigation_id, plan)
+        if startup is not None:
+            st.startup_context = startup.pack
+            st.startup_reuse_unit_ids = tuple(unit.unit_id for unit in startup.injected)
 
         st.task = asyncio.create_task(self._run(st))
         return Handle(investigation_id)
 
+    @property
+    def tenancy_root(self) -> Path:
+        return self._tenancy_root
+
+    def _authority(self, investigation_id: str) -> InvestigationAuthority:
+        return InvestigationAuthority(self._claims.user_id, investigation_id, self._tenancy_root)
+
+    def _log_event(self, investigation_id: str, action: ActionType, **kwargs: Any) -> str | None:
+        kwargs.pop("events_dir", None)
+        return log_event_authorized(self._authority(investigation_id), action, **kwargs)
+
     def _maybe_reuse_prior_knowledge(
         self, investigation_id: str, plan: ResearchPlan
-    ) -> ContextPack | None:
+    ) -> PackWithReuse | None:
         """AFF SPR-06 reuse hook (called exactly once from ``start``).
 
         Composes ``substrate.context_pack.knowledge_reuse`` — retrieve prior
@@ -323,11 +413,10 @@ class HostLocalRunner:
         units = []
         if self._retrieval_substrate is not None:
             try:
-                units = (
-                    retrieve_prior_units(
-                        self._retrieval_substrate,
-                        question_text=plan.sub_question,
-                    )
+                units = retrieve_prior_units(
+                    self._retrieval_substrate,
+                    question_text=plan.sub_question,
+                    authority=self._authority(investigation_id),
                 )
             except Exception as exc:  # pragma: no cover — optional reuse boundary
                 print(
@@ -340,7 +429,7 @@ class HostLocalRunner:
             else None
         )
         try:
-            result = assemble_context_pack_with_reuse(
+            return assemble_context_pack_with_reuse(
                 role=self._reuse_role,
                 investigation_id=investigation_id,
                 layers=[
@@ -356,7 +445,6 @@ class HostLocalRunner:
                 include_reuse=self._retrieval_substrate is not None,
                 recursive_notes_pack=recursive_pack,
             )
-            return result.pack
         except Exception as exc:  # pragma: no cover — optional context boundary
             if self._recursive_notes_provider is not None:
                 raise
@@ -370,15 +458,14 @@ class HostLocalRunner:
 
     async def _run(self, st: _ResearchState) -> None:
         iid = st.plan.investigation_id
-        async with self._semaphore:        # bounded concurrency
+        async with self._semaphore:  # bounded concurrency
             st.started = True
             ctx = LoopContext(
                 st.plan,
                 self.budget,
                 prompt_prefix=st.startup_context.text if st.startup_context else "",
-                context_pack_event_id=(
-                    st.startup_context.event_id if st.startup_context else None
-                ),
+                context_pack_event_id=(st.startup_context.event_id if st.startup_context else None),
+                inherited_unit_ids=st.startup_reuse_unit_ids,
             )
             st.ctx = ctx
             st.state = RunState.RUNNING
@@ -386,11 +473,16 @@ class HostLocalRunner:
             # fine-grained step stream stays in-memory for live monitoring;
             # SPR-06 decides what else to persist). Each investigation writes
             # only its own file — automatic isolation by investigation_id.
-            log_event(iid, ActionType.INVESTIGATION_START_REQUESTED,
-                      payload={"sub_question": ctx.sub_question},
-                      role="user_agent", events_dir=self._events_dir)
-            await self._push(st, StepEvent(iid, 0, "status", text="running",
-                                           state=RunState.RUNNING))
+            self._log_event(
+                iid,
+                ActionType.INVESTIGATION_START_REQUESTED,
+                payload={"sub_question": ctx.sub_question},
+                role=self._event_role,
+                events_dir=self._events_dir,
+            )
+            await self._push(
+                st, StepEvent(iid, 0, "status", text="running", state=RunState.RUNNING)
+            )
             try:
                 async for ev in self._loop_fn(ctx):
                     st.state = RunState.PAUSED if ctx.paused else RunState.RUNNING
@@ -407,31 +499,41 @@ class HostLocalRunner:
                     await self._push(st, ev)
             except StopResearch:
                 st.state = RunState.STOPPED
-                await self._finish(st, ActionType.INVESTIGATION_COMPLETED,
-                                   {"outcome": "stopped"})
+                await self._finish(st, ActionType.INVESTIGATION_COMPLETED, {"outcome": "stopped"})
                 return
             except BudgetExceeded as exc:
                 st.state = RunState.BUDGET_HALTED
                 st.error = str(exc)
-                log_event(iid, ActionType.INVESTIGATION_CHASE_HALTED,
-                          payload={"reason": exc.scope, "detail": str(exc),
-                                   "spent_usd": self.budget.spent(iid)},
-                          role="user_agent", events_dir=self._events_dir)
+                self._log_event(
+                    iid,
+                    ActionType.INVESTIGATION_CHASE_HALTED,
+                    payload={
+                        "reason": exc.scope,
+                        "detail": str(exc),
+                        "spent_usd": self.budget.spent(iid),
+                    },
+                    role=self._event_role,
+                    events_dir=self._events_dir,
+                )
                 await self._finish(st, None, None, halted=True)
                 return
             except asyncio.CancelledError:
                 st.state = RunState.STOPPED
-                await self._finish(st, ActionType.INVESTIGATION_COMPLETED,
-                                   {"outcome": "cancelled"})
+                await self._finish(st, ActionType.INVESTIGATION_COMPLETED, {"outcome": "cancelled"})
                 raise
-            except Exception as exc:        # one loop failing must not kill siblings
+            except Exception as exc:  # one loop failing must not kill siblings
                 st.state = RunState.FAILED
                 st.error = f"{type(exc).__name__}: {exc}"
-                log_event(iid, ActionType.INVESTIGATION_FAILED,
-                          payload={"error": st.error}, role="user_agent",
-                          events_dir=self._events_dir)
-                await self._push(st, StepEvent(iid, 0, "error", text=st.error,
-                                               state=RunState.FAILED))
+                self._log_event(
+                    iid,
+                    ActionType.INVESTIGATION_FAILED,
+                    payload={"error": st.error},
+                    role=self._event_role,
+                    events_dir=self._events_dir,
+                )
+                await self._push(
+                    st, StepEvent(iid, 0, "error", text=st.error, state=RunState.FAILED)
+                )
                 await self._finish(st, None, None, already_logged=True)
                 return
             st.state = RunState.DONE
@@ -440,7 +542,8 @@ class HostLocalRunner:
     async def _push(self, st: _ResearchState, ev: StepEvent) -> None:
         await st.queue.put(ev)
         if self._on_emit is not None and ev.kind in ("note", "question"):
-            await self._on_emit(ev)
+            with investigation_authority_context(self._authority(ev.investigation_id)):
+                await self._on_emit(ev)
 
     async def _finish(
         self,
@@ -453,14 +556,19 @@ class HostLocalRunner:
     ) -> None:
         iid = st.plan.investigation_id
         if action is not None and not already_logged:
-            log_event(iid, action, payload=payload or {}, role="user_agent",
-                      events_dir=self._events_dir)
+            self._log_event(
+                iid,
+                action,
+                payload=payload or {},
+                role=self._event_role,
+                events_dir=self._events_dir,
+            )
         if self._seal_on_complete:
             # seal is best-effort (also clears the SIM105 my contextlib import
             # line-shifted out of the declared-bar baseline — shrink real debt,
             # do not re-mint a phantom)
             with contextlib.suppress(Exception):
-                seal_investigation(iid, events_dir=self._events_dir)
+                seal_investigation_authorized(self._authority(iid))
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 
@@ -580,7 +688,7 @@ def make_demo_loop(
     async def _loop(ctx: LoopContext) -> AsyncIterator[StepEvent]:
         yield ctx.plan_event(f"plan for: {ctx.sub_question}")
         for i in range(steps):
-            sub_q = await ctx.checkpoint()    # pause/stop/redirect point
+            sub_q = await ctx.checkpoint()  # pause/stop/redirect point
             if fail_on_step is not None and i == fail_on_step:
                 raise RuntimeError(f"injected failure at step {i}")
             if delay_s:
@@ -626,8 +734,7 @@ def make_contract_gather_stub(
                 gather_mode="contract_stub",
             )
         yield ctx.note(
-            f"[gather-stub] provisional note from {ctx.investigation_id}: "
-            f"{ctx.sub_question}",
+            f"[gather-stub] provisional note from {ctx.investigation_id}: {ctx.sub_question}",
             gather_mode="contract_stub",
         )
 
@@ -650,7 +757,13 @@ def make_exa_gather_loop(
     embedder: object | None = None,
     enable_reasoning: bool = False,
     reasoning_dispatch_fn: Callable[..., Any] | None = None,
+    research_tier: str | None = None,
+    reasoning_provider_override: str | None = None,
+    reasoning_model_override: str | None = None,
+    reasoning_allowed_routes: frozenset[str] | None = None,
     reasoning_projected_max_cost_usd: float = 0.25,
+    authority: InvestigationAuthority | None = None,
+    expected_policy_snapshot_sha256: str | None = None,
 ) -> Callable[[LoopContext], AsyncIterator[StepEvent]]:
     """Real DRW gather, wired to the Exa Wedge-1 discovery layer.
 
@@ -696,6 +809,55 @@ def make_exa_gather_loop(
     async def _loop(ctx: LoopContext) -> AsyncIterator[StepEvent]:
         yield ctx.plan_event(f"[exa] plan: {ctx.sub_question}", gather_mode="exa")
         sub_q = await ctx.checkpoint()
+        resolved_legal_gate = cast(LegalGate | None, legal_gate)
+        dispatch_lease_id: str | None = None
+        dispatch_policy_authority = None
+        leaf_authority = (
+            None
+            if authority is None
+            else InvestigationAuthority(authority.account_id, ctx.investigation_id, authority.root)
+        )
+
+        # The reviewed SQL-policy snapshot is revalidated immediately before
+        # the first provider request. A launch claim therefore cannot spend
+        # against policy that drifted after review.
+        if expected_policy_snapshot_sha256 is not None:
+            if leaf_authority is None:
+                raise RuntimeError("snapshot-bound Exa gather requires legal authority")
+            from runtime.db_lock import connect_write
+            from substrate.graph import default_db_path, ensure_initialized
+            from substrate.legal_gate.policy_store import account_policy_authority
+            from substrate.legal_gate.readiness import claim_policy_dispatch_lease
+
+            policy_db_path = db_path or default_db_path()
+            ensure_initialized(policy_db_path)
+            con = connect_write(policy_db_path, purpose="exa_pre_provider_policy_snapshot")
+            try:
+                dispatch_policy_authority = account_policy_authority(leaf_authority)
+                dispatch_lease_id, resolved_legal_gate = claim_policy_dispatch_lease(
+                    con,
+                    dispatch_policy_authority,
+                    holder_investigation_digest=leaf_authority.investigation_digest,
+                    holder_investigation_id=leaf_authority.investigation_id,
+                    expected_sha256=expected_policy_snapshot_sha256,
+                )
+            finally:
+                con.close()
+            from substrate.event_log import log_event_authorized
+
+            if (
+                log_event_authorized(
+                    leaf_authority,
+                    "legal_policy.dispatch_claimed",
+                    payload={
+                        "lease_id": dispatch_lease_id,
+                        "policy_snapshot_sha256": expected_policy_snapshot_sha256,
+                    },
+                    role="user_agent",
+                )
+                is None
+            ):
+                raise RuntimeError("durable dispatch-claim evidence was not recorded")
 
         proposals = discover(
             query=sub_q,
@@ -713,10 +875,11 @@ def make_exa_gather_loop(
             result = promote_discovery(
                 p,
                 investigation_id=ctx.investigation_id,
-                legal_gate=cast(LegalGate | None, legal_gate),
+                legal_gate=resolved_legal_gate,
                 events_dir=events_dir,
                 db_path=db_path,
                 embedder=embedder,
+                authority=leaf_authority,
             )
             yield ctx.step(
                 f"[exa] {result.decision}: {p.url}",
@@ -743,8 +906,7 @@ def make_exa_gather_loop(
                 # the pack emits a ``doc-url-*`` chunk. This is the
                 # provenance the pack reads.
                 yield ctx.note(
-                    f"[exa] source for '{sub_q}': "
-                    f"{p.title or p.url}",
+                    f"[exa] source for '{sub_q}': {p.title or p.url}",
                     gather_mode="exa",
                     document_id=result.document_id,
                 )
@@ -754,8 +916,7 @@ def make_exa_gather_loop(
             # document_id — this note carries none, so the pack records no
             # doc-url-* chunk for it.
             yield ctx.note(
-                f"[exa] gather found no servable source for "
-                f"'{sub_q}'",
+                f"[exa] gather found no servable source for '{sub_q}'",
                 gather_mode="exa",
             )
         elif enable_reasoning and not reasoning_evidence:
@@ -768,6 +929,10 @@ def make_exa_gather_loop(
                 reasoning_evidence,
                 dispatch_fn=reasoning_dispatch_fn,
                 projected_max_cost_usd=reasoning_projected_max_cost_usd,
+                research_tier=research_tier,
+                provider_override=reasoning_provider_override,
+                model_override=reasoning_model_override,
+                allowed_routes=reasoning_allowed_routes,
             )
             yield ctx.step(
                 "[reasoning] grounded synthesis completed",
@@ -783,18 +948,308 @@ def make_exa_gather_loop(
                     gather_mode="exa_reasoning",
                     document_id=insight.source_document_ids[0],
                     source_document_ids=insight.source_document_ids,
+                    inherited_unit_ids=insight.inherited_unit_ids,
                 )
             for question in reasoned.output.questions:
                 yield ctx.question(
                     question.text,
                     gather_mode="exa_reasoning",
                     document_id=(
-                        question.source_document_ids[0]
-                        if question.source_document_ids
-                        else None
+                        question.source_document_ids[0] if question.source_document_ids else None
                     ),
                     source_document_ids=question.source_document_ids,
+                    inherited_unit_ids=question.inherited_unit_ids,
                 )
 
+        # Release only after the paid reasoning dispatch has completed. A
+        # failed/cancelled ambiguous operation deliberately retains the
+        # non-expiring lease for terminal-evidence operator recovery.
+        if dispatch_lease_id is not None:
+            from substrate.legal_gate.readiness import release_policy_dispatch_lease
+
+            con = connect_write(policy_db_path, purpose="exa_release_policy_dispatch")
+            try:
+                release_policy_dispatch_lease(
+                    con,
+                    dispatch_policy_authority,
+                    lease_id=dispatch_lease_id,
+                    holder_investigation_digest=leaf_authority.investigation_digest,
+                )
+            finally:
+                con.close()
+
     cast(Any, _loop).consumes_prompt_context = enable_reasoning
+    return _loop
+
+
+def make_authorized_multi_source_gather_loop(
+    *,
+    launch_plan: Any,
+    authority: InvestigationAuthority,
+    feed_urls: tuple[str, ...],
+    db_path: str | None = None,
+    embedder: object | None = None,
+    exa_client: object | None = None,
+    parallel_client: object | None = None,
+    arxiv_client: object | None = None,
+    arxiv_throttle: object | None = None,
+    substack_client: object | None = None,
+    exa_configuration_attestation: str | None = None,
+    parallel_configuration_attestation: str | None = None,
+    arxiv_configuration_attestation: str | None = None,
+    arxiv_base_url: str | None = None,
+    providers_override: object | None = None,
+    minimum_evidence_documents: int = 1,
+) -> Callable[[LoopContext], AsyncIterator[StepEvent]]:
+    """Materialize and execute one reviewed multi-source plan per cascade leaf.
+
+    One durable legal-policy lease pins the snapshot across the entire ordered
+    composite. Unknown provider outcome deliberately retains that lease for
+    operator recovery; terminal-safe success/partial/failure releases it.
+    """
+    from collections.abc import Mapping
+
+    from runtime.research_runner.authorized_gather import AuthorizedGatherProvider
+    from runtime.research_runner.authorized_gather_sql import DuckDBAuthorizedGatherAuthority
+    from runtime.research_runner.gather_launch_plan import AuthorizedGatherLaunchPlan
+    from runtime.research_runner.gather_plan import GatherSource
+    from runtime.research_runner.multi_source_gather import execute_authorized_gather_plan
+    from runtime.research_runner.production_gather_providers import (
+        ArxivGatherProvider,
+        ExaGatherProvider,
+        ParallelGatherProvider,
+        SubstackSubscriptionGatherProvider,
+    )
+
+    if not isinstance(launch_plan, AuthorizedGatherLaunchPlan):
+        raise TypeError("multi-source loop requires an authorized launch plan")
+    if launch_plan.account_digest != authority.account_digest:
+        raise ValueError("multi-source launch authority does not match the reviewed plan")
+    resolved_db = db_path
+
+    async def _loop(ctx: LoopContext) -> AsyncIterator[StepEvent]:
+        match = re.search(r"-leaf-(\d+)$", ctx.investigation_id)
+        if match is None:
+            raise RuntimeError("multi-source leaf identity is malformed")
+        leaf_index = int(match.group(1))
+        leaf_authority = InvestigationAuthority(
+            authority.account_id, ctx.investigation_id, authority.root
+        )
+        plan = launch_plan.materialize_leaf(
+            leaf_authority, leaf_index=leaf_index, query=ctx.sub_question
+        )
+        yield ctx.plan_event(
+            f"[multi-source] reviewed gather for leaf {leaf_index + 1}",
+            gather_mode="authorized_multi_source",
+            gather_launch_fingerprint=launch_plan.fingerprint,
+            gather_plan_fingerprint=plan.fingerprint,
+        )
+        query = await ctx.checkpoint()
+        # Redirect after launch changes the reviewed query and must never spend.
+        if query.strip() != ctx.plan.sub_question.strip():
+            raise RuntimeError("redirected query requires a fresh gather review")
+
+        from runtime.db_lock import connect_write
+        from substrate.event_log import log_event_authorized
+        from substrate.graph import default_db_path, ensure_initialized
+        from substrate.legal_gate.policy_store import account_policy_authority
+        from substrate.legal_gate.readiness import (
+            claim_policy_dispatch_lease,
+            release_policy_dispatch_lease,
+            require_policy_snapshot,
+        )
+
+        policy_db_path = resolved_db or default_db_path()
+        ensure_initialized(policy_db_path)
+        policy_authority = account_policy_authority(leaf_authority)
+        con = connect_write(policy_db_path, purpose="multi_source_claim_policy_dispatch")
+        try:
+            lease_id, legal_gate = claim_policy_dispatch_lease(
+                con,
+                policy_authority,
+                holder_investigation_digest=leaf_authority.investigation_digest,
+                holder_investigation_id=leaf_authority.investigation_id,
+                expected_sha256=launch_plan.legal_policy_snapshot_sha256,
+            )
+        finally:
+            con.close()
+        if (
+            log_event_authorized(
+                leaf_authority,
+                "legal_policy.dispatch_claimed",
+                payload={
+                    "lease_id": lease_id,
+                    "policy_snapshot_sha256": launch_plan.legal_policy_snapshot_sha256,
+                },
+                role="user_agent",
+            )
+            is None
+        ):
+            con = connect_write(policy_db_path, purpose="multi_source_release_unlogged_lease")
+            try:
+                release_policy_dispatch_lease(
+                    con,
+                    policy_authority,
+                    lease_id=lease_id,
+                    holder_investigation_digest=leaf_authority.investigation_digest,
+                )
+            finally:
+                con.close()
+            raise RuntimeError("durable dispatch-claim evidence was not recorded")
+
+        if providers_override is None:
+            providers: Mapping[GatherSource, AuthorizedGatherProvider] = {
+                GatherSource.EXA: ExaGatherProvider(
+                    legal_gate,
+                    db_path=policy_db_path,
+                    client=exa_client,
+                    embedder=embedder,
+                    configuration_sha256=exa_configuration_attestation,
+                ),
+                GatherSource.PARALLEL: ParallelGatherProvider(
+                    legal_gate,
+                    db_path=policy_db_path,
+                    client=parallel_client,
+                    embedder=embedder,
+                    configuration_sha256=parallel_configuration_attestation,
+                ),
+                GatherSource.ARXIV: ArxivGatherProvider(
+                    db_path=policy_db_path,
+                    client=arxiv_client,
+                    throttle=arxiv_throttle,
+                    embedder=embedder,
+                    configuration_sha256=arxiv_configuration_attestation,
+                    base_url=arxiv_base_url,
+                ),
+                GatherSource.SUBSTACK: SubstackSubscriptionGatherProvider(
+                    feed_urls,
+                    db_path=policy_db_path,
+                    client=substack_client,
+                    embedder=embedder,
+                ),
+            }
+        else:
+            providers = cast(Mapping[GatherSource, AuthorizedGatherProvider], providers_override)
+
+        store = DuckDBAuthorizedGatherAuthority(policy_db_path, leaf_authority)
+
+        def validate_snapshot(
+            checked_authority: InvestigationAuthority, expected_sha256: str
+        ) -> None:
+            con = connect_write(policy_db_path, purpose="multi_source_revalidate_policy")
+            try:
+                require_policy_snapshot(
+                    con,
+                    account_policy_authority(checked_authority),
+                    expected_sha256=expected_sha256,
+                )
+            finally:
+                con.close()
+
+        report = execute_authorized_gather_plan(
+            plan=plan,
+            expected_plan_fingerprint=plan.fingerprint,
+            authority=leaf_authority,
+            query=query,
+            providers=providers,
+            validate_policy_snapshot=validate_snapshot,
+            budget=store,
+            receipts=store,
+            minimum_evidence_documents=minimum_evidence_documents,
+        )
+        from substrate.event_log import (
+            emit_typed_authorized_strict,
+            trajectory_authorized,
+        )
+        from substrate.schemas.events import (
+            GatherReportRecordedPayload,
+            GatherSourceReportReceipt,
+        )
+
+        report_payload = GatherReportRecordedPayload(
+            launch_fingerprint=launch_plan.fingerprint,
+            plan_fingerprint=plan.fingerprint,
+            legal_policy_snapshot_sha256=plan.legal_policy_snapshot_sha256,
+            receipts=tuple(
+                GatherSourceReportReceipt(
+                    source=receipt.source.value,
+                    status=receipt.status.value,
+                    document_ids=receipt.document_ids,
+                    actual_cost_micros=receipt.actual_cost_micros,
+                    tokens=receipt.tokens,
+                    provider_receipt_id=receipt.provider_receipt_id,
+                    failure_code=receipt.failure_code,
+                )
+                for receipt in report.source_receipts
+            ),
+            document_ids=report.document_ids,
+            minimum_evidence_documents=report.minimum_evidence_documents,
+            evidence_complete=report.evidence_complete,
+            partial=report.partial,
+            unknown_outcome=report.unknown_outcome,
+        )
+        report_event_id = (
+            "evt-gather-report-"
+            + hashlib.sha256(
+                f"{leaf_authority.investigation_digest}\x1f{plan.fingerprint}".encode()
+            ).hexdigest()[:32]
+        )
+        existing_report = next(
+            (
+                row
+                for row in trajectory_authorized(leaf_authority)
+                if row.get("event_id") == report_event_id
+            ),
+            None,
+        )
+        if existing_report is None:
+            emit_typed_authorized_strict(
+                leaf_authority,
+                report_payload,
+                event_id=report_event_id,
+                role="acquisition",
+                policy_id="research/authorized-multi-source-gather-v1",
+            )
+        elif existing_report.get("payload") != report_payload.model_dump(mode="json"):
+            raise RuntimeError("durable gather report conflicts with replayed execution")
+        # Once the composite is terminal-safe, release before yielding any
+        # observer events: cancellation or a closed stream cannot strand a
+        # completed dispatch lease. Unknown outcomes intentionally retain it.
+        if not report.unknown_outcome:
+            con = connect_write(policy_db_path, purpose="multi_source_release_policy_dispatch")
+            try:
+                release_policy_dispatch_lease(
+                    con,
+                    policy_authority,
+                    lease_id=lease_id,
+                    holder_investigation_digest=leaf_authority.investigation_digest,
+                )
+            finally:
+                con.close()
+        for receipt in report.source_receipts:
+            yield ctx.step(
+                f"[{receipt.source.value}] {receipt.status.value}",
+                cost_usd=receipt.actual_cost_micros / 1_000_000,
+                tokens=receipt.tokens,
+                gather_mode="authorized_multi_source",
+                gather_plan_fingerprint=plan.fingerprint,
+                source=receipt.source.value,
+                source_status=receipt.status.value,
+                document_ids=list(receipt.document_ids),
+                failure_code=receipt.failure_code,
+            )
+        for document_id in report.document_ids:
+            yield ctx.note(
+                f"[multi-source] admitted evidence {document_id}",
+                gather_mode="authorized_multi_source",
+                gather_plan_fingerprint=plan.fingerprint,
+                document_id=document_id,
+            )
+
+        if report.unknown_outcome:
+            raise RuntimeError("multi-source provider outcome requires reconciliation")
+        if not report.evidence_complete:
+            raise RuntimeError("multi-source gather did not meet minimum evidence")
+
+    cast(Any, _loop).consumes_prompt_context = False
     return _loop

@@ -112,11 +112,9 @@ def _document_gate_state(con: Any, document_id: str) -> tuple[str | None, bool]:
     """Read the document's content_class and its book-level takedown
     override (if any). A non-book document simply has no book_assets row →
     taken_down False; its content_class still drives the gate."""
-    row = con.execute(
-        "SELECT content_class FROM documents WHERE document_id = ?",
-        [document_id],
-    ).fetchone()
-    content_class = row[0] if row else None
+    from substrate.legal_gate.read import legacy_document_content_class
+
+    content_class = legacy_document_content_class(con, document_id)
     taken_down = False
     try:
         td = con.execute(

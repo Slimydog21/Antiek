@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -125,6 +126,30 @@ def test_walk_chase_chain_three_deep(events_dir):
     assert root == "inv-root"
 
 
+def test_walk_chase_chain_reads_explicit_custom_root(tmp_path):
+    from orchestration.loop_one.orchestrator import _walk_chase_chain
+    from substrate.event_log import emit_typed
+
+    custom = tmp_path / "custom-events"
+    emit_typed(
+        "custom-parent",
+        InvestigationStartRequestedPayload(question="parent"),
+        role="operator",
+        events_dir=str(custom),
+    )
+    emit_typed(
+        "custom-child",
+        InvestigationStartRequestedPayload(
+            question="child", parent_investigation_id="custom-parent"
+        ),
+        role="operator",
+        events_dir=str(custom),
+    )
+    assert _walk_chase_chain(
+        "custom-child", tenancy_root=Path(custom)
+    ) == (1, "custom-parent")
+
+
 def test_walk_chase_chain_cycle_safe(events_dir):
     """Cycle in parent_investigation_id values shouldn't infinite-loop."""
     from orchestration.loop_one.orchestrator import _walk_chase_chain
@@ -223,3 +248,271 @@ def test_select_chase_question_returns_none_when_no_gaps():
         evidence=[],
     )
     assert _select_chase_question(ctx) is None
+
+
+@pytest.mark.asyncio
+async def test_spawned_chase_child_uses_only_remaining_recursive_ceiling(
+    monkeypatch, tmp_path
+):
+    """A child must not inherit the parent's separate initial-run authority."""
+    from decimal import Decimal
+
+    import interfaces.research.api.settings_budget as settings_budget
+    import orchestration.loop_one.orchestrator as orch
+    from substrate.dispatch.research_quote import build_research_route_manifest
+    from substrate.dispatch.router import DispatchConfig
+    from substrate.event_log import ResearchDelegationSnapshot, prepare_typed_event
+    from substrate.investigation_tenancy import InvestigationAuthority
+    from substrate.schemas import (
+        ResearchDelegationIssuedPayload,
+        ResearchDelegationReservedPayload,
+        ResearchQuotedRoute,
+    )
+    from tests.research_quote_support import configure_research_quote_authority
+
+    configure_research_quote_authority(monkeypatch, tmp_path)
+    manifest = build_research_route_manifest(
+        DispatchConfig.from_yaml(settings_budget._dispatch_config_path())
+    )
+
+    emitted: list[object] = []
+
+    class CapturingBroadcaster:
+        def bind_event_authority(self, _event_id, _authority):
+            return None
+
+        async def broadcast(self, event):
+            emitted.append(event.payload)
+
+        async def broadcast_once(self, event):
+            await self.broadcast(event)
+            return True
+
+    async def capture_emit(_bus, _investigation_id, payload, **_kwargs):
+        emitted.append(payload)
+        return "event-test"
+
+    monkeypatch.setattr(orch, "_walk_chase_chain", lambda *_args, **_kwargs: (0, "inv-root"))
+    monkeypatch.setattr(orch, "_accumulated_chase_cost_usd", lambda *_args, **_kwargs: 0.75)
+    monkeypatch.setattr(orch, "_select_chase_question", lambda _ctx: "Chase the remaining gap")
+    monkeypatch.setattr(orch, "broadcast_emit", capture_emit)
+    snapshot = ResearchDelegationSnapshot(
+        ceiling_usd=Decimal("2"),
+        root_call_spend_usd=Decimal("0.75"),
+        delegated_spend_usd=Decimal("0"),
+        outstanding_usd=Decimal("0"),
+    )
+    monkeypatch.setattr(
+        "substrate.event_log.research_delegation_snapshot_authorized",
+        lambda _authority: snapshot,
+    )
+    monkeypatch.setattr(
+        "substrate.event_log.trajectory_authorized_append_order", lambda _authority: []
+    )
+
+    def reserve(_authority, payload: ResearchDelegationReservedPayload):
+        return prepare_typed_event("inv-root", payload), snapshot
+
+    def issue(_authority, payload: ResearchDelegationIssuedPayload):
+        return prepare_typed_event("inv-root", payload), snapshot
+
+    monkeypatch.setattr("substrate.event_log.reserve_research_delegation_authorized", reserve)
+    monkeypatch.setattr("substrate.event_log.mark_research_delegation_issued_authorized", issue)
+    monkeypatch.setattr(
+        "substrate.event_log.accept_research_delegation_authorized",
+        lambda *_args, **_kwargs: (None, snapshot),
+    )
+    ctx = orch.InvestigationContext(
+        investigation_id="inv-parent",
+        question="Root question",
+        chase_mode="depth",
+        chase_value=2,
+        chase_budget_usd=2.0,
+        tenancy_root=tmp_path,
+        authority=InvestigationAuthority("acct-test", "inv-parent", tmp_path),
+        research_quote_id="a" * 64,
+        research_route_manifest_fingerprint=manifest.fingerprint,
+        research_route_manifest=tuple(
+            ResearchQuotedRoute(**row.__dict__) for row in manifest.routes
+        ),
+    )
+
+    await orch._maybe_spawn_chase_child(ctx, CapturingBroadcaster())
+
+    start = next(
+        payload
+        for payload in emitted
+        if isinstance(payload, InvestigationStartRequestedPayload)
+    )
+    assert start.approved_run_ceiling_usd == 1.25
+    assert start.research_quote_id != ctx.research_quote_id
+    assert start.research_delegated_from_quote_id == ctx.research_quote_id
+    assert start.research_route_manifest == ctx.research_route_manifest
+    assert start.research_quote_payload_sha256 is not None
+
+
+@pytest.mark.asyncio
+async def test_chase_spawn_replay_converges_on_one_root_allocation_and_child(
+    monkeypatch, tmp_path
+):
+    import interfaces.research.api.settings_budget as settings_budget
+    import orchestration.loop_one.orchestrator as orch
+    from interfaces.research.api.broadcast import EventBroadcaster
+    from substrate.dispatch.research_quote import build_research_route_manifest
+    from substrate.dispatch.router import DispatchConfig
+    from substrate.event_log import (
+        append_event_once_authorized,
+        prepare_typed_event,
+        trajectory_authorized_append_order,
+    )
+    from substrate.investigation_streams import initialize_composite_stream
+    from substrate.investigation_tenancy import InvestigationAuthority
+    from substrate.schemas import InvestigationStartRequestedPayload, ResearchQuotedRoute
+    from tests.research_quote_support import configure_research_quote_authority
+
+    configure_research_quote_authority(monkeypatch, tmp_path)
+    manifest = build_research_route_manifest(
+        DispatchConfig.from_yaml(settings_budget._dispatch_config_path())
+    )
+    root = InvestigationAuthority("acct-test", "inv-root", tmp_path)
+    initialize_composite_stream(root)
+    start = prepare_typed_event(
+        root.investigation_id,
+        InvestigationStartRequestedPayload(
+            question="Root question",
+            chase_mode="depth",
+            chase_value=2,
+            chase_budget_usd=2.0,
+            research_tier="deep",
+            approved_run_ceiling_usd=1.0,
+            research_quote_id="a" * 64,
+            research_quote_payload_sha256="b" * 64,
+            research_route_manifest_fingerprint=manifest.fingerprint,
+            research_quote_expires_at_ms=4_102_444_800_000,
+            research_route_manifest=tuple(
+                ResearchQuotedRoute(**row.__dict__) for row in manifest.routes
+            ),
+        ),
+        event_id="evt-root-start",
+    )
+    append_event_once_authorized(root, start)
+    monkeypatch.setattr(orch, "_walk_chase_chain", lambda *_a, **_k: (0, "inv-root"))
+    monkeypatch.setattr(orch, "_accumulated_chase_cost_usd", lambda *_a, **_k: 0.0)
+    monkeypatch.setattr(orch, "_select_chase_question", lambda _ctx: "Chase gap")
+    ctx = orch.InvestigationContext(
+        investigation_id=root.investigation_id,
+        question="Root question",
+        authority=root,
+        tenancy_root=tmp_path,
+        chase_mode="depth",
+        chase_value=2,
+        chase_budget_usd=2.0,
+        research_tier="deep",
+        research_quote_id="a" * 64,
+        research_route_manifest_fingerprint=manifest.fingerprint,
+        research_route_manifest=tuple(
+            ResearchQuotedRoute(**row.__dict__) for row in manifest.routes
+        ),
+    )
+    bus = EventBroadcaster()
+    executed_child_starts: list[str] = []
+
+    async def observe_child_start(event):
+        executed_child_starts.append(event.event_id)
+
+    bus.register_handler("investigation.start_requested", observe_child_start)
+    import substrate.dispatch.research_quote as research_quote
+    import substrate.event_log as event_log
+
+    real_mark = event_log.mark_research_delegation_issued_authorized
+    real_accept = event_log.accept_research_delegation_authorized
+    real_issue_quote = research_quote.issue_research_quote
+
+    def crash_after_sign(*args, **kwargs):
+        real_issue_quote(*args, **kwargs)
+        raise RuntimeError("crash after in-memory sign")
+
+    monkeypatch.setattr(research_quote, "issue_research_quote", crash_after_sign)
+    with pytest.raises(RuntimeError, match="in-memory sign"):
+        await orch._maybe_spawn_chase_child(ctx, bus)
+    root_rows = trajectory_authorized_append_order(root)
+    assert sum(
+        row["action_type"] == "research.delegation_reserved" for row in root_rows
+    ) == 1
+    assert not any(
+        row["action_type"] == "research.delegation_issued" for row in root_rows
+    )
+    monkeypatch.setattr(research_quote, "issue_research_quote", real_issue_quote)
+
+    def crash_after_issue(*args, **kwargs):
+        real_mark(*args, **kwargs)
+        raise RuntimeError("crash after issue receipt")
+
+    monkeypatch.setattr(
+        event_log, "mark_research_delegation_issued_authorized", crash_after_issue
+    )
+    with pytest.raises(RuntimeError, match="after issue"):
+        await orch._maybe_spawn_chase_child(ctx, bus)
+    root_rows = trajectory_authorized_append_order(root)
+    assert sum(
+        row["action_type"] == "research.delegation_issued" for row in root_rows
+    ) == 1
+    assert not any(
+        row["action_type"] == "research.delegation_accepted" for row in root_rows
+    )
+
+    monkeypatch.setattr(
+        event_log, "mark_research_delegation_issued_authorized", real_mark
+    )
+
+    def crash_after_child_append(*_args, **_kwargs):
+        raise RuntimeError("crash after child append")
+
+    monkeypatch.setattr(
+        event_log, "accept_research_delegation_authorized", crash_after_child_append
+    )
+    with pytest.raises(RuntimeError, match="after child append"):
+        await orch._maybe_spawn_chase_child(ctx, bus)
+    await bus.wait_for_handlers()
+    assert executed_child_starts == []
+    monkeypatch.setattr(event_log, "accept_research_delegation_authorized", real_accept)
+
+    real_broadcast_once = bus.broadcast_once
+
+    async def crash_after_acceptance(_event):
+        raise RuntimeError("crash after root acceptance")
+
+    bus.broadcast_once = crash_after_acceptance  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="after root acceptance"):
+        await orch._maybe_spawn_chase_child(ctx, bus)
+    await bus.wait_for_handlers()
+    assert executed_child_starts == []
+    bus.broadcast_once = real_broadcast_once  # type: ignore[method-assign]
+
+    await orch._maybe_spawn_chase_child(ctx, bus)
+    await orch._maybe_spawn_chase_child(ctx, bus)
+    await bus.wait_for_handlers()
+
+    root_rows = trajectory_authorized_append_order(root)
+    for action in (
+        "research.delegation_reserved",
+        "research.delegation_issued",
+        "research.delegation_accepted",
+    ):
+        assert sum(row["action_type"] == action for row in root_rows) == 1
+    reservation = next(
+        row["payload"]
+        for row in root_rows
+        if row["action_type"] == "research.delegation_reserved"
+    )
+    child = InvestigationAuthority(
+        root.account_id, reservation["child_investigation_id"], tmp_path
+    )
+    child_rows = trajectory_authorized_append_order(child)
+    assert sum(
+        row["action_type"] == "investigation.start_requested" for row in child_rows
+    ) == 1
+    assert sum(
+        row["action_type"] == "investigation.spawned_from" for row in child_rows
+    ) == 1
+    assert executed_child_starts == [child_rows[0]["event_id"]]

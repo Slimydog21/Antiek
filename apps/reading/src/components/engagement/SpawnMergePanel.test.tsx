@@ -170,6 +170,10 @@ describe("SpawnMergePanel residual ci", () => {
       expect.objectContaining({ id: "win:canonical-merge:dlv-merge-book-1-spn_1" }),
     );
     expect(
+      ((openWindow.mock.calls.at(-1) as unknown as [string, { resume_ref?: unknown }])?.[1])
+        .resume_ref,
+    ).toBeUndefined();
+    expect(
       screen.getByTestId("spawn-merge-canonical-open-write").getAttribute("href") || "",
     ).toMatch(/html_draft=dlv-merge-book-1-spn_1/);
     fireEvent.change(screen.getByTestId("spawn-merge-canonical-target"), {
@@ -533,6 +537,14 @@ describe("SpawnMergePanel residual ci", () => {
       source: "engagement_spine.merge_spawn_outputs",
       notes: ["Draft-combined document"],
       html: "<p>Draft merge HTML · recommended_tier=wrestle</p>",
+      citation_evidence: [{
+        source_kind: "synthesis_claim",
+        source_asset_id: "book-1",
+        claim_id: "7",
+        chunk_ids: ["chunk-7"],
+        document_id: "source-doc-7",
+        receipt_sha256: "d".repeat(64),
+      }],
     });
 
     const onMerged = vi.fn();
@@ -686,6 +698,10 @@ describe("SpawnMergePanel residual ci", () => {
           view_format: "html",
           html: "<p>Draft merge HTML · recommended_tier=wrestle</p>",
           source: "spawn_merge",
+          citation_evidence: [expect.objectContaining({
+            document_id: "source-doc-7",
+            receipt_sha256: "d".repeat(64),
+          })],
         }),
         expect.objectContaining({
           id: "win:merge:draft_book-1_abc",

@@ -9,13 +9,12 @@ Env flags (truthy: 1/true/yes/on):
   custom factory is provided (Substack full-page fetch is ToS-sensitive;
   live default is NOT auto-enabled beyond explicit inject).
 
-This module never enables silent network for Substack by default; arXiv live
-is only enabled when the env flag is set and the import succeeds.
+This module never constructs a network client from environment alone.  Live
+arXiv requires both the env flag and an explicitly installed injector.
 """
 
 from __future__ import annotations
 
-import contextlib
 import os
 from collections.abc import Callable
 from typing import Any
@@ -52,6 +51,8 @@ def configure_engagement_hydrate_injectors(
     eng_mod: Any,
     *,
     environ: dict[str, str] | None = None,
+    arxiv_fetch_by_id: Callable[[str], Any] | None = None,
+    arxiv_fetch_body: Callable[[str], Any] | None = None,
     substack_fetch_post: Callable[[str], Any] | None = None,
 ) -> dict[str, Any]:
     """Configure engagement_routes injectors from env (+ optional substack factory).
@@ -68,17 +69,22 @@ def configure_engagement_hydrate_injectors(
 
     # Reset optional injectors first for deterministic re-configure
     eng_mod.hydrate_arxiv_fetch_by_id = None
+    eng_mod.hydrate_arxiv_fetch_body = None
     eng_mod.hydrate_substack_fetch_post = None
 
     if env_flag(ANTIEK_HYDRATE_LIVE_ARXIV_ENV, environ=environ):
-        try:
-            eng_mod.hydrate_arxiv_fetch_by_id = build_live_arxiv_fetch_by_id()
+        if arxiv_fetch_by_id is not None or arxiv_fetch_body is not None:
+            eng_mod.hydrate_arxiv_fetch_by_id = arxiv_fetch_by_id
+            eng_mod.hydrate_arxiv_fetch_body = arxiv_fetch_body
             report["arxiv_live"] = True
             report["notes"].append(
-                f"{ANTIEK_HYDRATE_LIVE_ARXIV_ENV} enabled — arXiv Atom metadata fetch wired."
+                f"{ANTIEK_HYDRATE_LIVE_ARXIV_ENV} enabled with installed arXiv injector."
             )
-        except Exception as exc:
-            report["notes"].append(f"arXiv live wiring failed: {exc}")
+        else:
+            report["notes"].append(
+                f"{ANTIEK_HYDRATE_LIVE_ARXIV_ENV} set but no arXiv injector installed; "
+                "zero-request offline mode retained."
+            )
     else:
         report["notes"].append(
             f"{ANTIEK_HYDRATE_LIVE_ARXIV_ENV} unset/false — arXiv hydrate remains offline."
@@ -107,21 +113,18 @@ def configure_engagement_hydrate_injectors(
 def live_fetch_publication_from_env(
     *,
     environ: dict[str, str] | None = None,
+    arxiv_fetch_by_id: Callable[[str], Any] | None = None,
     substack_fetch_post: Callable[[str], Any] | None = None,
 ) -> Any | None:
     """Compose a fetch_publication callable from env flags (or None)."""
     adapters = []
-    if env_flag(ANTIEK_HYDRATE_LIVE_ARXIV_ENV, environ=environ):
-        with contextlib.suppress(Exception):
-            adapters.append(
-                arxiv_metadata_fetch_publication(
-                    fetch_by_id=build_live_arxiv_fetch_by_id()
-                )
-            )
+    if (
+        env_flag(ANTIEK_HYDRATE_LIVE_ARXIV_ENV, environ=environ)
+        and arxiv_fetch_by_id is not None
+    ):
+        adapters.append(arxiv_metadata_fetch_publication(fetch_by_id=arxiv_fetch_by_id))
     if env_flag(ANTIEK_HYDRATE_LIVE_SUBSTACK_ENV, environ=environ) and substack_fetch_post:
-        adapters.append(
-            substack_post_fetch_publication(fetch_post=substack_fetch_post)
-        )
+        adapters.append(substack_post_fetch_publication(fetch_post=substack_fetch_post))
     if not adapters:
         return None
     return compose_fetch_publication(*adapters)

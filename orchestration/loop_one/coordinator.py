@@ -44,7 +44,14 @@ if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from interfaces.research.api.broadcast import EventBroadcaster  # noqa: E402
-from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.event_log import (  # noqa: E402
+    current_investigation_authority,
+    emit_typed,
+    emit_typed_authorized,
+    trajectory,
+    trajectory_authorized,
+)
+from substrate.investigation_tenancy import InvestigationAuthority  # noqa: E402
 from substrate.schemas import Event  # noqa: E402
 
 # Action types the orchestrator awaits during the phase sequence.
@@ -72,6 +79,8 @@ async def broadcast_emit(
     synthesis_id: str | None = None,
     phase: int | None = None,
     document_id: str | None = None,
+    authority: InvestigationAuthority | None = None,
+    event_id: str | None = None,
 ) -> str | None:
     """Emit a typed event into the JSONL log AND broadcast it through
     the broadcaster so subscribed handlers (bridges) fire.
@@ -83,23 +92,36 @@ async def broadcast_emit(
 
     Returns the new event_id (or ``None`` when events are disabled
     via the ``ANTIEK_EVENTS_DISABLED`` env var)."""
-    eid = emit_typed(
-        investigation_id,
-        payload,
+    authority = authority or current_investigation_authority(investigation_id)
+    kwargs = dict(
         parent_event_id=parent_event_id,
         synthesis_id=synthesis_id,
         phase=phase,
         role=role,
         policy_id=policy_id,
         document_id=document_id,
+        event_id=event_id,
     )
+    if authority is None:
+        eid = emit_typed(investigation_id, payload, **kwargs)
+    else:
+        if authority.investigation_id != investigation_id:
+            raise ValueError("broadcast crosses authorized investigation stream")
+        eid = emit_typed_authorized(authority, payload, **kwargs)
     if eid is None:
         return None
     # Look up the just-emitted event to broadcast the full envelope.
-    for row in reversed(trajectory(investigation_id)):
+    rows = (
+        trajectory(investigation_id)
+        if authority is None
+        else trajectory_authorized(authority)
+    )
+    for row in reversed(rows):
         if row.get("event_id") == eid:
             try:
                 event = Event.model_validate(row)
+                if authority is not None:
+                    broadcaster.bind_event_authority(event.event_id, authority)
                 await broadcaster.broadcast(event)
             except Exception as e:  # never block on broadcast — log and continue
                 # The event is already durably emitted; a broadcast failure

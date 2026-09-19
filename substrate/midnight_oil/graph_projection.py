@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -194,24 +195,6 @@ def _html_hash(html: str) -> str:
     if "<html" not in html.lower():
         raise GraphProjectionNotReady("graph projection requires an HTML artifact")
     return hashlib.sha256(html.encode("utf-8")).hexdigest()
-
-
-def _source_hash_matches(
-    con: LockedConnection,
-    *,
-    document_id: str,
-    chunk_id: str,
-    content_hash: str,
-) -> bool:
-    row = con.execute(
-        "SELECT text FROM chunks WHERE chunk_id = ? AND document_id = ? LIMIT 1",
-        [chunk_id, document_id],
-    ).fetchone()
-    return bool(
-        row is not None
-        and len(content_hash) == 64
-        and hashlib.sha256(str(row[0]).encode("utf-8")).hexdigest() == content_hash
-    )
 
 
 def _deposited_html(job: MidnightOilJob, store: EngagementStore) -> str:
@@ -495,19 +478,44 @@ def _require_projection_schema(con: LockedConnection) -> None:
         )
 
 
-def _validate_cited_receipts(con: LockedConnection, receipts: tuple[dict[str, str], ...]) -> None:
+def _validate_cited_receipts(
+    con: LockedConnection,
+    receipts: tuple[dict[str, str], ...],
+    *,
+    owner_user_id: str = "__operator__",
+    tenancy_root: Path | None = None,
+) -> None:
     missing = False
     forged = False
+    strict = os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1"
     for receipt in receipts:
-        row = con.execute(
-            "SELECT chunks.text FROM chunks "
-            "JOIN documents ON documents.document_id = chunks.document_id "
-            "WHERE chunks.chunk_id = ? AND chunks.document_id = ? LIMIT 1",
-            [receipt["source_id"], receipt["document_id"]],
-        ).fetchone()
-        if row is None:
+        receipt_authority = None
+        if strict:
+            from substrate.investigation_tenancy import InvestigationAuthority
+            from substrate.legal_gate.read import document_investigation_hint
+
+            investigation_id = document_investigation_hint(con, receipt["document_id"])
+            if not investigation_id:
+                missing = True
+                continue
+            receipt_authority = (
+                InvestigationAuthority(owner_user_id, investigation_id)
+                if tenancy_root is None
+                else InvestigationAuthority(owner_user_id, investigation_id, tenancy_root)
+            )
+        from substrate.legal_gate.read import validate_cited_chunk_compatibility
+
+        verdict = validate_cited_chunk_compatibility(
+            con,
+            chunk_id=receipt["source_id"],
+            document_id=receipt["document_id"],
+            content_sha256=receipt["content_hash"],
+            authority=receipt_authority,
+            enforce=strict,
+        )
+        if verdict == "missing":
             missing = True
-        elif hashlib.sha256(str(row[0]).encode("utf-8")).hexdigest() != receipt["content_hash"]:
+        elif verdict != "valid":
             forged = True
     if forged:
         raise GraphProjectionRefused(
@@ -897,7 +905,15 @@ def _project_terminal_job_to_graph_locked(
                     "operational_artifact_pending",
                     "graph projection source changed before admission",
                 )
-            _validate_cited_receipts(con, plan.cited_receipts)
+            if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+                _validate_cited_receipts(
+                    con,
+                    plan.cited_receipts,
+                    owner_user_id=owner_user_id,
+                    tenancy_root=Path(events_dir) if events_dir is not None else None,
+                )
+            else:
+                _validate_cited_receipts(con, plan.cited_receipts)
             missing = _census_projection_rows(
                 con,
                 plan,

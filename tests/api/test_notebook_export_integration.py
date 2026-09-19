@@ -21,6 +21,8 @@ def _seed(
 ) -> None:
     from runtime.db_lock import connect_write
     from substrate.graph import ensure_initialized
+    from substrate.notebooks import append_block, create_notebook
+    from substrate.notebooks.authority import operator_notebook_authority
 
     ensure_initialized(db_path)
     con = connect_write(db_path)
@@ -54,30 +56,30 @@ def _seed(
                 json.dumps({"source_document_id": "doc1"}),
             ],
         )
-        con.execute(
-            "INSERT INTO notebooks (notebook_id, title, document_id) VALUES (?, ?, ?)",
-            ["nb1", "My notebook", notebook_document_id],
+        authority = operator_notebook_authority("nb1")
+        create_notebook(
+            con,
+            authority,
+            title="My notebook",
+            document_id=notebook_document_id,
         )
-        con.execute(
-            "INSERT INTO notebook_blocks (block_id, notebook_id, block_index, "
-            "block_type, ref_id, content_json) VALUES (?, ?, ?, ?, ?, ?)",
-            [
-                "b1",
-                "nb1",
-                0,
-                "claim_card",
-                "c1",
-                json.dumps({"type": "antiek_claim_card", "attrs": {"claim_id": "c1"}}),
-            ],
+        append_block(
+            con,
+            authority,
+            block_type="claim_card",
+            ref_id="c1",
+            content={"type": "antiek_claim_card", "attrs": {"claim_id": "c1"}},
         )
     finally:
         con.close()
 
 
 def test_notebook_export_resolves_real_refs(tmp_path):
+    from substrate.notebooks.authority import operator_notebook_authority
+
     db = str(tmp_path / "graph.duckdb")
     _seed(db)
-    source = mod.resolve_notebook_export("nb1", db_path=db)
+    source = mod.resolve_notebook_export(operator_notebook_authority("nb1"), db_path=db)
     assert source is not None
     assert "c1" in source.resolved_refs
     rr = source.resolved_refs["c1"]
@@ -97,10 +99,11 @@ def test_notebook_export_resolves_real_refs(tmp_path):
 
 def test_notebook_export_missing_returns_none(tmp_path):
     from substrate.graph import ensure_initialized
+    from substrate.notebooks.authority import operator_notebook_authority
 
     db = str(tmp_path / "g.duckdb")
     ensure_initialized(db)
-    assert mod.resolve_notebook_export("nope", db_path=db) is None
+    assert mod.resolve_notebook_export(operator_notebook_authority("nope"), db_path=db) is None
 
 
 def test_notebook_export_resolves_twin_note_from_linked_asset(tmp_path):
@@ -108,6 +111,7 @@ def test_notebook_export_resolves_twin_note_from_linked_asset(tmp_path):
     from substrate.engagement_spine import InMemoryEngagementStore
     from substrate.engagement_spine.twin import record_twin_insight
     from substrate.notebooks import append_block
+    from substrate.notebooks.authority import operator_notebook_authority
 
     db = str(tmp_path / "twin-export.duckdb")
     _seed(db, notebook_document_id="paper-1")
@@ -120,14 +124,14 @@ def test_notebook_export_resolves_twin_note_from_linked_asset(tmp_path):
     with connect_write(db, purpose="test:notebook-twin-export") as con:
         append_block(
             con,
-            "nb1",
+            operator_notebook_authority("nb1"),
             block_type="note",
             ref_id=note.note_id,
             content={"type": "note_block", "attrs": {"note_id": note.note_id}},
         )
 
     source = mod.resolve_notebook_export(
-        "nb1", db_path=db, engagement_store=store
+        operator_notebook_authority("nb1"), db_path=db, engagement_store=store
     )
     assert source is not None
     resolved = source.resolved_refs[note.note_id]
@@ -157,6 +161,7 @@ def test_notebook_export_withholds_twin_text_for_restricted_linked_asset(tmp_pat
     from substrate.engagement_spine import InMemoryEngagementStore
     from substrate.engagement_spine.twin import record_twin_insight
     from substrate.notebooks import append_block
+    from substrate.notebooks.authority import operator_notebook_authority
 
     db = str(tmp_path / "restricted-twin-export.duckdb")
     _seed(
@@ -173,14 +178,14 @@ def test_notebook_export_withholds_twin_text_for_restricted_linked_asset(tmp_pat
     with connect_write(db, purpose="test:restricted-notebook-twin-export") as con:
         append_block(
             con,
-            "nb1",
+            operator_notebook_authority("nb1"),
             block_type="note",
             ref_id=note.note_id,
             content={"type": "note_block", "attrs": {"note_id": note.note_id}},
         )
 
     source = mod.resolve_notebook_export(
-        "nb1", db_path=db, engagement_store=store
+        operator_notebook_authority("nb1"), db_path=db, engagement_store=store
     )
     assert source is not None
     assert source.resolved_refs[note.note_id].content_class == "personal_reading"
@@ -206,6 +211,8 @@ def test_notebook_export_prefers_canonical_twin_ref_over_legacy_cached_text(tmp_
     from runtime.db_lock import connect_write
     from substrate.engagement_spine import InMemoryEngagementStore
     from substrate.engagement_spine.twin import record_twin_insight
+    from substrate.notebooks import append_block
+    from substrate.notebooks.authority import operator_notebook_authority
 
     db = str(tmp_path / "legacy-twin-export.duckdb")
     _seed(
@@ -221,15 +228,16 @@ def test_notebook_export_prefers_canonical_twin_ref_over_legacy_cached_text(tmp_
     )
     stale = "STALE CACHED TWIN TEXT MUST NOT EXPORT"
     with connect_write(db, purpose="test:legacy-notebook-twin-export") as con:
-        con.execute(
-            "INSERT INTO notebook_blocks "
-            "(block_id, notebook_id, block_index, block_type, ref_id, content_json) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            ["b-legacy", "nb1", 1, "note", note.note_id, json.dumps({"text": stale})],
+        append_block(
+            con,
+            operator_notebook_authority("nb1"),
+            block_type="note",
+            ref_id=note.note_id,
+            content={"text": stale},
         )
 
     source = mod.resolve_notebook_export(
-        "nb1", db_path=db, engagement_store=store
+        operator_notebook_authority("nb1"), db_path=db, engagement_store=store
     )
     assert source is not None
     assert source.content_tiptap["content"][1] == {

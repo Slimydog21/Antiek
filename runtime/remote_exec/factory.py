@@ -39,6 +39,8 @@ import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
+from substrate.multi_user.auth import UserClaims
+
 try:
     from ..research_runner.budget import BudgetManager
     from ..research_runner.host_local import HostLocalRunner, LoopContext
@@ -101,6 +103,7 @@ def _probe_available(provider: RemoteExecProvider) -> None:
 
 def build_research_runner(
     *,
+    claims: UserClaims,
     loop_fn: Callable[[LoopContext], AsyncIterator[StepEvent]],
     enabled: bool | None = None,
     provider: RemoteExecProvider | None = None,
@@ -128,7 +131,7 @@ def build_research_runner(
     shared_budget = budget or BudgetManager()
 
     def _shared_kwargs() -> dict[str, Any]:
-        kw: dict[str, Any] = {"budget": shared_budget, "events_dir": events_dir,
+        kw: dict[str, Any] = {"claims": claims, "budget": shared_budget, "events_dir": events_dir,
                               "on_emit": on_emit}
         if max_concurrency is not None:
             kw["max_concurrency"] = max_concurrency

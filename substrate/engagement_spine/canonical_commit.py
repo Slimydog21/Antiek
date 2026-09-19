@@ -288,7 +288,7 @@ def commit_reviewed_draft(
         raise CanonicalMergeConflict("reviewed draft changed after operator review")
 
     existing = con.execute(
-        "SELECT metadata FROM deliverables WHERE deliverable_id = ?",
+        "SELECT metadata, owner_user_id FROM deliverables WHERE deliverable_id = ?",
         [target_deliverable_id],
     ).fetchone()
     old_revision: str | None = None
@@ -310,6 +310,8 @@ def commit_reviewed_draft(
             },
         )
     else:
+        if existing[1] != owner_user_id:
+            raise KeyError(target_deliverable_id)
         metadata = _json(existing[0])
         if (
             metadata.get("last_draft_sha256") == draft_sha
@@ -372,9 +374,16 @@ def commit_reviewed_draft(
     node_ids: list[str] = []
     prose_provenance: dict[int, list[str]] = {}
     parent_node_id = content_addressed_id("node", f"source-asset|{parent_asset_id}")
-    canonical_source_document = con.execute(
-        "SELECT document_id FROM documents WHERE document_id = ?", [parent_asset_id]
-    ).fetchone()
+    import os
+
+    from substrate.legal_gate.read import document_exists_for_owner_compatibility
+
+    canonical_source_document = document_exists_for_owner_compatibility(
+        con,
+        parent_asset_id,
+        owner_user_id=owner_user_id,
+        enforce=os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1",
+    )
     _insert_verified_node(
         con,
         node_id=parent_node_id,
@@ -412,7 +421,7 @@ def commit_reviewed_draft(
             edge_id = content_addressed_id(
                 "edge", f"{node_id}|derived_from|{parent_node_id}|{draft_sha}"
             )
-            source_document_id = parent_asset_id if canonical_source_document is not None else None
+            source_document_id = parent_asset_id if canonical_source_document else None
             investigation_id = str(provenance.get("investigation_id") or f"merge_{draft_sha[:16]}")
             edge_metadata = json.dumps(
                 {

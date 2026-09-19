@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Literal, Optional, Protocol
+from typing import Literal, Protocol
 
 
 class LegalGatePlaceholderUnacknowledged(RuntimeError):
@@ -70,7 +70,9 @@ class LegalGateVerdict:
 
     allowed: bool
     reason: str | None = None
-    gate_kind: Literal["placeholder", "sql_where_registry"] = "placeholder"
+    gate_kind: Literal[
+        "placeholder", "sql_where_registry", "durable_sql_policy"
+    ] = "placeholder"
 
 
 class LegalGate(Protocol):

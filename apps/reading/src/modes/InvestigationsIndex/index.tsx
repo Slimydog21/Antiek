@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import {
+  ResearchRunCeilingApproval,
+  type ResearchRunAuthorization,
+} from "../../components/engagement/ResearchRunCeilingApproval";
 
 /**
  * Investigations index — operator-facing list of past + in-flight
@@ -43,9 +47,11 @@ export default function InvestigationsIndex() {
   const [draftTopic, setDraftTopic] = useState<string>("");
   const [draftMaxSubQs, setDraftMaxSubQs] = useState<number>(8);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [runAuthorization, setRunAuthorization] =
+    useState<ResearchRunAuthorization>({ approved: false, ceilingUsd: null, projection: null });
 
   const startInvestigation = async () => {
-    if (submitting || draftQuestion.trim().length < 3) return;
+    if (submitting || draftQuestion.trim().length < 3 || !runAuthorization.approved || runAuthorization.ceilingUsd == null) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -57,6 +63,7 @@ export default function InvestigationsIndex() {
           context: draftContext.trim(),
           topic_slug: draftTopic.trim() || null,
           max_sub_questions: draftMaxSubQs,
+          approved_run_ceiling_usd: runAuthorization.ceilingUsd,
         }),
       });
       if (resp.status === 422) {
@@ -175,10 +182,16 @@ export default function InvestigationsIndex() {
                 />
               </div>
             </div>
+            <ResearchRunCeilingApproval
+              promptText={`${draftQuestion.trim()}\n${draftContext.trim()}`}
+              researchTier="deep"
+              disabled={submitting}
+              onAuthorizationChange={setRunAuthorization}
+            />
             <button
               type="button"
               onClick={() => void startInvestigation()}
-              disabled={submitting || draftQuestion.trim().length < 3}
+              disabled={submitting || draftQuestion.trim().length < 3 || !runAuthorization.approved}
               className="px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50"
             >
               {submitting ? "Starting…" : "Start investigation"}

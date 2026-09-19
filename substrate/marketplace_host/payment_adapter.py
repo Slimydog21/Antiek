@@ -53,6 +53,24 @@ class LivePaymentDeferredError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class LivePaymentAuthority:
+    """Operator-ratified provider/legal decision required in addition to env."""
+
+    decision_id: str
+    provider_id: str
+    verifier_version: str
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("decision_id", self.decision_id),
+            ("provider_id", self.provider_id),
+            ("verifier_version", self.verifier_version),
+        ):
+            if not value or value != value.strip() or len(value) > 200:
+                raise ValueError(f"{name} must be a canonical bounded string")
+
+
+@dataclass(frozen=True)
 class CheckoutSession:
     """Checkout session boundary object (never invents charged state)."""
 
@@ -87,6 +105,10 @@ class Entitlement:
     payment_path: str
     opaque_reference: str = ""
     checkout_session_id: str = ""
+    amount_minor: int | None = None
+    currency: str = ""
+    title: str = ""
+    charge_state: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -97,6 +119,10 @@ class Entitlement:
             "payment_path": self.payment_path,
             "opaque_reference": self.opaque_reference,
             "checkout_session_id": self.checkout_session_id,
+            "amount_minor": self.amount_minor,
+            "currency": self.currency,
+            "title": self.title,
+            "charge_state": self.charge_state,
         }
 
 
@@ -104,13 +130,9 @@ class Entitlement:
 class PaymentUpstream(Protocol):
     """Live processor boundary. Must not be invoked when dual-gate is off."""
 
-    def create_checkout_session(
-        self, *, book_id: str, owner_id: str
-    ) -> dict[str, Any]: ...
+    def create_checkout_session(self, *, book_id: str, owner_id: str) -> dict[str, Any]: ...
 
-    def confirm_checkout_session(
-        self, *, session_id: str
-    ) -> dict[str, Any]: ...
+    def confirm_checkout_session(self, *, session_id: str) -> dict[str, Any]: ...
 
 
 @runtime_checkable
@@ -219,6 +241,7 @@ class LivePaymentAdapter:
     """
 
     upstream: PaymentUpstream
+    authority: LivePaymentAuthority
     upstream_calls: int = 0
 
     def create_checkout(self, *, book_id: str, owner_id: str) -> CheckoutSession:
@@ -261,6 +284,15 @@ class LivePaymentAdapter:
             raise ValueError("session_id is required")
         self.upstream_calls += 1
         raw = self.upstream.confirm_checkout_session(session_id=sid)
+        if str(raw.get("session_id") or "").strip() != sid:
+            raise ValueError("upstream confirmation session identity conflicts")
+        charge_state = str(raw.get("charge_state") or raw.get("status") or "").strip().lower()
+        if charge_state in {"refunded", "revoked", "disputed", "canceled", "cancelled"}:
+            raise LivePaymentDeferredError(
+                "upstream charge is not an active entitlement",
+                code="l5_charge_revoked",
+                payment_path="live_checkout",
+            )
         charged = bool(raw.get("charged") or raw.get("paid") or raw.get("confirmed"))
         if not charged:
             raise LivePaymentDeferredError(
@@ -271,8 +303,19 @@ class LivePaymentAdapter:
         book_id = str(raw.get("book_id") or "").strip()
         owner_id = str(raw.get("owner_id") or "").strip()
         if not book_id or not owner_id:
+            raise ValueError("upstream confirm must return book_id and owner_id after charge")
+        amount_minor = raw.get("amount_minor")
+        currency = str(raw.get("currency") or "").strip().upper()
+        title = str(raw.get("title") or "").strip()
+        if (
+            type(amount_minor) is not int
+            or amount_minor <= 0
+            or len(currency) != 3
+            or not currency.isalpha()
+            or not title
+        ):
             raise ValueError(
-                "upstream confirm must return book_id and owner_id after charge"
+                "upstream confirmation lacks bounded amount, currency, or title evidence"
             )
         eid = _stable_id("ent_live_", owner_id, book_id, sid)
         return Entitlement(
@@ -283,6 +326,10 @@ class LivePaymentAdapter:
             payment_path="live_checkout",
             checkout_session_id=sid,
             opaque_reference=str(raw.get("opaque_reference") or ""),
+            amount_minor=amount_minor,
+            currency=currency,
+            title=title,
+            charge_state=charge_state or "confirmed",
         )
 
 
@@ -290,13 +337,18 @@ def build_payment_adapter(
     *,
     environ: Mapping[str, str] | None = None,
     upstream: PaymentUpstream | None = None,
+    authority: LivePaymentAuthority | None = None,
 ) -> PaymentAdapter:
     """Factory: live only when dual-gate env true **and** upstream injected.
 
     Default (no env / no upstream) → DeferredPaymentAdapter (zero upstream calls).
     """
-    if live_payment_enabled(environ=environ) and upstream is not None:
-        return LivePaymentAdapter(upstream=upstream)
+    if (
+        live_payment_enabled(environ=environ)
+        and upstream is not None
+        and isinstance(authority, LivePaymentAuthority)
+    ):
+        return LivePaymentAdapter(upstream=upstream, authority=authority)
     return DeferredPaymentAdapter(upstream=upstream)
 
 

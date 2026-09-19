@@ -100,9 +100,7 @@ def detect_source_kind(raw: str) -> SourceKind:
 
     if host and _ARXIV_HOST_RE.search(host):
         return "arxiv"
-    if extract_arxiv_id(text) and (
-        host == "" or _ARXIV_HOST_RE.search(host) or text[0].isdigit()
-    ):
+    if extract_arxiv_id(text) and (host == "" or _ARXIV_HOST_RE.search(host) or text[0].isdigit()):
         # Bare id like 2402.03300
         if re.fullmatch(r"\d{4}\.\d{4,5}(?:v\d+)?", text.strip(), re.I):
             return "arxiv"

@@ -19,7 +19,7 @@ function ImageNodeView({ node, deleteNode }: NodeViewProps) {
         {/* S7 WP-7.3 acceptance: "open as panel" affordance.
             For an image, open the src in a lightbox floating panel
             sized to its natural dimensions (capped by the viewport
-            via PdfViewer's clampRectToViewport in PanelHandle). */}
+            via the canonical document host's viewport bounds). */}
         {src && (
           <button
             type="button"

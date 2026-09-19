@@ -39,6 +39,11 @@ export function sanitizeHostedHtml(html: string): string {
         element.removeAttribute(attribute.name);
       }
     }
+    const safeClasses = Array.from(element.classList).filter(
+      (name) => !name.startsWith("citation-evidence-"),
+    );
+    if (safeClasses.length) element.setAttribute("class", safeClasses.join(" "));
+    else element.removeAttribute("class");
     if (element.localName === "a" && element.hasAttribute("href")) {
       element.setAttribute("rel", "noopener noreferrer");
     }

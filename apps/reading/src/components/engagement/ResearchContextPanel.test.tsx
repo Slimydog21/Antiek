@@ -430,6 +430,11 @@ describe("ResearchContextPanel", () => {
       twin_count: 1,
       ref_count: 1,
       research_tier: "wrestle",
+      citation_evidence: [{
+        source_kind: "synthesis_claim", source_asset_id: "paper", claim_id: "7",
+        chunk_ids: ["chunk-a"], document_id: "doc-a", receipt_sha256: "a".repeat(64),
+      }],
+      citation_evidence_count: 1,
       prompt_block:
         "# Research context for asset `paper`\nresearch_tier: wrestle\n",
     });
@@ -442,6 +447,11 @@ describe("ResearchContextPanel", () => {
     });
     expect(screen.getByText(/Attention is routing/)).toBeTruthy();
     expect(screen.getByText(/1706.03762/)).toBeTruthy();
+    const citations = screen.getByTestId("research-context-citation-evidence");
+    expect(citations.getAttribute("data-citation-count")).toBe("1");
+    expect(citations.textContent).toContain("document doc-a");
+    expect(citations.textContent).toContain("claim 7");
+    expect(screen.getByTestId(`research-context-open-citation-${"a".repeat(64)}`).getAttribute("data-document-id")).toBe("doc-a");
     expect(fetchResearchContext).toHaveBeenCalledWith(
       expect.objectContaining({ asset_id: "paper", spawn_id: "spn_1" }),
     );

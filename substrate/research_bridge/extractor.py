@@ -23,7 +23,7 @@ from dataclasses import dataclass
 try:
     from ...runtime.db_lock import LockedConnection
     from ..constants import SYSTEM_INVESTIGATION_ID
-    from ..graph.ops import content_addressed_id, insert_node, new_random_id
+    from ..graph.ops import insert_node, new_random_id
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
@@ -235,15 +235,11 @@ def _promote_insight_to_node(
 
 
 def _fetch_paste_row(con: LockedConnection, document_id: str) -> dict | None:
-    row = con.execute(
-        """
-        SELECT rp.document_id, rp.source, rp.raw_sha256, d.raw_text
-        FROM research_pastes rp
-        JOIN documents d ON d.document_id = rp.document_id
-        WHERE rp.document_id = ?
-        """,
-        [document_id],
-    ).fetchone()
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+        return None
+    from substrate.legal_gate.read import legacy_research_paste_row
+
+    row = legacy_research_paste_row(con, document_id)
     if row is None:
         return None
     return {

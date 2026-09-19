@@ -260,4 +260,21 @@ describe("launchFloatingDeepResearch residual cc/cy", () => {
       expect.objectContaining({ research_tier: "wrestle" }),
     );
   });
+
+  it("uses only the server-validated citation receipt for the window", async () => {
+    const requested = { source_kind: "synthesis_claim" as const, source_asset_id: "inv-source", claim_id: "7", chunk_ids: ["chunk-1"] };
+    const receipt = { ...requested, document_id: "doc-authoritative" };
+    openEngagementSession.mockResolvedValue({
+      session_id: "fsess_cited", spawn_id: "spn_cited", investigation_id: "inv_child",
+      parent_asset_id: "inv-source", selection_text: "cited claim", status: "reserved",
+      view_mode: "floating", view_format: "html", model_id: null,
+      citation_provenance: receipt,
+    });
+    const out = await launchFloatingDeepResearch({
+      asset_id: "inv-source", selection_text: "cited claim", citation_provenance: requested,
+    });
+    expect(openEngagementSession).toHaveBeenCalledWith(expect.objectContaining({ citation_provenance: requested }));
+    expect(openDeepResearchFromHighlight).toHaveBeenCalledWith(expect.objectContaining({ citation_provenance: receipt }));
+    expect(out.citation_provenance).toEqual(receipt);
+  });
 });

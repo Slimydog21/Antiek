@@ -37,6 +37,21 @@ def isolated(monkeypatch):
     os.makedirs(events_dir, exist_ok=True)
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", events_dir)
+    from pathlib import Path
+
+    from substrate.investigation_tenancy import (
+        InvestigationAuthority,
+        bind_legacy_stream_lease,
+    )
+    from substrate.multi_user.auth import operator_claims
+
+    for investigation_id in ("inv-target", "inv-x", "inv-new"):
+        bind_legacy_stream_lease(
+            InvestigationAuthority(
+                operator_claims().user_id, investigation_id, Path(events_dir)
+            ),
+            provenance="test_filing_fixture",
+        )
     try:
         from substrate.graph import ensure_initialized
 
@@ -50,16 +65,23 @@ def _client():
     return TestClient(create_app(register_wrestling=False))
 
 
-def _seed_document(db_path, *, document_id, ip_holder_id="ip-1", investigation_id=None):
+def _seed_document(
+    db_path,
+    *,
+    document_id,
+    ip_holder_id="ip-1",
+    investigation_id=None,
+    owner_user_id="__operator__",
+):
     from runtime.db_lock import connect_write
 
     with connect_write(db_path, purpose="test:seed_doc") as con:
         con.execute(
             "INSERT INTO documents ("
             "document_id, source_tier, document_type, source_uri, title, "
-            "ip_holder_id, investigation_id"
-            ") VALUES (?, 3, 'pdf', 'file:///t.pdf', 'A doc', ?, ?)",
-            [document_id, ip_holder_id, investigation_id],
+            "ip_holder_id, investigation_id, owner_user_id"
+            ") VALUES (?, 3, 'pdf', 'file:///t.pdf', 'A doc', ?, ?, ?)",
+            [document_id, ip_holder_id, investigation_id, owner_user_id],
         )
 
 
@@ -161,6 +183,17 @@ def test_personal_space_discovers_canonical_research_deliverables(isolated):
             reviewed_draft_sha256=draft_sha,
             create_combined=True,
         )
+        with pytest.raises(KeyError):
+            commit_reviewed_draft(
+                con=con,
+                engagement_store=store,
+                draft_document_id="draft-canonical-reading",
+                target_deliverable_id=canonical_id,
+                expected_revision=None,
+                reviewed_draft_sha256=draft_sha,
+                create_combined=True,
+                owner_user_id="another-account",
+            )
     response = _client().get("/meta-readings")
     assert response.status_code == 200, response.text
     asset = next(
@@ -180,9 +213,49 @@ def test_personal_space_discovers_canonical_research_deliverables(isolated):
 
 
 def test_filing_missing_document_404s_nothing_filed(isolated):
+    from substrate.event_log import trajectory
+
     client = _client()
     resp = client.post("/events/typed", json=_file_event("ghost", "inv-x"))
     assert resp.status_code == 404
+    assert not any(
+        row.get("action_type") == "document.filed_into_investigation"
+        for row in trajectory("inv-x")
+    )
+
+
+def test_filing_foreign_document_matches_absent_and_does_not_mutate(isolated):
+    _seed_document(
+        isolated, document_id="foreign-doc", owner_user_id="another-account"
+    )
+    client = _client()
+    foreign = client.post(
+        "/events/typed", json=_file_event("foreign-doc", "inv-target")
+    )
+    absent = client.post("/events/typed", json=_file_event("absent-doc", "inv-target"))
+    assert (foreign.status_code, foreign.json()) == (absent.status_code, absent.json())
+    assert foreign.status_code == 404
+    from runtime.db_lock import connect_read
+
+    with connect_read(isolated) as con:
+        row = con.execute(
+            "SELECT investigation_id FROM documents WHERE document_id = 'foreign-doc'"
+        ).fetchone()
+    assert row == (None,)
+
+
+def test_event_store_failure_returns_503_without_filing(isolated, monkeypatch):
+    _seed_document(isolated, document_id="doc-offline", investigation_id=None)
+    monkeypatch.setattr(
+        "interfaces.research.api.app.emit_typed_authorized_strict",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("offline")),
+    )
+    client = _client()
+    response = client.post(
+        "/events/typed", json=_file_event("doc-offline", "inv-target")
+    )
+    assert response.status_code == 503
+    assert _doc_row(client, "doc-offline")["investigation_id"] is None
 
 
 def test_refile_moves_to_new_project_1_to_n(isolated):

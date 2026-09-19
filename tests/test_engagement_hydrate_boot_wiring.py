@@ -26,19 +26,15 @@ def test_boot_wiring_default_leaves_offline() -> None:
     assert payload["offline_honest"] is True
 
 
-def test_boot_wiring_arxiv_env_installs_injector() -> None:
+def test_boot_wiring_arxiv_env_without_injector_remains_offline() -> None:
     report = configure_engagement_hydrate_injectors(
         eng, environ={"ANTIEK_HYDRATE_LIVE_ARXIV": "1"}
     )
-    # acquisition.arxiv may be importable in this worktree (wired True).
-    if report["arxiv_live"]:
-        assert eng.hydrate_arxiv_fetch_by_id is not None
-        payload = eng.hydrate_live_status_payload(
-            environ={"ANTIEK_HYDRATE_LIVE_ARXIV": "1"}
-        )
-        assert payload["offline_honest"] is False
-        assert payload["arxiv"]["injector_installed"] is True
-    else:
-        # Honest: import failed; still offline and reported.
-        assert eng.hydrate_arxiv_fetch_by_id is None
-        assert any("failed" in n.lower() or "arxiv" in n.lower() for n in report["notes"])
+    assert report["arxiv_live"] is False
+    assert eng.hydrate_arxiv_fetch_by_id is None
+    assert eng.hydrate_arxiv_fetch_body is None
+    payload = eng.hydrate_live_status_payload(
+        environ={"ANTIEK_HYDRATE_LIVE_ARXIV": "1"}
+    )
+    assert payload["offline_honest"] is True
+    assert payload["arxiv"]["injector_installed"] is False

@@ -3,10 +3,6 @@ import { useParams } from "react-router-dom";
 
 import { LemonToastViewport } from "./components/lemon/LemonToast";
 import { PanelRegistry } from "./workspace/PanelRegistry";
-import {
-  disablePersistence,
-  enablePersistence,
-} from "./workspace/WorkspaceStore";
 import { farewellPopout, receivePopoutPanel } from "./workspace/popout";
 import type { PanelDescriptor } from "./workspace/panel.types";
 
@@ -26,19 +22,14 @@ import type { PanelDescriptor } from "./workspace/panel.types";
  * frame, and this app just renders the panel's content. Toast viewport
  * is mounted in case the inner panel emits toasts.
  *
- * Persistence is disabled in popout windows so two parallel writers
- * don't fight over localStorage (the main tab is the one that persists).
+ * Panel descriptors stay in memory and are handed over directly by the main
+ * tab; popouts have no layout persistence authority.
  */
 export default function PanelWindowApp() {
   const params = useParams<{ panelId?: string }>();
   const panelId = params.panelId ? decodeURIComponent(params.panelId) : null;
   const [descriptor, setDescriptor] = useState<PanelDescriptor | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    disablePersistence();
-    return () => enablePersistence();
-  }, []);
 
   useEffect(() => {
     if (!panelId) {

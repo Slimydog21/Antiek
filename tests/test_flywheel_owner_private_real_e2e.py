@@ -54,6 +54,7 @@ from runtime.research_runner.protocol import StepEvent
 from substrate.event_log import trajectory
 from substrate.graph.retrieval_substrate import make_substrate
 from substrate.graph.schema import init_database_at_path
+from substrate.multi_user.auth import operator_claims
 
 _BODY = (
     "Subclutter visibility quantifies a radar's ability to detect moving "
@@ -109,7 +110,9 @@ def _events(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_personal_reading_compounds_on_owner_path_and_leakguards_public(emb, tmp_path) -> None:
+async def test_personal_reading_compounds_on_owner_path_and_leakguards_public(
+    emb, tmp_path
+) -> None:
     """A personal_reading note deposits NON-SERVABLE (leak guard) yet still
     compounds through the REAL host_local owner path (owner=True wired)."""
     db = str(tmp_path / "graph-owner.duckdb")
@@ -152,6 +155,7 @@ async def test_personal_reading_compounds_on_owner_path_and_leakguards_public(em
     try:
         runner2 = HostLocalRunner(
             make_contract_gather_stub(steps=1, cost_per_step=0.0),
+            claims=operator_claims(),
             events_dir=events_dir,
             seal_on_complete=False,
             retrieval_substrate=sub,
@@ -181,7 +185,10 @@ async def test_personal_reading_compounds_on_owner_path_and_leakguards_public(em
         candidates = retrieve_prior_units(sub_ctrl, question_text=_NOTE)
         assert candidates, "retrieve_prior_units must find the personal_reading unit"
         reusable_pub, _ = filter_reusable(
-            candidates, investigation_id="inv-ctrl", events_dir=events_dir, emit=False,
+            candidates,
+            investigation_id="inv-ctrl",
+            events_dir=events_dir,
+            emit=False,
         )
         assert reusable_pub == [], (
             "the PUBLIC path must exclude personal_reading — owner=True widens "

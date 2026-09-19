@@ -253,6 +253,9 @@ export interface StartInvestigationRequest {
   investigation_id?: string;
   /** Curated fast/deep tier; defaults server-side to "deep" when omitted. */
   research_tier?: ResearchTier;
+  /** Explicit hard authority for paid calls in the initial Loop One run. */
+  approved_run_ceiling_usd: number;
+  research_quote_token?: string;
 }
 
 export interface StartInvestigationResponse {
@@ -265,14 +268,80 @@ export interface StartInvestigationResponse {
 export async function startInvestigation(
   req: StartInvestigationRequest,
 ): Promise<StartInvestigationResponse> {
-  const resp = await apiFetch(`${API_BASE}/investigations`, {
+  const quoteResp = await apiFetch(`${API_BASE}/investigations/quote`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });
+  if (!quoteResp.ok) {
+    throw new ApiError(
+      `POST /investigations/quote failed: HTTP ${quoteResp.status}`,
+      quoteResp.status,
+      await quoteResp.text(),
+    );
+  }
+  const quote = (await quoteResp.json()) as { quote_token?: unknown };
+  if (typeof quote.quote_token !== "string" || !quote.quote_token) {
+    throw new ApiError("POST /investigations/quote returned an invalid quote", 502, "");
+  }
+  const resp = await apiFetch(`${API_BASE}/investigations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...req, research_quote_token: quote.quote_token }),
+  });
   if (!resp.ok) {
     throw new ApiError(
       `POST /investigations failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export interface ReservedQuestionLaunchRequest {
+  question: string;
+  context?: string;
+  research_tier: ResearchTier;
+  approved_run_ceiling_usd: number;
+  approved_chase_ceiling_usd: number;
+  research_quote_token?: string;
+}
+
+/** Launch the server-derived child for one exact authorized reservation. */
+export async function launchReservedQuestion(
+  parentInvestigationId: string,
+  questionId: string,
+  req: ReservedQuestionLaunchRequest,
+): Promise<StartInvestigationResponse> {
+  const base = `${API_BASE}/research/${encodeURIComponent(parentInvestigationId)}/questions/${encodeURIComponent(questionId)}/reserved-launch`;
+  const quoteResp = await apiFetch(`${base}/quote`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!quoteResp.ok) {
+    throw new ApiError(
+      `POST reserved question quote failed: HTTP ${quoteResp.status}`,
+      quoteResp.status,
+      await quoteResp.text(),
+    );
+  }
+  const quote = (await quoteResp.json()) as { quote_token?: unknown };
+  if (typeof quote.quote_token !== "string" || !quote.quote_token) {
+    throw new ApiError("reserved question quote was invalid", 502, "");
+  }
+  const resp = await apiFetch(
+    base,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...req, research_quote_token: quote.quote_token }),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST reserved question launch failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );
@@ -352,12 +421,35 @@ export async function listWatchForLater(
  * seeded by the parked question. Returns the new investigation handle. */
 export async function launchParkedQuestion(
   question_id: string,
+  approvedRunCeilingUsd: number,
 ): Promise<StartInvestigationResponse> {
+  const base = `${API_BASE}/watch-for-later/${encodeURIComponent(question_id)}/launch`;
+  const request = { approved_run_ceiling_usd: approvedRunCeilingUsd };
+  const quoteResp = await apiFetch(`${base}/quote`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!quoteResp.ok) {
+    throw new ApiError(
+      `POST parked question quote failed: HTTP ${quoteResp.status}`,
+      quoteResp.status,
+      await quoteResp.text(),
+    );
+  }
+  const quote = (await quoteResp.json()) as { quote_token?: unknown };
+  if (typeof quote.quote_token !== "string" || !quote.quote_token) {
+    throw new ApiError("parked question quote was invalid", 502, "");
+  }
   const resp = await apiFetch(
-    `${API_BASE}/watch-for-later/${encodeURIComponent(question_id)}/launch`,
+    base,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...request,
+        research_quote_token: quote.quote_token,
+      }),
     },
   );
   if (!resp.ok) {
@@ -411,8 +503,15 @@ export async function getNotebook(notebookId: string): Promise<NotebookShape> {
  * Mirrors interfaces/research/api/app.py:NotebookContentResponse. */
 export interface NotebookContentShape {
   notebook_id: string;
+  title: string;
+  investigation_id: string | null;
   /** ProseMirror/TipTap document JSON: {type:"doc", content:[...]}. */
   doc: Record<string, unknown>;
+  revision: number;
+  content_sha256: string;
+  updated_at: string;
+  account_scope: string;
+  recovery_scope: string;
 }
 
 /** GET /notebooks/{id}/content — the composed TipTap doc the editor hydrates
@@ -420,13 +519,565 @@ export interface NotebookContentShape {
  * autosave PUT that decomposes the doc into notebook_blocks rows. */
 export async function getNotebookContent(
   notebookId: string,
+  signal?: AbortSignal,
 ): Promise<NotebookContentShape> {
   const resp = await apiFetch(
     `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/content`,
+    { signal },
   );
   if (!resp.ok) {
     throw new ApiError(
       `GET /notebooks/${notebookId}/content failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export interface NotebookMutationReceiptShape {
+  schema_version: 1;
+  notebook_id: string;
+  revision: number;
+  content_sha256: string;
+  replayed: boolean;
+}
+
+export async function putNotebookContent(
+  notebookId: string,
+  request: {
+    schema_version: 1;
+    base_revision: number;
+    mutation_key: string;
+    doc: Record<string, unknown>;
+  },
+  signal?: AbortSignal,
+): Promise<NotebookMutationReceiptShape> {
+  const resp = await apiFetch(
+    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/content`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `PUT /notebooks/${notebookId}/content failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export interface InterviewMarginShape {
+  schema_version: 1;
+  interview_id: string;
+  revision: number;
+  content_sha256: string;
+  body: string;
+  account_scope: string;
+  recovery_scope: string;
+  replayed: boolean;
+}
+
+export async function getInterviewMargin(
+  interviewId: string,
+  signal?: AbortSignal,
+): Promise<InterviewMarginShape> {
+  const resp = await apiFetch(
+    `${API_BASE}/interviews/${encodeURIComponent(interviewId)}/margin`,
+    { signal },
+  );
+  if (!resp.ok) {
+    throw new ApiError(`GET interview margin failed: HTTP ${resp.status}`, resp.status, await resp.text());
+  }
+  return resp.json();
+}
+
+export async function putInterviewMargin(
+  interviewId: string,
+  request: { schema_version: 1; base_revision: number; mutation_key: string; body: string },
+  signal?: AbortSignal,
+): Promise<InterviewMarginShape> {
+  const resp = await apiFetch(
+    `${API_BASE}/interviews/${encodeURIComponent(interviewId)}/margin`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(`PUT interview margin failed: HTTP ${resp.status}`, resp.status, await resp.text());
+  }
+  return resp.json();
+}
+
+export interface PrivateWriteDocumentShape {
+  write_document_id: string;
+  project_id: string;
+  title: string;
+  revision: number;
+  html: string;
+  html_sha256: string;
+  visibility: "private";
+  origin_kind: "ai_composition" | "owner_native";
+}
+
+export type PrivateWriteOperation = "accept" | "undo" | "create" | "edit" | "restore" | "evidence_insert" | "evidence_bundle" | "synthesis_accept";
+
+export interface PrivateWriteRevisionShape {
+  write_document_id?: string;
+  project_id?: string;
+  revision: number;
+  operation: PrivateWriteOperation;
+  event_id: string;
+  html_sha256: string;
+  prior_html_sha256: string | null;
+  root_acceptance_event_id: string | null;
+  proposal_id: string | null;
+  target_revision: number | null;
+  target_html_sha256: string | null;
+  created_at: string;
+  has_summary: boolean;
+  html?: string;
+  is_current?: boolean;
+  origin_kind: "ai_composition" | "owner_native";
+}
+
+export interface PrivateWriteHistoryShape {
+  write_document_id: string;
+  project_id: string;
+  current_revision: number;
+  revisions: PrivateWriteRevisionShape[];
+  origin_kind: "ai_composition" | "owner_native";
+}
+
+export interface PrivateWriteMutationShape {
+  event_id: string;
+  write_document_id: string;
+  project_id: string;
+  revision: number;
+  prior_revision: number;
+  html_sha256: string;
+  replayed: boolean;
+  visibility: "private";
+  operation?: "restore" | "evidence_insert" | "evidence_bundle";
+  bundle_id?: string;
+  target_revision?: number;
+}
+
+export interface PrivateWriteDocumentSummaryShape {
+  write_document_id: string;
+  project_id: string;
+  title: string;
+  revision: number;
+  html_sha256: string;
+  visibility: "private";
+  updated_at: string;
+  origin_kind: "ai_composition" | "owner_native";
+}
+
+export interface NativeWriteCreateShape {
+  event_id: string;
+  write_document_id: string;
+  project_id: string;
+  title: string;
+  revision: 1;
+  html_sha256: string;
+  visibility: "private";
+  origin_kind: "owner_native";
+  replayed: boolean;
+}
+
+export interface WriteCitationEvidenceShape {
+  source_kind: "synthesis_claim";
+  source_asset_id: string;
+  claim_id: string;
+  chunk_ids: string[];
+  document_id: string;
+  receipt_sha256: string;
+}
+
+export interface WriteEvidencePreviewShape {
+  write_document_id: string;
+  project_id: string;
+  base_revision: number;
+  base_html_sha256: string;
+  proposed_html: string;
+  proposed_html_sha256: string;
+  excerpt_sha256: string;
+  source_title: string;
+  citation_receipt_sha256: string;
+  preview_sha256: string;
+  visibility: "private";
+  origin_kind: "owner_native";
+}
+
+export type EvidenceRelationship = "supports" | "contradicts" | "context" | "unresolved";
+export interface WriteEvidenceBundleItemShape {
+  citation_evidence: WriteCitationEvidenceShape;
+  relationship: EvidenceRelationship;
+  operator_label?: string | null;
+}
+export interface WriteEvidenceBundlePreviewShape {
+  write_document_id: string; project_id: string; base_revision: number;
+  base_html_sha256: string; proposed_html: string; proposed_html_sha256: string;
+  manifest_sha256: string; preview_sha256: string; items: Array<Record<string, unknown>>;
+  visibility: "private"; origin_kind: "owner_native"; operation: "evidence_bundle";
+}
+export interface EvidenceBundleSynthesisProjectionShape {
+  source_kind: "evidence_bundle"; bundle_id: string; write_document_id: string;
+  project_id: string; provider_id: string; model_id: string;
+  projected_max_cents: number; expected_output_tokens: number; item_count: number;
+  budget: { daily_cap_usd: number | null; spent_usd: number | null;
+    remaining_usd: number | null; spent_status: "known" | "unknown" | "no_cap";
+    cap_env: string | null; notes: string[] };
+  visibility: "private";
+}
+export interface EvidenceBundleSynthesisProposalShape {
+  proposal_id: string; source_kind: "evidence_bundle"; bundle_id: string;
+  write_document_id: string; project_id: string; revision: number; base_revision: number;
+  source_manifest_sha256: string; source_content_sha256: string;
+  source_receipt_sha256: string; provider_id: string; model_id: string;
+  projected_max_cents: number; approved_ceiling_cents: number;
+  instruction: string; state: "staged"; item_count: number; visibility: "private";
+}
+export interface EvidenceBundleSynthesisExecutionShape {
+  proposal_id: string; attempt_id: string; run_id: string;
+  state: "dispatching" | "reconcile_required" | "call_not_dispatched" |
+    "provider_returned" | "rejected" | "ready_for_review";
+  prompt_sha256: string; route_sha256: string; hold_id: string | null;
+  actual_cents: number | null; html: string | null; html_sha256: string | null;
+  rejection_reason: string | null; visibility: "private";
+}
+export interface EvidenceSynthesisWritePreviewShape {
+  write_document_id: string; project_id: string; bundle_id: string; proposal_id: string;
+  execution_run_id: string; base_revision: number; base_html_sha256: string;
+  result_html_sha256: string; proposed_html: string; proposed_html_sha256: string;
+  preview_sha256: string; visibility: "private"; origin_kind: "owner_native";
+  operation: "synthesis_accept";
+}
+export interface EvidenceSynthesisWriteAcceptanceShape {
+  acceptance_id: string; event_id: string; proposal_id: string; bundle_id: string;
+  execution_run_id: string; write_document_id: string; project_id: string;
+  prior_revision: number; revision: number; html_sha256: string; receipt_sha256: string;
+  replayed: boolean; visibility: "private"; origin_kind: "owner_native";
+  operation: "synthesis_accept";
+}
+export interface SynthesisKnowledgeEvidenceShape {
+  evidence_unit_id: string; relationship: EvidenceRelationship;
+  operator_label: string | null; citation_receipt_sha256: string;
+  source_asset_id: string; claim_id: string; source_document_id: string;
+  chunk_ids: string[]; source_content_sha256: string; excerpt_sha256: string;
+}
+export interface SynthesisKnowledgeSourceUnitShape {
+  unit_index: number; text: string; original_text_sha256: string;
+  evidence: SynthesisKnowledgeEvidenceShape[];
+}
+export interface SynthesisKnowledgeCandidatePageShape {
+  acceptance_id: string; proposal_id: string; units: SynthesisKnowledgeSourceUnitShape[];
+  epistemic_status: "model_proposed"; verification: "unverified"; visibility: "private";
+}
+export interface SynthesisKnowledgeCandidateInputShape {
+  unit_index: number; kind: "insight" | "question"; text: string;
+}
+export interface SynthesisKnowledgePreviewItemShape {
+  ordinal: number; unit_index: number; kind: "insight" | "question";
+  original_text_sha256: string; admitted_text: string;
+  admitted_text_sha256: string; canonical_text: string; graph_node_id: string;
+  disposition: "created" | "reused"; evidence_sha256: string;
+  item_receipt_sha256: string; evidence: SynthesisKnowledgeEvidenceShape[];
+}
+export interface SynthesisKnowledgePreviewShape {
+  acceptance_id: string; proposal_id: string; target_investigation_id: string;
+  target_investigation_digest: string; item_manifest_sha256: string;
+  preview_sha256: string; items: SynthesisKnowledgePreviewItemShape[];
+  epistemic_status: "model_proposed_operator_admitted";
+  verification: "unverified"; visibility: "private";
+}
+export interface SynthesisKnowledgeAdmissionShape {
+  admission_id: string; acceptance_id: string; proposal_id: string; bundle_id: string;
+  write_document_id: string; project_id: string; target_investigation_id: string;
+  receipt_sha256: string; replayed: boolean; items: SynthesisKnowledgePreviewItemShape[];
+  epistemic_status: "model_proposed_operator_admitted";
+  verification: "unverified"; visibility: "private";
+}
+
+export interface PrivateWriteDocumentPageShape {
+  documents: PrivateWriteDocumentSummaryShape[];
+  next_after_document_id: string | null;
+}
+
+const privateWritePath = (projectId: string, writeDocumentId: string) =>
+  `${API_BASE}/speak/projects/${encodeURIComponent(projectId)}/private-write/${encodeURIComponent(writeDocumentId)}`;
+
+export async function listPrivateWriteDocuments(
+  signal?: AbortSignal, afterDocumentId = "", limit = 100,
+): Promise<PrivateWriteDocumentPageShape> {
+  const query = new URLSearchParams({ after_document_id: afterDocumentId, limit: String(limit) });
+  return privateWriteJson(await apiFetch(
+    `${API_BASE}/speak/private-write?${query}`, { signal },
+  ), "GET private Write documents");
+}
+
+export async function createNativePrivateWrite(
+  title: string, idempotencyKey: string, signal?: AbortSignal,
+): Promise<NativeWriteCreateShape> {
+  return privateWriteJson(await apiFetch(`${API_BASE}/speak/private-write`, {
+    method: "POST", headers: {
+      "Content-Type": "application/json", "Idempotency-Key": idempotencyKey,
+    }, body: JSON.stringify({ title }), signal,
+  }), "POST private Write document");
+}
+
+async function privateWriteJson<T>(resp: Response, label: string): Promise<T> {
+  if (!resp.ok) throw new ApiError(`${label}: HTTP ${resp.status}`, resp.status, await resp.text());
+  return resp.json() as Promise<T>;
+}
+
+export async function getPrivateWriteDocument(
+  projectId: string, writeDocumentId: string, signal?: AbortSignal,
+): Promise<PrivateWriteDocumentShape> {
+  return privateWriteJson(await apiFetch(privateWritePath(projectId, writeDocumentId), { signal }), "GET private Write");
+}
+
+export async function getPrivateWriteHistory(
+  projectId: string, writeDocumentId: string, signal?: AbortSignal,
+  afterRevision = 0, limit = 500,
+): Promise<PrivateWriteHistoryShape> {
+  const query = new URLSearchParams({ after_revision: String(afterRevision), limit: String(limit) });
+  return privateWriteJson(await apiFetch(
+    `${privateWritePath(projectId, writeDocumentId)}/history?${query}`, { signal },
+  ), "GET private Write history");
+}
+
+export async function getPrivateWriteRevision(
+  projectId: string, writeDocumentId: string, revision: number, signal?: AbortSignal,
+): Promise<PrivateWriteRevisionShape> {
+  return privateWriteJson(await apiFetch(
+    `${privateWritePath(projectId, writeDocumentId)}/revisions/${revision}`, { signal },
+  ), "GET private Write revision");
+}
+
+export async function editPrivateWriteDocument(
+  projectId: string, writeDocumentId: string,
+  request: { base_revision: number; base_html_sha256: string; html: string; summary?: string },
+  idempotencyKey: string, signal?: AbortSignal,
+): Promise<PrivateWriteMutationShape> {
+  return privateWriteJson(await apiFetch(`${privateWritePath(projectId, writeDocumentId)}/edits`, {
+    method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(request), signal,
+  }), "POST private Write edit");
+}
+
+export async function restorePrivateWriteDocument(
+  projectId: string, writeDocumentId: string,
+  request: { base_revision: number; base_html_sha256: string; target_revision: number },
+  idempotencyKey: string, signal?: AbortSignal,
+): Promise<PrivateWriteMutationShape> {
+  return privateWriteJson(await apiFetch(`${privateWritePath(projectId, writeDocumentId)}/restores`, {
+    method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(request), signal,
+  }), "POST private Write restore");
+}
+
+export async function previewPrivateWriteEvidenceInsertion(
+  projectId: string, writeDocumentId: string,
+  request: { base_revision: number; base_html_sha256: string; citation_evidence: WriteCitationEvidenceShape },
+  signal?: AbortSignal,
+): Promise<WriteEvidencePreviewShape> {
+  return privateWriteJson(await apiFetch(
+    `${privateWritePath(projectId, writeDocumentId)}/evidence-insertions/preview`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request), signal,
+    },
+  ), "POST private Write evidence preview");
+}
+
+export async function applyPrivateWriteEvidenceInsertion(
+  projectId: string, writeDocumentId: string,
+  request: { base_revision: number; base_html_sha256: string; citation_evidence: WriteCitationEvidenceShape; preview_sha256: string; proposed_html_sha256: string },
+  idempotencyKey: string, signal?: AbortSignal,
+): Promise<PrivateWriteMutationShape> {
+  return privateWriteJson(await apiFetch(
+    `${privateWritePath(projectId, writeDocumentId)}/evidence-insertions`, {
+      method: "POST", headers: {
+        "Content-Type": "application/json", "Idempotency-Key": idempotencyKey,
+      }, body: JSON.stringify(request), signal,
+    },
+  ), "POST private Write evidence insertion");
+}
+
+export async function previewPrivateWriteEvidenceBundle(
+  projectId: string, writeDocumentId: string,
+  request: { base_revision: number; base_html_sha256: string; items: WriteEvidenceBundleItemShape[] },
+  signal?: AbortSignal,
+): Promise<WriteEvidenceBundlePreviewShape> {
+  return privateWriteJson(await apiFetch(
+    `${privateWritePath(projectId, writeDocumentId)}/evidence-bundles/preview`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request), signal,
+    },
+  ), "POST private Write evidence bundle preview");
+}
+
+export async function applyPrivateWriteEvidenceBundle(
+  projectId: string, writeDocumentId: string,
+  request: { base_revision: number; base_html_sha256: string; items: WriteEvidenceBundleItemShape[]; preview_sha256: string; manifest_sha256: string; proposed_html_sha256: string },
+  idempotencyKey: string, signal?: AbortSignal,
+): Promise<PrivateWriteMutationShape> {
+  return privateWriteJson(await apiFetch(
+    `${privateWritePath(projectId, writeDocumentId)}/evidence-bundles`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(request), signal,
+    },
+  ), "POST private Write evidence bundle");
+}
+
+const evidenceSynthesisPath = (
+  projectId: string, writeDocumentId: string, bundleId: string,
+) => `${privateWritePath(projectId, writeDocumentId)}/evidence-bundles/${encodeURIComponent(bundleId)}/ai-proposals`;
+
+export async function projectEvidenceBundleSynthesis(
+  projectId: string, writeDocumentId: string, bundleId: string,
+  request: { instruction: string; provider_id: string; model_id: string; expected_output_tokens: number },
+  signal?: AbortSignal,
+): Promise<EvidenceBundleSynthesisProjectionShape> {
+  return privateWriteJson(await apiFetch(`${evidenceSynthesisPath(projectId, writeDocumentId, bundleId)}/projection`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request), signal,
+  }), "POST evidence synthesis projection");
+}
+
+export async function createEvidenceBundleSynthesisProposal(
+  projectId: string, writeDocumentId: string, bundleId: string,
+  request: { base_revision: number; instruction: string; provider_id: string; model_id: string;
+    approved_ceiling_cents: number; expected_output_tokens: number },
+  idempotencyKey: string, signal?: AbortSignal,
+): Promise<EvidenceBundleSynthesisProposalShape> {
+  return privateWriteJson(await apiFetch(evidenceSynthesisPath(projectId, writeDocumentId, bundleId), {
+    method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(request), signal,
+  }), "POST evidence synthesis proposal");
+}
+
+export async function executeEvidenceBundleSynthesis(
+  projectId: string, writeDocumentId: string, bundleId: string, proposalId: string,
+  idempotencyKey: string, signal?: AbortSignal,
+): Promise<EvidenceBundleSynthesisExecutionShape> {
+  return privateWriteJson(await apiFetch(
+    `${evidenceSynthesisPath(projectId, writeDocumentId, bundleId)}/${encodeURIComponent(proposalId)}/execute`, {
+      method: "POST", headers: { "Idempotency-Key": idempotencyKey }, signal,
+    },
+  ), "POST evidence synthesis execution");
+}
+
+export async function reconcileEvidenceBundleSynthesis(
+  projectId: string, writeDocumentId: string, bundleId: string, proposalId: string,
+  signal?: AbortSignal,
+): Promise<EvidenceBundleSynthesisExecutionShape> {
+  return privateWriteJson(await apiFetch(
+    `${evidenceSynthesisPath(projectId, writeDocumentId, bundleId)}/${encodeURIComponent(proposalId)}/reconcile`, {
+      method: "POST", signal,
+    },
+  ), "POST evidence synthesis reconciliation");
+}
+
+export async function previewEvidenceSynthesisWriteAcceptance(
+  projectId: string, writeDocumentId: string, bundleId: string, proposalId: string,
+  request: { base_revision: number; base_html_sha256: string }, signal?: AbortSignal,
+): Promise<EvidenceSynthesisWritePreviewShape> {
+  return privateWriteJson(await apiFetch(
+    `${evidenceSynthesisPath(projectId, writeDocumentId, bundleId)}/${encodeURIComponent(proposalId)}/write-preview`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request), signal,
+    },
+  ), "POST evidence synthesis Write preview");
+}
+
+export async function applyEvidenceSynthesisWriteAcceptance(
+  projectId: string, writeDocumentId: string, bundleId: string, proposalId: string,
+  request: { base_revision: number; base_html_sha256: string; preview_sha256: string;
+    proposed_html_sha256: string }, idempotencyKey: string, signal?: AbortSignal,
+): Promise<EvidenceSynthesisWriteAcceptanceShape> {
+  return privateWriteJson(await apiFetch(
+    `${evidenceSynthesisPath(projectId, writeDocumentId, bundleId)}/${encodeURIComponent(proposalId)}/write-acceptance`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(request), signal,
+    },
+  ), "POST evidence synthesis Write acceptance");
+}
+
+const synthesisKnowledgePath = (
+  projectId: string, writeDocumentId: string, bundleId: string,
+  proposalId: string, acceptanceId: string,
+) => `${evidenceSynthesisPath(projectId, writeDocumentId, bundleId)}/${encodeURIComponent(proposalId)}` +
+  `/acceptances/${encodeURIComponent(acceptanceId)}`;
+
+export async function listSynthesisKnowledgeCandidates(
+  projectId: string, writeDocumentId: string, bundleId: string,
+  proposalId: string, acceptanceId: string, signal?: AbortSignal,
+): Promise<SynthesisKnowledgeCandidatePageShape> {
+  return privateWriteJson(await apiFetch(
+    `${synthesisKnowledgePath(projectId, writeDocumentId, bundleId, proposalId, acceptanceId)}/knowledge-candidates`,
+    { signal },
+  ), "GET synthesis knowledge candidates");
+}
+
+export async function previewSynthesisKnowledgeAdmission(
+  projectId: string, writeDocumentId: string, bundleId: string,
+  proposalId: string, acceptanceId: string,
+  request: { target_investigation_id: string; items: SynthesisKnowledgeCandidateInputShape[] },
+  signal?: AbortSignal,
+): Promise<SynthesisKnowledgePreviewShape> {
+  return privateWriteJson(await apiFetch(
+    `${synthesisKnowledgePath(projectId, writeDocumentId, bundleId, proposalId, acceptanceId)}/knowledge-preview`,
+    { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request), signal },
+  ), "POST synthesis knowledge preview");
+}
+
+export async function applySynthesisKnowledgeAdmission(
+  projectId: string, writeDocumentId: string, bundleId: string,
+  proposalId: string, acceptanceId: string,
+  request: { target_investigation_id: string; items: SynthesisKnowledgeCandidateInputShape[];
+    preview_sha256: string }, idempotencyKey: string, signal?: AbortSignal,
+): Promise<SynthesisKnowledgeAdmissionShape> {
+  return privateWriteJson(await apiFetch(
+    `${synthesisKnowledgePath(projectId, writeDocumentId, bundleId, proposalId, acceptanceId)}/knowledge-admission`,
+    { method: "POST", headers: { "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey }, body: JSON.stringify(request), signal },
+  ), "POST synthesis knowledge admission");
+}
+
+export async function appendNotebookContent(
+  notebookId: string,
+  request: {
+    schema_version: 1;
+    account_scope: string;
+    base_revision: number;
+    mutation_key: string;
+    block: Record<string, unknown>;
+  },
+  signal?: AbortSignal,
+): Promise<NotebookMutationReceiptShape> {
+  const resp = await apiFetch(
+    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/content/append`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /notebooks/${notebookId}/content/append failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );
@@ -1147,6 +1798,7 @@ export interface DistilledNode {
   refinement_count: number;
   /** A question whose challenge needs new research (escalation seam). */
   escalated: boolean;
+  escalated_question_id?: string | null;
   /** The reserved (NOT launched) child research id; SPR-04/05 launch it. */
   reserved_child_investigation_id?: string | null;
 }
@@ -1163,7 +1815,6 @@ export interface ResearchArtifactBlock {
   kind: string;
   label: string;
   investigation_id: string;
-  artifact_path: string | null;
 }
 
 export interface ResearchArtifactBlocksResponse {
@@ -1173,10 +1824,595 @@ export interface ResearchArtifactBlocksResponse {
 
 export interface ResearchArtifactExportResponse {
   investigation_id: string;
-  path: string;
+  view_url: string;
   content_hash: string;
   size_bytes: number;
   event_id: string | null;
+}
+
+export interface ResearchArtifactInheritedClaimSupport {
+  unit_id: string;
+  qualification_state: "complete" | "partial" | "unknown" | "legacy_unqualified";
+  source_investigation_id: string | null;
+  supporting_leaf_investigation_id: string;
+}
+
+export interface ResearchArtifactClaimSupport {
+  claim_index: number;
+  claim: string;
+  supporting_chunk_ids: string[];
+  supporting_path_indices: number[];
+  inherited_support: ResearchArtifactInheritedClaimSupport[];
+  direct_evidence: Array<{
+    source_kind: "synthesis_claim";
+    source_asset_id: string;
+    claim_id: string;
+    chunk_ids: string[];
+    document_id: string;
+    receipt_sha256: string;
+  }>;
+  evaluation: {
+    advisory: true;
+    event_id: string;
+    scorer_id: string;
+    backend: string;
+    score: number;
+    supported: boolean;
+    supported_threshold: number;
+    relation: "entailed" | "contradicted" | "not_established" | null;
+  } | null;
+  reviews?: Array<{
+    schema_version: 1;
+    status:
+      | "later_owner_accepted_counter_analysis"
+      | "later_owner_reversed_counter_analysis";
+    challenge_receipt_sha256: string;
+    acceptance_receipt_sha256: string;
+    reversal_receipt_sha256: string | null;
+    session_id: string;
+    spawn_id: string;
+    candidate_sha256: string;
+    candidate_text: string;
+    evaluation_event_id: string;
+    evidence_receipt_sha256s: string[];
+    grants_authority: false;
+  }>;
+  reconsiderations?: Array<{
+    schema_version: 1;
+    status: "owner_authored_reconsideration_proposal";
+    receipt_sha256: string;
+    selected_acceptance_receipt_sha256s: string[];
+    proposed_claim: string;
+    rationale: string;
+    grants_authority: false;
+  }>;
+  owner_revision?: null | {
+    status: "owner_accepted_claim_revision";
+    prior_artifact_content_hash: string;
+    proposal_receipt_sha256: string;
+    transition_sha256: string;
+    revised_claim: string;
+    rationale: string;
+    effective_claim: string;
+    head_transition_sha256: string;
+    compensations: Array<{
+      operation: "restore_archived_terminal" | "supersede_owner_revision";
+      prior_artifact_content_hash: string;
+      supersedes_transition_sha256: string;
+      transition_sha256: string;
+      prior_effective_claim: string;
+      replacement_claim: string;
+      rationale: string;
+      source_context_receipt_sha256: string | null;
+      source_review_receipt_sha256: string | null;
+      source_proposal_receipt_sha256: string | null;
+      archive_grounded: false;
+      grants_authority: false;
+    }>;
+    archive_grounded: false;
+    grants_authority: false;
+  };
+}
+
+export interface ResearchArtifactClaimChallengeReceipt {
+  schema_version: 1 | 2;
+  owner_account_digest: string;
+  source_asset_id: string;
+  artifact_content_hash: string;
+  synthesis_event_id: string;
+  claim_index: number;
+  claim_id: string;
+  claim_sha256: string;
+  evaluation_event_id: string | null;
+  scorer_id: string | null;
+  relation: "entailed" | "contradicted" | "not_established" | null;
+  score: number | null;
+  evidence_receipt_sha256s: string[];
+  model_id: string | null;
+  research_tier: "fast" | "deep" | "wrestle";
+  goal_sha256: string;
+  receipt_sha256: string;
+  selection_kind?: "effective_owner_claim" | null;
+  purpose?: "investigate_effective_owner_claim" | null;
+  question_sha256?: string | null;
+  artifact_investigation_digest?: string | null;
+  archived_claim?: string | null;
+  archived_claim_sha256?: string | null;
+  effective_claim?: string | null;
+  root_transition_sha256?: string | null;
+  head_transition_sha256?: string | null;
+  revision_transition_sha256s?: string[];
+  revision_chain_sha256?: string | null;
+  mutation_key_sha256?: string | null;
+  archived_evaluation_event_id?: string | null;
+  archived_scorer_id?: string | null;
+  archived_relation?: "entailed" | "contradicted" | "not_established" | null;
+  archived_score?: number | null;
+  archived_evidence_receipt_sha256s?: string[];
+  archived_inherited_support?: Array<{
+    unit_id: string;
+    qualification_state: "complete" | "partial" | "unknown" | "legacy_unqualified";
+    source_investigation_id: string | null;
+    supporting_leaf_investigation_id: string;
+  }>;
+  archived_evidence_sha256?: string | null;
+  archive_grounded?: false | null;
+  grants_authority?: false | null;
+  permits_provider_call?: false | null;
+  permits_spend?: false | null;
+  permits_graph_admission?: false | null;
+  permits_write?: false | null;
+  permits_benchmark_feedback?: false | null;
+  permits_publication?: false | null;
+}
+
+export interface EffectiveClaimIteration {
+  ordinal: number;
+  prior_artifact_content_hash: string;
+  result_artifact_content_hash: string;
+  claim_index: number;
+  archived_claim: string;
+  prior_effective_claim: string;
+  candidate_text: string;
+  candidate_sha256: string;
+  review_rationale: string;
+  proposed_claim: string;
+  replacement_claim: string;
+  context_receipt_sha256: string;
+  review_receipt_sha256: string;
+  proposal_receipt_sha256: string;
+  transition_sha256: string;
+  session_id: string;
+  spawn_id: string;
+  question: string;
+  purpose: string;
+  model_id: string | null;
+  research_tier: string;
+  prior_html_url: string;
+  result_html_url: string;
+  result_is_current: boolean;
+  archive_grounded: false;
+  grants_authority: false;
+  permits_graph_admission: false;
+  permits_write: false;
+  permits_benchmark_feedback: false;
+  permits_publication: false;
+  permits_provider_call: false;
+  permits_spend: false;
+}
+
+export interface EffectiveClaimIterationsResponse {
+  investigation_id: string;
+  claim_index: number;
+  artifact_content_hash: string;
+  current_effective_claim: string;
+  current_head_transition_sha256: string;
+  next_round_eligible: boolean;
+  rounds: EffectiveClaimIteration[];
+}
+
+export interface ReasoningAncestryNode {
+  ordinal: number;
+  transition_sha256: string;
+  session_id: string;
+  spawn_id: string;
+  candidate_sha256: string;
+  parent_ordinals: number[];
+  child_ordinals: number[];
+  inherited_questions: string[];
+  depth: number;
+  is_root: boolean;
+  is_recombination: boolean;
+  recursive_pack_receipt_sha256: string | null;
+  recursive_context_pack: Record<string, unknown> | null;
+  ancestry_sha256: string;
+  prior_html_url: string;
+  result_html_url: string;
+  archive_grounded: false;
+  grants_authority: false;
+  permits_graph_admission: false;
+  permits_write: false;
+  permits_benchmark_feedback: false;
+  permits_publication: false;
+  permits_provider_call: false;
+  permits_spend: false;
+}
+
+export interface ReasoningAncestryResponse {
+  investigation_id: string;
+  claim_index: number;
+  artifact_content_hash: string;
+  current_effective_claim: string;
+  current_head_transition_sha256: string;
+  graph_sha256: string;
+  nodes: ReasoningAncestryNode[];
+}
+
+export interface ReasoningAncestryInterrogationCommand {
+  content_hash: string;
+  selected_terminal_ordinals: number[];
+  question: string;
+  mutation_key: string;
+}
+
+export interface ReasoningAncestryInterrogationResponse {
+  status: "candidate" | "accepted";
+  preview_sha256: string;
+  receipt: {
+    receipt_id: string;
+    receipt_sha256: string;
+    artifact_content_hash: string;
+    head_transition_sha256: string;
+    selected_terminal_ordinals: number[];
+    closure_ordinals: number[];
+    ordered_spawn_ids: string[];
+    question: string;
+    collective_id: string;
+    manifest_id: string;
+    membership_sha256: string;
+    archive_grounded: false;
+    grants_authority: false;
+    permits_provider_call: false;
+    permits_spend: false;
+    permits_graph_admission: false;
+    permits_write: false;
+    permits_benchmark_feedback: false;
+    permits_publication: false;
+  };
+  manifest: {
+    manifest_id: string;
+    collective_id: string;
+    ordered_spawn_ids: string[];
+    membership_sha256: string;
+    availability: "ready" | "unavailable";
+    view_format: "html";
+  };
+  stale: boolean;
+}
+
+export interface AncestryContinuationChoice {
+  role: "synthesizer";
+  projection_scope: "selected_synthesizer_call_only";
+  provider_id: string;
+  model_id: string;
+  fallback_index: number;
+  route_identity: string;
+  pricing_fingerprint: string;
+  estimated_usd_low: number;
+  estimated_usd_high: number;
+  remaining_after_high_usd: number | null;
+  would_exceed_budget: boolean | null;
+  pricing_source_url: string;
+  pricing_verified_at: string;
+  pricing_expires_at: string;
+  boot_ready: boolean;
+  available: boolean;
+  reason: string;
+  whole_run_envelope: AncestryWholeRunEnvelope;
+}
+
+export interface AncestryWholeRunRoleEnvelope {
+  role: string;
+  mandatory_calls: number;
+  conditional_calls: number;
+  max_calls: number;
+  selected_route_only: boolean;
+  route_max_usd: string;
+  role_max_usd: string;
+  pricing_fingerprints: string[];
+}
+
+export interface AncestryWholeRunEnvelope {
+  schema_version: 1;
+  projection_kind: "admission_upper_bound";
+  plan_sha256: string;
+  maximum_usd: string;
+  forecast_usd_low: null;
+  forecast_usd_high: null;
+  forecast_status: "not_measured";
+  roles: AncestryWholeRunRoleEnvelope[];
+}
+
+export interface AncestryContinuationOptions {
+  schema_version: 1;
+  investigation_id: string;
+  receipt_id: string;
+  receipt_sha256: string;
+  context_sha256: string;
+  task_class: "ancestry_collective_continuation";
+  stale: boolean;
+  assumed_input_tokens: number;
+  whole_run_cost_projected: true;
+  choices: AncestryContinuationChoice[];
+  budget: { daily_cap_usd?: number | null; spent_usd?: number | null; remaining_usd?: number | null; spent_status?: string };
+  view_format: "html";
+  action_authority: false;
+}
+
+export interface AncestryContinuationCommand {
+  expected_receipt_sha256: string;
+  provider_id: string;
+  model_id: string;
+  pricing_fingerprint: string;
+  research_tier: "fast" | "deep" | "wrestle";
+  approved_run_ceiling_usd: number;
+}
+
+export interface AncestryContinuationQuote {
+  quote_token: string;
+  quote_id: string;
+  quote_payload_sha256: string;
+  route_manifest_fingerprint: string;
+  context_sha256: string;
+  receipt_sha256: string;
+  selected_driver_role: "synthesizer";
+  selected_driver_provider: string;
+  selected_driver_model: string;
+  selected_driver_pricing_fingerprint: string;
+  workload_plan_sha256: string;
+  whole_run_maximum_usd: string;
+  approved_run_ceiling_usd: string;
+  issued_at_ms: number;
+  expires_at_ms: number;
+  view_format: "html";
+  spend_performed: false;
+}
+
+export interface AncestryContinuationLaunch {
+  investigation_id: string;
+  status: "started";
+  start_event_id: string;
+  parent_investigation_id: string;
+  ancestry_interrogation_receipt_id: string;
+  selected_driver_provider: string;
+  selected_driver_model: string;
+  view_format: "html";
+}
+
+export interface RecursiveRoundContextCommand {
+  content_hash: string;
+  selected_round_ordinals: number[];
+  follow_up_questions: string[];
+  mutation_key: string;
+  view_mode?: "floating" | "full";
+  model_id?: string | null;
+  research_tier?: "fast" | "deep" | "wrestle";
+}
+
+export interface RecursiveRoundContextPreview {
+  receipt_sha256: string;
+  pack_sha256: string;
+  artifact_content_hash: string;
+  current_effective_claim: string;
+  current_head_transition_sha256: string;
+  selected_round_ordinals: number[];
+  selected_transition_sha256s: string[];
+  follow_up_questions: string[];
+  rows: Array<Record<string, unknown>>;
+  pack_bytes: number;
+  view_mode: "floating" | "full";
+  preview_sha256: string;
+  archive_grounded: false;
+  grants_authority: false;
+  permits_provider_call: false;
+  permits_spend: false;
+  permits_graph_admission: false;
+  permits_twin_promotion: false;
+  permits_write: false;
+  permits_benchmark_feedback: false;
+  permits_publication: false;
+}
+
+export interface RecursiveRoundContextResponse {
+  status: "candidate" | "accepted";
+  preview: RecursiveRoundContextPreview | null;
+  reservation: ResearchArtifactClaimChallengeResponse | null;
+}
+
+export interface EffectiveOwnerContextPreview {
+  artifact_content_hash: string;
+  archived_claim: string;
+  effective_claim: string;
+  head_transition_sha256: string;
+  receipt_sha256: string;
+  preview_sha256: string;
+  revision_transition_sha256s: string[];
+  archive_grounded: false;
+  grants_authority: false;
+  permits_provider_call: false;
+  permits_spend: false;
+  permits_graph_admission: false;
+  permits_write: false;
+  permits_benchmark_feedback: false;
+  permits_publication: false;
+}
+
+export interface EffectiveOwnerContextCommand {
+  content_hash: string;
+  goal: string;
+  mutation_key: string;
+  view_mode?: "floating" | "full";
+  model_id?: string | null;
+  research_tier?: "fast" | "deep" | "wrestle";
+}
+
+export interface EffectiveOwnerContextAcceptCommand extends EffectiveOwnerContextCommand {
+  preview_sha256: string;
+  receipt_sha256: string;
+}
+
+export interface ResearchArtifactClaimChallengeResponse {
+  session_id: string;
+  spawn_id: string;
+  investigation_id: string;
+  parent_asset_id: string;
+  selection_text: string;
+  status: string;
+  view_mode: "floating" | "full";
+  model_id: string | null;
+  research_tier: string;
+  view_format: "html";
+  claim_challenge: ResearchArtifactClaimChallengeReceipt;
+}
+
+export interface ClaimReviewAcceptance {
+  schema_version: 1;
+  kind: "claim_challenge_acceptance";
+  receipt_sha256: string;
+  candidate_sha256: string;
+  candidate_text: string;
+  preview_sha256: string;
+}
+
+export interface ClaimReviewReversal {
+  schema_version: 1;
+  kind: "claim_challenge_reversal";
+  receipt_sha256: string;
+  acceptance_receipt_sha256: string;
+  rationale: string;
+}
+
+export type EffectiveContextReviewCommand = {
+  content_hash: string;
+  disposition: "retain_current" | "propose_compensation";
+  rationale: string;
+  proposed_claim: string | null;
+};
+
+export type EffectiveContextReviewResponse = {
+  status: "candidate" | "accepted";
+  preview: {
+    artifact_content_hash: string;
+    claim_index: number;
+    context_receipt_sha256: string;
+    head_transition_sha256: string;
+    archived_claim: string;
+    effective_claim: string;
+    candidate_sha256: string;
+    candidate_text: string;
+    archived_evaluation: {
+      event_id: string;
+      scorer_id: string;
+      relation: "entailed" | "contradicted" | "not_established" | null;
+      score: number;
+    };
+    archived_direct_evidence_receipt_sha256s: string[];
+    archived_inherited_support: Array<{
+      unit_id: string;
+      qualification_state: "complete" | "partial" | "unknown" | "legacy_unqualified";
+      source_investigation_id: string | null;
+      supporting_leaf_investigation_id: string;
+    }>;
+    disposition: "retain_current" | "propose_compensation";
+    rationale: string;
+    proposed_claim: string | null;
+    preview_sha256: string;
+    archive_grounded: false;
+    grants_authority: false;
+    permits_canonical_append: false;
+  };
+  acceptance: null | {
+    receipt_sha256: string;
+    disposition: "retain_current" | "propose_compensation";
+    rationale: string;
+    permits_canonical_append: false;
+    archive_grounded: false;
+    grants_authority: false;
+    permits_graph_admission: false;
+    permits_write: false;
+    permits_benchmark_feedback: false;
+    permits_publication: false;
+    permits_provider_call: false;
+    permits_spend: false;
+  };
+  proposal: null | {
+    receipt_sha256: string;
+    review_receipt_sha256: string;
+    proposed_claim: string;
+    rationale: string;
+    permits_canonical_append: false;
+    grants_authority: false;
+  };
+};
+
+export type EffectiveContextReviewReadResponse = {
+  status: "accepted";
+  archived_claim: string;
+  archived_evaluation: EffectiveContextReviewResponse["preview"]["archived_evaluation"];
+  archived_direct_evidence_receipt_sha256s: string[];
+  archived_inherited_support: EffectiveContextReviewResponse["preview"]["archived_inherited_support"];
+  effective_claim: string;
+  candidate_text: string;
+  acceptance: NonNullable<EffectiveContextReviewResponse["acceptance"]>;
+  proposal: EffectiveContextReviewResponse["proposal"];
+  consumption: EffectiveContextCompensationResponse["acceptance"];
+};
+
+export type EffectiveContextCompensationResponse = {
+  status: "candidate" | "accepted";
+  preview: null | {
+    prior_artifact_content_hash: string;
+    prospective_artifact_content_hash: string;
+    supersedes_transition_sha256: string;
+    prior_effective_claim: string;
+    replacement_claim: string;
+    rationale: string;
+    transition_sha256: string;
+    preview_sha256: string;
+    source_context_receipt_sha256: string;
+    source_review_receipt_sha256: string;
+    source_proposal_receipt_sha256: string;
+  };
+  acceptance: null | {
+    artifact_content_hash: string;
+    transition_sha256: string;
+    effective_owner_claim: string;
+    source_context_receipt_sha256: string;
+    source_review_receipt_sha256: string;
+    source_proposal_receipt_sha256: string;
+    archive_grounded: false;
+    grants_authority: false;
+  };
+};
+
+export interface ClaimReviewResponse {
+  status: "candidate" | "accepted" | "reversed";
+  preview: {
+    preview_sha256: string;
+    candidate_sha256: string;
+    candidate_text: string;
+    html: string;
+    view_format: "html";
+  } | null;
+  acceptance: ClaimReviewAcceptance | null;
+  reversal: ClaimReviewReversal | null;
+  view_format: "html";
+}
+
+export interface ResearchArtifactClaimsResponse {
+  investigation_id: string;
+  content_hash: string;
+  claims: ResearchArtifactClaimSupport[];
 }
 
 export type InvestigationPromotionGate =
@@ -1285,6 +2521,625 @@ export async function getResearchArtifactBlocks(
   return resp.json();
 }
 
+/** Canonical, account-gated claim-support projection. This is deliberately
+ * separate from the HTML view so clients never parse provenance from markup. */
+export async function getResearchArtifactClaims(
+  investigationId: string,
+): Promise<ResearchArtifactClaimsResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claims`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /research/{id}/artifact/claims failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export async function getResearchArtifactClaim(
+  investigationId: string,
+  claimIndex: number,
+  contentHash: string,
+): Promise<ResearchArtifactClaimSupport> {
+  const query = new URLSearchParams({ content_hash: contentHash });
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claims/${claimIndex}?${query}`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /research/{id}/artifact/claims/{index} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export async function getEffectiveClaimIterations(
+  investigationId: string,
+  claimIndex: number,
+): Promise<EffectiveClaimIterationsResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claims/${claimIndex}/owner-iterations`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET effective claim iterations failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export async function getReasoningAncestry(
+  investigationId: string,
+  claimIndex: number,
+): Promise<ReasoningAncestryResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claims/${claimIndex}/owner-ancestry`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET reasoning ancestry failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export async function previewReasoningAncestryInterrogation(
+  investigationId: string,
+  claimIndex: number,
+  body: ReasoningAncestryInterrogationCommand,
+): Promise<ReasoningAncestryInterrogationResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claims/${claimIndex}/ancestry-interrogation/preview`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  if (!resp.ok) throw new ApiError(`POST ancestry interrogation preview failed: HTTP ${resp.status}`, resp.status, await resp.text());
+  return resp.json();
+}
+
+export async function acceptReasoningAncestryInterrogation(
+  investigationId: string,
+  claimIndex: number,
+  body: ReasoningAncestryInterrogationCommand & { preview_sha256: string; receipt_sha256: string },
+): Promise<ReasoningAncestryInterrogationResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claims/${claimIndex}/ancestry-interrogation/accept`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  if (!resp.ok) throw new ApiError(`POST ancestry interrogation accept failed: HTTP ${resp.status}`, resp.status, await resp.text());
+  return resp.json();
+}
+
+export async function getReasoningAncestryInterrogation(
+  investigationId: string,
+  receiptId: string,
+  signal?: AbortSignal,
+): Promise<ReasoningAncestryInterrogationResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/ancestry-interrogations/${encodeURIComponent(receiptId)}`,
+    { signal },
+  );
+  if (!resp.ok) throw new ApiError(`GET ancestry interrogation failed: HTTP ${resp.status}`, resp.status, await resp.text());
+  return resp.json();
+}
+
+export async function getAncestryContinuationOptions(
+  investigationId: string,
+  receiptId: string,
+  signal?: AbortSignal,
+): Promise<AncestryContinuationOptions> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/ancestry-interrogations/${encodeURIComponent(receiptId)}/continuation-options`,
+    { signal },
+  );
+  if (!resp.ok) throw new ApiError(`GET ancestry continuation options failed: HTTP ${resp.status}`, resp.status, await resp.text());
+  return resp.json();
+}
+
+export async function quoteAncestryContinuation(
+  investigationId: string,
+  receiptId: string,
+  body: AncestryContinuationCommand,
+  signal?: AbortSignal,
+): Promise<AncestryContinuationQuote> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/ancestry-interrogations/${encodeURIComponent(receiptId)}/continuation/quote`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal },
+  );
+  if (!resp.ok) throw new ApiError(`POST ancestry continuation quote failed: HTTP ${resp.status}`, resp.status, await resp.text());
+  return resp.json();
+}
+
+export async function launchAncestryContinuation(
+  investigationId: string,
+  receiptId: string,
+  body: AncestryContinuationCommand & { research_quote_token: string },
+  signal?: AbortSignal,
+): Promise<AncestryContinuationLaunch> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/ancestry-interrogations/${encodeURIComponent(receiptId)}/continuation`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal },
+  );
+  if (!resp.ok) throw new ApiError(`POST ancestry continuation failed: HTTP ${resp.status}`, resp.status, await resp.text());
+  return resp.json();
+}
+
+export async function previewRecursiveRoundContext(
+  investigationId: string,
+  claimIndex: number,
+  body: RecursiveRoundContextCommand,
+): Promise<RecursiveRoundContextResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claims/${claimIndex}/recursive-context/preview`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  if (!resp.ok) throw new ApiError(`POST recursive context preview failed: HTTP ${resp.status}`, resp.status, await resp.text());
+  return resp.json();
+}
+
+export async function acceptRecursiveRoundContext(
+  investigationId: string,
+  claimIndex: number,
+  body: RecursiveRoundContextCommand & { preview_sha256: string; receipt_sha256: string },
+): Promise<RecursiveRoundContextResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claims/${claimIndex}/recursive-context/accept`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  if (!resp.ok) throw new ApiError(`POST recursive context accept failed: HTTP ${resp.status}`, resp.status, await resp.text());
+  return resp.json();
+}
+
+export async function reserveResearchArtifactClaimChallenge(
+  investigationId: string,
+  claimIndex: number,
+  body: {
+    content_hash: string;
+    goal: string;
+    view_mode?: "floating" | "full";
+    model_id?: string | null;
+    research_tier?: "fast" | "deep" | "wrestle";
+  },
+): Promise<ResearchArtifactClaimChallengeResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claims/${claimIndex}/challenge`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/{id}/artifact/claims/{index}/challenge failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+async function effectiveOwnerContextCommand(
+  investigationId: string,
+  claimIndex: number,
+  action: "preview" | "accept",
+  body: EffectiveOwnerContextCommand | EffectiveOwnerContextAcceptCommand,
+): Promise<{
+  status: "candidate" | "accepted";
+  preview: EffectiveOwnerContextPreview | null;
+  reservation: ResearchArtifactClaimChallengeResponse | null;
+}> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claims/${claimIndex}/owner-context/${action}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST owner-context/${action} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export const previewEffectiveOwnerContext = (
+  investigationId: string,
+  claimIndex: number,
+  body: EffectiveOwnerContextCommand,
+) => effectiveOwnerContextCommand(investigationId, claimIndex, "preview", body);
+
+export const acceptEffectiveOwnerContext = (
+  investigationId: string,
+  claimIndex: number,
+  body: EffectiveOwnerContextAcceptCommand,
+) => effectiveOwnerContextCommand(investigationId, claimIndex, "accept", body);
+
+async function claimReviewCommand(
+  investigationId: string,
+  sessionId: string,
+  action: "preview" | "accept" | "reverse",
+  body: Record<string, unknown>,
+): Promise<ClaimReviewResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claim-challenges/${encodeURIComponent(sessionId)}/review/${action}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST claim challenge review/${action} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export const previewClaimChallengeReview = (
+  investigationId: string,
+  sessionId: string,
+  contentHash: string,
+) =>
+  claimReviewCommand(investigationId, sessionId, "preview", {
+    content_hash: contentHash,
+  });
+
+export const acceptClaimChallengeReview = (
+  investigationId: string,
+  sessionId: string,
+  body: { content_hash: string; preview_sha256: string; mutation_key: string },
+) => claimReviewCommand(investigationId, sessionId, "accept", body);
+
+async function effectiveContextReviewCommand(
+  investigationId: string,
+  sessionId: string,
+  action: "preview" | "accept",
+  body: EffectiveContextReviewCommand & {
+    preview_sha256?: string;
+    mutation_key?: string;
+  },
+): Promise<EffectiveContextReviewResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/owner-contexts/${encodeURIComponent(sessionId)}/review/${action}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST effective context review/${action} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export const previewEffectiveContextReview = (
+  investigationId: string,
+  sessionId: string,
+  body: EffectiveContextReviewCommand,
+) => effectiveContextReviewCommand(investigationId, sessionId, "preview", body);
+
+export const acceptEffectiveContextReview = (
+  investigationId: string,
+  sessionId: string,
+  body: EffectiveContextReviewCommand & {
+    preview_sha256: string;
+    mutation_key: string;
+  },
+) => effectiveContextReviewCommand(investigationId, sessionId, "accept", body);
+
+export async function getEffectiveContextReview(
+  investigationId: string,
+  sessionId: string,
+): Promise<EffectiveContextReviewReadResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/owner-contexts/${encodeURIComponent(sessionId)}/review`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET effective context review failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+async function effectiveContextCompensationCommand(
+  investigationId: string,
+  sessionId: string,
+  action: "preview" | "accept",
+  body: {
+    content_hash: string;
+    proposal_receipt_sha256: string;
+    mutation_key: string;
+    preview_sha256?: string;
+    transition_sha256?: string;
+  },
+): Promise<EffectiveContextCompensationResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/owner-contexts/${encodeURIComponent(sessionId)}/review/compensation/${action}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST effective context compensation/${action} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export const previewEffectiveContextCompensation = (
+  investigationId: string,
+  sessionId: string,
+  body: {
+    content_hash: string;
+    proposal_receipt_sha256: string;
+    mutation_key: string;
+  },
+) => effectiveContextCompensationCommand(investigationId, sessionId, "preview", body);
+
+export const acceptEffectiveContextCompensation = (
+  investigationId: string,
+  sessionId: string,
+  body: {
+    content_hash: string;
+    proposal_receipt_sha256: string;
+    mutation_key: string;
+    preview_sha256: string;
+    transition_sha256: string;
+  },
+) => effectiveContextCompensationCommand(investigationId, sessionId, "accept", body);
+
+export const reverseClaimChallengeReview = (
+  investigationId: string,
+  sessionId: string,
+  body: {
+    content_hash: string;
+    acceptance_receipt_sha256: string;
+    rationale: string;
+    mutation_key: string;
+  },
+) => claimReviewCommand(investigationId, sessionId, "reverse", body);
+
+export interface ClaimReconsiderationCommandResponse {
+  status: "candidate" | "created";
+  preview: null | {
+    preview_sha256: string;
+    proposed_claim: string;
+    rationale: string;
+    html: string;
+  };
+  proposal: null | {
+    receipt_sha256: string;
+    proposed_claim: string;
+    rationale: string;
+    grants_authority: false;
+  };
+  view_format: "html";
+}
+
+async function claimReconsiderationCommand(
+  investigationId: string,
+  claimIndex: number,
+  action: "preview" | "create",
+  body: Record<string, unknown>,
+): Promise<ClaimReconsiderationCommandResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claims/${claimIndex}/reconsideration/${action}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST claim reconsideration/${action} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export const previewClaimReconsideration = (
+  investigationId: string,
+  claimIndex: number,
+  body: {
+    content_hash: string;
+    acceptance_receipt_sha256s: string[];
+    proposed_claim: string;
+    rationale: string;
+  },
+) => claimReconsiderationCommand(investigationId, claimIndex, "preview", body);
+
+export const createClaimReconsideration = (
+  investigationId: string,
+  claimIndex: number,
+  body: {
+    content_hash: string;
+    acceptance_receipt_sha256s: string[];
+    proposed_claim: string;
+    rationale: string;
+    preview_sha256: string;
+    mutation_key: string;
+  },
+) => claimReconsiderationCommand(investigationId, claimIndex, "create", body);
+
+export interface ClaimRevisionCommandResponse {
+  status: "candidate" | "accepted";
+  preview: null | {
+    prior_artifact_content_hash: string;
+    prospective_artifact_content_hash: string;
+    proposal_receipt_sha256: string;
+    transition_sha256: string;
+    preview_sha256: string;
+    original_claim: string;
+    revised_claim: string;
+    rationale: string;
+    html: string;
+  };
+  acceptance: null | {
+    prior_artifact_content_hash: string;
+    artifact_content_hash: string;
+    proposal_receipt_sha256: string;
+    transition_sha256: string;
+    history_content_hash: string;
+    archive_grounded: false;
+    grants_authority: false;
+  };
+  view_format: "html";
+}
+
+async function claimRevisionCommand(
+  investigationId: string,
+  claimIndex: number,
+  action: "preview" | "accept",
+  body: Record<string, unknown>,
+): Promise<ClaimRevisionCommandResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claims/${claimIndex}/revision/${action}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST claim revision/${action} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export const previewClaimRevision = (
+  investigationId: string,
+  claimIndex: number,
+  body: { content_hash: string; proposal_receipt_sha256: string; mutation_key: string },
+) => claimRevisionCommand(investigationId, claimIndex, "preview", body);
+
+export const acceptClaimRevision = (
+  investigationId: string,
+  claimIndex: number,
+  body: {
+    content_hash: string;
+    proposal_receipt_sha256: string;
+    mutation_key: string;
+    preview_sha256: string;
+    transition_sha256: string;
+  },
+) => claimRevisionCommand(investigationId, claimIndex, "accept", body);
+
+export interface ClaimRevisionCompensationCommandResponse {
+  status: "candidate" | "accepted";
+  preview: null | {
+    operation: "restore_archived_terminal" | "supersede_owner_revision";
+    prior_artifact_content_hash: string;
+    prospective_artifact_content_hash: string;
+    supersedes_transition_sha256: string;
+    prior_effective_claim: string;
+    replacement_claim: string;
+    rationale: string;
+    transition_sha256: string;
+    preview_sha256: string;
+    html: string;
+  };
+  acceptance: null | {
+    operation: "restore_archived_terminal" | "supersede_owner_revision";
+    prior_artifact_content_hash: string;
+    artifact_content_hash: string;
+    supersedes_transition_sha256: string;
+    transition_sha256: string;
+    history_content_hash: string;
+    effective_owner_claim: string;
+    archive_grounded: false;
+    grants_authority: false;
+  };
+  view_format: "html";
+}
+
+async function claimRevisionCompensationCommand(
+  investigationId: string,
+  claimIndex: number,
+  action: "preview" | "accept",
+  body: Record<string, unknown>,
+): Promise<ClaimRevisionCompensationCommandResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/claims/${claimIndex}/revision/compensation/${action}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST claim revision compensation/${action} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export const previewClaimRevisionCompensation = (
+  investigationId: string,
+  claimIndex: number,
+  body: {
+    content_hash: string;
+    supersedes_transition_sha256: string;
+    operation: "restore_archived_terminal" | "supersede_owner_revision";
+    replacement_claim: string | null;
+    rationale: string;
+    mutation_key: string;
+  },
+) => claimRevisionCompensationCommand(investigationId, claimIndex, "preview", body);
+
+export const acceptClaimRevisionCompensation = (
+  investigationId: string,
+  claimIndex: number,
+  body: {
+    content_hash: string;
+    supersedes_transition_sha256: string;
+    operation: "restore_archived_terminal" | "supersede_owner_revision";
+    replacement_claim: string | null;
+    rationale: string;
+    mutation_key: string;
+    preview_sha256: string;
+    transition_sha256: string;
+  },
+) => claimRevisionCompensationCommand(investigationId, claimIndex, "accept", body);
+
 /** POST /research/{id}/artifact/export — write Profile B HTML to operator store. */
 export async function exportResearchArtifact(
   investigationId: string,
@@ -1334,16 +3189,17 @@ export interface ChallengeNoteResponse {
   reserved_child_investigation_id?: string | null;
 }
 
-/** POST /research/notes/{nodeId}/challenge — drive the shipped living-note
+/** POST /research/{investigationId}/notes/{nodeId}/challenge — drive the shipped living-note
  *  path. Resolves → mutates in place; declines → escalation (reserved, not
  *  launched). 503 = no model configured (honest no-key); the caller shows
  *  the shared failure surface, never a fabricated change. */
 export async function challengeNote(
   nodeId: string,
-  req: { investigation_id: string; challenge_text?: string },
+  investigationId: string,
+  req: { challenge_text?: string } = {},
 ): Promise<ChallengeNoteResponse> {
   const resp = await apiFetch(
-    `${API_BASE}/research/notes/${encodeURIComponent(nodeId)}/challenge`,
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/notes/${encodeURIComponent(nodeId)}/challenge`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1352,7 +3208,7 @@ export async function challengeNote(
   );
   if (!resp.ok) {
     throw new ApiError(
-      `POST /research/notes/{id}/challenge failed: HTTP ${resp.status}`,
+      `POST /research/{investigationId}/notes/{id}/challenge failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );

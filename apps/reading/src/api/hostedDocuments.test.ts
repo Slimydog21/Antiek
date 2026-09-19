@@ -6,7 +6,7 @@ vi.mock("../lib/api", () => ({
 }));
 
 import { apiFetch } from "../lib/api";
-import { fetchHostedDocument, ingestHostedDocument } from "./hostedDocuments";
+import { fetchCitationPosition, fetchHostedDocument, ingestHostedDocument, storeCitationPosition } from "./hostedDocuments";
 
 const receipt = {
   document_id: "hdoc_1",
@@ -83,6 +83,18 @@ describe("hosted document API", () => {
     expect(result.html).toContain("Paper");
     expect(apiFetch).toHaveBeenCalledWith(
       "http://api.test/hosted-documents/hdoc%2Funsafe/html",
+      { cache: "no-store" },
+    );
+  });
+
+  it("requests citation chunks as repeated encoded authority hints", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(
+      new Response(JSON.stringify(receipt), { status: 200 }),
+    );
+    await fetchHostedDocument("doc-1", ["chunk/a", "chunk b"]);
+    expect(apiFetch).toHaveBeenCalledWith(
+      "http://api.test/hosted-documents/doc-1/html?citation_chunk_id=chunk%2Fa&citation_chunk_id=chunk+b",
+      { cache: "no-store" },
     );
   });
 
@@ -93,5 +105,37 @@ describe("hosted document API", () => {
     await expect(fetchHostedDocument("hdoc_1")).rejects.toThrow(
       "hosted document API 403",
     );
+  });
+
+  it("uses no-store and sends only the bounded durable position command", async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "found", index: 2 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "synced", event_id: "evt", index: 2 }), { status: 200 }));
+    await fetchCitationPosition("doc/1", "a".repeat(64), 3);
+    expect(apiFetch).toHaveBeenNthCalledWith(1,
+      `http://api.test/hosted-documents/doc%2F1/citation-position?receipt_sha256=${"a".repeat(64)}&anchor_count=3`,
+      { cache: "no-store" },
+    );
+    const evidence = { receipt_sha256: "a".repeat(64) };
+    await storeCitationPosition("doc/1", { citation_evidence: evidence, index: 2, anchor_count: 3, mutation_key: "move-1" });
+    const request = vi.mocked(apiFetch).mock.calls[1][1] as RequestInit;
+    expect(request).toEqual(expect.objectContaining({ method: "PUT", cache: "no-store" }));
+    expect(JSON.parse(String(request.body))).toEqual({ citation_evidence: evidence, index: 2, anchor_count: 3, mutation_key: "move-1" });
+    expect(String(request.body)).not.toMatch(/html|source_text|account_id/i);
+  });
+
+  it("fails closed on malformed durable position responses", async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "found", index: 3 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "synced", event_id: "evt", index: 1 }), { status: 200 }));
+    await expect(fetchCitationPosition("doc-1", "a".repeat(64), 3)).rejects.toThrow(
+      "invalid citation position",
+    );
+    await expect(storeCitationPosition("doc-1", {
+      citation_evidence: { receipt_sha256: "a".repeat(64) },
+      index: 2,
+      anchor_count: 3,
+      mutation_key: "move-2",
+    })).rejects.toThrow("invalid citation position receipt");
   });
 });

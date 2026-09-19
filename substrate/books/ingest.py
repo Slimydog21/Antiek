@@ -30,6 +30,7 @@ from typing import Any
 from runtime.db_lock import LockedConnection
 from substrate.constants import SYSTEM_INVESTIGATION_ID
 from substrate.event_log import emit_typed
+from substrate.legal_gate.read import read_document_metadata_compatibility
 
 # Re-export so acquisition/opt_in/intake.py's historical
 # ``from substrate.books.ingest import resolve_or_create_ip_holder`` keeps resolving;
@@ -97,15 +98,15 @@ def register_book(
     """
     _require_locked(con)
 
-    doc = con.execute(
-        "SELECT content_class FROM documents WHERE document_id = ?", [document_id]
-    ).fetchone()
-    if doc is None:
+    document = read_document_metadata_compatibility(
+        con, document_id, authority=None, enforce=False
+    )
+    if document is None:
         raise ValueError(
             f"{document_id} has no documents row — insert the book document "
             "(acquisition/books) before registering it."
         )
-    prev_content_class = doc[0]
+    prev_content_class = document["content_class"]
 
     # Delegate the rights core — content_class resolve + deny-by-default validation,
     # ip_holder threading, and the gate-column write — to the ONE cross-source

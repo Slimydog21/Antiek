@@ -40,7 +40,7 @@ import sys
 import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import Any
 
@@ -53,6 +53,7 @@ def _to_naive_utc(ts: datetime) -> datetime:
     if ts.tzinfo is not None:
         return ts.astimezone(UTC).replace(tzinfo=None)
     return ts
+
 
 try:
     from ...event_log import emit_typed, trajectory
@@ -108,6 +109,8 @@ def _manifest_request_fingerprint(inputs: ArchiveInputs) -> str:
         "node": sorted(set(inputs.node_ids)),
         "edge": sorted(set(inputs.edge_ids)),
     }
+    if inputs.source_synthesis_event_id is not None:
+        normalized["source_synthesis_event_id"] = inputs.source_synthesis_event_id
     payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
     return sha256(payload.encode()).hexdigest()
 
@@ -122,6 +125,29 @@ def new_synthesis_id() -> str:
     Researchmaxx pipeline uses, so a migrated trajectory's
     synthesis_ids are still recognizable."""
     return str(uuid.uuid4())
+
+
+def authorized_synthesis_id(authority: Any, logical_key: str) -> str:
+    """Derive an opaque physical id inside one exact graph authority."""
+    from substrate.graph.tenancy import graph_key
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    if not isinstance(authority, InvestigationAuthority):
+        raise TypeError("authorized synthesis identity requires InvestigationAuthority")
+    if (
+        not isinstance(logical_key, str)
+        or not logical_key
+        or logical_key != logical_key.strip()
+        or len(logical_key) > 256
+    ):
+        raise ValueError("authorized synthesis logical key is invalid")
+    digest = sha256(
+        b"antiek-synthesis-authority-v1\0"
+        + bytes.fromhex(graph_key(authority))
+        + b"\0"
+        + logical_key.encode()
+    ).hexdigest()[:32]
+    return f"syn-{digest}"
 
 
 def serialize_json_field(obj: Any) -> str | None:
@@ -189,6 +215,8 @@ class ArchiveInputs:
     agent_trace: Any | None = None
     constraint_history: Any | None = None
     constraint_check_result: Any | None = None
+    # Exact synthesize.delivered event whose immutable output is archived.
+    source_synthesis_event_id: str | None = None
 
     # Model version stamp per role — feeds the typed payload's
     # model_versions field.
@@ -266,18 +294,156 @@ def emit_substrate_manifest_written(
     )
 
 
+def _emit_synthesis_archived_authorized(
+    authority: Any,
+    synthesis_id: str,
+    inputs: ArchiveInputs,
+    *,
+    parent_event_id: str | None = None,
+) -> str:
+    from substrate.event_log import emit_typed_authorized_strict
+
+    return emit_typed_authorized_strict(
+        authority,
+        SynthesisArchivedPayload(
+            target_question=inputs.target_question,
+            synthesis_timestamp=inputs.synthesis_timestamp,
+            status=inputs.status,
+            implicit_recommendation=inputs.implicit_recommendation,
+            model_versions=dict(inputs.model_versions),
+            thesis_token_count=_estimate_token_count(inputs.thesis_text or ""),
+            has_constraint_check_result=inputs.constraint_check_result is not None,
+        ),
+        synthesis_id=synthesis_id,
+        parent_event_id=parent_event_id,
+        role="synthesizer",
+    )
+
+
+def _emit_manifest_authorized(
+    authority: Any,
+    synthesis_id: str,
+    inputs: ArchiveInputs,
+    counts: Mapping[str, int],
+    *,
+    parent_event_id: str | None,
+) -> str:
+    from substrate.event_log import emit_typed_authorized_strict
+
+    return emit_typed_authorized_strict(
+        authority,
+        SubstrateManifestWrittenPayload(
+            synthesis_timestamp=inputs.synthesis_timestamp,
+            manifest_rows_written=sum(counts.values()),
+            counts_by_kind=dict(counts),
+        ),
+        synthesis_id=synthesis_id,
+        parent_event_id=parent_event_id,
+        role="synthesizer",
+    )
+
+
+def _stage_archive_events(
+    con: Any,
+    authority: Any,
+    synthesis_id: str,
+    inputs: ArchiveInputs,
+    counts: Mapping[str, int],
+) -> None:
+    from substrate.event_log import prepare_typed_event, trajectory_authorized
+    from substrate.synthesis_event_outbox import (
+        stable_synthesis_event_id,
+        stage_synthesis_event,
+    )
+
+    rows = trajectory_authorized(authority)
+    archived = next(
+        (
+            row
+            for row in rows
+            if row.get("synthesis_id") == synthesis_id
+            and row.get("action_type") == "synthesis.archived"
+        ),
+        None,
+    )
+    archive_event_id = (
+        archived["event_id"]
+        if archived is not None
+        else stable_synthesis_event_id(authority, synthesis_id, "synthesis.archived")
+    )
+    if archived is None:
+        archive_event = prepare_typed_event(
+            authority.investigation_id,
+            SynthesisArchivedPayload(
+                target_question=inputs.target_question,
+                synthesis_timestamp=inputs.synthesis_timestamp,
+                status=inputs.status,
+                implicit_recommendation=inputs.implicit_recommendation,
+                model_versions=dict(inputs.model_versions),
+                thesis_token_count=_estimate_token_count(inputs.thesis_text or ""),
+                has_constraint_check_result=(inputs.constraint_check_result is not None),
+            ),
+            event_id=archive_event_id,
+            parent_event_id=inputs.source_synthesis_event_id,
+            synthesis_id=synthesis_id,
+            role="synthesizer",
+            # Keep both stamps in the same fractional ISO-8601 shape because
+            # trajectory ordering is intentionally lexical for JSON rows.
+            emitted_at=inputs.synthesis_timestamp + timedelta(microseconds=1),
+        )
+        stage_synthesis_event(con, authority, archive_event)
+    manifest_exists = any(
+        row.get("synthesis_id") == synthesis_id
+        and row.get("action_type") == "synthesis.substrate_manifest.written"
+        and row.get("parent_event_id") == archive_event_id
+        for row in rows
+    )
+    if not manifest_exists:
+        manifest_event = prepare_typed_event(
+            authority.investigation_id,
+            SubstrateManifestWrittenPayload(
+                synthesis_timestamp=inputs.synthesis_timestamp,
+                manifest_rows_written=sum(counts.values()),
+                counts_by_kind=dict(counts),
+            ),
+            event_id=stable_synthesis_event_id(
+                authority,
+                synthesis_id,
+                "synthesis.substrate_manifest.written",
+            ),
+            parent_event_id=archive_event_id,
+            synthesis_id=synthesis_id,
+            role="synthesizer",
+            emitted_at=inputs.synthesis_timestamp + timedelta(microseconds=2),
+        )
+        stage_synthesis_event(con, authority, manifest_event)
+
+
+def _reconcile_archive_events(con: Any, authority: Any) -> None:
+    from substrate.synthesis_event_outbox import reconcile_synthesis_events
+
+    reconcile_synthesis_events(con, authority)
+
+
 def _ensure_archive_events(
     *,
     investigation_id: str,
     synthesis_id: str,
     inputs: ArchiveInputs,
     counts: Mapping[str, int],
+    authority: Any | None = None,
 ) -> None:
     """Repair either append-only event when a committed archive is replayed."""
-    rows = trajectory(investigation_id)
+    if authority is None:
+        rows = trajectory(investigation_id)
+    else:
+        from substrate.event_log import trajectory_authorized
+
+        rows = trajectory_authorized(authority)
     archived = next(
         (
-            row for row in rows
+            row
+            for row in rows
             if row.get("synthesis_id") == synthesis_id
             and row.get("action_type") == "synthesis.archived"
         ),
@@ -285,11 +451,14 @@ def _ensure_archive_events(
     )
     archive_event_id = archived.get("event_id") if archived is not None else None
     if archived is None:
-        archive_event_id = emit_synthesis_archived(
-            investigation_id=investigation_id,
-            synthesis_id=synthesis_id,
-            inputs=inputs,
-        )
+        if authority is None:
+            archive_event_id = emit_synthesis_archived(
+                investigation_id=investigation_id,
+                synthesis_id=synthesis_id,
+                inputs=inputs,
+            )
+        else:
+            archive_event_id = _emit_synthesis_archived_authorized(authority, synthesis_id, inputs)
     has_manifest_event = any(
         row.get("synthesis_id") == synthesis_id
         and row.get("action_type") == "synthesis.substrate_manifest.written"
@@ -297,13 +466,22 @@ def _ensure_archive_events(
         for row in rows
     )
     if not has_manifest_event:
-        emit_substrate_manifest_written(
-            investigation_id=investigation_id,
-            synthesis_id=synthesis_id,
-            synthesis_timestamp=inputs.synthesis_timestamp,
-            counts_by_kind=counts,
-            parent_event_id=archive_event_id,
-        )
+        if authority is None:
+            emit_substrate_manifest_written(
+                investigation_id=investigation_id,
+                synthesis_id=synthesis_id,
+                synthesis_timestamp=inputs.synthesis_timestamp,
+                counts_by_kind=counts,
+                parent_event_id=archive_event_id,
+            )
+        else:
+            _emit_manifest_authorized(
+                authority,
+                synthesis_id,
+                inputs,
+                counts,
+                parent_event_id=archive_event_id,
+            )
 
 
 def _estimate_token_count(text: str) -> int:
@@ -321,12 +499,120 @@ def _estimate_token_count(text: str) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _authorized_document_ids(con: Any, authority: Any, ids: Iterable[str]) -> set[str]:
+    requested = tuple(dict.fromkeys(ids))
+    from substrate.legal_gate.read import archive_document_ids_compatibility
+
+    return archive_document_ids_compatibility(
+        con,
+        requested,
+        authority=authority,
+        enforce=True,
+    )
+
+
+def _authorized_chunk_ids(con: Any, authority: Any, ids: Iterable[str]) -> set[str]:
+    requested = tuple(dict.fromkeys(ids))
+    from substrate.legal_gate.read import archive_chunk_ids_compatibility
+
+    return archive_chunk_ids_compatibility(
+        con,
+        requested,
+        authority=authority,
+        enforce=True,
+    )
+
+
+def _authorized_edge_ids(con: Any, authority: Any, ids: Iterable[str]) -> set[str]:
+    requested = tuple(dict.fromkeys(ids))
+    if not requested:
+        return set()
+    placeholders = ",".join("?" for _ in requested)
+    rows = con.execute(
+        "SELECT edge_id, account_digest, investigation_digest, "
+        "source_document_id, chunk_id FROM edges WHERE edge_id IN (" + placeholders + ")",
+        list(requested),
+    ).fetchall()
+    admitted: set[str] = set()
+    public_candidates: list[tuple[str, str | None, str | None]] = []
+    for edge_id, account_digest, investigation_digest, document_id, chunk_id in rows:
+        if (
+            account_digest == authority.account_digest
+            and investigation_digest == authority.investigation_digest
+        ):
+            admitted.add(edge_id)
+        elif account_digest is None and investigation_digest is None:
+            public_candidates.append((edge_id, document_id, chunk_id))
+    public_documents = _authorized_document_ids(
+        con,
+        authority,
+        (row[1] for row in public_candidates if row[1] is not None),
+    )
+    public_chunks = _authorized_chunk_ids(
+        con,
+        authority,
+        (row[2] for row in public_candidates if row[2] is not None),
+    )
+    admitted.update(
+        edge_id
+        for edge_id, document_id, chunk_id in public_candidates
+        if document_id in public_documents or chunk_id in public_chunks
+    )
+    return admitted
+
+
+def _authorized_node_ids(con: Any, authority: Any, ids: Iterable[str]) -> set[str]:
+    requested = tuple(dict.fromkeys(ids))
+    if not requested:
+        return set()
+    placeholders = ",".join("?" for _ in requested)
+    member_rows = con.execute(
+        "SELECT n.node_id FROM nodes n JOIN investigation_node_memberships m "
+        "ON m.node_id = n.node_id WHERE n.node_id IN ("
+        + placeholders
+        + ") AND m.account_digest = ? AND m.investigation_digest = ?",
+        [
+            *requested,
+            authority.account_digest,
+            authority.investigation_digest,
+        ],
+    ).fetchall()
+    admitted = {row[0] for row in member_rows}
+    candidates = sorted(set(requested) - admitted)
+    if not candidates:
+        return admitted
+    from substrate.legal_gate.read import archive_node_provenance_compatibility
+
+    documents_by_node = archive_node_provenance_compatibility(
+        con,
+        tuple(candidates),
+        authority=authority,
+        enforce=True,
+    )
+    admitted_documents = _authorized_document_ids(
+        con,
+        authority,
+        (
+            document_id
+            for document_ids in documents_by_node.values()
+            for document_id in document_ids
+        ),
+    )
+    admitted.update(
+        node_id
+        for node_id, document_ids in documents_by_node.items()
+        if document_ids and document_ids <= admitted_documents
+    )
+    return admitted
+
+
 def archive_synthesis_via_db(
     con: Any,
     inputs: ArchiveInputs,
     *,
     investigation_id: str,
     synthesis_id: str | None = None,
+    _authority: Any | None = None,
 ) -> str:
     """Write a syntheses row + its substrate manifest, then emit
     ``SYNTHESIS_ARCHIVED`` and ``SUBSTRATE_MANIFEST_WRITTEN``.
@@ -352,6 +638,20 @@ def archive_synthesis_via_db(
             "runtime.db_lock.connect_write(db_path)."
         )
 
+    if _authority is not None:
+        from substrate.graph.tenancy import initialize_graph_authority
+        from substrate.investigation_streams import resolve_investigation_stream
+        from substrate.investigation_tenancy import InvestigationAuthority
+
+        if not isinstance(_authority, InvestigationAuthority):
+            raise TypeError("authorized synthesis archive requires InvestigationAuthority")
+        if investigation_id != _authority.investigation_id:
+            raise ValueError("authorized synthesis archive crosses investigation")
+        resolve_investigation_stream(_authority)
+        from substrate.event_log import require_event_persistence
+
+        require_event_persistence()
+        initialize_graph_authority(con, _authority)
     sid = synthesis_id or new_synthesis_id()
     con.execute(_ARCHIVE_REQUESTS_SQL)
     request_fingerprint = _manifest_request_fingerprint(inputs)
@@ -381,63 +681,49 @@ def archive_synthesis_via_db(
         "implicit_recommendation, thesis_text, thesis_token_count, "
         "has_constraint_check_result, model_versions, decomposition, evidence, "
         "parameters, substrate, thesis, agent_trace, constraint_history, "
-        "constraint_check_result, synthesis_timestamp "
+        "constraint_check_result, synthesis_timestamp, account_digest, "
+        "investigation_digest "
         "FROM syntheses WHERE synthesis_id = ?",
         [sid],
     ).fetchone()
-    if stored is not None and not _same_archive_material(stored[:-1], material_values):
-        raise SynthesisArchiveConflict(
-            f"synthesis_id {sid!r} already identifies different content"
+    if stored is not None and not _same_archive_material(stored[:16], material_values):
+        raise SynthesisArchiveConflict(f"synthesis_id {sid!r} already identifies different content")
+    if stored is not None:
+        expected_authority = (
+            (None, None)
+            if _authority is None
+            else (_authority.account_digest, _authority.investigation_digest)
         )
-    stored_request = con.execute(
-        "SELECT manifest_request_fingerprint FROM synthesis_archive_requests "
-        "WHERE synthesis_id = ?",
-        [sid],
-    ).fetchone()
-    if stored is not None and stored_request is not None:
-        if stored_request[0] != request_fingerprint:
+        if tuple(stored[17:19]) != expected_authority:
             raise SynthesisArchiveConflict(
-                f"synthesis_id {sid!r} already identifies a different manifest request"
+                f"synthesis_id {sid!r} belongs to different graph authority"
             )
-        manifest_rows = con.execute(
-            "SELECT entity_kind, entity_id FROM synthesis_substrate_manifest "
-            "WHERE synthesis_id = ?",
-            [sid],
-        ).fetchall()
-        counts = {
-            kind: sum(1 for row_kind, _ in manifest_rows if row_kind == kind)
-            for kind in MANIFEST_ENTITY_KINDS
-        }
-        replay_inputs = replace(
-            inputs,
-            synthesis_timestamp=stored[-1].replace(tzinfo=UTC),
-        )
-        _ensure_archive_events(
-            investigation_id=investigation_id,
-            synthesis_id=sid,
-            inputs=replay_inputs,
-            counts=counts,
-        )
-        return sid
-
     # Exclude missing identities so immutable counts and telemetry cannot claim
     # provenance that was never durably present.
     real_document_ids: set[str] = set()
     if inputs.document_ids:
-        ph = ",".join("?" for _ in inputs.document_ids)
-        rows = con.execute(
-            f"SELECT document_id FROM documents WHERE document_id IN ({ph})",
-            list(inputs.document_ids),
-        ).fetchall()
-        real_document_ids = {r[0] for r in rows}
+        from substrate.legal_gate.read import archive_document_ids_compatibility
+
+        real_document_ids = archive_document_ids_compatibility(
+            con,
+            tuple(inputs.document_ids),
+            authority=_authority,
+            enforce=(
+                _authority is not None or os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1"
+            ),
+        )
     real_chunk_ids: set[str] = set()
     if inputs.chunk_ids:
-        ph = ",".join("?" for _ in inputs.chunk_ids)
-        rows = con.execute(
-            f"SELECT chunk_id FROM chunks WHERE chunk_id IN ({ph})",
-            list(inputs.chunk_ids),
-        ).fetchall()
-        real_chunk_ids = {r[0] for r in rows}
+        from substrate.legal_gate.read import archive_chunk_ids_compatibility
+
+        real_chunk_ids = archive_chunk_ids_compatibility(
+            con,
+            tuple(inputs.chunk_ids),
+            authority=_authority,
+            enforce=(
+                _authority is not None or os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1"
+            ),
+        )
     real_edge_ids: set[str] = set()
     if inputs.edge_ids:
         ph = ",".join("?" for _ in inputs.edge_ids)
@@ -446,6 +732,20 @@ def archive_synthesis_via_db(
             list(inputs.edge_ids),
         ).fetchall()
         real_edge_ids = {r[0] for r in rows}
+        if _authority is not None:
+            real_edge_ids = _authorized_edge_ids(con, _authority, real_edge_ids)
+
+    if isinstance(inputs.substrate, dict) and inputs.substrate.get("schema_version") == 3:
+        from substrate.source_coverage import (
+            ArchivedSourceCoverageEnvelope,
+            validate_archived_claim_support,
+        )
+
+        validate_archived_claim_support(
+            ArchivedSourceCoverageEnvelope.model_validate(inputs.substrate),
+            inputs.thesis,
+            manifest_chunk_ids=real_chunk_ids,
+        )
 
     real_explicit_node_ids: set[str] = set()
     if inputs.node_ids:
@@ -455,6 +755,8 @@ def archive_synthesis_via_db(
             list(inputs.node_ids),
         ).fetchall()
         real_explicit_node_ids = {r[0] for r in rows}
+        if _authority is not None:
+            real_explicit_node_ids = _authorized_node_ids(con, _authority, real_explicit_node_ids)
 
     # Resolve adjacency from stored relationships so callers cannot fabricate a
     # node's participation by supplying an unrelated chunk or edge identifier.
@@ -469,23 +771,19 @@ def archive_synthesis_via_db(
         ).fetchall()
         effective_node_ids.update(r[0] for r in node_rows)
         edge_rows = con.execute(
-            "SELECT source_node_id, target_node_id FROM edges "
-            f"WHERE chunk_id IN ({ph})",
+            f"SELECT source_node_id, target_node_id FROM edges WHERE chunk_id IN ({ph})",
             sorted(real_chunk_ids),
         ).fetchall()
-        effective_node_ids.update(
-            node_id for row in edge_rows for node_id in row if node_id
-        )
+        effective_node_ids.update(node_id for row in edge_rows for node_id in row if node_id)
     if real_edge_ids:
         ph = ",".join("?" for _ in real_edge_ids)
         edge_rows = con.execute(
-            "SELECT source_node_id, target_node_id FROM edges "
-            f"WHERE edge_id IN ({ph})",
+            f"SELECT source_node_id, target_node_id FROM edges WHERE edge_id IN ({ph})",
             sorted(real_edge_ids),
         ).fetchall()
-        effective_node_ids.update(
-            node_id for row in edge_rows for node_id in row if node_id
-        )
+        effective_node_ids.update(node_id for row in edge_rows for node_id in row if node_id)
+    if _authority is not None:
+        effective_node_ids = _authorized_node_ids(con, _authority, effective_node_ids)
 
     manifest_groups = (
         ("document", sorted(real_document_ids)),
@@ -500,9 +798,7 @@ def archive_synthesis_via_db(
         edge_ids=real_edge_ids,
     )
 
-    desired_manifest = {
-        (kind, entity_id) for kind, ids in manifest_groups for entity_id in ids
-    }
+    desired_manifest = {(kind, entity_id) for kind, ids in manifest_groups for entity_id in ids}
     if stored is not None:
         current_manifest = {
             (kind, entity_id)
@@ -516,22 +812,36 @@ def archive_synthesis_via_db(
             raise SynthesisArchiveConflict(
                 f"synthesis_id {sid!r} already identifies a different manifest"
             )
-        con.execute(
-            "INSERT INTO synthesis_archive_requests "
-            "(synthesis_id, manifest_request_fingerprint) VALUES (?, ?)",
-            [sid, request_fingerprint],
-        )
-        stored_timestamp = stored[-1]
+        stored_request = con.execute(
+            "SELECT manifest_request_fingerprint FROM synthesis_archive_requests "
+            "WHERE synthesis_id = ?",
+            [sid],
+        ).fetchone()
+        if stored_request is None:
+            con.execute(
+                "INSERT INTO synthesis_archive_requests "
+                "(synthesis_id, manifest_request_fingerprint) VALUES (?, ?)",
+                [sid, request_fingerprint],
+            )
+        elif stored_request[0] != request_fingerprint:
+            raise SynthesisArchiveConflict(
+                f"synthesis_id {sid!r} already identifies a different manifest request"
+            )
+        stored_timestamp = stored[16]
         replay_inputs = replace(
             inputs,
             synthesis_timestamp=stored_timestamp.replace(tzinfo=UTC),
         )
-        _ensure_archive_events(
-            investigation_id=investigation_id,
-            synthesis_id=sid,
-            inputs=replay_inputs,
-            counts=counts,
-        )
+        if _authority is None:
+            _ensure_archive_events(
+                investigation_id=investigation_id,
+                synthesis_id=sid,
+                inputs=replay_inputs,
+                counts=counts,
+            )
+        else:
+            _stage_archive_events(con, _authority, sid, replay_inputs, counts)
+            _reconcile_archive_events(con, _authority)
         return sid
 
     con.execute("BEGIN TRANSACTION")
@@ -544,7 +854,8 @@ def archive_synthesis_via_db(
             " model_versions, decomposition, evidence, parameters,"
             " substrate, thesis, agent_trace, constraint_history,"
             " constraint_check_result"
-            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ", account_digest, investigation_digest"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 sid,
                 investigation_id,
@@ -556,6 +867,8 @@ def archive_synthesis_via_db(
                 _estimate_token_count(inputs.thesis_text or ""),
                 inputs.constraint_check_result is not None,
                 *json_values,
+                _authority.account_digest if _authority is not None else None,
+                _authority.investigation_digest if _authority is not None else None,
             ],
         )
         con.execute(
@@ -570,18 +883,41 @@ def archive_synthesis_via_db(
                     "(synthesis_id, entity_kind, entity_id) VALUES (?, ?, ?)",
                     [sid, kind, eid],
                 )
+        if _authority is not None:
+            _stage_archive_events(con, _authority, sid, inputs, counts)
         con.execute("COMMIT")
     except Exception:
         con.execute("ROLLBACK")
         raise
 
-    _ensure_archive_events(
-        investigation_id=investigation_id,
-        synthesis_id=sid,
-        inputs=inputs,
-        counts=counts,
-    )
+    if _authority is None:
+        _ensure_archive_events(
+            investigation_id=investigation_id,
+            synthesis_id=sid,
+            inputs=inputs,
+            counts=counts,
+        )
+    else:
+        _reconcile_archive_events(con, _authority)
     return sid
+
+
+def archive_synthesis_authorized(
+    con: Any,
+    authority: Any,
+    inputs: ArchiveInputs,
+    *,
+    logical_key: str = "terminal",
+) -> str:
+    """Archive one private synthesis without accepting scalar ownership."""
+    sid = authorized_synthesis_id(authority, logical_key)
+    return archive_synthesis_via_db(
+        con,
+        inputs,
+        investigation_id=authority.investigation_id,
+        synthesis_id=sid,
+        _authority=authority,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -590,31 +926,43 @@ def archive_synthesis_via_db(
 
 
 def load_synthesis(
-    con: Any, synthesis_id: str,
+    con: Any,
+    synthesis_id: str,
+    *,
+    _authority: Any | None = None,
 ) -> ArchivedSynthesisRow | None:
     """Read one syntheses row. Returns the full hydrated record (or
     ``None`` when the id is unknown). ``con`` may be a read-only
     duckdb connection or a ``LockedConnection`` — reads don't need
     the write lock."""
+    where = "synthesis_id = ?"
+    params: list[Any] = [synthesis_id]
+    if _authority is not None:
+        from substrate.graph.tenancy import assert_graph_authority_read
+        from substrate.investigation_tenancy import InvestigationAuthority
+
+        if not isinstance(_authority, InvestigationAuthority):
+            raise TypeError("authorized synthesis load requires InvestigationAuthority")
+        assert_graph_authority_read(con, _authority)
+        where += " AND account_digest = ? AND investigation_digest = ?"
+        params.extend([_authority.account_digest, _authority.investigation_digest])
     row = con.execute(
         "SELECT synthesis_id, synthesis_timestamp, target_question, "
         "status, implicit_recommendation, thesis_text, "
         "model_versions, decomposition, evidence, parameters, "
         "substrate, thesis, agent_trace, constraint_history, "
-        "constraint_check_result, investigation_id "
-        "FROM syntheses WHERE synthesis_id = ?",
-        [synthesis_id],
+        "constraint_check_result, investigation_id, account_digest, "
+        "investigation_digest "
+        "FROM syntheses WHERE " + where,
+        params,
     ).fetchone()
     if row is None:
         return None
     manifest_rows = con.execute(
-        "SELECT entity_kind, entity_id FROM synthesis_substrate_manifest "
-        "WHERE synthesis_id = ?",
+        "SELECT entity_kind, entity_id FROM synthesis_substrate_manifest WHERE synthesis_id = ?",
         [synthesis_id],
     ).fetchall()
-    manifest: dict[str, list[str]] = {
-        k: [] for k in MANIFEST_ENTITY_KINDS
-    }
+    manifest: dict[str, list[str]] = {k: [] for k in MANIFEST_ENTITY_KINDS}
     for kind, eid in manifest_rows:
         manifest.setdefault(kind, []).append(eid)
     counts = {k: len(v) for k, v in manifest.items()}
@@ -629,9 +977,7 @@ def load_synthesis(
 
     return ArchivedSynthesisRow(
         synthesis_id=row[0],
-        synthesis_timestamp=(
-            row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
-        ),
+        synthesis_timestamp=(row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])),
         target_question=row[2],
         status=row[3],
         implicit_recommendation=row[4],
@@ -649,6 +995,15 @@ def load_synthesis(
         substrate_manifest=manifest,
         substrate_manifest_counts=counts,
     )
+
+
+def load_synthesis_authorized(
+    con: Any,
+    authority: Any,
+    synthesis_id: str,
+) -> ArchivedSynthesisRow | None:
+    """Load children only after the exact parent authority predicate succeeds."""
+    return load_synthesis(con, synthesis_id, _authority=authority)
 
 
 @dataclass(frozen=True)
@@ -676,3 +1031,83 @@ class ArchivedSynthesisRow:
     investigation_id: str | None
     substrate_manifest: dict[str, list[str]] = field(default_factory=dict)
     substrate_manifest_counts: dict[str, int] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# SPR-DRL-19 — batch source-coverage qualification resolver
+# ---------------------------------------------------------------------------
+
+
+def resolve_source_coverage_qualifications(
+    con: Any,
+    authority: Any,
+    source_investigation_ids: frozenset[str],
+) -> dict[str, Any | None]:
+    """Batch-resolve archive rows for unique source investigations.
+
+    Derives deterministic terminal synthesis IDs for each source investigation
+    under the given account/root authority, then reads all matching syntheses
+    rows in ONE bounded SQL statement. Returns each raw substrate envelope, or
+    ``None`` when no terminal archive or coverage envelope exists.
+
+    One query, stable deduplication, exact account + investigation predicates,
+    bounded inputs, no manifest reads, no scalar unscoped compatibility reader.
+    """
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    if not isinstance(authority, InvestigationAuthority):
+        raise TypeError("resolve_source_coverage_qualifications requires InvestigationAuthority")
+    if not source_investigation_ids:
+        return {}
+    if len(source_investigation_ids) > 100:
+        raise ValueError("source coverage qualification batch exceeds 100 investigations")
+
+    # Derive deterministic terminal synthesis IDs for each unique source
+    # investigation under the exact account/root. Each source investigation
+    # gets its own InvestigationAuthority so the graph key (and thus synthesis
+    # ID) is scoped to that investigation — Alice's inv-X and Bob's inv-X
+    # produce different synthesis IDs because their graph keys differ.
+    synthesis_id_to_source: dict[str, tuple[str, str]] = {}
+    for src_inv_id in sorted(source_investigation_ids):
+        source_auth = InvestigationAuthority(authority.account_id, src_inv_id, authority.root)
+        sid = authorized_synthesis_id(source_auth, "terminal")
+        synthesis_id_to_source[sid] = (
+            src_inv_id,
+            source_auth.investigation_digest,
+        )
+
+    if not synthesis_id_to_source:
+        return {}
+
+    # ONE bounded SQL statement — fetch only the columns we need.
+    predicates: list[str] = []
+    params: list[Any] = []
+    for synthesis_id, (_source_id, investigation_digest) in synthesis_id_to_source.items():
+        predicates.append("(synthesis_id = ? AND account_digest = ? AND investigation_digest = ?)")
+        params.extend([synthesis_id, authority.account_digest, investigation_digest])
+    query = (
+        "SELECT synthesis_id, substrate, investigation_id, investigation_digest "
+        "FROM syntheses WHERE " + " OR ".join(predicates)
+    )
+    rows = con.execute(query, params).fetchall()
+
+    def _maybe_json(raw: str | None) -> Any:
+        if raw is None:
+            return None
+        if not isinstance(raw, str):
+            return raw
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("source coverage archive contains invalid JSON") from exc
+
+    loaded: dict[str, Any | None] = {src_id: None for src_id in source_investigation_ids}
+    for synthesis_id, substrate_raw, inv_id, inv_digest in rows:
+        expected = synthesis_id_to_source.get(synthesis_id)
+        if expected is None:
+            continue
+        source_inv_id, expected_digest = expected
+        if inv_id != source_inv_id or inv_digest != expected_digest:
+            raise ValueError("source coverage archive authority mismatch")
+        loaded[source_inv_id] = _maybe_json(substrate_raw)
+    return loaded

@@ -45,8 +45,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from substrate.event_log import trajectory_authorized
 from substrate.event_log.events import default_events_dir, trajectory
 from substrate.graph.search import EmbeddingModel
+from substrate.investigation_streams import list_authorized_investigation_ids
+from substrate.investigation_tenancy import InvestigationAuthority
 
 # ---------------------------------------------------------------------------
 # Event-log enumeration helpers (mirror the daemon / list_investigations scan)
@@ -120,6 +123,7 @@ def list_personal_assets(
     events_dir: str | None = None,
     include_saved_reads: bool = True,
     book_title_resolver: Any | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> list[PersonalAsset]:
     """Enumerate the personal-space assets from the event log, newest first.
 
@@ -140,8 +144,20 @@ def list_personal_assets(
     # Saved reads dedupe to the latest read of each document.
     saved_latest: dict[str, dict[str, Any]] = {}
 
-    for iid in _list_investigation_ids(resolved):
-        for ev in trajectory(iid, events_dir=resolved):
+    investigation_ids = (
+        list_authorized_investigation_ids(authority.account_id, root=authority.root)
+        if authority is not None
+        else _list_investigation_ids(resolved)
+    )
+    for iid in investigation_ids:
+        rows = (
+            trajectory_authorized(
+                InvestigationAuthority(authority.account_id, iid, authority.root)
+            )
+            if authority is not None
+            else trajectory(iid, events_dir=resolved)
+        )
+        for ev in rows:
             at = ev.get("action_type")
             payload = ev.get("payload") or {}
             if at == "read.meta_reading.generated":
@@ -444,7 +460,11 @@ class ProjectMatch:
     score: float
 
 
-def _list_candidate_projects(events_dir: str) -> list[tuple[str, str]]:
+def _list_candidate_projects(
+    events_dir: str,
+    *,
+    authority: InvestigationAuthority | None = None,
+) -> list[tuple[str, str]]:
     """Reconstruct candidate research projects (investigation_id, question)
     from ``investigation.start_requested`` events on the log.
 
@@ -455,9 +475,21 @@ def _list_candidate_projects(events_dir: str) -> list[tuple[str, str]]:
     a doc can be filed into a fan-out child. Projects with no usable question
     are skipped (nothing to match against — honest, not a 0-score candidate)."""
     out: list[tuple[str, str]] = []
-    for iid in _list_investigation_ids(events_dir):
+    investigation_ids = (
+        list_authorized_investigation_ids(authority.account_id, root=authority.root)
+        if authority is not None
+        else _list_investigation_ids(events_dir)
+    )
+    for iid in investigation_ids:
         question: str | None = None
-        for ev in trajectory(iid, events_dir=events_dir):
+        rows = (
+            trajectory_authorized(
+                InvestigationAuthority(authority.account_id, iid, authority.root)
+            )
+            if authority is not None
+            else trajectory(iid, events_dir=events_dir)
+        )
+        for ev in rows:
             if ev.get("action_type") != "investigation.start_requested":
                 continue
             payload = ev.get("payload") or {}
@@ -478,6 +510,7 @@ def match_document_to_investigations(
     threshold: float = MATCH_SUGGESTION_THRESHOLD,
     top_k: int = 3,
     exclude_investigation_id: str | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> list[ProjectMatch]:
     """Rank candidate research projects by how well ``doc_text`` matches each
     project's question. Returns the matches AT OR ABOVE ``threshold``, best
@@ -498,7 +531,7 @@ def match_document_to_investigations(
     if not doc_text.strip():
         return []
     resolved = events_dir or default_events_dir()
-    candidates = _list_candidate_projects(resolved)
+    candidates = _list_candidate_projects(resolved, authority=authority)
     if not candidates:
         return []
 

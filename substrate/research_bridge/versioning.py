@@ -21,8 +21,7 @@ import sys
 from dataclasses import dataclass
 
 try:
-    from ...runtime.db_lock import LockedConnection, connect_read, connect_write
-    from ..graph.insight_question import graph_db_path
+    from ...runtime.db_lock import LockedConnection
     from ..graph.ops import content_addressed_id, insert_document
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -41,11 +40,11 @@ class DocumentVersion:
 
 
 def _doc(con, document_id: str):
-    return con.execute(
-        "SELECT document_type, source_tier, source_uri, title, raw_text, "
-        "investigation_id, ip_holder_id, content_class, metadata "
-        "FROM documents WHERE document_id = ?", [document_id],
-    ).fetchone()
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+        return None
+    from substrate.legal_gate.read import legacy_version_document_row
+
+    return legacy_version_document_row(con, document_id)
 
 
 def _meta(raw) -> dict:
@@ -105,11 +104,9 @@ def document_versions(con, root_or_any_id: str) -> list[DocumentVersion]:
     rb = _meta(row[8]).get("research_bridge", {})
     root = rb.get("version_root", root_or_any_id)
     # All documents whose version_root is `root`, plus the root itself.
-    rows = con.execute(
-        "SELECT document_id, metadata FROM documents "
-        "WHERE document_id = ? OR metadata LIKE ?",
-        [root, f'%"version_root": "{root}"%'],
-    ).fetchall()
+    from substrate.legal_gate.read import legacy_document_version_rows
+
+    rows = legacy_document_version_rows(con, root)
     versions = []
     for did, m in rows:
         rbm = _meta(m).get("research_bridge", {})

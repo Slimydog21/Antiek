@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from orchestration.continuous.budget import (
@@ -28,6 +28,11 @@ from orchestration.continuous.budget import (
     DaemonBudget,
     _budget_path,
 )
+from substrate.dispatch.router import (
+    pricing_authority,
+    pricing_from_mapping,
+)
+from substrate.multi_user.auth import UserClaims
 
 settings_router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -42,11 +47,35 @@ class ModelRow(BaseModel):
     notes: str | None = None
 
 
+class CascadeTargetAuthority(BaseModel):
+    research_tier: Literal["fast", "deep", "wrestle"]
+    state: Literal["selected_for_cascade_launch", "unavailable"]
+    provider_id: str | None = None
+    model_id: str | None = None
+    candidate_rank: int | None = None
+    availability_source: str = "boot_registered_providers"
+    reason: str
+
+
+class OperatorModelAuthority(BaseModel):
+    model_id: str
+    provider_id: str
+    state: Literal["operator_added_unverified"] = "operator_added_unverified"
+    decision_tree_selected: bool = False
+    provider_adapter_boot_ready: bool = False
+    authority_scope: Literal["process_global_operator_registry"] = (
+        "process_global_operator_registry"
+    )
+
+
 class ModelsResponse(BaseModel):
     models: list[ModelRow]
     count: int
     providers_ready: bool
     source: str = "app.state.registered_providers + dispatch/config.yaml"
+    cascade_targets: list[CascadeTargetAuthority] = Field(default_factory=list)
+    operator_models: list[OperatorModelAuthority] = Field(default_factory=list)
+    authority_notes: list[str] = Field(default_factory=list)
 
 
 class BudgetResponse(BaseModel):
@@ -80,6 +109,10 @@ class PromptCostEstimateResponse(BaseModel):
     tier: str | None = None
     provider: str | None = None
     model: str | None = None
+    pricing_fingerprint: str | None = None
+    pricing_source_url: str | None = None
+    pricing_verified_at: str | None = None
+    pricing_expires_at: str | None = None
 
 
 def _dispatch_config_path() -> Path:
@@ -93,6 +126,24 @@ def _load_dispatch_config() -> dict[str, Any]:
         return {}
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     return raw if isinstance(raw, dict) else {}
+
+
+def _load_research_quote_keyring() -> tuple[str, bytes, dict[str, bytes]]:
+    from substrate.dispatch.research_quote_keys import load_research_quote_keyring
+
+    return load_research_quote_keyring()
+
+
+def _authenticated_quote_account(request: Request) -> str:
+    claims = getattr(request.state, "user_claims", None)
+    if (
+        not isinstance(claims, UserClaims)
+        or getattr(request.state, "user_id", None) != claims.user_id
+        or getattr(request.state, "scopes", None) != claims.scopes
+        or not isinstance(getattr(request.state, "auth_method", None), str)
+    ):
+        raise HTTPException(status_code=401, detail="authentication required")
+    return claims.user_id
 
 
 def _tier_bindings(cfg: dict[str, Any]) -> dict[str, list[str]]:
@@ -140,6 +191,15 @@ def _resolve_tier_pricing(
     if chosen_tier is not None:
         raw = tiers[chosen_tier]
         body = raw if isinstance(raw, dict) else None
+        if body is not None:
+            configured_provider = body.get("provider")
+            configured_model = body.get("model")
+            if provider and configured_provider != provider:
+                notes.append("requested provider does not match tier route")
+                return None, chosen_tier, provider, model, notes
+            if model and configured_model != model:
+                notes.append("requested model does not match tier route")
+                return None, chosen_tier, provider, model, notes
     elif provider or model:
         for name, raw in tiers.items():
             if not isinstance(raw, dict):
@@ -203,24 +263,30 @@ def estimate_prompt_cost(
             model=model,
         )
 
-    in_rate = float(pricing.get("input_per_mtok") or 0.0)
-    out_rate = float(pricing.get("output_per_mtok") or 0.0)
-    if in_rate <= 0.0 and out_rate <= 0.0:
+    route_pricing = pricing_from_mapping(pricing)
+    pricing_known, pricing_reason, pricing_fingerprint = pricing_authority(
+        provider=provider,
+        model=model,
+        pricing=route_pricing,
+    )
+    in_rate = float(route_pricing.input_per_mtok)
+    out_rate = float(route_pricing.output_per_mtok)
+    if not pricing_known:
         return PromptCostEstimateResponse(
             estimated_usd_low=None,
             estimated_usd_high=None,
             would_exceed_budget=None,
             pricing_known=False,
-            notes=notes
-            + [
-                "tier pricing is 0.0 placeholder in dispatch/config.yaml — "
-                "operator must verify rates before projection is numeric"
-            ],
+            notes=notes + [pricing_reason or "pricing authority unavailable"],
             assumed_input_tokens=in_tok,
             assumed_output_tokens=out_tok,
             tier=tier,
             provider=provider,
             model=model,
+            pricing_fingerprint=pricing_fingerprint,
+            pricing_source_url=route_pricing.source_url,
+            pricing_verified_at=route_pricing.verified_at,
+            pricing_expires_at=route_pricing.expires_at,
         )
 
     base = (in_tok / 1_000_000.0) * in_rate + (out_tok / 1_000_000.0) * out_rate
@@ -246,6 +312,10 @@ def estimate_prompt_cost(
         tier=tier,
         provider=provider,
         model=model,
+        pricing_fingerprint=pricing_fingerprint,
+        pricing_source_url=route_pricing.source_url,
+        pricing_verified_at=route_pricing.verified_at,
+        pricing_expires_at=route_pricing.expires_at,
     )
 
 
@@ -391,7 +461,8 @@ def post_register_model(req: AddModelRequest) -> RegisteredModelsResponse:
 
 
 @settings_router.get("/models", response_model=ModelsResponse)
-def get_settings_models(request: Request) -> ModelsResponse:
+def get_settings_models(request: Request, response: Response) -> ModelsResponse:
+    response.headers["Cache-Control"] = "no-store"
     raw_providers = getattr(request.app.state, "registered_providers", None)
     if isinstance(raw_providers, (set, list, tuple, frozenset)):
         ready_set: set[str] = {str(p) for p in raw_providers}
@@ -412,13 +483,69 @@ def get_settings_models(request: Request) -> ModelsResponse:
                 ready=is_ready,
                 tier_bindings=sorted(bindings.get(pid, [])),
                 primary_model=_primary_model_for_provider(cfg, pid),
-                notes=None if is_ready else "configured in dispatch config but not registered at boot",
+                notes=None
+                if is_ready
+                else "configured in dispatch config but not registered at boot",
             )
         )
+    from substrate.dispatch.research_tier import resolve_available_research_tier
+    from substrate.model_registration import (
+        list_operator_models,
+        read_decision_tree_selection,
+    )
+
+    cascade_targets: list[CascadeTargetAuthority] = []
+    for research_tier in ("fast", "deep", "wrestle"):
+        try:
+            target = resolve_available_research_tier(research_tier, ready_set)
+            cascade_targets.append(
+                CascadeTargetAuthority(
+                    research_tier=research_tier,
+                    state="selected_for_cascade_launch",
+                    provider_id=target.provider,
+                    model_id=target.model,
+                    candidate_rank=target.candidate_rank,
+                    availability_source=target.availability_source,
+                    reason=target.why,
+                )
+            )
+        except ValueError as exc:
+            cascade_targets.append(
+                CascadeTargetAuthority(
+                    research_tier=research_tier,
+                    state="unavailable",
+                    reason=str(exc),
+                )
+            )
+    selected = read_decision_tree_selection()
+    selected_pair = (
+        str(selected.get("provider_id") or ""),
+        str(selected.get("model_id") or ""),
+    )
+    operator_models = [
+        OperatorModelAuthority(
+            model_id=str(row.get("model_id") or ""),
+            provider_id=str(row.get("provider_id") or ""),
+            decision_tree_selected=(
+                str(row.get("provider_id") or ""), str(row.get("model_id") or "")
+            )
+            == selected_pair,
+            provider_adapter_boot_ready=str(row.get("provider_id") or "") in ready_set,
+        )
+        for row in list_operator_models().get("models", [])
+        if str(row.get("model_id") or "").strip()
+        and str(row.get("provider_id") or "").strip()
+    ]
     return ModelsResponse(
         models=rows,
         count=len(rows),
         providers_ready=bool(ready_set),
+        cascade_targets=cascade_targets,
+        operator_models=operator_models,
+        authority_notes=[
+            "boot-ready attests adapter registration only; quota and model entitlement are unverified",
+            "operator-added and decision-tree-selected identities are process-global operator preferences, not account-scoped or cascade dispatch authority",
+        ],
     )
 
 
@@ -489,9 +616,7 @@ def get_antiek_bench_leaderboard(
         )
     from substrate.antiek_bench import settings_leaderboard_payload
 
-    payload = settings_leaderboard_payload(
-        week_id, store=store, include_html=include_html
-    )
+    payload = settings_leaderboard_payload(week_id, store=store, include_html=include_html)
     return AntiekBenchLeaderboardResponse(
         week_id=str(payload.get("week_id") or week_id),
         models=list(payload.get("models") or []),
@@ -639,9 +764,7 @@ def get_antiek_bench_suite_proposal(
             active_suite_unchanged=True,
         )
 
-    payload = settings_suite_proposal_payload(
-        store=store, include_html=include_html
-    )
+    payload = settings_suite_proposal_payload(store=store, include_html=include_html)
     return AntiekBenchSuiteProposalResponse(
         has_proposal=bool(payload.get("has_proposal")),
         proposal_id=payload.get("proposal_id"),
@@ -654,23 +777,13 @@ def get_antiek_bench_suite_proposal(
         rationale=payload.get("rationale"),
         added_item_ids=list(payload.get("added_item_ids") or []),
         # Residual (adp): wire body honesty matrix through response_model (was stripped).
-        title_only_write_seed_count=int(
-            payload.get("title_only_write_seed_count") or 0
-        ),
-        with_body_write_seed_count=int(
-            payload.get("with_body_write_seed_count") or 0
-        ),
-        body_unknown_write_seed_count=int(
-            payload.get("body_unknown_write_seed_count") or 0
-        ),
+        title_only_write_seed_count=int(payload.get("title_only_write_seed_count") or 0),
+        with_body_write_seed_count=int(payload.get("with_body_write_seed_count") or 0),
+        body_unknown_write_seed_count=int(payload.get("body_unknown_write_seed_count") or 0),
         event_count=int(payload.get("event_count") or 0),
         view_format=str(payload.get("view_format") or "html"),
-        settings_panel=str(
-            payload.get("settings_panel") or "antiek_bench_suite_proposal"
-        ),
-        source=str(
-            payload.get("source") or "antiek_bench.propose_from_recorded_usage"
-        ),
+        settings_panel=str(payload.get("settings_panel") or "antiek_bench_suite_proposal"),
+        source=str(payload.get("source") or "antiek_bench.propose_from_recorded_usage"),
         notes=list(payload.get("notes") or []),
         html=payload.get("html"),
     )
@@ -759,9 +872,7 @@ def post_antiek_bench_suite_approve(
         active_suite_before=payload.get("active_suite_before"),
         proposed_suite_version=payload.get("proposed_suite_version"),
         view_format=str(payload.get("view_format") or "html"),
-        settings_panel=str(
-            payload.get("settings_panel") or "antiek_bench_suite_approve"
-        ),
+        settings_panel=str(payload.get("settings_panel") or "antiek_bench_suite_approve"),
         source=str(payload.get("source") or "antiek_bench.approve_and_promote"),
         notes=list(payload.get("notes") or []),
         html=payload.get("html"),
@@ -786,6 +897,7 @@ class NotDiamondAdvisoryResponse(BaseModel):
     suggested_provider_id: str | None = None
     suggestion_source: str | None = None
     suggestion_week_id: str | None = None
+    measurement_status: str = "NOT MEASURED"
     recommended_mean_score: float | None = None
     installable: bool = False
     view_format: str = "html"
@@ -833,12 +945,8 @@ def get_notdiamond_advisory(
         authority_allowed=bool(payload.get("authority_allowed")),
         authority_rejected=bool(payload.get("authority_rejected")),
         authority_verdict=str(payload.get("authority_verdict") or "REJECT"),
-        dispatch_owner=str(
-            payload.get("dispatch_owner") or "hermes_primary_plus_decision_tree"
-        ),
-        notdiamond_is_dispatch_authority=bool(
-            payload.get("notdiamond_is_dispatch_authority")
-        ),
+        dispatch_owner=str(payload.get("dispatch_owner") or "hermes_primary_plus_decision_tree"),
+        notdiamond_is_dispatch_authority=bool(payload.get("notdiamond_is_dispatch_authority")),
         kill_switch_env=str(payload.get("kill_switch_env") or "ANTIEK_NOTDIAMOND"),
         kill_switch_enabled=bool(payload.get("kill_switch_enabled")),
         default_off=bool(payload.get("default_off", True)),
@@ -846,6 +954,7 @@ def get_notdiamond_advisory(
         suggested_provider_id=payload.get("suggested_provider_id"),
         suggestion_source=payload.get("suggestion_source"),
         suggestion_week_id=payload.get("suggestion_week_id"),
+        measurement_status=str(payload.get("measurement_status") or "NOT MEASURED"),
         recommended_mean_score=payload.get("recommended_mean_score"),
         installable=bool(payload.get("installable")),
         view_format=str(payload.get("view_format") or "html"),
@@ -1008,10 +1117,7 @@ def post_antiek_bench_run_offline(
         except Exception as exc:
             raise HTTPException(
                 status_code=503,
-                detail=(
-                    "No antiek_bench_store available to record offline runs "
-                    f"({exc})"
-                ),
+                detail=(f"No antiek_bench_store available to record offline runs ({exc})"),
             ) from exc
 
     models: list[tuple[str, float]] | None = None
@@ -1020,15 +1126,11 @@ def post_antiek_bench_run_offline(
         for m in body.models:
             mid = str(m.get("model_id") or "").strip()
             if not mid:
-                raise HTTPException(
-                    status_code=400, detail="each model needs model_id"
-                )
+                raise HTTPException(status_code=400, detail="each model needs model_id")
             try:
                 q = float(m.get("quality", 0.8))
             except (TypeError, ValueError) as exc:
-                raise HTTPException(
-                    status_code=400, detail=f"invalid quality for {mid}"
-                ) from exc
+                raise HTTPException(status_code=400, detail=f"invalid quality for {mid}") from exc
             models.append((mid, q))
 
     try:
@@ -1092,8 +1194,7 @@ def post_depth_tier(req: DepthTierApplyRequest) -> DepthTierResponse:
         active_depth_tier=payload.get("active_depth_tier"),
         active_preset=payload.get("active_preset"),
         presets=list(payload.get("presets") or []),
-        projection_hints=applied.get("projection_hints")
-        or payload.get("projection_hints"),
+        projection_hints=applied.get("projection_hints") or payload.get("projection_hints"),
         decision_tree_install=applied.get("decision_tree_install"),
         view_format=str(payload.get("view_format") or "html"),
         settings_panel=str(payload.get("settings_panel") or "depth_tier_presets"),

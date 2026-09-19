@@ -38,6 +38,7 @@ import contextlib
 import dataclasses
 import datetime as _dt
 import json
+import os
 from typing import Any
 
 from orchestration.continuous.research_topic import topic_id_for
@@ -45,7 +46,6 @@ from runtime.db_lock import connect_read, connect_write
 from substrate.graph.search import (
     PRIVILEGED_POLICY_TAGS,
     EmbeddingModel,
-    cosine_similarity_sql,
 )
 from substrate.research_bridge.db_path import default_db_path
 
@@ -195,11 +195,11 @@ def _derive_query_terms(document_ids: list[str], con: Any) -> list[str]:
     """
     if not document_ids:
         return []
-    placeholders = ",".join("?" for _ in document_ids)
-    rows = con.execute(
-        f"SELECT title FROM documents WHERE document_id IN ({placeholders})",
-        list(document_ids),
-    ).fetchall()
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+        return []
+    from substrate.legal_gate.read import legacy_monitor_titles
+
+    rows = legacy_monitor_titles(con, list(document_ids))
     seen: list[str] = []
     for (title,) in rows:
         if not title:
@@ -225,12 +225,11 @@ def _compute_centroid(
     """
     if not document_ids:
         return None, None
-    placeholders = ",".join("?" for _ in document_ids)
-    rows = con.execute(
-        f"SELECT embedding FROM chunks "
-        f"WHERE document_id IN ({placeholders}) AND embedding IS NOT NULL",
-        list(document_ids),
-    ).fetchall()
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+        return None, None
+    from substrate.legal_gate.read import legacy_monitor_embeddings
+
+    rows = legacy_monitor_embeddings(con, list(document_ids))
     vectors = [list(r[0]) for r in rows if r[0] is not None]
     if not vectors:
         return None, None
@@ -437,36 +436,18 @@ def _select_new_personal_items(
     so it sits on the same basis as the stored ``acquired_at`` TIMESTAMP.
     """
     last_seen_at = _naive_utc(last_seen_at)
-    params: list[Any] = []
-    if centroid is not None and centroid_dim:
-        sim_expr = cosine_similarity_sql("c.embedding", centroid, centroid_dim)
-        # Rank a document by the best (max) similarity among its chunks.
-        sql = f"""
-            SELECT d.document_id, d.title, d.raw_text, d.acquired_at,
-                   MAX({sim_expr}) AS similarity
-            FROM documents d
-            JOIN chunks c ON c.document_id = d.document_id
-            WHERE d.content_class = ?
-              AND d.acquired_at > ?
-              AND c.embedding IS NOT NULL
-            GROUP BY d.document_id, d.title, d.raw_text, d.acquired_at
-            ORDER BY similarity DESC
-            LIMIT ?
-        """
-        params = [PERSONAL_LANE_CONTENT_CLASS, last_seen_at, int(top_k)]
-    else:
-        sql = """
-            SELECT d.document_id, d.title, d.raw_text, d.acquired_at,
-                   NULL AS similarity
-            FROM documents d
-            WHERE d.content_class = ?
-              AND d.acquired_at > ?
-            ORDER BY d.acquired_at DESC
-            LIMIT ?
-        """
-        params = [PERSONAL_LANE_CONTENT_CLASS, last_seen_at, int(top_k)]
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+        return []
+    from substrate.legal_gate.read import legacy_monitor_items
 
-    rows = con.execute(sql, params).fetchall()
+    rows = legacy_monitor_items(
+        con,
+        last_seen_at=last_seen_at,
+        centroid=centroid,
+        centroid_dim=centroid_dim,
+        content_class=PERSONAL_LANE_CONTENT_CLASS,
+        top_k=int(top_k),
+    )
     items: list[FeedItem] = []
     for document_id, title, raw_text, acquired_at, similarity in rows:
         items.append(

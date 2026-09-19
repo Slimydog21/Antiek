@@ -1,23 +1,40 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  clearCollectiveUnitMembership,
-  storeCollectiveUnitMembership,
-} from "../../workspace/collectiveUnitMembership";
-import {
   buildCollectiveUnitPromptHtml,
   CollectiveResearchPanel,
 } from "./CollectiveResearchPanel";
 
 const fetchCollectiveResearch = vi.fn<(...args: unknown[]) => unknown>();
+const createCollectiveManifest = vi.fn(async (spawnIds: string[]) => ({ manifest_id: "manifest_test", ordered_spawn_ids: spawnIds }));
+const projectCollectiveManifest = vi.fn((...args: unknown[]) => fetchCollectiveResearch(...args));
+const fetchCollectiveCouncilStatus = vi.fn(async () => ({
+  view_format: "html",
+  product_panel: "collective_council",
+  substrate_available: true,
+  executor_installed: false,
+  ledger_installed: false,
+  live_ready: false,
+  offline_convergence_available: true,
+  operator_gated: true,
+  notes: ["Offline test fixture; no provider dispatch."],
+}));
 const mergeSpawnOutputs = vi.fn<(...args: unknown[]) => unknown>();
 const commitReviewedMergeDraft = vi.fn<(...args: unknown[]) => unknown>();
 const seedTwinNotes = vi.fn<(...args: unknown[]) => unknown>();
 const openWindow = vi.fn<typeof import("../windows/openWindow").openWindow>(() => "win:analysis:draft_1");
 const launchFloatingDeepResearch = vi.fn<(...args: unknown[]) => unknown>();
+const openHostedDocumentPanel = vi.fn<(...args: unknown[]) => unknown>();
+
+vi.mock("../../workspace/actions", () => ({
+  openHostedDocumentPanel: (...args: unknown[]) => openHostedDocumentPanel(...args),
+}));
 
 vi.mock("../../api/engagement", () => ({
+  createCollectiveManifest: (...args: unknown[]) => createCollectiveManifest(...(args as [string[]])),
+  projectCollectiveManifest: (...args: unknown[]) => projectCollectiveManifest(...args),
   commitReviewedMergeDraft: (...args: unknown[]) => commitReviewedMergeDraft(...(args as Parameters<typeof commitReviewedMergeDraft>)),
+  fetchCollectiveCouncilStatus: () => fetchCollectiveCouncilStatus(),
   fetchCollectiveResearch: (...args: unknown[]) => fetchCollectiveResearch(...(args as Parameters<typeof fetchCollectiveResearch>)),
   mergeSpawnOutputs: (...args: unknown[]) => mergeSpawnOutputs(...(args as Parameters<typeof mergeSpawnOutputs>)),
   seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...(args as Parameters<typeof seedTwinNotes>)),
@@ -121,7 +138,6 @@ vi.mock("./ResearchLaunchBudgetPanel", () => {
 describe("CollectiveResearchPanel", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
-    clearCollectiveUnitMembership();
     budgetProjection.wouldExceedBudget = false;
     fetchDepthTiers.mockReset().mockResolvedValue({
       active_depth_tier: null,
@@ -134,6 +150,8 @@ describe("CollectiveResearchPanel", () => {
       notes: [],
     });
     fetchCollectiveResearch.mockReset();
+    createCollectiveManifest.mockClear();
+    projectCollectiveManifest.mockClear();
     mergeSpawnOutputs.mockReset();
     commitReviewedMergeDraft.mockReset();
     seedTwinNotes.mockReset();
@@ -147,6 +165,7 @@ describe("CollectiveResearchPanel", () => {
     });
     openWindow.mockClear();
     launchFloatingDeepResearch.mockReset();
+    openHostedDocumentPanel.mockReset();
   });
 
   it("auto-selects preferredSpawnId when available (cn)", () => {
@@ -161,18 +180,18 @@ describe("CollectiveResearchPanel", () => {
     expect(boxes[1].checked).toBe(true);
   });
 
-  it("stamps L6 live multi-agent deferred honesty + checklist deep-link (vx/wi)", () => {
+  it("stamps L6 live multi-agent operator-gated honesty + checklist deep-link", () => {
     render(
       <CollectiveResearchPanel availableSpawnIds={["spn_1", "spn_2"]} />,
     );
     const panel = screen.getByTestId("collective-research-panel");
-    expect(panel.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(panel.getAttribute("data-l6-live-multiagent")).toBe("operator-gated");
     expect(panel.getAttribute("data-offline-merge-unit")).toBe("true");
     const honesty = screen.getByTestId("collective-l6-honesty");
-    expect(honesty.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(honesty.getAttribute("data-l6-live-multiagent")).toBe("operator-gated");
     expect(honesty.getAttribute("data-offline-merge-unit")).toBe("true");
     expect(honesty.textContent).toMatch(/L6 live multi-agent council/i);
-    expect(honesty.textContent).toMatch(/offline merge unit only/i);
+    expect(honesty.textContent).toMatch(/offline merge remains available/i);
     // Residual (wi): L6 checklist deep-link (parity Settings dual-gate wh).
     const l6 = screen.getByTestId("collective-l6-checklist-link");
     expect(l6.getAttribute("href")).toBe("/settings#collective-live-council-status");
@@ -239,6 +258,15 @@ describe("CollectiveResearchPanel", () => {
       spawn_count: 2,
       twin_count: 0,
       ref_count: 0,
+      citation_evidence: [{
+        source_kind: "synthesis_claim",
+        source_asset_id: "a",
+        claim_id: "claim-1",
+        chunk_ids: ["chunk-1"],
+        document_id: "doc-cited",
+        receipt_sha256: "b".repeat(64),
+      }],
+      citation_evidence_count: 1,
       prompt_block: "# Collective deep-research unit `col_abc`\n",
       // Residual (oj): bench usage from multi-spawn merge.
       usage_event: {
@@ -265,9 +293,8 @@ describe("CollectiveResearchPanel", () => {
         "col_abc",
       );
     });
-    expect(fetchCollectiveResearch).toHaveBeenCalledWith({
-      spawn_ids: ["spn_1", "spn_2"],
-    });
+    expect(createCollectiveManifest).toHaveBeenCalledWith(["spn_1", "spn_2"]);
+    expect(projectCollectiveManifest).toHaveBeenCalledWith("manifest_test");
     // Residual (hm): machine-readable multi-spawn collective metrics.
     const metrics = screen.getByTestId("collective-unit-metrics");
     expect(metrics.getAttribute("data-collective-id")).toBe("col_abc");
@@ -276,6 +303,15 @@ describe("CollectiveResearchPanel", () => {
     expect(metrics.getAttribute("data-ref-count")).toBe("0");
     expect(metrics.getAttribute("data-view-format")).toBe("html");
     expect(metrics.textContent).toMatch(/Collective unit/);
+    const citationOpen = screen.getByTestId(`collective-open-citation-${"b".repeat(64)}`);
+    expect(citationOpen.getAttribute("data-document-id")).toBe("doc-cited");
+    fireEvent.click(citationOpen);
+    expect(openHostedDocumentPanel).toHaveBeenCalledWith({
+      documentId: "doc-cited",
+      chunkIds: ["chunk-1"],
+      citationReceiptSha256: "b".repeat(64),
+      title: "Citation · claim claim-1",
+    });
     // Residual (oj): Antiek-bench usage on collective unit metrics.
     expect(metrics.getAttribute("data-usage-source")).toBe("collective_merge");
     expect(metrics.getAttribute("data-usage-task-class")).toBe("synthesize");
@@ -286,39 +322,22 @@ describe("CollectiveResearchPanel", () => {
     const floatCall = openWindow.mock.calls.at(-1) as [
       string,
       {
-        source?: string;
-        html?: string;
-        view_format?: string;
-        collective_id?: string;
-        spawn_count?: number;
+        resume_ref?: { manifest_id?: string };
       },
       { mode?: string },
     ];
-    expect(floatCall[0]).toBe("hosted_html_document");
-    expect(floatCall[1].source).toBe("collective_unit_prompt");
-    expect(floatCall[1].view_format).toBe("html");
-    expect(floatCall[1].collective_id).toBe("col_abc");
-    expect(floatCall[1].spawn_count).toBe(2);
-    expect(floatCall[1].html).toMatch(/data-source="collective_unit_prompt"/);
-    expect(floatCall[1].html).toMatch(/Cohesive prompt_block/);
-    expect(floatCall[1].html).toMatch(/col_abc/);
+    expect(floatCall[0]).toBe("collective_unit");
+    expect(floatCall[1].resume_ref).toEqual({ manifest_id: "manifest_test" });
     expect(floatCall[2].mode).toBe("floating");
     // Residual (aht): offline twin seed for cohesive unit HTML float.
-    await waitFor(() => {
-      expect(seedTwinNotes).toHaveBeenCalledWith(
-        expect.objectContaining({
-          force_offline: true,
-          body_text: expect.stringMatching(/multi-spawn cohesive unit prompt/i),
-        }),
-      );
-    });
     fireEvent.click(screen.getByTestId("collective-unit-open-full"));
     const fullCall = openWindow.mock.calls.at(-1) as [
       string,
-      { source?: string },
+      { resume_ref?: { manifest_id?: string } },
       { mode?: string },
     ];
-    expect(fullCall[1].source).toBe("collective_unit_prompt");
+    expect(fullCall[0]).toBe("collective_unit");
+    expect(fullCall[1].resume_ref).toEqual({ manifest_id: "manifest_test" });
     expect(fullCall[2].mode).toBe("full");
     // Residual (aeh/afa): unit prompt → Open Write twin_seed + path honesty.
     const unitWrite = screen.getByTestId("collective-unit-open-write");
@@ -463,7 +482,7 @@ describe("CollectiveResearchPanel", () => {
     });
     // Residual (adk): continue-as-unit is offline unit re-entry — L6 deferred.
     const contFloat = screen.getByTestId("collective-continue-as-unit");
-    expect(contFloat.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(contFloat.getAttribute("data-l6-live-multiagent")).toBe("separate_operator_gate");
     expect(contFloat.getAttribute("data-window-mode")).toBe("floating");
     expect(contFloat.getAttribute("data-view-format")).toBe("html");
     // Residual (atr): HTML-first · unit-continue-ready honesty.
@@ -478,7 +497,7 @@ describe("CollectiveResearchPanel", () => {
       1,
     );
     const contFull = screen.getByTestId("collective-continue-as-unit-full");
-    expect(contFull.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(contFull.getAttribute("data-l6-live-multiagent")).toBe("separate_operator_gate");
     expect(contFull.getAttribute("data-window-mode")).toBe("full");
     expect(contFull.getAttribute("data-html-first")).toBe("true");
     expect(contFull.getAttribute("data-unit-continue-ready")).toBe("true");
@@ -1270,7 +1289,7 @@ describe("CollectiveResearchPanel", () => {
     ).toBe("0");
   });
 
-  it("stores unit membership on merge and restores last multi-select (py)", async () => {
+  it("creates an immutable manifest instead of tab-local membership", async () => {
     fetchCollectiveResearch.mockResolvedValue({
       collective_id: "col_mem",
       spawn_ids: ["spn_a", "spn_b"],
@@ -1285,7 +1304,7 @@ describe("CollectiveResearchPanel", () => {
       prompt_block: "# unit col_mem",
     });
 
-    const { unmount } = render(
+    render(
       <CollectiveResearchPanel
         availableSpawnIds={["spn_a", "spn_b", "spn_c"]}
         parentAssetId="asset_x"
@@ -1295,71 +1314,10 @@ describe("CollectiveResearchPanel", () => {
     fireEvent.click(screen.getByTestId("collective-select-spn_a"));
     fireEvent.click(screen.getByTestId("collective-select-spn_b"));
     fireEvent.click(screen.getByTestId("collective-merge-prompt"));
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("collective-unit-membership-status"),
-      ).toBeTruthy();
-    });
-    const stored = screen.getByTestId("collective-unit-membership-status");
-    expect(stored.getAttribute("data-action")).toBe("stored");
-    expect(stored.getAttribute("data-collective-id")).toBe("col_mem");
-    expect(stored.getAttribute("data-spawn-count")).toBe("2");
-    // Residual (adj): L6 live multi-agent deferred + HTML + depth on membership.
-    expect(stored.getAttribute("data-l6-live-multiagent")).toBe("deferred");
-    expect(stored.getAttribute("data-view-format")).toBe("html");
-    expect(stored.textContent).toMatch(/L6 live multi-agent deferred/i);
-
-    // Clear selection then restore last unit.
-    fireEvent.click(screen.getByTestId("collective-clear-selection"));
-    expect(
-      screen
-        .getByTestId("collective-selection-count")
-        .getAttribute("data-selected-count"),
-    ).toBe("0");
-    // Residual (afl): restore button path honesty.
-    const restoreBtn = screen.getByTestId("collective-restore-last-unit");
-    expect(restoreBtn.getAttribute("data-seamless-unit-restore")).toBe("true");
-    expect(restoreBtn.getAttribute("data-l6-live-multiagent")).toBe("deferred");
-    fireEvent.click(restoreBtn);
-    expect(
-      screen
-        .getByTestId("collective-selection-count")
-        .getAttribute("data-selected-count"),
-    ).toBe("2");
-    expect(
-      (screen.getByTestId("collective-select-spn_a") as HTMLInputElement)
-        .checked,
-    ).toBe(true);
-    expect(
-      (screen.getByTestId("collective-select-spn_b") as HTMLInputElement)
-        .checked,
-    ).toBe(true);
-    const restoredStatus = screen.getByTestId(
-      "collective-unit-membership-status",
-    );
-    expect(restoredStatus.getAttribute("data-action")).toBe("restored");
-    expect(restoredStatus.getAttribute("data-restored-count")).toBe("2");
-    // Residual (afl): membership status seamless restore audit.
-    expect(restoredStatus.getAttribute("data-seamless-unit-restore")).toBe(
-      "true",
-    );
-    expect(restoredStatus.textContent).toMatch(/seamless unit restore/i);
-
-    // Re-mount: membership survives sessionStorage for re-open path.
-    unmount();
-    render(
-      <CollectiveResearchPanel
-        availableSpawnIds={["spn_a", "spn_b", "spn_c"]}
-        parentAssetId="asset_x"
-        autoSelectNewestRecent={false}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("collective-restore-last-unit"));
-    expect(
-      screen
-        .getByTestId("collective-selection-count")
-        .getAttribute("data-selected-count"),
-    ).toBe("2");
+    await waitFor(() => expect(screen.getByTestId("collective-unit-result")).toBeTruthy());
+    expect(createCollectiveManifest).toHaveBeenCalledWith(["spn_a", "spn_b"]);
+    expect(projectCollectiveManifest).toHaveBeenCalledWith("manifest_test");
+    expect(screen.queryByTestId("collective-unit-membership-status")).toBeNull();
   });
 
   it("links dual Write handoff html_draft + twin_seed after draft merge (qe)", async () => {
@@ -1463,36 +1421,6 @@ describe("CollectiveResearchPanel", () => {
     ).toBeGreaterThan(20);
   });
 
-
-  it("auto-restores last unit membership multi-select on mount (ql)", () => {
-    storeCollectiveUnitMembership({
-      collective_id: "col_auto",
-      spawn_ids: ["spn_a", "spn_b", "spn_gone"],
-      parent_asset_id: "asset_x",
-    });
-    render(
-      <CollectiveResearchPanel
-        availableSpawnIds={["spn_a", "spn_b", "spn_c"]}
-        parentAssetId="asset_x"
-        autoSelectNewestRecent={false}
-      />,
-    );
-    expect(
-      screen
-        .getByTestId("collective-selection-count")
-        .getAttribute("data-selected-count"),
-    ).toBe("2");
-    expect(
-      screen
-        .getByTestId("collective-unit-membership-status")
-        .getAttribute("data-action"),
-    ).toBe("restored");
-    expect(
-      screen
-        .getByTestId("collective-unit-membership-status")
-        .getAttribute("data-restored-count"),
-    ).toBe("2");
-  });
 
   it("selects open-window spawns only when openSpawnIds provided (ue)", () => {
     render(

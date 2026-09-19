@@ -352,20 +352,46 @@ CREATE INDEX IF NOT EXISTS idx_interviews_status ON interviews(status);
 
 # Tables this schema creates. Used by tests + the diagnostic CLI.
 SCHEMA_TABLES: tuple[str, ...] = (
-    "documents", "chunks", "nodes", "edges",
-    "syntheses", "synthesis_substrate_manifest", "synthesis_archive_requests",
-    "outcomes", "chunk_tier_overrides",
-    "deliverables", "deliverable_sections", "section_blocks",
-    "interview_projects", "interviews",
-    "ip_holders", "notebooks", "notebook_blocks",
+    "documents",
+    "chunks",
+    "nodes",
+    "edges",
+    "syntheses",
+    "synthesis_substrate_manifest",
+    "synthesis_archive_requests",
+    "outcomes",
+    "chunk_tier_overrides",
+    "deliverables",
+    "deliverable_sections",
+    "section_blocks",
+    "interview_projects",
+    "interviews",
+    "ip_holders",
+    "notebooks",
+    "notebook_blocks",
+    "notebook_mutation_receipts",
     "discovery_cache",
     "url_alias",
     "discovery_summary",
     "book_assets",
-    "outline_blocks", "outline_block_commands",
+    "outline_blocks",
+    "outline_block_commands",
     "monitors",
     "supersession_candidates",
     "embeddings_meta",
+    "graph_tenancy_manifest",
+    "graph_investigation_allocations",
+    "investigation_node_memberships",
+    "legal_policy_events",
+    "legal_policy_mutation_attempts",
+    "legal_policy_lease_recoveries",
+    "legal_policy_dispatch_leases",
+    "legal_document_admissions",
+    "legal_document_custody_seals",
+    "legal_chunk_admissions",
+    "legal_chunk_manifest_seals",
+    "legal_history_migration_runs",
+    "legal_history_migration_rows",
 )
 
 
@@ -453,7 +479,9 @@ CREATE INDEX IF NOT EXISTS idx_notebooks_owner ON notebooks(owner_user_id);
 
 CREATE TABLE IF NOT EXISTS notebook_blocks (
     block_id             TEXT PRIMARY KEY,
-    notebook_id          TEXT NOT NULL REFERENCES notebooks(notebook_id),
+    -- Soft parent ref: authority migration makes notebook identity composite;
+    -- membership is enforced transactionally by the notebook store.
+    notebook_id          TEXT NOT NULL,
     block_index          INTEGER NOT NULL,
     block_type           TEXT NOT NULL
         CHECK (block_type IN (
@@ -1164,6 +1192,408 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_meta_fingerprint
 """
 
 
+# W4B — additive, non-activating graph tenancy substrate. The authority
+# manifest is deliberately empty on schema initialization: only an explicit
+# InvestigationAuthority may bind the graph DB to the W3 tenancy key.
+ANTIEK_GRAPH_SCHEMA_V16_TENANCY_SQL = """
+CREATE TABLE IF NOT EXISTS graph_tenancy_manifest (
+    singleton_key TEXT PRIMARY KEY CHECK (singleton_key = 'graph-tenancy-v1'),
+    version INTEGER NOT NULL CHECK (version = 1),
+    key_id TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN (
+        'unscoped', 'copying', 'shadow', 'scoped', 'quarantined'
+    )),
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS graph_investigation_allocations (
+    account_digest TEXT NOT NULL,
+    investigation_digest TEXT NOT NULL,
+    graph_key TEXT NOT NULL UNIQUE,
+    key_id TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (account_digest, investigation_digest)
+);
+
+CREATE TABLE IF NOT EXISTS investigation_node_memberships (
+    account_digest TEXT NOT NULL,
+    investigation_digest TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN (
+        'insight', 'question', 'note', 'claim', 'reference'
+    )),
+    source_row_digest TEXT NOT NULL,
+    membership_metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (account_digest, investigation_digest, node_id, role)
+);
+
+CREATE TABLE IF NOT EXISTS cascade_plan_authority (
+    account_digest TEXT NOT NULL,
+    investigation_digest TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    graph_root_node_id TEXT NOT NULL,
+    tree_json TEXT NOT NULL,
+    tree_fingerprint TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (account_digest, investigation_digest)
+);
+
+CREATE TABLE IF NOT EXISTS cascade_plan_launch_authority (
+    account_digest TEXT NOT NULL,
+    plan_investigation_digest TEXT NOT NULL,
+    launch_investigation_digest TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    plan_version INTEGER NOT NULL,
+    tree_json TEXT NOT NULL,
+    tree_fingerprint TEXT NOT NULL,
+    claimed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (account_digest, launch_investigation_digest)
+);
+
+CREATE TABLE IF NOT EXISTS cascade_launch_attempts (
+    account_digest TEXT NOT NULL,
+    plan_investigation_digest TEXT NOT NULL,
+    idempotency_key_digest TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    request_fingerprint TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('claimed', 'completed')),
+    response_json TEXT,
+    response_fingerprint TEXT,
+    claimed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    PRIMARY KEY (
+        account_digest, plan_investigation_digest, idempotency_key_digest
+    ),
+    UNIQUE (account_digest, session_id)
+);
+
+ALTER TABLE cascade_launch_attempts
+    ADD COLUMN IF NOT EXISTS response_fingerprint TEXT;
+
+CREATE TABLE IF NOT EXISTS legal_policy_events (
+    event_id TEXT PRIMARY KEY,
+    scope_kind TEXT NOT NULL CHECK (scope_kind IN ('global', 'account')),
+    account_digest TEXT NOT NULL DEFAULT '',
+    matcher_kind TEXT NOT NULL CHECK (matcher_kind IN (
+        'domain', 'corpus', 'author', 'title', 'content_sha256'
+    )),
+    matcher_value TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN ('allow', 'deny', 'revoke')),
+    citation_ref TEXT NOT NULL,
+    issuer_id TEXT NOT NULL,
+    reason_code TEXT NOT NULL,
+    effective_at TIMESTAMP NOT NULL,
+    expires_at TIMESTAMP,
+    supersedes_event_id TEXT REFERENCES legal_policy_events(event_id),
+    capability_fingerprint TEXT NOT NULL DEFAULT '',
+    event_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (scope_kind = 'global' AND account_digest = '' AND decision != 'allow')
+        OR (scope_kind = 'account' AND account_digest != '')
+    ),
+    CHECK (length(trim(matcher_value)) BETWEEN 1 AND 500),
+    CHECK (length(trim(citation_ref)) BETWEEN 1 AND 500),
+    CHECK (length(trim(issuer_id)) BETWEEN 1 AND 500),
+    CHECK (length(trim(reason_code)) BETWEEN 1 AND 500),
+    CHECK (expires_at IS NULL OR expires_at > effective_at),
+    CHECK (
+        (decision = 'revoke' AND supersedes_event_id IS NOT NULL AND expires_at IS NULL)
+        OR (decision != 'revoke' AND supersedes_event_id IS NULL)
+    ),
+    CHECK (
+        length(capability_fingerprint) = 64
+    ),
+    CHECK (length(event_fingerprint) = 64),
+    CHECK (event_id = 'lpe-' || left(event_fingerprint, 32))
+);
+
+ALTER TABLE legal_policy_events
+    ADD COLUMN IF NOT EXISTS capability_fingerprint TEXT DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS legal_document_admissions (
+    receipt_id TEXT PRIMARY KEY,
+    account_digest TEXT NOT NULL,
+    investigation_digest TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    provenance_class TEXT NOT NULL CHECK (provenance_class IN (
+        'external_network', 'internal_operator', 'user_authored'
+    )),
+    canonical_url_digest TEXT NOT NULL,
+    metadata_digest TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN ('allow', 'deny')),
+    policy_snapshot_sha256 TEXT NOT NULL,
+    matched_event_ids_json TEXT NOT NULL,
+    reason_code TEXT,
+    authority_fingerprint TEXT NOT NULL,
+    admitted_at TEXT NOT NULL,
+    receipt_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (account_digest, investigation_digest, document_id, receipt_fingerprint),
+    CHECK (length(account_digest) = 64),
+    CHECK (length(investigation_digest) = 64),
+    CHECK (length(canonical_url_digest) = 64),
+    CHECK (length(metadata_digest) = 64),
+    CHECK (length(content_sha256) = 64),
+    CHECK (length(policy_snapshot_sha256) = 64),
+    CHECK (length(authority_fingerprint) = 64),
+    CHECK (length(receipt_fingerprint) = 64),
+    CHECK (receipt_id = 'lda-' || left(receipt_fingerprint, 32))
+);
+
+CREATE TABLE IF NOT EXISTS legal_policy_dispatch_leases (
+    lease_id TEXT PRIMARY KEY,
+    account_digest TEXT NOT NULL,
+    policy_snapshot_sha256 TEXT NOT NULL,
+    holder_investigation_digest TEXT NOT NULL,
+    acquired_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    CHECK (length(account_digest) = 64),
+    CHECK (length(policy_snapshot_sha256) = 64),
+    CHECK (length(holder_investigation_digest) = 64),
+    CHECK (expires_at > acquired_at)
+);
+ALTER TABLE legal_policy_dispatch_leases
+    ADD COLUMN IF NOT EXISTS holder_investigation_id TEXT;
+
+CREATE TABLE IF NOT EXISTS legal_policy_lease_recoveries (
+    account_digest TEXT NOT NULL CHECK (length(account_digest) = 64),
+    idempotency_key_digest TEXT NOT NULL CHECK (length(idempotency_key_digest) = 64),
+    lease_id TEXT NOT NULL,
+    holder_investigation_digest TEXT NOT NULL CHECK (length(holder_investigation_digest) = 64),
+    terminal_event_fingerprint TEXT NOT NULL CHECK (length(terminal_event_fingerprint) = 64),
+    policy_snapshot_sha256 TEXT NOT NULL CHECK (length(policy_snapshot_sha256) = 64),
+    recovered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (account_digest, idempotency_key_digest),
+    UNIQUE (account_digest, lease_id)
+);
+
+CREATE TABLE IF NOT EXISTS legal_policy_mutation_attempts (
+    account_digest TEXT NOT NULL CHECK (length(account_digest) = 64),
+    idempotency_key_digest TEXT NOT NULL CHECK (length(idempotency_key_digest) = 64),
+    request_fingerprint TEXT NOT NULL CHECK (length(request_fingerprint) = 64),
+    event_id TEXT NOT NULL,
+    policy_snapshot_sha256 TEXT NOT NULL CHECK (length(policy_snapshot_sha256) = 64),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (account_digest, idempotency_key_digest)
+);
+
+CREATE TABLE IF NOT EXISTS legal_chunk_admissions (
+    receipt_id TEXT NOT NULL,
+    chunk_id TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    section_path TEXT,
+    token_count INTEGER NOT NULL,
+    text_sha256 TEXT NOT NULL CHECK (length(text_sha256) = 64),
+    PRIMARY KEY (receipt_id, chunk_id)
+);
+
+CREATE TABLE IF NOT EXISTS legal_document_custody_seals (
+    document_id TEXT PRIMARY KEY,
+    receipt_id TEXT NOT NULL,
+    state_sha256 TEXT NOT NULL CHECK (length(state_sha256) = 64),
+    seal_fingerprint TEXT NOT NULL CHECK (length(seal_fingerprint) = 64)
+);
+
+CREATE TABLE IF NOT EXISTS legal_chunk_manifest_seals (
+    receipt_id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    chunk_count INTEGER NOT NULL CHECK (chunk_count >= 0),
+    manifest_sha256 TEXT NOT NULL CHECK (length(manifest_sha256) = 64),
+    seal_fingerprint TEXT NOT NULL CHECK (length(seal_fingerprint) = 64)
+);
+
+ALTER TABLE legal_document_admissions
+    ADD COLUMN IF NOT EXISTS authority_fingerprint TEXT DEFAULT '';
+ALTER TABLE legal_document_admissions
+    ADD COLUMN IF NOT EXISTS admitted_at TEXT DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS legal_history_migration_runs (
+    run_id TEXT PRIMARY KEY,
+    account_digest TEXT NOT NULL,
+    investigation_digest TEXT NOT NULL,
+    claim_set_sha256 TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('applying', 'completed', 'rolled_back')),
+    admitted_count INTEGER NOT NULL DEFAULT 0,
+    quarantined_count INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    CHECK (length(account_digest) = 64),
+    CHECK (length(investigation_digest) = 64),
+    CHECK (length(claim_set_sha256) = 64)
+);
+
+CREATE TABLE IF NOT EXISTS legal_history_migration_rows (
+    run_id TEXT NOT NULL REFERENCES legal_history_migration_runs(run_id),
+    account_digest TEXT NOT NULL,
+    investigation_digest TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    source_content_sha256 TEXT NOT NULL,
+    requested_provenance TEXT,
+    citation_digest TEXT,
+    disposition TEXT NOT NULL CHECK (disposition IN ('admitted', 'quarantined')),
+    reason_code TEXT NOT NULL,
+    admission_receipt_id TEXT,
+    evaluated_receipt_id TEXT,
+    receipt_created BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (run_id, document_id),
+    CHECK (length(account_digest) = 64),
+    CHECK (length(investigation_digest) = 64),
+    CHECK (length(source_content_sha256) = 64),
+    CHECK (citation_digest IS NULL OR length(citation_digest) = 64),
+    CHECK (
+        (disposition = 'admitted' AND admission_receipt_id IS NOT NULL)
+        OR (disposition = 'quarantined' AND admission_receipt_id IS NULL)
+    )
+);
+
+ALTER TABLE legal_history_migration_rows
+    ADD COLUMN IF NOT EXISTS evaluated_receipt_id TEXT;
+ALTER TABLE legal_history_migration_rows
+    ADD COLUMN IF NOT EXISTS receipt_created BOOLEAN DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS synthesis_tenancy_migration_manifest (
+    singleton_key TEXT PRIMARY KEY CHECK (
+        singleton_key = 'synthesis-tenancy-v1'
+    ),
+    version INTEGER NOT NULL CHECK (version = 1),
+    key_id TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN (
+        'copying', 'shadow', 'scoped', 'quarantined', 'rolled_back'
+    )),
+    assignment_digest TEXT NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS synthesis_tenancy_migration_rows (
+    synthesis_id TEXT PRIMARY KEY,
+    original_account_digest TEXT,
+    original_investigation_digest TEXT,
+    target_account_digest TEXT NOT NULL,
+    target_investigation_digest TEXT NOT NULL,
+    source_fingerprint TEXT NOT NULL,
+    migrated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS synthesis_event_outbox (
+    event_id TEXT PRIMARY KEY,
+    synthesis_id TEXT NOT NULL,
+    account_digest TEXT NOT NULL,
+    investigation_digest TEXT NOT NULL,
+    event_json TEXT NOT NULL,
+    event_fingerprint TEXT NOT NULL,
+    sequence_no INTEGER NOT NULL CHECK (sequence_no > 0),
+    delivery_state TEXT NOT NULL DEFAULT 'pending' CHECK (
+        delivery_state IN ('pending', 'delivered')
+    ),
+    terminal_failure BOOLEAN NOT NULL DEFAULT FALSE,
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    last_error_code TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    delivered_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_synthesis_event_outbox_pending
+    ON synthesis_event_outbox(
+        account_digest, investigation_digest, delivery_state, created_at
+    );
+
+ALTER TABLE investigation_node_memberships
+    ADD COLUMN IF NOT EXISTS membership_metadata TEXT DEFAULT '{}';
+
+ALTER TABLE synthesis_event_outbox
+    ADD COLUMN IF NOT EXISTS sequence_no INTEGER DEFAULT 0;
+ALTER TABLE synthesis_event_outbox
+    ADD COLUMN IF NOT EXISTS terminal_failure BOOLEAN DEFAULT FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_graph_allocations_graph_key
+    ON graph_investigation_allocations(graph_key);
+CREATE INDEX IF NOT EXISTS idx_node_memberships_node
+    ON investigation_node_memberships(node_id);
+CREATE INDEX IF NOT EXISTS idx_node_memberships_authority
+    ON investigation_node_memberships(account_digest, investigation_digest);
+
+ALTER TABLE edges ADD COLUMN IF NOT EXISTS account_digest TEXT;
+ALTER TABLE edges ADD COLUMN IF NOT EXISTS investigation_digest TEXT;
+ALTER TABLE syntheses ADD COLUMN IF NOT EXISTS account_digest TEXT;
+ALTER TABLE syntheses ADD COLUMN IF NOT EXISTS investigation_digest TEXT;
+ALTER TABLE notebooks ADD COLUMN IF NOT EXISTS account_digest TEXT;
+ALTER TABLE notebooks ADD COLUMN IF NOT EXISTS investigation_digest TEXT;
+ALTER TABLE discovery_cache ADD COLUMN IF NOT EXISTS account_digest TEXT;
+ALTER TABLE discovery_cache ADD COLUMN IF NOT EXISTS investigation_digest TEXT;
+ALTER TABLE outline_block_commands ADD COLUMN IF NOT EXISTS account_digest TEXT;
+ALTER TABLE outline_block_commands ADD COLUMN IF NOT EXISTS investigation_digest TEXT;
+ALTER TABLE monitors ADD COLUMN IF NOT EXISTS account_digest TEXT;
+ALTER TABLE monitors ADD COLUMN IF NOT EXISTS investigation_digest TEXT;
+ALTER TABLE supersession_candidates ADD COLUMN IF NOT EXISTS account_digest TEXT;
+ALTER TABLE supersession_candidates ADD COLUMN IF NOT EXISTS investigation_digest TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_edges_graph_authority
+    ON edges(account_digest, investigation_digest);
+CREATE INDEX IF NOT EXISTS idx_syntheses_graph_authority
+    ON syntheses(account_digest, investigation_digest);
+CREATE INDEX IF NOT EXISTS idx_notebooks_graph_authority
+    ON notebooks(account_digest, investigation_digest);
+CREATE INDEX IF NOT EXISTS idx_discovery_cache_graph_authority
+    ON discovery_cache(account_digest, investigation_digest);
+CREATE INDEX IF NOT EXISTS idx_outline_commands_graph_authority
+    ON outline_block_commands(account_digest, investigation_digest);
+CREATE INDEX IF NOT EXISTS idx_monitors_graph_authority
+    ON monitors(account_digest, investigation_digest);
+CREATE INDEX IF NOT EXISTS idx_supersession_graph_authority
+    ON supersession_candidates(account_digest, investigation_digest);
+"""
+
+
+# SPR-DRL-16 — reviewed multi-source gather authority. Stores only digests,
+# exact caps, canonical document IDs, and receipt identifiers; never provider
+# bodies, prompts, keys, or credentials.
+ANTIEK_GRAPH_SCHEMA_V17_AUTHORIZED_GATHER_SQL = """
+CREATE TABLE IF NOT EXISTS authorized_gather_plans (
+    account_digest TEXT NOT NULL,
+    investigation_digest TEXT NOT NULL,
+    plan_fingerprint TEXT NOT NULL,
+    aggregate_max_cost_micros BIGINT NOT NULL CHECK (aggregate_max_cost_micros >= 0),
+    aggregate_max_results BIGINT NOT NULL CHECK (aggregate_max_results >= 0),
+    spent_cost_micros BIGINT NOT NULL DEFAULT 0 CHECK (spent_cost_micros >= 0),
+    settled_results BIGINT NOT NULL DEFAULT 0 CHECK (settled_results >= 0),
+    held_cost_micros BIGINT NOT NULL DEFAULT 0 CHECK (held_cost_micros >= 0),
+    held_results BIGINT NOT NULL DEFAULT 0 CHECK (held_results >= 0),
+    PRIMARY KEY (account_digest, investigation_digest, plan_fingerprint)
+);
+CREATE TABLE IF NOT EXISTS authorized_gather_reservations (
+    account_digest TEXT NOT NULL,
+    investigation_digest TEXT NOT NULL,
+    reservation_id TEXT NOT NULL,
+    plan_fingerprint TEXT NOT NULL,
+    projected_cost_micros BIGINT NOT NULL CHECK (projected_cost_micros >= 0),
+    projected_results BIGINT NOT NULL CHECK (projected_results >= 0),
+    state TEXT NOT NULL CHECK (state IN ('held', 'released', 'settled')),
+    actual_cost_micros BIGINT CHECK (actual_cost_micros IS NULL OR actual_cost_micros >= 0),
+    actual_results BIGINT CHECK (actual_results IS NULL OR actual_results >= 0),
+    tokens BIGINT CHECK (tokens IS NULL OR tokens >= 0),
+    PRIMARY KEY (account_digest, investigation_digest, reservation_id)
+);
+CREATE TABLE IF NOT EXISTS authorized_gather_call_receipts (
+    account_digest TEXT NOT NULL,
+    investigation_digest TEXT NOT NULL,
+    call_id TEXT NOT NULL,
+    request_fingerprint TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('claimed', 'succeeded', 'failed', 'unknown')),
+    result_json TEXT,
+    failure_code TEXT,
+    PRIMARY KEY (account_digest, investigation_digest, call_id)
+);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1213,6 +1643,7 @@ def init_database(con: LockedConnection) -> None:
     # soft ref, no FK). Lives in its own module — detect-and-rebuild logic,
     # not a static SQL string.
     from .migrate_v9_insight_question import migrate as _migrate_v9_insight_question
+
     _migrate_v9_insight_question(con)
     # SPR-04 — attribution_audit (append-only reproducible attribution record).
     # Pure idempotent CREATE IF NOT EXISTS; runs last, FK-references nothing.
@@ -1240,6 +1671,22 @@ def init_database(con: LockedConnection) -> None:
     # GF-7 — chunk embedding provider/model/dimension pinning. Soft chunk_id
     # reference; pure idempotent CREATE IF NOT EXISTS.
     con.execute(ANTIEK_GRAPH_SCHEMA_V15_EMBEDDINGS_META_SQL)
+    # W4B remains unbound and non-activating until an explicit authority call
+    # creates the singleton manifest.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V16_TENANCY_SQL)
+    # SPR-DRL-16 — durable receipts and exact aggregate gather authority.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V17_AUTHORIZED_GATHER_SQL)
+    # ANT-AHT-25 milestones 1-2 — rebuild legacy globally keyed notebooks as
+    # owner-composite rows and install revision/idempotency storage. Procedural
+    # because DuckDB cannot replace primary/foreign keys with ALTER TABLE.
+    from substrate.notebooks.migration import migrate_notebook_authority_schema
+
+    migrate_notebook_authority_schema(con)
+    # ANT-AHT-26 — additive composite-key canonical interview/project content.
+    # Legacy tables remain temporarily for explicitly scoped Speak adapters.
+    from substrate.interviews.migration import migrate_interview_authority_schema
+
+    migrate_interview_authority_schema(con)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1252,8 +1699,7 @@ _INITIALIZED_PATHS: set[str] = set()
 
 
 def _schema_is_present(db_path: str) -> bool:
-    """Cheap read-only probe: is the Antiek schema already initialized at
-    ``db_path``? Returns True if the ``nodes`` sentinel table exists.
+    """Cheap read-only probe: is the latest Antiek schema initialized?
 
     Two layers: (1) a per-process memo (``_INITIALIZED_PATHS``) that short-
     circuits paths already confirmed initialized — O(1), no connection; (2) a
@@ -1274,15 +1720,134 @@ def _schema_is_present(db_path: str) -> bool:
         return False
     try:
         row = con.execute(
-            "SELECT count(*) FROM information_schema.tables "
-            "WHERE table_schema = 'main' AND table_name = 'nodes'"
+            "SELECT count(*) FROM information_schema.columns "
+            "WHERE table_schema = 'main' AND ("
+            "(table_name = 'nodes' AND column_name = 'node_id') OR "
+            "(table_name = 'graph_tenancy_manifest' "
+            " AND column_name = 'singleton_key') OR "
+            "(table_name = 'graph_investigation_allocations' "
+            " AND column_name = 'graph_key') OR "
+            "(table_name = 'investigation_node_memberships' "
+            " AND column_name = 'membership_metadata') OR "
+            "(table_name = 'synthesis_tenancy_migration_manifest' "
+            " AND column_name = 'assignment_digest') OR "
+            "(table_name = 'synthesis_event_outbox' "
+            " AND column_name = 'terminal_failure') OR "
+            "(table_name = 'cascade_plan_launch_authority' "
+            " AND column_name = 'tree_fingerprint') OR "
+            "(table_name = 'cascade_launch_attempts' "
+            " AND column_name = 'response_fingerprint') OR "
+            "(table_name = 'legal_policy_events' "
+            " AND column_name = 'capability_fingerprint') OR "
+            "(table_name = 'legal_document_admissions' "
+            " AND column_name = 'receipt_fingerprint') OR "
+            "(table_name = 'legal_chunk_admissions' "
+            " AND column_name = 'text_sha256') OR "
+            "(table_name = 'legal_document_custody_seals' "
+            " AND column_name = 'state_sha256') OR "
+            "(table_name = 'legal_chunk_manifest_seals' "
+            " AND column_name = 'manifest_sha256') OR "
+            "(table_name = 'legal_history_migration_runs' "
+            " AND column_name = 'claim_set_sha256') OR "
+            "(table_name = 'legal_history_migration_rows' "
+            " AND column_name = 'evaluated_receipt_id') OR "
+            "(table_name = 'legal_history_migration_rows' "
+            " AND column_name = 'receipt_created') OR "
+            "(table_name = 'legal_policy_dispatch_leases' "
+            " AND column_name = 'holder_investigation_id') OR "
+            "(table_name = 'legal_policy_lease_recoveries' "
+            " AND column_name = 'terminal_event_fingerprint') OR "
+            "(table_name = 'authorized_gather_call_receipts' "
+            " AND column_name = 'request_fingerprint') OR "
+            "(table_name = 'notebooks' AND column_name = 'account_digest') OR "
+            "(table_name = 'notebooks' AND column_name = 'investigation_digest') OR "
+            "(table_name = 'notebooks' AND column_name = 'content_sha256') OR "
+            "(table_name = 'notebook_mutation_receipts' "
+            " AND column_name = 'request_sha256') OR "
+            "(table_name = 'interview_projects_authority' "
+            " AND column_name = 'account_digest') OR "
+            "(table_name = 'interviews_authority' "
+            " AND column_name = 'account_digest') OR "
+            "(table_name = 'interview_authority_migration_manifest' "
+            " AND column_name = 'schema_version') OR "
+            "(table_name = 'interview_invite_capabilities' "
+            " AND column_name = 'token_digest') OR "
+            "(table_name = 'interview_margins' AND column_name = 'content_sha256') OR "
+            "(table_name = 'interview_margin_mutation_receipts' "
+            " AND column_name = 'request_sha256') OR "
+            "(table_name = 'interview_consent_events' AND column_name = 'actor_kind') OR "
+            "(table_name = 'interview_derivation_bindings' AND column_name = 'stream_key') OR "
+            "(table_name = 'interview_answer_derivations' "
+            " AND column_name = 'event_fingerprint') OR "
+            "(table_name = 'interview_claims_authority' "
+            " AND column_name = 'source_receipt_id') OR "
+            "(table_name = 'interview_claims_authority' "
+            " AND column_name = 'independence_key') OR "
+            "(table_name = 'interview_corroboration_clusters_authority' "
+            " AND column_name = 'canonical_claim_id') OR "
+            "(table_name = 'interview_corroboration_members_authority' "
+            " AND column_name = 'independence_key') OR "
+            "(table_name = 'interview_composition_drafts_authority' "
+            " AND column_name = 'manifest_sha256') OR "
+            "(table_name = 'interview_contributor_attribution_events' "
+            " AND column_name = 'consent_event_ids_json') OR "
+            "(table_name = 'interview_composition_proposals_authority' "
+            " AND column_name = 'source_manifest_sha256') OR "
+            "(table_name = 'interview_composition_execution_authority' "
+            " AND column_name = 'raw_result_sha256') OR "
+            "(table_name = 'interview_write_revisions_authority' "
+            " AND column_name = 'prior_body_sha256') OR "
+            "(table_name = 'interview_write_edit_events_authority' "
+            " AND column_name = 'root_acceptance_event_id') OR "
+            "(table_name = 'interview_write_edit_events_authority' "
+            " AND column_name = 'operation') OR "
+            "(table_name = 'interview_write_edit_events_authority' "
+            " AND column_name = 'target_revision') OR "
+            "(table_name = 'interview_write_edit_events_authority' "
+            " AND column_name = 'target_body_sha256') OR "
+            "(table_name = 'interview_write_edit_revisions_authority' "
+            " AND column_name = 'edit_event_sha256') OR "
+            "(table_name = 'interview_write_documents_authority' "
+            " AND column_name = 'origin_kind') OR "
+            "(table_name = 'interview_write_native_events_authority' "
+            " AND column_name = 'event_sha256') OR "
+            "(table_name = 'interview_write_native_revisions_authority' "
+            " AND column_name = 'event_sha256') OR "
+            "(table_name = 'interview_write_evidence_insertions_authority' "
+            " AND column_name IN ('native_event_sha256', 'citation_receipt_sha256', "
+            "'receipt_sha256', 'operation')) OR "
+            "(table_name = 'interview_write_evidence_bundles_authority' "
+            " AND column_name IN ('operation', 'manifest_sha256', 'receipt_sha256')) OR "
+            "(table_name = 'interview_write_evidence_bundle_units_authority' "
+            " AND column_name IN ('ordinal', 'relationship', 'unit_receipt_sha256')) OR "
+            "(table_name = 'interview_evidence_bundle_synthesis_proposals_authority' "
+            " AND column_name IN ('source_manifest_sha256', 'source_content_sha256', "
+            "'source_receipt_sha256')) OR "
+            "(table_name = 'interview_evidence_bundle_synthesis_inputs_authority' "
+            " AND column_name IN ('ordinal', 'excerpt_text', 'input_receipt_sha256')) OR "
+            "(table_name = 'interview_write_synthesis_acceptances_authority' "
+            " AND column_name IN ('proposal_id', 'native_event_sha256', 'receipt_sha256')) OR "
+            "(table_name = 'interview_synthesis_knowledge_admissions_authority' "
+            " AND column_name IN ('acceptance_id', 'item_manifest_sha256', "
+            "'mutation_key_sha256', 'receipt_sha256')) OR "
+            "(table_name = 'interview_synthesis_knowledge_admission_items_authority' "
+            " AND column_name IN ('unit_index', 'evidence_sha256', 'item_receipt_sha256')))"
+        ).fetchone()
+        interview_manifest = con.execute(
+            "SELECT schema_version FROM interview_authority_migration_manifest "
+            "WHERE singleton_key = 1"
         ).fetchone()
     except Exception:
         return False
     finally:
         with contextlib.suppress(Exception):
             con.close()
-    present = bool(row and row[0] > 0)
+    present = bool(
+        row
+        and row[0] == 75
+        and interview_manifest
+        and interview_manifest[0] == 22
+    )
     if present:
         _INITIALIZED_PATHS.add(db_path)
     return present

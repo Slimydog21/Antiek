@@ -2,7 +2,8 @@
  * Residual (aul): pure collective continue-as-unit readiness.
  *
  * Continue as cohesive multi-agent unit requires non-empty prompt_block ·
- * HTML-first · never PDF. L6 live multi-agent remains dual-gate deferred.
+ * HTML-first · never PDF. This helper describes the offline continue path only;
+ * live council readiness is server-owned and intentionally out of scope here.
  * Parity researchContextPackOpenReadiness · open-path pure matrix craft.
  */
 
@@ -13,7 +14,7 @@ export type CollectiveContinueUnitReadiness = {
   spawn_count: number;
   unit_continue_ready: boolean;
   seamless_unit_continue: boolean;
-  l6_live_multiagent: "deferred";
+  l6_live_multiagent: "separate_operator_gate";
   view_format: "html";
   html_first: true;
   never_pdf_view: true;
@@ -56,9 +57,9 @@ export function collectiveContinueUnitReadiness(opts: {
   if (unit_continue_ready) {
     summary = "cohesive unit prompt ready · continue float|full HTML";
     open_title_float =
-      "Open a new floating deep research session seeded with this collective prompt (offline unit · HTML-first · L6 live multi-agent deferred · never PDF)";
+      "Open a new floating deep research session seeded with this collective prompt (offline unit · HTML-first · live council uses a separate operator gate · never PDF)";
     open_title_full =
-      "Open collective unit deep research expanded to full working region (offline unit · HTML-first · L6 live multi-agent deferred · never PDF)";
+      "Open collective unit deep research expanded to full working region (offline unit · HTML-first · live council uses a separate operator gate · never PDF)";
   } else {
     summary = "cohesive unit prompt empty · continue not ready";
     open_title_float = "Cohesive unit prompt empty — continue not ready";
@@ -72,7 +73,7 @@ export function collectiveContinueUnitReadiness(opts: {
     spawn_count,
     unit_continue_ready,
     seamless_unit_continue,
-    l6_live_multiagent: "deferred",
+    l6_live_multiagent: "separate_operator_gate",
     view_format: "html",
     html_first: true,
     never_pdf_view: true,

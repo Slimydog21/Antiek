@@ -182,9 +182,7 @@ def promote_twin_note(
     """
     if not note.text or not note.text.strip():
         raise ValueError("twin note text is required")
-    inv = (
-        (investigation_id or note.investigation_id or f"twin_{note.asset_id}").strip()
-    )
+    inv = (investigation_id or note.investigation_id or f"twin_{note.asset_id}").strip()
     if not inv:
         raise ValueError("investigation_id is required")
 
@@ -401,9 +399,7 @@ def depth_graph_honesty_fields(
         if uid:
             unit_ids.append(uid)
     unique_units = list(dict.fromkeys(unit_ids))
-    content_addressed_alignment = bool(unique_graph) and set(unique_graph) == set(
-        unique_units
-    )
+    content_addressed_alignment = bool(unique_graph) and set(unique_graph) == set(unique_units)
     return {
         "graph_node_ids": unique_graph,
         "unique_graph_node_count": len(unique_graph),
@@ -471,9 +467,7 @@ def twin_promote_context_payload(
     )
     result_dict = result.to_dict()
     # Residual (ajo/ajt): content-addressed depth-graph honesty (pure helper).
-    depth = depth_graph_honesty_fields(
-        result_dict["promoted"], result_dict["context_units"]
-    )
+    depth = depth_graph_honesty_fields(result_dict["promoted"], result_dict["context_units"])
     unique_graph = depth["graph_node_ids"]
     content_addressed_alignment = depth["content_addressed_alignment"]
     payload: dict[str, Any] = {

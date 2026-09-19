@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import math
+import os
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 from typing import Literal
 
-ContentAuthority = Literal["engagement_twin", "depth_graph"]
+from substrate.research_artifact.authority import identity_digest
+
+ContentAuthority = Literal["engagement_twin", "depth_graph", "artifact_note"]
 ContentKind = Literal["insight", "question", "artifact_note"]
 ExclusionReason = Literal[
     "aggregate_budget",
@@ -39,14 +44,35 @@ def _bounded_id(value: str, field: str) -> str:
     return cleaned
 
 
-def digest_text(text: str) -> str:
+def digest_text(text: str, owner_scope_digest: str | None = None) -> str:
     canonical = " ".join(text.split())
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    key = _recursive_context_key()
+    scope = (owner_scope_digest or "advisory").encode()
+    return hmac.new(
+        key, b"text\0" + scope + b"\0" + canonical.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
 
 
 def account_scope_digest(owner_user_id: str) -> str:
     owner = _bounded_id(owner_user_id, "owner_user_id")
-    return hashlib.sha256(f"antiek-owner-scope-v1\0{owner}".encode()).hexdigest()
+    key = _recursive_context_key()
+    return hmac.new(key, b"owner\0" + owner.encode(), hashlib.sha256).hexdigest()
+
+
+@lru_cache(maxsize=64)
+def _recursive_context_key_for(root_hint: str, configured_secret: str) -> bytes:
+    # Cache per configured authority domain. Ranking can hash thousands of
+    # units; reopening and revalidating the key file for each comparison turns
+    # a bounded replay into filesystem-bound work.
+    del root_hint, configured_secret
+    return bytes.fromhex(identity_digest("recursive-context-key", "v1"))
+
+
+def _recursive_context_key() -> bytes:
+    return _recursive_context_key_for(
+        os.environ.get("ANTIEK_RESEARCH_ARTIFACTS_DIR", ""),
+        os.environ.get("ANTIEK_ARTIFACT_KEY_SECRET", ""),
+    )
 
 
 @dataclass(frozen=True)
@@ -62,7 +88,7 @@ class _ResolvedCandidate:
     explicit: bool = False
 
     def __post_init__(self) -> None:
-        if self.authority not in {"engagement_twin", "depth_graph"}:
+        if self.authority not in {"engagement_twin", "depth_graph", "artifact_note"}:
             raise ValueError("candidate authority is invalid")
         if self.kind not in {"insight", "question", "artifact_note"}:
             raise ValueError("candidate kind is invalid")
@@ -120,9 +146,14 @@ class ContentUnit:
             raise ValueError("engagement content requires a twin note id")
         if self.authority == "depth_graph" and self.graph_node_id is None:
             raise ValueError("graph content requires a graph node id")
+        if self.authority == "artifact_note" and self.artifact_note_id is None:
+            raise ValueError("artifact-note content requires an artifact note id")
         if self.ordinal < 0 or self.token_estimate < 1:
             raise ValueError("content unit ordinal or token estimate is invalid")
-        if not self.text.strip() or digest_text(self.text) != self.text_digest:
+        if (
+            not self.text.strip()
+            or digest_text(self.text, self.account_scope_digest) != self.text_digest
+        ):
             raise ValueError("content unit text is invalid")
         if len(self.source_event_ids) > MAX_PROVENANCE_IDS:
             raise ValueError("too many source_event_ids")
@@ -210,14 +241,29 @@ def _token_estimate(text: str) -> int:
     return max(1, math.ceil(len(text.encode("utf-8")) / 4))
 
 
-def _receipt(candidate: _ResolvedCandidate, reason: ExclusionReason) -> ExclusionReceipt:
+def private_identifier_digest(identity: str, owner_scope_digest: str) -> str:
+    return hmac.new(
+        _recursive_context_key(),
+        b"identifier\0" + owner_scope_digest.encode() + b"\0" + identity.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _receipt(
+    candidate: _ResolvedCandidate,
+    reason: ExclusionReason,
+    owner_scope_digest: str,
+) -> ExclusionReceipt:
     return ExclusionReceipt(
         authority=candidate.authority,
-        candidate_digest=hashlib.sha256(
-            f"{candidate.authority}\0{candidate.asset_id}\0{candidate.canonical_id}".encode()
-        ).hexdigest(),
+        candidate_digest=private_identifier_digest(
+            f"{candidate.authority}\0{candidate.asset_id}\0{candidate.canonical_id}",
+            owner_scope_digest,
+        ),
         reason=reason,
-        asset_scope_digest=hashlib.sha256(candidate.asset_id.encode()).hexdigest(),
+        asset_scope_digest=private_identifier_digest(
+            f"asset\0{candidate.asset_id}", owner_scope_digest
+        ),
     )
 
 
@@ -270,24 +316,24 @@ def _assemble_resolved_notes_pack(
     for candidate in ordered:
         text = " ".join(candidate.text.split()).strip()
         if not text:
-            exclusions.append(_receipt(candidate, "malformed"))
+            exclusions.append(_receipt(candidate, "malformed", scope))
             continue
-        text_digest = digest_text(text)
+        text_digest = digest_text(text, scope)
         if text_digest in seen_text:
-            exclusions.append(_receipt(candidate, "duplicate_content"))
+            exclusions.append(_receipt(candidate, "duplicate_content", scope))
             continue
         if len(text.encode("utf-8")) > max_unit_bytes:
-            exclusions.append(_receipt(candidate, "per_unit_limit"))
+            exclusions.append(_receipt(candidate, "per_unit_limit", scope))
             continue
         if per_asset.get(candidate.asset_id, 0) >= per_asset_limit:
-            exclusions.append(_receipt(candidate, "per_asset_diversity"))
+            exclusions.append(_receipt(candidate, "per_asset_diversity", scope))
             continue
         tokens = _token_estimate(text)
         if len(selected) >= max_units or used_tokens + tokens > token_budget:
-            exclusions.append(_receipt(candidate, "aggregate_budget"))
+            exclusions.append(_receipt(candidate, "aggregate_budget", scope))
             continue
         unit_id = hashlib.sha256(
-            f"recursive-content-v1\0{candidate.authority}\0{candidate.asset_id}"
+            f"recursive-content-v1\0{scope}\0{candidate.authority}\0{candidate.asset_id}"
             f"\0{candidate.canonical_id}\0{text_digest}".encode()
         ).hexdigest()
         selected.append(
@@ -302,7 +348,9 @@ def _assemble_resolved_notes_pack(
                 graph_node_id=(
                     candidate.canonical_id if candidate.authority == "depth_graph" else None
                 ),
-                artifact_note_id=None,
+                artifact_note_id=(
+                    candidate.canonical_id if candidate.authority == "artifact_note" else None
+                ),
                 kind=candidate.kind,
                 ordinal=candidate.ordinal,
                 created_at=candidate.created_at,

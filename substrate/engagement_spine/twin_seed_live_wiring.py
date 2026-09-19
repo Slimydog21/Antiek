@@ -11,11 +11,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from .twin import (
-    ANTIEK_TWIN_SEED_LIVE_ENV,
-    configure_twin_seed_live,
-    twin_seed_live_enabled,
-)
+from .twin import ANTIEK_TWIN_SEED_LIVE_ENV, twin_seed_live_enabled
 
 ANTIEK_TWIN_SEED_USE_DISPATCH_ENV = "ANTIEK_TWIN_SEED_USE_DISPATCH"
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
@@ -114,15 +110,11 @@ def configure_twin_seed_from_env(
         report["notes"].append(
             f"{ANTIEK_TWIN_SEED_LIVE_ENV} on but "
             f"{ANTIEK_TWIN_SEED_USE_DISPATCH_ENV} off — "
-            "operator must configure_twin_seed_live(fn) manually."
+            "the paid endpoint remains inert."
         )
         return report
-    try:
-        configure_twin_seed_live(build_dispatch_note_taker_seed_fn())
-        report["installed"] = True
-        report["notes"].append(
-            "Dispatch-backed note_taker twin seed installed (env dual-gate)."
-        )
-    except Exception as exc:
-        report["notes"].append(f"live twin seed install failed: {exc}")
+    report["notes"].append(
+        "Env gates are on; an explicit budget ledger, executor, and server cost "
+        "projection must still be bound to the paid endpoint."
+    )
     return report

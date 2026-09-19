@@ -135,7 +135,7 @@ export function notDiamondBenchDeltaLabel(d: NotDiamondBenchDelta): string {
     case "no_bench":
       return `NotDiamond suggests ${d.nd_suggested} · Antiek-bench weekly rank unset (run offline dogfood)`;
     case "agree":
-      return `NotDiamond and Antiek-bench agree on ${d.nd_suggested} (both advisory only)`;
+      return `NotDiamond and Antiek-bench agree on ${d.nd_suggested} (agreement is not correctness · both advisory only)`;
     case "diverge":
       return `NotDiamond ${d.nd_suggested} · Antiek-bench ${d.bench_recommended} (diverge — neither auto-routes)`;
     default:

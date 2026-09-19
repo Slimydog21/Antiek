@@ -165,7 +165,7 @@ describe("NotesPanel — living note + challenge (M3 + M4)", () => {
     render(<NotesPanel investigation={withNode()} />);
     fireEvent.click(screen.getByText("challenge this"));
     await waitFor(() => expect(screen.getByText(/the note changed/)).toBeTruthy());
-    expect(challengeNoteMock).toHaveBeenCalledWith("node-1", { investigation_id: "inv-test" });
+    expect(challengeNoteMock).toHaveBeenCalledWith("node-1", "inv-test");
     // Still one note rendered — mutated in place, not duplicated.
     expect(screen.getAllByText("Acme is mid-sized.")).toHaveLength(1);
   });

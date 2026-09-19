@@ -199,6 +199,9 @@ def test_zero_call_candidate_still_produces_honest_truncated_verdict(
         next(model for model in row.models if model.model_id == "model-b").sample_size == 0
         for row in verdict.task_verdicts
     )
+    rendered = project_weekly_verdict_html(verdict)
+    assert "NOT MEASURED (0)" in rendered
+    assert rendered.count("NOT MEASURED") >= 2
 
 
 def test_partial_outage_is_visible_and_cannot_win(tmp_path: Path) -> None:

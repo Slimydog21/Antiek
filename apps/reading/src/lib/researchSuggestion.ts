@@ -60,11 +60,13 @@ export async function acceptPromotion(args: {
   /** A representative owned document the asset drew on — the seam's region
    * provenance (`document_id`). */
   documentId: string;
+  approvedRunCeilingUsd: number;
 }): Promise<PromotionResult> {
   const started = await startInvestigation({
     question: args.prompt,
     context: "Promoted from a meta-reading asset (Read → Research).",
     spawn_context: `read-meta-asset:${args.assetId}`,
+    approved_run_ceiling_usd: args.approvedRunCeilingUsd,
   });
 
   // Record the read → research seam (reuses the EXISTING typed event — no new

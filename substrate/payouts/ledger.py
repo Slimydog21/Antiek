@@ -64,7 +64,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from substrate.ad_inventory.frame_attention import apportion_cents
-from substrate.constants import UNATTRIBUTED_RIGHTS_BUCKET
+from substrate.legal_gate.read import read_document_metadata_value_compatibility
 from substrate.payouts.split import SPLIT_POLICY_VERSION, equal_split
 from substrate.rights.ad_eligibility import ads_allowed
 from substrate.rights.arxiv_tiers import resolve_tier
@@ -208,13 +208,11 @@ def _load_metadata(con: Any, document_id: str) -> Optional[dict]:
     ``ValueError`` on malformed JSON. Mirrors
     ``acquisition.arxiv.enrich_openalex._load_metadata`` (handles dict vs
     JSON-string vs None) rather than an ad-hoc ``json.loads``."""
-    row = con.execute(
-        "SELECT metadata FROM documents WHERE document_id = ? LIMIT 1",
-        [document_id],
-    ).fetchone()
-    if row is None:
+    found, raw = read_document_metadata_value_compatibility(
+        con, document_id, authority=None, enforce=False
+    )
+    if not found:
         return None
-    raw = row[0]
     if raw is None:
         return {}
     if isinstance(raw, dict):

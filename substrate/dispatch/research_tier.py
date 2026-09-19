@@ -75,6 +75,66 @@ class ResearchTierTarget:
     provider: str
     model: str
     why: str
+    candidate_rank: int = 0
+    availability_source: str = "static_compatibility_map"
+
+
+_AVAILABLE_RESEARCH_TIER_CANDIDATES: dict[ResearchTier, tuple[ResearchTierTarget, ...]] = {
+    "fast": (
+        ResearchTierTarget(
+            "fast",
+            "openai_chat",
+            "gpt-5.6-luna",
+            "GPT-5.6 Luna — cost-sensitive high-volume research lane.",
+            1,
+            "boot_registered_providers",
+        ),
+        ResearchTierTarget(
+            "fast",
+            "xiaomi",
+            "mimo-v2.5-pro",
+            "MiMo V2.5 Pro — available direct-API workhorse fallback.",
+            2,
+            "boot_registered_providers",
+        ),
+    ),
+    "deep": (
+        ResearchTierTarget(
+            "deep",
+            "openai_chat",
+            "gpt-5.6-terra",
+            "GPT-5.6 Terra — balanced intelligence and cost for deep research.",
+            1,
+            "boot_registered_providers",
+        ),
+        ResearchTierTarget(
+            "deep",
+            "xiaomi",
+            "mimo-v2.5-pro",
+            "MiMo V2.5 Pro — available direct-API workhorse fallback.",
+            2,
+            "boot_registered_providers",
+        ),
+    ),
+    "wrestle": (
+        ResearchTierTarget(
+            "wrestle",
+            "openai_chat",
+            "gpt-5.6-sol",
+            "GPT-5.6 Sol — highest-quality long-horizon research lane.",
+            1,
+            "boot_registered_providers",
+        ),
+        ResearchTierTarget(
+            "wrestle",
+            "xiaomi",
+            "mimo-v2.5-pro",
+            "MiMo V2.5 Pro — available direct-API workhorse fallback.",
+            2,
+            "boot_registered_providers",
+        ),
+    ),
+}
 
 
 # ── THE MAP ────────────────────────────────────────────────────────────
@@ -162,6 +222,26 @@ def resolve_research_tier(tier: object) -> ResearchTierTarget:
     return _RESEARCH_TIER_MAP[normalize_research_tier(tier)]
 
 
+def resolve_available_research_tier(tier: object, ready_providers: object) -> ResearchTierTarget:
+    """Resolve a tier only against server-attested boot registrations.
+
+    Arbitrary model-registration rows and client input are intentionally not
+    accepted as readiness. An empty/no-match set fails closed before spend.
+    """
+    if not isinstance(ready_providers, (set, frozenset, list, tuple)):
+        raise ValueError("boot-registered provider readiness is unavailable")
+    ready = {
+        provider
+        for provider in ready_providers
+        if isinstance(provider, str) and provider.strip() == provider and provider
+    }
+    normalized = normalize_research_tier(tier)
+    for target in _AVAILABLE_RESEARCH_TIER_CANDIDATES[normalized]:
+        if target.provider in ready:
+            return target
+    raise ValueError(f"no boot-ready provider is available for research tier {normalized}")
+
+
 __all__ = [
     "DEFAULT_RESEARCH_TIER",
     "RESEARCH_TIERS",
@@ -169,4 +249,5 @@ __all__ = [
     "ResearchTierTarget",
     "normalize_research_tier",
     "resolve_research_tier",
+    "resolve_available_research_tier",
 ]

@@ -46,9 +46,16 @@ def windows():
     return InMemoryWindowStore()
 
 
-def _open_session(eng, sessions, *, asset="book-1", region="r1", text="A highlight passage."):
+def _open_session(
+    eng, sessions, *, asset="book-1", region="r1", text="A highlight passage.", citation=None
+):
     return open_from_highlight(
-        HighlightSelection(asset_id=asset, selection_text=text, region_id=region),
+        HighlightSelection(
+            asset_id=asset,
+            selection_text=text,
+            region_id=region,
+            citation_provenance=citation,
+        ),
         engagement_store=eng,
         session_store=sessions,
         model_id="glm-5.2",
@@ -71,6 +78,18 @@ def test_session_to_window_descriptor_identity(eng, sessions):
     d = desc.to_dict()
     assert d["id"] == desc.window_id
     assert d["kind"] == DEEP_RESEARCH_WINDOW_KIND
+
+
+def test_session_descriptor_preserves_validated_citation_receipt(eng, sessions):
+    citation = {
+        "source_kind": "synthesis_claim",
+        "source_asset_id": "book-1",
+        "claim_id": "4",
+        "chunk_ids": ["chunk-4"],
+        "document_id": "doc-4",
+    }
+    session = _open_session(eng, sessions, citation=citation)
+    assert session_to_window_descriptor(session).payload["citation_provenance"] == citation
 
 
 def test_open_session_as_window_and_list(eng, sessions, windows):

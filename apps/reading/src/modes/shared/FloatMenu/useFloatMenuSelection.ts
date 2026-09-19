@@ -55,6 +55,8 @@ export interface SelectionRect {
 export interface SelectionProvenance {
   documentId?: string | null;
   chunkId?: string | null;
+  claimId?: string | null;
+  chunkIds?: string[];
   /** §9.0 servability of the chunk the selection lands in. `undefined` ⇒ the
    * host could not resolve a chunk (e.g. a free-prose synthesis selection);
    * `true`/`false` ⇒ resolved-and-servable / resolved-and-withheld. */

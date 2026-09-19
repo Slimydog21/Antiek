@@ -93,7 +93,9 @@ def build_report(
     )
 
 
-def backtest(con: Any, synthesis_id: str) -> BacktestReport:
+def backtest(
+    con: Any, synthesis_id: str, *, _authority: Any | None = None
+) -> BacktestReport:
     """Full backtest entry point (Sprint 10 day 4-5 — wired).
 
     Reads the archived synthesis, counts added/closed edges since
@@ -111,13 +113,15 @@ def backtest(con: Any, synthesis_id: str) -> BacktestReport:
     from .db import (
         archived_synthesis_from_row,
         count_added_edges_since,
+        count_added_edges_since_authorized,
         count_superseded_edges_since,
+        count_superseded_edges_since_authorized,
         load_chunk_tier_changes_since,
         load_outcomes_for_synthesis,
         load_superseded_cited_edges,
     )
 
-    row = load_synthesis(con, synthesis_id)
+    row = load_synthesis(con, synthesis_id, _authority=_authority)
     if row is None:
         raise KeyError(f"synthesis_id not found: {synthesis_id!r}")
 
@@ -133,10 +137,21 @@ def backtest(con: Any, synthesis_id: str) -> BacktestReport:
     cited_chunks = tuple(row.substrate_manifest.get("chunk", ()) or ())
     cited_edges = tuple(row.substrate_manifest.get("edge", ()) or ())
 
+    if _authority is None:
+        added_edges_since = count_added_edges_since(con, since)
+        superseded_edges_since = count_superseded_edges_since(con, since)
+    else:
+        added_edges_since = count_added_edges_since_authorized(
+            con, since, _authority
+        )
+        superseded_edges_since = count_superseded_edges_since_authorized(
+            con, since, _authority
+        )
+
     return build_report(
         archive=archive,
-        added_edges_since=count_added_edges_since(con, since),
-        superseded_edges_since=count_superseded_edges_since(con, since),
+        added_edges_since=added_edges_since,
+        superseded_edges_since=superseded_edges_since,
         cited_edges_now_superseded=load_superseded_cited_edges(
             con, cited_edges, since,
         ),
@@ -145,3 +160,10 @@ def backtest(con: Any, synthesis_id: str) -> BacktestReport:
         ),
         outcomes=load_outcomes_for_synthesis(con, synthesis_id),
     )
+
+
+def backtest_authorized(
+    con: Any, authority: Any, synthesis_id: str
+) -> BacktestReport:
+    """Backtest a synthesis and graph diffs through exact authority."""
+    return backtest(con, synthesis_id, _authority=authority)

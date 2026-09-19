@@ -41,14 +41,14 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 import duckdb
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from roles.creative_writer.prompt import AdjacentSection
 from roles.interviewer.drivers import DriverSet
 from runtime.db_lock import connect_write
 from substrate.event_log import (
-    append_event_once,
+    append_event_once_authorized,
     prepare_typed_event,
     require_event_persistence,
     trajectory,
@@ -56,6 +56,8 @@ from substrate.event_log import (
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.insight_question import insight_node_id
 from substrate.graph.ops import content_addressed_id
+from substrate.investigation_streams import resolve_writable_investigation_stream
+from substrate.investigation_tenancy import InvestigationAuthority
 from substrate.schemas.events import (
     SeamReadToWritePayload,
     SeamWriteToReadPayload,
@@ -80,6 +82,17 @@ from substrate.write.outline_block import (
 from substrate.write.promote_context import ContextBlockSpec, promote_to_outline
 from substrate.write.provenance import resolve_provenance
 from substrate.write.trace import resolve_trace_target
+
+
+def _request_event_authority(
+    request: Request, investigation_id: str
+) -> InvestigationAuthority:
+    from .investigation_access import authority_from_request
+
+    authority = authority_from_request(request, investigation_id).authority
+    resolve_writable_investigation_stream(authority)
+    return authority
+
 
 write_router = APIRouter(prefix="/write", tags=["write"])
 
@@ -255,7 +268,7 @@ def place_outline_block(req: PlaceBlockRequest) -> dict[str, Any]:
 
 
 @write_router.post("/read-handoffs", status_code=201)
-def handoff_read_note(req: ReadToWriteRequest) -> dict[str, Any]:
+def handoff_read_note(req: ReadToWriteRequest, request: Request) -> dict[str, Any]:
     """Place the graph insight already promoted from marginalia into Write.
 
     The note text never crosses this boundary. The marginalia event resolves
@@ -266,6 +279,8 @@ def handoff_read_note(req: ReadToWriteRequest) -> dict[str, Any]:
     # cannot be persisted. A retry can repair a rare post-commit append fault,
     # but an explicitly disabled event store must never create a silent seam.
     require_event_persistence()
+    event_stream_id = f"seam-read-write-{req.investigation_id}"
+    authority = _request_event_authority(request, event_stream_id)
     block_id = content_addressed_id(
         "oblk", f"read-to-write|{req.note_id}|{req.target_section_id}"
     )
@@ -333,7 +348,7 @@ def handoff_read_note(req: ReadToWriteRequest) -> dict[str, Any]:
         )
 
     seam_event = prepare_typed_event(
-        req.investigation_id,
+        event_stream_id,
         SeamReadToWritePayload(
             entity_id=node_id,
             provenance_ref=req.note_id,
@@ -345,7 +360,7 @@ def handoff_read_note(req: ReadToWriteRequest) -> dict[str, Any]:
         # fault repairs the append with the exact original envelope.
         emitted_at=seam_emitted_at,
     )
-    append_event_once(seam_event)
+    append_event_once_authorized(authority, seam_event)
     return {
         "outline_block_id": outline_block_id,
         "node_id": node_id,
@@ -473,10 +488,13 @@ CREATE TABLE IF NOT EXISTS write_to_read_handoff_commands (
 def handoff_write_block_to_read(
     outline_block_id: str,
     req: WriteToReadRequest,
+    request: Request,
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
 ) -> dict[str, Any]:
     """Commit an explicit trace from a Write block into its readable source."""
     require_event_persistence()
+    event_stream_id = f"seam-write-{req.deliverable_id}"
+    authority = _request_event_authority(request, event_stream_id)
     command_id = _validated_idempotency_key(idempotency_key)
     fingerprint = content_addressed_id(
         "cmd", f"write-to-read|{outline_block_id}|{req.deliverable_id}"
@@ -541,7 +559,7 @@ def handoff_write_block_to_read(
                 current_target = resolve_trace_target(con, outline_block_id)
 
     seam_event = prepare_typed_event(
-        req.deliverable_id,
+        event_stream_id,
         SeamWriteToReadPayload(
             entity_id=outline_block_id,
             provenance_ref=outline_block_id,
@@ -553,7 +571,7 @@ def handoff_write_block_to_read(
         emitted_at=seam_emitted_at,
         document_id=source_document_id,
     )
-    append_event_once(seam_event)
+    append_event_once_authorized(authority, seam_event)
     if (
         current_target is None
         or not current_target.full_text_allowed
@@ -596,10 +614,13 @@ CREATE TABLE IF NOT EXISTS write_to_speak_handoff_commands (
 def handoff_write_question_to_speak(
     outline_block_id: str,
     req: WriteToSpeakRequest,
+    request: Request,
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
 ) -> dict[str, Any]:
     """Commission a private Speak interview project from one outline question."""
     require_event_persistence()
+    event_stream_id = f"seam-write-{req.deliverable_id}"
+    authority = _request_event_authority(request, event_stream_id)
     command_id = _validated_idempotency_key(idempotency_key)
     fingerprint = content_addressed_id(
         "cmd", f"write-to-speak|{outline_block_id}|{req.deliverable_id}"
@@ -703,7 +724,7 @@ def handoff_write_question_to_speak(
                 question_node_id, section_id, speak_project_id = receipt[3:6]
 
     seam_event = prepare_typed_event(
-        req.deliverable_id,
+        event_stream_id,
         SeamWriteToSpeakPayload(
             entity_id=question_node_id,
             provenance_ref=outline_block_id,
@@ -713,7 +734,7 @@ def handoff_write_question_to_speak(
         emitted_at=seam_emitted_at,
         role="write_composition",
     )
-    append_event_once(seam_event)
+    append_event_once_authorized(authority, seam_event)
     return {
         "question_node_id": question_node_id,
         "section_id": section_id,
@@ -1045,7 +1066,9 @@ class PromotionRefusalResponse(BaseModel):
         },
     },
 )
-def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationResponse:
+def promote_investigation(
+    req: FromInvestigationRequest, request: Request
+) -> FromInvestigationResponse:
     """Seed a deliverable from a completed investigation's synthesis: one
     graph-node block per synthesis-pinned source node, each carrying
     provenance back to its graph node. The compounding flywheel's missing
@@ -1062,13 +1085,16 @@ def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationRes
     # declared-bar line-keyed baseline for this file does not shift.
     from substrate.write.promote_context import (
         InvestigationPromotionRefusal,
-        promote_investigation_to_deliverable,
+        promote_investigation_to_deliverable_authorized,
     )
 
+    from .investigation_access import authority_from_request
+
+    authority = authority_from_request(request, req.investigation_id).authority
     with _translate(), _write("write/promote_investigation") as con:
-        result = promote_investigation_to_deliverable(
+        result = promote_investigation_to_deliverable_authorized(
             con,
-            req.investigation_id,
+            authority,
             deliverable_kind=req.deliverable_kind,
             title=req.title,
         )

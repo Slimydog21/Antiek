@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -95,6 +95,7 @@ class ParsedThesisComponent:
     confidence: str
     supporting_chunk_ids: tuple[str, ...]
     supporting_path_indices: tuple[int, ...]
+    supporting_inherited_unit_ids: tuple[str, ...] = ()
     confidence_basis: str | None = None
     effective_source_tier: int | None = None
     hedging_required: bool = False
@@ -234,6 +235,7 @@ def _parse_thesis_component(
     *,
     allow_unprovenanced: bool,
     canonical_chunk_ids: Iterable[str] | None = None,
+    inherited_support_by_chunk: Mapping[str, Iterable[str]] | None = None,
 ) -> ParsedThesisComponent:
     ctx = f"thesis_components[{idx}]"
     if not isinstance(obj, dict):
@@ -255,6 +257,25 @@ def _parse_thesis_component(
     paths = tuple(_require_int_list(
         obj.get("supporting_path_indices"), "supporting_path_indices", ctx,
     ))
+    inherited = tuple(_require_str_list(
+        obj.get("supporting_inherited_unit_ids"),
+        "supporting_inherited_unit_ids",
+        ctx,
+    ))
+    if len(set(inherited)) != len(inherited):
+        raise SynthesizerValidationError(
+            f"{ctx}: supporting_inherited_unit_ids must be unique"
+        )
+    if inherited_support_by_chunk is not None:
+        reachable = {
+            unit_id
+            for chunk_id in chunks
+            for unit_id in inherited_support_by_chunk.get(chunk_id, ())
+        }
+        if any(unit_id not in reachable for unit_id in inherited):
+            raise SynthesizerValidationError(
+                f"{ctx}: cites an inherited unit not reachable through its supporting chunks"
+            )
     if not chunks and not paths and not allow_unprovenanced:
         raise SynthesizerValidationError(
             f"{ctx}: must cite at least one supporting_chunk_ids OR "
@@ -311,6 +332,7 @@ def _parse_thesis_component(
         confidence=confidence,
         supporting_chunk_ids=chunks,
         supporting_path_indices=paths,
+        supporting_inherited_unit_ids=inherited,
         confidence_basis=_opt_str(obj.get("confidence_basis"), "confidence_basis", ctx),
         effective_source_tier=tier,
         hedging_required=hedging,
@@ -443,6 +465,7 @@ def parse_synthesizer_response(
     canonical_chunk_ids: Iterable[str] | None = None,
     canonical_node_ids: Iterable[str] | None = None,
     canonical_edge_ids: Iterable[str] | None = None,
+    inherited_support_by_chunk: Mapping[str, Iterable[str]] | None = None,
 ) -> ThesisResult:
     """Parse + validate a Synthesizer raw response."""
     obj = _extract_json_object(text)
@@ -476,6 +499,7 @@ def parse_synthesizer_response(
             i,
             allow_unprovenanced=allow_unprovenanced,
             canonical_chunk_ids=canonical_chunk_ids,
+            inherited_support_by_chunk=inherited_support_by_chunk,
         )
         for i, c in enumerate(components_raw)
     )

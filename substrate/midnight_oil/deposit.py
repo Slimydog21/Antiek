@@ -9,6 +9,8 @@ rows via ``ensure_spawn`` before ``complete_spawn`` / ``merge_spawn_outputs``.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -336,6 +338,26 @@ def deposit_job_results(
             ],
         }
         document_id = asset_id
+        engagement_store.put_document(
+            document_id,
+            {
+                "document_id": document_id,
+                "parent_asset_id": asset_id,
+                "title": title,
+                "body_text": "\n".join(f"- {goal}" for goal in job.goals),
+                "mode": "midnight_oil_deposit",
+                "source_spawn_ids": [],
+                "doc_model": doc_model,
+                "draft_sha256": hashlib.sha256(
+                    json.dumps(
+                        doc_model,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                ).hexdigest(),
+            },
+        )
 
     html = project_to_html(doc_model, document_id=document_id, creator="midnight_oil")
     if "pdf" in html.lower() and "<html" not in html.lower():

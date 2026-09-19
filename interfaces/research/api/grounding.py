@@ -405,6 +405,11 @@ def register_handlers(
 ) -> None:
     """Wire every grounding handler into the broadcaster. Called once
     at app startup from ``app.create_app``."""
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+        # The legacy handler accepts only a scalar document ID.  Until its
+        # replacement carries a bound InvestigationAuthority, registering it
+        # would let source chunks reach a model without the legal-read gate.
+        return
     broadcaster.register_handler(
         ActionType.CLAIM_CHALLENGE_RAISED.value,
         make_grounding_handler(broadcaster, db_path=db_path, embedder=embedder),

@@ -86,7 +86,13 @@ class ServeResult:
     license: str | None = None
 
 
-def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> ServeResult:
+def serve_full_text(
+    con: Any,
+    document_id: str,
+    *,
+    owner: bool = False,
+    authority: Any | None = None,
+) -> ServeResult:
     """Resolve what body text may be served for ``document_id``.
 
     The single fetch returns ``content_class`` + ``raw_text`` + the
@@ -112,26 +118,29 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
     still keys on ``SERVABLE_CONTENT_CLASSES``. A taken-down personal_reading
     document is still TAKEN_DOWN for the owner too (removal is absolute).
     """
-    row = con.execute(
-        """
-        SELECT d.title, d.author, d.content_class, d.raw_text,
-               COALESCE(b.taken_down, FALSE) AS taken_down
-        FROM documents d
-        LEFT JOIN book_assets b ON d.document_id = b.document_id
-        WHERE d.document_id = ?
-        """,
-        [document_id],
-    ).fetchone()
+    import os
 
-    if row is None:
+    from substrate.legal_gate.read import book_serve_document_compatibility
+
+    document = book_serve_document_compatibility(
+        con,
+        document_id,
+        authority=authority,
+        enforce=os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1",
+    )
+
+    if document is None:
         return ServeResult(
             document_id=document_id, found=False, servability=None,
             servable=False, full_text=None, snippet=None,
             title=None, author=None, reason="document_not_found",
         )
 
-    title, author, content_class, raw_text, taken_down = row
-    taken_down = bool(taken_down)
+    title = document["title"]
+    author = document["author"]
+    content_class = document["content_class"]
+    raw_text = document["raw_text"]
+    taken_down = document["taken_down"]
     status = servability_of(content_class, taken_down=taken_down)
 
     if status is ServabilityStatus.TAKEN_DOWN:

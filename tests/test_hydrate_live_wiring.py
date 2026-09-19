@@ -39,7 +39,7 @@ def test_configure_defaults_offline():
     assert any("offline" in n.lower() for n in report["notes"])
 
 
-def test_configure_arxiv_flag_wires_callable():
+def test_configure_arxiv_flag_without_injector_stays_zero_request_offline():
     eng = SimpleNamespace(
         hydrate_arxiv_fetch_by_id=None,
         hydrate_substack_fetch_post=None,
@@ -47,12 +47,36 @@ def test_configure_arxiv_flag_wires_callable():
     report = configure_engagement_hydrate_injectors(
         eng, environ={ANTIEK_HYDRATE_LIVE_ARXIV_ENV: "1"}
     )
-    # Import may succeed in this env — if so, arxiv_live True; if not, notes capture failure.
-    if report["arxiv_live"]:
-        assert callable(eng.hydrate_arxiv_fetch_by_id)
-    else:
-        assert eng.hydrate_arxiv_fetch_by_id is None
-        assert any("failed" in n.lower() or "arxiv" in n.lower() for n in report["notes"])
+    assert report["arxiv_live"] is False
+    assert eng.hydrate_arxiv_fetch_by_id is None
+    assert any("no arxiv injector" in n.lower() for n in report["notes"])
+
+
+def test_configure_arxiv_requires_env_and_installed_injector():
+    calls: list[str] = []
+
+    def injected(arxiv_id: str):
+        calls.append(arxiv_id)
+
+    eng = SimpleNamespace(
+        hydrate_arxiv_fetch_by_id=None,
+        hydrate_arxiv_fetch_body=None,
+        hydrate_substack_fetch_post=None,
+    )
+    off = configure_engagement_hydrate_injectors(
+        eng, environ={}, arxiv_fetch_body=injected
+    )
+    assert off["arxiv_live"] is False
+    assert eng.hydrate_arxiv_fetch_body is None
+    assert calls == []
+    on = configure_engagement_hydrate_injectors(
+        eng,
+        environ={ANTIEK_HYDRATE_LIVE_ARXIV_ENV: "1"},
+        arxiv_fetch_body=injected,
+    )
+    assert on["arxiv_live"] is True
+    assert eng.hydrate_arxiv_fetch_body is injected
+    assert calls == []
 
 
 def test_configure_substack_requires_factory():

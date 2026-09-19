@@ -26,7 +26,7 @@ def test_live_default_off():
     assert twin_seed_live_enabled() is False
 
 
-def test_live_requires_env_and_fn():
+def test_legacy_live_fn_cannot_bypass_budgeted_canonical_endpoint():
     store = InMemoryEngagementStore()
 
     def live(title: str, body: str):
@@ -45,11 +45,11 @@ def test_live_requires_env_and_fn():
             body_text="body",
         )
         assert out["seeded"] is True
-        assert out["live_seed"] is True
+        assert out["live_seed"] is False
         notes = list_twin_notes("asset_live", store=store)
         texts = " ".join(n.text for n in notes)
-        assert "LIVE insight" in texts
-        assert "LIVE question" in texts
+        assert "LIVE insight" not in texts
+        assert "Asset identity" in texts
     finally:
         clear_twin_seed_live()
         os.environ.pop(ANTIEK_TWIN_SEED_LIVE_ENV, None)
@@ -89,9 +89,7 @@ def test_injector_without_env_stays_offline():
     os.environ.pop(ANTIEK_TWIN_SEED_LIVE_ENV, None)
     configure_twin_seed_live(live)
     try:
-        out = seed_twins_for_asset(
-            "asset_stub", store=store, title="Z"
-        )
+        out = seed_twins_for_asset("asset_stub", store=store, title="Z")
         assert out["live_seed"] is False
         assert called == []
     finally:

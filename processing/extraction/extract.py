@@ -49,13 +49,14 @@ try:
     )
     from ...runtime.db_lock import connect_read, connect_write
     from ...substrate.dispatch import ProviderError, dispatch
-    from ...substrate.event_log import emit_typed
     from ...substrate.graph import (
         default_db_path,
         ensure_initialized,
         insert_edge,
         insert_node,
     )
+    from ...substrate.investigation_tenancy import InvestigationAuthority
+    from ...substrate.legal_gate.read import read_chunk_compatibility
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))  # project root
@@ -72,6 +73,8 @@ except ImportError:  # pragma: no cover — direct-script fallback
         insert_edge,
         insert_node,
     )
+    from substrate.investigation_tenancy import InvestigationAuthority  # type: ignore[no-redef]
+    from substrate.legal_gate.read import read_chunk_compatibility  # type: ignore[no-redef]
 
 
 # ---------------------------------------------------------------------------
@@ -298,22 +301,27 @@ def parse_extraction_response(text: str) -> tuple[list[ExtractedNode], list[Extr
 # ---------------------------------------------------------------------------
 
 
-def _read_chunk(db_path: str, chunk_id: str) -> tuple[str, str | None, int] | None:
+def _read_chunk(
+    db_path: str,
+    chunk_id: str,
+    *,
+    authority: InvestigationAuthority | None,
+) -> tuple[str, str | None, int] | None:
     """Look up ``(text, document_id, source_tier)`` for a chunk_id.
     Returns None when the chunk doesn't exist."""
     con = connect_read(db_path)
     try:
-        row = con.execute(
-            "SELECT c.text, c.document_id, d.source_tier "
-            "FROM chunks c JOIN documents d ON c.document_id = d.document_id "
-            "WHERE c.chunk_id = ?",
-            [chunk_id],
-        ).fetchone()
+        row = read_chunk_compatibility(
+            con,
+            chunk_id,
+            authority=authority,
+            enforce=os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1",
+        )
     finally:
         con.close()
     if row is None:
         return None
-    return str(row[0]), (row[1] if row[1] is not None else None), int(row[2])
+    return str(row[1]), (row[4] if row[4] is not None else None), int(row[6])
 
 
 def _run_supersession_detection(db_path: str, edge_ids: list[str]) -> None:
@@ -360,6 +368,7 @@ def extract_from_chunk(
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
     parent_event_id: str | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> ExtractionResult:
     """The pipeline. Read chunk text → dispatch parameter_extractor →
     parse → write nodes + edges (each emits its own GRAPH_*_INSERTED
@@ -374,7 +383,9 @@ def extract_from_chunk(
     resolved_db = db_path or default_db_path()
     ensure_initialized(resolved_db)
 
-    fetched = _read_chunk(resolved_db, chunk_id)
+    if authority is not None and authority.investigation_id != investigation_id:
+        raise ValueError("authority does not match extraction investigation")
+    fetched = _read_chunk(resolved_db, chunk_id, authority=authority)
     if fetched is None:
         return ExtractionResult(chunk_id=chunk_id)
     text, document_id, source_tier = fetched

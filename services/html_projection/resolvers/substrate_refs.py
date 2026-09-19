@@ -8,6 +8,7 @@ apply ``SERVABLE_CONTENT_CLASSES`` filtering — this module must not pre-filter
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from runtime.db_lock import connect_read
@@ -55,48 +56,70 @@ def _source_document_id(
     return str(row[0])
 
 
-def _document_rights(
-    con: Any, document_id: str
-) -> tuple[str | None, str | None, str | None]:
-    row = con.execute(
-        "SELECT title, content_class, ip_holder_id FROM documents WHERE document_id = ?",
-        [document_id],
-    ).fetchone()
-    if row is None:
-        return None, None, None
-    title, content_class, ip_holder_id = row
-    return title, content_class, ip_holder_id
-
-
-def resolve_refs(ref_ids: list[str], *, db_path: str) -> dict[str, ResolvedRefData]:
+def resolve_refs(
+    ref_ids: list[str],
+    *,
+    db_path: str,
+    authority: Any | None = None,
+) -> dict[str, ResolvedRefData]:
     """Resolve notebook/deliverable ref_ids against the substrate graph.
 
     Missing node_ids are omitted from the result (never fabricated)."""
     if not ref_ids:
         return {}
+    strict = os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1"
+    if strict:
+        from substrate.investigation_tenancy import InvestigationAuthority
+
+        if not isinstance(authority, InvestigationAuthority):
+            return {}
 
     out: dict[str, ResolvedRefData] = {}
     con = connect_read(db_path)
     try:
         for ref_id in ref_ids:
-            row = con.execute(
-                "SELECT node_id, canonical_label, node_type, metadata "
-                "FROM nodes WHERE node_id = ?",
-                [ref_id],
-            ).fetchone()
+            if strict:
+                row = con.execute(
+                    "SELECT n.node_id, n.canonical_label, n.node_type, n.metadata, m.role "
+                    "FROM nodes n JOIN investigation_node_memberships m "
+                    "ON m.node_id = n.node_id WHERE n.node_id = ? "
+                    "AND m.account_digest = ? AND m.investigation_digest = ? LIMIT 1",
+                    [ref_id, authority.account_digest, authority.investigation_digest],
+                ).fetchone()
+            else:
+                row = con.execute(
+                    "SELECT node_id, canonical_label, node_type, metadata "
+                    "FROM nodes WHERE node_id = ?",
+                    [ref_id],
+                ).fetchone()
             if row is None:
                 continue
 
-            node_id, canonical_label, node_type, metadata_raw = row
+            node_id, canonical_label, node_type, metadata_raw = row[:4]
+            membership_role = None if not strict else str(row[4])
             source_doc_id = _source_document_id(con, node_id, metadata_raw)
+            if strict and source_doc_id is None and membership_role != "note":
+                # Derived claims/insights/questions are unreadable without a
+                # source that can itself pass the current legal-read boundary.
+                continue
 
             title: str | None = None
             content_class: str | None = None
             ip_holder_id: str | None = None
             if source_doc_id:
-                title, content_class, ip_holder_id = _document_rights(
-                    con, source_doc_id
+                from substrate.legal_gate.read import read_document_compatibility
+
+                document = read_document_compatibility(
+                    con,
+                    source_doc_id,
+                    authority=authority,
+                    enforce=strict,
                 )
+                if document is None:
+                    continue
+                title = document.get("title")
+                content_class = document.get("content_class")
+                ip_holder_id = document.get("ip_holder_id")
 
             out[ref_id] = ResolvedRefData(
                 kind=str(node_type),

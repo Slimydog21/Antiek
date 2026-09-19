@@ -39,7 +39,7 @@ import {
 } from "../../reading-physics/minimap";
 import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
 import type { ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
-import { openPdfPanel } from "../../workspace/actions";
+import { openHostedDocumentPanel } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
 import { buildLayoutMap } from "./readingGeometryPass";
 
@@ -490,6 +490,7 @@ export function ClaimBlock({
       </span>
       <span
         data-claim-id={String(claim.index)}
+        data-cited-chunk-ids={JSON.stringify(claim.chunkIds)}
         {...(claimClass ? { className: claimClass } : {})}
         {...(reviewDue?.title ? { title: reviewDue.title } : {})}
       >
@@ -786,7 +787,7 @@ function SourceCitation({
               const page = source.locator
                 ? parseInt(source.locator.replace(/\D/g, ""), 10)
                 : undefined;
-              openPdfPanel({
+              openHostedDocumentPanel({
                 documentId: chunk.document_id,
                 page,
                 title: `${label}${source.locator ? ` · ${source.locator}` : ""}`,
@@ -1114,4 +1115,3 @@ function ReusedInsightLink({ insight }: { insight: ReusedInsight }) {
   }
   return <span className="text-ink-soft dark:text-starlight">{label}</span>;
 }
-

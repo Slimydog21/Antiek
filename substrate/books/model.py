@@ -156,21 +156,6 @@ def upsert_book_asset(
 # ---------------------------------------------------------------------------
 
 
-# The canonical SELECT joining book_assets to its document. One projection,
-# reused by get_book_asset and list_book_assets, so the BookAsset shape has
-# a single source.
-_BOOK_SELECT = """
-    SELECT
-        b.document_id, d.title, d.author, d.content_class, d.ip_holder_id,
-        b.page_count, b.pagination_scheme, b.cover_uri, b.toc_json,
-        b.provenance, b.license_basis,
-        b.taken_down, b.taken_down_at, b.takedown_reason,
-        b.pre_takedown_content_class
-    FROM book_assets b
-    JOIN documents d ON b.document_id = d.document_id
-"""
-
-
 def _row_to_asset(row: tuple) -> BookAsset:
     (document_id, title, author, content_class, ip_holder_id,
      page_count, pagination_scheme, cover_uri, toc_json,
@@ -202,13 +187,24 @@ def _row_to_asset(row: tuple) -> BookAsset:
     )
 
 
-def get_book_asset(con: Any, document_id: str) -> BookAsset | None:
+def get_book_asset(
+    con: Any, document_id: str, *, authority: Any | None = None
+) -> BookAsset | None:
     """Read one book joined to its license + derived servability. None if
     the document_id has no ``book_assets`` row (not a registered book)."""
-    row = con.execute(
-        _BOOK_SELECT + " WHERE b.document_id = ?", [document_id]
-    ).fetchone()
-    return _row_to_asset(row) if row is not None else None
+    import os
+
+    from substrate.legal_gate.read import book_asset_rows_compatibility
+
+    rows = book_asset_rows_compatibility(
+        con,
+        authority=authority,
+        enforce=os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1",
+        document_id=document_id,
+        include_taken_down=True,
+        limit=1,
+    )
+    return _row_to_asset(rows[0]) if rows else None
 
 
 def list_book_assets(
@@ -217,6 +213,7 @@ def list_book_assets(
     servable_only: bool = False,
     include_taken_down: bool = False,
     limit: int = 200,
+    authority: Any | None = None,
 ) -> list[BookAsset]:
     """List registered books, newest first.
 
@@ -226,21 +223,16 @@ def list_book_assets(
     serve gate). ``include_taken_down`` is False by default — taken-down
     books are excluded from listings unless an operator/audit caller asks.
     """
-    from substrate.constants import SERVABLE_CONTENT_CLASSES
+    import os
 
-    sql = _BOOK_SELECT
-    clauses: list[str] = []
-    params: list[Any] = []
-    if not include_taken_down:
-        clauses.append("b.taken_down = FALSE")
-    if servable_only:
-        placeholders = ",".join("?" for _ in SERVABLE_CONTENT_CLASSES)
-        clauses.append(f"d.content_class IN ({placeholders})")
-        params.extend(sorted(SERVABLE_CONTENT_CLASSES))
-        clauses.append("b.taken_down = FALSE")  # servable ⇒ not taken down
-    if clauses:
-        sql += " WHERE " + " AND ".join(clauses)
-    sql += " ORDER BY b.created_at DESC LIMIT ?"
-    params.append(int(limit))
-    rows = con.execute(sql, params).fetchall()
+    from substrate.legal_gate.read import book_asset_rows_compatibility
+
+    rows = book_asset_rows_compatibility(
+        con,
+        authority=authority,
+        enforce=os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1",
+        servable_only=servable_only,
+        include_taken_down=include_taken_down,
+        limit=limit,
+    )
     return [_row_to_asset(r) for r in rows]

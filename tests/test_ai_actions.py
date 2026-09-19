@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from substrate.ai_actions import (
     AIActionError,
@@ -48,7 +49,7 @@ def test_applied_payload_validates():
 
 
 def test_applied_payload_rejects_unknown_kind():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         AIActionAppliedPayload(
             target_kind="garbage",  # type: ignore[arg-type]
             target_id="x",
@@ -149,11 +150,13 @@ def test_undo_restores_notebook_block(tmp_path):
     cm = _fresh_db(tmp_path)
     con = cm.__enter__()
     from substrate.notebooks import append_block, create_notebook, get_notebook
+    from substrate.notebooks.authority import operator_notebook_authority
 
-    nb_id = create_notebook(con, title="T")
+    authority = operator_notebook_authority("ai-undo")
+    nb_id = create_notebook(con, authority, title="T")
     block_id = append_block(
         con,
-        notebook_id=nb_id,
+        authority,
         block_type="prose",
         content={"type": "paragraph", "content": [{"type": "text", "text": "old"}]},
     )
@@ -162,6 +165,7 @@ def test_undo_restores_notebook_block(tmp_path):
     prev_state = {
         "block_id": block_id,
         "notebook_id": nb_id,
+        "account_id": "__operator__",
         "block_type": "prose",
         "ref_id": None,
         "content_json": {"type": "paragraph", "content": [{"type": "text", "text": "old"}]},
@@ -211,11 +215,15 @@ def test_undo_restores_notebook_block(tmp_path):
     assert len(captured) == 2
 
     # Block should be back to prose with no ref_id
-    nb = get_notebook(con, nb_id)
+    nb = get_notebook(con, authority)
     assert nb is not None
     restored = nb.blocks[0]
     assert restored.block_type == "prose"
     assert restored.ref_id is None
+
+    restored_revision = nb.revision
+    undo_ai_action(con, applied_event=applied_event, emit_event_fn=emit)
+    assert get_notebook(con, authority).revision == restored_revision
 
 
 def test_undo_rejects_unknown_action_type():
@@ -237,9 +245,11 @@ def test_undo_emits_linking_event(tmp_path):
     cm = _fresh_db(tmp_path)
     con = cm.__enter__()
     from substrate.notebooks import append_block, create_notebook
+    from substrate.notebooks.authority import operator_notebook_authority
 
-    nb_id = create_notebook(con, title="T")
-    block_id = append_block(con, notebook_id=nb_id, block_type="prose", content={})
+    authority = operator_notebook_authority("ai-link")
+    nb_id = create_notebook(con, authority, title="T")
+    block_id = append_block(con, authority, block_type="prose", content={})
 
     applied_event = {
         "event_id": "evt-applied-123",
@@ -248,7 +258,7 @@ def test_undo_emits_linking_event(tmp_path):
             "action_type": "ai.action.applied",
             "target_kind": "notebook_block",
             "target_id": block_id,
-            "prev_state": {"block_id": block_id, "notebook_id": nb_id, "block_type": "prose", "content_json": {}},
+            "prev_state": {"block_id": block_id, "notebook_id": nb_id, "account_id": "__operator__", "block_type": "prose", "content_json": {}},
             "next_state": {"block_id": block_id, "block_type": "claim_card"},
         },
     }

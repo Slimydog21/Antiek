@@ -662,7 +662,10 @@ def post_graph_admission_retry(
 ) -> dict[str, Any]:
     """Retry graph effects only; never retrieve, dispatch, lease, or spend."""
 
-    deps, authority = _owned(request, job_id)
+    try:
+        deps, authority = _owned(request, job_id)
+    except HTTPException as exc:
+        raise _run_error(exc.status_code, str(exc.detail)) from None
     content_length = request.headers.get("content-length")
     if request.headers.get("transfer-encoding") or content_length not in {None, "0"}:
         raise _run_error(409, "graph admission retry body must be empty")
@@ -680,6 +683,14 @@ def post_graph_admission_retry(
         raise _run_error(404, "job not found")
     if job.status not in {"complete", "failed", "timed_out", "budget_halted"}:
         raise _run_error(409, "graph admission retry requires a terminal job")
+    terminal_pairs = {
+        "complete": {OperationState.COMPLETE},
+        "failed": {OperationState.FAILED, OperationState.STEP_CAPPED},
+        "timed_out": {OperationState.TIMED_OUT},
+        "budget_halted": {OperationState.BUDGET_HALTED},
+    }
+    if authority.operation_state not in terminal_pairs[job.status]:
+        raise _run_error(409, "terminal job authority requires reconciliation")
     if (
         job.graph_projection_state != "pending"
         or job.graph_projection_reason not in RETRYABLE_GRAPH_ADMISSION_REASONS
@@ -692,13 +703,19 @@ def post_graph_admission_retry(
     if not _legacy_matches_authority(job, config):
         raise _run_error(409, "job configuration requires reconciliation")
     engagement_store, graph_db_path = _projection_resources(request)
+    from substrate.engagement_spine.authority import EngagementAuthority
+    from substrate.engagement_spine.store import authorized_store
+
+    owner_store = authorized_store(
+        engagement_store, EngagementAuthority(_owner(request))
+    )
     try:
         outcome = resume_terminal_projection(
             job_id,
             owner_user_id=_owner(request),
             owner_jobs=deps.owner_jobs,
             store=deps.jobs,
-            engagement_store=engagement_store,
+            engagement_store=owner_store,
             graph_db_path=graph_db_path,
         )
         current = outcome.job
@@ -905,6 +922,8 @@ def post_run(
 def post_deposit(request: Request, body: DepositBody) -> dict[str, Any]:
     from interfaces.research.api.engagement_routes import _eng, get_bench_usage_store
     from substrate.engagement_spine import progress_payload
+    from substrate.engagement_spine.authority import EngagementAuthority
+    from substrate.engagement_spine.store import authorized_store
 
     deps, authority = _owned(request, body.job_id)
     terminal = {
@@ -929,11 +948,12 @@ def post_deposit(request: Request, body: DepositBody) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail="stored job configuration is invalid") from exc
     if not _legacy_matches_authority(job, config):
         raise HTTPException(status_code=409, detail="job configuration requires reconciliation")
+    owner_store = authorized_store(_eng(), EngagementAuthority(_owner(request)))
     try:
         deposit = deposit_job_results(
             body.job_id,
             job_store=deps.jobs,
-            engagement_store=_eng(),
+            engagement_store=owner_store,
             job_snapshot=job,
             draft_combined=body.draft_combined,
             bench_usage_store=get_bench_usage_store(create_if_missing=True),
@@ -948,7 +968,7 @@ def post_deposit(request: Request, body: DepositBody) -> dict[str, Any]:
         try:
             progress = progress_payload(
                 deposit.spawn_ids[0],
-                store=_eng(),
+                store=owner_store,
                 include_html=body.include_progress_html,
             )
         except (KeyError, ValueError):

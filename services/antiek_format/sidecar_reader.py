@@ -436,20 +436,17 @@ def apply_sidecar(
     audio_storage_root: str | None = None,
     investigation_id: str = "__operator__",
 ) -> ApplyReport:
-    """Write restored rows into the substrate. Idempotent.
+    """Refuse substrate mutation until sidecar imports receive admissions.
 
     Refuses (raises ValueError) if ``restored.hash_mismatch`` is True
     — the caller MUST acknowledge the mismatch before applying. This
     is the M3 + M4 enforcement: a mismatched sidecar surfaces in UI as
     a warning but is NOT silently applied.
 
-    Re-resolves each anchor's chunk_id under the receiving substrate's
-    chunker (rigor #3). The writer's chunk_id is discarded.
-
-    When ``restored.signature_valid`` is False, every inserted row's
-    metadata is flagged ``imported_from_unsigned_sidecar=true`` (rigor
-    #5). The flag is part of the row content, not a separate column,
-    so the audit trail survives row migrations.
+    The legacy row writers remain private migration material below, but this
+    public entry point performs no filesystem or database mutation until the
+    write-admission sprint can bind every imported document to an exact owner,
+    investigation, content hash, and policy receipt.
     """
     if restored.hash_mismatch:
         raise ValueError(
@@ -457,98 +454,11 @@ def apply_sidecar(
             f"{HASH_MISMATCH_WARNING}"
         )
 
-    # Lazy imports: keep substrate dependencies out of the
-    # read-side hot path. Tests can read sidecars without a substrate
-    # DB; apply requires one.
-    try:
-        from substrate.voice import CHUNKER_VERSION
-        from substrate.voice.anchor_api import BBox, resolve_chunk_for_bbox
-
-        from runtime.db_lock import connect_write
-    except ImportError:  # pragma: no cover
-        _repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        if _repo not in sys.path:
-            sys.path.insert(0, _repo)
-        from substrate.voice import CHUNKER_VERSION  # type: ignore
-        from substrate.voice.anchor_api import BBox, resolve_chunk_for_bbox  # type: ignore
-
-        from runtime.db_lock import connect_write
-
     report = ApplyReport()
-    unsigned = not restored.signature_valid
-    report.unsigned_flag_applied = unsigned
-    if unsigned:
-        report.warnings.append(
-            "sidecar signature did not verify; rows are flagged "
-            "imported_from_unsigned_sidecar=true (SPEC.md §11.6)."
-        )
-
-    # ── Audio extraction (file-level; idempotent on path) ──
-    storage = audio_storage_root or _default_audio_storage_root()
-    os.makedirs(storage, exist_ok=True)
-    for voice_note_id, blob in restored.audio_blobs.items():
-        target = os.path.join(storage, f"{voice_note_id}.audio")
-        if os.path.exists(target):
-            # Re-import — keep the existing file. The per-blob hash
-            # check already happened in read_sidecar; if hashes matched
-            # then the existing file is the same content.
-            continue
-        tmp = target + ".tmp"
-        with open(tmp, "wb") as f:
-            f.write(blob)
-        os.replace(tmp, target)
-        report.audio_blobs_written += 1
-
-    # ── Substrate writes (one connect_write context) ──
-    con = connect_write(db_path, purpose="sidecar_apply")
-    try:
-        # Highlights → behavior_events (idempotent on highlight_id).
-        for hl in restored.highlights:
-            wrote = _apply_one_highlight(
-                con=con, hl=hl, user_id=user_id,
-                investigation_id=investigation_id,
-                document_id=restored.document_id,
-                unsigned=unsigned,
-            )
-            if wrote:
-                report.highlights_written += 1
-            else:
-                report.highlights_skipped_existing += 1
-
-        # Voice notes + anchors (idempotent on voice_note_id).
-        for an in restored.anchors:
-            wrote = _apply_one_anchor(
-                con=con, an=an, user_id=user_id,
-                document_id=restored.document_id,
-                unsigned=unsigned,
-                resolve_chunk_for_bbox=resolve_chunk_for_bbox,
-                bbox_cls=BBox,
-                local_chunker_version=CHUNKER_VERSION,
-                report=report,
-                audio_storage_root=storage,
-            )
-            if wrote:
-                report.anchors_written += 1
-            else:
-                report.anchors_skipped_existing += 1
-
-        # User-asserted edges. Substrate has no user-edges table yet;
-        # we record into a sidecar-import-trail table that's safe to
-        # rebuild later (idempotent on (sidecar_id, edge_id) — but we
-        # don't have a sidecar_id, so we key on edge_id alone since
-        # the spec's edge_id is intended as the authoritative key).
-        for edge in restored.edges:
-            wrote = _apply_one_edge(
-                con=con, edge=edge, user_id=user_id, unsigned=unsigned,
-            )
-            if wrote:
-                report.edges_written += 1
-            else:
-                report.edges_skipped_existing += 1
-
-    finally:
-        con.close()
-
+    report.warnings.append(
+        "sidecar apply is unavailable until imported voice-note documents "
+        "receive investigation-bound legal admission receipts"
+    )
     return report
 
 
@@ -682,15 +592,14 @@ def _apply_one_anchor(
     # anchor row to documents(document_id) via voice_note_id, so we
     # write a documents row if absent.
     try:
-        doc_exists = con.execute(
-            "SELECT document_id FROM documents WHERE document_id = ?",
-            [voice_note_id],
-        ).fetchone()
+        from substrate.legal_gate.read import legacy_document_exists
+
+        doc_exists = legacy_document_exists(con, str(voice_note_id))
     except Exception as e:
         _log.warning("apply_sidecar: documents probe failed: %s", e)
         return False
 
-    if doc_exists is None:
+    if not doc_exists:
         meta = {
             "imported_from_sidecar": True,
             "imported_from_unsigned_sidecar": unsigned,

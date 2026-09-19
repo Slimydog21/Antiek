@@ -61,10 +61,11 @@
  */
 
 import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { SyntheticEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent, SyntheticEvent } from "react";
 
 import { fetchDepthTiers } from "../../api/settings";
+import { fetchCitationPosition, storeCitationPosition } from "../../api/hostedDocuments";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
@@ -78,6 +79,8 @@ import type { WindowMode } from "../../workspace/windowsStore";
 import { useWindows } from "../../workspace/windowsStore";
 import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
+import { EvidenceWriteInsertAction } from "./EvidenceWriteInsertAction";
+import { EvidenceBundleWriteAction } from "./EvidenceBundleWriteAction";
 import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../engagement/PublicationAttachPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
 import {
@@ -102,6 +105,38 @@ import {
   buildHostedHtmlWriteHref,
   plainTextFromHtml,
 } from "../../workspace/twinWriteSeed";
+import { openHostedDocumentPanel } from "../../workspace/actions";
+import type { CitationEvidence } from "../../workspace/researchContextPack";
+import {
+  loadCitationEvidencePosition,
+  storeCitationEvidencePosition,
+} from "../../workspace/citationEvidencePosition";
+
+export function validatedHostedCitationEvidence(value: unknown): CitationEvidence[] {
+  if (!Array.isArray(value) || value.length > 64) return [];
+  const seen = new Map<string, string>();
+  const out: CitationEvidence[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const row = item as Record<string, unknown>;
+    if (Object.keys(row).sort().join("|") !== "chunk_ids|claim_id|document_id|receipt_sha256|source_asset_id|source_kind") return [];
+    const strings = [row.source_asset_id, row.claim_id, row.document_id];
+    if (row.source_kind !== "synthesis_claim" || strings.some((entry) => typeof entry !== "string" || !entry || entry !== entry.trim() || new TextEncoder().encode(entry).length > 512 || /[\u0000-\u001f\u007f]/.test(entry))) return [];
+    if (!Array.isArray(row.chunk_ids) || row.chunk_ids.length < 1 || row.chunk_ids.length > 64 || row.chunk_ids.some((chunk) => typeof chunk !== "string" || !chunk || chunk !== chunk.trim() || new TextEncoder().encode(chunk).length > 512 || /[\u0000-\u001f\u007f]/.test(chunk))) return [];
+    if (new Set(row.chunk_ids).size !== row.chunk_ids.length || typeof row.receipt_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(row.receipt_sha256)) return [];
+    const authority = JSON.stringify([
+      row.source_kind, row.source_asset_id, row.claim_id, row.chunk_ids, row.document_id,
+    ]);
+    const prior = seen.get(row.receipt_sha256);
+    if (prior !== undefined) {
+      if (prior !== authority) return [];
+      continue;
+    }
+    seen.set(row.receipt_sha256, authority);
+    out.push(row as unknown as CitationEvidence);
+  }
+  return out;
+}
 
 export type HostedHtmlDocumentHostProps = {
   document_id?: string;
@@ -111,6 +146,8 @@ export type HostedHtmlDocumentHostProps = {
   license_class?: string;
   owner_id?: string;
   source?: string;
+  /** Exact server-owned hydration reference. The window bridge consumes it. */
+  resume_ref?: unknown;
   /**
    * Residual (apk): free vs purchased honesty when source=marketplace_host
    * (or library/rehydrate). Null/undefined → path-unknown (never invent free).
@@ -127,6 +164,10 @@ export type HostedHtmlDocumentHostProps = {
   /** Residual (ts): multi-spawn count when source=collective_unit_prompt. */
   spawn_count?: number | null;
   research_tier?: string | null;
+  citation_evidence?: unknown;
+  initial_anchor_id?: string | null;
+  citation_anchor_ids?: unknown;
+  citation_receipt_sha256?: string | null;
   /** Canonical host seam: report a bounded highlight with offsets relative to
    * the rendered HTML body. Wrestle uses this to emit document.region_selected
    * while every downstream action continues to share document_id. */
@@ -167,6 +208,131 @@ export default function HostedHtmlDocumentHost(
   const isHtml = viewFormat === "html";
   const html = props.html?.trim() || "";
   const sanitizedHtml = useMemo(() => sanitizeHostedHtml(html), [html]);
+  const citationEvidence = useMemo(
+    () => validatedHostedCitationEvidence(props.citation_evidence),
+    [props.citation_evidence],
+  );
+  const activeCitationEvidence = useMemo(
+    () => citationEvidence.find(
+      (item) => item.receipt_sha256 === props.citation_receipt_sha256,
+    ) ?? citationEvidence[0],
+    [citationEvidence, props.citation_receipt_sha256],
+  );
+  const htmlBodyRef = useRef<HTMLDivElement | null>(null);
+  const citationAnchorIds = useMemo(() => {
+    if (!Array.isArray(props.citation_anchor_ids) || props.citation_anchor_ids.length > 64) return [];
+    const anchors = props.citation_anchor_ids;
+    if (
+      anchors.some((anchor) => typeof anchor !== "string" || !/^antiek-chunk-[a-f0-9]{64}$/.test(anchor))
+      || new Set(anchors).size !== anchors.length
+    ) return [];
+    return anchors as string[];
+  }, [props.citation_anchor_ids]);
+  const [activeCitationIndex, setActiveCitationIndex] = useState(() =>
+    loadCitationEvidencePosition(props.citation_receipt_sha256, citationAnchorIds.length),
+  );
+  const [citationSyncStatus, setCitationSyncStatus] = useState<"device" | "synced" | "unavailable">("device");
+  const positionGeneration = useRef(0);
+  const pendingPosition = useRef<{ index: number; mutationKey: string } | null>(null);
+  const durableEvidence = useMemo(() => citationEvidence.find((item) =>
+    item.receipt_sha256 === props.citation_receipt_sha256
+    && item.document_id === props.document_id
+    && item.chunk_ids.length === citationAnchorIds.length
+  ) ?? null, [citationAnchorIds.length, citationEvidence, props.citation_receipt_sha256, props.document_id]);
+  useEffect(() => {
+    const generation = ++positionGeneration.current;
+    const sessionIndex = loadCitationEvidencePosition(
+      props.citation_receipt_sha256,
+      citationAnchorIds.length,
+    );
+    setActiveCitationIndex(sessionIndex);
+    setCitationSyncStatus("device");
+    pendingPosition.current = null;
+    if (!durableEvidence || !props.document_id) return;
+    void fetchCitationPosition(props.document_id, durableEvidence.receipt_sha256, citationAnchorIds.length)
+      .then((result) => {
+        if (generation !== positionGeneration.current || result.status !== "found") return;
+        setActiveCitationIndex(result.index);
+        storeCitationEvidencePosition(durableEvidence.receipt_sha256, citationAnchorIds.length, result.index);
+        setCitationSyncStatus("synced");
+      })
+      .catch(() => { if (generation === positionGeneration.current) setCitationSyncStatus("unavailable"); });
+  }, [citationAnchorIds.join("|"), durableEvidence, props.citation_receipt_sha256, props.document_id]);
+  const syncPosition = useCallback((index: number, mutationKey: string, generation: number) => {
+    if (!durableEvidence || !props.document_id) return;
+    void storeCitationPosition(props.document_id, {
+      citation_evidence: durableEvidence, index, anchor_count: citationAnchorIds.length, mutation_key: mutationKey,
+    }).then(() => {
+      if (generation !== positionGeneration.current) return;
+      pendingPosition.current = null;
+      setCitationSyncStatus("synced");
+    }).catch(() => {
+      if (generation === positionGeneration.current) setCitationSyncStatus("unavailable");
+    });
+  }, [citationAnchorIds.length, durableEvidence, props.document_id]);
+  const activateCitationIndex = useCallback((index: number) => {
+    if (!Number.isInteger(index) || index < 0 || index >= citationAnchorIds.length) return;
+    setActiveCitationIndex(index);
+    storeCitationEvidencePosition(
+      props.citation_receipt_sha256,
+      citationAnchorIds.length,
+      index,
+    );
+    const generation = ++positionGeneration.current;
+    const mutationKey = crypto.randomUUID();
+    pendingPosition.current = { index, mutationKey };
+    setCitationSyncStatus("device");
+    syncPosition(index, mutationKey, generation);
+  }, [citationAnchorIds.length, props.citation_receipt_sha256, syncPosition]);
+  const retryCitationPosition = useCallback(() => {
+    const pending = pendingPosition.current;
+    if (!pending) return;
+    syncPosition(pending.index, pending.mutationKey, positionGeneration.current);
+  }, [syncPosition]);
+  const handleCitationKeyDown = useCallback((event: KeyboardEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement;
+    const inTraversal = Boolean(target.closest("[data-testid='hosted-html-citation-traversal']"));
+    const onActiveEvidence = target.getAttribute("data-citation-active") === "true";
+    if (!inTraversal && !onActiveEvidence) return;
+    let next: number | null = null;
+    if (event.key === "ArrowLeft") next = Math.max(0, activeCitationIndex - 1);
+    else if (event.key === "ArrowRight") next = Math.min(citationAnchorIds.length - 1, activeCitationIndex + 1);
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = citationAnchorIds.length - 1;
+    if (next === null) return;
+    event.preventDefault();
+    if (next === activeCitationIndex) return;
+    activateCitationIndex(next);
+  }, [activateCitationIndex, activeCitationIndex, citationAnchorIds.length]);
+  useEffect(() => {
+    const anchor = citationAnchorIds[activeCitationIndex];
+    if (!anchor || !/^antiek-chunk-[a-f0-9]{64}$/.test(anchor)) return;
+    const marked = Array.from(
+      htmlBodyRef.current?.querySelectorAll<HTMLElement>("[data-antiek-chunk-anchor='true']") ?? [],
+    );
+    const allowed = new Set(citationAnchorIds);
+    for (const element of marked) {
+      element.classList.toggle("citation-evidence-anchor", allowed.has(element.id));
+      if (allowed.has(element.id)) element.setAttribute("data-citation-evidence", "true");
+      else element.removeAttribute("data-citation-evidence");
+      element.classList.toggle("citation-evidence-active", element.id === anchor);
+      if (allowed.has(element.id)) element.tabIndex = -1;
+      else element.removeAttribute("tabindex");
+      if (element.id === anchor) {
+        element.setAttribute("data-citation-active", "true");
+        element.setAttribute("aria-current", "location");
+      } else {
+        element.removeAttribute("data-citation-active");
+        element.removeAttribute("aria-current");
+      }
+    }
+    const target = marked.find((element) => element.id === anchor);
+    if (target) {
+      target.focus({ preventScroll: true });
+      const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+      target.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+    }
+  }, [activeCitationIndex, citationAnchorIds, sanitizedHtml]);
   const assetId = props.document_id?.trim() || "";
   // Residual (alo): domain-search coverage for free PD subjects on reading host.
   const hostedDomainCoverage = useMemo(
@@ -666,6 +832,7 @@ export default function HostedHtmlDocumentHost(
     <div
       className="flex h-full flex-col gap-3 bg-transparent p-6"
       data-testid="hosted-html-document-host"
+      onKeyDown={handleCitationKeyDown}
       data-view-format={viewFormat}
       data-document-id={props.document_id ?? ""}
       data-source={payloadSource}
@@ -986,7 +1153,7 @@ export default function HostedHtmlDocumentHost(
                 data-testid="hosted-html-collective-analysis-honesty"
                 data-twin-seed-path="collective_written_analysis"
                 data-auto-seed-if-empty="true"
-                data-l6-live-council="deferred"
+                data-l6-live-council="separate_operator_gate"
                 data-html-first="true"
                 data-view-format="html"
                 data-spawn-count={
@@ -997,8 +1164,8 @@ export default function HostedHtmlDocumentHost(
                 <p>
                   Collective written analysis · multi-agent (≥2 spawns) ·
                   offline merge unit · twin auto-seed if empty (recursive
-                  note-taker) · L6 live council deferred · never invent live
-                  council · HTML · not PDF
+                  note-taker) · L6 council substrate shipped with separate
+                  server-truth operator gate · never invent live readiness · HTML · not PDF
                 </p>
                 <p className="space-x-3">
                   <a
@@ -1369,6 +1536,53 @@ export default function HostedHtmlDocumentHost(
         </div>
       </header>
 
+      {citationAnchorIds.length > 0 ? (
+        <nav aria-label="Citation evidence traversal" data-testid="hosted-html-citation-traversal" data-active-index={String(activeCitationIndex)} data-citation-count={String(citationAnchorIds.length)}>
+          {activeCitationEvidence ? <EvidenceWriteInsertAction evidence={activeCitationEvidence} /> : null}
+          {citationEvidence.length >= 2 ? <EvidenceBundleWriteAction evidence={citationEvidence} /> : null}
+          <button type="button" data-testid="hosted-html-citation-previous" disabled={activeCitationIndex === 0} onClick={() => activateCitationIndex(Math.max(0, activeCitationIndex - 1))}>Previous evidence</button>
+          <span role="status" aria-live="polite" aria-atomic="true" data-testid="hosted-html-citation-position">Evidence {activeCitationIndex + 1} of {citationAnchorIds.length}</span>
+          <span data-testid="hosted-html-citation-sync-status">{citationSyncStatus === "synced" ? "Synced" : citationSyncStatus === "unavailable" ? "Sync unavailable" : "Saved on this device"}</span>
+          {citationSyncStatus === "unavailable" && pendingPosition.current ? <button type="button" data-testid="hosted-html-citation-sync-retry" onClick={retryCitationPosition}>Retry sync</button> : null}
+          <button type="button" data-testid="hosted-html-citation-next" disabled={activeCitationIndex >= citationAnchorIds.length - 1} onClick={() => activateCitationIndex(Math.min(citationAnchorIds.length - 1, activeCitationIndex + 1))}>Next evidence</button>
+          <details data-testid="hosted-html-citation-overview">
+            <summary>Evidence overview</summary>
+            <ol>
+              {citationAnchorIds.map((anchor, index) => (
+                <li key={anchor}>
+                  <button
+                    type="button"
+                    aria-pressed={index === activeCitationIndex}
+                    data-testid={`hosted-html-citation-overview-${index}`}
+                    onClick={() => activateCitationIndex(index)}
+                  >Evidence {index + 1}</button>
+                </li>
+              ))}
+            </ol>
+          </details>
+        </nav>
+      ) : null}
+
+      {citationEvidence.length > 0 ? (
+        <aside data-testid="hosted-html-citation-controls" data-citation-count={String(citationEvidence.length)}>
+          <strong>Validated source evidence</strong>
+          <ul>
+            {citationEvidence.map((item) => (
+              <li key={item.receipt_sha256}>
+                claim {item.claim_id} · {item.chunk_ids.length} chunk{item.chunk_ids.length === 1 ? "" : "s"}
+                {" "}
+                <button
+                  type="button"
+                  data-testid={`hosted-html-open-citation-${item.receipt_sha256}`}
+                  data-document-id={item.document_id}
+                  onClick={() => openHostedDocumentPanel({ documentId: item.document_id, chunkIds: item.chunk_ids, citationReceiptSha256: item.receipt_sha256, title: `Citation · claim ${item.claim_id}` })}
+                >Open evidence</button>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      ) : null}
+
       {!isHtml ? (
         <p
           className="text-sm font-mono text-emperor"
@@ -1378,6 +1592,7 @@ export default function HostedHtmlDocumentHost(
         </p>
       ) : html ? (
         <div
+          ref={htmlBodyRef}
           className="prose min-h-0 flex-1 overflow-auto text-sm text-ink dark:text-parchment"
           data-testid="hosted-html-body"
           // Residual (en): capture highlight for float deep research.

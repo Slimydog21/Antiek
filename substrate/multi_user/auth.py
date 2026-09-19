@@ -8,6 +8,7 @@ layer (interfaces/research/api/app.py middleware), not at substrate.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
@@ -76,6 +77,42 @@ def operator_claims() -> UserClaims:
     instead. Both coexist during the transition."""
     return UserClaims(
         user_id="__operator__",
+        email=None,
+        scopes=frozenset({"operator", "private_research", "shared_substrate_write"}),
+        issued_at=_now_iso(),
+    )
+
+
+def account_user_id(email: str) -> str:
+    """Stable opaque account subject for email-authenticated principals."""
+    if not isinstance(email, str) or not email.strip() or email != email.strip():
+        raise ValueError("canonical email required")
+    normalized = email.lower()
+    return "acct-" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def account_claims(*, user_id: str, email: str, issued_at: str | None = None) -> UserClaims:
+    if user_id != account_user_id(email):
+        raise ValueError("account subject does not match authenticated email")
+    return UserClaims(
+        user_id=user_id,
+        email=email.strip().lower(),
+        scopes=frozenset({"private_research"}),
+        issued_at=issued_at or _now_iso(),
+    )
+
+
+def credential_claims(*, kind: str, credential_id: str) -> UserClaims:
+    """Opaque, distinct subject for an authenticated machine credential."""
+    if kind not in {"bearer", "cloudflare_service"}:
+        raise ValueError("unsupported credential kind")
+    if not isinstance(credential_id, str) or not credential_id.strip():
+        raise ValueError("credential identifier required")
+    subject = "svc-" + hashlib.sha256(
+        f"{kind}\0{credential_id.strip()}".encode()
+    ).hexdigest()
+    return UserClaims(
+        user_id=subject,
         email=None,
         scopes=frozenset({"operator", "private_research", "shared_substrate_write"}),
         issued_at=_now_iso(),

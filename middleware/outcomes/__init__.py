@@ -34,7 +34,11 @@ from .events import (
     emit_outcome_recorded,
     emit_rubric_scored,
 )
-from .recorder import build_outcome_record
+from .recorder import (
+    build_outcome_record,
+    record_outcome_authorized,
+    record_outcome_payload_authorized,
+)
 from .types import (
     ACTUAL_DECISIONS,
     DECISION_RECOMMENDATIONS,
@@ -60,6 +64,8 @@ __all__ = [
     "DecisionAlignmentInput",
     "OutcomeRecord",
     "build_outcome_record",
+    "record_outcome_authorized",
+    "record_outcome_payload_authorized",
     "emit_outcome_recorded",
     "emit_rubric_scored",
     "emit_groundedness_scored",

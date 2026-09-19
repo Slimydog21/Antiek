@@ -161,8 +161,7 @@ def nli_entailment_score(
         if ent > best:
             best = ent
             best_detail = (
-                f"entail={ent:.3f} neutral={s['neutral']:.3f} "
-                f"contradict={s['contradiction']:.3f}"
+                f"entail={ent:.3f} neutral={s['neutral']:.3f} contradict={s['contradiction']:.3f}"
             )
     best = max(0.0, min(1.0, best))
     return best, f"max entailment over {len(chunk_texts)} chunk(s): {best_detail}"
@@ -181,8 +180,41 @@ def make_nli_backend(
     Mirrors ``make_llm_judge_backend``'s shape so the two optional backends
     plug in symmetrically.
     """
+
+    def _evaluate(
+        claim: str, chunk_texts: Sequence[str], threshold: float
+    ) -> tuple[float, str, str]:
+        if not chunk_texts or not any(c and c.strip() for c in chunk_texts):
+            return 0.0, "no cited evidence — claim cannot be grounded", "not_established"
+        pipe = _load_nli_pipeline(model_name)
+        best_entailment = 0.0
+        best_contradiction = 0.0
+        best_detail = ""
+        for chunk in chunk_texts:
+            if not chunk or not chunk.strip():
+                continue
+            scores = _score_pair(chunk, claim, pipe)
+            best_entailment = max(best_entailment, scores["entailment"])
+            best_contradiction = max(best_contradiction, scores["contradiction"])
+            if scores["entailment"] == best_entailment:
+                best_detail = (
+                    f"entail={scores['entailment']:.3f} neutral={scores['neutral']:.3f} "
+                    f"contradict={scores['contradiction']:.3f}"
+                )
+        rationale = f"max entailment over {len(chunk_texts)} chunk(s): {best_detail}"
+        if best_entailment >= threshold and best_entailment >= best_contradiction:
+            relation = "entailed"
+        elif best_contradiction >= threshold and best_contradiction > best_entailment:
+            relation = "contradicted"
+        else:
+            relation = "not_established"
+        return best_entailment, rationale, relation
+
     def _backend(claim: str, chunk_texts: Sequence[str]) -> tuple[float, str]:
-        return nli_entailment_score(claim, chunk_texts, model_name=model_name)
+        score, rationale, _relation = _evaluate(claim, chunk_texts, 0.5)
+        return score, rationale
+
+    _backend.evaluate = _evaluate  # type: ignore[attr-defined]
     _backend.__name__ = "nli_backend"
     return _backend
 

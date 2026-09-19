@@ -116,17 +116,17 @@ def test_handoff_emits_same_block_and_reconstructs_production_thread(handoff):
 
 
 def test_handoff_repairs_failed_append_from_command_receipt(handoff, monkeypatch):
-    original = write_routes.append_event_once
+    original = write_routes.append_event_once_authorized
     calls = 0
 
-    def fail_once(event):
+    def fail_once(authority, event):
         nonlocal calls
         calls += 1
         if calls == 1:
             raise OSError("simulated append fault")
-        return original(event)
+        return original(authority, event)
 
-    monkeypatch.setattr(write_routes, "append_event_once", fail_once)
+    monkeypatch.setattr(write_routes, "append_event_once_authorized", fail_once)
     with pytest.raises(OSError, match="append fault"):
         _post(handoff)
     assert _seam_events(handoff["events"]) == []
@@ -136,13 +136,15 @@ def test_handoff_repairs_failed_append_from_command_receipt(handoff, monkeypatch
 
 
 def test_handoff_repairs_accepted_event_after_source_is_taken_down(handoff, monkeypatch):
-    original = write_routes.append_event_once
+    original = write_routes.append_event_once_authorized
     monkeypatch.setattr(
-        write_routes, "append_event_once", lambda _event: (_ for _ in ()).throw(OSError())
+        write_routes,
+        "append_event_once_authorized",
+        lambda _authority, _event: (_ for _ in ()).throw(OSError()),
     )
     with pytest.raises(OSError):
         _post(handoff)
-    monkeypatch.setattr(write_routes, "append_event_once", original)
+    monkeypatch.setattr(write_routes, "append_event_once_authorized", original)
     with connect_write(default_db_path(), purpose="test/write_to_read_takedown") as con:
         con.execute(
             "INSERT INTO book_assets (document_id, taken_down) VALUES (?, TRUE)",

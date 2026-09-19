@@ -1029,7 +1029,13 @@ describe("MidnightOil mode", () => {
     fireEvent.click(screen.getByTestId("moil-reopen-operational-html"));
     expect(openWindow).toHaveBeenCalledWith(
       "hosted_html_document",
-      expect.objectContaining({ document_id: "doc-refused-html" }),
+      expect.objectContaining({
+        document_id: "doc-refused-html",
+        resume_ref: {
+          resolver: "engagement_document",
+          document_id: "doc-refused-html",
+        },
+      }),
       expect.objectContaining({ mode: "floating" }),
     );
     expect(screen.queryByTestId("moil-retry-graph-admission")).toBeNull();
@@ -1109,6 +1115,76 @@ describe("MidnightOil mode", () => {
     expect(screen.queryByTestId("moil-retry-graph-admission")).toBeNull();
     expect(screen.getByTestId("moil-graph-projection-nav")).toBeTruthy();
     expect(runMidnightOilJob).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite a newer refresh with a stale retry response", async () => {
+    const pending = {
+      job_id: "moil_retry_stale",
+      goals: ["Recover graph admission"],
+      duration_minutes: 60,
+      status: "complete",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
+      research_brief_hash: "d".repeat(64),
+      approved_research_brief_hash: "d".repeat(64),
+      research_brief_state: "approved",
+      research_result_state: "returned",
+      deposit_state: "complete",
+      deposit_document_id: "doc-retry-stale",
+      graph_projection_state: "pending",
+      graph_projection_reason: "graph_lock_unavailable",
+      recommended_price_ceiling_usd: 3.6,
+      view_format: "html",
+      runnable: false,
+    } as const;
+    createMidnightOilJob.mockResolvedValue(pending);
+    let resolveRetry: (value: unknown) => void = () => undefined;
+    retryMidnightOilGraphAdmission.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRetry = resolve;
+        }),
+    );
+    getMidnightOilJob.mockResolvedValue({
+      ...pending,
+      graph_projection_state: "refused",
+      graph_projection_reason: "claim_coverage_missing",
+    });
+
+    render(<MidnightOil />);
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
+      target: { value: "Recover graph admission" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /create job \+ recommend ceiling/i }),
+    );
+    fireEvent.click(await screen.findByTestId("moil-retry-graph-admission"));
+    fireEvent.click(screen.getByTestId("moil-refresh-status"));
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("moil-graph-admission-status")
+          .getAttribute("data-admission-state"),
+      ).toBe("refused");
+    });
+
+    resolveRetry({
+      ...pending,
+      graph_projection_state: "complete",
+      graph_projection_reason: null,
+      graph_node_ids: ["node-stale-must-not-open"],
+      graph_deliverable_id: "dlv-stale-must-not-open",
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("moil-retry-graph-admission")).toBeNull();
+    });
+    expect(
+      screen
+        .getByTestId("moil-graph-admission-status")
+        .getAttribute("data-admission-state"),
+    ).toBe("refused");
+    expect(screen.queryByTestId("moil-graph-projection-nav")).toBeNull();
   });
 
   it("hides graph navigation for a contradictory complete response", async () => {
@@ -1564,6 +1640,10 @@ describe("MidnightOil mode", () => {
           document_id: "draft_moil_asset_dep_abc",
           view_format: "html",
           source: "midnight_oil_deposit",
+          resume_ref: {
+            resolver: "engagement_document",
+            document_id: "draft_moil_asset_dep_abc",
+          },
         }),
         expect.objectContaining({
           id: "win:moil-deposit:draft_moil_asset_dep_abc",

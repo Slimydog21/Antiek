@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 
 import {
   exportResearchArtifact,
   getResearchArtifactBlocks,
+  getResearchArtifactClaims,
   type ResearchArtifactBlock,
+  type ResearchArtifactClaimsResponse,
 } from "../../lib/api";
 import { artifactKindToBlockKind } from "../../lib/artifactBlocks";
 import {
@@ -11,6 +13,9 @@ import {
   type PaletteDragPayload,
 } from "../CreationStudio/BlockPalette";
 import LemonButton from "../../components/lemon/LemonButton";
+import { openWindow } from "../../components/windows/openWindow";
+import { useAuth } from "../../lib/auth";
+import { openClaimInspector } from "../../workspace/actions";
 
 /**
  * ANT-AHT SPR-AHT-06 — draggable insight/question blocks sourced from
@@ -36,40 +41,65 @@ export default function ArtifactOutlineShelf({
   investigationId,
 }: ArtifactOutlineShelfProps) {
   const [blocks, setBlocks] = useState<ResearchArtifactBlock[]>([]);
-  const [exportPath, setExportPath] = useState<string | null>(null);
+  const [claimSupports, setClaimSupports] = useState<ResearchArtifactClaimsResponse | null>(null);
+  const [exportUrl, setExportUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { sessionGeneration } = useAuth();
+  const requestGeneration = useRef(0);
+  const currentIdentity = `${sessionGeneration}:${investigationId}`;
+  const identityRef = useRef(currentIdentity);
+  identityRef.current = currentIdentity;
 
   const reload = useCallback(async () => {
-    try {
-      const res = await getResearchArtifactBlocks(investigationId);
-      setBlocks(res.blocks);
-      setErr(null);
-    } catch (e) {
-      setBlocks([]);
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  }, [investigationId]);
+    const generation = ++requestGeneration.current;
+    const [blocksResult, claimsResult] = await Promise.allSettled([
+      getResearchArtifactBlocks(investigationId),
+      getResearchArtifactClaims(investigationId),
+    ]);
+    if (generation !== requestGeneration.current) return;
+    if (blocksResult.status === "fulfilled") setBlocks(blocksResult.value.blocks);
+    else setBlocks([]);
+    if (claimsResult.status === "fulfilled") setClaimSupports(claimsResult.value);
+    else setClaimSupports(null);
+    const failures = [blocksResult, claimsResult]
+      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+      .map((result) => result.reason instanceof Error ? result.reason.message : String(result.reason));
+    setErr(failures.length === 2 ? failures.join(" · ") : null);
+  }, [investigationId, sessionGeneration]);
 
   useEffect(() => {
+    ++requestGeneration.current;
+    setBlocks([]);
+    setClaimSupports(null);
+    setExportUrl(null);
+    setErr(null);
+    setBusy(false);
     void reload();
+    return () => { ++requestGeneration.current; };
   }, [reload]);
 
   const onExport = async () => {
+    const startedFor = currentIdentity;
     setBusy(true);
     setErr(null);
     try {
       const res = await exportResearchArtifact(investigationId);
-      setExportPath(res.path);
+      if (identityRef.current !== startedFor) return;
+      setExportUrl(res.view_url);
+      openWindow("research_artifact", { investigationId }, {
+        id: `win:research-artifact:${sessionGeneration}:${investigationId}`,
+      });
       await reload();
     } catch (e) {
+      if (identityRef.current !== startedFor) return;
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      if (identityRef.current === startedFor) setBusy(false);
     }
   };
 
-  if (!blocks.length && !exportPath && !err) {
+  if (!blocks.length && !claimSupports?.claims.length && !exportUrl && !err) {
     return (
       <div className="border-t border-rule px-4 py-3 text-sm text-ink-mute" data-testid="artifact-shelf-empty">
         <p className="mb-2">No outline blocks yet — export after insights land in the graph.</p>
@@ -89,10 +119,15 @@ export default function ArtifactOutlineShelf({
         <LemonButton size="sm" disabled={busy} onClick={() => void onExport()}>
           Export HTML
         </LemonButton>
-        {exportPath ? (
-          <span className="truncate font-mono text-[10px] text-ink-mute" title={exportPath}>
-            {exportPath}
-          </span>
+        {exportUrl ? (
+          <a
+            className="truncate text-[10px] text-ocean underline"
+            href={exportUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open private HTML
+          </a>
         ) : null}
       </div>
       {err ? <p className="text-sm text-emperor">{err}</p> : null}
@@ -110,6 +145,31 @@ export default function ArtifactOutlineShelf({
           </li>
         ))}
       </ul>
+      {claimSupports?.claims.length ? (
+        <div className="mt-3 border-t border-rule pt-2">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-mute">Claim support · inspect provenance</p>
+          <ul className="flex max-h-40 flex-col gap-1.5 overflow-y-auto">
+            {claimSupports.claims.map((claim) => (
+              <li key={claim.claim_index}>
+                <button
+                  type="button"
+                  className="w-full rounded border border-rule bg-ice-1 px-2 py-1.5 text-left text-sm hover:bg-sun/10"
+                  onClick={() => openClaimInspector({
+                    claimId: `artifact-${claim.claim_index}`,
+                    investigationId,
+                    claimIndex: claim.claim_index,
+                    contentHash: claimSupports.content_hash,
+                    sessionGeneration,
+                  })}
+                >
+                  <span className="line-clamp-2 text-ink">{claim.claim}</span>
+                  <span className="text-[10px] text-ink-mute">{claim.supporting_chunk_ids.length} direct · {claim.inherited_support.length} inherited</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

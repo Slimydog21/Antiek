@@ -6,7 +6,7 @@ import { useReplyMode } from "../hooks/useReplyMode";
 import SpokenReply from "./SpokenReply";
 import ContextPicker from "./ai/ContextPicker";
 import {
-  dispatchAiAction,
+  dispatchAiActionAsync,
   parseAssistantReply,
   workspaceContextPrompt,
 } from "./ai/aiActions";
@@ -221,7 +221,21 @@ export default function AISidecar() {
           operator_prompt: draft.slice(0, 2000),
           investigation_id: "__sidecar__",
         };
-        const dispatched = actions.map((a) => dispatchAiAction(a, ctx));
+        const dispatched: DispatchedAction[] = [];
+        for (const action of actions) {
+          try {
+            dispatched.push(await dispatchAiActionAsync(action, ctx));
+          } catch (error) {
+            dispatched.push({
+              action,
+              label: `⚠ Action failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+              undo: null,
+              at: Date.now(),
+            });
+          }
+        }
         setAiLog((prev) => [...dispatched, ...prev].slice(0, 20));
       }
       if (parseErrors.length > 0 && import.meta.env.DEV) {

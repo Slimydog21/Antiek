@@ -49,10 +49,11 @@ if _PKG_ROOT not in sys.path:
 from substrate.constants import (  # noqa: E402
     CURATED_NEWS_TIER_3 as _CURATED_NEWS_TIER_3,
 )
-from substrate.constants import (
+from substrate.constants import (  # noqa: E402
     RESEARCH_HOSTS_TIER_2 as _RESEARCH_HOSTS_TIER_2,
 )
 from substrate.event_log import emit_typed  # noqa: E402
+from substrate.investigation_tenancy import InvestigationAuthority  # noqa: E402
 from substrate.legal_gate import LegalGate, default_legal_gate  # noqa: E402
 from substrate.schemas.events import (  # noqa: E402
     DiscoveryProposedPayload,
@@ -175,9 +176,7 @@ def _discovery_id(url: str, investigation_id: str, query: str = "") -> str:
     empty. Existing test callsites that compute discovery_id without
     a query (verifying within-investigation stability) still pass.
     """
-    h = hashlib.sha256(
-        f"{url}\x1f{investigation_id}\x1f{query}".encode()
-    ).hexdigest()[:16]
+    h = hashlib.sha256(f"{url}\x1f{investigation_id}\x1f{query}".encode()).hexdigest()[:16]
     return f"{_DISCOVERY_ID_PREFIX}{h}"
 
 
@@ -232,6 +231,7 @@ def discover(
     # circular import.
     if events_dir is None:
         from acquisition.search import default_discovery_events_dir  # noqa: PLC0415
+
         events_dir = default_discovery_events_dir()
 
     # Per spec §6.5 cache check — runs BEFORE the budget reservation
@@ -290,6 +290,7 @@ def discover(
             try:
                 # Initialize schema on first use so the table exists.
                 from substrate.graph import ensure_initialized
+
                 ensure_initialized(resolved_db)
                 store(
                     cache_key(
@@ -328,6 +329,7 @@ def _default_db_path_or_none() -> str | None:
     """
     try:
         from substrate.graph import default_db_path
+
         return default_db_path()
     except Exception:
         return None
@@ -343,9 +345,7 @@ def _hydrate_proposed(d: dict) -> DiscoveryProposed:
     """
     provider_specific = d.get("provider_specific") or {}
     response_id = (
-        provider_specific.get("response_id")
-        if isinstance(provider_specific, dict)
-        else None
+        provider_specific.get("response_id") if isinstance(provider_specific, dict) else None
     )
     # Backward compat: if provider_specific didn't carry response_id,
     # fall back to the top-level field.
@@ -365,9 +365,7 @@ def _hydrate_proposed(d: dict) -> DiscoveryProposed:
         provider_response_id=response_id,
         cost_usd_estimate=float(d.get("cost_usd_estimate") or 0.0),
         proposed_event_id=d.get("proposed_event_id"),
-        provider_specific=(
-            provider_specific if isinstance(provider_specific, dict) else {}
-        ),
+        provider_specific=(provider_specific if isinstance(provider_specific, dict) else {}),
     )
 
 
@@ -394,6 +392,7 @@ def find_similar(
     # Spec §14.1 — separate discovery events dir.
     if events_dir is None:
         from acquisition.search import default_discovery_events_dir  # noqa: PLC0415
+
         events_dir = default_discovery_events_dir()
 
     from .client import COST_PER_FIND_SIMILAR_USD
@@ -498,6 +497,7 @@ def promote_discovery(
     db_path: str | None = None,
     embedder: object | None = None,
     events_dir: str | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> DiscoveryPromotionResult:
     """Promote a prior discovery to ingestion.
 
@@ -521,8 +521,11 @@ def promote_discovery(
     # Spec §14.1 — separate discovery events dir.
     if events_dir is None:
         from acquisition.search import default_discovery_events_dir  # noqa: PLC0415
+
         events_dir = default_discovery_events_dir()
 
+    if authority is not None and legal_gate is None:
+        raise RuntimeError("authenticated Exa promotion requires a durable legal gate")
     gate = legal_gate or default_legal_gate()
     verdict = gate.check_url(discovery.url)
 
@@ -562,6 +565,7 @@ def promote_discovery(
             source_tier=tier,
             db_path=db_path,
             embedder=embedder,  # type: ignore[arg-type]
+            authority=authority,
         )
     except Exception as e:
         # Fetch / extraction / DB error — emit fetch_failed so the
@@ -587,6 +591,29 @@ def promote_discovery(
             selected_event_id=event_id,
             rejection_reason=f"{type(e).__name__}: {e}",
             legal_gate_kind=verdict.gate_kind,
+        )
+
+    if (ingest_result.skipped_reason or "").startswith("legal_policy:"):
+        selected = DiscoverySelectedPayload(
+            discovery_id=discovery.discovery_id,
+            document_id=None,
+            decision="rejected_by_legal_gate",
+            rejection_reason=ingest_result.skipped_reason,
+        )
+        event_id = emit_typed(
+            investigation_id,
+            selected,
+            role="acquisition",
+            policy_id="acquisition/search/exa",
+            events_dir=events_dir,
+        )
+        return DiscoveryPromotionResult(
+            discovery_id=discovery.discovery_id,
+            decision="rejected_by_legal_gate",
+            document_id=None,
+            selected_event_id=event_id,
+            rejection_reason=ingest_result.skipped_reason,
+            legal_gate_kind="durable_document_policy",
         )
 
     selected = DiscoverySelectedPayload(
@@ -629,6 +656,7 @@ def reject_discovery(
     # Spec §14.1 — separate discovery events dir.
     if events_dir is None:
         from acquisition.search import default_discovery_events_dir  # noqa: PLC0415
+
         events_dir = default_discovery_events_dir()
 
     selected = DiscoverySelectedPayload(

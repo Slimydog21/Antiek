@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from .authority import OPERATOR_ACCOUNT_ID, operator_authority
 from .compose import compose_artifacts
 from .export import export_research_artifact
 from .import_notes import import_agent_notes
@@ -32,7 +33,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.import_notes:
         from pathlib import Path
 
-        res = import_agent_notes(Path(args.import_notes))
+        if len(args.investigation_ids) != 1:
+            p.error("exactly one investigation_id is required with --import-notes")
+        iid = args.investigation_ids[0]
+        requested = Path(args.import_notes).resolve()
+        authority = operator_authority(iid)
+        canonical = authority.artifact_path().resolve()
+        if requested != canonical:
+            p.error("--import-notes must name the canonical operator artifact path")
+        res = import_agent_notes(requested, authority=authority)
         print(
             f"imported={res.notes_imported} skipped_dup={res.notes_skipped_duplicate} "
             f"investigation={res.investigation_id}"
@@ -41,11 +50,13 @@ def main(argv: list[str] | None = None) -> int:
     if not args.investigation_ids:
         p.error("investigation_ids required unless --import-notes is set")
     if len(args.investigation_ids) > 1 and args.compose:
-        composed = compose_artifacts(args.investigation_ids)
+        composed = compose_artifacts(args.investigation_ids, account_id=OPERATOR_ACCOUNT_ID)
         print(composed.path)
         return 0
     for iid in args.investigation_ids:
-        exported = export_research_artifact(iid, emit_event=not args.no_event)
+        exported = export_research_artifact(
+            iid, authority=operator_authority(iid), emit_event=not args.no_event
+        )
         print(exported.path)
     return 0
 

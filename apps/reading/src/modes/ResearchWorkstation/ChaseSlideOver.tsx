@@ -6,6 +6,10 @@ import LemonTextarea from "../../components/lemon/LemonTextarea";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import { startInvestigation } from "../../lib/api";
+import {
+  ResearchRunCeilingApproval,
+  type ResearchRunAuthorization,
+} from "../../components/engagement/ResearchRunCeilingApproval";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import ThinkingStream from "./ThinkingStream";
 
@@ -35,6 +39,8 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
   const [busy, setBusy] = useState(false);
   const [spawnedId, setSpawnedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [runAuthorization, setRunAuthorization] =
+    useState<ResearchRunAuthorization>({ approved: false, ceilingUsd: null, projection: null });
   const navigate = useNavigate();
 
   // If the spawnContext changes mid-life (operator reopens with a new
@@ -51,6 +57,10 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
       setError("Question is too short.");
       return;
     }
+    if (!runAuthorization.approved || runAuthorization.ceilingUsd == null) {
+      setError("Review and approve an initial-run hard ceiling.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -59,6 +69,7 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
         context: spawnContext,
         parent_investigation_id: parentInvestigationId,
         spawn_context: spawnContext,
+        approved_run_ceiling_usd: runAuthorization.ceilingUsd,
       });
       setSpawnedId(resp.investigation_id);
       recordSpawnRelationship(resp.investigation_id, parentInvestigationId);
@@ -103,6 +114,13 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
           onSubmit={() => void spawn()}
           className="font-serif"
         />
+        <ResearchRunCeilingApproval
+          promptText={`${question.trim()}\n${spawnContext}`}
+          researchTier="deep"
+          disabled={busy}
+          onAuthorizationChange={setRunAuthorization}
+          className="mt-3"
+        />
       </div>
 
       {error && (
@@ -113,7 +131,7 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
         <LemonButton
           variant="primary"
           onClick={() => void spawn()}
-          disabled={busy || question.trim().length < 3}
+          disabled={busy || question.trim().length < 3 || !runAuthorization.approved}
         >
           {busy ? "Spawning…" : "Spawn investigation"}
         </LemonButton>

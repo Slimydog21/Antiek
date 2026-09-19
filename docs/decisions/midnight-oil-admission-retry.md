@@ -1,6 +1,6 @@
 # Midnight Oil graph-admission retry
 
-**Status:** executing offline; no live provider or production smoke
+**Status:** accepted offline; no live provider or production smoke
 **Date:** 2026-07-13
 **Authority:** the authenticated job owner explicitly initiates each retry
 

@@ -78,6 +78,7 @@ describe("notDiamondBenchDelta (ade)", () => {
     });
     expect(d.status).toBe("agree");
     expect(notDiamondBenchDeltaLabel(d)).toMatch(/agree/i);
+    expect(notDiamondBenchDeltaLabel(d)).toMatch(/not correctness/i);
     expect(notDiamondBenchDeltaLabel(d)).toMatch(/advisory only/i);
   });
 

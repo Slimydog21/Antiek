@@ -23,10 +23,13 @@ Each entry MUST resolve to a feed URL via ``resolve_feed_url``: an explicit
 publications (not ``*.substack.com``) that still expose ``/feed`` are supported
 — resolution is purely structural, no host allowlist.
 """
+
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+
+from substrate.investigation_tenancy import InvestigationAuthority
 
 from .adapter import (
     DEFAULT_SUBSTACK_SOURCE_TIER,
@@ -67,21 +70,17 @@ def resolve_feed_url(entry: dict) -> str:
             return base
         return base + "/feed"
     raise SubscriptionManifestError(
-        "entry must have 'feed_url' or 'base_url': "
-        f"{json.dumps(entry, sort_keys=True)}"
+        f"entry must have 'feed_url' or 'base_url': {json.dumps(entry, sort_keys=True)}"
     )
 
 
 def _parse_entry(entry, index: int) -> Subscription:
     if not isinstance(entry, dict):
-        raise SubscriptionManifestError(
-            f"publications[{index}] is not an object: {entry!r}"
-        )
+        raise SubscriptionManifestError(f"publications[{index}] is not an object: {entry!r}")
     name = entry.get("name")
     if not name:
         raise SubscriptionManifestError(
-            f"publications[{index}] is missing a 'name': "
-            f"{json.dumps(entry, sort_keys=True)}"
+            f"publications[{index}] is missing a 'name': {json.dumps(entry, sort_keys=True)}"
         )
     try:
         feed_url = resolve_feed_url(entry)
@@ -92,8 +91,7 @@ def _parse_entry(entry, index: int) -> Subscription:
     source_tier = entry.get("source_tier", DEFAULT_SUBSTACK_SOURCE_TIER)
     if not isinstance(source_tier, int):
         raise SubscriptionManifestError(
-            f"publications[{index}] ({name!r}) source_tier must be an int, "
-            f"got {source_tier!r}"
+            f"publications[{index}] ({name!r}) source_tier must be an int, got {source_tier!r}"
         )
     return Subscription(name=name, feed_url=feed_url, source_tier=source_tier)
 
@@ -113,9 +111,7 @@ def load_subscriptions(path: str) -> list[Subscription]:
         )
     publications = data["publications"]
     if not isinstance(publications, list):
-        raise SubscriptionManifestError(
-            f"'publications' must be a list in: {path}"
-        )
+        raise SubscriptionManifestError(f"'publications' must be a list in: {path}")
     return [_parse_entry(entry, i) for i, entry in enumerate(publications)]
 
 
@@ -127,6 +123,7 @@ def ingest_subscriptions(
     max_posts: int | None = None,
     embedder=None,
     client=None,
+    authority: InvestigationAuthority | None = None,
 ) -> list[PublicationIngestSummary]:
     """Driver: load the manifest and ingest every publication's feed.
 
@@ -152,6 +149,7 @@ def ingest_subscriptions(
                 source_tier=sub.source_tier,
                 embedder=embedder,
                 client=client,
+                authority=authority,
             )
         )
     return summaries

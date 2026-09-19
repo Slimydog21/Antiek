@@ -185,8 +185,9 @@ vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {
           estimatedUsdHigh: 0.1,
           remainingUsd: 5,
           modelId: null,
+          pricingFingerprint: "price-test-v1",
         });
-      }, [props.onProjectionChange]);
+      }, [props.onProjectionChange, props.researchTier]);
       return (
         <div
           data-testid="research-launch-budget-panel-stub"
@@ -230,6 +231,16 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
       tiers: [],
     });
   });
+
+  async function approveInitialRunCeiling(value = "1.25") {
+    fireEvent.change(screen.getByLabelText("Initial-run hard ceiling (USD)"), {
+      target: { value },
+    });
+    const checkbox = screen.getByLabelText("Approve initial-run hard ceiling") as HTMLInputElement;
+    await waitFor(() => expect(checkbox.disabled).toBe(false));
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(checkbox.checked).toBe(true));
+  }
 
   afterEach(() => cleanup());
 
@@ -708,11 +719,13 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
         ),
       ).toBe("none");
     });
+    await approveInitialRunCeiling();
     fireEvent.click(screen.getByTestId("research-this-full"));
     await waitFor(() => {
       // Residual (jm): opts.researchTier defaults to deep when Settings unset.
       expect(spinResearch).toHaveBeenCalledWith("doc-1", 0, "hello world", {
         researchTier: "deep",
+        approvedRunCeilingUsd: 1.25,
       });
     });
     expect(navigate).toHaveBeenCalledWith("/inv/inv_full");
@@ -741,13 +754,14 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
         ),
       ).toBe("installed");
     });
+    await approveInitialRunCeiling();
     fireEvent.click(screen.getByTestId("research-this-full"));
     await waitFor(() => {
       expect(spinResearch).toHaveBeenCalledWith(
         "doc-1",
         0,
         "Wrestle full workstation",
-        { researchTier: "wrestle" },
+        { researchTier: "wrestle", approvedRunCeilingUsd: 1.25 },
       );
     });
     expect(navigate).toHaveBeenCalledWith("/inv/inv_wrestle");

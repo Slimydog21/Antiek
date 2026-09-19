@@ -18,12 +18,19 @@ if _REPO not in sys.path:
 from substrate.marketplace_host import (  # noqa: E402
     ANTIEK_MARKETPLACE_LIVE_PAYMENT_ENV,
     InMemoryHostStore,
+    LivePaymentAuthority,
     LivePaymentDeferredError,
     build_payment_adapter,
     default_demo_catalog,
     record_purchase_and_host,
 )
 from substrate.marketplace_host.catalog import CatalogEntry, make_catalog  # noqa: E402
+
+AUTHORITY = LivePaymentAuthority(
+    decision_id="decision-test-only",
+    provider_id="processor-test-double",
+    verifier_version="test-v1",
+)
 
 
 @pytest.fixture
@@ -35,27 +42,24 @@ def store():
 def catalog():
     # Ensure a purchased stub exists (demo catalog may vary).
     base = default_demo_catalog()
-    entries = list(base.entries) if hasattr(base, "entries") else []
+    entries = list(base.entries.values()) if hasattr(base, "entries") else []
     # default_demo_catalog is Catalog — use get + inject buy-modern if missing.
-    if base.get("buy-modern") is None:
-        entries = [
-            CatalogEntry(
-                book_id="buy-modern",
-                title="Modern Systems Research",
-                author="Example Press",
-                source="marketplace_stub",
-                license_class="purchased",
-                is_free=False,
-                body_text="",
-                source_format="pdf",
-            )
-        ]
-        # merge with pride if needed
-        pride = base.get("pd-pride")
-        if pride is not None:
-            entries.insert(0, pride)
-        return make_catalog(entries)
-    return base
+    entries = [entry for entry in entries if entry.book_id != "buy-modern"]
+    entries.append(
+        CatalogEntry(
+            book_id="buy-modern",
+            title="Modern Systems Research",
+            author="Example Press",
+            source="marketplace_stub",
+            license_class="purchased",
+            is_free=False,
+            body_text="",
+            source_format="pdf",
+            price_minor=1299,
+            currency="USD",
+        )
+    )
+    return make_catalog(entries)
 
 
 class LiveUpstream:
@@ -76,6 +80,10 @@ class LiveUpstream:
             "book_id": "buy-modern",
             "owner_id": "user-alice",
             "opaque_reference": "merchant_live_99",
+            "amount_minor": 1299,
+            "currency": "USD",
+            "title": "Modern Systems Research",
+            "charge_state": "confirmed",
         }
 
 
@@ -142,6 +150,7 @@ def test_live_checkout_hosts_when_dual_gate_and_upstream(store, catalog):
     rails = build_payment_adapter(
         environ={ANTIEK_MARKETPLACE_LIVE_PAYMENT_ENV: "1"},
         upstream=LiveUpstream(),
+        authority=AUTHORITY,
     )
     session = rails.create_checkout(book_id="buy-modern", owner_id="user-alice")
     assert session.live_payment is True
@@ -158,6 +167,42 @@ def test_live_checkout_hosts_when_dual_gate_and_upstream(store, catalog):
     assert "live_checkout" in (receipt.note or "")
     assert result.view_format == "html"
     assert result.host.document_id in result.library_document_ids
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("owner_id", "mallory"),
+        ("book_id", "other-book"),
+        ("amount_minor", 1300),
+        ("currency", "EUR"),
+        ("title", "Different title"),
+    ],
+)
+def test_live_checkout_rejects_entitlement_binding_drift(store, catalog, field, value):
+    class Drifted(LiveUpstream):
+        def confirm_checkout_session(self, *, session_id: str) -> dict:
+            row = super().confirm_checkout_session(session_id=session_id)
+            row[field] = value
+            return row
+
+    rails = build_payment_adapter(
+        environ={ANTIEK_MARKETPLACE_LIVE_PAYMENT_ENV: "1"},
+        upstream=Drifted(),
+        authority=AUTHORITY,
+    )
+    session = rails.create_checkout(book_id="buy-modern", owner_id="user-alice")
+    with pytest.raises((ValueError, LivePaymentDeferredError)):
+        record_purchase_and_host(
+            owner_id="user-alice",
+            store=store,
+            book_id="buy-modern",
+            catalog=catalog,
+            checkout_session_id=session.session_id,
+            content=b"%PDF-1.4 must not host",
+            payment_adapter=rails,
+        )
+    assert AccountLibrary_load_safe(store, "user-alice") == []
 
 
 def AccountLibrary_load_safe(store, owner_id: str) -> list[str]:

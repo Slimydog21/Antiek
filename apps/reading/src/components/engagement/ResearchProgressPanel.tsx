@@ -649,6 +649,14 @@ export function ResearchProgressPanel({
                       view_format: "html",
                       source,
                       research_tier: progress.research_tier || researchTier || null,
+                      ...(progress.event_count > 0
+                        ? {
+                            resume_ref: {
+                              resolver: "engagement_document" as const,
+                              document_id: `_progress:${spawnId}`,
+                            },
+                          }
+                        : {}),
                     },
                     {
                       id: `win:progress:${id}`,
@@ -698,6 +706,14 @@ export function ResearchProgressPanel({
                       view_format: "html",
                       source,
                       research_tier: progress.research_tier || researchTier || null,
+                      ...(progress.event_count > 0
+                        ? {
+                            resume_ref: {
+                              resolver: "engagement_document" as const,
+                              document_id: `_progress:${spawnId}`,
+                            },
+                          }
+                        : {}),
                     },
                     {
                       id: `win:progress:${id}:full`,

@@ -14,6 +14,7 @@ import { PanelLayout } from "./workspace/PanelLayout";
 import { WindowsLayer } from "./components/windows/WindowsLayer";
 import { useWorkspaceShortcuts } from "./workspace/shortcuts";
 import { useWorkspaceHydration } from "./workspace/useWorkspaceHydration";
+import { useWorkspaceResume } from "./workspace/useWorkspaceResume";
 
 /**
  * AppShell — the top-level chrome for the redesigned UI.
@@ -72,11 +73,10 @@ export function AppShell({ children }: Props) {
   const navigate = useNavigate();
   useWorkspaceShortcuts(navigate);
 
-  // S9 — hydrate the workspace from localStorage + URL ?ws= on every
-  // route + investigation change. Layering order: global → route →
-  // investigation → URL (one-shot). Writes the per-route /
-  // per-investigation snapshot back to localStorage debounced at 250 ms.
+  // Retire legacy external layout state and keep only same-tab pinned panels
+  // across routes. Reloads and account switches start from route starters.
   useWorkspaceHydration();
+  useWorkspaceResume();
 
   return (
     // EDGE-RESERVATION SEAM (SPR-06 M3) — the outer frame fills the viewport

@@ -20,6 +20,8 @@
 import { isWindowEligible, openWindow } from "../components/windows/openWindow";
 import { useWindows } from "./windowsStore";
 import type { OpenWindowOptions, WindowMode } from "./windowsStore";
+import type { CitationProvenanceReceipt } from "../api/engagement";
+import type { ResearchArtifactClaimChallengeReceipt } from "../lib/api";
 
 /** Must match substrate.floating_session.window_compose.DEEP_RESEARCH_WINDOW_KIND */
 export const DEEP_RESEARCH_WINDOW_KIND = "deep_research_session";
@@ -42,6 +44,10 @@ export type DeepResearchSessionPayload = {
    * Always true for openDeepResearchFromHighlight product entry.
    */
   seamless_highlight_dr?: boolean;
+  citation_provenance?: CitationProvenanceReceipt;
+  claim_challenge?: ResearchArtifactClaimChallengeReceipt;
+  /** Reference-only checkpoint admission; replay hydration uses `resume_ref`. */
+  workspace_resume_ref?: { session_id: string };
 };
 
 export type DeepResearchWindowDescriptor = {
@@ -123,6 +129,8 @@ export type HighlightDeepResearchInput = {
   title?: string;
   /** Residual (jk): research tier from session open (fast|deep|wrestle). */
   research_tier?: "fast" | "deep" | "wrestle" | string;
+  citation_provenance?: CitationProvenanceReceipt;
+  claim_challenge?: ResearchArtifactClaimChallengeReceipt;
 };
 
 /**
@@ -160,11 +168,18 @@ export function openDeepResearchFromHighlight(
       view_format: "html",
       // Residual (afx): highlight → DR path honesty (parity FloatMenu afw).
       seamless_highlight_dr: true,
+      workspace_resume_ref: { session_id: input.session_id },
       ...(input.model_id ? { model_id: input.model_id } : {}),
       ...(input.region_id ? { region_id: input.region_id } : {}),
       ...(input.goal ? { goal: input.goal } : {}),
       ...(input.research_tier
         ? { research_tier: input.research_tier }
+        : {}),
+      ...(input.citation_provenance
+        ? { citation_provenance: input.citation_provenance }
+        : {}),
+      ...(input.claim_challenge
+        ? { claim_challenge: input.claim_challenge }
         : {}),
     },
   };

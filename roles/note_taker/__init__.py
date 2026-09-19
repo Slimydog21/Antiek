@@ -37,9 +37,16 @@ from .distill_query import (
 from .distill_query import (
     DistilledNode,
     distillation_for,
+    distillation_for_authorized,
 )
 from .document_pass import PassResult, run_document_pass
-from .living_note import ChallengeResult, apply_refinement, challenge_note
+from .living_note import (
+    ChallengeResult,
+    apply_refinement,
+    apply_refinement_authorized,
+    challenge_note,
+    challenge_note_authorized,
+)
 from .parser import ExtractedNote, parse_notes_response
 from .prompt import NOTE_TAKER_SYSTEM_PROMPT
 from .scheduler import DEFAULT_DEBOUNCE_S, AsyncNoteScheduler, SchedulerStats
@@ -53,8 +60,10 @@ __all__ = [
     "Distillation", "DistilledQuestion", "Distiller", "DispatchDistiller",
     "PassResult", "run_document_pass",
     "RunNoteDeduper", "notes_for_step",
-    "ChallengeResult", "apply_refinement", "challenge_note",
+    "ChallengeResult", "apply_refinement", "apply_refinement_authorized",
+    "challenge_note", "challenge_note_authorized",
     "AsyncNoteScheduler", "SchedulerStats", "DEFAULT_DEBOUNCE_S",
     # SPR-03 read seam (M2)
     "DistilledNode", "DistilledView", "distillation_for",
+    "distillation_for_authorized",
 ]

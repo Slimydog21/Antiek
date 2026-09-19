@@ -35,6 +35,8 @@ class CatalogEntry:
     body_text: str = ""
     source_format: str = "html"  # "html" | "pdf" | "epub" | "text" — ingest source only
     subjects: tuple[str, ...] = ()
+    price_minor: int | None = None
+    currency: str | None = None
 
 
 @dataclass
@@ -53,6 +55,15 @@ class Catalog:
             raise ValueError("public_domain entries must be is_free=True")
         if entry.license_class == "purchased" and entry.is_free:
             raise ValueError("purchased entries must not be is_free")
+        if (entry.price_minor is None) != (entry.currency is None):
+            raise ValueError("price_minor and currency must be configured together")
+        if entry.price_minor is not None and (
+            type(entry.price_minor) is not int or entry.price_minor <= 0
+        ):
+            raise ValueError("price_minor must be a positive integer")
+        currency = entry.currency.upper() if entry.currency is not None else None
+        if currency is not None and (len(currency) != 3 or not currency.isalpha()):
+            raise ValueError("currency must be a three-letter ISO code")
         # Residual (lw): normalize subjects to lowercase tokens (no empties, order-preserving unique).
         seen: set[str] = set()
         subjects_list: list[str] = []
@@ -76,7 +87,11 @@ class Catalog:
                 body_text=entry.body_text,
                 source_format=entry.source_format,
                 subjects=subjects,
+                price_minor=entry.price_minor,
+                currency=currency,
             )
+        elif currency != entry.currency:
+            entry = CatalogEntry(**{**entry.__dict__, "currency": currency})
         self.entries[entry.book_id] = entry
         return entry
 
@@ -113,11 +128,7 @@ class Catalog:
         token = (source or "").strip().lower()
         if not token:
             return sorted(self.entries.values(), key=lambda e: e.book_id)
-        out = [
-            e
-            for e in self.entries.values()
-            if (e.source or "").strip().lower() == token
-        ]
+        out = [e for e in self.entries.values() if (e.source or "").strip().lower() == token]
         return sorted(out, key=lambda e: e.book_id)
 
 

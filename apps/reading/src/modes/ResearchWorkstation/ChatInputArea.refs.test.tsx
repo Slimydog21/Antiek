@@ -24,6 +24,21 @@ vi.mock("./publicationRefs", () => ({
     questionWithPublicationRefs(...args),
 }));
 
+vi.mock("../../components/engagement/ResearchRunCeilingApproval", async () => {
+  const { useLayoutEffect } = await import("react");
+  return {
+    ResearchRunCeilingApproval: ({ promptText, onAuthorizationChange }: {
+      promptText: string;
+      onAuthorizationChange: (value: unknown) => void;
+    }) => {
+      useLayoutEffect(() => {
+        onAuthorizationChange({ approved: true, ceilingUsd: 1.25, projection: null });
+      }, [onAuthorizationChange, promptText]);
+      return <div data-testid="research-run-authorization-stub" data-prompt={promptText} />;
+    },
+  };
+});
+
 vi.mock("../../api/settings", () => ({
   fetchSettingsBudget: vi.fn(async () => ({
     daily_cap_usd: 10,
@@ -75,7 +90,12 @@ describe("ChatInputArea publication refs (ct)", () => {
     startInvestigation.mockReset();
     hydratePublicationRefs.mockReset();
     parsePublicationRefs.mockReset();
-    questionWithPublicationRefs.mockReset();
+    questionWithPublicationRefs.mockReset().mockImplementation(
+      (question: string, refs: string[] | undefined) =>
+        refs?.length
+          ? `${question}\n\nPublication references to ground this research:\n${refs.map((ref) => `- ${ref}`).join("\n")}`
+          : question,
+    );
     startInvestigation.mockResolvedValue({
       investigation_id: "inv_chat_1",
       status: "in_progress",

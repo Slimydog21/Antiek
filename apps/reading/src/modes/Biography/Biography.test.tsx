@@ -40,6 +40,18 @@ vi.mock("../../lib/api", async (orig) => ({
   startInvestigation: startInvestigationMock,
 }));
 
+vi.mock("../../components/engagement/ResearchRunCeilingApproval", async () => {
+  const { useEffect } = await import("react");
+  return {
+    ResearchRunCeilingApproval: ({ onAuthorizationChange }: { onAuthorizationChange: (value: unknown) => void }) => {
+      useEffect(() => {
+        onAuthorizationChange({ approved: true, ceilingUsd: 1.25, projection: null });
+      }, [onAuthorizationChange]);
+      return <div data-testid="research-run-authorization-stub" />;
+    },
+  };
+});
+
 vi.mock("../../lib/speakApi", async (orig) => ({
   ...(await orig<typeof import("../../lib/speakApi")>()),
   createBiography: createBiographyMock,
@@ -111,6 +123,9 @@ describe("Biography landing (SPR-11 M1)", () => {
     await waitFor(() => expect(createBiographyMock).toHaveBeenCalled());
     // It provisions the Research folder FIRST, then composes the template on it.
     expect(startInvestigationMock).toHaveBeenCalled();
+    expect(startInvestigationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ approved_run_ceiling_usd: 1.25 }),
+    );
     expect(createBiographyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         investigationId: "inv-bio-1",

@@ -16,7 +16,7 @@ describe("parseAssistantReply — fence detection", () => {
       JSON.stringify([
         {
           kind: "open_panel",
-          panel_kind: "PdfViewer",
+          panel_kind: "HostedDocument",
           props: { documentId: "doc-1" },
           mode: "floating",
         },
@@ -41,7 +41,7 @@ describe("parseAssistantReply — schema enforcement", () => {
     const raw =
       "Reply.\n\n@@actions\n" +
       JSON.stringify([
-        { kind: "open_panel", panel_kind: "PdfViewer" },
+        { kind: "open_panel", panel_kind: "HostedDocument" },
         { kind: "rm_rf_root", target: "/" },
       ]) +
       "\n@@end";
@@ -50,6 +50,17 @@ describe("parseAssistantReply — schema enforcement", () => {
     expect(r.actions[0].kind).toBe("open_panel");
     expect(r.parseErrors.length).toBeGreaterThan(0);
     expect(r.parseErrors[0]).toContain("rm_rf_root");
+  });
+
+  it("rejects retired PdfViewer and unknown panel kinds before dispatch", () => {
+    const raw = "Reply.\n\n@@actions\n" + JSON.stringify([
+      { kind: "open_panel", panel_kind: "PdfViewer", props: { documentId: "doc-1" } },
+      { kind: "open_panel", panel_kind: "MadeUpPanel" },
+    ]) + "\n@@end";
+    const result = parseAssistantReply(raw);
+    expect(result.actions).toHaveLength(0);
+    expect(result.parseErrors).toHaveLength(2);
+    expect(result.parseErrors.join(" ")).toMatch(/retired panel_kind.*PdfViewer/i);
   });
 
   it("reports JSON-parse failures + returns prose intact", () => {

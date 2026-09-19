@@ -4,9 +4,9 @@ import { useNavigate } from "react-router-dom";
 
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import {
-  ResearchLaunchBudgetPanel,
-  type ResearchLaunchBudgetProjection,
-} from "../../components/engagement/ResearchLaunchBudgetPanel";
+  ResearchRunCeilingApproval,
+  type ResearchRunAuthorization,
+} from "../../components/engagement/ResearchRunCeilingApproval";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
 import { fetchDepthTiers } from "../../api/settings";
@@ -78,6 +78,8 @@ export default function ChatInputArea({
   const [error, setError] = useState<string | null>(null);
   const [budgetWarn, setBudgetWarn] = useState(false);
   const [forceOverBudget, setForceOverBudget] = useState(false);
+  const [runAuthorization, setRunAuthorization] =
+    useState<ResearchRunAuthorization>({ approved: false, ceilingUsd: null, projection: null });
   // Residual (gr): launch tier state — prop default + budget-panel pick.
   const [launchTier, setLaunchTier] = useState<ResearchTier>(researchTier);
   const [depthPrefill, setDepthPrefill] = useState<
@@ -116,8 +118,9 @@ export default function ChatInputArea({
     };
   }, [researchTier]);
 
-  const onProjectionChange = useCallback((p: ResearchLaunchBudgetProjection) => {
-    setBudgetWarn(p.wouldExceedBudget === true);
+  const onRunAuthorizationChange = useCallback((next: ResearchRunAuthorization) => {
+    setRunAuthorization(next);
+    setBudgetWarn(next.projection?.wouldExceedBudget === true);
   }, []);
 
   const submit = useCallback(async () => {
@@ -130,6 +133,10 @@ export default function ChatInputArea({
       setError(
         "Projected cost may exceed remaining daily budget — enable force override or reduce scope.",
       );
+      return;
+    }
+    if (!runAuthorization.approved || runAuthorization.ceilingUsd == null) {
+      setError("Review and approve an initial-run hard ceiling before launch.");
       return;
     }
     setBusy(true);
@@ -153,6 +160,7 @@ export default function ChatInputArea({
         spawn_context: spawnContext,
         // Residual (gr): wrestle|fast|deep from budget picker / prop.
         research_tier: launchTier,
+        approved_run_ceiling_usd: runAuthorization.ceilingUsd,
       });
       track("investigation_started", {
         question_length: launchQuestion.length,
@@ -184,6 +192,7 @@ export default function ChatInputArea({
     budgetWarn,
     forceOverBudget,
     launchTier,
+    runAuthorization,
   ]);
 
   return (
@@ -347,16 +356,23 @@ export default function ChatInputArea({
             Knowledge-dense pubs in projection:{" "}
             <strong>{countPublicationRefs(pubRefs)}</strong> ref
             {countPublicationRefs(pubRefs) === 1 ? "" : "s"} · chars=
-            {composeDriverPromptText(question, pubRefs).length} · soft budget
+            {questionWithPublicationRefs(
+              question,
+              parsePublicationRefs(pubRefs),
+            ).length} · soft budget
             below
           </p>
         ) : null}
-        <ResearchLaunchBudgetPanel
-          promptText={composeDriverPromptText(question, pubRefs)}
+        <ResearchRunCeilingApproval
+          promptText={questionWithPublicationRefs(
+            question,
+            parsePublicationRefs(pubRefs),
+          )}
           researchTier={launchTier}
           allowTierPick
           onResearchTierChange={setLaunchTier}
-          onProjectionChange={onProjectionChange}
+          onAuthorizationChange={onRunAuthorizationChange}
+          disabled={busy}
         />
         {budgetWarn ? (
           <label

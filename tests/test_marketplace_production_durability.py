@@ -22,15 +22,11 @@ def test_runtime_store_is_opt_in_and_explicit_configuration_is_durable(
     assert marketplace_host_store_from_env({MARKETPLACE_HOST_DB_PATH_ENV: ""}) is None
 
     path = tmp_path / "marketplace-host.sqlite3"
-    first = marketplace_host_store_from_env(
-        {MARKETPLACE_HOST_DB_PATH_ENV: str(path)}
-    )
+    first = marketplace_host_store_from_env({MARKETPLACE_HOST_DB_PATH_ENV: str(path)})
     assert isinstance(first, SQLiteHostStore)
     first.put_document("doc-1", {"document_id": "doc-1"})
 
-    reopened = marketplace_host_store_from_env(
-        {MARKETPLACE_HOST_DB_PATH_ENV: str(path)}
-    )
+    reopened = marketplace_host_store_from_env({MARKETPLACE_HOST_DB_PATH_ENV: str(path)})
     assert isinstance(reopened, SQLiteHostStore)
     assert reopened.get_document("doc-1") == {"document_id": "doc-1"}
 
@@ -83,10 +79,7 @@ def test_runtime_store_rejects_existing_unrelated_database_without_mutation(
 
     with sqlite3.connect(path) as con:
         tables = {
-            str(row[0])
-            for row in con.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
+            str(row[0]) for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
         assert tables == {"unrelated"}
         assert con.execute("PRAGMA user_version").fetchone()[0] == 0
@@ -112,6 +105,27 @@ def test_online_backup_round_trips_and_is_mode_0600(tmp_path: Path) -> None:
     assert destination.stat().st_mode & 0o777 == 0o600
     with sqlite3.connect(destination) as con:
         assert con.execute("PRAGMA quick_check").fetchall() == [("ok",)]
+
+
+def test_purchase_commit_is_atomic_on_membership_failure(tmp_path: Path) -> None:
+    store = SQLiteHostStore(tmp_path / "atomic-purchase.sqlite3")
+    with sqlite3.connect(store.path) as con:
+        con.execute(
+            "CREATE TRIGGER fail_purchase_membership BEFORE INSERT ON host_memberships "
+            "BEGIN SELECT RAISE(ABORT, 'injected membership failure'); END"
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="membership failure"):
+        store.commit_purchase(
+            receipt_id="receipt-atomic",
+            receipt={"receipt_id": "receipt-atomic", "owner_id": "owner-a"},
+            owner_id="owner-a",
+            document_id="document-atomic",
+            document={"document_id": "document-atomic", "owner_id": "owner-a"},
+        )
+    with sqlite3.connect(store.path) as con:
+        assert con.execute("SELECT count(*) FROM purchase_receipts").fetchone() == (0,)
+        assert con.execute("SELECT count(*) FROM hosted_documents").fetchone() == (0,)
+        assert con.execute("SELECT count(*) FROM host_memberships").fetchone() == (0,)
 
 
 def test_online_backup_is_consistent_while_writer_transaction_is_active(
@@ -266,12 +280,8 @@ def test_backup_cli_uses_verified_snapshot_contract(tmp_path: Path) -> None:
     SQLiteHostStore(source).put_document("doc-cli", {"document_id": "doc-cli"})
     destination = tmp_path / "snapshot.sqlite3"
 
-    assert backup_main(
-        ["--source", str(source), "--destination", str(destination)]
-    ) == 0
-    assert SQLiteHostStore(destination).get_document("doc-cli") == {
-        "document_id": "doc-cli"
-    }
+    assert backup_main(["--source", str(source), "--destination", str(destination)]) == 0
+    assert SQLiteHostStore(destination).get_document("doc-cli") == {"document_id": "doc-cli"}
 
 
 def test_production_templates_and_runbook_carry_the_same_path_contract() -> None:
@@ -279,10 +289,7 @@ def test_production_templates_and_runbook_carry_the_same_path_contract() -> None
     backup = Path("infrastructure/ansible/templates/backup.sh.j2").read_text()
     recovery = Path("infrastructure/runbooks/disaster-recovery.md").read_text()
 
-    expected = (
-        "ANTIEK_MARKETPLACE_HOST_DB_PATH={{ antiek_state_dir }}/"
-        "marketplace-host.sqlite3"
-    )
+    expected = "ANTIEK_MARKETPLACE_HOST_DB_PATH={{ antiek_state_dir }}/marketplace-host.sqlite3"
     assert expected in service
     assert "tools/backup_marketplace_sqlite.py" in backup
     assert '--source "${STATE_DIR}/marketplace-host.sqlite3"' in backup

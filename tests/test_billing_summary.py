@@ -11,7 +11,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from substrate.dispatch import reset_provider_registry
-from substrate.event_log import emit_typed
+from substrate.event_log import emit_typed_authorized
+from substrate.investigation_streams import resolve_writable_investigation_stream
+from substrate.investigation_tenancy import InvestigationAuthority, default_tenancy_root
 from substrate.schemas import DispatchCallPayload
 
 
@@ -50,9 +52,12 @@ def _dispatch(
     input_tokens: int,
     output_tokens: int,
     prompt_hash: str,
+    user_id: str = "__operator__",
 ) -> None:
-    emit_typed(
-        investigation_id,
+    authority = InvestigationAuthority(user_id, investigation_id, default_tenancy_root())
+    resolve_writable_investigation_stream(authority)
+    emit_typed_authorized(
+        authority,
         DispatchCallPayload(
             provider="deepseek",
             model="deepseek-v4-flash",
@@ -145,3 +150,30 @@ def test_billing_summary_excludes_events_outside_the_period(client):
     current = client.get(f"/billing/summary/__operator__/{now_period}")
     assert current.status_code == 200, current.text
     assert current.json()["record_count"] == 1
+
+
+def test_billing_summary_isolates_same_display_id_by_account(client):
+    period = datetime.now(UTC).strftime("%Y-%m")
+    _dispatch(
+        "inv-shared",
+        cost_usd=0.11,
+        input_tokens=1,
+        output_tokens=1,
+        prompt_hash="alice",
+        user_id="alice",
+    )
+    _dispatch(
+        "inv-shared",
+        cost_usd=7.0,
+        input_tokens=2,
+        output_tokens=2,
+        prompt_hash="bob",
+        user_id="bob",
+    )
+
+    alice = client.get(f"/billing/summary/alice/{period}").json()
+    bob = client.get(f"/billing/summary/bob/{period}").json()
+    assert alice["record_count"] == 1
+    assert Decimal(alice["total_raw_usd"]) == Decimal("0.11")
+    assert bob["record_count"] == 1
+    assert Decimal(bob["total_raw_usd"]) == Decimal("7.0")

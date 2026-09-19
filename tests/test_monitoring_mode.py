@@ -28,7 +28,7 @@ import uuid
 import pytest
 
 from orchestration.monitoring import monitor as mon
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_read, connect_write
 from substrate.collective_graph.eligibility import (
     CollectiveGraphDocument,
     is_attribution_eligible,
@@ -115,6 +115,30 @@ def _future(offset_seconds: int = 0) -> str:
     """A timestamp guaranteed to be AFTER a just-created monitor's checkpoint."""
     base = _dt.datetime.now(_dt.UTC) + _dt.timedelta(hours=1)
     return (base + _dt.timedelta(seconds=offset_seconds)).isoformat()
+
+
+def test_strict_monitoring_is_inert_until_owner_authority_is_threaded(
+    temp_db, monkeypatch
+):
+    document_id = _seed_doc(
+        temp_db,
+        content_class="personal_reading",
+        acquired_at=_future(),
+    )
+    monkeypatch.setenv("ANTIEK_LEGAL_READ_ENFORCEMENT", "1")
+    with connect_read(temp_db) as con:
+        assert mon._derive_query_terms([document_id], con) == []
+        assert mon._compute_centroid([document_id], con, _StubEmbedding()) == (
+            None,
+            None,
+        )
+        assert mon._select_new_personal_items(
+            con,
+            last_seen_at=_ts(0),
+            centroid=None,
+            centroid_dim=None,
+            top_k=20,
+        ) == []
 
 
 # ---------------------------------------------------------------------------

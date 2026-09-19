@@ -16,6 +16,10 @@ import { collectDeepResearchSpawnIds } from "../../../workspace/collectDeepResea
 import { listRecentDeepResearchSpawnIds } from "../../../workspace/recentDeepResearchSpawns";
 import { useWindows } from "../../../workspace/windowsStore";
 import { buildMetaReadingWriteHref } from "../../../workspace/twinWriteSeed";
+import {
+  ResearchRunCeilingApproval,
+  type ResearchRunAuthorization,
+} from "../../../components/engagement/ResearchRunCeilingApproval";
 
 /**
  * MetaReading — the one-shot, READ-ONLY, page-cited synthesis over the OWNED
@@ -74,6 +78,8 @@ export default function MetaReading() {
   const [deliverable, setDeliverable] = useState<MetaReadingResponse | null>(null);
   const [promoted, setPromoted] = useState<string | null>(null);
   const [promoting, setPromoting] = useState(false);
+  const [promotionAuthorization, setPromotionAuthorization] =
+    useState<ResearchRunAuthorization>({ approved: false, ceilingUsd: null, projection: null });
   // Residual (jy): Settings depth-tier for meta-reading research_tier.
   const { researchTier, depthPrefill } = useSettingsResearchTier();
   // Residual (anb): remount twins + context after promote (parity ana/amy).
@@ -192,13 +198,14 @@ export default function MetaReading() {
     : null;
 
   const onAcceptPromotion = useCallback(async () => {
-    if (!deliverable || promoting) return;
+    if (!deliverable || promoting || !promotionAuthorization.approved || promotionAuthorization.ceilingUsd == null) return;
     setPromoting(true);
     try {
       const res = await acceptPromotion({
         assetId: deliverable.asset_id,
         prompt: prompt.trim(),
         documentId: deliverable.corpus_document_ids[0],
+        approvedRunCeilingUsd: promotionAuthorization.ceilingUsd,
       });
       setPromoted(res.investigation_id);
     } catch (e: unknown) {
@@ -206,7 +213,7 @@ export default function MetaReading() {
     } finally {
       setPromoting(false);
     }
-  }, [deliverable, prompt, promoting]);
+  }, [deliverable, prompt, promoting, promotionAuthorization]);
 
   return (
     <div
@@ -556,7 +563,13 @@ export default function MetaReading() {
               {suggestion && !promoted && (
                 <div className="rounded-md border border-sun/40 bg-sun/10 px-4 py-3 space-y-2" data-testid="promote-suggestion">
                   <p className="text-[13px] font-serif text-ink dark:text-bright">{suggestion.rationale}</p>
-                  <LemonButton type="button" variant="secondary" size="sm" disabled={promoting} onClick={() => void onAcceptPromotion()}>
+                  <ResearchRunCeilingApproval
+                    promptText={prompt.trim()}
+                    researchTier={researchTier}
+                    disabled={promoting}
+                    onAuthorizationChange={setPromotionAuthorization}
+                  />
+                  <LemonButton type="button" variant="secondary" size="sm" disabled={promoting || !promotionAuthorization.approved} onClick={() => void onAcceptPromotion()}>
                     {promoting ? "Promoting…" : "Chase it as a research →"}
                   </LemonButton>
                 </div>

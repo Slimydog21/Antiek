@@ -41,6 +41,7 @@ import os
 import sys
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 # orchestration/ is a top-level package and uses absolute imports (matching
@@ -55,7 +56,7 @@ from orchestration.session_evidence_pack import (
     SessionEvidencePack,
     build_session_evidence_pack,
 )
-from roles.cascade_planner.approval import assert_launchable
+from roles.cascade_planner.approval import PlanNotApproved, assert_launchable
 from runtime.db_lock import connect_write
 from runtime.research_runner import (
     BudgetCap,
@@ -67,9 +68,23 @@ from runtime.research_runner import (
     StepEvent,
 )
 from runtime.research_runner.promotion_funnel import PromotionFunnel
-from substrate.event_log import default_events_dir, log_event, trajectory
+from substrate.event_log import (
+    default_events_dir,
+    log_event_authorized,
+    trajectory,
+    trajectory_authorized,
+)
 from substrate.graph.insight_question import graph_db_path
 from substrate.graph.ops import insert_edge
+from substrate.investigation_streams import (
+    list_authorized_investigation_ids,
+    resolve_writable_investigation_stream,
+)
+from substrate.investigation_tenancy import (
+    InvestigationAuthority,
+    default_tenancy_root,
+)
+from substrate.multi_user.auth import UserClaims
 from substrate.schemas.events import ActionType
 
 _SESSION_DONE = object()
@@ -127,16 +142,41 @@ class CascadeSession:
         self,
         session_id: str,
         *,
+        claims: UserClaims,
         runner: HostLocalRunner,
         funnel: PromotionFunnel | None = None,
         events_dir: str | None = None,
         db_path: str | None = None,
+        plan_authority: InvestigationAuthority | None = None,
+        launch_authority: InvestigationAuthority | None = None,
     ):
+        if not isinstance(claims, UserClaims):
+            raise TypeError("claims must be validated UserClaims")
         self.session_id = session_id
+        self._claims = claims
+        self._event_role = "operator" if "operator" in claims.scopes else "user_agent"
         self._runner = runner
         self._funnel = funnel
         self._events_dir = events_dir
+        self._tenancy_root = (
+            Path(events_dir).expanduser().resolve(strict=False)
+            if events_dir
+            else default_tenancy_root()
+        )
+        if runner.tenancy_root != self._tenancy_root:
+            raise ValueError("cascade session and runner tenancy roots must match")
         self._db_path = db_path or graph_db_path()
+        if plan_authority is not None and plan_authority.account_id != claims.user_id:
+            raise ValueError("cascade plan authority does not match validated claims")
+        if (plan_authority is None) != (launch_authority is None):
+            raise ValueError("cascade plan and launch authority must be provided together")
+        if launch_authority is not None and (
+            launch_authority.account_id != claims.user_id
+            or launch_authority.investigation_id != session_id
+        ):
+            raise ValueError("cascade launch authority does not match validated claims")
+        self._plan_authority = plan_authority
+        self._launch_authority = launch_authority
         self._leaves: dict[str, Leaf] = {}
         self._handles: dict[str, Handle] = {}
         self._out: asyncio.Queue[StepEvent | object] = asyncio.Queue()
@@ -149,22 +189,67 @@ class CascadeSession:
 
     # -- M1: launch with approval enforcement --------------------------
 
-    async def launch(self, plan_root_node_id: str, leaves: Sequence[Leaf]) -> list[Handle]:
+    async def launch(
+        self,
+        plan_root_node_id: str,
+        leaves: Sequence[Leaf],
+        *,
+        gather_receipt: dict[str, object] | None = None,
+        driver_receipt: dict[str, object] | None = None,
+    ) -> list[Handle]:
         """Launch an approved plan as N investigations. Refuses an unapproved
         plan (SPR-05 gate). Each leaf is spawned_from the session parent."""
-        assert_launchable(plan_root_node_id, db_path=self._db_path)
+        if self._plan_authority is None:
+            assert_launchable(plan_root_node_id, db_path=self._db_path)
+        else:
+            from roles.cascade_planner.tenancy import is_plan_launch_claim_authorized
+            from runtime.db_lock import connect_read
+
+            con = connect_read(self._db_path)
+            try:
+                assert self._launch_authority is not None
+                if not is_plan_launch_claim_authorized(
+                    con, self._plan_authority, self._launch_authority
+                ):
+                    raise PlanNotApproved(
+                        f"plan {plan_root_node_id!r} is not approved — "
+                        "the glass-box gate refuses launch."
+                    )
+            finally:
+                con.close()
+        resolve_writable_investigation_stream(self._authority(self.session_id))
         if self._funnel is not None:
             await self._funnel.start()
-        log_event(self.session_id, "cascade.launched",
-                  payload={"plan_root_node_id": plan_root_node_id,
-                           "leaf_count": len(leaves)},
-                  role="user_agent", events_dir=self._events_dir)
+        launch_payload: dict[str, object] = {
+            "plan_root_node_id": plan_root_node_id,
+            "leaf_count": len(leaves),
+        }
+        if gather_receipt is not None:
+            # Bind the launch-time truth snapshot to the durable session event.
+            # Event-log immutability makes this receipt recoverable after the
+            # HTTP response and process-local session are gone.
+            launch_payload["gather_receipt"] = dict(gather_receipt)
+        if driver_receipt is not None:
+            # The client selects only a closed research tier. Persist the
+            # server-resolved provider/model receipt, never credentials, so a
+            # launch remains auditable after process-local state is gone.
+            launch_payload["driver_receipt"] = dict(driver_receipt)
+        log_event_authorized(
+            self._authority(self.session_id),
+            "cascade.launched",
+            payload=launch_payload,
+            role=self._event_role,
+        )
         handles: list[Handle] = []
         for leaf in leaves:
             self._leaves[leaf.investigation_id] = leaf
             plan = ResearchPlan(
                 investigation_id=leaf.investigation_id, sub_question=leaf.sub_question,
                 parent_investigation_id=self.session_id, budget=leaf.budget,
+                metadata={
+                    "research_tier": driver_receipt["research_tier"],
+                    "driver_receipt": dict(driver_receipt),
+                } if driver_receipt is not None else {},
             )
             handle = await self._runner.start(leaf.investigation_id, plan)
             self._handles[leaf.investigation_id] = handle
@@ -176,6 +261,11 @@ class CascadeSession:
     async def _pump(self, handle: Handle) -> None:
         async for ev in self._runner.stream(handle):
             await self._out.put(ev)
+
+    def _authority(self, investigation_id: str) -> InvestigationAuthority:
+        return InvestigationAuthority(
+            self._claims.user_id, investigation_id, self._tenancy_root
+        )
 
     # -- M2: multiplexed stream ----------------------------------------
 
@@ -252,7 +342,7 @@ class CascadeSession:
         assert leaf.question_node_id is not None  # caller guards
         insight_ids = [
             ev.get("payload", {}).get("node_id")
-            for ev in trajectory(leaf.investigation_id, events_dir=self._events_dir)
+            for ev in trajectory_authorized(self._authority(leaf.investigation_id))
             if ev.get("action_type") == ActionType.GRAPH_NODE_INSERTED.value
             and ev.get("payload", {}).get("node_type") == "insight"
         ]
@@ -332,14 +422,13 @@ class CascadeSession:
         in-memory field + the ``logger.exception`` below regardless."""
         self.synthesis_tail_error = f"[{stage}] {type(exc).__name__}: {exc}"
         try:
-            log_event(
-                self.session_id,
+            log_event_authorized(
+                self._authority(self.session_id),
                 SYNTHESIS_TAIL_FAILED,
                 payload={"error": self.synthesis_tail_error,
                          "error_type": type(exc).__name__,
                          "stage": stage},
                 role="user_agent",
-                events_dir=self._events_dir,
             )
         except Exception:  # pragma: no cover — audit-of-audit isolation
             _log.warning(
@@ -376,6 +465,7 @@ class CascadeSession:
         ]
         return build_session_evidence_pack(
             self.session_id,
+            owner_user_id=self._claims.user_id,
             events_dir=self._events_dir or default_events_dir(),
             db_path=self._db_path,
             researches=researches,
@@ -442,15 +532,36 @@ def _list_investigation_ids(events_dir: str) -> list[str]:
     return sorted(seen)
 
 
-def reconstruct_session(session_id: str, *, events_dir: str | None = None) -> SessionRecovery:
+def reconstruct_session(
+    session_id: str,
+    *,
+    events_dir: str | None = None,
+    authority: InvestigationAuthority | None = None,
+) -> SessionRecovery:
     """Rebuild a session's membership + per-research state from the event log
     alone — the durability guarantee. A child belongs to the session if its
     trajectory carries an ``investigation.spawned_from`` pointing at the
     session; its state is its terminal event (or ``running``)."""
     resolved = events_dir or default_events_dir()
+    investigation_ids = set(_list_investigation_ids(resolved))
+    if authority is not None:
+        if authority.investigation_id != session_id:
+            raise ValueError("session authority does not match session_id")
+        investigation_ids = set(
+            list_authorized_investigation_ids(
+                authority.account_id,
+                root=authority.root,
+            )
+        )
     researches: list[ResearchState] = []
-    for iid in _list_investigation_ids(resolved):
-        rows = trajectory(iid, events_dir=resolved)
+    for iid in sorted(investigation_ids):
+        rows = (
+            trajectory_authorized(
+                InvestigationAuthority(authority.account_id, iid, authority.root)
+            )
+            if authority is not None
+            else trajectory(iid, events_dir=resolved)
+        )
         parent = None
         sub_q = ""
         state = RunState.PENDING
@@ -469,7 +580,11 @@ def reconstruct_session(session_id: str, *, events_dir: str | None = None) -> Se
         if parent == session_id:
             researches.append(ResearchState(iid, sub_q, state.value))
     researches.sort(key=lambda r: r.investigation_id)
-    tail_error = _recover_synthesis_tail_error(session_id, events_dir=resolved)
+    tail_error = _recover_synthesis_tail_error(
+        session_id,
+        events_dir=resolved,
+        authority=authority,
+    )
     return SessionRecovery(
         session_id=session_id,
         researches=researches,
@@ -478,14 +593,22 @@ def reconstruct_session(session_id: str, *, events_dir: str | None = None) -> Se
 
 
 def _recover_synthesis_tail_error(
-    session_id: str, *, events_dir: str | None = None
+    session_id: str,
+    *,
+    events_dir: str | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> str | None:
     """The last ``cascade.synthesis_tail.failed`` audit event recorded on the
     session's own trajectory, or None if none was emitted. Honest by
     construction: absence of the event yields None (we never fabricate a
     failure or a success the event log cannot prove)."""
     last: str | None = None
-    for ev in trajectory(session_id, events_dir=events_dir):
+    rows = (
+        trajectory_authorized(authority)
+        if authority is not None
+        else trajectory(session_id, events_dir=events_dir)
+    )
+    for ev in rows:
         if ev.get("action_type") == SYNTHESIS_TAIL_FAILED:
             payload = ev.get("payload", {}) if isinstance(ev.get("payload"), dict) else {}
             last = payload.get("error") or last

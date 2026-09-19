@@ -19,6 +19,15 @@ from typing import Any
 from ._common import inline_text
 
 
+def _anchor_attr(node: dict[str, Any]) -> str:
+    anchor = (node.get("attrs") or {}).get("anchor_id")
+    if isinstance(anchor, str) and anchor.startswith("antiek-chunk-") and len(anchor) == 77:
+        suffix = anchor.removeprefix("antiek-chunk-")
+        if all(character in "0123456789abcdef" for character in suffix):
+            return f' id="{anchor}" data-antiek-chunk-anchor="true"'
+    return ""
+
+
 def render(node: dict[str, Any], ctx: Any) -> str:
     """Render a prose/paragraph node to HTML fragment."""
     content = node.get("content")
@@ -33,4 +42,4 @@ def render(node: dict[str, Any], ctx: Any) -> str:
             for c in content
         )
         return f'<div class="antiek-block">{paras}</div>'
-    return f'<p class="antiek-prose">{inline_text(content)}</p>'
+    return f'<p class="antiek-prose"{_anchor_attr(node)}>{inline_text(content)}</p>'

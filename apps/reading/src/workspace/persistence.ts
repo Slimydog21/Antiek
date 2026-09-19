@@ -1,268 +1,85 @@
 /**
- * Workspace persistence — S9.
+ * Closed workspace preferences and retirement of pre-checkpoint layout state.
  *
- * Three scopes, layered at hydration time:
- *
- *   1. Global         antiek.workspace.global       (route-agnostic shell)
- *   2. Route          antiek.workspace.route.<key>  (per-route preferred layout)
- *   3. Investigation  antiek.workspace.inv.<id>     (overrides for a specific inv)
- *
- * Plus the URL ?ws=<base64-json> param wins over all three at load time.
- *
- * What we store:
- *   - panels (the descriptors map)
- *   - dock arrays (left/right/bottom)
- *   - dockBottomHeight
- *   - schemaVersion (for forward-compat migrations)
- *
- * What we STRIP (transient — never write to disk):
- *   - focusedPanelId
- *   - zCounter (re-derived at hydration: max(panels.zIndex) + 1)
- *   - floatingIds order (re-derived: order of floating panels by zIndex)
- *
- * Schema-version mismatch at hydration → log + ignore the snapshot.
+ * Arbitrary panel descriptors are never read or written here. The only
+ * surviving workspace-prefixed record is the closed custom-hotkey envelope.
  */
 
-import type { WorkspaceSnapshot } from "./panel.types";
+import {
+  detectConflict,
+  normalizeBinding,
+  requiresModifierReason,
+  SAFE_ASSIGNABLE,
+} from "../components/hotkeys/bindings";
 
 const LS_PREFIX = "antiek.workspace.";
+const LEGACY_GLOBAL_KEY = `${LS_PREFIX}global`;
+const LEGACY_ROUTE_PREFIX = `${LS_PREFIX}route.`;
+const LEGACY_INVESTIGATION_PREFIX = `${LS_PREFIX}inv.`;
+const CUSTOM_HOTKEYS_KEY = `${LS_PREFIX}custom-hotkeys`;
 
-/** What gets serialised to disk. Strict subset of WorkspaceSnapshot. */
-export type PersistedSnapshot = {
-  schemaVersion: 1;
-  panels: WorkspaceSnapshot["panels"];
-  dockLeftIds: string[];
-  dockRightIds: string[];
-  dockBottomIds: string[];
-  dockBottomHeight: number;
-};
-
-export type PersistScope =
-  | { kind: "global" }
-  | { kind: "route"; route: string }
-  | { kind: "investigation"; id: string };
-
-function lsKey(scope: PersistScope): string {
-  if (scope.kind === "global") return LS_PREFIX + "global";
-  if (scope.kind === "route") return LS_PREFIX + "route." + scope.route;
-  return LS_PREFIX + "inv." + scope.id;
-}
-
-/** Strip transient fields. */
-export function project(snapshot: WorkspaceSnapshot): PersistedSnapshot {
-  return {
-    schemaVersion: 1,
-    panels: snapshot.panels,
-    dockLeftIds: snapshot.dockLeftIds,
-    dockRightIds: snapshot.dockRightIds,
-    dockBottomIds: snapshot.dockBottomIds,
-    dockBottomHeight: snapshot.dockBottomHeight,
-  };
-}
-
-/** Merge a persisted snapshot over a base snapshot. Newer entries
- *  win on conflicting ids. Returns a full WorkspaceSnapshot. */
-export function applyOver(
-  base: WorkspaceSnapshot,
-  layer: PersistedSnapshot,
-): WorkspaceSnapshot {
-  if (layer.schemaVersion !== 1) {
-    if (typeof console !== "undefined") {
-      // eslint-disable-next-line no-console
-      console.warn(
-        "[antiek/persistence] ignoring snapshot with mismatched schemaVersion:",
-        layer.schemaVersion,
-      );
-    }
-    return base;
-  }
-  // Union the panel descriptors; layer wins on duplicate ids.
-  const panels = { ...base.panels, ...layer.panels };
-
-  // Replace the dock arrays with the layer's (operator's intent on this scope).
-  const dockLeftIds = layer.dockLeftIds ?? base.dockLeftIds;
-  const dockRightIds = layer.dockRightIds ?? base.dockRightIds;
-  const dockBottomIds = layer.dockBottomIds ?? base.dockBottomIds;
-
-  // Re-derive floatingIds from the union: any panel whose mode is "floating".
-  const floatingIds = Object.values(panels)
-    .filter((p) => p.mode === "floating")
-    .sort((a, b) => a.zIndex - b.zIndex)
-    .map((p) => p.id);
-
-  // Re-derive zCounter so the next floating panel sits on top.
-  const maxZ = Object.values(panels).reduce(
-    (acc, p) => Math.max(acc, p.zIndex),
-    0,
+function isLegacyLayoutKey(key: string): boolean {
+  return (
+    key === LEGACY_GLOBAL_KEY ||
+    key.startsWith(LEGACY_ROUTE_PREFIX) ||
+    key.startsWith(LEGACY_INVESTIGATION_PREFIX)
   );
-
-  return {
-    ...base,
-    panels,
-    dockLeftIds,
-    dockRightIds,
-    dockBottomIds,
-    floatingIds,
-    zCounter: maxZ,
-    dockBottomHeight: layer.dockBottomHeight ?? base.dockBottomHeight,
-    focusedPanelId: null,
-    schemaVersion: 1,
-  };
 }
 
-/** Read a snapshot from localStorage. Returns null on miss / parse error. */
-export function readScope(scope: PersistScope): PersistedSnapshot | null {
-  if (typeof window === "undefined") return null;
+function isWsQuerySegment(segment: string): boolean {
+  const rawName = segment.split("=", 1)[0];
   try {
-    const raw = window.localStorage.getItem(lsKey(scope));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PersistedSnapshot;
-    if (typeof parsed !== "object" || parsed === null) return null;
-    return parsed;
+    return decodeURIComponent(rawName.replace(/\+/g, " ")) === "ws";
   } catch {
-    return null;
+    return rawName === "ws";
   }
 }
 
-/** Write a snapshot to localStorage. Silent on quota errors. */
-export function writeScope(scope: PersistScope, snapshot: PersistedSnapshot): void {
+/**
+ * Delete only retired panel-layout keys and strip every `ws` query value.
+ *
+ * Neither operation is a precondition for starting from empty in-memory
+ * state: storage/history failures therefore cannot revive legacy authority.
+ */
+export function retireLegacyWorkspaceSnapshots(): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(lsKey(scope), JSON.stringify(snapshot));
-  } catch {
-    // Quota exceeded or storage disabled — silent fail; the workspace
-    // continues to function in-memory.
-  }
-}
 
-/** Delete a scope's stored snapshot. */
-export function clearScope(scope: PersistScope): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(lsKey(scope));
-  } catch {
-    // ignore
-  }
-}
-
-/** Delete every antiek.workspace.* key. Used by the "reset all layouts"
- *  palette command. Returns the count of keys removed. */
-export function clearAll(): number {
-  if (typeof window === "undefined") return 0;
-  let count = 0;
   try {
     const keys: string[] = [];
-    for (let i = 0; i < window.localStorage.length; i++) {
-      const k = window.localStorage.key(i);
-      if (k && k.startsWith(LS_PREFIX)) keys.push(k);
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key && isLegacyLayoutKey(key)) keys.push(key);
     }
-    for (const k of keys) {
-      window.localStorage.removeItem(k);
-      count++;
-    }
+    for (const key of keys) window.localStorage.removeItem(key);
   } catch {
-    // ignore
+    // Fail closed: callers never read or apply a legacy value.
   }
-  return count;
-}
 
-// ─────────────────────────────────────────────────────────────────────
-// URL shareable snapshot — ?ws=<base64-json>
-// ─────────────────────────────────────────────────────────────────────
-
-/** Encode a snapshot to a base64-JSON string suitable for ?ws=. */
-export function encodeWsParam(snapshot: PersistedSnapshot): string {
-  const json = JSON.stringify(snapshot);
-  // unescape(encodeURIComponent) → UTF-8 safe btoa
-  return btoa(unescape(encodeURIComponent(json)));
-}
-
-/** Decode a base64-JSON ?ws= value. Returns null on parse error. */
-export function decodeWsParam(raw: string): PersistedSnapshot | null {
   try {
-    const json = decodeURIComponent(escape(atob(raw)));
-    const parsed = JSON.parse(json) as PersistedSnapshot;
-    if (typeof parsed !== "object" || parsed === null) return null;
-    if (parsed.schemaVersion !== 1) return null;
-    return parsed;
+    const rawSearch = window.location.search.slice(1);
+    const segments = rawSearch.split("&");
+    if (!segments.some(isWsQuerySegment)) return;
+    const search = segments.filter((segment) => !isWsQuerySegment(segment)).join("&");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`,
+    );
   } catch {
-    return null;
+    // URL cleanup failure still cannot make the opaque value executable.
   }
 }
 
-/** Read + decode the current URL's `?ws=` param, if present. */
-export function readWsFromUrl(): PersistedSnapshot | null {
-  if (typeof window === "undefined") return null;
-  const usp = new URLSearchParams(window.location.search);
-  const raw = usp.get("ws");
-  if (!raw) return null;
-  return decodeWsParam(raw);
-}
-
-/** Strip the `ws=` query param from the current URL without a reload. */
-export function clearWsFromUrl(): void {
-  if (typeof window === "undefined") return;
-  const usp = new URLSearchParams(window.location.search);
-  if (!usp.has("ws")) return;
-  usp.delete("ws");
-  const search = usp.toString();
-  const next =
-    window.location.pathname +
-    (search ? "?" + search : "") +
-    window.location.hash;
-  window.history.replaceState({}, "", next);
-}
-
-/** Build a shareable URL for the current workspace state. */
-export function buildShareableUrl(snapshot: PersistedSnapshot): string {
-  if (typeof window === "undefined") return "";
-  const usp = new URLSearchParams(window.location.search);
-  usp.set("ws", encodeWsParam(snapshot));
-  return (
-    window.location.origin +
-    window.location.pathname +
-    "?" +
-    usp.toString() +
-    window.location.hash
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Custom hotkeys — SPR-08 (ADDITIVE: a SEPARATE global-scoped, versioned
-// blob, deliberately NOT folded into the layout PersistedSnapshot)
-// ─────────────────────────────────────────────────────────────────────
-//
-// Rationale for a separate blob (not a new field on PersistedSnapshot):
-// custom hotkeys are global + route-agnostic + low-churn, whereas the
-// layout snapshot is per-scope + high-churn (every panel move debounces a
-// write). Coupling them would (a) rewrite the hotkey map on every layout
-// tweak and (b) scatter the same hotkey map across the global/route/inv
-// scope keys. One global key, its own schemaVersion, owned by the hotkey
-// system. Stored at `antiek.workspace.custom-hotkeys`.
-
-const CUSTOM_HOTKEYS_KEY = LS_PREFIX + "custom-hotkeys";
-
-/** One persisted custom binding: a hotkey bound to ONE specific entity. */
+/** One persisted custom binding: a hotkey bound to one specific entity. */
 export interface PersistedCustomHotkey {
-  /** Stable id for this binding (uuid-ish). */
   id: string;
-  /** Canonical ⌘+key combo spec, e.g. "mod+j" or "alt+j" (never a chord). */
   spec: string;
-  /**
-   * Route TEMPLATE the entity lives on, with the param already substituted,
-   * e.g. "/inv/abc123" or "/read/doc-9". Stored fully-resolved so a press
-   * navigates deterministically without re-deriving the template.
-   */
   route: string;
-  /** The bound entity id (investigationId / documentId / deliverableId / projectId). */
   entityId: string;
-  /** Entity kind, for the HUD/affordance label. */
   entityKind: "investigation" | "document" | "deliverable" | "project" | "mode";
-  /** Operator-readable label for the HUD (e.g. the investigation title). */
   label: string;
 }
 
-/** The versioned envelope written to localStorage. */
 export interface PersistedCustomHotkeys {
   schemaVersion: 1;
   bindings: PersistedCustomHotkey[];
@@ -273,53 +90,102 @@ const EMPTY_CUSTOM_HOTKEYS: PersistedCustomHotkeys = {
   bindings: [],
 };
 
-/** Read the custom-hotkeys blob. Returns an empty (v1) envelope on miss,
- *  parse error, or schema-version mismatch (forward-compat: ignore + log). */
+const HOTKEY_FIELDS = ["id", "spec", "route", "entityId", "entityKind", "label"] as const;
+const ENTITY_KINDS = new Set<PersistedCustomHotkey["entityKind"]>([
+  "investigation",
+  "document",
+  "deliverable",
+  "project",
+  "mode",
+]);
+const MAX_BINDINGS = 100;
+const MAX_ID_LENGTH = 256;
+const MAX_SPEC_LENGTH = 64;
+const MAX_ROUTE_LENGTH = 2_048;
+const MAX_LABEL_LENGTH = 512;
+
+function hasExactKeys(value: object, expected: readonly string[]): boolean {
+  const keys = Object.keys(value);
+  return keys.length === expected.length && keys.every((key) => expected.includes(key));
+}
+
+function boundedString(value: unknown, maxLength: number): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= maxLength;
+}
+
+function isCustomHotkey(value: unknown): value is PersistedCustomHotkey {
+  if (typeof value !== "object" || value === null || !hasExactKeys(value, HOTKEY_FIELDS)) {
+    return false;
+  }
+  const binding = value as Record<string, unknown>;
+  if (!(
+    boundedString(binding.id, MAX_ID_LENGTH) &&
+    boundedString(binding.spec, MAX_SPEC_LENGTH) &&
+    boundedString(binding.route, MAX_ROUTE_LENGTH) &&
+    binding.route.startsWith("/") &&
+    boundedString(binding.entityId, MAX_ID_LENGTH) &&
+    typeof binding.entityKind === "string" &&
+    ENTITY_KINDS.has(binding.entityKind as PersistedCustomHotkey["entityKind"]) &&
+    boundedString(binding.label, MAX_LABEL_LENGTH)
+  )) return false;
+  const spec = normalizeBinding(binding.spec as string);
+  return (
+    spec === binding.spec &&
+    requiresModifierReason(spec) === null &&
+    SAFE_ASSIGNABLE.isWithinRange(spec) &&
+    detectConflict(spec, []) === null
+  );
+}
+
+function isCustomHotkeysEnvelope(value: unknown): value is PersistedCustomHotkeys {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !hasExactKeys(value, ["schemaVersion", "bindings"])
+  ) {
+    return false;
+  }
+  const envelope = value as Record<string, unknown>;
+  if (!(
+    envelope.schemaVersion === 1 &&
+    Array.isArray(envelope.bindings) &&
+    envelope.bindings.length <= MAX_BINDINGS &&
+    envelope.bindings.every(isCustomHotkey)
+  )) return false;
+  const bindings = envelope.bindings as PersistedCustomHotkey[];
+  return (
+    new Set(bindings.map((binding) => binding.id)).size === bindings.length &&
+    new Set(bindings.map((binding) => binding.spec)).size === bindings.length &&
+    new Set(bindings.map((binding) => binding.entityId)).size === bindings.length
+  );
+}
+
 export function readCustomHotkeys(): PersistedCustomHotkeys {
   if (typeof window === "undefined") return { ...EMPTY_CUSTOM_HOTKEYS };
   try {
     const raw = window.localStorage.getItem(CUSTOM_HOTKEYS_KEY);
     if (!raw) return { ...EMPTY_CUSTOM_HOTKEYS };
-    const parsed = JSON.parse(raw) as PersistedCustomHotkeys;
-    if (typeof parsed !== "object" || parsed === null) {
-      return { ...EMPTY_CUSTOM_HOTKEYS };
-    }
-    if (parsed.schemaVersion !== 1) {
-      if (typeof console !== "undefined") {
-        // eslint-disable-next-line no-console
-        console.warn(
-          "[antiek/persistence] ignoring custom-hotkeys with mismatched schemaVersion:",
-          parsed.schemaVersion,
-        );
-      }
-      return { ...EMPTY_CUSTOM_HOTKEYS };
-    }
-    if (!Array.isArray(parsed.bindings)) return { ...EMPTY_CUSTOM_HOTKEYS };
-    return parsed;
+    const parsed: unknown = JSON.parse(raw);
+    return isCustomHotkeysEnvelope(parsed) ? parsed : { ...EMPTY_CUSTOM_HOTKEYS };
   } catch {
     return { ...EMPTY_CUSTOM_HOTKEYS };
   }
 }
 
-/** Write the custom-hotkeys blob. Silent on quota errors. */
 export function writeCustomHotkeys(blob: PersistedCustomHotkeys): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || !isCustomHotkeysEnvelope(blob)) return;
   try {
-    window.localStorage.setItem(
-      CUSTOM_HOTKEYS_KEY,
-      JSON.stringify({ schemaVersion: 1, bindings: blob.bindings }),
-    );
+    window.localStorage.setItem(CUSTOM_HOTKEYS_KEY, JSON.stringify(blob));
   } catch {
-    // Quota exceeded / storage disabled — silent; in-memory state stands.
+    // Storage is optional; the same-tab binding remains live in memory.
   }
 }
 
-/** Delete the custom-hotkeys blob (reset-to-defaults). */
 export function clearCustomHotkeys(): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(CUSTOM_HOTKEYS_KEY);
   } catch {
-    // ignore
+    // Storage is optional.
   }
 }

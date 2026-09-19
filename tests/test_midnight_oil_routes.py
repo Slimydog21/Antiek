@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ast
+import inspect
 import os
 import sys
+import textwrap
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -26,6 +29,16 @@ from substrate.midnight_oil.job import (  # noqa: E402
     put_job_state,
 )
 from substrate.midnight_oil.job_store import OperationState  # noqa: E402
+from substrate.midnight_oil.live import (  # noqa: E402
+    resume_terminal_projection as live_projection_retry,
+)
+from substrate.midnight_oil.operation_queue import DurableOperationQueue  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolated_artifact_authority(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", str(tmp_path / "artifacts"))
+    monkeypatch.setenv("ANTIEK_ARTIFACT_KEY_SECRET", "midnight-oil-route-test-key")
 
 
 @pytest.fixture
@@ -284,6 +297,86 @@ def test_graph_admission_retry_is_owner_bound_and_projection_only(tmp_path, monk
     }
 
 
+def test_graph_admission_retry_has_zero_broad_execution_side_effects(
+    tmp_path, monkeypatch
+):
+    client, deps = _client(tmp_path)
+    job_id, terminal = _retryable_terminal(client, deps, tmp_path)
+
+    def forbidden(*args, **kwargs):
+        del args, kwargs
+        pytest.fail("graph admission retry crossed into a broader execution seam")
+
+    # These are the broad research, spend-planning, and deposit seams imported by
+    # the route module. Keeping red controls on them makes the no-rerun/no-spend
+    # invariant executable instead of relying on the endpoint docstring.
+    for name in (
+        "create_with_recommended_ceiling",
+        "deposit_job_results",
+        "execute_midnight_oil",
+        "preflight_midnight_oil",
+    ):
+        monkeypatch.setattr(
+            f"interfaces.research.api.midnight_oil_routes.{name}", forbidden
+        )
+    for name in ("enqueue_once", "lease", "renew_lease", "run_fenced"):
+        monkeypatch.setattr(DurableOperationQueue, name, forbidden)
+
+    admitted = replace(
+        terminal,
+        graph_projection_state="complete",
+        graph_projection_reason=None,
+        graph_effect_receipt=_graph_receipt(),
+    )
+
+    def projection_only(*args, **kwargs):
+        del args, kwargs
+        put_job_state(admitted, store=deps.jobs)
+        return SimpleNamespace(job=admitted)
+
+    monkeypatch.setattr(
+        "interfaces.research.api.midnight_oil_routes.resume_terminal_projection",
+        projection_only,
+    )
+
+    response = client.post(
+        f"/midnight-oil/jobs/{job_id}/graph-admission/retry",
+        headers={"x-test-user": "alice"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["graph_projection_state"] == "complete"
+
+
+def test_live_projection_retry_is_a_closed_projection_only_delegate():
+    tree = ast.parse(textwrap.dedent(inspect.getsource(live_projection_retry)))
+    calls = [
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    ]
+    assert calls == ["project_terminal_job_to_graph"]
+
+
+def test_graph_admission_retry_missing_job_is_opaque_and_projection_free(
+    tmp_path, monkeypatch
+):
+    client, _ = _client(tmp_path)
+    monkeypatch.setattr(
+        "interfaces.research.api.midnight_oil_routes.resume_terminal_projection",
+        lambda *args, **kwargs: pytest.fail("missing job reached projection"),
+    )
+
+    response = client.post(
+        "/midnight-oil/jobs/moil_missing/graph-admission/retry",
+        headers={"x-test-user": "alice"},
+    )
+
+    assert response.status_code == 404
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json()["detail"] == "job not found"
+
+
 def test_graph_admission_retry_rejects_caller_authority(tmp_path, monkeypatch):
     client, deps = _client(tmp_path)
     job_id, _ = _retryable_terminal(client, deps, tmp_path)
@@ -385,6 +478,33 @@ def test_graph_admission_retry_rejects_nonretryable_states(
     assert response.json()["detail"] == "graph admission is not retryable"
 
 
+def test_graph_admission_retry_replay_after_success_is_nonactionable(
+    tmp_path, monkeypatch
+):
+    client, deps = _client(tmp_path)
+    job_id, terminal = _retryable_terminal(client, deps, tmp_path)
+    complete = replace(
+        terminal,
+        graph_projection_state="complete",
+        graph_projection_reason=None,
+        graph_effect_receipt=_graph_receipt(),
+    )
+    put_job_state(complete, store=deps.jobs)
+    monkeypatch.setattr(
+        "interfaces.research.api.midnight_oil_routes.resume_terminal_projection",
+        lambda *args, **kwargs: pytest.fail("completed replay reached projection"),
+    )
+
+    response = client.post(
+        f"/midnight-oil/jobs/{job_id}/graph-admission/retry",
+        headers={"x-test-user": "alice"},
+    )
+
+    assert response.status_code == 409
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json()["detail"] == "graph admission is not retryable"
+
+
 def test_graph_admission_retry_rejects_reconciliation_failure(tmp_path, monkeypatch):
     client, deps = _client(tmp_path)
     job_id, _ = _retryable_terminal(client, deps, tmp_path)
@@ -406,6 +526,40 @@ def test_graph_admission_retry_rejects_reconciliation_failure(tmp_path, monkeypa
 
     assert response.status_code == 409
     assert response.json()["detail"] == "graph admission retry requires a terminal operation"
+
+
+@pytest.mark.parametrize(
+    ("authority_state", "job_status"),
+    [
+        (OperationState.COMPLETE, "failed"),
+        (OperationState.FAILED, "complete"),
+        (OperationState.TIMED_OUT, "budget_halted"),
+    ],
+)
+def test_graph_admission_retry_rejects_contradictory_terminal_pair(
+    tmp_path, monkeypatch, authority_state, job_status
+):
+    client, deps = _client(tmp_path)
+    job_id, terminal = _retryable_terminal(client, deps, tmp_path)
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id=job_id)
+    assert authority is not None
+    deps.owner_jobs._jobs[("alice", job_id)] = replace(  # type: ignore[attr-defined]
+        authority,
+        operation_state=authority_state,
+    )
+    put_job_state(replace(terminal, status=job_status), store=deps.jobs)
+    monkeypatch.setattr(
+        "interfaces.research.api.midnight_oil_routes.resume_terminal_projection",
+        lambda *args, **kwargs: pytest.fail("contradictory terminal pair reached projection"),
+    )
+
+    response = client.post(
+        f"/midnight-oil/jobs/{job_id}/graph-admission/retry",
+        headers={"x-test-user": "alice"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "terminal job authority requires reconciliation"
 
 
 def test_create_rejects_empty_goals(client):

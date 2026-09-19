@@ -208,6 +208,11 @@ def test_create_app_register_providers_false_skips(monkeypatch):
 
 
 def test_health_endpoint_reports_registered_providers(monkeypatch):
+    for key in (
+        "OPENAI_API_KEY", "OPENROUTER_API_KEY", "XIAOMI_API_KEY",
+        "HERMES_API_KEY", "Z_AI_API_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-fake-1")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake-1")
     from fastapi.testclient import TestClient

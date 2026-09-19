@@ -99,7 +99,9 @@ class _RightsContext(NamedTuple):
     license_uri: str | None
 
 
-def _rights_context(con: Any, document_id: str) -> _RightsContext:
+def _rights_context(
+    con: Any, document_id: str, *, authority: Any | None = None
+) -> _RightsContext:
     """Read ``documents.metadata`` ONCE and project the arXiv rights context.
 
     This is the SINGLE metadata read that backs BOTH the drift cross-check (via
@@ -113,14 +115,20 @@ def _rights_context(con: Any, document_id: str) -> _RightsContext:
     A present-but-blank ``license_uri`` is still an arXiv signal: it flows through
     ``resolve_tier`` to T3 (deny-by-default), and its ``arxiv_id`` is still read.
     """
-    row = con.execute(
-        "SELECT metadata FROM documents WHERE document_id = ? LIMIT 1",
-        [document_id],
-    ).fetchone()
-    if row is None or row[0] is None:
+    import os
+
+    from substrate.legal_gate.read import read_document_compatibility
+
+    document = read_document_compatibility(
+        con,
+        document_id,
+        authority=authority,
+        enforce=os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1",
+    )
+    if document is None or document["metadata"] is None:
         return _RightsContext(None, None, None)
     try:
-        metadata = json.loads(row[0])
+        metadata = json.loads(document["metadata"])
     except (TypeError, ValueError, json.JSONDecodeError):
         # Unparseable metadata is not a license signal — treat as non-arXiv so
         # the tier arm is skipped and the content_class gate stands alone (it
@@ -147,7 +155,7 @@ def _rights_context(con: Any, document_id: str) -> _RightsContext:
 
 
 def serve_full_text_guarded(
-    con: Any, document_id: str, *, owner: bool = False
+    con: Any, document_id: str, *, owner: bool = False, authority: Any | None = None
 ) -> ServeResult:
     """Serve a full body through BOTH the content_class gate and an independent
     license-tier cross-check, and stamp the arXiv RIGHTS context onto the result.
@@ -182,8 +190,8 @@ def serve_full_text_guarded(
     # False withholds it. The license-tier arm below fires EITHER way — a
     # non-T1 arXiv body never leaves storage, even on the owner path (so it
     # can never slip into a model's system_context via the context picker).
-    result = serve_full_text(con, document_id, owner=owner)
-    ctx = _rights_context(con, document_id)
+    result = serve_full_text(con, document_id, owner=owner, authority=authority)
+    ctx = _rights_context(con, document_id, authority=authority)
     canonical_url = (
         f"https://arxiv.org/abs/{ctx.arxiv_id}" if ctx.arxiv_id else None
     )

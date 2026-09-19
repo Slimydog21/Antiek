@@ -17,9 +17,7 @@ from .store import EngagementStore
 
 ProgressStage = Literal["plan", "gather", "synthesize", "cite", "complete", "failed"]
 
-_VALID_STAGES = frozenset(
-    {"plan", "gather", "synthesize", "cite", "complete", "failed"}
-)
+_VALID_STAGES = frozenset({"plan", "gather", "synthesize", "cite", "complete", "failed"})
 
 # Residual (aqc): closed competitive multi-stage pipeline (parity frontend
 # COMPETITIVE_DR_PIPELINE_STAGES · ape · complete/failed → terminal).
@@ -67,9 +65,7 @@ def record_progress(
         raise ValueError("spawn_id is required")
     stage_s = str(stage).strip().lower()
     if stage_s not in _VALID_STAGES:
-        raise ValueError(
-            f"invalid stage {stage!r}; expected one of {sorted(_VALID_STAGES)}"
-        )
+        raise ValueError(f"invalid stage {stage!r}; expected one of {sorted(_VALID_STAGES)}")
     if store.get_spawn(spawn_id) is None:
         raise KeyError(f"unknown spawn_id: {spawn_id}")
 
@@ -318,8 +314,7 @@ def project_progress_html(payload: dict[str, Any]) -> str:
                         {
                             "type": "text",
                             "text": (
-                                f"#{e.get('sequence')} [{e.get('stage')}] "
-                                f"{e.get('message') or ''}"
+                                f"#{e.get('sequence')} [{e.get('stage')}] {e.get('message') or ''}"
                             ),
                         }
                     ],

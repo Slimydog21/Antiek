@@ -13,7 +13,6 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from interfaces.research.api.engagement_routes import (  # noqa: E402
-    get_engagement_store,  # noqa: E402
     register_engagement_routes,
     reset_engagement_stores,
 )
@@ -55,7 +54,9 @@ def test_host_seeds_twins_by_default():
     assert body["view_format"] == "html"
     assert body.get("twins") is not None
     assert body["twins"].get("seeded") is True
-    eng = get_engagement_store(create_if_missing=True)
+    from interfaces.research.api.engagement_routes import get_account_engagement_store
+
+    eng = get_account_engagement_store("__operator__", create_if_missing=True)
     notes = list_twin_notes(body["document_id"], store=eng)
     assert len(notes) >= 2
 

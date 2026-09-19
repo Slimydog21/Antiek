@@ -56,7 +56,7 @@ from roles.decomposer import (  # noqa: E402
     render_full_prompt,
 )
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
-from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.event_log import emit_typed, trajectory_contextual  # noqa: E402
 from substrate.graph.search import EmbeddingModel  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
@@ -70,7 +70,7 @@ from substrate.schemas import (  # noqa: E402
     SubQuestion,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -340,7 +340,7 @@ async def _broadcast_emitted(
     so subscribed WS clients see the decomposition in real time."""
     if emitted_event_id is None:
         return
-    for row in reversed(trajectory(event.investigation_id)):
+    for row in reversed(trajectory_contextual(event.investigation_id)):
         if row.get("event_id") == emitted_event_id:
             try:
                 emitted = Event.model_validate(row)

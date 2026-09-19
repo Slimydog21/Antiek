@@ -229,18 +229,31 @@ export interface SpinResearchResponse {
 export async function spinResearch(
   documentId: string,
   pageIndex: number,
-  passageText?: string,
-  opts?: { researchTier?: "fast" | "deep" | "wrestle" },
+  passageText: string | undefined,
+  opts: {
+    researchTier?: "fast" | "deep" | "wrestle";
+    approvedRunCeilingUsd: number;
+  },
 ): Promise<SpinResearchResponse> {
   const body: Record<string, unknown> = {
     page_index: pageIndex,
     passage_text: passageText ?? null,
+    approved_run_ceiling_usd: opts.approvedRunCeilingUsd,
   };
   const tier = (opts?.researchTier || "").trim().toLowerCase();
   if (tier === "fast" || tier === "deep" || tier === "wrestle") {
     body.research_tier = tier;
   }
-  const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/spin-research`, {
+  const path = `${API_BASE}/books/${encodeURIComponent(documentId)}/spin-research`;
+  const quoteResp = await apiFetch(`${path}/quote`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!quoteResp.ok) throw new Error(`POST /books/{id}/spin-research/quote: HTTP ${quoteResp.status}`);
+  const quote = (await quoteResp.json()) as { quote_token: string };
+  body.research_quote_token = quote.quote_token;
+  const resp = await apiFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

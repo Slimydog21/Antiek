@@ -27,6 +27,10 @@ from substrate.schemas import (
     InvestigationSpawnedFromPayload,
     InvestigationStartRequestedPayload,
 )
+from tests.research_quote_support import (
+    configure_research_quote_authority,
+    post_signed_investigation,
+)
 
 # ── 1. Schema additions ─────────────────────────────────────────────
 
@@ -79,6 +83,7 @@ def temp_substrate(monkeypatch):
     os.makedirs(events_dir, exist_ok=True)
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", events_dir)
+    configure_research_quote_authority(monkeypatch, tmp)
     yield {"db_path": db_path, "events_dir": events_dir, "tmpdir": tmp}
 
 
@@ -93,11 +98,28 @@ def _client(temp_substrate):
 
 
 def test_post_investigation_with_parent_emits_spawned_from(temp_substrate):
+    from pathlib import Path
+
+    from substrate.investigation_tenancy import (
+        InvestigationAuthority,
+        bind_legacy_stream_lease,
+    )
+    from substrate.multi_user.auth import operator_claims
+
+    bind_legacy_stream_lease(
+        InvestigationAuthority(
+            operator_claims().user_id,
+            "inv-parent-foo",
+            Path(temp_substrate["events_dir"]),
+        ),
+        provenance="test_parent_start",
+    )
     client = _client(temp_substrate)
-    resp = client.post("/investigations", json={
+    resp = post_signed_investigation(client, {
         "question": "Why does X happen?",
         "parent_investigation_id": "inv-parent-foo",
         "spawn_context": "the highlighted text",
+        "approved_run_ceiling_usd": 1.0,
     })
     assert resp.status_code == 202
     inv_id = resp.json()["investigation_id"]
@@ -121,8 +143,9 @@ def test_post_investigation_without_parent_does_not_emit_spawned_from(
     temp_substrate,
 ):
     client = _client(temp_substrate)
-    resp = client.post("/investigations", json={
+    resp = post_signed_investigation(client, {
         "question": "Plain cold question.",
+        "approved_run_ceiling_usd": 1.0,
     })
     assert resp.status_code == 202
     inv_id = resp.json()["investigation_id"]
@@ -369,7 +392,7 @@ def test_list_investigations_returns_summaries(temp_substrate):
     client = _client(temp_substrate)
     # Create 3 investigations
     for q in ("first question?", "second question?", "third question?"):
-        r = client.post("/investigations", json={"question": q})
+        r = post_signed_investigation(client, {"question": q, "approved_run_ceiling_usd": 1.0})
         assert r.status_code == 202
 
     resp = client.get("/investigations")
@@ -389,7 +412,7 @@ def test_list_investigations_returns_summaries(temp_substrate):
 def test_list_investigations_status_filter(temp_substrate):
     """Status filter narrows to matching investigations."""
     client = _client(temp_substrate)
-    r = client.post("/investigations", json={"question": "active query?"})
+    r = post_signed_investigation(client, {"question": "active query?", "approved_run_ceiling_usd": 1.0})
     assert r.status_code == 202
 
     resp = client.get("/investigations?status=in_progress")
@@ -401,11 +424,12 @@ def test_list_investigations_status_filter(temp_substrate):
 
 def test_list_investigations_carries_parent_lineage(temp_substrate):
     client = _client(temp_substrate)
-    parent = client.post("/investigations", json={"question": "parent q?"}).json()
-    child = client.post("/investigations", json={
+    parent = post_signed_investigation(client, {"question": "parent q?", "approved_run_ceiling_usd": 1.0}).json()
+    child = post_signed_investigation(client, {
         "question": "child q?",
         "parent_investigation_id": parent["investigation_id"],
         "spawn_context": "from parent",
+        "approved_run_ceiling_usd": 1.0,
     }).json()
 
     resp = client.get("/investigations").json()
@@ -417,6 +441,6 @@ def test_list_investigations_carries_parent_lineage(temp_substrate):
 def test_list_investigations_limit(temp_substrate):
     client = _client(temp_substrate)
     for i in range(5):
-        client.post("/investigations", json={"question": f"q{i}?"})
+        post_signed_investigation(client, {"question": f"q{i}?", "approved_run_ceiling_usd": 1.0})
     resp = client.get("/investigations?limit=3")
     assert resp.json()["count"] == 3

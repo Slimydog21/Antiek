@@ -38,7 +38,7 @@ vi.mock("../../lib/api", async (orig) => {
 // pure. We assert on what the reader SEES, not on panel side effects.
 vi.mock("../../workspace/actions", () => ({
   openNotebook: vi.fn(),
-  openPdfPanel: vi.fn(),
+  openHostedDocumentPanel: vi.fn(),
 }));
 vi.mock("../../components/lemon/LemonToast", () => ({
   toast: { ok: vi.fn(), err: vi.fn() },

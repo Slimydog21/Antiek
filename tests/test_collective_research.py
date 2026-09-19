@@ -16,6 +16,7 @@ from substrate.engagement_spine import (  # noqa: E402
     HighlightSelection,
     InMemoryEngagementStore,
     collective_research_html,
+    complete_spawn,
     merge_spawns_collective,
     record_twin_insight,
     spawn_from_highlight_with_references,
@@ -87,6 +88,8 @@ def test_merge_two_spawns_collective(store):
         references=["https://arxiv.org/abs/1512.03385"],
         research_tier="wrestle",
     )
+    complete_spawn(s1.spawn_id, output_text="Transformer evidence synthesis.", store=store)
+    complete_spawn(s2.spawn_id, output_text="Residual-network evidence synthesis.", store=store)
     rec = _Rec()
     unit = merge_spawns_collective(
         [s1.spawn_id, s2.spawn_id],
@@ -129,6 +132,8 @@ def test_collective_id_stable_regardless_of_order(store):
         store=store,
         references=["https://z.substack.com/p/post"],
     )
+    complete_spawn(s1.spawn_id, output_text="First evidence synthesis.", store=store)
+    complete_spawn(s2.spawn_id, output_text="Second evidence synthesis.", store=store)
     rec = _Rec()
     a = merge_spawns_collective(
         [s1.spawn_id, s2.spawn_id],
@@ -145,9 +150,7 @@ def test_collective_id_stable_regardless_of_order(store):
         include_twin_promote=False,
     )
     assert a.collective_id == b.collective_id
-    assert {r.ref_id for r in a.source_references} == {
-        r.ref_id for r in b.source_references
-    }
+    assert {r.ref_id for r in a.source_references} == {r.ref_id for r in b.source_references}
 
 
 def test_collective_rejects_empty_and_missing(store):

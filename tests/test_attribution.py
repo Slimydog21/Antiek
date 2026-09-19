@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import tempfile
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -149,6 +150,15 @@ def seeded_substrate(monkeypatch):
     from runtime.db_lock import connect_write
     from substrate.graph.ops import insert_chunk, insert_document
     from substrate.graph.schema import init_database_at_path
+    from substrate.graph.tenancy import (
+        GraphTenancyState,
+        initialize_graph_authority,
+        transition_graph_tenancy_state,
+    )
+    from substrate.investigation_streams import initialize_composite_stream
+    from substrate.investigation_tenancy import InvestigationAuthority
+    from substrate.legal_gate.admission import admit_staged_document
+    from substrate.legal_gate.policy_store import account_policy_authority
 
     tmp = tempfile.mkdtemp(prefix="antiek-attr-")
     db_path = os.path.join(tmp, "graph.duckdb")
@@ -157,17 +167,22 @@ def seeded_substrate(monkeypatch):
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", events_dir)
     init_database_at_path(db_path)
+    authority = InvestigationAuthority("__operator__", "inv-1", root=Path(events_dir))
+    initialize_composite_stream(authority)
 
     chunk_a_id: str
     chunk_b_id: str
     with connect_write(db_path, purpose="seed") as con:
+        initialize_graph_authority(con, authority)
         insert_document(
             con, document_id="doc-A", source_tier=1,
             document_type="academic_paper", title="Tier-1 Paper",
+            raw_text="chunk A text.",
         )
         insert_document(
             con, document_id="doc-B", source_tier=4,
             document_type="blog_post", title="Tier-4 Blog",
+            raw_text="chunk B text.",
         )
         chunk_a_id = insert_chunk(
             con, document_id="doc-A", chunk_index=0, text="chunk A text.",
@@ -175,6 +190,29 @@ def seeded_substrate(monkeypatch):
         chunk_b_id = insert_chunk(
             con, document_id="doc-B", chunk_index=0, text="chunk B text.",
         )
+        for document_id, chunk_id, text in (
+            ("doc-A", chunk_a_id, "chunk A text."),
+            ("doc-B", chunk_b_id, "chunk B text."),
+        ):
+            import hashlib
+            from datetime import UTC, datetime
+
+            digest = hashlib.sha256(text.encode()).hexdigest()
+            receipt = admit_staged_document(
+                con,
+                account_policy_authority(authority),
+                investigation_digest=authority.investigation_digest,
+                document_id=document_id,
+                provenance_class="internal_operator",
+                content_sha256=digest,
+                at=datetime.now(UTC),
+            )
+            con.execute(
+                "INSERT INTO legal_chunk_admissions "
+                "(receipt_id, chunk_id, document_id, chunk_index, section_path, "
+                "token_count, text_sha256) VALUES (?, ?, ?, 0, NULL, 0, ?)",
+                [receipt.receipt_id, chunk_id, document_id, digest],
+            )
         thesis = {
             "thesis_components": [
                 {
@@ -193,10 +231,26 @@ def seeded_substrate(monkeypatch):
             "INSERT INTO syntheses "
             "(synthesis_id, investigation_id, target_question, "
             " synthesis_timestamp, status, implicit_recommendation, "
-            " thesis, thesis_token_count) "
-            "VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, 0)",
+            " thesis, thesis_token_count, account_digest, investigation_digest) "
+            "VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, 0, ?, ?)",
             ["syn-test-1", "inv-1", "Why does X compound?",
-             "passed", "proceed", json.dumps(thesis)],
+             "passed", "proceed", json.dumps(thesis),
+             authority.account_digest, authority.investigation_digest],
+        )
+        con.executemany(
+            "INSERT INTO synthesis_substrate_manifest "
+            "(synthesis_id, entity_kind, entity_id) VALUES (?, 'chunk', ?)",
+            [("syn-test-1", chunk_a_id), ("syn-test-1", chunk_b_id)],
+        )
+        transition_graph_tenancy_state(
+            con,
+            expected=GraphTenancyState.UNSCOPED,
+            desired=GraphTenancyState.COPYING,
+        )
+        transition_graph_tenancy_state(
+            con,
+            expected=GraphTenancyState.COPYING,
+            desired=GraphTenancyState.SHADOW,
         )
     yield {"db_path": db_path, "events_dir": events_dir,
            "synthesis_id": "syn-test-1"}

@@ -10,9 +10,11 @@ SERVABLE_CONTENT_CLASSES); the routing map emits the format.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
+from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 
 from services.html_projection.adapters.deliverable import (
@@ -45,7 +47,7 @@ def _resolve_db_path() -> str:
 
 
 def resolve_deliverable_export(
-    deliverable_id: str, *, db_path: str | None = None
+    deliverable_id: str, *, db_path: str | None = None, authority: Any | None = None
 ) -> DeliverableExportSource | None:
     """Read a deliverable into a DeliverableExportSource, or None if absent.
 
@@ -88,7 +90,11 @@ def resolve_deliverable_export(
     from services.html_projection.resolvers.substrate_refs import resolve_refs
 
     all_block_ids = [bid for refs in block_refs.values() for (_kind, bid) in refs]
-    resolved = resolve_refs(all_block_ids, db_path=db) if all_block_ids else {}
+    resolved = (
+        resolve_refs(all_block_ids, db_path=db, authority=authority)
+        if all_block_ids
+        else {}
+    )
 
     sections = []
     for sid, stitle, prose in section_rows:
@@ -131,8 +137,35 @@ def register_deliverable_artifact_routes(app: FastAPI) -> None:
     """Mount ``GET /api/deliverables/{id}/artifact``. One call from create_app."""
 
     @app.get("/api/deliverables/{deliverable_id}/artifact", tags=["deliverables"])
-    async def deliverable_artifact(deliverable_id: str, format: str = "html") -> Response:
-        source = resolve_deliverable_export(deliverable_id)
+    async def deliverable_artifact(
+        deliverable_id: str, request: Request, format: str = "html"
+    ) -> Response:
+        authority = None
+        if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+            from interfaces.research.api.investigation_access import (
+                InvestigationAccessDenied,
+                authority_from_request,
+                require_investigation_owner,
+            )
+            from runtime.db_lock import connect_read
+
+            with connect_read(_resolve_db_path()) as con:
+                identity = con.execute(
+                    "SELECT investigation_root_id, owner_user_id FROM deliverables "
+                    "WHERE deliverable_id = ?",
+                    [deliverable_id],
+                ).fetchone()
+            if identity is None or not identity[0]:
+                raise HTTPException(status_code=404, detail="deliverable not found")
+            try:
+                access = authority_from_request(request, str(identity[0]))
+                require_investigation_owner(access)
+                if access.authority.account_id != str(identity[1] or "__operator__"):
+                    raise InvestigationAccessDenied("deliverable access denied")
+                authority = access.authority
+            except InvestigationAccessDenied as exc:
+                raise HTTPException(status_code=404, detail="deliverable not found") from exc
+        source = resolve_deliverable_export(deliverable_id, authority=authority)
         if source is None:
             raise HTTPException(
                 status_code=404, detail=f"deliverable {deliverable_id!r} not found"

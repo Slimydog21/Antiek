@@ -533,6 +533,7 @@ describe("DEEP-RESEARCH spawns a child linked to the highlight (M2)", () => {
       question: "chase me",
       parent_investigation_id: "inv-1",
       spawn_context: "chase me",
+      approved_run_ceiling_usd: 1,
     });
     expect(startInvestigationMock).toHaveBeenCalledTimes(1);
     const req = startInvestigationMock.mock.calls[0][0] as { parent_investigation_id: string };

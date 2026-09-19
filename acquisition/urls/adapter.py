@@ -42,6 +42,7 @@ from processing.embedding.embed import (  # noqa: E402
     EmbeddingProvider,
     default_embedding_provider,
 )
+from runtime.db_lock import connect_write  # noqa: E402
 from substrate.books.servability import servability_of  # noqa: E402
 from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 from substrate.event_log import emit_typed  # noqa: E402
@@ -50,9 +51,30 @@ from substrate.graph import (  # noqa: E402
     ensure_initialized,
 )
 from substrate.graph.ops import (  # noqa: E402
+    delete_document_chunks,
     insert_chunk,
+    insert_chunk_admitted,
     insert_document,
+    insert_document_admitted,
     insert_node,
+    reseal_admitted_document,
+)
+from substrate.investigation_tenancy import InvestigationAuthority  # noqa: E402
+from substrate.legal_gate.admission import admit_staged_document  # noqa: E402
+from substrate.legal_gate.policy_store import (  # noqa: E402
+    LegalPolicyDenied,
+    account_policy_authority,
+)
+from substrate.legal_gate.read import (  # noqa: E402
+    DocumentReplacementCapability,
+    UrlReplacementArchive,
+    authorize_document_replacement,
+    document_custody_exists,
+    read_chunks_compatibility,
+    read_document,
+    read_document_compatibility,
+    url_legacy_replacement_archive,
+    url_replacement_archive,
 )
 from substrate.rights.register import (  # noqa: E402
     SourceKind,
@@ -138,7 +160,11 @@ def lookup_url_alias(
 
 
 def _resolve_alias_projection(
-    document_id: str, *, requested_url: str, db_path: str | None
+    document_id: str,
+    *,
+    requested_url: str,
+    db_path: str | None,
+    authority: InvestigationAuthority | None = None,
 ) -> str | None:
     """Return the canonical projection, repairing legacy pre-HTML rows once."""
     import duckdb
@@ -154,12 +180,22 @@ def _resolve_alias_projection(
     resolved = db_path or default_db_path()
     try:
         con = duckdb.connect(resolved, read_only=True)
-        row = con.execute(
-            """SELECT source_uri, title, author, raw_text, metadata,
-                      content_class, ip_holder_id, owner_user_id
-               FROM documents WHERE document_id = ?""",
-            [document_id],
-        ).fetchone()
+        document = read_document_compatibility(
+            con,
+            document_id,
+            authority=authority,
+            enforce=authority is not None,
+        )
+        row = None if document is None else (
+            document["source_uri"],
+            document["title"],
+            document["author"],
+            document["raw_text"],
+            document["metadata"],
+            document["content_class"],
+            document["ip_holder_id"],
+            document["owner_user_id"],
+        )
     except Exception:
         return None
     finally:
@@ -199,24 +235,50 @@ def _resolve_alias_projection(
     return str(path)
 
 
-def _mark_url_projection_ready(*, db_path: str, document_id: str, snapshot_path: str) -> None:
+def _mark_url_projection_ready(
+    *,
+    db_path: str,
+    document_id: str,
+    snapshot_path: str,
+    authority: InvestigationAuthority | None = None,
+) -> None:
     """Acknowledge a successfully published derived projection durably."""
-    from runtime.db_lock import connect_write
-
     projection_hash = "sha256:" + hashlib.sha256(Path(snapshot_path).read_bytes()).hexdigest()
     with connect_write(db_path, purpose="acquisition/urls/projection-ready") as con:
-        row = con.execute(
-            "SELECT metadata FROM documents WHERE document_id = ?", [document_id]
-        ).fetchone()
-        if row is None:
+        admitted_document: dict[str, Any] | None = None
+        if authority is not None:
+            admitted_document = read_document(con, authority, document_id)
+        stored = admitted_document or read_document_compatibility(
+            con, document_id, authority=None, enforce=False
+        )
+        if stored is None:
             return
-        metadata = json.loads(row[0]) if row[0] else {}
+        metadata = json.loads(stored["metadata"]) if stored["metadata"] else {}
         metadata["reader_projection_state"] = "ready"
         metadata["reader_projection_hash"] = projection_hash
         con.execute(
             "UPDATE documents SET metadata = ? WHERE document_id = ?",
             [json.dumps(metadata), document_id],
         )
+        if authority is not None and admitted_document is not None:
+            reseal_admitted_document(
+                con,
+                authority,
+                admission_receipt_id=str(
+                    admitted_document["legal_admission_receipt_id"]
+                ),
+                admitted_content_sha256=hashlib.sha256(
+                    str(admitted_document["raw_text"]).encode()
+                ).hexdigest(),
+                document_id=document_id,
+            )
+
+
+def _invalidate_url_projection(document_id: str) -> None:
+    """Remove stale HTML before an authorized canonical replacement begins."""
+    from acquisition.snapshot.reader_html import reader_snapshot_path_for
+
+    reader_snapshot_path_for(document_id).unlink(missing_ok=True)
 
 
 def _existing_url_document(
@@ -227,23 +289,24 @@ def _existing_url_document(
 
     con = duckdb.connect(db_path, read_only=True)
     try:
-        row = con.execute(
-            "SELECT raw_text, metadata, title, author FROM documents WHERE document_id = ?",
-            [document_id],
-        ).fetchone()
-        if row is None:
+        document = read_document_compatibility(
+            con, document_id, authority=None, enforce=False
+        )
+        if document is None:
             return None
-        raw_text, raw_metadata, title, author = row
+        raw_text = document["raw_text"]
+        raw_metadata = document["metadata"]
+        title = document["title"]
+        author = document["author"]
         metadata = json.loads(raw_metadata) if raw_metadata else {}
         canonical_hash = str(
             metadata.get("canonical_content_hash") or "sha256:" + content_hash(str(raw_text or ""))
         )
         chunk_ids = [
-            str(item[0])
-            for item in con.execute(
-                "SELECT chunk_id FROM chunks WHERE document_id = ? ORDER BY chunk_index",
-                [document_id],
-            ).fetchall()
+            str(item["chunk_id"])
+            for item in read_chunks_compatibility(
+                con, document_id, authority=None, enforce=False
+            )
         ]
         return (
             canonical_hash,
@@ -255,38 +318,125 @@ def _existing_url_document(
         con.close()
 
 
-def _archive_url_chunks_for_replace(con: Any, document_id: str) -> None:
-    """Preserve an addressable historical revision before refreshing chunks.
+def _archive_authorized_url_chunks_for_replace(
+    con: Any,
+    document_id: str,
+    *,
+    authority: InvestigationAuthority,
+    capability: DocumentReplacementCapability,
+    state: UrlReplacementArchive,
+) -> None:
+    if not state.referenced_chunk_ids and not state.referenced_document_edge_ids:
+        return
+    old_hash = capability.prior_content_sha256
+    revision_id = f"{document_id}::rev::{old_hash[:16]}"
+    raw_metadata = state.document_value("metadata")
+    revision_metadata = json.loads(raw_metadata) if raw_metadata else {}
+    revision_metadata.update(
+        {
+            "revision_of": document_id,
+            "revision_content_hash": f"sha256:{old_hash}",
+            "archived_at": datetime.now(UTC).isoformat(),
+            "reader_projection_state": "historical",
+        }
+    )
+    historical = admit_staged_document(
+        con,
+        account_policy_authority(authority),
+        investigation_digest=authority.investigation_digest,
+        document_id=revision_id,
+        provenance_class="external_network",
+        canonical_url=str(state.document_value("source_uri") or ""),
+        title=str(state.document_value("title") or ""),
+        author=str(state.document_value("author") or ""),
+        source_corpus="web",
+        content_sha256=old_hash,
+        at=datetime.now(UTC),
+    )
+    if historical.decision != "allow":
+        raise LegalPolicyDenied("historical revision is unavailable")
+    revision_metadata["legal_admission_receipt_id"] = historical.receipt_id
+    insert_document_admitted(
+        con,
+        authority,
+        admission_receipt_id=historical.receipt_id,
+        admitted_content_sha256=old_hash,
+        document_id=revision_id,
+        source_uri=state.document_value("source_uri"),
+        title=state.document_value("title"),
+        author=state.document_value("author"),
+        published_at=state.document_value("published_at"),
+        source_tier=int(state.document_value("source_tier")),
+        document_type="web_article_revision",
+        investigation_id=authority.investigation_id,
+        raw_text=str(state.document_value("raw_text")),
+        metadata=revision_metadata,
+        content_class=state.document_value("content_class"),
+        ip_holder_id=state.document_value("ip_holder_id"),
+        on_conflict="error",
+    )
+    clone_ids: dict[str, str] = {}
+    for chunk in state.chunks:
+        clone_id = f"{revision_id}::chunk::{chunk.chunk_index}"
+        clone_ids[chunk.chunk_id] = insert_chunk_admitted(
+            con,
+            authority,
+            admission_receipt_id=historical.receipt_id,
+            admitted_content_sha256=old_hash,
+            chunk_id=clone_id,
+            document_id=revision_id,
+            chunk_index=chunk.chunk_index,
+            section_path=chunk.section_path,
+            text=chunk.text,
+            embedding=chunk.embedding,
+            token_count=chunk.token_count,
+        )
+    for old_id in state.referenced_chunk_ids:
+        con.execute(
+            "UPDATE edges SET chunk_id = ?, source_document_id = ? WHERE chunk_id = ?",
+            [clone_ids[old_id], revision_id, old_id],
+        )
+    for edge_id in state.referenced_document_edge_ids:
+        con.execute(
+            "UPDATE edges SET source_document_id = ? WHERE edge_id = ?",
+            [revision_id, edge_id],
+        )
+    con.execute(
+        "DELETE FROM chunk_tier_overrides WHERE chunk_id IN ("
+        + ",".join("?" for _ in state.chunks)
+        + ")",
+        [chunk.chunk_id for chunk in state.chunks],
+    )
+    for override in state.overrides:
+        con.execute(
+            """INSERT INTO chunk_tier_overrides
+                   (chunk_id, original_tier, override_tier, reason, set_at, set_by)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            [
+                clone_ids[override.chunk_id],
+                override.original_tier,
+                override.override_tier,
+                override.reason,
+                override.set_at,
+                override.set_by,
+            ],
+        )
+    # Superseded custody chunks remain inert because DuckDB cannot atomically
+    # retarget and delete an FK parent. Receipt manifests make them unreadable.
 
-    Downstream edges and tier overrides keep pointing at immutable cloned chunks;
-    the canonical document can then own only its current chunk set.
-    """
-    row = con.execute(
-        "SELECT metadata FROM documents WHERE document_id = ?", [document_id]
-    ).fetchone()
-    metadata = json.loads(row[0]) if row and row[0] else {}
+
+def _archive_url_chunks_for_replace(con: Any, document_id: str) -> None:
+    """Legacy replacement compatibility for authority-free callers."""
+    state = url_legacy_replacement_archive(con, document_id)
+    if state is None:
+        return
+    raw_metadata = state.document_value("metadata")
+    metadata = json.loads(raw_metadata) if raw_metadata else {}
     old_hash = str(metadata.get("canonical_content_hash") or "unknown")
     revision_id = f"{document_id}::rev::{old_hash.removeprefix('sha256:')[:16]}"
-    chunks = con.execute(
-        """SELECT chunk_id, chunk_index, section_path, text, embedding, token_count
-           FROM chunks WHERE document_id = ? ORDER BY chunk_index""",
-        [document_id],
-    ).fetchall()
-    referenced = {
-        str(item[0])
-        for item in con.execute(
-            """SELECT chunk_id FROM edges
-               WHERE chunk_id IN (SELECT chunk_id FROM chunks WHERE document_id = ?)
-               UNION
-               SELECT chunk_id FROM chunk_tier_overrides
-               WHERE chunk_id IN (SELECT chunk_id FROM chunks WHERE document_id = ?)""",
-            [document_id, document_id],
-        ).fetchall()
-    }
-    if not referenced:
-        con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
+    if not state.referenced_chunk_ids and not state.referenced_document_edge_ids:
+        delete_document_chunks(con, document_id)
         return
-
     revision_metadata = dict(metadata)
     revision_metadata.update(
         {
@@ -296,50 +446,52 @@ def _archive_url_chunks_for_replace(con: Any, document_id: str) -> None:
             "reader_projection_state": "historical",
         }
     )
-    con.execute(
-        """INSERT INTO documents (
-               document_id, source_uri, title, author, published_at, acquired_at,
-               source_tier, document_type, investigation_id, raw_text, metadata,
-               owner_user_id, content_class, ip_holder_id
-           )
-           SELECT ?, source_uri, title, author, published_at, acquired_at,
-                  source_tier, 'web_article_revision', investigation_id, raw_text, ?,
-                  owner_user_id, content_class, ip_holder_id
-           FROM documents WHERE document_id = ?
-           ON CONFLICT (document_id) DO NOTHING""",
-        [revision_id, json.dumps(revision_metadata), document_id],
+    insert_document(
+        con,
+        document_id=revision_id,
+        source_uri=state.document_value("source_uri"),
+        title=state.document_value("title"),
+        author=state.document_value("author"),
+        published_at=state.document_value("published_at"),
+        source_tier=int(state.document_value("source_tier")),
+        document_type="web_article_revision",
+        investigation_id=state.document_value("investigation_id"),
+        raw_text=str(state.document_value("raw_text")),
+        metadata=revision_metadata,
+        content_class=state.document_value("content_class"),
+        ip_holder_id=state.document_value("ip_holder_id"),
+        owner_user_id=state.document_value("owner_user_id"),
+        on_conflict="ignore",
     )
     clone_ids: dict[str, str] = {}
-    for old_id, index, section, chunk_text, embedding, token_count in chunks:
-        clone_id = f"{revision_id}::chunk::{int(index)}"
-        clone_ids[str(old_id)] = clone_id
-        con.execute(
-            """INSERT INTO chunks (
-                   chunk_id, document_id, chunk_index, section_path,
-                   text, embedding, token_count
-               ) VALUES (?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT (chunk_id) DO NOTHING""",
-            [
-                clone_id,
-                revision_id,
-                int(index),
-                section,
-                chunk_text,
-                embedding,
-                int(token_count),
-            ],
+    for chunk in state.chunks:
+        clone_id = f"{revision_id}::chunk::{chunk.chunk_index}"
+        clone_ids[chunk.chunk_id] = insert_chunk(
+            con,
+            chunk_id=clone_id,
+            document_id=revision_id,
+            chunk_index=chunk.chunk_index,
+            section_path=chunk.section_path,
+            text=chunk.text,
+            embedding=chunk.embedding,
+            token_count=chunk.token_count,
         )
-    for old_id in referenced:
-        clone_id = clone_ids[old_id]
+    for old_id in state.referenced_chunk_ids:
         con.execute(
             "UPDATE edges SET chunk_id = ?, source_document_id = ? WHERE chunk_id = ?",
-            [clone_id, revision_id, old_id],
+            [clone_ids[old_id], revision_id, old_id],
         )
+    for edge_id in state.referenced_document_edge_ids:
+        con.execute(
+            "UPDATE edges SET source_document_id = ? WHERE edge_id = ?",
+            [revision_id, edge_id],
+        )
+    for override in state.overrides:
         con.execute(
             "UPDATE chunk_tier_overrides SET chunk_id = ? WHERE chunk_id = ?",
-            [clone_id, old_id],
+            [clone_ids[override.chunk_id], override.chunk_id],
         )
-    con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
+    delete_document_chunks(con, document_id)
 
 
 # ---------------------------------------------------------------------------
@@ -363,6 +515,7 @@ class IngestUrlResult:
     title: str | None = None
     author: str | None = None
     reader_snapshot_path: str | None = None
+    admission_receipt_id: str | None = None
 
 
 def _write_url_projection(
@@ -475,6 +628,7 @@ def ingest_url(
     # Wedge 2 (Browserbase escalation) — opt-in per call (default off).
     fallback_to_browserbase: bool = False,
     browserbase_wait_for: str | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> IngestUrlResult:
     """Fetch ``url``, extract markdown, ingest into substrate.
 
@@ -499,7 +653,7 @@ def ingest_url(
     # doc_id without paying the fetch cost OR forking a new doc_id.
     # Skipped when `fetched=` is passed (caller has bytes and is
     # intentionally re-ingesting).
-    if fetched is None:
+    if fetched is None and authority is None:
         canonical = lookup_url_alias(url, db_path=db_path)
         if canonical is not None:
             return IngestUrlResult(
@@ -529,14 +683,16 @@ def ingest_url(
         page_count=None,
         source_uri=page.final_url,
     )
-    event_id = emit_typed(
-        investigation_id,
-        payload,
-        document_id=document_id,
-        role="acquisition",
-        policy_id="acquisition/urls",
-    )
-    assert event_id is not None
+    event_id: str | None = None
+    if authority is None:
+        event_id = emit_typed(
+            investigation_id,
+            payload,
+            document_id=document_id,
+            role="acquisition",
+            policy_id="acquisition/urls",
+        )
+        assert event_id is not None
 
     # Word-count gate. Emit the event so the operator can see the
     # fetch happened, but skip graph writes for plausibly-misextracted
@@ -574,6 +730,14 @@ def ingest_url(
 
         if md_doc.word_count < min_word_count:
             skipped_reason = "low_word_count_after_fallback" if escalation_ran else "low_word_count"
+            if authority is not None:
+                return IngestUrlResult(
+                    document_id=document_id,
+                    final_url=page.final_url,
+                    skipped_reason=skipped_reason,
+                    title=None,
+                    author=None,
+                )
             reader_snapshot_path = _write_url_projection(
                 page=page,
                 document_id=document_id,
@@ -595,7 +759,41 @@ def ingest_url(
     resolved_db_path = db_path or default_db_path()
     ensure_initialized(resolved_db_path)
 
-    if on_conflict == "ignore":
+    replacement_capability = None
+    if authority is not None:
+        if authority.investigation_id != investigation_id:
+            raise ValueError("URL admission authority does not match investigation")
+        with connect_write(resolved_db_path, purpose="acquisition/urls/existing") as con:
+            if document_custody_exists(con, document_id):
+                if on_conflict == "ignore":
+                    try:
+                        current = read_document(con, authority, document_id)
+                    except LegalPolicyDenied:
+                        current = None
+                    if current is not None:
+                        current_hash = "sha256:" + content_hash(current["raw_text"])
+                        return IngestUrlResult(
+                            document_id=document_id,
+                            final_url=page.final_url,
+                            skipped_reason=(
+                                None
+                                if current_hash == chash
+                                else "changed_content_requires_replace"
+                            ),
+                            title=current["title"],
+                            author=current["author"],
+                            admission_receipt_id=current["legal_admission_receipt_id"],
+                        )
+                if on_conflict == "replace":
+                    replacement_capability = authorize_document_replacement(
+                        con,
+                        authority,
+                        document_id,
+                        next_content_sha256=chash,
+                    )
+                    _invalidate_url_projection(document_id)
+
+    if on_conflict == "ignore" and authority is None:
         existing = _existing_url_document(document_id, db_path=resolved_db_path)
         if existing is not None:
             stored_hash, stored_title, stored_author, stored_chunk_ids = existing
@@ -634,9 +832,46 @@ def ingest_url(
         "reader_projection_hash": None,
     }
 
-    from runtime.db_lock import connect_write
-
     with connect_write(resolved_db_path, purpose="acquisition/urls") as con:
+        if authority is not None:
+            con.execute("BEGIN TRANSACTION")
+        admission_receipt_id: str | None = None
+        replacement_archive: UrlReplacementArchive | None = None
+        if authority is not None:
+            if replacement_capability is not None:
+                replacement_archive = url_replacement_archive(
+                    con,
+                    replacement_capability,
+                    authority,
+                    document_id,
+                    chash,
+                )
+            admission = admit_staged_document(
+                con,
+                account_policy_authority(authority),
+                investigation_digest=authority.investigation_digest,
+                document_id=document_id,
+                provenance_class="external_network",
+                canonical_url=page.final_url,
+                title=md_doc.title or "",
+                author=md_doc.author or "",
+                source_corpus="web",
+                content_sha256=chash,
+                at=datetime.now(UTC),
+            )
+            admission_receipt_id = admission.receipt_id
+            if admission.decision != "allow":
+                con.execute("COMMIT")
+                return IngestUrlResult(
+                    document_id=document_id,
+                    final_url=page.final_url,
+                    skipped_reason=f"legal_policy:{admission.reason_code or 'deny'}",
+                    title=None,
+                    author=None,
+                    admission_receipt_id=admission.receipt_id,
+                )
+            document_metadata["legal_admission_receipt_id"] = admission.receipt_id
+            document_metadata["source_event_id"] = None
         # ``replace`` is adapter-level admission; insert_document itself only
         # accepts error/ignore. The canonical row remains in place so foreign
         # keys and URL aliases preserve stable identity.
@@ -652,6 +887,18 @@ def ingest_url(
             # implied row replacement. Independent unindexed-column updates
             # remain within this one transaction and preserve the referenced
             # document identity.
+            if authority is not None:
+                if replacement_capability is None or replacement_archive is None:
+                    raise LegalPolicyDenied("document replacement is unavailable")
+                _archive_authorized_url_chunks_for_replace(
+                    con,
+                    document_id,
+                    authority=authority,
+                    capability=replacement_capability,
+                    state=replacement_archive,
+                )
+            else:
+                _archive_url_chunks_for_replace(con, document_id)
             for column, value in (
                 ("source_uri", page.final_url),
                 ("title", md_doc.title),
@@ -663,10 +910,19 @@ def ingest_url(
                     f"UPDATE documents SET {column} = ? WHERE document_id = ?",
                     [value, document_id],
                 )
-            _archive_url_chunks_for_replace(con, document_id)
             insert_on_conflict = "ignore"
-        insert_document(
+        document_insert = insert_document_admitted if authority is not None else insert_document
+        document_insert(
             con,
+            **(
+                {
+                    "authority": authority,
+                    "admission_receipt_id": admission_receipt_id,
+                    "admitted_content_sha256": chash,
+                }
+                if authority is not None
+                else {}
+            ),
             document_id=document_id,
             source_tier=int(source_tier),
             document_type="web_article",
@@ -690,12 +946,13 @@ def ingest_url(
             metadata=document_metadata,
             on_conflict=insert_on_conflict,
         )
-        register_source_document(
-            con,
-            document_id=document_id,
-            source_kind=SourceKind.WEB,
-            content_class=PERSONAL_READING_CONTENT_CLASS,
-        )
+        if replacement_capability is None:
+            register_source_document(
+                con,
+                document_id=document_id,
+                source_kind=SourceKind.WEB,
+                content_class=PERSONAL_READING_CONTENT_CLASS,
+            )
         # Spec §14.2 — record the requested_url→document_id alias so
         # future fetches that resolve to a different final_url for
         # the same logical content can find their canonical doc_id
@@ -730,14 +987,29 @@ def ingest_url(
             # unchanged re-run short-circuits in the PG driver before calling
             # ingest_url), and on the replace path the prior chunks were just
             # DELETEd above — so every insert in this loop is a fresh row.
-            chunk_id = insert_chunk(
+            chunk_insert = insert_chunk_admitted if authority is not None else insert_chunk
+            chunk_id = chunk_insert(
                 con,
+                **(
+                    {
+                        "authority": authority,
+                        "admission_receipt_id": admission_receipt_id,
+                        "admitted_content_sha256": chash,
+                    }
+                    if authority is not None
+                    else {}
+                ),
                 document_id=document_id,
                 chunk_index=i,
                 text=chunk.text,
                 section_path=chunk.section or None,
                 embedding=emb.encode(chunk.text),
                 token_count=chunk.token_count,
+                **(
+                    {"chunk_id": f"{document_id}::{admission_receipt_id}::c{i}"}
+                    if authority is not None
+                    else {}
+                ),
             )
             chunk_ids.append(chunk_id)
             chunks_written += 1
@@ -747,6 +1019,11 @@ def ingest_url(
                 label = label[: _NODE_LABEL_MAX - 1] + "…"
             if not label:
                 label = f"{document_id}#{i}"
+            # Authorized acquisition publishes no content-derived graph event
+            # from inside the database transaction. Loop 1 performs the
+            # authority-bound extraction after commit.
+            if authority is not None:
+                continue
             node_id = insert_node(
                 con,
                 canonical_label=label,
@@ -765,20 +1042,63 @@ def ingest_url(
             )
             node_ids.append(node_id)
 
+        if authority is not None:
+            con.execute("COMMIT")
+
+    if authority is not None:
+        try:
+            event_id = emit_typed(
+                investigation_id,
+                payload,
+                document_id=document_id,
+                role="acquisition",
+                policy_id="acquisition/urls",
+            )
+            assert event_id is not None
+        except Exception:
+            return IngestUrlResult(
+                document_id=document_id,
+                final_url=page.final_url,
+                chunk_ids=chunk_ids,
+                node_ids=node_ids,
+                chunks_written=chunks_written,
+                skipped_reason="post_commit_publication_pending",
+                title=md_doc.title,
+                author=md_doc.author,
+                admission_receipt_id=admission_receipt_id,
+            )
+
     # Publish only after the substrate transaction has committed. Atomic file
     # replacement ensures readers see either the prior complete version or this
     # complete version, never a partially written projection.
-    reader_snapshot_path = _write_url_projection(
-        page=page,
-        document_id=document_id,
-        canonical_content_hash=chash,
-        source_event_id=event_id,
-        viewable=True,
-    )
+    try:
+        reader_snapshot_path = _write_url_projection(
+            page=page,
+            document_id=document_id,
+            canonical_content_hash=chash,
+            source_event_id=event_id,
+            viewable=True,
+        )
+    except Exception:
+        if authority is None:
+            raise
+        return IngestUrlResult(
+            document_id=document_id,
+            final_url=page.final_url,
+            chunk_ids=chunk_ids,
+            node_ids=node_ids,
+            document_loaded_event_id=event_id,
+            chunks_written=chunks_written,
+            skipped_reason="post_commit_publication_pending",
+            title=md_doc.title,
+            author=md_doc.author,
+            admission_receipt_id=admission_receipt_id,
+        )
     _mark_url_projection_ready(
         db_path=resolved_db_path,
         document_id=document_id,
         snapshot_path=reader_snapshot_path,
+        authority=authority,
     )
 
     return IngestUrlResult(
@@ -791,4 +1111,5 @@ def ingest_url(
         title=md_doc.title,
         author=md_doc.author,
         reader_snapshot_path=reader_snapshot_path,
+        admission_receipt_id=admission_receipt_id,
     )

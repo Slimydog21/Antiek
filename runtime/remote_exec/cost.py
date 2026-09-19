@@ -39,7 +39,9 @@ import os
 import sys
 
 try:
-    from ...event_log import emit_typed
+    from ...event_log import emit_typed, emit_typed_authorized
+    from ...investigation_streams import resolve_writable_investigation_stream
+    from ...investigation_tenancy import InvestigationAuthority
     from ...schemas.events import DispatchCallPayload
     from ..research_runner.budget import BudgetManager
     from .provider import RemoteStepEvent
@@ -48,7 +50,11 @@ except ImportError:  # pragma: no cover — direct-script fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.remote_exec.provider import RemoteStepEvent  # type: ignore[no-redef]
     from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
+    from substrate.event_log import emit_typed, emit_typed_authorized  # type: ignore[no-redef]
+    from substrate.investigation_streams import (  # type: ignore[no-redef]
+        resolve_writable_investigation_stream,
+    )
+    from substrate.investigation_tenancy import InvestigationAuthority  # type: ignore[no-redef]
     from substrate.schemas.events import DispatchCallPayload  # type: ignore[no-redef]
 
 
@@ -69,6 +75,7 @@ def record_remote_dispatch(
     events_dir: str | None = None,
     parent_event_id: str | None = None,
     context_pack_event_id: str | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> str | None:
     """Charge the budget for one remote step and emit its ``DispatchCall``
     event, both from the *same* realized cost on the ``RemoteStepEvent``.
@@ -83,6 +90,11 @@ def record_remote_dispatch(
     charge raises, no event is emitted and the runner halts the leaf; the
     over-spend that triggered the halt is still recorded in the ledger (honest
     accounting — ``BudgetManager.charge`` applies the charge before raising)."""
+    if authority is not None and authority.investigation_id != investigation_id:
+        raise ValueError("dispatch crosses authorized investigation stream")
+    if authority is not None:
+        resolve_writable_investigation_stream(authority)
+
     # Charge first. On BudgetExceeded this propagates to the runner, which
     # transitions the leaf to BUDGET_HALTED. The ledger has already recorded
     # the over-spend (honest accounting in BudgetManager.charge).
@@ -94,28 +106,29 @@ def record_remote_dispatch(
     provider = event.provider or "remote_exec"
     model = event.model or "research-leaf"
     tier = event.data.get("tier", DEFAULT_REMOTE_TIER)
-    return emit_typed(
-        investigation_id,
-        DispatchCallPayload(
-            provider=provider,
-            model=model,
-            tier=tier,
-            target_role=role,
-            input_tokens=int(event.data.get("input_tokens", 0)),
-            output_tokens=int(event.data.get("output_tokens", event.tokens)),
-            cost_usd=float(event.cost_usd),
-            latency_ms=int(event.data.get("latency_ms", 0)),
-            verification_required=bool(event.data.get("verification_required", False)),
-            fallback_chain_index=0,
-            prompt_hash=str(event.data.get("prompt_hash", "remote")),
-            finish_reason=event.data.get("finish_reason"),
-            context_pack_event_id=context_pack_event_id,
-        ),
+    payload = DispatchCallPayload(
+        provider=provider,
+        model=model,
+        tier=tier,
+        target_role=role,
+        input_tokens=int(event.data.get("input_tokens", 0)),
+        output_tokens=int(event.data.get("output_tokens", event.tokens)),
+        cost_usd=float(event.cost_usd),
+        latency_ms=int(event.data.get("latency_ms", 0)),
+        verification_required=bool(event.data.get("verification_required", False)),
+        fallback_chain_index=0,
+        prompt_hash=str(event.data.get("prompt_hash", "remote")),
+        finish_reason=event.data.get("finish_reason"),
+        context_pack_event_id=context_pack_event_id,
+    )
+    kwargs = dict(
         parent_event_id=parent_event_id,
         role=role,
         policy_id=f"{provider}/{model}",
-        events_dir=events_dir,
     )
+    if authority is not None:
+        return emit_typed_authorized(authority, payload, **kwargs)
+    return emit_typed(investigation_id, payload, events_dir=events_dir, **kwargs)
 
 
 __all__ = ["record_remote_dispatch", "DEFAULT_REMOTE_TIER"]

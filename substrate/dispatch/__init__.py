@@ -24,6 +24,7 @@ from .research_tier import (
     ResearchTier,
     ResearchTierTarget,
     normalize_research_tier,
+    resolve_available_research_tier,
     resolve_research_tier,
 )
 from .router import (
@@ -63,4 +64,5 @@ __all__ = [
     "ResearchTierTarget",
     "normalize_research_tier",
     "resolve_research_tier",
+    "resolve_available_research_tier",
 ]

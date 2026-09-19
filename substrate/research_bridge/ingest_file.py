@@ -102,6 +102,10 @@ def ingest_file(
     write). Idempotent on identical content."""
     if not isinstance(con, LockedConnection):
         raise TypeError("ingest_file requires a LockedConnection")
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+        raise UnsupportedFileError(
+            "file ingest requires an investigation-bound legal admission path"
+        )
     extraction: ExtractionResult = extract_text(data, filename=filename, content_type=content_type)
     if not extraction.ok:
         raise UnsupportedFileError(extraction.reason)
@@ -119,9 +123,9 @@ def ingest_file(
 
     raw_sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
     document_id = content_addressed_id("doc", f"file|{raw_sha}|{source}")
-    was_new = con.execute(
-        "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1", [document_id]
-    ).fetchone() is None
+    from substrate.legal_gate.read import legacy_document_exists
+
+    was_new = not legacy_document_exists(con, document_id)
 
     insert_document(
         con,

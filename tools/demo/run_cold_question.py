@@ -64,6 +64,7 @@ def _post_investigation(
     topic_slug: str | None,
     max_sub_questions: int,
     investigation_id: str | None,
+    approved_run_ceiling_usd: float,
     timeout: float = 10.0,
 ) -> dict[str, Any]:
     """POST /investigations. Returns the response body on 202."""
@@ -71,6 +72,7 @@ def _post_investigation(
         "question": question,
         "context": context,
         "max_sub_questions": max_sub_questions,
+        "approved_run_ceiling_usd": approved_run_ceiling_usd,
     }
     if topic_slug:
         body["topic_slug"] = topic_slug
@@ -150,6 +152,7 @@ def run(
     topic_slug: str | None,
     max_sub_questions: int,
     investigation_id: str | None,
+    approved_run_ceiling_usd: float,
     poll_interval: float,
     timeout_seconds: float,
     print_trajectory: bool,
@@ -161,6 +164,7 @@ def run(
             topic_slug=topic_slug,
             max_sub_questions=max_sub_questions,
             investigation_id=investigation_id,
+            approved_run_ceiling_usd=approved_run_ceiling_usd,
         )
     except Exception as e:
         print(f"POST failed: {e}", file=sys.stderr)
@@ -239,6 +243,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Stable id for backtest correlation; auto-generated when omitted.",
     )
     p.add_argument(
+        "--approved-run-ceiling-usd",
+        required=True,
+        type=float,
+        help="Explicit hard ceiling for paid calls in the initial run (0.01-100).",
+    )
+    p.add_argument(
         "--base-url", default="http://localhost:8000",
         help="Antiek server base URL (default http://localhost:8000).",
     )
@@ -266,6 +276,7 @@ def main(argv: list[str] | None = None) -> int:
         topic_slug=args.topic_slug,
         max_sub_questions=args.max_sub_questions,
         investigation_id=args.investigation_id,
+        approved_run_ceiling_usd=args.approved_run_ceiling_usd,
         poll_interval=args.poll_interval,
         timeout_seconds=args.timeout_seconds,
         print_trajectory=not args.no_trajectory,

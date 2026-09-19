@@ -449,7 +449,9 @@ def test_meta_reading_endpoint_saves_asset_through_funnel(db, client, monkeypatc
     funnel), re-openable later. NOT a side-store."""
     import sys
 
-    from substrate.event_log import trajectory
+    from substrate.event_log import trajectory_authorized
+    from substrate.investigation_tenancy import InvestigationAuthority, default_tenancy_root
+    from substrate.multi_user.auth import operator_claims
 
     monkeypatch.setattr(
         sys.modules["substrate.graph.search"], "SentenceTransformerEmbedding",
@@ -470,7 +472,9 @@ def test_meta_reading_endpoint_saves_asset_through_funnel(db, client, monkeypatc
     assert body["word_budget"] == 300  # 1 page × 300 words
 
     inv = f"read-meta-{body['asset_id']}"
-    events = trajectory(inv)
+    events = trajectory_authorized(
+        InvestigationAuthority(operator_claims().user_id, inv, default_tenancy_root())
+    )
     saved = [e for e in events if e.get("action_type") == "read.meta_reading.generated"]
     assert len(saved) == 1, "deliverable must be saved through the single-writer funnel"
     assert saved[0]["payload"]["asset_id"] == body["asset_id"]

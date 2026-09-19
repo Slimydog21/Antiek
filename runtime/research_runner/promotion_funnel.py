@@ -26,11 +26,18 @@ import os
 import sys
 from typing import Any
 
+from substrate.event_log import (
+    current_investigation_authority,
+)
+from substrate.investigation_tenancy import InvestigationAuthority
+
 try:
     from ...graph.insight_question import (
         graph_db_path,
         promote_insight,
+        promote_insight_authorized,
         promote_question,
+        promote_question_authorized,
     )
     from ...runtime.db_lock import connect_write
     from .protocol import StepEvent
@@ -42,7 +49,9 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from substrate.graph.insight_question import (  # type: ignore[no-redef]
         graph_db_path,
         promote_insight,
+        promote_insight_authorized,
         promote_question,
+        promote_question_authorized,
     )
 
 
@@ -66,6 +75,21 @@ def _promotion_metadata(ev: StepEvent) -> dict[str, Any]:
     ``content_hash`` for already-doc-url paths is unchanged.
     """
     meta: dict[str, Any] = {"source": "research_runner", **ev.data}
+    inherited = meta.get("inherited_unit_ids", [])
+    if (
+        not isinstance(inherited, list)
+        or len(inherited) > 100
+        or len(set(inherited)) != len(inherited)
+        or any(
+            not isinstance(unit_id, str)
+            or not unit_id.strip()
+            or unit_id != unit_id.strip()
+            or len(unit_id) > 512
+            for unit_id in inherited
+        )
+    ):
+        raise ValueError("invalid inherited unit citations in promotion event")
+    meta["inherited_unit_ids"] = inherited
     doc_id = meta.get("document_id")
     if doc_id:
         meta["source_document_id"] = doc_id
@@ -73,7 +97,12 @@ def _promotion_metadata(ev: StepEvent) -> dict[str, Any]:
 
 
 
-def _resolve_chunk_id(con: Any, document_id: str | None) -> str | None:
+def _resolve_chunk_id(
+    con: Any,
+    document_id: str | None,
+    *,
+    authority: InvestigationAuthority | None = None,
+) -> str | None:
     """Resolve the most substantive non-boilerplate ``chunk_id`` for a document.
 
     The funnel's promote path grounds each promoted insight/question on a real
@@ -94,23 +123,14 @@ def _resolve_chunk_id(con: Any, document_id: str | None) -> str | None:
     for un-groundable notes."""
     if not document_id:
         return None
-    row = con.execute(
-        """SELECT chunk_id FROM chunks
-           WHERE document_id = ?
-             AND length(text) BETWEEN 400 AND 4000
-             AND text NOT ILIKE '%bibliography%'
-             AND text NOT ILIKE '%references%'
-             AND text NOT ILIKE '%index%'
-             AND text NOT ILIKE '## Page%'
-             AND text NOT ILIKE 'chapter %'
-             AND text NOT ILIKE 'contents%'
-           ORDER BY length(text) DESC
-           LIMIT 1""",
-        [document_id],
-    ).fetchone()
-    if not row or row[0] is None:
-        return None
-    return str(row[0])
+    from substrate.legal_gate.read import select_substantive_chunk_compatibility
+
+    return select_substantive_chunk_compatibility(
+        con,
+        document_id,
+        authority=authority,
+        enforce=os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1",
+    )
 
 
 class PromotionFunnel:
@@ -133,7 +153,9 @@ class PromotionFunnel:
 
     async def submit(self, ev: StepEvent) -> None:
         """Hook the runner calls (``on_emit``) for each note/question."""
-        await self._queue.put(ev)
+        await self._queue.put(
+            (ev, current_investigation_authority(ev.investigation_id))
+        )
 
     async def drain_and_stop(self) -> None:
         """Wait for every queued promotion to finish, then stop the worker.
@@ -150,14 +172,27 @@ class PromotionFunnel:
             if item is _FUNNEL_DONE:
                 self._queue.task_done()
                 return
+            ev, authority = item
             try:
-                await asyncio.to_thread(self._promote, item)
+                await asyncio.to_thread(self._promote_authorized, ev, authority)
             except Exception as exc:  # one bad promotion must not wedge the funnel
-                self.errors.append(f"{item.investigation_id}: {type(exc).__name__}: {exc}")
+                self.errors.append(f"{ev.investigation_id}: {type(exc).__name__}: {exc}")
             finally:
                 self._queue.task_done()
 
-    def _promote(self, ev: StepEvent) -> None:
+    def _promote_authorized(
+        self,
+        ev: StepEvent,
+        authority: InvestigationAuthority | None,
+    ) -> None:
+        if authority is None:
+            self._promote(ev)
+            return
+        self._promote(ev, authority=authority)
+
+    def _promote(
+        self, ev: StepEvent, *, authority: InvestigationAuthority | None = None
+    ) -> None:
         """Runs in a worker thread. One promotion = one lock acquisition;
         the single worker guarantees only one is ever in flight."""
         if not ev.text.strip():
@@ -182,24 +217,42 @@ class PromotionFunnel:
                 # notes, preserving prior behaviour.
                 chunk_id = meta.get("chunk_id")
                 if chunk_id is None and source_document_id:
-                    chunk_id = _resolve_chunk_id(con, source_document_id)
+                    chunk_id = _resolve_chunk_id(
+                        con, source_document_id, authority=authority
+                    )
                 if ev.kind == "note":
-                    nid = promote_insight(
-                        text=ev.text, investigation_id=ev.investigation_id,
-                        source_document_id=source_document_id,
-                        chunk_id=chunk_id,
-                        metadata=meta,
-                        embedding_provider=self._embedding_provider, con=con,
+                    kwargs = {
+                        "text": ev.text,
+                        "source_document_id": source_document_id,
+                        "chunk_id": chunk_id,
+                        "metadata": meta,
+                        "embedding_provider": self._embedding_provider,
+                        "con": con,
+                    }
+                    nid = (
+                        promote_insight_authorized(authority, **kwargs)
+                        if authority is not None
+                        else promote_insight(
+                            investigation_id=ev.investigation_id, **kwargs
+                        )
                     )
                     self.promoted_insights += 1
                     self.promoted_node_ids.append(nid)
                 elif ev.kind == "question":
-                    nid = promote_question(
-                        text=ev.text, investigation_id=ev.investigation_id,
-                        source_document_id=source_document_id,
-                        chunk_id=chunk_id,
-                        metadata=meta,
-                        embedding_provider=self._embedding_provider, con=con,
+                    kwargs = {
+                        "text": ev.text,
+                        "source_document_id": source_document_id,
+                        "chunk_id": chunk_id,
+                        "metadata": meta,
+                        "embedding_provider": self._embedding_provider,
+                        "con": con,
+                    }
+                    nid = (
+                        promote_question_authorized(authority, **kwargs)
+                        if authority is not None
+                        else promote_question(
+                            investigation_id=ev.investigation_id, **kwargs
+                        )
                     )
                     self.promoted_questions += 1
                     self.promoted_node_ids.append(nid)

@@ -302,6 +302,10 @@ def test_complete_interview_marks_status(temp_substrate):
         f"/interviews/{inv['interview_id']}/turn",
         json={"role": "interviewer", "text": "x?"},
     )
+    consent = client.post(
+        f"/interviews/{inv['interview_id']}/consent", json={"granted": True}
+    )
+    assert consent.status_code == 200
     r = client.post(
         f"/interviews/{inv['interview_id']}/complete",
         json={},

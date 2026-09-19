@@ -214,7 +214,7 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
     if (!note.nodeId) return;
     setChallenge({ kind: "busy" });
     try {
-      const res = await challengeNote(note.nodeId, { investigation_id: investigationId });
+      const res = await challengeNote(note.nodeId, investigationId);
       if (res.applied && res.new_text) {
         setChallenge({ kind: "changed", newText: res.new_text });
       } else if (res.escalated) {

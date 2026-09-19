@@ -10,7 +10,7 @@
 // Cookies are cross-origin (antiek.ai → api.antiek.ai) so every
 // request goes through apiFetch which sets credentials: "include".
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { API_BASE, apiFetch } from "./api";
@@ -20,6 +20,7 @@ import {
   type AuthDiagnosticLayer,
 } from "./authDiagnosticCodes";
 import { posthog, posthogEnabled } from "./posthogClient";
+import { useWindows } from "../workspace/windowsStore";
 
 /** Layer A transport — never surface raw browser "Failed to fetch" to users. */
 export const AUTH_TRANSPORT_FETCH_MESSAGE = "Cannot reach Antiek API";
@@ -44,6 +45,8 @@ export type AuthState =
 
 export interface AuthContextValue {
   state: AuthState;
+  /** Non-secret epoch used to invalidate account-bound private windows. */
+  sessionGeneration: number;
   /** Re-check /auth/me. Used after sign-in callback redirects back. */
   refresh: () => Promise<void>;
   /** POST /auth/logout, drop cookie, set state to unauthenticated. */
@@ -65,26 +68,45 @@ async function fetchIdentity(): Promise<AuthIdentity | null> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading" });
+  const [sessionGeneration, setSessionGeneration] = useState(0);
+  const currentUserId = useRef<string | null>(null);
+  const requestEpoch = useRef(0);
+  const signOutInFlight = useRef(false);
+
+  const acceptIdentity = useCallback((identity: AuthIdentity | null) => {
+    const nextUserId = identity?.user_id ?? null;
+    if (currentUserId.current !== nextUserId) {
+      // Close old private surfaces before publishing the new auth state.
+      useWindows.getState().reset();
+      currentUserId.current = nextUserId;
+      setSessionGeneration((generation) => generation + 1);
+    }
+    setState(identity ? { status: "authenticated", identity } : { status: "unauthenticated" });
+  }, []);
 
   const refresh = useCallback(async () => {
+    if (signOutInFlight.current) return;
+    const epoch = ++requestEpoch.current;
     try {
       const identity = await fetchIdentity();
-      if (identity) {
-        setState({ status: "authenticated", identity });
-      } else {
-        setState({ status: "unauthenticated" });
-      }
+      if (epoch === requestEpoch.current) acceptIdentity(identity);
     } catch {
       // Network error → treat as unauthenticated; the login page can
       // show a generic "something went wrong" if needed.
-      setState({ status: "unauthenticated" });
+      if (epoch === requestEpoch.current) acceptIdentity(null);
     }
-  }, []);
+  }, [acceptIdentity]);
 
   const signOut = useCallback(async () => {
-    await apiFetch(authUrl("/auth/logout"), { method: "POST" });
-    setState({ status: "unauthenticated" });
-  }, []);
+    signOutInFlight.current = true;
+    ++requestEpoch.current;
+    acceptIdentity(null);
+    try {
+      await apiFetch(authUrl("/auth/logout"), { method: "POST" });
+    } finally {
+      signOutInFlight.current = false;
+    }
+  }, [acceptIdentity]);
 
   useEffect(() => {
     void refresh();
@@ -111,8 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ state, refresh, signOut }),
-    [state, refresh, signOut],
+    () => ({ state, sessionGeneration, refresh, signOut }),
+    [state, sessionGeneration, refresh, signOut],
   );
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }

@@ -15,14 +15,16 @@ Two resolution paths, both read-only:
   scorer's input. The resolver is injected so the OFFLINE harness can
   resolve from a chunk-text map carried IN the trace fixture (no live DB
   needed), while the live path resolves from the DB.
-- ``duckdb_chunk_text_resolver(db_path)`` — the live resolver: one
-  read-only query over the existing ``chunks`` table.
+- ``duckdb_chunk_text_resolver(db_path, authority=...)`` — the live resolver:
+  exact, currently admitted chunks under one investigation authority.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
+
+from substrate.investigation_tenancy import InvestigationAuthority
 
 # (claim, cited_chunk_ids, chunk_texts)
 ClaimChunks = tuple[str, list[str], list[str]]
@@ -79,32 +81,30 @@ def duckdb_chunk_text_resolver(
     db_path: str,
     *,
     chunk_ids: Sequence[str] | None = None,
+    authority: InvestigationAuthority | None = None,
 ) -> ChunkTextResolver:
-    """Live resolver: read chunk text from the EXISTING ``chunks`` table
-    through the read-only connection funnel (``runtime/db_lock``). Loads
-    the requested chunk_ids once into a dict so per-claim resolution is
-    O(1) and the DB connection is short-lived (read-only — safe alongside
-    the single writer)."""
+    """Resolve a bounded chunk set through the legal read boundary.
+
+    Under enforcement, missing authority and an omitted/empty candidate set
+    both resolve to no text.  This prevents the evaluation harness from
+    becoming an all-corpus disclosure path.
+    """
     import os
 
     from runtime.db_lock import connect_read
+    from substrate.legal_gate.read import read_chunk_texts_compatibility
 
-    resolved: dict[str, str] = {}
     path = os.path.expanduser(db_path)
     con = connect_read(path)
     try:
-        if chunk_ids:
-            ids = list({str(c) for c in chunk_ids})
-            placeholders = ",".join("?" for _ in ids)
-            rows = con.execute(
-                f"SELECT chunk_id, text FROM chunks WHERE chunk_id IN ({placeholders})",
-                ids,
-            ).fetchall()
-        else:
-            rows = con.execute("SELECT chunk_id, text FROM chunks").fetchall()
-        for chunk_id, text in rows:
-            if text is not None:
-                resolved[str(chunk_id)] = str(text)
+        resolved = read_chunk_texts_compatibility(
+            con,
+            tuple(str(chunk_id) for chunk_id in chunk_ids)
+            if chunk_ids is not None
+            else None,
+            authority=authority,
+            enforce=os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1",
+        )
     finally:
         con.close()
 
@@ -276,4 +276,3 @@ def _default_audit_backend() -> Any:
     except Exception:
         from substrate.eval.groundedness.scorer import lexical_entailment_score
         return lexical_entailment_score
-

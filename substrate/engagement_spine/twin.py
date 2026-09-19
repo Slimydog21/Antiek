@@ -34,6 +34,8 @@ class TwinNote:
     created_at: str | None = None
     source_event_ids: tuple[str, ...] = ()
     source_ref_ids: tuple[str, ...] = ()
+    seed_batch_id: str | None = None
+    seed_receipt: dict[str, Any] | None = None
 
 
 def _note_id(asset_id: str, kind: TwinKind, text: str) -> str:
@@ -46,6 +48,15 @@ def _generated_note_id(asset_id: str, kind: TwinKind, text: str, origin: str) ->
     canon = " ".join(text.strip().lower().split())
     digest = hashlib.sha256(f"{origin}:{asset_id}:{kind}:{canon}".encode()).hexdigest()[:16]
     return f"twin_generated_{digest}"
+
+
+def _qualified_note_id(store: EngagementStore, note_id: str) -> str:
+    authority = getattr(store, "authority", None)
+    if authority is None:
+        return note_id
+    from .authority import owner_qualified_id
+
+    return owner_qualified_id(authority, "twin", note_id)
 
 
 def record_twin_insight(
@@ -125,7 +136,7 @@ def _record(
             raise ValueError(f"source_ref_ids are not attached to spawn: {unknown[0]}")
         cited_refs = normalized
     note = TwinNote(
-        note_id=_note_id(asset_id.strip(), kind, cleaned),
+        note_id=_qualified_note_id(store, _note_id(asset_id.strip(), kind, cleaned)),
         asset_id=asset_id.strip(),
         kind=kind,
         text=cleaned,
@@ -259,7 +270,7 @@ def converge_reviewed_twins(
     created_at = prior_created_at or datetime.now(UTC).isoformat().replace("+00:00", "Z")
     notes = [
         TwinNote(
-            note_id=_generated_note_id(aid, "insight", insight, origin),
+            note_id=_qualified_note_id(store, _generated_note_id(aid, "insight", insight, origin)),
             asset_id=aid,
             kind="insight",
             text=insight,
@@ -268,7 +279,9 @@ def converge_reviewed_twins(
             created_at=created_at,
         ),
         TwinNote(
-            note_id=_generated_note_id(aid, "question", question, origin),
+            note_id=_qualified_note_id(
+                store, _generated_note_id(aid, "question", question, origin)
+            ),
             asset_id=aid,
             kind="question",
             text=question,
@@ -325,6 +338,7 @@ def seed_twins_for_asset(
     include_html: bool = False,
     force_offline: bool = False,
     live_fn: TwinSeedLiveFn | None = None,
+    source_provenance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Recursive note-taker seed: insight + question twins for an asset.
 
@@ -354,6 +368,8 @@ def seed_twins_for_asset(
             payload["research_tier"] = normalize_research_tier(row.get("research_tier"))
         else:
             payload["research_tier"] = None
+        if source_provenance is not None:
+            payload["source_provenance"] = dict(source_provenance)
         return payload
 
     t = (title or "").strip() or aid
@@ -363,20 +379,9 @@ def seed_twins_for_asset(
 
     used_live = False
     pairs: list[tuple[str, str]] = []
-    candidate = live_fn if live_fn is not None else _twin_seed_live_fn
-    if not force_offline and twin_seed_live_enabled() and candidate is not None:
-        try:
-            raw_pairs = candidate(t, body_text or "")
-            for kind, text in raw_pairs:
-                k = (kind or "").strip().lower()
-                tx = (text or "").strip()
-                if k in ("insight", "question") and tx:
-                    pairs.append((k, tx))
-            if pairs:
-                used_live = True
-        except Exception:
-            pairs = []
-            used_live = False
+    # Paid/live dispatch is deliberately unavailable in this offline helper.
+    # It requires the separate budgeted, canonical-input service and endpoint.
+    del live_fn
 
     insight = f"Asset identity: {t}."
     if body_preview:
@@ -415,6 +420,8 @@ def seed_twins_for_asset(
         research_tier = normalize_research_tier(row.get("research_tier"))
         payload["source_spawn_id"] = sid
     payload["research_tier"] = research_tier
+    if source_provenance is not None:
+        payload["source_provenance"] = dict(source_provenance)
     payload["messages"] = list(payload.get("messages") or []) + [
         (
             "Live note_taker twin seed (env + injector)."
@@ -501,6 +508,8 @@ def _to_row(note: TwinNote) -> dict[str, Any]:
         "created_at": note.created_at,
         "source_event_ids": list(note.source_event_ids),
         "source_ref_ids": list(note.source_ref_ids),
+        "seed_batch_id": note.seed_batch_id,
+        "seed_receipt": dict(note.seed_receipt) if note.seed_receipt is not None else None,
     }
 
 
@@ -517,4 +526,8 @@ def _from_row(row: dict[str, Any]) -> TwinNote:
         created_at=row.get("created_at"),
         source_event_ids=tuple(row.get("source_event_ids") or ()),
         source_ref_ids=tuple(row.get("source_ref_ids") or ()),
+        seed_batch_id=row.get("seed_batch_id"),
+        seed_receipt=(
+            dict(row["seed_receipt"]) if isinstance(row.get("seed_receipt"), dict) else None
+        ),
     )

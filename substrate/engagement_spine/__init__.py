@@ -16,6 +16,7 @@ PDF is never the canonical view surface).
 
 from __future__ import annotations
 
+from .citation_evidence import CitationEvidence, parse_citation_evidence
 from .collective import (
     CollectiveResearchUnit,
     collective_research_html,
@@ -128,6 +129,7 @@ from .twin_promote import (
 
 __all__ = [
     "CollectiveResearchUnit",
+    "CitationEvidence",
     "EngagementStore",
     "FileEngagementStore",
     "HighlightSelection",
@@ -185,6 +187,7 @@ __all__ = [
     "merge_spawn_outputs",
     "merge_spawns_collective",
     "parse_source_reference",
+    "parse_citation_evidence",
     "parse_source_references",
     "progress_payload",
     "project_context_search_html",

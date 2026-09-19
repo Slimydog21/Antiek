@@ -370,7 +370,7 @@ describe("ResearchProgressPanel", () => {
     fireEvent.click(floatBtn);
     const floatCall = openWindow.mock.calls.at(-1) as [
       string,
-      { source?: string; html?: string; view_format?: string; title?: string },
+      { source?: string; html?: string; view_format?: string; title?: string; resume_ref?: unknown },
       { mode?: string; title?: string },
     ];
     expect(floatCall[0]).toBe("hosted_html_document");
@@ -378,6 +378,10 @@ describe("ResearchProgressPanel", () => {
     expect(floatCall[1].view_format).toBe("html");
     expect(floatCall[1].html).toMatch(/Final synthesis/);
     expect(floatCall[1].title || "").toMatch(/stages/i);
+    expect(floatCall[1].resume_ref).toEqual({
+      resolver: "engagement_document",
+      document_id: "_progress:spn_done",
+    });
     expect(floatCall[2].mode).toBe("floating");
     const fullBtn = screen.getByTestId("research-progress-open-full");
     expect(fullBtn.getAttribute("data-long-horizon")).toBe("true");

@@ -1,44 +1,37 @@
-/**
- * Editor.hydration.test.tsx — SPR-01 M5.
- *
- * Two defenses close the fresh-browser data-loss bug; this file pins the
- * client half:
- *
- *   1. A fresh mount (empty localStorage) hydrates the editor from the
- *      substrate GET (/notebooks/{id}/content), NOT the empty `<p></p>` seed —
- *      so the first autosave carries the real doc, never an empty one.
- *   2. The 1.5 s autosave timer is GATED on a "hydrated" flag: an edit during
- *      the hydration window must not PUT (that pre-hydration doc could wipe
- *      persisted blocks). After hydration, autosave works and carries the real
- *      doc.
- *   3. Offline fallback preserved: when the GET fails, the editor keeps its
- *      cached (localStorage) content and still becomes hydrated so the operator
- *      can keep editing.
- *
- * We mock at the api boundary (getNotebookContent + apiFetch) — jsdom needs no
- * network. TipTap renders in jsdom; we drive edits through the real editor via
- * the `editorRef` handle.
- */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
-import { createRef } from "react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import type { Editor as TipTapEditor } from "@tiptap/react";
+import { createRef } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getNotebookContentMock, apiFetchMock } = vi.hoisted(() => ({
-  getNotebookContentMock: vi.fn(),
-  apiFetchMock: vi.fn(),
+const harness = vi.hoisted(() => ({
+  generation: 1,
+  get: vi.fn(),
+  put: vi.fn(),
 }));
 
-vi.mock("../../lib/api", async (orig) => {
-  const actual = await orig<typeof import("../../lib/api")>();
+vi.mock("../../lib/auth", () => ({
+  useAuth: () => ({
+    state: { status: "authenticated" },
+    sessionGeneration: harness.generation,
+  }),
+}));
+
+vi.mock("../../lib/api", async (original) => {
+  const actual = await original<typeof import("../../lib/api")>();
   return {
     ...actual,
-    getNotebookContent: getNotebookContentMock,
-    apiFetch: apiFetchMock,
+    getNotebookContent: harness.get,
+    putNotebookContent: harness.put,
   };
 });
 
+import { ApiError } from "../../lib/api";
 import { NotebookEditor } from "./Editor";
+import { recoveryDraftKey } from "./recoveryDraft";
+
+const HASH = "a".repeat(64);
+const ACCOUNT = "b".repeat(64);
+const RECOVERY = "c".repeat(64);
 
 function proseDoc(text: string) {
   return {
@@ -47,103 +40,182 @@ function proseDoc(text: string) {
   };
 }
 
-afterEach(() => {
-  cleanup();
-  getNotebookContentMock.mockReset();
-  apiFetchMock.mockReset();
-  window.localStorage.clear();
-});
+function content(text: string, revision = 7) {
+  return {
+    notebook_id: "nb-1",
+    title: "Notebook",
+    investigation_id: null,
+    doc: proseDoc(text),
+    revision,
+    content_sha256: HASH,
+    updated_at: "2026-07-15T00:00:00Z",
+    account_scope: ACCOUNT,
+    recovery_scope: RECOVERY,
+  };
+}
+
+function installStorage(): Storage {
+  const values = new Map<string, string>();
+  const storage: Storage = {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => [...values.keys()][index] ?? null,
+    removeItem: (key) => void values.delete(key),
+    setItem: (key, value) => void values.set(key, String(value)),
+  };
+  Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
+  return storage;
+}
 
 beforeEach(() => {
-  window.localStorage.clear();
+  installStorage();
+  harness.generation = 1;
+  harness.get.mockReset();
+  harness.put.mockReset();
 });
 
-describe("NotebookEditor — substrate hydration (M5)", () => {
-  it("hydrates a fresh mount from the substrate GET, not the empty <p></p> seed", async () => {
-    getNotebookContentMock.mockResolvedValue({
-      notebook_id: "nb-1",
-      doc: proseDoc("HYDRATED-FROM-SUBSTRATE"),
-    });
+afterEach(cleanup);
+
+describe("NotebookEditor server authority", () => {
+  it("always hydrates from canonical server content and never reads legacy bytes", async () => {
+    const storage = window.localStorage;
+    storage.setItem("antiek.notebook.nb-1", "<p>FOREIGN-LEGACY-BYTES</p>");
+    const getItem = vi.spyOn(storage, "getItem");
+    harness.get.mockResolvedValue(content("SERVER-WINS"));
 
     const { container } = render(<NotebookEditor notebookId="nb-1" />);
 
-    await waitFor(() =>
-      expect(container.textContent).toContain("HYDRATED-FROM-SUBSTRATE"),
-    );
-    const root = container.querySelector("[data-notebook-editor]");
-    expect(root?.getAttribute("data-hydrated")).toBe("true");
-    // It called the hydration GET for this notebook.
-    expect(getNotebookContentMock).toHaveBeenCalledWith("nb-1");
+    await waitFor(() => expect(container.textContent).toContain("SERVER-WINS"));
+    expect(container.textContent).not.toContain("FOREIGN-LEGACY-BYTES");
+    expect(container.textContent).toContain("unscoped bytes were not read");
+    expect(getItem).not.toHaveBeenCalledWith("antiek.notebook.nb-1");
+    expect(container.querySelector("[data-notebook-editor]")?.getAttribute("data-hydrated")).toBe("true");
+    expect(harness.get).toHaveBeenCalledWith("nb-1", expect.any(AbortSignal));
   });
 
-  it("keeps cached content and still hydrates when the GET fails (offline)", async () => {
-    window.localStorage.setItem(
-      "antiek.notebook.nb-off",
-      "<p>CACHED-OFFLINE-DRAFT</p>",
+  it("fails closed when hydration fails and cannot autosave", async () => {
+    harness.get.mockRejectedValue(new Error("network down"));
+    const editorRef = createRef<TipTapEditor>();
+    const { container } = render(
+      <NotebookEditor notebookId="nb-1" autosaveDelayMs={0} editorRef={editorRef as React.MutableRefObject<TipTapEditor | null>} />,
     );
-    getNotebookContentMock.mockRejectedValue(new Error("network down"));
 
-    const { container } = render(<NotebookEditor notebookId="nb-off" />);
+    await waitFor(() => expect(container.textContent).toContain("save unavailable"));
+    expect(container.querySelector("[data-notebook-editor]")?.getAttribute("data-hydrated")).toBe("false");
+    editorRef.current!.commands.insertContent("must not save");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(harness.put).not.toHaveBeenCalled();
+  });
 
-    // The cached draft is preserved (never blown away by a failed fetch)…
-    await waitFor(() =>
-      expect(container.textContent).toContain("CACHED-OFFLINE-DRAFT"),
-    );
-    // …and hydration still "completes" so the operator can keep editing.
-    await waitFor(() => {
-      const root = container.querySelector("[data-notebook-editor]");
-      expect(root?.getAttribute("data-hydrated")).toBe("true");
+  it("sends the exact conditional mutation and advances its baseline", async () => {
+    harness.get.mockResolvedValue(content("SERVER"));
+    harness.put.mockResolvedValue({
+      schema_version: 1,
+      notebook_id: "nb-1",
+      revision: 8,
+      content_sha256: "d".repeat(64),
+      replayed: false,
     });
-  });
-});
-
-describe("NotebookEditor — autosave gated on hydration (M5)", () => {
-  it("never autosaves before hydration; saves the real doc after", async () => {
-    // Hold hydration open so we can edit inside the window.
-    let resolveHydration!: (v: {
-      notebook_id: string;
-      doc: Record<string, unknown>;
-    }) => void;
-    getNotebookContentMock.mockReturnValue(
-      new Promise((res) => {
-        resolveHydration = res;
-      }),
-    );
-    apiFetchMock.mockResolvedValue({ ok: true, status: 200 });
-
     const editorRef = createRef<TipTapEditor>();
     render(
-      <NotebookEditor
-        notebookId="nb-1"
-        autosaveDelayMs={0}
-        editorRef={editorRef as React.MutableRefObject<TipTapEditor | null>}
-      />,
+      <NotebookEditor notebookId="nb-1" autosaveDelayMs={0} editorRef={editorRef as React.MutableRefObject<TipTapEditor | null>} />,
     );
+    await waitFor(() => expect(document.querySelector("[data-notebook-editor]")?.getAttribute("data-hydrated")).toBe("true"));
 
-    await waitFor(() => expect(editorRef.current).toBeTruthy());
+    editorRef.current!.commands.insertContent(" changed");
+    await waitFor(() => expect(harness.put).toHaveBeenCalledTimes(1));
+    expect(harness.put).toHaveBeenCalledWith(
+      "nb-1",
+      expect.objectContaining({
+        schema_version: 1,
+        base_revision: 7,
+        mutation_key: expect.any(String),
+        doc: expect.objectContaining({ type: "doc" }),
+      }),
+    );
+  });
 
-    // Edit BEFORE hydration resolves — the gate must hold the save.
-    editorRef.current!.commands.insertContent("typed before hydration");
-    await new Promise((r) => setTimeout(r, 20));
-    expect(apiFetchMock).not.toHaveBeenCalled();
+  it("serializes edits made while a save is in flight onto the acknowledged revision", async () => {
+    harness.get.mockResolvedValue(content("SERVER"));
+    let resolveFirst!: (value: Record<string, unknown>) => void;
+    harness.put
+      .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValueOnce({ schema_version: 1, notebook_id: "nb-1", revision: 9, content_sha256: "e".repeat(64), replayed: false });
+    const editorRef = createRef<TipTapEditor>();
+    render(<NotebookEditor notebookId="nb-1" autosaveDelayMs={0} editorRef={editorRef as React.MutableRefObject<TipTapEditor | null>} />);
+    await waitFor(() => expect(document.querySelector("[data-notebook-editor]")?.getAttribute("data-hydrated")).toBe("true"));
+    editorRef.current!.commands.insertContent(" A");
+    await waitFor(() => expect(harness.put).toHaveBeenCalledTimes(1));
+    editorRef.current!.commands.insertContent(" B");
+    resolveFirst({ schema_version: 1, notebook_id: "nb-1", revision: 8, content_sha256: "d".repeat(64), replayed: false });
+    await waitFor(() => expect(harness.put).toHaveBeenCalledTimes(2));
+    expect(harness.put.mock.calls[1][1]).toEqual(expect.objectContaining({ base_revision: 8 }));
+    expect(JSON.stringify(harness.put.mock.calls[1][1].doc)).toContain("B");
+  });
 
-    // Hydration completes (server has no blocks yet → keeps the typed text).
-    resolveHydration({ notebook_id: "nb-1", doc: { type: "doc", content: [] } });
-    await waitFor(() => {
-      const root = document.querySelector("[data-notebook-editor]");
-      expect(root?.getAttribute("data-hydrated")).toBe("true");
+  it("stores an account-scoped recovery envelope only on transport failure", async () => {
+    harness.get.mockResolvedValue(content("SERVER"));
+    harness.put.mockRejectedValue(new TypeError("fetch failed"));
+    const editorRef = createRef<TipTapEditor>();
+    const { container } = render(
+      <NotebookEditor notebookId="nb-1" autosaveDelayMs={0} editorRef={editorRef as React.MutableRefObject<TipTapEditor | null>} />,
+    );
+    await waitFor(() => expect(container.querySelector("[data-notebook-editor]")?.getAttribute("data-hydrated")).toBe("true"));
+    editorRef.current!.commands.insertContent(" offline edit");
+
+    await waitFor(() => expect(container.textContent).toContain("recovery saved locally"));
+    const draft = JSON.parse(window.localStorage.getItem(recoveryDraftKey(RECOVERY))!);
+    expect(draft).toMatchObject({
+      schema_version: 2,
+      account_scope: ACCOUNT,
+      notebook_id: "nb-1",
+      base_revision: 7,
+      base_content_sha256: HASH,
     });
+  });
 
-    // Now an edit DOES autosave — carrying the real (non-empty) doc.
-    editorRef.current!.commands.insertContent(" and after");
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
+  it("does not mislabel an HTTP conflict as offline or create a draft", async () => {
+    harness.get.mockResolvedValue(content("SERVER"));
+    harness.put.mockRejectedValue(new ApiError("conflict", 409, "{}"));
+    const editorRef = createRef<TipTapEditor>();
+    const { container } = render(
+      <NotebookEditor notebookId="nb-1" autosaveDelayMs={0} editorRef={editorRef as React.MutableRefObject<TipTapEditor | null>} />,
+    );
+    await waitFor(() => expect(container.querySelector("[data-notebook-editor]")?.getAttribute("data-hydrated")).toBe("true"));
+    editorRef.current!.commands.insertContent(" conflict");
 
-    const lastCall = apiFetchMock.mock.calls.at(-1)!;
-    expect(String(lastCall[0])).toContain("/notebooks/nb-1/content");
-    expect(lastCall[1]?.method).toBe("PUT");
-    const body = JSON.parse(lastCall[1]?.body as string);
-    // The saved doc is the operator's real content, never an empty doc.
-    const savedText = JSON.stringify(body.doc);
-    expect(savedText).toContain("typed before hydration");
+    await waitFor(() => expect(container.textContent).toContain("conflict — reload"));
+    expect(window.localStorage.getItem(recoveryDraftKey(RECOVERY))).not.toBeNull();
+  });
+
+  it("loads a stale recovery draft for review without auto-overwriting canonical content", async () => {
+    window.localStorage.setItem(recoveryDraftKey(RECOVERY), JSON.stringify({
+      schema_version: 2, account_scope: ACCOUNT, notebook_id: "nb-1",
+      base_revision: 6, base_content_sha256: "f".repeat(64),
+      doc: proseDoc("STALE RECOVERY"), saved_at: "2026-07-14T00:00:00Z",
+    }));
+    harness.get.mockResolvedValue(content("NEW SERVER", 7));
+    const { container } = render(<NotebookEditor notebookId="nb-1" autosaveDelayMs={0} />);
+    await waitFor(() => expect(container.querySelector("button")).not.toBeNull());
+    fireEvent.click(container.querySelector("button")!);
+    await waitFor(() => expect(container.textContent).toContain("STALE RECOVERY"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(harness.put).not.toHaveBeenCalled();
+  });
+
+  it("fences a slow response after the auth generation changes", async () => {
+    let resolveFirst!: (value: ReturnType<typeof content>) => void;
+    harness.get.mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }));
+    harness.get.mockResolvedValueOnce(content("ACCOUNT-TWO"));
+    const view = render(<NotebookEditor notebookId="nb-1" />);
+    harness.generation = 2;
+    view.rerender(<NotebookEditor notebookId="nb-1" />);
+    resolveFirst(content("STALE-ACCOUNT-ONE"));
+
+    await waitFor(() => expect(view.container.textContent).toContain("ACCOUNT-TWO"));
+    expect(view.container.textContent).not.toContain("STALE-ACCOUNT-ONE");
   });
 });

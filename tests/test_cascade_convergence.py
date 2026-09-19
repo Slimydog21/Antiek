@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -41,6 +42,11 @@ from substrate.dispatch import (  # noqa: E402
 )
 from substrate.event_log import trajectory  # noqa: E402
 from substrate.graph.schema import init_database_at_path  # noqa: E402
+from substrate.investigation_tenancy import (  # noqa: E402
+    InvestigationAuthority,
+    bind_legacy_stream_lease,
+)
+from substrate.multi_user.auth import operator_claims  # noqa: E402
 from substrate.schemas import ActionType  # noqa: E402
 
 
@@ -66,50 +72,60 @@ class _SynthStubProvider:
     def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
         if "knowledge curator" in prompt:
             return RawProviderResponse(
-                text=json.dumps({
-                    "Domain Fundamentals": [{
-                        "text": "Quantum gather evidence compounds.",
-                        "confidence": "Measured",
-                        "date_observed": "2026",
-                        "source": "DRW gather",
-                    }],
-                }),
+                text=json.dumps(
+                    {
+                        "Domain Fundamentals": [
+                            {
+                                "text": "Quantum gather evidence compounds.",
+                                "confidence": "Measured",
+                                "date_observed": "2026",
+                                "source": "DRW gather",
+                            }
+                        ],
+                    }
+                ),
                 raw_usage={"input_tokens": 40, "output_tokens": 60},
                 finish_reason="end_turn",
                 latency_ms=3,
             )
         if "senior investment analyst" in prompt:
             return RawProviderResponse(
-                text=json.dumps({
-                    "thesis_summary": (
-                        "Gathered cascade quantum evidence supports the thesis."
-                    ),
-                    "implicit_recommendation": "proceed",
-                    "thesis_components": [{
-                        "claim": "Provisional gather notes compound into a thesis.",
-                        "confidence": "moderate",
-                        "confidence_basis": "DRW gather stub",
-                        "supporting_chunk_ids": ["chunk-any"],
-                        "supporting_path_indices": [],
-                        "effective_source_tier": 3,
-                        "hedging_required": True,
-                    }],
-                    "falsification_conditions": [{
-                        "condition": "Gather evidence contradicts thesis",
-                        "specific_observable": "Primary source revision",
-                        "timeframe": "within 2 quarters",
-                    }],
-                    "execution_risks": [],
-                    "constraint_compliance": {
-                        "hard_constraints_satisfied": True,
-                        "soft_constraints_violated": [],
-                        "violations_justified": [],
-                    },
-                    "reasoning_paths_used": [],
-                    "conviction_level": 0.55,
-                    "constraint_loop_status": "single_pass",
-                    "constraint_loop_iterations": 1,
-                }),
+                text=json.dumps(
+                    {
+                        "thesis_summary": (
+                            "Gathered cascade quantum evidence supports the thesis."
+                        ),
+                        "implicit_recommendation": "proceed",
+                        "thesis_components": [
+                            {
+                                "claim": "Provisional gather notes compound into a thesis.",
+                                "confidence": "moderate",
+                                "confidence_basis": "DRW gather stub",
+                                "supporting_chunk_ids": ["chunk-any"],
+                                "supporting_path_indices": [],
+                                "effective_source_tier": 3,
+                                "hedging_required": True,
+                            }
+                        ],
+                        "falsification_conditions": [
+                            {
+                                "condition": "Gather evidence contradicts thesis",
+                                "specific_observable": "Primary source revision",
+                                "timeframe": "within 2 quarters",
+                            }
+                        ],
+                        "execution_risks": [],
+                        "constraint_compliance": {
+                            "hard_constraints_satisfied": True,
+                            "soft_constraints_violated": [],
+                            "violations_justified": [],
+                        },
+                        "reasoning_paths_used": [],
+                        "conviction_level": 0.55,
+                        "constraint_loop_status": "single_pass",
+                        "constraint_loop_iterations": 1,
+                    }
+                ),
                 raw_usage={"input_tokens": 50, "output_tokens": 80},
                 finish_reason="end_turn",
                 latency_ms=3,
@@ -151,16 +167,22 @@ def _patch_dispatch(monkeypatch):
 
     pricing = TierPricing(input_per_mtok=0.0, output_per_mtok=0.0)
     tier = TierConfig(
-        name="pro", provider="cascade-tail-stub", model="stub",
-        max_tokens=4096, temperature=0.1, context_budget_tokens=128_000,
-        pricing=pricing, fallback=None,
+        name="pro",
+        provider="cascade-tail-stub",
+        model="stub",
+        max_tokens=4096,
+        temperature=0.1,
+        context_budget_tokens=128_000,
+        pricing=pricing,
+        fallback=None,
     )
     config = DispatchConfig(
         role_tiers={"synthesizer": "pro", "knowledge_extractor": "pro"},
         tiers={"pro": tier},
     )
     monkeypatch.setattr(
-        router.DispatchConfig, "from_yaml",
+        router.DispatchConfig,
+        "from_yaml",
         classmethod(lambda cls, path: config),
     )
     register_provider(_SynthStubProvider())
@@ -172,12 +194,14 @@ async def test_pack_only_synthesis_tail_completes(tmp_path, monkeypatch):
     _patch_dispatch(monkeypatch)
     bus = EventBroadcaster()
     from interfaces.research.api.synthesizer import register_handlers as _register_synth
+
     _register_synth(bus)
     coordinator = register_handlers(bus)
 
     from orchestration.session_evidence_pack import PackChunk, PackDocument, SessionEvidencePack
 
     pack = SessionEvidencePack(
+        schema_version=2,
         session_id="session-pack-only",
         problem_question="Does quantum Path A converge?",
         chunks=[
@@ -195,7 +219,9 @@ async def test_pack_only_synthesis_tail_completes(tmp_path, monkeypatch):
     )
 
     ctx = await run_synthesis_tail_from_pack(
-        pack, broadcaster=bus, coordinator=coordinator,
+        pack,
+        broadcaster=bus,
+        coordinator=coordinator,
     )
     assert ctx.failed_phase is None
     assert ctx.synthesis is not None
@@ -205,7 +231,8 @@ async def test_pack_only_synthesis_tail_completes(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_pack_synthesis_tail_mechanical_phase8_when_skill_templates_missing(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ):
     """Prod smoke regression: extract_and_patch without SKILL.md → mechanical fallback."""
     empty_skills = tmp_path / "no_templates"
@@ -214,12 +241,14 @@ async def test_pack_synthesis_tail_mechanical_phase8_when_skill_templates_missin
     _patch_dispatch(monkeypatch)
     bus = EventBroadcaster()
     from interfaces.research.api.synthesizer import register_handlers as _register_synth
+
     _register_synth(bus)
     coordinator = register_handlers(bus)
 
     from orchestration.session_evidence_pack import PackChunk, PackDocument, SessionEvidencePack
 
     pack = SessionEvidencePack(
+        schema_version=2,
         session_id="session-hbm-fallback",
         problem_question=(
             "Will high-bandwidth memory supply constraints limit GPU datacenter "
@@ -240,13 +269,16 @@ async def test_pack_synthesis_tail_mechanical_phase8_when_skill_templates_missin
     )
 
     ctx = await run_synthesis_tail_from_pack(
-        pack, broadcaster=bus, coordinator=coordinator,
+        pack,
+        broadcaster=bus,
+        coordinator=coordinator,
     )
     assert ctx.failed_phase is None, ctx.fail_reason
     assert ctx.patched_domains
     assert (empty_skills / "semiconductor-knowledge" / "SKILL.md").exists()
     ok, _ = check_deep_research_complete(
-        "session-hbm-fallback", require_terminal_event=True,
+        "session-hbm-fallback",
+        require_terminal_event=True,
     )
     assert ok is True
 
@@ -258,11 +290,17 @@ async def test_cascade_gather_then_synthesis_tail_on_parent(tmp_path, monkeypatc
     db = os.environ["ANTIEK_DUCKDB_PATH"]
     ev = os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]
     init_database_at_path(db)
+    bind_legacy_stream_lease(
+        InvestigationAuthority(operator_claims().user_id, "session-conv", Path(ev)),
+        provenance="test_plan_start",
+    )
 
     tree = build_plan("quantum cascade convergence", decomposer=_Dec(["sub a"])).tree
     root_id = persist_tree(
-        tree, investigation_id="session-conv",
-        embedding_provider=_FakeEmbedding(), db_path=db,
+        tree,
+        investigation_id="session-conv",
+        embedding_provider=_FakeEmbedding(),
+        db_path=db,
     )
     approve_plan(root_id, approver="op", investigation_id="session-conv", db_path=db)
     loaded = load_tree(root_id, db_path=db)
@@ -278,14 +316,22 @@ async def test_cascade_gather_then_synthesis_tail_on_parent(tmp_path, monkeypatc
     funnel = PromotionFunnel(db_path=db, embedding_provider=_FakeEmbedding())
     runner = HostLocalRunner(
         make_contract_gather_stub(steps=1),
+        claims=operator_claims(),
         events_dir=ev,
         seal_on_complete=False,
         on_emit=funnel.submit,
     )
-    session = CascadeSession("session-conv", runner=runner, funnel=funnel,
-                             events_dir=ev, db_path=db)
+    session = CascadeSession(
+        "session-conv",
+        claims=operator_claims(),
+        runner=runner,
+        funnel=funnel,
+        events_dir=ev,
+        db_path=db,
+    )
     bus = EventBroadcaster()
     from interfaces.research.api.synthesizer import register_handlers as _register_synth
+
     _register_synth(bus)
     coordinator = register_handlers(bus)
 
@@ -301,9 +347,6 @@ async def test_cascade_gather_then_synthesis_tail_on_parent(tmp_path, monkeypatc
 
     assert session.is_deep_research_complete()
     rows = trajectory("session-conv")
-    assert any(
-        r.get("action_type") == ActionType.INVESTIGATION_COMPLETED.value
-        for r in rows
-    )
+    assert any(r.get("action_type") == ActionType.INVESTIGATION_COMPLETED.value for r in rows)
     ok, _ = check_deep_research_complete("leaf-0")
     assert ok is False

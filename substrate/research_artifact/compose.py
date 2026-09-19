@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import html
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from .authority import OPERATOR_ACCOUNT_ID, ArtifactAuthority, operator_authority
 from .export import export_research_artifact
-from .paths import compose_path_for
+from .storage import FilesystemArtifactStore
 
 
 @dataclass(frozen=True)
@@ -27,6 +30,7 @@ class ComposeResult:
 def compose_artifacts(
     investigation_ids: list[str],
     *,
+    account_id: str,
     db_path: str | None = None,
     events_dir: str | None = None,
     write_index: bool = True,
@@ -35,8 +39,14 @@ def compose_artifacts(
     by_hash: dict[str, str] = {}
     conflicts: list[tuple[str, str]] = []
     for iid in investigation_ids:
+        authority = (
+            operator_authority(iid)
+            if account_id == OPERATOR_ACCOUNT_ID
+            else ArtifactAuthority(account_id, iid)
+        )
         res = export_research_artifact(
             iid,
+            authority=authority,
             db_path=db_path,
             events_dir=events_dir,
             emit_event=False,
@@ -53,12 +63,17 @@ def compose_artifacts(
         else:
             by_hash[res.content_hash] = iid
 
-    out_path = compose_path_for(*investigation_ids)
+    composition_id = (
+        "composition:"
+        + hashlib.sha256(json.dumps(investigation_ids, separators=(",", ":")).encode()).hexdigest()
+    )
+    composition_authority = ArtifactAuthority(account_id, composition_id)
+    out_path = composition_authority.artifact_path()
     if write_index:
         rows = ""
         for m in members:
             rows += (
-                f"<li><a href=\"file://{html.escape(str(m.artifact_path))}\">"
+                f'<li><a href="file://{html.escape(str(m.artifact_path))}">'
                 f"{html.escape(m.investigation_id)}</a> "
                 f"<code>{html.escape(m.content_hash[:12])}</code></li>"
             )
@@ -66,10 +81,7 @@ def compose_artifacts(
         if conflicts:
             conflict_block = (
                 "<section><h2>Hash collisions (review)</h2><ul>"
-                + "".join(
-                    f"<li>{html.escape(a)} vs {html.escape(b)}</li>"
-                    for a, b in conflicts
-                )
+                + "".join(f"<li>{html.escape(a)} vs {html.escape(b)}</li>" for a, b in conflicts)
                 + "</ul></section>"
             )
         index = f"""<!doctype html><html><head><meta charset="utf-8">
@@ -77,7 +89,6 @@ def compose_artifacts(
 <h1>Composed research artifacts</h1>
 <ul>{rows}</ul>{conflict_block}
 </body></html>"""
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(index, encoding="utf-8")
+        out_path = FilesystemArtifactStore().write(composition_authority, index)
 
     return ComposeResult(path=out_path, members=members, hash_conflicts=conflicts)

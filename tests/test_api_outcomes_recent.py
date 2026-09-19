@@ -6,6 +6,7 @@ import os
 import shutil
 import tempfile
 import uuid
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,7 +18,9 @@ from interfaces.research.api.app import create_app
 def isolated_db(monkeypatch):
     tmpdir = tempfile.mkdtemp(prefix="antiek-outcomes-recent-")
     db_path = os.path.join(tmpdir, "antiek.duckdb")
+    events_dir = os.path.join(tmpdir, "events")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", events_dir)
     try:
         from substrate.graph import ensure_initialized
         ensure_initialized(db_path)
@@ -32,15 +35,51 @@ def _client():
 
 def _seed_synthesis(db_path: str, synthesis_id: str) -> None:
     from runtime.db_lock import connect_write
+    from substrate.graph.tenancy import (
+        GraphTenancyState,
+        initialize_graph_authority,
+        transition_graph_tenancy_state,
+    )
+    from substrate.investigation_streams import initialize_composite_stream
+    from substrate.investigation_tenancy import InvestigationAuthority
+
+    authority = InvestigationAuthority(
+        "__operator__",
+        f"inv-{synthesis_id}",
+        root=Path(os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]),
+    )
+    initialize_composite_stream(authority)
 
     with connect_write(db_path, purpose="test:seed_synthesis") as con:
+        initialize_graph_authority(con, authority)
         con.execute(
             "INSERT INTO syntheses ("
-            "synthesis_id, target_question, synthesis_timestamp, "
-            "status, implicit_recommendation"
-            ") VALUES (?, ?, CURRENT_TIMESTAMP, 'draft', 'undetermined')",
-            [synthesis_id, "test question"],
+            "synthesis_id, investigation_id, target_question, synthesis_timestamp, "
+            "status, implicit_recommendation, account_digest, investigation_digest"
+            ") VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'draft', 'undetermined', ?, ?)",
+            [
+                synthesis_id,
+                authority.investigation_id,
+                "test question",
+                authority.account_digest,
+                authority.investigation_digest,
+            ],
         )
+        state = con.execute(
+            "SELECT state FROM graph_tenancy_manifest "
+            "WHERE singleton_key = 'graph-tenancy-v1'"
+        ).fetchone()[0]
+        if state == GraphTenancyState.UNSCOPED.value:
+            transition_graph_tenancy_state(
+                con,
+                expected=GraphTenancyState.UNSCOPED,
+                desired=GraphTenancyState.COPYING,
+            )
+            transition_graph_tenancy_state(
+                con,
+                expected=GraphTenancyState.COPYING,
+                desired=GraphTenancyState.SHADOW,
+            )
 
 
 def _record_outcome(client: TestClient, synthesis_id: str, observer: str = "__operator__"):

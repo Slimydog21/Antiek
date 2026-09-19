@@ -33,6 +33,7 @@ import asyncio
 import hashlib
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -52,6 +53,11 @@ from runtime.research_runner import (
 from runtime.research_runner.host_local import DEFAULT_MAX_CONCURRENCY
 from substrate.event_log import trajectory
 from substrate.graph.schema import init_database_at_path
+from substrate.investigation_tenancy import (
+    InvestigationAuthority,
+    bind_legacy_stream_lease,
+)
+from substrate.multi_user.auth import operator_claims
 
 
 class _FakeEmbedding:
@@ -101,19 +107,30 @@ async def _launch_n_concurrently(n, *, db, events_dir, agg_cap=None):
     once (not serialized by a single consumer), then joins + drains the funnel.
     Returns (runner, funnel, handles) for assertions."""
     from runtime.research_runner import ResearchPlan
+
     budget = BudgetManager(aggregate_cap_usd=agg_cap)
     funnel = PromotionFunnel(db_path=db, embedding_provider=_FakeEmbedding())
     runner = HostLocalRunner(
         make_demo_loop(steps=2, delay_s=0.001, emit_note=True),
-        max_concurrency=DEFAULT_MAX_CONCURRENCY, budget=budget,
-        on_emit=funnel.submit, events_dir=events_dir, seal_on_complete=False,
+        claims=operator_claims(),
+        max_concurrency=DEFAULT_MAX_CONCURRENCY,
+        budget=budget,
+        on_emit=funnel.submit,
+        events_dir=events_dir,
+        seal_on_complete=False,
+    )
+    bind_legacy_stream_lease(
+        InvestigationAuthority(operator_claims().user_id, "session-load", Path(events_dir)),
+        provenance="test_session_start",
     )
     await funnel.start()
     handles = []
     for i in range(n):
         plan = ResearchPlan(
-            investigation_id=f"session-load-leaf-{i}", sub_question=f"sub {i}",
-            parent_investigation_id="session-load", budget=BudgetCap(cost_usd=10.0),
+            investigation_id=f"session-load-leaf-{i}",
+            sub_question=f"sub {i}",
+            parent_investigation_id="session-load",
+            budget=BudgetCap(cost_usd=10.0),
         )
         handles.append(await runner.start(plan.investigation_id, plan))
 
@@ -130,8 +147,7 @@ async def test_single_writer_under_concurrent_launches(events_dir, graph_db):
     """20 concurrent launches → ONE serialized graph writer, N isolated logs,
     zero lock timeouts. Proves "launch 20 at once" stays single-writer-safe."""
     n = 20
-    runner, funnel, handles = await _launch_n_concurrently(
-        n, db=graph_db, events_dir=events_dir)
+    runner, funnel, handles = await _launch_n_concurrently(n, db=graph_db, events_dir=events_dir)
 
     # Every research completed; none failed under contention.
     states = [runner.status(h).state for h in handles]
@@ -140,8 +156,8 @@ async def test_single_writer_under_concurrent_launches(events_dir, graph_db):
     # The funnel — the SINGLE graph writer — recorded zero lock errors despite
     # 20 researches completing near-simultaneously.
     assert funnel.errors == [], funnel.errors
-    assert funnel.promoted_insights == n          # one note each
-    assert funnel.promoted_questions == n          # one question each
+    assert funnel.promoted_insights == n  # one note each
+    assert funnel.promoted_questions == n  # one question each
 
     # N isolated per-investigation JSONLs — no cross-file corruption.
     files = sorted(f for f in os.listdir(events_dir) if f.endswith(".jsonl"))
@@ -156,15 +172,18 @@ async def test_single_writer_under_concurrent_launches(events_dir, graph_db):
     # (no interleaved/duplicated writes from a second writer).
     con = connect_read(graph_db)
     try:
-        n_insight = con.execute(
-            "SELECT count(*) FROM nodes WHERE node_type='insight'").fetchone()[0]
+        n_insight = con.execute("SELECT count(*) FROM nodes WHERE node_type='insight'").fetchone()[
+            0
+        ]
         n_question = con.execute(
-            "SELECT count(*) FROM nodes WHERE node_type='question'").fetchone()[0]
+            "SELECT count(*) FROM nodes WHERE node_type='question'"
+        ).fetchone()[0]
         assert n_insight == n, n_insight
         assert n_question == n, n_question
         n_funnel = con.execute(
-            "SELECT count(*) FROM write_log WHERE purpose='promotion_funnel'").fetchone()[0]
-        assert n_funnel >= 2 * n            # >= one per insight + one per question
+            "SELECT count(*) FROM write_log WHERE purpose='promotion_funnel'"
+        ).fetchone()[0]
+        assert n_funnel >= 2 * n  # >= one per insight + one per question
         # Every RESEARCH-TIME graph write was the funnel's. The only other
         # write_log row is the one-time schema bootstrap (graph_schema_init),
         # recorded before any research runs — not a second research writer. So
@@ -173,7 +192,8 @@ async def test_single_writer_under_concurrent_launches(events_dir, graph_db):
         other = con.execute(
             "SELECT purpose, count(*) FROM write_log "
             "WHERE purpose NOT IN ('promotion_funnel','graph_schema_init') "
-            "GROUP BY purpose").fetchall()
+            "GROUP BY purpose"
+        ).fetchall()
         assert other == [], f"a non-funnel research writer touched the graph: {other}"
     finally:
         con.close()
@@ -185,13 +205,17 @@ async def test_browse_loops_under_load_never_write_the_graph(events_dir, graph_d
     so concurrency can never produce a second writer."""
     runner = HostLocalRunner(
         make_demo_loop(steps=2, delay_s=0.001, emit_note=True),
-        max_concurrency=DEFAULT_MAX_CONCURRENCY, events_dir=events_dir,
-        seal_on_complete=False,   # no on_emit → notes/questions go nowhere
+        claims=operator_claims(),
+        max_concurrency=DEFAULT_MAX_CONCURRENCY,
+        events_dir=events_dir,
+        seal_on_complete=False,  # no on_emit → notes/questions go nowhere
     )
     from runtime.research_runner import ResearchPlan
+
     handles = [
-        await runner.start(f"inv-{i}",
-                           ResearchPlan(investigation_id=f"inv-{i}", sub_question=f"q{i}"))
+        await runner.start(
+            f"inv-{i}", ResearchPlan(investigation_id=f"inv-{i}", sub_question=f"q{i}")
+        )
         for i in range(20)
     ]
 
@@ -204,7 +228,8 @@ async def test_browse_loops_under_load_never_write_the_graph(events_dir, graph_d
     con = connect_read(graph_db)
     try:
         rows = con.execute(
-            "SELECT count(*) FROM nodes WHERE node_type IN ('insight','question')").fetchone()[0]
+            "SELECT count(*) FROM nodes WHERE node_type IN ('insight','question')"
+        ).fetchone()[0]
         assert rows == 0, rows
     finally:
         con.close()
@@ -219,7 +244,7 @@ def test_factory_default_is_host_local(monkeypatch):
     """With no env + no explicit flag, the factory returns the host-local
     runner — the sanctioned baseline. This is the §16 default."""
     monkeypatch.delenv(ENABLE_ENV, raising=False)
-    runner = build_research_runner(loop_fn=make_demo_loop(steps=1))
+    runner = build_research_runner(claims=operator_claims(), loop_fn=make_demo_loop(steps=1))
     assert isinstance(runner, HostLocalRunner)
     assert remote_exec_enabled() is False
 
@@ -238,6 +263,7 @@ def test_no_daytona_sdk_imported_at_rest():
     """The gated stub must not pull a Daytona SDK into the process at import —
     the §16 line stays clean when the gate is off."""
     import sys
+
     assert not any("daytona_sdk" in m or m == "daytona" for m in sys.modules)
 
 
@@ -250,10 +276,14 @@ def test_gate_set_but_unavailable_falls_back_to_host_local(monkeypatch, caplog):
     import logging
 
     from tests.remote_exec_fakes import UnavailableProvider
+
     monkeypatch.setenv(ENABLE_ENV, "1")
     with caplog.at_level(logging.WARNING, logger="antiek.remote_exec"):
-        runner = build_research_runner(loop_fn=make_demo_loop(steps=1),
-                                       provider=UnavailableProvider())
+        runner = build_research_runner(
+            claims=operator_claims(),
+            loop_fn=make_demo_loop(steps=1),
+            provider=UnavailableProvider(),
+        )
     assert isinstance(runner, HostLocalRunner)
     warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
     assert len(warnings) == 1
@@ -308,8 +338,7 @@ def test_cascade_routes_imports_no_concrete_remote_runner():
     """interfaces/research/api/cascade_routes.py — the HTTP launch surface —
     constructs HostLocalRunner today but must never reach for a concrete remote
     /Daytona runner; the swap goes through the factory, not a new import."""
-    names = _imported_names(
-        _repo_path("interfaces", "research", "api", "cascade_routes.py"))
+    names = _imported_names(_repo_path("interfaces", "research", "api", "cascade_routes.py"))
     leaked = {n for n in names if n.split(".")[-1] in _CONCRETE_RUNNERS}
     assert leaked == set(), f"cascade_routes leaked a concrete runner import: {leaked}"
 

@@ -63,6 +63,10 @@ dependencies = [
   # core above) for the sidecar reader/writer graph-edge paths.
   "jsonschema>=4.0",
   "python-multipart>=0.0.32",
+  # Event trajectories are durably sealed to Parquet, and W3 migration must
+  # verify a sealed prefix plus a live JSONL tail with the production codec.
+  # This is core storage correctness, not an optional export surface.
+  "pyarrow>=18.0",
 ]
 
 [project.optional-dependencies]

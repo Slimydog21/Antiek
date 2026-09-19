@@ -19,9 +19,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-const { startInvestigationMock, navigateMock, recordSpawnMock } = vi.hoisted(
+const { startInvestigationMock, launchReservedQuestionMock, navigateMock, recordSpawnMock } = vi.hoisted(
   () => ({
     startInvestigationMock: vi.fn(),
+    launchReservedQuestionMock: vi.fn(),
     navigateMock: vi.fn(),
     recordSpawnMock: vi.fn(),
   }),
@@ -29,7 +30,22 @@ const { startInvestigationMock, navigateMock, recordSpawnMock } = vi.hoisted(
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
-  return { ...actual, startInvestigation: startInvestigationMock };
+  return {
+    ...actual,
+    startInvestigation: startInvestigationMock,
+    launchReservedQuestion: launchReservedQuestionMock,
+  };
+});
+vi.mock("../../components/engagement/ResearchRunCeilingApproval", async () => {
+  const { useLayoutEffect } = await import("react");
+  return {
+    ResearchRunCeilingApproval: ({ onAuthorizationChange }: { onAuthorizationChange: (value: unknown) => void }) => {
+      useLayoutEffect(() => {
+        onAuthorizationChange({ approved: true, ceilingUsd: 1.25, projection: null });
+      }, [onAuthorizationChange]);
+      return <div data-testid="research-run-authorization-stub" />;
+    },
+  };
 });
 vi.mock("react-router-dom", async (orig) => {
   const actual = await orig<typeof import("react-router-dom")>();
@@ -69,6 +85,7 @@ import { ApiError } from "../../lib/api";
 afterEach(() => {
   cleanup();
   startInvestigationMock.mockReset();
+  launchReservedQuestionMock.mockReset();
   navigateMock.mockReset();
   recordSpawnMock.mockReset();
 });
@@ -77,6 +94,7 @@ function renderChase(props: {
   spawnContext: string;
   parentInvestigationId: string;
   reservedChildId?: string | null;
+  reservedQuestionId?: string | null;
 }) {
   return render(
     <MemoryRouter>
@@ -87,7 +105,7 @@ function renderChase(props: {
 
 describe("ChaseThread — reserved-id reuse (M2)", () => {
   it("launches INTO the reserved escalation id when present (no orphan)", async () => {
-    startInvestigationMock.mockResolvedValue({
+    launchReservedQuestionMock.mockResolvedValue({
       investigation_id: "inv-reserved",
       status: "in_progress",
       start_event_id: "e1",
@@ -96,18 +114,28 @@ describe("ChaseThread — reserved-id reuse (M2)", () => {
       spawnContext: "margins compress at scale",
       parentInvestigationId: "inv-parent",
       reservedChildId: "inv-reserved",
+      reservedQuestionId: "q-reserved",
     });
     // No launch on mount.
-    expect(startInvestigationMock).not.toHaveBeenCalled();
+    expect(launchReservedQuestionMock).not.toHaveBeenCalled();
 
+    const recursiveApproval = screen.getByText(/Approve this recursive ceiling/)
+      .closest("label")
+      ?.querySelector("input") as HTMLInputElement;
+    fireEvent.click(recursiveApproval);
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Where do revised margins come from?" },
+    });
+    expect(recursiveApproval.checked).toBe(false);
+    fireEvent.click(recursiveApproval);
     fireEvent.click(screen.getByText("Follow this"));
-    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalledTimes(1));
-    const arg = startInvestigationMock.mock.calls[0][0];
-    // The reserved id is consumed as investigation_id — one research per
-    // question, not a rogue second child.
-    expect(arg.investigation_id).toBe("inv-reserved");
-    expect(arg.parent_investigation_id).toBe("inv-parent");
-    expect(arg.spawn_context).toBe("margins compress at scale");
+    await waitFor(() => expect(launchReservedQuestionMock).toHaveBeenCalledTimes(1));
+    const [parent, questionId, arg] = launchReservedQuestionMock.mock.calls[0];
+    expect(parent).toBe("inv-parent");
+    expect(questionId).toBe("q-reserved");
+    expect(arg).not.toHaveProperty("investigation_id");
+    expect(arg.approved_run_ceiling_usd).toBe(1.25);
+    expect(arg.approved_chase_ceiling_usd).toBe(2);
     expect(recordSpawnMock).toHaveBeenCalledWith("inv-reserved", "inv-parent");
   });
 
@@ -128,6 +156,7 @@ describe("ChaseThread — reserved-id reuse (M2)", () => {
     // No reserved id ⇒ no investigation_id ⇒ substrate mints fresh.
     expect(arg.investigation_id).toBeUndefined();
     expect(arg.parent_investigation_id).toBe("inv-parent");
+    expect(arg.approved_run_ceiling_usd).toBe(1.25);
   });
 });
 
@@ -137,8 +166,9 @@ describe("ChaseThread — no auto-spawn (M2)", () => {
       spawnContext: "a passage",
       parentInvestigationId: "inv-parent",
       reservedChildId: "inv-reserved",
+      reservedQuestionId: "q-reserved",
     });
-    expect(startInvestigationMock).not.toHaveBeenCalled();
+    expect(launchReservedQuestionMock).not.toHaveBeenCalled();
   });
 });
 

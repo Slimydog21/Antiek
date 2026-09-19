@@ -40,6 +40,7 @@ from substrate.midnight_oil.worker import (
     lease_authorized_operation,
     run_leased_worker_iteration,
 )
+from substrate.multi_user.auth import UserClaims
 
 
 def _dependencies(root: Path, *, production: bool = False) -> MidnightOilDependencies:
@@ -70,7 +71,16 @@ def _client(deps: MidnightOilDependencies) -> TestClient:
     async def auth(request: Request, call_next):  # type: ignore[no-untyped-def]
         user = request.headers.get("x-test-user")
         if user:
+            claims = UserClaims(
+                user_id=user,
+                email=None,
+                scopes=frozenset({"private_research"}),
+                issued_at="2026-07-15T00:00:00Z",
+            )
+            request.state.user_claims = claims
             request.state.user_id = user
+            request.state.scopes = claims.scopes
+            request.state.auth_method = "test_session"
         return await call_next(request)
 
     register_midnight_oil_routes(app, dependencies=deps)
@@ -186,6 +196,11 @@ def test_restart_safe_authorized_path_produces_html_twins_without_token_retentio
     )
     assert twins.status_code == 200
     assert len(twins.json()["notes"]) >= 2
+    foreign_twins = restarted_client.get(
+        f"/engagement/twins/{body['asset_id']}", headers={"x-test-user": "bob"}
+    )
+    assert foreign_twins.status_code == 200
+    assert foreign_twins.json()["notes"] == []
 
     canaries = (token.encode(), b"integration-signing-key-material!!")
     persisted = b"".join(

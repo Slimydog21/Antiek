@@ -323,6 +323,27 @@ def test_extract_with_unknown_chunk_returns_empty(tmp_path, monkeypatch):
     assert result.edges_written == 0
 
 
+def test_enforced_extraction_without_authority_never_dispatches(monkeypatch, tmp_path):
+    db = str(tmp_path / "graph.duckdb")
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)
+    monkeypatch.setenv("ANTIEK_LEGAL_READ_ENFORCEMENT", "1")
+    _seed_chunk(db, chunk_id="chunk-denied", text="must not reach the model")
+    provider = _StubExtractor(
+        '{"nodes":[{"node_id":"leak","node_type":"entity",'
+        '"canonical_label":"Leak","description":"","confidence":1}],'
+        '"edges":[]}'
+    )
+    register_provider(provider)
+    _patch_dispatch_config(monkeypatch, _extractor_config("stub-extractor"))
+
+    result = extract_from_chunk(
+        chunk_id="chunk-denied", investigation_id="inv-denied", db_path=db
+    )
+
+    assert result.nodes_written == 0
+    assert _count(db, "nodes") == 0
+
+
 def test_extract_no_provider_returns_empty(monkeypatch, tmp_path):
     db = str(tmp_path / "graph.duckdb")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)

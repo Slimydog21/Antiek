@@ -10,7 +10,7 @@
  *
  *     @@actions
  *     [
- *       {"kind": "open_panel", "panel_kind": "PdfViewer",
+ *       {"kind": "open_panel", "panel_kind": "HostedDocument",
  *        "props": {"documentId": "doc-123", "initialPage": 12},
  *        "mode": "floating", "title": "Q4 risk model · p.12"},
  *       {"kind": "add_to_notebook",
@@ -43,9 +43,9 @@
  *       handle that the AISidecar surfaces as a clickable pill.
  */
 
-import type { PanelKind, PanelMode } from "../../workspace/panel.types";
+import { isAiOpenablePanelKind, type PanelKind, type PanelMode } from "../../workspace/panel.types";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
-import { postTypedEvent } from "../../lib/api";
+import { appendNotebookContent, getNotebookContent, postTypedEvent } from "../../lib/api";
 import type { AIActionAppliedPayload, AIActionUndonePayload } from "../../generated/types";
 
 // ─── Action schema ───────────────────────────────────────────────────
@@ -180,6 +180,24 @@ export function parseAssistantReply(raw: string): ParsedAssistantReply {
       errors.push(`Unknown action kind: ${JSON.stringify(k)}`);
       continue;
     }
+    if (k === "open_panel") {
+      const panelKind = (item as { panel_kind?: unknown }).panel_kind;
+      if (!isAiOpenablePanelKind(panelKind)) {
+        errors.push(`Unknown or retired panel_kind: ${JSON.stringify(panelKind)}`);
+        continue;
+      }
+    }
+    if (k === "add_to_notebook") {
+      const candidate = item as { notebook_id?: unknown; block?: unknown };
+      if (
+        typeof candidate.notebook_id !== "string" ||
+        candidate.notebook_id.length === 0 ||
+        !isValidAiBlock(candidate.block)
+      ) {
+        errors.push("Invalid add_to_notebook action");
+        continue;
+      }
+    }
     // Light shape validation — defer the strict typing to the executor.
     actions.push(item as AiAction);
   }
@@ -222,6 +240,35 @@ export interface AiActionContext {
   /** Investigation id the AI sidecar session is attached to. Substrate
    * groups events by investigation. */
   investigation_id: string;
+}
+
+type AddToNotebookAction = Extract<AiAction, { kind: "add_to_notebook" }>;
+
+const BLOCK_KINDS = new Set<AddToNotebookAction["block"]["kind"]>([
+  "note", "claim_card", "region_embed", "cross_doc_link", "master_section",
+  "question_card", "chat_exchange", "image", "latex",
+]);
+
+function isValidAiBlock(value: unknown): value is AddToNotebookAction["block"] {
+  if (typeof value !== "object" || value === null) return false;
+  const block = value as Record<string, unknown>;
+  if (typeof block.kind !== "string" || !BLOCK_KINDS.has(block.kind as AddToNotebookAction["block"]["kind"])) return false;
+  if (block.text !== undefined && typeof block.text !== "string") return false;
+  if (block.attrs !== undefined) {
+    if (typeof block.attrs !== "object" || block.attrs === null || Array.isArray(block.attrs)) return false;
+    if (!Object.values(block.attrs).every((v) => v === null || ["string", "number", "boolean"].includes(typeof v))) return false;
+  }
+  return true;
+}
+
+function scalarString(value: unknown, field: string, required = false): string {
+  if (value === undefined || value === null) {
+    if (required) throw new Error(`${field} is required for AI notebook block`);
+    return "";
+  }
+  if (typeof value !== "string") throw new Error(`${field} must be a string`);
+  if (required && value.trim().length === 0) throw new Error(`${field} is required for AI notebook block`);
+  return value;
 }
 
 /** Describes WHICH substrate state the action mutated and what the
@@ -308,6 +355,52 @@ async function recordAiActionUndone(
   }
 }
 
+/** Execute an action whose success may depend on an acknowledged substrate
+ * mutation. Notebook appends deliberately use GET + conditional PUT: the
+ * server revision is the sole concurrency authority and an AI action is not
+ * reported as applied until that mutation succeeds. */
+export async function dispatchAiActionAsync(
+  action: AiAction,
+  context?: AiActionContext,
+): Promise<DispatchedAction> {
+  if (action.kind !== "add_to_notebook") {
+    return dispatchAiAction(action, context);
+  }
+
+  const before = await getNotebookContent(action.notebook_id);
+  const receipt = await appendNotebookContent(action.notebook_id, {
+    schema_version: 1,
+    account_scope: before.account_scope,
+    base_revision: before.revision,
+    mutation_key:
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `ai-notebook-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    block: aiBlockToJson(action.block),
+  });
+  const descriptor: AiEventDescriptor = {
+    target_kind: "notebook",
+    target_id: action.notebook_id,
+    prev_state: {
+      revision: before.revision,
+      content_sha256: before.content_sha256,
+    },
+    next_state: {
+      revision: receipt.revision,
+      content_sha256: receipt.content_sha256,
+      block_kind: action.block.kind,
+    },
+    summary: `add_to_notebook ${action.notebook_id} +1 ${action.block.kind}`,
+  };
+  if (context) void recordAiActionApplied(context, descriptor);
+  return {
+    action,
+    label: `📓 Added a ${action.block.kind} to “${action.notebook_id}”`,
+    undo: null,
+    at: Date.now(),
+  };
+}
+
 /** Execute a single parsed action. Returns a DispatchedAction record.
  *
  * If ``context`` is supplied, the bridge fires ``ai.action.applied``
@@ -318,6 +411,9 @@ export function dispatchAiAction(
   action: AiAction,
   context?: AiActionContext,
 ): DispatchedAction {
+  if (action.kind === "open_panel" && !isAiOpenablePanelKind(action.panel_kind)) {
+    throw new Error(`Refusing unknown or retired panel_kind: ${String(action.panel_kind)}`);
+  }
   const ws = useWorkspace.getState();
   const at = Date.now();
 
@@ -459,60 +555,7 @@ export function dispatchAiAction(
     }
 
     case "add_to_notebook": {
-      // The notebook editor consumes a localStorage-backed HTML string;
-      // we append a custom-element tag the TipTap NodeView extensions
-      // recognise. (See modes/Notebook/Editor.tsx for the storage
-      // shape + Notebook/blocks/*.tsx for the parseHTML hooks.)
-      //
-      // After the write, dispatch a same-window custom event so an
-      // open NotebookEditor instance with the matching notebookId can
-      // reload its content. Cross-tab consumers also get the standard
-      // browser `storage` event; same-tab consumers need this custom
-      // signal because `storage` only fires across tabs.
-      const html = aiBlockToHtml(action.block);
-      const lsKey = "antiek.notebook." + action.notebook_id;
-      const etagKey = lsKey + ".etag";
-      let prevEtag = 0;
-      let nextEtag = 0;
-      try {
-        const existing = window.localStorage.getItem(lsKey) ?? "<p></p>";
-        const current = window.localStorage.getItem(etagKey);
-        prevEtag = current === null ? 0 : parseInt(current, 10) || 0;
-        nextEtag = prevEtag + 1;
-        const appended = existing.replace(
-          /<\/body>\s*$/,
-          "",
-        ) + "\n" + html;
-        window.localStorage.setItem(lsKey, appended);
-        window.localStorage.setItem(etagKey, String(nextEtag));
-        // Same-tab signal: editors keyed by `notebook_id` reload.
-        window.dispatchEvent(
-          new CustomEvent("antiek:notebook:appended", {
-            detail: { notebookId: action.notebook_id, etag: nextEtag },
-          }),
-        );
-      } catch {
-        // ignore quota; the operator sees the action label without effect
-      }
-      const descriptor: AiEventDescriptor = {
-        target_kind: "notebook",
-        target_id: action.notebook_id,
-        prev_state: { etag: prevEtag },
-        next_state: { etag: nextEtag, block_kind: action.block.kind },
-        summary: `add_to_notebook ${action.notebook_id} +1 ${action.block.kind}`,
-      };
-      return withEventLog(
-        {
-          action,
-          label: `📓 Added a ${action.block.kind} to “${action.notebook_id}”`,
-          // Undo not implemented — TipTap-aware undo would need to
-          // surgically remove the appended fragment; the operator can
-          // delete the block from the notebook directly.
-          undo: null,
-          at,
-        },
-        descriptor,
-      );
+      throw new Error("add_to_notebook requires dispatchAiActionAsync");
     }
 
     case "chase_question": {
@@ -581,75 +624,27 @@ export function dispatchAiAction(
   }
 }
 
-function aiBlockToHtml(block: AiAction extends infer A
-  ? A extends { kind: "add_to_notebook"; block: infer B }
-    ? B
-    : never
-  : never): string {
-  // Map the action's compact block schema to the custom-element tags
-  // that the TipTap parseHTML extensions recognise.
-  const escape = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+export function aiBlockToJson(block: AddToNotebookAction["block"]): Record<string, unknown> {
   const attrs = block.attrs ?? {};
   switch (block.kind) {
     case "note":
-      return `<antiek-note text="${escape(
-        block.text ?? (attrs.text as string) ?? "",
-      )}"></antiek-note>`;
+      return { type: "noteBlock", attrs: { note_id: attrs.note_id ? scalarString(attrs.note_id, "note_id") : null, text: scalarString(block.text ?? attrs.text, "text", true) } };
     case "claim_card":
-      return `<antiek-claim-card claim_id="${escape(
-        (attrs.claim_id as string) ?? "",
-      )}" investigation_id="${escape(
-        (attrs.investigation_id as string) ?? "",
-      )}"></antiek-claim-card>`;
+      return { type: "claimCard", attrs: { claim_id: scalarString(attrs.claim_id, "claim_id", true), investigation_id: scalarString(attrs.investigation_id, "investigation_id", true) } };
     case "region_embed":
-      return `<antiek-region-embed document_id="${escape(
-        (attrs.document_id as string) ?? "",
-      )}" page="${
-        (attrs.page as number) ?? ""
-      }" caption="${escape(
-        (attrs.caption as string) ?? block.text ?? "",
-      )}"></antiek-region-embed>`;
+      return { type: "regionEmbed", attrs: { document_id: scalarString(attrs.document_id, "document_id", true), page: typeof attrs.page === "number" ? attrs.page : null, caption: scalarString(attrs.caption ?? block.text, "caption") } };
     case "cross_doc_link":
-      return `<antiek-cross-doc-link from_doc="${escape(
-        (attrs.from_doc as string) ?? "",
-      )}" to_doc="${escape(
-        (attrs.to_doc as string) ?? "",
-      )}" bridge="${escape(
-        (attrs.bridge as string) ?? block.text ?? "",
-      )}"></antiek-cross-doc-link>`;
+      return { type: "crossDocLink", attrs: { bridge_id: attrs.bridge_id ? scalarString(attrs.bridge_id, "bridge_id") : null, from_doc: scalarString(attrs.from_doc, "from_doc", true), to_doc: scalarString(attrs.to_doc, "to_doc", true), bridge: scalarString(attrs.bridge ?? block.text, "bridge") } };
     case "master_section":
-      return `<antiek-master-section synthesis_id="${escape(
-        (attrs.synthesis_id as string) ?? "",
-      )}" section="${escape(
-        (attrs.section as string) ?? block.text ?? "",
-      )}"></antiek-master-section>`;
+      return { type: "masterSection", attrs: { synthesis_id: scalarString(attrs.synthesis_id, "synthesis_id", true), section: scalarString(attrs.section ?? block.text, "section", true) } };
     case "question_card":
-      return `<antiek-question-card parked_question_id="${escape(
-        (attrs.parked_question_id as string) ?? "",
-      )}" text="${escape(
-        block.text ?? (attrs.text as string) ?? "",
-      )}"></antiek-question-card>`;
+      return { type: "questionCard", attrs: { parked_question_id: scalarString(attrs.parked_question_id, "parked_question_id", true), text: scalarString(block.text ?? attrs.text, "text", true) } };
     case "chat_exchange":
-      return `<antiek-chat-exchange exchange_id="${escape(
-        (attrs.exchange_id as string) ?? "",
-      )}" user_text="${escape(
-        (attrs.user_text as string) ?? "",
-      )}" assistant_text="${escape(
-        (attrs.assistant_text as string) ?? block.text ?? "",
-      )}"></antiek-chat-exchange>`;
+      return { type: "chatExchange", attrs: { exchange_id: scalarString(attrs.exchange_id, "exchange_id", true), user_text: scalarString(attrs.user_text, "user_text", true), assistant_text: scalarString(attrs.assistant_text ?? block.text, "assistant_text", true) } };
     case "image":
-      return `<antiek-image src="${escape(
-        (attrs.src as string) ?? "",
-      )}" alt="${escape(
-        (attrs.alt as string) ?? "",
-      )}" caption="${escape(
-        (attrs.caption as string) ?? block.text ?? "",
-      )}"></antiek-image>`;
+      return { type: "imageBlock", attrs: { src: scalarString(attrs.src, "src", true), alt: scalarString(attrs.alt, "alt"), caption: scalarString(attrs.caption ?? block.text, "caption") } };
     case "latex":
-      return `<antiek-latex source="${escape(
-        (attrs.source as string) ?? block.text ?? "",
-      )}"></antiek-latex>`;
+      return { type: "latexBlock", attrs: { source: scalarString(attrs.source ?? block.text, "source", true) } };
   }
 }
 
@@ -709,7 +704,7 @@ export function workspaceContextPrompt(): string {
     `You may, after your prose reply, append a fenced \`@@actions\` block\n` +
     `containing a JSON array of structured actions to dispatch. The\n` +
     `closed set of action kinds:\n\n` +
-    `  open_panel       { panel_kind, props?, mode?, title?, id? }\n` +
+    `  open_panel       { panel_kind, props?, mode?, title?, id? } // documents use HostedDocument + documentId\n` +
     `  focus_panel      { id }\n` +
     `  close_panel      { id }\n` +
     `  set_panel_mode   { id, mode }     // docked-left / -right / -bottom / floating / popout\n` +

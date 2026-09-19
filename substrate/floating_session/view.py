@@ -49,9 +49,7 @@ def project_session_html(
         raise RuntimeError("PDF is not a valid session view surface")
     # Identity must surface for content-property tests.
     has_session_id = session.session_id in html or session.spawn_id in html
-    has_parent_or_sel = (
-        session.parent_asset_id in html or session.selection_text[:40] in html
-    )
+    has_parent_or_sel = session.parent_asset_id in html or session.selection_text[:40] in html
     if not has_session_id and not has_parent_or_sel:
         raise RuntimeError("session identity missing from HTML")
     return html

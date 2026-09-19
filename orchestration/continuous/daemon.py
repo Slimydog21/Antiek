@@ -28,15 +28,19 @@ import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Callable, Optional
 
+from substrate.event_log import trajectory_authorized
 from substrate.event_log.events import default_events_dir, trajectory
+from substrate.investigation_streams import (
+    list_authorized_investigation_ids,
+    list_operator_investigation_authorities,
+)
+from substrate.investigation_tenancy import InvestigationAuthority
 
 from .budget import DaemonBudget, DaemonBudgetError
 from .research_topic import ResearchTopic, topic_id_for
 from .scoring import GapRegistry, score_gap
-
 
 # ── Public types ──────────────────────────────────────────────────────
 
@@ -65,6 +69,8 @@ class DaemonConfig:
     min_score_to_spawn: float = 0.05
     spawn_policy_id: str = "continuous_daemon"
     sleep_seconds: float = 60.0
+    authority: InvestigationAuthority | None = None
+    global_scope: bool = False
 
 
 @dataclass
@@ -118,16 +124,43 @@ def scan_gaps(
     events_dir: Optional[str] = None,
     *,
     investigation_filter: Optional[set[str]] = None,
+    authority: InvestigationAuthority | None = None,
+    global_scope: bool = False,
 ) -> GapRegistry:
     """Scan the event log for ``evidence.retrieve.delivered`` events
     and build a GapRegistry. Public surface so tests can construct
     the registry directly from a fixture event log."""
     resolved = events_dir or default_events_dir()
     registry = GapRegistry()
-    for iid in _list_investigation_ids(resolved):
+    stream_authorities = (
+        (
+            list_operator_investigation_authorities(authority)
+            if global_scope
+            else [
+                InvestigationAuthority(authority.account_id, iid, authority.root)
+                for iid in list_authorized_investigation_ids(
+                    authority.account_id,
+                    root=authority.root,
+                )
+            ]
+        )
+        if authority is not None
+        else _list_investigation_ids(resolved)
+    )
+    for stream in stream_authorities:
+        iid = (
+            stream.investigation_id
+            if isinstance(stream, InvestigationAuthority)
+            else stream
+        )
         if investigation_filter is not None and iid not in investigation_filter:
             continue
-        for ev in trajectory(iid, events_dir=resolved):
+        rows = (
+            trajectory_authorized(stream)
+            if isinstance(stream, InvestigationAuthority)
+            else trajectory(iid, events_dir=resolved)
+        )
+        for ev in rows:
             if ev.get("action_type") != "evidence.retrieve.delivered":
                 continue
             payload = ev.get("payload") or {}
@@ -147,7 +180,7 @@ def scan_gaps(
                 )
         # Also count operator-interaction signal: question.identified
         # events with the same gap text get an interaction bump.
-        for ev in trajectory(iid, events_dir=resolved):
+        for ev in rows:
             if ev.get("action_type") != "question.identified":
                 continue
             payload = ev.get("payload") or {}
@@ -191,7 +224,11 @@ def run_one_iteration(
     Never raises on a budget failure — converts to a skipped_reason
     so the daemon keeps going."""
     state.iterations_run += 1
-    registry = scan_gaps(events_dir=config.events_dir)
+    registry = scan_gaps(
+        events_dir=config.events_dir,
+        authority=config.authority,
+        global_scope=config.global_scope,
+    )
 
     # Re-apply persistent chase counts from prior iterations.
     for key, count in state.chase_counts_by_key.items():
@@ -330,6 +367,8 @@ def main() -> None:
         expected_cost_per_spawn_usd=float(
             os.environ.get("ANTIEK_DAEMON_EXPECTED_COST_USD", "0.50")
         ),
+        authority=InvestigationAuthority("__operator__", "__continuous_daemon__"),
+        global_scope=True,
     )
     run_forever(config=config)
 

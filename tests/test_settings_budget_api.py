@@ -45,6 +45,67 @@ def test_models_lists_registered_and_configured(client: TestClient) -> None:
     assert isinstance(zai["tier_bindings"], list)
 
 
+def test_models_separates_boot_added_selected_and_cascade_authority(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from substrate.model_registration import (
+        clear_decision_tree_selection,
+        install_decision_tree_selection,
+        register_operator_model,
+    )
+
+    clear_decision_tree_selection()
+    try:
+        monkeypatch.setenv("OPENAI_API_KEY", "secret-openai-sentinel")
+        monkeypatch.setenv("XIAOMI_API_KEY", "secret-xiaomi-sentinel")
+        register_operator_model("local-choice", provider_id="xiaomi")
+        install_decision_tree_selection(
+            "local-choice", provider_id="xiaomi", ensure_registered=True
+        )
+        client.app.state.registered_providers = {"openai_chat", "xiaomi"}
+        response = client.get("/settings/models")
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+        body = response.json()
+        assert [row["research_tier"] for row in body["cascade_targets"]] == [
+            "fast",
+            "deep",
+            "wrestle",
+        ]
+        assert [row["model_id"] for row in body["cascade_targets"]] == [
+            "gpt-5.6-luna",
+            "gpt-5.6-terra",
+            "gpt-5.6-sol",
+        ]
+        added = next(
+            row for row in body["operator_models"] if row["model_id"] == "local-choice"
+        )
+        assert added == {
+            "model_id": "local-choice",
+            "provider_id": "xiaomi",
+            "state": "operator_added_unverified",
+            "decision_tree_selected": True,
+            "provider_adapter_boot_ready": True,
+            "authority_scope": "process_global_operator_registry",
+        }
+        assert "secret-openai-sentinel" not in response.text
+        assert "secret-xiaomi-sentinel" not in response.text
+        assert "authorization" not in response.text.lower()
+    finally:
+        clear_decision_tree_selection()
+
+
+def test_models_reports_cascade_unavailable_without_inventing_route(
+    client: TestClient,
+) -> None:
+    client.app.state.registered_providers = {"zai", "deepseek"}
+    body = client.get("/settings/models").json()
+    assert all(row["state"] == "unavailable" for row in body["cascade_targets"])
+    assert all(row["provider_id"] is None for row in body["cascade_targets"])
+    assert all(row["model_id"] is None for row in body["cascade_targets"])
+
+
 def test_budget_default_cap_with_missing_sidecar_keeps_spend_unknown(
     client: TestClient,
     tmp_path: Path,
@@ -106,7 +167,7 @@ def test_prompt_cost_estimate_pricing_placeholder_is_null(client: TestClient) ->
     assert body["pricing_known"] is False
     assert body["estimated_usd_low"] is None
     assert body["estimated_usd_high"] is None
-    assert any("placeholder" in n.lower() or "0.0" in n for n in body["notes"])
+    assert any("unknown" in n.lower() for n in body["notes"])
 
 
 def test_estimate_with_synthetic_pricing(
@@ -124,6 +185,12 @@ def test_estimate_with_synthetic_pricing(
                 "pricing": {
                     "input_per_mtok": 1.0,
                     "output_per_mtok": 2.0,
+                    "cached_input_per_mtok": 0.1,
+                    "currency": "USD",
+                    "billing_unit": "per_million_tokens",
+                    "source_url": "https://provider.example/pricing",
+                    "verified_at": "2026-01-01T00:00:00Z",
+                    "expires_at": "2099-01-01T00:00:00Z",
                 },
             }
         }
@@ -142,8 +209,24 @@ def test_estimate_with_synthetic_pricing(
     assert est.estimated_usd_low is not None
     assert est.estimated_usd_high is not None
     assert est.estimated_usd_high >= est.estimated_usd_low
+    assert est.pricing_fingerprint
+    assert est.pricing_source_url == "https://provider.example/pricing"
     # 1000 in * $1/M + 1000 out * $2/M = 0.003 base
     assert est.estimated_usd_low < 0.01
+
+    conflict = estimate_prompt_cost(
+        PromptCostEstimateRequest(
+            tier="pro",
+            provider="other-provider",
+            model="other-model",
+            input_chars=4000,
+            expected_output_tokens=1000,
+        ),
+        budget=read_operator_budget(),
+    )
+    assert conflict.pricing_known is False
+    assert conflict.estimated_usd_high is None
+    assert any("does not match tier route" in note for note in conflict.notes)
 
 
 def test_caddy_allowlist_includes_settings() -> None:

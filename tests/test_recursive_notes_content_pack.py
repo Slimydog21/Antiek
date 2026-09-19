@@ -57,7 +57,11 @@ def test_canonical_pack_returns_consumable_content_with_provenance_and_digests()
         insight.note_id,
         question.note_id,
     ]
-    assert all(unit.text and unit.text_digest == digest_text(unit.text) for unit in pack.units)
+    assert all(
+        unit.text
+        and unit.text_digest == digest_text(unit.text, unit.account_scope_digest)
+        for unit in pack.units
+    )
     assert all(
         unit.account_scope_digest and unit.rights_label == "owner_readable" for unit in pack.units
     )

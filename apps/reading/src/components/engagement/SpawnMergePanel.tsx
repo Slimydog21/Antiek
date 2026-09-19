@@ -70,7 +70,7 @@ export type OpenMergedResearchWindowOpts = {
 
 /** Open merged HTML as hosted document (HTML-first; never PDF). Shared by spawn + collective. */
 export function openMergedResearchWindow(
-  result: Pick<MergeProductResponse, "document_id" | "mode" | "html" | "view_format">,
+  result: Pick<MergeProductResponse, "document_id" | "mode" | "html" | "view_format" | "citation_evidence">,
   opts: OpenMergedResearchWindowOpts = {},
 ): string | null {
   // Residual (aup): pure spawnMergeHtmlOpenReadiness gate (never invent open).
@@ -100,6 +100,11 @@ export function openMergedResearchWindow(
       html: result.html,
       view_format: "html",
       source,
+      citation_evidence: result.citation_evidence ?? [],
+      resume_ref: {
+        resolver: "engagement_document",
+        document_id: result.document_id,
+      },
     },
     {
       id: `${idPrefix}:${result.document_id}${idSuffix}`,

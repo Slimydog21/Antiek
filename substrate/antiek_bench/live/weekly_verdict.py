@@ -819,6 +819,13 @@ def project_weekly_verdict_html(verdict: WeeklyVerdict) -> str:
     acknowledgment = str(verdict.operator_acknowledgment_required).lower()
     rows: list[str] = []
     for task in verdict.task_verdicts:
+        nd_measured = task.nd_sample_size > 0 and bool(task.nd_modal_suggestion)
+        nd_suggestion = task.nd_modal_suggestion if nd_measured else NOT_MEASURED
+        nd_disagreement: int | str = (
+            task.nd_disagreement_count
+            if nd_measured and task.nd_disagreement_count is not None
+            else NOT_MEASURED
+        )
         judged_status = task.judged.status if task.judged else NOT_MEASURED
         judged_axes = (
             "; ".join(
@@ -847,8 +854,8 @@ def project_weekly_verdict_html(verdict: WeeklyVerdict) -> str:
                 f"<td>{metric.sample_size}/{metric.expected_samples}</td>"
                 f"<td>{html.escape(task.operator_driver or 'none')}</td>"
                 f"<td>{html.escape(task.bench_winner or task.winner_suppressed_reason or 'none')}</td>"
-                f"<td>{html.escape(task.nd_modal_suggestion or 'none')} ({task.nd_sample_size})</td>"
-                f"<td>{task.nd_disagreement_count if task.nd_disagreement_count is not None else 'n/a'}</td>"
+                f"<td>{html.escape(str(nd_suggestion))} ({task.nd_sample_size})</td>"
+                f"<td>{html.escape(str(nd_disagreement))}</td>"
                 f"<td>{html.escape(judged_status)}</td>"
                 f"<td>{html.escape(judged_axes)}</td>"
                 f"<td>{html.escape(judged_uncertainty)}</td>"

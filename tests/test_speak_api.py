@@ -20,6 +20,10 @@ from fastapi.testclient import TestClient
 
 import interfaces.research.api.speak_routes as speak_routes
 from interfaces.research.api.app import create_app
+from tests.research_quote_support import (
+    configure_research_quote_authority,
+    post_signed_investigation,
+)
 
 
 class StubEmbedding:
@@ -39,6 +43,7 @@ def client(monkeypatch):
     # voice-note answer ingest.
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    configure_research_quote_authority(monkeypatch, tmpdir)
     monkeypatch.setattr("acquisition.voice.adapter.default_embedding_provider",
                         lambda: StubEmbedding())
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
@@ -307,17 +312,17 @@ def test_draft_command_converges_blocks_events_and_thread(client):
 
 def test_draft_command_repairs_append_failure_without_duplicate_draft(client, monkeypatch):
     project_id, _ = _private_project_with_claim(client)
-    original = speak_routes.append_event_once
+    original = speak_routes.append_event_once_authorized
     calls = 0
 
-    def fail_once(event):
+    def fail_once(authority, event):
         nonlocal calls
         calls += 1
         if calls == 1:
             raise OSError("lost event append")
-        return original(event)
+        return original(authority, event)
 
-    monkeypatch.setattr(speak_routes, "append_event_once", fail_once)
+    monkeypatch.setattr(speak_routes, "append_event_once_authorized", fail_once)
     def request():
         return client.post(
             f"/speak/projects/{project_id}/draft",
@@ -336,17 +341,17 @@ def test_draft_command_repairs_append_failure_without_duplicate_draft(client, mo
 
 def test_partial_event_pair_never_leaves_placement_without_seam(client, monkeypatch):
     project_id, _ = _private_project_with_claim(client)
-    original = speak_routes.append_event_once
+    original = speak_routes.append_event_once_authorized
     calls = 0
 
-    def fail_second(event):
+    def fail_second(authority, event):
         nonlocal calls
         calls += 1
         if calls == 2:
             raise OSError("lost placement append")
-        return original(event)
+        return original(authority, event)
 
-    monkeypatch.setattr(speak_routes, "append_event_once", fail_second)
+    monkeypatch.setattr(speak_routes, "append_event_once_authorized", fail_second)
     path = f"/speak/projects/{project_id}/draft"
     headers = {"Idempotency-Key": "partial-pair-draft"}
     with pytest.raises(OSError, match="lost placement append"):
@@ -449,7 +454,7 @@ def test_biography_template_composes_three_surfaces_over_one_graph(client):
     Write deliverable's research link == the investigation_id; the Speak
     interview project is created and linked via the shared composition."""
     # 1. The Research folder — created the normal way (POST /investigations).
-    r = client.post("/investigations", json={"question": "The life of Grandma."})
+    r = post_signed_investigation(client, {"question": "The life of Grandma.", "approved_run_ceiling_usd": 1.0})
     assert r.status_code == 202, r.text  # accepted; orchestrator runs async
     investigation_id = r.json()["investigation_id"]
 
@@ -478,8 +483,8 @@ def test_biography_invite_lands_on_talk_flow_for_that_project(client):
     recipient onto the talk-flow landing for THAT project (the captured
     memory feeds the biography's shared graph, not a side store). Reuses the
     shipped invite + token-landing flow (SPR-10)."""
-    investigation_id = client.post(
-        "/investigations", json={"question": "The life of Dad."}
+    investigation_id = post_signed_investigation(
+        client, {"question": "The life of Dad.", "approved_run_ceiling_usd": 1.0}
     ).json()["investigation_id"]
     comp = client.post("/speak/biography", json={
         "investigation_id": investigation_id, "subject_name": "Dad",
@@ -563,17 +568,17 @@ def test_private_publish_not_served(client):
 def test_publish_repairs_lost_seam_append_and_rejects_key_reuse(client, monkeypatch):
     monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_PUBLISHING", "1")
     project_id, draft = _publishable_public_draft(client, command="repair-draft")
-    original = speak_routes.append_event_once
+    original = speak_routes.append_event_once_authorized
     calls = 0
 
-    def fail_once(event):
+    def fail_once(authority, event):
         nonlocal calls
         calls += 1
         if calls == 1:
             raise OSError("lost seam append")
-        return original(event)
+        return original(authority, event)
 
-    monkeypatch.setattr(speak_routes, "append_event_once", fail_once)
+    monkeypatch.setattr(speak_routes, "append_event_once_authorized", fail_once)
     path = f"/speak/projects/{project_id}/publish"
     headers = {"Idempotency-Key": "repair-publish"}
     body = {"deliverable_id": draft["deliverable_id"]}

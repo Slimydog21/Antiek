@@ -58,6 +58,7 @@ from acquisition.urls.adapter import (  # noqa: E402
 )
 from acquisition.urls.client import DEFAULT_USER_AGENT, FetchedHtml, fetch  # noqa: E402
 from acquisition.urls.extract import html_to_markdown  # noqa: E402
+from substrate.legal_gate.read import read_document_compatibility  # noqa: E402
 
 # --- constants -------------------------------------------------------------
 
@@ -133,9 +134,7 @@ def _is_essay_url(url: str) -> bool:
         return False
     if not _ESSAY_HREF_RE.match(slug):
         return False
-    if slug in _NON_ESSAY_SLUGS:
-        return False
-    return True
+    return slug not in _NON_ESSAY_SLUGS
 
 
 def parse_article_list(html: bytes | str, *, base_url: str = PG_BASE_URL) -> list[str]:
@@ -601,13 +600,16 @@ def _stored_raw_text(url: str, *, db_path: str | None) -> str | None:
         return None
     try:
         try:
-            row = con.execute(
-                "SELECT raw_text FROM documents WHERE document_id = ?",
-                [document_id],
-            ).fetchone()
+            document = read_document_compatibility(
+                con, document_id, authority=None, enforce=False
+            )
         except Exception:
             return None
-        return row[0] if row and row[0] else None
+        return (
+            str(document["raw_text"])
+            if document is not None and document["raw_text"]
+            else None
+        )
     finally:
         con.close()
 
@@ -670,14 +672,13 @@ def _stored_content_hash(url: str, *, db_path: str | None) -> str | None:
         return None
     try:
         try:
-            row = con.execute(
-                "SELECT raw_text FROM documents WHERE document_id = ?",
-                [document_id],
-            ).fetchone()
+            document = read_document_compatibility(
+                con, document_id, authority=None, enforce=False
+            )
         except Exception:
             return None
-        if row and row[0]:
-            return "sha256:" + content_hash(row[0])
+        if document is not None and document["raw_text"]:
+            return "sha256:" + content_hash(str(document["raw_text"]))
         return None
     finally:
         con.close()

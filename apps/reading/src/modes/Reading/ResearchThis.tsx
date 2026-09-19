@@ -6,11 +6,11 @@ import { LemonButton } from "../../components/lemon";
 import { spinResearch } from "../../api/books";
 import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
+import type { ResearchLaunchTier } from "../../components/engagement/ResearchLaunchBudgetPanel";
 import {
-  ResearchLaunchBudgetPanel,
-  type ResearchLaunchBudgetProjection,
-  type ResearchLaunchTier,
-} from "../../components/engagement/ResearchLaunchBudgetPanel";
+  ResearchRunCeilingApproval,
+  type ResearchRunAuthorization,
+} from "../../components/engagement/ResearchRunCeilingApproval";
 import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../../components/engagement/PublicationAttachPanel";
@@ -118,6 +118,8 @@ export default function ResearchThis({
   const [pubRefStatus, setPubRefStatus] = useState<string | null>(null);
   const [budgetWarn, setBudgetWarn] = useState(false);
   const [forceOverBudget, setForceOverBudget] = useState(false);
+  const [runAuthorization, setRunAuthorization] =
+    useState<ResearchRunAuthorization>({ approved: false, ceilingUsd: null, projection: null });
   /** Residual (jg): Settings depth-tier prefill for reading DR budget. */
   const [researchTier, setResearchTier] = useState<ResearchLaunchTier>("deep");
   const [depthPrefill, setDepthPrefill] = useState<
@@ -165,9 +167,10 @@ export default function ResearchThis({
     [documentId, passageText],
   );
 
-  const onProjectionChange = useCallback(
-    (p: ResearchLaunchBudgetProjection) => {
-      setBudgetWarn(p.wouldExceedBudget === true);
+  const onRunAuthorizationChange = useCallback(
+    (next: ResearchRunAuthorization) => {
+      setRunAuthorization(next);
+      setBudgetWarn(next.projection?.wouldExceedBudget === true);
     },
     [],
   );
@@ -224,12 +227,17 @@ export default function ResearchThis({
   };
 
   const spinFullWorkstation = async () => {
+    if (!runAuthorization.approved || runAuthorization.ceilingUsd == null) {
+      setError("Review and approve an initial-run hard ceiling before launch.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       // Residual (jm): pass Settings/picker tier onto legacy full workstation spin.
       const res = await spinResearch(documentId, pageIndex, passageText, {
         researchTier,
+        approvedRunCeilingUsd: runAuthorization.ceilingUsd,
       });
       track("reading_research_spun", {
         document_id: documentId,
@@ -500,12 +508,13 @@ export default function ResearchThis({
             promptText={composeDriverPromptText(selection, pubRefs)}
           />
         </div>
-        <ResearchLaunchBudgetPanel
+        <ResearchRunCeilingApproval
           promptText={composeDriverPromptText(selection, pubRefs)}
           researchTier={researchTier}
           allowTierPick
           onResearchTierChange={setResearchTier}
-          onProjectionChange={onProjectionChange}
+          onAuthorizationChange={onRunAuthorizationChange}
+          disabled={busy}
         />
         {budgetWarn ? (
           <label
@@ -587,7 +596,7 @@ export default function ResearchThis({
           type="button"
           variant="tertiary"
           size="sm"
-          disabled={busy}
+          disabled={busy || !runAuthorization.approved}
           onClick={() => void spinFullWorkstation()}
           title="Spin full Research workstation (legacy handoff)"
           data-testid="research-this-full"

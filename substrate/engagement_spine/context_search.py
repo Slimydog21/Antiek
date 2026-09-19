@@ -89,9 +89,7 @@ def search_engagement_context(
         "notes": [],
     }
     if not hits:
-        payload["notes"] = [
-            "No hits — record twin notes or attach source refs, then search again."
-        ]
+        payload["notes"] = ["No hits — record twin notes or attach source refs, then search again."]
     if include_html:
         payload["html"] = project_context_search_html(payload)
     return payload

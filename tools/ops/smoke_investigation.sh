@@ -66,6 +66,12 @@ fi
 
 INV_ID="smoke_$(date +%Y%m%d_%H%M%S)_$$"
 QUESTION="${SMOKE_QUESTION:-Will high-bandwidth memory supply constraints meaningfully limit datacenter GPU deployments through 2027?}"
+RUN_CEILING_USD="${SMOKE_APPROVED_RUN_CEILING_USD:-}"
+
+if [ -z "$RUN_CEILING_USD" ]; then
+  echo "smoke: SMOKE_APPROVED_RUN_CEILING_USD is required" >&2
+  exit 3
+fi
 
 for cmd in curl ssh scp jq; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -78,8 +84,8 @@ echo "smoke: firing investigation $INV_ID at $API_URL"
 resp=$(curl -fsS -X POST "$API_URL/investigations" \
   "${AUTH_HEADER[@]}" \
   -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg q "$QUESTION" --arg id "$INV_ID" \
-    '{question: $q, investigation_id: $id}')") || {
+  -d "$(jq -nc --arg q "$QUESTION" --arg id "$INV_ID" --argjson ceiling "$RUN_CEILING_USD" \
+    '{question: $q, investigation_id: $id, approved_run_ceiling_usd: $ceiling}')") || {
   echo "smoke: investigation POST failed" >&2
   exit 1
 }

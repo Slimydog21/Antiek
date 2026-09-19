@@ -1156,7 +1156,7 @@ def test_section_id_owned_by_another_deliverable_refuses_before_any_new_row(
 
 
 def test_goal_secret_never_enters_graph_or_typed_events(tmp_path: Path) -> None:
-    secret = "sk-supersecret123456789"
+    secret = "sensitive-canary-value"
     store = DurableJobStore(tmp_path / "jobs.sqlite3")
     job_id = _terminal_job(store, goal=f"Investigate {secret}")
     owner_jobs, engagement = _projection_dependencies(job_id)

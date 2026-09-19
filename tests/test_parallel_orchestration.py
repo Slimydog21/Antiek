@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -37,6 +38,8 @@ from runtime.research_runner import (
 )
 from runtime.research_runner.host_local import LoopContext
 from substrate.graph.schema import init_database_at_path
+from substrate.investigation_tenancy import InvestigationAuthority, bind_legacy_stream_lease
+from substrate.multi_user.auth import operator_claims
 
 
 class _FakeEmbedding:
@@ -70,20 +73,29 @@ def env(monkeypatch):
     os.makedirs(ev, exist_ok=True)
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", ev)
     import substrate.graph.insight_question as iq
+
     monkeypatch.setattr(iq, "graph_db_path", lambda: db)
     init_database_at_path(db)
     return {"db": db, "events": ev}
 
 
 def _approved_plan(env, subs=("sub one", "sub two")):
+    bind_legacy_stream_lease(
+        InvestigationAuthority(operator_claims().user_id, "session-1", Path(env["events"])),
+        provenance="test_plan_start",
+    )
     tree = build_plan("the problem", decomposer=_Dec(subs)).tree
-    root_id = persist_tree(tree, investigation_id="session-1",
-                           embedding_provider=_FakeEmbedding(), db_path=env["db"])
+    root_id = persist_tree(
+        tree, investigation_id="session-1", embedding_provider=_FakeEmbedding(), db_path=env["db"]
+    )
     approve_plan(root_id, approver="operator", investigation_id="session-1", db_path=env["db"])
     loaded = load_tree(root_id, db_path=env["db"])
-    leaves = [Leaf(investigation_id=f"leaf-{i}", sub_question=c.question,
-                   question_node_id=c.graph_node_id)
-              for i, c in enumerate(loaded.root.children)]
+    leaves = [
+        Leaf(
+            investigation_id=f"leaf-{i}", sub_question=c.question, question_node_id=c.graph_node_id
+        )
+        for i, c in enumerate(loaded.root.children)
+    ]
     return root_id, leaves
 
 
@@ -91,10 +103,24 @@ def _make_session(env, loop_fn=None, **runner_kw):
     funnel = PromotionFunnel(db_path=env["db"], embedding_provider=_FakeEmbedding())
     runner = HostLocalRunner(
         loop_fn or make_demo_loop(steps=2, emit_note=True),
-        events_dir=env["events"], seal_on_complete=False, on_emit=funnel.submit, **runner_kw,
+        claims=operator_claims(),
+        events_dir=env["events"],
+        seal_on_complete=False,
+        on_emit=funnel.submit,
+        **runner_kw,
     )
-    return CascadeSession("session-1", runner=runner, funnel=funnel,
-                          events_dir=env["events"], db_path=env["db"]), runner, funnel
+    return (
+        CascadeSession(
+            "session-1",
+            claims=operator_claims(),
+            runner=runner,
+            funnel=funnel,
+            events_dir=env["events"],
+            db_path=env["db"],
+        ),
+        runner,
+        funnel,
+    )
 
 
 async def _drain(session):
@@ -108,8 +134,9 @@ async def _drain(session):
 
 async def test_launch_refuses_unapproved_plan(env):
     tree = build_plan("p", decomposer=_Dec(["a"])).tree
-    root_id = persist_tree(tree, investigation_id="session-1",
-                           embedding_provider=_FakeEmbedding(), db_path=env["db"])
+    root_id = persist_tree(
+        tree, investigation_id="session-1", embedding_provider=_FakeEmbedding(), db_path=env["db"]
+    )
     session, _, _ = _make_session(env)
     with pytest.raises(PlanNotApproved):
         await session.launch(root_id, [Leaf("leaf-0", "a")])
@@ -138,7 +165,7 @@ async def test_stream_multiplexes_all_researches(env):
     events = await _drain(session)
     await session.join_and_merge()
     iids = {ev.investigation_id for ev in events}
-    assert {"leaf-0", "leaf-1"} <= iids                 # both researches in one stream
+    assert {"leaf-0", "leaf-1"} <= iids  # both researches in one stream
     assert any(ev.kind == "done" for ev in events)
 
 
@@ -157,7 +184,7 @@ async def test_steer_routes_to_one_research(env):
     await session.join_and_merge()
     states = {s.investigation_id: s.state for s in session.status()}
     assert states["leaf-0"] == RunState.STOPPED.value
-    assert states["leaf-1"] == RunState.DONE.value      # sibling unaffected
+    assert states["leaf-1"] == RunState.DONE.value  # sibling unaffected
     # steer to an unknown research is a safe no-op
     await session.steer("nonexistent", Command(CommandKind.PAUSE))
 
@@ -170,7 +197,8 @@ async def test_steer_routes_to_one_research(env):
 async def test_aggregate_cost_reconciles(env):
     root_id, leaves = _approved_plan(env, subs=["a", "b"])
     session, _, funnel = _make_session(
-        env, loop_fn=make_demo_loop(steps=2, cost_per_step=0.01, emit_note=False))
+        env, loop_fn=make_demo_loop(steps=2, cost_per_step=0.01, emit_note=False)
+    )
     await session.launch(root_id, leaves)
     await _drain(session)
     await session.join_and_merge()
@@ -187,11 +215,11 @@ async def test_aggregate_cost_reconciles(env):
 
 async def test_merge_links_findings_to_subquestion(env):
     root_id, leaves = _approved_plan(env, subs=["a", "b"])
-    session, _, funnel = _make_session(env)   # demo loop emits 1 note each
+    session, _, funnel = _make_session(env)  # demo loop emits 1 note each
     await session.launch(root_id, leaves)
     await _drain(session)
     result = await session.join_and_merge()
-    assert result["linked_findings"] >= 2     # each leaf's insight linked to its sub-question
+    assert result["linked_findings"] >= 2  # each leaf's insight linked to its sub-question
     con = connect_read(env["db"])
     try:
         # The sub-question node has a resolved_by edge to a promoted insight.
@@ -217,7 +245,15 @@ async def test_session_reconstructs_from_event_log(env):
     await _drain(session)
     await session.join_and_merge()
     # Throw away all in-memory session state; rebuild from the JSONL only.
-    recovery = reconstruct_session("session-1", events_dir=env["events"])
+    recovery = reconstruct_session(
+        "session-1",
+        events_dir=env["events"],
+        authority=InvestigationAuthority(
+            operator_claims().user_id,
+            "session-1",
+            Path(env["events"]),
+        ),
+    )
     assert {r.investigation_id for r in recovery.researches} == {"leaf-0", "leaf-1", "leaf-2"}
     assert recovery.all_terminal
     assert all(r.state == RunState.DONE.value for r in recovery.researches)
@@ -242,6 +278,6 @@ async def test_one_failure_isolated(env):
     await session.join_and_merge()
     states = {s.investigation_id: s.state for s in session.status()}
     assert states["leaf-0"] == RunState.FAILED.value
-    assert states["leaf-1"] == RunState.DONE.value       # sibling continues
+    assert states["leaf-1"] == RunState.DONE.value  # sibling continues
     # the error is visible in the stream, not swallowed
     assert any(ev.kind == "error" and ev.investigation_id == "leaf-0" for ev in events)

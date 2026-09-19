@@ -5,14 +5,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // hoisted to the top of the module by vitest.
 vi.mock("../../lib/api", () => ({
   postTypedEvent: vi.fn(),
+  getNotebookContent: vi.fn(),
+  appendNotebookContent: vi.fn(),
 }));
 
-import { dispatchAiAction, type AiActionContext } from "./aiActions";
+import { dispatchAiAction, dispatchAiActionAsync, type AiActionContext } from "./aiActions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { EMPTY_SNAPSHOT } from "../../workspace/panel.types";
-import { postTypedEvent } from "../../lib/api";
+import { appendNotebookContent, getNotebookContent, postTypedEvent } from "../../lib/api";
 
 const postTypedEventMock = postTypedEvent as ReturnType<typeof vi.fn>;
+const getNotebookContentMock = getNotebookContent as ReturnType<typeof vi.fn>;
+const putNotebookContentMock = appendNotebookContent as ReturnType<typeof vi.fn>;
 
 /**
  * Event-log bridging tests for the AISidecar dispatcher.
@@ -43,6 +47,16 @@ beforeEach(() => {
   postTypedEventMock.mockResolvedValue({
     event_id: "evt-fixture",
     action_type: "ai.action.applied",
+  });
+  getNotebookContentMock.mockResolvedValue({
+    notebook_id: "scratch", title: "", investigation_id: null,
+    doc: { type: "doc", content: [] }, revision: 11,
+    content_sha256: "a".repeat(64), updated_at: "",
+    account_scope: "b".repeat(64), recovery_scope: "c".repeat(64),
+  });
+  putNotebookContentMock.mockResolvedValue({
+    schema_version: 1, notebook_id: "scratch", revision: 12,
+    content_sha256: "d".repeat(64), replayed: false,
   });
 });
 
@@ -103,8 +117,8 @@ describe("AISidecar event-log bridge", () => {
     expect(p.next_state.kind).toBe("FakeNotebook");
   });
 
-  it("add_to_notebook WITH context emits target_kind=notebook with etag delta", async () => {
-    dispatchAiAction(
+  it("add_to_notebook WITH context emits acknowledged revision delta", async () => {
+    await dispatchAiActionAsync(
       {
         kind: "add_to_notebook",
         notebook_id: "scratch",
@@ -121,8 +135,8 @@ describe("AISidecar event-log bridge", () => {
     const p = postTypedEventMock.mock.calls[0][0].payload as { target_kind: string; target_id: string; prev_state: Record<string, unknown>; next_state: Record<string, unknown> };
     expect(p.target_kind).toBe("notebook");
     expect(p.target_id).toBe("scratch");
-    expect(typeof p.prev_state.etag).toBe("number");
-    expect(p.next_state.etag).toBe((p.prev_state.etag as number) + 1);
+    expect(p.prev_state.revision).toBe(11);
+    expect(p.next_state.revision).toBe(12);
     expect(p.next_state.block_kind).toBe("note");
   });
 

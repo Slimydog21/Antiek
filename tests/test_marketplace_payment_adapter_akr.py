@@ -21,9 +21,16 @@ from substrate.marketplace_host.payment_adapter import (  # noqa: E402
     DeferredPaymentAdapter,
     Entitlement,
     LivePaymentAdapter,
+    LivePaymentAuthority,
     LivePaymentDeferredError,
     build_payment_adapter,
     live_payment_enabled,
+)
+
+AUTHORITY = LivePaymentAuthority(
+    decision_id="decision-test-only",
+    provider_id="processor-test-double",
+    verifier_version="test-v1",
 )
 
 
@@ -33,9 +40,7 @@ class CountingUpstream:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    def create_checkout_session(
-        self, *, book_id: str, owner_id: str
-    ) -> dict:
+    def create_checkout_session(self, *, book_id: str, owner_id: str) -> dict:
         self.calls.append(f"create:{book_id}:{owner_id}")
         return {
             "session_id": f"chk_live_{book_id}",
@@ -54,6 +59,10 @@ class CountingUpstream:
             "book_id": "buy-modern",
             "owner_id": "user-alice",
             "opaque_reference": "merchant_ord_99",
+            "amount_minor": 1299,
+            "currency": "USD",
+            "title": "Modern Systems Research",
+            "charge_state": "confirmed",
         }
 
 
@@ -145,7 +154,7 @@ def test_deferred_confirm_receipt_rejects_card_like_and_empty():
         adapter.confirm_receipt("ord_1", book_id="", owner_id="user-alice")
 
 
-def test_live_adapter_requires_env_and_upstream():
+def test_live_adapter_requires_env_upstream_and_ratified_authority():
     upstream = CountingUpstream()
     # Env alone without upstream → still deferred.
     adapter = build_payment_adapter(
@@ -154,9 +163,19 @@ def test_live_adapter_requires_env_and_upstream():
     )
     assert isinstance(adapter, DeferredPaymentAdapter)
 
+    # Environment plus a processor is intentionally insufficient: live money
+    # movement needs an explicit provider/legal/verifier decision as gate three.
+    no_authority = build_payment_adapter(
+        environ={ANTIEK_MARKETPLACE_LIVE_PAYMENT_ENV: "true"},
+        upstream=upstream,
+    )
+    assert isinstance(no_authority, DeferredPaymentAdapter)
+    assert upstream.calls == []
+
     live = build_payment_adapter(
         environ={ANTIEK_MARKETPLACE_LIVE_PAYMENT_ENV: "true"},
         upstream=upstream,
+        authority=AUTHORITY,
     )
     assert isinstance(live, LivePaymentAdapter)
     session = live.create_checkout(book_id="buy-modern", owner_id="user-alice")
@@ -174,16 +193,44 @@ def test_live_adapter_requires_env_and_upstream():
 
 def test_live_adapter_refuses_uncharged_zero_dollar():
     upstream = UnchargedUpstream()
-    live = LivePaymentAdapter(upstream=upstream)
+    live = LivePaymentAdapter(upstream=upstream, authority=AUTHORITY)
     with pytest.raises(LivePaymentDeferredError) as ei:
         live.confirm_checkout_session(session_id="chk_x")
     assert ei.value.code == "l5_charge_unconfirmed"
     assert ei.value.live_payment is False or ei.value.payment_path == "live_checkout"
 
 
+@pytest.mark.parametrize("state", ["refunded", "revoked", "disputed"])
+def test_live_adapter_refuses_inactive_charge_states(state):
+    class Inactive(CountingUpstream):
+        def confirm_checkout_session(self, *, session_id: str) -> dict:
+            row = super().confirm_checkout_session(session_id=session_id)
+            row["charge_state"] = state
+            return row
+
+    with pytest.raises(LivePaymentDeferredError) as failure:
+        LivePaymentAdapter(upstream=Inactive(), authority=AUTHORITY).confirm_checkout_session(
+            session_id="chk_buy-modern"
+        )
+    assert failure.value.code == "l5_charge_revoked"
+
+
+def test_live_adapter_rejects_session_identity_swap():
+    class Swapped(CountingUpstream):
+        def confirm_checkout_session(self, *, session_id: str) -> dict:
+            row = super().confirm_checkout_session(session_id=session_id)
+            row["session_id"] = "chk_foreign"
+            return row
+
+    with pytest.raises(ValueError, match="session identity"):
+        LivePaymentAdapter(upstream=Swapped(), authority=AUTHORITY).confirm_checkout_session(
+            session_id="chk_expected"
+        )
+
+
 def test_live_adapter_manual_receipt_still_available():
     upstream = CountingUpstream()
-    live = LivePaymentAdapter(upstream=upstream)
+    live = LivePaymentAdapter(upstream=upstream, authority=AUTHORITY)
     ent = live.confirm_receipt(
         "manual_ord_7",
         book_id="buy-modern",

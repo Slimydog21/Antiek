@@ -45,6 +45,11 @@ from .orchestrator import (
     register_handlers,
     run_synthesis_tail_from_pack,
 )
+from .rehydration import (
+    InvestigationRehydrationConflict,
+    LoopOnePhaseProjection,
+    project_loop_one_phase_state,
+)
 
 __all__ = [
     # coordinator
@@ -59,4 +64,7 @@ __all__ = [
     "make_loop_one_handler",
     "register_handlers",
     "run_synthesis_tail_from_pack",
+    "InvestigationRehydrationConflict",
+    "LoopOnePhaseProjection",
+    "project_loop_one_phase_state",
 ]

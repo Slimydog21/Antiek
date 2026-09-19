@@ -22,9 +22,27 @@ from .source_refs import SourceReference, parse_source_reference
 from .store import EngagementStore
 
 PublicationKind = Literal["arxiv", "substack", "url", "unknown"]
+HydrationStatus = Literal[
+    "identity_only",
+    "metadata_only",
+    "abstract_only",
+    "body_complete",
+    "body_unavailable",
+]
 
 # (ref) -> dict with optional title, body_text/body_markdown, canonical_url, abstract
 FetchPublication = Callable[[SourceReference], dict[str, Any]]
+_CANONICAL_BODY_TOKEN = object()
+
+
+def mark_canonical_body_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Mark a payload produced by the canonical host/extraction boundary.
+
+    This process-local capability is intentionally not serializable and is
+    removed before persistence. Arbitrary publication adapters cannot promote
+    their own prose to ``body_complete`` merely by copying receipt fields.
+    """
+    return {**payload, "_canonical_body_token": _CANONICAL_BODY_TOKEN}
 
 
 @dataclass(frozen=True)
@@ -40,6 +58,13 @@ class HydratedAsset:
     twins: dict[str, Any] | None = None
     # Residual (gz): true when identity-only (no live body) — competitive aq honesty.
     offline_honest: bool = True
+    hydration_status: HydrationStatus = "identity_only"
+    hydration_receipt: dict[str, Any] | None = None
+
+    @property
+    def hydrated(self) -> bool:
+        """True only when a genuine, extracted publication body is servable."""
+        return self.hydration_status == "body_complete"
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -48,6 +73,8 @@ class HydratedAsset:
             "title": self.title,
             "body_text": self.body_text,
             "fetched": self.fetched,
+            "hydrated": self.hydrated,
+            "hydration_status": self.hydration_status,
             "offline_honest": self.offline_honest,
             "view_format": self.view_format,
             "html": self.html,
@@ -57,15 +84,15 @@ class HydratedAsset:
         }
         if self.twins is not None:
             out["twins"] = self.twins
+        if self.hydration_receipt is not None:
+            out["hydration_receipt"] = self.hydration_receipt
         return out
 
 
 def asset_id_for_ref(ref: SourceReference) -> str:
     """Stable asset id from kind + external_id/canonical/raw (content-addressed)."""
     identity = ref.external_id or ref.canonical_url or ref.raw
-    digest = hashlib.sha256(
-        f"hydrate:v1:{ref.kind}:{identity}".encode()
-    ).hexdigest()[:12]
+    digest = hashlib.sha256(f"hydrate:v1:{ref.kind}:{identity}".encode()).hexdigest()[:12]
     return f"pub_{ref.kind}_{digest}"
 
 
@@ -90,13 +117,11 @@ def hydrate_reference(
     asset_id = asset_id_for_ref(ref)
     notes: list[str] = []
     fetched = False
+    hydration_status: HydrationStatus = "identity_only"
+    hydration_receipt: dict[str, Any] | None = None
     identity = ref.external_id or ref.canonical_url or ref.raw
     title = ref.title_hint or f"{ref.kind}: {identity}"
-    body = (
-        f"Publication reference ({ref.kind}).\n"
-        f"Identity: {identity}\n"
-        f"Raw: {ref.raw}\n"
-    )
+    body = f"Publication reference ({ref.kind}).\nIdentity: {identity}\nRaw: {ref.raw}\n"
     if ref.canonical_url:
         body += f"URL: {ref.canonical_url}\n"
 
@@ -108,7 +133,14 @@ def hydrate_reference(
             remote = {}
         else:
             if remote:
-                fetched = True
+                claimed_status = str(remote.get("hydration_status") or "metadata_only")
+                if claimed_status not in {
+                    "metadata_only",
+                    "abstract_only",
+                    "body_complete",
+                    "body_unavailable",
+                }:
+                    claimed_status = "metadata_only"
                 if remote.get("title"):
                     title = str(remote["title"]).strip() or title
                 body_remote = (
@@ -119,10 +151,37 @@ def hydrate_reference(
                 )
                 if body_remote:
                     body = str(body_remote).strip()
+                # A transport response, metadata record, or abstract is not a
+                # hydrated publication.  Only an explicitly classified body
+                # with non-empty extracted text may cross this boundary.
+                receipt = remote.get("hydration_receipt")
+                verified_receipt = (
+                    remote.get("_canonical_body_token") is _CANONICAL_BODY_TOKEN
+                    and isinstance(receipt, dict)
+                    and receipt.get("verified_body") is True
+                    and bool(receipt.get("canonical_hosted_document_id"))
+                    and bool(receipt.get("source_sha256"))
+                    and bool(receipt.get("canonical_content_hash"))
+                    and receipt.get("owner_bound") is True
+                    and receipt.get("view_format") == "html"
+                )
+                if (
+                    claimed_status == "body_complete"
+                    and str(body_remote).strip()
+                    and verified_receipt
+                ):
+                    hydration_status = "body_complete"
+                    fetched = True
+                else:
+                    hydration_status = (
+                        "body_unavailable" if claimed_status == "body_complete" else claimed_status
+                    )  # type: ignore[assignment]
+                if isinstance(receipt, dict):
+                    hydration_receipt = dict(receipt)
                 if remote.get("canonical_url") and not ref.canonical_url:
                     # keep body note of remote url
                     body = body + f"\n\nSource: {remote.get('canonical_url')}"
-                notes.append("Body landed via injectable fetch_publication.")
+                notes.append("Publication injector returned " + hydration_status + ".")
     else:
         notes.append(
             "No fetch_publication injector — identity-only HTML asset "
@@ -152,6 +211,9 @@ def hydrate_reference(
             "view_format": "html",
             "source_ref": ref.to_dict(),
             "fetched": fetched,
+            "hydrated": hydration_status == "body_complete",
+            "hydration_status": hydration_status,
+            "hydration_receipt": hydration_receipt,
             # Residual (gz): identity-only path is offline-honest (no invented abstract).
             "offline_honest": offline_honest,
             "mode": "publication_hydrate",
@@ -163,9 +225,7 @@ def hydrate_reference(
         from .source_refs import attach_source_references
 
         try:
-            attach_source_references(
-                attach_spawn_id, [raw], store=store
-            )
+            attach_source_references(attach_spawn_id, [raw], store=store)
             notes.append(f"Attached reference to spawn {attach_spawn_id}.")
         except Exception as exc:
             notes.append(f"attach to spawn failed: {exc}")
@@ -182,15 +242,14 @@ def hydrate_reference(
                 body_text=body,
                 source_spawn_id=attach_spawn_id,
                 include_html=include_html,
+                source_provenance=hydration_receipt,
             )
             if twins_payload.get("seeded"):
                 notes.append(
                     "Seeded offline twin notes (insight + question) — recursive note-taker."
                 )
             else:
-                notes.append(
-                    f"Twin seed skipped: {twins_payload.get('seed_skipped')}"
-                )
+                notes.append(f"Twin seed skipped: {twins_payload.get('seed_skipped')}")
         except Exception as exc:
             notes.append(f"twin seed failed: {exc}")
 
@@ -205,6 +264,8 @@ def hydrate_reference(
         notes=tuple(notes),
         twins=twins_payload,
         offline_honest=offline_honest,
+        hydration_status=hydration_status,
+        hydration_receipt=hydration_receipt,
     )
 
 
@@ -218,9 +279,7 @@ def project_hydrated_html(
 ) -> str:
     """HTML-first human view of a hydrated publication asset (never PDF)."""
     honesty = (
-        "offline-honest identity (no live body)"
-        if not fetched
-        else "body landed via injector"
+        "offline-honest identity (no live body)" if not fetched else "body landed via injector"
     )
     blocks: list[dict[str, Any]] = [
         {
@@ -246,9 +305,7 @@ def project_hydrated_html(
         blocks.append(
             {
                 "type": "paragraph",
-                "content": [
-                    {"type": "text", "text": f"Canonical: {ref.canonical_url}"}
-                ],
+                "content": [{"type": "text", "text": f"Canonical: {ref.canonical_url}"}],
             }
         )
     for para in body_text.split("\n\n"):

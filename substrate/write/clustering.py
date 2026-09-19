@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from collections.abc import Sequence
 from typing import Any
 
@@ -32,7 +33,7 @@ from .outline_block import OutlineBlock, list_section_blocks
 def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     if na == 0.0 or nb == 0.0:
@@ -54,10 +55,11 @@ def _node_document(con: Any, node_id: str) -> str | None:
     chunk_id = meta.get("chunk_id") if isinstance(meta, dict) else None
     if not chunk_id:
         return None
-    doc_row = con.execute(
-        "SELECT document_id FROM chunks WHERE chunk_id = ?", [chunk_id]
-    ).fetchone()
-    return doc_row[0] if doc_row else None
+    if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+        return None
+    from substrate.legal_gate.read import legacy_chunk_document_id
+
+    return legacy_chunk_document_id(con, str(chunk_id))
 
 
 def _node_embedding(con: Any, node_id: str) -> list[float] | None:

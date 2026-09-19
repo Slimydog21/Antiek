@@ -44,6 +44,17 @@ VALID_BLOCK_TYPES: frozenset[str] = frozenset({
 # ``apps/reading/src/modes/Notebook/blocks/*.tsx``; if those node
 # names change, this map must follow.
 _TIPTAP_NODE_TO_BLOCK_TYPE: dict[str, str] = {
+    # Current TipTap extension names (apps/reading/.../blocks/*.tsx).
+    "claimCard": "claim_card",
+    "regionEmbed": "region_embed",
+    "noteBlock": "note",
+    "crossDocLink": "cross_doc_link",
+    "masterSection": "master_md_section",
+    "questionCard": "question_card",
+    "chatExchange": "chat_exchange",
+    "imageBlock": "image",
+    "latexBlock": "latex",
+    # Legacy persisted aliases remain readable.
     "claim_card": "claim_card",
     "region_embed": "region_embed",
     "note_block": "note",
@@ -187,18 +198,18 @@ def _extract_ref_id(block_type: str, attrs: dict[str, Any]) -> str | None:
     if block_type == "note":
         return _str_or_none(attrs.get("note_id"))
     if block_type == "question_card":
-        return _str_or_none(attrs.get("question_id"))
+        return _str_or_none(attrs.get("parked_question_id") or attrs.get("question_id"))
     if block_type == "cross_doc_link":
         # Cross-doc carries source + target; we record the source
         # as the canonical ref. Both are stored in content_json for
         # the renderer.
-        return _str_or_none(attrs.get("source_document_id"))
+        return _str_or_none(attrs.get("from_doc") or attrs.get("source_document_id"))
     if block_type == "chat_exchange":
         return _str_or_none(attrs.get("exchange_id"))
     if block_type == "master_md_section":
         return _str_or_none(attrs.get("synthesis_id"))
     if block_type == "image":
-        return _str_or_none(attrs.get("image_id"))
+        return _str_or_none(attrs.get("src") or attrs.get("image_id"))
     return None
 
 

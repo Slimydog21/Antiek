@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 
 from services.html_projection.adapters.notebook import ResolvedRefData
@@ -23,6 +24,7 @@ from services.html_projection.context import RenderContext
 from services.html_projection.gate import ScriptViolation, assert_script_free
 from services.html_projection.renderer import render
 from services.html_projection.routing_map import EXPORT_FORMATS, ExportItem, emit
+from substrate.notebooks.authority import NotebookAuthority
 
 _log = logging.getLogger(__name__)
 
@@ -46,7 +48,11 @@ def _resolve_db_path() -> str:
 
 
 def resolve_notebook_export(
-    notebook_id: str, *, db_path: str | None = None, engagement_store: Any | None = None
+    notebook_authority: NotebookAuthority,
+    *,
+    db_path: str | None = None,
+    engagement_store: Any | None = None,
+    investigation_authority: Any | None = None,
 ) -> NotebookExportSource | None:
     """Read a notebook into a NotebookExportSource, or None if it does not exist.
 
@@ -58,29 +64,34 @@ def resolve_notebook_export(
     faked). The notebook's own structure (prose, headings) always exports.
     """
     from runtime.db_lock import connect_read
+    from substrate.notebooks import get_notebook
 
     db = db_path or _resolve_db_path()
     con = connect_read(db)
     try:
-        row = con.execute(
-            "SELECT notebook_id, title, content_class, owner_user_id, document_id "
-            "FROM notebooks WHERE notebook_id = ?",
-            [notebook_id],
-        ).fetchone()
-        if row is None:
+        notebook = get_notebook(con, notebook_authority)
+        if notebook is None:
             return None
-        block_rows = con.execute(
-            "SELECT block_type, ref_id, content_json FROM notebook_blocks "
-            "WHERE notebook_id = ? ORDER BY block_index",
-            [notebook_id],
-        ).fetchall()
+        block_rows = [
+            (block.block_type, block.ref_id, block.content_json)
+            for block in notebook.blocks
+        ]
         linked_document = None
-        if row[4]:
-            linked_document = con.execute(
-                "SELECT title, content_class, ip_holder_id "
-                "FROM documents WHERE document_id = ?",
-                [row[4]],
-            ).fetchone()
+        if notebook.document_id:
+            from substrate.legal_gate.read import read_document_compatibility
+
+            document = read_document_compatibility(
+                con,
+                str(notebook.document_id),
+                authority=investigation_authority,
+                enforce=os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1",
+            )
+            if document is not None:
+                linked_document = (
+                    document.get("title"),
+                    document.get("content_class"),
+                    document.get("ip_holder_id"),
+                )
     finally:
         con.close()
 
@@ -100,8 +111,15 @@ def resolve_notebook_export(
     from services.html_projection.resolvers.substrate_refs import resolve_refs
 
     ref_ids = collect_ref_ids(content_tiptap)
-    resolved_refs = resolve_refs(ref_ids, db_path=db) if ref_ids else {}
-    if ref_ids and row[4]:
+    resolved_refs = (
+        resolve_refs(ref_ids, db_path=db, authority=investigation_authority)
+        if ref_ids
+        else {}
+    )
+    if ref_ids and notebook.document_id and (
+        os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") != "1"
+        or linked_document is not None
+    ):
         from interfaces.research.api.engagement_routes import get_engagement_store
         from substrate.engagement_spine.twin import list_twin_notes
 
@@ -110,7 +128,7 @@ def resolve_notebook_export(
         linked_title = (
             str(linked_document[0])
             if linked_document and linked_document[0]
-            else str(row[1] or row[4])
+            else str(notebook.title or notebook.document_id)
         )
         linked_content_class = (
             str(linked_document[1])
@@ -122,7 +140,7 @@ def resolve_notebook_export(
             if linked_document and linked_document[2]
             else None
         )
-        for note in list_twin_notes(str(row[4]), store=store):
+        for note in list_twin_notes(str(notebook.document_id), store=store):
             if note.note_id not in wanted:
                 continue
             payload_key = "question" if note.kind == "question" else "statement"
@@ -132,33 +150,113 @@ def resolve_notebook_export(
                 ip_holder_id=linked_ip_holder,
                 title=linked_title,
                 payload={payload_key: note.text, "text": note.text},
-                source_document_id=str(row[4]),
+                source_document_id=str(notebook.document_id),
             )
 
     return NotebookExportSource(
         content_tiptap=content_tiptap,
-        title=row[1],
-        document_id=row[4] or notebook_id,
-        owner_user_id=row[3] or "__operator__",
+        title=notebook.title,
+        document_id=notebook.document_id or notebook_authority.notebook_id,
+        owner_user_id=notebook.owner_user_id,
         content_class="notebook",
         resolved_refs=resolved_refs,
     )
 
 
-def register_notebook_artifact_routes(app: FastAPI) -> None:
+def register_notebook_artifact_routes(
+    app: FastAPI, *, unauthenticated_local: bool = True
+) -> None:
     """Mount ``GET /api/notebooks/{id}/artifact``. One call from create_app."""
 
+    app.state.notebook_artifact_unauthenticated_local = bool(unauthenticated_local)
+
     @app.get("/api/notebooks/{notebook_id}/artifact", tags=["notebooks"])
-    async def notebook_artifact(notebook_id: str, format: str = "html") -> Response:
-        source = resolve_notebook_export(notebook_id)
+    async def notebook_artifact(
+        notebook_id: str, request: Request, format: str = "html"
+    ) -> Response:
+        from interfaces.research.api.notebook_access import (
+            NotebookAuthenticationRequired,
+            notebook_account_authority_from_request,
+        )
+        from substrate.notebooks import NotebookCorruptError, get_notebook
+
+        try:
+            account = notebook_account_authority_from_request(
+                request,
+                allow_missing_local_state=getattr(
+                    request.app.state,
+                    "notebook_artifact_unauthenticated_local",
+                    False,
+                ),
+            )
+        except NotebookAuthenticationRequired as exc:
+            raise HTTPException(
+                status_code=401,
+                detail="authentication required",
+                headers={"Cache-Control": "no-store"},
+            ) from exc
+        notebook_authority = account.notebook(notebook_id)
+        investigation_authority = None
+        if os.environ.get("ANTIEK_LEGAL_READ_ENFORCEMENT") == "1":
+            from interfaces.research.api.investigation_access import (
+                InvestigationAccessDenied,
+                authority_from_request,
+                require_investigation_owner,
+            )
+            from runtime.db_lock import connect_read
+
+            try:
+                with connect_read(_resolve_db_path()) as con:
+                    selected = get_notebook(con, notebook_authority)
+            except NotebookCorruptError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "notebook_unavailable"},
+                    headers={"Cache-Control": "no-store"},
+                ) from exc
+            if selected is None or not selected.investigation_id:
+                raise HTTPException(
+                    status_code=404,
+                    detail="notebook not found",
+                    headers={"Cache-Control": "no-store"},
+                )
+            try:
+                access = authority_from_request(request, selected.investigation_id)
+                require_investigation_owner(access)
+                investigation_authority = access.authority
+            except InvestigationAccessDenied as exc:
+                raise HTTPException(
+                    status_code=404,
+                    detail="notebook not found",
+                    headers={"Cache-Control": "no-store"},
+                ) from exc
+        from interfaces.research.api.engagement_routes import (
+            get_account_engagement_store,
+        )
+
+        try:
+            source = resolve_notebook_export(
+                notebook_authority,
+                engagement_store=get_account_engagement_store(account.account_id),
+                investigation_authority=investigation_authority,
+            )
+        except NotebookCorruptError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "notebook_unavailable"},
+                headers={"Cache-Control": "no-store"},
+            ) from exc
         if source is None:
             raise HTTPException(
-                status_code=404, detail=f"notebook {notebook_id!r} not found"
+                status_code=404,
+                detail="notebook not found",
+                headers={"Cache-Control": "no-store"},
             )
         if format not in EXPORT_FORMATS:
             raise HTTPException(
                 status_code=400,
                 detail=f"unknown format {format!r}; valid: {list(EXPORT_FORMATS)}",
+                headers={"Cache-Control": "no-store"},
             )
         # The rights-filtering pre-resolve happens here (the only path).
         resolved_refs: dict[str, ResolvedRefData] = source.resolved_refs
@@ -174,13 +272,15 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
                 raise HTTPException(
                     status_code=500,
                     detail="artifact failed the zero-script gate; refused",
+                    headers={"Cache-Control": "no-store"},
                 ) from err
             return HTMLResponse(
                 content=html,
                 headers={
                     "Content-Disposition": (
                         f'attachment; filename="notebook-{notebook_id}.html"'
-                    )
+                    ),
+                    "Cache-Control": "no-store",
                 },
             )
 
@@ -203,7 +303,8 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
                 headers={
                     "Content-Disposition": (
                         f'attachment; filename="notebook-{notebook_id}.antiek"'
-                    )
+                    ),
+                    "Cache-Control": "no-store",
                 },
             )
         return HTMLResponse(
@@ -211,7 +312,8 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
             headers={
                 "Content-Disposition": (
                     f'attachment; filename="notebook-{notebook_id}.antiek.html"'
-                )
+                ),
+                "Cache-Control": "no-store",
             },
         )
 

@@ -47,6 +47,7 @@ from substrate.ad_inventory.reader_impressions import (
 )
 from substrate.constants import UNATTRIBUTED_RIGHTS_BUCKET
 from substrate.event_log import emit_typed
+from substrate.legal_gate.read import read_document_ip_holder_compatibility
 from substrate.schemas.events import RevShareDecidedPayload
 
 # Matches the sibling acquisition modules' convention (explicit dotted name,
@@ -79,12 +80,12 @@ class AccrualResult:
 
 
 def _resolve_ip_holder(con: Any, document_id: str) -> str | None:
-    row = con.execute(
-        "SELECT ip_holder_id FROM documents WHERE document_id = ?", [document_id]
-    ).fetchone()
-    if row is None:
+    try:
+        return read_document_ip_holder_compatibility(
+            con, document_id, authority=None, enforce=False
+        )
+    except ValueError:
         return None
-    return row[0]
 
 
 def _accrue_payouts_ledger(

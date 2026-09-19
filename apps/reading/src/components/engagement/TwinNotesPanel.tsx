@@ -1957,6 +1957,9 @@ export function TwinNotesPanel({
                 data-kind={n.kind}
                 data-note-id={n.note_id}
                 data-selected={String(selectedNoteIds.has(n.note_id))}
+                data-origin={n.origin || "user_or_legacy"}
+                data-live-seed={String(n.origin?.startsWith("live_twin_seed:") ?? false)}
+                data-seed-batch-id={n.seed_batch_id || ""}
               >
                 {/* Residual (mx): multi-select checkbox per twin note. */}
                 <label className="flex items-start gap-2">
@@ -1970,6 +1973,21 @@ export function TwinNotesPanel({
                   />
                   <span>
                     <strong>[{n.kind}]</strong> {n.text}
+                    {n.origin?.startsWith("live_twin_seed:") ? (
+                      <small
+                        className="ml-2 font-mono opacity-70"
+                        data-testid={`twin-live-receipt-${n.note_id}`}
+                        data-provider={n.seed_receipt?.provider || ""}
+                        data-model={n.seed_receipt?.model || ""}
+                        data-cost-cents={String(
+                          n.seed_receipt?.actual_cents ?? "",
+                        )}
+                      >
+                        live proposal · {n.seed_receipt?.provider}/
+                        {n.seed_receipt?.model} · cost=
+                        {n.seed_receipt?.actual_cents ?? "?"}¢ · not promoted
+                      </small>
+                    ) : null}
                   </span>
                 </label>
               </li>

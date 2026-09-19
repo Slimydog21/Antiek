@@ -238,6 +238,7 @@ def test_multi_email_allowlist_middleware_accepts_both_operators(monkeypatch):
     monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
     client = TestClient(create_app(register_wrestling=False, register_providers=False))
 
+    subjects = set()
     for email in (_OPERATOR, _OPERATOR_SECOND):
         tok = mint_magic_link_token(email)
         r = client.get(f"/auth/callback?token={tok}", follow_redirects=False)
@@ -247,6 +248,11 @@ def test_multi_email_allowlist_middleware_accepts_both_operators(monkeypatch):
         r2 = client.get("/auth/whoami")
         assert r2.status_code == 200, email
         assert r2.json()["auth_method"] == "antiek_session_cookie"
+        subjects.add(r2.json()["user_id"])
+        client.cookies.clear()
+
+    assert len(subjects) == 2
+    assert "__operator__" not in subjects
 
 
 def test_logout_clears_cookie(monkeypatch):
@@ -278,6 +284,7 @@ def test_bearer_path_still_works_when_secret_set(monkeypatch):
     )
     assert r.status_code == 200
     assert r.json()["auth_method"] == "bearer_token"
+    assert r.json()["user_id"] != "__operator__"
 
 
 def test_cf_access_email_path_still_works(monkeypatch):

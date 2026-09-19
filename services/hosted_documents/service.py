@@ -11,7 +11,7 @@ from typing import Any, Literal
 from acquisition.documents import ExtractedDocument, extract_document_bytes
 from substrate.marketplace_host.library import HostStore
 
-LicenseClass = Literal["private_upload", "public_domain", "purchased"]
+LicenseClass = Literal["private_upload", "personal_reading", "public_domain", "purchased"]
 # Implementations MUST be idempotent for the tuple
 # (investigation_id, document_id, canonical_content_hash). The production
 # adapter recovers the prior trajectory receipt before appending. This is the
@@ -83,6 +83,7 @@ def _validate_existing_authority(
     source_uri: str | None,
     extracted: ExtractedDocument,
     minimum_viewable_words: int,
+    provenance: dict[str, Any] | None,
 ) -> None:
     if doc.get("license_class") != authorization.license_class:
         raise ValueError("identical bytes already exist under a different license authority")
@@ -100,6 +101,8 @@ def _validate_existing_authority(
         raise ValueError("identical bytes produced different extracted content")
     if doc.get("canonical_content_hash") != extracted.canonical_content_hash:
         raise ValueError("identical bytes produced different canonical content")
+    if doc.get("provenance") != provenance:
+        raise ValueError("identical bytes already exist under different provenance")
 
 
 def ingest_hosted_document(
@@ -114,6 +117,7 @@ def ingest_hosted_document(
     title: str | None = None,
     source_uri: str | None = None,
     minimum_viewable_words: int = 50,
+    provenance: dict[str, Any] | None = None,
 ) -> HostedDocumentResult:
     """Extract, identify, store, and emit once for one owner/source pair.
 
@@ -148,6 +152,7 @@ def ingest_hosted_document(
                 source_uri=source_uri,
                 extracted=extracted,
                 minimum_viewable_words=minimum_viewable_words,
+                provenance=provenance,
             )
             if existing.get("state") != "pending":
                 store.put_membership(owner, document_id)
@@ -182,6 +187,7 @@ def ingest_hosted_document(
             "entitlement_id": authorization.entitlement_id,
             "source_uri": source_uri,
             "view_format": "html",
+            "provenance": dict(provenance) if provenance is not None else None,
         }
         store.put_document(document_id, doc)
         if extracted.viewable:

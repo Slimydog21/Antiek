@@ -443,6 +443,7 @@ def build_sidecar_input_for_document(
     parent_pdf_filename_hint: str | None = None,
     title: str | None = None,
     db_path: str | None = None,
+    authority: Any | None = None,
 ) -> SidecarInput:
     """Compose a ``SidecarInput`` by reading user-derived rows from the
     substrate for ``(user_id, document_id)``.
@@ -491,7 +492,7 @@ def build_sidecar_input_for_document(
 
     highlights = _gather_highlights(document_id=document_id, db_path=db_path)
     anchors, audio_blobs = _gather_anchors_and_audio(
-        document_id=document_id, db_path=db_path,
+        document_id=document_id, db_path=db_path, authority=authority,
     )
     # User-asserted edges: substrate has no user-edges table; left
     # empty. The UI surface (Sprint 22+) lands the table; until then
@@ -600,7 +601,7 @@ def _gather_highlights(
 
 
 def _gather_anchors_and_audio(
-    *, document_id: str, db_path: str | None,
+    *, document_id: str, db_path: str | None, authority: Any | None = None,
 ) -> tuple[list[AnchorRow], dict[str, bytes]]:
     """Pull voice_note_anchor rows + any reachable audio.
 
@@ -649,16 +650,17 @@ def _gather_anchors_and_audio(
             audio_bytes: bytes | None = None
             duration: float | None = None
             # Look up the voice-note row for transcript + audio hints.
-            try:
-                vn_row = con.execute(
-                    "SELECT raw_text, metadata FROM documents "
-                    "WHERE document_id = ?",
-                    [voice_note_id],
-                ).fetchone()
-            except duckdb.CatalogException:
-                vn_row = None
-            if vn_row is not None:
-                raw_text, metadata = vn_row
+            from substrate.legal_gate.read import read_document_compatibility
+
+            voice_note = read_document_compatibility(
+                con,
+                str(voice_note_id),
+                authority=authority,
+                enforce=True,
+            )
+            if voice_note is not None:
+                raw_text = voice_note["raw_text"]
+                metadata = voice_note["metadata"]
                 if isinstance(raw_text, str):
                     transcript = raw_text
                 if isinstance(metadata, str):

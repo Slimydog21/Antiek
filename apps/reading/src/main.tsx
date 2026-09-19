@@ -8,6 +8,7 @@ import "./design/motion.css";
 import App from "./App";
 import AppLegacy from "./AppLegacy";
 import { PostHogRoot } from "./lib/PostHogRoot";
+import { retireLegacyWorkspaceSnapshots } from "./workspace/persistence";
 
 /**
  * S12 cutover flag.
@@ -28,6 +29,16 @@ const uiVersion = (import.meta.env.VITE_ANTIEK_UI ?? "v2") as "v1" | "v2";
 if (import.meta.env.DEV) {
   // eslint-disable-next-line no-console
   console.info(`[antiek] UI version: ${uiVersion}`);
+}
+
+// Run before React mounts: no route starter or effect can observe legacy
+// descriptor state, and cleanup never becomes a render-time side effect.
+retireLegacyWorkspaceSnapshots();
+// Retire the unauthenticated tab-local collective cache without observing its bytes.
+try {
+  window.sessionStorage.removeItem("antiek.collective." + "unit_membership.v1");
+} catch {
+  // Storage may be disabled; retirement remains best-effort and read-free.
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

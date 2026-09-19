@@ -5,7 +5,11 @@ import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
-import { startInvestigation, ApiError } from "../../lib/api";
+import { launchReservedQuestion, startInvestigation, ApiError, type ResearchTier } from "../../lib/api";
+import {
+  ResearchRunCeilingApproval,
+  type ResearchRunAuthorization,
+} from "../../components/engagement/ResearchRunCeilingApproval";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
@@ -62,17 +66,25 @@ type Props = {
    * absent ⇒ mint a fresh child. The panel never renders it.
    */
   reservedChildId?: string | null;
+  /** Exact question membership used by the server to resolve the reservation. */
+  reservedQuestionId?: string | null;
 };
 
 export default function ChaseThread({
   spawnContext,
   parentInvestigationId,
   reservedChildId,
+  reservedQuestionId,
 }: Props) {
   const [question, setQuestion] = useState(spawnContext);
   const [busy, setBusy] = useState(false);
   const [launchedId, setLaunchedId] = useState<string | null>(null);
   const [error, setError] = useState<{ reason: string | null } | null>(null);
+  const [researchTier, setResearchTier] = useState<ResearchTier>("deep");
+  const [ceilingUsd, setCeilingUsd] = useState("2.00");
+  const [runAuthorization, setRunAuthorization] =
+    useState<ResearchRunAuthorization>({ approved: false, ceilingUsd: null, projection: null });
+  const [ceilingConfirmed, setCeilingConfirmed] = useState(false);
   const navigate = useNavigate();
   const { celebrating, celebrate } = useCelebrate();
 
@@ -81,6 +93,9 @@ export default function ChaseThread({
     setQuestion(spawnContext);
     setLaunchedId(null);
     setError(null);
+    setCeilingConfirmed(false);
+    // ResearchRunCeilingApproval owns prompt-bound invalidation. Duplicating
+    // that reset here can overwrite the child's newer authorization update.
   }, [spawnContext]);
 
   async function follow() {
@@ -89,19 +104,38 @@ export default function ChaseThread({
       setError({ reason: "There’s nothing here to follow yet." });
       return;
     }
+    const ceiling = Number(ceilingUsd);
+    if (!Number.isFinite(ceiling) || ceiling <= 0 || ceiling > 100) {
+      setError({ reason: "Choose a recursive chase ceiling between $0.01 and $100." });
+      return;
+    }
+    if (reservedChildId && (!reservedQuestionId || !ceilingConfirmed)) {
+      setError({ reason: "Review and approve the recursive chase ceiling before launch." });
+      return;
+    }
+    if (!runAuthorization.approved || runAuthorization.ceilingUsd == null) {
+      setError({ reason: "Review and approve an initial-run hard ceiling before launch." });
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const resp = await startInvestigation({
-        question: q,
-        context: spawnContext,
-        parent_investigation_id: parentInvestigationId,
-        spawn_context: spawnContext,
-        // Consume the reserved escalation id when the passage carries one;
-        // omit it otherwise so the substrate mints a fresh child. This is
-        // the no-orphan / one-research-per-question seam.
-        ...(reservedChildId ? { investigation_id: reservedChildId } : {}),
-      });
+      const resp = reservedChildId && reservedQuestionId
+        ? await launchReservedQuestion(parentInvestigationId, reservedQuestionId, {
+            question: q,
+            context: spawnContext,
+            research_tier: researchTier,
+            approved_run_ceiling_usd: runAuthorization.ceilingUsd,
+            approved_chase_ceiling_usd: ceiling,
+          })
+        : await startInvestigation({
+            question: q,
+            context: spawnContext,
+            parent_investigation_id: parentInvestigationId,
+            spawn_context: spawnContext,
+            research_tier: researchTier,
+            approved_run_ceiling_usd: runAuthorization.ceilingUsd,
+          });
       setLaunchedId(resp.investigation_id);
       recordSpawnRelationship(resp.investigation_id, parentInvestigationId);
       // The payoff is already in hand (the id is back); the beat just
@@ -145,7 +179,10 @@ export default function ChaseThread({
         </label>
         <LemonTextarea
           value={question}
-          onChange={(e) => setQuestion(e.target.value)}
+          onChange={(e) => {
+            setQuestion(e.target.value);
+            setCeilingConfirmed(false);
+          }}
           disabled={busy}
           autoFocus
           minRows={5}
@@ -153,6 +190,48 @@ export default function ChaseThread({
           onSubmit={onFollow}
           className="font-serif"
         />
+        <ResearchRunCeilingApproval
+          promptText={`${question.trim()}\n${spawnContext}`}
+          researchTier={researchTier}
+          allowTierPick
+          onResearchTierChange={setResearchTier}
+          onAuthorizationChange={setRunAuthorization}
+          disabled={busy}
+        />
+        {reservedChildId ? (
+          <div className="mt-3 space-y-2" data-testid="reserved-launch-ceiling">
+            <label className="block text-[11px] font-mono">
+              Recursive chase ceiling (USD)
+              <input
+                type="number"
+                min="0.01"
+                max="100"
+                step="0.01"
+                value={ceilingUsd}
+                disabled={busy}
+                onChange={(event) => {
+                  setCeilingUsd(event.target.value);
+                  setCeilingConfirmed(false);
+                }}
+                className="ml-2 w-24 border border-ink bg-transparent px-2 py-1"
+              />
+            </label>
+            <p className="text-[10px] font-mono text-ink-mute">
+              Prompt projection {runAuthorization.projection?.estimatedUsdHigh == null
+                ? "is unknown"
+                : `is up to $${runAuthorization.projection.estimatedUsdHigh.toFixed(4)}`}; the recursive ceiling governs later chases and is separate from the initial-run hard ceiling above.
+            </p>
+            <label className="flex gap-2 text-[11px] font-mono">
+              <input
+                type="checkbox"
+                checked={ceilingConfirmed}
+                disabled={busy}
+                onChange={(event) => setCeilingConfirmed(event.target.checked)}
+              />
+              Approve this recursive ceiling and launch the reserved research
+            </label>
+          </div>
+        ) : null}
         <div className="mt-2">
           {/* M4: a voice note can drive the chase — transcribe → set the
               question. Reuses the shipped voice capture; honest no-key

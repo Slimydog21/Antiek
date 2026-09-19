@@ -206,9 +206,24 @@ class LockedConnection:
         self._acquired_at = acquired_at or time.monotonic()
         self._error: str | None = None
         self._log_on_close = log_on_close
+        self._transaction_active = False
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._con, name)
+
+    @property
+    def transaction_active(self) -> bool:
+        """Whether this wrapper observed an open explicit transaction."""
+        return self._transaction_active
+
+    def execute(self, query: str, *args: Any, **kwargs: Any) -> Any:
+        result = self._con.execute(query, *args, **kwargs)
+        statement = query.lstrip().split(None, 1)[0].upper() if query.strip() else ""
+        if statement == "BEGIN":
+            self._transaction_active = True
+        elif statement in {"COMMIT", "ROLLBACK"}:
+            self._transaction_active = False
+        return result
 
     def __enter__(self) -> LockedConnection:
         return self

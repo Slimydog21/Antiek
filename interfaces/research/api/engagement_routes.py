@@ -28,15 +28,16 @@ Surfaces:
 
 from __future__ import annotations
 
+import hashlib
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
+from pydantic import BaseModel, ConfigDict, Field
 
 from substrate.engagement_spine import (
     HighlightSelection,
@@ -56,7 +57,29 @@ from substrate.engagement_spine import (
     twin_promote_context_payload,
     twins_product_payload,
 )
-from substrate.engagement_spine.store import EngagementStore, FileEngagementStore
+from substrate.engagement_spine.authority import (
+    EngagementAuthority,
+    operator_engagement_authority,
+)
+from substrate.engagement_spine.collective_council import (
+    CouncilCallExecutor,
+    CouncilMemberRequest,
+    approve_council_plan,
+    council_result_sha256,
+    create_council_preflight,
+    get_council_plan,
+    run_approved_council,
+)
+from substrate.engagement_spine.collective_manifest import (
+    CollectiveManifestNotFound,
+    CollectiveManifestUnavailable,
+    create_collective_manifest,
+    project_collective_manifest,
+)
+from substrate.engagement_spine.council_convergence import apply_council_convergence
+from substrate.engagement_spine.council_reconciliation import reconcile_council_hold
+from substrate.engagement_spine.source_refs import parse_source_reference
+from substrate.engagement_spine.store import EngagementStore, FileEngagementStore, authorized_store
 from substrate.floating_session import (
     complete_session_with_context_flywheel,
     open_from_highlight_with_references,
@@ -65,7 +88,10 @@ from substrate.floating_session.store import (
     FileSessionStore,
     InMemorySessionStore,
     SessionStore,
+    authorized_session_store,
 )
+from substrate.midnight_oil.budget_ledger import BudgetLedger
+from substrate.multi_user.auth import UserClaims
 
 engagement_router = APIRouter(prefix="/engagement", tags=["engagement"])
 
@@ -253,6 +279,17 @@ def get_engagement_store(*, create_if_missing: bool = True) -> EngagementStore:
     return _engagement_store
 
 
+def get_account_engagement_store(
+    account_id: str, *, create_if_missing: bool = True
+) -> EngagementStore:
+    """Return the engagement store scoped to one server-derived account id."""
+
+    return authorized_store(
+        get_engagement_store(create_if_missing=create_if_missing),
+        EngagementAuthority(account_id),
+    )
+
+
 def _sess() -> SessionStore:
     request_store = _request_session_store.get()
     if request_store is not None:
@@ -264,10 +301,79 @@ def _sess() -> SessionStore:
     return _session_store
 
 
+def _authority_from_request(request: Request) -> EngagementAuthority:
+    claims = getattr(request.state, "user_claims", None)
+    auth_method = getattr(request.state, "auth_method", None)
+    if isinstance(claims, UserClaims):
+        if (
+            getattr(request.state, "user_id", None) != claims.user_id
+            or getattr(request.state, "scopes", None) != claims.scopes
+            or not isinstance(auth_method, str)
+            or not auth_method
+        ):
+            raise HTTPException(status_code=401, detail="authentication required")
+        return EngagementAuthority(claims.user_id)
+    # Standalone route tests and trusted local adapters have no global auth
+    # middleware. This is the only ownerless compatibility capability.
+    app = request.scope.get("app")
+    local_compatibility = bool(
+        app is not None and getattr(app.state, "engagement_unauthenticated_local", False)
+    )
+    if (
+        local_compatibility
+        and not hasattr(request.state, "user_id")
+        and not hasattr(request.state, "auth_method")
+    ):
+        return operator_engagement_authority()
+    raise HTTPException(status_code=401, detail="authentication required")
+
+
+def _eng_for(request: Request) -> EngagementStore:
+    authority = _authority_from_request(request)
+    if authority.local_operator_compatibility:
+        return _eng()
+    return authorized_store(_eng(), authority)
+
+
+def _sess_for(request: Request) -> SessionStore:
+    authority = _authority_from_request(request)
+    if authority.local_operator_compatibility:
+        return _sess()
+    return authorized_session_store(_sess(), authority)
+
+
+def get_account_resume_stores(
+    request: Request, account_id: str
+) -> tuple[SessionStore, EngagementStore]:
+    """Public read seam for account-authorized session-reference resolvers."""
+
+    authority = _authority_from_request(request)
+    if authority.account_id != account_id:
+        raise PermissionError("request authority mismatch")
+    return _sess_for(request), _eng_for(request)
+
+
+def _configured_host_store(request: Request, protocol: Any) -> Any:
+    """Return the explicitly composed canonical host store; never guess one."""
+    store = getattr(request.app.state, "marketplace_host_store", None)
+    if not isinstance(store, protocol):
+        raise RuntimeError("canonical hosted-document store is not configured")
+    return store
+
+
 # ── request / response models ────────────────────────────────────────────
 
 
+class CitationProvenanceBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_kind: Literal["synthesis_claim"]
+    source_asset_id: str = Field(min_length=1, max_length=512)
+    claim_id: str = Field(min_length=1, max_length=512)
+    chunk_ids: list[str] = Field(min_length=1, max_length=64)
+
+
 class HighlightBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     asset_id: str
     selection_text: str
     region_id: str | None = None
@@ -278,6 +384,7 @@ class HighlightBody(BaseModel):
     force_new: bool = False
     # Residual (ji): closed research tier for reserved spawn (fast|deep|wrestle).
     research_tier: Literal["fast", "deep", "wrestle"] | None = None
+    citation_provenance: CitationProvenanceBody | None = None
 
 
 class AttachRefsBody(BaseModel):
@@ -296,6 +403,53 @@ class CollectiveBody(BaseModel):
     spawn_ids: list[str]
     query: str | None = None
     include_twin_promote: bool = True
+
+
+class CollectiveManifestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal[1]
+    spawn_ids: list[str] = Field(min_length=1, max_length=32)
+
+
+class CouncilMemberBody(BaseModel):
+    spawn_id: str = Field(min_length=1, max_length=512)
+    role: str = Field(min_length=1, max_length=120)
+    model_id: str = Field(min_length=1, max_length=240)
+    projected_max_cents: int = Field(gt=0)
+
+
+class CouncilPreflightBody(BaseModel):
+    collective_id: str = Field(min_length=1, max_length=512)
+    shared_prompt: str = Field(min_length=1, max_length=100_000)
+    members: list[CouncilMemberBody] = Field(min_length=1, max_length=32)
+    synthesizer_model_id: str = Field(min_length=1, max_length=240)
+    synthesizer_projected_max_cents: int = Field(gt=0)
+    approved_ceiling_cents: int = Field(gt=0)
+
+
+class CouncilApprovalBody(BaseModel):
+    expected_input_sha256: str = Field(min_length=64, max_length=64)
+    approved_ceiling_cents: int = Field(gt=0)
+
+
+class CouncilRunBody(BaseModel):
+    max_workers: int = Field(default=4, ge=1, le=32)
+
+
+class CouncilConvergenceBody(BaseModel):
+    result_id: str = Field(min_length=1, max_length=512)
+    expected_result_sha256: str = Field(min_length=64, max_length=64)
+    mode: Literal["offline_collective", "draft_combined", "into_parent"]
+    parent_asset_id: str | None = Field(default=None, max_length=512)
+    promotion_note_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class CouncilReconciliationBody(BaseModel):
+    result_id: str = Field(min_length=1, max_length=512)
+    expected_result_sha256: str = Field(min_length=64, max_length=64)
+    role: str = Field(min_length=1, max_length=120)
+    hold_id: str = Field(min_length=1, max_length=512)
+    actual_cents: int = Field(ge=0)
 
 
 class MergeBody(BaseModel):
@@ -395,22 +549,112 @@ class SessionFlywheelBody(BaseModel):
     include_twin_promote: bool = True
 
 
+def _validated_citation_provenance(
+    body: HighlightBody, request: Request
+) -> dict[str, Any] | None:
+    """Resolve a client citation envelope through canonical read authority.
+
+    Runs before either engagement store is requested, so every rejection is a
+    zero-mutation rejection. Document identity is derived from rows, never from
+    the client.
+    """
+    cited = body.citation_provenance
+    if cited is None:
+        return None
+    if cited.source_asset_id != body.asset_id:
+        raise ValueError("citation source_asset_id must match asset_id")
+    if cited.source_asset_id != cited.source_asset_id.strip():
+        raise ValueError("citation source_asset_id is invalid")
+    if cited.claim_id != cited.claim_id.strip():
+        raise ValueError("citation claim_id is invalid")
+    if any(
+        ord(character) < 0x20 or ord(character) == 0x7F
+        for value in (cited.source_asset_id, cited.claim_id, *cited.chunk_ids)
+        for character in value
+    ):
+        raise ValueError("citation identifiers contain control characters")
+    chunk_ids = cited.chunk_ids
+    if any(not value or value != value.strip() for value in chunk_ids):
+        raise ValueError("citation chunk_ids are invalid")
+    if len(set(chunk_ids)) != len(chunk_ids):
+        raise ValueError("citation chunk_ids must be unique")
+
+    import duckdb
+
+    from substrate.graph import default_db_path
+    from substrate.graph.retrieval_gate import is_chunk_body_withheld
+    from substrate.investigation_streams import InvestigationStreamUnbound
+    from substrate.investigation_tenancy import (
+        InvestigationAuthority,
+        InvestigationOwnershipConflict,
+    )
+    from substrate.legal_gate.read import chunk_investigation_hint, read_chunk_compatibility
+
+    authority = _authority_from_request(request)
+    try:
+        con = duckdb.connect(default_db_path(), read_only=True)
+    except duckdb.IOException as exc:
+        raise HTTPException(status_code=503, detail="citation authority unavailable") from exc
+    document_id: str | None = None
+    try:
+        for chunk_id in chunk_ids:
+            investigation_id = chunk_investigation_hint(con, chunk_id)
+            if not investigation_id or investigation_id != body.asset_id:
+                raise HTTPException(status_code=404, detail="cited evidence is unavailable")
+            read_authority = None
+            enforce = not authority.local_operator_compatibility
+            if enforce:
+                read_authority = InvestigationAuthority(authority.account_id, investigation_id)
+            try:
+                row = read_chunk_compatibility(
+                    con, chunk_id, authority=read_authority, enforce=enforce
+                )
+            except (InvestigationStreamUnbound, InvestigationOwnershipConflict) as exc:
+                raise HTTPException(
+                    status_code=404, detail="cited evidence is unavailable"
+                ) from exc
+            if row is None or str(row[11] or "") != body.asset_id:
+                raise HTTPException(status_code=404, detail="cited evidence is unavailable")
+            withheld, _ = is_chunk_body_withheld(row[7], taken_down=bool(row[8]))
+            if withheld:
+                raise HTTPException(status_code=404, detail="cited evidence is unavailable")
+            resolved_document = str(row[4] or "")
+            if not resolved_document:
+                raise HTTPException(status_code=404, detail="cited evidence is unavailable")
+            if document_id is None:
+                document_id = resolved_document
+            elif document_id != resolved_document:
+                raise ValueError("citation chunks must belong to one document")
+    finally:
+        con.close()
+    assert document_id is not None
+    return {
+        "source_kind": cited.source_kind,
+        "source_asset_id": cited.source_asset_id,
+        "claim_id": cited.claim_id,
+        "chunk_ids": list(chunk_ids),
+        "document_id": document_id,
+    }
+
+
 # ── routes ───────────────────────────────────────────────────────────────
 
 
 @engagement_router.post("/spawn-from-highlight")
-def post_spawn_from_highlight(body: HighlightBody) -> dict[str, Any]:
+def post_spawn_from_highlight(body: HighlightBody, request: Request) -> dict[str, Any]:
     try:
+        citation_provenance = _validated_citation_provenance(body, request)
         sel = HighlightSelection(
             asset_id=body.asset_id,
             selection_text=body.selection_text,
             region_id=body.region_id,
             page=body.page,
             goal_hint=body.goal_hint,
+            citation_provenance=citation_provenance,
         )
         spawn = spawn_from_highlight_with_references(
             sel,
-            store=_eng(),
+            store=_eng_for(request),
             references=body.references,
             model_id=body.model_id,
             force_new=body.force_new,
@@ -429,15 +673,18 @@ def post_spawn_from_highlight(body: HighlightBody) -> dict[str, Any]:
         "source_references": list(spawn.source_references),
         "research_tier": getattr(spawn, "research_tier", None) or "deep",
         "view_format": "html",
+        "citation_provenance": spawn.citation_provenance,
     }
 
 
 @engagement_router.post("/attach-refs")
-def post_attach_refs(body: AttachRefsBody) -> dict[str, Any]:
+def post_attach_refs(body: AttachRefsBody, request: Request) -> dict[str, Any]:
     try:
-        spawn, merged = attach_source_references(body.spawn_id, body.references, store=_eng())
+        spawn, merged = attach_source_references(
+            body.spawn_id, body.references, store=_eng_for(request)
+        )
     except KeyError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise HTTPException(status_code=404, detail="engagement resource not found") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {
@@ -450,11 +697,11 @@ def post_attach_refs(body: AttachRefsBody) -> dict[str, Any]:
 
 
 @engagement_router.post("/research-context")
-def post_research_context(body: ResearchContextBody) -> dict[str, Any]:
+def post_research_context(body: ResearchContextBody, request: Request) -> dict[str, Any]:
     try:
         pack = assemble_research_context(
             body.asset_id,
-            store=_eng(),
+            store=_eng_for(request),
             spawn_id=body.spawn_id,
             query=body.query,
             include_twin_promote=body.include_twin_promote,
@@ -472,18 +719,18 @@ def post_research_context(body: ResearchContextBody) -> dict[str, Any]:
 
 
 @engagement_router.post("/collective")
-def post_collective(body: CollectiveBody) -> dict[str, Any]:
+def post_collective(body: CollectiveBody, request: Request) -> dict[str, Any]:
     try:
         unit = merge_spawns_collective(
             body.spawn_ids,
-            store=_eng(),
+            store=_eng_for(request),
             query=body.query,
             include_twin_promote=body.include_twin_promote,
             promote_insight_fn=_offline_promote_insight if body.include_twin_promote else None,
             promote_question_fn=_offline_promote_question if body.include_twin_promote else None,
         )
     except KeyError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise HTTPException(status_code=404, detail="engagement resource not found") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     out = unit.to_dict()
@@ -505,26 +752,239 @@ def post_collective(body: CollectiveBody) -> dict[str, Any]:
     return out
 
 
+@engagement_router.post("/collective-manifests")
+def post_collective_manifest(body: CollectiveManifestBody, request: Request, response: Response) -> dict[str, Any]:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        manifest = create_collective_manifest(body.spawn_ids, store=_eng_for(request))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="engagement resource not found") from exc
+    except CollectiveManifestUnavailable as exc:
+        raise HTTPException(status_code=503, detail="collective manifest unavailable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return manifest.receipt()
+
+
+@engagement_router.post("/collective/{manifest_id}/project")
+def post_collective_manifest_project(
+    manifest_id: str, request: Request, response: Response
+) -> dict[str, Any]:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        manifest, unit = project_collective_manifest(manifest_id, store=_eng_for(request))
+    except CollectiveManifestNotFound as exc:
+        raise HTTPException(status_code=404, detail="collective manifest not found") from exc
+    except CollectiveManifestUnavailable as exc:
+        raise HTTPException(status_code=503, detail="collective manifest unavailable") from exc
+    out = unit.to_dict()
+    out.update({"manifest_id": manifest.manifest_id, "prompt_block": unit.prompt_block()})
+    return out
+
+
+@engagement_router.post("/council/preflight")
+def post_council_preflight(body: CouncilPreflightBody, request: Request) -> dict[str, Any]:
+    """Freeze exact owner evidence/model/cost inputs; never reserve or dispatch."""
+    try:
+        plan = create_council_preflight(
+            store=_eng_for(request),
+            collective_id=body.collective_id,
+            shared_prompt=body.shared_prompt,
+            members=[CouncilMemberRequest(**member.model_dump()) for member in body.members],
+            synthesizer_model_id=body.synthesizer_model_id,
+            synthesizer_projected_max_cents=body.synthesizer_projected_max_cents,
+            approved_ceiling_cents=body.approved_ceiling_cents,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="engagement resource not found") from exc
+    except (PermissionError, TypeError) as exc:
+        raise HTTPException(status_code=401, detail="authenticated account required") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return plan.to_dict()
+
+
+@engagement_router.get("/council/status")
+def get_council_status(request: Request, response: Response) -> dict[str, Any]:
+    """Report runtime readiness without installing or exercising spend authority."""
+    # Resolve the account before revealing runtime configuration and prevent a
+    # browser/proxy from retaining authority state after it changes.
+    authority = _authority_from_request(request)
+    if authority.local_operator_compatibility:
+        raise HTTPException(status_code=401, detail="authenticated account required")
+    response.headers["Cache-Control"] = "no-store"
+    executor_installed = getattr(request.app.state, "engagement_council_executor", None) is not None
+    ledger_installed = isinstance(
+        getattr(request.app.state, "engagement_council_ledger", None), BudgetLedger
+    )
+    live_ready = executor_installed and ledger_installed
+    note = (
+        "Budget ledger and council executor are installed; every run still requires an approved exact ceiling."
+        if live_ready
+        else "Paid council execution is unavailable until an operator installs both the durable budget ledger and executor."
+    )
+    return {
+        "view_format": "html",
+        "product_panel": "collective_council_status",
+        "substrate_available": True,
+        "executor_installed": executor_installed,
+        "ledger_installed": ledger_installed,
+        "live_ready": live_ready,
+        "offline_convergence_available": True,
+        "operator_gated": True,
+        "notes": [note],
+    }
+
+
+@engagement_router.post("/council/{plan_id}/approve")
+def post_council_approve(
+    plan_id: str, body: CouncilApprovalBody, request: Request
+) -> dict[str, Any]:
+    try:
+        plan = approve_council_plan(
+            plan_id,
+            store=_eng_for(request),
+            expected_input_sha256=body.expected_input_sha256,
+            approved_ceiling_cents=body.approved_ceiling_cents,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="council plan not found") from exc
+    except (PermissionError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return plan.to_dict()
+
+
+@engagement_router.post("/council/{plan_id}/run")
+def post_council_run(plan_id: str, body: CouncilRunBody, request: Request) -> dict[str, Any]:
+    executor = getattr(request.app.state, "engagement_council_executor", None)
+    ledger = getattr(request.app.state, "engagement_council_ledger", None)
+    if executor is None or not isinstance(ledger, BudgetLedger):
+        raise HTTPException(
+            status_code=503,
+            detail="collective council execution is not configured",
+        )
+    try:
+        result = run_approved_council(
+            plan_id,
+            store=_eng_for(request),
+            ledger=ledger,
+            executor=executor,
+            max_workers=body.max_workers,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="council plan not found") from exc
+    except (PermissionError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        **result.__dict__,
+        "member_receipts": [receipt.__dict__ for receipt in result.member_receipts],
+        "synthesizer_receipt": (
+            result.synthesizer_receipt.__dict__ if result.synthesizer_receipt is not None else None
+        ),
+    }
+
+
+@engagement_router.get("/council/{plan_id}")
+def get_council(plan_id: str, request: Request) -> dict[str, Any]:
+    try:
+        plan = get_council_plan(plan_id, store=_eng_for(request))
+    except (PermissionError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if plan is None:
+        raise HTTPException(status_code=404, detail="council plan not found")
+    return plan.to_dict()
+
+
+@engagement_router.get("/council/results/{result_id}")
+def get_council_result_route(result_id: str, request: Request) -> dict[str, Any]:
+    store = _eng_for(request)
+    if not hasattr(store, "authority"):
+        raise HTTPException(status_code=401, detail="authenticated account required")
+    row = store.get_document(result_id)
+    if row is None or row.get("kind") != "council_result":
+        raise HTTPException(status_code=404, detail="council result not found")
+    return {**row, "result_sha256": council_result_sha256(row)}
+
+
+@engagement_router.post("/council/{plan_id}/converge")
+def post_council_convergence(
+    plan_id: str, body: CouncilConvergenceBody, request: Request
+) -> dict[str, Any]:
+    try:
+        decision = apply_council_convergence(
+            store=_eng_for(request),
+            plan_id=plan_id,
+            result_id=body.result_id,
+            expected_result_sha256=body.expected_result_sha256,
+            mode=body.mode,
+            parent_asset_id=body.parent_asset_id,
+            promotion_note_ids=body.promotion_note_ids,
+            promote_insight_fn=_request_promote_insight.get(),
+            promote_question_fn=_request_promote_question.get(),
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="council resource not found") from exc
+    except (PermissionError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return decision.to_dict()
+
+
+@engagement_router.post("/council/{plan_id}/reconcile")
+def post_council_reconciliation(
+    plan_id: str, body: CouncilReconciliationBody, request: Request
+) -> dict[str, Any]:
+    ledger = getattr(request.app.state, "engagement_council_ledger", None)
+    if not isinstance(ledger, BudgetLedger):
+        raise HTTPException(
+            status_code=503,
+            detail="collective council reconciliation is not configured",
+        )
+    try:
+        return reconcile_council_hold(
+            store=_eng_for(request),
+            ledger=ledger,
+            plan_id=plan_id,
+            result_id=body.result_id,
+            expected_result_sha256=body.expected_result_sha256,
+            role=body.role,
+            hold_id=body.hold_id,
+            actual_cents=body.actual_cents,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="council resource not found") from exc
+    except (PermissionError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @engagement_router.post("/merge")
-def post_merge(body: MergeBody) -> dict[str, Any]:
+def post_merge(body: MergeBody, request: Request) -> dict[str, Any]:
     """Merge completed spawn outputs into parent or a draft-combined document.
 
     Default mode is ``draft_combined`` so operators can review before full
     parent merge. Calls shipped ``merge_product_payload`` / ``merge_spawn_outputs``.
     Residual (oi): records Antiek-bench collective_merge usage (best-effort).
     """
+    store = _eng_for(request)
+    if any(
+        (row := store.get_spawn(spawn_id)) is not None and row.get("claim_challenge")
+        for spawn_id in body.spawn_ids
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="unaccepted claim challenges require an explicit review acceptance flow",
+        )
     try:
         payload = merge_product_payload(
             body.parent_asset_id,
             body.spawn_ids,
-            store=_eng(),
+            store=store,
             mode=body.mode,
             parent_title=body.parent_title,
             parent_body=body.parent_body,
             include_html=body.include_html,
         )
     except KeyError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise HTTPException(status_code=404, detail="engagement resource not found") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     # Residual (oi): document merge / written analysis → bench feed.
@@ -557,7 +1017,11 @@ def post_merge(body: MergeBody) -> dict[str, Any]:
 
 
 def _converge_canonical_twins(
-    deliverable_id: str, reviewed_model: dict[str, Any], review_sha256: str
+    deliverable_id: str,
+    reviewed_model: dict[str, Any],
+    review_sha256: str,
+    *,
+    store: EngagementStore,
 ) -> dict[str, Any]:
     from substrate.engagement_spine import converge_reviewed_twins
     from substrate.engagement_spine.canonical_commit import reviewed_document_text
@@ -565,7 +1029,7 @@ def _converge_canonical_twins(
     title = str(reviewed_model.get("title") or deliverable_id)
     twins = converge_reviewed_twins(
         deliverable_id,
-        store=_eng(),
+        store=store,
         title=title.removeprefix("[Draft] ").strip() or deliverable_id,
         body_text=reviewed_document_text(reviewed_model),
         review_sha256=review_sha256,
@@ -575,8 +1039,19 @@ def _converge_canonical_twins(
     return twins
 
 
+def _require_owned_deliverable(
+    con: Any, deliverable_id: str, authority: EngagementAuthority
+) -> None:
+    row = con.execute(
+        "SELECT 1 FROM deliverables WHERE deliverable_id = ? AND owner_user_id = ?",
+        [deliverable_id, authority.account_id],
+    ).fetchone()
+    if row is None:
+        raise KeyError(deliverable_id)
+
+
 @engagement_router.post("/merge/commit")
-def post_canonical_merge_commit(body: CanonicalMergeCommitBody) -> dict[str, Any]:
+def post_canonical_merge_commit(body: CanonicalMergeCommitBody, request: Request) -> dict[str, Any]:
     """Commit the exact reviewed draft into canonical graph/write authority."""
 
     from substrate.engagement_spine.canonical_commit import (
@@ -586,6 +1061,7 @@ def post_canonical_merge_commit(body: CanonicalMergeCommitBody) -> dict[str, Any
     )
     from substrate.engagement_spine.project import project_to_html
 
+    authority = _authority_from_request(request)
     try:
         with _graph_promotion_batch():
             con = _request_graph_connection.get()
@@ -593,12 +1069,13 @@ def post_canonical_merge_commit(body: CanonicalMergeCommitBody) -> dict[str, Any
                 raise RuntimeError("canonical merge commit requires graph authority")
             committed = commit_reviewed_draft(
                 con=con,
-                engagement_store=_eng(),
+                engagement_store=_eng_for(request),
                 draft_document_id=body.draft_document_id,
                 target_deliverable_id=body.target_deliverable_id,
                 expected_revision=body.expected_revision,
                 reviewed_draft_sha256=body.reviewed_draft_sha256,
                 create_combined=body.create_combined,
+                owner_user_id=authority.account_id,
             )
             doc_model = load_reviewed_document_model(
                 con, committed.deliverable_id, committed.section_id
@@ -607,7 +1084,12 @@ def post_canonical_merge_commit(body: CanonicalMergeCommitBody) -> dict[str, Any
         raise HTTPException(status_code=404, detail="canonical target not found") from exc
     except CanonicalMergeConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    twins = _converge_canonical_twins(committed.deliverable_id, doc_model, committed.draft_sha256)
+    twins = _converge_canonical_twins(
+        committed.deliverable_id,
+        doc_model,
+        committed.draft_sha256,
+        store=_eng_for(request),
+    )
     return {
         "deliverable_id": committed.deliverable_id,
         "draft_document_id": committed.draft_document_id,
@@ -628,16 +1110,18 @@ def post_canonical_merge_commit(body: CanonicalMergeCommitBody) -> dict[str, Any
 
 
 @engagement_router.get("/merge/revision/{deliverable_id}")
-def get_canonical_merge_revision(deliverable_id: str) -> dict[str, str]:
+def get_canonical_merge_revision(deliverable_id: str, request: Request) -> dict[str, str]:
     from substrate.engagement_spine.canonical_commit import (
         canonical_deliverable_revision,
     )
 
+    authority = _authority_from_request(request)
     try:
         with _graph_promotion_batch():
             con = _request_graph_connection.get()
             if con is None:
                 raise RuntimeError("canonical revision requires graph authority")
+            _require_owned_deliverable(con, deliverable_id, authority)
             revision = canonical_deliverable_revision(con, deliverable_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="canonical target not found") from exc
@@ -645,7 +1129,7 @@ def get_canonical_merge_revision(deliverable_id: str) -> dict[str, str]:
 
 
 @engagement_router.get("/merge/canonical/html")
-def get_canonical_merge_html(deliverable_id: str) -> dict[str, Any]:
+def get_canonical_merge_html(deliverable_id: str, request: Request) -> dict[str, Any]:
     """Reload exact reviewed canonical research as HTML."""
 
     from substrate.engagement_spine.canonical_commit import (
@@ -654,11 +1138,13 @@ def get_canonical_merge_html(deliverable_id: str) -> dict[str, Any]:
     )
     from substrate.engagement_spine.project import project_to_html
 
+    authority = _authority_from_request(request)
     try:
         with _graph_promotion_batch():
             con = _request_graph_connection.get()
             if con is None:
                 raise RuntimeError("canonical HTML reload requires graph authority")
+            _require_owned_deliverable(con, deliverable_id, authority)
             model, section_id, revision, draft_sha = load_latest_reviewed_document_model(
                 con, deliverable_id
             )
@@ -666,7 +1152,7 @@ def get_canonical_merge_html(deliverable_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="canonical research not found") from exc
     except CanonicalMergeConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    twins = _converge_canonical_twins(deliverable_id, model, draft_sha)
+    twins = _converge_canonical_twins(deliverable_id, model, draft_sha, store=_eng_for(request))
     return {
         "deliverable_id": deliverable_id,
         "section_id": section_id,
@@ -683,16 +1169,29 @@ def get_canonical_merge_html(deliverable_id: str) -> dict[str, Any]:
 
 
 @engagement_router.get("/merge/blocks/search")
-def search_canonical_merge_blocks(q: str = "", limit: int = 20) -> dict[str, Any]:
+def search_canonical_merge_blocks(request: Request, q: str = "", limit: int = 20) -> dict[str, Any]:
     """Search committed merge blocks against the same graph authority."""
 
     from substrate.write.block_search import search_blocks
 
+    authority = _authority_from_request(request)
     with _graph_promotion_batch():
         con = _request_graph_connection.get()
         if con is None:
             raise RuntimeError("canonical merge search requires graph authority")
-        hits = search_blocks(con, query=q, limit=max(1, min(limit, 100)))
+        allowed = {
+            str(row[0])
+            for row in con.execute(
+                "SELECT DISTINCT sb.block_id FROM section_blocks sb "
+                "JOIN deliverable_sections ds ON ds.section_id = sb.section_id "
+                "JOIN deliverables d ON d.deliverable_id = ds.deliverable_id "
+                "WHERE d.owner_user_id = ?",
+                [authority.account_id],
+            ).fetchall()
+        }
+        hits = [hit for hit in search_blocks(con, query=q, limit=1000) if hit.node_id in allowed][
+            : max(1, min(limit, 100))
+        ]
     return {
         "count": len(hits),
         "hits": [
@@ -712,6 +1211,8 @@ def search_canonical_merge_blocks(q: str = "", limit: int = 20) -> dict[str, Any
 hydrate_fetch_publication: Any = None
 # Optional arXiv fetch_by_id(arxiv_id) -> ArxivPaper|dict (never silent live default).
 hydrate_arxiv_fetch_by_id: Any = None
+# Optional governed fetch_body(arxiv_id) -> FetchedPdf. Env alone never installs it.
+hydrate_arxiv_fetch_body: Any = None
 # Optional Substack fetch_post(url) -> Post|dict (never silent live default).
 hydrate_substack_fetch_post: Any = None
 
@@ -740,10 +1241,12 @@ def hydrate_live_status_payload(
     env = environ if environ is not None else dict(os.environ)
     arxiv_env = env_flag(ANTIEK_HYDRATE_LIVE_ARXIV_ENV, environ=env)
     substack_env = env_flag(ANTIEK_HYDRATE_LIVE_SUBSTACK_ENV, environ=env)
-    arxiv_injector = hydrate_arxiv_fetch_by_id is not None
+    arxiv_injector = hydrate_arxiv_fetch_by_id is not None or hydrate_arxiv_fetch_body is not None
     substack_injector = hydrate_substack_fetch_post is not None
     generic_injector = hydrate_fetch_publication is not None
-    any_live = arxiv_injector or substack_injector or generic_injector
+    any_live = (
+        (arxiv_env and arxiv_injector) or (substack_env and substack_injector) or generic_injector
+    )
     offline_honest = not any_live
     notes: list[str] = []
     if offline_honest:
@@ -800,6 +1303,8 @@ def get_hydrate_live_status() -> dict[str, Any]:
 def twin_seed_live_status_payload(
     *,
     environ: dict[str, str] | None = None,
+    execution_installed: bool = False,
+    projected_max_cents: int | None = None,
 ) -> dict[str, Any]:
     """Residual (hs): offline-vs-live twin seed note_taker readiness report.
 
@@ -809,7 +1314,6 @@ def twin_seed_live_status_payload(
     from substrate.engagement_spine.twin import (
         ANTIEK_TWIN_SEED_LIVE_ENV,
         twin_seed_live_enabled,
-        twin_seed_live_fn_installed,
     )
     from substrate.engagement_spine.twin_seed_live_wiring import (
         ANTIEK_TWIN_SEED_USE_DISPATCH_ENV,
@@ -823,8 +1327,11 @@ def twin_seed_live_status_payload(
         else env_flag(ANTIEK_TWIN_SEED_LIVE_ENV, environ=env)
     )
     use_dispatch = env_flag(ANTIEK_TWIN_SEED_USE_DISPATCH_ENV, environ=env)
-    injector_installed = twin_seed_live_fn_installed()
-    offline_honest = not injector_installed
+    injector_installed = bool(execution_installed)
+    cost_projection_ready = type(projected_max_cents) is int and projected_max_cents > 0
+    offline_honest = not (
+        live_env and use_dispatch and injector_installed and cost_projection_ready
+    )
     notes: list[str] = []
     if offline_honest:
         notes.append(
@@ -832,8 +1339,8 @@ def twin_seed_live_status_payload(
         )
     else:
         notes.append(
-            "Live note_taker seed fn is process-installed "
-            "(panels still force_offline unless callers opt out)."
+            "Budgeted live twin execution is fully bound; each call still requires "
+            "an explicit operator ceiling, nonce, and route allowlist."
         )
     if live_env and not use_dispatch and not injector_installed:
         notes.append(
@@ -841,7 +1348,9 @@ def twin_seed_live_status_payload(
             f"{ANTIEK_TWIN_SEED_USE_DISPATCH_ENV}=off — manual configure required."
         )
     if live_env and use_dispatch and not injector_installed:
-        notes.append("Dual-gate on but live seed fn not installed (boot wiring may have failed).")
+        notes.append("Dual-gate on but budgeted execution is not explicitly bound.")
+    if injector_installed and not cost_projection_ready:
+        notes.append("Execution is bound but the server cost projection is unavailable.")
     return {
         "view_format": "html",
         "product_panel": "twin_seed_live_status",
@@ -850,6 +1359,8 @@ def twin_seed_live_status_payload(
         "live_env": live_env,
         "use_dispatch": use_dispatch,
         "injector_installed": injector_installed,
+        "cost_projection_ready": cost_projection_ready,
+        "projected_max_cents": projected_max_cents,
         "live_env_flag": ANTIEK_TWIN_SEED_LIVE_ENV,
         "use_dispatch_env_flag": ANTIEK_TWIN_SEED_USE_DISPATCH_ENV,
         "notes": notes,
@@ -864,13 +1375,24 @@ def twin_seed_live_status_payload(
 
 
 @engagement_router.get("/twin-seed-live-status")
-def get_twin_seed_live_status() -> dict[str, Any]:
+def get_twin_seed_live_status(request: Request) -> dict[str, Any]:
     """GET residual (hs): offline-vs-live twin seed readiness (HTML-first)."""
-    return twin_seed_live_status_payload()
+    return twin_seed_live_status_payload(
+        execution_installed=(
+            getattr(request.app.state, "engagement_twin_seed_executor", None) is not None
+            and isinstance(
+                getattr(request.app.state, "engagement_twin_seed_ledger", None),
+                BudgetLedger,
+            )
+        ),
+        projected_max_cents=getattr(
+            request.app.state, "engagement_twin_seed_projected_max_cents", None
+        ),
+    )
 
 
 @engagement_router.post("/hydrate-ref")
-def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
+def post_hydrate_ref(body: HydrateRefBody, request: Request) -> dict[str, Any]:
     """Land arxiv/substack/url as an HTML-first asset (offline-safe by default).
 
     Does not call live arxiv/substack network unless injectors are set:
@@ -884,17 +1406,112 @@ def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
     )
 
     adapters: list[Any] = []
-    if hydrate_fetch_publication is not None:
+    ref = parse_source_reference(body.reference)
+    from substrate.engagement_spine.hydrate_live_wiring import (
+        ANTIEK_HYDRATE_LIVE_ARXIV_ENV,
+        ANTIEK_HYDRATE_LIVE_SUBSTACK_ENV,
+        env_flag,
+    )
+
+    arxiv_live = env_flag(ANTIEK_HYDRATE_LIVE_ARXIV_ENV)
+    substack_live = env_flag(ANTIEK_HYDRATE_LIVE_SUBSTACK_ENV)
+
+    if ref.kind == "arxiv" and hydrate_arxiv_fetch_body is not None and arxiv_live:
+        from services.hosted_documents.events import emit_document_loaded
+        from substrate.engagement_spine.arxiv_hydration import hydrate_arxiv_body
+        from substrate.engagement_spine.hydrate import mark_canonical_body_payload
+        from substrate.marketplace_host.library import HostStore
+
+        authority = _authority_from_request(request)
+        arxiv_id = str(ref.external_id or "").strip()
+        investigation_digest = hashlib.sha256(
+            f"arxiv-hydrate:v1:{authority.account_id}:{arxiv_id}".encode()
+        ).hexdigest()[:24]
+        outcome = hydrate_arxiv_body(
+            arxiv_id=arxiv_id,
+            owner_id=authority.account_id,
+            investigation_id=f"arxiv_hydrate_{investigation_digest}",
+            title=ref.title_hint,
+            store=_configured_host_store(request, HostStore),
+            fetch_body=hydrate_arxiv_fetch_body,
+            emit_document_loaded=emit_document_loaded,
+        )
+
+        def _canonical_arxiv_body(_ref: Any) -> dict[str, Any]:
+            document = outcome.document
+            return mark_canonical_body_payload(
+                {
+                    "title": document.title if document is not None else None,
+                    "body_text": document.body_text if outcome.hydrated and document else "",
+                    "canonical_url": outcome.canonical_url,
+                    "hydration_status": outcome.status,
+                    "hydration_receipt": outcome.receipt,
+                }
+            )
+
+        adapters.append(_canonical_arxiv_body)
+    if ref.kind == "substack" and hydrate_substack_fetch_post is not None and substack_live:
+        from services.hosted_documents.events import emit_document_loaded
+        from substrate.engagement_spine.hydrate import mark_canonical_body_payload
+        from substrate.engagement_spine.substack_hydration import hydrate_substack_body
+        from substrate.marketplace_host.library import HostStore
+
+        authority = _authority_from_request(request)
+        canonical_url = str(ref.canonical_url or ref.raw)
+        investigation_digest = hashlib.sha256(
+            f"substack-hydrate:v1:{authority.account_id}:{canonical_url}".encode()
+        ).hexdigest()[:24]
+        try:
+            outcome = hydrate_substack_body(
+                requested_url=canonical_url,
+                owner_id=authority.account_id,
+                investigation_id=f"substack_hydrate_{investigation_digest}",
+                store=_configured_host_store(request, HostStore),
+                fetch_post=hydrate_substack_fetch_post,
+                emit_document_loaded=emit_document_loaded,
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not outcome.hydrated:
+            return {
+                "asset_written": False,
+                "hydrated": False,
+                "fetched": False,
+                "hydration_status": outcome.status,
+                "hydration_receipt": outcome.receipt,
+                "view_format": "html",
+                "canonical_url": outcome.canonical_url,
+                "html": None,
+            }
+
+        def _canonical_substack_body(_ref: Any) -> dict[str, Any]:
+            document = outcome.document
+            return mark_canonical_body_payload(
+                {
+                    "title": document.title if document is not None else None,
+                    "body_text": document.body_text if document is not None else "",
+                    "canonical_url": outcome.canonical_url,
+                    "hydration_status": outcome.status,
+                    "hydration_receipt": outcome.receipt,
+                }
+            )
+
+        adapters.append(_canonical_substack_body)
+    if hydrate_fetch_publication is not None and (
+        ref.kind not in {"arxiv", "substack"}
+        or (ref.kind == "arxiv" and arxiv_live)
+        or (ref.kind == "substack" and substack_live)
+    ):
         adapters.append(hydrate_fetch_publication)
-    if hydrate_arxiv_fetch_by_id is not None:
+    if hydrate_arxiv_fetch_by_id is not None and arxiv_live:
         adapters.append(arxiv_metadata_fetch_publication(fetch_by_id=hydrate_arxiv_fetch_by_id))
-    if hydrate_substack_fetch_post is not None:
+    if hydrate_substack_fetch_post is not None and substack_live:
         adapters.append(substack_post_fetch_publication(fetch_post=hydrate_substack_fetch_post))
     fetcher = compose_fetch_publication(*adapters) if adapters else None
     try:
         asset = hydrate_reference(
             body.reference,
-            store=_eng(),
+            store=_eng_for(request),
             fetch_publication=fetcher,
             include_html=body.include_html,
             attach_spawn_id=body.attach_spawn_id,
@@ -906,51 +1523,60 @@ def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
 
 
 @engagement_router.post("/progress")
-def post_progress(body: ProgressRecordBody) -> dict[str, Any]:
+def post_progress(body: ProgressRecordBody, request: Request) -> dict[str, Any]:
     """Append one plan/gather/synthesize/cite (or terminal) progress event."""
     try:
         ev = record_progress(
             body.spawn_id,
             body.stage,
             body.message,
-            store=_eng(),
+            store=_eng_for(request),
         )
     except KeyError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise HTTPException(status_code=404, detail="engagement resource not found") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    payload = progress_payload(body.spawn_id, store=_eng(), include_html=body.include_html)
+    payload = progress_payload(
+        body.spawn_id, store=_eng_for(request), include_html=body.include_html
+    )
     payload["recorded"] = ev.to_dict()
     return payload
 
 
 @engagement_router.post("/progress/seed")
-def post_progress_seed(body: ProgressSeedBody) -> dict[str, Any]:
+def post_progress_seed(body: ProgressSeedBody, request: Request) -> dict[str, Any]:
     """Seed default plan→gather→synthesize→cite skeleton for a spawn."""
+    store = _eng_for(request)
+    current = store.get_spawn(body.spawn_id)
+    if current is not None and current.get("claim_challenge"):
+        raise HTTPException(
+            status_code=409,
+            detail="claim challenge progress may not be auto-seeded",
+        )
     try:
-        seed_default_pipeline(body.spawn_id, store=_eng())
+        seed_default_pipeline(body.spawn_id, store=store)
     except KeyError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise HTTPException(status_code=404, detail="engagement resource not found") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    return progress_payload(body.spawn_id, store=_eng(), include_html=body.include_html)
+    return progress_payload(body.spawn_id, store=store, include_html=body.include_html)
 
 
 @engagement_router.get("/progress/{spawn_id}")
-def get_progress(spawn_id: str, include_html: bool = False) -> dict[str, Any]:
+def get_progress(spawn_id: str, request: Request, include_html: bool = False) -> dict[str, Any]:
     """Read progress events for a spawn (HTML-capable)."""
-    if _eng().get_spawn(spawn_id) is None:
-        raise HTTPException(status_code=404, detail=f"unknown spawn_id: {spawn_id}")
-    return progress_payload(spawn_id, store=_eng(), include_html=include_html)
+    if _eng_for(request).get_spawn(spawn_id) is None:
+        raise HTTPException(status_code=404, detail="engagement resource not found")
+    return progress_payload(spawn_id, store=_eng_for(request), include_html=include_html)
 
 
 @engagement_router.post("/evidence-pack")
-def post_evidence_pack(body: EvidencePackBody) -> dict[str, Any]:
+def post_evidence_pack(body: EvidencePackBody, request: Request) -> dict[str, Any]:
     """HTML-first evidence pack from twin notes + spawn source refs."""
     try:
         return evidence_pack_payload(
             body.asset_id,
-            store=_eng(),
+            store=_eng_for(request),
             spawn_id=body.spawn_id,
             include_html=body.include_html,
         )
@@ -960,6 +1586,7 @@ def post_evidence_pack(body: EvidencePackBody) -> dict[str, Any]:
 
 @engagement_router.get("/twins")
 def get_twins_by_identity(
+    request: Request,
     asset_id: str,
     include_html: bool = False,
     spawn_id: str | None = None,
@@ -969,7 +1596,7 @@ def get_twins_by_identity(
     try:
         return twins_product_payload(
             asset_id,
-            store=_eng(),
+            store=_eng_for(request),
             include_html=include_html,
             spawn_id=spawn_id,
         )
@@ -979,6 +1606,7 @@ def get_twins_by_identity(
 
 @engagement_router.get("/twins/{asset_id}")
 def get_twins(
+    request: Request,
     asset_id: str,
     include_html: bool = False,
     spawn_id: str | None = None,
@@ -990,7 +1618,7 @@ def get_twins(
     try:
         return twins_product_payload(
             asset_id,
-            store=_eng(),
+            store=_eng_for(request),
             include_html=include_html,
             spawn_id=spawn_id,
         )
@@ -999,12 +1627,12 @@ def get_twins(
 
 
 @engagement_router.post("/twins")
-def post_twins(body: TwinRecordBody) -> dict[str, Any]:
+def post_twins(body: TwinRecordBody, request: Request) -> dict[str, Any]:
     """Record one twin insight or question (recursive note-taker product path)."""
     try:
         return record_twin_product(
             body.asset_id,
-            store=_eng(),
+            store=_eng_for(request),
             kind=body.kind,
             text=body.text,
             source_spawn_id=body.source_spawn_id,
@@ -1033,15 +1661,26 @@ class TwinSeedBody(BaseModel):
     has_body: bool | None = None
 
 
+class LiveTwinSeedBody(BaseModel):
+    """Explicit paid/live seed approval; canonical content is server-resolved."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: str = Field(min_length=1, max_length=512)
+    approval_nonce: str = Field(min_length=1, max_length=200)
+    approved_ceiling_cents: int = Field(gt=0)
+    allowed_routes: list[str] = Field(min_length=1, max_length=8)
+
+
 @engagement_router.post("/twins/seed")
-def post_twins_seed(body: TwinSeedBody) -> dict[str, Any]:
+def post_twins_seed(body: TwinSeedBody, request: Request) -> dict[str, Any]:
     """Seed insight + question twins for an asset (idempotent offline default)."""
     from substrate.engagement_spine import seed_twins_for_asset
 
     try:
         out = seed_twins_for_asset(
             body.asset_id,
-            store=_eng(),
+            store=_eng_for(request),
             title=body.title or body.asset_id,
             body_text=body.body_text,
             source_spawn_id=body.source_spawn_id,
@@ -1082,8 +1721,101 @@ def post_twins_seed(body: TwinSeedBody) -> dict[str, Any]:
     return out
 
 
+@engagement_router.post("/twins/seed-live")
+def post_twins_seed_live(body: LiveTwinSeedBody, request: Request) -> dict[str, Any]:
+    """Run one canonical, budgeted live twin seed; never accepts source text."""
+    from substrate.engagement_spine.live_twin_seed import (
+        LiveTwinReconciliationRequired,
+        run_live_twin_seed,
+    )
+    from substrate.engagement_spine.twin_seed_live_wiring import (
+        ANTIEK_TWIN_SEED_USE_DISPATCH_ENV,
+        env_flag,
+    )
+    from substrate.midnight_oil.budget_ledger import (
+        BudgetCeilingExceeded,
+        BudgetLedger,
+        ReservationNotFound,
+        UnknownCallOutcome,
+        UnknownOutcomePersistenceError,
+    )
+
+    authority = _authority_from_request(request)
+    live_store = authorized_store(_eng(), authority)
+    live_env = env_flag("ANTIEK_TWIN_SEED_LIVE")
+    dispatch_env = env_flag(ANTIEK_TWIN_SEED_USE_DISPATCH_ENV)
+    ledger = getattr(request.app.state, "engagement_twin_seed_ledger", None)
+    executor = getattr(request.app.state, "engagement_twin_seed_executor", None)
+    route_projections = getattr(
+        request.app.state, "engagement_twin_seed_route_projected_max_cents", None
+    )
+    if not live_env or not dispatch_env or not isinstance(ledger, BudgetLedger) or executor is None:
+        return {
+            "state": "skipped",
+            "live_seed": False,
+            "seeded": False,
+            "view_format": "html",
+            "promotion_performed": False,
+            "receipt": {
+                "kind": "live_twin_seed_skipped",
+                "reason": "live_dispatch_authority_unavailable",
+                "request_attempted": False,
+                "live_env": live_env,
+                "dispatch_env": dispatch_env,
+                "ledger_installed": isinstance(ledger, BudgetLedger),
+                "executor_installed": executor is not None,
+            },
+        }
+    if not isinstance(route_projections, dict) or not route_projections:
+        raise HTTPException(status_code=503, detail="live twin cost projection is unavailable")
+    uncovered_routes = sorted(set(body.allowed_routes) - set(route_projections))
+    if uncovered_routes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"routes lack a server-authoritative cost projection: {uncovered_routes}",
+        )
+    projected = max(route_projections[route] for route in body.allowed_routes)
+    try:
+        outcome = run_live_twin_seed(
+            asset_id=body.asset_id,
+            owner_id=authority.account_id,
+            store=live_store,
+            ledger=ledger,
+            executor=executor,
+            approved_ceiling_cents=body.approved_ceiling_cents,
+            approval_nonce=body.approval_nonce,
+            allowed_routes=body.allowed_routes,
+            projected_max_cents=projected,
+        )
+    except (BudgetCeilingExceeded, ReservationNotFound, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=404, detail="canonical asset not found") from exc
+    except LiveTwinReconciliationRequired as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"reason": "budget_reconciliation_required", "run_id": exc.run_id},
+        ) from exc
+    except UnknownCallOutcome as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"reason": "provider_outcome_unknown", "hold_id": exc.hold.hold_id},
+        ) from exc
+    except UnknownOutcomePersistenceError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "reason": "provider_outcome_persistence_failed",
+                "hold_id": exc.hold.hold_id,
+            },
+        ) from exc
+    out = outcome.to_dict()
+    out["twins"] = twins_product_payload(body.asset_id, store=live_store, include_html=True)
+    return out
+
+
 @engagement_router.post("/twins/promote-context")
-def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
+def post_twins_promote_context(body: TwinPromoteContextBody, request: Request) -> dict[str, Any]:
     """Promote asset twins into the depth graph and research context units.
 
     The substrate defaults are the canonical graph writers. Tests that need a
@@ -1094,7 +1826,7 @@ def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
         with _graph_promotion_batch():
             return twin_promote_context_payload(
                 body.asset_id,
-                store=_eng(),
+                store=_eng_for(request),
                 query=body.query,
                 investigation_id=body.investigation_id,
                 promote_insight_fn=_request_promote_insight.get() or twin_promote_insight_fn,
@@ -1108,11 +1840,11 @@ def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
 
 
 @engagement_router.post("/context-search")
-def post_context_search(body: ContextSearchBody) -> dict[str, Any]:
+def post_context_search(body: ContextSearchBody, request: Request) -> dict[str, Any]:
     """Search twin substrate + source refs for research context assembly."""
     try:
         return search_engagement_context(
-            store=_eng(),
+            store=_eng_for(request),
             query=body.query,
             asset_id=body.asset_id,
             spawn_id=body.spawn_id,
@@ -1181,19 +1913,21 @@ def _record_session_open_usage(
 
 
 @engagement_router.post("/sessions/open")
-def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
+def post_session_open(body: SessionOpenBody, request: Request) -> dict[str, Any]:
     try:
+        citation_provenance = _validated_citation_provenance(body, request)
         sel = HighlightSelection(
             asset_id=body.asset_id,
             selection_text=body.selection_text,
             region_id=body.region_id,
             page=body.page,
             goal_hint=body.goal_hint,
+            citation_provenance=citation_provenance,
         )
         session = open_from_highlight_with_references(
             sel,
-            engagement_store=_eng(),
-            session_store=_sess(),
+            engagement_store=_eng_for(request),
+            session_store=_sess_for(request),
             references=body.references,
             model_id=body.model_id,
             view_mode=body.view_mode,
@@ -1215,6 +1949,8 @@ def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
         "goal": session.goal,
         "research_tier": resolved_tier,
         "view_format": "html",
+        "citation_provenance": session.citation_provenance,
+        "claim_challenge": session.claim_challenge,
     }
     # Residual (nw): Antiek-bench usage for floating DR + twin chase opens.
     try:
@@ -1232,15 +1968,31 @@ def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
 
 
 @engagement_router.post("/sessions/complete-flywheel")
-def post_session_complete_flywheel(body: SessionFlywheelBody) -> dict[str, Any]:
+def post_session_complete_flywheel(body: SessionFlywheelBody, request: Request) -> dict[str, Any]:
+    from substrate.floating_session import get_session
+
+    session_store = _sess_for(request)
+    engagement_store = _eng_for(request)
+    current = get_session(
+        body.session_id,
+        session_store=session_store,
+        engagement_store=engagement_store,
+    )
+    if current is not None and current.claim_challenge and (
+        body.record_twins or body.include_twin_promote
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="claim challenge completion must remain a separate candidate",
+        )
     live_insight = _request_promote_insight.get()
     live_question = _request_promote_question.get()
     try:
         with _graph_promotion_batch():
             result = complete_session_with_context_flywheel(
                 body.session_id,
-                session_store=_sess(),
-                engagement_store=_eng(),
+                session_store=session_store,
+                engagement_store=engagement_store,
                 output_text=body.output_text,
                 insights=body.insights,
                 questions=body.questions,
@@ -1257,10 +2009,15 @@ def post_session_complete_flywheel(body: SessionFlywheelBody) -> dict[str, Any]:
                 ),
             )
     except KeyError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise HTTPException(status_code=404, detail="engagement resource not found") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     out = result.to_dict()
+    # An unaccepted claim-review candidate is not a quality outcome and must not
+    # train the recursive benchmark rewrite feed.
+    if current is not None and current.claim_challenge:
+        out["claim_challenge_candidate"] = True
+        return out
     # Feed Antiek-bench recursive rewrite with engagement outcomes (best-effort).
     try:
         from substrate.antiek_bench import record_session_flywheel_usage
@@ -1321,14 +2078,54 @@ def _offline_promote_question(
     return f"question_{digest}"
 
 
-def register_engagement_routes(app: FastAPI) -> None:
+def register_engagement_routes(app: FastAPI, *, unauthenticated_local: bool = True) -> None:
+    app.state.engagement_unauthenticated_local = bool(unauthenticated_local)
     app.include_router(engagement_router)
+
+
+def bind_council_execution(
+    app: FastAPI, *, ledger: BudgetLedger, executor: CouncilCallExecutor
+) -> None:
+    """Install the explicit live execution boundary; registration alone is inert."""
+
+    app.state.engagement_council_ledger = ledger
+    app.state.engagement_council_executor = executor
+
+
+def bind_live_twin_seed_execution(
+    app: FastAPI,
+    *,
+    ledger: BudgetLedger,
+    executor: Any,
+    route_projected_max_cents: Mapping[str, int],
+) -> None:
+    """Install paid authority with conservative, server-owned route projections."""
+    projections = dict(route_projected_max_cents)
+    if (
+        not projections
+        or len(projections) > 32
+        or any(
+            not route.strip()
+            or "/" not in route
+            or type(cents) is not int
+            or cents <= 0
+            for route, cents in projections.items()
+        )
+    ):
+        raise ValueError("route_projected_max_cents must map valid routes to positive cents")
+    ledger.ensure_schema()
+    app.state.engagement_twin_seed_ledger = ledger
+    app.state.engagement_twin_seed_executor = executor
+    app.state.engagement_twin_seed_route_projected_max_cents = projections
+    app.state.engagement_twin_seed_projected_max_cents = max(projections.values())
 
 
 __all__ = [
     "engagement_router",
     "register_engagement_routes",
     "bind_engagement_stores",
+    "bind_council_execution",
+    "bind_live_twin_seed_execution",
     "reset_engagement_stores",
     "hydrate_live_status_payload",
     "twin_seed_live_status_payload",

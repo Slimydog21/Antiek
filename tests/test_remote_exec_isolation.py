@@ -32,6 +32,7 @@ from runtime.remote_exec import RemotePromotionFunnel, RemoteResearchRunner
 from runtime.research_runner import BudgetCap, ResearchPlan, RunState
 from substrate.event_log import trajectory
 from substrate.graph.schema import init_database_at_path
+from substrate.multi_user.auth import operator_claims
 from tests.remote_exec_fakes import FakeProvider
 
 
@@ -60,8 +61,11 @@ def events_dir(monkeypatch):
 
 
 def _plan(i: int) -> ResearchPlan:
-    return ResearchPlan(investigation_id=f"inv-{i}", sub_question=f"q{i}?",
-                        budget=BudgetCap(cost_usd=1.0, max_steps=50))
+    return ResearchPlan(
+        investigation_id=f"inv-{i}",
+        sub_question=f"q{i}?",
+        budget=BudgetCap(cost_usd=1.0, max_steps=50),
+    )
 
 
 REMOTE_EXEC_DIR = pathlib.Path(__file__).resolve().parents[1] / "runtime" / "remote_exec"
@@ -101,12 +105,19 @@ def test_connect_write_only_in_funnel():
 
 async def test_twenty_concurrent_leaves_isolated_logs(events_dir):
     prov = FakeProvider(steps=3)
-    r = RemoteResearchRunner(prov, max_concurrency=20, events_dir=events_dir,
-                             seal_on_complete=False)
+    r = RemoteResearchRunner(
+        prov,
+        claims=operator_claims(),
+        max_concurrency=20,
+        events_dir=events_dir,
+        seal_on_complete=False,
+    )
     handles = [await r.start(f"inv-{i}", _plan(i)) for i in range(20)]
+
     # drain every stream concurrently
     async def _drain(h):
         return [ev async for ev in r.stream(h)]
+
     results = await asyncio.gather(*(_drain(h) for h in handles))
     await r.join()
 
@@ -134,13 +145,18 @@ async def test_promotion_funnel_serialized_no_lock_timeout(events_dir):
     await funnel.start()
 
     r = RemoteResearchRunner(
-        FakeProvider(steps=2), max_concurrency=20, events_dir=events_dir,
-        seal_on_complete=False, on_emit=funnel.submit,
+        FakeProvider(steps=2),
+        claims=operator_claims(),
+        max_concurrency=20,
+        events_dir=events_dir,
+        seal_on_complete=False,
+        on_emit=funnel.submit,
     )
     handles = [await r.start(f"inv-{i}", _plan(i)) for i in range(20)]
 
     async def _drain(h):
         return [ev async for ev in r.stream(h)]
+
     await asyncio.gather(*(_drain(h) for h in handles))
     await r.join()
     await funnel.drain_and_stop()
@@ -151,10 +167,12 @@ async def test_promotion_funnel_serialized_no_lock_timeout(events_dir):
     assert funnel.promoted_questions == 20
     con = connect_read(db)
     try:
-        n_insight = con.execute(
-            "SELECT count(*) FROM nodes WHERE node_type='insight'").fetchone()[0]
+        n_insight = con.execute("SELECT count(*) FROM nodes WHERE node_type='insight'").fetchone()[
+            0
+        ]
         n_question = con.execute(
-            "SELECT count(*) FROM nodes WHERE node_type='question'").fetchone()[0]
+            "SELECT count(*) FROM nodes WHERE node_type='question'"
+        ).fetchone()[0]
         assert n_insight == 20
         assert n_question == 20
         # no double-write: exactly 40 distinct node ids promoted
@@ -172,13 +190,18 @@ async def test_no_double_write_under_concurrent_submit(events_dir):
     funnel = RemotePromotionFunnel(db_path=db)
     await funnel.start()
     r = RemoteResearchRunner(
-        FakeProvider(steps=1), max_concurrency=20, events_dir=events_dir,
-        seal_on_complete=False, on_emit=funnel.submit,
+        FakeProvider(steps=1),
+        claims=operator_claims(),
+        max_concurrency=20,
+        events_dir=events_dir,
+        seal_on_complete=False,
+        on_emit=funnel.submit,
     )
     handles = [await r.start(f"inv-{i}", _plan(i)) for i in range(20)]
 
     async def _drain(h):
         return [ev async for ev in r.stream(h)]
+
     await asyncio.gather(*(_drain(h) for h in handles))
     await r.join()
     await funnel.drain_and_stop()

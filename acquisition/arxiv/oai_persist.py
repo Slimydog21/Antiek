@@ -50,6 +50,7 @@ from runtime.db_lock import LockedConnection, connect_write
 from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.ops import _maybe_json
+from substrate.legal_gate.read import document_custody_exists
 from substrate.schemas.documents import ArxivOaiRecord
 
 from .adapter import arxiv_doc_id
@@ -135,9 +136,7 @@ def persist_oai_record(con: LockedConnection, record: ArxivOaiRecord) -> bool:
     source_uri = f"https://arxiv.org/abs/{record.arxiv_id}"
     metadata_json = _maybe_json(_record_metadata(record))
 
-    exists = con.execute(
-        "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1", [document_id]
-    ).fetchone() is not None
+    exists = document_custody_exists(con, document_id)
 
     if exists:
         # Refresh the mutable, non-indexed columns. content_class is left at the
