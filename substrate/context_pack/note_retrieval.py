@@ -29,7 +29,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(_here))
-    from graph.search import cosine_similarity_sql  # type: ignore[no-redef]
+    from graph.search import cosine_similarity_sql  # type: ignore[no-redef,import-not-found]
 
 
 @dataclass(frozen=True)

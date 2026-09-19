@@ -492,8 +492,8 @@ def seal_investigation(
         return pq
 
     try:
-        import pyarrow as pa  # type: ignore[import-not-found]
-        import pyarrow.parquet as pq_writer  # type: ignore[import-not-found]
+        import pyarrow as pa  # type: ignore[import-untyped]
+        import pyarrow.parquet as pq_writer  # type: ignore[import-untyped]
     except ImportError:
         print(
             "events.seal_investigation: pyarrow not installed; "

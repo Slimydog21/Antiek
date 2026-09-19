@@ -36,7 +36,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(_here))
-    from context_pack.assembler import (  # type: ignore[no-redef]
+    from context_pack.assembler import (  # type: ignore[no-redef,import-not-found]
         ContextPack,
         DefaultTokenCounter,
         LayerSource,
@@ -45,12 +45,12 @@ except ImportError:  # pragma: no cover — direct-script fallback
         assemble_context_pack,
         default_budget_for,
     )
-    from context_pack.note_budget import (  # type: ignore[no-redef]
+    from context_pack.note_budget import (  # type: ignore[no-redef,import-not-found]
         NoteCoverage,
         render_note,
         select_within_budget,
     )
-    from context_pack.note_retrieval import (  # type: ignore[no-redef]
+    from context_pack.note_retrieval import (  # type: ignore[no-redef,import-not-found]
         retrieve_project_notes,
     )
 

@@ -60,12 +60,12 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(_here))  # substrate/
-    from constants import (  # type: ignore[no-redef]
+    from constants import (  # type: ignore[no-redef,import-not-found]
         DEFAULT_CONTEXT_BUDGET_TOKENS,
         SYNTHESIS_CONTEXT_BUDGET_TOKENS,
     )
-    from event_log import emit_typed  # type: ignore[no-redef]
-    from schemas import ContextLayer, ContextPackAssembledPayload  # type: ignore[no-redef]
+    from event_log import emit_typed  # type: ignore[no-redef,import-not-found]
+    from schemas import ContextLayer, ContextPackAssembledPayload  # type: ignore[no-redef,import-not-found]
 
 
 # ---------------------------------------------------------------------------
