@@ -2,8 +2,8 @@
  * ComputeCapacityPanel — Antiek-hosted agent compute capacity slider.
  *
  * BYO Token spend lives in UsagePanel. This panel is the managed-CPU
- * monthly ACU budget (predictable bill). No BYO CPU by default; used
- * stays unmetered until a real meter exists — never invents usage.
+ * monthly ACU budget. Metered used ACU shows when used_status=known.
+ * No fake billing — numbers come from GET /settings/compute-capacity only.
  */
 import { useCallback, useEffect, useState } from "react";
 import LemonCard from "../../components/lemon/LemonCard";
@@ -77,6 +77,17 @@ export default function ComputeCapacityPanel() {
     }
   }
 
+  const used =
+    cap && cap.used_status === "known" && cap.used_compute_units != null
+      ? cap.used_compute_units
+      : null;
+  const monthly = cap?.monthly_compute_units ?? 0;
+  const usedPct =
+    used != null && monthly > 0
+      ? Math.min(100, Math.round((used / monthly) * 100))
+      : null;
+  const softOver = Boolean(cap?.evaluation?.soft_over);
+
   return (
     <div data-testid="compute-capacity-panel">
     <LemonCard className="space-y-3 p-4">
@@ -87,7 +98,7 @@ export default function ComputeCapacityPanel() {
         <p className="text-sm text-ink-mute dark:text-moonlight mt-1">
           Antiek-hosted agent CPU (ACU / month). BYO Token keys stay in Usage
           above — this slider is managed compute, not LLM cents. No fake
-          billing; usage unmetered until a meter ships.
+          billing; used ACU is shown only when the meter has recorded starts.
         </p>
       </div>
 
@@ -99,6 +110,43 @@ export default function ComputeCapacityPanel() {
 
       {cap ? (
         <>
+          <div
+            data-testid="compute-capacity-usage"
+            className="rounded-md border border-rule/60 dark:border-shadow-2/40 px-3 py-2 space-y-1.5"
+          >
+            <div className="flex justify-between text-xs font-mono uppercase tracking-wider text-ink-mute dark:text-moonlight">
+              <span>Used this month</span>
+              <span data-testid="compute-capacity-used-label">
+                {used != null
+                  ? used + " / " + monthly + " ACU (" + usedPct + "%)"
+                  : "unmetered (no starts recorded yet)"}
+              </span>
+            </div>
+            {usedPct != null ? (
+              <div className="h-2 w-full overflow-hidden rounded bg-ice-2 dark:bg-shadow-2">
+                <div
+                  data-testid="compute-capacity-used-bar"
+                  className={
+                    softOver || usedPct >= 80
+                      ? "h-full bg-amber-500"
+                      : "h-full bg-accent"
+                  }
+                  style={{ width: usedPct + "%" }}
+                />
+              </div>
+            ) : null}
+            {softOver ? (
+              <p
+                role="status"
+                data-testid="compute-capacity-soft-over"
+                className="text-xs text-amber-800 dark:text-amber-200"
+              >
+                Near or over monthly capacity — soft warn on new research starts.
+                BYO Token spend is separate.
+              </p>
+            ) : null}
+          </div>
+
           <div className="flex flex-wrap gap-2" role="group" aria-label="Capacity tiers">
             {(["starter", "standard", "power"] as const).map((tier) => (
               <LemonButton

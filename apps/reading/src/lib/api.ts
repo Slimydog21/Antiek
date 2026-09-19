@@ -5,6 +5,12 @@
 // gate fails CI and the TS side breaks at the type level.
 
 import type { Event, TypedPayload } from "../generated/types";
+import { toast } from "../components/lemon/LemonToast";
+import {
+  formatCapacityWarnToast,
+  parseCapacityWarning,
+  stashCapacityWarning,
+} from "./capacityWarn";
 
 // Mirrors the FastAPI response model. Not in substrate/schemas because
 // this is an API-layer concern (the typed event itself is what gets
@@ -270,6 +276,7 @@ export interface StartInvestigationResponse {
   start_event_id: string;
   operation_id?: string;
   owner_model_status?: "queued" | "replayed";
+  capacity_warning?: import("./capacityWarn").CapacityWarning | null;
 }
 
 /** POST /investigations — kick off a cold research investigation. */
@@ -288,7 +295,22 @@ export async function startInvestigation(
       await resp.text(),
     );
   }
-  return resp.json();
+  const raw = (await resp.json()) as StartInvestigationResponse & {
+    capacity_warning?: unknown;
+  };
+  const capacity_warning = parseCapacityWarning(raw.capacity_warning);
+  const out: StartInvestigationResponse = {
+    ...raw,
+    capacity_warning,
+  };
+  if (capacity_warning) {
+    stashCapacityWarning(out.investigation_id, capacity_warning);
+    toast.warn(formatCapacityWarnToast(capacity_warning), {
+      ttl: 8000,
+      target: { path: "/inv/" + encodeURIComponent(out.investigation_id) },
+    });
+  }
+  return out;
 }
 
 export interface InvestigationSummary {
