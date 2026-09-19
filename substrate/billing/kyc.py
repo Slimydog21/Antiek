@@ -318,7 +318,7 @@ def save_record(con: Any, record: KycRecord) -> str:
         [record.recipient_ref, record.state.value, record.last_state_change_at],
     ).fetchone()
     if existing is not None:
-        return existing[0]
+        return str(existing[0])
 
     attempt_id = f"kycrec-{uuid.uuid4().hex[:12]}"
     con.execute(
