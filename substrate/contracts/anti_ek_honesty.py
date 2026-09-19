@@ -145,7 +145,7 @@ def html_projection_response_headers(
         raise HonestyContractError(
             f"disposition must be inline|attachment, got {disposition!r}"
         )
-    if not filename or "/" in filename or "\" in filename:
+    if not filename or "/" in filename or chr(92) in filename:
         raise HonestyContractError(f"unsafe Content-Disposition filename: {filename!r}")
     value = f"script-free; disposition={disposition}"
     assert_html_projection_header(value, disposition=disposition)
