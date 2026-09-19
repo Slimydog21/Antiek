@@ -82,8 +82,9 @@
     - name: refresh editable install + extras
       ansible.builtin.pip:
         # docs: firecrawl-anydoc binding (Office/ODF/RTF/CSV ingest); pdf also
-        # carries pypdfium2 (DeepSeek-OCR-2 scanned-PDF rasterization).
-        name: "{{ antiek_install_dir }}[pdf,urls,embedding,docs]"
+        # carries pypdfium2 (DeepSeek-OCR-2 scanned-PDF rasterization);
+        # turbopuffer_shadow: SERVABLE hybrid SDK for /health hybrid_ready.
+        name: "{{ antiek_install_dir }}[pdf,urls,embedding,docs,turbopuffer_shadow]"
         editable: true
         virtualenv: "{{ antiek_install_dir }}/.venv"
       become_user: "{{ antiek_user }}"
