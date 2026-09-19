@@ -53,15 +53,15 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 try:
-    from ...runtime.db_lock import LockedConnection
+    from runtime.db_lock import LockedConnection
     from ..event_log import emit_typed
     from ..graph.ops import new_random_id
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.graph.ops import new_random_id  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
+    from substrate.event_log import emit_typed
+    from substrate.graph.ops import new_random_id
 
 from substrate.schemas.events import (
     OutlineBlockMovedPayload,
@@ -139,7 +139,7 @@ class OutlineBlock:
     block_index: int
     cluster_id: str | None
     created_at: str | None = None
-    metadata: dict | None = None
+    metadata: dict[str, Any] | None = None
 
     @property
     def is_user_originated(self) -> bool:
@@ -240,7 +240,7 @@ def _resolve_deliverable_id(con: Any, section_id: str) -> str:
     ).fetchone()
     if row is None:
         raise OutlineBlockError(f"section not found: {section_id!r}")
-    return row[0]
+    return str(row[0])
 
 
 # ---------------------------------------------------------------------------

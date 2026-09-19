@@ -75,7 +75,7 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     return dot / (na * nb) if na and nb else 0.0
 
 
-def _node_meta(metadata_text: str | None) -> dict:
+def _node_meta(metadata_text: str | None) -> dict[str, Any]:
     if not metadata_text:
         return {}
     try:

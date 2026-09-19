@@ -201,7 +201,7 @@ class _TierTally:
     t3: int = 0
     ambiguous: int = 0
     deleted: int = 0
-    _counts: dict = field(default_factory=dict)
+    _counts: dict[str, int] = field(default_factory=dict)
 
     def add(self, record: ArxivOaiRecord) -> None:
         if record.deleted:
