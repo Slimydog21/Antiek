@@ -23,9 +23,9 @@
 | Notebook | 92 | AutoNotebook + daily-loop (#3168) + outline→Write auto-import (from-investigation UI) |
 | TurboPuffer | 72 | #3135 env-gated hybrid for reuse; not corpus/TalkToBook/TP UI mount |
 | HTML-native | 75 | Research artifact HTML + ArtifactOutlineShelf; reader HTML ingest incomplete |
-| CLI / Herdr | 70 | Herdr standing + Mini SSH lane; CLI surface uneven vs app |
+| CLI / Herdr | 88 | Playbook+script refreshed 2026-09-19; Herdr w7 convention; --check smoke |
 
-**Composite (equal-weight mean of above) ≈ 90/100.** TP 96 (Lego slotting); Notebook 92; flywheel prod true; Mini reuse=18.
+**Composite (equal-weight mean of above) ≈ 92/100.** TP 96; Notebook 92; CLI/Herdr 88; flywheel prod true; Mini reuse=18.
 
 ## Residuals blocking composite 100
 
@@ -43,7 +43,7 @@
 
 ## Highest-leverage next (after this PR)
 
-**CLI/Herdr ~70** — next primary gap toward composite 100 (Lego TP closed).
+**Next gap toward 100:** Speak polish / multi-turn TP / Notebook→100 / remaining surface residuals (CLI/Herdr closed to ~88).
 
 ## Leave-off
 
