@@ -18,6 +18,8 @@ the bridge fires correctly without making real network calls.
 
 from __future__ import annotations
 
+from typing import Any
+
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -54,7 +56,7 @@ class OutboundTransmitResult:
     status: str
     rejection: str | None
     detail: str
-    partner_response_body: dict | None
+    partner_response_body: dict[str, Any] | None
 
 
 class OutboundTransport(Protocol):
@@ -176,8 +178,8 @@ class MockOutboundTransport:
     canned_status: str = "accepted"
     canned_rejection: str | None = None
     canned_detail: str = ""
-    canned_response_body: dict | None = None
-    calls: list[dict] = None  # type: ignore[assignment]
+    canned_response_body: dict[str, Any] | None = None
+    calls: list[dict[str, Any]] | None = None
 
     def __post_init__(self) -> None:
         if self.calls is None:
@@ -189,6 +191,7 @@ class MockOutboundTransport:
         *,
         timeout_s: float = DEFAULT_TRANSMIT_TIMEOUT_S,
     ) -> OutboundTransmitResult:
+        assert self.calls is not None, "test double constructed without a calls list"
         self.calls.append({
             "citation_reference_id": citation.reference.reference_id,
             "partner_id": citation.partner_id,

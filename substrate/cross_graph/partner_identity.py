@@ -432,7 +432,7 @@ def save_record(con: Any, record: PartnerSubstrate) -> str:
         [record.partner_id, record.state.value, _ts(record.last_state_change_at)],
     ).fetchone()
     if existing is not None:
-        return existing[0]
+        return str(existing[0])
 
     attempt_id = f"prtrec-{uuid.uuid4().hex[:12]}"
     con.execute(
