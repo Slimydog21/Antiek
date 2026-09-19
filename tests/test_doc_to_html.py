@@ -929,7 +929,7 @@ def test_convert_raises_when_pdf_has_no_text_layer(sample_pdf: Path):
         return MockCompletedProcess(returncode=1, stdout="", stderr="nope")
 
     with patch("subprocess.run", side_effect=_all_cli_fail):
-        with pytest.raises(ConversionError, match="pypdf"):
+        with pytest.raises(ConversionError, match="pypdf|OCR"):
             convert_to_markdown(sample_pdf, fmt="pdf")
 
 
@@ -980,3 +980,107 @@ def test_ingest_asset_pypdf_path_stores_reader_html(db_env: dict, tmp_path: Path
         isinstance(md.get("provenance"), dict)
         and md["provenance"].get("converter_engine") == "pypdf"
     )
+
+
+
+def test_ocr_cli_available_false_when_disabled(monkeypatch):
+    from acquisition.doc_to_html import pdf_ocr
+
+    monkeypatch.setenv("ANTIEK_PDF_OCR", "0")
+    assert pdf_ocr.ocr_cli_available() is False
+
+
+def test_ocr_fallback_ocrmypdf(tmp_path: Path, monkeypatch):
+    """Empty/thin pypdf → ocrmypdf sidecar text → engine ocrmypdf."""
+    from acquisition.doc_to_html.converter import convert_to_markdown_with_engine
+
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(
+        b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+        b"2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
+        b"xref\n0 3\n0000000000 65535 f \n0000000009 00000 n \n"
+        b"0000000058 00000 n \ntrailer\n<< /Size 3 /Root 1 0 R >>\n"
+        b"startxref\n115\n%%EOF\n"
+    )
+    monkeypatch.setenv("ANTIEK_PDF_OCR", "1")
+
+    def fake_ocr(path, *, timeout=None, max_output_bytes=0, max_pages=None):
+        return ("# OCR page\n\nHello scanned world from OCR.", "ocrmypdf")
+
+    with (
+        patch("acquisition.doc_to_html.converter._run_anydoc", return_value=None),
+        patch("acquisition.doc_to_html.converter._run_docling", return_value=None),
+        patch("acquisition.doc_to_html.converter._run_pypdf", return_value=None),
+        patch(
+            "acquisition.doc_to_html.pdf_ocr.run_pdf_ocr",
+            side_effect=fake_ocr,
+        ),
+        patch(
+            "acquisition.doc_to_html.pdf_ocr.ocr_cli_available",
+            return_value=True,
+        ),
+    ):
+        md, engine = convert_to_markdown_with_engine(pdf_path, fmt="pdf")
+    assert engine == "ocrmypdf"
+    assert "Hello scanned world" in md
+
+
+def test_ocr_empty_still_refused(tmp_path: Path, monkeypatch):
+    """OCR that returns whitespace still raises ConversionError (refuse empty)."""
+    from acquisition.doc_to_html.converter import ConversionError, convert_to_markdown
+
+    pdf_path = tmp_path / "blank-scan.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 empty")
+    monkeypatch.setenv("ANTIEK_PDF_OCR", "1")
+
+    with (
+        patch("acquisition.doc_to_html.converter._run_anydoc", return_value=None),
+        patch("acquisition.doc_to_html.converter._run_docling", return_value=None),
+        patch("acquisition.doc_to_html.converter._run_pypdf", return_value=None),
+        patch(
+            "acquisition.doc_to_html.pdf_ocr.run_pdf_ocr",
+            return_value=("   \n  ", "ocrmypdf"),
+        ),
+        patch(
+            "acquisition.doc_to_html.pdf_ocr.ocr_cli_available",
+            return_value=True,
+        ),
+    ):
+        with pytest.raises(ConversionError):
+            convert_to_markdown(pdf_path, fmt="pdf")
+
+
+def test_pypdf_thin_defers_to_ocr(tmp_path: Path, monkeypatch):
+    """Thin text-layer (few words) must not win over OCR."""
+    from acquisition.doc_to_html.converter import convert_to_markdown_with_engine
+    from acquisition.books.reader import ReadResult
+
+    pdf_path = tmp_path / "thin.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 thin")
+    monkeypatch.setenv("ANTIEK_PYPDF_THIN_WORDS", "15")
+
+    thin = ReadResult(
+        title=None,
+        author=None,
+        markdown="xi yi",  # 2 words
+        page_count=3,
+        word_count=2,
+        pages=[],
+        toc=[],
+    )
+
+    with (
+        patch("acquisition.doc_to_html.converter._run_anydoc", return_value=None),
+        patch("acquisition.doc_to_html.converter._run_docling", return_value=None),
+        patch(
+            "acquisition.books.reader.read_pdf",
+            return_value=thin,
+        ),
+        patch(
+            "acquisition.doc_to_html.pdf_ocr.run_pdf_ocr",
+            return_value=("# Recovered\n\nFull page of OCR text here yes.", "tesseract"),
+        ),
+    ):
+        md, engine = convert_to_markdown_with_engine(pdf_path, fmt="pdf")
+    assert engine == "tesseract"
+    assert "Full page of OCR" in md

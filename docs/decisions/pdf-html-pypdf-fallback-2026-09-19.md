@@ -22,7 +22,7 @@ so `document_reader_html` sidecars were missing for common PDF uploads.
 
 ## Non-goals
 
-- OCR for scanned/image-only PDFs (still ConversionError).
+- OCR for scanned/image-only PDFs — shipped in pdf-ocr-html-2026-09-19.
 - Replacing anydoc/docling when they produce real markdown.
 - EPUB/DOCX pypdf (PDF-only arm).
 
