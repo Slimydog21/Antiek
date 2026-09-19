@@ -19,6 +19,7 @@ import { IdeaDump } from "./Brainstorm/IdeaDump";
 import Outline from "./Outline";
 import { ProjectTypeField } from "./ProjectType";
 import { onTraceIntent } from "./Editor/traceIntent";
+import { ArtifactExport } from "../../components/ArtifactExport";
 import {
   createDeliverableFromInvestigation,
   getTraceTarget,
@@ -318,24 +319,33 @@ export default function WriteHome() {
               </p>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-3">
-            {/* M1: toggle to the imported SPR-03 Canvas of the linked research. */}
-            {detail?.investigation_root_id && (
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <div className="flex items-center gap-3">
+              {/* M1: toggle to the imported SPR-03 Canvas of the linked research. */}
+              {detail?.investigation_root_id && (
+                <button
+                  type="button"
+                  onClick={() => setPieceView((v) => (v === "canvas" ? "outline" : "canvas"))}
+                  className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
+                >
+                  {pieceView === "canvas" ? "outline" : "research canvas"}
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => setPieceView((v) => (v === "canvas" ? "outline" : "canvas"))}
+                onClick={() => setOnRamp((v) => (v === "context" ? null : "context"))}
                 className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
               >
-                {pieceView === "canvas" ? "outline" : "research canvas"}
+                {onRamp === "context" ? "hide brainstorm" : "brainstorm a section"}
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setOnRamp((v) => (v === "context" ? null : "context"))}
-              className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
-            >
-              {onRamp === "context" ? "hide brainstorm" : "brainstorm a section"}
-            </button>
+            </div>
+            {detail ? (
+              <ArtifactExport
+                basePath={`/api/deliverables/${detail.deliverable_id}`}
+                filenamePrefix={`deliverable-${detail.deliverable_id}`}
+                label="Artifact:"
+              />
+            ) : null}
           </div>
         </header>
 

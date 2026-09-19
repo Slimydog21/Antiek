@@ -18,10 +18,11 @@ import type { TraceTarget } from "./writeApi";
  */
 
 const {
-  listDeliverablesMock, getTraceTargetMock, listInvestigationsMock,
+  listDeliverablesMock, getDeliverableMock, getTraceTargetMock, listInvestigationsMock,
   startInvestigationMock, createDeliverableMock, createFromInvestigationMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
+  getDeliverableMock: vi.fn(),
   getTraceTargetMock: vi.fn(),
   listInvestigationsMock: vi.fn(),
   startInvestigationMock: vi.fn(),
@@ -32,7 +33,7 @@ const {
 vi.mock("../../lib/api", async (orig) => ({
   ...(await orig<typeof import("../../lib/api")>()),
   listDeliverables: listDeliverablesMock,
-  getDeliverable: vi.fn().mockResolvedValue(null),
+  getDeliverable: getDeliverableMock,
   createDeliverable: createDeliverableMock,
   listInvestigations: listInvestigationsMock,
   startInvestigation: startInvestigationMock,
@@ -49,6 +50,7 @@ import WriteHome from "./WriteHome";
 
 beforeEach(() => {
   listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
+  getDeliverableMock.mockReset().mockResolvedValue(null);
   getTraceTargetMock.mockReset();
   listInvestigationsMock.mockReset().mockResolvedValue({ count: 0, investigations: [] });
   startInvestigationMock.mockReset().mockResolvedValue({
@@ -243,5 +245,23 @@ describe("WriteHome — the re-homed door", () => {
     expect((title as HTMLInputElement).value).toBe("Moat memo");
     expect(screen.getByTestId("write-from-notebook-banner")).toBeTruthy();
     expect(await screen.findByTestId("connect-research-preferred")).toBeTruthy();
+  });
+
+  it("open piece: View HTML points at deliverable artifact.html (inline projection)", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-1",
+      title: "Moat memo",
+      deliverable_kind: "general_essay",
+      investigation_root_id: "inv-1",
+      status: "draft",
+      created_at: null,
+      updated_at: null,
+      section_count: 1,
+      sections: [],
+    });
+    mountAt("/write/dlv-1");
+    expect(await screen.findByText("Moat memo")).toBeTruthy();
+    const link = await screen.findByTestId("artifact-view-html");
+    expect(link.getAttribute("href")).toBe("/api/deliverables/dlv-1/artifact.html");
   });
 });
