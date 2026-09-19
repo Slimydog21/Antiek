@@ -47,7 +47,11 @@ from tools import run_corpus_ingest as rci  # noqa: E402
 def test_pd_discovery_source_error_is_isolated(monkeypatch):
     """A transient gutendex 503/timeout (SourceError) during PD discovery
     self-skips PD (returns []) instead of propagating up to main's blanket
-    handler and aborting the whole run (which would also block OA)."""
+    handler and aborting the whole run (which would also block OA).
+
+    Discovery by subject/search is the path that still consults Gutendex;
+    explicit ids/curated resolve via the gutenberg.org direct cache
+    (0f1e06a53) and never call gutenberg_candidates."""
     from acquisition.books import public_domain as pd
 
     def _boom(*_a, **_k):
@@ -56,7 +60,7 @@ def test_pd_discovery_source_error_is_isolated(monkeypatch):
     monkeypatch.setattr(pd, "gutenberg_candidates", _boom)
 
     out = rci._public_domain_candidates(
-        subject=None, search_term=None, ids=[1], curated=False,
+        subject="politics", search_term=None, ids=None, curated=False,
         limit=1, investigation_id="inv-test", min_interval_s=0.0,
     )
     assert out == []

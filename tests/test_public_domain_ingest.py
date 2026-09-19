@@ -186,6 +186,8 @@ def temp_substrate(monkeypatch):
 
 
 class _StubEmbedder:
+    dimension = 16
+
     def encode(self, text: str) -> list[float]:
         h = abs(hash(text)) % 64
         v = [0.0] * 16
@@ -560,31 +562,39 @@ def test_source_client_exhausts_retries_raises(monkeypatch):
 def test_cli_dry_run_writes_nothing(temp_substrate, monkeypatch, capsys):
     import tools.ingest_public_domain as cli
 
-    book = _gutenberg_book(7370, copyright_flag=False)
-    fake = FakeSourceClient(json_by_url={_GUTENDEX_URL: _gutendex_page([book])})
+    # Explicit --ids resolve via the gutenberg.org direct-cache path
+    # (0f1e06a53: no Gutendex), so discovery needs no canned source records.
+    fake = FakeSourceClient()
     monkeypatch.setattr(cli, "SourceClient", lambda **kw: fake)
 
     rc = cli.main(["--ids", "7370", "--dry-run"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "DRY RUN" in out
-    assert "On Liberty" in out
+    assert "Project Gutenberg eBook #7370" in out
+    assert "pg7370.txt" in out
     assert fake.bytes_calls == []  # nothing downloaded
+    assert fake.json_calls == []  # Gutendex untouched on the --ids path
 
 
 def test_cli_curated_resolves_batch(temp_substrate, monkeypatch):
     import tools.ingest_public_domain as cli
 
-    # canned page returns one PD book regardless of which curated ids are asked
-    book = _gutenberg_book(1497, copyright_flag=False, title="The Republic")
-    fake = FakeSourceClient(json_by_url={_GUTENDEX_URL: _gutendex_page([book])})
+    # Curated ids also resolve via the direct-cache path (0f1e06a53): one work
+    # per curated Gutenberg id, each carrying the license-header PD basis.
+    # The curated archive item self-skips offline (no canned metadata).
+    fake = FakeSourceClient()
 
     works = cli.discover(
         fake, subject=None, search=None, ids=None, curated=True, limit=5
     )
-    assert len(works) == 1
-    assert works[0].title == "The Republic"
-    assert works[0].pd_basis is not None
+    assert len(works) == len(cli.CURATED_GUTENBERG_IDS)
+    by_id = {w.source_id: w for w in works}
+    assert by_id["1497"].title == "The Republic"
+    assert by_id["1497"].author == "Plato"
+    for w in works:
+        assert w.pd_basis is not None
+        assert "direct cache; gutendex bypass" in w.pd_basis
 
 
 # ---------------------------------------------------------------------------
