@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from typing import Any
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -65,7 +66,7 @@ class BYOKPipeline:
     investigation_id: str | None = None
 
 
-def _read_config(config_path: str) -> dict:
+def _read_config(config_path: str) -> dict[str, Any]:
     p = Path(config_path)
     if not p.exists():
         return {}
@@ -76,7 +77,7 @@ def _read_config(config_path: str) -> dict:
         return {}
 
 
-def _write_config(config_path: str, data: dict) -> None:
+def _write_config(config_path: str, data: dict[str, Any]) -> None:
     p = Path(config_path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")

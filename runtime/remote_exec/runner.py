@@ -39,11 +39,10 @@ import asyncio
 import logging
 import os
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any
 
 try:
-    from ...event_log import log_event, seal_investigation
-    from ...schemas.events import ActionType
     from ..research_runner.budget import BudgetManager
     from ..research_runner.protocol import (
         BudgetExceeded,
@@ -64,19 +63,21 @@ try:
         RemoteSignal,
         Sandbox,
     )
+    from substrate.event_log import log_event, seal_investigation
+    from substrate.schemas.events import ActionType
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.remote_exec.cost import record_remote_dispatch  # type: ignore[no-redef]
-    from runtime.remote_exec.provider import (  # type: ignore[no-redef]
+    from runtime.remote_exec.cost import record_remote_dispatch
+    from runtime.remote_exec.provider import (
         RemoteCommand,
         RemoteExecProvider,
         RemoteExecProviderError,
         RemoteSignal,
         Sandbox,
     )
-    from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
-    from runtime.research_runner.protocol import (  # type: ignore[no-redef]
+    from runtime.research_runner.budget import BudgetManager
+    from runtime.research_runner.protocol import (
         BudgetExceeded,
         Command,
         CommandKind,
@@ -87,8 +88,8 @@ except ImportError:  # pragma: no cover — direct-script fallback
         Status,
         StepEvent,
     )
-    from substrate.event_log import log_event, seal_investigation  # type: ignore[no-redef]
-    from substrate.schemas.events import ActionType  # type: ignore[no-redef]
+    from substrate.event_log import log_event, seal_investigation
+    from substrate.schemas.events import ActionType
 
 
 logger = logging.getLogger("antiek.remote_exec")
@@ -102,7 +103,11 @@ DEFAULT_MAX_CONCURRENCY = 20
 
 # Sentinel pushed onto a research's stream queue to end iteration. Same idiom
 # as the host-local runner.
-_STREAM_DONE = object()
+class _StreamDone:
+    pass
+
+
+_STREAM_DONE = _StreamDone()
 
 # Signal map: protocol CommandKind → provider RemoteSignal. One place so the
 # mapping is auditable.
@@ -120,8 +125,8 @@ class _RemoteState:
         self.plan = plan
         self.state = RunState.PENDING
         self.sandbox: Sandbox | None = None
-        self.queue: asyncio.Queue = asyncio.Queue()
-        self.task: asyncio.Task | None = None
+        self.queue: asyncio.Queue[StepEvent | _StreamDone] = asyncio.Queue()
+        self.task: asyncio.Task[None] | None = None
         self.error: str | None = None
         self.follow_ups: list[str] = []
         self.started = False
@@ -256,7 +261,15 @@ class RemoteResearchRunner:
         if self._on_emit is not None and ev.kind in ("note", "question"):
             await self._on_emit(ev)
 
-    async def _finish(self, st, action, payload, *, halted=False, already_logged=False) -> None:
+    async def _finish(
+        self,
+        st: _RemoteState,
+        action: str | None,
+        payload: dict[str, Any] | None,
+        *,
+        halted: bool = False,
+        already_logged: bool = False,
+    ) -> None:
         iid = st.plan.investigation_id
         # ALWAYS tear the sandbox down — completion, halt, failure, cancel.
         # A leaf that finishes any way must not leak a sandbox.
@@ -298,11 +311,11 @@ class RemoteResearchRunner:
 
     # -- protocol: stream ----------------------------------------------
 
-    async def stream(self, handle: Handle):
+    async def stream(self, handle: Handle) -> AsyncIterator[StepEvent]:
         st = self._states[handle.investigation_id]
         while True:
             item = await st.queue.get()
-            if item is _STREAM_DONE:
+            if isinstance(item, _StreamDone):
                 return
             yield item
 

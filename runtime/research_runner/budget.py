@@ -26,13 +26,13 @@ import threading
 from dataclasses import dataclass
 
 try:
-    from ...constants import TOTAL_ACQUISITION_BUDGET_USD
     from .protocol import BudgetExceeded
+    from substrate.constants import TOTAL_ACQUISITION_BUDGET_USD
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.research_runner.protocol import BudgetExceeded  # type: ignore[no-redef]
-    from substrate.constants import TOTAL_ACQUISITION_BUDGET_USD  # type: ignore[no-redef]
+    from runtime.research_runner.protocol import BudgetExceeded
+    from substrate.constants import TOTAL_ACQUISITION_BUDGET_USD
 
 
 @dataclass

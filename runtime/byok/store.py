@@ -61,6 +61,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from typing import Any
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -133,7 +134,7 @@ def _load_master_key(key_bytes: bytes | None, key_file: str | None) -> bytes:
     return key
 
 
-def _read_artifact(artifact_path: str) -> dict:
+def _read_artifact(artifact_path: str) -> dict[str, Any]:
     p = Path(artifact_path)
     if not p.exists():
         return {}
@@ -144,7 +145,7 @@ def _read_artifact(artifact_path: str) -> dict:
         return {}
 
 
-def _write_artifact(artifact_path: str, data: dict) -> None:
+def _write_artifact(artifact_path: str, data: dict[str, Any]) -> None:
     p = Path(artifact_path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")

@@ -37,19 +37,20 @@ from __future__ import annotations
 
 import os
 import sys
+from typing import Literal, cast
 
 try:
-    from ...event_log import emit_typed
-    from ...schemas.events import DispatchCallPayload
     from ..research_runner.budget import BudgetManager
     from .provider import RemoteStepEvent
+    from substrate.event_log import emit_typed
+    from substrate.schemas.events import DispatchCallPayload
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.remote_exec.provider import RemoteStepEvent  # type: ignore[no-redef]
-    from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.schemas.events import DispatchCallPayload  # type: ignore[no-redef]
+    from runtime.remote_exec.provider import RemoteStepEvent
+    from runtime.research_runner.budget import BudgetManager
+    from substrate.event_log import emit_typed
+    from substrate.schemas.events import DispatchCallPayload
 
 
 # Default tier label for remote-exec inference. Remote leaves run the same
@@ -58,6 +59,22 @@ except ImportError:  # pragma: no cover — direct-script fallback
 # different tier). Kept a Literal-valid value so the DispatchCallPayload
 # validates.
 DEFAULT_REMOTE_TIER = "pro"
+
+
+_FINISH_REASONS = ("stop", "length", "tool_use", "content_filter", "error")
+
+
+_FinishReason = Literal["stop", "length", "tool_use", "content_filter", "error"]
+
+
+def _finish_reason(raw: object) -> _FinishReason | None:
+    """Pass through only schema-valid finish reasons; anything else (including
+    a sandbox-provided non-literal) is dropped rather than breaking the event."""
+    if raw in _FINISH_REASONS:
+        # Safety: membership in _FINISH_REASONS proves raw is one of the
+        # schema's exact literal values, so the cast is exact, not a bypass.
+        return cast(_FinishReason, raw)
+    return None
 
 
 def record_remote_dispatch(
@@ -108,7 +125,7 @@ def record_remote_dispatch(
             verification_required=bool(event.data.get("verification_required", False)),
             fallback_chain_index=0,
             prompt_hash=str(event.data.get("prompt_hash", "remote")),
-            finish_reason=event.data.get("finish_reason"),
+            finish_reason=_finish_reason(event.data.get("finish_reason")),
             context_pack_event_id=context_pack_event_id,
         ),
         parent_event_id=parent_event_id,
