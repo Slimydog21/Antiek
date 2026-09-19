@@ -270,3 +270,38 @@ export async function emitBrainstormBlocks(
     "POST /write/brainstorm/emit-blocks",
   );
 }
+
+/** Seed a deliverable from an investigation's depositable synthesis
+ * (POST /write/deliverables/from-investigation — WV-SPR-01 writing arm).
+ * 404 when no depositable synthesis — callers fall back to empty create. */
+export interface FromInvestigationResult {
+  deliverable_id: string;
+  section_id: string;
+  block_count: number;
+  dangling_count: number;
+  source_node_count: number;
+  insufficient_evidence: boolean;
+  synthesis_id: string | null;
+  synthesis_status: string | null;
+  synthesis_recommendation: string | null;
+}
+
+export async function createDeliverableFromInvestigation(body: {
+  investigation_id: string;
+  deliverable_kind?:
+    | "research_memo"
+    | "book_chapter"
+    | "biography_section"
+    | "investor_brief"
+    | "general_essay";
+  title?: string;
+}): Promise<FromInvestigationResult> {
+  return _json<FromInvestigationResult>(
+    await apiFetch(`${API_BASE}/write/deliverables/from-investigation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    "POST /write/deliverables/from-investigation",
+  );
+}
