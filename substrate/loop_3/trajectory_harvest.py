@@ -6,6 +6,8 @@ format. Loop-3-gated; runs only after unlock."""
 
 from __future__ import annotations
 
+from typing import Any
+
 import json
 from dataclasses import dataclass, field
 
@@ -18,13 +20,13 @@ class HarvestedTrajectory:
     action, reward) triples + metadata."""
 
     investigation_id: str
-    triples: list[dict]
-    metadata: dict = field(default_factory=dict)
+    triples: list[dict[str, Any]]
+    metadata: dict[str, Any] = field(default_factory=dict[str, Any])
 
 
 def harvest_trajectory_for_prime_rl(
     *,
-    trajectory_events: list[dict],
+    trajectory_events: list[dict[str, Any]],
     investigation_id: str,
     role_filter: str | None = None,
 ) -> HarvestedTrajectory:
@@ -36,7 +38,7 @@ def harvest_trajectory_for_prime_rl(
     eval/training set."""
     check_unlocked()
 
-    triples: list[dict] = []
+    triples: list[dict[str, Any]] = []
     for i, ev in enumerate(trajectory_events):
         action_type = ev.get("action_type", "")
         role = ev.get("role")

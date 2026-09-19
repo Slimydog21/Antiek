@@ -9,6 +9,8 @@ this bridge is invoked — the contract is enforced at the source.
 
 from __future__ import annotations
 
+from typing import Any
+
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -25,7 +27,7 @@ def make_broadcasting_observation_hook(
     investigation_id: str,
     broadcast: Callable[[Event], None],
     param_version: str = "substrate-v0",
-):
+) -> Callable[[str, bool, float, float, float, str], None]:
     """Build an ``on_observation`` hook for ``PreferenceLearningStream``
     that emits a typed event per accepted observation.
 

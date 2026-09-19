@@ -7,7 +7,7 @@ dispatch through the ``HANDLERS`` table.
 
 A handler is a callable:
 
-    def handler(con, *, target_id: str, prev_state: dict, next_state: dict) -> None
+    def handler(con, *, target_id: str, prev_state: dict[str, Any], next_state: dict[str, Any]) -> None
 
 It runs inside the caller's ``connect_write`` lock, so it must NOT
 open its own connection. It must restore the substrate to
@@ -22,7 +22,6 @@ from __future__ import annotations
 import json
 from typing import Any, Protocol
 
-
 class InverseHandler(Protocol):
     """Restore a single target to ``prev_state``."""
 
@@ -31,8 +30,8 @@ class InverseHandler(Protocol):
         con: Any,
         *,
         target_id: str,
-        prev_state: dict,
-        next_state: dict,
+        prev_state: dict[str, Any],
+        next_state: dict[str, Any],
     ) -> None:
         ...
 
@@ -53,8 +52,8 @@ def _notebook_block_handler(
     con: Any,
     *,
     target_id: str,
-    prev_state: dict,
-    next_state: dict,
+    prev_state: dict[str, Any],
+    next_state: dict[str, Any],
 ) -> None:
     """Restore a notebook_block row's content_json to ``prev_state``.
 
@@ -115,8 +114,8 @@ def _notebook_handler(
     con: Any,
     *,
     target_id: str,
-    prev_state: dict,
-    next_state: dict,
+    prev_state: dict[str, Any],
+    next_state: dict[str, Any],
 ) -> None:
     """Restore a notebook row's metadata (title, content_class).
 
@@ -143,8 +142,8 @@ def _ui_layout_handler(
     con: Any,
     *,
     target_id: str,
-    prev_state: dict,
-    next_state: dict,
+    prev_state: dict[str, Any],
+    next_state: dict[str, Any],
 ) -> None:
     """No-op substrate-side: UI layout state lives in the client's
     workspace store, not the substrate. The undo event is still

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import enum
 import os
 from dataclasses import dataclass, field
@@ -42,7 +44,7 @@ class UnlockChecklist:
     validated_reward: bool = False
     open_weight_justification: bool = False
     eval_headroom: bool = False
-    notes: dict = field(default_factory=dict)
+    notes: dict[str, Any] = field(default_factory=dict[str, Any])
 
     def all_met(self) -> bool:
         return all([

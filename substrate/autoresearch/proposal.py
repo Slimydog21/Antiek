@@ -14,6 +14,8 @@ operator can audit *why* a config came to be.
 
 from __future__ import annotations
 
+from typing import Any
+
 import enum
 import uuid
 from dataclasses import dataclass, field
@@ -49,8 +51,8 @@ class ConfigProposal:
     """A single sweep-produced proposal."""
 
     proposal_id: str = field(default_factory=lambda: f"prop-{uuid.uuid4().hex[:12]}")
-    baseline_config: dict = field(default_factory=dict)
-    proposed_delta: dict = field(default_factory=dict)
+    baseline_config: dict[str, Any] = field(default_factory=dict[str, Any])
+    proposed_delta: dict[str, Any] = field(default_factory=dict[str, Any])
     cohort: CohortWindow | None = None
     axes: SweepAxes | None = None
     score: float = 0.0
@@ -79,7 +81,7 @@ class OperatorVerdict:
     kind: OperatorVerdictKind = OperatorVerdictKind.DEFER
     operator_id: str = "__operator__"
     rationale: str = ""
-    modified_delta: dict | None = None  # populated only when kind=MODIFY
+    modified_delta: dict[str, Any] | None = None  # populated only when kind=MODIFY
     decided_at: str = field(default_factory=_now_iso)
 
 
@@ -89,8 +91,8 @@ class ProposalLedger:
     substrate is the caller's responsibility (a substrate table
     schema for this lands in Sprint 30+ if the thread activates)."""
 
-    proposals: dict[str, ConfigProposal] = field(default_factory=dict)
-    verdicts: dict[str, OperatorVerdict] = field(default_factory=dict)
+    proposals: dict[str, ConfigProposal] = field(default_factory=dict[str, Any])
+    verdicts: dict[str, OperatorVerdict] = field(default_factory=dict[str, Any])
 
     def record_proposal(self, proposal: ConfigProposal) -> None:
         self.proposals[proposal.proposal_id] = proposal
