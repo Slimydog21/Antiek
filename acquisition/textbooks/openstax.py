@@ -19,8 +19,8 @@ dedup keys on the catalog slug / ISBN (SPR-04, in the orchestrator).
 
 from __future__ import annotations
 
-from typing import Any
 import logging
+from typing import Any
 
 from ._common import SourceError, TextbookWork, ThrottledClient, ingest_textbook
 

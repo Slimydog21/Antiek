@@ -21,9 +21,8 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from processing.embedding.embed import EmbeddingProvider
-
 from acquisition.licenses_core import LicenseResolution, license_basis_string
+from processing.embedding.embed import EmbeddingProvider
 
 logger = logging.getLogger(__name__)
 

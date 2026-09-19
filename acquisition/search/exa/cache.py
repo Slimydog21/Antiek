@@ -20,11 +20,11 @@ cache writer doesn't block legal-gate decisions.
 
 from __future__ import annotations
 
-from typing import Any
 import hashlib
 import json
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 DEFAULT_TTL_SECONDS: int = 24 * 60 * 60
 

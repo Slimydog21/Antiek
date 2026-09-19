@@ -29,9 +29,8 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol
+from typing import Any, Protocol
 
 # Default uniform sampling interval. Most operator-facing videos
 # (lectures, podcasts, interviews) have 30s as a reasonable

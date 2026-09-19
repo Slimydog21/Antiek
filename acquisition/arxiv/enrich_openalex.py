@@ -51,10 +51,10 @@ write to a rights field.
 
 from __future__ import annotations
 
-from typing import Any
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 

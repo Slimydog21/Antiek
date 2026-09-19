@@ -207,7 +207,7 @@ def _responses_agree(responses: list[str]) -> tuple[bool, str | None]:
     c = Counter(norms)
     winner_norm, winner_count = c.most_common(1)[0]
     if winner_count >= RLM_VERIFY_AGREEMENT_MIN:
-        for orig, norm in zip(responses, norms):
+        for orig, norm in zip(responses, norms, strict=True):
             if norm == winner_norm:
                 return True, orig
         return True, responses[0]

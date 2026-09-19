@@ -20,6 +20,7 @@ Surface:
 """
 
 from acquisition.licenses_core import LicenseResolution
+
 from .licenses import resolve_oa_license
 from .throttle import POLITE_POOL_MAILTO, OAThrottle
 

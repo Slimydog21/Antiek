@@ -44,10 +44,10 @@ silently default a guessed track to ``"human"``.
 
 from __future__ import annotations
 
-from typing import Any
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 # ── Operator-only, low-volume rate cap (SPR-07) ──────────────────────
 # The transcript-scrape path breaches YouTube ToS (see module docstring),

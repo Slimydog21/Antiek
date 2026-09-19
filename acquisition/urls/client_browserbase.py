@@ -40,6 +40,7 @@ real `browserbase.Browserbase().sessions.create(...)` flow.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import threading
 import time
@@ -242,7 +243,7 @@ def fetch_via_browserbase(
     # caller could use.
     from .budget_browserbase import check_and_reserve, record_actual
 
-    state = check_and_reserve(
+    check_and_reserve(
         estimated_cost_usd, cap_override=cap_override_usd
     )
 
@@ -288,10 +289,8 @@ def fetch_via_browserbase(
         # authoritative, but we should signal "done" so the
         # session-minute meter stops.
         if session is not None:
-            try:
+            with contextlib.suppress(Exception):
                 session.close()
-            except Exception:
-                pass
         _SESSION_SEMAPHORE.release()
         # Refine the budget reservation with actual elapsed time.
         # Browserbase rounds to the minute; we use elapsed for a
@@ -341,14 +340,10 @@ def _default_page_runner(
             status = response.status if response else 200
             return html, final, status
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 page.close()
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 browser.close()
-            except Exception:
-                pass
 
 
 __all__ = [

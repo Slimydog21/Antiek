@@ -161,7 +161,8 @@ def check_phase_1(
     if not os.path.exists(path):
         return False, f"{path} not found"
     try:
-        text = open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
     except OSError as e:
         return False, f"{path} unreadable: {e}"
 
@@ -236,7 +237,8 @@ def check_phase_3(
     if not os.path.exists(path):
         return False, f"{path} not found"
     try:
-        text = open(path, encoding="utf-8").read().lower()
+        with open(path, encoding="utf-8") as f:
+            text = f.read().lower()
     except OSError as e:
         return False, f"{path} unreadable: {e}"
     missing = [
@@ -504,12 +506,11 @@ def check_phase_8(
     # ── (A) Trajectory event ──
     events = _events_of_type(investigation_id, ActionType.AUTO_PATCH_APPLIED)
     for e in reversed(events):
-        if isinstance(e.payload, AutoPatchAppliedPayload):
-            if e.payload.patched:
-                return True, (
-                    f"auto_patch_applied: status={e.payload.status}, "
-                    f"patched={e.payload.patched}"
-                )
+        if isinstance(e.payload, AutoPatchAppliedPayload) and e.payload.patched:
+            return True, (
+                f"auto_patch_applied: status={e.payload.status}, "
+                f"patched={e.payload.patched}"
+            )
 
     # ── (B) Skill-file mtime check ──
     knowledge_skills_dir = (

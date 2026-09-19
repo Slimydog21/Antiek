@@ -43,9 +43,9 @@ only-writer invariant, architecture_notes §2.3).
 
 from __future__ import annotations
 
-from typing import Any
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 from runtime.db_lock import LockedConnection, connect_write
 from substrate.constants import GATED_DEFAULT_CONTENT_CLASS

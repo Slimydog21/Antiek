@@ -24,13 +24,14 @@ prevents partial-day summaries that would lose data on re-rollup.
 
 from __future__ import annotations
 
-from typing import Any
+import contextlib
 import hashlib
 import json
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 DEFAULT_RETENTION_DAYS = 30
 
@@ -179,10 +180,8 @@ def rollup_expired(
                 if url:
                     b["distinct_urls"].add(url)
                 cost = payload.get("cost_usd_estimate") or 0.0
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     b["total_cost_usd"] += float(cost)
-                except (TypeError, ValueError):
-                    pass
             elif action_type == "discovery.selected":
                 decision = payload.get("decision", "")
                 if decision == "ingested":
@@ -195,10 +194,8 @@ def rollup_expired(
                     b["fetch_failed"] += 1
             elif action_type == "verifier.lookup":
                 cost = payload.get("cost_usd_estimate") or 0.0
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     b["total_cost_usd"] += float(cost)
-                except (TypeError, ValueError):
-                    pass
             raw_events_rolled_up += 1
 
         files_to_truncate.append(f)
@@ -318,7 +315,7 @@ def recent_summary(
         "rejected_by_op", "fetch_failed", "distinct_urls",
         "total_cost_usd", "summarized_at",
     ]
-    return [dict(zip(cols, row)) for row in rows]
+    return [dict(zip(cols, row, strict=True)) for row in rows]
 
 
 __all__ = [

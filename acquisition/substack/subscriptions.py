@@ -25,9 +25,9 @@ publications (not ``*.substack.com``) that still expose ``/feed`` are supported
 """
 from __future__ import annotations
 
-from typing import Any
 import json
 from dataclasses import dataclass
+from typing import Any
 
 from .adapter import (
     DEFAULT_SUBSTACK_SOURCE_TIER,

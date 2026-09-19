@@ -62,7 +62,7 @@ from substrate.dedup import (
 # ---------------------------------------------------------------------------
 
 
-class CheckResultKind(str, enum.Enum):
+class CheckResultKind(enum.StrEnum):
     PASS = "pass"
     FAIL = "fail"
 

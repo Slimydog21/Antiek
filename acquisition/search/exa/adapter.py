@@ -27,12 +27,12 @@ What this module does NOT do:
 
 from __future__ import annotations
 
-from typing import Any
 import hashlib
 import os
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from typing import Any
 from urllib.parse import urlparse
 
 # Repo root on path for direct invocation (matches the pattern used by
@@ -50,7 +50,7 @@ if _PKG_ROOT not in sys.path:
 from substrate.constants import (  # noqa: E402
     CURATED_NEWS_TIER_3 as _CURATED_NEWS_TIER_3,
 )
-from substrate.constants import (
+from substrate.constants import (  # noqa: E402 -- direct-script fallback import
     RESEARCH_HOSTS_TIER_2 as _RESEARCH_HOSTS_TIER_2,
 )
 from substrate.event_log import emit_typed  # noqa: E402

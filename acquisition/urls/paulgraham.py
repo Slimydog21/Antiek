@@ -32,7 +32,6 @@ a daemon/queue/second-runtime.
 """
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
 import json
 import os
 import re
@@ -42,6 +41,7 @@ import urllib.robotparser
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urldefrag, urljoin, urlparse
 
 if TYPE_CHECKING:
@@ -137,9 +137,7 @@ def _is_essay_url(url: str) -> bool:
         return False
     if not _ESSAY_HREF_RE.match(slug):
         return False
-    if slug in _NON_ESSAY_SLUGS:
-        return False
-    return True
+    return slug not in _NON_ESSAY_SLUGS
 
 
 def parse_article_list(html: bytes | str, *, base_url: str = PG_BASE_URL) -> list[str]:

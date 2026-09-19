@@ -47,9 +47,9 @@ generic-title works with different bodies stay distinct.
 
 from __future__ import annotations
 
-from typing import Any
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Any
 
 from acquisition.licenses_core import ClassificationResult, classify
 from substrate.dedup import IdentityRecord, identity_basis

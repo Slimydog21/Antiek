@@ -30,15 +30,16 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import Any, IO, TYPE_CHECKING
+from typing import IO, TYPE_CHECKING, Any
 
 from .client import ArxivPaper
 
 if TYPE_CHECKING:
     import httpx
 
-    from .throttle import ArxivThrottle
     from substrate.source_throttle import SourceThrottle
+
+    from .throttle import ArxivThrottle
 
 # arXiv's PDF host throttle key — see substrate.source_throttle. arXiv PDFs are
 # arxiv.org (not export.arxiv.org), but a burst can still trip an IP ban, so

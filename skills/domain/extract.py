@@ -54,9 +54,7 @@ def _ke_repair_enabled() -> bool:
     """Mirror of the upstream ``RESEARCHMAXX_KE_REPAIR_ENABLED`` gate.
     Default ON. Disable with ``ANTIEK_KE_REPAIR_ENABLED=0``."""
     val = os.environ.get("ANTIEK_KE_REPAIR_ENABLED", "").strip().lower()
-    if val in ("0", "false", "no", "off"):
-        return False
-    return True
+    return val not in ("0", "false", "no", "off")
 
 
 def _try_parse_json(

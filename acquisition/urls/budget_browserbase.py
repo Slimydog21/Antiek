@@ -46,10 +46,7 @@ def _utc_date_stamp() -> str:
 
 def _budget_dir() -> Path:
     base = os.environ.get("ANTIEK_HOME")
-    if base:
-        p = Path(base) / "budgets"
-    else:
-        p = Path.home() / ".antiek" / "budgets"
+    p = Path(base) / "budgets" if base else Path.home() / ".antiek" / "budgets"
     p.mkdir(parents=True, exist_ok=True)
     return p
 

@@ -23,9 +23,9 @@ NO raw ``requests``/``httpx``: every fetch is via the SPR-03 throttle.
 
 from __future__ import annotations
 
-from typing import Any
 import logging
 import re
+from typing import Any
 
 from .pd_connector_base import BookCandidate, ThrottledFetcher
 

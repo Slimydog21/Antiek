@@ -96,8 +96,7 @@ def _pdf_url(record: dict[str, Any], meta: Any) -> str | None:
         url = record.get(key)
         if isinstance(url, str) and url:
             return url
-    val = _field(meta, "oapen.identifier.ocn") or _field(meta, "dc.identifier.uri")
-    return val
+    return _field(meta, "oapen.identifier.ocn") or _field(meta, "dc.identifier.uri")
 
 
 def _to_work(record: dict[str, Any]) -> TextbookWork | None:

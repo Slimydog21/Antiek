@@ -67,10 +67,7 @@ def _pdf_url(raw: dict[str, Any]) -> str | None:
 def _authors(raw: dict[str, Any]) -> tuple[str, ...]:
     out: list[str] = []
     for a in raw.get("authors") or []:
-        if isinstance(a, dict):
-            name = a.get("name")
-        else:
-            name = a
+        name = a.get("name") if isinstance(a, dict) else a
         if isinstance(name, str) and name.strip():
             out.append(name.strip())
     return tuple(out)
