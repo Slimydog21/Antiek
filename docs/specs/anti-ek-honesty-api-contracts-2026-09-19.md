@@ -62,7 +62,8 @@ Wire: Trust Center + `POST /api/ad/fills` honesty embed.
 | Download | `?format=html` on export routes | **attachment** |
 
 Header: `X-Antiek-Html-Projection: script-free; disposition=inline|attachment`  
-Decision: `docs/decisions/html-writing-asset-inline-2026-09-19.md` (#3219)
+Builder: `substrate.contracts.anti_ek_honesty.html_projection_response_headers` (all four surfaces; research no longer uses legacy `X-Antiek-Projection`)  
+Decision: `docs/decisions/html-writing-asset-inline-2026-09-19.md` (#3219) · wiring `docs/decisions/anti-ek-code-honesty-wiring-2026-09-19.md`
 
 ---
 

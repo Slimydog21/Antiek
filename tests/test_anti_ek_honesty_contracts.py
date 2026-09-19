@@ -26,6 +26,7 @@ from substrate.contracts.anti_ek_honesty import (
     assert_capacity_exhausted_shape,
     assert_g2_synquery_honesty_shape,
     assert_html_projection_header,
+    html_projection_response_headers,
 )
 from substrate.speak.g2_synquery_honesty import g2_synquery_honesty
 
@@ -121,3 +122,13 @@ def test_html_inline_artifact_paths_registered_on_app():
     for template in HTML_INLINE_ARTIFACT_PATHS:
         assert template in paths, f"missing honesty route {template}"
     assert HTML_PROJECTION_HEADER == "X-Antiek-Html-Projection"
+
+
+def test_html_projection_response_headers_helper():
+    h = html_projection_response_headers(
+        filename="research-inv-1.html", disposition="inline"
+    )
+    assert h["X-Antiek-Html-Projection"] == "script-free; disposition=inline"
+    assert 'inline; filename="research-inv-1.html"' in h["Content-Disposition"]
+    with pytest.raises(HonestyContractError):
+        html_projection_response_headers(filename="../x.html", disposition="inline")

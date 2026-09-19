@@ -124,7 +124,7 @@ Example: biography of a parent — operator invites friends; they install / open
 
 **Economics (already in code):** `substrate/speak/economics_mode.py` — `invitation=private` + `publishing=never_published` ⇒ **no algorithmic 70% split**; creator carries inference margin; **user plans / publisher economics do not apply**. Accrue/disburse paths must not imply a balance.
 
-**UX requirement (not yet fully productized — required next):** every private / never-published Speak surface (create project, invites, invitee door, economics panel) must make it **unmistakable** that contributors **will NOT make money** on this private project unless/until it is **republished** on Antiek as public (at which point the binding public split applies — see `economics_mode`: public publishing ⇒ split with no creator override). Cite honesty contract in `docs/decisions/speak-private-public-spine.md` (economics view is read-only; no false close affordance).
+**UX requirement (productized 2026-09-19 — `PRIVATE_ECON_COPY` on create/invite/invitee/settings):** every private / never-published Speak surface (create project, invites, invitee door, economics panel) must make it **unmistakable** that contributors **will NOT make money** on this private project unless/until it is **republished** on Antiek as public (at which point the binding public split applies — see `economics_mode`: public publishing ⇒ split with no creator override). Cite honesty contract in `docs/decisions/speak-private-public-spine.md` (economics view is read-only; no false close affordance).
 
 ### 3) PUSHES — dual model
 
@@ -148,7 +148,7 @@ Both pushes reuse existing invite / feed machinery (`speak_invites`, PublicLane,
 
 ## Next Speak gap (after this doc)
 
-1. **Private economics notice (UX)** — unmistakable “you will NOT make money on this private project” on create/invite/invitee/economics surfaces; must mirror `economics_mode` private/never_published (no false payout chrome).
+1. ~~**Private economics notice (UX)**~~ — shipped via `PRIVATE_ECON_COPY` on create/invite/invitee/SpeakSettings/project header (Code wiring # honesty).
 2. **PublicLane dead-end** — feed “Add your memory” must mint/link invite token (`/speak/invite/:token`), not authed `/speak/:id`; honest empty/G7 state (`speak-private-public-spine.md` SPR-03).
 3. **Continuous ping (private)** — evidence→new questions→invitee nudges; reuse open-question / follow-up paths; consent-scoped.
 4. **Dual push** — (a) public profile-matched “what you’d add value to”; (b) private friend invites — productize on existing invite/feed, G7 for open public.
@@ -165,3 +165,11 @@ Both pushes reuse existing invite / feed machinery (`speak_invites`, PublicLane,
 surfaces making “will NOT make money” unmistakable on every invitee door —
 named above as “not yet fully productized.” Do not re-open as “G2/Synquery
 honesty missing”; that is closed. Do not invent partnership or payout.
+
+## Addendum 2026-09-19b — private no-payout UX productized
+
+Create (`private-econ-create-notice`), Invites (`private-econ-invites-notice`),
+invitee door (`private-econ-notice`), project header (`private-econ-project-notice`),
+and SpeakSettings (`private-econ-settings-notice`) all render
+`PRIVATE_ECON_COPY` — unmistakable **will NOT make money** while private.
+Do not re-open as a Code gap; residual is operator G2/Synquery/email only.

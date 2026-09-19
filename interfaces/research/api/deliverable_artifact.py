@@ -28,6 +28,7 @@ from services.html_projection.context import RenderContext
 from services.html_projection.gate import ScriptViolation, assert_script_free
 from services.html_projection.renderer import render
 from services.html_projection.routing_map import EXPORT_FORMATS, ExportItem, emit
+from substrate.contracts.anti_ek_honesty import html_projection_response_headers
 
 _log = logging.getLogger(__name__)
 
@@ -145,11 +146,10 @@ def _script_free_html(html: str) -> str:
 
 def _html_headers(*, filename: str, inline: bool) -> dict[str, str]:
     """Honest Content-Disposition + projection metadata (no fake trust bits)."""
-    disp = "inline" if inline else "attachment"
-    return {
-        "Content-Disposition": f'{disp}; filename="{filename}"',
-        "X-Antiek-Html-Projection": f"script-free; disposition={disp}",
-    }
+    return html_projection_response_headers(
+        filename=filename,
+        disposition="inline" if inline else "attachment",
+    )
 
 
 def register_deliverable_artifact_routes(app: FastAPI) -> None:

@@ -40,6 +40,7 @@ from substrate.compute_capacity.store import (
     get_capacity,
     set_capacity,
 )
+from substrate.contracts.anti_ek_honesty import assert_capacity_exhausted_shape
 
 ACU_PER_INVESTIGATION_START = 1
 # Completion top-up: +1 ACU per full quantum of wall time (not dollars).
@@ -409,7 +410,7 @@ def maybe_commit_investigation_wall_topup(
     return int(result.acu_units)
 
 
-def capacity_warning_payload(gate: CapacityGateResult) -> dict[str, object] | None:
+def capacity_warning_payload(gate: CapacityGateResult) -> dict[str, Any] | None:
     if gate.verdict == "ok" or gate.warning is None:
         return None
     return {
@@ -422,7 +423,7 @@ def capacity_warning_payload(gate: CapacityGateResult) -> dict[str, object] | No
     }
 
 
-def capacity_exhausted_payload(gate: CapacityGateResult) -> dict[str, object]:
+def capacity_exhausted_payload(gate: CapacityGateResult) -> dict[str, Any]:
     """Structured 429 detail for hard refuse — no fake billing; ACU only."""
     used = gate.capacity.used_compute_units
     limit = gate.capacity.monthly_compute_units
@@ -432,7 +433,7 @@ def capacity_exhausted_payload(gate: CapacityGateResult) -> dict[str, object]:
         f"capacity resets or the monthly ACU limit is raised in Settings. "
         f"BYO Token spend is separate."
     )
-    return {
+    payload = {
         "code": gate.detail,
         "message": msg,
         "used_compute_units": used,
@@ -441,3 +442,5 @@ def capacity_exhausted_payload(gate: CapacityGateResult) -> dict[str, object]:
         "used_status": gate.capacity.used_status,
         "retryable": False,
     }
+    assert_capacity_exhausted_shape(payload)
+    return payload
