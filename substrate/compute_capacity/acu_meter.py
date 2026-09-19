@@ -10,14 +10,20 @@ Heuristic (honest, deliberate — not fake pricing):
     1 ACU = one investigation start
             (``POST /investigations`` or ``POST /books/.../spin-research``)
 
+    + floor(wall_seconds / 300) ACU on terminal finish (complete / fail /
+      halt-after-start / cancel), capped at 12 ACU per investigation.
+      Wall clock is start-ledger ``recorded_at`` → finish ``now`` (UTC).
+      Under one 300s quantum → +0 (start charge already covers short runs).
+
 Rationale: at start we commit host CPU (orchestrator spawn, DuckDB
 contention, retrieval, event append). Dispatch ``latency_ms`` and role-call
 counts are BYOT-adjacent and incomplete at the pre-commit gate; charging
 flat 1 ACU at start makes soft-warn / hard-refuse decidable *before* work
-begins. Refinement (wall-time top-up on completion) is a later PR.
+begins. Wall-time top-up meters long-running host work without inventing
+dollars or Stripe prices (cites #3139/#3140/#3184).
 
-Idempotency: ``owner_compute_acu_ledger`` keys on ``investigation_id`` so
-exact launch replays do not double-charge.
+Idempotency: start row keys on ``investigation_id``; wall top-up keys on
+``{investigation_id}#wall_topup`` so completion replays do not double-charge.
 """
 
 from __future__ import annotations
@@ -36,6 +42,11 @@ from substrate.compute_capacity.store import (
 )
 
 ACU_PER_INVESTIGATION_START = 1
+# Completion top-up: +1 ACU per full quantum of wall time (not dollars).
+WALL_TOPUP_QUANTUM_SECONDS = 300  # 5 minutes
+WALL_TOPUP_MAX_ACU = 12  # cap so a stuck run cannot drain the month
+WALL_TOPUP_REASON = "investigation_wall_topup"
+WALL_TOPUP_ID_SUFFIX = "#wall_topup"
 NEAR_LIMIT_RATIO = 0.8  # soft warn when used/monthly >= this
 CAPACITY_WARN_HEADER = "X-Antiek-Capacity-Warn"
 
@@ -220,6 +231,182 @@ def record_investigation_start_acu(
         capacity=cap,
         evaluation=evaluate_with_near_limit(cap),
     )
+
+
+
+def wall_topup_ledger_id(investigation_id: str) -> str:
+    """Synthetic ledger PK for completion wall top-up (idempotent)."""
+    return f"{investigation_id}{WALL_TOPUP_ID_SUFFIX}"
+
+
+def compute_wall_topup_acu(wall_seconds: float) -> int:
+    """Map wall duration to top-up ACU units (0..WALL_TOPUP_MAX_ACU).
+
+    Honest quantum: full 300s blocks only; no fractional ACU; hard cap 12.
+    """
+    if wall_seconds <= 0:
+        return 0
+    units = int(wall_seconds // WALL_TOPUP_QUANTUM_SECONDS)
+    return min(units, WALL_TOPUP_MAX_ACU)
+
+
+def _parse_ledger_ts(value: object) -> datetime | None:
+    """Parse DuckDB TIMESTAMP / ISO string to aware UTC datetime."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+    s = str(value).strip()
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+def lookup_start_acu_row(
+    con: Any, investigation_id: str
+) -> tuple[str, datetime] | None:
+    """Return (owner_user_id, recorded_at) for the start charge, else None."""
+    ensure_acu_ledger(con)
+    row = con.execute(
+        """
+        SELECT owner_user_id, recorded_at
+        FROM owner_compute_acu_ledger
+        WHERE investigation_id = ?
+        """,
+        [investigation_id],
+    ).fetchone()
+    if row is None:
+        return None
+    owner = str(row[0])
+    started = _parse_ledger_ts(row[1])
+    if started is None:
+        return None
+    return owner, started
+
+
+def record_investigation_wall_topup_acu(
+    con: Any,
+    *,
+    investigation_id: str,
+    owner_user_id: str | None = None,
+    wall_seconds: float | None = None,
+    ended_at: datetime | None = None,
+) -> AcuRecordResult | None:
+    """Idempotently charge wall-time top-up ACU after investigation terminal.
+
+    Returns None when there is no start row or computed top-up is 0.
+    Soft/hard enforcement is *not* re-gated here — start already passed the
+    gate; top-up updates ``used_compute_units`` so later starts see truth.
+    """
+    ensure_acu_ledger(con)
+    start = lookup_start_acu_row(con, investigation_id)
+    if start is None:
+        return None
+    start_owner, started_at = start
+    owner = owner_user_id or start_owner
+
+    if wall_seconds is None:
+        end = ended_at or datetime.now(UTC)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=UTC)
+        wall_seconds = max(0.0, (end.astimezone(UTC) - started_at).total_seconds())
+
+    acu_units = compute_wall_topup_acu(float(wall_seconds))
+    ledger_id = wall_topup_ledger_id(investigation_id)
+
+    existing = con.execute(
+        "SELECT acu_units FROM owner_compute_acu_ledger WHERE investigation_id = ?",
+        [ledger_id],
+    ).fetchone()
+    if existing is not None:
+        cap = get_capacity(con, owner)
+        return AcuRecordResult(
+            owner_user_id=owner,
+            investigation_id=ledger_id,
+            acu_units=int(existing[0]),
+            replayed=True,
+            capacity=cap,
+            evaluation=evaluate_with_near_limit(cap),
+        )
+
+    if acu_units <= 0:
+        return None
+
+    _ensure_owner_row(con, owner)
+    now = _iso_now()
+    con.execute(
+        """
+        INSERT INTO owner_compute_acu_ledger (
+            investigation_id, owner_user_id, acu_units, reason, recorded_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        [ledger_id, owner, acu_units, WALL_TOPUP_REASON, now],
+    )
+    con.execute(
+        """
+        UPDATE owner_compute_capacity
+        SET used_compute_units = COALESCE(used_compute_units, 0) + ?,
+            used_status = 'known',
+            updated_at = ?
+        WHERE owner_user_id = ?
+        """,
+        [acu_units, now, owner],
+    )
+    cap = get_capacity(con, owner)
+    return AcuRecordResult(
+        owner_user_id=owner,
+        investigation_id=ledger_id,
+        acu_units=acu_units,
+        replayed=False,
+        capacity=cap,
+        evaluation=evaluate_with_near_limit(cap),
+    )
+
+
+def maybe_commit_investigation_wall_topup(
+    investigation_id: str,
+    *,
+    db_path: str | None = None,
+    owner_user_id: str | None = None,
+    wall_seconds: float | None = None,
+) -> int:
+    """Best-effort write-lock commit for runners. Returns ACU charged (0 if none).
+
+    Never raises — completion must not fail because metering failed.
+    """
+    try:
+        from runtime.db_lock import WriteLockTimeout, connect_write
+        from substrate.graph import default_db_path
+    except Exception:
+        return 0
+    path = db_path or default_db_path()
+    try:
+        with connect_write(
+            path, purpose="compute-capacity:wall-topup", timeout_s=15.0
+        ) as con:
+            result = record_investigation_wall_topup_acu(
+                con,
+                investigation_id=investigation_id,
+                owner_user_id=owner_user_id,
+                wall_seconds=wall_seconds,
+            )
+    except WriteLockTimeout:
+        return 0
+    except Exception:
+        return 0
+    if result is None or result.replayed:
+        return 0
+    return int(result.acu_units)
 
 
 def capacity_warning_payload(gate: CapacityGateResult) -> dict[str, object] | None:

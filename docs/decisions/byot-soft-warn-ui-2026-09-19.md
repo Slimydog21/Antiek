@@ -22,7 +22,7 @@ meter shipped.
 
 ## Non-goals
 
-- Wall-time top-up on completion (still residual).
+- Wall-time top-up on completion — shipped in byot-wall-acu-topup-2026-09-19.
 - Stripe / dollar prices on ACU.
 - Changing 1 ACU = investigation start heuristic.
 
