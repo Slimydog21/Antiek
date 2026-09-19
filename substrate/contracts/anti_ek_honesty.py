@@ -9,7 +9,8 @@ Cite: docs/specs/anti-ek-honesty-api-contracts-2026-09-19.md
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 # --- Ads (#3213) ---
 ADS_HONESTY_REQUIRED_KEYS: frozenset[str] = frozenset(

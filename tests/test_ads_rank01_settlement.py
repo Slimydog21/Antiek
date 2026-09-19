@@ -9,16 +9,16 @@ import tempfile
 import pytest
 
 from runtime.db_lock import connect_write
-from substrate.ad_inventory.fill_decisions import decide_fills
-from substrate.ad_inventory.fill_settlement import (
-    FillSettlementError,
-    settle_fill_decision,
-)
 from substrate.ad_inventory.advertiser_onboarding import (
     activate_advertiser,
     approve_advertiser,
     save_record,
     submit_application,
+)
+from substrate.ad_inventory.fill_decisions import decide_fills
+from substrate.ad_inventory.fill_settlement import (
+    FillSettlementError,
+    settle_fill_decision,
 )
 from substrate.ad_inventory.rank0_honesty import (
     PAID_FILL_REQUIRES,
