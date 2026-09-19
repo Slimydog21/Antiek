@@ -39,11 +39,34 @@ runtime-resolved URL AND free of the dict/XML ``.get`` / ``.request`` false
 positives (``raw_work.get(...)`` / ``element.get("status")`` are not HTTP
 clients, so they are never flagged).
 
-SCOPE = the whole acquisition tree (``acquisition/``). Host-based, not
-directory-based: an arXiv-host fetch in ``acquisition/openaccess/`` is now just
-as flagged as one in ``acquisition/arxiv/``. (``tools/`` carries no arXiv egress
-— the only ``tools/`` HTTP is a localhost demo client to the Antiek API — so it
-is out of scope; add it to ``_EGRESS_SCAN_DIRS`` if that ever changes.)
+SCOPE = the whole acquisition tree (``acquisition/``), ``substrate/graph/``, and
+the arXiv-reaching part of ``tools/``. Host-based, not directory-based: an
+arXiv-host fetch in ``acquisition/openaccess/`` is now just as flagged as one in
+``acquisition/arxiv/``.
+
+WHY ``tools/`` IS NOW IN SCOPE (round-6). The round-4/5 claim that "``tools/``
+carries no arXiv egress — the only ``tools/`` HTTP is a localhost demo client to
+the Antiek API" was FALSE, and the blind spot it created was live on an ingest
+path. ``tools/run_corpus_ingest.py::_fetch_paper_pdf`` built a bare
+``httpx.Client`` and fetched ``rec.pdf_url`` — a URL resolved at runtime from
+CORE / Semantic Scholar / bioRxiv metadata, all of which mirror arXiv — so a
+``https://arxiv.org/pdf/<id>`` record fetched an ungoverned arXiv body on every
+loop iteration. ``tools/arxiv_verify.py`` probed ``oaipmh.arxiv.org``, the exact
+host production harvests, with a bare ``urlopen`` and no ban-sentinel check. Both
+were invisible to a scanner scoped to ``acquisition/``.
+
+WHY ``tools/`` IS SCANNED CONDITIONALLY, not wholesale. ``tools/`` is an
+operator-script tree, not an acquisition tree: it holds PostHog dashboard sync,
+a Krea smoke test, an auth probe, a prod-parity ``/health`` check, a localhost
+demo client and the reachability probes. Fourteen raw egress sites across seven
+such files reach hosts fixed by configuration (PostHog, Krea, api.antiek.ai,
+localhost) and can never resolve to arXiv. Scanning them wholesale would leave
+the lint permanently red on fourteen non-findings, and the only ways out are
+both bad: wrapping each in a governor call that is a no-op for its host (noise
+that teaches the next reader the wrong thing), or a blanket suppression (which
+re-creates the directory-scoped bypass round-4 removed). So ``tools/`` is scanned
+through the predicate in :func:`_tools_file_can_reach_arxiv` instead — see that
+function for the rule and its known gap.
 
 GOVERNED-SEAM RECOGNITION (what is NOT flagged):
 
@@ -82,6 +105,7 @@ Exit 0 = clean; exit 1 = a violation, printed as ``path:line``.
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -116,7 +140,18 @@ _GOVERNOR_CALLS: frozenset[str] = frozenset({"governed_request", "govern_if_arxi
 # ``substrate/graph/`` cannot slip past the governed seam. The receiver-shape
 # check keeps the many dict / DuckDB-connection ``.get`` / ``.execute`` calls in
 # that tree from false-flagging (they are not httpx/requests clients).
-_EGRESS_SCAN_DIRS: tuple[str, ...] = ("acquisition/", "substrate/graph/")
+_EGRESS_SCAN_DIRS: tuple[str, ...] = ("acquisition/", "substrate/graph/", "tools/")
+
+# Directories scanned CONDITIONALLY, per file, via ``_tools_file_can_reach_arxiv``
+# (see the module docstring for why ``tools/`` is not scanned wholesale).
+_CONDITIONAL_SCAN_DIRS: tuple[str, ...] = ("tools/",)
+
+# The import prefix that means a file consumes third-party paper metadata, and
+# therefore fetches URLs it does not choose. Every aggregator Antiek reads
+# (CORE, Semantic Scholar, bioRxiv, OpenAlex) mirrors arXiv, so any ``tools/``
+# script that reaches records through ``acquisition`` can hold an arXiv URL in a
+# variable it never inspects.
+_ACQUISITION_IMPORT_RE = re.compile(r"^\s*(?:from|import)\s+acquisition\b", re.MULTILINE)
 
 # Files (relative to the repo root) where a raw egress is legitimate WITHOUT the
 # governor closure: the governor + the reused throttle engine (the seam itself).
@@ -394,26 +429,82 @@ def _is_test_file(rel: str) -> bool:
     return stem.startswith("test_") or stem.endswith("_test.py")
 
 
-def _in_egress_scan_scope(rel: str) -> bool:
-    """Whether ``rel`` is in the acquisition tree the host-based governor
-    invariant binds (every external fetcher here must route through
-    ``govern_if_arxiv`` / ``governed_request``)."""
-    return any(rel.startswith(prefix) for prefix in _EGRESS_SCAN_DIRS)
+def _tools_file_can_reach_arxiv(source: str) -> bool:
+    """Whether a ``tools/`` file can plausibly egress to an arXiv host, and so
+    must route through the governor.
+
+    THE RULE. A ``tools/`` file is in scope when it either names arXiv anywhere
+    in its source (an ``arxiv.org`` URL, an ``acquisition.arxiv`` import, an
+    ``ANTIEK_ARXIV_*`` env var, even a comment about arXiv) or imports the
+    ``acquisition`` package at all. The first clause catches the file that talks
+    to arXiv on purpose; the second catches the more dangerous file that does not
+    — one reaching paper records through ``acquisition.papers`` or
+    ``acquisition.openaccess`` fetches whatever ``rec.pdf_url`` holds, and every
+    aggregator behind those modules mirrors arXiv. That second clause is exactly
+    what would have caught ``run_corpus_ingest.py::_fetch_paper_pdf``, whose
+    ungoverned fetch names no arXiv host anywhere near the egress.
+
+    THE KNOWN GAP, stated rather than papered over. This is a LEXICAL predicate
+    over the file's text, so a ``tools/`` script that hand-rolls its own OpenAlex
+    or CORE query with plain ``httpx``, never imports ``acquisition`` and never
+    writes the word arXiv would fetch an arXiv-mirrored PDF unflagged. Closing
+    that needs the check at the fetch boundary, not the lint — which is what
+    ``govern_if_arxiv`` and the per-hop client hooks already are; this scanner is
+    the backstop that makes the boundary hard to forget, not the guarantee. An
+    unreadable file fails CLOSED (scanned), and the predicate only ever ADDS
+    files to the scan: nothing in ``acquisition/`` or ``substrate/graph/``
+    escapes through it.
+    """
+    return "arxiv" in source.lower() or _ACQUISITION_IMPORT_RE.search(source) is not None
+
+
+def _in_egress_scan_scope(rel: str, source: str | None = None) -> bool:
+    """Whether ``rel`` is in the tree the host-based governor invariant binds
+    (every external fetcher here must route through ``govern_if_arxiv`` /
+    ``governed_request``). ``acquisition/`` and ``substrate/graph/`` bind
+    unconditionally; a ``_CONDITIONAL_SCAN_DIRS`` file binds only when
+    :func:`_tools_file_can_reach_arxiv` says its egress can resolve to arXiv.
+    ``source`` omitted means the file could not be read — fail closed, scan it."""
+    if not any(rel.startswith(prefix) for prefix in _EGRESS_SCAN_DIRS):
+        return False
+    if any(rel.startswith(prefix) for prefix in _CONDITIONAL_SCAN_DIRS):
+        return source is None or _tools_file_can_reach_arxiv(source)
+    return True
 
 
 def find_violations(root: Path = _REPO) -> list[str]:
     """Return ``path:line: message`` strings for every raw external HTTP egress
-    in the acquisition tree that is NOT routed through the host-based governor."""
+    in scope that is NOT routed through the host-based governor. Scope is the
+    acquisition tree plus ``substrate/graph/`` unconditionally, and the
+    arXiv-reaching ``tools/`` files (see :func:`_tools_file_can_reach_arxiv`)."""
     out: list[str] = []
     for py in sorted(root.rglob("*.py")):
         rel = py.relative_to(root).as_posix()
-        if not _in_egress_scan_scope(rel):
+        if not any(rel.startswith(prefix) for prefix in _EGRESS_SCAN_DIRS):
             continue
         if rel in _ALLOWED_FILES or _is_test_file(rel):
             continue
         try:
-            tree = ast.parse(py.read_text(encoding="utf-8"))
-        except (OSError, SyntaxError):
+            source = py.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            # FAIL CLOSED, which is what the conditional scope promises. A file
+            # inside the scan dirs whose source cannot be read cannot be shown
+            # to route its egress through the governor, and silently skipping it
+            # is precisely the blind spot this scanner exists to remove — the
+            # round-4 scope bypass in a different shape. Report it as a
+            # violation so a dangling symlink or an undecodable module is a red
+            # lint the operator sees, not a file that quietly left the scan.
+            out.append(
+                f"{rel}:1: in scope but unreadable ({type(exc).__name__}) — the "
+                "scanner cannot prove this file routes its external egress "
+                "through the host-based arXiv governor"
+            )
+            continue
+        if not _in_egress_scan_scope(rel, source):
+            continue
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
             continue
         _scope_violations(
             tree,
@@ -433,7 +524,7 @@ def main() -> int:
         for line in violations:
             print(f"  {line}")
         print(
-            "\nEvery external HTTP fetcher in the acquisition tree must route its "
+            "\nEvery external HTTP fetcher in scope must route its "
             "send through the host-based arXiv governor "
             "(acquisition/arxiv/rate_governor.py: govern_if_arxiv(url, send), or "
             "governed_request for a statically-arXiv host) so that ANY arxiv.org / "
@@ -445,8 +536,9 @@ def main() -> int:
         )
         return 1
     print(
-        "OK: no ungoverned raw external HTTP egress in the acquisition tree "
-        "outside the host-based rate-governor seam."
+        "OK: no ungoverned raw external HTTP egress in the acquisition tree, "
+        "substrate/graph/, or the arXiv-reaching tools/ scripts, outside the "
+        "host-based rate-governor seam."
     )
     return 0
 

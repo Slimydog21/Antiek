@@ -30,7 +30,7 @@ logger = logging.getLogger("antiek.exec_backend.factory")
 #: Env var that selects the backend.  Unset → ``"local"``.
 BACKEND_ENV: str = "ANTIEK_EXEC_BACKEND"
 
-_VALID_KINDS: frozenset[str] = frozenset({"local"})
+_VALID_KINDS: frozenset[str] = frozenset({"local", "docker"})
 
 
 def build_execution_backend(
@@ -74,14 +74,33 @@ def build_execution_backend(
             sorted(kwargs.keys()),
         )
 
+    selected_via = f"${BACKEND_ENV}={effective!r}" if kind is None else f"kind={kind!r}"
+
     if effective == "local":
         backend: ExecutionBackend = LocalProcessBackend()
         backend.probe()
-        logger.info(
-            "ExecutionBackend selected: %s (via %s)",
-            backend.name,
-            f"${BACKEND_ENV}={effective!r}" if kind is None else f"kind={kind!r}",
-        )
+        logger.info("ExecutionBackend selected: %s (via %s)", backend.name, selected_via)
+        return backend
+
+    if effective == "docker":
+        # Local import, the idiom of ``runtime/remote_exec/factory.py``'s
+        # ``_default_provider_factory``: the default path reaches a local
+        # backend without this function importing the docker adapter. That is
+        # not yet observable process-wide, because ``__init__`` re-exports
+        # ``DockerBackend`` eagerly and anything importing this package has
+        # therefore already loaded it; the nested import is what keeps the
+        # factory itself independent of the adapter, and what makes the default
+        # path docker-free the moment that re-export goes lazy.
+        from .docker_backend import DockerBackend
+
+        # ``probe`` is the loud gate. A missing CLI or an unreachable daemon
+        # raises ``BackendUnavailable`` from here and the caller gets nothing
+        # — never a LocalProcessBackend wearing docker's name, which would run
+        # untrusted agent code on the bare host while the operator believed it
+        # was contained.
+        backend = DockerBackend()
+        backend.probe()
+        logger.info("ExecutionBackend selected: %s (via %s)", backend.name, selected_via)
         return backend
 
     raise BackendUnavailable(

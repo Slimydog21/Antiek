@@ -82,6 +82,15 @@ _PDF_BYTES = text_to_pdf(_PDF_TEXT, title="Test Paper")
 
 
 class _StubEmbedder:
+    # Every chunk write pins its provider identity through
+    # substrate.graph.embedding_meta._identity, which reads ``.dimension``
+    # (commit 8f5096795, "pin chunk embedding provider metadata"). These two
+    # stubs were never updated for it, so every PDF-leg test in this file has
+    # been dying on AttributeError instead of asserting anything. 16 matches the
+    # vector this stub returns and the convention every other stub in tests/
+    # already uses.
+    dimension = 16
+
     def encode(self, text: str) -> list[float]:
         h = abs(hash(text)) % 64
         v = [0.0] * 16
@@ -198,7 +207,16 @@ def test_empty_pdf_raises(temp_db_and_events):
 
 def test_injected_fetch_callable_is_used(temp_db_and_events):
     """When pdf_bytes is omitted, the injected fetch_pdf is called with the
-    arxiv id (proves the fetch is injectable; CI never hits the network)."""
+    arxiv id (proves the fetch is injectable; CI never hits the network).
+
+    ``fetch_html`` is now injected too, returning None. ``prefer_html`` defaults
+    to True, so a call that omits ``pdf_bytes`` tries the HTML leg first, and
+    with no HTML fetcher wired that leg is the DEFAULT one — a live
+    arxiv.org/html request from a unit test, against a host that has IP-banned
+    this box before. Injecting a None-returning HTML fetcher restores the
+    offline guarantee this test's own docstring has always claimed and leaves
+    every assertion below untouched: the HTML leg finds nothing, and the
+    injected PDF fetcher is still what supplies the body."""
     seen = {}
 
     def fake_fetch(arxiv_id: str) -> bytes:
@@ -210,6 +228,7 @@ def test_injected_fetch_callable_is_used(temp_db_and_events):
         paper,
         investigation_id="inv-test",
         fetch_pdf=fake_fetch,
+        fetch_html=lambda _id: None,  # offline: no default arxiv.org/html fetch
         db_path=temp_db_and_events["db_path"],
         embedder=_StubEmbedder(),
     )
@@ -275,6 +294,14 @@ def test_cli_real_run_splits_servable_and_gated(
     monkeypatch.setattr(
         "acquisition.arxiv.adapter._default_fetch_pdf",
         lambda arxiv_id: per_id_pdf[arxiv_id],
+    )
+    # ...and the default HTML fetcher, which the HTML-first default reaches
+    # BEFORE the PDF leg. Stubbing only the PDF fetcher left this "real
+    # (offline) run" issuing a live arxiv.org/html request per paper. Returning
+    # None means "this paper has no HTML rendering", which routes the run down
+    # the PDF leg every assertion below is written against.
+    monkeypatch.setattr(
+        "acquisition.arxiv.adapter._default_fetch_html", lambda arxiv_id: None
     )
     monkeypatch.setenv(
         "ANTIEK_ARXIV_THROTTLE_PATH",
@@ -373,6 +400,13 @@ def test_live_429_pdf_fetch_sets_sentinel_and_halts_batch(
 
     monkeypatch.setattr(
         "acquisition.arxiv.adapter._default_fetch_pdf", fetch_429
+    )
+    # The HTML leg runs first under the HTML-first default; stub it to "no HTML
+    # rendering" so this test still drives the PDF 429 path it is written for,
+    # offline. Without this the batch issues live arxiv.org/html requests and
+    # the 429 under test never happens.
+    monkeypatch.setattr(
+        "acquisition.arxiv.adapter._default_fetch_html", lambda arxiv_id: None
     )
 
     report = ingest_arxiv.run_batch(

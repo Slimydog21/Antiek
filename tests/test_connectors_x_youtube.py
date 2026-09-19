@@ -332,3 +332,154 @@ def _fake_meter(state_path: Path):
     """Build a QuotaMeter pinned to a temp state dir + UTC reset."""
     from runtime.connectors.quota_meter import QuotaMeter
     return QuotaMeter("youtube", state_dir=str(state_path), reset_tz="UTC")
+
+
+# ---------------------------------------------------------------------------
+# (f) Search return shapes — the seam the research-tool route reads
+#
+# Both connectors decode the vendor envelope here so the route never has to.
+# A page whose ids and authors sit where the vendor really puts them (X keys a
+# tweet by ``id`` and names the author only in ``includes.users``; YouTube
+# nests the id under ``id.videoId`` keyed by ``id.kind``) must come back flat.
+# ---------------------------------------------------------------------------
+
+def test_x_search_flattens_tweets_and_joins_the_author_expansion(artifact: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        assert params["expansions"] == "author_id"
+        assert params["user.fields"] == "username"
+        return httpx.Response(200, json={
+            "data": [
+                {
+                    "id": "1799999999999999999",
+                    "text": "First hit.",
+                    "author_id": "44196397",
+                    "created_at": "2026-08-12T09:30:00.000Z",
+                    "conversation_id": "1799999999999999999",
+                },
+                {
+                    "id": "1799999999999999998",
+                    "text": "Hit whose author X declined to expand.",
+                    "author_id": "999",
+                    "created_at": "2026-08-12T09:31:00.000Z",
+                    "conversation_id": "1799999999999999998",
+                },
+            ],
+            "includes": {"users": [{"id": "44196397", "username": "labnotes"}]},
+            "meta": {"result_count": 2},
+        })
+
+    conn = XTwitterConnector(
+        artifact_path=artifact,
+        key_bytes=_TEST_KEY_BYTES,
+        client=httpx.Client(transport=_mock_transport(handler)),
+        governor=_fake_governor(tmp_dir="/tmp/unused5"),
+    )
+    conn.attach_key(_X_BEARER)
+    tweets = conn.search_tweets("fusion materials", max_results=10)
+    assert tweets == [
+        {
+            "tweet_id": "1799999999999999999",
+            "text": "First hit.",
+            "author_handle": "labnotes",
+            "created_at": "2026-08-12T09:30:00.000Z",
+            "conversation_id": "1799999999999999999",
+        },
+        {
+            "tweet_id": "1799999999999999998",
+            "text": "Hit whose author X declined to expand.",
+            "author_handle": "",
+            "created_at": "2026-08-12T09:31:00.000Z",
+            "conversation_id": "1799999999999999998",
+        },
+    ]
+    conn.close()
+
+
+def test_youtube_search_parses_nested_ids_and_snippets(artifact: str, tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "kind": "youtube#searchListResponse",
+            "items": [
+                {
+                    "id": {"kind": "youtube#video", "videoId": "dQw4w9WgXcQ"},
+                    "snippet": {
+                        "publishedAt": "2026-07-01T12:00:00Z",
+                        "channelId": "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+                        "title": "Fusion first-wall materials, explained",
+                        "description": "Tungsten armour trade space.",
+                        "channelTitle": "Lab Notes",
+                    },
+                },
+                {
+                    "id": {"kind": "youtube#channel", "channelId": "UC_channel_1"},
+                    "snippet": {"title": "A channel", "channelTitle": "A channel"},
+                },
+                {"id": {"kind": "youtube#video"}, "snippet": {"title": "No id at all"}},
+            ],
+        })
+
+    conn = YouTubeDataConnector(
+        artifact_path=artifact,
+        key_bytes=_TEST_KEY_BYTES,
+        client=httpx.Client(transport=_mock_transport(handler)),
+        meter=_fake_meter(tmp_path / "quota5"),
+    )
+    conn.attach_key(_YT_KEY)
+    hits = conn.search("fusion materials", max_results=5)
+    assert [(h.video_id, h.kind) for h in hits] == [
+        ("dQw4w9WgXcQ", "video"),
+        ("UC_channel_1", "channel"),
+    ]
+    assert hits[0].title == "Fusion first-wall materials, explained"
+    assert hits[0].channel_title == "Lab Notes"
+    assert hits[0].published_at == "2026-07-01T12:00:00Z"
+    conn.close()
+
+
+def test_youtube_search_of_an_empty_page_is_empty(artifact: str, tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"kind": "youtube#searchListResponse", "items": []})
+
+    conn = YouTubeDataConnector(
+        artifact_path=artifact,
+        key_bytes=_TEST_KEY_BYTES,
+        client=httpx.Client(transport=_mock_transport(handler)),
+        meter=_fake_meter(tmp_path / "quota6"),
+    )
+    conn.attach_key(_YT_KEY)
+    assert conn.search("nothing matches this", max_results=5) == []
+    conn.close()
+
+
+def test_youtube_hit_without_a_kind_takes_the_one_its_id_field_implies(
+    artifact: str, tmp_path: Path
+) -> None:
+    """``id.kind`` missing must not silently make a channel look like a video.
+
+    The route turns ``kind`` into the candidate's URL, so a channel id read as
+    a video builds ``watch?v=<channel id>`` — a link that resolves to nothing
+    and a control that looks like it worked. The id field the vendor did fill
+    already says which kind it is.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"items": [
+            {"id": {"videoId": "v1"}, "snippet": {"title": "A video"}},
+            {"id": {"channelId": "UC_no_kind"}, "snippet": {"title": "A channel"}},
+            {"id": {"playlistId": "PL_no_kind"}, "snippet": {"title": "A playlist"}},
+        ]})
+
+    conn = YouTubeDataConnector(
+        artifact_path=artifact,
+        key_bytes=_TEST_KEY_BYTES,
+        client=httpx.Client(transport=_mock_transport(handler)),
+        meter=_fake_meter(tmp_path / "quota7"),
+    )
+    conn.attach_key(_YT_KEY)
+    hits = conn.search("anything", max_results=5)
+    assert [(h.video_id, h.kind) for h in hits] == [
+        ("v1", "video"),
+        ("UC_no_kind", "channel"),
+        ("PL_no_kind", "playlist"),
+    ]
+    conn.close()
