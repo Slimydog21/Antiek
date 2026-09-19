@@ -92,6 +92,12 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from interfaces.research.api.account_memory_identity import (
+    FORBIDDEN_OWNERS,
+    OPERATOR_STORAGE_SENTINEL,
+    SESSION_AUTH_METHOD,
+    derive_owner_from_verified_email,
+)
 from runtime.byok.store import (
     CredentialIntegrityError,
     CredentialMetadata,
@@ -207,10 +213,55 @@ def _registered_name_belongs_to(name: str, owner_user_id: str) -> bool:
 
 
 def request_owner_user_id(request: Request) -> str:
-    value = getattr(request.state, "user_id", _LEGACY_OWNER_USER_ID)
-    if not isinstance(value, str) or not value or len(value) > 256:
+    """Resolve the owner namespace this request's settings records key on.
+
+    This returned ``request.state.user_id`` verbatim, and every production
+    login mints ``user_id="__operator__"`` — so with more than one address on
+    the operator allowlist, every operator shared one namespace: models,
+    credentials, usage, budgets, lineup, tiers and privacy rows were all
+    readable and spendable by anyone allowed to sign in.
+
+    Resolve through the SAME shared derivation as account memory, BYOT
+    dispatch and connected-tool search (``account_memory_identity``), so one
+    person is one owner everywhere: a session-cookie request has already had
+    its address verified and allowlist-checked by the auth middleware, and
+    ``request.state.user_email`` carries it. Machine methods
+    (``bearer_token``, ``cloudflare_service_token``) prove no person, so the
+    sentinel fails closed for them exactly as it does in the other three
+    predicates. There is deliberately NO read-fallback that lets a derived
+    owner claim legacy ``__operator__`` rows — re-owning those is the
+    explicit one-way migration in ``tools/migrate_owner_namespace.py``.
+
+    One deliberate exception: when operator-auth enforcement is disabled
+    (``unauthenticated_local``, or no auth middleware at all as in the
+    bare-app settings tests) there is provably one operator and no allowlist,
+    so the legacy sentinel still names that one person and local dev keeps
+    working. The middleware stamps a real ``auth_method`` on every
+    authenticated path, so this branch is unreachable once auth is on.
+    """
+    state = getattr(request, "state", None)
+    method = getattr(state, "auth_method", None)
+    value = getattr(state, "user_id", None)
+    if method in (None, "unauthenticated_local"):
+        owner = value if isinstance(value, str) and value else _LEGACY_OWNER_USER_ID
+        if len(owner) > 256:
+            raise HTTPException(status_code=401, detail="authenticated user identity required")
+        return owner
+    if not isinstance(value, str) or not value.strip() or len(value) > 256:
         raise HTTPException(status_code=401, detail="authenticated user identity required")
-    return value
+    normalized = value.strip()
+    if normalized.casefold() not in FORBIDDEN_OWNERS:
+        # A genuine per-user id (Sprint 22+). Used verbatim; the e-mail
+        # fallback below is not reached.
+        return normalized
+    if normalized.casefold() != OPERATOR_STORAGE_SENTINEL or method != SESSION_AUTH_METHOD:
+        # "shared"/"service"/"local" get no fallback anywhere, and the
+        # operator sentinel resolves only on a human-verified session.
+        raise HTTPException(status_code=401, detail="authenticated user identity required")
+    derived = derive_owner_from_verified_email(getattr(state, "user_email", None))
+    if derived is None:
+        raise HTTPException(status_code=401, detail="authenticated user identity required")
+    return derived
 
 
 def _registry_path() -> Path:
