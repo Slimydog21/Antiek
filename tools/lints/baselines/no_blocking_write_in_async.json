@@ -1,0 +1,295 @@
+{
+  "generated_at": "2026-09-19T14:57:00.321700+00:00",
+  "lint": "no_blocking_write_in_async",
+  "schema_version": 1,
+  "violations": [
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 173,
+      "path": "interfaces/research/api/account_memory_routes.py"
+    },
+    {
+      "col": 25,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 2229,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 2309,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 3210,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 3309,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 3339,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 3411,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 3498,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4124,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4236,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4320,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4350,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4678,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4699,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4713,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4731,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4752,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4771,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4842,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4868,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4887,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4908,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4940,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 4975,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 5006,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 5067,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 5150,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 5188,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 5625,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 6123,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 6283,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 6426,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 6487,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 259,
+      "path": "interfaces/research/api/federation.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 290,
+      "path": "interfaces/research/api/federation.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 314,
+      "path": "interfaces/research/api/federation.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 405,
+      "path": "interfaces/research/api/federation.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 481,
+      "path": "interfaces/research/api/federation.py"
+    },
+    {
+      "col": 9,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 193,
+      "path": "interfaces/research/api/feedback_routes.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 123,
+      "path": "interfaces/research/api/settings_compute_capacity.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 287,
+      "path": "interfaces/research/api/settings_tiers.py"
+    },
+    {
+      "col": 13,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 658,
+      "path": "interfaces/research/api/upload_routes.py"
+    },
+    {
+      "col": 18,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 462,
+      "path": "interfaces/research/api/wrestling.py"
+    },
+    {
+      "col": 18,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 625,
+      "path": "interfaces/research/api/wrestling.py"
+    },
+    {
+      "col": 17,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 251,
+      "path": "substrate/multimedia/knowledge_registration.py"
+    },
+    {
+      "col": 17,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 336,
+      "path": "substrate/multimedia/knowledge_registration.py"
+    },
+    {
+      "col": 17,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 412,
+      "path": "substrate/multimedia/knowledge_registration.py"
+    },
+    {
+      "col": 10,
+      "kind": "blocking-write-in-async:connect_write",
+      "line": 206,
+      "path": "substrate/research_bridge/ingest_file.py"
+    }
+  ]
+}
