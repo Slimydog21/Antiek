@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import {
+  ApiError,
   createDeliverable,
   getDeliverable,
   listDeliverables,
@@ -18,7 +19,11 @@ import { IdeaDump } from "./Brainstorm/IdeaDump";
 import Outline from "./Outline";
 import { ProjectTypeField } from "./ProjectType";
 import { onTraceIntent } from "./Editor/traceIntent";
-import { getTraceTarget, type RepositoryHit } from "./writeApi";
+import {
+  createDeliverableFromInvestigation,
+  getTraceTarget,
+  type RepositoryHit,
+} from "./writeApi";
 
 /**
  * Write Home — the Write door (Product Depth SPR-07 M1).
@@ -131,6 +136,20 @@ export default function WriteHome() {
     if (!newTitle.trim()) return;
     setStarting(true);
     try {
+      // Daily-loop outline→Write auto-import: promote depositable synthesis
+      // into a seeded outline (POST /write/deliverables/from-investigation).
+      // Honest fallback when no synthesis: empty linked piece (ConnectResearch).
+      try {
+        const promoted = await createDeliverableFromInvestigation({
+          investigation_id: resolved.investigationId,
+          deliverable_kind: projectType.kind,
+          title: newTitle.trim(),
+        });
+        navigate(`/write/${promoted.deliverable_id}`);
+        return;
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 404)) throw e;
+      }
       const d = await createDeliverable({
         title: newTitle.trim(),
         // The freeform type resolves to the closest kind (ProjectType.resolveKind);

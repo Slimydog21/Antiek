@@ -150,8 +150,9 @@ export default function ConnectResearch({
               className="text-xs text-aurora"
               data-testid="connect-research-preferred"
             >
-              Pre-selected from your notebook — connect that research to keep
-              the daily loop (research → notebook → write).
+              Pre-selected from your notebook — connect to import the research
+              outline into Write when a synthesis exists (else an empty linked
+              piece). Daily loop: research → notebook → write.
             </p>
           ) : null}
           <ul className="max-h-56 space-y-1 overflow-y-auto">
