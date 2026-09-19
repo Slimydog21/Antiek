@@ -1,6 +1,6 @@
 # Antiek × Turbopuffer — Hybrid Search Substrate Integration Spec
 
-**Status**: Draft v1, 2026-05-23. Operator: Faisal. **Pricing-verification sharpen pass 2026-05-23 (same day)** revised §1.3 + §11.1: prior draft claimed "<$5/month at operator scale" + "cheapest acquisition-adjacent service"; verified pricing shows a **$64/month Launch tier floor** with no free or hobby tier. §13.1 unlock-criteria win-threshold tightened from "≥10% on ≥60%" to "≥15% on ≥70%" + cost-commitment affirmation, to justify $768/year against $0/year DuckDB cosine baseline.
+**Status**: Draft v1, 2026-05-23. Operator: Faisal. **Pricing correction 2026-08-12:** current official pricing lists a **$16/month Launch minimum** (not the obsolete $64/month figure retained in historical analysis below). Reconfirm immediately before any paid live run. The ≥15% on ≥70% quality ratchet remains unchanged; lower cost does not substitute for measured relevance.
 **Scope**: Decide where turbopuffer (serverless vector + BM25 + hybrid
 search infrastructure) integrates into Antiek's retrieval layer,
 where it's deferred behind unlock criteria, and which adoption shapes

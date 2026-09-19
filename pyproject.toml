@@ -73,6 +73,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+turbopuffer_shadow = [
+  "turbopuffer==2.8.0",
+]
 # Acquisition-path-specific dependencies. Pull these in only where needed.
 arxiv = ["arxiv>=2.1"]
 # pypdfium2: PDF page rasterization for the DeepSeek-OCR-2 scanned-PDF
