@@ -171,7 +171,7 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
             content=html,
             headers={
                 "Content-Disposition": (
-                    f'attachment; filename="synthesis-{synthesis_id}.html"'
+                    f'inline; filename="synthesis-{synthesis_id}.html"'
                 )
             },
         )
