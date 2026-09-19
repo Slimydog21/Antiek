@@ -81,6 +81,8 @@ class FakeClient:
 class StubEmbedder:
     """Deterministic tiny embedding so the graph-write path runs fast offline."""
 
+    dimension = 16
+
     def encode(self, text: str) -> list[float]:
         h = abs(hash(text)) % 64
         v = [0.0] * 16

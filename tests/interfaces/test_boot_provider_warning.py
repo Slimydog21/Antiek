@@ -11,7 +11,7 @@ def test_zero_providers_logs_warning(caplog):
     with caplog.at_level(logging.WARNING):
         log_zero_providers_warning_if_needed(set())
     assert any(
-        "0 providers registered" in r.message and "source .env" in r.message
+        "0 providers registered" in r.message and "platform/.env" in r.message
         for r in caplog.records
     )
 
