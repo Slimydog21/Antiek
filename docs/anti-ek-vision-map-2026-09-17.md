@@ -8,6 +8,9 @@
 
 ---
 
+
+> **Tip-honest leave-off:** see [`docs/decisions/anti-ek-composite-rollup-2026-09-19.md`](./decisions/anti-ek-composite-rollup-2026-09-19.md) (tip `7b871c58…` / #3219; composite ~98). Vision KEEP/ARCHIVE rows below are corpus posture, not the live scorecard.
+
 ## Locked vision (target of remap)
 
 | # | Pillar |

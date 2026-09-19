@@ -64,6 +64,12 @@ For current execution state, consult these companion docs in this order:
 - **`docs/decisions/*.md`** — per-decision audit trail for individual
   verdicts (dispatch-tier verdict, Lemon UI verdict, agentmail deferral,
   etc.). Cross-referenced from `operator_gate_actions.md` G-entries.
+- **`docs/decisions/anti-ek-composite-rollup-2026-09-19.md`** +
+  **`docs/decisions/anti-ek-leaveoff-2026-09-19.md`** — Anti-Ek recursive-
+  perfection **tip-honest** anatomy scorecard, residual list, and decision
+  index (Speak/Ads/BYOT/Notebook/HTML/CLI). Read for current leave-off tip
+  SHA + composite; do not invent mount/Synquery/G2/email/CPM flips from this
+  pointer.
 - **`docs/sprint30_thread_decisions.md`** — Sprint 30+ pre-decided
   threads.
 - **`docs/soc2_decision.md`** — SOC 2 Type II deferral.
