@@ -22,6 +22,8 @@ The bridge produces both blocks from the typed ``KeywordMapping`` /
 
 from __future__ import annotations
 
+from typing import Any
+
 CONNECTOR_PROMPT_VERSION = "1.0.0"
 CONNECTOR_TARGET_MODEL = "deepseek/deepseek-v4-pro"
 CONNECTOR_TEMPERATURE = 0.0
@@ -122,7 +124,7 @@ Field rules:
 LOW_CONFIDENCE_THRESHOLD = 0.80
 
 
-def render_mappings_block(mappings: list) -> str:
+def render_mappings_block(mappings: list[Any]) -> str:
     """Render a list of ``KeywordMapping`` (or compatible dicts) as
     a markdown bullet list the role reads. Each line:
 
@@ -146,7 +148,7 @@ def render_mappings_block(mappings: list) -> str:
     return "\n".join(lines)
 
 
-def render_paths_block(paths: list) -> str:
+def render_paths_block(paths: list[Any]) -> str:
     """Render structured paths as a numbered markdown list. The
     index here is the ``source_path_index`` the role cites back to
     in ``natural_language_relationships``."""
@@ -171,7 +173,7 @@ def render_paths_block(paths: list) -> str:
     return "\n".join(lines)
 
 
-def _get(obj, key, default=None):
+def _get(obj: Any, key: str, default: Any = None) -> Any:
     """Tolerate dict OR pydantic-model inputs in render helpers."""
     if hasattr(obj, key):
         return getattr(obj, key)

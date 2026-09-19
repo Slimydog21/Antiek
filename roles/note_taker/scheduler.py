@@ -28,8 +28,8 @@ try:
     from .distill import Distiller
     from .document_pass import PassResult, run_document_pass
 except ImportError:  # pragma: no cover
-    from roles.note_taker.distill import Distiller  # type: ignore[no-redef]
-    from roles.note_taker.document_pass import (  # type: ignore[no-redef]
+    from roles.note_taker.distill import Distiller
+    from roles.note_taker.document_pass import (
         run_document_pass,
     )
 
@@ -42,7 +42,7 @@ class _Job:
     document_id: str
     text: str
     investigation_id: str
-    chunk_ids: tuple
+    chunk_ids: tuple[str, ...]
     submitted_at: float
     enqueued_seq: int
 
@@ -74,7 +74,7 @@ class AsyncNoteScheduler:
         self._events_dir = events_dir
         self._pending: dict[str, _Job] = {}     # doc_id -> latest job (coalesces)
         self._cond = asyncio.Condition()
-        self._worker: asyncio.Task | None = None
+        self._worker: asyncio.Task[None] | None = None
         self._stop = False
         self._seq = 0
         self.stats = SchedulerStats()

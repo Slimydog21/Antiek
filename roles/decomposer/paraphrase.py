@@ -14,6 +14,7 @@ embedder is injected (``EmbeddingModel`` protocol from
 """
 
 from __future__ import annotations
+from typing import Any
 
 import os
 import sys
@@ -21,13 +22,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 try:
-    from ...constants import DECOMPOSER_PARAPHRASE_COSINE_MAX
-    from ...graph.search import EmbeddingModel
+    from substrate.constants import DECOMPOSER_PARAPHRASE_COSINE_MAX
+    from substrate.graph.search import EmbeddingModel
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import DECOMPOSER_PARAPHRASE_COSINE_MAX  # type: ignore[no-redef]
-    from substrate.graph.search import EmbeddingModel  # type: ignore[no-redef]
+    from substrate.constants import DECOMPOSER_PARAPHRASE_COSINE_MAX
+    from substrate.graph.search import EmbeddingModel
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ class ParaphraseFlag:
     sub_question: str
     cosine: float
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "index": self.index,
             "sub_question": self.sub_question,

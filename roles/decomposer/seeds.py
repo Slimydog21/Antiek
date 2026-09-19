@@ -37,11 +37,11 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 try:
-    from ...constants import ANTIEK_PARAM_VERSION
+    from substrate.constants import ANTIEK_PARAM_VERSION
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import ANTIEK_PARAM_VERSION  # type: ignore[no-redef]
+    from substrate.constants import ANTIEK_PARAM_VERSION
 
 
 # Confirmed-grade thesis outcomes count as positive trajectory signal.
@@ -78,11 +78,11 @@ class DecomposerExampleProposal:
     admitted_at: str | None
     admission_reason: str
     synthesis_timestamp: str
-    input_raw: dict
-    output: dict
-    metadata: dict = field(default_factory=dict)
+    input_raw: dict[str, Any]
+    output: dict[str, Any]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -99,7 +99,7 @@ def _safe_load_json(value: Any) -> Any:
         return None
 
 
-def extract_decomposer_io(agent_trace_json: Any) -> dict | None:
+def extract_decomposer_io(agent_trace_json: Any) -> dict[str, Any] | None:
     """Pull the Decomposer's user prompt + parsed output from a trace
     blob. Returns the first matching record, or None when the trace
     contains no decomposer step (criterion 4 fails)."""
@@ -160,7 +160,7 @@ def propose_examples_from_rows(
     columns, identical across observations).
     """
     # Group rows by synthesis_id, summing confirmed counts.
-    by_synth: dict[str, dict] = {}
+    by_synth: dict[str, dict[str, Any]] = {}
     for r in rows:
         rec = by_synth.setdefault(r.synthesis_id, {
             "iid": r.investigation_id,

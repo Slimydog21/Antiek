@@ -32,6 +32,7 @@ content; the seq determinism is verified against the shipped rule.
 """
 
 from __future__ import annotations
+from collections.abc import Callable
 
 from .prompt import DEFAULT_CHALLENGE_PROMPT
 
@@ -74,7 +75,7 @@ def make_dispatch_resolver(
     investigation_id: str,
     *,
     role: str = "challenger",
-):
+) -> Callable[[str, str], str | None]:
     """Build the production resolver: dispatch the challenger role, parse a
     refine-or-decline verdict. ``None`` return = decline (escalate);
     :class:`ChallengeUnavailable` raised = no model ran (honest no-key).
