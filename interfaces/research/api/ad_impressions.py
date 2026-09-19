@@ -20,6 +20,7 @@ Live activation gates per master-spec §9.0 + §9.4:
 from __future__ import annotations
 
 import duckdb
+from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -106,7 +107,7 @@ def _resolve_db_path() -> str:
     return path
 
 
-def _load_serving_inventory(con) -> tuple[
+def _load_serving_inventory(con: Any) -> tuple[
     list[TargetedInventoryItem], list[AdInventoryItem],
 ]:
     """Load the operator-curated active inventory from the V6

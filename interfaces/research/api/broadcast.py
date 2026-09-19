@@ -116,7 +116,7 @@ class EventBroadcaster:
     def __init__(self) -> None:
         self._subscribers: set[_Subscriber] = set()
         self._handlers: dict[str, list[EventHandler]] = {}
-        self._handler_tasks: set[asyncio.Task] = set()
+        self._handler_tasks: set[asyncio.Task[None]] = set()
         self._lock = asyncio.Lock()
 
     # ── WS subscribers ──────────────────────────────────────────

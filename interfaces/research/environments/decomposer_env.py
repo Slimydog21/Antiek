@@ -161,7 +161,9 @@ class DecomposerEnvironment:
         self.policy_fn = policy_fn
         self._tasks: list[DecomposerTask] = list(tasks or [])
         self.weights = dict(weights or self.DEFAULT_WEIGHTS)
-        self.paraphrase_rubric = ParaphraseGuardRubric()
+        # Rubric.__init__ (skills) is untyped outside the interfaces scope;
+        # the constructor takes no arguments.
+        self.paraphrase_rubric = ParaphraseGuardRubric()  # type: ignore[no-untyped-call]
         self._extra_rubrics: list[Any] = []
 
     # ── Task surface ──

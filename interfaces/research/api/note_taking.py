@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import os
 import sys
+from typing import Any
+from collections.abc import Awaitable, Callable
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -94,7 +96,7 @@ def _resolve_threshold() -> int:
 # ---------------------------------------------------------------------------
 
 
-def _format_recent_events_for_prompt(rows: list[dict]) -> str:
+def _format_recent_events_for_prompt(rows: list[dict[str, Any]]) -> str:
     """Compact one-line-per-event rendering of the recent wrestling
     history. The role prompt needs each event identifiable by its
     event_id (for attribution) and its type (for context). Full
@@ -145,7 +147,7 @@ def make_note_taker_handler(
     broadcaster: EventBroadcaster,
     *,
     threshold: int | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the async handler closed over a broadcaster. Maintains a
     per-investigation event counter and triggers a synthesis pass
     every ``threshold`` qualifying events. Same handler is registered
@@ -274,7 +276,7 @@ async def _run_note_synthesis(
                 # Sprint 5 day 1-2: confidence now persists from the
                 # parser into the typed event so the NotesFeed UI can
                 # render the badge.
-                confidence=note.confidence,  # type: ignore[arg-type]
+                confidence=note.confidence,
                 node_id=None,  # graph promotion comes when Sprint 6 wires it
             ),
             parent_event_id=triggering_event.event_id,

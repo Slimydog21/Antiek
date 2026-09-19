@@ -68,11 +68,11 @@ from substrate.constants import (  # noqa: E402
 class FunctionRegistry:
     """White-list of callables visible inside the REPL sandbox."""
 
-    def __init__(self):
-        self._fns: dict[str, Callable] = {}
+    def __init__(self) -> None:
+        self._fns: dict[str, Callable[..., Any]] = {}
         self._packages: list[str] = list(RLM_REPL_AVAILABLE_PACKAGES)
 
-    def install(self, name: str, fn: Callable) -> None:
+    def install(self, name: str, fn: Callable[..., Any]) -> None:
         if not callable(fn):
             raise TypeError(f"{name!r} must be callable")
         self._fns[name] = fn
@@ -123,10 +123,10 @@ class SandboxSecurityError(RuntimeError):
 
 
 class SandboxValidator(ast.NodeVisitor):
-    def __init__(self):
+    def __init__(self) -> None:
         self.errors: list[str] = []
 
-    def generic_visit(self, node):
+    def generic_visit(self, node: ast.AST) -> None:
         if type(node) not in _ALLOWED_NODE_TYPES:
             self.errors.append(
                 f"node type {type(node).__name__!r} is forbidden in the "

@@ -44,7 +44,7 @@ def _resolve_db_path() -> str:
 
 
 def _load_advertiser_budget(
-    con, advertiser_id: str,
+    con: duckdb.DuckDBPyConnection, advertiser_id: str,
 ) -> tuple[bool, int | None]:
     """Returns (advertiser_exists, monthly_budget_usd_cents)."""
     try:

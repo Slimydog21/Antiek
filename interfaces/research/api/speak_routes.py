@@ -322,7 +322,7 @@ async def create_biography(req: CreateBiographyRequest) -> BiographyCompositionR
 
 
 @speak_router.get("/projects")
-async def list_projects() -> dict:
+async def list_projects() -> dict[str, Any]:
     """List Speak projects (the operator's project index). Uses a write
     lock only to ensure the Speak schema exists on a fresh DB; the query
     itself is a read."""
@@ -355,7 +355,7 @@ async def get_project(project_id: str) -> ProjectResponse:
 
 
 @speak_router.get("/projects/{project_id}/economics")
-async def get_economics(project_id: str) -> dict:
+async def get_economics(project_id: str) -> dict[str, Any]:
     with _translate(), _write("speak/api:economics") as con:
         policy = economics_mode.policy_for_project(con, project_id)
     # The G2/G3 gate STATE, read-only (gate_status.py). The UI shows these
@@ -379,7 +379,7 @@ async def get_economics(project_id: str) -> dict:
 
 
 @speak_router.get("/feed")
-async def public_feed() -> dict:
+async def public_feed() -> dict[str, Any]:
     """The browsable PUBLIC feed (M1): projects whose intent is public —
     the surface a visitor scrolls and can 'interview-with'/chime in on.
     Honest when empty (returns ``[]``). Distinct from ``GET /projects``,
@@ -426,7 +426,7 @@ async def invite(project_id: str, req: InviteRequest) -> InviteResponse:
 
 
 @speak_router.get("/projects/{project_id}/invites")
-async def list_invites(project_id: str) -> dict:
+async def list_invites(project_id: str) -> dict[str, Any]:
     with _translate(), _write("speak/api:list_invites") as con:
         rows = invitations.lifecycle(con, project_id)
     return {"count": len(rows), "invites": rows}
@@ -446,7 +446,7 @@ async def resolve_invite(token: str) -> InviteResponse:
 
 
 @speak_router.post("/projects/{project_id}/open-public", status_code=200)
-async def open_public(project_id: str) -> dict:
+async def open_public(project_id: str) -> dict[str, Any]:
     # Gated on G7 — refuses (403) unless ANTIEK_SPEAK_PUBLIC_ECOSYSTEM.
     with _translate(), _write("speak/api:open_public") as con:
         invitations.open_public_contribution(con, project_id)
@@ -459,7 +459,7 @@ async def open_public(project_id: str) -> dict:
 
 
 @speak_router.post("/interviews/{interview_id}/consent", status_code=200)
-async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict:
+async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict[str, Any]:
     with _translate(), _write("speak/api:consent") as con:
         scopes = [ConsentScope(s) for s in req.scopes]
         state = consent_mod.record_consent(con, interview_id=interview_id, scopes=scopes)
@@ -467,7 +467,7 @@ async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict:
 
 
 @speak_router.get("/interviews/{interview_id}")
-async def get_interview(interview_id: str) -> dict:
+async def get_interview(interview_id: str) -> dict[str, Any]:
     with _translate():
         session = resume(_db(), interview_id)
     return {
@@ -480,7 +480,7 @@ async def get_interview(interview_id: str) -> dict:
 
 
 @speak_router.post("/interviews/{interview_id}/answers", status_code=201)
-async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict:
+async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict[str, Any]:
     with _translate():
         result = submit_answer(
             _db(), interview_id=interview_id, question_id=req.question_id,
@@ -493,7 +493,7 @@ async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict
 
 
 @speak_router.post("/interviews/{interview_id}/followups")
-async def interview_followups(interview_id: str) -> dict:
+async def interview_followups(interview_id: str) -> dict[str, Any]:
     with _translate():
         fus = next_followups(_db(), interview_id=interview_id)
     return {"followups": [
@@ -504,7 +504,7 @@ async def interview_followups(interview_id: str) -> dict:
 
 
 @speak_router.post("/interviews/{interview_id}/claims", status_code=201)
-async def record_interview_claim(interview_id: str, req: ClaimRequest) -> dict:
+async def record_interview_claim(interview_id: str, req: ClaimRequest) -> dict[str, Any]:
     """The answer→claim bridge: record an explicit claim attributed to
     the interviewee (about_subject / third-party tagging is a confirmed
     judgment, not an inference). Feeds corroboration + authoring +
@@ -530,7 +530,7 @@ async def record_interview_claim(interview_id: str, req: ClaimRequest) -> dict:
 
 
 @speak_router.post("/projects/{project_id}/corroborate")
-async def corroborate(project_id: str) -> dict:
+async def corroborate(project_id: str) -> dict[str, Any]:
     with _translate(), _write("speak/api:corroborate") as con:
         clusters = corroboration.corroborate_project(con, project_id)
     return {"clusters": [
@@ -546,7 +546,7 @@ async def corroborate(project_id: str) -> dict:
 
 
 @speak_router.post("/projects/{project_id}/subject-consent", status_code=200)
-async def set_subject_consent(project_id: str, req: SubjectConsentRequest) -> dict:
+async def set_subject_consent(project_id: str, req: SubjectConsentRequest) -> dict[str, Any]:
     with _translate(), _write("speak/api:subject_consent") as con:
         subject_consent_mod.record_subject_consent(
             con, project_id=project_id, subject_ref=req.subject_ref,
@@ -557,7 +557,7 @@ async def set_subject_consent(project_id: str, req: SubjectConsentRequest) -> di
 
 
 @speak_router.post("/projects/{project_id}/contributors", status_code=201)
-async def map_contributor(project_id: str, req: ContributorRequest) -> dict:
+async def map_contributor(project_id: str, req: ContributorRequest) -> dict[str, Any]:
     with _translate(), _write("speak/api:contributor") as con:
         m = contributor_mod.map_contributor(
             con, interview_id=req.interview_id, project_id=project_id,
@@ -569,7 +569,7 @@ async def map_contributor(project_id: str, req: ContributorRequest) -> dict:
 
 
 @speak_router.post("/projects/{project_id}/takedowns", status_code=201)
-async def request_takedown(project_id: str, req: TakedownRequestModel) -> dict:
+async def request_takedown(project_id: str, req: TakedownRequestModel) -> dict[str, Any]:
     with _translate(), _write("speak/api:takedown") as con:
         tid = takedown_mod.request_takedown(
             con, project_id=project_id, target_kind=req.target_kind,
@@ -579,7 +579,7 @@ async def request_takedown(project_id: str, req: TakedownRequestModel) -> dict:
 
 
 @speak_router.post("/projects/{project_id}/draft")
-async def draft(project_id: str, req: DraftRequest) -> dict:
+async def draft(project_id: str, req: DraftRequest) -> dict[str, Any]:
     with _translate(), _write("speak/api:draft") as con:
         outline = biography.assemble_outline(con, project_id=project_id)
         d = biography.generate_draft(con, project_id=project_id, outline=outline, public=req.public)
@@ -595,7 +595,7 @@ async def draft(project_id: str, req: DraftRequest) -> dict:
 
 
 @speak_router.post("/projects/{project_id}/publish", status_code=201)
-async def publish(project_id: str, req: PublishRequest) -> dict:
+async def publish(project_id: str, req: PublishRequest) -> dict[str, Any]:
     ad_revenue = _decimal(req.ad_revenue_usd, "ad_revenue_usd")
     with _translate(), _write("speak/api:publish") as con:
         result = publish_mod.publish(
@@ -617,7 +617,7 @@ async def publish(project_id: str, req: PublishRequest) -> dict:
 
 
 @speak_router.post("/interviews/{interview_id}/grade", status_code=201)
-async def grade_interview(interview_id: str, req: GradeInterviewRequest) -> dict:
+async def grade_interview(interview_id: str, req: GradeInterviewRequest) -> dict[str, Any]:
     """AI-grade one interview against the requester's information goal
     (SPR-10 M3). The grade is produced by the verifier (here: the honest
     deterministic rubric, since no ``dispatch_fn`` is injected on this
@@ -648,7 +648,7 @@ async def grade_interview(interview_id: str, req: GradeInterviewRequest) -> dict
 
 
 @speak_router.post("/projects/{project_id}/release-payout", status_code=201)
-async def release_payout(project_id: str, req: ReleasePayoutRequest) -> dict:
+async def release_payout(project_id: str, req: ReleasePayoutRequest) -> dict[str, Any]:
     """Release graded payout for a project (SPR-10 M3), routed through §9
     (``accrue_contributions``) into ESCROW — never disbursed. Enforces the
     requester's budget + per-interview cap. With zero ad buyers this
@@ -679,7 +679,7 @@ async def release_payout(project_id: str, req: ReleasePayoutRequest) -> dict:
 
 
 @speak_router.post("/projects/{project_id}/book-orders", status_code=201)
-async def order_book(project_id: str, req: BookOrderRequest) -> dict:
+async def order_book(project_id: str, req: BookOrderRequest) -> dict[str, Any]:
     with _translate(), _write("speak/api:book_order") as con:
         quote = physical_book.order_physical_book(
             con, project_id=project_id, book_format=req.book_format,
@@ -739,7 +739,7 @@ def _require_token(con: Any, token: str) -> tuple[str, str]:
 
 
 @speak_router.get("/invite/{token}")
-async def invitee_landing(token: str) -> dict:
+async def invitee_landing(token: str) -> dict[str, Any]:
     """One call for the invitee's landing page: the project they've been
     invited to, the consent scopes the invite asks for, what they've
     already granted (so a returning invitee skips re-consent), and — once
@@ -773,7 +773,7 @@ async def invitee_landing(token: str) -> dict:
 
 
 @speak_router.post("/invite/{token}/consent", status_code=200)
-async def invitee_consent(token: str, req: InviteConsentRequest) -> dict:
+async def invitee_consent(token: str, req: InviteConsentRequest) -> dict[str, Any]:
     with _translate(), _write("speak/api:invite_consent") as con:
         interview_id, _ = _require_token(con, token)
         scopes = [ConsentScope(s) for s in req.scopes]
@@ -782,7 +782,7 @@ async def invitee_consent(token: str, req: InviteConsentRequest) -> dict:
 
 
 @speak_router.post("/invite/{token}/answer", status_code=201)
-async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict:
+async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict[str, Any]:
     with _translate(), _write("speak/api:invite_answer_resolve") as con:
         interview_id, _ = _require_token(con, token)
     # submit_answer acquires its own lock(s); call outside ours.
@@ -802,7 +802,7 @@ async def invitee_voice(
     question_id: str = Query(..., min_length=1),
     duration_seconds: float = Query(default=0.0, ge=0.0),
     language: str | None = Query(default=None),
-) -> dict:
+) -> dict[str, Any]:
     """Phone-first, voice-first invitee answer (Product Depth SPR-08 M3).
 
     The headline invitee fix: a non-power-user on a phone taps to talk and

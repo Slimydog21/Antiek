@@ -43,7 +43,7 @@ from __future__ import annotations
 import math
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 
 # Direct import — interfaces/research/api/ depends on substrate + processing.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -120,7 +120,7 @@ def make_cross_doc_handler(
     *,
     embedder: EmbeddingProvider | None = None,
     threshold: float | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the async handler closed over the broadcaster + embedder
     + threshold. Same handler is registered for question.identified,
     note.emerged, and question.resolved_by_doc — it dispatches on

@@ -31,10 +31,13 @@ typed ``error.code``.
 from __future__ import annotations
 
 import duckdb
+from collections.abc import Callable
+from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from substrate.ad_inventory.advertiser_onboarding import (
+    AdvertiserRegistry,
     AdvertiserOnboardingError,
     AdvertiserRecord,
     activate_advertiser,
@@ -123,7 +126,10 @@ def _resolve_db_path() -> str:
     return path
 
 
-def _load_then_save(state_fn, **kwargs) -> AdvertiserRecord:
+def _load_then_save(
+    state_fn: Callable[..., AdvertiserRecord],
+    **kwargs: Any,
+) -> AdvertiserRecord:
     """Round-trip pattern: load → transition → save. The
     AdvertiserRegistry is purely in-memory and lives only for this
     HTTP call. Single-writer invariant enforced by db_lock."""
