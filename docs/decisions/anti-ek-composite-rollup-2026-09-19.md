@@ -1,10 +1,10 @@
 # Anti-Ek composite rollup (2026-09-19 leave-off)
 
-**Tip verified (live 2026-09-19 19:34 Asia/Riyadh)**: `7b871c58f74d81c8a5528987595553d5da00eddb` (#3219 Write/Notebook `artifact.html` inline)
+**Tip verified (live 2026-09-19 19:34 Asia/Riyadh; re-stamped after #3220 merge)**: `7da3fb3432c1d6590712a9d7a6e500bb4c03c13a` (#3220 Plans tip honesty; product ancestry through #3219 HTML inline)
 
 | Host | Evidence |
 |------|----------|
-| Mac Mini dogfood `:8000/health` | `build_sha=7b871c58…`, `status=ok`, tip-aligned probe `/private/tmp/antiek-main-probe` |
+| Mac Mini dogfood `:8000/health` | `build_sha=7da3fb34…`, `status=ok`, tip-aligned probe `/private/tmp/antiek-main-probe` |
 | Prod `api.antiek.ai/health` | Same tip SHA; `turbopuffer_api_key_present=true`, `turbopuffer_hybrid_ready=true`; **`turbopuffer_production_default_mount=false`** (intentional) |
 | CLI swarm | Herdr Antiek **w7** focused (14 tabs); `./scripts/anti-ek-swarm-review.sh --check` → `core_ready=true` + live `w7_tab_labels` (#3218) |
 
@@ -28,7 +28,7 @@ First-parent / merge tips that moved grades **after** the prior leave-off tip `7
 
 **Prod TPuf key** present — raises TurboPuffer / Production without flipping `production_default_mount`.
 
-## Anatomy scorecard (/100) — forensic, tip `7b871c58…`
+## Anatomy scorecard (/100) — forensic, tip `7da3fb34…`
 
 | Surface | Grade | Defensible basis |
 |---------|------:|------------------|
@@ -48,7 +48,7 @@ First-parent / merge tips that moved grades **after** the prior leave-off tip `7
 
 **Composite (equal-weight mean of 13 surfaces) = 1275/13 ≈ 98.08 → report **~98**.**
 
-Prior leave-offs: `440dc2ba…` ~94; `7bfff594…` ~97; this leave-off re-derives on `7b871c58…` after #3212–#3219.
+Prior leave-offs: `440dc2ba…` ~94; `7bfff594…` ~97; this leave-off re-derives on `7da3fb34…` after #3212–#3219.
 
 **Why not honest ≥99 or literal 100?** Ads≤98 until live priced demand; TurboPuffer≤96 while `production_default_mount=false`; G2 counsel + Synquery + email remain **operator** flips (honesty shipped). Inventing partnership, cents, or mount flip would violate standing. Specs/Code still have thin polish residuals.
 
@@ -62,7 +62,7 @@ Prior leave-offs: `440dc2ba…` ~94; `7bfff594…` ~97; this leave-off re-derive
 6. ~~OCR / scanned PDF~~ — shipped #3190/#3196/#3205.
 7. ~~BYOT wall-time top-up / soft-warn / hard-refuse UX~~ — shipped #3189/#3184/#3216.
 8. ~~Voice → park → discuss TP~~ — shipped #3191.
-9. ~~Mini tip lag / durable dogfood~~ — closed; tip-aligned on `7b871c58…`.
+9. ~~Mini tip lag / durable dogfood~~ — closed; tip-aligned on `7da3fb34…`.
 10. ~~Notebook continuity / CLI inventory / HTML writing-asset inline~~ — shipped #3217/#3218/#3219.
 11. ~~Plans tip honesty~~ — this leave-off.
 
@@ -91,4 +91,4 @@ Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywh
 
 ## Leave-off
 
-Infra green on tip `7b871c58…`. Mini tip-aligned. Dual structure intact. No fake money. Plans leave-off tip-honest.
+Infra green on tip `7da3fb34…`. Mini tip-aligned. Dual structure intact. No fake money. Plans leave-off tip-honest.
