@@ -97,3 +97,4 @@ def test_format_html_stays_attachment(monkeypatch):
     r = _client().get("/api/notebooks/nb1/artifact?format=html")
     assert r.status_code == 200
     assert "attachment" in r.headers["content-disposition"]
+    assert r.headers.get("x-antiek-html-projection") == "script-free; disposition=attachment"

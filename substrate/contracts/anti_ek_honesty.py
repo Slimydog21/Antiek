@@ -130,6 +130,31 @@ def assert_html_projection_header(value: str, *, disposition: str) -> None:
         )
 
 
+def html_projection_response_headers(
+    *,
+    filename: str,
+    disposition: str,
+) -> dict[str, str]:
+    """Shared HTTP headers for View HTML / export — tip-honest Specs contract.
+
+    All four artifact surfaces (research / synthesis / deliverable / notebook)
+    must emit ``X-Antiek-Html-Projection`` with this form. Do not invent a
+    second projection header name.
+    """
+    if disposition not in {"inline", "attachment"}:
+        raise HonestyContractError(
+            f"disposition must be inline|attachment, got {disposition!r}"
+        )
+    if not filename or "/" in filename or "\" in filename:
+        raise HonestyContractError(f"unsafe Content-Disposition filename: {filename!r}")
+    value = f"script-free; disposition={disposition}"
+    assert_html_projection_header(value, disposition=disposition)
+    return {
+        "Content-Disposition": f'{disposition}; filename="{filename}"',
+        HTML_PROJECTION_HEADER: value,
+    }
+
+
 __all__ = [
     "ADS_HONESTY_REQUIRED_KEYS",
     "CAPACITY_EXHAUSTED_CODE",
@@ -142,4 +167,5 @@ __all__ = [
     "assert_capacity_exhausted_shape",
     "assert_g2_synquery_honesty_shape",
     "assert_html_projection_header",
+    "html_projection_response_headers",
 ]

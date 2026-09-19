@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from substrate.contracts.anti_ek_honesty import assert_g2_synquery_honesty_shape
+
 from substrate.speak import gate_status as _gs
 
 SPEAK_RESIDUAL_REF = "docs/decisions/speak-residual-100-2026-09-18.md"
@@ -64,7 +66,7 @@ def g2_synquery_honesty() -> dict[str, Any]:
     pub = _gs.public_publishing_allowed()
     disb = _gs.disbursement_allowed()
     syn_live = _synquery_live()
-    return {
+    payload = {
         "surface": "speak_economics",
         "g2_counsel_gated": not pub.allowed,
         "g3_opt_in_gated": not pub.allowed,  # same operator flip post G2+G3
@@ -88,6 +90,8 @@ def g2_synquery_honesty() -> dict[str, Any]:
             SPEC_SYNQUERY_REF,
         ],
     }
+    assert_g2_synquery_honesty_shape(payload)
+    return payload
 
 
 __all__ = [

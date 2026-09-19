@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from substrate.contracts.anti_ek_honesty import assert_capacity_exhausted_shape
 from substrate.compute_capacity.store import (
     CapacityEvaluation,
     ComputeCapacity,
@@ -432,7 +433,7 @@ def capacity_exhausted_payload(gate: CapacityGateResult) -> dict[str, object]:
         f"capacity resets or the monthly ACU limit is raised in Settings. "
         f"BYO Token spend is separate."
     )
-    return {
+    payload = {
         "code": gate.detail,
         "message": msg,
         "used_compute_units": used,
@@ -441,3 +442,5 @@ def capacity_exhausted_payload(gate: CapacityGateResult) -> dict[str, object]:
         "used_status": gate.capacity.used_status,
         "retryable": False,
     }
+    assert_capacity_exhausted_shape(payload)
+    return payload

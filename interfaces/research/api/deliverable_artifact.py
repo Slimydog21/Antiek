@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
 
 from services.html_projection.adapters.deliverable import (
+from substrate.contracts.anti_ek_honesty import html_projection_response_headers
     DeliverableBlock,
     DeliverableExport,
     DeliverableSection,
@@ -145,11 +146,10 @@ def _script_free_html(html: str) -> str:
 
 def _html_headers(*, filename: str, inline: bool) -> dict[str, str]:
     """Honest Content-Disposition + projection metadata (no fake trust bits)."""
-    disp = "inline" if inline else "attachment"
-    return {
-        "Content-Disposition": f'{disp}; filename="{filename}"',
-        "X-Antiek-Html-Projection": f"script-free; disposition={disp}",
-    }
+    return html_projection_response_headers(
+        filename=filename,
+        disposition="inline" if inline else "attachment",
+    )
 
 
 def register_deliverable_artifact_routes(app: FastAPI) -> None:
