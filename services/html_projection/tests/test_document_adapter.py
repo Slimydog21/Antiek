@@ -307,3 +307,80 @@ def test_source_identity_rides_in_the_doc_model():
         "source_kind": "upload",
         "source_url": "https://example.com/paper.pdf",
     }
+
+
+# ── Verifier hardening: the two silent-drop paths nothing else pinned ──
+
+
+def test_a_block_nested_in_inline_markup_is_hoisted_not_dropped():
+    """A block element reached through inline markup must survive.
+
+    ``<a><img></a>`` is not an exotic shape — it is how every web page
+    writes a linked figure, and a URL ingest stores the page's own HTML, not
+    a markdown round trip. The inline flattener contributes nothing for a
+    node that is not text, so without the hoist in ``_inline`` the figure
+    leaves no trace on the surface or in the island. The same path carries a
+    table wrapped in a ``<span>`` and an image inside a heading, so all
+    three are asserted together: each one is a construct the source had and
+    the reader would never learn about.
+    """
+    body = (
+        '<p><a href="https://example.com/f"><img alt="the linked figure"></a></p>'
+        "<h2>Chapter <img alt=\"the crest\"></h2>"
+        "<p><span>lead <table><tr><td>hoisted cell</td></tr></table></span></p>"
+    )
+    doc = adapt_document_for_projection("doc-hoist", body, "url", None)
+    visible = _visible(render(doc, RenderContext()))
+    assert "the linked figure" in visible
+    assert "the crest" in visible
+    assert "<td>hoisted cell</td>" in visible
+    # The table is a real grid, not a paragraph that happens to say the words.
+    assert '<table class="antiek-table">' in visible
+    # And each one is a node in its own right, not text glued into a run.
+    types = [node["type"] for node in doc["content"]]
+    assert types.count("antiek_image") == 2
+    assert "table" in types
+
+
+def test_unmapped_node_inside_a_list_item_or_table_cell_still_renders_visibly():
+    """The visible-unsupported rule has to hold at depth, not only at the top.
+
+    ``partials/_structural.py`` dispatches a nested child through
+    ``renderer.render_block`` for exactly this reason: an unmapped construct
+    buried in a list item or a table cell must show the same placeholder it
+    would show as a sibling of the body. Flatten that seam to inline text
+    instead and the placeholder disappears, which is the failure this whole
+    module is built to prevent — so it is asserted where the seam is, one
+    level down.
+    """
+    body = (
+        "<ul><li><dl><dt>Antiek</dt><dd>Dutch for antique.</dd></dl></li></ul>"
+        "<table><tr><td><dl><dt>Wheel</dt></dl></td></tr></table>"
+    )
+    doc = adapt_document_for_projection("doc-nested-dl", body, "upload", None)
+    visible = _visible(render(doc, RenderContext()))
+    assert visible.count("unsupported block (source:dl)") == 2
+    assert "<li><div class=\"antiek-block antiek-unsupported\">" in visible
+    assert "<td><div class=\"antiek-block antiek-unsupported\">" in visible
+
+
+def test_a_br_inside_pre_is_a_line_break_not_a_deletion():
+    """A code block written with ``<br>`` keeps its lines.
+
+    A URL ingest stores the page's own serialized DOM, so ``<pre>`` arrives
+    however the site wrote it, and plenty of sites write the breaks as
+    ``<br>``. Dropping them joined the last token of one line to the first of
+    the next — ``return x * 2print(f(2))`` — which is not a formatting loss
+    but a wrong program, and it left no trace on the surface or in the island
+    to say so.
+    """
+    body = sanitize_book_html(
+        "<pre><code>def f(x):<br />    return x * 2<br /><br />print(f(2))</code></pre>"
+    )
+    assert "<br />" in body, "the sanitizer is expected to keep the break"
+    doc = adapt_document_for_projection("doc-br-pre", body, "url", None)
+    visible = _visible(render(doc, RenderContext()))
+    assert (
+        '<pre class="antiek-code"><code>def f(x):\n    return x * 2\n\nprint(f(2))</code></pre>'
+        in visible
+    )
