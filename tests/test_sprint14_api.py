@@ -262,3 +262,58 @@ def test_reorder_block_target_section_not_found_404(temp_substrate):
         "new_block_index": 0,
     })
     assert resp.status_code == 404
+
+
+def test_reorder_block_collision_preserves_the_source_attachment(temp_substrate):
+    """A colliding move must roll back whole, not half-apply.
+
+    Regression: the handler ran DELETE then INSERT with no explicit
+    transaction. DuckDB autocommits each statement, so when the INSERT hit
+    the ``section_blocks`` composite primary key the DELETE was already
+    durable — the block lost its original attachment for good and the caller
+    got an unhandled 500. Mutual exclusion under the write lock does not
+    supply atomicity; only a transaction does.
+    """
+    import duckdb
+    client = _client(temp_substrate)
+    sid, bid = _make_section_with_block(client)
+    d = client.get("/deliverables").json()["deliverables"][0]
+    s2 = client.post("/sections", json={
+        "deliverable_id": d["deliverable_id"], "section_index": 1,
+        "title": "Body",
+    }).json()
+    # Attach the same block to the target section as well, so the move
+    # collides on (section_id, block_kind, block_id).
+    client.post("/sections/attach-block", json={
+        "section_id": s2["section_id"],
+        "block_kind": "insight",
+        "block_id": bid,
+        "block_index": 3,
+    })
+
+    resp = client.post("/sections/reorder-block", json={
+        "section_id": sid,
+        "block_kind": "insight",
+        "block_id": bid,
+        "new_section_id": s2["section_id"],
+        "new_block_index": 0,
+    })
+
+    assert resp.status_code == 409
+
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        source = con.execute(
+            "SELECT 1 FROM section_blocks WHERE section_id = ? AND block_id = ?",
+            [sid, bid],
+        ).fetchone()
+        target = con.execute(
+            "SELECT block_index FROM section_blocks "
+            "WHERE section_id = ? AND block_id = ?",
+            [s2["section_id"], bid],
+        ).fetchone()
+    finally:
+        con.close()
+
+    assert source is not None, "source attachment was destroyed by a failed move"
+    assert target is not None and target[0] == 3, "target row must be untouched"
