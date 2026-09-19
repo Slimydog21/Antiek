@@ -81,6 +81,8 @@ class VoiceNoteResponseModel(BaseModel):
     note_count: int
     notes: list[str]
     emitted_event_ids: list[str]
+    parked_question_ids: list[str] = Field(default_factory=list)
+    parked_question_texts: list[str] = Field(default_factory=list)
 
 
 def register_read_voice_routes(app: FastAPI) -> None:
@@ -139,4 +141,6 @@ def register_read_voice_routes(app: FastAPI) -> None:
             note_count=len(result.notes),
             notes=[n.text for n in result.notes],
             emitted_event_ids=result.emitted_event_ids,
+            parked_question_ids=list(result.parked_question_ids),
+            parked_question_texts=list(result.parked_question_texts),
         )

@@ -142,6 +142,9 @@ export interface VoiceNoteResult {
   note_count: number;
   notes: string[];
   emitted_event_ids: string[];
+  /** question.identified ids parked into watch-for-later (may be empty). */
+  parked_question_ids?: string[];
+  parked_question_texts?: string[];
 }
 
 /** Distill a CONFIRMED voice-note transcript into anchored insight/
