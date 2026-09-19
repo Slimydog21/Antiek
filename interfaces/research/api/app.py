@@ -1981,10 +1981,20 @@ def create_app(
         # once; return last-known (default False/0) until it finishes. DuckDB
         # fields always come from the startup-cached app.state.duckdb_health
         # snapshot — /health must stay responsive under agent-work lease load.
-        if not getattr(app.state, "_flywheel_probed", False) and not getattr(
-            app.state, "_flywheel_probe_started", False
-        ):
+        import time as _time
+
+        _now = _time.monotonic()
+        _probed = getattr(app.state, "_flywheel_probed", False)
+        _ready = getattr(app.state, "flywheel_ready", False)
+        _last = float(getattr(app.state, "_flywheel_probe_mono", 0.0) or 0.0)
+        # Re-probe when never probed, OR when still false after cooldown — so an
+        # honest seed (knowledge.reused landed) can flip /health without waiting
+        # for a process restart. Once true, keep the memoized snapshot.
+        _cooldown_s = 30.0
+        _should = (not _probed) or (not _ready and (_now - _last) >= _cooldown_s)
+        if _should and not getattr(app.state, "_flywheel_probe_started", False):
             app.state._flywheel_probe_started = True
+            app.state._flywheel_probe_mono = _now
 
             async def _flywheel_bg() -> None:
                 try:
@@ -1993,6 +2003,7 @@ def create_app(
                     app.state.knowledge_reuse_count = count
                 finally:
                     app.state._flywheel_probed = True
+                    app.state._flywheel_probe_started = False
 
             asyncio.create_task(_flywheel_bg())
         duckdb_health = app.state.duckdb_health

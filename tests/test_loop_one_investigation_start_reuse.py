@@ -70,3 +70,44 @@ def test_loop_one_run_investigation_calls_reuse():
     src = Path(orch.__file__).read_text()
     assert "maybe_reuse_prior_knowledge_at_start" in src
     assert "asyncio.to_thread" in src
+
+
+def test_default_events_dir_honors_event_log_dir_alias(tmp_path, monkeypatch):
+    from substrate.event_log import default_events_dir
+
+    monkeypatch.delenv("ANTIEK_RESEARCH_EVENTS_DIR", raising=False)
+    monkeypatch.setenv("ANTIEK_EVENT_LOG_DIR", str(tmp_path / "from-ansible"))
+    assert default_events_dir() == str(tmp_path / "from-ansible")
+
+
+def test_maybe_reuse_survives_rw_connect_failure(tmp_path, monkeypatch):
+    """Ops smoke while uvicorn holds DuckDB: RW connect fails → connect_read."""
+    import duckdb as _duckdb
+
+    monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
+    db = str(tmp_path / "g.duckdb")
+    events = tmp_path / "events"
+    events.mkdir()
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(events))
+    init_database_at_path(db)
+
+    real_connect = _duckdb.connect
+
+    def _rw_fails(path, *a, **kw):
+        # Only fail the bare RW open used by maybe_reuse; allow read_only.
+        if kw.get("read_only"):
+            return real_connect(path, *a, **kw)
+        raise _duckdb.IOException("simulated exclusive lock")
+
+    monkeypatch.setattr(_duckdb, "connect", _rw_fails)
+
+    eid = maybe_reuse_prior_knowledge_at_start(
+        investigation_id="inv-reuse-ro-fallback",
+        question_text="Novel question under lock?",
+        db_path=db,
+        events_dir=str(events),
+    )
+    assert eid is not None
+    rows = list(iter_physical_events("inv-reuse-ro-fallback", events_dir=str(events)))
+    assert any(r.get("action_type") == "knowledge.reused" for r in rows)
