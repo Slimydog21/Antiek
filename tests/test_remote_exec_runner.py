@@ -218,3 +218,25 @@ async def test_command_after_finish_is_noop(events_dir):
     await r.steer(h, Command(kind=CommandKind.STOP))
     await r.cancel(h)  # idempotent teardown
     assert prov.torn_down.count("inv-0") == 1
+
+
+async def test_failed_teardown_remains_retryable_from_terminal_cancel(events_dir):
+    class FlakyTeardown(FakeProvider):
+        def __init__(self):
+            super().__init__(steps=1)
+            self.attempts = 0
+
+        async def teardown(self, sandbox):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise RuntimeError("transient delete failure")
+            await super().teardown(sandbox)
+
+    prov = FlakyTeardown()
+    runner = RemoteResearchRunner(prov, events_dir=events_dir, seal_on_complete=False)
+    handle = await runner.start("inv-0", _plan(0))
+    _ = [event async for event in runner.stream(handle)]
+    assert prov.attempts == 1
+    await runner.cancel(handle)
+    assert prov.attempts == 2
+    assert prov.torn_down == ["inv-0"]

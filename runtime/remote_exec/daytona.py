@@ -1,39 +1,22 @@
-"""Daytona implementation of ``RemoteExecProvider`` — the one provider behind
-the §16 research-fan-out exemption.
+"""Daytona transport for the research-leaf JSONL protocol.
 
-This module mirrors the optional-SDK idiom established by
-``acquisition/urls/client_browserbase.py`` (the Browserbase Wedge-2 fetcher):
-
-  * The Daytona SDK is an **optional** dependency (the ``[remote_exec]`` group
-    in ``pyproject.toml``), exactly like ``browserbase`` is the ``[browserbase]``
-    group. The module imports cleanly without it.
-  * The SDK is **lazy-imported** at first use (inside ``_load_sdk``), not at
-    module top-level, so ``import runtime.remote_exec`` works on a machine
-    that never installed it.
-  * A missing SDK or missing credentials raises ``RemoteExecUnavailable``
-    **loudly** — the same loud-failure-when-missing posture as
-    ``BrowserbaseUnavailable``. There is no silent degradation here; falling
-    back to host-local is the *factory's* explicit, logged decision, not a
-    swallowed import error.
-
-Tests never reach this code path. The suite uses a fake provider injected at
-the runner; the live Daytona run is operator-gated (credentials + spend) and
-is documented in ``infrastructure/runbooks/remote-exec-fanout.md``. This
-module therefore carries no test coverage by design — it is the production
-seam, exercised only by the operator's live smoke.
-
-The browse-loop body that runs *inside* the sandbox is supplied by DRW SPR-06
-(the real Exa → Browserbase loop); this provider is deliberately ignorant of
-it — it provisions the box, ships the loop spec, relays steering, streams
-events back, and tears the box down. That keeps Daytona a thin transport, not
-a place research logic leaks into.
+This adapter is deliberately transport-only.  It requires an immutable Daytona
+snapshot id and starts the leaf protocol already installed in that snapshot.
+It does not ship source, credentials, or an unpinned ``latest`` image at run
+time.  The actual browse worker remains a separate, not-yet-wired concern.
 """
 
 from __future__ import annotations
 
+import asyncio
+import importlib.metadata
+import json
+import math
 import os
+import re
 from collections.abc import AsyncIterator, Callable
-from typing import Any
+from dataclasses import asdict, is_dataclass
+from typing import Any, cast
 
 from .provider import (
     RemoteCommand,
@@ -45,74 +28,200 @@ from .provider import (
 )
 
 DAYTONA_PROVIDER_NAME = "daytona"
+SNAPSHOT_ENV = "ANTIEK_DAYTONA_SNAPSHOT_ID"
+SNAPSHOT_DIGEST_ENV = "ANTIEK_DAYTONA_SNAPSHOT_DIGEST"
+DEFAULT_ENTRYPOINT = "python -m runtime.remote_exec.research_leaf"
+DEFAULT_CREATE_TIMEOUT_S = 60.0
+DEFAULT_MAX_RECORD_BYTES = 1_048_576
+DEFAULT_MAX_EVENTS = 10_000
+DEFAULT_QUEUE_SIZE = 128
+DEFAULT_IDLE_TIMEOUT_S = 30.0
+DEFAULT_TOTAL_TIMEOUT_S = 900.0
+_SNAPSHOT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
+_APPROVED_WORKER = "runtime.remote_exec.approved_leaf_worker:run"
+_EVENT_KEYS = frozenset(
+    {"type", "seq", "kind", "text", "cost_usd", "tokens", "provider", "model", "data"}
+)
+_ALLOWED_KINDS = frozenset(
+    {"plan", "step", "cost", "note", "question", "status", "error", "done"}
+)
 
-# Default per-leaf sandbox parameters. Conservative: a research browse loop is
-# I/O-bound (Exa / Browserbase calls), so a small box is right; the operator
-# tunes via the runbook if a loop turns out CPU-heavy.
-DEFAULT_SANDBOX_IMAGE = "antiek/research-leaf:latest"
-DEFAULT_SANDBOX_CPU = 1
-DEFAULT_SANDBOX_MEMORY_GB = 2
 
-
-def _resolve_api_creds() -> tuple[str, str | None]:
-    """Read Daytona credentials from the environment. Raises
-    ``RemoteExecUnavailable`` (loud, not silent) if the API key is absent —
-    a missing credential while remote-exec is enabled is a config error, the
-    same posture ``client_browserbase._resolve_api_creds`` takes."""
-    api_key = os.environ.get("DAYTONA_API_KEY")
-    if not api_key:
+def _required_env() -> tuple[str, str]:
+    if not os.environ.get("DAYTONA_API_KEY"):
+        raise RemoteExecUnavailable("DAYTONA_API_KEY is required for Daytona remote exec")
+    snapshot = os.environ.get(SNAPSHOT_ENV, "").strip()
+    if not _SNAPSHOT_RE.fullmatch(snapshot):
         raise RemoteExecUnavailable(
-            "DAYTONA_API_KEY must be set when remote-exec is enabled "
-            "(ANTIEK_REMOTE_EXEC_ENABLED=1). No silent fallback to host-local "
-            "here — the factory falls back explicitly and logs it. See "
-            "infrastructure/runbooks/remote-exec-fanout.md."
+            f"{SNAPSHOT_ENV} must be an explicit conservative immutable snapshot id"
         )
-    target = os.environ.get("DAYTONA_TARGET")  # optional region/target
-    return api_key, target
+    return os.environ["DAYTONA_API_KEY"], snapshot
 
 
-def _load_sdk() -> Any:
-    """Lazy-import the Daytona SDK on first use. Raises
-    ``RemoteExecUnavailable`` if the optional ``[remote_exec]`` dependency is
-    not installed — byte-for-byte the same shape as Browserbase's
-    ``_default_session_factory`` import guard."""
+async def _await_cleanup(task: asyncio.Task[Any], *, timeout_s: float = 65.0) -> Any:
+    """Finish cleanup despite repeated cancellation, within a hard deadline."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_s
+    while True:
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(task), timeout=max(0.001, deadline - loop.time())
+            )
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if current is not None:
+                current.uncancel()
+            if loop.time() >= deadline:
+                raise RemoteExecProvisionError(
+                    "Daytona cleanup exceeded deadline"
+                ) from None
+        except TimeoutError as exc:
+            raise RemoteExecProvisionError("Daytona cleanup exceeded deadline") from exc
+
+
+def _load_sdk() -> tuple[type[Any], type[Any], type[Any]]:
     try:
-        from daytona_sdk import Daytona  # type: ignore[import-not-found]
-    except ImportError as e:
+        from daytona import (  # type: ignore[import-not-found]
+            CreateSandboxFromSnapshotParams,
+            Daytona,
+            SessionExecuteRequest,
+        )
+    except ImportError as exc:
         raise RemoteExecUnavailable(
-            "daytona-sdk not installed. Run `pip install -e '.[remote_exec]'` "
-            "to enable the research-fan-out remote-exec path. See "
-            "docs/decisions/s16-research-fanout-exemption.md for the §16 "
-            "scope this opt-in install sits behind."
-        ) from e
-    return Daytona
+            "Daytona SDK is not installed; install the remote_exec extra"
+        ) from exc
+    try:
+        version = importlib.metadata.version("daytona")
+    except importlib.metadata.PackageNotFoundError as exc:
+        raise RemoteExecUnavailable("Daytona SDK distribution metadata is missing") from exc
+    if not version.startswith("0.204."):
+        raise RemoteExecUnavailable(
+            f"Daytona SDK 0.204.x is required by the verified adapter contract (found {version})"
+        )
+    for owner, capability in (
+        (Daytona, "create"),
+        (Daytona, "delete"),
+        (CreateSandboxFromSnapshotParams, "model_validate"),
+        (SessionExecuteRequest, "model_validate"),
+    ):
+        if not callable(getattr(owner, capability, None)):
+            raise RemoteExecUnavailable(
+                f"Daytona SDK lacks required capability {owner.__name__}.{capability}"
+            )
+    return Daytona, CreateSandboxFromSnapshotParams, SessionExecuteRequest
+
+
+def _plan_payload(plan: Any) -> dict[str, Any]:
+    raw = asdict(plan) if is_dataclass(plan) else dict(vars(plan))  # type: ignore[arg-type]
+    # The wire contract is intentionally narrow.  Unknown plan fields, paths,
+    # objects, and caller environment never cross into the sandbox.
+    budget = raw.get("budget") or {}
+    return {
+        "investigation_id": str(raw.get("investigation_id", "")),
+        "sub_question": str(raw.get("sub_question", "")),
+        "parent_investigation_id": raw.get("parent_investigation_id"),
+        "budget": {
+            "cost_usd": float(budget.get("cost_usd", 0.0)),
+            "max_steps": int(budget.get("max_steps", 0)),
+        },
+    }
+
+
+def _finite_nonnegative(value: object, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise RemoteExecRuntimeError(f"Daytona event {name} must be numeric")
+    result = float(value)
+    if not math.isfinite(result) or result < 0:
+        raise RemoteExecRuntimeError(f"Daytona event {name} must be finite and non-negative")
+    return result
+
+
+def _decode_event(record: bytes, *, previous_seq: int) -> RemoteStepEvent:
+    if not record or len(record) > DEFAULT_MAX_RECORD_BYTES:
+        raise RemoteExecRuntimeError("Daytona leaf emitted an empty or oversized JSONL record")
+    try:
+        def pairs(rows: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, item in rows:
+                if key in result:
+                    raise ValueError(f"duplicate JSON key {key}")
+                result[key] = item
+            return result
+        value = json.loads(
+            record,
+            parse_constant=lambda token: (_ for _ in ()).throw(
+                ValueError(f"non-standard JSON constant {token}")
+            ),
+            object_pairs_hook=pairs,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise RemoteExecRuntimeError(f"Daytona leaf emitted invalid JSONL: {exc}") from exc
+    if not isinstance(value, dict) or value.get("type") != "event":
+        raise RemoteExecRuntimeError("Daytona leaf record must be an event object")
+    if not set(value).issubset(_EVENT_KEYS):
+        raise RemoteExecRuntimeError("Daytona leaf event contains reserved/unknown keys")
+    seq = value.get("seq")
+    if isinstance(seq, bool) or not isinstance(seq, int) or seq != previous_seq + 1:
+        raise RemoteExecRuntimeError("Daytona leaf event sequence must be contiguous from 1")
+    kind = value.get("kind")
+    if kind not in _ALLOWED_KINDS:
+        raise RemoteExecRuntimeError("Daytona leaf event kind is outside the closed vocabulary")
+    tokens = value.get("tokens", 0)
+    if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens < 0:
+        raise RemoteExecRuntimeError("Daytona leaf event tokens must be a non-negative integer")
+    data = value.get("data", {})
+    if not isinstance(data, dict):
+        raise RemoteExecRuntimeError("Daytona leaf event data must be an object")
+    encoded_data = json.dumps(data, separators=(",", ":"), allow_nan=False).encode()
+    if len(encoded_data) > 262_144:
+        raise RemoteExecRuntimeError("Daytona leaf event data exceeded structured-data limit")
+    for key in ("text", "provider", "model"):
+        if not isinstance(value.get(key, ""), str):
+            raise RemoteExecRuntimeError(f"Daytona leaf event {key} must be a string")
+    return RemoteStepEvent(
+        seq=seq,
+        kind=kind,
+        text=value.get("text", ""),
+        cost_usd=_finite_nonnegative(value.get("cost_usd", 0.0), "cost_usd"),
+        tokens=tokens,
+        provider=value.get("provider", ""),
+        model=value.get("model", ""),
+        data=data,
+    )
+
+
+def _is_not_found(exc: BaseException) -> bool:
+    return getattr(exc, "status_code", None) == 404 or getattr(exc, "status", None) == 404
 
 
 class DaytonaProvider:
-    """Production ``RemoteExecProvider`` over Daytona sandboxes.
-
-    Constructing this does **not** import the SDK or touch the network — the
-    SDK loads on the first ``provision``. So a process can construct a
-    ``DaytonaProvider`` (e.g. the factory does, to check availability) without
-    the SDK installed; only *using* it requires the optional dependency, at
-    which point the missing SDK raises ``RemoteExecUnavailable`` loudly.
-
-    ``client_factory`` is an injection seam mirroring Browserbase's
-    ``session_factory`` — production leaves it ``None`` (lazy SDK load); a
-    test that wanted to exercise this class (the suite does not) could pass a
-    fake. The default suite path uses a wholly separate fake provider instead,
-    so this class stays untouched by tests."""
+    """Current Daytona SDK implementation of ``RemoteExecProvider``."""
 
     def __init__(
         self,
         *,
         client_factory: Callable[[], Any] | None = None,
-        image: str = DEFAULT_SANDBOX_IMAGE,
-        loop_entrypoint: str = "python -m antiek.remote.research_leaf",
+        snapshot_id: str | None = None,
+        entrypoint: str = DEFAULT_ENTRYPOINT,
+        params_factory: Callable[..., Any] | None = None,
+        request_factory: Callable[..., Any] | None = None,
+        max_events: int = DEFAULT_MAX_EVENTS,
+        idle_timeout_s: float = DEFAULT_IDLE_TIMEOUT_S,
+        total_timeout_s: float = DEFAULT_TOTAL_TIMEOUT_S,
+        snapshot_verifier: Callable[[str, str], bool] | None = None,
+        approved_worker_ready: bool = False,
     ):
         self._client_factory = client_factory
-        self._image = image
-        self._loop_entrypoint = loop_entrypoint
+        self._snapshot_id = snapshot_id
+        self._entrypoint = entrypoint
+        self._params_factory = params_factory
+        self._request_factory = request_factory
+        self._max_events = max_events
+        self._idle_timeout_s = idle_timeout_s
+        self._total_timeout_s = total_timeout_s
+        self._snapshot_verifier = snapshot_verifier
+        self._approved_worker_ready = approved_worker_ready
+        self._teardown_locks: dict[str, asyncio.Lock] = {}
         self._client: Any = None
 
     @property
@@ -120,104 +229,264 @@ class DaytonaProvider:
         return DAYTONA_PROVIDER_NAME
 
     def probe(self) -> None:
-        """Availability check the factory calls at launch — resolves
-        credentials and lazy-loads the SDK *without* provisioning a sandbox or
-        touching the network. Raises ``RemoteExecUnavailable`` loudly if the
-        SDK or ``DAYTONA_API_KEY`` is missing; the factory catches exactly
-        this and falls back to host-local with one logged line."""
-        _resolve_api_creds()
+        _, snapshot = _required_env()
         _load_sdk()
-
-    def _client_or_load(self) -> Any:
-        if self._client is not None:
-            return self._client
-        if self._client_factory is not None:
-            self._client = self._client_factory()
-            return self._client
-        api_key, target = _resolve_api_creds()
-        Daytona = _load_sdk()
-        # The SDK's exact constructor shape is operator-verified during the
-        # live smoke; we pass the credential and (optional) target it
-        # documents. Wrapped so a constructor change surfaces as a clear
-        # provision error rather than an opaque SDK traceback.
-        try:
-            self._client = Daytona(api_key=api_key, target=target)
-        except Exception as e:  # pragma: no cover — live-only
-            raise RemoteExecProvisionError(
-                f"Daytona client init failed: {type(e).__name__}: {e}"
-            ) from e
-        return self._client
-
-    async def provision(self, plan: Any) -> Sandbox:  # pragma: no cover — live-only
-        client = self._client_or_load()
-        iid = getattr(plan, "investigation_id", "unknown")
-        try:
-            workspace = client.create(image=self._image)
-        except Exception as e:
-            raise RemoteExecProvisionError(
-                f"Daytona sandbox provision failed for {iid}: "
-                f"{type(e).__name__}: {e}"
-            ) from e
-        return Sandbox(
-            sandbox_id=getattr(workspace, "id", str(id(workspace))),
-            investigation_id=iid,
-            meta={"workspace": workspace, "image": self._image},
-        )
-
-    async def run(  # pragma: no cover — live-only
-        self, sandbox: Sandbox, plan: Any
-    ) -> AsyncIterator[RemoteStepEvent]:
-        """Start the in-sandbox browse loop and stream its events back.
-
-        The real wiring (ship the SPR-06 loop spec into the sandbox, start
-        ``loop_entrypoint``, decode the streamed JSONL event channel into
-        ``RemoteStepEvent``s) is finalized against the SDK during the
-        operator's live smoke. The shape is fixed here: an async generator
-        that yields one ``RemoteStepEvent`` per emitted line and ends when the
-        channel closes."""
-        workspace = sandbox.meta.get("workspace")
-        if workspace is None:
-            raise RemoteExecRuntimeError(
-                f"sandbox {sandbox.sandbox_id} has no workspace handle"
+        digest = os.environ.get(SNAPSHOT_DIGEST_ENV, "").strip()
+        if not self._approved_worker_ready:
+            raise RemoteExecUnavailable("approved Daytona research worker is not implemented")
+        if self._snapshot_verifier is None or not digest:
+            raise RemoteExecUnavailable(
+                "authoritative Daytona snapshot digest verification is unavailable"
             )
-        # The async-generator body is intentionally a single guarded yield
-        # site so the streaming contract (one event per line, ends on close)
-        # is unambiguous to the operator wiring the SDK channel.
-        raise RemoteExecRuntimeError(
-            "DaytonaProvider.run is the production seam; it is exercised only "
-            "by the operator-gated live smoke (see the runbook). The test "
-            "suite uses a fake provider. Wire the SDK exec/stream call here "
-            "against the SPR-06 loop spec."
-        )
-        yield  # pragma: no cover — marks this an async generator for typing
-
-    async def steer(  # pragma: no cover — live-only
-        self, sandbox: Sandbox, command: RemoteCommand
-    ) -> None:
-        workspace = sandbox.meta.get("workspace")
-        if workspace is None:
-            return  # safe no-op: nothing to steer
-        # Relay the signal into the sandbox's control channel. Cooperative,
-        # like the host-local checkpoint — never a process-kill.
-
-    async def teardown(self, sandbox: Sandbox) -> None:  # pragma: no cover — live-only
-        """Destroy the sandbox. Idempotent: a missing/already-removed
-        workspace is a no-op, so cancel-then-complete double teardown is
-        safe."""
-        workspace = sandbox.meta.get("workspace")
-        if workspace is None:
-            return
-        client = self._client
-        if client is None:
-            return
         try:
-            client.remove(workspace)
-        except Exception:
-            # Best-effort: a sandbox that is already gone (provider GC'd it,
-            # a prior teardown removed it) must not raise on the second call.
-            pass
+            verified = self._snapshot_verifier(snapshot, digest)
+        except Exception as exc:
+            raise RemoteExecUnavailable("Daytona snapshot attestation failed") from exc
+        if not verified:
+            raise RemoteExecUnavailable("Daytona snapshot digest did not match attestation")
+
+    def _resolve(self) -> tuple[Any, str, Callable[..., Any], Callable[..., Any]]:
+        if self._client_factory is None:
+            _, env_snapshot = _required_env()
+            Daytona, sdk_params, sdk_request = _load_sdk()
+            params_factory: Callable[..., Any] = sdk_params
+            request_factory: Callable[..., Any] = sdk_request
+            if self._client is None:
+                # Current SDK reads DAYTONA_API_KEY/API_URL/TARGET itself.  Do
+                # not duplicate or place the credential in sandbox metadata.
+                self._client = Daytona()
+        else:
+            env_snapshot = ""
+            params_factory = cast(
+                Callable[..., Any], self._params_factory or (lambda **kw: kw)
+            )
+            request_factory = cast(
+                Callable[..., Any], self._request_factory or (lambda **kw: kw)
+            )
+            if self._client is None:
+                self._client = self._client_factory()
+        snapshot = (self._snapshot_id or env_snapshot).strip()
+        if not _SNAPSHOT_RE.fullmatch(snapshot):
+            raise RemoteExecUnavailable(
+                "an explicit conservative immutable Daytona snapshot id is required"
+            )
+        return self._client, snapshot, params_factory, request_factory
+
+    async def provision(self, plan: Any) -> Sandbox:
+        client, snapshot, Params, _ = self._resolve()
+        iid = str(getattr(plan, "investigation_id", ""))
+        params = Params(
+            snapshot=snapshot,
+            language="python",
+            labels={"antiek-purpose": "research-leaf", "antiek-investigation": iid},
+            public=False,
+            auto_delete_interval=10,
+        )
+        create_task = asyncio.create_task(asyncio.to_thread(
+            client.create, params, timeout=DEFAULT_CREATE_TIMEOUT_S
+        ))
+        try:
+            workspace = await asyncio.shield(create_task)
+        except asyncio.CancelledError:
+            # A thread-backed create cannot be cancelled. Wait for it to settle,
+            # then synchronously reclaim anything it allocated before propagating.
+            workspace = await _await_cleanup(create_task)
+            cleanup = asyncio.create_task(
+                asyncio.to_thread(client.delete, workspace, timeout=60, wait=True)
+            )
+            try:
+                await _await_cleanup(cleanup)
+            except Exception as exc:
+                if not _is_not_found(exc):
+                    raise RemoteExecProvisionError(
+                        f"cancelled Daytona provision cleanup failed: {type(exc).__name__}"
+                    ) from exc
+            raise
+        except Exception as exc:
+            raise RemoteExecProvisionError(
+                f"Daytona sandbox provision failed for {iid}: {type(exc).__name__}"
+            ) from exc
+        return Sandbox(
+            sandbox_id=str(workspace.id),
+            investigation_id=iid,
+            meta={"workspace": workspace},
+        )
+
+    async def run(self, sandbox: Sandbox, plan: Any) -> AsyncIterator[RemoteStepEvent]:
+        workspace = sandbox.meta.get("workspace")
+        if workspace is None:
+            raise RemoteExecRuntimeError("Daytona sandbox handle is missing")
+        _, _, _, Request = self._resolve()
+        process = workspace.process
+        session_id = f"antiek-{sandbox.investigation_id}"[:64]
+        queue: asyncio.Queue[tuple[str, str] | BaseException | None] = asyncio.Queue(
+            maxsize=DEFAULT_QUEUE_SIZE
+        )
+        buffer = bytearray()
+        previous_seq = 0
+        emitted = 0
+        command_id: str | None = None
+        collector: asyncio.Task[None] | None = None
+
+        async def on_stdout(chunk: str) -> None:
+            await queue.put(("stdout", chunk))
+
+        async def on_stderr(chunk: str) -> None:
+            await queue.put(("stderr", chunk))
+
+        async def collect_logs() -> None:
+            assert command_id is not None
+            try:
+                await process.get_session_command_logs_async(
+                    session_id, command_id, on_stdout, on_stderr
+                )
+            except Exception as exc:
+                await queue.put(exc)
+            finally:
+                await queue.put(None)
+
+        try:
+            await asyncio.to_thread(process.create_session, session_id)
+            response = await asyncio.to_thread(
+                process.execute_session_command,
+                session_id,
+                Request(command=self._entrypoint, run_async=True, suppress_input_echo=True),
+            )
+            command_id = str(response.cmd_id)
+            sandbox.meta.update({"session_id": session_id, "command_id": command_id})
+            start_line = json.dumps(
+                {"type": "start", "protocol": 1, "worker": _APPROVED_WORKER,
+                 "plan": _plan_payload(plan)},
+                separators=(",", ":"),
+                allow_nan=False,
+            ) + "\n"
+            await asyncio.to_thread(
+                process.send_session_command_input, session_id, command_id, start_line
+            )
+            collector = asyncio.create_task(collect_logs())
+            deadline = asyncio.get_running_loop().time() + self._total_timeout_s
+            saw_done = False
+            while True:
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    raise RemoteExecRuntimeError("Daytona leaf exceeded total deadline")
+                try:
+                    item = await asyncio.wait_for(
+                        queue.get(), timeout=min(self._idle_timeout_s, remaining)
+                    )
+                except TimeoutError as exc:
+                    raise RemoteExecRuntimeError("Daytona leaf exceeded idle deadline") from exc
+                if item is None:
+                    break
+                if isinstance(item, BaseException):
+                    raise RemoteExecRuntimeError(
+                        f"Daytona log stream failed: {type(item).__name__}"
+                    ) from item
+                channel, chunk = item
+                if channel == "stderr":
+                    if chunk.strip():
+                        raise RemoteExecRuntimeError("Daytona leaf wrote to stderr")
+                    continue
+                buffer.extend(chunk.encode("utf-8"))
+                if len(buffer) > DEFAULT_MAX_RECORD_BYTES and b"\n" not in buffer:
+                    raise RemoteExecRuntimeError("Daytona leaf JSONL record exceeded limit")
+                while b"\n" in buffer:
+                    raw, _, remainder = buffer.partition(b"\n")
+                    buffer[:] = remainder
+                    if raw.endswith(b"\r"):
+                        raw = raw[:-1]
+                    event = _decode_event(bytes(raw), previous_seq=previous_seq)
+                    if saw_done:
+                        raise RemoteExecRuntimeError("Daytona leaf emitted after terminal done")
+                    previous_seq = event.seq
+                    emitted += 1
+                    if emitted > self._max_events:
+                        raise RemoteExecRuntimeError("Daytona leaf exceeded event limit")
+                    saw_done = event.kind == "done"
+                    yield event
+            await collector
+            if buffer:
+                raise RemoteExecRuntimeError("Daytona leaf closed with unterminated JSONL")
+            if not emitted or not saw_done:
+                raise RemoteExecRuntimeError("Daytona leaf must emit exactly terminal done")
+            status = await asyncio.to_thread(process.get_session_command, session_id, command_id)
+            if status.exit_code != 0:
+                raise RemoteExecRuntimeError(
+                    f"Daytona leaf exited nonzero ({status.exit_code})"
+                )
+        except asyncio.CancelledError:
+            cleanup = asyncio.create_task(self.teardown(sandbox))
+            await _await_cleanup(cleanup)
+            raise
+        except RemoteExecRuntimeError:
+            raise
+        except Exception as exc:
+            raise RemoteExecRuntimeError(
+                f"Daytona leaf runtime failed: {type(exc).__name__}"
+            ) from exc
         finally:
-            sandbox.meta.pop("workspace", None)
+            if collector is not None and not collector.done():
+                collector.cancel()
+                await asyncio.gather(collector, return_exceptions=True)
+
+    async def steer(self, sandbox: Sandbox, command: RemoteCommand) -> None:
+        workspace = sandbox.meta.get("workspace")
+        session_id = sandbox.meta.get("session_id")
+        command_id = sandbox.meta.get("command_id")
+        if workspace is None or not session_id or not command_id:
+            return
+        line = json.dumps(
+            {"type": "control", "protocol": 1, "signal": command.signal.value,
+             "payload": command.payload},
+            separators=(",", ":"), allow_nan=False,
+        ) + "\n"
+        if len(line.encode()) > DEFAULT_MAX_RECORD_BYTES:
+            raise RemoteExecRuntimeError("Daytona control record exceeded limit")
+        try:
+            await asyncio.to_thread(
+                workspace.process.send_session_command_input,
+                session_id,
+                command_id,
+                line,
+            )
+        except Exception as exc:
+            raise RemoteExecRuntimeError(
+                f"Daytona steer failed: {type(exc).__name__}"
+            ) from exc
+
+    async def teardown(self, sandbox: Sandbox) -> None:
+        workspace = sandbox.meta.get("workspace")
+        if workspace is None:
+            return
+        lock = self._teardown_locks.setdefault(sandbox.sandbox_id, asyncio.Lock())
+        async with lock:
+            workspace = sandbox.meta.get("workspace")
+            if workspace is None:
+                return
+            client, _, _, _ = self._resolve()
+            last: Exception | None = None
+            for attempt in range(3):
+                try:
+                    await asyncio.wait_for(
+                        asyncio.to_thread(client.delete, workspace, timeout=20, wait=True),
+                        timeout=25,
+                    )
+                    last = None
+                    break
+                except Exception as exc:
+                    if _is_not_found(exc):
+                        last = None
+                        break
+                    last = exc
+                    if attempt < 2:
+                        await asyncio.sleep(0.05 * (2 ** attempt))
+            if last is not None:
+                raise RemoteExecRuntimeError(
+                    f"Daytona teardown failed after 3 attempts; orphan cleanup required: "
+                    f"{type(last).__name__}"
+                ) from last
+            sandbox.meta.clear()
 
 
-__all__ = ["DaytonaProvider", "DAYTONA_PROVIDER_NAME"]
+__all__ = ["DaytonaProvider", "DAYTONA_PROVIDER_NAME", "SNAPSHOT_ENV",
+           "SNAPSHOT_DIGEST_ENV"]

@@ -113,7 +113,7 @@ notdiamond = [
 # fallback, but only via the explicit factory decision, not a swallowed
 # ImportError.)
 remote_exec = [
-  "daytona-sdk>=0.10",
+  "daytona==0.204.0",
 ]
 # Deliverable export — Sprint 15 §3.4 "PDF, EPUB, Substack" formats.
 # Lazy-imported in the export endpoint; missing deps return a 503 with

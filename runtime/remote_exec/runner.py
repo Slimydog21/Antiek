@@ -36,6 +36,7 @@ recorded the teardown.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import sys
@@ -278,12 +279,10 @@ class RemoteResearchRunner:
                     outbox_db_path=self._outbox_db_path,
                 )
             except Exception as e:  # seal is best-effort
-                try:
+                with contextlib.suppress(Exception):
                     logger.warning(
                         "investigation seal failed (best-effort): iid=%s "
                         "events_dir=%s: %r", iid, self._events_dir, e)
-                except Exception:
-                    pass  # a broken log channel must not break the finish path
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 
@@ -293,18 +292,15 @@ class RemoteResearchRunner:
         idempotent teardown guarantee no double-destroy error."""
         if st.torn_down or st.sandbox is None:
             return
-        st.torn_down = True
         try:
             await self._provider.teardown(st.sandbox)
+            st.torn_down = True
         except Exception as e:  # teardown is best-effort
-            try:
+            with contextlib.suppress(Exception):
                 logger.warning(
-                    "sandbox teardown failed (best-effort, NOT retried — "
-                    "st.torn_down already set): sandbox_id=%s "
+                    "sandbox teardown failed (best-effort; retry remains possible): sandbox_id=%s "
                     "investigation_id=%s: %r",
                     st.sandbox.sandbox_id, st.plan.investigation_id, e)
-            except Exception:
-                pass  # a broken log channel must not break teardown isolation
 
     # -- protocol: stream ----------------------------------------------
 
@@ -344,12 +340,10 @@ class RemoteResearchRunner:
         if st.sandbox is not None:
             signal = _SIGNAL_MAP.get(command.kind)
             if signal is not None:
-                try:
+                with contextlib.suppress(Exception):
                     await self._provider.steer(
                         st.sandbox, RemoteCommand(signal=signal, payload=dict(command.payload))
                     )
-                except Exception:  # pragma: no cover — steer is best-effort
-                    pass
 
     # -- protocol: status / cost / cancel ------------------------------
 
@@ -386,12 +380,10 @@ class RemoteResearchRunner:
         # task and tear the sandbox down. Teardown is unconditional — a
         # cancelled leaf never leaks a sandbox (rigor: the negative test).
         if st.sandbox is not None:
-            try:
+            with contextlib.suppress(Exception):
                 await self._provider.steer(
                     st.sandbox, RemoteCommand(signal=RemoteSignal.STOP)
                 )
-            except Exception:  # pragma: no cover
-                pass
         if st.task is not None:
             try:
                 await asyncio.wait_for(asyncio.shield(st.task), timeout=5.0)

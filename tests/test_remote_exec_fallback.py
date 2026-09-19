@@ -85,6 +85,24 @@ def test_unavailable_via_provider_factory(monkeypatch, caplog):
     assert len([r for r in caplog.records if r.levelno >= logging.WARNING]) == 1
 
 
+def test_daytona_stub_probe_forces_factory_fallback(monkeypatch, caplog):
+    from runtime.remote_exec.daytona import DaytonaProvider
+
+    monkeypatch.setenv(ENABLE_ENV, "1")
+    monkeypatch.setenv("DAYTONA_API_KEY", "redacted")
+    monkeypatch.setenv("ANTIEK_DAYTONA_SNAPSHOT_ID", "snapshot-explicit-123")
+    monkeypatch.setattr("runtime.remote_exec.daytona._load_sdk", lambda: (object, object, object))
+    provider = DaytonaProvider(
+        snapshot_id="snapshot-explicit-123",
+        snapshot_verifier=lambda _snapshot, _digest: True,
+        approved_worker_ready=False,
+    )
+    with caplog.at_level(logging.WARNING, logger="antiek.remote_exec"):
+        runner = build_research_runner(loop_fn=make_demo_loop(steps=1), provider=provider)
+    assert isinstance(runner, HostLocalRunner)
+    assert "approved Daytona research worker is not implemented" in caplog.text
+
+
 def test_shared_budget_threaded_through_both_runners(monkeypatch):
     # The factory passes the same BudgetManager to whichever runner it picks,
     # so the aggregate cap is shared regardless of fallback.
