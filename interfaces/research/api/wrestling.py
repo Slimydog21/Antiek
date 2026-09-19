@@ -24,6 +24,7 @@ sees structured claims stream into the notes panel.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import sys
@@ -457,40 +458,48 @@ def make_document_loaded_handler(
         if not event.document_id:
             return  # malformed — the wrestling validator should have rejected
 
-        try:
-            ensure_initialized(resolved_db)
-            con = connect_write(resolved_db, purpose="wrestling.document_loaded")
-        except Exception as exc:  # pragma: no cover — diagnostic
-            print(
-                f"wrestling.document_loaded: cannot acquire DB write — {exc!r}",
-                flush=True,
-            )
-            return
-
         p = event.payload
-        try:
-            insert_document(
-                con,
-                document_id=event.document_id,
-                source_tier=4,  # conservative default; tier_assigner will refine later
-                document_type=p.media_type,
-                source_uri=p.source_uri,
-                title=p.title,
-                investigation_id=event.investigation_id,
-                metadata={
-                    "content_hash": p.content_hash,
-                    "size_bytes": p.size_bytes,
-                    "page_count": p.page_count,
-                },
-                on_conflict="ignore",
-            )
-        except Exception as exc:  # pragma: no cover — diagnostic
-            print(
-                f"wrestling.document_loaded: insert failed — {exc!r}",
-                flush=True,
-            )
-        finally:
-            con.close()
+
+        def _sync() -> bool:
+            try:
+                ensure_initialized(resolved_db)
+                con = connect_write(resolved_db, purpose="wrestling.document_loaded")
+            except Exception as exc:  # pragma: no cover — diagnostic
+                print(
+                    f"wrestling.document_loaded: cannot acquire DB write — {exc!r}",
+                    flush=True,
+                )
+                return False
+
+            try:
+                insert_document(
+                    con,
+                    document_id=event.document_id,
+                    source_tier=4,  # conservative default; tier_assigner will refine later
+                    document_type=p.media_type,
+                    source_uri=p.source_uri,
+                    title=p.title,
+                    investigation_id=event.investigation_id,
+                    metadata={
+                        "content_hash": p.content_hash,
+                        "size_bytes": p.size_bytes,
+                        "page_count": p.page_count,
+                    },
+                    on_conflict="ignore",
+                )
+            except Exception as exc:  # pragma: no cover — diagnostic
+                print(
+                    f"wrestling.document_loaded: insert failed — {exc!r}",
+                    flush=True,
+                )
+            finally:
+                con.close()
+            return True
+
+        # flock wait off the event loop (#3111 to_thread class).
+        acquired = await asyncio.to_thread(_sync)
+        if not acquired:
+            return
 
         # RLM bridge: above-threshold long docs need the recursive
         # wrestling pattern (§11.6 + RLM-1). The decision is
@@ -620,70 +629,78 @@ def make_region_selected_handler(
             )
             return
 
-        try:
-            ensure_initialized(resolved_db)
-            con = connect_write(resolved_db, purpose="wrestling.region_selected")
-        except Exception as exc:  # pragma: no cover — diagnostic
-            print(
-                f"wrestling.region_selected: cannot acquire DB write — {exc!r}",
-                flush=True,
-            )
-            return
+        def _sync() -> str | None:
+            try:
+                ensure_initialized(resolved_db)
+                con = connect_write(resolved_db, purpose="wrestling.region_selected")
+            except Exception as exc:  # pragma: no cover — diagnostic
+                print(
+                    f"wrestling.region_selected: cannot acquire DB write — {exc!r}",
+                    flush=True,
+                )
+                return None
 
-        try:
-            # Ensure the parent document exists. If the document.loaded
-            # handler fired first this is a no-op; if the surface
-            # somehow posted a region without a load (replay scenarios),
-            # we synthesize a placeholder row so the chunks FK holds.
-            insert_document(
-                con,
-                document_id=event.document_id,
-                source_tier=4,
-                document_type="pdf",
-                investigation_id=event.investigation_id,
-                on_conflict="ignore",
-            )
-            insert_chunk(
-                con,
-                chunk_id=chunk_id,
-                document_id=event.document_id,
-                chunk_index=p.char_start,  # use char_start as a stable index
-                section_path=f"page {p.page}" if p.page is not None else None,
-                text=p.text_excerpt,
-                embedding=vec,
-                token_count=len(p.text_excerpt.split()),
-            )
-            # Anchor the chunk as a graph node so traversal-side
-            # consumers (the grounder) can find it via search +
-            # connect via edges. ``label`` is a truncated excerpt for
-            # discoverability; the full text lives on the chunk row.
-            label = p.text_excerpt[:80].strip()
-            if not label:
-                label = f"region {p.region_id}"
-            node_id = insert_node(
-                con,
-                canonical_label=label,
-                node_type="claim",
-                graph_scope="cross_domain",
-                investigation_id=event.investigation_id,
-                embedding=vec,
-                metadata={
-                    "chunk_id": chunk_id,
-                    "document_id": event.document_id,
-                    "region_id": p.region_id,
-                    "page": p.page,
-                },
-                parent_event_id=event.event_id,
-                on_conflict="ignore",
-            )
-            _ = node_id  # for clarity — id derived deterministically from label
-        except Exception as exc:  # pragma: no cover — diagnostic
-            print(
-                f"wrestling.region_selected: insert failed — {exc!r}",
-                flush=True,
-            )
-        finally:
-            con.close()
+            try:
+                # Ensure the parent document exists. If the document.loaded
+                # handler fired first this is a no-op; if the surface
+                # somehow posted a region without a load (replay scenarios),
+                # we synthesize a placeholder row so the chunks FK holds.
+                insert_document(
+                    con,
+                    document_id=event.document_id,
+                    source_tier=4,
+                    document_type="pdf",
+                    investigation_id=event.investigation_id,
+                    on_conflict="ignore",
+                )
+                insert_chunk(
+                    con,
+                    chunk_id=chunk_id,
+                    document_id=event.document_id,
+                    chunk_index=p.char_start,  # use char_start as a stable index
+                    section_path=f"page {p.page}" if p.page is not None else None,
+                    text=p.text_excerpt,
+                    embedding=vec,
+                    token_count=len(p.text_excerpt.split()),
+                )
+                # Anchor the chunk as a graph node so traversal-side
+                # consumers (the grounder) can find it via search +
+                # connect via edges. ``label`` is a truncated excerpt for
+                # discoverability; the full text lives on the chunk row.
+                node_label = p.text_excerpt[:80].strip()
+                if not node_label:
+                    node_label = f"region {p.region_id}"
+                node_id = insert_node(
+                    con,
+                    canonical_label=node_label,
+                    node_type="claim",
+                    graph_scope="cross_domain",
+                    investigation_id=event.investigation_id,
+                    embedding=vec,
+                    metadata={
+                        "chunk_id": chunk_id,
+                        "document_id": event.document_id,
+                        "region_id": p.region_id,
+                        "page": p.page,
+                    },
+                    parent_event_id=event.event_id,
+                    on_conflict="ignore",
+                )
+                _ = node_id  # for clarity — id derived deterministically from label
+                return node_label
+            except Exception as exc:  # pragma: no cover — diagnostic
+                print(
+                    f"wrestling.region_selected: insert failed — {exc!r}",
+                    flush=True,
+                )
+                return None
+            finally:
+                con.close()
+
+        # flock wait off the event loop (#3111 to_thread class).
+        label = await asyncio.to_thread(_sync)
+        if label is None:
+            return
 
         # Broadcast the emitted GRAPH_NODE_INSERTED event so subscribed
         # WS clients see the graph populating in real time. We look it

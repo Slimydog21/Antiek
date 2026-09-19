@@ -36,6 +36,7 @@ Honesty rules (load-bearing):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from datetime import UTC, datetime
@@ -283,7 +284,8 @@ async def create_chunk_tier_override(request: Request) -> TierOverrideRow:
             status_code=404, detail=f"chunk {normalized_chunk_id!r} not found"
         )
     set_at = datetime.now(UTC)
-    try:
+
+    def _sync() -> Any:
         with connect_write(db, purpose="tier_override_write", timeout_s=_LOCK_TIMEOUT_S) as con:
             original_tier = _chunk_current_tier(con, normalized_chunk_id)
             if original_tier is None:
@@ -300,11 +302,15 @@ async def create_chunk_tier_override(request: Request) -> TierOverrideRow:
                 set_by=owner,
                 set_at=set_at,
             )
-            row = con.execute(
+            return con.execute(
                 "SELECT chunk_id, original_tier, override_tier, set_by, reason, set_at "
                 "FROM chunk_tier_overrides WHERE chunk_id = ? AND set_at = ?",
                 [normalized_chunk_id, set_at.astimezone(UTC).replace(tzinfo=None)],
             ).fetchone()
+
+    try:
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        row = await asyncio.to_thread(_sync)
     except HTTPException:
         raise
     except (WriteLockTimeout, OSError, duckdb.Error) as exc:
