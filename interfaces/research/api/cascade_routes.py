@@ -385,10 +385,7 @@ def _research_loop_factory() -> BrowseLoop:
                 BACKEND_ENV,
                 backend_kind,
             )
-        return cast(
-            BrowseLoop,
-            make_contained_gather_loop(backend, steps=2, cost_per_step=0.01),
-        )
+        return make_contained_gather_loop(backend, steps=2, cost_per_step=0.01)
 
     if mode == "exa":
         return cast(BrowseLoop, make_exa_gather_loop(top_k=3))
