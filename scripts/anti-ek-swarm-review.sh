@@ -7,8 +7,9 @@
 #   ./scripts/anti-ek-swarm-review.sh [base-ref]        # parallel reviews
 #
 # Writes /tmp/antiek-swarm-review-{claude,glmf,grok}.txt — no secrets.
-# Cite: docs/anti-ek-cli-swarm.md
+# Cite: docs/anti-ek-cli-swarm.md ; docs/decisions/cli-herdr-swarm-ready-2026-09-19.md
 set -euo pipefail
+# PATH discipline (#3181): ~/.local/bin BEFORE Homebrew so Claude 2.1.x wins brew.
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:$HOME/.kimi-code/bin:$PATH"
 
 MODE="review"
@@ -34,12 +35,29 @@ MAX_DIFF_BYTES="${ANTIEK_SWARM_MAX_DIFF_BYTES:-200000}"
 
 _have() { command -v "$1" >/dev/null 2>&1; }
 
+_git_short() {
+  local dir="$1"
+  if [[ -d "$dir/.git" ]] || git -C "$dir" rev-parse --git-dir >/dev/null 2>&1; then
+    git -C "$dir" rev-parse --short HEAD 2>/dev/null || echo "?"
+  else
+    echo "not-a-git-dir"
+  fi
+}
+
 _check() {
   {
     echo "anti-ek-swarm-check $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "host=$(hostname 2>/dev/null || echo unknown)"
     echo "cwd=$ROOT"
+    echo "cwd_tip=$(_git_short "$ROOT")"
     echo "PATH_ok=$( [[ ":$PATH:" == *":$HOME/.local/bin:"* ]] && echo yes || echo no )"
+    _local_idx=$(awk -v RS=: -v p="$HOME/.local/bin" '{if($0==p){print NR; exit}}' <<<"$PATH")
+    _brew_idx=$(awk -v RS=: -v p="/opt/homebrew/bin" '{if($0==p){print NR; exit}}' <<<"$PATH")
+    if [[ -n "${_local_idx:-}" && ( -z "${_brew_idx:-}" || $_local_idx -lt $_brew_idx ) ]]; then
+      echo "PATH_local_before_brew=yes"
+    else
+      echo "PATH_local_before_brew=no"
+    fi
     echo
     echo "## CLIs"
     local core_ok=1
@@ -78,23 +96,96 @@ _check() {
         else
           echo "WARN Antiek w7 not found in herdr workspace list (see $OUT_DIR/antiek-herdr-workspaces.json)"
         fi
+        # Focused workspace honesty (do not invent labels).
+        if command -v python3 >/dev/null 2>&1; then
+          python3 - "$OUT_DIR/antiek-herdr-workspaces.json" <<'PY' || true
+import json, sys
+path = sys.argv[1]
+try:
+    data = json.load(open(path))
+except Exception as e:
+    print(f"WARN herdr workspace JSON parse failed: {e}")
+    raise SystemExit(0)
+workspaces = data.get("result", data).get("workspaces", data.get("workspaces", []))
+focused = [w for w in workspaces if w.get("focused")]
+if focused:
+    w = focused[0]
+    print(f"OK  focused_workspace={w.get('workspace_id')} label={w.get('label')!r} tabs={w.get('tab_count')}")
+else:
+    print("WARN no focused herdr workspace (UI idle?)")
+antiek = [w for w in workspaces if w.get("workspace_id") == "w7" or w.get("label") == "Antiek"]
+if antiek:
+    w = antiek[0]
+    print(f"OK  antiek_tabs={w.get('tab_count')} panes={w.get('pane_count')} focused={bool(w.get('focused'))}")
+PY
+        fi
       else
         echo "WARN herdr workspace list failed (server down?)"
+      fi
+      if herdr tab list >"$OUT_DIR/antiek-herdr-tabs.json" 2>/dev/null; then
+        if command -v python3 >/dev/null 2>&1; then
+          python3 - "$OUT_DIR/antiek-herdr-tabs.json" <<'PY' || true
+import json, sys, re
+path = sys.argv[1]
+try:
+    data = json.load(open(path))
+except Exception as e:
+    print(f"WARN herdr tab JSON parse failed: {e}")
+    raise SystemExit(0)
+tabs = data.get("result", data).get("tabs", data.get("tabs", []))
+w7 = [t for t in tabs if t.get("workspace_id") == "w7"]
+labels = [str(t.get("label") or "") for t in sorted(w7, key=lambda x: x.get("number") or 0)]
+print(f"OK  w7_tab_count={len(w7)}")
+if labels:
+    print("OK  w7_tab_labels=" + ",".join(labels))
+# Soft role-tab honesty — WARN only; never invent/rename tabs.
+role_res = {
+    "claude": re.compile(r"^claude$", re.I),
+    "glmf|codex|glm": re.compile(r"^(glmf|glm|codex)(-|$|\d)", re.I),
+    "herdr": re.compile(r"^herdr$", re.I),
+}
+lower = [l.lower() for l in labels]
+for name, rx in role_res.items():
+    if any(rx.search(l) for l in lower):
+        print(f"OK  w7_role_tab~={name}")
+    else:
+        print(f"WARN w7 missing role-ish tab matching {name} (observed only; do not auto-create)")
+PY
+        else
+          echo "WARN python3 missing — cannot summarize w7 tabs"
+        fi
+      else
+        echo "WARN herdr tab list failed"
       fi
     else
       echo "MISS herdr"
     fi
     echo
-    echo "## Dogfood worktree"
+    echo "## Dogfood worktrees (preferred first)"
+    # Tip-sync probe is the Anti-Ek recursive-perfection dogfood tree.
+    # deploy-main / legacy .worktrees remain OK when present but may lag tip.
+    local preferred_ok=0
     for wt in \
+      "/private/tmp/antiek-main-probe" \
       "/Users/slimydog/Antiek/deploy-main-20260917" \
       "/Users/slimydog/Antiek/.worktrees/anti-ek-use-main-20260917"; do
       if [[ -d "$wt" ]]; then
-        echo "OK  $wt"
+        echo "OK  $wt (tip=$(_git_short "$wt"))"
+        if [[ "$wt" == "/private/tmp/antiek-main-probe" ]]; then
+          preferred_ok=1
+        fi
       else
         echo "MISS $wt"
       fi
     done
+    if [[ $preferred_ok -eq 0 ]]; then
+      echo "WARN preferred tip-sync probe /private/tmp/antiek-main-probe missing — use deploy-main or create probe"
+    fi
+    if [[ -d "/Users/slimydog/Antiek/platform" ]]; then
+      echo "OK  /Users/slimydog/Antiek/platform (ansible inventory + .venv)"
+    else
+      echo "MISS /Users/slimydog/Antiek/platform"
+    fi
     echo
     if [[ $core_ok -eq 1 ]]; then
       echo "RESULT core_ready=true (claude + grok + glm*/glmf*)"
@@ -113,17 +204,9 @@ fi
 
 git fetch origin "$(echo "$BASE" | sed "s#origin/##")" 2>/dev/null || true
 
-# Prefer product-path diff when those files changed; else full branch diff.
-if git diff --name-only "${BASE}...HEAD" 2>/dev/null | grep -qE '^(interfaces/research/api/books.py|interfaces/research/api/upload_routes.py|tests/test_sources_upload.py)$'; then
-  git diff "${BASE}...HEAD" -- \
-    interfaces/research/api/books.py \
-    interfaces/research/api/upload_routes.py \
-    tests/test_sources_upload.py \
-    docs/anti-ek-mac-mini-dogfood.md \
-    > "$DIFF_FILE"
-else
-  git diff "${BASE}...HEAD" > "$DIFF_FILE" || : > "$DIFF_FILE"
-fi
+# Full branch diff by default. (Legacy books/upload specialty path retired —
+# it silently under-scoped Anti-Ek PRs outside that era.)
+git diff "${BASE}...HEAD" > "$DIFF_FILE" || : > "$DIFF_FILE"
 
 DIFF_BYTES=$(wc -c < "$DIFF_FILE" | tr -d ' ')
 if [[ "${DIFF_BYTES:-0}" -gt "$MAX_DIFF_BYTES" ]]; then

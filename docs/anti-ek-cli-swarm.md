@@ -8,6 +8,7 @@ on this machine. **Never print API keys, tokens, or values from
 Companion stub (shorter): [`docs/swarm/anti-ek-mac-mini-cli-swarm.md`](./swarm/anti-ek-mac-mini-cli-swarm.md).
 Helper: [`scripts/anti-ek-swarm-review.sh`](../scripts/anti-ek-swarm-review.sh)
 (`--check` readiness smoke; default parallel review; `--dry-run`).
+Deprecated alias [`scripts/swarm-review-pr.sh`](../scripts/swarm-review-pr.sh) now **execs** the same script (do not use the old homebrew-first / `glmf-codex exec` path).
 
 ## Dual-structure rule (read this first)
 
@@ -48,14 +49,18 @@ Binaries on this Mini (**2026-09-19** probe):
 | `glmf-codex` | `~/.local/bin/glmf-codex` | Codex CLI **0.154.0** |
 | `codex` | `~/.local/bin/codex` | Codex CLI **0.154.0** |
 | `mimo` | `~/.local/bin/mimo` | **0.1.0** |
-| `kimi` | `~/.kimi-code/bin/kimi` | **0.43.0** (needs `~/.kimi-code/bin` on PATH) |
+| `kimi` | `~/.kimi-code/bin/kimi` | **2.0.0** (needs `~/.kimi-code/bin` on PATH) |
 | `herdr` | `~/.local/bin/herdr` | **0.9.0** |
 | `gh` | `/opt/homebrew/bin/gh` | installed |
 
-**Dogfood / deploy worktree (preferred):**
-`/Users/slimydog/Antiek/deploy-main-20260917`
+**Dogfood tip-sync worktree (preferred for Anti-Ek recursive perfection):**
+`/private/tmp/antiek-main-probe`
 
-Legacy swarm worktree (still present):
+Deploy / ansible companion (inventory + `.venv`):
+`/Users/slimydog/Antiek/platform`
+
+Legacy dogfood trees (may lag tip; still OK when present):
+`/Users/slimydog/Antiek/deploy-main-20260917`,
 `/Users/slimydog/Antiek/.worktrees/anti-ek-use-main-20260917`
 
 ## Herdr — Antiek workspace **w7** (convention, not a new feature)
@@ -70,16 +75,19 @@ pane` socket helpers.
 | Focus | `herdr workspace focus w7` (only when the operator asked you to drive Herdr) |
 | List tabs | `herdr tab list` → filter `workspace_id == "w7"` |
 
-**Observed w7 tab convention (2026-09-19):**
+**Observed w7 tab convention (re-probed 2026-09-19 evening, 14 tabs):**
 
 | Tab label | Role in the swarm |
 |-----------|-------------------|
-| `claude` | Reviewer (careful). Often focused when Cursor/SSH agents are live. |
-| `codex` / GLM tabs | Implementer / mechanical review (`glmf-codex` / `glm-codex`). |
+| `claude` | Reviewer (careful). |
+| `glmf` | Implementer / mechanical review (`glmf-codex`). |
+| `kimi` | Reviewer backup. |
 | `deepseek` | Alternate implementer / adversary. |
 | `herdr` | Ops / Herdr itself — not for Antiek app code. |
 | `PR Sweep` / `PRs` | Merge-train / PR hygiene. |
-| Topic tabs (`mascot`, `passkey`, `algos and graph`, …) | Feature lanes — one concern per tab. |
+| Topic tabs (`mascot`, `passkey`, `algos and graph`, `prime-driver`, …) | Feature lanes — one concern per tab. |
+
+`--check` prints live `w7_tab_labels=…` and soft-WARNs if `claude` / `glmf|codex|glm` / `herdr` role-ish tabs are absent. It does **not** create or rename tabs.
 
 **Naming rule:** lowercase CLI binary name for role tabs (`claude`, `codex`,
 `grok` if added); short topic labels for feature work. Do not rename the
@@ -188,8 +196,8 @@ $(git diff origin/main...HEAD)" --output-format text
 
 ```bash
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:$HOME/.kimi-code/bin:$PATH"
-cd /Users/slimydog/Antiek/deploy-main-20260917   # or current PR worktree
-./scripts/anti-ek-swarm-review.sh --check           # readiness first
+cd /private/tmp/antiek-main-probe   # preferred tip-sync dogfood (or current PR worktree)
+./scripts/anti-ek-swarm-review.sh --check           # readiness first (CLI + w7 tabs + worktree tips)
 ./scripts/anti-ek-swarm-review.sh origin/main
 # writes /tmp/antiek-swarm-review-{claude,glmf,grok}.txt — no secrets
 ./scripts/anti-ek-swarm-review.sh --dry-run origin/main   # plan only
