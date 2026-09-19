@@ -347,12 +347,27 @@ class TestNoSilentDowngrade:
     def test_docker_absent_raises_out_of_the_loop_factory(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Docker is not running on this machine, so this is the real path.
-        The launch path must surface BackendUnavailable; returning a
-        LocalProcessBackend here would run untrusted code on the bare host
-        while the operator believed it was contained."""
+        """Docker absence must surface BackendUnavailable from the launch
+        path; returning a LocalProcessBackend here would run untrusted code
+        on the bare host while the operator believed it was contained.
+
+        Absence is simulated, not ambient: CI runners DO have docker, which
+        is why this failed there when it assumed the host had none. Pointing
+        the client at a binary that cannot exist exercises the real
+        missing-CLI probe path (exit 127 -> BackendUnavailable)."""
         monkeypatch.setenv(BACKEND_ENV, "docker")
         monkeypatch.delenv("ANTIEK_DRW_GATHER", raising=False)
+
+        from runtime.exec_backend import docker_backend as db
+
+        real_client_init = db._SubprocessDockerClient.__init__
+
+        def _absent_binary(
+            self, *, binary: str = "antiek-docker-definitely-absent"
+        ) -> None:
+            real_client_init(self, binary=binary)
+
+        monkeypatch.setattr(db._SubprocessDockerClient, "__init__", _absent_binary)
 
         with pytest.raises(BackendUnavailable):
             cascade_mod._research_loop_factory()
