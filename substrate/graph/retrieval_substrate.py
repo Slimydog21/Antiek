@@ -536,13 +536,17 @@ _DEFAULT_SUBSTRATE = "vss"
 
 
 def resolve_reuse_substrate_kind() -> str:
-    """Env-gated hybrid kind for cascade/flywheel reuse (not talk-to-book).
+    """Env-gated SERVABLE hybrid kind for reuse/cascade **and** Thought Partner.
 
     Returns ``"turbopuffer"`` only when ``ANTIEK_TURBOPUFFER_SERVABLE`` is set
     and ``TURBOPUFFER_API_KEY`` is present. Otherwise ``"brute_force"`` (DuckDB
     SoT scan). Gated/user content never enters the TurboPuffer index; the
-    adapter also refuses non-``attribution_eligible`` policy tags by falling
-    back to DuckDB ``search()``.
+    adapter refuses non-``attribution_eligible`` policy tags by falling back
+    to DuckDB ``search()``. Talk-to-book book-scoped ask stays book-local;
+    ``POST /thought-partner`` library grounding uses this same resolver when
+    the effective policy is ``attribution_eligible``.
+
+    ``production_default_mount`` remains False — env+key+promote are required.
     """
     import os
 
@@ -552,6 +556,10 @@ def resolve_reuse_substrate_kind() -> str:
     if enabled and (os.environ.get("TURBOPUFFER_API_KEY") or "").strip():
         return "turbopuffer"
     return "brute_force"
+
+
+# Alias — same gate for TP library grounding (#TP hybrid wire).
+resolve_servable_hybrid_kind = resolve_reuse_substrate_kind
 
 
 def make_substrate(

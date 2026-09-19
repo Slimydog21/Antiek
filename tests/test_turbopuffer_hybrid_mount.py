@@ -1,4 +1,4 @@
-"""Env-gated TurboPuffer hybrid mount for reuse/cascade (not talk-to-book)."""
+"""Env-gated TurboPuffer hybrid mount for reuse/cascade + Thought Partner."""
 
 from __future__ import annotations
 

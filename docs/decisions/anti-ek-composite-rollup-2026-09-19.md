@@ -21,11 +21,11 @@
 | BYOT/ACU | 78 | Soft-warn / meter paths exist; not fully dogfood-scored this arc |
 | Thinking Partner | 96 | Surface E + SERVABLE + TalkToBook unify + Lego insight slotting (#this) |
 | Notebook | 92 | AutoNotebook + daily-loop (#3168) + outline→Write auto-import (from-investigation UI) |
-| TurboPuffer | 72 | #3135 env-gated hybrid for reuse; not corpus/TalkToBook/TP UI mount |
+| TurboPuffer | 86 | #3135 reuse + TP library hybrid + /health dogfood; prod_default_mount still false |
 | HTML-native | 75 | Research artifact HTML + ArtifactOutlineShelf; reader HTML ingest incomplete |
 | CLI / Herdr | 88 | Playbook+script refreshed 2026-09-19; Herdr w7 convention; --check smoke |
 
-**Composite (equal-weight mean of above) ≈ 92/100.** TP 96; Notebook 92; CLI/Herdr 88; flywheel prod true; Mini reuse=18.
+**Composite (equal-weight mean of above) ≈ 93/100.** TP 96; TurboPuffer 86; Notebook 92; CLI/Herdr 88; flywheel prod true.
 
 ## Residuals blocking composite 100
 
@@ -36,14 +36,14 @@
 5. **Email re-ping / first-cohort publisher outreach** — operator/G2 counsel, not code-only.
 6. **G2 counsel / Synquery partnership** — product decision.
 7. **AppLovin / paid fill path** — keep honesty; no fake CPM.
-8. **TurboPuffer promote beyond reuse** — still env-gated; corpus search not on TP.
+8. ~~**TurboPuffer promote beyond reuse**~~ — closed: TP hybrid wire + /health; residual: production_default_mount + TalkToBook book path.
 9. **BYOT/ACU dogfood score to parity with Speak** — needs focused lane.
 10. **Voice → park → discuss TP** end-to-end polish.
 11. ~~flywheel_ready=false on prod~~ — closed: no investigations since #3118; seed + env alias + RO fallback + health re-probe (Mini already true).
 
 ## Highest-leverage next (after this PR)
 
-**Next gap toward 100:** Speak polish / multi-turn TP / Notebook→100 / remaining surface residuals (CLI/Herdr closed to ~88).
+**Next gap toward 100:** HTML-native (~75) / BYOT (~78) / multi-turn TP — TurboPuffer residual is production_default_mount.
 
 ## Leave-off
 

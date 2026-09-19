@@ -35,6 +35,89 @@ _SKIPPED = "skipped — no credentials"
 _ENABLE_ENV = "ANTIEK_TURBOPUFFER_SHADOW_ENABLED"
 _SERVABLE_ENABLE_ENV = "ANTIEK_TURBOPUFFER_SERVABLE"
 _MAX_ROWS_ENV = "ANTIEK_TURBOPUFFER_MAX_ROWS"
+_MANIFEST_DIR_ENV = "ANTIEK_TURBOPUFFER_MANIFEST_DIR"
+
+
+def default_manifest_dir() -> Path:
+    """Promote-pointer directory (cwd-relative default, overridable by env)."""
+    override = (os.environ.get(_MANIFEST_DIR_ENV) or "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path(".antiek/turbopuffer-shadow")
+
+
+def probe_turbopuffer_health(*, db_path: str | None = None) -> dict:
+    """Cheap /health snapshot — no vendor network, never raises.
+
+    Reports env+key+pointer-file honesty. ``hybrid_ready`` is True only when
+    SERVABLE env is on, API key present, and an ``active.json`` pointer file
+    exists. Does **not** flip ``production_default_mount`` (stays False).
+    Context-matching of pointer↔db is best-effort when ``db_path`` is given.
+    """
+    from substrate.graph.retrieval_substrate import resolve_reuse_substrate_kind
+
+    try:
+        key = (os.environ.get("TURBOPUFFER_API_KEY") or "").strip()
+        servable = _env_truthy(_SERVABLE_ENABLE_ENV)
+        shadow = _env_truthy(_ENABLE_ENV)
+        mdir = default_manifest_dir()
+        pointer_path = mdir / "active.json"
+        pointer_file = pointer_path.is_file()
+        pointer_ctx_ok: bool | None = None
+        active_ns = None
+        content_hash = None
+        if pointer_file:
+            try:
+                active = json.loads(pointer_path.read_text(encoding="utf-8"))
+                active_ns = active.get("active_namespace")
+                content_hash = active.get("content_hash")
+                if db_path and key:
+                    ctx = {
+                        "region": "gcp-us-central1",
+                        "db_identity": hashlib.sha256(
+                            str(Path(db_path).resolve()).encode()
+                        ).hexdigest(),
+                        "account_identity": hashlib.sha256(key.encode()).hexdigest()[:16],
+                    }
+                    pointer_ctx_ok = active.get("context") == ctx
+            except Exception:
+                pointer_ctx_ok = False
+        kind = resolve_reuse_substrate_kind()
+        hybrid_ready = bool(
+            kind == "turbopuffer" and pointer_file and (pointer_ctx_ok is not False)
+        )
+        return {
+            "servable_enabled": servable,
+            "shadow_enabled": shadow,
+            "api_key_present": bool(key),
+            "manifest_dir": str(mdir),
+            "active_pointer_file": pointer_file,
+            "active_pointer_context_ok": pointer_ctx_ok,
+            "active_namespace": active_ns,
+            "content_hash": content_hash,
+            "resolved_kind": kind,
+            "hybrid_ready": hybrid_ready,
+            "thought_partner_hybrid_wired": True,
+            "duckdb_is_sot": True,
+            "production_default_mount": False,
+        }
+    except Exception as exc:
+        return {
+            "servable_enabled": False,
+            "shadow_enabled": False,
+            "api_key_present": False,
+            "manifest_dir": str(default_manifest_dir()),
+            "active_pointer_file": False,
+            "active_pointer_context_ok": None,
+            "active_namespace": None,
+            "content_hash": None,
+            "resolved_kind": "brute_force",
+            "hybrid_ready": False,
+            "thought_partner_hybrid_wired": True,
+            "duckdb_is_sot": True,
+            "production_default_mount": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
 _DEFAULT_MAX_ROWS = 50_000
 DEFAULT_NAMESPACE = "antiek-shadow-chunks-v1"
 _FORBIDDEN_NAMESPACE_PARTS = ("user", "investigation", "shard")
@@ -93,7 +176,7 @@ class TurbopufferSubstrate:
         self._namespace = namespace
         self._namespace_name = _validate_namespace(namespace_name)
         self._region = region
-        self._manifest_dir = Path(manifest_dir or ".antiek/turbopuffer-shadow")
+        self._manifest_dir = Path(manifest_dir) if manifest_dir else default_manifest_dir()
         self._context = {"region": region, "db_identity": db_identity,
                          "account_identity": hashlib.sha256((api_key or "").encode()).hexdigest()[:16]}
         enabled = _env_truthy(_ENABLE_ENV) or _env_truthy(_SERVABLE_ENABLE_ENV)

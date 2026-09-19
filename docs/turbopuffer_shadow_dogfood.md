@@ -105,3 +105,13 @@ from substrate.graph.retrieval_substrate import resolve_reuse_substrate_kind
 print(resolve_reuse_substrate_kind())  # turbopuffer
 PY
 ```
+
+## Thought Partner hybrid (2026-09-19)
+
+When `ANTIEK_TURBOPUFFER_SERVABLE=1` + API key are set, `POST /thought-partner`
+library grounding uses the same SERVABLE hybrid resolver as cascade reuse.
+`/health` exposes `turbopuffer_hybrid_ready` (env+key+active pointer) —
+`turbopuffer_production_default_mount` stays **false**.
+
+Optional: `ANTIEK_TURBOPUFFER_MANIFEST_DIR` for the promote-pointer directory
+(default `.antiek/turbopuffer-shadow`).
