@@ -26,3 +26,10 @@ Secondary gaps fixed here:
 ## Consequences
 
 Prod compounding signal becomes live when reuse emits. Next: CLI/Herdr or Lego TP slotting.
+
+## Outcome (2026-09-19 ~12:28 Asia/Riyadh)
+
+- Merged #3177 → tip `0471c4830…`. Deployed Mini + prod (`/opt/antiek`).
+- Seeded honest `knowledge.reused` `evt-bf899a87684f-1789809958637` via `maybe_reuse_prior_knowledge_at_start` (RO fallback under API lock; empty unit inject still records reuse per #3118).
+- Prod public `/health`: `flywheel_ready=true`, `knowledge_reuse_count=1`, `build_sha=0471c4830…`.
+- Mini: tip-aligned, `flywheel_ready=true`, `knowledge_reuse_count=18`.
