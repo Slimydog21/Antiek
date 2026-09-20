@@ -546,14 +546,12 @@ def _tier_candidates(
             }
         )
 
-    append_candidate(raw, name=chosen_tier, index=0)
-    current = raw.get("fallback")
-    index = 1
-    while isinstance(current, dict):
+    for index, body in enumerate(_tier_route_chain(raw)):
+        if index == 0:
+            append_candidate(body, name=chosen_tier, index=0)
+            continue
         suffix = "" if index == 1 else str(index)
-        append_candidate(current, name=f"{chosen_tier}__fallback{suffix}", index=index)
-        current = current.get("fallback")
-        index += 1
+        append_candidate(body, name=f"{chosen_tier}__fallback{suffix}", index=index)
     return out, notes
 
 
