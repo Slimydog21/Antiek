@@ -546,7 +546,9 @@ def resolve_reuse_substrate_kind() -> str:
     ``POST /thought-partner`` library grounding uses this same resolver when
     the effective policy is ``attribution_eligible``.
 
-    ``production_default_mount`` remains False — env+key+promote are required.
+    ``production_default_mount`` is a separate honesty/ops flag
+    (``ANTIEK_TURBOPUFFER_PRODUCTION_DEFAULT_MOUNT``); SERVABLE hybrid
+    resolves independently via env+key.
     """
     import os
 

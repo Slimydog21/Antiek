@@ -50,7 +50,7 @@ First-parent / merge tips that moved grades **after** the prior leave-off tip `7
 | HTML-native | 99 | Research + Write/Notebook inline `artifact.html` + pypdf/OCR; projection honesty header |
 | CLI / Herdr | 99 | #3180–#3181 + inventory honesty (probe tip, w7 tabs, wrapper alias) |
 
-**Composite (equal-weight mean of 13 surfaces) = 1282/13 ≈ 98.62 → report **~98.5**.**
+**Composite (equal-weight mean of 13 surfaces) = 1284/13 ≈ 98.77 → report **~99**.**
 
 Prior leave-offs: `440dc2ba…` ~94; `7bfff594…` ~97; `7b871c58…`/`7da3fb34…` ~98; Specs contracts raise Specs 97→99 without inventing mount/CPM/G2.
 
@@ -61,7 +61,7 @@ Prior leave-offs: `440dc2ba…` ~94; `7bfff594…` ~97; `7b871c58…`/`7da3fb34�
 1. **AppLovin live demand / priced CPM** — product still open; **paid_fill_gated scaffold shipped** (no fake CPM).
 2. **G2 counsel sign-off / Synquery enable** — **operator/legal** (honesty shipped; no code flip).
 3. **Email re-ping / first-cohort publisher outreach** — operator/G2, not code-only.
-4. **`turbopuffer_production_default_mount=false`** — intentional until promote decision (key+hybrid already live).
+4. ~~`turbopuffer_production_default_mount`~~ — **promoted** 2026-09-20 (Faisal ask; env `ANTIEK_TURBOPUFFER_PRODUCTION_DEFAULT_MOUNT=1`).
 5. **TalkToBook book-scoped path** still separate HTTP from library `/thought-partner` (dual structure — keep).
 6. ~~OCR / scanned PDF~~ — shipped #3190/#3196/#3205.
 7. ~~BYOT wall-time top-up / soft-warn / hard-refuse UX~~ — shipped #3189/#3184/#3216.
@@ -97,7 +97,7 @@ Deploy flock/warm-writer; Lego TP; TalkToBook↔TP unify; outline→Write; flywh
 | Specs | [anti-ek-specs-honesty-contracts](./anti-ek-specs-honesty-contracts-2026-09-19.md), [honesty API catalog](../specs/anti-ek-honesty-api-contracts-2026-09-19.md) |
 | Plans | [anti-ek-plans-tip-honesty](./anti-ek-plans-tip-honesty-2026-09-19.md) |
 | Dogfood | [mac-mini-dogfood-durable-tpuf](./mac-mini-dogfood-durable-tpuf-2026-09-19.md) |
-| TurboPuffer | [tpuf-tp-hybrid-health](./tpuf-tp-hybrid-health-2026-09-19.md), [tpuf-health-corpus-honesty](./tpuf-health-corpus-honesty-2026-09-19.md), [tpuf-mini-corpus-scale](./tpuf-mini-corpus-scale-2026-09-19.md), [prod-turbopuffer-servable](./prod-turbopuffer-servable-2026-09-19.md) |
+| TurboPuffer | [tpuf-tp-hybrid-health](./tpuf-tp-hybrid-health-2026-09-19.md), [tpuf-health-corpus-honesty](./tpuf-health-corpus-honesty-2026-09-19.md), [tpuf-mini-corpus-scale](./tpuf-mini-corpus-scale-2026-09-19.md), [tpuf-production-default-mount-promote](./tpuf-production-default-mount-promote-2026-09-20.md), [prod-turbopuffer-servable](./prod-turbopuffer-servable-2026-09-19.md) |
 
 ## Leave-off
 

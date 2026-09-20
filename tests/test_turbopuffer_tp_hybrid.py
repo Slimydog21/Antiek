@@ -28,6 +28,7 @@ def test_probe_turbopuffer_health_honest_defaults(monkeypatch, tmp_path):
     monkeypatch.delenv("ANTIEK_TURBOPUFFER_SERVABLE", raising=False)
     monkeypatch.delenv("ANTIEK_TURBOPUFFER_SHADOW_ENABLED", raising=False)
     monkeypatch.delenv("TURBOPUFFER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTIEK_TURBOPUFFER_PRODUCTION_DEFAULT_MOUNT", raising=False)
     monkeypatch.setenv("ANTIEK_TURBOPUFFER_MANIFEST_DIR", str(tmp_path))
     snap = probe_turbopuffer_health()
     assert snap["hybrid_ready"] is False
@@ -178,11 +179,12 @@ def test_probe_indexed_row_count_from_manifest(monkeypatch, tmp_path):
     assert snap["shadow_enabled"] is False
 
 
-def test_probe_never_claims_production_default_mount(monkeypatch, tmp_path):
+def test_probe_production_default_mount_defaults_false(monkeypatch, tmp_path):
     monkeypatch.setenv("ANTIEK_TURBOPUFFER_SERVABLE", "1")
     monkeypatch.setenv("ANTIEK_TURBOPUFFER_SHADOW_ENABLED", "1")
     monkeypatch.setenv("TURBOPUFFER_API_KEY", "k")
     monkeypatch.setenv("ANTIEK_TURBOPUFFER_MANIFEST_DIR", str(tmp_path))
+    monkeypatch.delenv("ANTIEK_TURBOPUFFER_PRODUCTION_DEFAULT_MOUNT", raising=False)
     (tmp_path / "active.json").write_text(
         '{"active_namespace":"ns","content_hash":"abc","context":{}}',
         encoding="utf-8",
@@ -190,5 +192,19 @@ def test_probe_never_claims_production_default_mount(monkeypatch, tmp_path):
     snap = probe_turbopuffer_health()
     assert snap["production_default_mount"] is False
     assert snap["shadow_enabled"] is True
+    assert snap["duckdb_is_sot"] is True
+
+
+def test_probe_production_default_mount_env_true(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_SERVABLE", "1")
+    monkeypatch.setenv("TURBOPUFFER_API_KEY", "k")
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_MANIFEST_DIR", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_PRODUCTION_DEFAULT_MOUNT", "1")
+    (tmp_path / "active.json").write_text(
+        '{"active_namespace":"ns","content_hash":"abc","context":{}}',
+        encoding="utf-8",
+    )
+    snap = probe_turbopuffer_health()
+    assert snap["production_default_mount"] is True
     assert snap["duckdb_is_sot"] is True
 

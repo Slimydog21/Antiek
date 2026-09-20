@@ -37,6 +37,7 @@ _ENABLE_ENV = "ANTIEK_TURBOPUFFER_SHADOW_ENABLED"
 _SERVABLE_ENABLE_ENV = "ANTIEK_TURBOPUFFER_SERVABLE"
 _MAX_ROWS_ENV = "ANTIEK_TURBOPUFFER_MAX_ROWS"
 _MANIFEST_DIR_ENV = "ANTIEK_TURBOPUFFER_MANIFEST_DIR"
+_PRODUCTION_DEFAULT_MOUNT_ENV = "ANTIEK_TURBOPUFFER_PRODUCTION_DEFAULT_MOUNT"
 
 
 def default_manifest_dir() -> Path:
@@ -53,9 +54,10 @@ def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
     Reports env+key+pointer-file honesty plus shadow flag, pointer context
     match, and ``indexed_row_count`` from the promote manifest when present.
     ``hybrid_ready`` is True only when resolved kind is turbopuffer, an
-    ``active.json`` pointer exists, and context match is not False. Does
-    **not** flip ``production_default_mount`` (stays False). Context-matching
-    of pointer↔db is best-effort when ``db_path`` is given.
+    ``active.json`` pointer exists, and context match is not False.
+    ``production_default_mount`` mirrors ``ANTIEK_TURBOPUFFER_PRODUCTION_DEFAULT_MOUNT``
+    (default False when unset). Context-matching of pointer↔db is best-effort
+    when ``db_path`` is given.
     """
     from substrate.graph.retrieval_substrate import resolve_reuse_substrate_kind
 
@@ -63,6 +65,7 @@ def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
         key = (os.environ.get("TURBOPUFFER_API_KEY") or "").strip()
         servable = _env_truthy(_SERVABLE_ENABLE_ENV)
         shadow = _env_truthy(_ENABLE_ENV)
+        production_default_mount = _env_truthy(_PRODUCTION_DEFAULT_MOUNT_ENV)
         mdir = default_manifest_dir()
         pointer_path = mdir / "active.json"
         pointer_file = pointer_path.is_file()
@@ -114,7 +117,7 @@ def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
             "hybrid_ready": hybrid_ready,
             "thought_partner_hybrid_wired": True,
             "duckdb_is_sot": True,
-            "production_default_mount": False,
+            "production_default_mount": production_default_mount,
         }
     except Exception as exc:
         return {
@@ -131,7 +134,7 @@ def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
             "hybrid_ready": False,
             "thought_partner_hybrid_wired": True,
             "duckdb_is_sot": True,
-            "production_default_mount": False,
+            "production_default_mount": _env_truthy(_PRODUCTION_DEFAULT_MOUNT_ENV),
             "error": f"{type(exc).__name__}: {exc}",
         }
 _DEFAULT_MAX_ROWS = 50_000
@@ -276,7 +279,7 @@ class TurbopufferSubstrate:
             "export_classes": sorted(TURBOPUFFER_INDEX_CONTENT_CLASSES),
             "max_export_rows": _max_export_rows(),
             "duckdb_is_sot": True,
-            "production_default_mount": False,
+            "production_default_mount": _env_truthy(_PRODUCTION_DEFAULT_MOUNT_ENV),
         }
 
     def eligible_stats(self) -> dict[str, Any]:
