@@ -26,11 +26,15 @@ import pytest
 
 from interfaces.research.api import cascade_routes
 
+# Canonical home; cascade_routes re-imports it, and reaching through the
+# re-import trips mypy --strict's no-implicit-reexport.
+from runtime.exec_backend.factory import BACKEND_ENV
+
 _GATHER = "ANTIEK_DRW_GATHER"
 
 
 def _backend_env() -> str:
-    return str(cascade_routes.BACKEND_ENV)
+    return BACKEND_ENV
 
 
 @pytest.mark.parametrize(
