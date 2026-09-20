@@ -122,6 +122,53 @@ def test_anthropic_basic_call_and_headers_and_body():
     assert body["messages"] == [{"role": "user", "content": "hello"}]
 
 
+@pytest.mark.parametrize("model", ["claude-opus-5", "claude-sonnet-5"])
+def test_adaptive_thinking_models_omit_dispatch_temperature(model: str) -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        import json
+
+        captured.update(json.loads(httpx.Request.read(req)))
+        return httpx.Response(
+            200,
+            json={
+                "content": [{"type": "text", "text": "ok"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        )
+
+    provider = AnthropicProvider(api_key="test-key", client=_make_client(handler))
+    provider.call(model=model, prompt="hello", max_tokens=16, temperature=0.7)
+
+    assert captured["model"] == model
+    assert "temperature" not in captured
+
+
+@pytest.mark.parametrize("model", ["claude-haiku-4-5-20251001", "custom-model"])
+def test_non_adaptive_models_preserve_dispatch_temperature(model: str) -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        import json
+
+        captured.update(json.loads(httpx.Request.read(req)))
+        return httpx.Response(
+            200,
+            json={
+                "content": [{"type": "text", "text": "ok"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        )
+
+    provider = AnthropicProvider(api_key="test-key", client=_make_client(handler))
+    provider.call(model=model, prompt="hello", max_tokens=16, temperature=0.7)
+
+    assert captured["temperature"] == 0.7
+
+
 def test_anthropic_multi_part_content_joins_text():
     """Anthropic returns content as a typed-part list. Non-text parts
     must be ignored cleanly so a tool_use sub-part doesn't crash parsing."""

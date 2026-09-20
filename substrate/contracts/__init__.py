@@ -55,6 +55,8 @@ from .multimedia import (
     ALLOWED_STATUS_TRANSITIONS,
     ClaimToChunk,
     CostRow,
+    EvidenceDerivation,
+    EvidenceSpan,
     GeneratedFile,
     MediaSegment,
     MultimediaAssetContract,
@@ -88,7 +90,7 @@ from .voice_pipeline import (
 # Bump on ANY change to a committed contract's field shape; mirrors
 # ``EVENT_SCHEMA_VERSION``. The codegen staleness check ties the generated TS
 # (``apps/reading/src/generated/contracts.ts``) to this version.
-CONTRACT_SCHEMA_VERSION: int = 2
+CONTRACT_SCHEMA_VERSION: int = 3
 
 # Pydantic contract models that go through TS codegen (provisional Protocols —
 # ReaderSurfaceContract, VoicePipelineContract — are excluded; they carry
@@ -116,6 +118,8 @@ __all__ = [
     "ALLOWED_STATUS_TRANSITIONS",
     "ClaimToChunk",
     "CostRow",
+    "EvidenceDerivation",
+    "EvidenceSpan",
     "GeneratedFile",
     "MediaSegment",
     "MultimediaAssetContract",

@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Prime Agent additive RLM enhancement</title>
+    <style>
+      body {
+        font: 16px/1.5 system-ui;
+        background: #fffdf5;
+        color: #171717;
+      }
+      .page {
+        max-width: 1100px;
+        margin: auto;
+        padding: 32px;
+      }
+      .block,
+      .card {
+        background: #fff;
+        border: 2px solid #111;
+        box-shadow: 4px 4px #111;
+        padding: 20px;
+        margin: 20px 0;
+      }
+      h1 {
+        font-size: 42px;
+      }
+      .tag {
+        border: 2px solid #111;
+        padding: 4px 9px;
+        background: #f9bd2b;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+      a {
+        color: #1d4aff;
+        font-weight: 700;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        border: 2px solid #111;
+        padding: 10px;
+        text-align: left;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="block">
+        <span class="tag">PA-RLM · 3 sprints · 2 waves</span>
+        <h1>Prime Agent additive RLM enhancement</h1>
+        <p>
+          Give every Antiek RLM workflow an optional bounded Prime Agent
+          evidence lane while existing Hermes/callable execution remains
+          canonical.
+        </p>
+      </header>
+      <section
+        id="spec-lineage"
+        class="block"
+        data-spec-depth="0"
+        data-parent-spec=""
+      >
+        <h2>Spec lineage</h2>
+        <p>
+          Root spec; no child specs. Protocol, integration and closure are the
+          complete decomposition.
+        </p>
+        <ul class="child-specs"></ul>
+      </section>
+      <section class="block">
+        <h2>Success and invariants</h2>
+        <ul>
+          <li>
+            One backend invokes <code>prime-agent -p</code> with bounded time,
+            bytes, tools, cwd and provenance.
+          </li>
+          <li>
+            REPL, DAG, tool batch, long-corpus and iterative investigation can
+            request supplemental evidence without changing default output.
+          </li>
+          <li>
+            Ordinary failure, timeout, malformed output or absence preserves
+            canonical execution and yields an explicit receipt. Operator or
+            task cancellation kills the child and propagates immediately.
+          </li>
+          <li>
+            Prime is never dispatch, RemoteExec replacement, graph writer or
+            training authority.
+          </li>
+        </ul>
+        <p>
+          <strong>Failure to avoid:</strong> silently replacing the canonical
+          answer, unbounded children, or access to personal state.
+        </p>
+      </section>
+      <section class="block">
+        <h2>Architecture</h2>
+        <pre>
+existing callable/Hermes → canonical result&#10;request + opt-in → PrimeBackend → supplemental evidence + receipt&#10;canonical result + labeled evidence → existing synthesis boundary</pre>
+      </section>
+      <section class="block">
+        <h2>Sprint roster</h2>
+        <div class="grid">
+          <a class="card" href="sprint-01-protocol.html"
+            >SPR-01 · Protocol and §16 amendment</a
+          ><a class="card" href="sprint-02-workflows.html"
+            >SPR-02 · Workflow integration</a
+          ><a class="card" href="sprint-03-closure.html"
+            >SPR-03 · Adversarial closure</a
+          >
+        </div>
+      </section>
+      <section class="block">
+        <h2>Rejected alternatives</h2>
+        <table>
+          <tr>
+            <th>Alternative</th>
+            <th>Why rejected</th>
+            <th>Reconsider if</th>
+          </tr>
+          <tr>
+            <td>Prime dispatch provider</td>
+            <td>
+              Conflates subagents with routing and violates Hermes-primary
+              authority.
+            </td>
+            <td>A separate dispatch qualification decision passes.</td>
+          </tr>
+          <tr>
+            <td>Second RemoteExecProvider</td>
+            <td>Conflicts with the Daytona-only worker-custody seam.</td>
+            <td>Remote execution is deliberately generalized.</td>
+          </tr>
+          <tr>
+            <td>Replace canonical result</td>
+            <td>Violates enhancement-not-replacement.</td>
+            <td>Never in this program.</td>
+          </tr>
+          <tr>
+            <td>Five subprocess wrappers</td>
+            <td>Drifts budgets, cancellation and provenance.</td>
+            <td>Never while one protocol fits.</td>
+          </tr>
+        </table>
+      </section>
+      <section class="block">
+        <h2>Open questions</h2>
+        <p>
+          Production model/provider selection and UI presentation remain
+          follow-on; this program defaults disabled and returns typed
+          evidence/receipts.
+        </p>
+      </section>
+      <section
+        id="harness-hint-run"
+        class="block"
+        data-harness-default-pattern="fan-out-and-synthesize"
+        data-harness-inline-only-sprints="SPR-01"
+      >
+        <h2>Execution harness</h2>
+        <p>
+          SPR-01 inline; SPR-02 file-disjoint fan-out; SPR-03
+          perspective-diverse verification. Two sharpen rounds minimum.
+        </p>
+      </section>
+      <footer>
+        Generated 2026-08-11 from the operator brief and current repo evidence.
+      </footer>
+    </main>
+  </body>
+</html>

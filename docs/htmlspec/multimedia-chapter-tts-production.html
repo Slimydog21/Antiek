@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Antiek Chapter TTS Production</title>
+  <style>
+    :root { color-scheme: light; --ink:#17201b; --muted:#59645e; --line:#cfd7d2; --paper:#f7f9f7; --accent:#0b6b50; --warn:#8a4b08; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--paper); font:16px/1.55 ui-sans-serif,system-ui,sans-serif; }
+    main { width:min(980px,calc(100% - 32px)); margin:40px auto 80px; }
+    header { border-bottom:3px solid var(--ink); padding-bottom:20px; }
+    h1 { margin:0 0 8px; font-size:clamp(2rem,5vw,3.6rem); letter-spacing:0; line-height:1.05; }
+    h2 { margin:36px 0 10px; font-size:1.4rem; letter-spacing:0; }
+    h3 { margin:24px 0 8px; font-size:1rem; letter-spacing:0; text-transform:uppercase; }
+    p, li { max-width:78ch; }
+    code { background:#e8eeea; padding:1px 4px; }
+    table { width:100%; border-collapse:collapse; background:white; }
+    th, td { border:1px solid var(--line); padding:10px; text-align:left; vertical-align:top; }
+    th { background:#e8eeea; }
+    .decision { border-left:4px solid var(--accent); padding:8px 16px; background:white; }
+    .warning { border-left-color:var(--warn); }
+    [data-status="required"] { color:var(--warn); font-weight:700; }
+  </style>
+</head>
+<body><main>
+  <header>
+    <p>ANTIEK / MULTIMEDIA / EXECUTABLE SUB-SPEC</p>
+    <h1>Chapter TTS Production</h1>
+    <p>Turn one grounded chapter into paid provider audio exactly once, normalize the returned bytes into private PCM WAV, and seal them through the existing narration-production authority.</p>
+  </header>
+
+  <section id="outcome">
+    <h2>Outcome And Boundary</h2>
+    <div class="decision"><strong>Milestone boundary:</strong> version 1 accepts exactly one non-empty chapter and one signed authorization. Multi-chapter orchestration is deferred until a parent execution can reserve every chapter atomically and resume from independently sealed chapter results.</div>
+    <p>This restriction is deliberate. Sequential paid calls followed by a process crash can otherwise leave an unknowable partial bundle. The module must reject zero or multiple spoken chapters before claiming authority or invoking the callback.</p>
+    <p>Owned files are <code>substrate/multimedia/chapter_tts_production.py</code> and <code>tests/test_multimedia_chapter_tts_production.py</code>. Existing modules are dependencies and must not be modified by this sprint.</p>
+  </section>
+
+  <section id="contract">
+    <h2>Public Contract</h2>
+    <table><thead><tr><th>Symbol</th><th>Requirement</th></tr></thead><tbody>
+      <tr><td><code>prepare_chapter_tts_request(...)</code></td><td>Normalize the plan's spoken lines, bind chapter text, voice, speed, provider, model, capability, asset and revision into canonical JSON, and expose its SHA-256 digest for authorization issuance.</td></tr>
+      <tr><td><code>produce_chapter_narration(...)</code></td><td>Verify exact authorization fields, claim and reserve with <code>begin_reserved_provider_submission</code>, call the injected synthesizer at most once, normalize bytes, derive actual media facts, and invoke <code>produce_narration_track</code>.</td></tr>
+      <tr><td><code>ChapterTTSProductionArtifact.reopen(...)</code></td><td>Verify schema, MAC, request identity, receipt identity, narration artifact, and every persisted file hash before returning replay authority.</td></tr>
+      <tr><td><code>get_chapter_tts_attempt(...)</code></td><td>Return a MAC-verified durable attempt. Missing, malformed, or tampered rows fail closed.</td></tr>
+    </tbody></table>
+    <p>The synthesis callback receives an immutable prepared request and returns raw audio bytes plus an optional provider request identifier. The callback does not report duration or cost; duration comes from <code>ffprobe</code>, while spend is settled only from independently trusted billing evidence in a later reconciliation lane.</p>
+  </section>
+
+  <section id="state-machine">
+    <h2>Durable State Machine</h2>
+    <table><thead><tr><th>State</th><th>Durable fact</th><th>Allowed next state</th></tr></thead><tbody>
+      <tr><td><code>intent</code></td><td>Authorization consumed, full ceiling reserved, exact request persisted.</td><td><code>sending</code></td></tr>
+      <tr><td><code>sending</code></td><td>Send marker committed before callback invocation.</td><td><code>received</code> or <code>outcome_unknown</code></td></tr>
+      <tr><td><code>received</code></td><td>Bounded response bytes durably staged and hashed.</td><td><code>sealed</code></td></tr>
+      <tr><td><code>sealed</code></td><td>WAV and narration artifact published; replay returns persisted authority.</td><td>terminal</td></tr>
+      <tr><td><code>outcome_unknown</code></td><td>Callback raised or process recovery found stale <code>sending</code>; full hold charged conservatively.</td><td>terminal; operator reconciliation only</td></tr>
+    </tbody></table>
+    <div class="decision warning"><strong>No retry:</strong> any caller observing <code>sending</code>, <code>received</code>, or <code>outcome_unknown</code> must not invoke the provider. A stale send is quarantined, never guessed to be unsent.</div>
+    <p>The external callback must execute after the send transaction and coordinator lock are released. Concurrent callers race only on the conditional send-marker update; exactly one winner may call.</p>
+  </section>
+
+  <section id="media">
+    <h2>Media And Integrity</h2>
+    <ol>
+      <li>Reject empty responses and responses above 64 MiB before publication.</li>
+      <li>Create staging under a caller-owned absolute private directory; reject symlinks and group/world-accessible roots.</li>
+      <li>Write response bytes with mode <code>0600</code>; invoke absolute executable paths with argument arrays, timeouts, <code>-nostdin</code>, and no shell.</li>
+      <li>Normalize to mono <code>pcm_s16le</code> WAV at 24 kHz. Probe output codec, channels, sample rate, and millisecond-rounded positive duration.</li>
+      <li>Create <code>GeneratedFile</code> and <code>ChapterAudio</code> solely from normalized bytes and probed duration. <code>paragraph_spans</code> remains empty because chapter-level synthesis provides no word timing.</li>
+      <li>Call existing <code>produce_narration_track</code>; publish the outer artifact only after its signed artifact reopens successfully.</li>
+    </ol>
+  </section>
+
+  <section id="acceptance">
+    <h2>Acceptance Matrix</h2>
+    <table><thead><tr><th>ID</th><th>Executable acceptance criterion</th><th>Status</th></tr></thead><tbody>
+      <tr><td>AC-01</td><td>Happy path invokes the callback once and reopens byte-identical sealed authority.</td><td data-status="required">Required</td></tr>
+      <tr><td>AC-02</td><td>Provider, model, capability, asset, revision, route, catalog, quote, ceiling, and body-digest mismatches fail before claim/send.</td><td data-status="required">Required</td></tr>
+      <tr><td>AC-03</td><td>Twenty concurrent callers produce one callback invocation; all non-winners return sealed replay or a deterministic in-progress error.</td><td data-status="required">Required</td></tr>
+      <tr><td>AC-04</td><td>A callback exception records <code>outcome_unknown</code>, charges the reserved ceiling, and replay never calls again.</td><td data-status="required">Required</td></tr>
+      <tr><td>AC-05</td><td>MAC, database field, response, WAV, narration, manifest, path, symlink, and inode-alias tampering fail closed.</td><td data-status="required">Required</td></tr>
+      <tr><td>AC-06</td><td>Zero/multiple chapters, oversized text/bytes, invalid voice/speed, non-private output, and bad executables fail before paid execution where applicable.</td><td data-status="required">Required</td></tr>
+      <tr><td>AC-07</td><td><code>pytest</code>, Ruff, strict mypy, HTML parsing, and existing multimedia regression suite are green.</td><td data-status="required">Required</td></tr>
+    </tbody></table>
+  </section>
+
+  <section id="deferred">
+    <h2>Next Nested Sprint</h2>
+    <p>The next sprint introduces a parent <code>NarrationRun</code> that atomically reserves a signed authorization set, executes independently replayable chapter receipts, supports crash-safe continuation, and seals the aggregate only when every expected chapter identity is present. It must not weaken this sprint's one-shot semantics.</p>
+  </section>
+</main></body></html>

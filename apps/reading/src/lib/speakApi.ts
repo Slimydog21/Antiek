@@ -201,15 +201,101 @@ export async function inviteByEmail(id: string, email: string): Promise<Arriving
 }
 
 /** A generic, link-only invite (the shareable "anyone with the link" door for
- *  the warm flow). Backed by a handle so the operator can send it broadly. */
+ *  the warm flow). Backed by a handle so the operator can send it broadly.
+ *  Returns the absolute share URL (`https://antiek.ai/speak/invite/{token}`). */
 export async function makeShareLink(id: string): Promise<string> {
+  const path = await makeContributionInvitePath(id);
+  // Absolute URL for clipboard / out-of-app share; path is the in-app door.
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return `${window.location.origin}${path}`;
+  }
+  return `https://antiek.ai${path}`;
+}
+
+/**
+ * Mint (or reuse) a link-only invite and return the **in-app SpeakInvite door**
+ * path `/speak/invite/{token}`. This is the unauthenticated contribution
+ * credential path (spine SPR-03) — never `/speak/:projectId` (operator console).
+ */
+
+/**
+ * G7 self-serve open contribution (unauth). Mints an invite TOKEN for a
+ * will_be_public project — stranger browse → SpeakInvite door without a
+ * pre-shared family invite. Private projects stay invite-only (403).
+ * Cite: speak-private-public-spine · remap §public.
+ */
+export async function openContributePath(projectId: string): Promise<string> {
+  const resp = await apiFetch(
+    `/speak/projects/${encodeURIComponent(projectId)}/open-contribute`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+  );
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const raw = (await resp.json()) as Record<string, unknown>;
+  const path = typeof raw.invite_path === "string" ? raw.invite_path : "";
+  if (!path.startsWith("/speak/invite/")) throw new Error("open-contribute missing invite_path");
+  return path;
+}
+
+/** Live public Speak honesty from opportunities (no env-flag leak in UI). */
+export interface SpeakPublicHonesty {
+  openContributionLive: boolean;
+  publicPublishingLive: boolean;
+  disbursementLive: boolean;
+  moneyModel: string;
+  /** G2 counsel still gates publishing/payout when true (deny-by-default). */
+  g2CounselGated: boolean;
+  /** Synquery partnership live only when operator enables flag post-PMF. */
+  synqueryLive: boolean;
+  paidToday: boolean;
+}
+
+export async function speakPublicHonesty(): Promise<SpeakPublicHonesty> {
+  const empty: SpeakPublicHonesty = {
+    openContributionLive: false,
+    publicPublishingLive: false,
+    disbursementLive: false,
+    moneyModel: "accrue_escrow_now_disburse_after_legal_review",
+    g2CounselGated: true,
+    synqueryLive: false,
+    paidToday: false,
+  };
+  try {
+    const resp = await apiFetch("/speak/opportunities");
+    if (!resp.ok) return empty;
+    const raw = (await resp.json()) as Record<string, unknown>;
+    const honesty = (raw.honesty ?? {}) as Record<string, unknown>;
+    return {
+      openContributionLive: honesty.open_contribution_without_invite === "live",
+      publicPublishingLive: honesty.public_publishing === "live",
+      disbursementLive: honesty.disbursement === "live",
+      moneyModel: String(
+        honesty.money_model ?? "accrue_escrow_now_disburse_after_legal_review",
+      ),
+      g2CounselGated: honesty.g2_counsel_gated !== false,
+      synqueryLive: honesty.synquery_partnership === "live",
+      paidToday: honesty.paid_today === true,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+/** Live G7 flag from opportunities honesty (no env-flag leak in UI). */
+export async function openContributionLive(): Promise<boolean> {
+  return (await speakPublicHonesty()).openContributionLive;
+}
+
+export async function makeContributionInvitePath(id: string): Promise<string> {
   const resp = await apiFetch(`/speak/projects/${encodeURIComponent(id)}/invites`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ informant_handle: "a friend or family member" }),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return toVoice(await resp.json()).link;
+  const raw = (await resp.json()) as Record<string, unknown>;
+  const token = typeof raw.token === "string" ? raw.token : "";
+  if (!token) throw new Error("invite response missing token");
+  return `/speak/invite/${encodeURIComponent(token)}`;
 }
 
 /**
@@ -278,6 +364,31 @@ export async function listPublicFeed(): Promise<FeedItem[]> {
         : "",
     voiceCount: typeof r.interview_count === "number" ? r.interview_count : 0,
   }));
+}
+
+/** Unauthenticated public opportunities (multi-signal heuristic, not ML). */
+export async function listPublicOpportunities(opts?: {
+  interest?: string;
+}): Promise<PublicOpportunity[]> {
+  const q =
+    opts?.interest && opts.interest.trim()
+      ? `?interest=${encodeURIComponent(opts.interest.trim())}`
+      : "";
+  const resp = await apiFetch(`/speak/opportunities${q}`);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const raw = (await resp.json()) as Record<string, unknown>;
+  const pubs = Array.isArray(raw.public_opportunities) ? raw.public_opportunities : [];
+  return pubs.map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      projectId: String(r.project_id ?? ""),
+      title: String(r.title ?? ""),
+      subjectRef: typeof r.subject_ref === "string" ? r.subject_ref : null,
+      voiceCount: typeof r.voice_count === "number" ? r.voice_count : 0,
+      rankReason: String(r.rank_reason ?? ""),
+      rankScore: typeof r.rank_score === "number" ? r.rank_score : 0,
+    };
+  });
 }
 
 export interface PayoutReleaseView {
@@ -381,3 +492,116 @@ export async function createPerson(name: string): Promise<string> {
   if (!data.project_id) throw new Error("no project returned");
   return String(data.project_id);
 }
+
+// ── Dual push / continuous ping (Anti-Ek Speak remap §PUSHES) ───────────
+
+export interface PublicOpportunity {
+  projectId: string;
+  title: string;
+  subjectRef: string | null;
+  voiceCount: number;
+  rankReason: string;
+  rankScore: number;
+}
+
+export interface PrivateReping {
+  projectId: string;
+  projectTitle: string;
+  interviewId: string;
+  who: string;
+  status: string;
+  token: string;
+  pendingQuestionCount: number;
+  invitePath: string;
+}
+
+export interface PushesView {
+  honesty: { publicRanking: string; privateDelivery: string };
+  publicOpportunities: PublicOpportunity[];
+  privateRepings: PrivateReping[];
+}
+
+export interface RepingView {
+  interviewId: string;
+  token: string;
+  invitePath: string;
+  followupsAdded: number;
+  pendingQuestionCount: number;
+  skippedReason: string | null;
+  emailStatus: string | null;
+  emailTo: string | null;
+  emailProvider: string | null;
+  emailMessageId: string | null;
+  emailDetail: string | null;
+}
+
+export async function listPushes(): Promise<PushesView> {
+  const resp = await apiFetch("/speak/pushes");
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const raw = (await resp.json()) as Record<string, unknown>;
+  const honesty = (raw.honesty ?? {}) as Record<string, unknown>;
+  const pubs = Array.isArray(raw.public_opportunities) ? raw.public_opportunities : [];
+  const privs = Array.isArray(raw.private_repings) ? raw.private_repings : [];
+  return {
+    honesty: {
+      publicRanking: String(honesty.public_ranking ?? ""),
+      privateDelivery: String(honesty.private_delivery ?? ""),
+    },
+    publicOpportunities: pubs.map((row) => {
+      const r = row as Record<string, unknown>;
+      return {
+        projectId: String(r.project_id ?? ""),
+        title: String(r.title ?? ""),
+        subjectRef: typeof r.subject_ref === "string" ? r.subject_ref : null,
+        voiceCount: typeof r.voice_count === "number" ? r.voice_count : 0,
+        rankReason: String(r.rank_reason ?? ""),
+        rankScore: typeof r.rank_score === "number" ? r.rank_score : 0,
+      };
+    }),
+    privateRepings: privs.map((row) => {
+      const r = row as Record<string, unknown>;
+      return {
+        projectId: String(r.project_id ?? ""),
+        projectTitle: String(r.project_title ?? ""),
+        interviewId: String(r.interview_id ?? ""),
+        who: String(r.who ?? ""),
+        status: String(r.status ?? ""),
+        token: String(r.token ?? ""),
+        pendingQuestionCount:
+          typeof r.pending_question_count === "number" ? r.pending_question_count : 0,
+        invitePath: String(r.invite_path ?? ""),
+      };
+    }),
+  };
+}
+
+export async function repingInvitee(
+  interviewId: string,
+  opts: { sendEmail?: boolean } = {},
+): Promise<RepingView> {
+  const resp = await apiFetch("/speak/pushes/reping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      interview_id: interviewId,
+      send_email: opts.sendEmail === true,
+    }),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const r = (await resp.json()) as Record<string, unknown>;
+  return {
+    interviewId: String(r.interview_id ?? ""),
+    token: String(r.token ?? ""),
+    invitePath: String(r.invite_path ?? ""),
+    followupsAdded: typeof r.followups_added === "number" ? r.followups_added : 0,
+    pendingQuestionCount:
+      typeof r.pending_question_count === "number" ? r.pending_question_count : 0,
+    skippedReason: typeof r.skipped_reason === "string" ? r.skipped_reason : null,
+    emailStatus: typeof r.email_status === "string" ? r.email_status : null,
+    emailTo: typeof r.email_to === "string" ? r.email_to : null,
+    emailProvider: typeof r.email_provider === "string" ? r.email_provider : null,
+    emailMessageId: typeof r.email_message_id === "string" ? r.email_message_id : null,
+    emailDetail: typeof r.email_detail === "string" ? r.email_detail : null,
+  };
+}
+

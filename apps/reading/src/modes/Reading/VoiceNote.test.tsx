@@ -94,4 +94,44 @@ describe("VoiceNote", () => {
     );
     expect(screen.getByRole("alert").textContent).toMatch(/available/);
   });
+
+  it("parks questions and seeds Thought Partner with reading mount", async () => {
+    const seeded: Array<Record<string, unknown>> = [];
+    const onSeed = (ev: Event) => {
+      seeded.push((ev as CustomEvent).detail as Record<string, unknown>);
+    };
+    window.addEventListener("antiek:thought-partner:seed", onSeed);
+
+    transcribeMock.mockResolvedValue({
+      transcript: "Why thin?",
+      language: "en",
+      duration_seconds: 1,
+    });
+    saveMock.mockResolvedValue({
+      voice_note_id: "vnote-1",
+      document_id: "doc-1",
+      page_index: 2,
+      note_count: 1,
+      notes: ["Why does agency feel thin here?"],
+      emitted_event_ids: ["e1", "e2"],
+      parked_question_ids: ["q-voice-abc"],
+      parked_question_texts: ["Why does agency feel thin here?"],
+    });
+    recorderState.state = "stopped";
+    recorderState.blob = new Blob(["audio"], { type: "audio/webm" });
+
+    render(<VoiceNote documentId="doc-1" pageIndex={2} investigationId="read-doc-1" />);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Voice note transcript (editable)")).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save note" }));
+    await waitFor(() => expect(screen.getByText(/parked for discuss/i)).toBeTruthy());
+    await waitFor(() => expect(seeded.length).toBeGreaterThanOrEqual(1));
+    expect(String(seeded[0].prompt)).toContain("Why does agency feel thin here?");
+    expect(String(seeded[0].source_label)).toContain("voice-park");
+    expect("system_context" in seeded[0]).toBe(true);
+    expect(screen.getByRole("button", { name: /Discuss in Thought Partner/i })).toBeTruthy();
+
+    window.removeEventListener("antiek:thought-partner:seed", onSeed);
+  });
 });

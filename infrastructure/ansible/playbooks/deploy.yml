@@ -75,13 +75,40 @@
       when: git_pull.after is defined
       tags: [code, systemd]
 
+    # secrets.env EnvironmentFile= overrides unit Environment= for the same
+    # key — keep ANTIEK_BUILD_SHA in secrets aligned with tip or /health lies.
+    - name: sync ANTIEK_BUILD_SHA into secrets.env (EnvironmentFile wins)
+      ansible.builtin.lineinfile:
+        path: "{{ antiek_secrets_file }}"
+        regexp: "^ANTIEK_BUILD_SHA="
+        line: "ANTIEK_BUILD_SHA={{ antiek_build_sha }}"
+        create: false
+      when: antiek_build_sha is defined
+      tags: [code, systemd]
+
+    - name: sync BUILD_SHA systemd drop-in (clear stale overrides)
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/antiek.service.d/build-sha.conf
+        content: |
+          [Service]
+          Environment=ANTIEK_BUILD_SHA={{ antiek_build_sha }}
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_build_sha_dropin
+      when: antiek_build_sha is defined
+      tags: [code, systemd]
+
     # ── 2. Refresh dependencies ──────────────────────────────────────────
     # `pip install -e` is fast when nothing changed (just re-reads
     # pyproject.toml and the existing egg-info), so running it
     # unconditionally is fine.
     - name: refresh editable install + extras
       ansible.builtin.pip:
-        name: "{{ antiek_install_dir }}[pdf,urls,embedding]"
+        # docs: firecrawl-anydoc binding (Office/ODF/RTF/CSV ingest); pdf also
+        # carries pypdfium2 (DeepSeek-OCR-2 scanned-PDF rasterization);
+        # turbopuffer_shadow: SERVABLE hybrid SDK for /health hybrid_ready.
+        name: "{{ antiek_install_dir }}[pdf,urls,embedding,docs,turbopuffer_shadow]"
         editable: true
         virtualenv: "{{ antiek_install_dir }}/.venv"
       become_user: "{{ antiek_user }}"
@@ -128,10 +155,68 @@
       register: antiek_arxiv_oai_sync_timer
       tags: [systemd, arxiv_oai]
 
+    - name: re-render antiek-backup.service
+      ansible.builtin.template:
+        src: ../templates/antiek-backup.service.j2
+        dest: /etc/systemd/system/antiek-backup.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_backup_unit
+      tags: [systemd, backup]
+
+    - name: re-render antiek-backup.timer
+      ansible.builtin.template:
+        src: ../templates/antiek-backup.timer.j2
+        dest: /etc/systemd/system/antiek-backup.timer
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_backup_timer
+      tags: [systemd, backup]
+
+    - name: re-render backup script before enabling its persistent timer
+      ansible.builtin.template:
+        src: ../templates/backup.sh.j2
+        dest: /usr/local/bin/antiek-backup
+        owner: root
+        group: "{{ antiek_group }}"
+        mode: "0750"
+      tags: [backup]
+
+    - name: re-render backup freshness probe
+      ansible.builtin.template:
+        src: ../templates/antiek-backup-freshness-probe.sh.j2
+        dest: /usr/local/bin/antiek-backup-freshness-probe
+        owner: root
+        group: root
+        mode: "0750"
+      tags: [backup]
+
+    - name: re-render antiek-backup-freshness.service
+      ansible.builtin.template:
+        src: ../templates/antiek-backup-freshness.service.j2
+        dest: /etc/systemd/system/antiek-backup-freshness.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_backup_freshness_unit
+      tags: [systemd, backup]
+
+    - name: re-render antiek-backup-freshness.timer
+      ansible.builtin.template:
+        src: ../templates/antiek-backup-freshness.timer.j2
+        dest: /etc/systemd/system/antiek-backup-freshness.timer
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_backup_freshness_timer
+      tags: [systemd, backup]
+
     - name: systemd daemon-reload if any unit changed
       ansible.builtin.systemd:
         daemon_reload: true
-      when: antiek_unit.changed or antiek_continuous_unit.changed or antiek_arxiv_oai_sync_unit.changed or antiek_arxiv_oai_sync_timer.changed
+      when: antiek_unit.changed or antiek_continuous_unit.changed or antiek_arxiv_oai_sync_unit.changed or antiek_arxiv_oai_sync_timer.changed or antiek_backup_unit.changed or antiek_backup_timer.changed or antiek_backup_freshness_unit.changed or antiek_backup_freshness_timer.changed or (antiek_build_sha_dropin is defined and antiek_build_sha_dropin.changed)
       tags: [systemd]
 
     - name: enable antiek-continuous-research.service
@@ -153,6 +238,26 @@
         enabled: true
         state: started
       tags: [systemd, arxiv_oai]
+
+    - name: remove legacy backup cron job
+      ansible.builtin.file:
+        path: /etc/cron.d/antiek-backup
+        state: absent
+      tags: [backup]
+
+    - name: enable and start antiek-backup.timer
+      ansible.builtin.systemd:
+        name: antiek-backup.timer
+        enabled: true
+        state: started
+      tags: [systemd, backup]
+
+    - name: enable and start antiek-backup-freshness.timer
+      ansible.builtin.systemd:
+        name: antiek-backup-freshness.timer
+        enabled: true
+        state: started
+      tags: [systemd, backup]
 
     # ── Frontend rsync ───────────────────────────────────────────────────
     # The Phase A play built `apps/reading/dist/` locally. Push it to
@@ -264,15 +369,6 @@
       when: caddyfile.changed
       tags: [caddy]
 
-    - name: re-render backup script
-      ansible.builtin.template:
-        src: ../templates/backup.sh.j2
-        dest: /usr/local/bin/antiek-backup
-        owner: root
-        group: "{{ antiek_group }}"
-        mode: "0750"
-      tags: [backup]
-
     # ── 3.5 Debug: what does Caddy think the route table is? ────────────
     - name: debug — fetch live Caddy config JSON
       ansible.builtin.command:
@@ -303,28 +399,20 @@
         var: cf_inspect.stdout_lines
       tags: [cloudflared, debug]
 
-    - name: debug — tail caddy access log
-      ansible.builtin.shell: |
-        tail -3 /var/log/caddy/access.log 2>/dev/null || echo "no access log yet"
-      register: caddy_log
-      changed_when: false
-      tags: [caddy, debug]
-
-    - name: debug — print caddy access log
-      ansible.builtin.debug:
-        var: caddy_log.stdout_lines
-      tags: [caddy, debug]
-
-    - name: debug — make a public-side curl + check if it landed in Caddy log
-      ansible.builtin.shell: |
-        sleep 1
-        echo "=== before request, last log line ==="
-        tail -1 /var/log/caddy/access.log 2>/dev/null
-        echo "=== curling api.antiek.ai/ from VM ==="
-        curl -sk -o /dev/null "https://api.antiek.ai/" -w "HTTP %{http_code} type=%{content_type}\n"
-        sleep 1
-        echo "=== after request, last log line ==="
-        tail -1 /var/log/caddy/access.log 2>/dev/null
+    # Never print access-log records during deploys: requests may carry
+    # security-sensitive headers that older Caddy configurations retained.
+    - name: "debug: probe public endpoint without reading access logs"
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --show-error
+          - --insecure
+          - --output
+          - /dev/null
+          - --write-out
+          - "HTTP %{http_code} type=%{content_type}\n"
+          - "https://{{ api_domain }}/"
       register: public_test
       changed_when: false
       tags: [caddy, debug]
@@ -382,11 +470,116 @@
       tags: [frontend, debug]
 
     # ── 4. Restart the substrate ────────────────────────────────────────
+    # The API startup path is deliberately read-only, so deploying code alone
+    # does not apply newly-added DuckDB tables or columns. The initializer is
+    # idempotent and uses the same writer coordination as request DML.
+    #
+    # Single-writer deploy hygiene (2026-09-19): stop the live process BEFORE
+    # migrate/verify. Uvicorn (and warm-writer keepalive, ANTIEK_WRITE_KEEPALIVE_S)
+    # otherwise hold DuckDB / flock and ansible schema tasks time out — the
+    # recurring failed=1 seen across #3166–#3169 deploys. Cite
+    # docs/decisions/anti-ek-composite-rollup-2026-09-19.md + ads-warm-writer-keepalive.
+    - name: stop antiek before schema migrate (release DuckDB + warm flock)
+      ansible.builtin.systemd:
+        name: antiek.service
+        state: stopped
+      tags: [code]
+
+    # Warm-writer / uvicorn can take a beat to release flock after stop.
+    # Poll until the write.lock is free so migrate/verify do not WriteLockTimeout.
+    - name: wait for DuckDB write.lock release after stop
+      ansible.builtin.shell: |
+        set -e
+        LOCK="{{ antiek_state_dir }}/antiek.duckdb.write.lock"
+        for i in $(seq 1 30); do
+          if ! lsof "$LOCK" >/dev/null 2>&1; then
+            echo "lock_free after ${i}s"
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "lock still held after 30s" >&2
+        lsof "$LOCK" >&2 || true
+        exit 1
+      args:
+        executable: /bin/bash
+      changed_when: false
+      tags: [code]
+
+    - name: migrate and verify graph schema before restarting into new code
+      block:
+        - name: initialize graph schema
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_install_dir }}/.venv/bin/python"
+              - -m
+              - substrate.graph.schema
+              - --db-path
+              - "{{ antiek_state_dir }}/antiek.duckdb"
+            chdir: "{{ antiek_install_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
+          become_user: "{{ antiek_user }}"
+          changed_when: false
+
+        - name: verify crash-recoverable write outbox schema
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_install_dir }}/.venv/bin/python"
+              - tools/verify_write_event_outbox_schema.py
+              - --db-path
+              - "{{ antiek_state_dir }}/antiek.duckdb"
+            chdir: "{{ antiek_install_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
+          become_user: "{{ antiek_user }}"
+          changed_when: false
+
+        - name: verify durable event consumer schema
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_install_dir }}/.venv/bin/python"
+              - tools/verify_event_consumer_schema.py
+              - --db-path
+              - "{{ antiek_state_dir }}/antiek.duckdb"
+            chdir: "{{ antiek_install_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
+          become_user: "{{ antiek_user }}"
+          changed_when: false
+
+        - name: verify durable note-taker replay schema
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_install_dir }}/.venv/bin/python"
+              - tools/verify_note_taker_schema.py
+              - --db-path
+              - "{{ antiek_state_dir }}/antiek.duckdb"
+            chdir: "{{ antiek_install_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
+          become_user: "{{ antiek_user }}"
+          changed_when: false
+
+        - name: restart antiek into verified schema and new code
+          ansible.builtin.systemd:
+            name: antiek.service
+            state: restarted
+          register: antiek_schema_restart
+
+      tags: [code]
+
+    # The in-block restart above already bounced the service on full deploys.
+    # Restarting again here doubled the drain window on every deploy (two
+    # stop→boot cycles per run). Skip it when the schema block just restarted;
+    # it still fires for `--tags restart` partial runs, where the block's
+    # `code` tag kept it out and antiek_schema_restart is undefined.
     - name: restart antiek
       ansible.builtin.systemd:
         name: antiek.service
         state: restarted
       tags: [restart]
+      when: antiek_schema_restart is not defined
 
     # ── 5. Wait for systemd to report it back up ────────────────────────
     - name: wait for systemd active
@@ -396,6 +589,64 @@
       retries: 6
       delay: 5
       until: systemd_status.stdout == "active"
+      changed_when: false
+      tags: [verify]
+
+    # Re-run the same fail-closed contract during verify-only playbook runs.
+    # Verifiers are connect_read (2026-09-19) so they no longer contend for the
+    # warm-writer flock; retries remain for post-restart DuckDB attach races.
+    # Cite #3171–#3173 + docs/decisions/deploy-verify-readonly-2026-09-19.md.
+    - name: verify crash-recoverable write outbox schema on live service
+      ansible.builtin.command:
+        argv:
+          - "{{ antiek_install_dir }}/.venv/bin/python"
+          - tools/verify_write_event_outbox_schema.py
+          - --db-path
+          - "{{ antiek_state_dir }}/antiek.duckdb"
+        chdir: "{{ antiek_install_dir }}"
+      environment:
+        ANTIEK_WRITE_KEEPALIVE_S: "0"
+      become_user: "{{ antiek_user }}"
+      register: live_write_outbox_schema
+      retries: 12
+      delay: 5
+      until: live_write_outbox_schema.rc == 0
+      changed_when: false
+      tags: [verify]
+
+    - name: verify durable event consumer schema on live service
+      ansible.builtin.command:
+        argv:
+          - "{{ antiek_install_dir }}/.venv/bin/python"
+          - tools/verify_event_consumer_schema.py
+          - --db-path
+          - "{{ antiek_state_dir }}/antiek.duckdb"
+        chdir: "{{ antiek_install_dir }}"
+      environment:
+        ANTIEK_WRITE_KEEPALIVE_S: "0"
+      become_user: "{{ antiek_user }}"
+      register: live_event_consumer_schema
+      retries: 12
+      delay: 5
+      until: live_event_consumer_schema.rc == 0
+      changed_when: false
+      tags: [verify]
+
+    - name: verify durable note-taker replay schema on live service
+      ansible.builtin.command:
+        argv:
+          - "{{ antiek_install_dir }}/.venv/bin/python"
+          - tools/verify_note_taker_schema.py
+          - --db-path
+          - "{{ antiek_state_dir }}/antiek.duckdb"
+        chdir: "{{ antiek_install_dir }}"
+      environment:
+        ANTIEK_WRITE_KEEPALIVE_S: "0"
+      become_user: "{{ antiek_user }}"
+      register: live_note_taker_schema
+      retries: 12
+      delay: 5
+      until: live_note_taker_schema.rc == 0
       changed_when: false
       tags: [verify]
 
@@ -489,13 +740,73 @@
     - name: prod-parity assert — deployed SHA == box HEAD + providers live
       ansible.builtin.command:
         cmd: >-
-          python {{ playbook_dir }}/../../../tools/prod_parity/check.py
+          python3 {{ playbook_dir }}/../../../tools/prod_parity/check.py
           --url https://{{ api_domain }}
           --expected-sha {{ antiek_expected_sha }}
       delegate_to: localhost
       become: false
       changed_when: false
       tags: [verify]
+
+    # Passkey login cannot start if auth middleware intercepts this public
+    # discovery route. Probe it without a cookie and assert that logged-out
+    # callers get only the branch bit, never the operator's credential count.
+    - name: GET public passkey readiness without a session
+      ansible.builtin.uri:
+        url: "https://{{ api_domain }}/auth/passkey/status"
+        return_content: true
+        status_code: 200
+      register: passkey_status
+      delegate_to: localhost
+      become: false
+      tags: [verify, auth]
+
+    - name: assert public passkey discovery is ready and private
+      ansible.builtin.assert:
+        that:
+          - passkey_status.json.available is boolean
+          - passkey_status.json.count is none
+        fail_msg: |
+          Passkey discovery is not production-ready. Expected an unauthenticated
+          200 response with boolean `available` and private `count: null`; got
+          {{ passkey_status.status | default('no status') }}
+          {{ passkey_status.json | default(passkey_status.content | default('no body')) }}.
+        success_msg: |
+          Passkey discovery verified: public route is reachable and credential
+          counts remain private before login.
+      tags: [verify, auth]
+
+    # A real email click is a top-level browser navigation and therefore sends
+    # Accept: text/html. This exact request shape used to match Caddy's SPA rule
+    # before /auth/*, returning index.html with the secret token still in the
+    # address bar. An invalid token is sufficient (and safe) to prove the route
+    # reached FastAPI: the callback must answer with its closed 302 error.
+    - name: GET magic-link callback with browser navigation headers
+      ansible.builtin.uri:
+        url: "https://{{ api_domain }}/auth/callback?token=deploy-routing-probe&next=%2F"
+        headers:
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        follow_redirects: none
+        status_code: 302
+      register: browser_callback_probe
+      delegate_to: localhost
+      become: false
+      tags: [verify, auth, caddy]
+
+    - name: assert browser magic-link navigation reaches FastAPI
+      ansible.builtin.assert:
+        that:
+          - browser_callback_probe.location is defined
+          - "'/login?error=magic_link_invalid' in browser_callback_probe.location"
+          - "browser_callback_probe.location.startswith('https://antiek.ai/')"
+        fail_msg: |
+          A browser-shaped magic-link callback did not reach FastAPI's token
+          verifier. Caddy may have served the SPA before /auth/*. Got status
+          {{ browser_callback_probe.status | default('unknown') }}, location
+          {{ browser_callback_probe.location | default('missing') }}.
+        success_msg: |
+          Browser-shaped magic-link callbacks reach FastAPI before the SPA.
+      tags: [verify, auth, caddy]
 
     # ── Frontend smoke check ────────────────────────────────────────────
     # GET the root URL through Caddy. Asserts the SPA is served + the

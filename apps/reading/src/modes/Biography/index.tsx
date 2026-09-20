@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import Werner from "../../brand/Werner";
+import BrainMascot from "../../brand/BrainMascot";
+import ModelUsagePicker from "../../components/ai/ModelUsagePicker";
 import { LemonButton } from "../../components/lemon";
 import { startInvestigation } from "../../lib/api";
 import {
@@ -9,6 +10,7 @@ import {
   makeShareLink,
   type BiographyComposition,
 } from "../../lib/speakApi";
+import { useOwnerModelChoice } from "../../hooks/useOwnerModelChoice";
 import AIActionFailure from "../../shared/AIActionFailure";
 
 /**
@@ -41,6 +43,11 @@ export default function Biography() {
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState(false);
   const [composed, setComposed] = useState<BiographyComposition | null>(null);
+  // Starting a biography starts a research, and a research spends. The picker
+  // names the route that will do the gathering; left alone it stays on the
+  // house route.
+  const model = useOwnerModelChoice("biography");
+  const { launchFields } = model;
 
   // Start a biography: provision the three surfaces over the ONE graph.
   //   1. the Research folder — startInvestigation → investigation_id (the
@@ -59,6 +66,7 @@ export default function Biography() {
         question: `The life and story of ${trimmed}.`,
         context:
           "A biography: gather what is known, written, and remembered about this person.",
+        ...launchFields(trimmed),
       });
       const comp = await createBiography({
         investigationId: research.investigation_id,
@@ -70,7 +78,7 @@ export default function Biography() {
     } finally {
       setSubmitting(false);
     }
-  }, [name]);
+  }, [name, launchFields]);
 
   if (composed) {
     return (
@@ -88,7 +96,7 @@ export default function Biography() {
     <div className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
       <div className="mx-auto max-w-2xl px-6 py-12">
         <header className="mb-8 flex items-start gap-3">
-          <Werner mood="idle" size={52} label="" />
+          <BrainMascot mood="idle" size={52} label="" />
           <div>
             <h1 className="font-serif text-3xl font-semibold text-ink dark:text-bright">
               Write someone&rsquo;s biography
@@ -138,6 +146,16 @@ export default function Biography() {
             placeholder="A name — e.g. my grandmother, Dad, Maria"
             aria-label="Whose biography do you want to write?"
             className="min-w-[220px] flex-1 rounded border border-rule bg-transparent px-3 py-2 font-serif text-[15px] text-ink focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:text-bright"
+          />
+          <ModelUsagePicker
+            models={model.models}
+            value={model.selectedRowId}
+            onChange={model.select}
+            includeDefault
+            defaultLabel="Default (house route)"
+            triggerLabel={model.triggerLabel}
+            triggerAriaLabel="Model for the gathering"
+            size="sm"
           />
           <LemonButton
             type="submit"
@@ -234,7 +252,7 @@ function BiographyOnboarding({
     <div className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
       <div className="mx-auto max-w-2xl px-6 py-12">
         <header className="mb-7 flex items-start gap-3">
-          <Werner mood="celebrate" size={52} label="" />
+          <BrainMascot mood="celebrate" size={52} label="" />
           <div>
             <h1 className="font-serif text-3xl font-semibold text-ink dark:text-bright">
               {who}&rsquo;s biography is started

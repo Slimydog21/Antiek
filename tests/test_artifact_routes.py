@@ -12,9 +12,11 @@ from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
 from runtime.db_lock import connect_write
-from substrate.graph import ensure_initialized
+from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.insight_question import promote_insight
 from substrate.graph.ops import insert_document
+from substrate.research_artifact.paths import artifact_source_path_for
+from substrate.research_artifact.store import ResearchArtifactStore
 
 
 @pytest.fixture
@@ -64,7 +66,7 @@ def test_get_artifact_html_renders_by_investigation_id(api_env):
         source_document_id="doc-1",
     )
     client = _client()
-    resp = client.get("/research/inv-html-view/artifact/html")
+    resp = client.get("/research/inv-html-view/artifact.html")
 
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/html")
@@ -89,6 +91,25 @@ def test_get_artifact_twin_notes_renders_by_investigation_id(api_env):
     assert resp.headers["x-antiek-content-hash"]
     assert "Twin route insight." in resp.text
 
+def test_get_artifact_status_missing(api_env):
+    response = _client().get("/research/inv-missing/artifact")
+    assert response.status_code == 404
+
+
+def test_get_artifact_status_returns_authoritative_identity(api_env):
+    source = artifact_source_path_for("artifact-authoritative", "a" * 64)
+    ResearchArtifactStore(default_db_path()).save_source(
+        "artifact-authoritative", "inv-status", "__operator__", source, b"<html></html>"
+    )
+    response = _client().get("/research/inv-status/artifact")
+    assert response.status_code == 200
+    assert response.json() == {
+        "artifact_id": "artifact-authoritative",
+        "investigation_id": "inv-status",
+        "selected_style": None,
+        "latest_version": 0,
+    }
+
 
 def test_get_artifact_blocks_empty(api_env):
     client = _client()
@@ -112,6 +133,7 @@ def test_get_artifact_blocks_after_insight(api_env):
     blocks = resp.json()["blocks"]
     assert len(blocks) >= 1
     assert blocks[0]["investigation_id"] == "inv-blocks"
+
     assert blocks[0]["kind"] in ("insight", "question", "synthesis")
 
 
@@ -670,3 +692,23 @@ def test_get_compose_draft_merge_html_requires_two_ids(api_env):
 
     assert resp.status_code == 400
     assert "at least two" in resp.json()["detail"]
+
+
+def test_get_artifact_html_inline_script_free(api_env):
+    """Daily-use HTML-native view: inline disposition + zero-script projection."""
+    promote_insight(
+        text="HTML-native research finding.",
+        investigation_id="inv-html-view",
+        confidence="moderate",
+        source_document_id="doc-1",
+    )
+    client = _client()
+    resp = client.get("/research/inv-html-view/artifact.html")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers.get("content-type", "")
+    disp = resp.headers.get("content-disposition", "")
+    assert "inline" in disp
+    assert "attachment" not in disp
+    assert "HTML-native research finding" in resp.text
+    assert "<script" not in resp.text.lower()
+    assert resp.headers.get("x-antiek-html-projection") == "script-free; disposition=inline"

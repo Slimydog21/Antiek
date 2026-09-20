@@ -1,0 +1,247 @@
+{
+  "generated_at": "2026-07-15T19:41:20.460113+00:00",
+  "lint": "reachability_gate_py",
+  "schema_version": 1,
+  "violations": [
+    {
+      "col": 0,
+      "kind": "package:unimported:ad_targeting",
+      "line": 1,
+      "path": "substrate/ad_targeting/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:advertisers",
+      "line": 1,
+      "path": "substrate/advertisers/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:agent_skills",
+      "line": 1,
+      "path": "substrate/agent_skills/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:analytics",
+      "line": 1,
+      "path": "substrate/analytics/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:autoresearch",
+      "line": 1,
+      "path": "substrate/autoresearch/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:collective_graph",
+      "line": 1,
+      "path": "substrate/collective_graph/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:cross_graph_writer",
+      "line": 1,
+      "path": "substrate/cross_graph_writer/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:deletion_worker",
+      "line": 1,
+      "path": "substrate/deletion_worker/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:dp_shuffler",
+      "line": 1,
+      "path": "substrate/dp_shuffler/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:ducklake",
+      "line": 1,
+      "path": "substrate/ducklake/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:edit",
+      "line": 1,
+      "path": "substrate/edit/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:federation",
+      "line": 1,
+      "path": "substrate/federation/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:gap_detection",
+      "line": 1,
+      "path": "substrate/gap_detection/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:graph_per_user",
+      "line": 1,
+      "path": "substrate/graph_per_user/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:invariants",
+      "line": 1,
+      "path": "substrate/invariants/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:multi_user.crdt_scaffold",
+      "line": 1,
+      "path": "substrate/multi_user/crdt_scaffold/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:execute_authorized_call",
+      "line": 439,
+      "path": "substrate/multimedia/execution_authorization.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:revoke_execution_authorization",
+      "line": 572,
+      "path": "substrate/multimedia/execution_authorization.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:revoke_async_execution_authorization",
+      "line": 667,
+      "path": "substrate/multimedia/execution_authorization.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:exclude_provider_executions",
+      "line": 31,
+      "path": "substrate/multimedia/local_provider_exclusion.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:get_execution",
+      "line": 112,
+      "path": "substrate/multimedia/operations.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:list_executions",
+      "line": 125,
+      "path": "substrate/multimedia/operations.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:cancel_execution",
+      "line": 154,
+      "path": "substrate/multimedia/operations.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:begin_provider_submission",
+      "line": 267,
+      "path": "substrate/multimedia/provider_execution.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:bind_provider_job",
+      "line": 498,
+      "path": "substrate/multimedia/provider_execution.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:request_provider_cancellation",
+      "line": 633,
+      "path": "substrate/multimedia/provider_execution.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:mark_submission_outcome_unknown",
+      "line": 774,
+      "path": "substrate/multimedia/provider_execution.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:validate_settled_execution",
+      "line": 181,
+      "path": "substrate/multimedia/ship_cost_snapshot.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:issue_visual_rights_decision",
+      "line": 123,
+      "path": "substrate/multimedia/visual_evidence_authority.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:is_author_claimed",
+      "line": 73,
+      "path": "substrate/payouts/contact_guard.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:guarded_send_to_author",
+      "line": 90,
+      "path": "substrate/payouts/contact_guard.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:public_graph",
+      "line": 1,
+      "path": "substrate/public_graph/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:public_notes_ingest",
+      "line": 1,
+      "path": "substrate/public_notes_ingest/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:reading.projection",
+      "line": 1,
+      "path": "substrate/reading/projection/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:research_bridge",
+      "line": 1,
+      "path": "substrate/research_bridge/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:research_bridge.eval",
+      "line": 1,
+      "path": "substrate/research_bridge/eval/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:guard_servable_body",
+      "line": 223,
+      "path": "substrate/rights/arxiv_tiers.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:synthesis_rubric",
+      "line": 1,
+      "path": "substrate/synthesis_rubric/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:telemetry_preferences",
+      "line": 1,
+      "path": "substrate/telemetry_preferences/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:trust_center",
+      "line": 1,
+      "path": "substrate/trust_center/__init__.py"
+    }
+  ]
+}

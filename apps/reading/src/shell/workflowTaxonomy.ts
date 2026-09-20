@@ -386,6 +386,14 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     built: true,
     route: "/speak/invite/:token",
   },
+  {
+    id: "SpeakPublicBrowse",
+    workflow: "speak",
+    label: "Public remembrances",
+    blurb: "Unauthenticated, read-only browse of public-intent remembrances + opportunities (no login).",
+    built: true,
+    route: "/speak/browse",
+  },
   // SPR-11 — the Biography TEMPLATE. NOT a fifth workflow: a biography
   // composes Research + Write + Speak over the ONE graph, so it is classified
   // under Speak (the talk/voices surface it leads into), reachable from the
@@ -462,6 +470,37 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     built: true,
     route: "/trust",
     sharedReason: "Public trust/governance surface; not workflow-scoped.",
+  },
+  // Own Your Mind P0 (docs/own-your-mind/10-p0-implementation-brief.md) —
+  // three read-only provenance/governance surfaces. Explain is a param route
+  // (a detail surface reached from claims/syntheses/documents, not from the
+  // launcher); ObjectiveCard + Signals are bare routes and appear in More.
+  {
+    id: "Explain",
+    workflow: "shared",
+    label: "Explain provenance",
+    blurb: "Why this claim / what grounded this synthesis / who cites this document (read-only).",
+    built: true,
+    route: "/explain/:kind/:id",
+    sharedReason: "Read-only provenance chain over claims, syntheses, and documents from every workflow.",
+  },
+  {
+    id: "ObjectiveCard",
+    workflow: "shared",
+    label: "Objective card",
+    blurb: "Live dispatch matrix · gap scoring · gates · budgets (read-only).",
+    built: true,
+    route: "/objective",
+    sharedReason: "Operator-owned objective rendering; spans all workflows.",
+  },
+  {
+    id: "Signals",
+    workflow: "shared",
+    label: "Signal inventory",
+    blurb: "Every event ActionType with payload class and emitter (read-only).",
+    built: true,
+    route: "/signals",
+    sharedReason: "Audit/governance inventory over the event schema; not workflow-scoped.",
   },
   {
     id: "PrivacyDashboard",

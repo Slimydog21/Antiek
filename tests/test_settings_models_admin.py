@@ -1,0 +1,1133 @@
+"""Add-model vertical — user-added BYOK providers in Settings.
+
+All offline + deterministic: byok artifact/key-file + user-model registry
+redirected to tmp via env, zero real network (the credential-reflection test
+uses ``httpx.MockTransport``), providers registered via the REAL dispatch seam
+and reset around each test. The key-absent invariant mirrors ``test_byok_store.py``'s
+byte-level absence assertion: responses, durable artifacts, and captured
+logs/stdio must never contain the plaintext key.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import stat
+import traceback
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import httpx
+import nacl.secret
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from interfaces.research.api.settings_budget import register_settings_budget_routes
+from interfaces.research.api.settings_models_admin import UserModelRegistryIntegrityError
+from substrate.dispatch.base import ProviderError
+from substrate.dispatch.providers.anthropic import AnthropicProvider
+from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
+from substrate.dispatch.router import (
+    get_provider,
+    register_provider,
+    reset_provider_registry,
+)
+
+_SECRET = "sk-AAAA-super-secret-user-model-key-1234567890"
+
+_ADD_BODY = {
+    "provider_kind": "openai_compat",
+    "model_id": "deepseek-chat",
+    "display_name": "My DeepSeek",
+    "base_url": "https://api.deepseek.com/v1",
+    "api_key": _SECRET,
+}
+
+
+def _fresh_app() -> FastAPI:
+    """Build an app through the REAL settings mount seam (the same
+    ``register_settings_budget_routes`` create_app calls) without pulling
+    the whole app.py surface into this suite."""
+    app = FastAPI()
+    register_settings_budget_routes(app)
+    return app
+
+
+@pytest.fixture
+def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(tmp_path / "settings" / "user_models.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "byok" / "credentials.enc"))
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "byok" / "master.key"))
+    reset_provider_registry()
+    return tmp_path
+
+
+@pytest.fixture
+def client(env: Path) -> Iterator[TestClient]:
+    with TestClient(_fresh_app()) as c:
+        yield c
+    reset_provider_registry()
+
+
+def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
+    from runtime.research_runner.provider_route_authority import (
+        ProviderRouteAuthorityResolver,
+    )
+
+    assert isinstance(client.app.state.provider_route_authority, ProviderRouteAuthorityResolver)
+    r = client.post("/settings/models/user", json=_ADD_BODY)
+    assert r.status_code == 201
+    body = r.json()
+    assert body["id"] == "user-my-deepseek"
+    assert body["key_present"] is True
+    assert body["registered"] is True
+    assert body["enabled"] is True
+    assert body["route_eligible"] is True
+    assert body["pricing_status"] == "unknown"
+    assert body["hard_ceiling_eligible"] is False
+    assert body["execution_status"] == "blocked_unknown_pricing"
+    assert body["rate_snapshot"] is None
+    assert "api_key" not in body
+
+    inv = client.get("/settings/models/user")
+    assert inv.status_code == 200
+    rows = inv.json()["models"]
+    assert [row["id"] for row in rows] == ["user-my-deepseek"]
+    assert rows[0]["key_present"] is True
+    assert rows[0]["route_eligible"] is True
+
+    # Registration proof through the SAME seam register_default_providers
+    # populates: the existing inventory endpoint reads
+    # app.state.registered_providers. The generic inventory must NOT call the
+    # provider route-ready until an explicit dispatch tier binds it.
+    models = client.get("/settings/models")
+    assert models.status_code == 200
+    row = next(m for m in models.json()["models"] if m["provider_id"] == "user-my-deepseek")
+    assert row["registered"] is True
+    assert row["ready"] is False
+    assert row["model_id"] == "deepseek-chat"
+    assert row["route_eligible"] is True
+    assert row["pricing_status"] == "unknown"
+    assert row["hard_ceiling_eligible"] is False
+    assert row["execution_status"] == "blocked_unknown_pricing"
+    assert row["rate_snapshot"] is None
+    assert row["tier_bindings"] == []
+    assert row["notes"] == "registered, but not bound to an active dispatch tier"
+
+    # ... and the dispatch registry itself resolves the provider, with the
+    # key decrypting from the byok store at call time (test-only private
+    # access — this is the one place the plaintext round-trip is asserted,
+    # mirroring test_byok_store's reveal() assertions).
+    provider = get_provider("user-my-deepseek")
+    assert provider._resolve_api_key() == _SECRET  # noqa: SLF001
+    assert provider.base_url == "https://api.deepseek.com/v1"
+
+
+@pytest.mark.parametrize(
+    ("catalog_id", "provider_kind", "model_id", "adapter_type", "base_url", "path"),
+    [
+        (
+            "openai",
+            "openai_compat",
+            "gpt-5.6-sol",
+            OpenAICompatProvider,
+            "https://api.openai.com",
+            "/v1/chat/completions",
+        ),
+        (
+            "anthropic",
+            "anthropic",
+            "claude-opus-5",
+            AnthropicProvider,
+            "https://api.anthropic.com",
+            "/v1/messages",
+        ),
+    ],
+)
+def test_first_party_preset_registers_real_adapter_and_decrypts_only_at_call(
+    client: TestClient,
+    catalog_id: str,
+    provider_kind: str,
+    model_id: str,
+    adapter_type: type[OpenAICompatProvider] | type[AnthropicProvider],
+    base_url: str,
+    path: str,
+) -> None:
+    response = client.post(
+        "/settings/models/user",
+        json={
+            "provider_kind": provider_kind,
+            "provider_catalog_id": catalog_id,
+            "model_id": model_id,
+            "display_name": f"First Party {catalog_id}",
+            "api_key": _SECRET,
+        },
+    )
+    assert response.status_code == 201
+    row = response.json()
+    assert row["base_url"] == base_url
+    assert row["provider_catalog_id"] == catalog_id
+    assert row["pricing_status"] == "known"
+    assert row["execution_status"] == "blocked_idempotency_unproven"
+
+    provider = get_provider(row["id"])
+    assert isinstance(provider, adapter_type)
+    assert provider.base_url == base_url
+    if isinstance(provider, OpenAICompatProvider):
+        assert provider.chat_completions_path == path
+    else:
+        assert path == "/v1/messages"
+    assert provider._api_key is None  # noqa: SLF001
+    assert provider._resolve_api_key() == _SECRET  # noqa: SLF001
+
+
+def test_registered_sonnet_uses_valid_adaptive_thinking_request_shape(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/settings/models/user",
+        json={
+            "provider_kind": "anthropic",
+            "provider_catalog_id": "anthropic",
+            "model_id": "claude-sonnet-5",
+            "display_name": "First Party Sonnet",
+            "api_key": _SECRET,
+        },
+    )
+    assert response.status_code == 201
+    provider = get_provider(response.json()["id"])
+    assert isinstance(provider, AnthropicProvider)
+    captured: dict[str, object] = {}
+
+    def inspect_request(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "content": [{"type": "text", "text": "owner answer"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 2, "output_tokens": 3},
+            },
+            request=request,
+        )
+
+    provider._client = httpx.Client(transport=httpx.MockTransport(inspect_request))  # noqa: SLF001
+    provider._owns_client = True  # noqa: SLF001
+    result = provider.call(
+        model="claude-sonnet-5",
+        prompt="owner prompt",
+        max_tokens=32,
+        temperature=0.7,
+    )
+
+    assert result.text == "owner answer"
+    assert captured["model"] == "claude-sonnet-5"
+    assert "temperature" not in captured
+
+
+def test_exact_choice_resolves_but_execution_remains_hard_ceiling_blocked(
+    client: TestClient,
+) -> None:
+    created = client.post("/settings/models/user", json=_ADD_BODY)
+    assert created.status_code == 201
+    response = client.post(
+        "/settings/models/user/resolve",
+        json={
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "deepseek-chat",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "authority": "user_model",
+        "provider_id": "user-my-deepseek",
+        "model_id": "deepseek-chat",
+        "pricing_status": "unknown",
+        "hard_ceiling_eligible": False,
+        "execution_status": "blocked_unknown_pricing",
+        "rate_snapshot": None,
+    }
+    assert _SECRET not in response.text
+    assert "cred" not in response.text
+
+
+def test_exact_server_execution_authority_projects_identically_across_settings(
+    client: TestClient,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    from runtime.research_runner.cost_projection import CostCatalogEntry, UnitRate
+    from runtime.research_runner.protocol import BillingUnit
+    from runtime.research_runner.provider_gateway import ProviderCapabilities
+    from runtime.research_runner.provider_qualification import (
+        EvidenceStatus,
+        ProviderQualification,
+        QualificationEvidence,
+        QualificationVerdict,
+    )
+    from runtime.research_runner.provider_route_authority import (
+        ProviderRouteAuthorityResolver,
+        ProviderRouteIdentity,
+        RouteAuthorityCatalogEntry,
+    )
+
+    assert (
+        client.post(
+            "/settings/models/user",
+            json={
+                **_ADD_BODY,
+                "provider_catalog_id": "deepseek",
+                "base_url": "https://api.deepseek.com",
+            },
+        ).status_code
+        == 201
+    )
+    identity = ProviderRouteIdentity(
+        "openai_compat",
+        "deepseek-chat",
+        "https://api.deepseek.com",
+        "user.prompt.generate",
+        "generate",
+    )
+    cost = CostCatalogEntry(
+        seam_id="user.prompt.generate",
+        provider="qualified-family",
+        model="deepseek-chat",
+        operation="generate",
+        rates=(UnitRate(BillingUnit.CALL, Decimal("0.01")),),
+        snapshot="qualified-family-v1",
+        expires_at=datetime.now(UTC) + timedelta(days=1),
+        durable_idempotency=True,
+        authoritative_reconciliation=True,
+        hidden_retries_disabled=True,
+    )
+    evidence = {
+        dimension: QualificationEvidence(
+            EvidenceStatus.PASS,
+            "https://provider.example/contract",
+            "Exact provider contract evidence.",
+        )
+        for dimension in (
+            "pinned_pricing",
+            "durable_idempotency",
+            "hidden_retries_disabled",
+            "authoritative_reconciliation",
+            "stable_provider_evidence",
+        )
+    }
+    qualification = ProviderQualification(
+        "qualified-family",
+        "deepseek-chat",
+        "generate",
+        "2026-07-16",
+        QualificationVerdict.QUALIFIED,
+        evidence,
+        provider_kind="openai_compat",
+        endpoint="https://api.deepseek.com",
+        chargeable_units=frozenset({BillingUnit.CALL}),
+        expires_at=datetime.now(UTC) + timedelta(days=1),
+    )
+
+    class ExactAdapter:
+        provider = "user-my-deepseek"
+        model = "deepseek-chat"
+        endpoint = "https://api.deepseek.com"
+        capabilities = ProviderCapabilities(True, True, True, frozenset({BillingUnit.CALL}))
+
+        def send_once(
+            self,
+            operation: object,
+            *,
+            provider_idempotency_key: str,
+            authorized_endpoint: str,
+        ):
+            raise AssertionError("Settings authority must not send")
+
+        def reconcile(self, *, provider_idempotency_key: str, authorized_endpoint: str):
+            raise AssertionError("Settings authority must not reconcile")
+
+    adapter = ExactAdapter()
+    resolver = ProviderRouteAuthorityResolver(
+        (
+            RouteAuthorityCatalogEntry(
+                identity,
+                cost,
+                qualification,
+            ),
+        ),
+        adapter_lookup=lambda provider_id: adapter if provider_id == adapter.provider else None,
+    )
+    resolver.register_adapter(identity, adapter.provider, adapter)
+    client.app.state.provider_route_authority = resolver
+
+    user_row = client.get("/settings/models/user").json()["models"][0]
+    generic_row = next(
+        row
+        for row in client.get("/settings/models").json()["models"]
+        if row["provider_id"] == "user-my-deepseek"
+    )
+    resolved = client.post(
+        "/settings/models/user/resolve",
+        json={
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "deepseek-chat",
+        },
+    ).json()
+    for projected in (user_row, generic_row, resolved):
+        assert projected["pricing_status"] == "known"
+        assert projected["hard_ceiling_eligible"] is True
+        assert projected["execution_status"] == "executable"
+        assert projected["rate_snapshot"] == "qualified-family-v1"
+
+
+@pytest.mark.parametrize(
+    "choice",
+    [
+        {"authority": "user_model", "provider_id": "user-my-deepseek", "model_id": "other"},
+        {"authority": "user_model", "provider_id": "user-other", "model_id": "deepseek-chat"},
+    ],
+)
+def test_non_exact_choice_fails_value_free(client: TestClient, choice: dict[str, str]) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    response = client.post("/settings/models/user/resolve", json=choice)
+    assert response.status_code == 409
+    assert response.json() == {"detail": "user model route is unavailable"}
+    assert all(value not in response.text for value in choice.values())
+
+
+def test_deleted_stale_and_credential_rebound_routes_fail_closed(
+    client: TestClient,
+    env: Path,
+) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    choice = {
+        "authority": "user_model",
+        "provider_id": "user-my-deepseek",
+        "model_id": "deepseek-chat",
+    }
+    client.app.state.registered_providers.discard("user-my-deepseek")
+    assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
+    stale_row = next(
+        row
+        for row in client.get("/settings/models").json()["models"]
+        if row["provider_id"] == "user-my-deepseek"
+    )
+    assert stale_row["registered"] is False
+    assert stale_row["route_eligible"] is False
+
+    client.app.state.registered_providers.add("user-my-deepseek")
+    path = env / "settings" / "user_models.json"
+    registry = json.loads(path.read_text())
+    registry["user-my-deepseek"]["cred_ref"] = "cred-x-missing"
+    path.write_text(json.dumps(registry))
+    assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
+
+    assert client.delete("/settings/models/user/user-my-deepseek").status_code == 200
+    assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
+
+
+def test_registry_mutation_cannot_borrow_stale_live_adapter(
+    client: TestClient,
+    env: Path,
+) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    path = env / "settings" / "user_models.json"
+    registry = json.loads(path.read_text())
+    registry["user-my-deepseek"]["model_id"] = "mutated-model"
+    registry["user-my-deepseek"]["base_url"] = "https://mutated.invalid/v1"
+    path.write_text(json.dumps(registry))
+    response = client.post(
+        "/settings/models/user/resolve",
+        json={
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "mutated-model",
+        },
+    )
+    assert response.status_code == 409
+    row = next(
+        item
+        for item in client.get("/settings/models").json()["models"]
+        if item["provider_id"] == "user-my-deepseek"
+    )
+    assert row["route_eligible"] is False
+    user_row = client.get("/settings/models/user").json()["models"][0]
+    assert user_row["route_eligible"] is False
+
+
+def test_same_name_adapter_replacement_revokes_route_authority(client: TestClient) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    replacement = OpenAICompatProvider(
+        name="user-my-deepseek",
+        base_url="https://replacement.invalid/v1",
+    )
+    register_provider(replacement)
+
+    choice = {
+        "authority": "user_model",
+        "provider_id": "user-my-deepseek",
+        "model_id": "deepseek-chat",
+    }
+    assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
+    generic_row = next(
+        item
+        for item in client.get("/settings/models").json()["models"]
+        if item["provider_id"] == "user-my-deepseek"
+    )
+    assert generic_row["route_eligible"] is False
+    user_row = client.get("/settings/models/user").json()["models"][0]
+    assert user_row["route_eligible"] is False
+
+
+def test_second_live_app_preserves_equivalent_route_authority(env: Path) -> None:
+    first_app = _fresh_app()
+    with TestClient(first_app) as first:
+        assert first.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+        choice = {
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "deepseek-chat",
+        }
+        assert first.post("/settings/models/user/resolve", json=choice).status_code == 200
+
+        second_app = _fresh_app()
+        with TestClient(second_app) as second:
+            assert second.post("/settings/models/user/resolve", json=choice).status_code == 200
+            assert first.post("/settings/models/user/resolve", json=choice).status_code == 200
+
+
+def test_ciphertext_substitution_revokes_route_and_cannot_reveal_other_key(
+    client: TestClient,
+    env: Path,
+) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    other_secret = "sk-BBBB-other-user-model-key-0987654321"
+    assert (
+        client.post(
+            "/settings/models/user",
+            json={
+                **_ADD_BODY,
+                "display_name": "Other Model",
+                "api_key": other_secret,
+            },
+        ).status_code
+        == 201
+    )
+
+    registry = json.loads((env / "settings" / "user_models.json").read_text())
+    first_ref = registry["user-my-deepseek"]["cred_ref"]
+    other_ref = registry["user-other-model"]["cred_ref"]
+    artifact_path = env / "byok" / "credentials.enc"
+    artifact = json.loads(artifact_path.read_text())
+    artifact[first_ref]["ciphertext_hex"] = artifact[other_ref]["ciphertext_hex"]
+    artifact_path.write_text(json.dumps(artifact))
+
+    choice = {
+        "authority": "user_model",
+        "provider_id": "user-my-deepseek",
+        "model_id": "deepseek-chat",
+    }
+    response = client.post("/settings/models/user/resolve", json=choice)
+    assert response.status_code == 409
+    assert other_secret not in response.text
+    with pytest.raises(ProviderError) as exc_info:
+        get_provider("user-my-deepseek")._resolve_api_key()  # noqa: SLF001
+    assert other_secret not in str(exc_info.value)
+
+
+def test_concurrent_creates_preserve_registry_and_credential_artifact(
+    client: TestClient,
+    env: Path,
+) -> None:
+    def create(index: int) -> int:
+        response = client.post(
+            "/settings/models/user",
+            json={
+                **_ADD_BODY,
+                "display_name": f"Concurrent Model {index}",
+                "api_key": f"sk-concurrent-{index:02d}-abcdefghijklmnopqrstuvwxyz",
+            },
+        )
+        return response.status_code
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        statuses = list(pool.map(create, range(16)))
+
+    assert statuses == [201] * 16
+    registry = json.loads((env / "settings" / "user_models.json").read_text())
+    artifact = json.loads((env / "byok" / "credentials.enc").read_text())
+    assert len(registry) == 16
+    assert len(artifact) == 16
+    inventory = client.get("/settings/models/user").json()
+    assert inventory["count"] == 16
+    assert all(row["route_eligible"] is True for row in inventory["models"])
+
+
+def test_registry_permissions_are_repaired_and_symlink_is_rejected(
+    client: TestClient,
+    env: Path,
+) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    registry_path = env / "settings" / "user_models.json"
+    registry_path.chmod(0o644)
+    assert client.get("/settings/models/user").status_code == 200
+    assert stat.S_IMODE(registry_path.stat().st_mode) == 0o600
+
+    target = env / "settings" / "registry-target.json"
+    registry_path.rename(target)
+    registry_path.symlink_to(target)
+    with pytest.raises(RuntimeError, match="regular file"):
+        client.get("/settings/models/user")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"authority": "curated", "provider_id": "x", "model_id": "y"},
+        {"authority": "user_model", "provider_id": "x", "model_id": "y", "api_key": _SECRET},
+        ["user_model", "x", "y"],
+    ],
+)
+def test_malformed_choice_is_value_free(client: TestClient, body: object) -> None:
+    response = client.post("/settings/models/user/resolve", json=body)
+    assert response.status_code == 422
+    assert response.json() == {"detail": "model choice is invalid"}
+    assert _SECRET not in response.text
+
+
+def test_key_absent_from_responses_artifacts_and_logs(
+    client: TestClient,
+    env: Path,
+    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with caplog.at_level(logging.DEBUG):
+        responses = [
+            client.post("/settings/models/user", json=_ADD_BODY),
+            client.get("/settings/models/user"),
+            client.get("/settings/models"),
+            client.delete("/settings/models/user/user-my-deepseek"),
+        ]
+    for r in responses:
+        assert _SECRET not in r.text
+
+    registry_bytes = (env / "settings" / "user_models.json").read_bytes()
+    assert _SECRET.encode("utf-8") not in registry_bytes
+
+    artifact_bytes = (env / "byok" / "credentials.enc").read_bytes()
+    assert _SECRET.encode("utf-8") not in artifact_bytes
+    assert json.loads(artifact_bytes) == {}  # DELETE removes ciphertext too
+
+    assert _SECRET not in caplog.text
+    captured = capsys.readouterr()
+    assert _SECRET not in captured.out
+    assert _SECRET not in captured.err
+
+
+@pytest.mark.parametrize("provider_kind", ["openai_compat", "anthropic"])
+def test_untrusted_endpoint_cannot_reflect_key_into_provider_error(
+    client: TestClient, provider_kind: str
+) -> None:
+    body = {
+        **_ADD_BODY,
+        "provider_kind": provider_kind,
+        "display_name": f"Hostile {provider_kind}",
+    }
+    if provider_kind == "anthropic":
+        body["base_url"] = "https://attacker.invalid"
+    created = client.post("/settings/models/user", json=body)
+    assert created.status_code == 201
+
+    provider = get_provider(created.json()["id"])
+
+    def reflect_credential(request: httpx.Request) -> httpx.Response:
+        reflected = request.headers.get("authorization") or request.headers.get("x-api-key")
+        return httpx.Response(
+            401,
+            text=f"reflected credential: {reflected}",
+            request=request,
+        )
+
+    provider._client = httpx.Client(transport=httpx.MockTransport(reflect_credential))  # noqa: SLF001
+    provider._owns_client = True  # noqa: SLF001
+    with pytest.raises(ProviderError) as raised:
+        provider.call(model="test-model", prompt="test", max_tokens=1, temperature=0)
+
+    message = str(raised.value)
+    assert _SECRET not in message
+    assert "reflected credential" not in message
+    assert "HTTP 401" in message
+
+
+@pytest.mark.parametrize("provider_kind", ["openai_compat", "anthropic"])
+@pytest.mark.parametrize("error_type", [httpx.RemoteProtocolError, httpx.ReadTimeout])
+def test_untrusted_transport_exception_cannot_reflect_key(
+    client: TestClient,
+    provider_kind: str,
+    error_type: type[httpx.RequestError],
+) -> None:
+    body = {
+        **_ADD_BODY,
+        "provider_kind": provider_kind,
+        "display_name": f"Transport reflector {provider_kind}",
+    }
+    if provider_kind == "anthropic":
+        body["base_url"] = "https://attacker.invalid"
+    created = client.post("/settings/models/user", json=body)
+    assert created.status_code == 201
+    provider = get_provider(created.json()["id"])
+
+    def reflect_credential(request: httpx.Request) -> httpx.Response:
+        raise error_type(f"malformed transport reflected {_SECRET}", request=request)
+
+    provider._client = httpx.Client(  # noqa: SLF001
+        transport=httpx.MockTransport(reflect_credential)
+    )
+    provider._owns_client = True  # noqa: SLF001
+    with pytest.raises(ProviderError) as raised:
+        provider.call(model="test-model", prompt="test", max_tokens=1, temperature=0)
+
+    message = str(raised.value)
+    assert _SECRET not in message
+    assert "malformed transport" not in message
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    rendered = "".join(traceback.format_exception(raised.value))
+    assert _SECRET not in rendered
+    assert "malformed transport" not in rendered
+    assert raised.value.retryable is True
+
+
+@pytest.mark.parametrize("provider_kind", ["openai_compat", "anthropic"])
+def test_untrusted_endpoint_cannot_reflect_key_in_success_response(
+    client: TestClient, provider_kind: str
+) -> None:
+    body = {
+        **_ADD_BODY,
+        "provider_kind": provider_kind,
+        "display_name": f"Success reflector {provider_kind}",
+    }
+    if provider_kind == "anthropic":
+        body["base_url"] = "https://attacker.invalid"
+    created = client.post("/settings/models/user", json=body)
+    assert created.status_code == 201
+    provider = get_provider(created.json()["id"])
+
+    def reflect_credential(request: httpx.Request) -> httpx.Response:
+        reflected = request.headers.get("authorization") or request.headers.get("x-api-key")
+        if provider_kind == "anthropic":
+            payload = {
+                "content": [{"type": "text", "text": f"answer {reflected}"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            }
+        else:
+            payload = {
+                "choices": [
+                    {
+                        "message": {"content": f"answer {reflected}"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            }
+        # Preserve an encoded credential in the raw wire response.  A raw
+        # substring scan must not be the security boundary: JSON decoding
+        # reconstructs the plaintext before provider content is returned.
+        serialized = json.dumps(payload).replace("AAAA", r"\u0041AAA", 1)
+        assert _SECRET not in serialized
+        return httpx.Response(200, text=serialized, request=request)
+
+    provider._client = httpx.Client(transport=httpx.MockTransport(reflect_credential))  # noqa: SLF001
+    provider._owns_client = True  # noqa: SLF001
+    with pytest.raises(ProviderError) as raised:
+        provider.call(model="test-model", prompt="test", max_tokens=1, temperature=0)
+
+    message = str(raised.value)
+    assert _SECRET not in message
+    assert "credential material" in message
+
+
+def test_untrusted_anthropic_endpoint_cannot_reassemble_split_key(
+    client: TestClient,
+) -> None:
+    body = {
+        **_ADD_BODY,
+        "provider_kind": "anthropic",
+        "display_name": "Split reflector",
+        "base_url": "https://attacker.invalid",
+    }
+    created = client.post("/settings/models/user", json=body)
+    assert created.status_code == 201
+    provider = get_provider(created.json()["id"])
+
+    def reflect_split_credential(request: httpx.Request) -> httpx.Response:
+        reflected = request.headers["x-api-key"]
+        midpoint = len(reflected) // 2
+        return httpx.Response(
+            200,
+            json={
+                "content": [
+                    {"type": "text", "text": reflected[:midpoint]},
+                    {"type": "text", "text": reflected[midpoint:]},
+                ],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+            request=request,
+        )
+
+    provider._client = httpx.Client(  # noqa: SLF001
+        transport=httpx.MockTransport(reflect_split_credential)
+    )
+    provider._owns_client = True  # noqa: SLF001
+    with pytest.raises(ProviderError) as raised:
+        provider.call(model="test-model", prompt="test", max_tokens=1, temperature=0)
+
+    message = str(raised.value)
+    assert _SECRET not in message
+    assert "credential material" in message
+
+
+def test_remove_takes_effect_immediately(client: TestClient) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    provider = get_provider("user-my-deepseek")
+
+    r = client.delete("/settings/models/user/user-my-deepseek")
+    assert r.status_code == 200
+    assert r.json()["removed"] == "user-my-deepseek"
+
+    assert client.get("/settings/models/user").json()["count"] == 0
+    ids = {m["provider_id"] for m in client.get("/settings/models").json()["models"]}
+    assert "user-my-deepseek" not in ids
+
+    # The in-process dispatch-registry entry lingers (no public unregister)
+    # but is INERT: key resolution re-checks the durable registry.
+    with pytest.raises(ProviderError):
+        provider._resolve_api_key()  # noqa: SLF001
+
+    # Re-adding the same display name mints a new credential reference. A
+    # retained reference to the deleted provider must stay inert rather than
+    # decrypting its orphaned old ciphertext merely because the id exists again.
+    replacement = {**_ADD_BODY, "api_key": "sk-replacement-secret-123456789"}
+    assert client.post("/settings/models/user", json=replacement).status_code == 201
+    with pytest.raises(ProviderError):
+        provider._resolve_api_key()  # noqa: SLF001
+
+    assert client.delete("/settings/models/user/user-my-deepseek").status_code == 200
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"api_key": None},  # missing key
+        {"api_key": ""},  # empty key
+        {"api_key": "short"},  # truncated paste
+        {"api_key": " padded-key-with-space "},  # whitespace
+        {"provider_kind": "sorcery"},  # unknown kind
+        {"model_id": None},  # missing model id
+        {"model_id": "has whitespace"},
+        {"display_name": None},
+        {"display_name": "   "},
+        {"base_url": None},  # required for openai_compat
+        {"base_url": "ftp://api.example.com"},
+    ],
+)
+def test_malformed_input_rejected_value_free(
+    client: TestClient, mutation: dict[str, str | None]
+) -> None:
+    body = {**_ADD_BODY, **mutation}
+    payload = {k: v for k, v in body.items() if v is not None}
+    r = client.post("/settings/models/user", json=payload)
+    assert r.status_code == 422
+    # The load-bearing half: no rejection may echo the key back. This is
+    # exactly the FastAPI whole-body-echo hazard the manual parser closes.
+    assert _SECRET not in r.text
+    assert client.get("/settings/models/user").json()["count"] == 0
+
+
+def test_duplicate_display_name_conflicts(client: TestClient) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    r = client.post("/settings/models/user", json=_ADD_BODY)
+    assert r.status_code == 409
+    assert _SECRET not in r.text
+
+
+def test_anthropic_kind_without_base_url(client: TestClient) -> None:
+    body = {
+        "provider_kind": "anthropic",
+        "model_id": "claude-opus-4-8",
+        "display_name": "My Claude",
+        "api_key": _SECRET,
+    }
+    r = client.post("/settings/models/user", json=body)
+    assert r.status_code == 201
+    provider = get_provider("user-my-claude")
+    assert provider.name == "user-my-claude"
+    assert provider._resolve_api_key() == _SECRET  # noqa: SLF001
+
+
+def test_boot_time_reload_of_user_providers(env: Path) -> None:
+    with TestClient(_fresh_app()) as first:
+        assert first.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+
+    # Fresh process simulation: empty dispatch registry, new app, no POST.
+    reset_provider_registry()
+    with TestClient(_fresh_app()) as reborn:
+        models = reborn.get("/settings/models").json()["models"]
+        row = next(m for m in models if m["provider_id"] == "user-my-deepseek")
+        assert row["ready"] is False
+        assert get_provider("user-my-deepseek")._resolve_api_key() == _SECRET  # noqa: SLF001
+    reset_provider_registry()
+
+
+def test_boot_migrates_legacy_user_model_without_losing_authority(env: Path) -> None:
+    with TestClient(_fresh_app()) as first:
+        assert first.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+
+    registry_path = env / "settings" / "user_models.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    record = registry["user-my-deepseek"]
+    legacy_ref = record["cred_ref"]
+    record.pop("cred_fingerprint")
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    artifact_path = env / "byok" / "credentials.enc"
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    master_key = (env / "byok" / "master.key").read_bytes()
+    legacy_sealed = nacl.secret.SecretBox(master_key).encrypt(_SECRET.encode("utf-8"))
+    artifact[legacy_ref].pop("binding_version")
+    artifact[legacy_ref]["ciphertext_hex"] = bytes(legacy_sealed).hex()
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+    reset_provider_registry()
+    with TestClient(_fresh_app()) as reborn:
+        migrated = json.loads(registry_path.read_text(encoding="utf-8"))["user-my-deepseek"]
+        assert migrated["cred_ref"] != legacy_ref
+        assert len(migrated["cred_fingerprint"]) == 64
+        choice = {
+            "authority": "user_model",
+            "provider_id": "user-my-deepseek",
+            "model_id": "deepseek-chat",
+        }
+        assert reborn.post("/settings/models/user/resolve", json=choice).status_code == 200
+        assert get_provider("user-my-deepseek")._resolve_api_key() == _SECRET  # noqa: SLF001
+    reset_provider_registry()
+
+
+def test_boot_reload_cannot_shadow_default_provider_from_corrupt_registry(
+    env: Path,
+) -> None:
+    with TestClient(_fresh_app()) as seeder:
+        assert seeder.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+
+    registry_path = env / "settings" / "user_models.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    shadow = registry.pop("user-my-deepseek")
+    shadow["id"] = "openrouter"
+    registry["openrouter"] = shadow
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    reset_provider_registry()
+    sentinel = OpenAICompatProvider(
+        name="openrouter",
+        base_url="https://trusted.example/v1",
+        api_key="test-only-sentinel-key",
+    )
+    register_provider(sentinel)
+    app = _fresh_app()
+    app.state.registered_providers = {"openrouter"}
+
+    with pytest.raises(UserModelRegistryIntegrityError), TestClient(app):
+        pass
+    assert get_provider("openrouter") is sentinel
+    assert app.state.registered_providers == {"openrouter"}
+    assert json.loads(registry_path.read_text(encoding="utf-8"))["openrouter"] == shadow
+    reset_provider_registry()
+
+
+def test_boot_reload_rejects_credential_owned_by_another_pipeline(
+    env: Path,
+) -> None:
+    with TestClient(_fresh_app()) as first:
+        assert first.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    registry_path = env / "settings" / "user_models.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+
+    # Keep a real decryptable credential id but corrupt its non-secret owner
+    # metadata to simulate a restored sidecar pointing at another BYOK lane.
+    artifact_path = env / "byok" / "credentials.enc"
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    cred_ref = registry["user-my-deepseek"]["cred_ref"]
+    artifact[cred_ref]["pipeline_kind"] = "x_ingest"
+    artifact[cred_ref]["account_handle"] = "unrelated-account"
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+    reset_provider_registry()
+    with TestClient(_fresh_app()) as reborn:
+        rows = reborn.get("/settings/models/user").json()["models"]
+        assert rows[0]["key_present"] is False
+        assert rows[0]["registered"] is False
+        assert reborn.app.state.registered_providers == set()
+    reset_provider_registry()
+
+
+def test_credential_bearing_base_url_rejected_value_free(client: TestClient) -> None:
+    # FINDING-1 regression: a credential smuggled into base_url (userinfo /
+    # query / fragment) would land PLAINTEXT in the registry and echo in
+    # every response carrying base_url. Must 422 and NEVER echo the URL.
+    marker = "url-embedded-secret-marker-xyz"
+    for url in (
+        f"https://user:{marker}@api.example.com/v1",
+        f"https://api.example.com/v1?key={marker}",
+        f"https://api.example.com/v1#{marker}",
+    ):
+        r = client.post("/settings/models/user", json={**_ADD_BODY, "base_url": url})
+        assert r.status_code == 422
+        assert marker not in r.text
+        assert _SECRET not in r.text
+    assert client.get("/settings/models/user").json()["count"] == 0
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "https://[::1/v1",  # unclosed IPv6 bracket → urlsplit ValueError
+        "https://host:notaport/v1",  # non-numeric port → .port ValueError
+        "https://:443/v1",  # empty hostname (truthy netloc, no host)
+    ],
+)
+def test_malformed_base_url_is_clean_422_not_500(client: TestClient, bad_url: str) -> None:
+    # FINDING-1 round-2 regression: a malformed authority must be a clean,
+    # value-free 422 — never an uncaught ValueError surfacing as HTTP 500.
+    r = client.post("/settings/models/user", json={**_ADD_BODY, "base_url": bad_url})
+    assert r.status_code == 422
+    assert bad_url not in r.text
+    assert _SECRET not in r.text
+    assert client.get("/settings/models/user").json()["count"] == 0
+
+
+def test_well_formed_ipv6_base_url_accepted(client: TestClient) -> None:
+    # FINDING-1 round-2 guard: the try/except must not over-reject a
+    # WELL-FORMED bracketed IPv6 endpoint — a legitimate local provider.
+    body = {**_ADD_BODY, "display_name": "Local V6", "base_url": "https://[::1]:8000/v1"}
+    r = client.post("/settings/models/user", json=body)
+    assert r.status_code == 201
+    assert r.json()["base_url"] == "https://[::1]:8000/v1"
+    assert get_provider("user-local-v6").base_url == "https://[::1]:8000/v1"
+
+
+def test_over_length_inputs_rejected_value_free(client: TestClient, env: Path) -> None:
+    # FINDING-2 regression: unbounded lengths let a 2MiB "key" balloon the
+    # ciphertext artifact to 4MiB. Caps: api_key<=512, base_url<=2048;
+    # rejections value-free, and nothing reaches the byok artifact.
+    long_key = "k" * 600
+    r = client.post("/settings/models/user", json={**_ADD_BODY, "api_key": long_key})
+    assert r.status_code == 422
+    assert long_key not in r.text
+
+    long_url = "https://api.example.com/" + "a" * 2100
+    r2 = client.post("/settings/models/user", json={**_ADD_BODY, "base_url": long_url})
+    assert r2.status_code == 422
+    assert long_url not in r2.text
+    assert _SECRET not in r2.text
+
+    assert client.get("/settings/models/user").json()["count"] == 0
+    # Validation precedes encryption: no credential artifact was created.
+    assert not (env / "byok" / "credentials.enc").exists()
+
+
+def test_live_registry_corruption_fails_closed_without_overwrite(
+    client: TestClient,
+    env: Path,
+) -> None:
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    registry_path = env / "settings" / "user_models.json"
+    corrupt = b"{corrupt"
+    registry_path.write_bytes(corrupt)
+
+    with pytest.raises(UserModelRegistryIntegrityError):
+        client.get("/settings/models/user")
+    with pytest.raises(UserModelRegistryIntegrityError):
+        client.post(
+            "/settings/models/user",
+            json={**_ADD_BODY, "display_name": "Must Not Overwrite"},
+        )
+    assert registry_path.read_bytes() == corrupt
+
+
+def test_boot_reconcile_discards_stale_user_names(env: Path) -> None:
+    # FINDING-3 regression (boot half): a user-* seam name with no enabled
+    # registry record is discarded at startup reconcile, so
+    # GET /settings/models cannot claim ready:true for a provider whose key
+    # resolution refuses. Non-user names are never touched (prefix guard).
+    app = _fresh_app()
+    app.state.registered_providers = {"user-ghost", "zai"}
+    with TestClient(app) as c:
+        assert app.state.registered_providers == {"zai"}
+        ids = {m["provider_id"] for m in c.get("/settings/models").json()["models"]}
+        assert "user-ghost" not in ids
+    reset_provider_registry()
+
+
+def test_boot_reload_lands_after_create_app_state_assignment(env: Path) -> None:
+    # FINDING-5: pin the ordering claim against the REAL create_app.
+    # create_app assigns app.state.registered_providers AFTER mounting the
+    # settings routes; the startup reload must land ON that assignment (an
+    # assignment-after-reload ordering would clobber the user name).
+    with TestClient(_fresh_app()) as seeder:
+        assert seeder.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    reset_provider_registry()
+
+    from interfaces.research.api.app import create_app
+
+    app = create_app(register_wrestling=False, register_providers=False)
+    # create_app has already run its assignment (empty set: no provider
+    # keys); the reload is a lifespan-startup handler and has NOT run yet.
+    assert app.state.registered_providers == set()
+    with TestClient(app) as c:
+        # Startup fired: reload landed after the assignment, not clobbered.
+        assert app.state.registered_providers == {"user-my-deepseek"}
+        row = next(
+            m
+            for m in c.get("/settings/models").json()["models"]
+            if m["provider_id"] == "user-my-deepseek"
+        )
+        assert row["ready"] is False
+    reset_provider_registry()
+
+
+def test_disabled_record_is_not_registered_at_boot(env: Path) -> None:
+    with TestClient(_fresh_app()) as first:
+        assert first.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+
+    # The enabled field is honored read-side: flip it off in the durable
+    # registry (operator escape hatch) and the provider must not register.
+    registry_path = env / "settings" / "user_models.json"
+    data = json.loads(registry_path.read_text(encoding="utf-8"))
+    data["user-my-deepseek"]["enabled"] = False
+    registry_path.write_text(json.dumps(data), encoding="utf-8")
+
+    reset_provider_registry()
+    with TestClient(_fresh_app()) as reborn:
+        row = next(
+            item
+            for item in reborn.get("/settings/models").json()["models"]
+            if item["provider_id"] == "user-my-deepseek"
+        )
+        assert row["registered"] is False
+        assert row["ready"] is False
+        assert row["route_eligible"] is False
+        rows = reborn.get("/settings/models/user").json()["models"]
+        assert rows[0]["enabled"] is False
+        assert rows[0]["registered"] is False
+        with pytest.raises(KeyError):
+            get_provider("user-my-deepseek")
+    reset_provider_registry()

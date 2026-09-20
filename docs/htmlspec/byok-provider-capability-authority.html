@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Cycle 75: BYOK provider capability authority</title></head>
+<body><main>
+<h1>BYOK provider capability authority</h1>
+<p>Status: executable authority slice. Parent: <code>docs/specs/byok-model-route-authority.md</code>. Predecessor: Cycle 74.</p>
+<section><h2>Current provider fact</h2><p>Ordinary synchronous OpenAI-compatible and Anthropic chat creation does not expose a proven provider-enforced idempotency key plus authoritative charged/not-found lookup by that key. A timeout is therefore possibly billed and cannot trigger paid fallback. OpenAI client request IDs are trace evidence, not an API reconciliation authority.</p></section>
+<section><h2>Authority</h2><ul>
+<li>Execution facts are keyed by exact provider kind, canonical endpoint, model, and operation. A matching model name at another endpoint inherits nothing.</li>
+<li>Known pricing requires a complete positive unexpired server cost entry.</li>
+<li>Hard-ceiling execution additionally requires a fully passing checked qualification and an exact registered adapter whose capabilities satisfy the gateway protocol.</li>
+<li>Selection authority remains separate: a valid BYOK record may resolve while paid execution remains blocked with a typed reason.</li>
+</ul></section>
+<section><h2>Production posture</h2><p>The application installs an empty execution-authority resolver. This is deliberate production wiring, not a missing fallback: the checked qualification registry contains no passing provider route, and therefore no production hard-ceiling adapter or paid dispatch consumer may be registered in this cycle. The resolver is consumed by Settings inventory and exact route resolution only. Paid prompt launch remains blocked until a provider-specific follow-up supplies real authority and routes exclusively through <code>ResearchProviderGateway</code>.</p></section>
+<section><h2>Acceptance</h2><ul>
+<li>A synthetic exact route with server pricing, five passing evidence dimensions, and an exact adapter resolves executable.</li>
+<li>Missing or stale pricing, incomplete qualification, hidden retries, missing adapter, endpoint mismatch, and adapter replacement fail closed.</li>
+<li>Settings inventory and resolver project the same authority decision without decrypting a key or calling a provider.</li>
+<li>All checked-in generic BYOK provider kinds remain non-executable.</li>
+</ul></section>
+<section><h2>Rejected shortcuts</h2><p>No local timeout inference, client-authored prices or capabilities, model-name-only matching, generic-router fallback, shared hold across providers, or fake reconciliation over process-local state.</p></section>
+<section><h2>Next</h2><p>Qualify and implement one real provider adapter only after its API satisfies the contract. Then orchestrate fallback as independently projected and reserved attempts; an ambiguous attempt stops the chain until reconciliation.</p></section>
+</main></body></html>

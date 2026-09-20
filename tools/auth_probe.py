@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Staged auth transport + policy probe for magic-link login (SPR-04).
 
-Runs four checks against a live Antiek API base URL:
+Runs five checks against a live Antiek API base URL:
 
   1. ``GET /health`` — Layer A: API reachable (transport baseline).
   2. ``OPTIONS /auth/request`` with ``Origin`` — Layer A: CORS preflight
@@ -9,7 +9,9 @@ Runs four checks against a live Antiek API base URL:
   3. ``POST /auth/request`` with JSON — Layer B: policy path completes
      with enumeration guard ``{"sent": true}`` (dry-run email defaults
      to a non-allowlisted address so no mail is sent).
-  4. ``GET /auth/me`` without session cookie — Layer B: middleware returns
+  4. ``GET /auth/passkey/status`` without a session cookie — Layer B: the
+     passkey discovery route is public and does not leak credential counts.
+  5. ``GET /auth/me`` without session cookie — Layer B: middleware returns
      structured ``401`` with ``operator_auth_required``.
 
 Composes with ``tools/prod_parity/check.py`` on ``main`` (that script owns
@@ -220,18 +222,50 @@ def stage_auth_me_unauthenticated(base_url: str) -> StageResult:
     return StageResult("auth_me_without_cookie", "B", ok, code, detail)
 
 
+def stage_passkey_status_unauthenticated(base_url: str) -> StageResult:
+    url = f"{base_url}/auth/passkey/status"
+    try:
+        code, _headers, body = _request("GET", url)
+    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        return StageResult(
+            "passkey_status_without_cookie",
+            "B",
+            False,
+            None,
+            f"GET /auth/passkey/status failed: {exc}",
+        )
+
+    parsed = _json_body(body)
+    available = parsed.get("available") if isinstance(parsed, dict) else None
+    count = parsed.get("count") if isinstance(parsed, dict) else object()
+    ok = code == 200 and isinstance(available, bool) and count is None
+    detail = (
+        f"public passkey discovery ready (available={available!r}; count concealed)"
+        if ok
+        else (
+            "expected 200 with boolean available and count=null, "
+            f"got http={code} body={parsed!r}"
+        )
+    )
+    return StageResult("passkey_status_without_cookie", "B", ok, code, detail)
+
+
 def run_stages(base_url: str, origin: str, email: str) -> list[StageResult]:
     return [
         stage_health(base_url),
         stage_cors_preflight(base_url, origin),
         stage_auth_request(base_url, origin, email),
+        stage_passkey_status_unauthenticated(base_url),
         stage_auth_me_unauthenticated(base_url),
     ]
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Staged auth probe: health → CORS → auth/request → auth/me.",
+        description=(
+            "Staged auth probe: health → CORS → auth/request → "
+            "passkey/status → auth/me."
+        ),
     )
     parser.add_argument(
         "--base-url",

@@ -69,10 +69,31 @@ from interfaces.research.rlm_repl import (  # noqa: E402
     make_llm_query,
     rlm_loop,
 )
+from orchestration.rlm.prime_agent_backend import (  # noqa: E402
+    PrimeAgentEvidence,
+    PrimeAgentOutcome,
+    PrimeAgentReceipt,
+    PrimeAgentTerminalState,
+)
 from substrate.constants import (  # noqa: E402
     RLM_ANSWER_CONTENT_MAX,
     RLM_MAX_RECURSION_DEPTH,
 )
+
+
+class _PrimeBackendStub:
+    def __init__(self, state, text=None):
+        self.state = state
+        self.text = text
+        self.requests = []
+
+    def run(self, request):
+        self.requests.append(request)
+        return PrimeAgentOutcome(
+            request=request,
+            evidence=PrimeAgentEvidence(self.text) if self.text else None,
+            receipt=PrimeAgentReceipt(self.state, (), None, 1, 0, "stub"),
+        )
 
 # ---------------------------------------------------------------------------
 # A. FunctionRegistry
@@ -85,6 +106,64 @@ def test_registry_install_callable():
     snap = r.globals_snapshot()
     assert "greet" in snap
     assert snap["greet"]("X") == "hi X"
+
+
+def test_llm_query_prime_disabled_preserves_prompt_and_receipts():
+    calls = []
+    receipts = []
+    backend = _PrimeBackendStub(PrimeAgentTerminalState.DISABLED)
+    query = make_llm_query(
+        lambda prompt: calls.append(prompt) or "canonical",
+        prime_backend=backend,
+        evidence_sink=receipts.append,
+    )
+
+    assert query("question") == "canonical"
+    assert calls == ["question"]
+    assert len(backend.requests) == len(receipts) == 1
+    assert receipts[0].receipt.state is PrimeAgentTerminalState.DISABLED
+
+
+def test_llm_batch_prime_success_is_labeled_and_ordered():
+    calls = []
+    receipts = []
+    backend = _PrimeBackendStub(PrimeAgentTerminalState.SUCCESS, "support")
+    batch = make_llm_batch(
+        lambda prompt: calls.append(prompt) or "canonical",
+        max_parallel=1,
+        prime_backend=backend,
+        evidence_sink=receipts.append,
+    )
+
+    assert batch(["first", "second"]) == ["canonical", "canonical"]
+    assert [request.prompt for request in backend.requests] == ["first", "second"]
+    assert len({request.request_id for request in backend.requests}) == 2
+    assert len(calls) == len(receipts) == 2
+    assert all("Supplemental Prime Agent evidence (non-canonical)" in p for p in calls)
+    assert all("support" in p for p in calls)
+
+    batch(["first"])
+    assert len({request.request_id for request in backend.requests}) == 3
+
+
+def test_llm_query_prime_failure_does_not_change_canonical_result():
+    backend = _PrimeBackendStub(PrimeAgentTerminalState.FAILED)
+    calls = []
+    query = make_llm_query(
+        lambda prompt: calls.append(prompt) or "canonical",
+        prime_backend=backend,
+    )
+
+    assert query("question") == "canonical"
+    assert calls == ["question"]
+
+
+def test_llm_query_duplicate_prompts_have_distinct_receipt_ids():
+    backend = _PrimeBackendStub(PrimeAgentTerminalState.DISABLED)
+    query = make_llm_query(lambda _prompt: "canonical", prime_backend=backend)
+
+    assert query("same") == query("same") == "canonical"
+    assert len({request.request_id for request in backend.requests}) == 2
 
 
 def test_registry_rejects_non_callable():
@@ -329,7 +408,7 @@ def test_rlm_loop_force_flushes_on_iteration_cap():
     def gen(summary):
         return "x = 1"  # never sets ready
 
-    answer = rlm_loop(repl, gen)
+    rlm_loop(repl, gen)
     # Force-flush sets ready=True even though code never did.
     assert repl.answer["ready"] is True
 

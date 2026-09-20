@@ -22,8 +22,8 @@
  * rendering. The 1 Hz sampler is disabled (samplingEnabled=false) so these
  * stay pure render tests with no timers.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, waitFor } from "@testing-library/react";
 
 import { AdBorder } from "./AdBorder";
 import type { BorderPosition, FillResult } from "./adFillClient";
@@ -52,13 +52,17 @@ function stubMatchMedia(reduce: boolean): void {
 }
 
 /** A fill fetcher that always returns house fills for the requested edges. */
-async function houseFetcher(opts: { positions: BorderPosition[] }): Promise<FillResult> {
+async function houseFetcher(opts: { windowId: string; positions: BorderPosition[] }): Promise<FillResult> {
   return {
     fills: opts.positions.map((position) => ({
+      fill_decision_id: "local-house",
+      slot_id: `local:${position}`,
       position,
       kind: "house" as const,
+      ad: null,
       house: null,
       revenue_usd_cents: 0,
+      price_status: "unpriced" as const,
     })),
     served: false,
   };
@@ -85,6 +89,13 @@ describe("AdBorder — non-interference (M6)", () => {
     expect(border).toBeTruthy();
     expect(border.className).toContain("pointer-events-none");
     expect(border.hasAttribute("tabindex")).toBe(false);
+  });
+
+  it("binds fill authority to the same telemetry window", async () => {
+    const fetcher = vi.fn(houseFetcher);
+    render(<AdBorder lens="read" windowId="window-authority" samplingEnabled={false} fillFetcher={fetcher} />);
+    await waitFor(() => expect(fetcher).toHaveBeenCalled());
+    expect(fetcher.mock.calls[0][0].windowId).toBe("window-authority");
   });
 
   it("re-enables pointer events on each rail only (its link is clickable)", () => {
@@ -174,6 +185,8 @@ describe("AdBorder — house fill is the default (M5)", () => {
   it("renders a matched advertiser creative as Sponsored when a fill is served", async () => {
     const adFetcher = async (opts: { positions: BorderPosition[] }): Promise<FillResult> => ({
       fills: opts.positions.map((position) => ({
+        fill_decision_id: "fd-1",
+        slot_id: `slot:${position}`,
         position,
         kind: "ad" as const,
         ad: {
@@ -182,7 +195,9 @@ describe("AdBorder — house fill is the default (M5)", () => {
           creative_url: "https://example.com/c.png",
           landing_url: "https://example.com/?ref=antiek",
         },
-        revenue_usd_cents: 120,
+        house: null,
+        revenue_usd_cents: 0,
+        price_status: "unpriced" as const,
       })),
       served: true,
     });

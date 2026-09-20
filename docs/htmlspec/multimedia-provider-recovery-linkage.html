@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Antiek Multimedia Provider Recovery and Asset Linkage</title>
+  <style>
+    body{font:15px/1.55 system-ui,sans-serif;max-width:980px;margin:0 auto;padding:32px;color:#18181b;background:#fafafa}h1,h2{line-height:1.2}section{border-top:1px solid #d4d4d8;padding:18px 0}code{background:#e4e4e7;padding:2px 5px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #d4d4d8;padding:8px;text-align:left;vertical-align:top}.must{font-weight:700}
+  </style>
+</head>
+<body>
+  <h1>Multimedia Provider Recovery and Asset Linkage</h1>
+  <p><strong>Status:</strong> executable TQ sub-spec, stacked on PR #921. <strong>Outcome:</strong> an operator opens one multimedia asset and can inspect or recover its signed provider executions without copying authority identifiers.</p>
+
+  <section>
+    <h2>Five Values</h2>
+    <ol>
+      <li><strong>Information density:</strong> recovery exists to preserve an already-paid educational narration, never to trigger a second call.</li>
+      <li><strong>Operator authority:</strong> only the authenticated owner may see or mutate an execution; IDs are results of verification, not user input.</li>
+      <li><strong>Evidence before state:</strong> provider-account bytes are normalized, cross-bound, hashed, and signed before the existing recovery transition can consume them.</li>
+      <li><strong>One source of truth:</strong> execution and run linkage is projected from signed DuckDB receipts; the JSON asset store does not become a second authority.</li>
+      <li><strong>Honest absence:</strong> missing gateway configuration, no match, multiple matches, or unverifiable evidence returns a safe unavailable state and performs no mutation.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Architecture</h2>
+    <p><code>selected asset → authenticated reconciliation-links projection → signed execution/run verification → operator action → provider-account gateway lookup → normalized Antiek evidence signature → existing recovery state machine</code></p>
+    <table>
+      <tr><th>Boundary</th><th>Contract</th></tr>
+      <tr><td>Gateway lookup</td><td>Fixed HTTPS host, bearer secret held server-side, no redirects, bounded response. Request binds execution, authorization, SHA-256 operator identity, asset, revision, provider, and request-body digest; the raw operator identifier never leaves Antiek.</td></tr>
+      <tr><td>Gateway response</td><td>Versioned exact-key JSON with exactly one match, configured account digest, provider request ID, source, timestamp, audio bytes, and audio SHA-256.</td></tr>
+      <tr><td>Evidence authority</td><td>Antiek validates account and every lookup field, timestamp chronology, Base64 and SHA-256, then signs the existing external-evidence tuple. The gateway never receives Antiek's evidence key.</td></tr>
+      <tr><td>Asset projection</td><td>Current revision comes from the mounted asset store. Execution rows and narration receipts are reopened under the signing key and filtered to the authenticated operator and current parent/child revisions.</td></tr>
+      <tr><td>UI</td><td>The selected asset drives loading. Linked chapter/run buttons replace free-form execution and run ID inputs. Request generations invalidate stale loads and actions.</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Configuration</h2>
+    <p>The reconciliation runtime remains disabled unless its database, output directory, signing key, recovery key, and evidence key are complete. Provider recovery is independently all-or-none:</p>
+    <ul>
+      <li><code>ANTIEK_MULTIMEDIA_RECOVERY_ENDPOINT</code></li>
+      <li><code>ANTIEK_MULTIMEDIA_RECOVERY_TOKEN</code></li>
+      <li><code>ANTIEK_MULTIMEDIA_RECOVERY_OPERATOR_SHA256</code> (the normalized Antiek owner identity digest)</li>
+      <li><code>ANTIEK_MULTIMEDIA_RECOVERY_ACCOUNT_SHA256</code></li>
+      <li><code>ANTIEK_MULTIMEDIA_RECOVERY_ALLOWED_HOST</code></li>
+    </ul>
+    <p>Partial or invalid configuration is a startup error. Missing provider configuration preserves read/quarantine/seal-release behavior but makes provider recovery return safe HTTP 409.</p>
+  </section>
+
+  <section>
+    <h2>Threat and Failure Matrix</h2>
+    <table>
+      <tr><th>Threat</th><th>Required result</th></tr>
+      <tr><td>Cross-owner execution, foreign parent run, asset/revision substitution</td><td class="must">No linkage or mutation; signed records must match the authenticated owner and selected current revision.</td></tr>
+      <tr><td>Zero or multiple provider matches</td><td class="must">Fail closed as unavailable; never choose heuristically.</td></tr>
+      <tr><td>Duplicate JSON keys, extra/missing fields, oversized body/audio, malformed Base64</td><td class="must">Reject before file or database mutation.</td></tr>
+      <tr><td>Account, request digest, authorization, provider, or audio digest mismatch</td><td class="must">Reject before evidence signing.</td></tr>
+      <tr><td>Evidence before unknown state or after verification time</td><td class="must">Reject chronology conflict.</td></tr>
+      <tr><td>Late UI response or asset switch during action</td><td class="must">Ignore the result and expose no stale action.</td></tr>
+      <tr><td>Gateway timeout, redirect, 4xx/5xx, secret-bearing body</td><td class="must">Return a redacted unavailable error; never reflect token or upstream body.</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Acceptance Gates</h2>
+    <ol>
+      <li>Focused adapter and route tests prove exact binding, ambiguity denial, account isolation, chronology, size/schema checks, and no-secret errors.</li>
+      <li>Stacked multimedia suite passes with no regression to signed execution, budget, reconciliation, or seal-lease authority.</li>
+      <li>Frontend tests prove selected-asset linkage, no editable authority IDs, linked parent inspection, action fencing, empty and unavailable states; production build passes.</li>
+      <li>Ruff, strict scoped mypy, HTML parse, diff check, hardenx zero real findings, and a different-lineage critic pass.</li>
+      <li>Live provider recovery is labeled <strong>NOT RUN</strong> until an operator configures a real account gateway and authorizes a non-paid reconciliation canary.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Non-Goals and Handoff</h2>
+    <p>No new provider generation call, retry, refund, router authority, billing mutation, graph mutation, campaign push, merge, or deployment. This sprint does not claim a particular TTS vendor API supports idempotency lookup; the gateway is the provider-specific translation boundary. A future adapter may implement that translation only after live API evidence proves the lookup shape and account identity.</p>
+    <p>Next derivation: account-scope the legacy multimedia asset store and bind provider-gateway account configuration per operator. Until then this remains the single-operator workstation contract already declared by the store.</p>
+  </section>
+</body>
+</html>

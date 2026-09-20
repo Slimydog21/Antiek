@@ -1,24 +1,18 @@
 {
-  "generated_at": "2026-07-08T08:03:45.291293+00:00",
+  "generated_at": "2026-09-20T04:19:10.632174+00:00",
   "lint": "reachability_gate",
   "schema_version": 1,
   "violations": [
     {
       "col": 0,
-      "kind": "route:no-inbound-link:/notebook/auto",
-      "line": 137,
-      "path": "apps/reading/src/App.tsx"
-    },
-    {
-      "col": 0,
       "kind": "route:no-inbound-link:/coordination/cost-consent",
-      "line": 180,
+      "line": 197,
       "path": "apps/reading/src/App.tsx"
     },
     {
       "col": 0,
       "kind": "route:no-inbound-link:/_panel",
-      "line": 238,
+      "line": 265,
       "path": "apps/reading/src/App.tsx"
     }
   ]

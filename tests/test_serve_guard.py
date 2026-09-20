@@ -93,10 +93,13 @@ def _insert(
             metadata["arxiv_id"] = arxiv_id
     con = connect_write(db, purpose="setup")
     try:
-        insert_document(
-            con, document_id=document_id, source_tier=3,
-            document_type="academic_paper", title="A Paper", author="Auth",
-            raw_text=body, content_class=content_class, metadata=metadata,
+        # Deliberately bypass the normal write-time guard: these tests construct
+        # corrupt persisted rows to prove the independent read guard bites.
+        con.execute(
+            "INSERT INTO documents "
+            "(document_id,source_tier,document_type,title,author,raw_text,content_class,metadata) "
+            "VALUES (?,3,'academic_paper','A Paper','Auth',?,?,?)",
+            [document_id, body, content_class, None if metadata is None else json.dumps(metadata)],
         )
     finally:
         con.close()

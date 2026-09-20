@@ -102,6 +102,13 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         "substrate/books/serve.py",
         "substrate/books/serve_guard.py",
         "substrate/books/takedown.py",
+        # EPUB publication performs one internal republish identity check:
+        # it compares the candidate's sanitized body with the existing row
+        # before any rights/chunk/asset write. The body is never returned,
+        # logged, or exposed by this writer; the check rejects ID shadows and
+        # tampered rows. Public and owner reads still go only through the
+        # guarded serve paths above.
+        "substrate/book_import/publish.py",
         "substrate/research_bridge/extractor.py",
         "substrate/research_bridge/versioning.py",
         # The standing corpus audit opens the DB READ-ONLY (connect_read, never
@@ -109,6 +116,14 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # (e.g. no servable doc with a NULL body); it never serves a body to a
         # client — an internal auditor, like the extractor/versioning above.
         "substrate/corpus_audit.py",
+        # The twin-source-envelope backfill preloads raw_text to DERIVE each
+        # document's twin declaration (owner-path metadata + body hash for the
+        # recursive-twin projection). It never serves a body to a caller — the
+        # envelope is the same owner-path declaration the serve gate's
+        # owner=True branch admits, and every body decision is replicated from
+        # the serve gate's own predicates (drift-guard tested). Mirrors the
+        # extractor/publish internal-reader rationale.
+        "substrate/twin_recursion/source_registration.py",
         # The Paul Graham incremental ingest driver (SPR-05) opens the DB
         # READ-ONLY and reads raw_text for two INTERNAL, non-serving purposes:
         # (1) recompute the stored body's content-hash for change-detection on a
@@ -155,6 +170,13 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # SIDECAR_CONTENT_CLASS and the .antiek _FORBIDDEN_SUBSTRATE_FIELDS gate
         # independently forbids chunks/embeddings/edges in the emitted container.
         "services/antiek_format/sidecar_writer.py",
+        # Multimedia evidence registration reads private bodies only inside
+        # owner-bound internal verification. The diagram authority hashes
+        # source text to prove evidence identity; the knowledge registrar asks
+        # DuckDB for SHA-256 digests to reject conflicting source/twin rows.
+        # Neither module exposes a body or implements a serve surface.
+        "substrate/multimedia/diagram_evidence_authority.py",
+        "substrate/multimedia/knowledge_registration.py",
         # Corpus source-census (operator CLI): one read-only
         # `SELECT ... raw_text ... FROM documents` used to compute corpus
         # statistics (metadata / linkback / rights-tier / servable percentages).
@@ -173,6 +195,13 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # documents (no WHERE in between) so subqueries do not trip it; tracked
         # separately from this PR.
         "tools/quarantine_test_residue.py",
+        # Book reader-HTML sidecar backfill (operator CLI): reads raw_text ONLY
+        # to project markdown/HTML into store_reader_html (sanitize-on-write).
+        # Never serves a body to a caller — rights / content_class are untouched;
+        # BookReader still emits bodies only via serve_full_text_guarded + the
+        # sidecar prefer bridge. Same internal-writer category as book_import
+        # publish / twin backfill above.
+        "tools/backfill_book_reader_html.py",
     }
 )
 

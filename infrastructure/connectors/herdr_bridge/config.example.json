@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "antiek_base_url": "https://api.antiek.example",
+  "credential_id": "mac-mini-herdr-bridge",
+  "credential_secret_file": "/Users/OPERATOR/.config/antiek-herdr-bridge/credential.secret",
+  "bridge_instance_id": "mac-mini",
+  "journal_path": "/Users/OPERATOR/.local/state/antiek-herdr-bridge/journal.sqlite3",
+  "result_cli": "/Users/OPERATOR/.local/bin/herdr-bridge",
+  "lease_seconds": 120,
+  "poll_seconds": 5,
+  "workers": {
+    "research-owner": {
+      "agent": "prime-agent",
+      "cwd": "/Users/OPERATOR",
+      "preferred_pane_id": "REPLACE_WITH_ONE_VERIFIED_PANE_ID"
+    }
+  }
+}

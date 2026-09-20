@@ -257,11 +257,21 @@ class KreaProviderAdapter:
 
 def _model_for(kind: GenerationKind, route_policy: RoutePolicy) -> str:
     suffix = "pro" if route_policy == "highest_quality" else "standard"
-    return {
+    default = {
         "image": f"krea-image-{suffix}",
         "image_to_video": f"krea-image-to-video-{suffix}",
         "video": f"krea-video-{suffix}",
     }[kind]
+    # Lineup binding (media actions): the operator's lineup assignment for
+    # the kind's action wins when it names a krea-family model in the
+    # action's allowed set; anything else keeps the deterministic default.
+    from substrate.dispatch.lineup_override import effective_model_for_action
+    action_id = {
+        "image": "image_generation",
+        "image_to_video": "video_generation",
+        "video": "video_generation",
+    }[kind]
+    return effective_model_for_action(action_id, provider_family="krea", default=default)
 
 
 def _estimate_cost(request: MediaGenerationRequest) -> float:

@@ -929,3 +929,13 @@ describe("MasterMdViewer — artifact-export affordance (SPR-05 M5)", () => {
     );
   });
 });
+
+
+describe("MasterMdViewer — manual sponsor footer (website ads MVP)", () => {
+  it("does not mount the sponsor footer when the flag is off (default)", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(<MasterMdViewer synthesis={synth()} />);
+    await waitFor(() => expect(screen.getByText("The claim holds.")).toBeTruthy());
+    expect(screen.queryByTestId("manual-sponsor-footer")).toBeNull();
+  });
+});

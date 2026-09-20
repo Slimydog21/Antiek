@@ -1,0 +1,96 @@
+html.werner-writing-nib-active.werner-ice-cursor-hidden * {
+  /* Descendant controls often declare grab/text cursors. Suppress those while
+     the global instrument owns the hotspot, or two cursors appear at once. */
+  cursor: none !important;
+}
+
+html.werner-writing-nib-active.werner-ice-cursor-hidden
+  button[data-testid="penguin-mascot"],
+html.werner-writing-nib-active.werner-ice-cursor-hidden
+  button[data-testid="penguin-mascot"]:active {
+  /* Fishing deliberately restores Werner's grab cursor. Writing keeps the nib
+     singular, so its activity marker wins that higher-specificity exception. */
+  cursor: none !important;
+}
+
+.writing-nib-cursor {
+  position: fixed;
+  z-index: 59;
+  display: none;
+  width: 18px;
+  height: 28px;
+  pointer-events: none;
+  /* The drawn point is the interaction hotspot: anchor its bottom-center to
+     left/top before rotating, so hidden native-cursor clicks remain honest. */
+  transform: translate(-50%, -100%) rotate(34deg);
+  transform-origin: 50% 100%;
+  filter: drop-shadow(2px 2px 0 var(--card));
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.writing-nib-cursor::before {
+  position: absolute;
+  inset: 0 1px 5px;
+  border: 2px solid var(--ink);
+  border-radius: 48% 48% 56% 56%;
+  background: var(--sun-light);
+  clip-path: polygon(50% 0, 100% 35%, 72% 100%, 28% 100%, 0 35%);
+  content: "";
+}
+
+.writing-nib-cursor::after {
+  position: absolute;
+  right: 6px;
+  bottom: 0;
+  width: 6px;
+  height: 9px;
+  border: 2px solid var(--ink);
+  border-top: 0;
+  background: var(--aurora);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  content: "";
+}
+
+.writing-nib-cursor__shoulder {
+  position: absolute;
+  inset: 4px 4px 10px;
+  z-index: 1;
+  border: 1px solid var(--sun-deep);
+  border-radius: 50%;
+}
+
+.writing-nib-cursor__breather {
+  position: absolute;
+  top: 8px;
+  left: 7px;
+  z-index: 2;
+  width: 4px;
+  height: 4px;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  background: var(--card);
+}
+
+.writing-nib-cursor__slit {
+  position: absolute;
+  top: 13px;
+  left: 8px;
+  z-index: 2;
+  width: 2px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+
+.writing-nib-cursor--idle {
+  opacity: 0.68;
+  transform: translate(-50%, -100%) rotate(40deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .writing-nib-cursor {
+    transition: none;
+  }
+}

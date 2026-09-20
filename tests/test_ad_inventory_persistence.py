@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 
+import duckdb
 import pytest
 
 from runtime.db_lock import connect_write
@@ -45,7 +46,7 @@ def test_insert_then_load(db):
 
 
 def test_upsert_updates_existing_row(db):
-    iid = upsert_inventory(
+    upsert_inventory(
         db,
         advertiser_id="adv-x", advertiser_display_name="Acme",
         creative_url="https://x/c.png", landing_url="https://x/lp",
@@ -76,6 +77,20 @@ def test_deactivate_excludes_from_load(db):
 
 
 def test_load_serving_splits_targeted_vs_flat(db):
+    # ``serving`` means both the inventory row and the advertiser's latest
+    # registry state are ACTIVE.
+    db.execute(
+        """
+        INSERT INTO advertisers (
+            attempt_id, advertiser_id, display_name, contact_email, status,
+            submitted_at, last_status_change_at
+        ) VALUES
+            ('attempt-a', 'adv-a', 'A', 'a@example.test', 'active',
+             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+            ('attempt-b', 'adv-b', 'B', 'b@example.test', 'active',
+             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """
+    )
     upsert_inventory(
         db,
         advertiser_id="adv-a", advertiser_display_name="A",
@@ -115,7 +130,7 @@ def test_check_constraint_at_sql(db):
         ) VALUES ('inv-ok', 'adv-x', 'X', 100, 'https://x', 'https://y')
         """
     )
-    with pytest.raises(Exception):
+    with pytest.raises(duckdb.ConstraintException):
         db.execute(
             """
             INSERT INTO ad_inventory_items (

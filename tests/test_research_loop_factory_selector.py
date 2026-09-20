@@ -1,4 +1,10 @@
-"""Selector tests for cascade_routes._research_loop_factory — no network."""
+"""Selector tests for cascade_routes._research_loop_factory — no network.
+
+Every test clears ``ANTIEK_EXEC_BACKEND`` as well as ``ANTIEK_DRW_GATHER``:
+the exec-backend branch is read first and outranks both gather modes, so an
+operator who has that flag exported would otherwise fail this file for a
+reason that has nothing to do with the selector under test.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +23,7 @@ def cascade_routes():
 
 def test_factory_default_calls_stub_not_exa(monkeypatch, cascade_routes):
     monkeypatch.delenv("ANTIEK_DRW_GATHER", raising=False)
+    monkeypatch.delenv("ANTIEK_EXEC_BACKEND", raising=False)
 
     def fake_stub(*, steps: int, cost_per_step: float):
         assert steps == 2
@@ -34,6 +41,7 @@ def test_factory_default_calls_stub_not_exa(monkeypatch, cascade_routes):
 
 def test_factory_exa_env_returns_exa_sentinel(monkeypatch, cascade_routes):
     monkeypatch.setenv("ANTIEK_DRW_GATHER", "exa")
+    monkeypatch.delenv("ANTIEK_EXEC_BACKEND", raising=False)
 
     def fake_stub(*, steps: int, cost_per_step: float):
         pytest.fail("make_contract_gather_stub must not be called when ANTIEK_DRW_GATHER=exa")
@@ -50,6 +58,7 @@ def test_factory_exa_env_returns_exa_sentinel(monkeypatch, cascade_routes):
 
 def test_factory_garbage_env_falls_back_to_stub(monkeypatch, cascade_routes):
     monkeypatch.setenv("ANTIEK_DRW_GATHER", "banana")
+    monkeypatch.delenv("ANTIEK_EXEC_BACKEND", raising=False)
 
     def fake_stub(*, steps: int, cost_per_step: float):
         assert steps == 2

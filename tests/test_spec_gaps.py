@@ -70,22 +70,6 @@ class TestGap2_EscalationReasonCasing:
             )
 
 
-# ── Gap 3: §14.4 — Browserbase + Playwright in pyproject.toml ────────
-
-
-class TestGap3_BrowserbaseOptionalDeps:
-    def test_pyproject_pins_browserbase_extras(self):
-        import re
-        text = Path("pyproject.toml").read_text()
-        # The extras section must include `browserbase = [...]` with
-        # both `browserbase` and `playwright` pins.
-        m = re.search(r"^browserbase = \[(.+?)\]", text, re.MULTILINE | re.DOTALL)
-        assert m, "browserbase extras not in pyproject.toml"
-        body = m.group(1)
-        assert "browserbase" in body
-        assert "playwright" in body
-
-
 # ── Gap 4: §14.7 — provider_specific dict on DiscoveryProposedPayload ─
 
 
@@ -455,8 +439,8 @@ class TestGap8_RetentionAndRollup:
         rollup_expired(retention_days=30, db_path=isolated["db"],
                        events_dir=str(isolated["events_dir"]))
         # Second run — file is now empty, no events to process.
-        r2 = rollup_expired(retention_days=30, db_path=isolated["db"],
-                            events_dir=str(isolated["events_dir"]))
+        rollup_expired(retention_days=30, db_path=isolated["db"],
+                       events_dir=str(isolated["events_dir"]))
         # The empty file isn't "expired" (no parseable timestamps), but
         # the summary row count should remain 1.
         rows = recent_summary(days=60, db_path=isolated["db"])

@@ -11,7 +11,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 import tempfile
+from types import ModuleType
 
 import pytest
 
@@ -20,14 +22,55 @@ from roles.note_taker import Distillation, DistilledQuestion
 from roles.note_taker.parser import ExtractedNote
 from runtime.db_lock import connect_read, connect_write
 from substrate.graph.schema import init_database_at_path
+from substrate.research_bridge import extractors
 from substrate.research_bridge.detect_external import detect_external_research
-from substrate.research_bridge.extractors import extract_text
+from substrate.research_bridge.extractors import (
+    CONVERTER_VERSION_ANYDOC,
+    SUPPORTED_EXTENSIONS,
+    extract_text,
+)
 from substrate.research_bridge.ingest_file import (
     UnsupportedFileError,
     distill_ingested_document,
     ingest_file,
 )
 from substrate.research_bridge.versioning import create_document_version, document_versions
+
+_ANYDOC_GFM = """# Quarterly plan
+
+| Team | Target |
+| --- | --- |
+| Research | 40% |
+
+## Notes
+
+The table and headings survive conversion.
+"""
+
+
+class _FakeAnydoc(ModuleType):
+    def __init__(self, markdown: str = _ANYDOC_GFM, *, error: Exception | None = None):
+        super().__init__("anydoc")
+        self.markdown = markdown
+        self.error = error
+        self.calls: list[tuple[bytes | bytearray, str | None]] = []
+
+    def to_markdown_bytes(
+        self,
+        data: bytes | bytearray,
+        format: str | None = None,
+    ) -> str:
+        self.calls.append((data, format))
+        if self.error is not None:
+            raise self.error
+        return self.markdown
+
+
+def _install_fake_anydoc(monkeypatch, fake: _FakeAnydoc | None = None) -> _FakeAnydoc:
+    binding = fake or _FakeAnydoc()
+    monkeypatch.setitem(sys.modules, "anydoc", binding)
+    monkeypatch.setattr(extractors, "distribution_version", lambda name: "0.1.6")
+    return binding
 
 
 class _FakeEmbedding:
@@ -79,32 +122,228 @@ def test_extract_text_supported_types():
     assert html.ok and "Hi" in html.text
 
 
+@pytest.mark.parametrize(
+    ("extension", "expected_format"),
+    [
+        ("doc", "doc"),
+        ("docx", "docx"),
+        ("docm", "docx"),
+        ("ppt", "ppt"),
+        ("pps", "ppt"),
+        ("pot", "ppt"),
+        ("pptx", "pptx"),
+        ("pptm", "pptx"),
+        ("ppsx", "pptx"),
+        ("ppsm", "pptx"),
+        ("xlsx", "xlsx"),
+        ("xls", "xlsx"),
+        ("xlsm", "xlsx"),
+        ("xlsb", "xlsx"),
+        ("odt", "odt"),
+        ("ods", "ods"),
+        ("odp", "odp"),
+        ("rtf", "rtf"),
+        ("csv", "csv"),
+    ],
+)
+def test_anydoc_types_extract_to_gfm(monkeypatch, extension, expected_format):
+    fake = _install_fake_anydoc(monkeypatch)
+
+    result = extract_text(b"fake document bytes", filename=f"report.{extension}")
+
+    assert result.ok
+    assert result.kind == "markdown"
+    assert result.extractor == "anydoc"
+    assert result.converter_version == CONVERTER_VERSION_ANYDOC
+    assert "# Quarterly plan" in result.text
+    assert "| Research | 40% |" in result.text
+    assert "## Notes" in result.text
+    assert extension in SUPPORTED_EXTENSIONS
+    assert fake.calls == [(b"fake document bytes", expected_format)]
+
+
+@pytest.mark.parametrize(
+    ("content_type", "expected_format"),
+    [
+        (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "docx",
+        ),
+        ("text/csv; charset=utf-8", "csv"),
+    ],
+)
+def test_anydoc_dispatches_by_content_type(monkeypatch, content_type, expected_format):
+    fake = _install_fake_anydoc(monkeypatch)
+
+    result = extract_text(b"fake document bytes", content_type=content_type)
+
+    assert result.ok and result.kind == "markdown"
+    assert fake.calls == [(b"fake document bytes", expected_format)]
+
+
+def test_anydoc_stamps_installed_distribution_version(monkeypatch):
+    _install_fake_anydoc(monkeypatch)
+    monkeypatch.setattr(extractors, "distribution_version", lambda name: "0.1.9")
+
+    result = extract_text(b"fake document bytes", filename="report.docx")
+
+    assert result.ok
+    assert result.converter_version == "anydoc/0.1.9"
+
+
+def test_anydoc_missing_extra_fails_with_install_hint(monkeypatch):
+    def missing_anydoc(name):
+        assert name == "anydoc"
+        raise ImportError("forced missing optional binding")
+
+    monkeypatch.setattr(extractors, "import_module", missing_anydoc)
+    monkeypatch.setattr(extractors, "distribution_version", lambda name: "0.1.6")
+
+    result = extract_text(b"fake document bytes", filename="report.docx")
+
+    assert not result.ok
+    assert result.kind == "markdown"
+    assert result.extractor == "anydoc"
+    assert result.converter_version == CONVERTER_VERSION_ANYDOC
+    assert result.reason == (
+        "install the 'docs' extra (firecrawl-anydoc) to ingest Office/ODF/RTF/CSV"
+    )
+
+
+def test_anydoc_conversion_failure_is_graceful(monkeypatch):
+    _install_fake_anydoc(monkeypatch, _FakeAnydoc(error=ValueError("corrupt document")))
+
+    result = extract_text(b"truncated", filename="report.docx")
+
+    assert not result.ok and result.degraded
+    assert result.reason == "anydoc could not convert .docx: ValueError"
+
+
+def test_anydoc_empty_markdown_is_rejected(monkeypatch):
+    _install_fake_anydoc(monkeypatch, _FakeAnydoc(" \n"))
+
+    result = extract_text(b"empty", filename="report.xlsx")
+
+    assert not result.ok and result.degraded
+    assert result.reason == ".xlsx converted to empty markdown (no extractable content)"
+
+
+def test_epub_and_pdf_do_not_route_to_anydoc(monkeypatch):
+    fake = _install_fake_anydoc(monkeypatch)
+
+    epub = extract_text(b"fake epub", filename="book.epub")
+    mime_only_epub = extract_text(b"valid UTF-8 EPUB disguise", content_type="application/epub+zip")
+    pdf = extract_text(b"fake pdf", filename="paper.pdf")
+
+    assert not epub.ok and "unsupported file type: .epub" in epub.reason
+    assert not mime_only_epub.ok and "unsupported file type: .epub" in mime_only_epub.reason
+    assert pdf.extractor != "anydoc"
+    assert fake.calls == []
+
+
 def test_unsupported_type_fails_gracefully():
-    res = extract_text(b"\x00\x01binary", filename="thing.docx")
+    res = extract_text(b"\x00\x01binary", filename="thing.bin")
     assert not res.ok and "unsupported" in res.reason.lower()
     # And ingest_file surfaces it as a clean error, not a crash.
 
 
-def test_ingest_markdown_file(env):
+def test_ingest_markdown_file_uses_heading_aware_chunks(env):
+    markdown = "# Report\n\nSome findings here.\n\n## Risks\n\nOne bounded risk."
     con = connect_write(env["db"], purpose="t")
     try:
-        r = ingest_file(con, data="# Report\n\nSome findings here.", filename="r.md",
-                        investigation_id="inv-1")
+        result = ingest_file(
+            con,
+            data=markdown,
+            filename="r.md",
+            investigation_id="inv-1",
+        )
     finally:
         con.close()
-    assert r.was_new and r.document_type.startswith("uploaded_")
+    assert result.was_new and result.document_type.startswith("uploaded_")
     con = connect_read(env["db"])
     try:
-        assert con.execute("SELECT count(*) FROM documents WHERE document_id=?", [r.document_id]).fetchone()[0] == 1
+        document_count = con.execute(
+            "SELECT count(*) FROM documents WHERE document_id=?",
+            [result.document_id],
+        ).fetchone()[0]
+        chunks = con.execute(
+            """
+            SELECT text, section_path, token_count
+            FROM chunks
+            WHERE document_id = ?
+            ORDER BY chunk_index
+            """,
+            [result.document_id],
+        ).fetchall()
     finally:
         con.close()
+    assert document_count == 1
+    assert chunks == [
+        ("# Report\n\nSome findings here.", "Report", 5),
+        ("## Risks\n\nOne bounded risk.", "Risks", 5),
+    ]
+
+
+def test_ingest_anydoc_persists_converter_metadata_and_structure(env, monkeypatch):
+    _install_fake_anydoc(monkeypatch)
+    con = connect_write(env["db"], purpose="t")
+    try:
+        result = ingest_file(
+            con,
+            data=b"fake docx bytes",
+            filename="quarterly.docx",
+            investigation_id="inv-1",
+        )
+    finally:
+        con.close()
+
+    con = connect_read(env["db"])
+    try:
+        metadata_json = con.execute(
+            "SELECT metadata FROM documents WHERE document_id = ?",
+            [result.document_id],
+        ).fetchone()[0]
+        chunks = con.execute(
+            """
+            SELECT text, section_path, token_count
+            FROM chunks
+            WHERE document_id = ?
+            ORDER BY chunk_index
+            """,
+            [result.document_id],
+        ).fetchall()
+    finally:
+        con.close()
+
+    metadata = json.loads(metadata_json)["research_bridge"]
+    assert metadata["extractor"] == "anydoc"
+    assert metadata["converter_version"] == CONVERTER_VERSION_ANYDOC
+    assert [chunk[1] for chunk in chunks] == ["Quarterly plan", "Notes"]
+    assert "| Research | 40% |" in chunks[0][0]
+    assert all(chunk[2] > 0 for chunk in chunks)
+
+
+def test_anydoc_converter_version_partitions_document_identity(env, monkeypatch):
+    _install_fake_anydoc(monkeypatch)
+    monkeypatch.setattr(extractors, "distribution_version", lambda name: "0.1.6")
+    con = connect_write(env["db"], purpose="t")
+    try:
+        first = ingest_file(con, data=b"same bytes", filename="report.docx")
+        monkeypatch.setattr(extractors, "distribution_version", lambda name: "0.1.7")
+        second = ingest_file(con, data=b"same bytes", filename="report.docx")
+    finally:
+        con.close()
+
+    assert first.was_new and second.was_new
+    assert first.text == second.text
+    assert first.document_id != second.document_id
 
 
 def test_ingest_unsupported_raises(env):
     con = connect_write(env["db"], purpose="t")
     try:
         with pytest.raises(UnsupportedFileError):
-            ingest_file(con, data=b"\x00\x01\x02", filename="bad.docx", investigation_id="inv-1")
+            ingest_file(con, data=b"\x00\x01\x02", filename="bad.bin", investigation_id="inv-1")
     finally:
         con.close()
 

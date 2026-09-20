@@ -47,6 +47,7 @@ import type { PanelKind, PanelMode } from "../../workspace/panel.types";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { postTypedEvent } from "../../lib/api";
 import type { AIActionAppliedPayload, AIActionUndonePayload } from "../../generated/types";
+import { toast } from "../lemon/LemonToast";
 
 // ─── Action schema ───────────────────────────────────────────────────
 
@@ -558,19 +559,15 @@ export function dispatchAiAction(
     }
 
     case "toast": {
-      // The toast helper is imported dynamically to avoid a hard
-      // dep cycle (LemonToast → React → AISidecar).
-      void import("../lemon/LemonToast").then(({ toast }) => {
-        const fn =
-          action.level === "ok"
-            ? toast.ok
-            : action.level === "warn"
-              ? toast.warn
-              : action.level === "err"
-                ? toast.err
-                : toast.info;
-        fn(action.message);
-      });
+      const fn =
+        action.level === "ok"
+          ? toast.ok
+          : action.level === "warn"
+            ? toast.warn
+            : action.level === "err"
+              ? toast.err
+              : toast.info;
+      fn(action.message);
       return {
         action,
         label: `🍋 Toast (${action.level}): ${action.message}`,

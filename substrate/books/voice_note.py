@@ -22,9 +22,11 @@ Transcription and distillation are both injected (Protocols), exactly as
 passes ``WhisperTranscriber`` + the note-taker dispatch; tests pass stubs,
 so this module is testable with no live ASR or LLM.
 
-The browser capture control (``VoiceNote.tsx``) and the async job runner
-are out of scope here — they layer on the reader surface (DRW SPR-10),
-which is unbuilt. This module is the substrate the capture UI will call.
+Question-shaped distilled notes (and a question-shaped transcript when
+no note ends with ``?``) also emit ``question.identified`` so they land
+in watch-for-later / Surface E park → Thought Partner discuss (Anti-Ek
+voice→park→TP residual). The reading UI seeds the TP bus with the
+SERVABLE reading mount after save.
 """
 
 from __future__ import annotations
@@ -36,7 +38,7 @@ from typing import Protocol
 from acquisition.voice.client import Transcriber, Transcript, transcribe_audio
 from roles.note_taker.parser import ExtractedNote
 from substrate.event_log import emit_typed
-from substrate.schemas.events import NoteEmergedPayload
+from substrate.schemas.events import NoteEmergedPayload, QuestionIdentifiedPayload
 
 
 class UnconfirmedTranscript(RuntimeError):
@@ -74,7 +76,12 @@ class VoiceNoteResult:
     ``notes`` are emitted as ordinary ``note.emerged`` events (so they
     flow into the graph like any insight); this record carries the
     Read-surface provenance that ties each note back to the page it was
-    spoken at, the audio, and the transcript."""
+    spoken at, the audio, and the transcript.
+
+    Question-shaped notes also emit ``question.identified`` (parked for
+    watch-for-later / Surface E). ``parked_question_ids`` / ``_texts``
+    list those parks in order — empty when nothing looked like a question.
+    """
 
     voice_note_id: str
     document_id: str
@@ -84,6 +91,8 @@ class VoiceNoteResult:
     transcript_text: str
     notes: list[ExtractedNote]
     emitted_event_ids: list[str] = field(default_factory=list)
+    parked_question_ids: list[str] = field(default_factory=list)
+    parked_question_texts: list[str] = field(default_factory=list)
 
 
 def transcribe_voice_note(
@@ -103,6 +112,34 @@ def transcribe_voice_note(
     except Exception as exc:  # ASR is fallible; surface, don't crash.
         return TranscriptionOutcome(transcript=None, error=f"{type(exc).__name__}: {exc}")
     return TranscriptionOutcome(transcript=transcript, error=None)
+
+
+
+_QUESTION_STARTERS = frozenset({
+    "what", "why", "how", "when", "where", "which", "who", "whose", "whom",
+    "is", "are", "can", "could", "should", "would", "do", "does", "did",
+    "will", "won't", "isn't", "aren't",
+})
+
+
+def looks_like_question(text: str) -> bool:
+    """Honest park heuristic — not an LLM classifier.
+
+    True when the text ends with ``?`` or opens with a common interrogative.
+    Used to decide which distilled voice notes become watch-for-later parks.
+    """
+    t = (text or "").strip()
+    if not t:
+        return False
+    if t.endswith("?"):
+        return True
+    first = t.split()[0].lower().rstrip(":,;")
+    return first in _QUESTION_STARTERS
+
+
+def _park_anchor_region(page_index: int) -> str:
+    """Book reading locator as the question's anchor (page index, 0-based)."""
+    return f"book_page:{page_index}"
 
 
 def distill_voice_note(
@@ -138,6 +175,8 @@ def distill_voice_note(
     notes = distiller.distill(transcript_text, source_event_ids=source_ids)
 
     emitted: list[str] = []
+    parked_ids: list[str] = []
+    parked_texts: list[str] = []
     if emit:
         for note in notes:
             event_id = emit_typed(
@@ -155,6 +194,31 @@ def distill_voice_note(
             if event_id:
                 emitted.append(event_id)
 
+        # Park question-shaped notes into watch-for-later (Surface E SoT =
+        # question.identified). Dual structure: event log parks; TP seed is UI.
+        candidates: list[str] = [
+            n.text.strip() for n in notes if looks_like_question(n.text)
+        ]
+        if not candidates and looks_like_question(transcript_text):
+            candidates = [transcript_text.strip()]
+        for qtext in candidates:
+            qid = f"q-voice-{uuid.uuid4().hex[:12]}"
+            q_event = emit_typed(
+                investigation_id,
+                QuestionIdentifiedPayload(
+                    question_id=qid,
+                    question_text=qtext,
+                    anchor_region_id=_park_anchor_region(page_index),
+                ),
+                document_id=document_id,
+                role="read/voice_note",
+                policy_id="read/books/voice_note",
+            )
+            if q_event:
+                emitted.append(q_event)
+                parked_ids.append(qid)
+                parked_texts.append(qtext)
+
     return VoiceNoteResult(
         voice_note_id=voice_note_id,
         document_id=document_id,
@@ -164,4 +228,6 @@ def distill_voice_note(
         transcript_text=transcript_text,
         notes=list(notes),
         emitted_event_ids=emitted,
+        parked_question_ids=parked_ids,
+        parked_question_texts=parked_texts,
     )

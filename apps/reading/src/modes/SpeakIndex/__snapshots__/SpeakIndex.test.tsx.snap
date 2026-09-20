@@ -12,21 +12,32 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         class="mb-7 flex items-start gap-3"
       >
         <span
-          aria-label="Werner idle"
-          class="inline-block align-middle"
+          aria-label="Antiek idle"
+          class="inline-block align-middle brain-idle "
           role="img"
-          style="width: 44px; height: 44px;"
+          style="width: 44px; height: 44px; position: relative; perspective: 600px;"
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            class="werner-idle"
-            draggable="false"
-            height="44"
-            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
-            style="display: block; width: 44px; height: 44px; object-fit: contain;"
-            width="44"
-          />
+          <span
+            class="brain-tilt"
+            style="display: block; width: 100%; height: 100%;"
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              class="brain-pose"
+              draggable="false"
+              src="/src/brand/mascot-brain/01_hero_front_transparent.png"
+              style="display: block; width: 100%; height: 100%; object-fit: contain;"
+            />
+            <img
+              alt=""
+              aria-hidden="true"
+              class="brain-blink "
+              draggable="false"
+              src="/src/brand/mascot-brain/blink_closed_transparent.png"
+              style="display: block; width: 100%; height: 100%; object-fit: contain;"
+            />
+          </span>
         </span>
         <div>
           <h1
@@ -58,6 +69,12 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           Start their story
         </button>
       </form>
+      <p
+        class="mb-6 font-serif text-[12px] text-ink-mute dark:text-moonlight"
+        data-testid="private-econ-create-notice"
+      >
+        New stories start private: friends you invite will NOT make money unless you later publish the story publicly on Antiek.
+      </p>
       <div
         class="mb-4 flex gap-1 border-b border-rule dark:border-charcoal-1"
         role="tablist"
@@ -78,6 +95,15 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         >
           Public remembrances
         </button>
+        <button
+          aria-selected="false"
+          class="-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
+          data-testid="speak-tab-pushes"
+          role="tab"
+          type="button"
+        >
+          Pushes
+        </button>
       </div>
       <section
         class="space-y-4"
@@ -95,6 +121,22 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
             />
           </label>
         </div>
+        <aside
+          class="rounded border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1"
+          data-testid="share-browse-link"
+        >
+          <p
+            class="font-serif text-[12px] text-ink-mute dark:text-moonlight"
+          >
+            Share this page with friends who are not signed in — they can browse remembrances and wait for an invite to add one.
+          </p>
+          <a
+            class="mt-1 inline-block font-mono text-[11px] text-sun-deep underline dark:text-sun"
+            href="/speak/browse"
+          >
+            Open public browse (no login)
+          </a>
+        </aside>
         <p
           class="font-serif text-sm italic text-ink-mute dark:text-moonlight"
         >
@@ -147,6 +189,12 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
             >
               Contributor shares accrue to escrow now; money begins routing once the legal review clears (G2/G3).
             </li>
+            <li
+              class="font-serif text-[13px] text-ink dark:text-bright"
+              data-testid="public-lane-synquery-gate"
+            >
+              Expert-network booking (Synquery) opens only after creation-surface PMF and an operator partnership flip — not a live booking surface today.
+            </li>
           </ol>
           <p
             class="mt-2 font-serif text-[12px] italic text-ink-mute dark:text-moonlight"
@@ -172,21 +220,32 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         class="mb-7 flex items-start gap-3"
       >
         <span
-          aria-label="Werner idle"
-          class="inline-block align-middle"
+          aria-label="Antiek idle"
+          class="inline-block align-middle brain-idle "
           role="img"
-          style="width: 44px; height: 44px;"
+          style="width: 44px; height: 44px; position: relative; perspective: 600px;"
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            class="werner-idle"
-            draggable="false"
-            height="44"
-            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
-            style="display: block; width: 44px; height: 44px; object-fit: contain;"
-            width="44"
-          />
+          <span
+            class="brain-tilt"
+            style="display: block; width: 100%; height: 100%;"
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              class="brain-pose"
+              draggable="false"
+              src="/src/brand/mascot-brain/01_hero_front_transparent.png"
+              style="display: block; width: 100%; height: 100%; object-fit: contain;"
+            />
+            <img
+              alt=""
+              aria-hidden="true"
+              class="brain-blink "
+              draggable="false"
+              src="/src/brand/mascot-brain/blink_closed_transparent.png"
+              style="display: block; width: 100%; height: 100%; object-fit: contain;"
+            />
+          </span>
         </span>
         <div>
           <h1
@@ -218,6 +277,12 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           Start their story
         </button>
       </form>
+      <p
+        class="mb-6 font-serif text-[12px] text-ink-mute dark:text-moonlight"
+        data-testid="private-econ-create-notice"
+      >
+        New stories start private: friends you invite will NOT make money unless you later publish the story publicly on Antiek.
+      </p>
       <div
         class="mb-4 flex gap-1 border-b border-rule dark:border-charcoal-1"
         role="tablist"
@@ -237,6 +302,15 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           type="button"
         >
           Public remembrances
+        </button>
+        <button
+          aria-selected="false"
+          class="-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
+          data-testid="speak-tab-pushes"
+          role="tab"
+          type="button"
+        >
+          Pushes
         </button>
       </div>
       <p
@@ -261,21 +335,32 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         class="mb-7 flex items-start gap-3"
       >
         <span
-          aria-label="Werner idle"
-          class="inline-block align-middle"
+          aria-label="Antiek idle"
+          class="inline-block align-middle brain-idle "
           role="img"
-          style="width: 44px; height: 44px;"
+          style="width: 44px; height: 44px; position: relative; perspective: 600px;"
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            class="werner-idle"
-            draggable="false"
-            height="44"
-            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
-            style="display: block; width: 44px; height: 44px; object-fit: contain;"
-            width="44"
-          />
+          <span
+            class="brain-tilt"
+            style="display: block; width: 100%; height: 100%;"
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              class="brain-pose"
+              draggable="false"
+              src="/src/brand/mascot-brain/01_hero_front_transparent.png"
+              style="display: block; width: 100%; height: 100%; object-fit: contain;"
+            />
+            <img
+              alt=""
+              aria-hidden="true"
+              class="brain-blink "
+              draggable="false"
+              src="/src/brand/mascot-brain/blink_closed_transparent.png"
+              style="display: block; width: 100%; height: 100%; object-fit: contain;"
+            />
+          </span>
         </span>
         <div>
           <h1
@@ -307,6 +392,12 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           Start their story
         </button>
       </form>
+      <p
+        class="mb-6 font-serif text-[12px] text-ink-mute dark:text-moonlight"
+        data-testid="private-econ-create-notice"
+      >
+        New stories start private: friends you invite will NOT make money unless you later publish the story publicly on Antiek.
+      </p>
       <div
         class="mb-4 flex gap-1 border-b border-rule dark:border-charcoal-1"
         role="tablist"
@@ -326,6 +417,15 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           type="button"
         >
           Public remembrances
+        </button>
+        <button
+          aria-selected="false"
+          class="-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
+          data-testid="speak-tab-pushes"
+          role="tab"
+          type="button"
+        >
+          Pushes
         </button>
       </div>
       <section>

@@ -535,6 +535,33 @@ def _exists(path: str) -> bool:
 _DEFAULT_SUBSTRATE = "vss"
 
 
+def resolve_reuse_substrate_kind() -> str:
+    """Env-gated SERVABLE hybrid kind for reuse/cascade **and** Thought Partner.
+
+    Returns ``"turbopuffer"`` only when ``ANTIEK_TURBOPUFFER_SERVABLE`` is set
+    and ``TURBOPUFFER_API_KEY`` is present. Otherwise ``"brute_force"`` (DuckDB
+    SoT scan). Gated/user content never enters the TurboPuffer index; the
+    adapter refuses non-``attribution_eligible`` policy tags by falling back
+    to DuckDB ``search()``. Talk-to-book book-scoped ask stays book-local;
+    ``POST /thought-partner`` library grounding uses this same resolver when
+    the effective policy is ``attribution_eligible``.
+
+    ``production_default_mount`` remains False — env+key+promote are required.
+    """
+    import os
+
+    enabled = os.environ.get("ANTIEK_TURBOPUFFER_SERVABLE", "").lower() in {
+        "1", "true", "yes",
+    }
+    if enabled and (os.environ.get("TURBOPUFFER_API_KEY") or "").strip():
+        return "turbopuffer"
+    return "brute_force"
+
+
+# Alias — same gate for TP library grounding (#TP hybrid wire).
+resolve_servable_hybrid_kind = resolve_reuse_substrate_kind
+
+
 def make_substrate(
     kind: str,
     db_path: str,
@@ -576,6 +603,8 @@ def make_substrate_from_con(
     con: Any,
     *,
     model: EmbeddingModel,
+    db_path: str | None = None,
+    **adapter_kwargs: Any,
 ) -> RetrievalSubstrate:
     """Construct a ``RetrievalSubstrate`` that SHARES an already-open DuckDB
     connection via ``con.cursor()`` instead of opening its own connection.
@@ -590,17 +619,26 @@ def make_substrate_from_con(
     so exactly ONE connection/instance exists and the reads are live.
 
     ``kind`` ∈ {"brute_force" (the reuse default — no whole-DB copy),
-    "vss"}. On this shared-connection path ``vss`` degrades to the brute-force
-    query over the SAME cursor (``DuckDbVssSubstrate.from_con`` documents why the
-    HNSW index cannot be built on a shared single-writer handle). The vendor
-    adapters (turbopuffer/ducklake) are open-only and have no shared-connection
-    constructor, so they are not reachable here."""
+    "vss", "turbopuffer" (env-gated SERVABLE hybrid)}. On this shared-connection
+    path ``vss`` degrades to the brute-force query over the SAME cursor
+    (``DuckDbVssSubstrate.from_con`` documents why the HNSW index cannot be
+    built on a shared single-writer handle). ``turbopuffer`` uses
+    ``TurbopufferSubstrate.from_con`` — remote hybrid index + DuckDB cursor
+    hydrate/gate; requires ``db_path`` for active-pointer context matching."""
     kind = (kind or "brute_force").lower()
     if kind in ("brute_force", "bruteforce", "reference"):
         return BruteForceSubstrate.from_con(con, model=model)
     if kind in ("vss", "duckdb-vss", "duckdb_vss", "default"):
         return DuckDbVssSubstrate.from_con(con, model=model)
+    if kind == "turbopuffer":
+        if not db_path:
+            raise ValueError(
+                "make_substrate_from_con(kind='turbopuffer') requires db_path "
+                "so the SERVABLE promote pointer context matches"
+            )
+        from .retrieval_adapters.turbopuffer import TurbopufferSubstrate
+        return TurbopufferSubstrate.from_con(con, model=model, db_path=db_path, **adapter_kwargs)
     raise ValueError(
         f"unknown shared-connection substrate kind {kind!r}; "
-        f"expected one of brute_force|vss"
+        f"expected one of brute_force|vss|turbopuffer"
     )

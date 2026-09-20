@@ -46,10 +46,11 @@ PublishDenialReason = Literal[
 def evaluate_public_export_gate(
     store: MultimediaAssetStore,
     asset_id: str,
-) -> MultimediaAssetRecord:
+    *,
+    owner_id: str = "__operator__") -> MultimediaAssetRecord:
     """Record a no-spend public-export gate for attached provider artifacts."""
 
-    record = store.get(asset_id)
+    record = store.get(asset_id, owner_id=owner_id)
     attached_file_ids = tuple(file.file_id for file in record.asset.manifest.files)
     if not attached_file_ids:
         gate = MultimediaPublicExportGate(
@@ -61,6 +62,7 @@ def evaluate_public_export_gate(
         )
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=0,
@@ -81,6 +83,7 @@ def evaluate_public_export_gate(
         )
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="partial",
             progress_percent=95,
@@ -100,6 +103,7 @@ def evaluate_public_export_gate(
         )
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=95,
@@ -133,14 +137,16 @@ def record_public_export_review(
     store: MultimediaAssetStore,
     asset_id: str,
     request: MultimediaPublicExportReviewRequest,
-) -> MultimediaAssetRecord:
+    *,
+    owner_id: str = "__operator__") -> MultimediaAssetRecord:
     """Persist manual public-export review without publishing the asset."""
 
-    record = store.get(asset_id)
+    record = store.get(asset_id, owner_id=owner_id)
     gate = _latest_public_export_gate(record)
     if gate is None:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=95,
@@ -151,6 +157,7 @@ def record_public_export_review(
     if gate.status != "manual_review":
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=95,
@@ -171,6 +178,7 @@ def record_public_export_review(
         )
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=95,
@@ -198,6 +206,7 @@ def record_public_export_review(
         )
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=95,
@@ -221,6 +230,7 @@ def record_public_export_review(
     )
     return store.record_job(
         asset_id,
+        owner_id=owner_id,
         kind="export_gate",
         status="partial",
         progress_percent=98,
@@ -234,15 +244,17 @@ def record_public_export_review(
 def plan_public_export(
     store: MultimediaAssetStore,
     asset_id: str,
-) -> MultimediaAssetRecord:
+    *,
+    owner_id: str = "__operator__") -> MultimediaAssetRecord:
     """Stage a future public-export plan without publishing anything."""
 
-    record = store.get(asset_id)
+    record = store.get(asset_id, owner_id=owner_id)
     gate = _latest_public_export_gate(record)
     review = _latest_public_export_review(record)
     if gate is None or review is None:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=98,
@@ -255,6 +267,7 @@ def plan_public_export(
     if gate.status != "ready" or gate.public_export_enabled:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=98,
@@ -267,6 +280,7 @@ def plan_public_export(
     if review.decision != "approved":
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=98,
@@ -280,6 +294,7 @@ def plan_public_export(
     if attached_file_ids != review.attached_file_ids or attached_file_ids != gate.attached_file_ids:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=98,
@@ -297,6 +312,7 @@ def plan_public_export(
     )
     return store.record_job(
         asset_id,
+        owner_id=owner_id,
         kind="export_gate",
         status="partial",
         progress_percent=99,
@@ -321,6 +337,7 @@ def evaluate_public_publish_blocker(
     if export_plan is None:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=99,
@@ -333,6 +350,7 @@ def evaluate_public_publish_blocker(
     if export_plan.publish_enabled or export_plan.public_url is not None:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=99,
@@ -348,6 +366,7 @@ def evaluate_public_publish_blocker(
     if attached_file_ids != export_plan.attached_file_ids:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=99,
@@ -366,6 +385,7 @@ def evaluate_public_publish_blocker(
     )
     return store.record_job(
         asset_id,
+        owner_id=owner_id,
         kind="export_gate",
         status="partial",
         progress_percent=99,
@@ -398,6 +418,7 @@ def deny_public_publish_request(
         )
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=99,
@@ -418,6 +439,7 @@ def deny_public_publish_request(
         )
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=99,
@@ -437,6 +459,7 @@ def deny_public_publish_request(
         )
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=99,
@@ -457,6 +480,7 @@ def deny_public_publish_request(
         )
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="export_gate",
             status="failed",
             progress_percent=99,
@@ -501,6 +525,7 @@ def attach_provider_artifacts_to_manifest(
     if attachment_plan is None:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=90,
@@ -511,6 +536,7 @@ def attach_provider_artifacts_to_manifest(
     if attachment_plan.manifest_revision_id != record.asset.revision_id:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=90,
@@ -525,6 +551,7 @@ def attach_provider_artifacts_to_manifest(
     if duplicate_file_ids:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=90,
@@ -564,6 +591,7 @@ def plan_provider_artifact_attachment(
     if plan is None or preview is None or receipt is None:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=80,
@@ -574,6 +602,7 @@ def plan_provider_artifact_attachment(
     if plan.asset_id != record.asset.asset_id or plan.revision_id != record.asset.revision_id:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=80,
@@ -589,6 +618,7 @@ def plan_provider_artifact_attachment(
     if mismatch is not None:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=80,
@@ -634,6 +664,7 @@ def record_provider_artifact_receipt(
     if plan is None:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=0,
@@ -645,6 +676,7 @@ def record_provider_artifact_receipt(
     if plan.asset_id != record.asset.asset_id or plan.revision_id != record.asset.revision_id:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=0,
@@ -658,6 +690,7 @@ def record_provider_artifact_receipt(
     if normalized_provider not in plan.provider_families:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=0,
@@ -671,6 +704,7 @@ def record_provider_artifact_receipt(
     if receipt.status == "failed":
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=70,
@@ -703,6 +737,7 @@ def preview_next_live_execution(store: MultimediaAssetStore, asset_id: str) -> M
     if queued is None or queued.execution_plan is None:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=0,
@@ -715,6 +750,7 @@ def preview_next_live_execution(store: MultimediaAssetStore, asset_id: str) -> M
     if plan.asset_id != record.asset.asset_id or plan.revision_id != record.asset.revision_id:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=0,
@@ -726,6 +762,7 @@ def preview_next_live_execution(store: MultimediaAssetStore, asset_id: str) -> M
     if plan.route_policy != record.asset.route_policy:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=0,
@@ -741,6 +778,7 @@ def preview_next_live_execution(store: MultimediaAssetStore, asset_id: str) -> M
     except BudgetExceeded as exc:
         return store.record_job(
             asset_id,
+            owner_id=owner_id,
             kind="provider_execution",
             status="failed",
             progress_percent=0,

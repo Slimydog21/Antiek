@@ -81,6 +81,7 @@ vi.mock("../../../hooks/useVoiceCapture", () => ({
 import FloatMenu from "./FloatMenu";
 import {
   outboundText,
+  dialogueOverSelection,
   searchFloatMenuSelection,
   saveFloatMenuNote,
   buildDialoguePrompt,
@@ -458,6 +459,16 @@ describe("§9.0 no-leak — withheld body never goes to Search / Deep-research",
     // A servable selection DOES query, with its text.
     await searchFloatMenuSelection(servable);
     expect(searchBlocksMock).toHaveBeenCalledWith("an open passage");
+  });
+
+  it("DIALOGUE refuses a withheld selection before calling the model", async () => {
+    await expect(
+      dialogueOverSelection({
+        investigationId: "inv-private",
+        selection: withheld,
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
   it("DEEP-RESEARCH hands the host null for a withheld selection (host refuses)", () => {

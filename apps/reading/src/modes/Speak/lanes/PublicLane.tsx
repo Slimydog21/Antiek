@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { LemonButton, LemonInput } from "../../../components/lemon";
-import { getEconomics, type EconomicsView, type FeedItem } from "../../../lib/speakApi";
+import {
+  getEconomics,
+  makeContributionInvitePath,
+  openContributePath,
+  speakPublicHonesty,
+  type EconomicsView,
+  type FeedItem,
+} from "../../../lib/speakApi";
 import { GATE_PHRASES, PUBLIC_LANE_LABELS } from "../../../lib/speakVocab";
 
 /**
@@ -47,13 +54,68 @@ export interface PublicLaneProps {
   feedLoading: boolean;
   /** The feed of public-intent remembrances (humanized). */
   feed: FeedItem[];
+  /** Logged-out browse: no invite mint, no operator console links. */
+  visitorMode?: boolean;
 }
 
 const PANEL =
   "rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 " +
   "dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night";
 
-export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
+
+/**
+ * Mint a link-only invite and navigate to SpeakInvite (`/speak/invite/:token`).
+ * Presentational parent stays prop-driven; mint is on-click (no feed prefetch).
+ */
+function ContributionInviteCta({
+  projectId,
+  mode = "operator",
+}: {
+  projectId: string;
+  /** operator = authed mint; open = G7 unauth self-serve. */
+  mode?: "operator" | "open";
+}) {
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const openDoor = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const path =
+        mode === "open"
+          ? await openContributePath(projectId)
+          : await makeContributionInvitePath(projectId);
+      navigate(path);
+    } catch {
+      setErr(PUBLIC_LANE_LABELS.ctaMintFailed);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <LemonButton
+        variant="secondary"
+        size="sm"
+        disabled={busy}
+        onClick={() => void openDoor()}
+        data-testid={`contribution-invite-cta-${projectId}`}
+      >
+        {busy ? PUBLIC_LANE_LABELS.ctaMintBusy : "Add your memory"}
+      </LemonButton>
+      {err && (
+        <p className="mt-1 font-serif text-[11px] text-emperor" role="alert">
+          {err}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export default function PublicLane({ feedLoading, feed, visitorMode = false }: PublicLaneProps) {
   const [query, setQuery] = useState("");
 
   // FIX 2 — LIVE G2/G3 read. `getEconomics` is per-project but G2/G3 are GLOBAL
@@ -65,9 +127,34 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
   // the gated copy. A fetch failure resets to null (gated) and never crashes.
   // (G7, by contrast, has no FE read and stays static — see the header.)
   const [econ, setEcon] = useState<EconomicsView | null>(null);
+  const [g7Live, setG7Live] = useState(false);
+  const [publishingLive, setPublishingLive] = useState(false);
+  const [disbursementLive, setDisbursementLive] = useState(false);
+  const [synqueryLive, setSynqueryLive] = useState(false);
   const probeId = feed.length > 0 ? feed[0].id : null;
   useEffect(() => {
-    if (!probeId) {
+    let live = true;
+    speakPublicHonesty()
+      .then((h) => {
+        if (!live) return;
+        setG7Live(h.openContributionLive);
+        setPublishingLive(h.publicPublishingLive);
+        setDisbursementLive(h.disbursementLive);
+        setSynqueryLive(h.synqueryLive);
+      })
+      .catch(() => {
+        if (!live) return;
+        setG7Live(false);
+        setPublishingLive(false);
+        setDisbursementLive(false);
+        setSynqueryLive(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!probeId || visitorMode) {
       setEcon(null);
       return;
     }
@@ -113,6 +200,23 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
         />
       </div>
 
+      {!visitorMode && (
+        <aside
+          className="rounded border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1"
+          data-testid="share-browse-link"
+        >
+          <p className="font-serif text-[12px] text-ink-mute dark:text-moonlight">
+            {PUBLIC_LANE_LABELS.shareBrowseHint}
+          </p>
+          <Link
+            to="/speak/browse"
+            className="mt-1 inline-block font-mono text-[11px] text-sun-deep underline dark:text-sun"
+          >
+            {PUBLIC_LANE_LABELS.shareBrowseLink}
+          </Link>
+        </aside>
+      )}
+
       {/* ── M1 · the feed (loading / empty / empty-search / list) ───────── */}
       {feedLoading ? (
         <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
@@ -135,12 +239,18 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
           {filtered.map((f) => (
             <li key={f.id} className={PANEL}>
               <div className="flex items-center justify-between gap-3">
-                <Link
-                  to={`/speak/${f.id}`}
-                  className="font-serif text-[16px] text-ink hover:underline dark:text-bright"
-                >
-                  {f.name}
-                </Link>
+                {visitorMode ? (
+                  <span className="font-serif text-[16px] text-ink dark:text-bright">
+                    {f.name}
+                  </span>
+                ) : (
+                  <Link
+                    to={`/speak/${f.id}`}
+                    className="font-serif text-[16px] text-ink hover:underline dark:text-bright"
+                  >
+                    {f.name}
+                  </Link>
+                )}
                 <span className="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight">
                   {f.voiceCount === 0
                     ? "no voices yet"
@@ -155,21 +265,39 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
                 {PUBLIC_LANE_LABELS.intendedPublic}
               </p>
 
-              {/* M3 — the CTA. PublicLane lives behind RequireAuth, so the
-                  viewer IS the operator: a real link to their own project
-                  (/speak/:id) is the correct, WORKING action for them. The
-                  label is reframed so it never implies a logged-out stranger
-                  can contribute now (open public contribution is G7-gated,
-                  framed below). No /login link, no 403 button, no dead end. */}
+              {/* M3 — the CTA. Spine SPR-03 dead-end fix: mint a link-only
+                  invite and open /speak/invite/:token (SpeakInvite — unauth,
+                  token is the credential). NEVER /speak/:id (operator console).
+                  Open contribution WITHOUT an invite stays G7-honest below.
+                  Title link above still reaches the operator console. */}
               <div className="mt-2">
-                <Link to={`/speak/${f.id}`}>
-                  <LemonButton variant="secondary" size="sm">
-                    Add your memory
-                  </LemonButton>
-                </Link>
-                <p className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight">
-                  {PUBLIC_LANE_LABELS.ctaOperatorOnly}
-                </p>
+                {visitorMode ? (
+                  g7Live ? (
+                    <>
+                      <ContributionInviteCta projectId={f.id} mode="open" />
+                      <p
+                        className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight"
+                        data-testid={`visitor-cta-note-${f.id}`}
+                      >
+                        {PUBLIC_LANE_LABELS.visitorCtaNoteLive}
+                      </p>
+                    </>
+                  ) : (
+                    <p
+                      className="font-serif text-[11px] text-ink-mute dark:text-moonlight"
+                      data-testid={`visitor-cta-note-${f.id}`}
+                    >
+                      {PUBLIC_LANE_LABELS.visitorCtaNote}
+                    </p>
+                  )
+                ) : (
+                  <>
+                    <ContributionInviteCta projectId={f.id} />
+                    <p className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight">
+                      {PUBLIC_LANE_LABELS.ctaOperatorOnly}
+                    </p>
+                  </>
+                )}
               </div>
             </li>
           ))}
@@ -189,7 +317,9 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
           {GATE_PHRASES.publicEcosystem.label}
         </h3>
         <p className="mt-1 font-serif text-[13px] text-ink-mute dark:text-moonlight">
-          {GATE_PHRASES.publicEcosystem.whenGated}
+          {g7Live
+            ? PUBLIC_LANE_LABELS.openContributionLive
+            : GATE_PHRASES.publicEcosystem.whenGated}
         </p>
       </div>
 
@@ -211,19 +341,29 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
           </li>
           {/* G7 — static, no FE read; distinct from the M2 panel above. */}
           <li className="font-serif text-[13px] text-ink dark:text-bright">
-            {PUBLIC_LANE_LABELS.explainerStepOpenContribution}
+            {g7Live
+              ? PUBLIC_LANE_LABELS.explainerStepOpenContributionLive
+              : PUBLIC_LANE_LABELS.explainerStepOpenContribution}
           </li>
           {/* G2 — LIVE: gated future-tense copy vs honest open-state copy. */}
           <li className="font-serif text-[13px] text-ink dark:text-bright">
-            {publishingOpen
+            {publishingOpen || (visitorMode && publishingLive)
               ? PUBLIC_LANE_LABELS.publishingOpen
               : GATE_PHRASES.publicSharing.whenGated}
           </li>
           {/* G3 — LIVE: gated future-tense copy vs honest open-state copy. */}
           <li className="font-serif text-[13px] text-ink dark:text-bright">
-            {payoutsOpen
+            {payoutsOpen || (visitorMode && disbursementLive)
               ? PUBLIC_LANE_LABELS.payoutsOpen
               : GATE_PHRASES.disbursement.whenGated}
+          </li>
+          <li
+            className="font-serif text-[13px] text-ink dark:text-bright"
+            data-testid="public-lane-synquery-gate"
+          >
+            {synqueryLive
+              ? "Expert-network booking (Synquery) is live for this operator."
+              : GATE_PHRASES.synquery.whenGated}
           </li>
         </ol>
         <p className="mt-2 font-serif text-[12px] italic text-ink-mute dark:text-moonlight">
@@ -232,13 +372,12 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
       </div>
 
       {/*
-        OUT OF SCOPE (flagged, NOT built) — SPR-01 carry-forward open questions,
-        backend/operator scope:
-          · an UNAUTHENTICATED /speak browse route (a stranger reading the
-            feed without an account);
-          · a G7-gated token-mint endpoint that lets a stranger contribute.
-        Neither is built here: PublicLane stays authed-only behind RequireAuth,
-        and the lane is honest that open public contribution is not yet live.
+        PARTIAL close of spine SPR-03: feed CTA now mints invite tokens →
+        SpeakInvite. Still OUT OF SCOPE (operator/G7):
+          · an UNAUTHENTICATED /speak browse route (stranger reading the feed
+            without an account) — PublicLane stays behind RequireAuth;
+          · G7 open contribution is live when opportunities honesty says so;
+            private projects remain invite-only.
       */}
     </section>
   );

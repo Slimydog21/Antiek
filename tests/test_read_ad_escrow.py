@@ -147,15 +147,18 @@ def test_unknown_rights_holder_goes_to_flagged_bucket(db):
     assert is_disbursement_unlocked(connect_read(db), UNATTRIBUTED_RIGHTS_BUCKET) is False
 
 
-def test_impression_endpoint_records_server_side_and_accrues(db):
-    """The /books/{id}/ad-impressions endpoint applies the attention rule
-    server-side (idle tab → no attention, regardless of claimed dwell) and
-    accrues the session."""
+def test_client_priced_book_impression_endpoint_is_tombstoned(db):
+    """The legacy browser-priced route cannot mutate rights-holder escrow."""
     from fastapi.testclient import TestClient
 
     from interfaces.research.api.app import create_app
 
-    _book_with_publisher(db, "doc-imp", "MIT Press")
+    holder = _book_with_publisher(db, "doc-imp", "MIT Press")
+    con = connect_read(db)
+    try:
+        before = ip_holders.get(con, holder).escrow_balance_usd
+    finally:
+        con.close()
     client = TestClient(create_app(register_wrestling=False, register_providers=False, cors_origins=[]))
     resp = client.post(
         "/books/doc-imp/ad-impressions",
@@ -164,7 +167,7 @@ def test_impression_endpoint_records_server_side_and_accrues(db):
             "impressions": [
                 # Focused + long dwell → attention counts.
                 {"slot_id": "slot:doc-imp:p0:top", "page_index": 0, "fill_kind": "house",
-                 "revenue_usd_cents": 0, "focused_dwell_ms": 5000, "tab_focused": True},
+                 "revenue_usd_cents": 999999, "focused_dwell_ms": 5000, "tab_focused": True},
                 # Backgrounded tab + long dwell → attention does NOT count
                 # (client cannot inflate attention).
                 {"slot_id": "slot:doc-imp:p0:bottom", "page_index": 0, "fill_kind": "house",
@@ -172,11 +175,17 @@ def test_impression_endpoint_records_server_side_and_accrues(db):
             ],
         },
     )
-    assert resp.status_code == 202
-    body = resp.json()
-    assert body["recorded"] == 2
-    assert body["attention_impressions"] == 1  # idle one excluded server-side
-    assert body["accrued_to_escrow_cents"] == 0  # zero-buyer (house) → $0
+    assert resp.status_code == 410
+    assert resp.json() == {"detail": "client_priced_ad_impressions_disabled"}
+    con = connect_read(db)
+    try:
+        assert ip_holders.get(con, holder).escrow_balance_usd == before
+        # No raw impression/accrual ledger was materialized by the rejected write.
+        tables = {row[0] for row in con.execute("SHOW TABLES").fetchall()}
+        if "reader_ad_impressions" in tables:
+            assert con.execute("SELECT count(*) FROM reader_ad_impressions").fetchone()[0] == 0
+    finally:
+        con.close()
 
 
 def test_reconciliation_no_double_count_on_reemit(db):

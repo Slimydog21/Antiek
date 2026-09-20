@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import ModelPicker from "../../components/ModelPicker";
+import {
+  fetchComposerProjection,
+  type ComposerCandidateView,
+  type ComposerModelProjection,
+} from "../../api/composerProjection";
+
 import {
   ApiError,
   createSection,
@@ -169,6 +176,9 @@ function SectionCard({
 
   // Generation state (M3).
   const [generating, setGenerating] = useState(false);
+  const [projection, setProjection] = useState<ComposerModelProjection | null>(null);
+  const [projectionError, setProjectionError] = useState<string | null>(null);
+  const [modelChoice, setModelChoice] = useState<ComposerCandidateView | null>(null);
   const [genResult, setGenResult] = useState<GenerationResult | null>(null);
   const [genError, setGenError] = useState<{ reason: string | null } | null>(null);
   // The prose loaded into the real editor (M4). null = not yet generated.
@@ -414,6 +424,37 @@ function SectionCard({
 
   const canGenerate = blocks.length > 0 && !generating;
 
+  // Advisory model-driver projection for the writing surface (BYOT directive).
+  // The picker choice is recorded locally and shown honestly as advisory: the
+  // shipped generate endpoint (generateSection) does not yet accept an
+  // owner-model authority for the writing path — binding is a documented
+  // follow-up (HANDOFF-2026-08-12). Never fabricates a bound selection.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchComposerProjection({
+      task: "writing",
+      bounded_usage: [
+        { unit: "input_token", maximum: 50_000 },
+        { unit: "output_token", maximum: 20_000 },
+      ],
+    })
+      .then((r) => {
+        if (!cancelled) {
+          setProjection(r);
+          setProjectionError(null);
+        }
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setProjectionError(e instanceof Error ? e.message : String(e));
+          setProjection(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <section
       onDragOver={(e) => {
@@ -476,6 +517,20 @@ function SectionCard({
 
       {/* Generate (M3) + honest states. */}
       <div className="flex flex-wrap items-center gap-3">
+        {projection && (
+          <ModelPicker
+            candidates={projection.ranked_candidates}
+            selected={modelChoice ? { provider: modelChoice.provider, model: modelChoice.model } : null}
+            onSelect={(c) => setModelChoice(c)}
+            error={projectionError}
+            label="Model driver"
+            note={
+              modelChoice
+                ? `Advisory — "${modelChoice.provider} / ${modelChoice.model}" recorded for this draft; the writing endpoint binds server-authority in a follow-up.`
+                : "Advisory — leave Auto for the curated default."
+            }
+          />
+        )}
         <button
           type="button"
           onClick={() => void handleGenerate()}

@@ -25,18 +25,13 @@ Invariants this tool upholds (see docs/staging_write_map.md):
   ``chunk_id``/``node_id`` for chunks/nodes, ``display_name`` for
   ip_holders). A re-merge inserts zero rows.
 - **Column-explicit, never positional.** The copy is
-  ``INSERT INTO t (c1, …, cn) SELECT s.c1, …, s.cn`` with the column list
-  read from the LIVE schema at merge time — not ``SELECT s.*``. A positional
-  ``s.*`` is a silent-corruption vector: it relies on staging and live
-  sharing identical column ORDER, which holds today only because both
-  bootstrap from the same ``init_database``, but a future migration that
-  rebuilds a table can reorder columns on the long-lived prod DB while a
-  freshly-bootstrapped staging file keeps the new order. Then ``s.*`` would
-  shuffle data into the wrong columns with nothing to catch it. So before any
-  copy, :func:`_assert_schema_compatible` checks every merged table's column
-  NAMES and ORDER match between staging and live and aborts the whole merge
-  (before the first insert) if they diverge; and the projection names every
-  column explicitly so a name match is sufficient for correctness.
+  ``INSERT INTO t (c1, …, cn) SELECT …`` with the live column list at merge
+  time — not ``SELECT s.*``. Each live column is projected by **name** from
+  staging (``s.col``) or as ``NULL`` when the column exists only on live
+  (prod ``ALTER`` appends / reorders vs fresh ``init_database`` staging).
+  Order need not match. :func:`_assert_schema_compatible` aborts only when
+  staging lacks a required key / NOT NULL column that cannot be null-filled.
+
 - **Deny-by-default is preserved, not re-decided.** The merge copies whatever
   ``content_class`` the staged document row already carries. It never
   re-classifies rights (that is SPR-02).
@@ -149,42 +144,86 @@ def _ordered_columns(con, table: str, *, catalog: str) -> list[str]:
 
 
 class SchemaDivergence(RuntimeError):
-    """Raised when a merged table's column names+order differ between staging
-    and live. Aborts the merge before any insert — a positional copy into a
-    diverged schema would silently shuffle data into the wrong columns."""
+    """Raised when staging cannot supply required columns for a safe named
+    merge (missing PK / NOT NULL without default). Order divergence alone is
+    NOT an error — projection is by column name."""
 
 
-def _assert_schema_compatible(con) -> dict[str, list[str]]:
-    """Verify every merged table has IDENTICAL column names AND order in
-    staging and live, and return the live column lists for the explicit
-    projection.
+@dataclass(frozen=True)
+class _SchemaPlan:
+    """Live column order (insert target) + staging column sets (by name)."""
 
-    This is the guard that makes the explicit-column copy below sound: if the
-    names+order match, an ``INSERT INTO t (cols) SELECT s.cols`` is correct by
-    construction. If they diverge — e.g. a future migration rebuilt a live
-    table and reordered its columns while a fresh staging file kept the new
-    order — this raises :class:`SchemaDivergence` and the caller aborts before
-    the first insert, so live is never corrupted. The merge is run inside one
-    ``connect_write`` with the staging DB ATTACHed as ``staging`` before this
-    is called."""
+    live_columns: dict[str, list[str]]
+    staging_columns: dict[str, frozenset[str]]
+
+
+# Primary keys that staging MUST have for each merged table.
+_TABLE_REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
+    "ip_holders": ("ip_holder_id", "display_name"),
+    "documents": ("document_id",),
+    "book_assets": ("document_id",),
+    "chunks": ("chunk_id", "document_id"),
+    "nodes": ("node_id",),
+}
+
+
+def _assert_schema_compatible(con) -> _SchemaPlan:
+    """Build a name-based merge plan; abort only on missing required columns.
+
+    Long-lived live DBs often diverge in column ORDER (and gain live-only
+    columns via ``ALTER TABLE … ADD COLUMN``) relative to a freshly
+    ``init_database``-bootstrapped staging file. Explicit named projection
+    makes order irrelevant; live-only nullable columns are null-filled.
+    """
     live_catalog = _live_catalog(con)
     live_cols: dict[str, list[str]] = {}
-    mismatches: list[str] = []
+    staging_cols: dict[str, frozenset[str]] = {}
+    problems: list[str] = []
     for table in _ALL_MERGED_TABLES:
         live = _ordered_columns(con, table, catalog=live_catalog)
         staged = _ordered_columns(con, table, catalog="staging")
-        if live != staged:
-            mismatches.append(
-                f"  {table}: live={live} staging={staged}"
-            )
         live_cols[table] = live
-    if mismatches:
+        staging_cols[table] = frozenset(staged)
+        if not staged:
+            problems.append(f"  {table}: missing from staging")
+            continue
+        for key in _TABLE_REQUIRED_KEYS.get(table, ()):
+            if key not in staging_cols[table]:
+                problems.append(
+                    f"  {table}: staging missing required column {key!r} "
+                    f"(live={live} staging={staged})"
+                )
+        # NOT NULL live columns without a default must exist on staging
+        for col, nullable, default in _column_nullability(
+            con, table, catalog=live_catalog
+        ):
+            if col not in staging_cols[table] and nullable == "NO" and default is None:
+                problems.append(
+                    f"  {table}: staging missing NOT NULL column {col!r} "
+                    f"(cannot null-fill)"
+                )
+    if problems:
         raise SchemaDivergence(
-            "staging/live schema diverged — refusing to merge (a positional "
-            "copy would corrupt data). Re-bootstrap staging from the current "
-            "live schema. Diverged tables:\n" + "\n".join(mismatches)
+            "staging/live schema incompatible — refusing to merge. "
+            "Staging is missing required columns (order differences are OK; "
+            "re-bootstrap staging or null-fill only applies to nullable "
+            "live-only columns). Problems:\n" + "\n".join(problems)
         )
-    return live_cols
+    return _SchemaPlan(live_columns=live_cols, staging_columns=staging_cols)
+
+
+def _column_nullability(
+    con, table: str, *, catalog: str
+) -> list[tuple[str, str, str | None]]:
+    """Return (column_name, is_nullable YES/NO, column_default) for ``table``."""
+    rows = con.execute(
+        "SELECT column_name, is_nullable, column_default "
+        "FROM information_schema.columns "
+        "WHERE table_catalog = ? AND table_schema = 'main' AND table_name = ? "
+        "ORDER BY ordinal_position",
+        [catalog, table],
+    ).fetchall()
+    return [(r[0], r[1], r[2]) for r in rows]
 
 
 def merge_staging(
@@ -216,33 +255,28 @@ def merge_staging(
     with connect_write(live_db, purpose="merge_staging") as con:
         con.execute(f"ATTACH '{attach_lit}' AS staging (READ_ONLY)")
         try:
-            # Pre-merge guard: every merged table's columns must match
-            # (names AND order) between staging and live, or a positional
-            # copy would corrupt. Raised here, before BEGIN, so a divergence
-            # never even opens the write transaction. Returns the live column
-            # lists used to project explicit (never ``s.*``) copies below.
-            live_cols = _assert_schema_compatible(con)
+            plan = _assert_schema_compatible(con)
 
             # Explicit transaction so a mid-merge failure rolls back ALL
             # tables atomically — live is never left half-merged.
             con.execute("BEGIN TRANSACTION")
             try:
-                # 1) ip_holders: insert net-new holders keyed on display_name
-                #    (the logical identity; the id is a random UUID per the
-                #    write-map). Then remap each merged document's ip_holder_id
-                #    to the LIVE holder id for its display_name, so re-ingesting
-                #    the same publisher does not fan out into duplicate escrow
-                #    accounts and a dangling staging id never reaches live.
-                holders = _merge_ip_holders(con, columns=live_cols["ip_holders"])
+                holders = _merge_ip_holders(
+                    con,
+                    columns=plan.live_columns["ip_holders"],
+                    staging_columns=plan.staging_columns["ip_holders"],
+                )
                 results.append(holders)
 
-                # 2) documents → book_assets → chunks → nodes, each an
-                #    anti-join on its PK. ip_holder_id remap happens after the
-                #    documents copy (the remap targets only the rows this merge
-                #    just inserted, by staging holder id).
                 staged_holder_remap = _build_holder_remap(con)
                 for table, key in _DOC_KEYED_TABLES:
-                    res = _merge_table(con, table=table, key=key, columns=live_cols[table])
+                    res = _merge_table(
+                        con,
+                        table=table,
+                        key=key,
+                        columns=plan.live_columns[table],
+                        staging_columns=plan.staging_columns[table],
+                    )
                     results.append(res)
                     if table == "documents" and staged_holder_remap:
                         _remap_document_ip_holders(con, staged_holder_remap)
@@ -263,24 +297,38 @@ def merge_staging(
     return MergeResult(tables=tuple(results), window_s=window_s)
 
 
-def _projection(columns: list[str]) -> tuple[str, str]:
-    """Build the ``(c1, …, cn)`` insert target list and the matching
-    ``s.c1, …, s.cn`` select list from a live column order. Names every column
-    explicitly so the copy is positional-independent (the schema-compat guard
-    has already proven the names+order agree between staging and live)."""
-    target = ", ".join(columns)
-    select = ", ".join(f"s.{c}" for c in columns)
-    return target, select
+def _projection(
+    live_columns: list[str], staging_columns: frozenset[str] | set[str]
+) -> tuple[str, str]:
+    """Build insert target list (live order) and SELECT list by name.
+
+    Staging columns are referenced as ``s.col``; live-only columns become
+    ``NULL AS col`` so prod ALTERs (e.g. ``owner_user_id`` / ``structured_blocks``)
+    do not block merge against a fresh staging schema.
+    """
+    target = ", ".join(live_columns)
+    select_parts: list[str] = []
+    for col in live_columns:
+        if col in staging_columns:
+            select_parts.append(f"s.{col}")
+        else:
+            select_parts.append(f"NULL AS {col}")
+    return target, ", ".join(select_parts)
 
 
-def _merge_table(con, *, table: str, key: str, columns: list[str]) -> TableMergeResult:
-    """Anti-join copy of one table on its primary key. The column list is
-    named explicitly (``INSERT INTO t (cols) SELECT s.cols``) rather than
-    ``s.*`` so a future column reorder can never shuffle data into the wrong
-    column. Uses ``RETURNING`` to get the exact net-new count, and computes
-    skipped = (staged rows) - (inserted) so the per-table summary is honest
-    about idempotency."""
-    target, select = _projection(columns)
+
+def _merge_table(
+    con,
+    *,
+    table: str,
+    key: str,
+    columns: list[str],
+    staging_columns: frozenset[str] | set[str],
+) -> TableMergeResult:
+    """Anti-join copy of one table on its primary key. Columns are projected
+    by name from staging (``NULL`` for live-only cols). Uses ``RETURNING`` for
+    net-new count; skipped = staged - inserted."""
+    target, select = _projection(columns, staging_columns)
     staged_total = _count(con, f"SELECT COUNT(*) FROM staging.{table}")
     inserted_rows = con.execute(
         f"INSERT INTO {table} ({target}) "
@@ -294,12 +342,17 @@ def _merge_table(con, *, table: str, key: str, columns: list[str]) -> TableMerge
     )
 
 
-def _merge_ip_holders(con, *, columns: list[str]) -> TableMergeResult:
+def _merge_ip_holders(
+    con,
+    *,
+    columns: list[str],
+    staging_columns: frozenset[str] | set[str],
+) -> TableMergeResult:
     """Insert net-new ip_holders keyed on ``display_name`` (not the random
     id). A holder already present live is authoritative and left untouched —
     its escrow balance is never overwritten by a staged copy. Column-explicit
-    for the same anti-positional-corruption reason as :func:`_merge_table`."""
-    target, select = _projection(columns)
+    by name (same as :func:`_merge_table`)."""
+    target, select = _projection(columns, staging_columns)
     staged_total = _count(con, "SELECT COUNT(*) FROM staging.ip_holders")
     inserted_rows = con.execute(
         f"INSERT INTO ip_holders ({target}) "

@@ -14,6 +14,7 @@ import pytest
 from substrate.ad_inventory.frame_attention import (
     FRAME_TELEMETRY_SCHEMA_VERSION,
     FRAME_WEIGHTING_VERSION,
+    SUPPORTED_FRAME_TELEMETRY_SCHEMA_VERSIONS,
     VALID_LENSES,
     FrameAttentionSample,
     FrameSecond,
@@ -103,6 +104,19 @@ def test_versions_are_distinct_surfaces():
     """Telemetry-shape version and weighting-math version are separate so a
     dispute can isolate 'the contract changed' from 'the math changed'."""
     assert FRAME_TELEMETRY_SCHEMA_VERSION != FRAME_WEIGHTING_VERSION
+
+
+def test_version_gate_accepts_current_and_previous_wire_only():
+    """Ad-pipeline gap S1 (frame-telemetry-v3): the gate accepts the CURRENT
+    version plus the previous one (v2 — a strict wire subset of v3: the value
+    hint is simply absent) so old emitters keep working. The client-priced v1
+    shape is NOT in the accepted set."""
+    assert FRAME_TELEMETRY_SCHEMA_VERSION == "frame-telemetry-v3"
+    assert {
+        "frame-telemetry-v2",
+        FRAME_TELEMETRY_SCHEMA_VERSION,
+    } == SUPPORTED_FRAME_TELEMETRY_SCHEMA_VERSIONS
+    assert "frame-telemetry-v1" not in SUPPORTED_FRAME_TELEMETRY_SCHEMA_VERSIONS
 
 
 def test_batch_is_the_unit_not_per_second_rows():

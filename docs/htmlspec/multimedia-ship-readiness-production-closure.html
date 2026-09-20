@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MSR-02 Production-Byte Cost Closure</title>
+  <style>
+    :root{--paper:#fffdf7;--ink:#171717;--muted:#5c5c5c;--lemon:#f9bd2b;--blue:#1d4aff;--line:#171717;--ok:#176b42;--bad:#a52b20}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 ui-sans-serif,system-ui,sans-serif}main{width:min(1080px,calc(100% - 32px));margin:28px auto 72px}h1{font-size:32px;margin:0 0 8px;letter-spacing:0}h2{font-size:21px;margin:30px 0 10px;border-bottom:2px solid var(--line);padding-bottom:5px;letter-spacing:0}h3{font-size:16px;letter-spacing:0}.lede{font-size:18px;color:var(--muted);max-width:82ch}.card{border:2px solid var(--line);padding:14px;margin:12px 0;background:#fff}.decision{border-left:9px solid var(--lemon)}code{background:#f1efe7;padding:1px 4px}table{width:100%;border-collapse:collapse}th,td{border:2px solid var(--line);padding:8px;text-align:left;vertical-align:top}th{background:var(--lemon)}a{color:var(--blue)}.pass{color:var(--ok);font-weight:700}.block{color:var(--bad);font-weight:700}
+  </style>
+</head>
+<body><main>
+  <h1>MSR-02: Production-Byte Cost Closure</h1>
+  <p class="lede">Prove which settled provider executions contributed bytes to the current registered educational video. Keep that projection distinct from Cycle 9's total direct exact-revision spend.</p>
+  <p><a href="multimedia-ship-readiness-cost-authority.html">Parent program</a></p>
+
+  <section id="spec-lineage" data-spec-depth="1" data-parent-spec="multimedia-ship-readiness-cost-authority.html">
+    <h2>Spec lineage</h2>
+    <p>Parent: <a href="multimedia-ship-readiness-cost-authority.html">Multimedia ship-readiness cost authority</a>.</p>
+    <ul class="child-specs">
+      <li><a href="multimedia-production-closure-receipt.html">MSR-02A: receipt identity closure</a></li>
+      <li><a href="multimedia-production-closure-visuals.html">MSR-02B: selected visual closure</a></li>
+      <li><a href="multimedia-production-closure-narration.html">MSR-02C: sealed narration closure</a></li>
+      <li><a href="multimedia-production-closure-projection.html">MSR-02D: immutable combined projection</a></li>
+    </ul>
+  </section>
+
+  <section><h2>Decision</h2>
+    <div class="card decision"><strong>Authority chain:</strong> current owner-scoped production link -> reopened MAC-verified educational-video receipt and current media bytes -> exact reviewed visual set and exactly one sealed narration run -> exact provider execution IDs -> existing claim, hold, and reservation settlement authorities.</div>
+    <p>The closure reports <code>production_byte_contributing_spend</code>. The existing <code>direct_settled_provider_executions</code> snapshot remains an independent report of all direct executions on the parent revision. Neither total may be substituted for the other.</p>
+  </section>
+
+  <section><h2>Milestones</h2><table>
+    <thead><tr><th>ID</th><th>Owns</th><th>Produces</th><th>Cannot own</th></tr></thead>
+    <tbody>
+      <tr><td>02A</td><td>Current link and verified receipt equality</td><td>Receipt digest and reopened byte authority</td><td>Billing or candidate selection</td></tr>
+      <tr><td>02B</td><td>Reviewed selection to receipt visual rows</td><td>Generated visual execution IDs; sourced rows classified separately</td><td>Narration or settlement</td></tr>
+      <tr><td>02C</td><td>Receipt narration to one sealed run and complete child set</td><td>Ordered narration execution IDs</td><td>Visual attribution</td></tr>
+      <tr><td>02D</td><td>Exact execution settlement and immutable projection</td><td>Signed labeled production closure</td><td>Provider calls, reconciliation, routing, rendering, publication</td></tr>
+    </tbody>
+  </table></section>
+
+  <section><h2>Global invariants</h2><ol>
+    <li>The current production link and reopened receipt must agree on owner, asset, revision, receipt digest, video digest, audio digest, duration, dimensions, and chapter order.</li>
+    <li>A generated visual execution is admitted only after the unique reviewed set matches every receipt packet row by ordered scene identity, content digest, disclosure label, and source chunks.</li>
+    <li>Sourced, archival, diagram, and operator-owned visuals contribute no provider execution ID; their rights authority remains separate and manual where required.</li>
+    <li>The receipt narration artifact must equal exactly one MAC-verified sealed run artifact for the exact asset and revision.</li>
+    <li>Each deterministic child revision must have exactly one text-to-speech provider execution. The ordered rows must reproduce the sealed run's <code>authorization_set_digest</code>.</li>
+    <li>Every admitted execution must pass its provider-record MAC and existing claim, call-hold, reservation, status, integer-cent, cutoff, and identity checks.</li>
+    <li>Duplicate execution IDs, missing rows, ambiguity, corruption, failed or unsettled constituents, stale links, and changed receipt/media bytes fail closed.</li>
+    <li>The projection is read-only and current-time. It performs no provider call, reservation, settlement, reconciliation, route mutation, render, or publication.</li>
+  </ol></section>
+
+  <section><h2>Rejected alternatives</h2><ul>
+    <li><strong>Filter all parent-revision spend:</strong> rejected because narration uses deterministic child revisions and non-selected attempts do not contribute bytes.</li>
+    <li><strong>Match narration by asset and revision only:</strong> rejected because multiple runs or attempts can exist; artifact equality and authorization-set digest reconstruction are load-bearing.</li>
+    <li><strong>Trust receipt paths as billing provenance:</strong> rejected because artifacts own bytes, not money.</li>
+    <li><strong>Persist a second ledger:</strong> rejected because claim, hold, reservation, and execution rows already own settlement truth.</li>
+    <li><strong>Treat no paid rows as zero:</strong> rejected; local zero requires MSR-03 completed local-run authority.</li>
+  </ul></section>
+
+  <section><h2>Acceptance</h2><p class="pass">Pass only when the same call can reopen the current bytes, derive one complete constituent set, validate every settlement at one cutoff, sign a deterministic projection, and verify it independently.</p><p class="block">Any unsupported or ambiguous authority returns <code>evidence_unavailable</code>; authenticated contradiction returns <code>evidence_conflict</code>. Neither becomes zero.</p></section>
+
+  <section><h2>Five-values bar</h2><p><strong>Intellectual honesty:</strong> the two spend labels remain distinct. <strong>Fairness:</strong> sourced visual rights are not mislabeled as provider spend. <strong>Rigor:</strong> byte and money authorities meet only through exact identities. <strong>Diligence:</strong> all zero, one, and many cardinalities are tested. <strong>Defensibility:</strong> each constituent names its role, chapter or scene, revision, execution, charge, and authority source.</p></section>
+
+  <section id="harness-hint-run" data-pattern="fan-out-and-synthesize" data-sprints="MSR-02A,MSR-02B,MSR-02C,MSR-02D"><h2>Harness hint</h2><p>Execute 02A before 02B/02C; execute 02B and 02C independently; synthesize and adversarially verify in 02D.</p></section>
+</main></body></html>

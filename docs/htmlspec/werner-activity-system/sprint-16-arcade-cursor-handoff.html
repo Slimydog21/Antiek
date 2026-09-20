@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WERNER-ACT SPR-16 — Arcade cursor handoff</title>
+    <style>
+      body { max-width: 74rem; margin: auto; padding: 2rem; font: 16px/1.55 system-ui, sans-serif; }
+      h1, h2 { line-height: 1.15; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border: 1px solid currentColor; padding: 0.65rem; text-align: left; }
+      code { font-family: ui-monospace, monospace; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p>WERNER-ACT · executable sprint 16 · 2026-07-14</p>
+      <h1>The cursor changes jobs when the game owns play</h1>
+      <p>Remove research-lens chrome only while the focused arcade canvas owns pointer input.</p>
+    </header>
+    <section>
+      <h2>Fresh evidence</h2>
+      <table>
+        <thead><tr><th>Surface</th><th>Current authority</th></tr></thead>
+        <tbody>
+          <tr><td>Deep Research route</td><td>Deterministically selects the global research-lens instrument.</td></tr>
+          <tr><td>Wait offer</td><td>Research remains primary; the lens is still correct and no game exists.</td></tr>
+          <tr><td>Explicit play</td><td>The focused canvas consumes pointer and keyboard game controls, but the global lens still overlays it.</td></tr>
+          <tr><td>Product grammar</td><td>The cursor job is singular: bait, lens, tool, or game control.</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section>
+      <h2>Acceptance gates</h2>
+      <ol>
+        <li>A process-local lease seam supports overlapping owners and idempotent teardown.</li>
+        <li>Waiting and offer states keep the route-derived research lens.</li>
+        <li>Playing acquires one lease before paint; no custom station instrument or hidden-native-cursor class remains.</li>
+        <li>Exit, Escape, episode reset, terminal removal, and unmount release the lease and restore the research lens.</li>
+        <li>Reduced-motion and default-off arcade behavior remain unchanged.</li>
+        <li>Storybook proves offer and playing cursor ownership at 768, 1024, and 1280 pixels.</li>
+      </ol>
+    </section>
+    <section>
+      <h2>Withheld authority</h2>
+      <p>
+        No persistent override, settings state, route-policy rewrite, arcade
+        engine/rule/visual change, generated asset, reaction event, mascot
+        movement, backend, network, spend, merge, or deployment. The dirty
+        session asset lane and deferred toboggan pose remain untouched.
+      </p>
+    </section>
+  </body>
+</html>

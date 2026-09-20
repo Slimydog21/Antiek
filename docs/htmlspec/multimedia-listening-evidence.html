@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Multimedia Listening Evidence</title>
+</head>
+<body>
+<main>
+  <h1>Inspect why a spoken claim is trustworthy</h1>
+  <p>Cycle 21 extends the shared active-listening player with exact evidence for current evidence-derived claims and an honest legacy state for older valid receipts. It does not fetch arbitrary source text, mutate the graph, regenerate media, or treat a chunk identifier as proof.</p>
+
+  <h2>Authority chain</h2>
+  <ol>
+    <li><strong>Paid audio:</strong> reopen the private MAC-verified paid receipt and narration artifact. Derive claim evidence only from the embedded transformed plan whose canonical digest and claim index are revalidated by the receipt.</li>
+    <li><strong>Cheapest local audio:</strong> reopen the private audio receipt and AudibleRun. Load the authenticated owner's current exact-revision record, then require each receipt claim's line ID, spoken text, and ordered chunk IDs to equal one factual line in that record's plan.</li>
+    <li><strong>Exact source:</strong> require one evidence derivation whose chunk/document identity, chunk digest, UTF-8 byte range, span digest, authority kind, and exact text are internally valid and equal the claim.</li>
+    <li>Any duplicate, stale, mismatched, malformed, or partially migrated authority makes playback metadata unavailable. A uniformly pre-exact-extract paid plan remains playable with receipt-backed opaque source IDs and an explicit <code>unavailable_legacy</code> state.</li>
+  </ol>
+
+  <h2>Shared response</h2>
+  <p>Every learned claim includes its stable line ID, ordered source chunk IDs, and evidence status. <code>verified_exact</code> claims carry chunk ID, document ID, optional locator, authority kind, chunk SHA-256, exact UTF-8 byte bounds, span SHA-256, and exact excerpt. The server independently recomputes digest and byte invariants. Pydantic enforces response shape; browser validation rejects empty, duplicate, structurally invalid, or cross-field-conflicting values before render.</p>
+
+  <h2>Listening surface</h2>
+  <ul>
+    <li>The existing learned-claims disclosure remains grouped by verified chapter.</li>
+    <li>Each claim exposes an explicit <strong>Inspect evidence</strong> command, source count, canonical-graph versus operator-excerpt disclosure, document and location identity, and the exact excerpt.</li>
+    <li>Evidence is text-first and scannable. Internal hashes and byte bounds remain available as authority details rather than a claim of browser-side cryptographic verification.</li>
+    <li>Changing chapters, speed, or Media Session ownership does not alter evidence identity.</li>
+  </ul>
+
+  <h2>Non-goals</h2>
+  <p>No graph query, source-body reload, document-title invention, external URL, deep-link navigation, source merge, claim correction, steering, provider call, spend, publication, offline cache, or receipt schema migration is introduced.</p>
+
+  <h2>Acceptance</h2>
+  <ul>
+    <li>Local and paid metadata expose the same evidence shape from their distinct verified authority chains.</li>
+    <li>A stale local plan, wrong line ID, changed claim text, reordered chunk, mismatched document, invalid digest, or partially migrated derivation fails closed. Uniform legacy paid claims remain playable without exact excerpts.</li>
+    <li>The browser rejects malformed evidence before rendering and never derives evidence from <code>source_count</code>.</li>
+    <li>Keyboard and screen-reader users can inspect and close each claim's evidence without losing playback controls.</li>
+    <li>Focused route/runtime/UI tests, the full multimedia suite, typecheck/build, Ruff, HTML parsing, security review, and independent review pass on the exact tree.</li>
+  </ul>
+</main>
+</body>
+</html>

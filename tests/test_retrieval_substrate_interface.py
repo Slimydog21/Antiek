@@ -241,16 +241,29 @@ def test_read_only_no_row_count_change(seeded_db, kind):
 
 @pytest.mark.parametrize("kind", ["turbopuffer", "ducklake"])
 def test_credential_gated_adapters_skip(seeded_db, kind):
-    """Without credentials, the vendor adapters self-report skipped and return
-    the honest-empty search() shape rather than crashing."""
+    """Without credentials, vendor adapters self-report skipped.
+
+    DuckLake returns the honest-empty shape. TurboPuffer (SERVABLE hybrid)
+    falls back to DuckDB SoT ``search()`` so cascade/reuse still works when
+    the env gate is on but the key is absent — dual structure, never crash.
+    """
     db, emb, _ = seeded_db
     sub = make_substrate(kind, db, model=emb)
     try:
         assert sub.status == "skipped — no credentials"
         assert sub.skipped is True
         res = sub.query("anything", top_k=5)
-        assert res["results"] == []
-        assert res["status"] == "skipped — no credentials"
+        if kind == "turbopuffer":
+            assert res["status"] == "degraded — brute_force"
+            assert res.get("degraded_reason") == "no credentials"
+            # DuckDB SoT may return rows; vendor was not required.
+            assert "results" in res
+            empty = sub.query("anything", top_k=5, allow_fallback=False)
+            assert empty["results"] == []
+            assert empty["status"] == "skipped — no credentials"
+        else:
+            assert res["results"] == []
+            assert res["status"] == "skipped — no credentials"
     finally:
         sub.close()
 
@@ -281,16 +294,20 @@ def test_factory_rejects_unknown_kind(seeded_db):
         make_substrate("pinecone", db, model=emb)
 
 
-def test_default_factory_path_imports_no_vendor():
+def test_default_factory_path_imports_no_vendor(monkeypatch):
     """The default factory path (vss / brute_force) must not import any vendor
     adapter at module load — a grep-equivalent assertion that the seam keeps
     losers off the default path (M5)."""
     import sys
 
     # Importing the substrate module must not pull in the vendor adapters.
+    # Pop via monkeypatch so teardown restores the process-global module cache:
+    # a raw sys.modules.pop leaks, and any later test that monkeypatches into
+    # a popped adapter then patches a fresh re-import while already-imported
+    # classes still read the original module object (shard-dependent failure).
     for mod in ("substrate.graph.retrieval_adapters.turbopuffer",
                 "substrate.graph.retrieval_adapters.ducklake"):
-        sys.modules.pop(mod, None)
+        monkeypatch.delitem(sys.modules, mod, raising=False)
     import importlib
 
     import substrate.graph.retrieval_substrate as rs

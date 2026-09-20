@@ -24,14 +24,20 @@ with the single writer.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import json
 import logging
 import re
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import replace
 from html.parser import HTMLParser
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
-from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException, Query, Request, Response
+from pydantic import BaseModel, Field, ValidationError
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
 from substrate.books.serve import ServeResult
@@ -43,8 +49,10 @@ from substrate.research_bridge.ingest import (
 
 from .operator_allowlist import operator_allowlist_from_env
 from .serve_guard import serve_full_text_guarded
+from .settings_models_admin import UserModelChoice
 
 logger = logging.getLogger("antiek.interfaces.books")
+_BOOK_JUDGMENT_LOCK = threading.Lock()
 
 # §9.0 owner-read policy tags. The owner's OWN-corpus read path (talk-to-book +
 # corpus search) passes the PRIVILEGED ``operator_only`` tag so the retrieval
@@ -128,6 +136,18 @@ def _owner_read_policy_tag(request: Request) -> str:
         return _OWNER_READ_POLICY_TAG
     return _PUBLIC_READ_POLICY_TAG
 
+
+def _reader_owner_id(request: Request) -> str:
+    """Resolve ownership from middleware state, never from request data."""
+    state = getattr(request, "state", None)
+    user_id = getattr(state, "user_id", None)
+    auth_method = getattr(state, "auth_method", None)
+    if isinstance(user_id, str) and user_id.strip():
+        return user_id.strip()
+    if auth_method == "unauthenticated_local":
+        return "__operator__"
+    raise HTTPException(status_code=401, detail="authenticated_owner_required")
+
 # arXiv canonical-link prefix; the serve guard stamps result.canonical_url as
 # ``https://arxiv.org/abs/<arxiv_id>`` for an arXiv doc (None otherwise), so the
 # arxiv_id is recoverable from it for the M4 serve-audit without re-reading the DB.
@@ -140,6 +160,88 @@ def _resolve_db_path() -> str:
     path = default_db_path()
     ensure_initialized(path)
     return path
+
+
+def _book_answer_trajectory(document_id: str) -> list[dict[str, object]]:
+    from substrate.event_log import trajectory
+
+    return trajectory(f"read-{document_id}")
+
+
+def _payload_dict(row: dict[str, object]) -> dict[str, object]:
+    payload = row.get("payload")
+    return payload if isinstance(payload, dict) else {}
+
+
+def _captured_answer(
+    document_id: str, answer_id: str, owner_id: str
+) -> dict[str, object] | None:
+    for row in _book_answer_trajectory(document_id):
+        if row.get("event_id") != answer_id or row.get("action_type") != "read.book_answered":
+            continue
+        payload = _payload_dict(row)
+        if payload.get("owner_id") == owner_id and row.get("document_id") == document_id:
+            return row
+    return None
+
+
+def _persist_book_answer_judgment(
+    *,
+    document_id: str,
+    answer_id: str,
+    owner_id: str,
+    verdict: Literal["good", "bad"],
+    note: str | None,
+) -> BookAnswerJudgmentResponse:
+    from substrate.event_log import emit_typed
+    from substrate.schemas import ReadBookAnswerJudgedPayload
+
+    # Production is deliberately one process under the DuckDB single-writer
+    # invariant. This lock makes replay-check + append one operation inside
+    # that process, including simultaneous requests from separate browser tabs.
+    with _BOOK_JUDGMENT_LOCK:
+        if _captured_answer(document_id, answer_id, owner_id) is None:
+            raise HTTPException(status_code=404, detail="book_answer_not_found")
+        for row in _book_answer_trajectory(document_id):
+            if row.get("action_type") != "read.book_answer_judged":
+                continue
+            payload = _payload_dict(row)
+            if payload.get("answer_id") != answer_id or payload.get("owner_id") != owner_id:
+                continue
+            if payload.get("verdict") != verdict or payload.get("note") != note:
+                raise HTTPException(status_code=409, detail="book_answer_already_judged")
+            return BookAnswerJudgmentResponse(
+                answer_id=answer_id,
+                judgment_id=str(row["event_id"]),
+                verdict=verdict,
+                note=note,
+            )
+
+        judgment_id = emit_typed(
+            f"read-{document_id}",
+            ReadBookAnswerJudgedPayload(
+                answer_id=answer_id,
+                owner_id=owner_id,
+                verdict=verdict,
+                note=note,
+            ),
+            parent_event_id=answer_id,
+            role="read/talk_to_book_judgment",
+            policy_id="read/books/answer-judgment-v1",
+            document_id=document_id,
+        )
+        persisted = any(
+            row.get("event_id") == judgment_id
+            for row in _book_answer_trajectory(document_id)
+        )
+        if judgment_id is None or not persisted:
+            raise HTTPException(status_code=503, detail="answer_judgment_capture_unavailable")
+        return BookAnswerJudgmentResponse(
+            answer_id=answer_id,
+            judgment_id=judgment_id,
+            verdict=verdict,
+            note=note,
+        )
 
 
 def _record_arxiv_serve_audit(db_path: str, document_id: str, result: ServeResult) -> None:
@@ -243,6 +345,28 @@ class BookDetail(BookSummary):
 class BookListResponse(BaseModel):
     books: list[BookSummary]
     count: int
+
+
+BookImportContentClass = Literal[
+    "public_domain",
+    "opt_in_licensed",
+    "source_declared_open",
+    "user_owned",
+    "user_public_contribution",
+    "restricted_pending_opt_in",
+    "personal_reading",
+]
+
+
+class BookImportResponse(BaseModel):
+    document_id: str
+    was_new: bool
+    chunk_count: int
+    content_class: str | None
+    servability: str
+    title: str | None
+    source_format: Literal["epub"] = "epub"
+    content_format: Literal["html"] = "html"
 
 
 class CuratedBookResponse(BaseModel):
@@ -779,6 +903,7 @@ class SpinResearchResponse(BaseModel):
     seed_preview: str
     artifact_path: str | None = None
     twin_notes_path: str | None = None
+    capacity_warning: dict[str, object] | None = None
 
 
 class ImpressionItem(BaseModel):
@@ -821,6 +946,72 @@ class FullTextResponse(BaseModel):
     ad_eligible: bool = False
     canonical_url: str | None = None
     license: str | None = None
+    content_format: Literal["text", "html"] = "text"
+
+
+
+def _prefer_reader_html_body(
+    con: Any,
+    document_id: str,
+    result: ServeResult,
+    *,
+    owner: bool,
+) -> ServeResult:
+    """Upgrade a rights-released body to the trusted reader-html sidecar.
+
+    Uploads deliberately do NOT stamp ``documents.metadata`` with sanitizer
+    provenance (sidecar is the sole HTML trust carrier — see upload_routes).
+    BookReader reads ``/books/{id}/(owner-)full-text``, so without this bridge
+    owned uploads render as ``content_format=text`` even when
+    ``document_reader_html`` is present and version-current.
+
+    Only substitutes when rights already released ``full_text`` AND the
+    sidecar row is version-current. Queries the sidecar table directly (does
+    not re-enter ``serve_reader_html`` / ``serve_full_text_guarded``) because
+    the caller already proved the rights ring. ``owner`` is retained for call-
+    site clarity; rights are not re-derived here.
+    """
+    del owner  # rights already decided by caller; keep kw for call-site clarity
+    if result.full_text is None:
+        return result
+    from substrate.books.html_sanitizer import SANITIZER_VERSION
+
+    row = con.execute(
+        """
+        SELECT html_body, sanitizer_version
+        FROM document_reader_html
+        WHERE document_id = ?
+        """,
+        [document_id],
+    ).fetchone()
+    if row is None:
+        return result
+    html_body, version = row
+    if version != SANITIZER_VERSION or not html_body:
+        return result
+    return replace(
+        result,
+        full_text=html_body,
+        content_format="html",
+    )
+
+
+def _full_text_response(result: ServeResult) -> FullTextResponse:
+    return FullTextResponse(
+        document_id=result.document_id,
+        servable=result.servable,
+        servability=result.servability.value if result.servability else None,
+        full_text=result.full_text,
+        snippet=result.snippet,
+        title=result.title,
+        author=result.author,
+        reason=result.reason,
+        tier=result.tier,
+        ad_eligible=result.ad_eligible,
+        canonical_url=result.canonical_url,
+        license=result.license,
+        content_format=result.content_format,
+    )
 
 
 # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited) ───────────────
@@ -841,6 +1032,10 @@ class AskBookRequest(BaseModel):
     # The recent tail of the running conversation (server bounds it again).
     history: list[TalkTurn] = Field(default_factory=list)
     research_tier: Literal["fast", "deep"] = "deep"
+    # Parsed manually at the endpoint so FastAPI never reflects submitted
+    # provider/model values in a validation response.
+    model_choice: object | None = None
+    operation_id: object | None = None
 
 
 class CitationResponse(BaseModel):
@@ -855,13 +1050,82 @@ class CitationResponse(BaseModel):
     snippet: str
 
 
+class ModelReceipt(BaseModel):
+    authority: Literal["legacy_tier", "owner_byot"]
+    requested_provider_id: str | None = None
+    requested_model_id: str | None = None
+    actual_provider_id: str
+    actual_model_id: str
+    authority_digest: str | None = None
+
+
 class AskBookResponse(BaseModel):
+    answer_id: str | None
+    capture_status: Literal["captured", "unavailable"]
     answer: str
     citations: list[CitationResponse]
     # False when the book had no extractable text to ground on (scanned-image
     # PDF / fully-withheld) — the honest no-context state, never a hallucination.
     grounded: bool
     context_chunk_count: int
+    model_receipt: ModelReceipt | None = None
+    # thought_partner shape (challenge|synthesis|extension) — same role as
+    # POST /thought-partner. Null only on the ungrounded no-context branch.
+    shape: str | None = None
+
+
+class ModelOperationStatus(BaseModel):
+    operation_id: str
+    state: Literal[
+        "prepared", "sent", "settlement_pending", "settled", "unknown", "cancelled",
+    ]
+    reserved_cents: int
+    actual_cents: int | None = None
+    created_at: str
+    updated_at: str
+    provider_id: str | None = None
+    model_id: str | None = None
+
+
+class ModelOperationCleanupResponse(BaseModel):
+    cancelled_count: int
+    max_age_seconds: int
+
+
+class BookAnswerJudgmentRequest(BaseModel):
+    verdict: Literal["good", "bad"]
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class BookAnswerJudgmentResponse(BaseModel):
+    answer_id: str
+    judgment_id: str
+    verdict: Literal["good", "bad"]
+    note: str | None = None
+
+
+class JudgedBookAnswerResponse(BaseModel):
+    answer_id: str
+    judgment_id: str
+    document_id: str
+    question: str
+    answer: str
+    citations: list[CitationResponse]
+    grounded: bool
+    provider: str | None = None
+    model: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
+    verdict: Literal["good", "bad"]
+    note: str | None = None
+    answered_at: str
+    judged_at: str
+
+
+class JudgedBookAnswersResponse(BaseModel):
+    answers: list[JudgedBookAnswerResponse]
+    count: int
 
 
 # ── SPR-08 M1 — corpus search (NET-NEW) ─────────────────────────────
@@ -1005,9 +1269,6 @@ def register_book_routes(app: FastAPI) -> None:
             if status == "servable":
                 assets = list_book_assets(con, servable_only=True)
             else:
-                # "gated" and "all" both list non-taken-down books; the
-                # servability flag on each lets the caller filter. We never
-                # widen to taken-down books on a public listing.
                 assets = list_book_assets(con, servable_only=False)
                 if status == "gated":
                     assets = [a for a in assets if not a.servable_full_text]
@@ -1044,6 +1305,7 @@ def register_book_routes(app: FastAPI) -> None:
                 for c in curated
             ],
         )
+
 
     @app.post(
         "/books/marketplace/purchase-request",
@@ -1649,6 +1911,98 @@ def register_book_routes(app: FastAPI) -> None:
             ],
         )
 
+    @app.post(
+        "/books/import/epub",
+        response_model=BookImportResponse,
+        status_code=201,
+        tags=["books"],
+    )
+    async def import_epub(
+        request: Request,
+        content_class: BookImportContentClass = Query(default="personal_reading"),
+        rights_holder_name: str | None = Query(default=None, min_length=1, max_length=256),
+        license_basis: str | None = Query(default=None, min_length=1, max_length=1024),
+    ) -> BookImportResponse:
+        """Import one operator-held EPUB through the bounded conversion engine.
+
+        The request body is the EPUB bytes, not a path or URL. The default is
+        owner-only ``personal_reading``; making a title publicly servable is an
+        explicit rights declaration. Conversion and the DuckDB transaction run
+        off the event loop, under the repository's single-writer coordinator.
+        """
+        from runtime.db_lock import connect_write
+        from substrate.book_import import (
+            DEFAULT_LIMITS,
+            BookImportError,
+            PublishedBookImport,
+            RepublishRightsChangeError,
+            StoredBodyMismatchError,
+            ZipBombSuspectedError,
+            convert_epub_to_antiek_html,
+            publish_converted_book,
+        )
+
+        if content_class in {"personal_reading", "user_owned"} and rights_holder_name:
+            raise HTTPException(
+                status_code=422, detail="owner_only_import_cannot_create_rights_holder"
+            )
+        media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if media_type not in {"application/epub+zip", "application/octet-stream"}:
+            raise HTTPException(status_code=415, detail="epub_content_type_required")
+        declared = request.headers.get("content-length")
+        if declared is not None:
+            try:
+                declared_size = int(declared)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="invalid_content_length") from exc
+            if declared_size <= 0:
+                raise HTTPException(status_code=400, detail="empty_epub")
+            if declared_size > DEFAULT_LIMITS.max_container_bytes:
+                raise HTTPException(status_code=413, detail="epub_too_large")
+
+        chunks: list[bytes] = []
+        received = 0
+        async for chunk in request.stream():
+            received += len(chunk)
+            if received > DEFAULT_LIMITS.max_container_bytes:
+                raise HTTPException(status_code=413, detail="epub_too_large")
+            chunks.append(chunk)
+        if received == 0:
+            raise HTTPException(status_code=400, detail="empty_epub")
+        payload = b"".join(chunks)
+
+        def convert_and_publish() -> PublishedBookImport:
+            converted = convert_epub_to_antiek_html(payload)
+            con = connect_write(_resolve_db_path(), purpose="books/import/epub")
+            try:
+                return publish_converted_book(
+                    con,
+                    converted,
+                    content_class=content_class,
+                    rights_holder_name=rights_holder_name,
+                    license_basis=license_basis,
+                )
+            finally:
+                con.close()
+
+        try:
+            published = await asyncio.to_thread(convert_and_publish)
+        except ZipBombSuspectedError as exc:
+            raise HTTPException(status_code=413, detail=exc.reason) from None
+        except (RepublishRightsChangeError, StoredBodyMismatchError) as exc:
+            raise HTTPException(status_code=409, detail=exc.reason) from None
+        except BookImportError as exc:
+            raise HTTPException(status_code=422, detail=exc.reason) from None
+
+        return BookImportResponse(
+            document_id=published.document_id,
+            was_new=published.was_new,
+            chunk_count=published.chunk_count,
+            content_class=published.content_class,
+            servability=published.servability,
+            title=published.title,
+        )
+
     @app.get("/books/{document_id}", response_model=BookDetail, tags=["books"])
     async def get_book(document_id: str) -> BookDetail:
         from runtime.db_lock import connect_read
@@ -1675,6 +2029,7 @@ def register_book_routes(app: FastAPI) -> None:
         con = connect_read(db)
         try:
             result = serve_full_text_guarded(con, document_id)
+            result = _prefer_reader_html_body(con, document_id, result, owner=False)
         finally:
             con.close()
         if not result.found:
@@ -1688,20 +2043,38 @@ def register_book_routes(app: FastAPI) -> None:
         # Defensively isolated: a failure in the audit layer must never break the
         # serve (wrap + log), and the audit write takes its own write lock.
         _record_arxiv_serve_audit(db, document_id, result)
-        return FullTextResponse(
-            document_id=result.document_id,
-            servable=result.servable,
-            servability=result.servability.value if result.servability else None,
-            full_text=result.full_text,
-            snippet=result.snippet,
-            title=result.title,
-            author=result.author,
-            reason=result.reason,
-            tier=result.tier,
-            ad_eligible=result.ad_eligible,
-            canonical_url=result.canonical_url,
-            license=result.license,
-        )
+        return _full_text_response(result)
+
+    @app.get(
+        "/books/{document_id}/owner-full-text",
+        response_model=FullTextResponse,
+        tags=["books"],
+    )
+    async def get_owner_book_full_text(
+        document_id: str, request: Request
+    ) -> FullTextResponse:
+        """Serve personal-reading bytes only on the proven owner path.
+
+        The public ``/full-text`` contract remains byte-for-byte narrow. This
+        explicit endpoint resolves the same hardened owner signal used by
+        context/research retrieval and never marks private bytes servable or
+        ad-eligible.
+        """
+        from runtime.db_lock import connect_read
+
+        if _owner_read_policy_tag(request) != _OWNER_READ_POLICY_TAG:
+            raise HTTPException(status_code=403, detail="owner_read_required")
+        db = _resolve_db_path()
+        con = connect_read(db)
+        try:
+            result = serve_full_text_guarded(con, document_id, owner=True)
+            result = _prefer_reader_html_body(con, document_id, result, owner=True)
+        finally:
+            con.close()
+        if not result.found:
+            raise HTTPException(status_code=404, detail="book_not_found")
+        _record_arxiv_serve_audit(db, document_id, result)
+        return _full_text_response(result)
 
     @app.post(
         "/books/{document_id}/ad-impressions",
@@ -1712,47 +2085,19 @@ def register_book_routes(app: FastAPI) -> None:
     async def record_ad_impressions(
         document_id: str, req: RecordImpressionsRequest
     ) -> RecordImpressionsResponse:
-        """Record reader ad impressions + attention for a session and
-        accrue to the book's rights-holder escrow (Read SPR-05 → SPR-09).
+        """Return 410 for the retired client-priced impression contract.
 
-        The browser flushes a session's slot impressions here. The
-        attention rule (focused dwell ≥ threshold; idle tab excluded) is
-        applied SERVER-SIDE — the client's claimed attention is not
-        trusted. Accrual reuses ``accrue_reading_session`` (dedup by
-        impression_id, zero-buyer-safe, accrual≠disbursement)."""
-        from runtime.db_lock import connect_write
-        from substrate.ad_inventory.reader_impressions import record_raw_impression
-        from substrate.marketplace_metrics.book_escrow import accrue_reading_session
-
-        impressions = [
-            record_raw_impression(
-                session_id=req.session_id,
-                document_id=document_id,
-                slot_id=item.slot_id,
-                page_index=item.page_index,
-                fill_kind=item.fill_kind,
-                revenue_usd_cents=item.revenue_usd_cents,
-                focused_dwell_ms=item.focused_dwell_ms,
-                tab_focused=item.tab_focused,
-            )
-            for item in req.impressions
-        ]
-        db = _resolve_db_path()
-        con = connect_write(db, purpose="read/ad_impressions")
-        try:
-            result = accrue_reading_session(
-                con,
-                document_id=document_id,
-                impressions=impressions,
-                session_id=req.session_id,
-            )
-        finally:
-            con.close()
-        return RecordImpressionsResponse(
-            document_id=document_id,
-            recorded=len(impressions),
-            attention_impressions=result.attention_impressions,
-            accrued_to_escrow_cents=result.accrued_to_escrow_cents,
+        Attention now enters through ``/api/ad/frame-telemetry``. Revenue may
+        enter accrual only from a future authoritative settled fill record;
+        this legacy request cannot write impression, payout, or escrow state.
+        """
+        # Tombstoned: every item carries client-authored revenue.  Attention is
+        # now accepted only by /api/ad/frame-telemetry, while money may flow
+        # only from a future authoritative settled fill record.
+        _ = (document_id, req)
+        raise HTTPException(
+            status_code=410,
+            detail="client_priced_ad_impressions_disabled",
         )
 
     @app.post(
@@ -1761,7 +2106,12 @@ def register_book_routes(app: FastAPI) -> None:
         status_code=202,
         tags=["books"],
     )
-    async def spin_research(document_id: str, req: SpinResearchRequest) -> SpinResearchResponse:
+    async def spin_research(
+        document_id: str,
+        req: SpinResearchRequest,
+        request: Request,
+        response: Response,
+    ) -> SpinResearchResponse:
         """Spin a deep research from a book passage (Read SPR-08).
 
         Builds the GATE-SAFE seed server-side (a gated book contributes
@@ -1771,6 +2121,15 @@ def register_book_routes(app: FastAPI) -> None:
         seed is built and consumed here so gated full text never crosses
         into a research via the browser.
         """
+        from .compute_capacity_gate import (
+            attach_capacity_warn_header,
+            commit_start_acu,
+            run_capacity_precheck,
+            warning_body,
+        )
+
+        capacity_gate = run_capacity_precheck(request)
+
         from runtime.db_lock import connect_read
         from substrate.books.passage_research import (
             build_research_seed,
@@ -1781,7 +2140,27 @@ def register_book_routes(app: FastAPI) -> None:
         from substrate.schemas import InvestigationStartRequestedPayload
 
         db = _resolve_db_path()
-        con = connect_read(db)
+        # Transient DuckDB RO/RW config clashes with note-taker recovery or
+        # reuse inject: brief retry before hard-failing the spin.
+        con = None
+        last_exc: Exception | None = None
+        for _attempt in range(8):
+            try:
+                con = connect_read(db)
+                break
+            except Exception as exc:  # noqa: BLE001 — duckdb ConnectionException
+                last_exc = exc
+                if "different configuration" not in str(exc):
+                    raise
+                import asyncio as _asyncio
+
+                await _asyncio.sleep(0.05 * (_attempt + 1))
+        if con is None:
+            assert last_exc is not None
+            raise HTTPException(
+                status_code=503,
+                detail=f"graph_temporarily_unavailable: {last_exc}",
+            ) from last_exc
         try:
             seed = build_research_seed(
                 con,
@@ -1807,12 +2186,34 @@ def register_book_routes(app: FastAPI) -> None:
             ),
             role="read/spin_research",
             policy_id="read/books/spin_research",
+            document_id=document_id,
         )
         if event_id is None:
             raise HTTPException(
                 status_code=503,
                 detail="Event log is disabled (ANTIEK_EVENTS_DISABLED).",
             )
+        # Broadcast so the in-process Loop 1 orchestrator (subscribed to
+        # investigation.start_requested) actually starts. emit_typed alone
+        # only appends the jsonl — same wake-up as POST /investigations and
+        # watch-for-later escalation. Without this, inv-* stays forever
+        # in_progress under isolated-events dogfood (no separate consumer).
+        from substrate.event_log import trajectory
+        from substrate.schemas import Event
+
+        bus = getattr(app.state, "broadcaster", None)
+        if bus is not None:
+            for row in reversed(trajectory(investigation_id)):
+                if row.get("event_id") == event_id:
+                    try:
+                        await bus.broadcast(Event.model_validate(row))
+                    except Exception:  # pragma: no cover — diagnostic
+                        logger.exception(
+                            "spin_research broadcast failed inv=%s event=%s",
+                            investigation_id,
+                            event_id,
+                        )
+                    break
         link_passage_to_research(
             document_id=document_id,
             page_index=req.page_index,
@@ -1829,6 +2230,13 @@ def register_book_routes(app: FastAPI) -> None:
             )
             artifact_path = str(exported.path)
             twin_notes_path = str(exported.twin_notes_path)
+        post_gate = commit_start_acu(
+            request,
+            investigation_id=investigation_id,
+            reason="spin_research",
+        )
+        warn_gate = post_gate if post_gate.verdict == "soft_warn" else capacity_gate
+        attach_capacity_warn_header(response, warn_gate)
         return SpinResearchResponse(
             investigation_id=investigation_id,
             document_id=document_id,
@@ -1838,12 +2246,14 @@ def register_book_routes(app: FastAPI) -> None:
             seed_preview=seed.seed_text[:240] + ("…" if len(seed.seed_text) > 240 else ""),
             artifact_path=artifact_path,
             twin_notes_path=twin_notes_path,
+            capacity_warning=warning_body(warn_gate),
         )
 
     # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited, gate-safe) ──
     @app.post(
         "/books/{document_id}/ask",
         response_model=AskBookResponse,
+        response_model_exclude_unset=True,
         tags=["books"],
     )
     async def ask_book(
@@ -1863,6 +2273,12 @@ def register_book_routes(app: FastAPI) -> None:
         dispatching a model (no hallucination). The model is dispatched through
         the ONE Hermes-routed path (§16); 503 when no provider is keyed.
         """
+        from interfaces.research.api.owner_byot_dispatch import (
+            OwnerByotDispatchUnavailable,
+            OwnerByotOutcomeUnknown,
+            authenticated_distinct_owner,
+            dispatch_talk_to_book_byot,
+        )
         from runtime.db_lock import connect_read
         from substrate.books.book_qa import Turn, answer_book_question
         from substrate.dispatch.base import ProviderError
@@ -1873,10 +2289,108 @@ def register_book_routes(app: FastAPI) -> None:
         con = connect_read(db)
         try:
             asset = get_book_asset(con, document_id)
+            owner_row = con.execute(
+                "SELECT owner_user_id FROM documents WHERE document_id = ?",
+                [document_id],
+            ).fetchone()
         finally:
             con.close()
         if asset is None:
             raise HTTPException(status_code=404, detail="book_not_found")
+
+        authorized_dispatch = None
+        selected_choice: UserModelChoice | None = None
+        operation_id: str | None = None
+        if (req.model_choice is None) != (req.operation_id is None):
+            raise HTTPException(status_code=422, detail="model_selection_invalid")
+        if req.model_choice is not None:
+            try:
+                selected_choice = UserModelChoice.model_validate(req.model_choice)
+            except ValidationError:
+                raise HTTPException(status_code=422, detail="model_selection_invalid") from None
+            if (
+                not isinstance(req.operation_id, str)
+                or not req.operation_id.strip()
+                or len(req.operation_id) > 128
+            ):
+                raise HTTPException(status_code=422, detail="model_selection_invalid")
+            operation_id = req.operation_id.strip()
+            if owner_row is None or not isinstance(owner_row[0], str):
+                raise HTTPException(status_code=409, detail="owner_model_unavailable")
+            try:
+                selected_owner = authenticated_distinct_owner(request)
+            except OwnerByotDispatchUnavailable:
+                raise HTTPException(status_code=409, detail="owner_model_unavailable") from None
+            def _dispatch_selected(prompt: str) -> Any:
+                # Re-read the resource authority at the last execution seam;
+                # the earlier read was existence/UX only and grants nothing.
+                owner_con = connect_read(db)
+                try:
+                    current_owner_row = owner_con.execute(
+                        "SELECT owner_user_id, acquired_at FROM documents WHERE document_id = ?",
+                        [document_id],
+                    ).fetchone()
+                finally:
+                    owner_con.close()
+                if current_owner_row is None or not isinstance(current_owner_row[0], str):
+                    raise HTTPException(status_code=503, detail="owner_model_unavailable")
+                resource_fact_digest = hashlib.sha256(
+                    json.dumps(
+                        {
+                            "document_id": document_id,
+                            "owner_user_id": current_owner_row[0],
+                            "version": str(current_owner_row[1]),
+                        },
+                        sort_keys=True, separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()
+                @contextmanager
+                def _resource_authority_guard() -> Iterator[str]:
+                    from runtime.db_lock import authority_handoff_guard
+                    with authority_handoff_guard(
+                        db, purpose="talk-to-book-authority-handoff",
+                    ):
+                        fact_con = connect_read(db)
+                        try:
+                            fact = fact_con.execute(
+                                "SELECT owner_user_id, acquired_at FROM documents"
+                                " WHERE document_id = ?", [document_id],
+                            ).fetchone()
+                            if fact is None or not isinstance(fact[0], str):
+                                yield ""
+                            else:
+                                yield hashlib.sha256(json.dumps(
+                                    {"document_id": document_id, "owner_user_id": fact[0],
+                                     "version": str(fact[1])},
+                                    sort_keys=True, separators=(",", ":"),
+                                ).encode("utf-8")).hexdigest()
+                        finally:
+                            fact_con.close()
+                assert selected_choice is not None and operation_id is not None
+                try:
+                    result, authority = dispatch_talk_to_book_byot(
+                        app=request.app,
+                        request_owner_user_id=selected_owner,
+                        resource_owner_user_id=current_owner_row[0],
+                        document_id=document_id,
+                        choice=selected_choice,
+                        prompt=prompt,
+                        investigation_id=f"read-{document_id}",
+                        logical_operation_id=operation_id,
+                        resource_authority_digest=resource_fact_digest,
+                        resource_authority_guard=_resource_authority_guard,
+                    )
+                except OwnerByotOutcomeUnknown:
+                    raise HTTPException(
+                        status_code=503, detail="owner_model_outcome_unknown",
+                    ) from None
+                except OwnerByotDispatchUnavailable:
+                    raise HTTPException(
+                        status_code=503, detail="owner_model_unavailable",
+                    ) from None
+                return result, authority.digest()
+
+            authorized_dispatch = _dispatch_selected
 
         try:
             model = SentenceTransformerEmbedding()
@@ -1897,16 +2411,17 @@ def register_book_routes(app: FastAPI) -> None:
                     # §9.0: privileged ONLY for the authenticated owner (resolved
                     # server-side); non-owner / unauth callers stay gated.
                     policy_tag=_owner_read_policy_tag(request),
+                    authorized_dispatch=authorized_dispatch,
                 )
-            except ProviderError as exc:
+            except HTTPException:
+                raise
+            except ProviderError:
                 # No keyed provider — honest 503, never a fabricated answer.
-                raise HTTPException(status_code=503, detail=f"dispatch_unavailable: {exc}") from exc
+                raise HTTPException(status_code=503, detail="dispatch_unavailable") from None
         finally:
             con.close()
 
-        return AskBookResponse(
-            answer=result.answer,
-            citations=[
+        citations = [
                 CitationResponse(
                     chunk_id=c.chunk_id,
                     document_id=c.document_id,
@@ -1915,10 +2430,234 @@ def register_book_routes(app: FastAPI) -> None:
                     snippet=c.snippet,
                 )
                 for c in result.citations
-            ],
+            ]
+        from substrate.event_log import emit_typed
+        from substrate.schemas import BookAnswerCitation, ReadBookAnsweredPayload
+
+        owner_id = _reader_owner_id(request)
+        dispatch_result = result.dispatch_result
+        usage = dispatch_result.usage if dispatch_result is not None else None
+        answer_id: str | None = None
+        try:
+            emitted_id = emit_typed(
+                f"read-{document_id}",
+                ReadBookAnsweredPayload(
+                    owner_id=owner_id,
+                    question=req.question,
+                    answer=result.answer,
+                    citations=[BookAnswerCitation(**citation.model_dump()) for citation in citations],
+                    grounded=result.grounded,
+                    context_chunk_count=result.context_chunk_count,
+                    research_tier=req.research_tier,
+                    provider=dispatch_result.provider if dispatch_result else None,
+                    model=dispatch_result.model if dispatch_result else None,
+                    input_tokens=usage.input_tokens if usage else None,
+                    output_tokens=usage.output_tokens if usage else None,
+                    cached_input_tokens=usage.cached_input_tokens if usage else None,
+                    cache_creation_input_tokens=(usage.cache_creation_input_tokens if usage else None),
+                    cost_usd=dispatch_result.cost_usd if dispatch_result else None,
+                    latency_ms=dispatch_result.latency_ms if dispatch_result else None,
+                    dispatch_event_id=dispatch_result.event_id if dispatch_result else None,
+                ),
+                role="read/talk_to_book",
+                policy_id="read/books/answer-capture-v1",
+                document_id=document_id,
+            )
+            if emitted_id is not None and _captured_answer(document_id, emitted_id, owner_id):
+                answer_id = emitted_id
+        except Exception:
+            logger.exception("talk-to-book answer capture failed after dispatch")
+
+        response = AskBookResponse(
+            answer_id=answer_id,
+            capture_status="captured" if answer_id is not None else "unavailable",
+            answer=result.answer,
+            citations=citations,
             grounded=result.grounded,
             context_chunk_count=result.context_chunk_count,
+            model_receipt=(
+                ModelReceipt(
+                    authority="owner_byot",
+                    requested_provider_id=selected_choice.provider_id,
+                    requested_model_id=selected_choice.model_id,
+                    actual_provider_id=dispatch_result.provider,
+                    actual_model_id=dispatch_result.model,
+                    authority_digest=result.authority_digest,
+                )
+                if selected_choice is not None and dispatch_result is not None else None
+            ),
+            shape=getattr(result, "shape", None),
         )
+        if selected_choice is None:
+            response.model_fields_set.discard("model_receipt")
+        return response
+
+    def _operation_owner(request: Request) -> str:
+        from interfaces.research.api.owner_byot_dispatch import (
+            OwnerByotDispatchUnavailable,
+            authenticated_distinct_owner,
+        )
+        try:
+            return authenticated_distinct_owner(request)
+        except OwnerByotDispatchUnavailable:
+            raise HTTPException(status_code=401, detail="authentication_required") from None
+
+    def _operation_context(request: Request, operation_id: str) -> tuple[str, Any, Any]:
+        from substrate.byot_usage.ledger import ByotUsageLedger
+        owner = _operation_owner(request)
+        ledger = ByotUsageLedger()
+        row = ledger.operation(owner, operation_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="model_operation_not_found")
+        return owner, ledger, row
+
+    def _model_operation_status(request: Request, operation_id: str) -> ModelOperationStatus:
+        _, _, row = _operation_context(request, operation_id)
+        return ModelOperationStatus(
+            operation_id=row.operation_id, state=cast(Any, row.state),
+            reserved_cents=row.reserved_cents, actual_cents=row.actual_cents,
+            created_at=row.created_at, updated_at=row.updated_at,
+            provider_id=row.provider_id, model_id=row.model_id,
+        )
+
+    @app.get("/books/model-operations/{operation_id}", response_model=ModelOperationStatus)
+    async def get_model_operation(operation_id: str, request: Request) -> ModelOperationStatus:
+        return _model_operation_status(request, operation_id)
+
+    @app.post(
+        "/books/model-operations/{operation_id}/reconcile",
+        response_model=ModelOperationStatus,
+    )
+    async def reconcile_model_operation(
+        operation_id: str, request: Request,
+    ) -> ModelOperationStatus:
+        from substrate.byot_usage.ledger import OperationConflict
+        owner, ledger, _ = _operation_context(request, operation_id)
+        try:
+            ledger.reconcile_operation(owner, operation_id)
+        except OperationConflict:
+            raise HTTPException(status_code=404, detail="model_operation_not_found") from None
+        return _model_operation_status(request, operation_id)
+
+    @app.post(
+        "/books/model-operations/{operation_id}/cancel",
+        response_model=ModelOperationStatus,
+    )
+    async def cancel_model_operation(
+        operation_id: str, request: Request,
+    ) -> ModelOperationStatus:
+        from substrate.byot_usage.ledger import OperationConflict
+        owner, ledger, _ = _operation_context(request, operation_id)
+        try:
+            ledger.cancel_prepared_operation(owner, operation_id)
+        except OperationConflict:
+            raise HTTPException(status_code=409, detail="model_operation_not_cancellable") from None
+        return _model_operation_status(request, operation_id)
+
+    @app.post(
+        "/books/model-operations/cleanup-prepared",
+        response_model=ModelOperationCleanupResponse,
+    )
+    async def cleanup_prepared_model_operations(
+        request: Request,
+    ) -> ModelOperationCleanupResponse:
+        # A synthetic lookup is not used here because cleanup has no operation
+        # id. Reuse the same centralized signed-owner mapper, then apply the
+        # fixed 24-hour server policy and return counts only.
+        from substrate.byot_usage.ledger import ByotUsageLedger
+        owner = _operation_owner(request)
+        max_age_seconds = 86_400
+        count = ByotUsageLedger().cancel_stale_prepared(
+            owner_user_id=owner, max_age_seconds=max_age_seconds,
+        )
+        return ModelOperationCleanupResponse(
+            cancelled_count=count, max_age_seconds=max_age_seconds,
+        )
+
+    @app.post(
+        "/books/{document_id}/answers/{answer_id}/judgment",
+        response_model=BookAnswerJudgmentResponse,
+        tags=["books"],
+    )
+    async def judge_book_answer(
+        document_id: str,
+        answer_id: str,
+        body: BookAnswerJudgmentRequest,
+        request: Request,
+    ) -> BookAnswerJudgmentResponse:
+        owner_id = _reader_owner_id(request)
+        normalized_note = body.note.strip() if body.note and body.note.strip() else None
+        return _persist_book_answer_judgment(
+            document_id=document_id,
+            answer_id=answer_id,
+            owner_id=owner_id,
+            verdict=body.verdict,
+            note=normalized_note,
+        )
+
+    @app.get(
+        "/books/{document_id}/answer-evaluations",
+        response_model=JudgedBookAnswersResponse,
+        tags=["books"],
+    )
+    async def list_book_answer_evaluations(
+        document_id: str,
+        request: Request,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> JudgedBookAnswersResponse:
+        if limit < 1 or limit > 500 or offset < 0:
+            raise HTTPException(status_code=422, detail="invalid_pagination")
+        owner_id = _reader_owner_id(request)
+        rows = _book_answer_trajectory(document_id)
+        answers = {
+            str(row["event_id"]): row
+            for row in rows
+            if row.get("action_type") == "read.book_answered"
+            and _payload_dict(row).get("owner_id") == owner_id
+            and row.get("document_id") == document_id
+        }
+        judged: list[JudgedBookAnswerResponse] = []
+        for judgment in rows:
+            if judgment.get("action_type") != "read.book_answer_judged":
+                continue
+            judgment_payload = _payload_dict(judgment)
+            if judgment_payload.get("owner_id") != owner_id:
+                continue
+            answer_id_value = str(judgment_payload.get("answer_id", ""))
+            answer_row = answers.get(answer_id_value)
+            if answer_row is None:
+                continue
+            answer_payload = _payload_dict(answer_row)
+            citations = cast(list[object], answer_payload.get("citations", []))
+            provider_value = answer_payload.get("provider")
+            model_value = answer_payload.get("model")
+            input_tokens_value = answer_payload.get("input_tokens")
+            output_tokens_value = answer_payload.get("output_tokens")
+            cost_value = answer_payload.get("cost_usd")
+            verdict_value = cast(Literal["good", "bad"], str(judgment_payload["verdict"]))
+            note_value = judgment_payload.get("note")
+            judged.append(JudgedBookAnswerResponse(
+                answer_id=answer_id_value,
+                judgment_id=str(judgment["event_id"]),
+                document_id=document_id,
+                question=str(answer_payload["question"]),
+                answer=str(answer_payload["answer"]),
+                citations=[CitationResponse.model_validate(c) for c in citations],
+                grounded=bool(answer_payload["grounded"]),
+                provider=provider_value if isinstance(provider_value, str) else None,
+                model=model_value if isinstance(model_value, str) else None,
+                input_tokens=input_tokens_value if isinstance(input_tokens_value, int) else None,
+                output_tokens=output_tokens_value if isinstance(output_tokens_value, int) else None,
+                cost_usd=float(cost_value) if isinstance(cost_value, (int, float)) else None,
+                verdict=verdict_value,
+                note=note_value if isinstance(note_value, str) else None,
+                answered_at=str(answer_row["emitted_at"]),
+                judged_at=str(judgment["emitted_at"]),
+            ))
+        judged.sort(key=lambda item: item.judged_at, reverse=True)
+        page = judged[offset:offset + limit]
+        return JudgedBookAnswersResponse(answers=page, count=len(judged))
 
     # ── SPR-08 M1 — corpus search over the owned graph (NET-NEW) ──
     @app.get(

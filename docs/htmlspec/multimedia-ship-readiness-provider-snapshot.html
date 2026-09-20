@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MSR-01 Provider Snapshot</title><style>body{margin:32px auto 72px;width:min(980px,calc(100% - 32px));font:15px/1.55 system-ui;color:#17201d;background:#f7f9f7}h1{font-size:30px}h2{margin-top:30px;border-bottom:1px solid #cbd5cf;padding-bottom:6px}code{background:#e9eeeb;padding:1px 4px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #cbd5cf;padding:8px;text-align:left;vertical-align:top}.danger{border-left:4px solid #9b3f21;padding:10px 14px;background:white}</style></head><body>
+<h1>MSR-01: Direct Provider Accounting Snapshot</h1>
+<p><a href="multimedia-ship-readiness-cost-authority.html">Parent program</a>. This sprint closes the false-authority path without pretending to solve production attribution.</p>
+<h2>Goal</h2><p>Add a read-only immutable snapshot for all direct provider executions bound to one authenticated owner, asset, and exact revision; make hardening consume that snapshot; remove caller cost floats; fail closed when no supported authority exists.</p>
+<p class="danger"><strong>Truth boundary:</strong> v1 counts all directly bound paid executions, including attempts that did not contribute selected bytes. It reports <code>charged_cents</code> under Antiek's settlement authority, not provider-invoice actual cost. Narration child revisions and local zero-cost paths are classified as unsupported until MSR-02/03.</p>
+<h2>Contract</h2><ul>
+<li><code>MultimediaShipCostSnapshotV1</code>: schema version, evidence ID, owner identity digest, asset ID, revision ID, generated-at cutoff, basis <code>direct_settled_provider_executions</code>, canonical execution rows, charged-cent total, snapshot MAC.</li>
+<li>Each row: execution ID, authorization ID, provider/model/route/capability/catalog identity, execution status, charged cents, settled timestamp.</li>
+<li>The evidence builder discovers rows server-side. Empty closure raises typed <code>evidence_unavailable</code>; it never yields local zero.</li>
+<li>One DuckDB read snapshot verifies execution MAC, authorization signature, succeeded status, settled claim and timestamp, settled call hold, exhausted reservation, nonnegative bounded cents, exact owner/asset/revision, and cutoff.</li>
+<li>Canonical sort and unique execution IDs make replay deterministic. Snapshot MAC covers every field except itself.</li>
+</ul>
+<h2>Hardening integration</h2><ul>
+<li>Delete <code>budget_usd</code> and <code>actual_cost_usd</code> from <code>evaluate_multimedia_asset</code>.</li>
+<li>Require <code>cost_snapshot</code>. Missing/invalid evidence produces a failed <code>cost_and_budget</code> gate with a stable code; manifest rows cannot pass it.</li>
+<li>Embed the immutable snapshot in <code>MultimediaHardeningReport</code>. Legacy reports parse with no snapshot but are non-authoritative.</li>
+<li>API runtime supplies DB path, signing key, snapshot key, and clock. Missing runtime returns 503; unavailable or contradictory evidence returns 409. No request accepts cost or execution identifiers.</li>
+<li>The report remains <code>manual_review</code> when all automated gates pass because rights/publication remains manual.</li>
+</ul>
+<h2>Acceptance tests</h2><table><tr><th>Area</th><th>Required proof</th></tr>
+<tr><td>Happy path</td><td>One and multiple succeeded ceiling-settled direct executions produce exact cents, stable order/ID/MAC, and count once.</td></tr>
+<tr><td>Scope</td><td>Cross-owner and sibling/stale revision rows never enter the closure; malformed requested identity is rejected.</td></tr>
+<tr><td>Fail closed</td><td>No rows, bad execution MAC, signature mismatch, missing claim/hold/reservation, open/released hold, contradictory balance, non-succeeded status, post-cutoff settlement, duplicate conflict, and overflow all refuse evidence.</td></tr>
+<tr><td>Hardening</td><td>Caller floats are rejected by signature; manifest estimates cannot alter charged cents; owner/asset/revision/MAC mismatch fails; valid evidence leaves manual rights gate.</td></tr>
+<tr><td>API</td><td>Owner is passed server-side; no runtime is 503; evidence conflict is 409; provider/reconciliation/ledger mutation callbacks are never called.</td></tr>
+<tr><td>Compatibility</td><td>Existing JSON reports load as historical without v1 authority; steering invalidates the prior report as today.</td></tr></table>
+<h2>Files</h2><p>New <code>substrate/multimedia/ship_cost_snapshot.py</code>, <code>interfaces/research/api/multimedia_hardening_routes.py</code>, and focused tests. Modify <code>hardening.py</code>, <code>read_model.py</code>, <code>multimedia_routes.py</code>, exports, and only the minimum shared provider-accounting reader needed to avoid divergent validation.</p>
+<h2>Verification</h2><p>Focused pytest; full Multimedia pytest; Ruff; declared mypy; HTML parser; diff check; heterogeneous adversarial review; hardenx strict. No live provider credential or network call is required.</p>
+</body></html>

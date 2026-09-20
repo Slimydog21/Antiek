@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Antiek Chapter TTS Seal Lease</title></head>
+<body><main>
+<h1>Chapter TTS Seal Lease</h1>
+<p><strong>Status:</strong> executable sub-spec. <strong>Parents:</strong> multimedia TTS reconciliation and reconciliation operations.</p>
+<section><h2>Outcome</h2><p>Distinguish an active local audio seal from a crashed seal using durable signed time authority, so an operator can recover stale work without racing a live encoder or invoking a provider again.</p></section>
+<section><h2>State Contract</h2><ul>
+<li>One MAC-bound lease record contains execution identity, immutable generation ID, canonical UTC acquisition time, active/released/sealed state, and canonical resolution time.</li>
+<li>Lease acquisition and attempt transition from received to sealing commit in one transaction.</li>
+<li>Normal failure resolves the lease as released with the attempt restored to received in one transaction.</li>
+<li>Successful publication resolves the lease as sealed with the attempt and artifact receipt in one transaction.</li>
+<li>Worker completion/failure and operator release are conditioned on the exact immutable lease generation, so an old worker cannot resolve a replacement lease.</li>
+<li>Normalized audio and narration publication paths are lease-scoped. A rejected obsolete generation removes only its own files and cannot overwrite or delete replacement output.</li>
+<li>Operator release requires a valid active lease, configured minimum age, valid private raw bytes, generation-bound signed recovery authority, and execution ownership.</li>
+<li>Fresh, future-dated, tampered, resolved, missing, and legacy lease states fail closed. Migration never fabricates acquisition time.</li>
+</ul></section>
+<section><h2>Read Model</h2><p>The operator projection exposes only seal age, eligibility, action, and safe error code. It does not expose lease MACs, raw paths, signing keys, audio bytes, or provider credentials.</p></section>
+<section><h2>Acceptance</h2><ol>
+<li>A process crash after lease acquisition leaves a verifiable active lease.</li>
+<li>A fresh lease cannot be released; the same lease becomes eligible after the threshold.</li>
+<li>Tampering, missing legacy evidence, invalid raw audio, wrong ownership, and replay fail before unsafe mutation.</li>
+<li>Release permits narration resume without another provider callback or budget mutation.</li>
+<li>Focused and full multimedia tests, Ruff, strict mypy, HTML parse, security gate, and independent review pass.</li>
+</ol></section>
+</main></body></html>

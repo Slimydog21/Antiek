@@ -30,6 +30,11 @@ _CADDY = os.path.join(
 # a one-line reason, so the exclusion is explicit and reviewed.
 _ALLOWLIST_EXCEPTIONS: set[str] = set()
 
+# FastAPI framework routes are not declared in interfaces/research/api/*.py, so
+# the prefix scanner below cannot infer them. Keep them explicit because missing
+# one sends API tooling to the SPA HTML shell in production.
+_FRAMEWORK_API_PATHS: set[str] = {"/openapi.json"}
+
 _DECORATOR = re.compile(
     r"""@app\.(?:get|post|put|delete|patch|websocket)\(\s*["']([^"']+)["']"""
 )
@@ -63,7 +68,7 @@ def _registered_prefixes() -> set[str]:
 
 def _allowlist_prefixes() -> set[str]:
     with open(_CADDY, encoding="utf-8") as fh:
-        line = next(l for l in fh if "@api_routes path" in l)
+        line = next(line_text for line_text in fh if "@api_routes path" in line_text)
     toks = line.split()[2:]  # tokens after "@api_routes" "path"
     # tokens are glob prefixes like "/ad-impressions*" or "/api/ad/*" — strip
     # the trailing "*" AND reduce to the top-level segment before comparing.
@@ -72,6 +77,12 @@ def _allowlist_prefixes() -> set[str]:
         for t in toks
         if t.startswith("/")
     }
+
+
+def _allowlist_paths() -> set[str]:
+    with open(_CADDY, encoding="utf-8") as fh:
+        line = next(line_text for line_text in fh if "@api_routes path" in line_text)
+    return {t.rstrip("*") for t in line.split()[2:] if t.startswith("/")}
 
 
 def test_caddy_allowlist_covers_every_registered_route() -> None:
@@ -89,9 +100,41 @@ def test_caddy_allowlist_covers_every_registered_route() -> None:
     )
 
 
+def test_caddy_allowlist_covers_framework_api_paths() -> None:
+    allow = _allowlist_paths()
+    missing = sorted(path for path in _FRAMEWORK_API_PATHS if path not in allow)
+    assert not missing, (
+        "Caddy @api_routes allowlist is missing FastAPI framework paths that "
+        f"are not discoverable from app decorators: {missing}. Missing paths "
+        "would return SPA HTML instead of uvicorn JSON in prod."
+    )
+
+
 def test_drift_guard_is_not_vacuous() -> None:
     # If parsing silently broke (empty sets), the coverage test would pass
     # vacuously. Pin both sides to be non-trivially populated so a regex/file
     # regression reddens here instead of hiding the real gap.
     assert len(_registered_prefixes()) >= 40
     assert len(_allowlist_prefixes()) >= 40
+
+
+def test_browser_navigation_never_swallows_auth_callbacks() -> None:
+    """Email links navigate with ``Accept: text/html``.
+
+    The SPA matcher must exclude the complete auth control plane so Caddy sends
+    `/auth/callback` to FastAPI, where the token is verified and the session
+    cookie is minted. This is intentionally source-shaped: it guards the Caddy
+    matcher that caused the live failure, not a direct FastAPI test that bypasses
+    the production proxy.
+    """
+    with open(_CADDY, encoding="utf-8") as fh:
+        caddy = fh.read()
+
+    matcher = re.search(r"@spa_browser_nav\s*\{(?P<body>.*?)\n\s*\}", caddy, re.DOTALL)
+    assert matcher is not None, "@spa_browser_nav must remain an explicit matcher block"
+    body = matcher.group("body")
+    assert "header Accept *text/html*" in body
+    assert "not path /auth/*" in body, (
+        "browser-shaped /auth/callback requests would receive SPA index.html "
+        "instead of reaching FastAPI"
+    )

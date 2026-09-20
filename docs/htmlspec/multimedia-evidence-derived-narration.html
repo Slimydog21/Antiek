@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cycle 18 - Evidence-derived multimedia narration</title>
+  <style>
+    body{margin:0;background:#f7f7f3;color:#1d1d1b;font:15px/1.55 system-ui,sans-serif}main{max-width:980px;margin:auto;padding:32px 24px 72px}header,section{background:#fff;border:2px solid #1d1d1b;border-radius:6px;padding:22px;margin-bottom:18px}h1,h2{margin-top:0}code{background:#eee;padding:2px 5px}.gate{border-left:4px solid #1769e0;padding-left:12px}li{margin:.4rem 0}
+  </style>
+</head>
+<body><main>
+  <header><p>Antiek Multimedia / Cycle 18</p><h1>Evidence-derived narration</h1><p>Make factual narration a deterministic consequence of canonical source bytes. Citation attachment alone is legacy evidence, not semantic grounding.</p></header>
+  <section><h2>Problem</h2><p>The prior planner wrote factual text from chapter titles and purposes, then attached heuristically assigned chunk IDs. Identity, ownership, and digest checks were real, but the cited bytes did not necessarily support the spoken claim. Audible retention markers and video captions amplified that error faithfully.</p></section>
+  <section><h2>Canonical contract</h2><ul>
+    <li>Every newly planned sourced factual line uses <code>exact_extract_v2</code>.</li>
+    <li>One <code>EvidenceSpan</code> binds chunk and document identity, complete chunk SHA-256, UTF-8 byte start/end, exact span text, and span SHA-256.</li>
+    <li>Every span declares <code>canonical_graph</code> or <code>operator_excerpt</code>. Operator text is never represented as graph authority.</li>
+    <li>One <code>EvidenceDerivation</code> binds recipe <code>antiek.evidence-narration.v1</code> and the final script text digest.</li>
+    <li>The exact span must reproduce the factual line; citation identity must equal derivation identity.</li>
+    <li>Chapter and scene authority must equal the ordered union of factual-line authority. Candidate retrieval evidence is not production authority.</li>
+  </ul></section>
+  <section><h2>Planner behavior</h2><ul>
+    <li>Select at most 700 characters from one canonical chunk, preferring a complete sentence boundary.</li>
+    <li>Preserve exact source characters and calculate UTF-8 offsets against the unmodified canonical chunk.</li>
+    <li>Keep topic, title, purpose, must-cover requests, and omissions as planning metadata; never copy them into a cited factual line.</li>
+    <li>If a chapter has no assigned evidence span, retain an explicit unsourced line and block production.</li>
+  </ul></section>
+  <section><h2>Audible and video propagation</h2><ul>
+    <li>Original content lines retain exact derivations through manifests, transcripts, captions, and learned-claim cards.</li>
+    <li>Before approving or producing canonical graph content, reopen the exact owner-scoped, non-taken-down chunk bytes and recheck whole-chunk digest plus UTF-8 span.</li>
+    <li>Generated signposts, “Remember this” beats, and chapter recaps use <code>audible_transform_v1</code>; they may inherit source navigation but must not claim to be exact source extracts.</li>
+    <li>Production continues to refuse unsourced factual chapters. No provider call, render, or spend is introduced by this cycle.</li>
+  </ul></section>
+  <section><h2>Compatibility</h2><p>Records without derivations reopen as <code>citation_presence_v1</code>. They remain inspectable, but are not silently upgraded. Every new planner result uses the stronger profile. Contract schema version advances with coordinated Python and TypeScript projections.</p></section>
+  <section class="gate"><h2>Acceptance gates</h2><ul>
+    <li>Unrelated planner metadata cannot appear in sourced factual narration.</li>
+    <li>Text, byte range, span digest, output digest, citation identity, chapter authority, and scene authority mutations fail validation.</li>
+    <li>Unicode and surrounding-whitespace fixtures reconstruct the exact canonical UTF-8 slice.</li>
+    <li>Grounded graph drafts propagate derivations into audio and video preparation without citation laundering.</li>
+    <li>All multimedia tests, strict typing, lint, frontend typecheck/build, HTML parse, and security review pass.</li>
+  </ul></section>
+</main></body></html>

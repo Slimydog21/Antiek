@@ -8,19 +8,35 @@
  * CommandPalette.tsx imports these and layers the React UI on top.
  */
 import { WORKFLOW_ORDER, type Workflow } from "./workflowTaxonomy";
+import type { ResearchState } from "../shared/researchState";
 
 /**
  * The minimal shape the facet logic needs from a palette entry. The real
  * PaletteEntry union (defined in CommandPalette.tsx) is structurally
  * compatible with this — `kind` + `title` + `subtitle` + an optional
  * `workflow` facet (routes/actions) — plus the substrate kinds we infer
- * a facet for.
+ * a facet for. `state` + `unseen` (herdr transfer, P0-5) let the palette
+ * filter to what needs the operator.
  */
 export interface FacetEntry {
   kind: string;
   title: string;
   subtitle: string;
   workflow?: Workflow;
+  /** Research-state facet (investigation entries only). */
+  state?: ResearchState;
+  /** Unseen completion flag (drives the unread axis in filters). */
+  unseen?: boolean;
+}
+
+/** State-filter vocabulary — the `state:` facet chips. Kept here (not in
+ *  researchState.ts) because it is palette vocabulary, not research truth:
+ *  `all` is a filter affordance, never a research state. */
+export const STATE_FILTERS = ["blocked", "working", "done", "unseen"] as const;
+export type StateFilter = (typeof STATE_FILTERS)[number];
+
+export function isStateFilter(word: string): word is StateFilter {
+  return (STATE_FILTERS as readonly string[]).includes(word);
 }
 
 /** Map a leading query word to a workflow id, if it names one. */
@@ -49,11 +65,31 @@ export function entryWorkflow<E extends FacetEntry>(e: E): Workflow | undefined 
   return undefined;
 }
 
+/** Parse a leading `state:<filter>` word ("state:blocked", "state:unseen").
+ *  Returns null when the query does not lead with a state filter. */
+export function leadingStateFilter(q: string): StateFilter | null {
+  const m = q.trim().toLowerCase().match(/^state:([a-z]+)\b/);
+  if (!m) return null;
+  return isStateFilter(m[1]) ? m[1] : null;
+}
+
+/** Whether an entry matches a state filter. `unseen` matches unseen
+ *  completions; the rest match the entry's research state. Entries without
+ *  a state (routes, documents, …) match no state filter. */
+export function entryMatchesStateFilter(
+  e: FacetEntry,
+  filter: StateFilter,
+): boolean {
+  if (filter === "unseen") return e.state === "done" && e.unseen === true;
+  return e.state === filter;
+}
+
 /**
  * Rank entries against a query. SPR-04: when the query LEADS with a
  * workflow name ("research…"), that workflow's entries float to the top
  * (negative score). Text match still orders within. Non-workflow queries
- * behave exactly as before (no regression).
+ * behave exactly as before (no regression). herdr transfer P0-5: a leading
+ * `state:<filter>` filters the candidate set first, then ranks the survivors.
  */
 export function rankEntries<E extends FacetEntry & { id?: string }>(
   entries: E[],
@@ -61,15 +97,26 @@ export function rankEntries<E extends FacetEntry & { id?: string }>(
 ): E[] {
   const q = query.trim().toLowerCase();
   if (!q) return entries;
-  const wfLead = leadingWorkflow(q);
-  const scored = entries
+  const stateFilter = leadingStateFilter(q);
+  const candidates = stateFilter
+    ? entries.filter((e) => entryMatchesStateFilter(e, stateFilter))
+    : entries;
+  // The `state:<word>` prefix is filter syntax, not search text — strip it
+  // before text-matching so a state-filtered query still searches the rest.
+  const matchQ = stateFilter ? q.replace(/^state:[a-z]+\s*/, "") : q;
+  const wfLead = leadingWorkflow(matchQ);
+  const scored = candidates
     .map((e) => {
       const hay = `${e.title} ${e.subtitle}`.toLowerCase();
       const facetBoost = wfLead && entryWorkflow(e) === wfLead ? -10_000 : 0;
-      if (hay.includes(q)) {
-        return { e, score: facetBoost + hay.indexOf(q) };
+      // State-only query: every candidate passes, ranked by original order.
+      if (matchQ === "") {
+        return { e, score: facetBoost };
       }
-      const tokens = q.split(/\s+/);
+      if (hay.includes(matchQ)) {
+        return { e, score: facetBoost + hay.indexOf(matchQ) };
+      }
+      const tokens = matchQ.split(/\s+/);
       const hits = tokens.filter((t) => hay.includes(t)).length;
       // A leading-workflow query matches that workflow's entries even
       // when the rest of the text doesn't.

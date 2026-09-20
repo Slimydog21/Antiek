@@ -12,6 +12,12 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+} from "@simplewebauthn/browser";
 
 import { API_BASE, apiFetch } from "./api";
 import {
@@ -124,7 +130,7 @@ export function useAuth(): AuthContextValue {
 }
 
 export type AuthRequestResult =
-  | { kind: "sent"; diagnostic_code: null; layer: null }
+  | { kind: "sent"; attempt_id: string; claim_secret: string; diagnostic_code: null; layer: null }
   | {
       kind: "error";
       code: string;
@@ -155,7 +161,17 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
       body: JSON.stringify({ email, next: nextPath }),
     });
     if (r.ok) {
-      return { kind: "sent", diagnostic_code: null, layer: null };
+      const body = (await r.json()) as { attempt_id: string; claim_secret: string };
+      // The 4-digit code is deliberately NOT in the API response — it
+      // only ever exists inside the delivered email, so typing it into
+      // the browser is real email-possession proof.
+      return {
+        kind: "sent",
+        attempt_id: body.attempt_id,
+        claim_secret: body.claim_secret,
+        diagnostic_code: null,
+        layer: null,
+      };
     }
     let detail: { code?: string; message?: string } = {};
     try {
@@ -178,6 +194,156 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
   } catch {
     return authRequestError("transport_fetch_failed", AUTH_TRANSPORT_FETCH_MESSAGE, "A-TRANSPORT-FETCH");
   }
+}
+
+export type LoginClaimResult =
+  | { status: "pending" }
+  | { status: "authenticated"; setup_passkey: boolean; next: string }
+  | { status: "invalid_code"; remaining_attempts: number }
+  | { status: "rate_limited" }
+  | { status: "expired" };
+
+/**
+ * Claim the sign-in session for an attempt.
+ *
+ * With `code` (the 4 digits from the email): the single-device unlock —
+ * the server verifies the code and mints the session immediately.
+ * Without it: the two-device path — 202 until the email-click device
+ * approved via POST /auth/approve.
+ */
+export async function claimLogin(
+  attemptId: string,
+  claimSecret: string,
+  code?: string,
+): Promise<LoginClaimResult> {
+  const r = await apiFetch(authUrl("/auth/claim"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      attempt_id: attemptId,
+      claim_secret: claimSecret,
+      ...(code !== undefined ? { code } : {}),
+    }),
+  });
+  if (r.status === 202) return { status: "pending" };
+  if (r.status === 410) return { status: "expired" };
+  if (r.status === 429) return { status: "rate_limited" };
+  if (r.status === 400) {
+    try {
+      const body = (await r.json()) as {
+        detail?: { code?: string; remaining_attempts?: number };
+      };
+      if (body.detail?.code === "invalid_code") {
+        return { status: "invalid_code", remaining_attempts: body.detail.remaining_attempts ?? 0 };
+      }
+    } catch {
+      // fall through to the generic error
+    }
+    throw new Error("Antiek couldn't finish the device handoff.");
+  }
+  if (!r.ok) throw new Error("Antiek couldn't finish the device handoff.");
+  const body = (await r.json()) as { setup_passkey: boolean; next: string };
+  return { status: "authenticated", setup_passkey: body.setup_passkey, next: body.next };
+}
+
+export async function approveLogin(attemptId: string): Promise<void> {
+  const r = await apiFetch(authUrl("/auth/approve"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ attempt_id: attemptId }),
+  });
+  if (!r.ok) throw new Error("This device handoff has expired.");
+}
+
+export interface PasskeyStatus {
+  available: boolean;
+  count: number | null;
+}
+
+export interface PasskeyOptions extends PublicKeyCredentialRequestOptionsJSON {
+  ceremony_id: string;
+}
+
+export interface PasskeyRegistrationOptions extends PublicKeyCredentialCreationOptionsJSON {
+  ceremony_id: string;
+}
+
+async function authJSON<T>(path: string, init?: RequestInit): Promise<T> {
+  const r = await apiFetch(authUrl(path), init);
+  if (!r.ok) {
+    let message = "Antiek couldn't complete that request.";
+    try {
+      const body = (await r.json()) as { detail?: { message?: string } };
+      message = body.detail?.message ?? message;
+    } catch {
+      // Keep the closed user-safe fallback.
+    }
+    throw new Error(message);
+  }
+  return (await r.json()) as T;
+}
+
+export async function getPasskeyStatus(): Promise<PasskeyStatus> {
+  return authJSON<PasskeyStatus>("/auth/passkey/status");
+}
+
+export async function beginPasskeyLogin(): Promise<PasskeyOptions> {
+  return authJSON<PasskeyOptions>("/auth/passkey/login/options", { method: "POST" });
+}
+
+export async function finishPasskeyLogin(
+  ceremonyId: string,
+  credential: AuthenticationResponseJSON,
+): Promise<void> {
+  const r = await apiFetch(authUrl("/auth/passkey/login/verify"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ceremony_id: ceremonyId, credential }),
+  });
+  if (!r.ok) {
+    let message = "That passkey didn't unlock Antiek.";
+    try {
+      const body = (await r.json()) as { detail?: { message?: string } };
+      message = body.detail?.message ?? message;
+    } catch {
+      // Keep the closed user-safe fallback.
+    }
+    throw new Error(message);
+  }
+}
+
+export async function beginPasskeyRegistration(): Promise<PasskeyRegistrationOptions> {
+  return authJSON<PasskeyRegistrationOptions>("/auth/passkey/register/options", { method: "POST" });
+}
+
+export async function finishPasskeyRegistration(
+  ceremonyId: string,
+  credential: RegistrationResponseJSON,
+  label: string,
+): Promise<void> {
+  await authJSON<{ registered: true }>("/auth/passkey/register/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ceremony_id: ceremonyId, credential, label }),
+  });
+}
+
+export interface SavedPasskey {
+  id: string;
+  label: string;
+  backed_up: boolean;
+  created_at: number;
+  last_used_at: number | null;
+}
+
+export async function listPasskeys(): Promise<SavedPasskey[]> {
+  const response = await authJSON<{ passkeys: SavedPasskey[] }>("/auth/passkeys");
+  return response.passkeys;
+}
+
+export async function removePasskey(id: string): Promise<void> {
+  const r = await apiFetch(authUrl(`/auth/passkeys/${encodeURIComponent(id)}`), { method: "DELETE" });
+  if (!r.ok) throw new Error("Antiek couldn't remove that passkey.");
 }
 
 /** Login surface copy keyed by matrix failure_id (SPR-02). */

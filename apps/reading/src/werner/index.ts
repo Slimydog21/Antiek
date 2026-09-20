@@ -13,10 +13,8 @@
  *   emotes       — the emote vocabulary mapped onto existing animated marks
  *   choreography — the PRODUCT_ACTIVATE → waddle-to-control listener (SPR-10),
  *                  plus the opt-in `data-werner-target` click path (SPR-10 M4)
- *   WernerRig    — the vector WALK-CYCLE rig (SPR-06 M1): feet + flippers that
- *                  animate off the existing walk signal (no second motion source)
- *
- * The WERNER-ICE reel (pursuit integrator + reel/roam constants) was removed
+ *   (the walk-cycle rig and the cursor-bait line were removed 2026-08-13)
+tegrator + reel/roam constants) was removed
  * with the 2026-07-02 fixed-station rework — Werner no longer chases the cursor;
  * see docs/htmlspec/werner-fixed-station/DESIGN.md.
  */
@@ -58,11 +56,6 @@ export {
   type UseMouseFollowOptions,
 } from "./useMouseFollow";
 
-export { wernerIceFishingCursor } from "./iceFishingFlags";
-export { WernerIceBait } from "./WernerIceBait";
-export { WernerFishingLayer } from "./WernerFishingLayer";
-export { WernerIceCursorShell } from "./WernerIceCursorShell";
-export { catenaryPath, rodTipFromMascotRect } from "./fishingLineGeometry";
 
 export {
   EmoteView,
@@ -81,4 +74,47 @@ export {
   type TargetChoreographyOptions,
 } from "./choreography";
 
-export { default as WernerRig, type WernerRigProps } from "./WernerRig";
+export {
+  emoteForExperience,
+  emitWernerExperience,
+  installReactionBus,
+  isProductExperience,
+  PRODUCT_EXPERIENCES,
+  WERNER_EXPERIENCE_EVENT,
+  type ProductExperience,
+  type ReactionBusOptions,
+  type WernerExperienceDetail,
+} from "./reactionBus";
+
+export {
+  consumeLocallyStartedResearchSession,
+  notifyPointerIdleEdge,
+  notifyResearchPhaseEdge,
+  notifyResearchStarted,
+  notifyShellFailure,
+  type ResearchReactionPhase,
+} from "./shellExperienceSignals";
+
+
+// SPR-01 — the station-activity surface. Importing this registers the built-in
+// activities (rest self-registers as the default); consumers read the
+// active activity through these accessors instead of hard-coding one.
+export {
+  registerActivity,
+  getActivity,
+  listActivities,
+  getDefaultActivity,
+  restActivity,
+  researchLensActivity,
+  activityIdForPathname,
+  getActivityForPathname,
+  type ActivityId,
+  type ActivityUnlock,
+  type CursorInstrument,
+  type CursorInstrumentProps,
+  type InstrumentSeamField,
+  type StationActivity,
+} from "./activities";
+
+export { useStationActivity } from "./useStationActivity";
+export { ResearchLensCursor } from "./ResearchLensCursor";

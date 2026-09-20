@@ -27,6 +27,7 @@ workstation sprint lands.
 
 from __future__ import annotations
 
+import hashlib
 from enum import StrEnum
 from typing import Literal
 
@@ -100,6 +101,39 @@ class SourceCitation(_ContractBase):
     quote_sha256: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
 
 
+class EvidenceSpan(_ContractBase):
+    """Exact UTF-8 byte range selected from one immutable graph chunk."""
+
+    chunk_id: str
+    document_id: str
+    authority_kind: Literal["canonical_graph", "operator_excerpt"]
+    chunk_sha256: str = Field(pattern="^[0-9a-f]{64}$")
+    start_utf8_byte: int = Field(ge=0)
+    end_utf8_byte: int = Field(gt=0)
+    span_sha256: str = Field(pattern="^[0-9a-f]{64}$")
+    exact_text: str = Field(min_length=1, max_length=700)
+
+    @model_validator(mode="after")
+    def range_and_text_digest_agree(self) -> EvidenceSpan:
+        body = self.exact_text.encode("utf-8")
+        if self.end_utf8_byte <= self.start_utf8_byte:
+            raise ValueError("evidence span byte range must be increasing")
+        if self.end_utf8_byte - self.start_utf8_byte != len(body):
+            raise ValueError("evidence span byte range must match exact_text")
+        if hashlib.sha256(body).hexdigest() != self.span_sha256:
+            raise ValueError("evidence span digest must match exact_text")
+        return self
+
+
+class EvidenceDerivation(_ContractBase):
+    """Versioned deterministic recipe from canonical source bytes to narration."""
+
+    method: Literal["verbatim_span"]
+    recipe_version: Literal["antiek.evidence-narration.v1"]
+    spans: tuple[EvidenceSpan, ...] = Field(min_length=1, max_length=1)
+    output_sha256: str = Field(pattern="^[0-9a-f]{64}$")
+
+
 class ScriptLine(_ContractBase):
     """One script line with factual grounding.
 
@@ -113,6 +147,7 @@ class ScriptLine(_ContractBase):
     text: str = Field(min_length=1)
     kind: ScriptLineKind = "factual"
     citations: tuple[SourceCitation, ...] = Field(default_factory=tuple)
+    evidence_derivation: EvidenceDerivation | None = None
     unsourced_reason: str | None = None
 
     @model_validator(mode="after")
@@ -121,6 +156,21 @@ class ScriptLine(_ContractBase):
             raise ValueError(
                 "factual script lines require cited chunks or an explicit unsourced_reason"
             )
+        if self.evidence_derivation is not None:
+            expected = hashlib.sha256(self.text.encode("utf-8")).hexdigest()
+            derivation = self.evidence_derivation
+            if derivation.output_sha256 != expected:
+                raise ValueError("evidence derivation must bind the exact script text")
+            if derivation.spans[0].exact_text != self.text:
+                raise ValueError("verbatim evidence span must reproduce the script text")
+            citation_keys = tuple((row.chunk_id, row.document_id) for row in self.citations)
+            span_keys = tuple((row.chunk_id, row.document_id) for row in derivation.spans)
+            if citation_keys != span_keys:
+                raise ValueError("citations must equal evidence derivation authority")
+            if tuple(row.quote_sha256 for row in self.citations) != tuple(
+                row.chunk_sha256 for row in derivation.spans
+            ):
+                raise ValueError("citation chunk digest must equal evidence derivation digest")
         return self
 
 

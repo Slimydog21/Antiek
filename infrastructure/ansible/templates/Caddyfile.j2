@@ -43,17 +43,41 @@
     # if any registered route prefix is absent here. Keep this list
     # ONE-LINE — Caddy's tokenizer for `path` matcher arguments doesn't
     # honor backslash line continuation.
-    @api_routes path /.well-known/* /ad-impressions* /ad-inventory* /advertisers* /ai/* /api/ad/* /attribution* /auth/* /backtest* /billing* /blocks/* /books* /campaigns* /chunks* /complete /compose-context /coordination* /corpus* /creator-payouts* /cross-graph/* /deliverables* /documents* /events/* /federation* /health /interview-projects* /interviews* /investigations* /krea* /library* /loop-3/* /meta-readings* /multimedia* /notebooks* /ops/* /outcomes* /payouts* /publishers* /quality-gate* /reading/* /research/* /sections* /settings* /skill-rules* /sources* /speak/* /speech* /stats* /supersession* /thought-partner /trajectory/* /trust-center* /voice/* /voice-notes* /watch-for-later* /write/* /ws/*
+    @api_routes path /.well-known/* /account/* /ad-impressions* /ad-inventory* /advertisers* /ai/* /api/ad/* /attribution* /auth/* /backtest* /billing* /blocks/* /book-acquisition* /books* /campaigns* /chunks* /complete /compose-context /coordination* /corpus* /creator-payouts* /cross-graph/* /deliverables* /documents* /events/* /export* /federation* /health /ingest/* /internal/* /interview-projects* /interviews* /investigations* /krea* /library* /links/* /loop-3/* /meta-readings* /multimedia* /notebooks* /openapi.json /ops/* /outcomes* /payouts* /publishers* /quality-gate* /reading/* /research/* /sections* /settings* /skill-rules* /sources* /speak/* /speech* /stats* /supersession* /thought-partner /trajectory/* /trust-center* /twins* /voice/* /voice-notes* /watch-for-later* /write/* /ws/*
+
 
     # ~14 paths overlap between backend API + frontend React Router
     # (e.g. /investigations, /notebooks, /billing, /sources). Backend
     # serves JSON; SPA shows a UI page at the same URL. Disambiguate
     # by Accept header: browser top-level navigation includes
     # `text/html`; fetch / XHR / WS / asset loads don't.
-    @spa_browser_nav header Accept *text/html*
+    #
+    # `/auth/*` is deliberately excluded. Magic-link callbacks ARE browser
+    # navigations, but they must reach FastAPI to verify the token and mint the
+    # session cookie. Serving index.html for `/auth/callback` leaves the token
+    # in the address bar and sends the operator straight back to Login.
+    #
+    # The machine-readable operational surfaces are excluded for the same
+    # reason: they have no SPA route, and must always be the backend's own
+    # answer. Each path excluded here also appears in @api_routes below, so
+    # the exclusion actually reaches uvicorn instead of falling through to
+    # the static file_server.
+    #
+    # /health matters most. This matcher is the FIRST handler in the route
+    # block, so any client sending a browser-like Accept header — which most
+    # uptime monitors do — was served index.html with 200 unconditionally,
+    # including while uvicorn was down and the JSON path returned 502. A
+    # monitor pointed at /health could never observe an outage. Verified
+    # 2026-09-19 against production: `curl -H 'Accept: text/html' /health`
+    # returned 200 text/html (1308 bytes, the SPA shell), while
+    # `Accept: application/json` returned the real 715-byte payload.
+    @spa_browser_nav {
+        header Accept *text/html*
+        not path /auth/* /health /openapi.json /ops/*
+    }
 
     route {
-        # 1. Browser top-level navigation → SPA, regardless of path.
+        # 1. Browser top-level navigation → SPA, except the auth control plane.
         #    This is what lets typing /investigations/<uuid> in the
         #    address bar load the React route — without this rule
         #    the request matches @api_routes and uvicorn's auth
@@ -69,6 +93,19 @@
         #    900s timeouts match the systemd unit's
         #    --timeout-keep-alive.
         reverse_proxy @api_routes localhost:{{ uvicorn_port }} {
+            # Deploy-window 502 guard (2026-09-19). During
+            # `systemctl restart antiek` the upstream socket is briefly
+            # refused; Caddy's default is to fail fast with 502, which
+            # clients (e.g. the mac-mini herdr bridge) see as a burst at
+            # every deploy. Hold each request and retry the dial for up
+            # to 90s instead — the request completes once uvicorn rebinds.
+            # Retrying a refused dial is safe for ANY method: the
+            # connection never opened, so zero request bytes were sent.
+            # 90s covers stop + idempotent migrate + uvicorn boot on a
+            # typical deploy; a genuinely dead backend still 502s, just
+            # after the try budget instead of instantly.
+            lb_try_duration 90s
+            lb_try_interval 250ms
             transport http {
                 read_timeout 900s
                 write_timeout 900s
@@ -109,14 +146,20 @@
     encode gzip zstd
 
     # Structured access logs to a rotating file. Keep ~5 weeks of logs;
-    # `journalctl` has the application logs separately.
+    # `journalctl` has the application logs separately. Cloudflare Access
+    # service-token headers are deleted at encoding time because Caddy's
+    # built-in sensitive-header list does not cover these custom names.
     log {
         output file /var/log/caddy/access.log {
             roll_size 100mb
             roll_keep 5
             roll_keep_for 720h
         }
-        format json
+        format filter {
+            request>headers>Cf-Access-Client-Id delete
+            request>headers>Cf-Access-Client-Secret delete
+            wrap json
+        }
     }
 
     # Security headers. Not exhaustive — add full CSP once the SPA's

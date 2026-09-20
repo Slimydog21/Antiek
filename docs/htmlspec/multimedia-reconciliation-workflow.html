@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Antiek Multimedia Reconciliation Workflow</title></head>
+<body><main>
+<h1>Multimedia Reconciliation Workflow</h1>
+<p><strong>Status:</strong> executable sub-spec. <strong>Parents:</strong> multimedia reconciliation operations, chapter TTS seal lease, and narration run.</p>
+<section><h2>Outcome</h2><p>Make crashed chapter narration understandable and recoverable from the mounted multimedia product while retaining server-side authority, redacted reads, exact accounting, and no duplicate provider work.</p></section>
+<section><h2>Mounted API</h2><ul>
+<li>Authenticated chapter status returns only the redacted reconciliation projection.</li>
+<li>Authenticated action routes execute only the currently eligible quarantine, provider-evidence recovery, or stale-seal release action.</li>
+<li>The server issues short-lived action authority internally. Recovery keys, evidence keys, signatures, audio bytes, private paths, and provider job IDs never enter browser responses.</li>
+<li>Signed execution authorization and authenticated provider evidence are supplied by explicit server-side resolvers. Missing runtime or evidence returns typed 503/409 results and performs no mutation.</li>
+<li>The mounted registration composes runtime from complete base64-encoded server environment keys, database path, and private output path. Partial configuration fails startup; absent configuration leaves the paid surface disabled.</li>
+<li>Persisted asynchronous authorization receipts are resolved by exact signed execution authority and reverified at issuance time. Historical provider evidence remains signed at its evidence time while local acceptance and state transition use current operator verification time.</li>
+<li>Authentication is evaluated before paid runtime resolution. Missing and cross-owner execution state share one opaque result.</li>
+</ul></section>
+<section><h2>Parent Run</h2><ul>
+<li>A signed narration run resolves each child through its deterministic revision and operator-owned provider execution.</li>
+<li>Reserved children with no attempt row are reported as pending, never fabricated as a TTS attempt.</li>
+<li>Parent resume eligibility requires an admitted run and every child to expose durable resume eligibility.</li>
+</ul></section>
+<section><h2>Product Surface</h2><p>The multimedia sidebar accepts an execution or narration-run identity, shows status, charge, age, next action, and blocked children, and renders only the eligible command. Editing an identity clears loaded state, and request generations prevent older responses from restoring stale actions. Runtime and evidence failures clear stale status and remain explicit.</p></section>
+<section><h2>Acceptance</h2><ol>
+<li>Mounted route tests cover authentication, runtime absence, ownership, secret redaction, real quarantine, stale-seal release, evidence absence, and parent pending children.</li>
+<li>Frontend tests cover typed endpoint paths, eligible-action execution, parent status, and unavailable runtime.</li>
+<li>Backend and frontend regression, strict typing, visual inspection, security gate, and independent review pass.</li>
+</ol></section>
+</main></body></html>

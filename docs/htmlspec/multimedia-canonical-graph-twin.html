@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Canonical Multimedia Graph and Twin Registration</title>
+  <style>body{max-width:980px;margin:auto;padding:32px;font:15px/1.55 system-ui;color:#18181b;background:#fafafa}section{border-top:1px solid #d4d4d8;padding:18px 0}h1,h2{line-height:1.2}code{background:#e4e4e7;padding:2px 5px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #d4d4d8;padding:8px;text-align:left;vertical-align:top}</style>
+</head>
+<body>
+  <h1>Canonical Multimedia Graph and Twin Registration</h1>
+  <p><strong>TU executable sub-spec.</strong> Multimedia HTML enters Antiek's canonical graph and recursive note substrate without creating a parallel knowledge authority.</p>
+  <section>
+    <h2>Authority Composition</h2>
+    <ol>
+      <li><code>insert_document</code>, <code>insert_chunk</code>, <code>insert_node</code>, and <code>insert_edge</code> remain canonical graph writers.</li>
+      <li><code>run_document_pass</code> and the existing insight/question promoters remain the note deposit path.</li>
+      <li>Private nodes carry a nullable <code>owner_user_id</code>. Shared legacy nodes remain NULL-owned; private nodes require an exact accessing owner even under a privileged policy tag.</li>
+      <li>The source and twin are owner-scoped <code>personal_reading</code> HTML documents.</li>
+    </ol>
+  </section>
+  <section>
+    <h2>Replay Contract</h2>
+    <table>
+      <tr><th>Boundary</th><th>Rule</th></tr>
+      <tr><td>Source</td><td>Deterministic document, chunk, and entity IDs. Existing rows must match all authoritative fields.</td></tr>
+      <tr><td>Distillation</td><td>The first typed output is canonically serialized and hash-pinned in <code>multimedia_twin_runs</code> before promotion. Retries read it and never invoke the model again.</td></tr>
+      <tr><td>Graph deposit</td><td>Nodes and edges commit atomically with graph events suppressed. Post-commit reconciliation emits missing typed events and verifies they are readable from the append-only trajectory.</td></tr>
+      <tr><td>Twin</td><td>Deterministic script-free HTML binds owner digest, source digest, asset revision, and exact deposited node IDs. Existing rows must retain private classification.</td></tr>
+    </table>
+  </section>
+  <section>
+    <h2>Threat Gates</h2>
+    <p>Wrong owner, cross-owner node access, malformed HTML or citations, conflicting rows or checkpoints, partial provenance, missing committed rows, missing post-commit events, non-inert HTML, and nondeterministic retry output fail closed.</p>
+  </section>
+  <section>
+    <h2>Acceptance</h2>
+    <p>Tests must prove public and foreign-owner search/traversal cannot resolve private nodes, matching-owner access succeeds, a failed twin write reuses the checkpoint, an event append failure is visible and recoverable, and replay converges without additional model calls.</p>
+  </section>
+  <section>
+    <h2>Non-Goals</h2>
+    <p>No live provider request, spend, publication, frontend redesign, merge, or deploy. Cross-store atomicity is not claimed; committed-row event reconciliation is the explicit recovery protocol.</p>
+  </section>
+</body>
+</html>

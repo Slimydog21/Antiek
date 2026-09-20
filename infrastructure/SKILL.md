@@ -45,7 +45,7 @@ gathering.
                           ┌──────────────────────────────┐
                           │ Cloudflare R2                │
                           │ antiek-backups (EU region)   │
-                          │ .tar.gz, 14-day retention    │
+                          │ .tar.gz, R2 lifecycle policy │
                           └──────────────────────────────┘
 ```
 

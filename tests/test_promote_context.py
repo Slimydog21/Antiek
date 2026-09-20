@@ -60,7 +60,8 @@ def test_promote_creates_deliverable_with_blocks(db):
     with connect_write(db["path"], purpose="t") as con:
         result = promote_to_outline(
             con, title="From a context window", deliverable_kind="general_essay",
-            specs=specs, objective="argue that the edit is the writing",
+            specs=specs, owner_user_id="user-context",
+            objective="argue that the edit is the writing",
         )
     assert len(result.block_ids) == 2
     con = _read(db["path"])
@@ -84,6 +85,7 @@ def test_promotion_preserves_provenance(db):
     with connect_write(db["path"], purpose="t") as con:
         result = promote_to_outline(
             con, title="T", deliverable_kind="general_essay", specs=specs,
+            owner_user_id="user-context",
         )
     con = _read(db["path"])
     blocks = {b.block_kind: b for b in list_section_blocks(con, result.section_id)}

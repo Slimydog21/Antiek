@@ -1,0 +1,227 @@
+.werner-semantic {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  vertical-align: middle;
+  isolation: isolate;
+}
+
+.werner-semantic__mark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 82%;
+}
+
+.werner-semantic svg {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+  fill: var(--card);
+  stroke: var(--werner-coat);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@keyframes werner-curious-beat {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  24%,
+  66% {
+    transform: rotate(-7deg);
+  }
+}
+
+@keyframes werner-evidence-arrive {
+  0% {
+    opacity: 0;
+    transform: translate(-6%, 6%) rotate(-4deg);
+  }
+  22%,
+  78% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(2deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-2%, 2%) rotate(0);
+  }
+}
+
+.werner-semantic--curious .werner-semantic__mark {
+  animation: werner-curious-beat var(--werner-semantic-duration) ease-in-out
+    both;
+}
+
+.werner-semantic__evidence {
+  top: -5%;
+  left: -18%;
+  width: 38%;
+  height: 48%;
+  animation: werner-evidence-arrive var(--werner-semantic-duration) ease-out
+    both;
+}
+
+.werner-semantic__evidence .werner-semantic__spark {
+  stroke: var(--aurora);
+}
+
+@keyframes werner-verified-beat {
+  0% {
+    opacity: 0;
+    transform: translateY(-18%) rotate(-8deg) scale(1.18);
+  }
+  48% {
+    opacity: 0;
+    transform: translateY(-18%) rotate(-8deg) scale(1.18);
+  }
+  68% {
+    opacity: 1;
+    transform: translateY(0) rotate(-8deg) scale(0.92);
+  }
+  82%,
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotate(-8deg) scale(1);
+  }
+}
+
+@keyframes werner-proud-lift {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  52%,
+  82% {
+    transform: translateY(-3%) scaleX(1.02) scaleY(1.03);
+  }
+}
+
+.werner-semantic--happy .werner-semantic__mark {
+  animation: werner-proud-lift var(--werner-semantic-duration) ease-out both;
+}
+
+.werner-semantic__stamp {
+  top: 0;
+  right: -9%;
+  width: 38%;
+  height: 38%;
+  fill: color-mix(in srgb, var(--sun) 14%, transparent);
+  stroke: var(--sun-deep);
+  stroke-width: 2;
+  animation: werner-verified-beat var(--werner-semantic-duration) ease-out both;
+}
+
+@keyframes werner-paperclip-orbit {
+  0% {
+    opacity: 0;
+    transform: rotate(0);
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(360deg);
+  }
+}
+
+.werner-semantic__orbit {
+  top: -10%;
+  left: 8%;
+  width: 84%;
+  height: 38%;
+  fill: none;
+  stroke: var(--aurora);
+  animation: werner-paperclip-orbit var(--werner-semantic-duration) linear both;
+  transform-origin: 50% 120%;
+}
+
+@keyframes werner-hit-rebound {
+  0%,
+  100% {
+    transform: translateX(0) scale(1);
+  }
+  24% {
+    transform: translateX(6%) scaleX(0.9) scaleY(1.08);
+  }
+  42% {
+    transform: translateX(-3%) scaleX(1.08) scaleY(0.93);
+  }
+  62% {
+    transform: translateX(1%) scale(0.99);
+  }
+}
+
+@keyframes werner-tab-impact {
+  0%,
+  16% {
+    transform: translateX(18%);
+  }
+  28%,
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.werner-semantic--hit .werner-semantic__mark {
+  animation: werner-hit-rebound var(--werner-semantic-duration) ease-out both;
+}
+
+.werner-semantic__tab {
+  right: -6%;
+  bottom: 13%;
+  width: 30%;
+  height: 52%;
+  fill: var(--sun-light-deep);
+  stroke: var(--werner-coat);
+  stroke-width: 2;
+  animation: werner-tab-impact var(--werner-semantic-duration) ease-out both;
+}
+
+.werner-semantic[data-reduced="true"] *,
+.werner-semantic[data-reduced="true"] svg {
+  animation: none !important;
+}
+
+.werner-semantic[data-reduced="true"] .werner-semantic__evidence {
+  opacity: 1;
+  transform: rotate(2deg);
+}
+
+.werner-semantic[data-reduced="true"] .werner-semantic__stamp {
+  opacity: 1;
+  transform: rotate(-8deg);
+}
+
+.werner-semantic[data-reduced="true"] .werner-semantic__mark {
+  transform: none;
+}
+
+.werner-semantic[data-reduced="true"] .werner-semantic__orbit {
+  opacity: 1;
+  transform: rotate(0);
+}
+
+.werner-semantic[data-reduced="true"] .werner-semantic__tab {
+  transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .werner-semantic *,
+  .werner-semantic svg {
+    animation: none !important;
+  }
+
+  .werner-semantic__evidence,
+  .werner-semantic__stamp,
+  .werner-semantic__orbit {
+    opacity: 1;
+  }
+}

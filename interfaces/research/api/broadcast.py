@@ -110,6 +110,11 @@ class EventBroadcaster:
     block the broadcast loop or hold up the API POST that triggered the
     event."""
 
+    # Owner-model dispatch registry (set by app.py on startup; consumed by
+    # research_owner_dispatch). Carries the FastAPI app needed to revalidate
+    # credential authority for owner-bound BYOT launches.
+    _owner_model_app: object | None = None
+
     def __init__(self) -> None:
         self._subscribers: set[_Subscriber] = set()
         self._handlers: dict[str, list[EventHandler]] = {}
@@ -151,15 +156,28 @@ class EventBroadcaster:
         the handler's downstream emit landed before asserting.
 
         Drains the task set repeatedly because a handler can spawn its
-        own broadcast (which spawns more handler tasks)."""
-        deadline = asyncio.get_event_loop().time() + timeout
+        own broadcast (which spawns more handler tasks). A timeout reports
+        unfinished tasks without cancelling production-like handler work."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
         while self._handler_tasks:
-            if asyncio.get_event_loop().time() > deadline:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
                 raise TimeoutError(
                     f"handler tasks still running after {timeout}s: "
                     f"{[t.get_name() for t in self._handler_tasks]}"
                 )
-            await asyncio.gather(*self._handler_tasks, return_exceptions=True)
+            snapshot = tuple(self._handler_tasks)
+            done, pending = await asyncio.wait(snapshot, timeout=remaining)
+            if done:
+                # Retrieve exceptions just as the former gather(...,
+                # return_exceptions=True) did, without propagating them here.
+                await asyncio.gather(*done, return_exceptions=True)
+            if pending:
+                raise TimeoutError(
+                    f"handler tasks still running after {timeout}s: "
+                    f"{[t.get_name() for t in pending]}"
+                )
 
     # ── Broadcast ──────────────────────────────────────────────
 

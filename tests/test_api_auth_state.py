@@ -77,8 +77,7 @@ def test_bearer_rejected_when_token_mismatches(monkeypatch):
 # ── Cloudflare Access email path ───────────────────────────────────
 
 
-def test_whoami_cloudflare_email_path(monkeypatch):
-    """Cf-Access email match attaches auth_method='cloudflare_access_email'."""
+def test_whoami_cloudflare_email_header_alone_rejected(monkeypatch):
     email = "operator@example.com"
     monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", email)
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
@@ -89,9 +88,7 @@ def test_whoami_cloudflare_email_path(monkeypatch):
         "/auth/whoami",
         headers={"Cf-Access-Authenticated-User-Email": email},
     )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["auth_method"] == "cloudflare_access_email"
+    assert resp.status_code == 401
 
 
 def test_cloudflare_email_mismatch_rejected(monkeypatch):

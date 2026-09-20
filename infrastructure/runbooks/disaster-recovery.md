@@ -22,7 +22,7 @@
 accessible and you're following this runbook.
 
 **Recovery Point Objective (RPO)**: 24 hours (nightly backups). If
-this is unacceptable, change the cron schedule in
+this is unacceptable, change the systemd timer schedule in
 `infrastructure/ansible/group_vars/all.yml` to run more frequently
 (every 6 hours doubles your R2 storage cost — small, but real).
 
@@ -64,7 +64,7 @@ ansible-playbook -i inventory.ini playbooks/setup.yml -e @r2-creds.yml
 
 Same playbook as first-deploy.md step 10. Idempotent. ~5 minutes. End
 state: substrate code installed, Caddy configured, systemd unit
-enabled, backup cron registered, but no state yet and no secrets.
+enabled, backup timer registered, but no state yet and no secrets.
 
 ## Step 4 — Download the latest backup from R2
 
@@ -248,15 +248,11 @@ specifically need to preserve resource IDs (rare).
 
 ## Backup retention policy
 
-The backup script keeps the last 14 daily backups in R2 (configurable
-via `backup_retention_days` in `infrastructure/ansible/group_vars/all.yml`).
-Beyond 14 days, backups are deleted. If you need longer retention:
-
-- Increase `backup_retention_days` and re-run setup.yml (the backup
-  script template gets re-rendered).
-- Or manually pull periodic backups out of R2 to durable local storage
-  (Mac Time Machine, etc.) — at most weekly is plenty given the
-  substrate's growth rate.
+The host never deletes remote backups. Host clock skew or compromise must not
+be able to erase the last known-good recovery point. Configure retention as an
+R2 bucket lifecycle rule in Cloudflare, and enable object versioning when the
+account/bucket supports it. Keep periodic copies in a separately administered
+store for recovery from bucket-credential compromise.
 
 Cost trade: ~$0.015/GB/month at R2 EU. A 100MB backup × 30 days =
 0.045 GB × $0.015 = $0.0007/month. Storage is not the bottleneck.

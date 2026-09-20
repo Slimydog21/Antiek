@@ -30,6 +30,15 @@ from substrate.auth.magic_link import (
     verify_magic_link_token,
     verify_session_cookie,
 )
+from substrate.auth.passkeys import (
+    PasskeyError,
+    authentication_options,
+    complete_authentication,
+    complete_registration,
+    delete_credential,
+    list_credentials,
+    registration_options,
+)
 
 __all__ = [
     "AgentMailEmailProvider",
@@ -48,4 +57,11 @@ __all__ = [
     "mint_session_cookie",
     "verify_magic_link_token",
     "verify_session_cookie",
+    "PasskeyError",
+    "authentication_options",
+    "complete_authentication",
+    "complete_registration",
+    "delete_credential",
+    "list_credentials",
+    "registration_options",
 ]

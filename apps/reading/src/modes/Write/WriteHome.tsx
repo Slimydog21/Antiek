@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import {
+  ApiError,
   createDeliverable,
   getDeliverable,
   listDeliverables,
@@ -18,7 +19,12 @@ import { IdeaDump } from "./Brainstorm/IdeaDump";
 import Outline from "./Outline";
 import { ProjectTypeField } from "./ProjectType";
 import { onTraceIntent } from "./Editor/traceIntent";
-import { getTraceTarget, type RepositoryHit } from "./writeApi";
+import { ArtifactExport } from "../../components/ArtifactExport";
+import {
+  createDeliverableFromInvestigation,
+  getTraceTarget,
+  type RepositoryHit,
+} from "./writeApi";
 
 /**
  * Write Home — the Write door (Product Depth SPR-07 M1).
@@ -41,6 +47,9 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const fromInvestigation = (searchParams.get("investigation") || "").trim() || null;
+  const titleFromQuery = (searchParams.get("title") || "").trim();
 
   const [detail, setDetail] = useState<DeliverableDetailResponse | null>(null);
   const [pieces, setPieces] = useState<DeliverableSummary[]>([]);
@@ -119,16 +128,36 @@ export default function WriteHome() {
   // created WITH its backing investigation_root_id set (the link is set at
   // creation; M1 reads it back to verify it exists).
   const [starting, setStarting] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
+  const [newTitle, setNewTitle] = useState(titleFromQuery);
   // Open-ended project type (M4): freeform text the AI interprets; presets seed.
   const [projectType, setProjectType] = useState<{ freeform: string; kind: DeliverableKind }>(
     { freeform: "", kind: "general_essay" },
   );
 
+  // AutoNotebook → Write continuity: honor ?title= from notebook handoff.
+  useEffect(() => {
+    if (!titleFromQuery) return;
+    setNewTitle((prev) => (prev.trim() ? prev : titleFromQuery));
+  }, [titleFromQuery]);
+
   async function createWithConnection(resolved: { investigationId: string; label: string }) {
     if (!newTitle.trim()) return;
     setStarting(true);
     try {
+      // Daily-loop outline→Write auto-import: promote depositable synthesis
+      // into a seeded outline (POST /write/deliverables/from-investigation).
+      // Honest fallback when no synthesis: empty linked piece (ConnectResearch).
+      try {
+        const promoted = await createDeliverableFromInvestigation({
+          investigation_id: resolved.investigationId,
+          deliverable_kind: projectType.kind,
+          title: newTitle.trim(),
+        });
+        navigate(`/write/${promoted.deliverable_id}`);
+        return;
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 404)) throw e;
+      }
       const d = await createDeliverable({
         title: newTitle.trim(),
         // The freeform type resolves to the closest kind (ProjectType.resolveKind);
@@ -179,15 +208,29 @@ export default function WriteHome() {
           {/* M1: the connect-to-research step. Pick a project (imports its
               blocks onto the canvas) or none (auto-spawns + links a folder).
               Either way the piece is created WITH investigation_root_id set. */}
+          {fromInvestigation ? (
+            <p
+              data-testid="write-from-notebook-banner"
+              className="rounded border border-aurora/40 bg-ice-1 px-3 py-2 text-xs text-ink dark:bg-charcoal-1 dark:text-bright"
+            >
+              Continuing from auto-notebook — title is prefilled when the notebook
+              sent one. Connect the highlighted research to import its outline when
+              a depositable synthesis exists (else an empty linked piece). No
+              invented sections.
+            </p>
+          ) : null}
           {newTitle.trim() ? (
             <ConnectResearch
               pieceTitle={newTitle}
               disabled={starting}
+              preferredInvestigationId={fromInvestigation}
               onConnect={(resolved) => void createWithConnection(resolved)}
             />
           ) : (
             <p className="text-xs italic text-ink-mute dark:text-moonlight">
-              Name the piece to choose a research project to connect it to.
+              {fromInvestigation
+                ? "Name the piece (or keep editing the prefilled title) to connect and import the outline."
+                : "Name the piece to choose a research project to connect it to."}
             </p>
           )}
           {starting && (
@@ -276,24 +319,33 @@ export default function WriteHome() {
               </p>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-3">
-            {/* M1: toggle to the imported SPR-03 Canvas of the linked research. */}
-            {detail?.investigation_root_id && (
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <div className="flex items-center gap-3">
+              {/* M1: toggle to the imported SPR-03 Canvas of the linked research. */}
+              {detail?.investigation_root_id && (
+                <button
+                  type="button"
+                  onClick={() => setPieceView((v) => (v === "canvas" ? "outline" : "canvas"))}
+                  className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
+                >
+                  {pieceView === "canvas" ? "outline" : "research canvas"}
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => setPieceView((v) => (v === "canvas" ? "outline" : "canvas"))}
+                onClick={() => setOnRamp((v) => (v === "context" ? null : "context"))}
                 className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
               >
-                {pieceView === "canvas" ? "outline" : "research canvas"}
+                {onRamp === "context" ? "hide brainstorm" : "brainstorm a section"}
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setOnRamp((v) => (v === "context" ? null : "context"))}
-              className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
-            >
-              {onRamp === "context" ? "hide brainstorm" : "brainstorm a section"}
-            </button>
+            </div>
+            {detail ? (
+              <ArtifactExport
+                basePath={`/api/deliverables/${detail.deliverable_id}`}
+                filenamePrefix={`deliverable-${detail.deliverable_id}`}
+                label="Artifact:"
+              />
+            ) : null}
           </div>
         </header>
 

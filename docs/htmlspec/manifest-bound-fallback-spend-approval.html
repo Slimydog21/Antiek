@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Antiek Cycle 79 - Manifest-bound fallback spend approval</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; line-height: 1.55; }
+    main { max-width: 980px; margin: auto; padding: 28px 20px 56px; }
+    header, section { border-bottom: 1px solid #8886; padding: 18px 0; }
+    h1 { font-size: 2rem; } h2 { font-size: 1.3rem; }
+    code { font-family: ui-monospace, monospace; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #8888; padding: 8px; text-align: left; vertical-align: top; }
+  </style>
+</head>
+<body><main>
+  <header>
+    <p>Antiek / Infinite / Cycle 79</p>
+    <h1>Manifest-bound fallback spend approval</h1>
+    <p>Split fallback preparation from execution so no paid hold or provider send can occur without one durable operator approval of the exact immutable chain and hard ceiling.</p>
+  </header>
+  <section>
+    <h2>Problem</h2>
+    <p>Cycles 76-78 preflight, persist, and display paid fallback chains, but <code>dispatch_paid_fallbacks</code> still registers its manifest and immediately enters reservation. Cascade has an exact-plan approval precedent, yet fallback execution does not consume equivalent authority. A future caller could therefore bypass a human approval boundary even though the provider resolver is currently empty.</p>
+  </section>
+  <section>
+    <h2>Authority contract</h2>
+    <ol>
+      <li><strong>Prepare:</strong> project every route, derive all hold/provider keys, and atomically persist one immutable ordered manifest. Preparation spends zero and sends nothing.</li>
+      <li><strong>Approve:</strong> the authenticated owner confirms the exact <code>chain_id</code>, <code>manifest_sha256</code>, run hard ceiling, currency, and maximum independently reserved route exposure. Approval is refused if any chain hold already exists.</li>
+      <li><strong>Dispatch:</strong> recompute the same manifest and require its exact approval before the first and every later reservation. Changed plan, route, pricing, workload, owner, run binding, ceiling, or approval identifier fails before transport.</li>
+      <li><strong>Replay:</strong> one immutable approval remains valid only for recovery of that exact chain. Existing hold/provider idempotency still decides whether to recover, reconcile, or send once.</li>
+    </ol>
+    <p>The approved exposure is <code>max(route.projected_max_cents)</code>, never the sum, because routes reserve sequentially and an unresolved outcome halts fallback. The run ceiling remains the aggregate authorization boundary.</p>
+  </section>
+  <section>
+    <h2>Persistence</h2>
+    <p>Add schema v9 <code>research_fallback_approvals</code>: immutable <code>approval_id</code>, unique <code>chain_id</code>, owner/run binding, manifest SHA-256, currency, run ceiling cents, maximum chain exposure cents, command receipt key, and timestamp. Foreign keys bind the chain and run. Update/delete triggers make approval durable. Registration and command receipt commit in one <code>BEGIN IMMEDIATE</code> transaction.</p>
+    <p>Approval JSON and public responses contain routing metadata and digests only. They never contain prompts, operation payloads, credentials, reservation keys, provider idempotency keys, evidence bodies, or another owner's identifiers.</p>
+  </section>
+  <section>
+    <h2>API boundary</h2>
+    <p><code>POST /settings/fallback-receipts/{chain_id}/approval</code> accepts only <code>expected_manifest_sha256</code> and <code>expected_ceiling_cents</code>. Owner identity comes from authentication. The server derives every other field from the ledger, returns a minimized immutable approval receipt, and uses no provider resolver or dispatch adapter. The existing history route remains read-only and gains only approval status and digest when safe.</p>
+    <p>No execution, retry, provider qualification, route-selection, credential, or revocation control is added in this cycle.</p>
+  </section>
+  <section>
+    <h2>Failure and concurrency invariants</h2>
+    <table><thead><tr><th>Case</th><th>Required result</th></tr></thead><tbody>
+      <tr><td>Crash during approval write</td><td>Approval row and command receipt both commit or both roll back.</td></tr>
+      <tr><td>Concurrent identical approvals</td><td>One approval identity; exact replay converges.</td></tr>
+      <tr><td>Concurrent changed approval</td><td>One wins; the other receives an idempotency conflict without mutation.</td></tr>
+      <tr><td>Changed manifest, ceiling, owner, run, or currency</td><td>Fail before reserve and before provider transport.</td></tr>
+      <tr><td>Approval after any chain hold</td><td>Refuse. Legacy or bypassed execution cannot be retroactively blessed.</td></tr>
+      <tr><td>Approval exists, process dies before reserve</td><td>Replay may begin the exact chain once.</td></tr>
+      <tr><td>Process dies after provider acceptance</td><td>Existing unknown/reconciliation semantics remain authoritative; approval never permits blind resend.</td></tr>
+      <tr><td>Cross-owner API request</td><td>Return not found; disclose neither chain nor approval existence.</td></tr>
+    </tbody></table>
+  </section>
+  <section>
+    <h2>Implementation sprints</h2>
+    <ol>
+      <li><strong>Ledger:</strong> schema v9, strict approval types, atomic issue/replay, exact validation, history projection, migration and corruption tests.</li>
+      <li><strong>Gateway:</strong> extract deterministic preparation, require approval for dispatch, prove zero reserve/send before approval, crash replay, and concurrent convergence.</li>
+      <li><strong>API:</strong> owner-derived approval endpoint with no-store responses, expected-digest CAS, value-free failures, and cross-owner concealment.</li>
+      <li><strong>Verification:</strong> broad research suite, API tests, Ruff, typecheck/build if UI contracts change, HardenX strict, and independent hostile review.</li>
+    </ol>
+  </section>
+  <section>
+    <h2>Done bar</h2>
+    <ul>
+      <li>A test proves direct dispatch without exact approval performs zero holds and zero sends.</li>
+      <li>A test proves changed route/pricing/workload/ceiling cannot reuse approval.</li>
+      <li>A kill-point test proves approval row and command receipt atomicity.</li>
+      <li>API tests prove owner isolation, digest CAS, no retroactive approval, minimized output, and value-free corruption handling.</li>
+      <li>The checked production provider resolver remains empty and no paid execution UI exists.</li>
+    </ul>
+  </section>
+  <section id="harness-hint" data-harness-pattern="ledger-gateway-api" data-harness-fanout-unit="ledger authority; gateway critic; API privacy critic" data-harness-sharpen-floor="2">
+    <h2>Harness hint</h2><p>Attack retroactive blessing, approval substitution, max-versus-sum confusion, direct gateway bypass, command replay conflicts, stale ceiling changes, and cross-owner enumeration before accepting the implementation.</p>
+  </section>
+</main></body></html>

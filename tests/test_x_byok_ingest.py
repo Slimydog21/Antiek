@@ -203,11 +203,28 @@ def test_http_error_surfaces_status_never_leaks_bearer(monkeypatch):
         client = XApiClient(cred_id=cred_id, artifact_path=artifact, key_bytes=_TEST_KEY)
         try:
             client.recent_search("from:dhh")
-            assert False, "expected XApiError on a 429"
+            raise AssertionError("expected XApiError on a 429")
         except XApiError as exc:
             blob = " ".join([str(exc), repr(exc), " ".join(map(str, exc.args))])
             assert _SENTINEL_BEARER not in blob, "bearer leaked into the surfaced error"
             assert "429" in blob, "the numeric status should be surfaced"
+
+
+def test_recent_search_is_bounded_to_25_without_network(monkeypatch):
+    from acquisition.twitter.api_client import XApiClient
+
+    client = XApiClient(cred_id="cred-x-test")
+    seen = {}
+
+    def fake_get(path, params):
+        seen.update(path=path, params=params)
+        return {"data": [{"id": str(i)} for i in range(30)]}
+
+    monkeypatch.setattr(client, "_http_get", fake_get)
+    assert len(client.recent_search("antiek", max_results=25)) == 25
+    assert seen["params"]["max_results"] == 25
+    with pytest.raises(ValueError, match="between 1 and 25"):
+        client.recent_search("antiek", max_results=26)
 
 
 @pytest.mark.skipif(

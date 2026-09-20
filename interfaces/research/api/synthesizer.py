@@ -36,6 +36,7 @@ Failure-mode discipline:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -61,7 +62,7 @@ from roles.synthesizer import (  # noqa: E402
     parse_synthesizer_response,
     render_full_prompt,
 )
-from substrate.dispatch import ProviderError, dispatch  # noqa: E402
+from substrate.dispatch import dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
@@ -376,14 +377,16 @@ def _research_tier_override(
     return None, None
 
 
-def _dispatch_once(prompt: str, event: Event) -> tuple[str | None, str]:
+def _dispatch_once(prompt: str, event: Event, *, attempt: int = 0) -> tuple[str | None, str]:
     """One dispatch attempt. Returns (response_text, policy_id) or
     (None, fallback_policy_id) on ProviderError / KeyError."""
     provider_override, model_override = _research_tier_override(
         event.investigation_id,
     )
     try:
-        result = dispatch(
+        from .research_owner_dispatch import dispatch_loop_one
+        result = dispatch_loop_one(prompt, "synthesizer", investigation_id=event.investigation_id,
+                                   semantic_call_id="phase6", attempt=attempt) or dispatch(
             prompt,
             "synthesizer",
             investigation_id=event.investigation_id,
@@ -392,7 +395,7 @@ def _dispatch_once(prompt: str, event: Event) -> tuple[str | None, str]:
             model_override=model_override,
         )
         return result.text, f"{result.provider}/{result.model}"
-    except (ProviderError, KeyError) as exc:
+    except Exception as exc:  # ProviderError/KeyError/OwnerByot*/etc.
         print(
             f"synthesizer.handle: dispatch failed — "
             f"{type(exc).__name__}: {exc}",
@@ -425,7 +428,7 @@ def _dispatch_and_parse(
     the original prompt — adequate for the parse-failure case where
     the model needs to see what was structurally wrong with its
     previous attempt."""
-    response_text, policy_id = _dispatch_once(prompt, event)
+    response_text, policy_id = _dispatch_once(prompt, event, attempt=0)
     if response_text is None:
         return None, policy_id
 
@@ -464,7 +467,7 @@ def _dispatch_and_parse(
     else:
         retry_prompt = repair_prefix + prompt
 
-    retry_text, retry_policy = _dispatch_once(retry_prompt, event)
+    retry_text, retry_policy = _dispatch_once(retry_prompt, event, attempt=1)
     if retry_text is None:
         return None, retry_policy
 
@@ -510,7 +513,8 @@ def make_synthesizer_handler(
             parameters_block=req.parameters_block,
             substrate_block=req.substrate_block,
         )
-        first_result, policy_id = _dispatch_and_parse(
+        first_result, policy_id = await asyncio.to_thread(
+            _dispatch_and_parse,
             first_prompt,
             event,
             canonical_chunk_ids=canonical_chunk_ids,
@@ -561,7 +565,8 @@ def make_synthesizer_handler(
             latest_result = revised_result
             return _result_to_claims(revised_result)
 
-        loop_result: ConstraintLoopResult = run_constraint_loop(
+        loop_result: ConstraintLoopResult = await asyncio.to_thread(
+            run_constraint_loop,
             investigation_id=event.investigation_id,
             initial_claims=_result_to_claims(first_result),
             constraints=list(req.constraints),

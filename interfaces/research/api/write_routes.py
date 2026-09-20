@@ -40,7 +40,7 @@ from contextlib import contextmanager
 from typing import Any, Literal
 
 import duckdb
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from roles.creative_writer.prompt import AdjacentSection
@@ -66,6 +66,26 @@ from substrate.write.provenance import resolve_provenance
 from substrate.write.trace import resolve_trace_target
 
 write_router = APIRouter(prefix="/write", tags=["write"])
+
+
+def _authenticated_owner_user_id(request: Request) -> str:
+    """Return only middleware-authenticated identity; never infer an owner."""
+    value = getattr(request.state, "user_id", None)
+    method = getattr(request.state, "auth_method", None)
+    authenticated_methods = {
+        "antiek_session_cookie",
+        "cloudflare_access_email",
+        "cloudflare_service_token",
+        "bearer_token",
+    }
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or len(value) > 256
+        or method not in authenticated_methods
+    ):
+        raise HTTPException(status_code=401, detail="authenticated user identity required")
+    return value.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -386,7 +406,8 @@ def emit_brainstorm_blocks(req: BrainstormBlocksRequest) -> dict[str, Any]:
 
 
 @write_router.post("/context/promote", status_code=201)
-def promote_context(req: PromoteContextRequest) -> dict[str, Any]:
+def promote_context(req: PromoteContextRequest, request: Request) -> dict[str, Any]:
+    owner_user_id = _authenticated_owner_user_id(request)
     specs = [
         ContextBlockSpec(
             block_kind=b.block_kind, provenance_kind=b.provenance_kind,
@@ -397,7 +418,7 @@ def promote_context(req: PromoteContextRequest) -> dict[str, Any]:
     with _translate(), _write("write/promote_context") as con:
         result = promote_to_outline(
             con, title=req.title, deliverable_kind=req.deliverable_kind,
-            specs=specs, objective=req.objective,
+            specs=specs, owner_user_id=owner_user_id, objective=req.objective,
         )
     return {
         "deliverable_id": result.deliverable_id,
@@ -571,7 +592,9 @@ class FromInvestigationResponse(BaseModel):
     status_code=201,
     response_model=FromInvestigationResponse,
 )
-def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationResponse:
+def promote_investigation(
+    req: FromInvestigationRequest, request: Request,
+) -> FromInvestigationResponse:
     """Seed a deliverable from a completed investigation's synthesis: one
     graph-node block per synthesis-pinned source node, each carrying
     provenance back to its graph node. The compounding flywheel's missing
@@ -588,11 +611,13 @@ def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationRes
     # declared-bar line-keyed baseline for this file does not shift.
     from substrate.write.promote_context import promote_investigation_to_deliverable
 
+    owner_user_id = _authenticated_owner_user_id(request)
     with _translate(), _write("write/promote_investigation") as con:
         result = promote_investigation_to_deliverable(
             con,
             req.investigation_id,
             deliverable_kind=req.deliverable_kind,
+            owner_user_id=owner_user_id,
             title=req.title,
         )
     if result is None:

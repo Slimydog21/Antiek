@@ -7,18 +7,24 @@ not a vibe)."""
 
 from __future__ import annotations
 
+import json
 import os
+import stat
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 import nacl.secret  # noqa: E402
+import pytest  # noqa: E402
 
 from runtime.byok.secret_str import SecretStr  # noqa: E402
 from runtime.byok.store import (  # noqa: E402
+    CredentialIntegrityError,
     list_credentials,
     load_credential,
     store_credential,
@@ -96,8 +102,162 @@ def test_list_credentials_carries_metadata_not_key():
 def test_load_unknown_cred_raises():
     with tempfile.TemporaryDirectory() as tmp:
         artifact = os.path.join(tmp, "credentials.enc")
-        try:
+        with pytest.raises(KeyError):
             load_credential("cred-x-nope", artifact_path=artifact, key_bytes=_TEST_KEY)
-            assert False, "expected KeyError"
-        except KeyError:
-            pass
+
+
+def test_ciphertext_cannot_be_substituted_between_bound_credentials():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = os.path.join(tmp, "credentials.enc")
+        first = store_credential(
+            "first",
+            "first-secret",
+            pipeline_kind="user_model_provider",
+            artifact_path=artifact,
+            key_bytes=_TEST_KEY,
+        )
+        second = store_credential(
+            "second",
+            "second-secret",
+            pipeline_kind="user_model_provider",
+            artifact_path=artifact,
+            key_bytes=_TEST_KEY,
+        )
+        data = json.loads(Path(artifact).read_text(encoding="utf-8"))
+        data[first]["ciphertext_hex"] = data[second]["ciphertext_hex"]
+        Path(artifact).write_text(json.dumps(data), encoding="utf-8")
+
+        with pytest.raises(CredentialIntegrityError):
+            load_credential(first, artifact_path=artifact, key_bytes=_TEST_KEY)
+
+
+def test_legacy_unbound_credential_remains_readable_for_non_routing_consumers():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "credentials.enc"
+        cred_id = "cred-x-legacy"
+        sealed = nacl.secret.SecretBox(_TEST_KEY).encrypt(_SECRET.encode("utf-8"))
+        artifact.write_text(
+            json.dumps(
+                {
+                    cred_id: {
+                        "cred_id": cred_id,
+                        "account_handle": "legacy",
+                        "pipeline_kind": "general_feed",
+                        "ciphertext_hex": bytes(sealed).hex(),
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        loaded = load_credential(
+            cred_id,
+            artifact_path=str(artifact),
+            key_bytes=_TEST_KEY,
+        )
+        assert loaded.reveal() == _SECRET
+        assert list_credentials(artifact_path=str(artifact))[0].binding_version == 1
+
+
+def test_concurrent_stores_preserve_every_ciphertext_and_valid_json():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "credentials.enc"
+
+        def store(index: int) -> tuple[str, str]:
+            secret = f"secret-{index}"
+            return (
+                store_credential(
+                    f"account-{index}",
+                    secret,
+                    pipeline_kind="user_model_provider",
+                    artifact_path=str(artifact),
+                    key_bytes=_TEST_KEY,
+                ),
+                secret,
+            )
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            stored = list(pool.map(store, range(24)))
+
+        assert len(json.loads(artifact.read_text(encoding="utf-8"))) == 24
+        assert len(list_credentials(artifact_path=str(artifact))) == 24
+        for cred_id, secret in stored:
+            assert load_credential(
+                cred_id,
+                artifact_path=str(artifact),
+                key_bytes=_TEST_KEY,
+            ).reveal() == secret
+
+
+def test_existing_master_key_permissions_are_repaired_before_read():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "credentials.enc"
+        key_file = Path(tmp) / "master.key"
+        cred_id = store_credential(
+            "mode-check",
+            _SECRET,
+            artifact_path=str(artifact),
+            key_file=str(key_file),
+        )
+        key_file.chmod(0o644)
+
+        assert load_credential(
+            cred_id,
+            artifact_path=str(artifact),
+            key_file=str(key_file),
+        ).reveal() == _SECRET
+        assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
+
+
+def test_master_key_symlink_is_rejected_without_touching_target():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "credentials.enc"
+        target = Path(tmp) / "target.key"
+        target.write_bytes(_TEST_KEY)
+        key_file = Path(tmp) / "master.key"
+        key_file.symlink_to(target)
+
+        with pytest.raises(ValueError, match="regular file"):
+            store_credential(
+                "symlink-check",
+                _SECRET,
+                artifact_path=str(artifact),
+                key_file=str(key_file),
+            )
+        assert target.read_bytes() == _TEST_KEY
+
+
+def test_existing_artifact_permissions_are_repaired_and_symlink_is_rejected():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "credentials.enc"
+        store_credential(
+            "artifact-mode",
+            _SECRET,
+            artifact_path=str(artifact),
+            key_bytes=_TEST_KEY,
+        )
+        artifact.chmod(0o644)
+        assert len(list_credentials(artifact_path=str(artifact))) == 1
+        assert stat.S_IMODE(artifact.stat().st_mode) == 0o600
+
+        target = Path(tmp) / "target.enc"
+        artifact.rename(target)
+        artifact.symlink_to(target)
+        with pytest.raises(CredentialIntegrityError, match="regular file"):
+            list_credentials(artifact_path=str(artifact))
+
+
+def test_corrupt_artifact_fails_closed_without_overwrite():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "credentials.enc"
+        corrupt = b"{corrupt"
+        artifact.write_bytes(corrupt)
+
+        with pytest.raises(CredentialIntegrityError, match="unreadable"):
+            store_credential(
+                "must-not-overwrite",
+                _SECRET,
+                artifact_path=str(artifact),
+                key_bytes=_TEST_KEY,
+            )
+        assert artifact.read_bytes() == corrupt

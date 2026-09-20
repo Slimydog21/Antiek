@@ -163,11 +163,18 @@ def test_payload_as_dict_matches_endpoint_contract():
         "substrate_controls",
         "compliance_frameworks",
         "loop_3_unlock_status",
+        "website_ads",
+        "speak_economics",
     }
     assert set(d.keys()) == expected_keys
     assert isinstance(d["differential_privacy_epsilon_budgets"], dict)
     assert isinstance(d["substrate_controls"], list)
     assert isinstance(d["compliance_frameworks"], list)
+    assert d["website_ads"]["max_sdk_on_web"] is False
+    assert d["website_ads"]["revenue_usd_cents_until_pricing"] == 0
+    assert d["speak_economics"]["paid_today"] is False
+    assert d["speak_economics"]["synquery_gated"] is True
+    assert d["speak_economics"]["g2_counsel_gated"] is True
 
 
 # ── list_surface_descriptions ────────────────────────────────────

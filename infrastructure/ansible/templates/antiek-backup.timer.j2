@@ -1,16 +1,16 @@
 # Ansible managed.
 #
-# Nightly trigger for antiek-backup.service. 03:00 UTC.
+# Nightly trigger for antiek-backup.service.
 
 [Unit]
-Description=Antiek nightly backup timer (03:00 UTC)
+Description=Antiek nightly backup timer ({{ backup_cron_hour }}:{{ backup_cron_minute }} UTC)
 Documentation=https://github.com/Slimydog21/Antiek
 
 [Timer]
-# Fire at 03:00 UTC daily. Persistent=true ensures a missed run
+# Fire at the configured UTC time daily. Persistent=true ensures a missed run
 # (VM down at the scheduled time) fires on next boot rather than
 # being silently skipped.
-OnCalendar=*-*-* 03:00:00 UTC
+OnCalendar=*-*-* {{ backup_cron_hour }}:{{ backup_cron_minute }}:00 UTC
 Persistent=true
 Unit=antiek-backup.service
 

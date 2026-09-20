@@ -393,18 +393,28 @@ async def test_end_to_end_post_drives_orchestrator(
     )
     assert post_resp.status_code == 202
 
-    # Wait for the orchestrator's coroutine to drive the chain.
-    deadline = asyncio.get_event_loop().time() + 20.0
-    while asyncio.get_event_loop().time() < deadline:
-        await bus.wait_for_handlers(timeout=2.0)
+    # Observe the public contract instead of coupling this end-to-end test to
+    # the broadcaster's private handler-drain cadence. A cold CI worker may
+    # load the semantic model during synthesis, but a real hang still fails at
+    # this explicit ceiling.
+    deadline = asyncio.get_event_loop().time() + 30.0
+    while True:
         status_resp = await async_client.get("/investigations/inv-rest-e2e")
         body = status_resp.json()
-        if body["status"] in ("completed", "failed"):
+        if (
+            body["status"] in ("completed", "failed")
+            or asyncio.get_event_loop().time() >= deadline
+        ):
             break
         await asyncio.sleep(0.05)
 
     body = status_resp.json()
     assert body["status"] == "completed", body
+    # Completion is the public terminal contract, but later-phase subscribers
+    # can still be unwinding. Drain them before fixture teardown removes this
+    # test's provider/retrieval stubs; otherwise those tasks can consume the
+    # next test's global provider registry and make the suite order-dependent.
+    await bus.wait_for_handlers(timeout=30.0)
     assert body["current_phase"] == 8  # last entered phase
     assert body["terminal_payload"]["thesis_summary"].startswith("PsiQuantum")
     assert Path(body["terminal_payload"]["master_md_path"]).exists()

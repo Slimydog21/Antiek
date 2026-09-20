@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
-import type { BookCitation } from "../../api/books";
+import type {
+  BookCitation,
+  BookModelOperationState,
+  BookModelReceipt,
+  UserModelChoice,
+} from "../../api/books";
 
 /**
  * useTalkThread — the MULTI-TURN talk-to-book conversation, persisted per book
@@ -30,11 +35,25 @@ export interface TalkMessage {
   question: string;
   /** The model's reply — model-sourced. Null while the turn is in flight. */
   answer: string | null;
+  /** Durable event id returned by the server. Missing only on legacy sessions. */
+  answer_id?: string;
+  capture_unavailable?: boolean;
+  judgment?: "good" | "bad";
   /** Page-level citations for the answer (empty until the reply lands). */
   citations: BookCitation[];
   /** False when the answer was ungrounded (no extractable text / withheld) —
    * surfaced honestly, never dressed up as a grounded reply. */
   grounded: boolean;
+  /** Stable idempotency identity for a selected-model dispatch. */
+  operation_id?: string;
+  /** Safe dispatch provenance returned by the server. Absent on old sessions. */
+  model_receipt?: BookModelReceipt | null;
+  model_choice?: UserModelChoice;
+  model_operation_state?: BookModelOperationState | "requesting";
+  operation_not_found_checks?: number;
+  operation_first_not_found_at?: number;
+  /** thought_partner shape when the turn used the unified role. */
+  shape?: string | null;
 }
 
 export interface TalkBranch {
@@ -68,6 +87,14 @@ function readStored(documentId: string): TalkThreadState {
   }
 }
 
+function writeStored(documentId: string, state: TalkThreadState): void {
+  try {
+    window.sessionStorage.setItem(KEY(documentId), JSON.stringify(state));
+  } catch {
+    /* private mode — the thread still works in-memory, just won't persist */
+  }
+}
+
 function genId(prefix: string): string {
   const rand =
     typeof crypto !== "undefined" && crypto.randomUUID
@@ -84,14 +111,22 @@ export interface UseTalkThread {
   activeBranchId: string;
   /** Append a user question (answer pending) to the active branch; returns the
    * new message id so the caller can fill in the reply. */
-  startTurn: (question: string) => string;
+  startTurn: (question: string, operationId?: string, modelChoice?: UserModelChoice) => string;
   /** Fill in a turn's model reply + citations once the answer lands. */
   completeTurn: (
     messageId: string,
     answer: string,
     citations: BookCitation[],
     grounded: boolean,
+    answerId: string | null,
+    captureStatus: "captured" | "unavailable",
+    modelReceipt?: BookModelReceipt | null,
+    shape?: string | null,
   ) => void;
+  setModelOperationState: (messageId: string, state: BookModelOperationState) => void;
+  markModelOperationNotFound: (messageId: string) => void;
+  abandonMissingModelOperation: (messageId: string) => void;
+  setJudgment: (messageId: string, verdict: "good" | "bad") => void;
   /** Mark a turn failed (drops the pending message so the thread isn't stuck). */
   failTurn: (messageId: string) => void;
   /** Fork a tangential branch from a message ("what about that?"). The new
@@ -114,11 +149,7 @@ export function useTalkThread(documentId: string): UseTalkThread {
 
   // Persist on every change (the bookmark carries it across navigation).
   useEffect(() => {
-    try {
-      window.sessionStorage.setItem(KEY(documentId), JSON.stringify(state));
-    } catch {
-      /* private mode — the thread still works in-memory, just won't persist */
-    }
+    writeStored(documentId, state);
   }, [documentId, state]);
 
   const activeBranch =
@@ -137,21 +168,129 @@ export function useTalkThread(documentId: string): UseTalkThread {
   );
 
   const startTurn = useCallback(
-    (question: string): string => {
+    (question: string, operationId?: string, modelChoice?: UserModelChoice): string => {
       const id = genId("turn");
-      mutateActive((msgs) => [
-        ...msgs,
-        { id, question, answer: null, citations: [], grounded: false },
-      ]);
+      const message: TalkMessage = {
+        id,
+        question,
+        answer: null,
+        citations: [],
+        grounded: false,
+        ...(operationId ? { operation_id: operationId } : {}),
+        ...(modelChoice ? {
+          model_choice: { ...modelChoice },
+          model_operation_state: "requesting" as const,
+        } : {}),
+      };
+      const next = {
+        ...state,
+        branches: state.branches.map((branch) =>
+          branch.branch_id === state.active_branch_id
+            ? { ...branch, messages: [...branch.messages, message] }
+            : branch,
+        ),
+      };
+      // Selected-model operation identity must be durable before dispatch so
+      // a reload/retry cannot accidentally create a second billable action.
+      writeStored(documentId, next);
+      setState(next);
       return id;
+    },
+    [documentId, state],
+  );
+
+  const completeTurn = useCallback(
+    (
+      messageId: string,
+      answer: string,
+      citations: BookCitation[],
+      grounded: boolean,
+      answerId: string | null,
+      captureStatus: "captured" | "unavailable",
+      modelReceipt?: BookModelReceipt | null,
+      shape?: string | null,
+    ) => {
+      mutateActive((msgs) =>
+        msgs.map((m) => (m.id === messageId ? {
+          ...m,
+          answer,
+          citations,
+          grounded,
+          answer_id: answerId ?? undefined,
+          capture_unavailable: captureStatus === "unavailable",
+          model_operation_state: undefined,
+          shape: shape ?? undefined,
+          model_receipt: modelReceipt ? {
+            authority: modelReceipt.authority,
+            requested_provider_id: modelReceipt.requested_provider_id,
+            requested_model_id: modelReceipt.requested_model_id,
+            actual_provider_id: modelReceipt.actual_provider_id,
+            actual_model_id: modelReceipt.actual_model_id,
+            authority_digest: modelReceipt.authority_digest,
+          } : null,
+        } : m)),
+      );
     },
     [mutateActive],
   );
 
-  const completeTurn = useCallback(
-    (messageId: string, answer: string, citations: BookCitation[], grounded: boolean) => {
+  const setModelOperationState = useCallback(
+    (messageId: string, operationState: BookModelOperationState) => {
+      setState((prev) => ({
+        ...prev,
+        branches: prev.branches.map((branch) => ({
+          ...branch,
+          messages: branch.messages.map((message) =>
+            message.id === messageId && message.model_operation_state !== operationState
+              ? { ...message, model_operation_state: operationState }
+              : message,
+          ),
+        })),
+      }));
+    },
+    [],
+  );
+
+  const markModelOperationNotFound = useCallback((messageId: string) => {
+    setState((prev) => ({
+      ...prev,
+      branches: prev.branches.map((branch) => ({
+        ...branch,
+        messages: branch.messages.map((message) => message.id === messageId &&
+          (message.model_operation_state === "unknown" || message.model_operation_state === "requesting")
+          ? (() => {
+              const first = message.operation_first_not_found_at ?? Date.now();
+              const priorChecks = message.operation_not_found_checks ?? 0;
+              const separatedCheck = priorChecks === 0 || Date.now() - first >= 3_000;
+              return {
+                ...message,
+                operation_not_found_checks: priorChecks + (separatedCheck ? 1 : 0),
+                operation_first_not_found_at: first,
+              };
+            })()
+          : message),
+      })),
+    }));
+  }, []);
+
+  const abandonMissingModelOperation = useCallback((messageId: string) => {
+    setState((prev) => ({
+      ...prev,
+      branches: prev.branches.map((branch) => ({
+        ...branch,
+        messages: branch.messages.filter((message) => message.id !== messageId ||
+          !(
+            (message.model_operation_state === "unknown" || message.model_operation_state === "requesting") &&
+            (message.operation_not_found_checks ?? 0) >= 2
+          )),
+      })),
+    }));
+  }, []);
+
+  const setJudgment = useCallback(
+    (messageId: string, verdict: "good" | "bad") => {
       mutateActive((msgs) =>
-        msgs.map((m) => (m.id === messageId ? { ...m, answer, citations, grounded } : m)),
+        msgs.map((m) => (m.id === messageId ? { ...m, judgment: verdict } : m)),
       );
     },
     [mutateActive],
@@ -203,6 +342,10 @@ export function useTalkThread(documentId: string): UseTalkThread {
     activeBranchId: state.active_branch_id,
     startTurn,
     completeTurn,
+    setModelOperationState,
+    markModelOperationNotFound,
+    abandonMissingModelOperation,
+    setJudgment,
     failTurn,
     branchFrom,
     setActiveBranch,

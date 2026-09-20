@@ -7,14 +7,16 @@ import {
   getResearchArtifactBlocks,
   type ResearchArtifactBlock,
 } from "../../lib/api";
+import { getArtifactStatus, type ArtifactStatus } from "../../api/styles";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
-import { artifactKindToBlockKind } from "../../lib/artifactBlocks";
 import {
   DRAG_MIME,
   type PaletteDragPayload,
 } from "../CreationStudio/BlockPalette";
 import LemonButton from "../../components/lemon/LemonButton";
+import StyleWheel from "./StyleWheel";
 import { useChaseDraftHandoffs } from "./chaseHandoffs";
+import { artifactKindToBlockKind } from "../../lib/artifactBlocks";
 
 /**
  * ANT-AHT SPR-AHT-06 — draggable insight/question blocks sourced from
@@ -53,13 +55,15 @@ export default function ArtifactOutlineShelf({
   investigationId,
 }: ArtifactOutlineShelfProps) {
   const [blocks, setBlocks] = useState<ResearchArtifactBlock[]>([]);
+  const [blocksLoaded, setBlocksLoaded] = useState(false);
   const [exportPath, setExportPath] = useState<string | null>(null);
-  const [twinNotesPath, setTwinNotesPath] = useState<string | null>(null);
+  const [notesPath, setNotesPath] = useState<string | null>(null);
   const [mergeIds, setMergeIds] = useState("");
   const [selectedChildIds, setSelectedChildIds] = useState<string[]>([]);
   const [selectedHandoffIds, setSelectedHandoffIds] = useState<string[]>([]);
   const [draftMergePath, setDraftMergePath] = useState<string | null>(null);
   const [draftMergeIds, setDraftMergeIds] = useState<string[]>([]);
+  const [artifactStatus, setArtifactStatus] = useState<ArtifactStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [mergeBusy, setMergeBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -83,6 +87,7 @@ export default function ArtifactOutlineShelf({
     try {
       const res = await getResearchArtifactBlocks(investigationId);
       setBlocks(res.blocks);
+      setBlocksLoaded(true);
       setErr(null);
     } catch (e) {
       setBlocks([]);
@@ -94,13 +99,30 @@ export default function ArtifactOutlineShelf({
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    getArtifactStatus(investigationId, controller.signal)
+      .then((status) => {
+        if (!controller.signal.aborted) setArtifactStatus(status);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setArtifactStatus(null);
+      });
+    return () => controller.abort();
+  }, [investigationId]);
+
   const onExport = async () => {
     setBusy(true);
     setErr(null);
     try {
       const res = await exportResearchArtifact(investigationId);
       setExportPath(res.path);
-      setTwinNotesPath(res.twin_notes_path);
+      setNotesPath(res.twin_notes_path);
+      const status = await getArtifactStatus(investigationId);
+      if (!status || status.artifact_id !== res.artifact_id) {
+        throw new Error("Export completed without a matching durable artifact identity.");
+      }
+      setArtifactStatus(status);
       await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -150,63 +172,173 @@ export default function ArtifactOutlineShelf({
     );
   };
 
-  const empty = !blocks.length && !exportPath && !err;
+  if (!blocks.length && !exportPath && !err) {
+    return (
+      <div className="border-t border-rule" data-testid="artifact-shelf-empty">
+        <div className="px-4 py-3 text-sm text-ink-mute">
+          <p className="mb-2">No outline blocks yet — export after insights land in the graph.</p>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <LemonButton size="sm" disabled={busy} onClick={() => void onExport()}>
+              Export research HTML
+            </LemonButton>
+            <a
+              href={`${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact.html`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs underline decoration-dotted underline-offset-2 text-ink-mute hover:text-ink"
+              data-testid="research-artifact-view-html"
+            >
+              View HTML
+            </a>
+            {exportPath ? (
+              <span className="truncate font-mono text-[10px] text-ink-mute" title={exportPath}>
+                {exportPath}
+              </span>
+            ) : null}
+            {notesPath ? (
+              <span className="truncate font-mono text-[10px] text-ink-mute" title={notesPath}>
+                notes: {notesPath}
+              </span>
+            ) : null}
+          </div>
+          {blocksLoaded && childOptions.length > 0 ? (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {childOptions.map((child) => (
+                <label
+                  key={child.investigation_id}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-[11px] text-ink dark:bg-charcoal-2 dark:text-bright"
+                  title={child.question ?? child.investigation_id}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedChildIds.includes(child.investigation_id)}
+                    onChange={() => toggleChild(child.investigation_id)}
+                    className="h-3 w-3 accent-sun"
+                  />
+                  <span className="truncate">{child.question ?? child.investigation_id}</span>
+                </label>
+              ))}
+            </div>
+          ) : null}
+          {blocksLoaded && handoffOptions.length > 0 ? (
+            <div className="mb-2 flex flex-col gap-1.5">
+              <span className="text-[10px] font-mono uppercase tracking-wide text-ink-mute">
+                Saved chase handoffs
+              </span>
+              {handoffOptions.map((handoff) => (
+                <label
+                  key={handoff.child_investigation_id}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-[11px] text-ink dark:bg-charcoal-2 dark:text-bright"
+                  title={handoff.source_passage}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedHandoffIds.includes(handoff.child_investigation_id)}
+                    onChange={() => toggleHandoff(handoff.child_investigation_id)}
+                    className="h-3 w-3 accent-sun"
+                  />
+                  <span className="truncate">{handoff.source_passage}</span>
+                </label>
+              ))}
+            </div>
+          ) : null}
+          {blocksLoaded ? (
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <LemonButton size="sm" disabled={mergeBusy} onClick={() => void onDraftMerge()}>
+                Draft merge
+              </LemonButton>
+              {draftMergePath ? (
+                <>
+                  <span className="truncate font-mono text-[10px] text-ink-mute" title={draftMergePath}>
+                    {draftMergePath}
+                  </span>
+                  {draftMergeIds.length >= 2 ? (
+                    <a
+                      href={draftMergeHref(draftMergeIds)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-7 items-center rounded-hog px-2 font-mono text-[12px] font-semibold text-ink hover:bg-ice-3 dark:text-bright dark:hover:bg-charcoal-1"
+                    >
+                      Open draft
+                    </a>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          {blocksLoaded && err ? (
+            <p className="text-sm text-emperor">{err}</p>
+          ) : null}
+        </div>
+        {artifactStatus ? (
+          <StyleWheel
+            key={artifactStatus.artifact_id}
+            artifactId={artifactStatus.artifact_id}
+            investigationId={artifactStatus.investigation_id}
+            initialStyle={artifactStatus.selected_style}
+          />
+        ) : null}
+      </div>
+    );
+  }
 
   return (
-    <div
-      className={`border-t border-rule px-4 py-3 ${empty ? "text-sm text-ink-mute" : ""}`}
-      data-testid={empty ? "artifact-shelf-empty" : "artifact-outline-shelf"}
-    >
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        {empty ? (
-          <p>No outline blocks yet — export after insights land in the graph.</p>
-        ) : (
+    <div className="border-t border-rule" data-testid="artifact-outline-shelf">
+      <div className="px-4 py-3">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-ink-mute">
             Write Lego · drag into outline
           </span>
-        )}
-        <LemonButton size="sm" disabled={busy} onClick={() => void onExport()}>
-          {empty ? "Export research HTML" : "Export HTML"}
-        </LemonButton>
-        {exportPath ? (
-          <span className="truncate font-mono text-[10px] text-ink-mute" title={exportPath}>
-            {exportPath}
-          </span>
-        ) : null}
-        {twinNotesPath ? (
-          <span className="truncate font-mono text-[10px] text-ink-mute" title={twinNotesPath}>
-            notes: {twinNotesPath}
-          </span>
-        ) : null}
-      </div>
-      {childOptions.length > 0 ? (
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          {childOptions.map((child) => (
-            <label
-              key={child.investigation_id}
-              className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-[11px] text-ink dark:bg-charcoal-2 dark:text-bright"
-              title={child.question ?? child.investigation_id}
-            >
-              <input
-                type="checkbox"
-                checked={selectedChildIds.includes(child.investigation_id)}
-                onChange={() => toggleChild(child.investigation_id)}
-                className="h-3 w-3 accent-sun"
-              />
-              <span className="truncate">{child.question ?? child.investigation_id}</span>
-            </label>
-          ))}
+          <LemonButton size="sm" disabled={busy} onClick={() => void onExport()}>
+            Export HTML
+          </LemonButton>
+          <a
+            href={`${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact.html`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs underline decoration-dotted underline-offset-2 text-ink-mute hover:text-ink"
+            data-testid="research-artifact-view-html"
+          >
+            View HTML
+          </a>
+          {exportPath ? (
+            <span className="truncate font-mono text-[10px] text-ink-mute" title={exportPath}>
+              {exportPath}
+            </span>
+          ) : null}
+          {notesPath ? (
+            <span className="truncate font-mono text-[10px] text-ink-mute" title={notesPath}>
+              notes: {notesPath}
+            </span>
+          ) : null}
         </div>
-      ) : null}
-      {handoffOptions.length > 0 ? (
-        <div className="mb-2 flex flex-col gap-1.5">
-          <span className="text-[10px] font-mono uppercase tracking-wide text-ink-mute">
-            Saved chase handoffs
-          </span>
-          <div className="flex flex-wrap gap-1.5">
+        {childOptions.length > 0 ? (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {childOptions.map((child) => (
+              <label
+                key={child.investigation_id}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-[11px] text-ink dark:bg-charcoal-2 dark:text-bright"
+                title={child.question ?? child.investigation_id}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedChildIds.includes(child.investigation_id)}
+                  onChange={() => toggleChild(child.investigation_id)}
+                  className="h-3 w-3 accent-sun"
+                />
+                <span className="truncate">{child.question ?? child.investigation_id}</span>
+              </label>
+            ))}
+          </div>
+        ) : null}
+        {handoffOptions.length > 0 ? (
+          <div className="mb-2 flex flex-col gap-1.5">
+            <span className="text-[10px] font-mono uppercase tracking-wide text-ink-mute">
+              Saved chase handoffs
+            </span>
             {handoffOptions.map((handoff) => (
               <label
-                key={`${handoff.parent_investigation_id}:${handoff.child_investigation_id}`}
+                key={handoff.child_investigation_id}
                 className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-[11px] text-ink dark:bg-charcoal-2 dark:text-bright"
                 title={handoff.source_passage}
               >
@@ -220,39 +352,37 @@ export default function ArtifactOutlineShelf({
               </label>
             ))}
           </div>
-        </div>
-      ) : null}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <input
-          value={mergeIds}
-          onChange={(e) => setMergeIds(e.target.value)}
-          placeholder="other research ids"
-          aria-label="Other research ids"
-          className="min-w-[180px] flex-1 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-[11px] text-ink outline-none placeholder:text-ink-mute focus:border-sun dark:bg-charcoal-2 dark:text-bright"
-        />
-        <LemonButton size="sm" disabled={mergeBusy} onClick={() => void onDraftMerge()}>
-          Draft merge
-        </LemonButton>
-        {draftMergePath ? (
-          <>
-            <span className="truncate font-mono text-[10px] text-ink-mute" title={draftMergePath}>
-              {draftMergePath}
-            </span>
-            {draftMergeIds.length >= 2 ? (
-              <a
-                href={draftMergeHref(draftMergeIds)}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-7 items-center rounded-hog px-2 font-mono text-[12px] font-semibold text-ink hover:bg-ice-3 dark:text-bright dark:hover:bg-charcoal-1"
-              >
-                Open draft
-              </a>
-            ) : null}
-          </>
         ) : null}
-      </div>
-      {err ? <p className="text-sm text-emperor">{err}</p> : null}
-      {blocks.length > 0 ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <input
+            value={mergeIds}
+            onChange={(e) => setMergeIds(e.target.value)}
+            placeholder="other research ids"
+            aria-label="Other research ids"
+            className="min-w-[180px] flex-1 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-[11px] text-ink outline-none placeholder:text-ink-mute focus:border-sun dark:bg-charcoal-2 dark:text-bright"
+          />
+          <LemonButton size="sm" disabled={mergeBusy} onClick={() => void onDraftMerge()}>
+            Draft merge
+          </LemonButton>
+          {draftMergePath ? (
+            <>
+              <span className="truncate font-mono text-[10px] text-ink-mute" title={draftMergePath}>
+                {draftMergePath}
+              </span>
+              {draftMergeIds.length >= 2 ? (
+                <a
+                  href={draftMergeHref(draftMergeIds)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-7 items-center rounded-hog px-2 font-mono text-[12px] font-semibold text-ink hover:bg-ice-3 dark:text-bright dark:hover:bg-charcoal-1"
+                >
+                  Open draft
+                </a>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+        {err ? <p className="text-sm text-emperor">{err}</p> : null}
         <ul className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
           {blocks.map((b) => (
             <li
@@ -267,6 +397,14 @@ export default function ArtifactOutlineShelf({
             </li>
           ))}
         </ul>
+      </div>
+      {artifactStatus ? (
+        <StyleWheel
+          key={`${artifactStatus.artifact_id}:${exportPath ?? "persisted"}`}
+          artifactId={artifactStatus.artifact_id}
+          investigationId={artifactStatus.investigation_id}
+          initialStyle={artifactStatus.selected_style}
+        />
       ) : null}
     </div>
   );

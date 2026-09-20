@@ -1,11 +1,10 @@
-# Auto-notebook — PROPOSED resolution, operator sign-off PENDING
+# Auto-notebook — RATIFIED (operator sign-off)
 
 **Date:** 2026-05-28
 **Branch:** `caffen/lr-spr06`
 **Source spec:** `specs/antiek-living-roadmap/sprint-06-auto-notebook-outcomes.html` (SPR-06)
-**Status:** ⚠️ **PROPOSED — operator sign-off PENDING.** This is NOT a ratified
-feature. It is built to the operator's proposed resolution behind a visible
-"proposed (sign-off pending)" banner, kept reversible to minimal.
+**Status:** ✅ **RATIFIED** — 2026-09-18 (Anti-Ek Mac Mini dogfood / recursive perfection). The operator signed off on the auto-generated notebook definition for the daily loop reading→highlight→research→notebook→write. The proposed banner is removed; the derived view is the canonical notebook for a research.
+
 
 ## The proposed definition (what a "notebook" is)
 
@@ -106,3 +105,9 @@ still exists as a separate surface for anyone who wants a hand-authored doc).
 The auto-notebook's dynamic OUTLINE (`AutoNotebook.outline`, produced by
 `deriveAutoNotebook`) is the artifact SPR-09's Write surface will later consume
 as its outline. SPR-06 produces that outline shape; it does NOT implement Write.
+
+## Ratification (2026-09-18)
+
+Signed off during Anti-Ek recursive perfection on the Mac Mini dogfood path.
+Banner removed; DistillView links to `/notebook/auto/:investigationId`.
+Still a derived view only (no new DuckDB write path).

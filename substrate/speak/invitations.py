@@ -5,14 +5,16 @@ subject's friends and family. Each link lands on consent + interview.
 This module:
 
   • generates a unique invite TOKEN per stakeholder (the
-    ``interview.antiek.ai/{interview_id}?token=`` link), reusing the
+    ``antiek.ai/speak/invite/{token}`` link — token IS the credential on
+    the unauth SpeakInvite route), reusing the
     existing ``interviews`` row for lifecycle (invited / in_progress /
     completed / declined / incomplete);
   • captures the consent scopes the invite must collect, matched to the
     project's publish intent (M4);
   • dedupes a stakeholder invited twice (same email, same project);
-  • keeps the PUBLIC open-contribution ecosystem feature-flagged off and
-    gated on G7 (M3) — it is inherently multi-user.
+  • keeps the PUBLIC open-contribution ecosystem gated on G7 (M3) via
+    ``ANTIEK_SPEAK_PUBLIC_ECOSYSTEM``; ``mint_open_contribution`` is the
+    stranger self-serve door for will_be_public projects only.
 
 Invite-link contributors are SOURCES, not accounts. They get no
 account-like state — that is exactly what G7 unlocks. Giving invitees
@@ -30,9 +32,6 @@ from .consent import ConsentScope
 from .events import SPEAK_INTERVIEW_INVITED, record_speak_event
 from .ids import new_invite_id
 from .schema import ensure_speak_schema
-
-# The invite-link host (the existing per-interview token-link pattern).
-INVITE_HOST = "interview.antiek.ai"
 
 
 class PublicEcosystemGated(RuntimeError):
@@ -52,7 +51,11 @@ class Invite:
 
     @property
     def link(self) -> str:
-        return f"https://{INVITE_HOST}/{self.interview_id}?token={self.token}"
+        # Antiek SpeakInvite door — token IS the credential (unauth route
+        # /speak/invite/:token). Prefer this over the legacy interview-host
+        # query form so PublicLane / share links never dead-end into the
+        # authed operator console (speak-private-public-spine SPR-03).
+        return f"https://antiek.ai/speak/invite/{self.token}"
 
 
 def public_ecosystem_enabled() -> bool:
@@ -166,7 +169,8 @@ def lifecycle(con: Any, project_id: str) -> list[dict[str, Any]]:
             "informant_email": r[1],
             "informant_handle": r[2],
             "status": r[3],
-            "link": (f"https://{INVITE_HOST}/{r[0]}?token={token}" if token else None),
+            "link": (f"https://antiek.ai/speak/invite/{token}" if token else None),
+            "token": token,
             "required_consent_scopes": (json.loads(r[5]) if r[5] else []),
         })
     return out
@@ -189,6 +193,57 @@ def open_public_contribution(con: Any, project_id: str) -> None:
         "UPDATE speak_projects SET invitation_mode = 'public', "
         "updated_at = CURRENT_TIMESTAMP WHERE project_id = ?",
         [project_id],
+    )
+
+
+
+
+def mint_open_contribution(con: Any, project_id: str) -> Invite:
+    """Self-serve open contribution door for a *public-intent* project (G7).
+
+    Cite: docs/decisions/speak-private-public-spine.md (SPR-03 / G7);
+    docs/decisions/anti-ek-speak-deepblu-remap-2026-09-18.md §PUSHES / public.
+
+    Hard rules:
+      • Refused unless ``public_ecosystem_enabled()`` (ANTIEK_SPEAK_PUBLIC_ECOSYSTEM).
+      • Refused unless ``publish_intent == will_be_public`` — private stays
+        invite-only (operator-minted invites); no silent cross-over.
+      • Mints a fresh invite TOKEN (source, not an account) — stranger does
+        not need a pre-shared family invite; the token remains the credential.
+      • Marks ``invitation_mode=public`` (same flip as ``open_public_contribution``).
+      • Economics unchanged: public may accrue escrow; G2/G3 still gate
+        publish/disburse. Private no-earnings UX untouched.
+    """
+    if not public_ecosystem_enabled():
+        raise PublicEcosystemGated(
+            "open contribution without a pre-minted invite is gated on G7 "
+            "(ANTIEK_SPEAK_PUBLIC_ECOSYSTEM). Private projects stay invite-only."
+        )
+    ensure_speak_schema(con)
+    row = con.execute(
+        "SELECT publish_intent, invitation_mode FROM speak_projects "
+        "WHERE project_id = ?",
+        [project_id],
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"project {project_id!r} not found")
+    publish_intent, invitation_mode = row[0], row[1]
+    if publish_intent != "will_be_public":
+        raise PublicEcosystemGated(
+            "private Speak projects stay invite-only — open contribution "
+            "applies only to will_be_public projects (spine private↔public)."
+        )
+    if invitation_mode != "public":
+        con.execute(
+            "UPDATE speak_projects SET invitation_mode = 'public', "
+            "updated_at = CURRENT_TIMESTAMP WHERE project_id = ?",
+            [project_id],
+        )
+    return invite_stakeholder(
+        con,
+        project_id=project_id,
+        informant_handle="open contributor",
+        informant_email=None,
     )
 
 

@@ -37,6 +37,7 @@ if _REPO not in sys.path:
 
 from interfaces.research.api import create_app  # noqa: E402
 from runtime.db_lock import connect_write  # noqa: E402
+from substrate.auth.magic_link import mint_session_cookie  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.graph.ops import insert_chunk, insert_document, insert_node  # noqa: E402
 from substrate.write.outline_block import list_section_blocks  # noqa: E402
@@ -54,9 +55,21 @@ def _isolated_db(tmp_path, monkeypatch):
     return db
 
 
+def _cookie(user_id: str) -> dict[str, str]:
+    value = mint_session_cookie(user_id=user_id, email=f"{user_id}@example.test")
+    return {"ANTIEK_SESSION": value}
+
+
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(create_app())
+def client(monkeypatch) -> TestClient:
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "write-route-test-secret-at-least-32-bytes")
+    monkeypatch.setenv(
+        "ANTIEK_OPERATOR_EMAIL",
+        "__operator__@example.test,user-bob@example.test",
+    )
+    test_client = TestClient(create_app())
+    test_client.cookies.update(_cookie("__operator__"))
+    return test_client
 
 
 def _read():
@@ -123,7 +136,7 @@ def test_promote_creates_deliverable_with_one_block_per_pinned_node():
     node_ids = _seed_synthesis()
     with connect_write(default_db_path(), purpose="test/promote") as con:
         result = promote_investigation_to_deliverable(
-            con, "inv-1", deliverable_kind="research_memo",
+            con, "inv-1", deliverable_kind="research_memo", owner_user_id="user-a",
         )
     assert result is not None
     assert result.block_count == 3
@@ -137,12 +150,13 @@ def test_promote_creates_deliverable_with_one_block_per_pinned_node():
     try:
         # The deliverable is linked back to its source investigation.
         drow = con.execute(
-            "SELECT deliverable_kind, investigation_root_id, title "
+            "SELECT deliverable_kind, investigation_root_id, title, owner_user_id "
             "FROM deliverables WHERE deliverable_id = ?",
             [result.deliverable_id],
         ).fetchone()
         assert drow[0] == "research_memo"
         assert drow[1] == "inv-1"
+        assert drow[3] == "user-a"
 
         blocks = list_section_blocks(con, result.section_id)
         assert len(blocks) == 3
@@ -171,7 +185,7 @@ def test_promote_flags_dangling_source_node_seeded_not_dropped():
 
     with connect_write(default_db_path(), purpose="test/promote") as con:
         result = promote_investigation_to_deliverable(
-            con, "inv-1", deliverable_kind="research_memo",
+            con, "inv-1", deliverable_kind="research_memo", owner_user_id="user-a",
         )
     assert result is not None
     assert result.block_count == 3            # all three still placed
@@ -197,6 +211,7 @@ def test_promote_returns_none_when_investigation_has_no_synthesis():
         result = promote_investigation_to_deliverable(
             con, "investigation-with-no-synthesis",
             deliverable_kind="research_memo",
+            owner_user_id="user-a",
         )
     assert result is None  # the route maps this to 404, never an empty 200
 
@@ -207,7 +222,7 @@ def test_promote_empty_synthesis_is_insufficient_evidence():
     _seed_synthesis(nodes=())
     with connect_write(default_db_path(), purpose="test/promote") as con:
         result = promote_investigation_to_deliverable(
-            con, "inv-1", deliverable_kind="research_memo",
+            con, "inv-1", deliverable_kind="research_memo", owner_user_id="user-a",
         )
     assert result is not None
     assert result.block_count == 0
@@ -223,7 +238,7 @@ def test_promote_skips_draft_synthesis_as_not_depositable():
     _seed_synthesis(status="draft")
     with connect_write(default_db_path(), purpose="test/promote") as con:
         result = promote_investigation_to_deliverable(
-            con, "inv-1", deliverable_kind="research_memo",
+            con, "inv-1", deliverable_kind="research_memo", owner_user_id="user-a",
         )
     assert result is None
 
@@ -263,7 +278,7 @@ def test_promote_picks_most_recent_by_synthesis_timestamp_not_archive_time():
             )
     with connect_write(default_db_path(), purpose="test/promote") as con:
         result = promote_investigation_to_deliverable(
-            con, "inv-1", deliverable_kind="research_memo",
+            con, "inv-1", deliverable_kind="research_memo", owner_user_id="user-a",
         )
     assert result is not None
     assert result.synthesis_id == "syn-new"  # by synthesis_timestamp, not archived_at
@@ -294,9 +309,51 @@ def test_route_promotes_end_to_end(client):
             "SELECT COUNT(*) FROM outline_blocks WHERE section_id = ?",
             [body["section_id"]],
         ).fetchone()[0]
+        owner = con.execute(
+            "SELECT owner_user_id FROM deliverables WHERE deliverable_id = ?",
+            [body["deliverable_id"]],
+        ).fetchone()[0]
     finally:
         con.close()
     assert nblocks == 3
+    assert owner == "__operator__"
+
+
+def test_route_binds_authenticated_owner(client):
+    _seed_synthesis()
+    client.cookies.update(_cookie("user-bob"))
+    response = client.post(
+        "/write/deliverables/from-investigation",
+        json={"investigation_id": "inv-1", "owner_user_id": "attacker"},
+    )
+    assert response.status_code == 201, response.text
+    result = response.json()
+    con = _read()
+    try:
+        owner = con.execute(
+            "SELECT owner_user_id FROM deliverables WHERE deliverable_id = ?",
+            [result["deliverable_id"]],
+        ).fetchone()[0]
+    finally:
+        con.close()
+    assert owner == "user-bob"
+
+
+def test_route_rejects_missing_authenticated_identity_without_writing(client):
+    _seed_synthesis()
+    client.cookies.clear()
+    response = client.post(
+        "/write/deliverables/from-investigation",
+        json={"investigation_id": "inv-1", "owner_user_id": "user-bob"},
+        headers={"X-User-Id": "user-bob", "X-Auth-Method": "antiek_session_cookie"},
+    )
+    assert response.status_code == 401
+    con = _read()
+    try:
+        count = con.execute("SELECT COUNT(*) FROM deliverables").fetchone()[0]
+    finally:
+        con.close()
+    assert count == 0
 
 
 def test_route_404_when_no_synthesis(client):

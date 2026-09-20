@@ -57,7 +57,13 @@ import dataclasses
 import json
 from typing import Any, NamedTuple
 
+from substrate.books.servability import is_servable_full_text, servability_of
 from substrate.books.serve import ServeResult, serve_full_text
+from substrate.constants import (
+    PERSONAL_READABLE_CONTENT_CLASSES,
+    PERSONAL_READING_CONTENT_CLASS,
+    SERVABLE_CONTENT_CLASSES,
+)
 from substrate.rights import (
     RightsTier,
     T3BodyServeError,
@@ -119,8 +125,16 @@ def _rights_context(con: Any, document_id: str) -> _RightsContext:
     ).fetchone()
     if row is None or row[0] is None:
         return _RightsContext(None, None, None)
+    return _rights_context_from_metadata(row[0])
+
+
+def _rights_context_from_metadata(raw_metadata: object) -> _RightsContext:
     try:
-        metadata = json.loads(row[0])
+        metadata = (
+            json.loads(raw_metadata)
+            if isinstance(raw_metadata, str)
+            else raw_metadata
+        )
     except (TypeError, ValueError, json.JSONDecodeError):
         # Unparseable metadata is not a license signal — treat as non-arXiv so
         # the tier arm is skipped and the content_class gate stands alone (it
@@ -143,6 +157,76 @@ def _rights_context(con: Any, document_id: str) -> _RightsContext:
         tier=resolve_tier(license_uri),
         arxiv_id=usable_arxiv_id,
         license_uri=license_uri if isinstance(license_uri, str) else None,
+    )
+
+
+def guard_candidate_full_text(
+    raw_text: str | None,
+    content_class: str | None,
+    metadata: object,
+    *,
+    owner: bool = False,
+    taken_down: bool = False,
+) -> str | None:
+    """Apply the stored-body serve rules before an atomic document insert.
+
+    A not-yet-persisted row has no takedown record. This function otherwise
+    mirrors the content-class and immutable-license arms used by
+    :func:`serve_full_text_guarded`, allowing writers to derive dependent
+    declarations before their single INSERT without an unguarded body path.
+    """
+    status = servability_of(content_class, taken_down=taken_down)
+    owner_readable = (
+        owner
+        and content_class == PERSONAL_READING_CONTENT_CLASS
+        and content_class in PERSONAL_READABLE_CONTENT_CLASSES
+    )
+    publicly_servable = (
+        is_servable_full_text(status)
+        and content_class in SERVABLE_CONTENT_CLASSES
+    )
+    body = raw_text if owner_readable or publicly_servable else None
+    if body is None:
+        return None
+    ctx = _rights_context_from_metadata(metadata)
+    if ctx.tier is not None and not body_servable(ctx.tier):
+        raise T3BodyServeError(
+            "RIGHTS DRIFT: candidate content_class permits a full body but "
+            f"its immutable license resolves to {ctx.tier.value}"
+        )
+    if ctx.tier is not None and ctx.arxiv_id is None:
+        raise LinkBackMissingError(
+            "LINK-BACK MISSING: candidate arXiv body has no usable arxiv_id"
+        )
+    return body
+
+
+def guard_document_candidate_full_text(
+    con: Any,
+    document_id: str,
+    content_class: str | None,
+    *,
+    owner: bool = False,
+) -> str | None:
+    """Project a proposed class over stored bytes without exposing them.
+
+    Used by the rights writer to derive the dependent twin declaration before
+    one atomic UPDATE changes both fields.
+    """
+    row = con.execute(
+        "SELECT d.raw_text, d.metadata, COALESCE(b.taken_down, FALSE) "
+        "FROM documents d LEFT JOIN book_assets b ON d.document_id=b.document_id "
+        "WHERE d.document_id=?",
+        [document_id],
+    ).fetchone()
+    if row is None:
+        return None
+    return guard_candidate_full_text(
+        None if row[0] is None else str(row[0]),
+        content_class,
+        row[1],
+        owner=owner,
+        taken_down=bool(row[2]),
     )
 
 
@@ -230,4 +314,9 @@ def serve_full_text_guarded(
     )
 
 
-__all__ = ["serve_full_text_guarded", "LinkBackMissingError"]
+__all__ = [
+    "guard_candidate_full_text",
+    "guard_document_candidate_full_text",
+    "serve_full_text_guarded",
+    "LinkBackMissingError",
+]

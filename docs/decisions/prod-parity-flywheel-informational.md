@@ -39,9 +39,10 @@ can always satisfy — they stay blocking (they are the catch that surfaced the
 original stale-SPA drift SPR-07 was built for).
 
 This does not weaken the SPR-11 signal: a dead flywheel is still surfaced loudly
-(GitHub `::warning` + stderr), and the scheduled `prod_parity.yml` probe was
-already `continue-on-error`. We removed a *false blocking* condition, not the
-*signal*.
+(GitHub `::warning` + stderr). The scheduled `prod_parity.yml` workflow preserves
+the checker's exit status for blocking SHA/provider/transport failures, while a
+dead flywheel alone still exits zero in the default mode described here. We
+removed a *false blocking* condition, not the *signal*.
 
 ## RECONSIDER-IF
 

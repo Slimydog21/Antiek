@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 
@@ -17,6 +18,10 @@ import DocumentsIndex from "./modes/DocumentsIndex";
 import Federation from "./modes/Federation";
 import Home from "./modes/Home/Home";
 import Library from "./modes/Library";
+// Link Monster is lazy-loaded: its p5 furnace-stage chunk must not
+// ship on every page load (S12 bundle budget, WP-12.2 — main index
+// chunk ceiling 700 KB gz). Only /link-monster pulls the Monster in.
+const LinkMonster = lazy(() => import("./modes/LinkMonster/LinkMonster"));
 import LibraryView from "./components/library/LibraryView";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
@@ -46,8 +51,12 @@ import Sources from "./modes/Sources";
 import SpeakConsole from "./modes/Speak";
 import SpeakIndex from "./modes/SpeakIndex";
 import SpeakInvite from "./modes/SpeakInvite";
+import SpeakPublicBrowse from "./modes/SpeakPublicBrowse";
 import Stats from "./modes/Stats";
 import TrustCenter from "./modes/TrustCenter";
+import Explain from "./modes/Explain";
+import ObjectiveCard from "./modes/ObjectiveCard";
+import Signals from "./modes/Signals";
 import WriteHome from "./modes/Write/WriteHome";
 import WrestleApp from "./modes/WrestleApp";
 
@@ -105,6 +114,14 @@ function AuthenticatedRoutes() {
             (StartResearch already serves it); see modes/Home/Home.tsx for
             the recorded, reversible routing decision. */}
         <Route path="/home" element={<Home />} />
+        <Route
+          path="/link-monster"
+          element={
+            <Suspense fallback={<div className="lm-loading">summoning the Monster…</div>}>
+              <LinkMonster />
+            </Suspense>
+          }
+        />
         <Route path="/" element={<ResearchWorkstation />} />
         <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
         {/* DRW SPR-09 — the glass-box N-research monitor (deep-research-workspace).
@@ -127,7 +144,7 @@ function AuthenticatedRoutes() {
         <Route path="/create/:deliverableId" element={<CreationStudio />} />
         <Route path="/brainstorm" element={<BrainstormStation />} />
         <Route path="/notebooks" element={<NotebooksIndex />} />
-        {/* SPR-06 — the auto-notebook (PROPOSED — sign-off pending). The
+        {/* SPR-06 — the auto-notebook (RATIFIED 2026-09-18). The
             derived, always-current narrative VIEW of one research's
             insight/question graph, behind a visible "proposed" banner. A
             REVERSIBLE leaf: removing this route + AutoNotebook.tsx reverts to
@@ -180,6 +197,14 @@ function AuthenticatedRoutes() {
             ledger, gate state from the SPR-05 gate ledger. No disbursement
             path lives here. Slots into the SPR-04 shared/operator bucket. */}
         <Route path="/coordination/cost-consent" element={<CostConsent />} />
+        {/* Own Your Mind P0 — read-only surfaces (docs/own-your-mind/
+            10-p0-implementation-brief.md). Explain is the D1 "why this
+            claim" provenance panel (kind ∈ claim | synthesis | document);
+            ObjectiveCard (C1a) + Signals (L15) are the /ops read-only
+            cards. All three are additive GET-only surfaces. */}
+        <Route path="/explain/:kind/:id" element={<Explain />} />
+        <Route path="/objective" element={<ObjectiveCard />} />
+        <Route path="/signals" element={<Signals />} />
         <Route path="/outcomes" element={<OutcomesIndex />} />
         <Route path="/outcomes/:synthesisId" element={<Outcomes />} />
         <Route path="/replay/:investigationId" element={<Replay />} />
@@ -234,6 +259,8 @@ export default function App() {
             family is a source, not an account; the URL token is their
             credential). Must precede the RequireAuth catch-all. */}
         <Route path="/speak/invite/:token" element={<SpeakInvite />} />
+        {/* Unauthenticated public remembrances browse (read-only). */}
+        <Route path="/speak/browse" element={<SpeakPublicBrowse />} />
         {/* S9 — popout panel windows render outside AppShell. The
             popout app handles its own chrome; no NavRail/Topbar/
             PanelLayout wrapping. */}

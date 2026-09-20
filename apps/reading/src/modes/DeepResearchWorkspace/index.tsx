@@ -17,7 +17,7 @@
  * not reach for Daytona.
  */
 
-import { useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useParams } from "react-router-dom";
 
 import { PanelHost } from "../../workspace/PanelHost";
@@ -31,6 +31,8 @@ import {
   launchPlan,
   preflightSourcePolicy,
   steerResearch,
+  TERMINAL_STATES,
+  type LaunchOwnerModelChoice,
   type PlanTree,
   type SourcePolicyPreflightResponse,
   type SteerKind,
@@ -38,12 +40,26 @@ import {
 import { track } from "../../lib/analytics";
 import type { DistilledNode, ResearchSourcePolicy } from "../../lib/api";
 import CostMeter from "./CostMeter";
+import HardCeilingEvidence from "./HardCeilingEvidence";
 import PlanEditor from "./PlanEditor";
+import ModelPicker from "../../components/ModelPicker";
+import {
+  fetchComposerProjection,
+  type ComposerCandidateView,
+  type ComposerModelProjection,
+} from "../../api/composerProjection";
 import ResearchPanel from "./ResearchPanel";
 import SessionSourceReceipt from "./SessionSourceReceipt";
 import Canvas from "./Canvas/Canvas";
 import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
+import { useWernerResearchReactions } from "./useWernerResearchReactions";
+import { emitWernerExperience, notifyResearchStarted } from "../../werner";
+import { wernerResearchWaitArcadeEnabled } from "../../arcade/waitArcadeFlag";
+import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
+import { deriveResearchWaitArcadeMode } from "./researchWaitArcadePolicy";
+
+const LazyResearchWaitArcade = lazy(() => import("./ResearchWaitArcade"));
 
 interface PlanState {
   rootNodeId: string;
@@ -62,6 +78,16 @@ const SOURCE_POLICY_OPTIONS: ReadonlyArray<{
   { value: "substack", label: "Substack" },
 ];
 const DEFAULT_SOURCE_POLICY: ResearchSourcePolicy[] = ["operator_corpus", "web"];
+
+const OWNER_LOOP_ONE_ROLES = [
+  "decomposer",
+  "evidence_retriever",
+  "parameter_extractor",
+  "connector",
+  "synthesizer",
+  "knowledge_extractor",
+] as const;
+
 
 export default function DeepResearchWorkspace() {
   return (
@@ -84,8 +110,12 @@ function Workspace() {
     DEFAULT_SOURCE_POLICY,
   );
   const [sourcePreflight, setSourcePreflight] = useState<SourcePolicyPreflightResponse | null>(null);
+  const [sessionGeneration, setSessionGeneration] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [projection, setProjection] = useState<ComposerModelProjection | null>(null);
+  const [projectionError, setProjectionError] = useState<string | null>(null);
+  const [modelChoice, setModelChoice] = useState<ComposerCandidateView | null>(null);
 
   const guard = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -127,14 +157,58 @@ function Workspace() {
       setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
     });
 
+  const refreshProjection = useCallback(async () => {
+    try {
+      const r = await fetchComposerProjection({
+        task: "deep_research",
+        bounded_usage: [
+          { unit: "input_token", maximum: 200_000 },
+          { unit: "output_token", maximum: 100_000 },
+        ],
+      });
+      setProjection(r);
+      setProjectionError(null);
+    } catch (e) {
+      setProjectionError(e instanceof Error ? e.message : String(e));
+      setProjection(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (plan) {
+      void refreshProjection();
+    }
+  }, [plan, refreshProjection]);
+
   const handleLaunch = () =>
     guard(async () => {
       if (!plan || !plan.launchable) return;
-      const r = await launchPlan(plan.rootNodeId, { source_policy: sourcePolicy });
+      const ownerModelChoices = modelChoice
+        ? (Object.fromEntries(
+          OWNER_LOOP_ONE_ROLES.map((role) => [
+            role,
+            {
+              authority: "user_model" as const,
+              provider_id: modelChoice.provider,
+              model_id: modelChoice.model,
+            },
+          ]),
+        ) as Record<typeof OWNER_LOOP_ONE_ROLES[number], LaunchOwnerModelChoice>)
+        : undefined;
+      const r = await launchPlan(plan.rootNodeId, {
+        source_policy: sourcePolicy,
+        ...(ownerModelChoices ? { owner_model_choices: ownerModelChoices } : {}),
+      });
       track("deep_research_cascade_launched", {
         session_id: r.session_id,
       });
+      notifyResearchStarted(r.session_id);
       setSessionId(r.session_id);
+      // Session IDs are deterministic per launch authority. A successful
+      // relaunch can therefore reuse the same ID after its prior monitor
+      // stopped polling; generation forces a fresh polling + reaction
+      // episode in that case.
+      setSessionGeneration((generation) => generation + 1);
     });
 
   const handleSourcePreflight = () =>
@@ -163,6 +237,19 @@ function Workspace() {
       {error && (
         <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-sm text-emperor">{error}</p>
       )}
+      {plan && projection && (
+        <ModelPicker
+          candidates={projection.ranked_candidates}
+          selected={modelChoice ? { provider: modelChoice.provider, model: modelChoice.model } : null}
+          onSelect={(c) => setModelChoice(c)}
+          error={projectionError}
+          note={
+            modelChoice
+              ? `Bound — "${modelChoice.provider} / ${modelChoice.model}" is submitted as owner route authority for paid Loop One roles. Launch fails closed if the route is not owner-executable.`
+              : "Auto route — no owner manifest is installed; cascade uses the default dispatch path."
+          }
+        />
+      )}
       {plan && (
         <>
           <SourcePolicyPreflightPanel
@@ -182,7 +269,14 @@ function Workspace() {
           />
         </>
       )}
-      {sessionId && <Monitor sessionId={sessionId} busy={busy} />}
+      {sessionId && (
+        <Monitor
+          key={`${sessionId}:${sessionGeneration}`}
+          sessionId={sessionId}
+          sessionGeneration={sessionGeneration}
+          busy={busy}
+        />
+      )}
     </div>
   );
 }
@@ -281,8 +375,19 @@ function ComposeBar({
   );
 }
 
-function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
+export function Monitor({ sessionId, sessionGeneration, busy }: {
+  sessionId: string;
+  sessionGeneration: number;
+  busy: boolean;
+}) {
   const session = useResearchSession(sessionId);
+  useWernerResearchReactions({
+    sessionId,
+    loading: session.loading,
+    allTerminal: session.allTerminal,
+    error: session.error,
+    researchStates: session.researches.map((research) => research.state),
+  });
   const [steering, setSteering] = useState<string | null>(null);
   // SPR-03: the "organism" canvas branch. When set to a completed
   // investigation id, the monitor swaps the live-card grid for the
@@ -296,12 +401,14 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   // uses. Non-breaking: the canvas keeps rendering underneath; the detail is an
   // overlay, dismissed back to the canvas.
   const [openNode, setOpenNode] = useState<DistilledNode | null>(null);
+  const monitorHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
   const steer = (iid: string) => async (kind: SteerKind, payload?: Record<string, unknown>) => {
     setSteering(iid);
     try {
       await steerResearch(sessionId, iid, kind, payload);
     } catch {
+      emitWernerExperience("deep_research_error");
       // The next poll reflects the authoritative state; a failed steer is
       // surfaced by the research not changing — no optimistic lie.
     } finally {
@@ -362,7 +469,7 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
         execution={session.sourcePolicyExecution}
       />
       <div className="flex items-center justify-between gap-4">
-        <h2 className="text-sm font-semibold text-ink dark:text-bright">
+        <h2 ref={monitorHeadingRef} tabIndex={-1} className="text-sm font-semibold text-ink dark:text-bright">
           {session.researches.length} researches
           {!session.allTerminal && session.researches.length > 0 && (
             <span className="ml-2 text-[11px] font-normal text-aurora">live</span>
@@ -396,6 +503,20 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
       {session.error && (
         <p className="text-[11px] text-shadow-1 dark:text-moonlight">reconnecting… ({session.error})</p>
       )}
+      {session.hardCeiling && (
+        <HardCeilingEvidence sessionId={sessionId} snapshot={session.hardCeiling} />
+      )}
+      <ResearchWaitArcadeGate
+        enabled={wernerResearchWaitArcadeEnabled}
+        episodeId={`${sessionId}:${sessionGeneration}`}
+        hasAuthoritativeSnapshot={!session.loading}
+        researchCount={session.researches.length}
+        activeResearchCount={session.researches.filter(
+          (research) => !TERMINAL_STATES.has(research.state),
+        ).length}
+        allTerminal={session.allTerminal}
+        returnFocusRef={monitorHeadingRef}
+      />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {session.researches.map((r) => (
           <ResearchPanel
@@ -408,5 +529,49 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
         ))}
       </div>
     </div>
+  );
+}
+
+export interface ResearchWaitArcadeGateProps {
+  enabled: boolean;
+  episodeId: string;
+  hasAuthoritativeSnapshot: boolean;
+  researchCount: number;
+  activeResearchCount: number;
+  allTerminal: boolean;
+  returnFocusRef: RefObject<HTMLElement | null>;
+}
+
+/** Disabled and ineligible sessions never render React.lazy. */
+export function ResearchWaitArcadeGate({
+  enabled,
+  episodeId,
+  hasAuthoritativeSnapshot,
+  researchCount,
+  activeResearchCount,
+  allTerminal,
+  returnFocusRef,
+}: ResearchWaitArcadeGateProps) {
+  const reducedMotion = usePrefersReducedMotion();
+  const eligible = activeResearchCount > 0 && deriveResearchWaitArcadeMode({
+    featureEnabled: enabled,
+    hasAuthoritativeSnapshot,
+    researchCount,
+    allTerminal,
+    reducedMotion,
+    offerReady: false,
+    optedIn: false,
+  }) !== "hidden";
+
+  if (!eligible) return null;
+  return (
+    <Suspense fallback={null}>
+      <LazyResearchWaitArcade
+        key={episodeId}
+        episodeId={episodeId}
+        activeResearchCount={activeResearchCount}
+        returnFocusRef={returnFocusRef}
+      />
+    </Suspense>
   );
 }

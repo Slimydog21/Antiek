@@ -220,6 +220,10 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     # artifact.interacted captures lifecycle only (opened/closed/dismissed).
     ARTIFACT_GENERATED = "artifact.generated"
     ARTIFACT_INTERACTED = "artifact.interacted"
+    ARTIFACT_COMMENT_CREATED = "artifact.comment.created"
+    FEEDBACK_THREAD_RESOLVED = "feedback.thread.resolved"
+    AGENT_WORK_TRANSITIONED = "agent.work.transitioned"
+    ARTIFACT_FEEDBACK_REPLIED = "artifact.feedback.replied"
 
     # ── Sprint 17-30+ additions (master-spec §11.6 + §13.5 + §13.7
     #    + §13.9). Bumped EVENT_SCHEMA_VERSION accordingly when this
@@ -424,6 +428,8 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     #    carries no source_kind/grounding fields. SiteSee READS the resolved
     #    history; it emits nothing and opens no writer of its own.
     SOURCE_READ = "source.read"
+    READ_BOOK_ANSWERED = "read.book_answered"
+    READ_BOOK_ANSWER_JUDGED = "read.book_answer_judged"
 
     # ── Meta-reading deliverable (Living Roadmap SPR-08 M4). A one-shot,
     #    READ-ONLY, page-cited synthesis over the reader's OWNED corpus, saved
@@ -486,6 +492,21 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     # WorkerIdentityPayload. Distinct from investigation.spawned_from (which
     # records a child investigation chasing a parent's open question).
     WORKER_IDENTITY = "worker.identity"
+    # ── Link Monster (link ingestion surface) ──
+    #    Emitted once per digest attempt (meal, snack, or leftover) with the
+    #    artifact counts + platform + outcome, so the trajectory shows what
+    #    the Monster ate without carrying the body (§9.0: events carry no
+    #    body — raw text lives in the documents row).
+    LINK_MONSTER_DIGESTED = "link.monster.digested"
+
+    # ── Own Your Mind P0 — served-impression audit (L8/L15, §5 of the
+    #    P0 brief). Emitted by the reading/research surfaces on render:
+    #    WHAT was shown, in which ranked position, under which ranking
+    #    version. Audit-only in P0 — NO consumer trains on it (no
+    #    position-bias self-training); the event exists so the "what was
+    #    displayed" half of the transparency promise is reconstructable
+    #    from the trajectory alone.
+    SURFACE_SERVED_IMPRESSION = "surface.served_impression"
 
 
 # Schema version stamped into every emitted row. Bump when any payload
@@ -745,12 +766,44 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v31: Phase-8 operator reviews become immutable events linked to a prior
 #     skill.patch_gate_decided event. Calibration status can now compute
 #     operator-reviewed count and agreement without mutating old trajectory rows.
-# v32: DispatchCallPayload gains an optional route_receipt object. This keeps
-#     route choice, fallback reason, candidate set, pricing-known status, and
-#     budget/cache placeholders on the canonical per-call event instead of
-#     creating a second routing ledger. Added for model-routing/Antiek-bench
-#     SPR-01 on 2026-07-09.
-EVENT_SCHEMA_VERSION: int = 32
+# v32: DispatchCallPayload gains an optional route_receipt object (model
+#     routing / Antiek-bench SPR-01) AND talk-to-book outputs become immutable,
+#     owner-scoped events; the answer event carries the actual dispatch receipt;
+#     the judgment links it without mutating the original output.
+# v33: NotDiamond outputs and their operator judgments become immutable,
+#     owner-scoped events. The answer event carries the actual dispatch receipt;
+#     the judgment links it without mutating the original output.
+# v33: NotDiamond Wave 1 SPR-02 — DISPATCH_CALL gains seven additive nd_*
+#     attribution fields so later advisory-routing hooks can join an ND
+#     recommendation to the dispatch outcome. No migration runner exists or is
+#     needed for the JSONL/Parquet event log: all fields are nullable/defaulted,
+#     and historical rows validate by schema-on-read defaults. ND remains
+#     advisory only; dispatch is still the authoritative router.
+# v34: Account-memory S2a — graph node events admit the new ``memory`` node
+#     type and graph edge events carry nullable ``owner_user_id`` so the typed
+#     event remains reconstructable with the owner-scoped edge row.
+# v35: Own Your Mind P0 §5 — surface.served_impression, the one new event
+#     type of the P0 batch. Records what the reading/research surfaces SHOWED
+#     (surface, item_kind, item_id, ranked_position, ranked_version,
+#     timestamp, user_id) so "what was displayed" is auditable from the
+#     trajectory alone (L8/L15). AUDIT-ONLY in P0: no consumer trains on it —
+#     there is deliberately no position-bias self-training path. Emitted by
+#     the surfaces on render, never by the substrate. docs/own-your-mind/
+#     10-p0-implementation-brief.md §5. 2026-08-12.
+# v36: Link Monster — new ``link.monster.digested`` action type + payload
+#     recording one link digest attempt (url, final_url, platform,
+#     document_id, outcome meal|snack|leftover, artifact counts, title,
+#     author). Body-bearing fields are counts only — never the body
+#     itself (§9.0). Backward-compatible: purely additive. 2026-08-13.
+# v37: Version-bound artifact feedback — comment creation and canonical
+#     agent-work transitions. Payloads carry identities and hashes, never
+#     private comment text or transport secrets. Purely additive. 2026-08-21.
+# v38: Agent feedback reply audit projection. The canonical private reply
+#     remains in DuckDB; the event carries only identity and digest.
+# v39: Operator feedback-thread resolution becomes an immutable audit event.
+# v40: Feedback reply audit payload distinguishes reply, decline, and approval
+#     request outcomes without exposing private message text.
+EVENT_SCHEMA_VERSION: int = 40
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -892,6 +945,17 @@ class DispatchCallPayload(_PayloadBase):
     # Model-routing/Antiek-bench SPR-01 (2026-07-09): route audit receipt.
     # Optional so legacy emitters and historical events remain valid.
     route_receipt: RouteReceipt | None = None
+    # ── NotDiamond advisory-routing attribution (ANT-ND Wave 1 SPR-02) ──
+    # Written by substrate.dispatch.nd_attribution staging when SPR-03's hook
+    # ships; read by observability/training waves. Optional/defaulted so pre-v32
+    # rows and non-ND dispatches validate unchanged. ND is never authoritative.
+    nd_session_id: str | None = None
+    nd_recommended_provider: str | None = None
+    nd_recommended_model: str | None = None
+    nd_tradeoff: str | None = None
+    nd_decision_latency_ms: int | None = Field(default=None, ge=0)
+    nd_bypassed: bool = False
+    nd_bypass_reason: str | None = None
 
 
 class WorkerIdentityPayload(_PayloadBase):
@@ -910,9 +974,7 @@ class WorkerIdentityPayload(_PayloadBase):
     parent_worker_id: str | None = None
     role: str
     session_id: str
-    spawn_kind: Literal[
-        "subprocess", "asyncio_task", "thread", "role_invocation", "variant"
-    ]
+    spawn_kind: Literal["subprocess", "asyncio_task", "thread", "role_invocation", "variant"]
     expected_lifetime_s: int | None = Field(default=None, ge=0)
     context_hash: str | None = None
 
@@ -925,8 +987,14 @@ class ContextLayer(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal[
-        "session", "long_term_skill", "reuse", "graph_evidence", "style_guide",
-        "phase_metadata", "param_version_stamp",
+        "session",
+        "working_memory",
+        "long_term_skill",
+        "reuse",
+        "graph_evidence",
+        "style_guide",
+        "phase_metadata",
+        "param_version_stamp",
     ]
     source: str
     tokens: int = Field(ge=0)
@@ -1077,7 +1145,7 @@ class ReuseGatedPayload(_PayloadBase):
 
 class DocumentLoadedPayload(_PayloadBase):
     action_type: Literal[ActionType.DOCUMENT_LOADED] = ActionType.DOCUMENT_LOADED
-    media_type: Literal["pdf", "pasted_text", "url_extracted", "markdown"]
+    media_type: Literal["pdf", "pasted_text", "url_extracted", "markdown", "html"]
     content_hash: str
     size_bytes: int = Field(ge=0)
     title: str | None = None
@@ -1134,7 +1202,9 @@ class ClaimChallengeRaisedPayload(_PayloadBase):
 
 
 class ClaimGroundingCheckPassedPayload(_PayloadBase):
-    action_type: Literal[ActionType.CLAIM_GROUNDING_CHECK_PASSED] = ActionType.CLAIM_GROUNDING_CHECK_PASSED
+    action_type: Literal[ActionType.CLAIM_GROUNDING_CHECK_PASSED] = (
+        ActionType.CLAIM_GROUNDING_CHECK_PASSED
+    )
     claim_id: str | None = None  # None for externally-supplied claims
     claim_text: str
     located_region_id: str
@@ -1142,7 +1212,9 @@ class ClaimGroundingCheckPassedPayload(_PayloadBase):
 
 
 class ClaimGroundingCheckFailedPayload(_PayloadBase):
-    action_type: Literal[ActionType.CLAIM_GROUNDING_CHECK_FAILED] = ActionType.CLAIM_GROUNDING_CHECK_FAILED
+    action_type: Literal[ActionType.CLAIM_GROUNDING_CHECK_FAILED] = (
+        ActionType.CLAIM_GROUNDING_CHECK_FAILED
+    )
     claim_id: str | None = None  # None for externally-supplied claims
     claim_text: str
     reason: Literal["absent_from_source", "paraphrased_not_stated", "out_of_scope", "ambiguous"]
@@ -1174,7 +1246,9 @@ class NoteRefinedPayload(_PayloadBase):
 
 
 class NoteCompressedDocWrittenPayload(_PayloadBase):
-    action_type: Literal[ActionType.NOTE_COMPRESSED_DOC_WRITTEN] = ActionType.NOTE_COMPRESSED_DOC_WRITTEN
+    action_type: Literal[ActionType.NOTE_COMPRESSED_DOC_WRITTEN] = (
+        ActionType.NOTE_COMPRESSED_DOC_WRITTEN
+    )
     output_path: str
     note_count: int = Field(ge=0)
     byte_size: int = Field(ge=0)
@@ -1191,7 +1265,9 @@ class QuestionIdentifiedPayload(_PayloadBase):
 
 
 class QuestionEscalatedToResearchPayload(_PayloadBase):
-    action_type: Literal[ActionType.QUESTION_ESCALATED_TO_RESEARCH] = ActionType.QUESTION_ESCALATED_TO_RESEARCH
+    action_type: Literal[ActionType.QUESTION_ESCALATED_TO_RESEARCH] = (
+        ActionType.QUESTION_ESCALATED_TO_RESEARCH
+    )
     question_id: str
     child_investigation_id: str
 
@@ -1206,7 +1282,9 @@ class QuestionResolvedByDocPayload(_PayloadBase):
 
 
 class CrossDocQuestionAnsweredPayload(_PayloadBase):
-    action_type: Literal[ActionType.CROSS_DOC_QUESTION_ANSWERED] = ActionType.CROSS_DOC_QUESTION_ANSWERED
+    action_type: Literal[ActionType.CROSS_DOC_QUESTION_ANSWERED] = (
+        ActionType.CROSS_DOC_QUESTION_ANSWERED
+    )
     question_id: str
     question_document_id: str
     answer_document_id: str
@@ -1245,11 +1323,11 @@ class UserEditDistillationPayload(_PayloadBase):
 # emerging pattern justifies it; adding a Literal value requires a
 # schema version bump if it changes the discriminator's value space.
 ArtifactKind = Literal[
-    "comparison_grid",          # N candidate distillations / framings side-by-side
+    "comparison_grid",  # N candidate distillations / framings side-by-side
     "knob_slider_exploration",  # parameter-space exploration of competing claims
-    "claim_triage",             # Linear-style triage of emergent questions or claims
-    "model_parameter_explorer", # knob-and-slider over a model's parameters
-    "other",                    # escape hatch — must be replaced with a named kind once the pattern stabilizes
+    "claim_triage",  # Linear-style triage of emergent questions or claims
+    "model_parameter_explorer",  # knob-and-slider over a model's parameters
+    "other",  # escape hatch — must be replaced with a named kind once the pattern stabilizes
 ]
 
 
@@ -1281,6 +1359,58 @@ class ArtifactInteractedPayload(_PayloadBase):
     interaction_kind: Literal["opened", "closed", "dismissed"]
 
 
+class ArtifactCommentCreatedPayload(_PayloadBase):
+    """Audit projection of one canonical, immutable-version comment."""
+
+    action_type: Literal[ActionType.ARTIFACT_COMMENT_CREATED] = ActionType.ARTIFACT_COMMENT_CREATED
+    thread_id: str
+    item_id: str
+    artifact_id: str
+    artifact_version: int = Field(gt=0)
+    artifact_content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    artifact_source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    anchor_node_id: str
+    body_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class FeedbackThreadResolvedPayload(_PayloadBase):
+    """Audit projection of an operator resolving a feedback thread."""
+
+    action_type: Literal[ActionType.FEEDBACK_THREAD_RESOLVED] = (
+        ActionType.FEEDBACK_THREAD_RESOLVED
+    )
+    thread_id: str
+    artifact_id: str
+    artifact_version: int = Field(gt=0)
+    reason: Literal["operator_resolved"] = "operator_resolved"
+
+
+class AgentWorkTransitionedPayload(_PayloadBase):
+    """Audit projection of a canonical agent-work state transition."""
+
+    action_type: Literal[ActionType.AGENT_WORK_TRANSITIONED] = ActionType.AGENT_WORK_TRANSITIONED
+    work_id: str
+    thread_id: str
+    before_state: str | None
+    after_state: str
+    attempt_no: int = Field(ge=0)
+    reason: str
+
+
+class ArtifactFeedbackRepliedPayload(_PayloadBase):
+    """Audit projection of one canonical agent feedback message."""
+
+    action_type: Literal[ActionType.ARTIFACT_FEEDBACK_REPLIED] = (
+        ActionType.ARTIFACT_FEEDBACK_REPLIED
+    )
+    work_id: str
+    thread_id: str
+    reply_item_id: str
+    attempt_no: int = Field(gt=0)
+    reply_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    result_kind: Literal["reply", "decline", "approval_request"] = "reply"
+
+
 # ── Middleware: source_tier (architecture_notes §4) ──────────────────
 
 
@@ -1289,7 +1419,9 @@ class ArtifactInteractedPayload(_PayloadBase):
 # defensible-but-fuzzy substring path; ``default`` is the conservative
 # tier-4 fallback when no signal is available.
 TierClassificationMethod = Literal[
-    "document_type_lookup", "keyword_fallback", "default",
+    "document_type_lookup",
+    "keyword_fallback",
+    "default",
 ]
 
 # Methods the per-chunk hedging downgrade may use.
@@ -1437,7 +1569,9 @@ class SubstrateManifestWrittenPayload(_PayloadBase):
     the ``synthesis_substrate_manifest`` table). The envelope's
     ``synthesis_id`` links back to the synthesis."""
 
-    action_type: Literal[ActionType.SUBSTRATE_MANIFEST_WRITTEN] = ActionType.SUBSTRATE_MANIFEST_WRITTEN
+    action_type: Literal[ActionType.SUBSTRATE_MANIFEST_WRITTEN] = (
+        ActionType.SUBSTRATE_MANIFEST_WRITTEN
+    )
     synthesis_timestamp: datetime
     manifest_rows_written: int = Field(ge=0)
     # entity_kind ('document' | 'chunk' | 'node' | 'edge') → count.
@@ -1518,6 +1652,7 @@ NodeType = Literal[
     "constraint",
     "insight",
     "question",
+    "memory",
 ]
 
 # Closed graph_scope taxonomy. Determines which traversal algorithms
@@ -1556,6 +1691,7 @@ class GraphEdgeInsertedPayload(_PayloadBase):
     source_tier: int = Field(ge=1, le=5)
     extraction_confidence: float = Field(ge=0.0, le=1.0)
     graph_scope: GraphScope
+    owner_user_id: str | None = None
 
 
 # ── Middleware: constraint_check (architecture_notes §4) ─────────────
@@ -1581,12 +1717,12 @@ ConstraintKind = Literal[
 # vocabulary verbatim so a migrated trajectory's status filters
 # (``status NOT IN ('passed', 'single_pass')``) still work unchanged.
 ConstraintLoopStatus = Literal[
-    "single_pass",            # no constraints applied; one-shot through
-    "passed",                 # iterated until all hard constraints satisfied
-    "regressed",              # violations got worse across iterations
-    "max_iterations_reached", # burned the 3-iteration budget without clearing
-    "escalated",              # preflight conflict — constraints contradictory
-    "preflight_failed",       # constraints contradictory before any iteration
+    "single_pass",  # no constraints applied; one-shot through
+    "passed",  # iterated until all hard constraints satisfied
+    "regressed",  # violations got worse across iterations
+    "max_iterations_reached",  # burned the 3-iteration budget without clearing
+    "escalated",  # preflight conflict — constraints contradictory
+    "preflight_failed",  # constraints contradictory before any iteration
 ]
 
 
@@ -1595,7 +1731,9 @@ class ConstraintViolationFoundPayload(_PayloadBase):
     event per violation per iteration — a synthesis can produce many
     of these inside a single constraint loop pass."""
 
-    action_type: Literal[ActionType.CONSTRAINT_VIOLATION_FOUND] = ActionType.CONSTRAINT_VIOLATION_FOUND
+    action_type: Literal[ActionType.CONSTRAINT_VIOLATION_FOUND] = (
+        ActionType.CONSTRAINT_VIOLATION_FOUND
+    )
     constraint_id: str
     strictness: ConstraintStrictness
     constraint_kind: ConstraintKind
@@ -1611,7 +1749,9 @@ class ConstraintRevisionTriggeredPayload(_PayloadBase):
     a downstream cohort analysis correlate which constraint kinds
     consume the most iterations."""
 
-    action_type: Literal[ActionType.CONSTRAINT_REVISION_TRIGGERED] = ActionType.CONSTRAINT_REVISION_TRIGGERED
+    action_type: Literal[ActionType.CONSTRAINT_REVISION_TRIGGERED] = (
+        ActionType.CONSTRAINT_REVISION_TRIGGERED
+    )
     iteration: int = Field(ge=0)
     triggering_constraint_ids: list[str]
 
@@ -1634,15 +1774,25 @@ class ConstraintLoopResolvedPayload(_PayloadBase):
 # cohort.py wording verbatim so migrated backtest queries work
 # unchanged once the on-disk outcomes table lands.
 ThesisOutcomeStatus = Literal[
-    "confirmed", "partially_confirmed", "disconfirmed", "unresolved",
+    "confirmed",
+    "partially_confirmed",
+    "disconfirmed",
+    "unresolved",
 ]
 ExecutionRiskSeverity = Literal[
-    "critical", "high", "moderate", "low", "none",
+    "critical",
+    "high",
+    "moderate",
+    "low",
+    "none",
 ]
 DecisionRecommendation = Literal["proceed", "pass", "conditional"]
 ActualDecision = Literal["proceed", "pass", "conditional", "not_observed"]
 ProceedOutcome = Literal[
-    "confirmed", "partially_confirmed", "disconfirmed", "not_observed",
+    "confirmed",
+    "partially_confirmed",
+    "disconfirmed",
+    "not_observed",
 ]
 
 
@@ -1920,9 +2070,7 @@ class DecomposerRegeneratedPayload(_PayloadBase):
     upstream's hard cap) but surfaces the failure mode on the
     trajectory."""
 
-    action_type: Literal[ActionType.DECOMPOSER_REGENERATED] = (
-        ActionType.DECOMPOSER_REGENERATED
-    )
+    action_type: Literal[ActionType.DECOMPOSER_REGENERATED] = ActionType.DECOMPOSER_REGENERATED
     flagged_after_regen: list[ParaphraseFlagRecord]
     still_flagged: bool
 
@@ -2274,6 +2422,11 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     source_policy: list[
         Literal["arxiv", "substack", "web", "operator_corpus"]
     ] = Field(default_factory=list)
+    owner_user_id: str | None = None
+    owner_operation_id: str | None = None
+    owner_model_choices: dict[str, dict[str, str]] | None = None
+    owner_launch_digest: str | None = None
+    owner_launch_version: int | None = Field(default=None, ge=1)
 
 
 class InvestigationChaseHaltedPayload(_PayloadBase):
@@ -2376,9 +2529,7 @@ class InvestigationCompletedPayload(_PayloadBase):
     the synthesis verdict + the constraint-loop verdict so a single
     event suffices to report outcome to a dashboard."""
 
-    action_type: Literal[ActionType.INVESTIGATION_COMPLETED] = (
-        ActionType.INVESTIGATION_COMPLETED
-    )
+    action_type: Literal[ActionType.INVESTIGATION_COMPLETED] = ActionType.INVESTIGATION_COMPLETED
     thesis_summary: str
     implicit_recommendation: SynthesisRecommendation
     constraint_loop_status: ConstraintLoopStatus
@@ -2394,9 +2545,7 @@ class InvestigationFailedPayload(_PayloadBase):
     is the diagnostic string (postcondition failure message, exception
     repr, etc.)."""
 
-    action_type: Literal[ActionType.INVESTIGATION_FAILED] = (
-        ActionType.INVESTIGATION_FAILED
-    )
+    action_type: Literal[ActionType.INVESTIGATION_FAILED] = ActionType.INVESTIGATION_FAILED
     phase: int = Field(ge=1, le=9)
     reason: str
     last_completed_phase: int | None = Field(default=None, ge=1, le=9)
@@ -2597,6 +2746,7 @@ class EvidenceRetrieveRequestedPayload(_PayloadBase):
     top_k: int = Field(default=5, ge=0)
     chunks_block: str
     subgraph_block: str
+    owner_semantic_call_id: str | None = None
 
 
 class EvidenceRetrieveDeliveredPayload(_PayloadBase):
@@ -2681,9 +2831,7 @@ class SkillPatchGateDecidedPayload(_PayloadBase):
     mutates files.
     """
 
-    action_type: Literal[ActionType.SKILL_PATCH_GATE_DECIDED] = (
-        ActionType.SKILL_PATCH_GATE_DECIDED
-    )
+    action_type: Literal[ActionType.SKILL_PATCH_GATE_DECIDED] = ActionType.SKILL_PATCH_GATE_DECIDED
     synthesis_id: str
     patch_id: str
     mode: str
@@ -2808,9 +2956,7 @@ class QualityGateEvaluatedPayload(_PayloadBase):
     visible counts on the Trust Center.
     """
 
-    action_type: Literal[ActionType.QUALITY_GATE_EVALUATED] = (
-        ActionType.QUALITY_GATE_EVALUATED
-    )
+    action_type: Literal[ActionType.QUALITY_GATE_EVALUATED] = ActionType.QUALITY_GATE_EVALUATED
     target_kind: Literal["notebook", "synthesis_page", "creator_note"]
     target_id: str
     accepted: bool
@@ -2979,9 +3125,7 @@ class VisualFrameIdentifiedPayload(_PayloadBase):
     role was asked to look at — the actual image bytes never appear
     in payloads (they live in the document store)."""
 
-    action_type: Literal[ActionType.VISUAL_FRAME_IDENTIFIED] = (
-        ActionType.VISUAL_FRAME_IDENTIFIED
-    )
+    action_type: Literal[ActionType.VISUAL_FRAME_IDENTIFIED] = ActionType.VISUAL_FRAME_IDENTIFIED
     document_id: str
     frame_source: Literal["still", "video"]
     page_or_frame_id: str
@@ -2996,9 +3140,7 @@ class VisualClaimsExtractedPayload(_PayloadBase):
     is normalized [0, 1] coords. ``frame_summary`` is the role's one-
     sentence summary."""
 
-    action_type: Literal[ActionType.VISUAL_CLAIMS_EXTRACTED] = (
-        ActionType.VISUAL_CLAIMS_EXTRACTED
-    )
+    action_type: Literal[ActionType.VISUAL_CLAIMS_EXTRACTED] = ActionType.VISUAL_CLAIMS_EXTRACTED
     document_id: str
     page_or_frame_id: str
     frame_summary: str
@@ -3014,9 +3156,7 @@ class VisualRoleFailedPayload(_PayloadBase):
     the raw model output (could leak unstructured prose) — the
     parser's error class names land here instead."""
 
-    action_type: Literal[ActionType.VISUAL_ROLE_FAILED] = (
-        ActionType.VISUAL_ROLE_FAILED
-    )
+    action_type: Literal[ActionType.VISUAL_ROLE_FAILED] = ActionType.VISUAL_ROLE_FAILED
     document_id: str
     page_or_frame_id: str
     failure_kind: Literal[
@@ -3040,9 +3180,7 @@ class SkillRulePromotedPayload(_PayloadBase):
     provenance.
     """
 
-    action_type: Literal[ActionType.SKILL_RULE_PROMOTED] = (
-        ActionType.SKILL_RULE_PROMOTED
-    )
+    action_type: Literal[ActionType.SKILL_RULE_PROMOTED] = ActionType.SKILL_RULE_PROMOTED
     rule_id: str
     rule_text: str
     rule_kind: str
@@ -3201,9 +3339,7 @@ class FetchFallbackEscalatedPayload(_PayloadBase):
     (fallback > primary) or hit a paywall/captcha (fallback ≈ primary).
     """
 
-    action_type: Literal[ActionType.FETCH_FALLBACK_ESCALATED] = (
-        ActionType.FETCH_FALLBACK_ESCALATED
-    )
+    action_type: Literal[ActionType.FETCH_FALLBACK_ESCALATED] = ActionType.FETCH_FALLBACK_ESCALATED
     url: str
     primary_fetcher: Literal["httpx"] = "httpx"
     primary_word_count: int = Field(ge=0)
@@ -3387,8 +3523,12 @@ class OutlineBlockPlacedPayload(_PayloadBase):
     deliverable_id: str
     section_id: str
     block_kind: Literal[
-        "insight", "open_question", "operator_note", "claim",
-        "user_authored", "synthesized",
+        "insight",
+        "open_question",
+        "operator_note",
+        "claim",
+        "user_authored",
+        "synthesized",
     ]
     provenance_kind: Literal["graph_node", "user_authored", "synthesized", "brainstorm"]
     node_id: str | None = None
@@ -3811,6 +3951,65 @@ class BlockPositionPayload(_PayloadBase):
     region_label: str | None = None
 
 
+# ── Reader dogfood output + operator judgment ─────────────────────────
+
+
+class BookAnswerCitation(_PayloadBase):
+    chunk_id: str
+    document_id: str
+    page_index: int | None = Field(default=None, ge=0)
+    page_resolved: bool = False
+    snippet: str = Field(max_length=241)
+
+
+class ReadBookAnsweredPayload(_PayloadBase):
+    """One durable talk-to-book output, including the real dispatch receipt."""
+
+    action_type: Literal[ActionType.READ_BOOK_ANSWERED] = ActionType.READ_BOOK_ANSWERED
+    owner_id: str = Field(min_length=1)
+    question: str = Field(min_length=1, max_length=2000)
+    answer: str = Field(min_length=1)
+    citations: list[BookAnswerCitation] = Field(default_factory=list)
+    grounded: bool
+    context_chunk_count: int = Field(ge=0)
+    research_tier: Literal["fast", "deep"]
+    provider: str | None = None
+    model: str | None = None
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    cached_input_tokens: int | None = Field(default=None, ge=0)
+    cache_creation_input_tokens: int | None = Field(default=None, ge=0)
+    cost_usd: float | None = Field(default=None, ge=0.0)
+    latency_ms: int | None = Field(default=None, ge=0)
+    dispatch_event_id: str | None = None
+
+    @model_validator(mode="after")
+    def _grounded_answer_has_dispatch_receipt(self) -> ReadBookAnsweredPayload:
+        receipt = (
+            self.provider,
+            self.model,
+            self.input_tokens,
+            self.output_tokens,
+            self.cost_usd,
+            self.latency_ms,
+        )
+        if self.grounded and any(value is None for value in receipt):
+            raise ValueError("a grounded book answer requires a dispatch receipt")
+        if not self.grounded and any(value is not None for value in receipt):
+            raise ValueError("an ungrounded no-model answer cannot claim dispatch telemetry")
+        return self
+
+
+class ReadBookAnswerJudgedPayload(_PayloadBase):
+    """The operator's append-only verdict on one captured book answer."""
+
+    action_type: Literal[ActionType.READ_BOOK_ANSWER_JUDGED] = ActionType.READ_BOOK_ANSWER_JUDGED
+    answer_id: str = Field(min_length=1)
+    owner_id: str = Field(min_length=1)
+    verdict: Literal["good", "bad"]
+    note: str | None = Field(default=None, max_length=2000)
+
+
 # ── Source read → SiteSee "read" tint (SPR-07 M4) ──────────────────────
 
 
@@ -3965,181 +4164,388 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
     target_question: str = ""
 
 
+class LinkMonsterDigestedPayload(_PayloadBase):
+    """Recorded once per Link Monster digest attempt. ``outcome`` is
+    meal (body extracted), snack (metadata only), or leftover (failed —
+    not yet emitted in v1; failures are typed API responses). Counts
+    only — never the body (§9.0)."""
+
+    action_type: Literal[ActionType.LINK_MONSTER_DIGESTED] = ActionType.LINK_MONSTER_DIGESTED
+    url: str
+    final_url: str
+    platform: str  # youtube | x | instagram | tiktok | substack | generic
+    document_id: str
+    outcome: str  # meal | snack | leftover
+    artifacts: dict[str, int] = Field(default_factory=dict)
+    title: str | None = None
+    author: str | None = None
+    duration_ms: int = Field(default=0, ge=0)
+
+
+# ── Own Your Mind P0 §5 — served-impression audit (v35 schema bump) ────────
+
+
+class SurfaceServedImpressionPayload(_PayloadBase):
+    """What the reading/research surfaces SHOWED on one render (Own Your
+    Mind P0 §5; L8/L15).
+
+    Emitted by the surfaces (not the substrate) whenever a ranked item is
+    displayed, so the "what was shown" half of the transparency promise is
+    reconstructable from the trajectory alone: the item, the ranked position
+    it held, and the ranking version that produced that position.
+
+    AUDIT-ONLY in P0. There is deliberately NO consumer that trains on this
+    event: recording what was served must not create a position-bias
+    self-training loop (the P0 brief's explicit constraint). A future
+    consumer needs its own decision record before it may read this stream.
+
+    ``ranked_position`` is the 0-based index of the item in the ranked list
+    as displayed (0 = first). ``ranked_version`` names the ranking
+    algorithm/config version that produced the order (e.g. the param
+    version string), so a later change in what the user saw is attributable
+    to a version boundary. ``timestamp`` is when the item was served —
+    display time, not item creation time. ``user_id`` scopes the record to
+    the account that saw it (multi-user readiness, mirroring the graph's
+    owner_user_id columns).
+    """
+
+    action_type: Literal[ActionType.SURFACE_SERVED_IMPRESSION] = (
+        ActionType.SURFACE_SERVED_IMPRESSION
+    )
+    # Which surface rendered the item (e.g. "research_workstation.ranked_list",
+    # "personal_space.recommendations"). Free-form surface label; the surface
+    # owns the vocabulary.
+    surface: str
+    # What kind of item was shown (e.g. "document", "chunk", "node", "claim",
+    # "synthesis", "note"). Free-form kind label; the emitting surface owns it.
+    item_kind: str
+    # The item's canonical id in its own substrate table (document_id /
+    # chunk_id / node_id / synthesis_id ...).
+    item_id: str
+    # 0-based position in the ranked list as displayed.
+    ranked_position: int = Field(ge=0)
+    # Version of the ranking algorithm/config that produced the order.
+    ranked_version: str
+    # When the item was served (display time, not item creation time).
+    timestamp: datetime
+    # The account that saw the item.
+    user_id: str
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | SkillPatchGateDecidedPayload | SkillPatchGateReviewedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    DispatchCallPayload
+    | WorkerIdentityPayload
+    | LinkMonsterDigestedPayload
+    | ContextPackAssembledPayload
+    | KnowledgeReusedPayload
+    | ReuseGatedPayload
+    | DocumentLoadedPayload
+    | DocumentRegionSelectedPayload
+    | DistillationRequestedPayload
+    | DistillationDeliveredPayload
+    | ClaimChallengeRaisedPayload
+    | ClaimGroundingCheckPassedPayload
+    | ClaimGroundingCheckFailedPayload
+    | NoteEmergedPayload
+    | NoteRefinedPayload
+    | NoteCompressedDocWrittenPayload
+    | QuestionIdentifiedPayload
+    | QuestionEscalatedToResearchPayload
+    | QuestionResolvedByDocPayload
+    | CrossDocQuestionAnsweredPayload
+    | UserAcceptDistillationPayload
+    | UserRejectDistillationPayload
+    | UserEditDistillationPayload
+    | ArtifactGeneratedPayload
+    | ArtifactInteractedPayload
+    | TierAssignedPayload
+    | TierOverriddenPayload
+    | TierRewriteBulkPayload
+    | StalenessFlaggedPayload
+    | StalenessResolvePayload
+    | SynthesisArchivedPayload
+    | SubstrateManifestWrittenPayload
+    | SupersessionApplyPayload
+    | SupersessionDismissPayload
+    | SupersessionCoexistPayload
+    | GraphNodeInsertedPayload
+    | GraphEdgeInsertedPayload
+    | ConstraintViolationFoundPayload
+    | ConstraintRevisionTriggeredPayload
+    | ConstraintLoopResolvedPayload
+    | OutcomeRecordedPayload
+    | RubricScoredPayload
+    | GroundednessScoredPayload
+    | GroundednessFailedPayload
+    | PhaseEnterPayload
+    | PhaseExitPayload
+    | PhaseVerifyPayload
+    | DecomposeQuestionRequestedPayload
+    | DecomposeQuestionDeliveredPayload
+    | DecomposerParaphraseFlaggedPayload
+    | DecomposerRegeneratedPayload
+    | MasterMdWrittenPayload
+    | MasterMdSkippedPayload
+    | SkillPatchGateDecidedPayload
+    | SkillPatchGateReviewedPayload
+    | AutoPatchAppliedPayload
+    | AutoPatchSkippedPayload
+    | EvidenceRetrieveRequestedPayload
+    | EvidenceRetrieveDeliveredPayload
+    | ParameterExtractRequestedPayload
+    | ParameterExtractDeliveredPayload
+    | ConnectorRequestedPayload
+    | ConnectorDeliveredPayload
+    | SynthesizeRequestedPayload
+    | SynthesizeDeliveredPayload
+    | AuditFindingPayload
+    | InvestigationStartRequestedPayload
+    | InvestigationCompletedPayload
+    | InvestigationFailedPayload
+    | InvestigationSpawnedFromPayload
+    | InvestigationChaseHaltedPayload
+    | ClaimAssertedByOperatorPayload
+    | PageAttributionComputedPayload
+    | RLMBridgeDecidedPayload
+    | QualityGateEvaluatedPayload
+    | CrossGraphCitationRecordedPayload
+    | RevShareDecidedPayload
+    | PreferenceObservationRecordedPayload
+    | SkillRulePromotedPayload
+    | DiscoveryProposedPayload
+    | DiscoverySelectedPayload
+    | FetchFallbackEscalatedPayload
+    | VerifierLookupPayload
+    | FederationPartnerRegisteredPayload
+    | FederationPartnerTrustedPayload
+    | FederationPartnerRevokedPayload
+    | FederationOutboundCitationEmittedPayload
+    | FederationInboundCitationAcceptedPayload
+    | FederationInboundCitationRefusedPayload
+    | VisualFrameIdentifiedPayload
+    | VisualClaimsExtractedPayload
+    | VisualRoleFailedPayload
+    | AIActionAppliedPayload
+    | AIActionUndonePayload
+    | DPRoutedPayload
+    | OutlineBlockPlacedPayload
+    | OutlineBlockMovedPayload
+    | OutlineBlockRemovedPayload
+    | BookServabilityChangedPayload
+    | BookTakenDownPayload
+    | DocumentContentClassDefaultedPayload
+    | EditCapturedPayload
+    | SectionDraftGeneratedPayload
+    | SeamResearchToReadPayload
+    | SeamReadToResearchPayload
+    | SeamReadToWritePayload
+    | SeamWriteToReadPayload
+    | SeamSpeakToWritePayload
+    | SeamSpeakToReadPayload
+    | SeamWriteToSpeakPayload
+    | VoiceCapturedPayload
+    | MarginaliaNotedPayload
+    | BlockPositionPayload
+    | SourceReadPayload
+    | ReadBookAnsweredPayload
+    | ReadBookAnswerJudgedPayload
+    | ReadMetaReadingGeneratedPayload
+    | DocumentFiledIntoInvestigationPayload
+    | SurfaceServedImpressionPayload
+    | ArtifactCommentCreatedPayload
+    | FeedbackThreadResolvedPayload
+    | AgentWorkTransitionedPayload
+    | ArtifactFeedbackRepliedPayload,
     Field(discriminator="action_type"),
 ]
 
 
 # Action types currently covered by the typed union. Read-side
 # reconstruction switches on this set: typed if member, dict otherwise.
-TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
-    ActionType.DISPATCH_CALL.value,
-    # antiek-yegge-execute SPR-01 — worker registration (future registry, SPR-04).
-    ActionType.WORKER_IDENTITY.value,
-    ActionType.CONTEXT_PACK_ASSEMBLED.value,
-    # AFF SPR-06 — flywheel reuse half.
-    ActionType.KNOWLEDGE_REUSED.value,
-    # AFF SPR-08 — trust gate on reuse (one event per excluded unit).
-    ActionType.REUSE_GATED.value,
-    ActionType.DOCUMENT_LOADED.value,
-    ActionType.DOCUMENT_REGION_SELECTED.value,
-    ActionType.DISTILLATION_REQUESTED.value,
-    ActionType.DISTILLATION_DELIVERED.value,
-    ActionType.CLAIM_CHALLENGE_RAISED.value,
-    ActionType.CLAIM_GROUNDING_CHECK_PASSED.value,
-    ActionType.CLAIM_GROUNDING_CHECK_FAILED.value,
-    ActionType.NOTE_EMERGED.value,
-    ActionType.NOTE_REFINED.value,
-    ActionType.NOTE_COMPRESSED_DOC_WRITTEN.value,
-    ActionType.QUESTION_IDENTIFIED.value,
-    ActionType.QUESTION_ESCALATED_TO_RESEARCH.value,
-    ActionType.QUESTION_RESOLVED_BY_DOC.value,
-    ActionType.CROSS_DOC_QUESTION_ANSWERED.value,
-    ActionType.USER_ACCEPT_DISTILLATION.value,
-    ActionType.USER_REJECT_DISTILLATION.value,
-    ActionType.USER_EDIT_DISTILLATION.value,
-    ActionType.ARTIFACT_GENERATED.value,
-    ActionType.ARTIFACT_INTERACTED.value,
-    ActionType.GRAPH_TIER_ASSIGNED.value,
-    ActionType.GRAPH_TIER_OVERRIDDEN.value,
-    ActionType.TIER_REWRITE_BULK.value,
-    ActionType.GRAPH_STALENESS_FLAGGED.value,
-    ActionType.STALENESS_RESOLVE.value,
-    ActionType.SYNTHESIS_ARCHIVED.value,
-    ActionType.SUBSTRATE_MANIFEST_WRITTEN.value,
-    ActionType.SUPERSESSION_APPLY.value,
-    ActionType.SUPERSESSION_DISMISS.value,
-    ActionType.SUPERSESSION_COEXIST.value,
-    ActionType.GRAPH_NODE_INSERTED.value,
-    ActionType.GRAPH_EDGE_INSERTED.value,
-    ActionType.CONSTRAINT_VIOLATION_FOUND.value,
-    ActionType.CONSTRAINT_REVISION_TRIGGERED.value,
-    ActionType.CONSTRAINT_LOOP_RESOLVED.value,
-    ActionType.OUTCOME_RECORDED.value,
-    ActionType.RUBRIC_SCORED.value,
-    # Foundation v2 SPR-02 — groundedness eval (truth axis) + the failure
-    # event that replaces the Phase-6 except-pass swallow.
-    ActionType.GROUNDEDNESS_SCORED.value,
-    ActionType.GROUNDEDNESS_FAILED.value,
-    ActionType.PHASE_ENTER.value,
-    ActionType.PHASE_EXIT.value,
-    ActionType.PHASE_VERIFY.value,
-    ActionType.DECOMPOSE_QUESTION_REQUESTED.value,
-    ActionType.DECOMPOSE_QUESTION_DELIVERED.value,
-    ActionType.DECOMPOSER_PARAPHRASE_FLAGGED.value,
-    ActionType.DECOMPOSER_REGENERATED.value,
-    ActionType.MASTER_MD_WRITTEN.value,
-    ActionType.MASTER_MD_SKIPPED.value,
-    ActionType.SKILL_PATCH_GATE_DECIDED.value,
-    ActionType.SKILL_PATCH_GATE_REVIEWED.value,
-    ActionType.AUTO_PATCH_APPLIED.value,
-    ActionType.AUTO_PATCH_SKIPPED.value,
-    ActionType.EVIDENCE_RETRIEVE_REQUESTED.value,
-    ActionType.EVIDENCE_RETRIEVE_DELIVERED.value,
-    ActionType.PARAMETER_EXTRACT_REQUESTED.value,
-    ActionType.PARAMETER_EXTRACT_DELIVERED.value,
-    ActionType.CONNECTOR_REQUESTED.value,
-    ActionType.CONNECTOR_DELIVERED.value,
-    ActionType.SYNTHESIZE_REQUESTED.value,
-    ActionType.SYNTHESIZE_DELIVERED.value,
-    ActionType.AUDIT_FINDING_EMITTED.value,
-    ActionType.INVESTIGATION_START_REQUESTED.value,
-    ActionType.INVESTIGATION_COMPLETED.value,
-    ActionType.INVESTIGATION_FAILED.value,
-    ActionType.INVESTIGATION_SPAWNED_FROM.value,
-    ActionType.INVESTIGATION_CHASE_HALTED.value,
-    ActionType.CLAIM_ASSERTED_BY_OPERATOR.value,
-    ActionType.PAGE_ATTRIBUTION_COMPUTED.value,
-    ActionType.RLM_BRIDGE_DECIDED.value,
-    ActionType.QUALITY_GATE_EVALUATED.value,
-    ActionType.CROSS_GRAPH_CITATION_RECORDED.value,
-    ActionType.REV_SHARE_DECIDED.value,
-    ActionType.PREFERENCE_OBSERVATION_RECORDED.value,
-    ActionType.SKILL_RULE_PROMOTED.value,
-    # Sprint 18 — Exa/Browserbase substrate-only precursor.
-    ActionType.DISCOVERY_PROPOSED.value,
-    ActionType.DISCOVERY_SELECTED.value,
-    ActionType.FETCH_FALLBACK_ESCALATED.value,
-    # Wedge 3 — verifier-tier external corroboration primitive.
-    ActionType.VERIFIER_LOOKUP.value,
-    # Sprint 30+ thread 1 — federation audit trail.
-    ActionType.FEDERATION_PARTNER_REGISTERED.value,
-    ActionType.FEDERATION_PARTNER_TRUSTED.value,
-    ActionType.FEDERATION_PARTNER_REVOKED.value,
-    ActionType.FEDERATION_OUTBOUND_CITATION_EMITTED.value,
-    ActionType.FEDERATION_INBOUND_CITATION_ACCEPTED.value,
-    ActionType.FEDERATION_INBOUND_CITATION_REFUSED.value,
-    # Sprint 30+ thread 4 — visual role audit trail.
-    ActionType.VISUAL_FRAME_IDENTIFIED.value,
-    ActionType.VISUAL_CLAIMS_EXTRACTED.value,
-    ActionType.VISUAL_ROLE_FAILED.value,
-    # PostHog Wedge 4 — AI sidecar undoable actions.
-    ActionType.AI_ACTION_APPLIED.value,
-    ActionType.AI_ACTION_UNDONE.value,
-    # DP shuffler production routing.
-    ActionType.DP_ROUTED.value,
-    # Write workflow SPR-01 — outline composition audit trail.
-    ActionType.OUTLINE_BLOCK_PLACED.value,
-    ActionType.OUTLINE_BLOCK_MOVED.value,
-    ActionType.OUTLINE_BLOCK_REMOVED.value,
-    # Write workflow SPR-02 — edit capture.
-    ActionType.EDIT_CAPTURED.value,
-    # Write workflow SPR-09 — draft provenance persistence (X-ray).
-    ActionType.SECTION_DRAFT_GENERATED.value,
-    # Personal-Reading Lane SPR-01 — deny-by-default ingest classification.
-    ActionType.DOCUMENT_CONTENT_CLASS_DEFAULTED.value,
-    # antiek-unified SPR-03 — cross-workflow seam handoffs.
-    ActionType.SEAM_RESEARCH_TO_READ.value,
-    ActionType.SEAM_READ_TO_RESEARCH.value,
-    ActionType.SEAM_READ_TO_WRITE.value,
-    ActionType.SEAM_WRITE_TO_READ.value,
-    ActionType.SEAM_SPEAK_TO_WRITE.value,
-    ActionType.SEAM_SPEAK_TO_READ.value,
-    ActionType.SEAM_WRITE_TO_SPEAK.value,
-    # Living Roadmap SPR-14 — voice-in capture provenance.
-    ActionType.VOICE_CAPTURED.value,
-    # Living Roadmap SPR-04 — highlight → float-menu user NOTE provenance.
-    ActionType.MARGINALIA_NOTED.value,
-    # Living Roadmap SPR-03 — block-canvas position persistence.
-    ActionType.BLOCK_POSITIONED.value,
-    # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
-    ActionType.SOURCE_READ.value,
-    # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
-    ActionType.READ_META_READING_GENERATED.value,
-    # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.
-    ActionType.DOCUMENT_FILED_INTO_INVESTIGATION.value,
-})
+TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset(
+    {
+        ActionType.DISPATCH_CALL.value,
+        # antiek-yegge-execute SPR-01 — worker registration (future registry, SPR-04).
+        ActionType.WORKER_IDENTITY.value,
+        # Link Monster — one digest attempt per link (meal/snack/leftover).
+        ActionType.LINK_MONSTER_DIGESTED.value,
+        ActionType.CONTEXT_PACK_ASSEMBLED.value,
+        # AFF SPR-06 — flywheel reuse half.
+        ActionType.KNOWLEDGE_REUSED.value,
+        # AFF SPR-08 — trust gate on reuse (one event per excluded unit).
+        ActionType.REUSE_GATED.value,
+        ActionType.DOCUMENT_LOADED.value,
+        ActionType.DOCUMENT_REGION_SELECTED.value,
+        ActionType.DISTILLATION_REQUESTED.value,
+        ActionType.DISTILLATION_DELIVERED.value,
+        ActionType.CLAIM_CHALLENGE_RAISED.value,
+        ActionType.CLAIM_GROUNDING_CHECK_PASSED.value,
+        ActionType.CLAIM_GROUNDING_CHECK_FAILED.value,
+        ActionType.NOTE_EMERGED.value,
+        ActionType.NOTE_REFINED.value,
+        ActionType.NOTE_COMPRESSED_DOC_WRITTEN.value,
+        ActionType.QUESTION_IDENTIFIED.value,
+        ActionType.QUESTION_ESCALATED_TO_RESEARCH.value,
+        ActionType.QUESTION_RESOLVED_BY_DOC.value,
+        ActionType.CROSS_DOC_QUESTION_ANSWERED.value,
+        ActionType.USER_ACCEPT_DISTILLATION.value,
+        ActionType.USER_REJECT_DISTILLATION.value,
+        ActionType.USER_EDIT_DISTILLATION.value,
+        ActionType.ARTIFACT_GENERATED.value,
+        ActionType.ARTIFACT_INTERACTED.value,
+        ActionType.ARTIFACT_COMMENT_CREATED.value,
+        ActionType.FEEDBACK_THREAD_RESOLVED.value,
+        ActionType.AGENT_WORK_TRANSITIONED.value,
+        ActionType.ARTIFACT_FEEDBACK_REPLIED.value,
+        ActionType.GRAPH_TIER_ASSIGNED.value,
+        ActionType.GRAPH_TIER_OVERRIDDEN.value,
+        ActionType.TIER_REWRITE_BULK.value,
+        ActionType.GRAPH_STALENESS_FLAGGED.value,
+        ActionType.STALENESS_RESOLVE.value,
+        ActionType.SYNTHESIS_ARCHIVED.value,
+        ActionType.SUBSTRATE_MANIFEST_WRITTEN.value,
+        ActionType.SUPERSESSION_APPLY.value,
+        ActionType.SUPERSESSION_DISMISS.value,
+        ActionType.SUPERSESSION_COEXIST.value,
+        ActionType.GRAPH_NODE_INSERTED.value,
+        ActionType.GRAPH_EDGE_INSERTED.value,
+        ActionType.CONSTRAINT_VIOLATION_FOUND.value,
+        ActionType.CONSTRAINT_REVISION_TRIGGERED.value,
+        ActionType.CONSTRAINT_LOOP_RESOLVED.value,
+        ActionType.OUTCOME_RECORDED.value,
+        ActionType.RUBRIC_SCORED.value,
+        # Foundation v2 SPR-02 — groundedness eval (truth axis) + the failure
+        # event that replaces the Phase-6 except-pass swallow.
+        ActionType.GROUNDEDNESS_SCORED.value,
+        ActionType.GROUNDEDNESS_FAILED.value,
+        ActionType.PHASE_ENTER.value,
+        ActionType.PHASE_EXIT.value,
+        ActionType.PHASE_VERIFY.value,
+        ActionType.DECOMPOSE_QUESTION_REQUESTED.value,
+        ActionType.DECOMPOSE_QUESTION_DELIVERED.value,
+        ActionType.DECOMPOSER_PARAPHRASE_FLAGGED.value,
+        ActionType.DECOMPOSER_REGENERATED.value,
+        ActionType.MASTER_MD_WRITTEN.value,
+        ActionType.MASTER_MD_SKIPPED.value,
+        ActionType.SKILL_PATCH_GATE_DECIDED.value,
+        ActionType.SKILL_PATCH_GATE_REVIEWED.value,
+        ActionType.AUTO_PATCH_APPLIED.value,
+        ActionType.AUTO_PATCH_SKIPPED.value,
+        ActionType.EVIDENCE_RETRIEVE_REQUESTED.value,
+        ActionType.EVIDENCE_RETRIEVE_DELIVERED.value,
+        ActionType.PARAMETER_EXTRACT_REQUESTED.value,
+        ActionType.PARAMETER_EXTRACT_DELIVERED.value,
+        ActionType.CONNECTOR_REQUESTED.value,
+        ActionType.CONNECTOR_DELIVERED.value,
+        ActionType.SYNTHESIZE_REQUESTED.value,
+        ActionType.SYNTHESIZE_DELIVERED.value,
+        ActionType.AUDIT_FINDING_EMITTED.value,
+        ActionType.INVESTIGATION_START_REQUESTED.value,
+        ActionType.INVESTIGATION_COMPLETED.value,
+        ActionType.INVESTIGATION_FAILED.value,
+        ActionType.INVESTIGATION_SPAWNED_FROM.value,
+        ActionType.INVESTIGATION_CHASE_HALTED.value,
+        ActionType.CLAIM_ASSERTED_BY_OPERATOR.value,
+        ActionType.PAGE_ATTRIBUTION_COMPUTED.value,
+        ActionType.RLM_BRIDGE_DECIDED.value,
+        ActionType.QUALITY_GATE_EVALUATED.value,
+        ActionType.CROSS_GRAPH_CITATION_RECORDED.value,
+        ActionType.REV_SHARE_DECIDED.value,
+        ActionType.PREFERENCE_OBSERVATION_RECORDED.value,
+        ActionType.SKILL_RULE_PROMOTED.value,
+        # Sprint 18 — Exa/Browserbase substrate-only precursor.
+        ActionType.DISCOVERY_PROPOSED.value,
+        ActionType.DISCOVERY_SELECTED.value,
+        ActionType.FETCH_FALLBACK_ESCALATED.value,
+        # Wedge 3 — verifier-tier external corroboration primitive.
+        ActionType.VERIFIER_LOOKUP.value,
+        # Sprint 30+ thread 1 — federation audit trail.
+        ActionType.FEDERATION_PARTNER_REGISTERED.value,
+        ActionType.FEDERATION_PARTNER_TRUSTED.value,
+        ActionType.FEDERATION_PARTNER_REVOKED.value,
+        ActionType.FEDERATION_OUTBOUND_CITATION_EMITTED.value,
+        ActionType.FEDERATION_INBOUND_CITATION_ACCEPTED.value,
+        ActionType.FEDERATION_INBOUND_CITATION_REFUSED.value,
+        # Sprint 30+ thread 4 — visual role audit trail.
+        ActionType.VISUAL_FRAME_IDENTIFIED.value,
+        ActionType.VISUAL_CLAIMS_EXTRACTED.value,
+        ActionType.VISUAL_ROLE_FAILED.value,
+        # PostHog Wedge 4 — AI sidecar undoable actions.
+        ActionType.AI_ACTION_APPLIED.value,
+        ActionType.AI_ACTION_UNDONE.value,
+        # DP shuffler production routing.
+        ActionType.DP_ROUTED.value,
+        # Write workflow SPR-01 — outline composition audit trail.
+        ActionType.OUTLINE_BLOCK_PLACED.value,
+        ActionType.OUTLINE_BLOCK_MOVED.value,
+        ActionType.OUTLINE_BLOCK_REMOVED.value,
+        # Read workflow SPR-01 — servable-corpus legal gate (v14 schema bump).
+        ActionType.BOOK_SERVABILITY_CHANGED.value,
+        ActionType.BOOK_TAKEN_DOWN.value,
+        # Write workflow SPR-02 — edit capture.
+        ActionType.EDIT_CAPTURED.value,
+        # Write workflow SPR-09 — draft provenance persistence (X-ray).
+        ActionType.SECTION_DRAFT_GENERATED.value,
+        # Personal-Reading Lane SPR-01 — deny-by-default ingest classification.
+        ActionType.DOCUMENT_CONTENT_CLASS_DEFAULTED.value,
+        # antiek-unified SPR-03 — cross-workflow seam handoffs.
+        ActionType.SEAM_RESEARCH_TO_READ.value,
+        ActionType.SEAM_READ_TO_RESEARCH.value,
+        ActionType.SEAM_READ_TO_WRITE.value,
+        ActionType.SEAM_WRITE_TO_READ.value,
+        ActionType.SEAM_SPEAK_TO_WRITE.value,
+        ActionType.SEAM_SPEAK_TO_READ.value,
+        ActionType.SEAM_WRITE_TO_SPEAK.value,
+        # Living Roadmap SPR-14 — voice-in capture provenance.
+        ActionType.VOICE_CAPTURED.value,
+        # Living Roadmap SPR-04 — highlight → float-menu user NOTE provenance.
+        ActionType.MARGINALIA_NOTED.value,
+        # Living Roadmap SPR-03 — block-canvas position persistence.
+        ActionType.BLOCK_POSITIONED.value,
+        # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
+        ActionType.SOURCE_READ.value,
+        ActionType.READ_BOOK_ANSWERED.value,
+        ActionType.READ_BOOK_ANSWER_JUDGED.value,
+        # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
+        ActionType.READ_META_READING_GENERATED.value,
+        # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.
+        ActionType.DOCUMENT_FILED_INTO_INVESTIGATION.value,
+        # Own Your Mind P0 §5 — served-impression audit (v35 schema bump).
+        ActionType.SURFACE_SERVED_IMPRESSION.value,
+    }
+)
 
 
 # Wrestling action types that REQUIRE document_id on the Event envelope.
 # Enforced by the Event model_validator below.
-WRESTLING_ACTION_TYPES: frozenset[str] = frozenset({
-    ActionType.DOCUMENT_LOADED.value,
-    ActionType.DOCUMENT_REGION_SELECTED.value,
-    ActionType.DISTILLATION_REQUESTED.value,
-    ActionType.DISTILLATION_DELIVERED.value,
-    ActionType.CLAIM_CHALLENGE_RAISED.value,
-    ActionType.CLAIM_GROUNDING_CHECK_PASSED.value,
-    ActionType.CLAIM_GROUNDING_CHECK_FAILED.value,
-    ActionType.NOTE_EMERGED.value,
-    ActionType.NOTE_REFINED.value,
-    ActionType.NOTE_COMPRESSED_DOC_WRITTEN.value,
-    ActionType.QUESTION_IDENTIFIED.value,
-    ActionType.QUESTION_ESCALATED_TO_RESEARCH.value,
-    ActionType.QUESTION_RESOLVED_BY_DOC.value,
-    ActionType.USER_ACCEPT_DISTILLATION.value,
-    ActionType.USER_REJECT_DISTILLATION.value,
-    ActionType.USER_EDIT_DISTILLATION.value,
-    # CROSS_DOC_QUESTION_ANSWERED is NOT in this set — it spans two
-    # documents, both of which live in the payload. The envelope's
-    # document_id is left null for this variant.
-})
+WRESTLING_ACTION_TYPES: frozenset[str] = frozenset(
+    {
+        ActionType.DOCUMENT_LOADED.value,
+        ActionType.DOCUMENT_REGION_SELECTED.value,
+        ActionType.DISTILLATION_REQUESTED.value,
+        ActionType.DISTILLATION_DELIVERED.value,
+        ActionType.CLAIM_CHALLENGE_RAISED.value,
+        ActionType.CLAIM_GROUNDING_CHECK_PASSED.value,
+        ActionType.CLAIM_GROUNDING_CHECK_FAILED.value,
+        ActionType.NOTE_EMERGED.value,
+        ActionType.NOTE_REFINED.value,
+        ActionType.NOTE_COMPRESSED_DOC_WRITTEN.value,
+        ActionType.QUESTION_IDENTIFIED.value,
+        ActionType.QUESTION_ESCALATED_TO_RESEARCH.value,
+        ActionType.QUESTION_RESOLVED_BY_DOC.value,
+        ActionType.USER_ACCEPT_DISTILLATION.value,
+        ActionType.USER_REJECT_DISTILLATION.value,
+        ActionType.USER_EDIT_DISTILLATION.value,
+        # CROSS_DOC_QUESTION_ANSWERED is NOT in this set — it spans two
+        # documents, both of which live in the payload. The envelope's
+        # document_id is left null for this variant.
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -4179,7 +4585,11 @@ class Event(BaseModel):
         # the check works whether action_type was passed as the enum or as
         # the underlying string (use_enum_values=True converts to str on
         # serialization but Pydantic stores the enum during validation).
-        top = self.action_type.value if isinstance(self.action_type, ActionType) else str(self.action_type)
+        top = (
+            self.action_type.value
+            if isinstance(self.action_type, ActionType)
+            else str(self.action_type)
+        )
         pl = self.payload.action_type
         pl_str = pl.value if isinstance(pl, ActionType) else str(pl)
         if top != pl_str:
@@ -4191,7 +4601,11 @@ class Event(BaseModel):
 
     @model_validator(mode="after")
     def _check_wrestling_requires_document_id(self) -> Event:
-        at = self.action_type.value if isinstance(self.action_type, ActionType) else str(self.action_type)
+        at = (
+            self.action_type.value
+            if isinstance(self.action_type, ActionType)
+            else str(self.action_type)
+        )
         if at in WRESTLING_ACTION_TYPES and not self.document_id:
             raise ValueError(
                 f"Event with action_type {at!r} is a wrestling-loop event and requires "
@@ -4259,6 +4673,10 @@ __all__ = [
     # Artifacts (Layer 4)
     "ArtifactGeneratedPayload",
     "ArtifactInteractedPayload",
+    "ArtifactCommentCreatedPayload",
+    "FeedbackThreadResolvedPayload",
+    "AgentWorkTransitionedPayload",
+    "ArtifactFeedbackRepliedPayload",
     # Middleware: source_tier
     "TierClassificationMethod",
     "TierAdjustmentMethod",
@@ -4423,9 +4841,14 @@ __all__ = [
     "BlockPositionPayload",
     # Source read → SiteSee "read" tint SPR-07 (v20 schema bump)
     "SourceReadPayload",
+    "BookAnswerCitation",
+    "ReadBookAnsweredPayload",
+    "ReadBookAnswerJudgedPayload",
     # Meta-reading deliverable → re-openable Read asset SPR-08 (v21 schema bump)
     "MetaReadingCitation",
     "ReadMetaReadingGeneratedPayload",
     # Filing a personal-space doc into a research project SPR-13 (v22 bump)
     "DocumentFiledIntoInvestigationPayload",
+    # Own Your Mind P0 — served-impression audit (v35 schema bump)
+    "SurfaceServedImpressionPayload",
 ]

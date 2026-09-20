@@ -36,19 +36,22 @@ The three load-bearing properties (rigor #3 degenerate inputs are tested):
    "page not pinpointed — open the book" rather than a fabricated page.
 
 §16: the answer is generated through the ONE Hermes-routed dispatch path
-(``substrate.dispatch.router.dispatch``), with the curated fast/deep research
-tier choosing WHICH registered provider the primary prefers (a per-call
-override, not a second runtime). No new ASR/LLM/TTS host.
+(``substrate.dispatch.router.dispatch``) as the ``thought_partner`` role — the
+SAME role Surface E / AISidecar / FloatMenu Dialogue use — so TalkToBook is
+not a second partner personality. Book-scoped retrieval + page citations stay
+on ``/books/{id}/ask`` (dual structure: one role, book-grounded path). The
+curated fast/deep research tier chooses WHICH registered provider the primary
+prefers (a per-call override, not a second runtime). No new ASR/LLM/TTS host.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from substrate.dispatch.research_tier import resolve_research_tier
-from substrate.dispatch.router import dispatch
+from substrate.dispatch.router import DispatchResult, dispatch
 from substrate.graph.search import EmbeddingModel, search
 
 from .page_anchor import page_index_from_section_path
@@ -94,13 +97,67 @@ class BookAnswer:
     """A talk-to-book turn result. ``answer`` is MODEL-generated prose;
     ``citations`` anchor its claims back into the book. ``grounded`` is False
     when there was no extractable text to retrieve — the honest no-context
-    state (the model was NOT asked to answer ungrounded)."""
+    state (the model was NOT asked to answer ungrounded). ``shape`` is the
+    thought_partner response shape (challenge|synthesis|extension) when a
+    model ran; None on the no-context branch."""
 
     answer: str
     citations: list[Citation]
     grounded: bool
     # Diagnostic: how many of the book's chunks were retrieved for this turn.
     context_chunk_count: int = 0
+    # None only on the deliberate no-context branch where no model was called.
+    dispatch_result: DispatchResult | None = None
+    authority_digest: str | None = None
+    # thought_partner shape — same vocabulary as POST /thought-partner.
+    shape: str | None = None
+
+
+def _chunks_as_selected_notes(
+    context_chunks: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Map book-scoped retrieval hits to thought_partner ``selected_notes``.
+
+    Same shape ``_retrieve_thought_partner_context`` / Surface E use — so the
+    role sees one vocabulary whether notes came from the library graph or
+    this open book's passages.
+    """
+    notes: list[dict[str, Any]] = []
+    for ch in context_chunks:
+        page_index = page_index_from_section_path(ch.get("section_path"))
+        page_tag = (
+            f"page {page_index + 1}" if page_index is not None else "page not marked"
+        )
+        body = (ch.get("chunk_text") or "").strip()
+        notes.append({
+            "note_id": ch.get("chunk_id") or "",
+            "note_text": f"({page_tag}) {body}".strip(),
+            "source_event_ids": [ch["document_id"]] if ch.get("document_id") else [],
+            "confidence": float(ch.get("similarity") or 0.0),
+        })
+    return notes
+
+
+def _display_answer_from_tp(parsed: Any, raw: str) -> str:
+    """Prefer structured thought_partner fields for the reader-facing answer.
+
+    TalkToBook is multi-turn prose in the bookmark; dumping raw JSON would
+    feel like a different partner. Shape still travels separately.
+    """
+    shape = getattr(parsed, "shape", "synthesis")
+    if shape == "challenge" and parsed.challenges:
+        return "\n".join(c.condition for c in parsed.challenges)
+    if shape == "extension" and parsed.extensions:
+        lines = []
+        for e in parsed.extensions:
+            line = e.sub_question
+            if e.rationale:
+                line = f"{line} — {e.rationale}"
+            lines.append(line)
+        return "\n".join(lines)
+    if parsed.synthesis and parsed.synthesis.text.strip():
+        return str(parsed.synthesis.text.strip())
+    return (raw or "").strip()
 
 
 def _build_prompt(
@@ -110,30 +167,42 @@ def _build_prompt(
     history: Sequence[Turn],
     context_chunks: Sequence[dict[str, Any]],
 ) -> str:
-    """Assemble the dispatch prompt: the running conversation (bounded) + the
-    gated book context + the new question. The model is instructed to answer
-    ONLY from the provided book passages and to refuse rather than invent —
-    the no-context branch never reaches here (see ``answer_book_question``)."""
-    parts: list[str] = []
-    title = book_title or "this book"
-    parts.append(
-        f"You are answering a reader's questions about the book “{title}”. "
-        "Answer ONLY from the book passages provided below. If the passages do "
-        "not contain the answer, say so plainly — do not invent facts or cite "
-        "anything not in the passages."
+    """Assemble a thought_partner prompt over THIS book's passages.
+
+    Dual structure: book-scoped retrieval stays here; the ROLE is the shared
+    ``thought_partner`` (Surface E / sidecar / Dialogue). History is folded
+    into the user prompt so multi-turn TalkToBook still works.
+    """
+    from roles.thought_partner import (
+        THOUGHT_PARTNER_SYSTEM_PROMPT,
+        compose_thought_partner_prompt,
     )
+
+    title = book_title or "this book"
+    user_bits: list[str] = [
+        f"The reader is in the book “{title}”. Answer ONLY from the selected "
+        "notes (passages of this book). If they do not contain the answer, say "
+        "so plainly — do not invent. Prefer SYNTHESIS for direct questions; "
+        "use CHALLENGE / EXTENSION when the reader asks what could go wrong or "
+        "what to look into next.",
+    ]
     if history:
-        parts.append("\nThe conversation so far:")
+        user_bits.append("Conversation so far:")
         for t in history[-MAX_HISTORY_TURNS:]:
-            parts.append(f"Reader: {t.question}")
-            parts.append(f"You: {t.answer}")
-    parts.append("\nBook passages (each tagged with its page when known):")
-    for i, ch in enumerate(context_chunks, start=1):
-        page_index = page_index_from_section_path(ch.get("section_path"))
-        page_tag = f"page {page_index + 1}" if page_index is not None else "page not marked"
-        parts.append(f"[{i}] ({page_tag}) {ch.get('chunk_text', '')}")
-    parts.append(f"\nThe reader's question: {question}")
-    return "\n".join(parts)
+            user_bits.append(f"Reader: {t.question}")
+            user_bits.append(f"You: {t.answer}")
+    user_bits.append(f"Reader's question: {question}")
+    role_prompt = compose_thought_partner_prompt(
+        user_prompt="\n".join(user_bits),
+        selected_notes=_chunks_as_selected_notes(context_chunks),
+    )
+    return (
+        THOUGHT_PARTNER_SYSTEM_PROMPT
+        + "\n\nBOOK-SCOPED CONTEXT: selected notes are passages from the open "
+        "book only (TalkToBook path). Cite note_ids; page tags are in the note "
+        "text.\n\n"
+        + role_prompt
+    )
 
 
 def _citations_from_chunks(context_chunks: Sequence[dict[str, Any]]) -> list[Citation]:
@@ -168,6 +237,7 @@ def answer_book_question(
     top_k: int = DEFAULT_QA_TOP_K,
     config: Any | None = None,
     policy_tag: str = "attribution_eligible",
+    authorized_dispatch: Callable[[str], tuple[DispatchResult, str]] | None = None,
 ) -> BookAnswer:
     """Answer one talk-to-book turn, page-cited, gate-safe.
 
@@ -229,18 +299,28 @@ def answer_book_question(
         history=history,
         context_chunks=context_chunks,
     )
-    target = resolve_research_tier(research_tier)
-    result = dispatch(
-        prompt,
-        role="user_agent",
-        investigation_id=investigation_id,
-        provider_override=target.provider,
-        model_override=target.model,
-        config=config,
-    )
+    authority_digest: str | None = None
+    if authorized_dispatch is None:
+        target = resolve_research_tier(research_tier)
+        result = dispatch(
+            prompt,
+            role="thought_partner",
+            investigation_id=investigation_id,
+            provider_override=target.provider,
+            model_override=target.model,
+            config=config,
+        )
+    else:
+        result, authority_digest = authorized_dispatch(prompt)
+    from roles.thought_partner import parse_thought_partner_response
+
+    parsed = parse_thought_partner_response(result.text)
     return BookAnswer(
-        answer=result.text,
+        answer=_display_answer_from_tp(parsed, result.text),
         citations=_citations_from_chunks(context_chunks),
         grounded=True,
         context_chunk_count=len(context_chunks),
+        dispatch_result=result,
+        authority_digest=authority_digest,
+        shape=parsed.shape,
     )

@@ -29,6 +29,15 @@ from .style_guide import (
     should_run_style_extractor,
     style_extractor_enabled,
 )
+from .working_memory import (
+    MAX_WORKING_MEMORY_ITEM_BYTES,
+    MAX_WORKING_MEMORY_ITEM_CHARS,
+    MAX_WORKING_MEMORY_ITEMS,
+    MAX_WORKING_MEMORY_RENDERED_BYTES,
+    MAX_WORKING_MEMORY_RENDERED_CHARS,
+    WorkingMemoryIntegrityError,
+    build_working_memory_layer,
+)
 
 __all__ = [
     "assemble_context_pack",
@@ -53,4 +62,11 @@ __all__ = [
     "style_extractor_enabled",
     "should_run_style_extractor",
     "maybe_style_guide_layer",
+    "MAX_WORKING_MEMORY_ITEMS",
+    "MAX_WORKING_MEMORY_ITEM_BYTES",
+    "MAX_WORKING_MEMORY_ITEM_CHARS",
+    "MAX_WORKING_MEMORY_RENDERED_BYTES",
+    "MAX_WORKING_MEMORY_RENDERED_CHARS",
+    "WorkingMemoryIntegrityError",
+    "build_working_memory_layer",
 ]

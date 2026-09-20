@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Selectable Multimedia Coverage</title></head>
+<body><main>
+<h1>Select and combine generated learning arcs</h1>
+<p><strong>Status:</strong> executable sub-spec. <strong>Parent:</strong> Multimedia SPR-02 Curriculum and Storyboard Planner.</p>
+<h2>Outcome</h2>
+<p>After reviewing a no-spend multimedia plan, the operator can keep one generated coverage arc, combine several, choose overview, intermediate, or deep treatment, and persist a focused draft. The original draft remains available for comparison.</p>
+<h2>Contract</h2>
+<ul>
+<li><code>CreateMultimediaDraftRequest</code> transports <code>depth</code> and ordered <code>selected_arc_ids</code> into the existing deterministic planner.</li>
+<li>Arc identifiers must be non-empty, unique, and members of the planner's supported arc registry. Invalid input is rejected; it never falls back to default coverage.</li>
+<li>The persisted plan is the only source for suggestion identity, selected state, evidence count, teaching outcome, and tradeoff copy.</li>
+<li>A focused draft is a new asset. It does not mutate, overwrite, or imply approval of the reviewed draft, and it makes no provider call.</li>
+</ul>
+<h2>Interaction</h2>
+<ul>
+<li>Generated arcs use checkboxes because selection is combinable. Depth uses a three-way segmented radio control.</li>
+<li>The focused-draft command is disabled when no arc is selected, another command is active, or knowledge finalization is mutating.</li>
+<li>Reopening a persisted asset restores its chosen arcs and depth from the validated plan projection.</li>
+</ul>
+<h2>Acceptance</h2>
+<ul>
+<li>One and multiple supported arcs survive store persistence and reopen in the submitted order.</li>
+<li>Duplicate and unknown arc IDs fail validation.</li>
+<li>The workstation submits the exact checked IDs and selected depth.</li>
+<li>Malformed persisted plan identity remains fail-closed through the existing projection guard.</li>
+<li>Focused planning performs no Krea, TTS, render, authorization, budget, graph, twin, publication, merge, or deploy operation.</li>
+</ul>
+<section id="harness-hint" data-pattern="adversarial-verification"><h2>Harness hint</h2><p>Refute silent defaults, duplicate IDs, stale selection after asset switches, and accidental provider execution.</p></section>
+</main></body></html>

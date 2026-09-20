@@ -101,17 +101,17 @@ CREATE TABLE IF NOT EXISTS chunks (
 CREATE TABLE IF NOT EXISTS nodes (
     node_id          TEXT PRIMARY KEY,
     canonical_label  TEXT NOT NULL,
-    -- DRW SPR-01 adds 'insight' + 'question' (the two atomic units of
-    -- distilled truth). Fresh DBs created from this constant get them
-    -- directly; pre-existing prod DBs are upgraded by
-    -- migrate_v9_insight_question (DuckDB cannot ALTER a CHECK in place,
-    -- so that migration rebuilds the table). Keep this list in lock-step
-    -- with substrate/schemas/events.NodeType and the rebuilt-table CHECK
-    -- in migrate_v9_insight_question._NODES_REBUILD_SQL.
+    -- DRW SPR-01 adds 'insight' + 'question'; account-memory S2a adds
+    -- 'memory'. Fresh DBs created from this constant get all three directly;
+    -- pre-existing databases are upgraded by migrate_v9_insight_question and
+    -- the operator-gated migrate_v10_account_memory respectively. DuckDB cannot
+    -- ALTER a CHECK in place, so both migrations rebuild the table. Keep this
+    -- list in lock-step with substrate/schemas/events.NodeType and the latest
+    -- rebuilt-table CHECK.
     node_type        TEXT NOT NULL CHECK (node_type IN (
         'entity', 'organization', 'person', 'property',
         'metric', 'mechanism', 'claim', 'method', 'constraint',
-        'insight', 'question'
+        'insight', 'question', 'memory'
     )),
     embedding        FLOAT[],
     graph_scope      TEXT NOT NULL CHECK (graph_scope IN (
@@ -119,7 +119,8 @@ CREATE TABLE IF NOT EXISTS nodes (
     )),
     created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     degree_cached    INTEGER NOT NULL DEFAULT 0,
-    metadata         TEXT
+    metadata         TEXT,
+    owner_user_id    TEXT
 );
 
 -- ============================================================
@@ -144,7 +145,10 @@ CREATE TABLE IF NOT EXISTS edges (
         'depth', 'cross_domain', 'constraint'
     )),
     investigation_id       TEXT,
-    metadata               TEXT
+    metadata               TEXT,
+    -- Account-memory S2a: temporal memory edges are owner-scoped as well as
+    -- their endpoint nodes. Nullable preserves legacy graph rows.
+    owner_user_id          TEXT
 );
 
 -- ============================================================
@@ -347,12 +351,22 @@ CREATE INDEX IF NOT EXISTS idx_interviews_status ON interviews(status);
 
 # Tables this schema creates. Used by tests + the diagnostic CLI.
 SCHEMA_TABLES: tuple[str, ...] = (
-    "documents", "chunks", "nodes", "edges",
-    "syntheses", "synthesis_substrate_manifest",
-    "outcomes", "chunk_tier_overrides",
-    "deliverables", "deliverable_sections", "section_blocks",
-    "interview_projects", "interviews",
-    "ip_holders", "notebooks", "notebook_blocks",
+    "documents",
+    "chunks",
+    "nodes",
+    "edges",
+    "syntheses",
+    "synthesis_substrate_manifest",
+    "outcomes",
+    "chunk_tier_overrides",
+    "deliverables",
+    "deliverable_sections",
+    "section_blocks",
+    "interview_projects",
+    "interviews",
+    "ip_holders",
+    "notebooks",
+    "notebook_blocks",
     "discovery_cache",
     "url_alias",
     "discovery_summary",
@@ -361,6 +375,18 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "monitors",
     "supersession_candidates",
     "embeddings_meta",
+    "multimedia_twin_runs",
+    "multimedia_distillation_claims",
+    "derived_assets",
+    "derived_asset_revisions",
+    "derived_asset_revision_members",
+    "derived_asset_current_revisions",
+    "write_event_outbox",
+    "event_consumer_events",
+    "event_consumer_receipts",
+    "event_consumer_frontiers",
+    "note_taker_configurations",
+    "note_taker_windows",
 )
 
 
@@ -417,8 +443,37 @@ CREATE INDEX IF NOT EXISTS idx_ip_holders_status ON ip_holders(status);
 --   'user_public_contribution'      → user-posted to public graph (§13.9)
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_class TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS ip_holder_id TEXT;
-CREATE INDEX IF NOT EXISTS idx_documents_content_class ON documents(content_class);
-CREATE INDEX IF NOT EXISTS idx_documents_ip_holder ON documents(ip_holder_id);
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS owner_user_id TEXT;
+-- Do not secondary-index mutable columns on the documents FK parent. DuckDB
+-- cannot update such a column once chunks/book_assets reference the row, even
+-- when the index is dropped inside the surrounding transaction. Older
+-- databases may already carry these indexes, so initialization removes them.
+DROP INDEX IF EXISTS idx_documents_content_class;
+DROP INDEX IF EXISTS idx_documents_ip_holder;
+CREATE INDEX IF NOT EXISTS idx_nodes_owner ON nodes(owner_user_id);
+
+CREATE TABLE IF NOT EXISTS multimedia_twin_runs (
+    run_id               TEXT PRIMARY KEY,
+    owner_user_id        TEXT NOT NULL,
+    source_document_id   TEXT NOT NULL REFERENCES documents(document_id),
+    source_html_sha256   TEXT NOT NULL,
+    source_event_id      TEXT NOT NULL,
+    distillation_json    TEXT NOT NULL,
+    distillation_sha256  TEXT NOT NULL,
+    created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS multimedia_distillation_claims (
+    run_id               TEXT PRIMARY KEY,
+    owner_user_id        TEXT NOT NULL,
+    source_document_id   TEXT NOT NULL REFERENCES documents(document_id),
+    source_html_sha256   TEXT NOT NULL,
+    source_event_id      TEXT NOT NULL,
+    claim_token          TEXT NOT NULL,
+    status               TEXT NOT NULL CHECK (status IN ('in_progress', 'completed')),
+    created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at         TIMESTAMP
+);
 
 -- ============================================================
 -- notebooks — Wedge 2 linchpin (Sprint 18-19, §4.2)
@@ -1145,6 +1200,861 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_meta_fingerprint
 """
 
 
+# Safe derived-asset merge (SDAM SPR-00).
+#
+# "Merge" is defined as a new revision of an operator-owned derived asset.
+# Source rows (documents.raw_text), projection rows, and compose snapshots
+# have no write method in this subsystem. The evidence boundary is frozen
+# before any merge implementation lands.
+#
+# The container, immutable revisions, ordered evidence-member manifests, and
+# mutable current pointer are separate tables. Composite foreign keys make it
+# impossible to bind a parent, restore source, member, or pointer across assets.
+# Future repositories own append-only/CAS behavior; routes never own DDL.
+#
+# docs/decisions/safe-derived-asset-merge-boundary.md is the binding record.
+ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL = """
+-- ============================================================
+-- derived_assets — operator-owned derived asset (SDAM SPR-00)
+-- ============================================================
+-- Stable ownership and display identity only. Revision state is elsewhere.
+CREATE TABLE IF NOT EXISTS derived_assets (
+    derived_asset_id    TEXT PRIMARY KEY,
+    title               TEXT NOT NULL,
+    asset_kind          TEXT NOT NULL CHECK (asset_kind IN (
+        'document', 'analysis', 'synthesis', 'composite'
+    )),
+    owner_user_id       TEXT NOT NULL,
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata_json       TEXT                 -- JSON; VARIANT deferred
+);
+CREATE INDEX IF NOT EXISTS idx_derived_assets_owner
+    ON derived_assets(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_derived_assets_kind
+    ON derived_assets(asset_kind);
+
+-- ============================================================
+-- derived_asset_revisions — immutable revision content (SDAM SPR-00)
+-- ============================================================
+-- Canonical revision authority. canonical_html is the exact reviewed byte source;
+-- its UTF-8 hash and the ordered member-manifest hash are persisted together.
+CREATE TABLE IF NOT EXISTS derived_asset_revisions (
+    derived_asset_id          TEXT NOT NULL
+        REFERENCES derived_assets(derived_asset_id),
+    revision_id               TEXT NOT NULL,
+    operation_kind            TEXT NOT NULL CHECK (operation_kind IN (
+        'create', 'revise', 'restore'
+    )),
+    canonical_html            TEXT NOT NULL,
+    canonical_byte_count      BIGINT NOT NULL
+        CHECK (canonical_byte_count = octet_length(encode(canonical_html))),
+    content_sha256            TEXT NOT NULL
+        CHECK (
+            regexp_full_match(content_sha256, '[0-9a-f]{64}')
+            AND content_sha256 = sha256(canonical_html)
+        ),
+    manifest_json             TEXT NOT NULL,
+    manifest_sha256           TEXT NOT NULL
+        CHECK (
+            regexp_full_match(manifest_sha256, '[0-9a-f]{64}')
+            AND manifest_sha256 = sha256(manifest_json)
+        ),
+    sanitizer_policy          TEXT NOT NULL,
+    sanitizer_version         TEXT NOT NULL,
+    review_id                 TEXT NOT NULL,
+    acknowledgement_version   TEXT NOT NULL,
+    parent_revision_id        TEXT,
+    restored_from_revision_id TEXT,
+    created_at                TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata_json             TEXT,
+    PRIMARY KEY (derived_asset_id, revision_id),
+    UNIQUE (revision_id),
+    UNIQUE (derived_asset_id, revision_id, content_sha256),
+    UNIQUE (
+        derived_asset_id, revision_id, content_sha256, manifest_sha256
+    ),
+    FOREIGN KEY (derived_asset_id, parent_revision_id)
+        REFERENCES derived_asset_revisions(derived_asset_id, revision_id),
+    FOREIGN KEY (
+        derived_asset_id, restored_from_revision_id,
+        content_sha256, manifest_sha256
+    ) REFERENCES derived_asset_revisions(
+        derived_asset_id, revision_id, content_sha256, manifest_sha256
+    ),
+    CHECK (
+        (operation_kind = 'create' AND parent_revision_id IS NULL
+            AND restored_from_revision_id IS NULL)
+        OR (operation_kind = 'revise' AND parent_revision_id IS NOT NULL
+            AND restored_from_revision_id IS NULL)
+        OR (operation_kind = 'restore' AND parent_revision_id IS NOT NULL
+            AND restored_from_revision_id IS NOT NULL)
+    )
+);
+CREATE INDEX IF NOT EXISTS idx_derived_asset_revisions_asset
+    ON derived_asset_revisions(derived_asset_id);
+CREATE INDEX IF NOT EXISTS idx_derived_asset_revisions_parent
+    ON derived_asset_revisions(parent_revision_id);
+-- ============================================================
+-- derived_asset_revision_members — ordered immutable evidence manifest
+-- ============================================================
+CREATE TABLE IF NOT EXISTS derived_asset_revision_members (
+    derived_asset_id TEXT NOT NULL
+        REFERENCES derived_assets(derived_asset_id),
+    revision_id      TEXT NOT NULL,
+    member_index     INTEGER NOT NULL CHECK (member_index >= 0),
+    projection_id    TEXT NOT NULL,
+    source_asset_id  TEXT NOT NULL,
+    source_document_id TEXT NOT NULL,
+    source_sha256    TEXT NOT NULL
+        CHECK (regexp_full_match(source_sha256, '[0-9a-f]{64}')),
+    hosted_html_sha256 TEXT NOT NULL
+        CHECK (regexp_full_match(hosted_html_sha256, '[0-9a-f]{64}')),
+    investigation_id TEXT,
+    PRIMARY KEY (derived_asset_id, revision_id, member_index),
+    UNIQUE (derived_asset_id, revision_id, projection_id),
+    FOREIGN KEY (derived_asset_id, revision_id)
+        REFERENCES derived_asset_revisions(derived_asset_id, revision_id)
+);
+
+-- ============================================================
+-- derived_asset_current_revisions — sole mutable CAS pointer
+-- ============================================================
+CREATE TABLE IF NOT EXISTS derived_asset_current_revisions (
+    derived_asset_id    TEXT PRIMARY KEY
+        REFERENCES derived_assets(derived_asset_id),
+    current_revision_id TEXT NOT NULL,
+    current_content_sha256 TEXT NOT NULL
+        CHECK (regexp_full_match(current_content_sha256, '[0-9a-f]{64}')),
+    generation          BIGINT NOT NULL CHECK (generation >= 1),
+    updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (derived_asset_id, current_revision_id)
+        REFERENCES derived_asset_revisions(derived_asset_id, revision_id),
+    FOREIGN KEY (
+        derived_asset_id, current_revision_id, current_content_sha256
+    ) REFERENCES derived_asset_revisions(
+        derived_asset_id, revision_id, content_sha256
+    )
+);
+"""
+
+
+ANTIEK_GRAPH_SCHEMA_V17_WRITE_EVENT_OUTBOX_SQL = """
+CREATE SEQUENCE IF NOT EXISTS write_event_outbox_sequence START 1;
+CREATE TABLE IF NOT EXISTS write_event_outbox (
+    outbox_sequence BIGINT PRIMARY KEY DEFAULT nextval('write_event_outbox_sequence'),
+    event_id TEXT NOT NULL UNIQUE,
+    operation_id TEXT NOT NULL UNIQUE,
+    investigation_id TEXT NOT NULL,
+    aggregate_kind TEXT NOT NULL,
+    aggregate_id TEXT NOT NULL,
+    event_json TEXT NOT NULL,
+    event_sha256 TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'delivered')),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    delivered_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_write_event_outbox_pending
+    ON write_event_outbox(investigation_id, state, outbox_sequence);
+"""
+
+_V17_OUTBOX_COLUMNS = {
+    "outbox_sequence",
+    "event_id",
+    "operation_id",
+    "investigation_id",
+    "aggregate_kind",
+    "aggregate_id",
+    "event_json",
+    "event_sha256",
+    "state",
+    "attempt_count",
+    "created_at",
+    "delivered_at",
+}
+
+
+# V20 — one same-row declaration for every canonical document's recursive
+# twin obligation. Existing rows remain NULL until the locked backfill derives
+# declarations from their stored bytes; the completeness verifier rejects NULL.
+ANTIEK_GRAPH_SCHEMA_V20_TWIN_SOURCE_ENVELOPE_SQL = """
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS twin_source_envelope TEXT;
+"""
+
+
+# Doc→HTML S1 — document_reader_html: the reader-HTML SIDECAR for URL/PDF/arXiv
+# docs. The html_body is the OUTPUT OF substrate.books.html_sanitizer only
+# (sanitize-on-write, same discipline as book_import/publish.py); the
+# sanitizer_version column is stamped by substrate.reader_html.store
+# (store_reader_html) at the SAME write that ran the sanitizer, and
+# serve_reader_html refuses to emit the body AS HTML unless it equals the
+# current SANITIZER_VERSION exactly. Hard FK to documents (a sidecar row only
+# ever exists for an existing document; the URL replace path updates the
+# documents row in place, never deletes it, so the FK never blocks that path).
+# This table is the ONLY trust carrier for reader bodies — documents.metadata
+# is deliberately NOT stamped (the §5.2 hazard: serve.py would then label the
+# markdown raw_text as content_format="html"). Pure idempotent CREATE IF NOT
+# EXISTS; FK-references documents, no table references this one.
+ANTIEK_GRAPH_SCHEMA_V21_READER_HTML_SQL = """
+CREATE TABLE IF NOT EXISTS document_reader_html (
+    document_id       TEXT PRIMARY KEY REFERENCES documents(document_id),
+    html_body         TEXT NOT NULL,          -- sanitize_book_html output ONLY; raw bytes never stored
+    sanitizer_version TEXT NOT NULL,          -- == SANITIZER_VERSION at the sanitize call
+    source_kind       TEXT NOT NULL,          -- 'url' | 'pdf' | 'arxiv' | 'upload_html' | 'upload_md' | 'upload_txt'
+    source_url        TEXT,
+    captured_at       TIMESTAMP NOT NULL,
+    edited_at         TIMESTAMP,              -- NULL = pristine capture
+    revision          INTEGER NOT NULL DEFAULT 1
+);
+"""
+
+
+ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL = """
+CREATE TABLE IF NOT EXISTS event_consumer_events (
+    consumer_name TEXT NOT NULL,
+    consumer_version INTEGER NOT NULL,
+    investigation_id TEXT NOT NULL,
+    logical_ordinal BIGINT NOT NULL CHECK (logical_ordinal >= 0),
+    event_id TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    normalized_sha256 TEXT NOT NULL CHECK (regexp_full_match(normalized_sha256, '[0-9a-f]{64}')),
+    resolution TEXT NOT NULL CHECK (resolution IN ('succeeded', 'quarantined', 'unsupported')),
+    chain_sha256 TEXT NOT NULL CHECK (regexp_full_match(chain_sha256, '[0-9a-f]{64}')),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (consumer_name, consumer_version, event_id),
+    UNIQUE (consumer_name, consumer_version, investigation_id, logical_ordinal)
+);
+CREATE INDEX IF NOT EXISTS idx_event_consumer_events_investigation
+    ON event_consumer_events(consumer_name, consumer_version, investigation_id);
+
+CREATE TABLE IF NOT EXISTS event_consumer_receipts (
+    consumer_name TEXT NOT NULL,
+    consumer_version INTEGER NOT NULL,
+    investigation_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    normalized_sha256 TEXT NOT NULL CHECK (regexp_full_match(normalized_sha256, '[0-9a-f]{64}')),
+    status TEXT NOT NULL CHECK (status IN ('succeeded', 'quarantined')),
+    output_ref TEXT,
+    error_class TEXT,
+    error_digest TEXT,
+    attempt_count INTEGER NOT NULL CHECK (attempt_count >= 1),
+    processed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (status = 'succeeded' AND output_ref IS NOT NULL
+            AND error_class IS NULL AND error_digest IS NULL)
+        OR
+        (status = 'quarantined' AND output_ref IS NULL
+            AND error_class IS NOT NULL AND error_digest IS NOT NULL)
+    ),
+    PRIMARY KEY (consumer_name, consumer_version, event_id)
+);
+CREATE INDEX IF NOT EXISTS idx_event_consumer_receipts_investigation
+    ON event_consumer_receipts(consumer_name, consumer_version, investigation_id);
+
+CREATE TABLE IF NOT EXISTS event_consumer_frontiers (
+    consumer_name TEXT NOT NULL,
+    consumer_version INTEGER NOT NULL,
+    investigation_id TEXT NOT NULL,
+    next_ordinal BIGINT NOT NULL CHECK (next_ordinal >= 0),
+    chain_sha256 TEXT,
+    snapshot_generation TEXT,
+    snapshot_row_count BIGINT NOT NULL DEFAULT 0 CHECK (snapshot_row_count >= 0),
+    next_snapshot_row_offset BIGINT NOT NULL DEFAULT 0 CHECK (next_snapshot_row_offset >= 0),
+    jsonl_byte_offset BIGINT NOT NULL DEFAULT 0 CHECK (jsonl_byte_offset >= 0),
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (next_ordinal = 0 AND chain_sha256 IS NULL)
+        OR (next_ordinal > 0 AND regexp_full_match(chain_sha256, '[0-9a-f]{64}'))
+    ),
+    CHECK (next_snapshot_row_offset <= snapshot_row_count),
+    PRIMARY KEY (consumer_name, consumer_version, investigation_id)
+);
+"""
+
+ANTIEK_GRAPH_SCHEMA_V20_NOTE_TAKER_REPLAY_SQL = """
+CREATE TABLE IF NOT EXISTS note_taker_configurations (
+    consumer_version INTEGER NOT NULL,
+    investigation_id TEXT NOT NULL,
+    threshold INTEGER NOT NULL CHECK (threshold > 0),
+    prompt_sha256 TEXT NOT NULL CHECK (regexp_full_match(prompt_sha256, '[0-9a-f]{64}')),
+    configuration_sha256 TEXT NOT NULL
+        CHECK (regexp_full_match(configuration_sha256, '[0-9a-f]{64}')),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (consumer_version, investigation_id)
+);
+
+CREATE TABLE IF NOT EXISTS note_taker_windows (
+    window_id TEXT PRIMARY KEY,
+    consumer_version INTEGER NOT NULL,
+    investigation_id TEXT NOT NULL,
+    threshold INTEGER NOT NULL CHECK (threshold > 0),
+    ordinal BIGINT NOT NULL CHECK (ordinal >= 0),
+    first_event_id TEXT NOT NULL,
+    last_event_id TEXT NOT NULL,
+    source_event_ids_json TEXT NOT NULL,
+    source_digest TEXT NOT NULL CHECK (regexp_full_match(source_digest, '[0-9a-f]{64}')),
+    request_json TEXT NOT NULL,
+    request_sha256 TEXT NOT NULL CHECK (regexp_full_match(request_sha256, '[0-9a-f]{64}')),
+    provider_idempotency_key TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN (
+        'prepared', 'calling', 'result_stored', 'materialized', 'completed', 'uncertain'
+    )),
+    raw_result TEXT,
+    raw_result_sha256 TEXT,
+    provider TEXT,
+    model TEXT,
+    policy_id TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    uncertainty_reason TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (consumer_version, investigation_id, threshold, ordinal),
+    UNIQUE (consumer_version, investigation_id, source_digest),
+    CHECK (
+        (state IN ('prepared', 'calling') AND raw_result IS NULL
+            AND raw_result_sha256 IS NULL)
+        OR (state IN ('result_stored', 'materialized', 'completed')
+            AND raw_result IS NOT NULL
+            AND regexp_full_match(raw_result_sha256, '[0-9a-f]{64}'))
+        OR (state = 'uncertain')
+    ),
+    CHECK (
+        (state = 'uncertain' AND uncertainty_reason IS NOT NULL)
+        OR (state <> 'uncertain' AND uncertainty_reason IS NULL)
+    )
+);
+CREATE INDEX IF NOT EXISTS idx_note_taker_windows_recovery
+    ON note_taker_windows(investigation_id, consumer_version, state, ordinal);
+"""
+
+_V20_NOTE_TAKER_COLUMNS = {
+    "window_id",
+    "consumer_version",
+    "investigation_id",
+    "threshold",
+    "ordinal",
+    "first_event_id",
+    "last_event_id",
+    "source_event_ids_json",
+    "source_digest",
+    "request_json",
+    "request_sha256",
+    "provider_idempotency_key",
+    "state",
+    "raw_result",
+    "raw_result_sha256",
+    "provider",
+    "model",
+    "policy_id",
+    "attempt_count",
+    "uncertainty_reason",
+    "created_at",
+    "updated_at",
+}
+
+_V20_NOTE_TAKER_REQUIRED_SHAPE = {
+    "window_id": ("VARCHAR", "NO", "PRI", None),
+    "consumer_version": ("INTEGER", "NO", "UNI", None),
+    "investigation_id": ("VARCHAR", "NO", "UNI", None),
+    "threshold": ("INTEGER", "NO", "UNI", None),
+    "ordinal": ("BIGINT", "NO", "UNI", None),
+    "first_event_id": ("VARCHAR", "NO", None, None),
+    "last_event_id": ("VARCHAR", "NO", None, None),
+    "source_event_ids_json": ("VARCHAR", "NO", None, None),
+    "source_digest": ("VARCHAR", "NO", "UNI", None),
+    "request_json": ("VARCHAR", "NO", None, None),
+    "request_sha256": ("VARCHAR", "NO", None, None),
+    "provider_idempotency_key": ("VARCHAR", "NO", None, None),
+    "state": ("VARCHAR", "NO", None, None),
+    "raw_result": ("VARCHAR", "YES", None, None),
+    "raw_result_sha256": ("VARCHAR", "YES", None, None),
+    "provider": ("VARCHAR", "YES", None, None),
+    "model": ("VARCHAR", "YES", None, None),
+    "policy_id": ("VARCHAR", "YES", None, None),
+    "attempt_count": ("INTEGER", "NO", None, "0"),
+    "uncertainty_reason": ("VARCHAR", "YES", None, None),
+    "created_at": ("TIMESTAMP", "NO", None, "CURRENT_TIMESTAMP"),
+    "updated_at": ("TIMESTAMP", "NO", None, "CURRENT_TIMESTAMP"),
+}
+
+_V20_NOTE_TAKER_KEY_CHECKS = {
+    ("PRIMARY KEY", ("window_id",), "PRIMARY KEY(window_id)"),
+    ("CHECK", ("threshold",), "CHECK((threshold > 0))"),
+    ("CHECK", ("ordinal",), "CHECK((ordinal >= 0))"),
+    (
+        "CHECK",
+        ("source_digest",),
+        "CHECK(regexp_full_match(source_digest, '[0-9a-f]{64}'))",
+    ),
+    (
+        "CHECK",
+        ("request_sha256",),
+        "CHECK(regexp_full_match(request_sha256, '[0-9a-f]{64}'))",
+    ),
+    (
+        "CHECK",
+        ("state",),
+        "CHECK((state IN ('prepared', 'calling', 'result_stored', "
+        "'materialized', 'completed', 'uncertain')))",
+    ),
+    ("CHECK", ("attempt_count",), "CHECK((attempt_count >= 0))"),
+    (
+        "UNIQUE",
+        ("consumer_version", "investigation_id", "threshold", "ordinal"),
+        "UNIQUE(consumer_version, investigation_id, threshold, ordinal)",
+    ),
+    (
+        "UNIQUE",
+        ("consumer_version", "investigation_id", "source_digest"),
+        "UNIQUE(consumer_version, investigation_id, source_digest)",
+    ),
+    (
+        "CHECK",
+        (
+            "state",
+            "raw_result",
+            "raw_result_sha256",
+            "state",
+            "raw_result",
+            "raw_result_sha256",
+            "state",
+        ),
+        "CHECK((((state IN ('prepared', 'calling')) AND (raw_result IS NULL) "
+        "AND (raw_result_sha256 IS NULL)) OR ((state IN ('result_stored', "
+        "'materialized', 'completed')) AND (raw_result IS NOT NULL) AND "
+        "regexp_full_match(raw_result_sha256, '[0-9a-f]{64}')) OR "
+        "(state = 'uncertain')))",
+    ),
+    (
+        "CHECK",
+        ("state", "uncertainty_reason", "state", "uncertainty_reason"),
+        "CHECK((((state = 'uncertain') AND (uncertainty_reason IS NOT NULL)) "
+        "OR ((state != 'uncertain') AND (uncertainty_reason IS NULL))))",
+    ),
+}
+
+_V20_CONFIGURATION_REQUIRED_SHAPE = {
+    "consumer_version": ("INTEGER", "NO", "PRI", None),
+    "investigation_id": ("VARCHAR", "NO", "PRI", None),
+    "threshold": ("INTEGER", "NO", None, None),
+    "prompt_sha256": ("VARCHAR", "NO", None, None),
+    "configuration_sha256": ("VARCHAR", "NO", None, None),
+    "created_at": ("TIMESTAMP", "NO", None, "CURRENT_TIMESTAMP"),
+}
+
+
+def _v20_configuration_shape_is_valid(con: LockedConnection) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3], row[4])
+        for row in con.execute("DESCRIBE note_taker_configurations").fetchall()
+    }
+    if described != _V20_CONFIGURATION_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE table_name='note_taker_configurations'"
+    ).fetchall()
+    key_checks = {
+        (row[0], tuple(row[1]), row[2])
+        for row in constraints
+        if row[0] in {"PRIMARY KEY", "CHECK"}
+    }
+    return key_checks == {
+        (
+            "PRIMARY KEY",
+            ("consumer_version", "investigation_id"),
+            "PRIMARY KEY(consumer_version, investigation_id)",
+        ),
+        ("CHECK", ("threshold",), "CHECK((threshold > 0))"),
+        (
+            "CHECK",
+            ("prompt_sha256",),
+            "CHECK(regexp_full_match(prompt_sha256, '[0-9a-f]{64}'))",
+        ),
+        (
+            "CHECK",
+            ("configuration_sha256",),
+            "CHECK(regexp_full_match(configuration_sha256, '[0-9a-f]{64}'))",
+        ),
+    }
+
+
+def _v20_note_taker_shape_is_valid(con: LockedConnection) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3], row[4])
+        for row in con.execute("DESCRIBE note_taker_windows").fetchall()
+    }
+    if described != _V20_NOTE_TAKER_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE table_name='note_taker_windows'"
+    ).fetchall()
+    key_checks = {
+        (row[0], tuple(row[1]), row[2])
+        for row in constraints
+        if row[0] in {"PRIMARY KEY", "UNIQUE", "CHECK"}
+    }
+    indexes = con.execute(
+        "SELECT index_name, expressions FROM duckdb_indexes() "
+        "WHERE schema_name='main' AND table_name='note_taker_windows'"
+    ).fetchall()
+    return (
+        key_checks == _V20_NOTE_TAKER_KEY_CHECKS
+        and indexes
+        == [
+            (
+                "idx_note_taker_windows_recovery",
+                "[investigation_id, consumer_version, state, ordinal]",
+            )
+        ]
+    )
+
+
+# Doc→HTML S1 — document_reader_html (reader-HTML sidecar) shape fingerprint.
+# Same pattern as the V19/V20 fingerprints: exact DESCRIBE shape + PK + the
+# hard FK to documents (a sidecar row only exists for an existing document —
+# if the FK is ever dropped, the probe returns False and a fresh CREATE IF NOT
+# EXISTS re-lands the intended shape on the next init).
+_V21_READER_HTML_REQUIRED_SHAPE = {
+    "document_id": ("VARCHAR", "NO", "PRI", None),
+    "html_body": ("VARCHAR", "NO", None, None),
+    "sanitizer_version": ("VARCHAR", "NO", None, None),
+    "source_kind": ("VARCHAR", "NO", None, None),
+    "source_url": ("VARCHAR", "YES", None, None),
+    "captured_at": ("TIMESTAMP", "NO", None, None),
+    "edited_at": ("TIMESTAMP", "YES", None, None),
+    "revision": ("INTEGER", "NO", None, "1"),
+}
+
+_V21_READER_HTML_KEY_CHECKS = {
+    ("PRIMARY KEY", ("document_id",), "PRIMARY KEY(document_id)"),
+    (
+        "FOREIGN KEY",
+        ("document_id",),
+        "FOREIGN KEY (document_id) REFERENCES documents(document_id)",
+    ),
+}
+
+
+def _v21_reader_html_shape_is_valid(con: LockedConnection) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3], row[4])
+        for row in con.execute("DESCRIBE document_reader_html").fetchall()
+    }
+    if described != _V21_READER_HTML_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE table_name='document_reader_html'"
+    ).fetchall()
+    key_checks = {
+        (row[0], tuple(row[1]), row[2])
+        for row in constraints
+        if row[0] in {"PRIMARY KEY", "FOREIGN KEY", "UNIQUE", "CHECK"}
+    }
+    return key_checks == _V21_READER_HTML_KEY_CHECKS
+
+
+def _repair_empty_partial_v20_note_taker(con: LockedConnection) -> None:
+    configuration_columns = {
+        row[0]
+        for row in con.execute(
+            "SELECT column_name FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='note_taker_configurations'"
+        ).fetchall()
+    }
+    if configuration_columns and not _v20_configuration_shape_is_valid(con):
+        if con.execute(
+            "SELECT COUNT(*) FROM note_taker_configurations"
+        ).fetchone()[0]:
+            raise SchemaCorruptionError(
+                "populated partial V20 note-taker configurations require "
+                "explicit recovery"
+            )
+        con.execute("DROP TABLE note_taker_configurations")
+    columns = {
+        row[0]
+        for row in con.execute(
+            "SELECT column_name FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='note_taker_windows'"
+        ).fetchall()
+    }
+    if not columns:
+        return
+    if _v20_note_taker_shape_is_valid(con):
+        return
+    if con.execute("SELECT COUNT(*) FROM note_taker_windows").fetchone()[0]:
+        raise SchemaCorruptionError(
+            "populated partial V20 note-taker windows require explicit recovery"
+        )
+    con.execute("DROP TABLE note_taker_windows")
+
+
+_V19_RECEIPT_COLUMNS = {
+    "consumer_name",
+    "consumer_version",
+    "investigation_id",
+    "event_id",
+    "action_type",
+    "normalized_sha256",
+    "status",
+    "output_ref",
+    "error_class",
+    "error_digest",
+    "attempt_count",
+    "processed_at",
+}
+
+_V19_RECEIPT_REQUIRED_SHAPE = {
+    "consumer_name": ("VARCHAR", "NO", "PRI"),
+    "consumer_version": ("INTEGER", "NO", "PRI"),
+    "investigation_id": ("VARCHAR", "NO", None),
+    "event_id": ("VARCHAR", "NO", "PRI"),
+    "action_type": ("VARCHAR", "NO", None),
+    "normalized_sha256": ("VARCHAR", "NO", None),
+    "status": ("VARCHAR", "NO", None),
+    "output_ref": ("VARCHAR", "YES", None),
+    "error_class": ("VARCHAR", "YES", None),
+    "error_digest": ("VARCHAR", "YES", None),
+    "attempt_count": ("INTEGER", "NO", None),
+    "processed_at": ("TIMESTAMP", "NO", None),
+}
+
+_V19_RECEIPT_CHECKS = {
+    "CHECK((attempt_count >= 1))",
+    "CHECK(regexp_full_match(normalized_sha256, '[0-9a-f]{64}'))",
+    "CHECK((status IN ('succeeded', 'quarantined')))",
+    "CHECK((((status = 'succeeded') AND (output_ref IS NOT NULL) AND "
+    "(error_class IS NULL) AND (error_digest IS NULL)) OR "
+    "((status = 'quarantined') AND (output_ref IS NULL) AND "
+    "(error_class IS NOT NULL) AND (error_digest IS NOT NULL))))",
+}
+
+_V19_EVENT_COLUMNS = {
+    "consumer_name",
+    "consumer_version",
+    "investigation_id",
+    "logical_ordinal",
+    "event_id",
+    "action_type",
+    "normalized_sha256",
+    "resolution",
+    "chain_sha256",
+    "created_at",
+    "resolved_at",
+}
+
+_V19_EVENT_REQUIRED_SHAPE = {
+    "consumer_name": ("VARCHAR", "NO", "PRI"),
+    "consumer_version": ("INTEGER", "NO", "PRI"),
+    "investigation_id": ("VARCHAR", "NO", "UNI"),
+    "logical_ordinal": ("BIGINT", "NO", "UNI"),
+    "event_id": ("VARCHAR", "NO", "PRI"),
+    "action_type": ("VARCHAR", "NO", None),
+    "normalized_sha256": ("VARCHAR", "NO", None),
+    "resolution": ("VARCHAR", "NO", None),
+    "chain_sha256": ("VARCHAR", "NO", None),
+    "created_at": ("TIMESTAMP", "NO", None),
+    "resolved_at": ("TIMESTAMP", "NO", None),
+}
+
+_V19_FRONTIER_COLUMNS = {
+    "consumer_name",
+    "consumer_version",
+    "investigation_id",
+    "next_ordinal",
+    "chain_sha256",
+    "snapshot_generation",
+    "snapshot_row_count",
+    "next_snapshot_row_offset",
+    "jsonl_byte_offset",
+    "updated_at",
+}
+
+_V19_FRONTIER_REQUIRED_SHAPE = {
+    "consumer_name": ("VARCHAR", "NO", "PRI"),
+    "consumer_version": ("INTEGER", "NO", "PRI"),
+    "investigation_id": ("VARCHAR", "NO", "PRI"),
+    "next_ordinal": ("BIGINT", "NO", None),
+    "chain_sha256": ("VARCHAR", "YES", None),
+    "snapshot_generation": ("VARCHAR", "YES", None),
+    "snapshot_row_count": ("BIGINT", "NO", None),
+    "next_snapshot_row_offset": ("BIGINT", "NO", None),
+    "jsonl_byte_offset": ("BIGINT", "NO", None),
+    "updated_at": ("TIMESTAMP", "NO", None),
+}
+
+
+class SchemaCorruptionError(RuntimeError):
+    """A populated graph schema cannot be repaired without operator recovery."""
+
+
+def _v19_receipt_shape_is_valid(
+    con: duckdb.DuckDBPyConnection | LockedConnection,
+) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3])
+        for row in con.execute("DESCRIBE event_consumer_receipts").fetchall()
+    }
+    if described != _V19_RECEIPT_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE table_name='event_consumer_receipts'"
+    ).fetchall()
+    primary_keys = [tuple(row[1]) for row in constraints if row[0] == "PRIMARY KEY"]
+    checks = {row[2] for row in constraints if row[0] == "CHECK"}
+    indexes = con.execute(
+        "SELECT expressions FROM duckdb_indexes() "
+        "WHERE table_name='event_consumer_receipts' "
+        "AND index_name='idx_event_consumer_receipts_investigation'"
+    ).fetchall()
+    return (
+        primary_keys == [("consumer_name", "consumer_version", "event_id")]
+        and checks == _V19_RECEIPT_CHECKS
+        and indexes == [("[consumer_name, consumer_version, investigation_id]",)]
+    )
+
+
+def _v19_frontier_shape_is_valid(
+    con: duckdb.DuckDBPyConnection | LockedConnection,
+) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3])
+        for row in con.execute("DESCRIBE event_consumer_frontiers").fetchall()
+    }
+    if described != _V19_FRONTIER_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE table_name='event_consumer_frontiers'"
+    ).fetchall()
+    primary_keys = [tuple(row[1]) for row in constraints if row[0] == "PRIMARY KEY"]
+    checks = {row[2] for row in constraints if row[0] == "CHECK"}
+    return primary_keys == [
+        ("consumer_name", "consumer_version", "investigation_id")
+    ] and checks == {
+        "CHECK((next_ordinal >= 0))",
+        "CHECK((snapshot_row_count >= 0))",
+        "CHECK((next_snapshot_row_offset >= 0))",
+        "CHECK((jsonl_byte_offset >= 0))",
+        "CHECK((next_snapshot_row_offset <= snapshot_row_count))",
+        "CHECK((((next_ordinal = 0) AND (chain_sha256 IS NULL)) OR "
+        "((next_ordinal > 0) AND regexp_full_match(chain_sha256, '[0-9a-f]{64}'))))",
+    }
+
+
+def _v19_event_shape_is_valid(
+    con: duckdb.DuckDBPyConnection | LockedConnection,
+) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3])
+        for row in con.execute("DESCRIBE event_consumer_events").fetchall()
+    }
+    if described != _V19_EVENT_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() "
+        "WHERE table_name='event_consumer_events'"
+    ).fetchall()
+    keys = {(row[0], tuple(row[1])) for row in constraints if row[0] in {"PRIMARY KEY", "UNIQUE"}}
+    checks = {row[2] for row in constraints if row[0] == "CHECK"}
+    indexes = con.execute(
+        "SELECT expressions FROM duckdb_indexes() WHERE table_name='event_consumer_events' "
+        "AND index_name='idx_event_consumer_events_investigation'"
+    ).fetchall()
+    return (
+        keys
+        == {
+            ("PRIMARY KEY", ("consumer_name", "consumer_version", "event_id")),
+            (
+                "UNIQUE",
+                ("consumer_name", "consumer_version", "investigation_id", "logical_ordinal"),
+            ),
+        }
+        and checks
+        == {
+            "CHECK((logical_ordinal >= 0))",
+            "CHECK(regexp_full_match(normalized_sha256, '[0-9a-f]{64}'))",
+            "CHECK((resolution IN ('succeeded', 'quarantined', 'unsupported')))",
+            "CHECK(regexp_full_match(chain_sha256, '[0-9a-f]{64}'))",
+        }
+        and indexes == [("[consumer_name, consumer_version, investigation_id]",)]
+    )
+
+
+def _repair_empty_partial_v17_outbox(con: LockedConnection) -> None:
+    columns = {
+        row[0]
+        for row in con.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema='main' AND table_name='write_event_outbox'"
+        ).fetchall()
+    }
+    if not columns or columns == _V17_OUTBOX_COLUMNS:
+        return
+    if con.execute("SELECT COUNT(*) FROM write_event_outbox").fetchone()[0]:
+        raise RuntimeError("populated partial V17 outbox requires explicit recovery")
+    con.execute("DROP TABLE write_event_outbox")
+
+
+def _repair_empty_partial_v19_receipts(con: LockedConnection) -> None:
+    columns = {
+        row[0]
+        for row in con.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema='main' AND table_name='event_consumer_receipts'"
+        ).fetchall()
+    }
+    if not columns:
+        return
+    if columns == _V19_RECEIPT_COLUMNS and _v19_receipt_shape_is_valid(con):
+        return
+    count = con.execute("SELECT COUNT(*) FROM event_consumer_receipts").fetchone()[0]
+    if count:
+        raise SchemaCorruptionError("populated partial V19 receipts require explicit recovery")
+    con.execute("DROP TABLE event_consumer_receipts")
+
+
+def _repair_empty_partial_v19_events(con: LockedConnection) -> None:
+    columns = {
+        row[0]
+        for row in con.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema='main' "
+            "AND table_name='event_consumer_events'"
+        ).fetchall()
+    }
+    if not columns:
+        return
+    if columns == _V19_EVENT_COLUMNS and _v19_event_shape_is_valid(con):
+        return
+    if con.execute("SELECT COUNT(*) FROM event_consumer_events").fetchone()[0]:
+        raise SchemaCorruptionError("populated partial V19 events require explicit recovery")
+    con.execute("DROP TABLE event_consumer_events")
+
+
+def _repair_empty_partial_v19_frontiers(con: LockedConnection) -> None:
+    columns = {
+        row[0]
+        for row in con.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema='main' AND table_name='event_consumer_frontiers'"
+        ).fetchall()
+    }
+    if not columns:
+        return
+    if columns == _V19_FRONTIER_COLUMNS and _v19_frontier_shape_is_valid(con):
+        return
+    if con.execute("SELECT COUNT(*) FROM event_consumer_frontiers").fetchone()[0]:
+        raise SchemaCorruptionError("populated partial V19 frontiers require explicit recovery")
+    con.execute("DROP TABLE event_consumer_frontiers")
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1194,6 +2104,7 @@ def init_database(con: LockedConnection) -> None:
     # soft ref, no FK). Lives in its own module — detect-and-rebuild logic,
     # not a static SQL string.
     from .migrate_v9_insight_question import migrate as _migrate_v9_insight_question
+
     _migrate_v9_insight_question(con)
     # SPR-04 — attribution_audit (append-only reproducible attribution record).
     # Pure idempotent CREATE IF NOT EXISTS; runs last, FK-references nothing.
@@ -1221,6 +2132,25 @@ def init_database(con: LockedConnection) -> None:
     # GF-7 — chunk embedding provider/model/dimension pinning. Soft chunk_id
     # reference; pure idempotent CREATE IF NOT EXISTS.
     con.execute(ANTIEK_GRAPH_SCHEMA_V15_EMBEDDINGS_META_SQL)
+    # SDAM SPR-00 — stable owned assets, immutable canonical revisions,
+    # ordered evidence-member manifests, and a separate CAS-ready pointer.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL)
+    _repair_empty_partial_v17_outbox(con)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V17_WRITE_EVENT_OUTBOX_SQL)
+    _repair_empty_partial_v19_events(con)
+    _repair_empty_partial_v19_receipts(con)
+    _repair_empty_partial_v19_frontiers(con)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL)
+    _repair_empty_partial_v20_note_taker(con)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V20_NOTE_TAKER_REPLAY_SQL)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V20_TWIN_SOURCE_ENVELOPE_SQL)
+    from substrate.twin_recursion import backfill_twin_source_envelopes
+
+    backfill_twin_source_envelopes(con)
+    # Doc→HTML S1 — document_reader_html reader-HTML sidecar (sanitize-on-write
+    # trust contract, see the block comment above). Pure idempotent CREATE IF
+    # NOT EXISTS; FK-references documents; runs last.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V21_READER_HTML_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1255,21 +2185,62 @@ def _schema_is_present(db_path: str) -> bool:
         return False
     try:
         row = con.execute(
-            "SELECT count(*) FROM information_schema.tables "
-            "WHERE table_schema = 'main' AND table_name = 'nodes'"
+            "SELECT (EXISTS (SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema='main' AND table_name='nodes' "
+            "AND column_name='owner_user_id') AND EXISTS (SELECT 1 FROM "
+            "information_schema.columns WHERE table_schema='main' AND "
+            "table_name='documents' AND column_name='twin_source_envelope') AND "
+            "NOT EXISTS (SELECT 1 FROM documents WHERE twin_source_envelope IS NULL) AND EXISTS (SELECT 1 FROM "
+            "information_schema.tables WHERE table_schema='main' "
+            "AND table_name='multimedia_twin_runs') AND EXISTS (SELECT 1 FROM "
+            "information_schema.tables WHERE table_schema='main' "
+            "AND table_name='multimedia_distillation_claims') AND EXISTS ("
+            "SELECT 1 FROM information_schema.tables WHERE table_schema='main' "
+            "AND table_name='derived_asset_current_revisions') AND EXISTS (SELECT 1 "
+            "FROM information_schema.columns WHERE table_schema='main' AND "
+            "table_name='write_event_outbox' AND column_name='event_sha256') AND "
+            "EXISTS (SELECT 1 FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='write_event_outbox' AND "
+            "column_name='operation_id')"
+            " AND (SELECT count(*) = 11 AND count(DISTINCT column_name) = 11 "
+            "FROM information_schema.columns WHERE table_schema='main' "
+            "AND table_name='event_consumer_events' AND column_name IN ("
+            "'consumer_name','consumer_version','investigation_id','logical_ordinal',"
+            "'event_id','action_type','normalized_sha256','resolution','chain_sha256',"
+            "'created_at','resolved_at')) AND (SELECT count(*) = 12 AND "
+            "count(DISTINCT column_name) = 12 "
+            "FROM information_schema.columns WHERE table_schema='main' "
+            "AND table_name='event_consumer_receipts' AND column_name IN ("
+            "'consumer_name','consumer_version','investigation_id','event_id',"
+            "'action_type','normalized_sha256','status','output_ref','error_class',"
+            "'error_digest','attempt_count','processed_at')) AND "
+            "(SELECT count(*) = 10 AND count(DISTINCT column_name) = 10 "
+            "FROM information_schema.columns WHERE table_schema='main' "
+            "AND table_name='event_consumer_frontiers' AND column_name IN ("
+            "'consumer_name','consumer_version','investigation_id','next_ordinal',"
+            "'chain_sha256','snapshot_generation','snapshot_row_count',"
+            "'next_snapshot_row_offset','jsonl_byte_offset','updated_at')))"
         ).fetchone()
+        present = (
+            bool(row and row[0])
+            and _v19_receipt_shape_is_valid(con)
+            and _v19_frontier_shape_is_valid(con)
+            and _v19_event_shape_is_valid(con)
+            and _v20_configuration_shape_is_valid(con)
+            and _v20_note_taker_shape_is_valid(con)
+            and _v21_reader_html_shape_is_valid(con)
+        )
     except Exception:
         return False
     finally:
         with contextlib.suppress(Exception):
             con.close()
-    present = bool(row and row[0] > 0)
     if present:
         _INITIALIZED_PATHS.add(db_path)
     return present
 
 
-def init_database_at_path(db_path: str) -> None:
+def init_database_at_path(db_path: str, *, timeout_s: float | None = None) -> None:
     """Make sure the schema is present at ``db_path``. Idempotent.
 
     Fast path: if ``_schema_is_present`` confirms the schema is already
@@ -1290,7 +2261,14 @@ def init_database_at_path(db_path: str) -> None:
     parent = os.path.dirname(db_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    con = connect_write(db_path, purpose="graph_schema_init")
+    if timeout_s is None:
+        con = connect_write(db_path, purpose="graph_schema_init")
+    else:
+        con = connect_write(
+            db_path,
+            purpose="graph_schema_init",
+            timeout_s=timeout_s,
+        )
     try:
         init_database(con)
     finally:
@@ -1314,10 +2292,17 @@ def list_tables(con: duckdb.DuckDBPyConnection) -> list[str]:
 if __name__ == "__main__":
     import argparse
 
+    from runtime.db_lock import flush_warm_writers
+
     p = argparse.ArgumentParser(description="Initialize the Antiek graph schema")
     p.add_argument("--db-path", required=True, help="Path to DuckDB file")
     args = p.parse_args()
     init_database_at_path(args.db_path)
+    # Warm-writer keepalive parks the RW handle after init_database_at_path;
+    # a read_only reopen in the same process then fails with DuckDB
+    # "different configuration than existing connections". Flush first.
+    # Cite: docs/decisions/anti-ek-composite-rollup-2026-09-19.md
+    flush_warm_writers(args.db_path)
     con = duckdb.connect(args.db_path, read_only=True)
     try:
         for t in list_tables(con):

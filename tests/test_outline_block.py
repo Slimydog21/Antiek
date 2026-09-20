@@ -135,6 +135,28 @@ def test_place_user_authored_block(db):
     assert block.content == "my own thought"
 
 
+def test_event_filesystem_failure_leaves_pending_intent(db, monkeypatch):
+    import substrate.write.event_outbox as outbox_module
+
+    monkeypatch.setattr(
+        outbox_module,
+        "investigation_event_lock",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("unavailable")),
+    )
+    with connect_write(db["path"], purpose="t") as con:
+        obid = place_user_authored_block(
+            con,
+            section_id=db["section"],
+            content="durable while event storage is unavailable",
+            block_index=0,
+        )
+        assert get_block(con, obid) is not None
+        assert con.execute(
+            "SELECT state FROM write_event_outbox WHERE aggregate_id=?",
+            [obid],
+        ).fetchone() == ("pending",)
+
+
 def test_graph_node_block_requires_node_id(db):
     with connect_write(db["path"], purpose="t") as con:
         with pytest.raises(OutlineBlockError, match="no-orphan-prose"):

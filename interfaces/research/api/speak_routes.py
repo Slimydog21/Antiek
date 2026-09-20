@@ -40,7 +40,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from orchestration.interview.orchestrator import ConsentRequired
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_read, connect_write
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.speak import (
     biography,
@@ -65,6 +65,7 @@ from substrate.speak import (
 from substrate.speak import (
     publish as publish_mod,
 )
+from substrate.speak import pushes as speak_pushes
 from substrate.speak import (
     subject_consent as subject_consent_mod,
 )
@@ -86,6 +87,11 @@ from substrate.speak.contributor import DisbursementBlocked
 from substrate.speak.invitations import PublicEcosystemGated
 from substrate.speak.publish_gate import PublishBlocked
 from substrate.speak.schema import ensure_speak_schema
+
+# Reuse auth.py's throttle window rather than starting a second one: it
+# already carries the ``reset_auth_throttles()`` test seam, and sharing the
+# store means a test that clears throttles clears these too.
+from .auth import _client_ip, _throttled
 
 speak_router = APIRouter(prefix="/speak", tags=["speak"])
 
@@ -109,6 +115,31 @@ def _write(purpose: str) -> Iterator[Any]:
     con = connect_write(db, purpose=purpose)
     try:
         ensure_speak_schema(con)
+        yield con
+    finally:
+        con.close()
+
+
+@contextmanager
+def _read(purpose: str) -> Iterator[Any]:
+    """Read-only Speak path — LazyRW / connect_read; does not take the write flock.
+
+    Used for public feed + opportunities + invite landing so browse stays
+    responsive when agent_work/lease holds the writer. Schema must already
+    exist (prod / prior writes). Does NOT call ``ensure_initialized`` /
+    ``ensure_speak_schema`` — those contend with note-taker
+    ``_schema_is_present`` on the hot path (prod hang after #3153).
+
+    Missing DB file → yield raises ``FileNotFoundError`` so invite GETs
+    can map to 404 without taking the writer.
+    """
+    import os as _os
+
+    db = default_db_path()
+    if not _os.path.exists(db):
+        raise FileNotFoundError(db)
+    con = connect_read(db)
+    try:
         yield con
     finally:
         con.close()
@@ -197,6 +228,7 @@ class InviteResponse(BaseModel):
     invite_id: str
     interview_id: str
     link: str
+    token: str
     required_consent_scopes: list[str]
     status: str
 
@@ -356,7 +388,7 @@ async def get_project(project_id: str) -> ProjectResponse:
 
 @speak_router.get("/projects/{project_id}/economics")
 async def get_economics(project_id: str) -> dict[str, Any]:
-    with _translate(), _write("speak/api:economics") as con:
+    with _translate(), _read("speak/api:economics") as con:
         policy = economics_mode.policy_for_project(con, project_id)
     # The G2/G3 gate STATE, read-only (gate_status.py). The UI shows these
     # as "gated / not yet activated" — there is no flip/close affordance
@@ -384,16 +416,23 @@ async def public_feed() -> dict[str, Any]:
     the surface a visitor scrolls and can 'interview-with'/chime in on.
     Honest when empty (returns ``[]``). Distinct from ``GET /projects``,
     which is the operator's full index (their private dashboard)."""
-    with _translate(), _write("speak/api:feed") as con:
-        rows = con.execute(
-            "SELECT p.project_id, ip.title, p.subject_ref, p.subject_status, "
-            "p.invitation_mode, "
-            "(SELECT count(*) FROM interviews i WHERE i.project_id = p.project_id) "
-            "FROM speak_projects p "
-            "JOIN interview_projects ip ON ip.project_id = p.project_id "
-            "WHERE p.publish_intent = 'will_be_public' "
-            "ORDER BY p.created_at DESC"
-        ).fetchall()
+    try:
+        with _translate(), _read("speak/api:feed") as con:
+            rows = con.execute(
+                "SELECT p.project_id, ip.title, p.subject_ref, p.subject_status, "
+                "p.invitation_mode, "
+                "(SELECT count(*) FROM interviews i WHERE i.project_id = p.project_id) "
+                "FROM speak_projects p "
+                "JOIN interview_projects ip ON ip.project_id = p.project_id "
+                "WHERE p.publish_intent = 'will_be_public' "
+                "ORDER BY p.created_at DESC"
+            ).fetchall()
+    except FileNotFoundError:
+        rows = []
+    except Exception as exc:
+        if "speak_projects" not in str(exc) and "Catalog" not in type(exc).__name__:
+            raise
+        rows = []
     return {
         "count": len(rows),
         "projects": [
@@ -420,6 +459,7 @@ async def invite(project_id: str, req: InviteRequest) -> InviteResponse:
         )
     return InviteResponse(
         invite_id=iv.invite_id, interview_id=iv.interview_id, link=iv.link,
+        token=iv.token,
         required_consent_scopes=[s.value for s in iv.required_consent_scopes],
         status=iv.status,
     )
@@ -434,12 +474,19 @@ async def list_invites(project_id: str) -> dict[str, Any]:
 
 @speak_router.get("/invites/resolve")
 async def resolve_invite(token: str) -> InviteResponse:
-    with _translate(), _write("speak/api:resolve") as con:
-        iv = invitations.resolve_token(con, token)
+    try:
+        read_cm = _read("speak/api:resolve")
+        with _translate(), read_cm as con:
+            iv = _invite_read_or_404(con, token)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="unknown or expired invite token"
+        ) from exc
     if iv is None:
         raise HTTPException(status_code=404, detail="unknown or expired invite token")
     return InviteResponse(
         invite_id=iv.invite_id, interview_id=iv.interview_id, link=iv.link,
+        token=iv.token,
         required_consent_scopes=[s.value for s in iv.required_consent_scopes],
         status=iv.status,
     )
@@ -458,6 +505,68 @@ async def open_public(project_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+# Admission control for the one unauthenticated write door in this module.
+# Two buckets, because they defend different things:
+#
+#   per-IP   — stops one caller minting invites in a loop.
+#   global   — stops ANY volume of callers from monopolising the write lock.
+#
+# The global bucket is the load-bearing one. This handler takes
+# ``connect_write`` on a DuckDB the whole service shares under ``--workers 1``,
+# so sustained writes here do not merely add rows, they starve every other
+# writer — including the nightly backup and the corpus ingest. A per-IP limit
+# alone would not bound that, and in this topology it may not even partition:
+# uvicorn runs with proxy_headers on behind Caddy, but Caddy itself sits behind
+# a Cloudflare Tunnel, so the address it forwards can be the tunnel endpoint
+# rather than the end user. The global cap holds regardless of how client IPs
+# resolve.
+_OPEN_CONTRIBUTE_PER_IP_LIMIT = 5
+_OPEN_CONTRIBUTE_GLOBAL_LIMIT = 30
+
+
+@speak_router.post("/projects/{project_id}/open-contribute", status_code=201)
+async def open_contribute(project_id: str, request: Request) -> dict[str, Any]:
+    """Unauthenticated self-serve contribution door for will_be_public projects (G7).
+
+    Mints an invite TOKEN (source, not an account) so a stranger on
+    ``/speak/browse`` can open SpeakInvite without a pre-shared family invite.
+    Private projects stay invite-only. Gated on ``ANTIEK_SPEAK_PUBLIC_ECOSYSTEM``.
+    Cite: speak-private-public-spine · anti-ek-speak-deepblu-remap §public.
+    Open in operator-auth middleware (POST path match).
+
+    Rate-limited: this is an anonymous door onto the single-writer database,
+    and ``GET /speak/feed`` publishes the ``project_id`` needed to reach it.
+    """
+    if _throttled("speak:open-contribute:global", _OPEN_CONTRIBUTE_GLOBAL_LIMIT):
+        raise HTTPException(
+            status_code=429,
+            detail="open contribution is busy; retry shortly",
+        )
+    if _throttled(
+        f"speak:open-contribute:{_client_ip(request)}",
+        _OPEN_CONTRIBUTE_PER_IP_LIMIT,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail="too many open contribution requests; retry shortly",
+        )
+    with _translate(), _write("speak/api:open_contribute") as con:
+        inv = invitations.mint_open_contribution(con, project_id)
+    return {
+        "honesty": {
+            "open_contribution": "live_g7_will_be_public_only",
+            "credential": "invite_token_source_not_account",
+            "private_projects": "invite_only_unchanged",
+            "economics": "public_may_accrue_escrow_g2_g3_still_gate_publish_disburse",
+        },
+        "project_id": project_id,
+        "interview_id": inv.interview_id,
+        "token": inv.token,
+        "invite_path": f"/speak/invite/{inv.token}",
+        "invitation_mode": "public",
+    }
+
+
 @speak_router.post("/interviews/{interview_id}/consent", status_code=200)
 async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict[str, Any]:
     with _translate(), _write("speak/api:consent") as con:
@@ -469,7 +578,7 @@ async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict[st
 @speak_router.get("/interviews/{interview_id}")
 async def get_interview(interview_id: str) -> dict[str, Any]:
     with _translate():
-        session = resume(_db(), interview_id)
+        session = resume(default_db_path(), interview_id)
     return {
         "interview_id": session.interview_id,
         "project_id": session.project_id,
@@ -691,6 +800,169 @@ async def order_book(project_id: str, req: BookOrderRequest) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Dual push / continuous ping (Anti-Ek Speak remap §PUSHES)
+# Dogfood: (a) public opportunities heuristic (b) private re-ping via
+# next_followups + SpeakInvite door + optional AgentMail/Resend email.
+# No ML matching. Consent-scoped: never email declined.
+# ---------------------------------------------------------------------------
+
+
+class RepingRequest(BaseModel):
+    interview_id: str = Field(..., min_length=1)
+    send_email: bool = False
+    """When true, attempt invitee email via get_email_provider if env gate on."""
+
+
+
+@speak_router.get("/opportunities")
+async def public_opportunities(
+    interest: str | None = Query(None, description="Optional interest tokens for title/subject overlap"),
+) -> dict[str, Any]:
+    """Unauthenticated public contribution opportunities (read-only).
+
+    Same multi-signal heuristic as dual-push public list — NOT ML.
+    Open in operator-auth middleware. G7 flag is honest: open contribution
+    without an invite is still gated; this endpoint only *lists* projects.
+    """
+    from substrate.speak.invitations import public_ecosystem_enabled
+
+    try:
+        with _translate(), _read("speak/api:opportunities") as con:
+            pubs = speak_pushes.list_public_opportunities(
+                con, interest=interest, ensure=False
+            )
+    except FileNotFoundError:
+        pubs = []
+    except Exception as exc:
+        # Fresh DB / schema not yet ensured — honest empty (read path
+        # cannot DDL). Writer paths create schema on first project.
+        if "speak_projects" not in str(exc) and "Catalog" not in type(exc).__name__:
+            raise
+        pubs = []
+    g7 = public_ecosystem_enabled()
+    from substrate.speak import gate_status as _gs
+
+    pub = _gs.public_publishing_allowed()
+    disb = _gs.disbursement_allowed()
+    from substrate.speak.g2_synquery_honesty import g2_synquery_honesty
+
+    g2sq = g2_synquery_honesty()
+    return {
+        "honesty": {
+            "ranking": speak_pushes.RANKING_HONESTY_ID,
+            "auth": "unauthenticated_read_only",
+            "open_contribution_without_invite": (
+                "live" if g7 else "gated_G7_ANTIEK_SPEAK_PUBLIC_ECOSYSTEM"
+            ),
+            # G2/G3 — accrue-now / disburse-later (spr-10 · afa-escrow · remap).
+            # Env-flag names stay in API honesty only; UI uses GATE_PHRASES.
+            "public_publishing": "live" if pub.allowed else "gated_G2_G3",
+            "disbursement": "live" if disb.allowed else "gated_G2_G3_accrue_escrow_only",
+            "money_model": "accrue_escrow_now_disburse_after_legal_review",
+            "paid_today": False,
+            "g2_counsel_gated": g2sq["g2_counsel_gated"],
+            "synquery_partnership": g2sq["synquery_partnership"],
+            "synquery_gated": g2sq["synquery_gated"],
+        },
+        "public_opportunities": [
+            {
+                "project_id": o.project_id,
+                "title": o.title,
+                "subject_ref": o.subject_ref,
+                "voice_count": o.voice_count,
+                "rank_reason": o.rank_reason,
+                "rank_score": round(o.rank_score, 4),
+            }
+            for o in pubs
+        ],
+    }
+
+
+@speak_router.get("/pushes")
+async def list_pushes() -> dict[str, Any]:
+    """Operator inbox for dual push.
+
+    ``public_opportunities`` — will_be_public projects, multi-signal heuristic
+    (honest: heuristic, not profile matching).
+    ``private_repings`` — invitees still in flight with an invite token;
+    pending question counts from async_interview.resume.
+    """
+    try:
+        with _translate(), _read("speak/api:pushes") as con:
+            pubs = speak_pushes.list_public_opportunities(con, ensure=False)
+    except Exception as exc:
+        if "speak_projects" not in str(exc) and "Catalog" not in type(exc).__name__:
+            raise
+        pubs = []
+    privates = speak_pushes.list_private_repings_at(_db())
+    return {
+        "honesty": {
+            "public_ranking": speak_pushes.RANKING_HONESTY_ID,
+            "private_delivery": "invite_path_plus_optional_email_when_ANTIEK_SPEAK_REPING_EMAIL",
+        },
+        "public_opportunities": [
+            {
+                "project_id": o.project_id,
+                "title": o.title,
+                "subject_ref": o.subject_ref,
+                "voice_count": o.voice_count,
+                "rank_reason": o.rank_reason,
+                "rank_score": round(o.rank_score, 4),
+            }
+            for o in pubs
+        ],
+        "private_repings": [
+            {
+                "project_id": r.project_id,
+                "project_title": r.project_title,
+                "interview_id": r.interview_id,
+                "who": r.who,
+                "status": r.status,
+                "token": r.token,
+                "pending_question_count": r.pending_question_count,
+                "invite_path": r.invite_path,
+            }
+            for r in privates
+        ],
+    }
+
+
+@speak_router.post("/pushes/reping")
+async def reping_invitee(req: RepingRequest) -> dict[str, Any]:
+    """Generate followups (if any) and return the SpeakInvite door for an invitee.
+
+    Consent-scoped: declined interviews are skipped with an honest reason.
+    Optional email: when ``send_email`` and ``ANTIEK_SPEAK_REPING_EMAIL``,
+    deliver invite_path via AgentMail/Resend/Mock; degrade honestly if unset.
+    """
+    with _translate():
+        try:
+            result = speak_pushes.prepare_reping(
+                _db(),
+                interview_id=req.interview_id,
+                send_email=req.send_email,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+    return {
+        "interview_id": result.interview_id,
+        "token": result.token,
+        "invite_path": result.invite_path,
+        "followups_added": result.followups_added,
+        "pending_question_count": result.pending_question_count,
+        "skipped_reason": result.skipped_reason,
+        "email_status": result.email_status,
+        "email_to": result.email_to,
+        "email_provider": result.email_provider,
+        "email_message_id": result.email_message_id,
+        "email_detail": result.email_detail,
+    }
+
+
+
 # Invitee surface — TOKEN-AUTHORIZED, unauthenticated.
 #
 # The invitee (a subject's friend or family member) is a SOURCE, not an
@@ -727,6 +999,25 @@ class InviteAnswerRequest(BaseModel):
 _INVITEE_TRANSCRIBER: Any | None = None
 
 
+
+def _invite_read_or_404(con: Any, token: str) -> invitations.Invite | None:
+    """Resolve invite on a read connection; missing Speak schema → 404.
+
+    Fresh DBs have no speak_* tables until a writer ensures schema. Invite
+    GETs use ``_read`` (no DDL); treat absent tables as unknown token.
+    """
+    try:
+        return invitations.resolve_token(con, token)
+    except Exception as exc:  # noqa: BLE001 — catalog-absent → closed door
+        name = type(exc).__name__
+        msg = str(exc).lower()
+        if "catalog" in name.lower() or "does not exist" in msg:
+            raise HTTPException(
+                status_code=404, detail="unknown or expired invite link"
+            ) from exc
+        raise
+
+
 def _require_token(con: Any, token: str) -> tuple[str, str]:
     """Resolve an invite token to (interview_id, project_id) or 404. The
     token is the invitee's credential — a bad/expired token is the only
@@ -744,32 +1035,47 @@ async def invitee_landing(token: str) -> dict[str, Any]:
     invited to, the consent scopes the invite asks for, what they've
     already granted (so a returning invitee skips re-consent), and — once
     consented — the pending questions + transcript so far."""
-    with _translate(), _write("speak/api:invite_landing") as con:
-        iv = invitations.resolve_token(con, token)
-        if iv is None:
-            raise HTTPException(status_code=404, detail="unknown or expired invite link")
-        interview_id, project_id = iv.interview_id, iv.project_id
-        required = [s.value for s in iv.required_consent_scopes]
-        prow = con.execute(
-            "SELECT ip.title, p.subject_ref, p.subject_status "
-            "FROM speak_projects p JOIN interview_projects ip ON ip.project_id = p.project_id "
-            "WHERE p.project_id = ?", [project_id],
-        ).fetchone()
-        granted = sorted(s.value for s in consent_mod.consent_state(con, interview_id).granted)
-    # resume() acquires its OWN lock — call it AFTER releasing ours (no nesting).
-    session = resume(_db(), interview_id)
+    try:
+        with _translate(), _read("speak/api:invite_landing") as con:
+            iv = _invite_read_or_404(con, token)
+            if iv is None:
+                raise HTTPException(
+                    status_code=404, detail="unknown or expired invite link"
+                )
+            interview_id, project_id = iv.interview_id, iv.project_id
+            required = [s.value for s in iv.required_consent_scopes]
+            prow = con.execute(
+                "SELECT ip.title, p.subject_ref, p.subject_status, p.publish_intent "
+                "FROM speak_projects p JOIN interview_projects ip "
+                "ON ip.project_id = p.project_id "
+                "WHERE p.project_id = ?",
+                [project_id],
+            ).fetchone()
+            granted = sorted(
+                s.value for s in consent_mod.consent_state(con, interview_id).granted
+            )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="unknown or expired invite link"
+        ) from exc
+    # resume() is connect_read — call AFTER releasing our read handle.
+    session = resume(default_db_path(), interview_id)
     return {
         "interview_id": interview_id,
         "project_id": project_id,
         "project_title": prow[0] if prow else project_id,
         "subject_ref": prow[1] if prow else None,
         "subject_status": prow[2] if prow else None,
+        # economics_mode: private_never_published => no 70% split; surface for
+        # invitee no-earnings honesty (Anti-Ek Speak remap).
+        "publish_intent": (prow[3] if prow and prow[3] else "private_never_published"),
         "required_consent_scopes": required,
         "granted_consent_scopes": granted,
         "status": session.status,
         "pending_questions": session.pending_questions(),
         "transcript": session.turns,
     }
+
 
 
 @speak_router.post("/invite/{token}/consent", status_code=200)

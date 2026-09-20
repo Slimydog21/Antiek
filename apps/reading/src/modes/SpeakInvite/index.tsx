@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import InterviewVoiceCapture from "../../components/InterviewVoiceCapture";
 import { apiFetch } from "../../lib/api";
+import { PRIVATE_ECON_COPY } from "../../lib/speakVocab";
 
 /**
  * Speak invitee landing (Product Depth SPR-08 M3) — phone-first, voice-first.
@@ -35,6 +36,8 @@ interface Landing {
   project_id: string;
   project_title: string;
   subject_ref: string | null;
+  /** From speak_projects.publish_intent — drives private no-earnings honesty. */
+  publish_intent: "private_never_published" | "will_be_public" | string;
   required_consent_scopes: string[];
   granted_consent_scopes: string[];
   status: string;
@@ -222,6 +225,40 @@ export default function SpeakInvite() {
             rush — anything you remember helps.
           </p>
         </header>
+
+
+        {/* Private economics — unmistakable no-earnings (Anti-Ek Speak remap).
+            Defaults private when publish_intent absent (fail closed for money). */}
+        {(landing.publish_intent !== "will_be_public") ? (
+          <aside
+            role="note"
+            aria-label="No earnings on this private project"
+            className="mb-5 rounded-md border-2 border-emperor bg-ice-0 p-4 text-left shadow-z1 dark:border-emperor dark:bg-charcoal-1 dark:shadow-z1-night"
+            data-testid="private-econ-notice"
+          >
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-emperor">
+              No earnings
+            </p>
+            <p className="mt-1 font-serif text-[14px] font-semibold text-ink dark:text-bright">
+              {PRIVATE_ECON_COPY.inviteeNoEarnings}
+            </p>
+            <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+              {PRIVATE_ECON_COPY.inviteeNoEarningsDetail}
+            </p>
+          </aside>
+        ) : (
+          <aside
+            role="note"
+            aria-label="Public story may earn via contributor split"
+            className="mb-5 rounded-md border-2 border-ink bg-ice-0 p-4 text-left shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+            data-testid="public-econ-notice"
+          >
+            <p className="font-serif text-[13px] text-ink dark:text-bright">
+              {PRIVATE_ECON_COPY.publicCanEarn}
+            </p>
+          </aside>
+        )}
+
 
         {error && <p className="mb-3 text-center font-serif text-[13px] text-emperor">{error}</p>}
 

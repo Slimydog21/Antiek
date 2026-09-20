@@ -5,16 +5,25 @@ Access is decommissioned at the runbook level (see
 ``infrastructure/runbooks/magic-link-auth.md``); the substrate
 operates its own session cookies + email-delivered magic links.
 
-Four routes:
+Routes:
 
-- ``POST /auth/request`` — body ``{"email": "..."}`` → mint a
-  magic-link token, send via the configured email provider,
-  return ``{"sent": true}``. Always returns 200 with ``sent: true``
-  even for non-allowlisted addresses, to avoid enumerating valid
-  operators via timing or response shape. The send only actually
-  happens for allowlisted emails.
+- ``POST /auth/request`` — body ``{"email": "..."}`` → mint an
+  attempt, send the 4-digit code via the configured email provider,
+  return ``{"sent": true, attempt_id, claim_secret}``. Always 200
+  with the same shape even for non-allowlisted addresses, to avoid
+  enumerating valid operators. The send (and the code) only ever
+  happen for allowlisted emails; the code is NOT part of the API
+  response, so typing it into the browser is real email-possession
+  proof, not theater. Rate-limited per IP.
 - ``GET /auth/callback?token=...&next=/`` — verify the token, set
   the session cookie, redirect to ``next`` (default ``/``).
+- ``POST /auth/claim`` — body ``{"attempt_id, claim_secret}`` plus
+  the optional ``code`` from the email. With a code: unlocks as soon
+  as the code matches (single-device flow; 5 wrong tries invalidate
+  the attempt; per-IP rate limit). Without a code: returns 202 until
+  a second device approved via ``POST /auth/approve``, then 200.
+- ``POST /auth/approve`` — mark an attempt approved (the device that
+  clicked the email link). Requires an established session.
 - ``POST /auth/logout`` — clear the cookie, 204.
 - ``GET /auth/me`` — return the resolved session
   ``{user_id, email, auth_method}`` or 401 if no valid auth.
@@ -26,9 +35,14 @@ middleware's job is verify-on-every-request.
 
 from __future__ import annotations
 
+import hashlib
+import html
+import json
 import os
 import re
 import secrets
+import threading
+import time
 from collections.abc import Sequence
 from typing import Any
 from urllib.parse import urlencode, urljoin
@@ -41,10 +55,17 @@ from substrate.auth import (
     EmailDeliveryFailure,
     InvalidToken,
     OutboundEmail,
+    PasskeyError,
     TokenExpired,
+    authentication_options,
+    complete_authentication,
+    complete_registration,
+    delete_credential,
     get_email_provider,
+    list_credentials,
     mint_magic_link_token,
     mint_session_cookie,
+    registration_options,
     verify_magic_link_token,
 )
 
@@ -80,9 +101,29 @@ class AuthRequestPayload(BaseModel):
 
 class AuthRequestResponse(BaseModel):
     """``POST /auth/request`` response — always ``sent: true`` to
-    avoid disclosing whether the email is allowlisted."""
+    avoid disclosing whether the email is allowlisted.
+
+    ``device_code`` is deliberately NOT returned: the 4-digit code is
+    the operator's email-possession proof, so it must only ever exist
+    inside the delivered email. The browser learns it by the operator
+    typing it, never from the API."""
 
     sent: bool = True
+    attempt_id: str
+    claim_secret: str
+
+
+class AuthClaimPayload(BaseModel):
+    attempt_id: str = Field(..., min_length=16, max_length=200)
+    claim_secret: str = Field(..., min_length=16, max_length=200)
+    # The 4-digit code from the email. Omit it to use the two-device
+    # approval path (202 until POST /auth/approve); supply it for the
+    # single-device "type the code" unlock.
+    code: str | None = Field(default=None, min_length=4, max_length=4, pattern=r"^\d{4}$")
+
+
+class AuthApprovePayload(BaseModel):
+    attempt_id: str = Field(..., min_length=16, max_length=200)
 
 
 class AuthMeResponse(BaseModel):
@@ -91,6 +132,102 @@ class AuthMeResponse(BaseModel):
     user_id: str
     email: str | None
     auth_method: str
+
+
+class PasskeyCeremonyPayload(BaseModel):
+    ceremony_id: str = Field(..., min_length=16, max_length=200)
+    credential: dict[str, Any]
+
+
+class PasskeyRegistrationPayload(PasskeyCeremonyPayload):
+    label: str = Field(default="My passkey", max_length=80)
+
+
+class PasskeyStatusResponse(BaseModel):
+    available: bool
+    count: int | None = None
+
+
+class _LoginAttempt:
+    def __init__(self, *, email: str, claim_hash: str, next_path: str, device_code: str) -> None:
+        self.email = email
+        self.claim_hash = claim_hash
+        self.next_path = next_path
+        self.device_code = device_code
+        self.created_at = time.time()
+        self.approved = False
+        self.claimed = False
+        self.failed_code_attempts = 0
+
+
+_ATTEMPT_TTL_SECONDS = 15 * 60
+# A 4-digit code is 10,000 possibilities; without a failure cap an
+# attacker who knows the operator's email could grind through them
+# inside the 15-minute TTL. Five wrong tries invalidate the attempt.
+_MAX_CODE_ATTEMPTS = 5
+_attempts: dict[str, _LoginAttempt] = {}
+_attempts_lock = threading.Lock()
+
+# Per-IP sliding-window throttles for the two email-surface routes.
+# In-process state is the honest deployment model here: the FastAPI
+# service is pinned to one worker by the DuckDB single-writer
+# invariant, so a process-local window is complete, not best-effort.
+_REQUEST_RATE_LIMIT = 6    # POST /auth/request per minute per IP
+_CLAIM_RATE_LIMIT = 30     # code-bearing POST /auth/claim per minute per IP
+_THROTTLE_WINDOW_SECONDS = 60.0
+_throttle: dict[str, list[float]] = {}
+_throttle_lock = threading.Lock()
+
+
+def reset_auth_throttles() -> None:
+    """Test seam: clear the in-process rate-limit windows."""
+    with _throttle_lock:
+        _throttle.clear()
+
+
+def _throttled(key: str, limit: int) -> bool:
+    """Record one hit for ``key``; True when the caller is over limit."""
+    now = time.monotonic()
+    with _throttle_lock:
+        hits = [t for t in _throttle.setdefault(key, []) if now - t < _THROTTLE_WINDOW_SECONDS]
+        if len(hits) >= limit:
+            _throttle[key] = hits
+            return True
+        hits.append(now)
+        _throttle[key] = hits
+        return False
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def _digest_claim(secret: str) -> str:
+    return hashlib.sha256(secret.encode()).hexdigest()
+
+
+def _new_attempt(*, email: str, next_path: str) -> tuple[str, str, str]:
+    attempt_id = secrets.token_urlsafe(24)
+    claim_secret = secrets.token_urlsafe(32)
+    device_code = f"{secrets.randbelow(10000):04d}"
+    now = time.time()
+    with _attempts_lock:
+        for key, attempt in list(_attempts.items()):
+            if now - attempt.created_at > _ATTEMPT_TTL_SECONDS:
+                del _attempts[key]
+        # Bounded registry: a hostile caller cannot grow memory
+        # without bound by minting attempts (each mint is already
+        # per-IP throttled; this caps the aggregate too).
+        while len(_attempts) >= 512:
+            oldest_key = min(_attempts, key=lambda k: _attempts[k].created_at)
+            del _attempts[oldest_key]
+        _attempts[attempt_id] = _LoginAttempt(
+            email=email,
+            claim_hash=_digest_claim(claim_secret),
+            next_path=next_path,
+            device_code=device_code,
+        )
+    return attempt_id, claim_secret, device_code
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -139,8 +276,11 @@ def _frontend_base_url() -> str:
     return raw.rstrip("/") if raw else ""
 
 
-def _build_magic_link(token: str, next_path: str) -> str:
-    qs = urlencode({"token": token, "next": next_path or "/"})
+def _build_magic_link(token: str, next_path: str, attempt_id: str | None = None) -> str:
+    params = {"token": token, "next": next_path or "/"}
+    if attempt_id:
+        params["attempt"] = attempt_id
+    qs = urlencode(params)
     return urljoin(_api_base_url(), f"auth/callback?{qs}")
 
 
@@ -201,23 +341,75 @@ def _cookie_kwargs() -> dict[str, Any]:
     return kwargs
 
 
-def _format_magic_link_email(*, email: str, link: str) -> OutboundEmail:
+def _format_magic_link_email(*, email: str, link: str, device_code: str) -> OutboundEmail:
     text = (
-        "Sign in to Antiek\n"
+        "Your Antiek sign-in code\n"
         "\n"
-        f"Click the link below to sign in. The link expires in 15 minutes.\n"
+        f"  {device_code}\n"
+        "\n"
+        "Type it into the Antiek sign-in screen where you started.\n"
+        "Or open the link below to approve the sign-in from this device\n"
+        "instead. The code and link expire in 15 minutes.\n"
         "\n"
         f"  {link}\n"
         "\n"
         "If you did not request this, ignore this email — no action will\n"
         "be taken.\n"
         "\n"
-        "— Antiek\n"
+        "Antiek\n"
     )
+    safe_link = html.escape(link, quote=True)
+    html_body = f"""\
+<!doctype html>
+<html lang="en">
+  <body style="margin:0;background:#f4f6f8;color:#172033;font-family:Arial,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6f8;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border:1px solid #d7dce2;border-radius:12px;overflow:hidden;">
+            <tr>
+              <td style="padding:18px 24px;background:#172033;color:#ffffff;font-size:12px;font-weight:700;letter-spacing:1.4px;">
+                ANTIEK / ACCESS DESK
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:30px 24px 12px;">
+                <div style="font-size:13px;color:#667085;margin-bottom:8px;">YOUR ANTIEK SIGN-IN CODE</div>
+                <div style="font-family:'Courier New',monospace;font-size:42px;font-weight:700;letter-spacing:10px;color:#172033;">{device_code}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:10px 24px 28px;font-size:16px;line-height:1.55;color:#344054;">
+                Type this code into the Antiek sign-in screen where you started.
+                Prefer approving from here instead? Open the link below on this device.
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 24px 30px;">
+                <a href="{safe_link}" style="display:block;background:#f5c451;color:#172033;text-align:center;text-decoration:none;font-size:16px;font-weight:700;padding:15px 20px;border-radius:8px;">Review sign-in</a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 24px;border-top:1px solid #eaecf0;font-size:12px;line-height:1.5;color:#667085;">
+                This link expires in 15 minutes. If the button does not open, copy this address into your browser:<br>
+                <span style="word-break:break-all;color:#475467;">{safe_link}</span>
+              </td>
+            </tr>
+          </table>
+          <div style="max-width:520px;padding:16px 8px;font-size:12px;line-height:1.5;color:#667085;">
+            If you did not request this, ignore the message. Nothing will be unlocked.
+          </div>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+"""
     return OutboundEmail(
         to=email,
-        subject="Sign in to Antiek",
+        subject=f"Antiek sign-in · {device_code}",
         text_body=text,
+        html_body=html_body,
     )
 
 
@@ -276,16 +468,28 @@ def register_auth_routes(
         response_model=AuthRequestResponse,
         tags=["auth"],
     )
-    async def auth_request(payload: AuthRequestPayload) -> AuthRequestResponse:
+    async def auth_request(payload: AuthRequestPayload, request: Request) -> AuthRequestResponse:
+        if _throttled(f"request:{_client_ip(request)}", _REQUEST_RATE_LIMIT):
+            raise HTTPException(
+                status_code=429,
+                detail={"code": "rate_limited", "message": "Too many sign-in requests. Wait a minute and try again."},
+            )
         email = payload.email.strip().lower()
         next_path = payload.next if _is_safe_relative(payload.next) else "/"
         allowlist = _resolve_allowlist()
+        attempt_id, claim_secret, device_code = _new_attempt(email=email, next_path=next_path)
         if email in allowlist:
             token = mint_magic_link_token(email)
-            link = _build_magic_link(token, next_path)
+            link = _build_magic_link(token, next_path, attempt_id)
             provider = get_email_provider()
             try:
-                provider.send(_format_magic_link_email(email=email, link=link))
+                provider.send(
+                    _format_magic_link_email(
+                        email=email,
+                        link=link,
+                        device_code=device_code,
+                    )
+                )
             except EmailDeliveryFailure as exc:
                 # Distinguish "we tried and the provider broke" from
                 # "you're not allowlisted" via a 503 — gives the
@@ -301,10 +505,16 @@ def register_auth_routes(
         # Non-allowlisted: silently no-op. Constant-time-ish: the
         # branch difference is unavoidable but the response is
         # identical, which is what enumeration protection turns on.
-        return AuthRequestResponse(sent=True)
+        # device_code never leaves the server — the email is its only
+        # channel, so typing it is genuine email-possession proof.
+        return AuthRequestResponse(
+            sent=True,
+            attempt_id=attempt_id,
+            claim_secret=claim_secret,
+        )
 
     @app.get("/auth/callback", tags=["auth"])
-    async def auth_callback(token: str, next: str = "/") -> Response:
+    async def auth_callback(token: str, next: str = "/", attempt: str | None = None) -> Response:
         redirect_url = _resolve_redirect(next)
         try:
             email = verify_magic_link_token(token)
@@ -321,6 +531,27 @@ def register_auth_routes(
             user_id="__operator__",
             email=email,
         )
+        # The first successful email proof is also the passkey bootstrap.
+        # Keep the original destination, but pause on Login long enough to
+        # create the device credential that makes future email unnecessary.
+        if attempt:
+            with _attempts_lock:
+                pending = _attempts.get(attempt)
+                valid_attempt = bool(
+                    pending
+                    and pending.email == email
+                    and time.time() - pending.created_at <= _ATTEMPT_TTL_SECONDS
+                )
+                device_code = pending.device_code if valid_attempt and pending else ""
+            if valid_attempt:
+                redirect_url = _resolve_redirect(
+                    f"/login?{urlencode({'approve': attempt, 'code': device_code})}"
+                )
+        elif not list_credentials():
+            safe_next = next if _is_safe_relative(next) else "/"
+            redirect_url = _resolve_redirect(
+                f"/login?{urlencode({'setup': 'passkey', 'next': safe_next})}"
+            )
         response = RedirectResponse(url=redirect_url, status_code=302)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
@@ -329,6 +560,189 @@ def register_auth_routes(
             **_cookie_kwargs(),
         )
         return response
+
+    @app.post("/auth/approve", tags=["auth"])
+    async def auth_approve(payload: AuthApprovePayload, request: Request) -> Response:
+        email = getattr(request.state, "user_email", None)
+        with _attempts_lock:
+            pending = _attempts.get(payload.attempt_id)
+            if (
+                not email
+                or not pending
+                or pending.email != email
+                or time.time() - pending.created_at > _ATTEMPT_TTL_SECONDS
+            ):
+                raise HTTPException(
+                    status_code=410,
+                    detail={"code": "login_attempt_expired", "message": "This sign-in request has expired."},
+                )
+            pending.approved = True
+        return Response(status_code=204)
+
+    @app.post("/auth/claim", tags=["auth"])
+    async def auth_claim(payload: AuthClaimPayload, request: Request) -> Response:
+        # Only code-bearing claims are rate-limited. The two-device
+        # approval poll (claim without a code) is the operator's own
+        # page polling every 1.8s — throttling it would break the
+        # auto-open UX; it also carries no brute-force surface.
+        if payload.code is not None and _throttled(f"claim:{_client_ip(request)}", _CLAIM_RATE_LIMIT):
+            raise HTTPException(
+                status_code=429,
+                detail={"code": "rate_limited", "message": "Too many unlock attempts. Wait a minute and try again."},
+            )
+        with _attempts_lock:
+            pending = _attempts.get(payload.attempt_id)
+            valid_secret = bool(
+                pending
+                and secrets.compare_digest(pending.claim_hash, _digest_claim(payload.claim_secret))
+            )
+            if not pending or not valid_secret or time.time() - pending.created_at > _ATTEMPT_TTL_SECONDS:
+                raise HTTPException(status_code=410, detail={"code": "login_attempt_expired", "message": "This sign-in request has expired."})
+            if payload.code is not None:
+                # Single-device flow: the typed code from the email is
+                # the possession proof. Wrong tries are counted; the
+                # whole attempt dies after five so a 10,000-space code
+                # cannot be ground through inside its 15-minute TTL.
+                code_ok = secrets.compare_digest(payload.code, pending.device_code)
+                if not code_ok:
+                    pending.failed_code_attempts += 1
+                    if pending.failed_code_attempts >= _MAX_CODE_ATTEMPTS:
+                        del _attempts[payload.attempt_id]
+                        raise HTTPException(
+                            status_code=410,
+                            detail={"code": "login_attempt_locked", "message": "Too many wrong codes. Request a new sign-in."},
+                        )
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "code": "invalid_code",
+                            "message": "That code didn't match. Check the email and try again.",
+                            "remaining_attempts": _MAX_CODE_ATTEMPTS - pending.failed_code_attempts,
+                        },
+                    )
+                pending.failed_code_attempts = 0
+            elif not pending.approved:
+                # Two-device flow: keep waiting until the email-click
+                # device approves (POST /auth/approve).
+                return Response(status_code=202)
+            if pending.claimed:
+                raise HTTPException(status_code=410, detail={"code": "login_attempt_claimed", "message": "This sign-in request was already used."})
+            pending.claimed = True
+            email = pending.email
+            next_path = pending.next_path
+        cookie = mint_session_cookie(user_id="__operator__", email=email)
+        response = Response(
+            content=json.dumps({"authenticated": True, "setup_passkey": not bool(list_credentials()), "next": next_path}),
+            media_type="application/json",
+        )
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=cookie,
+            max_age=60 * 60 * 24 * 30,
+            **_cookie_kwargs(),
+        )
+        return response
+
+    @app.get(
+        "/auth/passkey/status",
+        response_model=PasskeyStatusResponse,
+        tags=["auth"],
+    )
+    async def auth_passkey_status(request: Request) -> PasskeyStatusResponse:
+        credentials = list_credentials()
+        # A logged-out browser only needs the branch bit to choose its primary
+        # action.  Credential counts are account metadata, so return them only
+        # to an established session.
+        authenticated = bool(getattr(request.state, "user_id", None))
+        return PasskeyStatusResponse(
+            available=bool(credentials),
+            count=len(credentials) if authenticated else None,
+        )
+
+    @app.post("/auth/passkey/login/options", tags=["auth"])
+    async def auth_passkey_login_options() -> dict[str, Any]:
+        if not list_credentials():
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "passkey_not_configured", "message": "No passkey is set up yet."},
+            )
+        return authentication_options()
+
+    @app.post("/auth/passkey/login/verify", tags=["auth"])
+    async def auth_passkey_login_verify(payload: PasskeyCeremonyPayload) -> Response:
+        try:
+            complete_authentication(
+                ceremony_id=payload.ceremony_id,
+                credential=payload.credential,
+            )
+        except PasskeyError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "passkey_verification_failed", "message": str(exc)},
+            ) from exc
+        allow = sorted(_resolve_allowlist())
+        if not allow:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "operator_email_missing", "message": "Operator email is not configured."},
+            )
+        cookie = mint_session_cookie(user_id="__operator__", email=allow[0])
+        response = Response(status_code=204)
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=cookie,
+            max_age=60 * 60 * 24 * 30,
+            **_cookie_kwargs(),
+        )
+        return response
+
+    @app.post("/auth/passkey/register/options", tags=["auth"])
+    async def auth_passkey_register_options(request: Request) -> dict[str, Any]:
+        email = getattr(request.state, "user_email", None)
+        if not email:
+            allow = sorted(_resolve_allowlist())
+            email = allow[0] if allow else "operator@antiek.ai"
+        return registration_options(email=email)
+
+    @app.post("/auth/passkey/register/verify", tags=["auth"])
+    async def auth_passkey_register_verify(payload: PasskeyRegistrationPayload) -> dict[str, Any]:
+        try:
+            credential = complete_registration(
+                ceremony_id=payload.ceremony_id,
+                credential=payload.credential,
+                label=payload.label,
+            )
+        except PasskeyError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "passkey_registration_failed", "message": str(exc)},
+            ) from exc
+        return {
+            "registered": True,
+            "label": credential.label,
+            "backed_up": credential.backed_up,
+        }
+
+    @app.get("/auth/passkeys", tags=["auth"])
+    async def auth_passkeys() -> dict[str, Any]:
+        return {
+            "passkeys": [
+                {
+                    "id": item.credential_id,
+                    "label": item.label,
+                    "backed_up": item.backed_up,
+                    "created_at": item.created_at,
+                    "last_used_at": item.last_used_at,
+                }
+                for item in list_credentials()
+            ]
+        }
+
+    @app.delete("/auth/passkeys/{credential_id}", status_code=204, tags=["auth"])
+    async def auth_passkey_delete(credential_id: str) -> Response:
+        if not delete_credential(credential_id):
+            raise HTTPException(status_code=404, detail="Passkey not found")
+        return Response(status_code=204)
 
     @app.get("/auth/dev-login", tags=["auth"])
     async def auth_dev_login(token: str = "", next: str = "/") -> Response:

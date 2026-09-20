@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
-import { getDistillation, ApiError } from "../../lib/api";
-import type { DistilledNode } from "../../lib/api";
+import {
+  getDistillation,
+  getPromptTelemetry,
+  ApiError,
+} from "../../lib/api";
+import type { DistilledNode, PromptTelemetryResponse } from "../../lib/api";
 import { parseSynthesis } from "../../lib/synthesisParser";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import AIActionFailure from "../../shared/AIActionFailure";
@@ -13,22 +17,15 @@ import {
   type AutoNotebook as DerivedNotebook,
   type AutoNotebookSection,
 } from "./deriveAutoNotebook";
+import NotebookLoopNav, { writeHandoffHref } from "./NotebookLoopNav";
 
 /**
  * AutoNotebook — the auto-generated, always-current narrative VIEW of a
  * workstation's insight/question graph (SPR-06 M1).
  *
- * ⚠️ PROPOSED — SIGN-OFF PENDING. The operator's resolution that "a notebook IS
- * the auto-generated narrative view of the graph (document lens over the
- * block-lens canvas), one per investigation, always auto, no manual save" is
- * PROPOSED, not ratified. This surface ships behind a visible "proposed
- * (sign-off pending)" banner and is a DERIVED, REVERSIBLE leaf:
- *   - it adds NO new persisted store and NO new writes — the single-writer
- *     DuckDB invariant is untouched (it only READS getDistillation + the
- *     synthesis events the workstation already streams);
- *   - removing this route + the banner reverts cleanly to the manual TipTap
- *     Notebook (modes/Notebook/index.tsx), which is a SEPARATE surface this
- *     does not touch;
+ * ✅ RATIFIED 2026-09-18 — auto-generated narrative view of the graph;
+ * derived leaf (no new DuckDB store). See
+ * docs/decisions/spr-06-auto-notebook-proposed.md.
  *   - it is NOT a hard dependency of SPR-05 (research home) or SPR-07 (Read).
  * Rationale + what-would-ratify-vs-revert: docs/decisions/spr-06-auto-notebook-proposed.md.
  *
@@ -52,9 +49,6 @@ import {
  * only produce the outline shape (deriveAutoNotebook → AutoNotebook.outline) it
  * will read.
  */
-
-const PROPOSED_BANNER_TEXT =
-  "Proposed — sign-off pending. This notebook is generated from your research's graph and regenerates as you work; the design isn't ratified yet.";
 
 type DistillState =
   | { kind: "loading" }
@@ -190,7 +184,10 @@ function AutoNotebookForInvestigation({
 
   return (
     <AutoNotebookShell>
-      <AutoNotebookBody notebook={notebook} />
+      <AutoNotebookBody
+        notebook={notebook}
+        investigationId={investigationId}
+      />
     </AutoNotebookShell>
   );
 }
@@ -200,8 +197,7 @@ function AutoNotebookForInvestigation({
  *  separate, unbannered surface). */
 function AutoNotebookShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col h-screen">
-      <ProposedBanner />
+    <div className="flex flex-col h-screen" data-testid="auto-notebook-shell">
       <main className="flex-1 min-h-0 bg-ice-0 dark:bg-charcoal-2 overflow-y-auto">
         {children}
       </main>
@@ -209,44 +205,38 @@ function AutoNotebookShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-/**
- * The "Proposed — sign-off pending" banner. §5 voice (plain, honest), warning
- * affordance built on the design system's warning palette (the `sun` family is
- * the brand's warning/attention token — see design/tokens.ts; here expressed via
- * the `sun` Tailwind utilities the rest of the app uses for attention states).
- * Honest copy: this is NOT a ratified feature.
- */
-function ProposedBanner() {
-  return (
-    <div
-      role="note"
-      aria-label="Proposed feature — sign-off pending"
-      data-testid="auto-notebook-proposed-banner"
-      className="flex items-start gap-2 border-b border-sun/40 bg-sun/15 px-6 py-2.5 text-[13px] leading-relaxed text-ink dark:text-bright"
-    >
-      <span className="mt-[2px] font-mono text-[10px] font-bold uppercase tracking-wider text-sun-deep dark:text-sun shrink-0">
-        proposed
-      </span>
-      <p className="font-serif">{PROPOSED_BANNER_TEXT}</p>
-    </div>
-  );
-}
 
-function AutoNotebookBody({ notebook }: { notebook: DerivedNotebook }) {
+function AutoNotebookBody({
+  notebook,
+  investigationId,
+}: {
+  notebook: DerivedNotebook;
+  investigationId: string;
+}) {
   if (notebook.isEmpty) {
     // RIGOR #1: nothing in the graph to narrate yet — say so honestly, never
     // invent a section/insight/question.
     return (
       <article className="max-w-3xl mx-auto px-8 py-12">
+        <NotebookLoopNav
+          investigationId={investigationId}
+          canWrite={false}
+          writeTitle={notebook.title}
+        />
+
         <div className="max-w-md mx-auto text-center space-y-3">
           <h1 className="text-2xl font-serif text-ink dark:text-bright leading-tight">
             {notebook.title}
           </h1>
           <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
             This notebook writes itself from the research’s insights and open
-            questions. There’s nothing in the graph to narrate yet — as the
-            research produces insights and questions, they appear here.
+            questions. There’s nothing in the graph to narrate yet — keep researching
+            (or open Distill); as insights land, they appear here. When you’re
+            ready, continue in Write with this research connected.
           </p>
+        </div>
+        <div className="mt-10">
+          <PromptTelemetryPanel investigationId={investigationId} />
         </div>
       </article>
     );
@@ -254,12 +244,26 @@ function AutoNotebookBody({ notebook }: { notebook: DerivedNotebook }) {
 
   return (
     <article className="max-w-3xl mx-auto px-8 py-10 space-y-8">
-      <header className="space-y-1">
+      <header className="space-y-2">
+        <NotebookLoopNav
+          investigationId={notebook.investigationId}
+          canWrite
+          writeTitle={notebook.title}
+        />
         <h1 className="text-2xl font-serif text-ink dark:text-bright leading-tight">
           {notebook.title}
         </h1>
         <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
           generated from this research’s graph · regenerates as you work
+        </p>
+        <p className="pt-1">
+          <Link
+            to={writeHandoffHref(notebook.investigationId, notebook.title)}
+            data-testid="auto-notebook-import-write"
+            className="inline-flex font-mono text-[11px] uppercase tracking-wider text-aurora underline-offset-2 hover:underline"
+          >
+            Import outline into Write →
+          </Link>
         </p>
       </header>
 
@@ -281,7 +285,12 @@ function AutoNotebookBody({ notebook }: { notebook: DerivedNotebook }) {
               data-outline-section={s.kind}
               className="text-[13px] font-serif text-ink-soft dark:text-starlight"
             >
-              {s.heading}
+              <a
+                href={`#notebook-section-${s.kind}`}
+                className="underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+              >
+                {s.heading}
+              </a>
             </li>
           ))}
         </ul>
@@ -297,6 +306,8 @@ function AutoNotebookBody({ notebook }: { notebook: DerivedNotebook }) {
           />
         ))}
       </div>
+
+      <PromptTelemetryPanel investigationId={investigationId} />
     </article>
   );
 }
@@ -316,7 +327,7 @@ function SectionView({
     // emits this section when synthesis has content.
     if (!synthesis) return null;
     return (
-      <section data-section="synthesis">
+      <section id="notebook-section-synthesis" data-section="synthesis">
         <MasterMdViewer synthesis={synthesis} />
       </section>
     );
@@ -324,7 +335,7 @@ function SectionView({
 
   // Insights / open-questions sections — graph leaves, read-only.
   return (
-    <section data-section={section.kind}>
+    <section id={`notebook-section-${section.kind}`} data-section={section.kind}>
       <h2 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
         {section.heading}
       </h2>
@@ -343,6 +354,20 @@ function SectionView({
               <p className="font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
                 {e.text}
               </p>
+              {e.sourceDocumentId && (
+                <p
+                  className="mt-0.5 font-mono text-[11px] text-shadow-1 dark:text-moonlight"
+                  data-testid="auto-notebook-citation"
+                >
+                  <Link
+                    to={`/read/${encodeURIComponent(e.sourceDocumentId)}`}
+                    className="underline-offset-2 hover:underline text-aurora"
+                    data-testid="auto-notebook-citation-link"
+                  >
+                    open source in reader →
+                  </Link>
+                </p>
+              )}
               {e.escalated && (
                 <p className="mt-0.5 font-mono text-[11px] text-sun-deep dark:text-sun">
                   this needs more research
@@ -352,6 +377,143 @@ function SectionView({
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+
+/** Trajectory-backed prompt / model-call telemetry (event-log SoT).
+ *  Citations stay in insights/questions; this panel is the call ledger. */
+function PromptTelemetryPanel({ investigationId }: { investigationId: string }) {
+  const [state, setState] = useState<
+    | { kind: "loading" }
+    | { kind: "error"; reason: string }
+    | { kind: "loaded"; data: PromptTelemetryResponse }
+  >({ kind: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ kind: "loading" });
+    // Promise.resolve so a missing/undefined mock or sync throw never
+    // becomes an unhandled rejection during tests / dogfood.
+    void Promise.resolve(getPromptTelemetry(investigationId))
+      .then((data) => {
+        if (!cancelled) setState({ kind: "loaded", data });
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setState({
+            kind: "error",
+            reason: err instanceof Error ? err.message : "couldn’t load telemetry",
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [investigationId]);
+
+  if (state.kind === "loading") {
+    return (
+      <section
+        data-testid="prompt-telemetry"
+        data-telemetry-state="loading"
+        className="border-t border-rule dark:border-charcoal-1 pt-6"
+      >
+        <p className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+          Prompts & model calls
+        </p>
+        <p className="mt-2 text-sm text-ink-soft dark:text-starlight">Loading telemetry…</p>
+      </section>
+    );
+  }
+  if (state.kind === "error") {
+    return (
+      <section
+        data-testid="prompt-telemetry"
+        data-telemetry-state="error"
+        className="border-t border-rule dark:border-charcoal-1 pt-6"
+      >
+        <p className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+          Prompts & model calls
+        </p>
+        <p className="mt-2 text-sm text-ink-soft dark:text-starlight">{state.reason}</p>
+      </section>
+    );
+  }
+
+  const { data } = state;
+  const qPreview =
+    data.question && data.question.length > 280
+      ? `${data.question.slice(0, 280)}…`
+      : data.question;
+
+  return (
+    <section
+      data-testid="prompt-telemetry"
+      data-telemetry-state="loaded"
+      data-call-count={data.call_count}
+      className="border-t border-rule dark:border-charcoal-1 pt-6 space-y-3"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+          Prompts & model calls
+        </p>
+        <p className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">
+          {data.call_count} call{data.call_count === 1 ? "" : "s"}
+          {data.total_latency_ms > 0
+            ? ` · ${(data.total_latency_ms / 1000).toFixed(1)}s model time`
+            : ""}
+          {data.total_cost_usd > 0
+            ? ` · $${data.total_cost_usd.toFixed(4)}`
+            : ""}
+        </p>
+      </div>
+      {qPreview ? (
+        <div className="rounded-md bg-ice-1 dark:bg-charcoal-1 px-3 py-2">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-1">
+            Research question
+          </p>
+          <p className="font-serif text-[13px] leading-relaxed text-ink dark:text-bright whitespace-pre-wrap">
+            {qPreview}
+          </p>
+        </div>
+      ) : null}
+      {data.call_count === 0 ? (
+        <p
+          className="text-sm text-ink-soft dark:text-starlight"
+          data-telemetry-empty="true"
+        >
+          No model calls on this trajectory yet — prompts stay hashed in the event log once research roles run (bodies never stored here).
+        </p>
+      ) : (
+        <ul className="space-y-2" data-testid="prompt-telemetry-calls">
+          {data.calls.map((c, i) => (
+            <li
+              key={c.event_id ?? `${c.role}-${i}`}
+              className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2 text-[12px]"
+            >
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px] text-ink dark:text-bright">
+                <span className="font-semibold">{c.role}</span>
+                <span>
+                  {c.provider}/{c.model}
+                </span>
+                <span>{c.finish_reason ?? "—"}</span>
+                <span>{c.latency_ms}ms</span>
+                {c.cost_usd > 0 ? <span>${c.cost_usd.toFixed(4)}</span> : null}
+              </div>
+              {c.prompt_hash ? (
+                <p className="mt-1 font-mono text-[10px] text-shadow-1 dark:text-moonlight truncate">
+                  prompt_hash {c.prompt_hash.slice(0, 16)}…
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">
+        From event log · prompt bodies not stored (hash only)
+      </p>
     </section>
   );
 }

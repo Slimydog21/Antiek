@@ -72,9 +72,20 @@ export function ArtifactExport({
     }
   }
 
+  const viewHref = `${API_BASE}${basePath}/artifact.html`;
+
   return (
-    <div className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+    <div className="text-xs font-mono text-shadow-1 dark:text-moonlight" data-testid="artifact-export">
       <span className="mr-1">{label}</span>
+      <a
+        href={viewHref}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mr-3 underline decoration-dotted underline-offset-2 hover:text-ink dark:hover:text-bright"
+        data-testid="artifact-view-html"
+      >
+        View HTML
+      </a>
       {ARTIFACT_EXPORT_FORMATS.map((f, i) => (
         <button
           key={f.id}

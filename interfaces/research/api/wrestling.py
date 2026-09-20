@@ -24,6 +24,7 @@ sees structured claims stream into the notes panel.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import sys
@@ -36,7 +37,7 @@ _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-from datetime import UTC  # noqa: E402 -- direct-script fallback import
+from datetime import UTC  # noqa: E402
 
 from processing.embedding import (  # noqa: E402
     EmbeddingProvider,
@@ -44,9 +45,19 @@ from processing.embedding import (  # noqa: E402
 )
 from runtime.db_lock import connect_write  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
-from substrate.context_pack import LayerSource, assemble_context_pack  # noqa: E402
+from substrate.context_pack import (  # noqa: E402
+    LayerSource,
+    WorkingMemoryIntegrityError,
+    assemble_context_pack,
+    build_working_memory_layer,
+)
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
-from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.event_log import (  # noqa: E402
+    PhysicalTrajectoryError,
+    emit_typed,
+    iter_physical_events,
+    trajectory,
+)
 from substrate.graph import (  # noqa: E402
     default_db_path,
     ensure_initialized,
@@ -65,7 +76,7 @@ from substrate.schemas import (  # noqa: E402
     Event,
 )
 
-from .broadcast import EventBroadcaster  # noqa: E402 -- lazy export after path fix
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # The role-tail prompt appended after the context pack. Asks for
 # structured JSON; the parser tolerates loose formatting (Markdown code
@@ -311,10 +322,18 @@ def make_distillation_handler(
         elif region_text is None:
             region_text = "(no region scope — whole-document distillation requested)"
 
-        # Build the layered pack. Three layers for now: param version
-        # stamp, phase metadata, and the source text + user question as
-        # the session layer. No graph or skill layers until those
-        # substrate pieces exist.
+        memory_integrity_failed = False
+        try:
+            memory_layer = build_working_memory_layer(
+                iter_physical_events(event.investigation_id),
+                investigation_id=event.investigation_id,
+                cutoff_event_id=event.event_id,
+            )
+        except (PhysicalTrajectoryError, WorkingMemoryIntegrityError, ValueError):
+            memory_layer = None
+            memory_integrity_failed = True
+
+        # The current source and question stay last and outrank working memory.
         layers = [
             LayerSource(
                 kind="param_version_stamp",
@@ -330,6 +349,7 @@ def make_distillation_handler(
                     f"region={request.region_id or '<whole_doc>'}"
                 ),
             ),
+            *([] if memory_layer is None else [memory_layer]),
             LayerSource(
                 kind="session",
                 source=f"region:{request.region_id or 'whole_doc'}",
@@ -354,24 +374,32 @@ def make_distillation_handler(
         # user sees something in the notes panel rather than silent
         # failure. A future refinement: emit a dedicated
         # ``distillation.failed`` event type.
-        try:
-            result = dispatch(
-                full_prompt,
-                "synthesizer",
-                investigation_id=event.investigation_id,
-                context_pack_event_id=pack.event_id,
-                parent_event_id=event.event_id,
-            )
-            response_text = result.text
-            token_count = result.usage.output_tokens
-            policy_id = f"{result.provider}/{result.model}"
-        except (ProviderError, KeyError) as exc:
+        if memory_integrity_failed:
             response_text = (
-                "Could not dispatch a synthesizer call: "
-                f"{type(exc).__name__}: {exc}"
+                "Investigation working memory could not be verified. "
+                "No synthesizer call was made."
             )
             token_count = 0
-            policy_id = "wrestling-fallback/no-provider"
+            policy_id = "wrestling-fallback/memory-integrity"
+        else:
+            try:
+                result = dispatch(
+                    full_prompt,
+                    "synthesizer",
+                    investigation_id=event.investigation_id,
+                    context_pack_event_id=pack.event_id,
+                    parent_event_id=event.event_id,
+                )
+                response_text = result.text
+                token_count = result.usage.output_tokens
+                policy_id = f"{result.provider}/{result.model}"
+            except (ProviderError, KeyError) as exc:
+                response_text = (
+                    "Could not dispatch a synthesizer call: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                token_count = 0
+                policy_id = "wrestling-fallback/no-provider"
 
         claims, rendered_text = _parse_claims_response(
             response_text, region_id=request.region_id
@@ -431,40 +459,49 @@ def make_document_loaded_handler(
         if not event.document_id:
             return  # malformed — the wrestling validator should have rejected
 
-        try:
-            ensure_initialized(resolved_db)
-            con = connect_write(resolved_db, purpose="wrestling.document_loaded")
-        except Exception as exc:  # pragma: no cover — diagnostic
-            print(
-                f"wrestling.document_loaded: cannot acquire DB write — {exc!r}",
-                flush=True,
-            )
-            return
-
         p = event.payload
-        try:
-            insert_document(
-                con,
-                document_id=event.document_id,
-                source_tier=4,  # conservative default; tier_assigner will refine later
-                document_type=p.media_type,
-                source_uri=p.source_uri,
-                title=p.title,
-                investigation_id=event.investigation_id,
-                metadata={
-                    "content_hash": p.content_hash,
-                    "size_bytes": p.size_bytes,
-                    "page_count": p.page_count,
-                },
-                on_conflict="ignore",
-            )
-        except Exception as exc:  # pragma: no cover — diagnostic
-            print(
-                f"wrestling.document_loaded: insert failed — {exc!r}",
-                flush=True,
-            )
-        finally:
-            con.close()
+        document_id: str = event.document_id  # narrowed; closures re-widen
+
+        def _sync() -> bool:
+            try:
+                ensure_initialized(resolved_db)
+                con = connect_write(resolved_db, purpose="wrestling.document_loaded")
+            except Exception as exc:  # pragma: no cover — diagnostic
+                print(
+                    f"wrestling.document_loaded: cannot acquire DB write — {exc!r}",
+                    flush=True,
+                )
+                return False
+
+            try:
+                insert_document(
+                    con,
+                    document_id=document_id,
+                    source_tier=4,  # conservative default; tier_assigner will refine later
+                    document_type=p.media_type,
+                    source_uri=p.source_uri,
+                    title=p.title,
+                    investigation_id=event.investigation_id,
+                    metadata={
+                        "content_hash": p.content_hash,
+                        "size_bytes": p.size_bytes,
+                        "page_count": p.page_count,
+                    },
+                    on_conflict="ignore",
+                )
+            except Exception as exc:  # pragma: no cover — diagnostic
+                print(
+                    f"wrestling.document_loaded: insert failed — {exc!r}",
+                    flush=True,
+                )
+            finally:
+                con.close()
+            return True
+
+        # flock wait off the event loop (#3111 to_thread class).
+        acquired = await asyncio.to_thread(_sync)
+        if not acquired:
+            return
 
         # RLM bridge: above-threshold long docs need the recursive
         # wrestling pattern (§11.6 + RLM-1). The decision is
@@ -475,12 +512,32 @@ def make_document_loaded_handler(
                 estimate_tokens_from_bytes,
                 maybe_escalate_to_rlm,
             )
+            from orchestration.rlm.prime_agent_backend import (
+                prime_agent_backend_from_environment,
+            )
 
+            # Supply the backend so the documented flags become the real switch.
+            #
+            # Every RLM site accepts a ``prime_backend`` and, until now, no non-test
+            # code anywhere constructed one — so `_bridge_executor(None)` returned
+            # "dispatch" unconditionally and the entire Prime lane was unreachable at
+            # runtime while looking wired at the module level. This is the one RLM site
+            # with a live entry point (document.loaded), which makes it the honest place
+            # to close that gap first; the other seven have no route at all and wiring
+            # them without a consumer is what produced eight inert parameters.
+            #
+            # The default path is unchanged. `_bridge_executor` requires ALL THREE of a
+            # non-None backend, ANTIEK_PRIME_AGENT_RLM_ENABLED=1 and ANTIEK_RLM_RATIFIED=1
+            # (bridge.py:103-110), and the factory itself returns a backend with
+            # enabled=False unless the first flag is set. Neither flag is set anywhere in
+            # the deployment config, so behaviour is byte-identical until the operator
+            # ratifies — which is exactly the gate session.py:36-40 says is deliberate.
             decision = maybe_escalate_to_rlm(
                 document_id=event.document_id,
                 investigation_id=event.investigation_id or "__no_investigation__",
                 estimated_tokens=estimate_tokens_from_bytes(p.size_bytes or 0),
                 root_role="wrestler",
+                prime_backend=prime_agent_backend_from_environment(),
             )
             if decision.above_threshold:
                 # Surface the decision for the wrestling driver +
@@ -561,6 +618,7 @@ def make_region_selected_handler(
             return
 
         p = event.payload
+        document_id: str = event.document_id  # narrowed; closures re-widen
         chunk_id = _region_to_chunk_id(p.region_id)
         # Lazy-resolve the embedder so tests + env-var overrides take
         # effect without us caching a stale module-level value.
@@ -574,70 +632,78 @@ def make_region_selected_handler(
             )
             return
 
-        try:
-            ensure_initialized(resolved_db)
-            con = connect_write(resolved_db, purpose="wrestling.region_selected")
-        except Exception as exc:  # pragma: no cover — diagnostic
-            print(
-                f"wrestling.region_selected: cannot acquire DB write — {exc!r}",
-                flush=True,
-            )
-            return
+        def _sync() -> str | None:
+            try:
+                ensure_initialized(resolved_db)
+                con = connect_write(resolved_db, purpose="wrestling.region_selected")
+            except Exception as exc:  # pragma: no cover — diagnostic
+                print(
+                    f"wrestling.region_selected: cannot acquire DB write — {exc!r}",
+                    flush=True,
+                )
+                return None
 
-        try:
-            # Ensure the parent document exists. If the document.loaded
-            # handler fired first this is a no-op; if the surface
-            # somehow posted a region without a load (replay scenarios),
-            # we synthesize a placeholder row so the chunks FK holds.
-            insert_document(
-                con,
-                document_id=event.document_id,
-                source_tier=4,
-                document_type="pdf",
-                investigation_id=event.investigation_id,
-                on_conflict="ignore",
-            )
-            insert_chunk(
-                con,
-                chunk_id=chunk_id,
-                document_id=event.document_id,
-                chunk_index=p.char_start,  # use char_start as a stable index
-                section_path=f"page {p.page}" if p.page is not None else None,
-                text=p.text_excerpt,
-                embedding=vec,
-                token_count=len(p.text_excerpt.split()),
-            )
-            # Anchor the chunk as a graph node so traversal-side
-            # consumers (the grounder) can find it via search +
-            # connect via edges. ``label`` is a truncated excerpt for
-            # discoverability; the full text lives on the chunk row.
-            label = p.text_excerpt[:80].strip()
-            if not label:
-                label = f"region {p.region_id}"
-            node_id = insert_node(
-                con,
-                canonical_label=label,
-                node_type="claim",
-                graph_scope="cross_domain",
-                investigation_id=event.investigation_id,
-                embedding=vec,
-                metadata={
-                    "chunk_id": chunk_id,
-                    "document_id": event.document_id,
-                    "region_id": p.region_id,
-                    "page": p.page,
-                },
-                parent_event_id=event.event_id,
-                on_conflict="ignore",
-            )
-            _ = node_id  # for clarity — id derived deterministically from label
-        except Exception as exc:  # pragma: no cover — diagnostic
-            print(
-                f"wrestling.region_selected: insert failed — {exc!r}",
-                flush=True,
-            )
-        finally:
-            con.close()
+            try:
+                # Ensure the parent document exists. If the document.loaded
+                # handler fired first this is a no-op; if the surface
+                # somehow posted a region without a load (replay scenarios),
+                # we synthesize a placeholder row so the chunks FK holds.
+                insert_document(
+                    con,
+                    document_id=document_id,
+                    source_tier=4,
+                    document_type="pdf",
+                    investigation_id=event.investigation_id,
+                    on_conflict="ignore",
+                )
+                insert_chunk(
+                    con,
+                    chunk_id=chunk_id,
+                    document_id=document_id,
+                    chunk_index=p.char_start,  # use char_start as a stable index
+                    section_path=f"page {p.page}" if p.page is not None else None,
+                    text=p.text_excerpt,
+                    embedding=vec,
+                    token_count=len(p.text_excerpt.split()),
+                )
+                # Anchor the chunk as a graph node so traversal-side
+                # consumers (the grounder) can find it via search +
+                # connect via edges. ``label`` is a truncated excerpt for
+                # discoverability; the full text lives on the chunk row.
+                node_label = p.text_excerpt[:80].strip()
+                if not node_label:
+                    node_label = f"region {p.region_id}"
+                node_id = insert_node(
+                    con,
+                    canonical_label=node_label,
+                    node_type="claim",
+                    graph_scope="cross_domain",
+                    investigation_id=event.investigation_id,
+                    embedding=vec,
+                    metadata={
+                        "chunk_id": chunk_id,
+                        "document_id": event.document_id,
+                        "region_id": p.region_id,
+                        "page": p.page,
+                    },
+                    parent_event_id=event.event_id,
+                    on_conflict="ignore",
+                )
+                _ = node_id  # for clarity — id derived deterministically from label
+                return node_label
+            except Exception as exc:  # pragma: no cover — diagnostic
+                print(
+                    f"wrestling.region_selected: insert failed — {exc!r}",
+                    flush=True,
+                )
+                return None
+            finally:
+                con.close()
+
+        # flock wait off the event loop (#3111 to_thread class).
+        label = await asyncio.to_thread(_sync)
+        if label is None:
+            return
 
         # Broadcast the emitted GRAPH_NODE_INSERTED event so subscribed
         # WS clients see the graph populating in real time. We look it

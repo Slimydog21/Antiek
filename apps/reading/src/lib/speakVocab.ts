@@ -105,6 +105,13 @@ export const GATE_PHRASES = {
       "Open public contributions arrive after the ecosystem review (G7); for " +
       "now, contributions come through your invites.",
   },
+  /** Synquery expert network — partnership gated until operator enable post-PMF. */
+  synquery: {
+    label: "Expert network (Synquery)",
+    whenGated:
+      "Expert-network booking (Synquery) opens only after creation-surface " +
+      "PMF and an operator partnership flip — not a live booking surface today.",
+  },
 } as const;
 
 export type GatePhraseKey = keyof typeof GATE_PHRASES;
@@ -179,13 +186,44 @@ export type PayoutCopyKey = keyof typeof PAYOUT_COPY;
  * fiction (mirrors the guard at speakApi.ts releasePayout).
  */
 export const PUBLIC_LANE_LABELS = {
+  browseHeading: "Public remembrances",
+  discoverBrowseLink: "Browse public remembrances",
+  shareBrowseLink: "Open public browse (no login)",
+  shareBrowseHint:
+    "Share this page with friends who are not signed in — " +
+    "they can browse remembrances and wait for an invite to add one.",
+  discoverBrowseBlurb:
+    "Anyone can browse open remembrances without signing in. " +
+    "Adding a memory still needs a family invite link until " +
+    "open contribution is live.",
+  browseSubhead:
+    "Browse open remembrances without signing in. To add a memory, " +
+    "you will need an invite link from the family - open contribution " +
+    "without an invite is not live yet.",
+  browseSubheadLive:
+    "Browse open remembrances without signing in. Public projects " +
+    "accept open contribution (token door; no account). Private " +
+    "projects stay invite-only.",
+  visitorCtaNote:
+    "To add what you remember, ask the family for an invite link " +
+    "(the link token is your credential - no account). Open " +
+    "contribution without an invite is not live yet.",
+  visitorCtaNoteLive:
+    "Add what you remember — open contribution mints your invite " +
+    "door (token is the credential; no account). Private projects " +
+    "still need a family invite.",
   /** M5 — a feed item is public-INTENT, never confirmed published. */
   intendedPublic:
     "A public remembrance — open to the people invited to add what they remember.",
   /** M3 — honest framing of who the working CTA serves today. */
+  /** M3 — CTA opens the invite-token door (/speak/invite/:token), not the
+   *  authed operator console. Open contribution WITHOUT an invite stays G7. */
   ctaOperatorOnly:
-    "This opens your own public-intent remembrance. Open contribution by " +
-    "anyone is described below — it isn't live yet.",
+    "Opens the invite door — the link's token is the credential (no account " +
+    "needed). Open contribution by anyone without an invite is described " +
+    "below — it isn't live yet.",
+  ctaMintBusy: "Opening invite door…",
+  ctaMintFailed: "Couldn't open the invite door — try again.",
   /** M4 — explainer heading. */
   explainerHeading: "How public remembrances will work",
   /** M4 — step 1, the only present-ish framing, still about the future flow. */
@@ -206,6 +244,10 @@ export const PUBLIC_LANE_LABELS = {
    * phrases: a gate phrase is the FUTURE-tense "what opens it" sentence; these
    * are the present-tense "it is open" counterpart, read live from G2/G3).
    */
+  openContributionLive:
+    "Open contribution is live for public remembrances — add what you " +
+    "remember without a pre-shared family invite. The link token is " +
+    "still your credential (no account). Private projects stay invite-only.",
   publishingOpen:
     "Public sharing is open — remembrances can now be shared publicly.",
   payoutsOpen:
@@ -213,6 +255,10 @@ export const PUBLIC_LANE_LABELS = {
   /** M4 — explainer step 2, distinct from the M2 lock panel's sentence so the
    *  same G7 sentence is not printed twice on screen. Points at the panel above
    *  rather than repeating it verbatim. */
+  explainerStepOpenContributionLive:
+    "Open contribution is live for public remembrances — strangers " +
+    "mint an invite door from browse (token credential, no account). " +
+    "Private stays invite-only.",
   explainerStepOpenContribution:
     "Open contribution by anyone arrives after the ecosystem review — see the " +
     "note above; for now, contributions come through your invites.",
@@ -271,6 +317,87 @@ export function inviteStatusLabel(status: InviteStatus): string {
   return VOICE_STATE_LABELS[INVITE_STATUS_TO_VOICE_STATE[status]];
 }
 
+
+/**
+ * PRIVATE_ECON_COPY — unmistakable no-earnings honesty for private /
+ * never-published Speak projects (Anti-Ek remap 2026-09-18 + spine).
+ *
+ * Mirrors `substrate/speak/economics_mode.py`: private + never_published ⇒
+ * `split_applies=False` (no 70% contributor split; creator carries cost;
+ * user plans / publisher economics do not apply). Public / will-be-public
+ * keeps the honest "can earn via escrow" path.
+ *
+ * Not gate phrases (no enable/unlock agency) — live in `allRenderedPhrases()`
+ * so env-flag leak scans still cover them.
+ *
+ * Cite: docs/decisions/anti-ek-speak-deepblu-remap-2026-09-18.md,
+ *       docs/decisions/speak-private-public-spine.md
+ */
+export const PRIVATE_ECON_COPY = {
+  /** Invitee — must be impossible to miss before consent / recording. */
+  inviteeNoEarnings:
+    "You will NOT make money on this private project. Sharing a memory helps " +
+    "the story; there is no payout, ad share, or earnings while it stays private.",
+  inviteeNoEarningsDetail:
+    "Earnings only apply if this story is later published publicly on Antiek — " +
+    "then the usual 70% contributor split can accrue to escrow. Until then: no money.",
+  /** Operator create (defaults to private_never_published). */
+  createDefaultsPrivate:
+    "New stories start private: friends you invite will NOT make money unless " +
+    "you later publish the story publicly on Antiek.",
+  /** Operator Invites panel. */
+  operatorInviteNoEarnings:
+    "Private project — invitees will NOT make money. Publisher and plan " +
+    "economics do not apply. Publish publicly later to unlock the 70% contributor split.",
+  /** SpeakSettings matrix cell (active private). */
+  operatorPrivateMatrixBody:
+    "You invite the people who knew them. Nothing is published; you carry the " +
+    "cost. Invitees will NOT make money on this private project.",
+  /** SpeakSettings "What contributors are owed" when splitApplies=false. */
+  operatorPrivateNoSplit:
+    "This private project is not monetised — contributors will NOT make money " +
+    "here. There is no contributor split, no ad share, and no payout. Publish " +
+    "publicly on Antiek to share earnings 70% with the people who contributed.",
+  /** Public / will-be-public honesty counterpart for invitee + operator. */
+  publicCanEarn:
+    "When this story is published publicly, contributors can earn via the 70% " +
+    "split: quality grades accrue to escrow now; cash leaves escrow only after " +
+    "legal review (G2/G3). Nothing is paid out today.",
+} as const;
+
+export type PrivateEconCopyKey = keyof typeof PRIVATE_ECON_COPY;
+
+
+/**
+ * Dual-push / continuous-ping copy (Anti-Ek Speak remap §PUSHES).
+ * Honest about heuristic public ranking and invite-path-only delivery.
+ */
+export const PUSHES_COPY = {
+  tabLabel: "Pushes",
+  heading: "What needs a voice",
+  honestyBanner:
+    "Public ranking is a multi-signal heuristic (needs voices + recency + " +
+    "subject/title clarity; optional interest overlap) — not ML profile " +
+    "matching. Private re-pings can email the invite door when " +
+    "ANTIEK_SPEAK_REPING_EMAIL is on and AgentMail/Resend is configured; " +
+    "declined invitees are never emailed.",
+  publicHeading: "Public — what you'd add value to",
+  rankingSignals:
+    "Ranked by needs-voices, recency, and subject/title clarity " +
+    "(optional interest overlap) — heuristic, not ML.",
+  publicEmpty: "No public-intent remembrances need voices yet.",
+  privateHeading: "Private — friend invites to re-ping",
+  privateEmpty: "No open friend invites need a nudge right now.",
+  repingBusy: "Preparing follow-ups…",
+  repingDone: "Invite door ready — share or open the link.",
+  openInvite: "Open invite door",
+  prepareReping: "Re-ping + email",
+  contribute: "Add a memory",
+  emailSent: "Email sent with the invite door.",
+  emailSkippedEnv: "Invite door ready — email not sent (ANTIEK_SPEAK_REPING_EMAIL unset).",
+  emailDegraded: "Invite door ready — email could not send (check AgentMail/Resend credentials).",
+} as const;
+
 /** Every rendered string this module exposes, flattened — the surface the
  *  gate-honesty contract test scans. Keeping it derived (not hand-maintained)
  *  means a new label/phrase is automatically covered by the test. */
@@ -281,6 +408,8 @@ export function allRenderedPhrases(): string[] {
     ...Object.values(VOICE_STATE_LABELS),
     ...Object.values(PUBLIC_LANE_LABELS),
     ...Object.values(PAYOUT_COPY),
+    ...Object.values(PRIVATE_ECON_COPY),
+    ...Object.values(PUSHES_COPY),
   ];
   for (const gate of Object.values(GATE_PHRASES)) {
     out.push(gate.label, gate.whenGated);

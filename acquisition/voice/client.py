@@ -50,14 +50,20 @@ class WhisperTranscriber:
         *,
         api_key: str | None = None,
         base_url: str | None = None,
-        model: str = DEFAULT_WHISPER_MODEL,
+        model: str | None = None,
         client: httpx.Client | None = None,
     ) -> None:
         self._api_key = api_key or os.environ.get("OPENAI_API_KEY")
         self._base_url = (base_url or os.environ.get(
             "ANTIEK_OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL,
         )).rstrip("/")
-        self._model = model
+        # Lineup binding (voice action): the operator's lineup assignment
+        # for `transcription` wins over the whisper-1 default when it names
+        # an admissible model; an explicit caller model always wins.
+        from substrate.dispatch.lineup_override import effective_model_for_action
+        self._model = model or effective_model_for_action(
+            "transcription", provider_family="openai", default=DEFAULT_WHISPER_MODEL,
+        )
         self._client = client
 
     def transcribe(

@@ -180,10 +180,11 @@ def test_biography_invite_lands_on_talk_flow_for_that_project(client):
         f"/speak/projects/{comp['project_id']}/invites",
         json={"informant_handle": "a friend"},
     ).json()
-    token = iv["link"].split("token=")[1]
+    token = iv["token"]  # SpeakInvite door — never parse legacy ?token= links
 
     # The invitee's token lands on the talk flow for THIS biography's project.
     landing = client.get(f"/speak/invite/{token}").json()
+    assert landing["publish_intent"] in ("private_never_published", "will_be_public")
     assert landing["project_id"] == comp["project_id"]
 
 
@@ -236,8 +237,15 @@ def test_private_publish_not_served(client):
     assert r.json()["visibility"] == "private"
 
 
-def _token_from_link(link: str) -> str:
-    return link.split("token=", 1)[1]
+def _token_from_invite(iv: dict) -> str:
+    if iv.get("token"):
+        return iv["token"]
+    link = iv.get("link") or ""
+    if "/speak/invite/" in link:
+        return link.rstrip("/").rsplit("/", 1)[-1]
+    if "token=" in link:
+        return link.split("token=", 1)[1]
+    raise AssertionError(f"invite missing token: {iv}")
 
 
 def test_invitee_token_flow(client):
@@ -248,7 +256,7 @@ def test_invitee_token_flow(client):
     }).json()["project_id"]
     iv = client.post(f"/speak/projects/{project_id}/invites",
                      json={"informant_email": "aunt@x.com"}).json()
-    token = _token_from_link(iv["link"])
+    token = _token_from_invite(iv)
 
     # The invitee lands via their TOKEN (no operator account).
     landing = client.get(f"/speak/invite/{token}").json()
@@ -275,7 +283,7 @@ def test_invitee_token_flow(client):
 def test_invitee_answer_requires_consent(client):
     pid = client.post("/speak/projects", json={"title": "Bio"}).json()["project_id"]
     iv = client.post(f"/speak/projects/{pid}/invites", json={"informant_email": "a@x.com"}).json()
-    token = _token_from_link(iv["link"])
+    token = _token_from_invite(iv)
     # Answer before consent → 403 (ConsentRequired surfaced).
     r = client.post(f"/speak/invite/{token}/answer",
                     json={"question_id": "q1", "transcript": "before consent"})
@@ -305,7 +313,7 @@ def test_invitee_surface_open_while_operator_endpoints_authed(client, monkeypatc
 def test_invitee_decline(client):
     pid = client.post("/speak/projects", json={"title": "Bio"}).json()["project_id"]
     iv = client.post(f"/speak/projects/{pid}/invites", json={"informant_email": "a@x.com"}).json()
-    token = _token_from_link(iv["link"])
+    token = _token_from_invite(iv)
     r = client.post(f"/speak/invite/{token}/decline")
     assert r.status_code == 200
     assert r.json()["status"] == "declined"
@@ -414,3 +422,30 @@ def test_release_payout_accrues_to_escrow_no_disbursement(client, monkeypatch):
     assert any(l["interview_id"] == interview_id for l in body["accrual_lines"])
     # spent accrued to escrow (a real dollar figure because ad_revenue>0).
     assert "spent_usd" in body
+
+
+def test_invite_response_includes_token_for_speakinvite_door(client):
+    """PublicLane / makeContributionInvitePath need `token` to build
+    /speak/invite/:token (spine SPR-03) — not only a legacy absolute link."""
+    proj = client.post(
+        "/speak/projects",
+        json={
+            "title": "Public door story",
+            "subject_ref": "Aunt May",
+            "publish_intent": "will_be_public",
+        },
+    ).json()
+    pid = proj["project_id"]
+    r = client.post(
+        f"/speak/projects/{pid}/invites",
+        json={"informant_handle": "a friend or family member"},
+    )
+    assert r.status_code == 201
+    body = r.json()
+    assert body.get("token"), body
+    assert "/speak/invite/" in body.get("link", "")
+    assert body["token"] in body["link"]
+    # Token door resolves for the unauth SpeakInvite landing.
+    landing = client.get(f"/speak/invite/{body['token']}")
+    assert landing.status_code == 200
+    assert landing.json()["project_id"] == pid

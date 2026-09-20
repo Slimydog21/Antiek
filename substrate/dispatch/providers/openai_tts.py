@@ -92,7 +92,7 @@ class OpenAITTSProvider:
         self,
         text: str,
         *,
-        model: str = "gpt-4o-mini-tts",
+        model: str | None = None,
         voice: str | None = None,
         poster: SpeechPoster | None = None,
     ) -> bytes:
@@ -114,6 +114,13 @@ class OpenAITTSProvider:
             raise RuntimeError(
                 "OPENAI_API_KEY missing. Set the env var to enable TTS voice replies."
             )
+        # Lineup binding (voice action): the operator's lineup assignment
+        # for `text_to_speech` wins over the gpt-4o-mini-tts default when it
+        # names an admissible model; an explicit caller model always wins.
+        from substrate.dispatch.lineup_override import effective_model_for_action
+        model = model or effective_model_for_action(
+            "text_to_speech", provider_family="openai", default="gpt-4o-mini-tts",
+        )
         post = poster or _httpx_poster
         return post(
             f"{self.base_url}/audio/speech",

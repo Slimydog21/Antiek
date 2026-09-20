@@ -5,6 +5,14 @@ import { useInvestigationList } from "../../hooks/useInvestigationList";
 import { useInvestigationTree } from "../../hooks/useInvestigationTree";
 import type { TreeNode } from "../../hooks/useInvestigationTree";
 import type { InvestigationSummary } from "../../lib/api";
+import { aggregateAttention } from "../../shared/attention";
+import {
+  isUnseen,
+  researchStateDotClass,
+  researchStateStyle,
+} from "../../shared/researchState";
+import { lastSeenAt } from "../../workspace/seen";
+import { useSeenVersion } from "../../hooks/useSeenVersion";
 
 /**
  * Left sidebar showing past investigations as a tree. Each node carries
@@ -20,6 +28,9 @@ export default function InvestigationSidebar() {
   const tree = useInvestigationTree(investigations);
   const params = useParams<{ investigationId?: string }>();
   const activeId = params.investigationId ?? null;
+
+  // P0-3 — unread state updates live when any surface marks seen.
+  useSeenVersion();
 
   return (
     <div className="p-3 text-xs text-ink dark:text-bright">
@@ -67,6 +78,20 @@ function TreeRow({
   const [expanded, setExpanded] = useState(true);
   const summary = node.summary;
   const isActive = activeId === node.investigationId;
+
+  // herdr transfer P0-2: a parent row rolls up its whole subtree — one
+  // blocked child reddens the family. Leaf rows roll up to themselves.
+  const subtree = collectSubtree(node);
+  const states = subtree.map((s) => ({
+    state: researchStateStyle(s.status).state,
+    unseen: isUnseen(s, lastSeenAt(s.investigation_id)),
+  }));
+  const rollup =
+    aggregateAttention(states) ??
+    researchStateStyle(summary?.status ?? "not_found").state;
+  const rollupUnseen = rollup === "done" && states.some((x) => x.unseen);
+  const unseen =
+    summary !== null && isUnseen(summary, lastSeenAt(summary.investigation_id));
   return (
     <li>
       <div className="flex items-start gap-1.5">
@@ -94,9 +119,17 @@ function TreeRow({
             <span aria-hidden="true" className="absolute left-0 top-1 bottom-1 w-0.5 bg-ink" />
           )}
           <div className="flex items-start gap-1.5">
-            <StatusDot status={summary?.status ?? "in_progress"} />
+            <span
+              aria-label={`${rollup}${rollupUnseen ? " · unseen" : ""}`}
+              title={`${rollup}${rollupUnseen ? " · unseen" : ""}`}
+              className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${researchStateDotClass(rollup, rollupUnseen)}`}
+            />
             <div className="flex-1 min-w-0">
-              <div className="font-serif leading-snug truncate">
+              <div
+                className={`font-serif leading-snug truncate ${
+                  unseen ? "font-bold" : ""
+                }`}
+              >
                 {truncate(summary?.question ?? node.investigationId, 60)}
               </div>
               <div className="font-mono text-[9px] text-ink-mute dark:text-moonlight mt-0.5">
@@ -125,21 +158,17 @@ function TreeRow({
   );
 }
 
-function StatusDot({ status }: { status: InvestigationSummary["status"] }) {
-  const color =
-    status === "in_progress"
-      ? "bg-sun animate-pulse"
-      : status === "completed"
-        ? "bg-aurora"
-        : status === "failed"
-          ? "bg-emperor"
-          : "bg-ink-mute dark:bg-moonlight";
-  return (
-    <span
-      className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${color}`}
-      aria-label={status}
-    />
-  );
+/** Depth-first summaries of a node and its whole subtree — the input to the
+ *  attention rollup. The tree is already sorted newest-first by
+ *  useInvestigationTree; order does not affect the max. */
+function collectSubtree(node: TreeNode): InvestigationSummary[] {
+  const out: InvestigationSummary[] = [];
+  const walk = (n: TreeNode) => {
+    if (n.summary) out.push(n.summary);
+    for (const child of n.children) walk(child);
+  };
+  walk(node);
+  return out;
 }
 
 function truncate(s: string, n: number): string {

@@ -126,16 +126,20 @@ export function AdBorder({
   // The route is a deferred seam → degrades to house fill (never blank).
   useEffect(() => {
     const ctl = new AbortController();
-    fillFetcher({ lens, positions, signal: ctl.signal }).then(setFill);
+    fillFetcher({ windowId, lens, positions, signal: ctl.signal }).then(setFill);
     return () => ctl.abort();
-  }, [lens, positions, fillFetcher]);
+  }, [windowId, lens, positions, fillFetcher]);
 
   const fillFor = (pos: BorderPosition): SlotFill =>
     fill.fills.find((f) => f.position === pos) ?? {
+      fill_decision_id: "local-house",
+      slot_id: `local:${pos}`,
       position: pos,
       kind: "house",
+      ad: null,
       house: null,
       revenue_usd_cents: 0,
+      price_status: "unpriced",
     };
 
   const h = RAIL_THICKNESS_PX.horizontal;

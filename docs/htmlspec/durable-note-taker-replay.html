@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cycle 46 - Durable Note-Taker Replay</title>
+<style>
+body{margin:0;background:#fff;color:#171717;font:16px/1.5 system-ui,sans-serif}main{max-width:1040px;margin:auto;padding:32px}h1,h2,h3{line-height:1.15}section{border-top:2px solid #171717;padding:22px 0}.hero{border:2px solid #171717;border-top:10px solid #f9bd2b;padding:24px}.tag{display:inline-block;background:#1d4aff;color:#fff;padding:3px 8px;font-weight:700}code,pre{background:#f3f3f3}pre{padding:14px;overflow:auto}table{border-collapse:collapse;width:100%}th,td{border:2px solid #171717;padding:8px;text-align:left;vertical-align:top}.must{border-left:8px solid #f9bd2b;padding-left:14px}a{color:#1d4aff}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}.card{border:2px solid #171717;padding:14px}
+</style>
+</head>
+<body><main>
+<header class="hero"><span class="tag">CYCLE 46</span><h1>Durable recursive note-taker replay</h1><p>Replace volatile event counters and fire-and-forget synthesis with deterministic windows, recoverable provider evidence, and byte-identical note delivery.</p></header>
+
+<section id="spec-lineage" data-spec-depth="0" data-parent-spec=""><h2>Spec lineage</h2><p>Parent program: <a href="../../specs/antiek-infinite/master-spec.html">Antiek Infinite</a>. Predecessors: <a href="write-transactional-event-outbox.html">transactional event outbox</a> and <a href="durable-knowledge-event-consumers.html">durable knowledge consumers</a>.</p><ul class="child-specs"><li>No child specs. This sprint is one atomic durability boundary.</li></ul></section>
+
+<section><h2>Outcome</h2><p class="must">For every investigation, each non-overlapping group of <code>N</code> qualifying physical trajectory events produces at most one paid synthesis request and at most one byte identity for each resulting <code>note.emerged</code> event. Restarts may delay progress; they must not silently lose cadence, duplicate spend, or reinterpret stored provider output.</p></section>
+
+<section><h2>Five values</h2><div class="grid">
+<div class="card"><h3>Precision</h3><p>Window identity includes consumer version, investigation, threshold, and ordered qualifying event IDs.</p></div>
+<div class="card"><h3>Exhaustiveness</h3><p>Tests interrupt before/after request commit, provider return, result commit, outbox append, and delivery receipt.</p></div>
+<div class="card"><h3>Craftsmanship</h3><p>Use the existing DuckDB lock, event schema, physical reader, and write outbox. No parallel persistence dialect.</p></div>
+<div class="card"><h3>Honesty</h3><p>An abandoned <code>calling</code> state is <code>uncertain</code>; without provider reconciliation it cannot be retried automatically.</p></div>
+<div class="card"><h3>Information maximization</h3><p>Backfill historical qualifying windows once under consumer v2 so missed insights become durable knowledge.</p></div>
+</div></section>
+
+<section><h2>Authoritative inputs</h2><ul><li>Read with <code>iter_physical_events</code>, never the logical merged reader.</li><li>Qualifying types: delivered distillations and passed/failed grounding checks.</li><li>Exclude note-taker-authored events defensively.</li><li>Reject conflicting physical event identities and incomplete JSONL tails; do not advance state.</li><li>Group from the beginning of the qualifying sequence into fixed, non-overlapping windows. Leave a suffix shorter than the configured threshold pending.</li></ul></section>
+
+<section><h2>Schema V20</h2><pre>note_taker_windows(
+  window_id PRIMARY KEY, consumer_version, investigation_id,
+  threshold, ordinal, first_event_id, last_event_id,
+  source_event_ids_json, source_digest,
+  request_json, request_sha256, provider_idempotency_key,
+  state CHECK IN ('prepared','calling','result_stored','materialized','completed','uncertain'),
+  raw_result, raw_result_sha256, provider, model, policy_id,
+  attempt_count, uncertainty_reason, created_at, updated_at,
+  UNIQUE(consumer_version, investigation_id, threshold, ordinal),
+  UNIQUE(consumer_version, investigation_id, source_digest)
+)</pre><p>Strict fingerprint validation is mandatory on every open. Partial or incompatible tables fail closed unless empty and safely repairable. Output events use the existing <code>write_event_outbox</code>; <code>operation_id</code> is <code>note-taker-v2:&lt;window_id&gt;:&lt;note-index&gt;</code>.</p></section>
+
+<section><h2>State machine</h2><table><thead><tr><th>From</th><th>Action</th><th>Commit before side effect</th><th>Recovery</th></tr></thead><tbody>
+<tr><td>absent</td><td>Discover complete window; freeze exact prompt/request bytes.</td><td><code>prepared</code></td><td>Dispatch later.</td></tr>
+<tr><td>prepared</td><td>Record attempt and provider key.</td><td><code>calling</code></td><td>If process ownership is gone, mark uncertain.</td></tr>
+<tr><td>calling</td><td>Perform one provider dispatch.</td><td>Already committed.</td><td>Never repeat automatically without authoritative reconciliation.</td></tr>
+<tr><td>calling</td><td>Persist exact raw response and route metadata.</td><td><code>result_stored</code></td><td>Parse stored bytes; never call provider.</td></tr>
+<tr><td>result_stored</td><td>Parse and enqueue deterministic events in one transaction.</td><td><code>materialized</code> plus outbox rows</td><td>Drain outbox.</td></tr>
+<tr><td>materialized</td><td>Byte-reconcile append and receipts.</td><td>Outbox delivery receipts</td><td>Mark completed only when every output is delivered.</td></tr>
+</tbody></table><p>Malformed validly stored model output materializes zero notes and completes with evidence; it is not a reason to spend again.</p></section>
+
+<section><h2>Determinism</h2><ul><li><code>window_id = sha256(canonical consumer/version/investigation/threshold/ordered event IDs)</code>.</li><li>Request JSON and digest are frozen at discovery. Context-pack telemetry is not allowed to mutate the prompt on replay.</li><li><code>note_id</code> and event ID derive from window ID, stable parsed note index, normalized text, confidence, and validated source IDs.</li><li><code>emitted_at</code> is chosen once while materializing and persisted inside outbox bytes.</li><li>Any reused identity with different bytes is corruption and fails closed.</li></ul></section>
+
+<section><h2>Execution slices</h2><ol><li>Add V20 schema, repair/fingerprint checks, and migration tests.</li><li>Add a framework-neutral durable replay service with injected dispatcher and crash checkpoints.</li><li>Replace the volatile handler with a thin async bridge that asks the service to catch up.</li><li>Wire startup catch-up before live subscriptions where the API lifecycle permits.</li><li>Add restart, duplicate-trigger, process-death, malformed-result, incomplete-tail, and outbox-race tests.</li></ol></section>
+
+<section><h2>Acceptance</h2><ul><li>Three qualifying events before restart plus two after restart form exactly one threshold-five window.</li><li>Two concurrent catch-up callers cause one provider call.</li><li>Death before provider call leaves a retryable prepared request.</li><li>Death during/after an unreceipted provider call becomes uncertain and causes zero automatic calls.</li><li>Death after raw-result commit performs zero additional provider calls and emits deterministic notes.</li><li>Death after JSONL append but before receipt produces no duplicate line.</li><li>Sealed Parquet plus JSONL tail preserves chronological windows and refuses incomplete tails.</li><li>Existing note-taker behavior remains available through the handler API; broadcasts are best effort after durable delivery.</li></ul></section>
+
+<section><h2>Rejected alternatives</h2><ul><li><strong>Persist only a counter:</strong> cannot prove which events were synthesized or rebuild a prompt.</li><li><strong>Retry provider errors naturally:</strong> duplicates spend when transport outcome is unknown.</li><li><strong>Emit directly:</strong> duplicates or loses notes across append/receipt crashes.</li><li><strong>Use logical trajectory:</strong> hides sealed-plus-tail ordering and physical corruption.</li><li><strong>Random note IDs:</strong> makes stored-result replay non-idempotent.</li><li><strong>Exactly-once marketing claim:</strong> impossible without provider idempotency/reconciliation; the honest contract is at-most-once automatic dispatch with explicit uncertainty.</li></ul></section>
+
+<section><h2>Out of scope</h2><p>Cross-document compression, remote multi-host leases, provider-specific reconciliation adapters, UI controls for uncertain windows, and semantic note deduplication belong to later cycles.</p></section>
+
+<section id="harness-hint" data-pattern="adversarial-verification" data-scope="cycle46-note-taker-replay" data-success="all-acceptance-tests-green"><h2>Harness hint</h2><p>Implement schema and service together, then run a hostile reviewer against every transition and identity boundary. Do not publish while an untested external side effect exists.</p></section>
+<section id="harness-hint-run" data-entry="docs/htmlspec/durable-note-taker-replay.html" data-pattern="adversarial-verification"><h2>Run</h2><pre>pytest -q tests/test_note_taker_replay.py tests/test_note_taking.py tests/test_write_event_outbox.py tests/test_schema.py</pre></section>
+</main></body></html>

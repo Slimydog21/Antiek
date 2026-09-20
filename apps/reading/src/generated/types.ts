@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 32;
+export const EVENT_SCHEMA_VERSION = 40;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -100,6 +100,10 @@ export const ActionType = {
   USER_EDIT_DISTILLATION: "user.edit_distillation",
   ARTIFACT_GENERATED: "artifact.generated",
   ARTIFACT_INTERACTED: "artifact.interacted",
+  ARTIFACT_COMMENT_CREATED: "artifact.comment.created",
+  FEEDBACK_THREAD_RESOLVED: "feedback.thread.resolved",
+  AGENT_WORK_TRANSITIONED: "agent.work.transitioned",
+  ARTIFACT_FEEDBACK_REPLIED: "artifact.feedback.replied",
   RLM_BRIDGE_DECIDED: "rlm.bridge.decided",
   QUALITY_GATE_EVALUATED: "quality_gate.evaluated",
   CROSS_GRAPH_CITATION_RECORDED: "cross_graph.citation.recorded",
@@ -140,12 +144,16 @@ export const ActionType = {
   BLOCK_POSITIONED: "block.positioned",
   MARGINALIA_NOTED: "marginalia.noted",
   SOURCE_READ: "source.read",
+  READ_BOOK_ANSWERED: "read.book_answered",
+  READ_BOOK_ANSWER_JUDGED: "read.book_answer_judged",
   READ_META_READING_GENERATED: "read.meta_reading.generated",
   DOCUMENT_FILED_INTO_INVESTIGATION: "document.filed_into_investigation",
   GROUNDEDNESS_SCORED: "groundedness.scored",
   GROUNDEDNESS_FAILED: "groundedness.failed",
   DOCUMENT_CONTENT_CLASS_DEFAULTED: "document.content_class_defaulted",
   WORKER_IDENTITY: "worker.identity",
+  LINK_MONSTER_DIGESTED: "link.monster.digested",
+  SURFACE_SERVED_IMPRESSION: "surface.served_impression",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -200,7 +208,7 @@ export type ProvenanceSourceKind = "user" | "ai" | "system";
  * ``ContextPackAssembledPayload.layers``.
  */
 export interface ContextLayer {
-  kind: "session" | "long_term_skill" | "reuse" | "graph_evidence" | "style_guide" | "phase_metadata" | "param_version_stamp";
+  kind: "session" | "working_memory" | "long_term_skill" | "reuse" | "graph_evidence" | "style_guide" | "phase_metadata" | "param_version_stamp";
   source: string;
   tokens: number;
 }
@@ -608,6 +616,14 @@ export interface MetaReadingCitation {
   page_resolved?: boolean;
 }
 
+export interface BookAnswerCitation {
+  chunk_id: string;
+  document_id: string;
+  page_index?: number | null;
+  page_resolved?: boolean;
+  snippet: string;
+}
+
 /**
  * One per-claim entailment verdict. ``score`` is the claim's
  * groundedness in [0, 1]; ``supported`` is the binary verdict the
@@ -663,6 +679,13 @@ export interface DispatchCallPayload {
   feature_label?: string | null;
   session_id?: string | null;
   route_receipt?: RouteReceipt | null;
+  nd_session_id?: string | null;
+  nd_recommended_provider?: string | null;
+  nd_recommended_model?: string | null;
+  nd_tradeoff?: string | null;
+  nd_decision_latency_ms?: number | null;
+  nd_bypassed?: boolean;
+  nd_bypass_reason?: string | null;
 }
 
 /**
@@ -684,6 +707,25 @@ export interface WorkerIdentityPayload {
   spawn_kind: "subprocess" | "asyncio_task" | "thread" | "role_invocation" | "variant";
   expected_lifetime_s?: number | null;
   context_hash?: string | null;
+}
+
+/**
+ * Recorded once per Link Monster digest attempt. ``outcome`` is
+ * meal (body extracted), snack (metadata only), or leftover (failed —
+ * not yet emitted in v1; failures are typed API responses). Counts
+ * only — never the body (§9.0).
+ */
+export interface LinkMonsterDigestedPayload {
+  action_type: "link.monster.digested";
+  url: string;
+  final_url: string;
+  platform: string;
+  document_id: string;
+  outcome: string;
+  artifacts?: Record<string, number>;
+  title?: string | null;
+  author?: string | null;
+  duration_ms?: number;
 }
 
 /**
@@ -781,7 +823,7 @@ export interface ReuseGatedPayload {
 
 export interface DocumentLoadedPayload {
   action_type: "document.loaded";
-  media_type: "pdf" | "pasted_text" | "url_extracted" | "markdown";
+  media_type: "pdf" | "pasted_text" | "url_extracted" | "markdown" | "html";
   content_hash: string;
   size_bytes: number;
   title?: string | null;
@@ -953,6 +995,58 @@ export interface ArtifactInteractedPayload {
 }
 
 /**
+ * Audit projection of one canonical, immutable-version comment.
+ */
+export interface ArtifactCommentCreatedPayload {
+  action_type: "artifact.comment.created";
+  thread_id: string;
+  item_id: string;
+  artifact_id: string;
+  artifact_version: number;
+  artifact_content_sha256: string;
+  artifact_source_sha256: string;
+  anchor_node_id: string;
+  body_sha256: string;
+}
+
+/**
+ * Audit projection of an operator resolving a feedback thread.
+ */
+export interface FeedbackThreadResolvedPayload {
+  action_type: "feedback.thread.resolved";
+  thread_id: string;
+  artifact_id: string;
+  artifact_version: number;
+  reason?: "operator_resolved";
+}
+
+/**
+ * Audit projection of a canonical agent-work state transition.
+ */
+export interface AgentWorkTransitionedPayload {
+  action_type: "agent.work.transitioned";
+  work_id: string;
+  thread_id: string;
+  before_state?: string | null;
+  after_state: string;
+  attempt_no: number;
+  reason: string;
+}
+
+/**
+ * Audit projection of one canonical agent feedback message.
+ */
+export interface ArtifactFeedbackRepliedPayload {
+  action_type: "artifact.feedback.replied";
+  work_id: string;
+  thread_id: string;
+  reply_item_id: string;
+  attempt_no: number;
+  reply_sha256: string;
+  result_kind?: "reply" | "decline" | "approval_request";
+}
+
+/**
  * Emitted once per document when the rule-based classifier assigns a
  * tier at ingestion. The asymmetric design (rule-based assignment;
  * LLM may only adjust DOWNWARD via TierOverriddenPayload) is preserved
@@ -1113,7 +1207,7 @@ export interface GraphNodeInsertedPayload {
   action_type: "graph.node.inserted";
   node_id: string;
   canonical_label: string;
-  node_type: "entity" | "organization" | "person" | "property" | "metric" | "mechanism" | "claim" | "method" | "constraint" | "insight" | "question";
+  node_type: "entity" | "organization" | "person" | "property" | "metric" | "mechanism" | "claim" | "method" | "constraint" | "insight" | "question" | "memory";
   graph_scope: "depth" | "cross_domain" | "constraint";
   has_embedding: boolean;
 }
@@ -1135,6 +1229,7 @@ export interface GraphEdgeInsertedPayload {
   source_tier: number;
   extraction_confidence: number;
   graph_scope: "depth" | "cross_domain" | "constraint";
+  owner_user_id?: string | null;
 }
 
 /**
@@ -1482,6 +1577,7 @@ export interface EvidenceRetrieveRequestedPayload {
   top_k?: number;
   chunks_block: string;
   subgraph_block: string;
+  owner_semantic_call_id?: string | null;
 }
 
 /**
@@ -1648,6 +1744,12 @@ export interface InvestigationStartRequestedPayload {
   chase_value?: number;
   chase_budget_usd?: number;
   research_tier?: "fast" | "deep" | null;
+  source_policy?: ("arxiv" | "substack" | "web" | "operator_corpus")[];
+  owner_user_id?: string | null;
+  owner_operation_id?: string | null;
+  owner_model_choices?: Record<string, Record<string, string>> | null;
+  owner_launch_digest?: string | null;
+  owner_launch_version?: number | null;
 }
 
 /**
@@ -2627,6 +2729,40 @@ export interface SourceReadPayload {
 }
 
 /**
+ * One durable talk-to-book output, including the real dispatch receipt.
+ */
+export interface ReadBookAnsweredPayload {
+  action_type: "read.book_answered";
+  owner_id: string;
+  question: string;
+  answer: string;
+  citations?: BookAnswerCitation[];
+  grounded: boolean;
+  context_chunk_count: number;
+  research_tier: "fast" | "deep";
+  provider?: string | null;
+  model?: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cached_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+  cost_usd?: number | null;
+  latency_ms?: number | null;
+  dispatch_event_id?: string | null;
+}
+
+/**
+ * The operator's append-only verdict on one captured book answer.
+ */
+export interface ReadBookAnswerJudgedPayload {
+  action_type: "read.book_answer_judged";
+  answer_id: string;
+  owner_id: string;
+  verdict: "good" | "bad";
+  note?: string | null;
+}
+
+/**
  * A one-shot, READ-ONLY, page-cited synthesis over the reader's OWNED
  * corpus, saved as a re-openable Read asset (Read SPR-08 M4).
  *
@@ -2692,12 +2828,47 @@ export interface DocumentFiledIntoInvestigationPayload {
 }
 
 /**
+ * What the reading/research surfaces SHOWED on one render (Own Your
+ * Mind P0 §5; L8/L15).
+ *
+ * Emitted by the surfaces (not the substrate) whenever a ranked item is
+ * displayed, so the "what was shown" half of the transparency promise is
+ * reconstructable from the trajectory alone: the item, the ranked position
+ * it held, and the ranking version that produced that position.
+ *
+ * AUDIT-ONLY in P0. There is deliberately NO consumer that trains on this
+ * event: recording what was served must not create a position-bias
+ * self-training loop (the P0 brief's explicit constraint). A future
+ * consumer needs its own decision record before it may read this stream.
+ *
+ * ``ranked_position`` is the 0-based index of the item in the ranked list
+ * as displayed (0 = first). ``ranked_version`` names the ranking
+ * algorithm/config version that produced the order (e.g. the param
+ * version string), so a later change in what the user saw is attributable
+ * to a version boundary. ``timestamp`` is when the item was served —
+ * display time, not item creation time. ``user_id`` scopes the record to
+ * the account that saw it (multi-user readiness, mirroring the graph's
+ * owner_user_id columns).
+ */
+export interface SurfaceServedImpressionPayload {
+  action_type: "surface.served_impression";
+  surface: string;
+  item_kind: string;
+  item_id: string;
+  ranked_position: number;
+  ranked_version: string;
+  timestamp: string;
+  user_id: string;
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
 export type TypedPayload =
   | DispatchCallPayload
   | WorkerIdentityPayload
+  | LinkMonsterDigestedPayload
   | ContextPackAssembledPayload
   | KnowledgeReusedPayload
   | ReuseGatedPayload
@@ -2720,6 +2891,10 @@ export type TypedPayload =
   | UserEditDistillationPayload
   | ArtifactGeneratedPayload
   | ArtifactInteractedPayload
+  | ArtifactCommentCreatedPayload
+  | FeedbackThreadResolvedPayload
+  | AgentWorkTransitionedPayload
+  | ArtifactFeedbackRepliedPayload
   | TierAssignedPayload
   | TierOverriddenPayload
   | TierRewriteBulkPayload
@@ -2809,8 +2984,11 @@ export type TypedPayload =
   | MarginaliaNotedPayload
   | BlockPositionPayload
   | SourceReadPayload
+  | ReadBookAnsweredPayload
+  | ReadBookAnswerJudgedPayload
   | ReadMetaReadingGeneratedPayload
-  | DocumentFiledIntoInvestigationPayload;
+  | DocumentFiledIntoInvestigationPayload
+  | SurfaceServedImpressionPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -2838,12 +3016,17 @@ export interface Event {
 }
 
 export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
+  "agent.work.transitioned",
   "ai.action.applied",
   "ai.action.undone",
+  "artifact.comment.created",
+  "artifact.feedback.replied",
   "artifact.generated",
   "artifact.interacted",
   "audit.finding_emitted",
   "block.positioned",
+  "book.servability_changed",
+  "book.taken_down",
   "claim.asserted_by_operator",
   "claim.challenge_raised",
   "claim.grounding_check_failed",
@@ -2879,6 +3062,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "federation.partner.registered",
   "federation.partner.revoked",
   "federation.partner.trusted",
+  "feedback.thread.resolved",
   "fetch.fallback.escalated",
   "graph.edge.inserted",
   "graph.node.inserted",
@@ -2898,6 +3082,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "investigation.spawned_from",
   "investigation.start_requested",
   "knowledge.reused",
+  "link.monster.digested",
   "marginalia.noted",
   "note.compressed_doc_written",
   "note.emerged",
@@ -2917,6 +3102,8 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "question.escalated_to_research",
   "question.identified",
   "question.resolved_by_doc",
+  "read.book_answer_judged",
+  "read.book_answered",
   "read.meta_reading.generated",
   "reuse.gated",
   "rev_share.decided",
@@ -2936,6 +3123,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "skill.patch_gate_reviewed",
   "skill_rule.promoted",
   "source.read",
+  "surface.served_impression",
   "synthesis.archived",
   "synthesis.master_md_skipped",
   "synthesis.master_md_written",

@@ -1,0 +1,3 @@
+# Research hard spend ceiling
+
+Cold-executable HTML specification for adding an optional hard ceiling on provider spend Antiek authorizes, based on conservative pre-dispatch projections, atomic durable holds, and explicit settlement, breach accounting, or unknown-outcome reconciliation. SPR-01 through SPR-04 are shipped; SPR-05 records the 2026-07-13 paid-provider refusal and mechanically requires five passing primary-source evidence dimensions before a checked-in route can claim hard-ceiling capabilities. Open `index.html`; execute sprints in dependency order using their `#harness-hint` blocks.

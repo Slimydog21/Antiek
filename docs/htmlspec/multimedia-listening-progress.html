@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Multimedia Listening Progress</title>
+  <style>body{margin:28px auto;max-width:980px;padding:0 16px;background:#fff;color:#171717;font:15px/1.5 system-ui}h1,h2{letter-spacing:0}h2{border-bottom:2px solid #171717}code{background:#f1f1ec;padding:1px 4px}.decision{border:2px solid #171717;border-left:9px solid #f9bd2b;padding:12px}.refusal{border-left:5px solid #c9432b;padding-left:12px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #777;padding:7px;text-align:left}</style>
+</head>
+<body><main>
+  <header><p>Antiek Multimedia / Cycle 22</p><h1>Resume an audible lesson exactly where listening stopped</h1><p>Make 15–45 minute lessons usable across interrupted walks, runs, workouts, and devices without weakening receipt-verified playback.</p></header>
+
+  <section><h2>Product Contract</h2>
+    <p class="decision">Listening progress is private user preference state, not media authority. It may select a position only after the current local or paid playback chain has independently reopened and verified the exact asset, revision, audio digest, duration, and chapter timeline.</p>
+    <ul>
+      <li>Opening verified audio restores the latest non-complete position for the authenticated owner and exact registered audio revision.</li>
+      <li>The player displays a concise resumed state and offers <strong>Start over</strong>, which seeks to zero and durably replaces the saved position.</li>
+      <li>A lesson within five seconds of its verified end is recorded as complete. Reopening a complete lesson starts at zero and names it as previously completed; replay checkpoints clear completion.</li>
+      <li>Local-zero and authorized paid audio use the same progress contract and UI.</li>
+    </ul>
+  </section>
+
+  <section><h2>Durable Authority</h2>
+    <ul>
+      <li>Add a bounded <code>MultimediaListeningProgress</code> envelope stored beneath the existing private account-digest directory, in a dedicated <code>listening-progress/</code> subdirectory so it cannot be enumerated as an asset.</li>
+      <li>Identity is <code>owner_identity_digest + asset_id + revision_id + audio_sha256</code>. Persist integer <code>position_milliseconds</code>, verified <code>duration_milliseconds</code>, <code>completed</code>, monotonic per-player <code>session_id + sequence</code>, and server <code>updated_at</code>.</li>
+      <li>Every read and write first loads the owner asset and requires the requested revision to be current, the asset to be audio mode, and its registered audio link to carry the same revision, digest, and duration. The browser cannot supply audio identity or duration.</li>
+      <li>Use the store's cross-process lock, private regular-file checks, bounded reads, no-follow creation, atomic replace, directory fsync, and raw-owner-ID exclusion. A malformed or unsafe sidecar is an integrity conflict, never absence.</li>
+      <li>A write accepts finite milliseconds in <code>[0, verified_duration]</code>, a bounded random session ID, and a non-negative safe integer sequence. Within one session, a sequence at or below the stored sequence is an idempotent stale write and cannot replace newer progress. A different session may replace progress by server arrival order.</li>
+      <li>Historical-revision progress may remain on disk but is never returned for a new revision. No migration guesses an equivalent position.</li>
+    </ul>
+  </section>
+
+  <section><h2>HTTP Contract</h2>
+    <table><thead><tr><th>Operation</th><th>Result</th></tr></thead><tbody>
+      <tr><td><code>GET /multimedia/assets/{asset_id}/listening-progress?revision_id=…</code></td><td>Authenticated current-owner projection. Returns <code>resume_available=false</code> for no row; opaque 404 for foreign/missing asset; 409 for stale revision or integrity conflict.</td></tr>
+      <tr><td><code>PUT /multimedia/assets/{asset_id}/listening-progress</code></td><td>Authenticated explicit checkpoint with expected revision, position milliseconds, session ID, and sequence. Returns the stored projection, including whether the write was applied.</td></tr>
+    </tbody></table>
+    <p>Responses are <code>private, no-store</code>. They expose no owner digest, filesystem path, receipt, MAC, signing material, or historical revision row.</p>
+  </section>
+
+  <section><h2>Browser State Machine</h2>
+    <ul>
+      <li>Mint one cryptographically random session ID per mounted playback identity. Sequence numbers increase for every queued checkpoint.</li>
+      <li>Load progress once per asset/revision/audio URL. Apply it only on <code>loadedmetadata</code>, only if the response still matches the mounted identity, and never autoplay.</li>
+      <li>Do not checkpoint while applying resume or resetting identity. Thereafter serialize writes through one promise chain: at most one periodic checkpoint per 15 seconds of playback, plus exact checkpoint on pause, ended, Start over, and page hide where supported.</li>
+      <li>Seeking backward is valid. Serialization and sequence rejection prevent an older in-flight position from overwriting a later pause or Start over.</li>
+      <li>Progress service failure never blocks verified playback. Show a restrained status near the player; retain the local position and allow retry on the next checkpoint.</li>
+      <li>Unmount and identity change invalidate pending loads and UI updates. A stale response cannot seek, label, or mutate the next asset.</li>
+    </ul>
+  </section>
+
+  <section><h2>Refusals And Attacks</h2>
+    <ul class="refusal">
+      <li>No progress for video, unregistered audio, foreign owner, missing link, stale revision, mismatched duration, non-finite/out-of-range position, malformed session/sequence, unsafe path, duplicate sidecar identity, or corrupt JSON.</li>
+      <li>No client-derived duration, chapter ID, digest, completion flag, timestamp, or owner identity.</li>
+      <li>No autoplay, background media fetch, provider call, synthesis, steering mutation, research launch, graph write, spend, analytics-as-authority, or claim that a checkpoint proves the user learned or heard the interval.</li>
+      <li>Do not modify the sealed multimedia asset envelope merely to save volatile playback preference.</li>
+    </ul>
+  </section>
+
+  <section><h2>Acceptance Evidence</h2>
+    <ul>
+      <li>Store tests cover exact owner/revision/audio identity, absent read without mutation, private atomic persistence, stale sequence idempotence, cross-session arrival, completion threshold, backward seek, corruption, symlink, permissions, and revision drift.</li>
+      <li>Route tests cover authentication, local and paid registered links, absent projection, save/read round trip, foreign opacity, stale revision, malformed body, no-store headers, and safe errors.</li>
+      <li>Browser tests cover metadata-gated restore, no autoplay/no write on load, periodic throttle, serialized pause/Start-over writes, complete replay, stale response rejection, API failure, identity reset, and both player hosts.</li>
+      <li>Focused and broad multimedia tests, TypeScript, production build, Ruff, HTML parse, diff hygiene, heterogeneous adversarial review, and HardenX strict pass on the exact final tree.</li>
+    </ul>
+  </section>
+
+  <section><h2>Files And Next Seam</h2><p>Expected files: <code>substrate/multimedia/read_model.py</code> or a narrowly owned progress module, multimedia progress routes composed under <code>/multimedia</code>, <code>apps/reading/src/api/multimedia.ts</code>, <code>ActiveListeningPlayer.tsx</code>, host wiring, and focused tests.</p><p>Next: make verified learned claims open the existing editable text/voice ChaseThread only after investigation ownership, idempotent launch, and authoritative budget approval are explicit. Do not imply those guarantees today.</p></section>
+
+  <section id="harness-hint" data-pattern="perspective-diverse-verify"><h2>Harness Hint</h2><p>Use one reviewer for filesystem/account isolation and stale-write attacks, and another for React media-event ordering, duplicate writes, and stale identity restoration.</p></section>
+</main></body></html>

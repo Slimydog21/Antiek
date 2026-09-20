@@ -31,6 +31,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -210,6 +211,460 @@ def test_owner_ask_book_reads_own_gated_content(
     assert any("GATEDPROBE" in p for p in provider.prompts), (
         "the owner's own gated/personal body must reach the model context"
     )
+    assert body["answer_id"].startswith("evt-")
+    # Golden wire shape: the thought_partner role's shape tag rides along;
+    # no selected-model fields are introduced.
+    assert body == {
+        "answer_id": body["answer_id"],
+        "capture_status": "captured",
+        "answer": "Page one covers entanglement.",
+        "citations": body["citations"],
+        "grounded": True,
+        "context_chunk_count": 1,
+        "shape": "synthesis",
+    }
+
+
+def test_signed_session_owner_model_executes_exact_route_and_refuses_cross_owner(
+    db, stub_embeddings, monkeypatch, tmp_path,
+):
+    """End-to-end trust proof: signed middleware owner → document owner → BYOT."""
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.app import create_app
+    from substrate.auth import mint_session_cookie
+    from substrate.dispatch.router import register_provider
+
+    secret = "talk-to-book-signed-session-" + "x" * 48
+    email = "owner@example.test"
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", secret)
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", email)
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(tmp_path / "models.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "credentials.enc"))
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "byok.key"))
+    monkeypatch.setenv("ANTIEK_BYOT_USAGE_DB", str(tmp_path / "usage.sqlite3"))
+
+    _gated_book(db, "doc-owner-model", content_class="public_domain", title="Owned")
+    con = connect_write(db, purpose="bind-book-owner")
+    con.execute(
+        "UPDATE documents SET owner_user_id = ? WHERE document_id = ?",
+        ["owner-a", "doc-owner-model"],
+    )
+    con.close()
+
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    client = TestClient(app)
+    owner_cookie = {
+        "ANTIEK_SESSION": mint_session_cookie(user_id="owner-a", email=email),
+    }
+    created = client.post(
+        "/settings/models/user",
+        cookies=owner_cookie,
+        json={
+            "provider_kind": "openai_compat",
+            "provider_catalog_id": "deepseek",
+            "model_id": "deepseek-chat",
+            "display_name": "Book model",
+            "api_key": "test-owner-key-123456",
+        },
+    )
+    assert created.status_code == 201, created.text
+    provider_id = created.json()["id"]
+    fingerprint = app.state.user_model_registration_fingerprints[provider_id]
+    provider = _RecordingProvider("Selected owner answer.", name=provider_id)
+    provider._user_model_authority_fingerprint = fingerprint
+    register_provider(provider)
+
+    secret_marker = "submitted-provider-secret-marker"
+    invalid = client.post(
+        "/books/doc-owner-model/ask", cookies=owner_cookie,
+        json={"question": "invalid", "operation_id": "invalid-1", "model_choice": {
+            "authority": "user_model", "provider_id": secret_marker,
+            "model_id": "model", "forged_owner": secret_marker,
+        }},
+    )
+    assert invalid.status_code == 422
+    assert invalid.json() == {"detail": "model_selection_invalid"}
+    assert secret_marker not in invalid.text
+    assert provider.prompts == []
+
+    selected = client.post(
+        "/books/doc-owner-model/ask",
+        cookies=owner_cookie,
+        json={
+            "question": "what is the quantum passage about?",
+            "operation_id": "talk-owner-a-1",
+            "model_choice": {
+                "authority": "user_model",
+                "provider_id": provider_id,
+                "model_id": "deepseek-chat",
+            },
+        },
+    )
+    assert selected.status_code == 200, selected.text
+    receipt = selected.json()["model_receipt"]
+    assert receipt == {
+        "authority": "owner_byot",
+        "requested_provider_id": provider_id,
+        "requested_model_id": "deepseek-chat",
+        "actual_provider_id": provider_id,
+        "actual_model_id": "deepseek-chat",
+        "authority_digest": receipt["authority_digest"],
+    }
+    assert len(receipt["authority_digest"]) == 64
+    assert len(provider.prompts) == 1
+    assert "GATEDPROBE" in provider.prompts[0]
+    status = client.get(
+        "/books/model-operations/talk-owner-a-1", cookies=owner_cookie,
+    )
+    assert status.status_code == 200
+    assert status.json()["state"] == "settled"
+    assert status.json()["provider_id"] == provider_id
+    assert "api_key_id" not in status.json()
+    cannot_cancel = client.post(
+        "/books/model-operations/talk-owner-a-1/cancel", cookies=owner_cookie,
+    )
+    assert cannot_cancel.status_code == 409
+    from substrate.byot_usage.ledger import ByotUsageLedger
+    operation_ledger = ByotUsageLedger()
+    operation_ledger.prepare_operation(
+        provider_id, "owner-a", "talk-reconcile-1", 5, "a" * 64,
+    )
+    operation_ledger.mark_operation_sent("owner-a", "talk-reconcile-1")
+    operation_ledger.record_operation_result(
+        "owner-a", "talk-reconcile-1", actual_cents=2,
+        evidence_sha256="b" * 64, dispatch_event_id="evt-reconcile",
+        provider_id=provider_id, model_id="deepseek-chat",
+    )
+    reconciled = client.post(
+        "/books/model-operations/talk-reconcile-1/reconcile", cookies=owner_cookie,
+    )
+    assert reconciled.status_code == 200
+    assert reconciled.json()["state"] == "settled"
+    assert operation_ledger.key_usage(provider_id, "owner-a").used_cents == 2  # type: ignore[union-attr]
+    assert len(provider.prompts) == 1
+    operation_ledger.prepare_operation(
+        provider_id, "owner-a", "talk-stale-1", 4, "c" * 64,
+    )
+    stale_con = operation_ledger._connect()
+    stale_con.execute(
+        "UPDATE byot_operation_journal SET created_at = '2000-01-01T00:00:00+00:00'"
+        " WHERE owner_user_id = 'owner-a' AND operation_id = 'talk-stale-1'"
+    )
+    stale_con.commit()
+    stale_con.close()
+    cleanup = client.post(
+        "/books/model-operations/cleanup-prepared", cookies=owner_cookie,
+    )
+    assert cleanup.status_code == 200
+    assert cleanup.json() == {"cancelled_count": 1, "max_age_seconds": 86_400}
+    assert operation_ledger.operation("owner-a", "talk-stale-1").state == "cancelled"  # type: ignore[union-attr]
+
+    provider.prompts.clear()
+    import importlib
+    graph_search = importlib.import_module("substrate.graph.search")
+
+    def mutate_owner_at_dispatch():
+        owner_con = connect_write(db, purpose="mutate-owner-at-dispatch")
+        owner_con.execute(
+            "UPDATE documents SET owner_user_id = 'owner-b' WHERE document_id = ?",
+            ["doc-owner-model"],
+        )
+        owner_con.close()
+        return StubEmbedding()
+
+    monkeypatch.setattr(graph_search, "SentenceTransformerEmbedding", mutate_owner_at_dispatch)
+    raced = client.post(
+        "/books/doc-owner-model/ask", cookies=owner_cookie,
+        json={"question": "raced owner", "operation_id": "talk-race-1", "model_choice": {
+            "authority": "user_model", "provider_id": provider_id,
+            "model_id": "deepseek-chat",
+        }},
+    )
+    assert raced.status_code == 503
+    assert raced.json() == {"detail": "owner_model_unavailable"}
+    assert provider.prompts == []
+    monkeypatch.setattr(graph_search, "SentenceTransformerEmbedding", lambda: StubEmbedding())
+
+    other_cookie = {
+        "ANTIEK_SESSION": mint_session_cookie(user_id="owner-b", email=email),
+    }
+    for method, path in (
+        ("get", "/books/model-operations/talk-owner-a-1"),
+        ("post", "/books/model-operations/talk-owner-a-1/reconcile"),
+        ("post", "/books/model-operations/talk-owner-a-1/cancel"),
+    ):
+        hidden = getattr(client, method)(path, cookies=other_cookie)
+        assert hidden.status_code == 404
+        assert hidden.json() == {"detail": "model_operation_not_found"}
+    shared_cookie = {
+        "ANTIEK_SESSION": mint_session_cookie(user_id="__operator__", email=email),
+    }
+    for method, path in (
+        ("get", "/books/model-operations/talk-owner-a-1"),
+        ("post", "/books/model-operations/talk-owner-a-1/reconcile"),
+        ("post", "/books/model-operations/talk-owner-a-1/cancel"),
+    ):
+        refused_shared = getattr(client, method)(path, cookies=shared_cookie)
+        # The shared sentinel no longer short-circuits at the identity gate. With a
+        # verified session e-mail it resolves to a distinct derived owner, so it is
+        # treated exactly like any other non-owner (owner-b above) and gets the same
+        # existence-hiding 404 rather than a distinguishable 401.
+        #
+        # The property under test is preserved and slightly strengthened: a session that
+        # does not own this operation can neither see nor act on it, and every non-owner
+        # now gets an identical response, so the status code stops signalling WHICH class
+        # of caller was refused.
+        assert refused_shared.status_code == 404
+        assert refused_shared.json() == {"detail": "model_operation_not_found"}
+    refused = client.post(
+        "/books/doc-owner-model/ask",
+        cookies=other_cookie,
+        json={
+            "question": "cross owner",
+            "operation_id": "talk-owner-b-1",
+            "model_choice": {
+                "authority": "user_model",
+                "provider_id": provider_id,
+                "model_id": "deepseek-chat",
+            },
+        },
+    )
+    assert refused.status_code == 503
+    assert refused.json() == {"detail": "owner_model_unavailable"}
+    assert provider.prompts == []
+
+    unauthenticated = client.post(
+        "/books/doc-owner-model/ask",
+        json={
+            "question": "no credential",
+            "operation_id": "talk-unauth-1",
+            "model_choice": {
+                "authority": "user_model",
+                "provider_id": provider_id,
+                "model_id": "deepseek-chat",
+            },
+        },
+    )
+    assert unauthenticated.status_code == 401
+    assert provider.prompts == []
+
+
+def test_local_unauthenticated_operation_endpoints_are_constant_401(
+    db, monkeypatch, tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.app import create_app
+
+    for name in (
+        "ANTIEK_AUTH_SECRET", "ANTIEK_OPERATOR_EMAIL", "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_CF_ACCESS_AUD", "ANTIEK_CF_ACCESS_TEAM_DOMAIN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("ANTIEK_BYOT_USAGE_DB", str(tmp_path / "local-usage.sqlite3"))
+    client = TestClient(
+        create_app(register_wrestling=False, register_providers=False, cors_origins=[]),
+    )
+    for method, path in (
+        ("get", "/books/model-operations/unknown"),
+        ("post", "/books/model-operations/unknown/reconcile"),
+        ("post", "/books/model-operations/unknown/cancel"),
+    ):
+        response = getattr(client, method)(path)
+        assert response.status_code == 401
+        assert response.json() == {"detail": "authentication_required"}
+
+
+def test_answer_capture_judgment_and_eval_export(
+    db, owner_client, stub_embeddings,
+):
+    from substrate.event_log import trajectory
+
+    _gated_book(db, "doc-eval", content_class="personal_reading", title="Eval")
+    register_fake("A grounded answer for evaluation.")
+    answered = owner_client.post(
+        "/books/doc-eval/ask",
+        json={"question": "what does the passage establish?"},
+        headers=_OWNER_HEADERS,
+    )
+    assert answered.status_code == 200, answered.text
+    answer_id = answered.json()["answer_id"]
+    answer_row = next(row for row in trajectory("read-doc-eval") if row["event_id"] == answer_id)
+    payload = answer_row["payload"]
+    assert payload["provider"] == "zai_reasoning"
+    assert payload["model"]
+    assert payload["input_tokens"] == 0
+    assert payload["output_tokens"] == 0
+    assert payload["latency_ms"] == 1
+    assert payload["citations"][0]["document_id"] == "doc-eval"
+
+    judged = owner_client.post(
+        f"/books/doc-eval/answers/{answer_id}/judgment",
+        json={"verdict": "good"},
+        headers=_OWNER_HEADERS,
+    )
+    assert judged.status_code == 200, judged.text
+    replay = owner_client.post(
+        f"/books/doc-eval/answers/{answer_id}/judgment",
+        json={"verdict": "good"},
+        headers=_OWNER_HEADERS,
+    )
+    assert replay.status_code == 200
+    assert replay.json()["judgment_id"] == judged.json()["judgment_id"]
+    conflict = owner_client.post(
+        f"/books/doc-eval/answers/{answer_id}/judgment",
+        json={"verdict": "bad"},
+        headers=_OWNER_HEADERS,
+    )
+    assert conflict.status_code == 409
+
+    exported = owner_client.get(
+        "/books/doc-eval/answer-evaluations",
+        headers=_OWNER_HEADERS,
+    )
+    assert exported.status_code == 200, exported.text
+    assert exported.json()["count"] == 1
+    record = exported.json()["answers"][0]
+    assert record["answer_id"] == answer_id
+    assert record["verdict"] == "good"
+    assert record["question"] == "what does the passage establish?"
+
+
+def test_disabled_event_log_returns_answer_without_inviting_paid_retry(
+    db, owner_client, stub_embeddings, monkeypatch,
+):
+    _gated_book(db, "doc-disabled", content_class="personal_reading", title="Disabled")
+    provider = register_fake()
+    monkeypatch.setenv("ANTIEK_EVENTS_DISABLED", "1")
+    response = owner_client.post(
+        "/books/doc-disabled/ask",
+        json={"question": "what is here?"},
+        headers=_OWNER_HEADERS,
+    )
+    assert response.status_code == 200
+    assert response.json()["answer_id"] is None
+    assert response.json()["capture_status"] == "unavailable"
+    assert response.json()["answer"]
+    assert len(provider.prompts) == 1
+
+
+def test_capture_exception_returns_paid_answer_once(
+    db, owner_client, stub_embeddings, monkeypatch,
+):
+    import substrate.event_log
+
+    _gated_book(db, "doc-capture-error", content_class="personal_reading", title="Capture")
+    provider = register_fake()
+
+    def fail_capture(*_args, **_kwargs):
+        raise OSError("simulated event-store failure")
+
+    monkeypatch.setattr(substrate.event_log, "emit_typed", fail_capture)
+    response = owner_client.post(
+        "/books/doc-capture-error/ask",
+        json={"question": "what is here?"},
+        headers=_OWNER_HEADERS,
+    )
+    assert response.status_code == 200
+    assert response.json()["answer_id"] is None
+    assert response.json()["capture_status"] == "unavailable"
+    assert len(provider.prompts) == 1
+
+
+def test_concurrent_judgment_requests_append_once(
+    db, owner_client, stub_embeddings,
+):
+    from substrate.event_log import trajectory
+
+    _gated_book(db, "doc-race", content_class="personal_reading", title="Race")
+    register_fake()
+    answered = owner_client.post(
+        "/books/doc-race/ask",
+        json={"question": "what is here?"},
+        headers=_OWNER_HEADERS,
+    )
+    answer_id = answered.json()["answer_id"]
+
+    def judge_once(_index):
+        return owner_client.post(
+            f"/books/doc-race/answers/{answer_id}/judgment",
+            json={"verdict": "good"},
+            headers=_OWNER_HEADERS,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        responses = list(pool.map(judge_once, range(8)))
+    assert {response.status_code for response in responses} == {200}
+    assert len({response.json()["judgment_id"] for response in responses}) == 1
+    judgments = [
+        row for row in trajectory("read-doc-race")
+        if row["action_type"] == "read.book_answer_judged"
+    ]
+    assert len(judgments) == 1
+
+
+def test_ungrounded_answer_records_explicit_no_model_receipt(
+    db, owner_client, stub_embeddings,
+):
+    from substrate.event_log import trajectory
+
+    con = connect_write(db, purpose="empty-book")
+    insert_document(
+        con, document_id="doc-empty", source_tier=2, document_type="book",
+        title="Scanned", author="Author", raw_text="",
+    )
+    bingest.register_book(
+        con, document_id="doc-empty", content_class="personal_reading",
+        provenance="owner scan",
+    )
+    con.close()
+    response = owner_client.post(
+        "/books/doc-empty/ask",
+        json={"question": "what is here?"},
+        headers=_OWNER_HEADERS,
+    )
+    assert response.status_code == 200, response.text
+    row = next(
+        row for row in trajectory("read-doc-empty")
+        if row["event_id"] == response.json()["answer_id"]
+    )
+    assert row["payload"]["grounded"] is False
+    for field in ("provider", "model", "input_tokens", "output_tokens", "cost_usd", "latency_ms"):
+        assert row["payload"][field] is None
+
+
+def test_judgment_rejects_forged_or_other_owner_answer(
+    db, owner_client,
+):
+    from substrate.event_log import emit_typed
+    from substrate.schemas import ReadBookAnsweredPayload
+
+    answer_id = emit_typed(
+        "read-doc-owned-by-other",
+        ReadBookAnsweredPayload(
+            owner_id="other-owner",
+            question="private question",
+            answer="private answer",
+            grounded=False,
+            context_chunk_count=0,
+            research_tier="deep",
+        ),
+        document_id="doc-owned-by-other",
+    )
+    response = owner_client.post(
+        f"/books/doc-owned-by-other/answers/{answer_id}/judgment",
+        json={"verdict": "good"},
+        headers=_OWNER_HEADERS,
+    )
+    assert response.status_code == 404
+    forged = owner_client.post(
+        "/books/doc-owned-by-other/answers/evt-forged/judgment",
+        json={"verdict": "good"},
+        headers=_OWNER_HEADERS,
+    )
+    assert forged.status_code == 404
 
 
 @pytest.mark.parametrize(

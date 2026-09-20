@@ -147,6 +147,7 @@ class RemoteResearchRunner:
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         budget: BudgetManager | None = None,
         events_dir: str | None = None,
+        outbox_db_path: str | None = None,
         seal_on_complete: bool = True,
         on_emit: Callable[[StepEvent], Awaitable[None]] | None = None,
     ):
@@ -155,6 +156,11 @@ class RemoteResearchRunner:
         self.max_concurrency = max_concurrency
         self.budget = budget or BudgetManager()
         self._events_dir = events_dir
+        if outbox_db_path is None:
+            from substrate.graph import default_db_path
+
+            outbox_db_path = default_db_path()
+        self._outbox_db_path = outbox_db_path
         self._seal_on_complete = seal_on_complete
         self._on_emit = on_emit
         self._states: dict[str, _RemoteState] = {}
@@ -281,13 +287,29 @@ class RemoteResearchRunner:
                       events_dir=self._events_dir)
         if self._seal_on_complete:
             try:
-                seal_investigation(iid, events_dir=self._events_dir)
+                seal_investigation(
+                    iid,
+                    events_dir=self._events_dir,
+                    outbox_db_path=self._outbox_db_path,
+                )
             except Exception as e:  # seal is best-effort
                 with contextlib.suppress(Exception):
                     # A broken log channel must not break the finish path.
                     logger.warning(
-                        "investigation seal failed (best-effort): iid=%s "
-                        "events_dir=%s: %r", iid, self._events_dir, e)
+                    "investigation seal failed (best-effort): iid=%s "
+                    "events_dir=%s: %r", iid, self._events_dir, e)
+        # BYOT wall-time ACU top-up (#3139/#3140/#3184) — best-effort.
+        if getattr(st, "started", False):
+            try:
+                from substrate.compute_capacity.acu_meter import (
+                    maybe_commit_investigation_wall_topup,
+                )
+
+                maybe_commit_investigation_wall_topup(
+                    iid, db_path=self._outbox_db_path
+                )
+            except Exception:
+                pass
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 

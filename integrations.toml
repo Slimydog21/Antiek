@@ -159,19 +159,6 @@ spec_doc = "docs/integration_exa_browserbase.md"
 # Tier 2 — prod call-site with sunset clock
 # ============================================================
 
-[browserbase]
-package = "browserbase"
-tier = 2
-voucher = "slimydog"
-vouched_at = "2026-05-21"
-sunset_date = "2026-08-19"
-justification = "Ingestion-escalation fallback inside acquisition/urls/. 90-day default sunset; promote to Tier 3 once Wedge 2 ratifies after legal gate clears, or demote if AnchorBrowser Plan-B becomes primary."
-prod_call_sites = [
-    "acquisition/urls/client_browserbase.py",
-]
-spec_doc = "docs/integration_exa_browserbase.md"
-
-
 # ============================================================
 # Tier 1 — local prototype (imports under tools/ or scripts/ ok)
 # ============================================================
@@ -191,18 +178,26 @@ spec_doc = "docs/integration_posthog.md"
 
 [notdiamond]
 package = "notdiamond"
-tier = 0
-voucher = ""
-vouched_at = "2026-05-24"
-justification = "Draft spec only at ~/specs/antiek-notdiamond/. ND advisory layer above dispatch; 8 sprints / 4 waves; not yet wired. Per project-antiek-notdiamond-spec memory."
+tier = 2
+voucher = "slimydog"
+vouched_at = "2026-07-09"
+sunset_date = "2026-10-07"
+justification = "Wave 1 advisory adapter (runtime/notdiamond/) — measured wedge only, NEVER an authoritative dispatch provider (§16). Lazy import inside select_model(); optional extra antiek[notdiamond]. Promote to Tier 3 only after §14.4 baseline is beaten with evidence (Wave 3 SPR-05/08); demote to Tier 0 if the wedge fails. Spec: ~/specs/antiek-notdiamond/."
+prod_call_sites = [
+    "runtime/notdiamond/adapter.py",
+]
 spec_doc = "~/specs/antiek-notdiamond/"
 
 [turbopuffer]
 package = "turbopuffer"
-tier = 0
-voucher = ""
-vouched_at = "2026-05-23"
-justification = "Draft spec at docs/integration_turbopuffer.md. SPIKE-first sequencing — Wedge 1 needs 1-day spike against 20 hand-curated queries before shipping. Per project-antiek-turbopuffer-spec memory."
+tier = 2
+voucher = "slimydog"
+vouched_at = "2026-09-17"
+sunset_date = "2026-12-16"
+justification = "Promoted 0→2 for operator-only Turbopuffer shadow benchmark CLI (tools/turbopuffer_shadow.py). DuckDB remains SoT; SERVABLE-only secondary index; NOT on default serving / NOT wired to talk-to-book. Lazy import confined to retrieval_adapters/turbopuffer_client.py. Promote to Tier 3 only after measured ≥15% relevance on ≥70% of a ≥20-query set (docs/integration_turbopuffer.md); demote to Tier 0 if shadow dogfood fails or cost floor is unacceptable."
+prod_call_sites = [
+    "substrate/graph/retrieval_adapters/turbopuffer_client.py",
+]
 spec_doc = "docs/integration_turbopuffer.md"
 
 [anchorbrowser]
@@ -242,8 +237,8 @@ package = "daytona"
 tier = 2
 voucher = "slimydog"
 vouched_at = "2026-05-25"
-sunset_date = "2026-08-23"
-justification = "Promoted 0→2 by the operator's 2026-05-25 §16 research-fan-out exemption (docs/decisions/s16-research-fanout-exemption.md). Scoped to research-runner fan-out ONLY via runtime/remote_exec/ — NOT general dispatch (Hermes-primary stays per §16). The Daytona SDK (daytona_sdk) is optional + lazy-imported (mirrors browserbase, Tier 2 above); the prod call site below is the runner factory's local import of the in-tree provider module. 90-day sunset: promote to Tier 3 once the operator's live smoke (infrastructure/runbooks/remote-exec-fanout.md) confirms remote-exec beats the host-local ceiling, or demote to Tier 0 (revert to host-local-first) if it proves fragile/expensive per the decision record's reconsider-if."
+sunset_date = "2026-12-16"
+justification = "Promoted 0→2 by the operator's 2026-05-25 §16 research-fan-out exemption (docs/decisions/s16-research-fanout-exemption.md). Scoped to research-runner fan-out ONLY via runtime/remote_exec/ — NOT general dispatch (Hermes-primary stays per §16). The Daytona SDK (daytona_sdk) is optional + lazy-imported (mirrors browserbase, Tier 2 above); the prod call site below is the runner factory's local import of the in-tree provider module. 90-day sunset: promote to Tier 3 once the operator's live smoke (infrastructure/runbooks/remote-exec-fanout.md) confirms remote-exec beats the host-local ceiling, or demote to Tier 0 (revert to host-local-first) if it proves fragile/expensive per the decision record's reconsider-if. Sunset extended 2026-09-17→2026-12-16 (past-due Tier-2 window) pending operator Tier-3/0 decision."
 prod_call_sites = [
     "runtime/remote_exec/factory.py",
 ]

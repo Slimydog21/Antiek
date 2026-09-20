@@ -58,7 +58,7 @@ _REPO = os.path.abspath(
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from interfaces.research.rlm_dag import (
+from interfaces.research.rlm_dag import (  # noqa: E402
     Dag,
     DagNode,
     _parse_json,
@@ -66,7 +66,28 @@ from interfaces.research.rlm_dag import (
     execute_dag,
     plan_dag,
 )
-from skills.verification.types import VerificationResult
+from orchestration.rlm.prime_agent_backend import (  # noqa: E402
+    PrimeAgentEvidence,
+    PrimeAgentOutcome,
+    PrimeAgentReceipt,
+    PrimeAgentTerminalState,
+)
+from skills.verification.types import VerificationResult  # noqa: E402
+
+
+class _PrimeBackendStub:
+    def __init__(self, state, text=None):
+        self.state = state
+        self.text = text
+        self.requests = []
+
+    def run(self, request):
+        self.requests.append(request)
+        return PrimeAgentOutcome(
+            request=request,
+            evidence=PrimeAgentEvidence(self.text) if self.text else None,
+            receipt=PrimeAgentReceipt(self.state, (), None, 1, 0, "stub"),
+        )
 
 # ---------------------------------------------------------------------------
 # A. DagNode / Dag round-trip
@@ -259,6 +280,43 @@ def test_plan_dag_returns_dag_with_meta():
     assert dag.planning_latency_s >= 0.0
 
 
+def test_plan_dag_prime_disabled_preserves_prompt_and_call_count():
+    prompts = []
+    receipts = []
+    backend = _PrimeBackendStub(PrimeAgentTerminalState.DISABLED)
+
+    plan_dag(
+        "Q?",
+        lambda prompt: prompts.append(prompt) or json.dumps({
+            "nodes": [{"id": "a", "question": "Q", "deps": []}],
+        }),
+        prime_backend=backend,
+        evidence_sink=receipts.append,
+    )
+
+    assert len(prompts) == len(receipts) == 1
+    assert "Supplemental Prime Agent evidence" not in prompts[0]
+
+
+def test_plan_dag_prime_success_is_labeled_and_receipted():
+    prompts = []
+    receipts = []
+    backend = _PrimeBackendStub(PrimeAgentTerminalState.SUCCESS, "plan evidence")
+
+    plan_dag(
+        "Q?",
+        lambda prompt: prompts.append(prompt) or json.dumps({
+            "nodes": [{"id": "a", "question": "Q", "deps": []}],
+        }),
+        prime_backend=backend,
+        evidence_sink=receipts.append,
+    )
+
+    assert len(prompts) == len(receipts) == 1
+    assert "Supplemental Prime Agent evidence (non-canonical)" in prompts[0]
+    assert "plan evidence" in prompts[0]
+
+
 def test_plan_dag_includes_decomposition_examples_in_prompt():
     captured_prompts: list[str] = []
     plan = {"nodes": [{"id": "a", "question": "Q", "deps": []}], "final": ""}
@@ -300,6 +358,28 @@ def _accept_verify_fn():
             agreed_answer=answer,
         )
     return _v
+
+
+def test_execute_dag_prime_failure_preserves_canonical_answer_and_calls():
+    backend = _PrimeBackendStub(PrimeAgentTerminalState.FAILED)
+    prompts = []
+    receipts = []
+    dag = Dag(nodes=[DagNode(id="a", question="What is X?")])
+
+    result = execute_dag(
+        dag,
+        lambda prompt: "unused",
+        lambda batch: prompts.extend(batch) or ["canonical"],
+        _accept_verify_fn(),
+        prime_backend=backend,
+        evidence_sink=receipts.append,
+    )
+
+    assert result.answers == {"a": "canonical"}
+    assert result.total_sub_llm_calls == 1
+    assert len(prompts) == len(receipts) == 1
+    assert "Supplemental Prime Agent evidence" not in prompts[0]
+    assert receipts[0].receipt.state is PrimeAgentTerminalState.FAILED
 
 
 def test_execute_dag_single_node():

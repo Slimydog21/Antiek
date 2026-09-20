@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WERNER-ACT SPR-08 — Research wait arcade</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        max-width: 74rem;
+        margin: 0 auto;
+        padding: 2rem;
+        line-height: 1.55;
+      }
+      h1,
+      h2 {
+        line-height: 1.15;
+      }
+      code {
+        font-family: ui-monospace, monospace;
+      }
+      .contract {
+        border: 2px solid currentColor;
+        padding: 1rem;
+        margin: 1rem 0;
+      }
+      li {
+        margin-block: 0.35rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p>WERNER-ACT · executable sprint 08 · 2026-07-14</p>
+      <h1>Paperclip Zombies while Deep Research remains primary</h1>
+      <p>
+        Ship an optional, production-default-off wait surface inside the durable
+        Deep Research monitor. This sprint consumes SPR-07's deterministic
+        arcade core; it does not change it.
+      </p>
+    </header>
+
+    <section class="contract">
+      <h2>User promise</h2>
+      <p>
+        After a genuine research wait lasts eight seconds, the user may
+        explicitly play a compact Paperclip Zombies easter egg. Research cards,
+        partial results, costs, reconnect state, and steering stay visible and
+        usable. Completion reveals nothing late because nothing was hidden.
+      </p>
+    </section>
+
+    <section>
+      <h2>Authoritative state machine</h2>
+      <ul>
+        <li>
+          Disabled, connecting, empty, first-poll error, terminal, or reduced
+          motion → hidden.
+        </li>
+        <li>
+          Valid nonterminal durable snapshot before eight seconds → unchanged
+          monitor.
+        </li>
+        <li>
+          Threshold reached → offer; no cartridge construction and no focus
+          movement.
+        </li>
+        <li>
+          Explicit Play → dynamically load and mount one Zombies cartridge.
+        </li>
+        <li>
+          Partial completion or reconnect with prior data → keep host and all
+          cards visible.
+        </li>
+        <li>
+          All terminal, new episode, reduced motion, Exit, Escape, or unmount →
+          teardown.
+        </li>
+      </ul>
+      <p>
+        Episode identity is <code>${sessionId}:${sessionGeneration}</code>.
+        Timer, opt-in, cartridge, and focus never cross this boundary.
+      </p>
+    </section>
+
+    <section>
+      <h2>Interaction and visual contract</h2>
+      <ul>
+        <li>
+          No autoplay or automatic focus. Explicit Play may focus the canvas.
+        </li>
+        <li>
+          Escape works only inside the playing subtree; a visible Exit game
+          button is mandatory.
+        </li>
+        <li>
+          Exit restores Play focus. Terminal teardown restores the monitor
+          heading only when needed.
+        </li>
+        <li>
+          The signature brass trace rail communicates live research count above
+          a fold-down drawer.
+        </li>
+        <li>
+          All colors, type, radius, shadow, spacing, focus, and motion read
+          existing Antiek tokens.
+        </li>
+        <li>
+          At 320 CSS pixels and 200% zoom, the drawer is one column with no
+          horizontal overflow.
+        </li>
+        <li>
+          No runtime image or generated layout. ChatGPT Image is
+          provenance-anchored direction only.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Mechanical acceptance</h2>
+      <ol>
+        <li>Policy tests exhaust hidden/waiting/offer/playing precedence.</li>
+        <li>
+          Host tests prove exact threshold, no pre-opt-in construction, focus,
+          Escape, visible exit, repeated fresh cartridges, episode reset, timer
+          cleanup, and external input isolation.
+        </li>
+        <li>
+          Monitor integration proves partial cards and reconnect truth persist,
+          then terminal state removes the lazy host in the same render.
+        </li>
+        <li>
+          Reduced motion and disabled/invalid states do not render the lazy
+          module.
+        </li>
+        <li>
+          Focused/coupled tests, typecheck, token/type-scale lint, Storybook
+          build, production build, bundle budget, diff/scope check, Hardenx,
+          heterogeneous ACCEPT, and remote checks pass.
+        </li>
+        <li>
+          A live browser checks offer, play, partial completion, terminal
+          teardown, narrow viewport, both themes, keyboard focus, and reduced
+          motion when a target is available; otherwise it is recorded as NOT
+          PROVEN.
+        </li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Strict non-goals</h2>
+      <p>
+        No standalone cabinet/route, selection, pause-research behavior, backend
+        or reaction changes, persistence, leaderboard, telemetry, network,
+        content inspection, model/spend authority, second mascot, generated
+        runtime art, merge, or deployment. Primitive visuals are not the final
+        Club Penguin or Black Ops craft pass.
+      </p>
+    </section>
+  </body>
+</html>

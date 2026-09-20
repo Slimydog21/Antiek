@@ -209,6 +209,18 @@ def ingest_pdf(
             },
             on_conflict="ignore",
         )
+        # Reader-HTML sidecar (BookReader HTML-native). Same sanitize-on-write
+        # seam uploads use; does not stamp documents.metadata trust markers.
+        from acquisition.snapshot.reader_html import markdown_to_safe_html
+        from substrate.reader_html.store import store_reader_html
+
+        store_reader_html(
+            con,
+            document_id=document_id,
+            main_html=markdown_to_safe_html(text),
+            source_kind="book",
+            source_url=source_uri,
+        )
         for i, chunk in enumerate(chunks):
             chunk_id = insert_chunk(
                 con,
@@ -217,6 +229,7 @@ def ingest_pdf(
                 text=chunk.text,
                 section_path=chunk.section or None,
                 embedding=emb.encode(chunk.text),
+                embedding_provider=emb,
                 token_count=chunk.token_count,
             )
             chunk_ids.append(chunk_id)

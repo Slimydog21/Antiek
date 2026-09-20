@@ -46,6 +46,7 @@ once guarded):
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -69,7 +70,6 @@ from substrate.constants import (  # noqa: E402
     GATED_DEFAULT_CONTENT_CLASS,
     SOURCE_DECLARED_OPEN_CONTENT_CLASS,
 )
-from substrate.graph.ops import insert_document  # noqa: E402
 from substrate.graph.schema import init_database  # noqa: E402
 from substrate.rights import RightsTier, body_servable, resolve_tier  # noqa: E402
 from tools.lint import retrieval_gate_check, serve_invariants_check  # noqa: E402
@@ -347,10 +347,13 @@ def _insert(db, document_id, *, content_class, body, license_uri=None, arxiv_id=
             metadata["arxiv_id"] = arxiv_id
     con = connect_write(db, purpose="setup")
     try:
-        insert_document(
-            con, document_id=document_id, source_tier=3,
-            document_type="academic_paper", title="A Paper", author="Auth",
-            raw_text=body, content_class=content_class, metadata=metadata,
+        # Deliberately bypass the normal write-time guard: the fixture models
+        # already-persisted drift so the independent read guard is exercised.
+        con.execute(
+            "INSERT INTO documents "
+            "(document_id,source_tier,document_type,title,author,raw_text,content_class,metadata) "
+            "VALUES (?,3,'academic_paper','A Paper','Auth',?,?,?)",
+            [document_id, body, content_class, None if metadata is None else json.dumps(metadata)],
         )
     finally:
         con.close()

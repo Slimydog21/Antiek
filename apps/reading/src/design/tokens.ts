@@ -281,7 +281,7 @@ export type ShadowKey = keyof (typeof shadow)["day"];
    These five drive the canonical <Werner mood="..." /> (U-02). The component renders
    at rail size (28px, mark fidelity) and hero (120px+, character fidelity) from the
    same geometry. Abstract dot rejected: a stranger must call the rail mark "a cute
-   penguin" not "a dot". See brand/README.md for the four-slot restraint rule. */
+   brain" not "a dot". See brand/README.md for the four-slot restraint rule. */
 export const werner = {
   day: {
     coat: "#0F1419",
@@ -301,7 +301,9 @@ export const werner = {
 
 /** Exactly the four moods the restraint rule permits. Used only in the four named
    slots; never mid-content, never more than one on screen. */
-export type WernerMood = "idle" | "thinking" | "empty" | "celebrate";
+export type MascotMood = "idle" | "thinking" | "empty" | "celebrate";
+/** @deprecated penguin-era name, kept one release so external importers do not snap. */
+export type WernerMood = MascotMood;
 
 /** Reserved-use accents — use sparingly; never substitute for sun. */
 export const accent = {
@@ -309,6 +311,22 @@ export const accent = {
   // emperor (danger). S11 a11y audit darkened day variant from
   // #E33C2D → #CE3623 so white text hits the WCAG AA 4.5:1 floor.
   emperor: { day: "#CE3623", night: "#FF6155" }, // danger only
+} as const;
+
+/**
+ * Research-state family (herdr transfer P0-1). Mirrors tokens.css: semantic
+ * ALIASES over the palette constants (var() references), so state colour is
+ * a token, never a raw hex in a component. blocked=emperor (needs
+ * attention), done=aurora, working=sun, stopped/muted=shadow-1. The
+ * canonical dot classes live in shared/researchState.ts and consume these
+ * tokens via Tailwind arbitrary values.
+ */
+export const state = {
+  working: "var(--sun)",
+  blocked: "var(--emperor)",
+  done: "var(--aurora)",
+  stopped: "var(--shadow-2)",
+  muted: "var(--shadow-2)",
 } as const;
 
 /**
@@ -344,6 +362,15 @@ export const motion = {
 export type MotionDuration = keyof typeof motion.duration;
 export type MotionEasing = keyof typeof motion.easing;
 
+/** Pitch family (AI Role Lineup vertical, 2026-08-12) — the formation
+ * field greens. Mirrors tokens.css --pitch-{base,mid,deep} (day) and the
+ * night block; LineupPitch consumes the CSS vars so theme follows
+ * prefers-color-scheme. Day = grass, night = deep turf. */
+export const pitch = {
+  day: { base: "#4C8F4F", mid: "#3D7A41", deep: "#2F6633" },
+  night: { base: "#2E5C33", mid: "#244A29", deep: "#1B3A20" },
+} as const;
+
 export const radius = { sm: "4px", md: "6px", lg: "10px" } as const;
 
 /** The brand outline thickness used on every Lemon primitive. */
@@ -355,3 +382,38 @@ export const type = {
   // reading prose only (MasterMdViewer, Notebook prose blocks)
   serif: '"Charter", "Iowan Old Style", Georgia, serif',
 } as const;
+
+
+/**
+ * Link Monster — Weirdmageddon incinerator palette (feature-scoped).
+ *
+ * Source: docs/specs/link-monster-art-direction.md §2 (Krea-profiled,
+ * Gravity Falls Weirdmageddon + industrial-incinerator). Feature-scoped:
+ * these tokens are consumed ONLY by the /link-monster furnace stage
+ * (monsterSketch.ts canvas + LinkMonster.css chrome). Sibling invariant:
+ * every value is byte-identical to the --lm-* block in tokens.css.
+ */
+export const linkMonster = {
+  skyDeep: "#1A0A0F",       // apocalypse crimson (sky base)
+  skyMid: "#3D0C28",        // rift magenta (sky mid)
+  horizon: "#FF6B2B",       // ember amber (horizon glow)
+  fur: "#1E4D8C",           // cerulean pelt (monster body)
+  furShadow: "#0B1D3A",     // deep abyss (fur shadow)
+  rim: "#00FFD4",           // electric cyan (blacklight rim)
+  fireCore: "#FFFBE6",      // white-hot core
+  fireMid: "#FF7A18",       // molten orange
+  fireOuter: "#E81E0D",     // inferno red
+  steel: "#3A3D42",         // gunmetal (grate teeth)
+  nickel: "#8B9099",        // brushed nickel (bevel highlight)
+  node: "#22D3A7",          // cosmic teal (graph nodes)
+  edge: "#B266FF",          // plasma violet (graph edges)
+  runeGlow: "#7FFF00",      // toxic green (rune glow)
+  runeBase: "#D4E8D0",      // pale sage (rune base)
+  ember: "#FFB347",         // data ember (particles)
+  voidBlack: "#0A0A12",     // void black (UI panels)
+  smoke: "#2A2D35",         // chimney smoke
+  magenta: "#FF00FF",       // neon magenta (accents)
+  boneWhite: "#E8E0D8",     // bone white (text)
+} as const;
+
+export type LinkMonsterToken = keyof typeof linkMonster;

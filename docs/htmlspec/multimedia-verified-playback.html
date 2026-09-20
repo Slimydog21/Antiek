@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Multimedia Verified Playback</title></head>
+<body>
+<main>
+  <h1>Serve receipt-verified multimedia to the authenticated player</h1>
+  <p>Stacked on PR #1229. This sprint closes the delivery gap between Antiek's sealed educational-video receipt and the Multimedia workstation, replacing simulated playback with exact verified video and narration bytes.</p>
+  <h2>Authority chain</h2>
+  <ol>
+    <li>Authenticate one Antiek operator and reopen the requested asset from that operator's account-scoped store.</li>
+    <li>Require the requested revision to equal the asset's current revision.</li>
+    <li>Resolve only the canonical receipt path derived from asset and revision under a configured private root.</li>
+    <li>Reopen the receipt MAC plus narration, visual, and render authorities under independent configured keys.</li>
+    <li>Open the receipt-bound media path with <code>O_NOFOLLOW</code>; require one owner-private bounded regular file and verify its SHA-256 through that descriptor.</li>
+    <li>Read the requested bounded range from the same descriptor and return private, non-sniffable media with exact range and digest headers.</li>
+  </ol>
+  <h2>HTTP contract</h2>
+  <p><code>GET /multimedia/assets/{asset_id}/playback?revision_id=...</code> returns exact receipt metadata and canonical same-API video/audio paths. <code>GET /multimedia/assets/{asset_id}/playback/{revision_id}/{video|audio}</code> returns at most 8 MiB per request, supports one standard byte range, and rejects malformed, multipart, stale, foreign, or unsatisfiable requests without exposing filesystem or key details.</p>
+  <h2>Frontend contract</h2>
+  <p>The client cross-binds response asset, revision, and both canonical paths before using them. Native video/audio controls use credentialed requests. Loading is explicit. Missing runtime, receipt, or verified bytes produces an honest unavailable state; fixture imagery, fake waveforms, and “Ken Burns preview” claims are forbidden.</p>
+  <h2>Failure model</h2>
+  <p>Foreign owner, stale revision, partial environment configuration, malformed key, receipt absence, wrong nested key, MAC drift, identity drift, symlink, hard link, public mode, owner mismatch, oversize file, digest drift, path replacement, truncation, malformed range, or unknown media kind fails closed. Error responses never include receipt paths, media paths, secrets, or foreign existence.</p>
+  <h2>Performance boundary</h2>
+  <p>Every request independently reopens the complete authority chain and copies the selected media through a bounded-memory SHA-256 pass into an unnamed private snapshot. Ranges are sliced from that snapshot; large full representations stream from it and close it on completion or cancellation. This is intentionally conservative and can consume substantial temporary disk bandwidth for long videos. A future capability cache may optimize throughput only if it preserves owner/revision/digest binding, expiry, revocation, descriptor identity, bounded storage, and process-restart semantics; this sprint does not weaken verification by adding an informal cache.</p>
+  <h2>Non-goals</h2>
+  <p>No provider generation, paid spend, receipt issuance, CDN publication, public sharing, generic file server, transcoding, DRM, offline download, campaign mutation, merge, or deploy.</p>
+  <h2>Acceptance</h2>
+  <ul>
+    <li>Owner/current revision receives exact metadata and browser-compatible MP4/WAV ranges.</li>
+    <li>Frontend mounts native controls only after identity/path verification.</li>
+    <li>Unavailable playback is explicit and never replaced by simulated media.</li>
+    <li>Identity, receipt, nested-authority, file, digest, and range failures are covered.</li>
+    <li>Focused and stacked tests, typecheck/build, HTML parse, HardenX zero real findings, and independent critic acceptance pass.</li>
+  </ul>
+</main>
+</body>
+</html>

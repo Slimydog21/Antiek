@@ -292,6 +292,8 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   // SPR-07 — source.read is the reader's own reading history (lights SiteSee's
   // "read" tint on the Read surface); not a Research thinking-stream beat.
   [ActionType.SOURCE_READ]: null,
+  [ActionType.READ_BOOK_ANSWERED]: null,
+  [ActionType.READ_BOOK_ANSWER_JUDGED]: null,
   // SPR-08 — a saved meta-reading deliverable is a Read asset (a re-openable
   // synthesis over the owned corpus); it is not a Research thinking-stream beat.
   [ActionType.READ_META_READING_GENERATED]: null,
@@ -315,6 +317,33 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   // surfaces worker activity in the stream it moves up to a narration — an
   // additive, visible edit the coverage gate enforces.
   [ActionType.WORKER_IDENTITY]: null,
+
+  // ── Link Monster — what the front door just ate ──
+  [ActionType.LINK_MONSTER_DIGESTED]: (e) => {
+    const p = payload(e);
+    const title = asString(p.title);
+    const what = title ? `“${title.slice(0, 60)}”` : "a link";
+    if (p.outcome === "meal") {
+      return { line: `The Monster ate ${what} and stewed it into the graph`, tone: "milestone" };
+    }
+    return { line: `The Monster nibbled ${what} — metadata only`, tone: "step" };
+  },
+
+  // Own Your Mind P0 (docs/own-your-mind/10-p0-implementation-brief.md §5) —
+  // the served-impression audit event ("what was shown", decoupled from
+  // training). Audit-only telemetry of the surface's own rendering, not a
+  // Research thinking-stream beat; suppressed here (still in the log behind
+  // the raw-activity toggle). No consumer trains on it in P0.
+  [ActionType.SURFACE_SERVED_IMPRESSION]: null,
+
+  // Canonical artifact-feedback audit. The reader sees these transitions in
+  // the adjacent feedback docket, so duplicating them in the research run
+  // narration would add noise without new information.
+  [ActionType.ARTIFACT_COMMENT_CREATED]: null,
+  [ActionType.FEEDBACK_THREAD_RESOLVED]: null,
+  [ActionType.AGENT_WORK_TRANSITIONED]: null,
+  [ActionType.ARTIFACT_FEEDBACK_REPLIED]: null,
+
 };
 
 /** The safe generic line for an action_type with no row — only reachable if

@@ -32,9 +32,13 @@ def test_arxiv_oai_sync_service_pins_state_and_runs_incremental_cli():
         "ANTIEK_ARXIV_OAI_SYNC_PATH={{ antiek_state_dir }}/arxiv_oai_sync.json"
         in service
     )
+    # #3065 renders --bulk into the unit; the assertion tracks the
+    # shipped template (a bare --census-json pass is no longer what
+    # the timer runs).
     assert (
-        "python -m tools.arxiv_oai_sync incremental --census-json "
-        "{{ antiek_state_dir }}/reports/arxiv_oai_census.json"
+        "python -m tools.arxiv_oai_sync incremental --bulk "
+        "--persist-batch-size 200 --max-lock-seconds 15 --lock-yield-seconds 0.5 "
+        "--census-json {{ antiek_state_dir }}/reports/arxiv_oai_census.json"
     ) in service
     assert (
         "python -m tools.source_census --source arxiv --db-path "
@@ -53,6 +57,18 @@ def test_arxiv_oai_sync_timer_is_persistent_daily_timer():
     assert "Persistent=true" in timer
     assert "Unit=antiek-arxiv-oai-sync.service" in timer
     assert "WantedBy=timers.target" in timer
+
+
+def test_deploy_prod_parity_uses_python3():
+    deploy = _DEPLOY.read_text(encoding="utf-8")
+    assert (
+        "python3 {{ playbook_dir }}/../../../tools/prod_parity/check.py"
+        in deploy
+    )
+    assert (
+        "python {{ playbook_dir }}/../../../tools/prod_parity/check.py"
+        not in deploy
+    )
 
 
 def test_deploy_renders_and_enables_arxiv_oai_sync_timer():

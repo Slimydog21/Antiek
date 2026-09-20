@@ -15,6 +15,13 @@ because:
 - Adding a new provider is one entry in ``_DEFAULT_PROVIDERS`` and
   the config can immediately reference it by name.
 
+Each provider's API key is resolved **BYOK-first** by
+``byok_key_source.resolve_provider_key(handle, env_var)``: the operator's key
+stored in the encrypted BYOK store under ``provider:<handle>`` wins, else the
+environment variable (unless ``ANTIEK_BYOT_ONLY`` disables the env fallback).
+This is what makes "remove my keys, onboard like a user" real — you store the
+key in BYOK and the env var is no longer needed.
+
 Missing API keys are NOT errors — they're a degraded posture. The
 provider just doesn't register; the router falls back to the next
 entry in the tier's fallback chain. ``register_default_providers``
@@ -29,6 +36,7 @@ import sys
 
 from ..router import register_provider
 from .anthropic import AnthropicProvider
+from .byok_key_source import resolve_provider_key
 from .openai_compat import OpenAICompatProvider
 
 
@@ -47,28 +55,32 @@ def _maybe_deepseek() -> OpenAICompatProvider | None:
     # default if DeepSeek changes the host or the operator is proxying
     # (matches the xiaomi/hermes override convention below).
     #
-    # KEY READ FROM ENV ``DEEPSEEK_API_KEY`` — never hardcoded; registers
-    # ONLY when present (degraded-posture, not an error, per this
-    # module's docstring + tests/test_dispatch_bootstrap.py).
-    if not os.environ.get("DEEPSEEK_API_KEY"):
+    # KEY sourced BYOK-first (``provider:deepseek``) then env ``DEEPSEEK_API_KEY``
+    # via resolve_provider_key — never hardcoded; registers ONLY when a key is
+    # available (degraded-posture, not an error, per this module's docstring +
+    # tests/test_dispatch_bootstrap.py).
+    key = resolve_provider_key("deepseek", "DEEPSEEK_API_KEY")
+    if not key:
         return None
     return OpenAICompatProvider(
         name="deepseek",
         base_url=os.environ.get(
             "ANTIEK_DEEPSEEK_BASE_URL", "https://api.deepseek.com",
         ),
-        api_key_env="DEEPSEEK_API_KEY",
+        api_key=key,
     )
 
 
 def _maybe_anthropic() -> AnthropicProvider | None:
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    key = resolve_provider_key("anthropic", "ANTHROPIC_API_KEY")
+    if not key:
         return None
-    return AnthropicProvider(api_key_env="ANTHROPIC_API_KEY")
+    return AnthropicProvider(api_key=key)
 
 
 def _maybe_openrouter() -> OpenAICompatProvider | None:
-    if not os.environ.get("OPENROUTER_API_KEY"):
+    key = resolve_provider_key("openrouter", "OPENROUTER_API_KEY")
+    if not key:
         return None
     # OpenRouter's base already includes /api/v1; the chat-completions
     # path is /chat/completions (NOT the default /v1/chat/completions
@@ -76,7 +88,7 @@ def _maybe_openrouter() -> OpenAICompatProvider | None:
     return OpenAICompatProvider(
         name="openrouter",
         base_url="https://openrouter.ai/api/v1",
-        api_key_env="OPENROUTER_API_KEY",
+        api_key=key,
         chat_completions_path="/chat/completions",
     )
 
@@ -101,9 +113,9 @@ def _maybe_xiaomi() -> OpenAICompatProvider | None:
     # set ANTIEK_XIAOMI_BASE_URL to include it (the path override stays
     # correct either way as long as the base carries the version prefix).
     #
-    # KEY READ FROM ENV ``XIAOMI_API_KEY`` — never hardcoded; registers
-    # ONLY when present.
-    if not os.environ.get("XIAOMI_API_KEY"):
+    # KEY sourced BYOK-first (``provider:xiaomi``) then env ``XIAOMI_API_KEY``.
+    key = resolve_provider_key("xiaomi", "XIAOMI_API_KEY")
+    if not key:
         return None
     return OpenAICompatProvider(
         name="xiaomi",
@@ -111,7 +123,7 @@ def _maybe_xiaomi() -> OpenAICompatProvider | None:
             "ANTIEK_XIAOMI_BASE_URL",
             "https://api.mimo.xiaomi.com/v1",
         ),
-        api_key_env="XIAOMI_API_KEY",
+        api_key=key,
         chat_completions_path="/chat/completions",
     )
 
@@ -129,14 +141,15 @@ def _maybe_hermes() -> OpenAICompatProvider | None:
     # rejected ``/v1/v1/chat/completions`` as path_not_allowed,
     # silently dispatching every call to the OpenRouter fallback for
     # 100% of inference. Fixed 2026-05-18.
-    if not os.environ.get("HERMES_API_KEY"):
+    key = resolve_provider_key("hermes", "HERMES_API_KEY")
+    if not key:
         return None
     return OpenAICompatProvider(
         name="hermes",
         base_url=os.environ.get(
             "ANTIEK_HERMES_BASE_URL", "http://localhost:8080/v1",
         ),
-        api_key_env="HERMES_API_KEY",
+        api_key=key,
         chat_completions_path="/chat/completions",
     )
 
@@ -161,18 +174,19 @@ def _maybe_zai() -> OpenAICompatProvider | None:
     # with ``{"notes": []}`` on distillable prose. Enabling thinking for a
     # specific reasoning-heavy role is a one-line extra_body change here.
     #
-    # KEY READ FROM ENV ``Z_AI_API_KEY`` — never hardcoded; registers ONLY
-    # when present (degraded-posture, not an error, per this module's
-    # docstring). ANTIEK_ZAI_BASE_URL overrides the default endpoint (e.g. to
-    # the bigmodel.cn host).
-    if not os.environ.get("Z_AI_API_KEY"):
+    # KEY sourced BYOK-first (``provider:zai``) then env ``Z_AI_API_KEY`` —
+    # never hardcoded; registers ONLY when a key is available. The `zai` and
+    # `zai_reasoning` twins SHARE one z.ai key (one BYOK handle ``provider:zai``).
+    # ANTIEK_ZAI_BASE_URL overrides the default endpoint (e.g. the bigmodel.cn host).
+    key = resolve_provider_key("zai", "Z_AI_API_KEY")
+    if not key:
         return None
     return OpenAICompatProvider(
         name="zai",
         base_url=os.environ.get(
             "ANTIEK_ZAI_BASE_URL", "https://api.z.ai/api/paas/v4",
         ),
-        api_key_env="Z_AI_API_KEY",
+        api_key=key,
         chat_completions_path="/chat/completions",
         extra_body={"thinking": {"type": "disabled"}},
     )
@@ -190,16 +204,17 @@ def _maybe_zai_reasoning() -> OpenAICompatProvider | None:
     # reads `content`, so the content path is unchanged). One provider
     # endpoint, two policies, zero extra code in the dispatch hot path.
     #
-    # KEY READ FROM ENV ``Z_AI_API_KEY`` (shared with `zai`) — never
-    # hardcoded; registers ONLY when present.
-    if not os.environ.get("Z_AI_API_KEY"):
+    # KEY sourced BYOK-first (``provider:zai``, shared with `zai`) then env
+    # ``Z_AI_API_KEY`` — never hardcoded; registers ONLY when a key is available.
+    key = resolve_provider_key("zai", "Z_AI_API_KEY")
+    if not key:
         return None
     return OpenAICompatProvider(
         name="zai_reasoning",
         base_url=os.environ.get(
             "ANTIEK_ZAI_BASE_URL", "https://api.z.ai/api/paas/v4",
         ),
-        api_key_env="Z_AI_API_KEY",
+        api_key=key,
         chat_completions_path="/chat/completions",
     )
 

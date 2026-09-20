@@ -175,3 +175,68 @@ def test_distill_can_skip_emission():
     )
     assert result.notes  # notes produced
     assert result.emitted_event_ids == []  # but nothing emitted
+
+
+
+class _QuestionDistiller:
+    def distill(self, text, *, source_event_ids):
+        return [
+            ExtractedNote(
+                note_id="note-q",
+                text="Why does the mind fill rather than empty?",
+                confidence="moderate",
+                source_event_ids=source_event_ids or ("cap-1",),
+            ),
+            ExtractedNote(
+                note_id="note-i",
+                text="The vessel metaphor is overused.",
+                confidence="low",
+                source_event_ids=source_event_ids or ("cap-1",),
+            ),
+        ]
+
+
+def test_looks_like_question_heuristic():
+    from substrate.books.voice_note import looks_like_question
+
+    assert looks_like_question("Why now?")
+    assert looks_like_question("what is agency")
+    assert not looks_like_question("The mind is not a vessel.")
+    assert not looks_like_question("")
+
+
+def test_question_shaped_note_is_parked(monkeypatch):
+    """Voice distill emits question.identified for question-shaped notes."""
+    from substrate.books.voice_note import distill_voice_note
+    from substrate.event_log import trajectory
+
+    result = distill_voice_note(
+        document_id="doc-book-1",
+        page_index=4,
+        transcript_text="why does the mind fill?",
+        distiller=_QuestionDistiller(),
+        investigation_id="inv-voice-park",
+        confirmed=True,
+        capture_event_id="cap-1",
+    )
+    assert len(result.parked_question_ids) == 1
+    assert "Why does the mind fill" in result.parked_question_texts[0]
+    rows = list(trajectory("inv-voice-park"))
+    qi = [r for r in rows if r.get("action_type") == "question.identified"]
+    assert len(qi) == 1
+    assert qi[0]["payload"]["question_id"] == result.parked_question_ids[0]
+    assert qi[0]["payload"]["anchor_region_id"] == "book_page:4"
+    assert qi[0].get("document_id") == "doc-book-1"
+
+
+def test_non_question_notes_do_not_park():
+    result = distill_voice_note(
+        document_id="doc-book-1",
+        page_index=1,
+        transcript_text="the mind is not a vessel",
+        distiller=_StubDistiller(),
+        investigation_id="inv-voice-nopark",
+        confirmed=True,
+    )
+    assert result.parked_question_ids == []
+    assert result.parked_question_texts == []

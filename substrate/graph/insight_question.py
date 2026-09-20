@@ -46,11 +46,14 @@ owns the always-on trigger; this sprint only builds the path.
 
 from __future__ import annotations
 
-import contextlib
+import json
 import os
 import sys
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any, cast
+from contextlib import suppress
+from typing import TYPE_CHECKING, Any, TypeVar, cast
+
+T = TypeVar("T")
 
 if TYPE_CHECKING:
     from substrate.contracts.nodes import KnowledgeUnitContract, ServabilityTag
@@ -117,14 +120,29 @@ def canonical_text(text: str) -> str:
     return " ".join(text.lower().split())
 
 
-def insight_node_id(text: str) -> str:
+def insight_node_id(text: str, *, identity_scope: str | None = None) -> str:
     """Deterministic node id for an insight with this (normalized) text."""
-    return content_addressed_id("insight", canonical_text(text))
+    identity = canonical_text(text)
+    if identity_scope is not None:
+        identity_scope = _identity_scope(identity_scope)
+        identity = f"{identity_scope}:{identity}"
+    return content_addressed_id("insight", identity)
 
 
-def question_node_id(text: str) -> str:
+def question_node_id(text: str, *, identity_scope: str | None = None) -> str:
     """Deterministic node id for a question with this (normalized) text."""
-    return content_addressed_id("question", canonical_text(text))
+    identity = canonical_text(text)
+    if identity_scope is not None:
+        identity_scope = _identity_scope(identity_scope)
+        identity = f"{identity_scope}:{identity}"
+    return content_addressed_id("question", identity)
+
+
+def _identity_scope(value: str) -> str:
+    encoded = value.encode("utf-8")
+    if not encoded or len(encoded) > 512 or any(byte < 32 or byte == 127 for byte in encoded):
+        raise ValueError("identity_scope is invalid")
+    return value
 
 
 def _node_type_of(con: LockedConnection, node_id: str) -> str | None:
@@ -132,6 +150,28 @@ def _node_type_of(con: LockedConnection, node_id: str) -> str | None:
         "SELECT node_type FROM nodes WHERE node_id = ? LIMIT 1", [node_id]
     ).fetchone()
     return row[0] if row else None
+
+
+def _verify_private_node(
+    con: LockedConnection,
+    *,
+    node_id: str,
+    label: str,
+    node_type: str,
+    metadata: dict[str, Any],
+    owner_user_id: str | None,
+) -> None:
+    if owner_user_id is None:
+        return
+    row = con.execute(
+        "SELECT canonical_label, node_type, graph_scope, metadata, owner_user_id "
+        "FROM nodes WHERE node_id=?",
+        [node_id],
+    ).fetchone()
+    expected = (label, node_type, _PROMOTION_GRAPH_SCOPE, metadata, owner_user_id)
+    actual = None if row is None else (row[0], row[1], row[2], json.loads(row[3]), row[4])
+    if actual != expected:
+        raise ValueError("private promoted graph node conflicts")
 
 
 def _coerce_confidence_float(confidence: str) -> float:
@@ -144,6 +184,8 @@ def _add_provenance_edges(
     source_node_id: str,
     relation: str,
     targets: Sequence[str],
+    emit_events: bool = True,
+    owner_user_id: str | None = None,
     investigation_id: str,
     source_tier: int,
     extraction_confidence: float,
@@ -161,6 +203,11 @@ def _add_provenance_edges(
         if ttype is None:
             dangling.append(target_id)
             continue
+        target_owner = con.execute(
+            "SELECT owner_user_id FROM nodes WHERE node_id=?", [target_id]
+        ).fetchone()[0]
+        if owner_user_id is not None and target_owner not in (None, owner_user_id):
+            raise ValueError("private graph edge target owner conflicts")
         # Loud failure if the caller wires an out-of-vocabulary edge.
         validate_insight_question_edge(relation, _node_type_of_source(relation), ttype)
         eid = insert_edge(
@@ -175,6 +222,7 @@ def _add_provenance_edges(
             source_document_id=source_document_id,
             chunk_id=chunk_id,
             on_conflict="ignore",
+            emit_event=emit_events,
         )
         written.append(eid)
     return written, dangling
@@ -190,8 +238,10 @@ def _node_type_of_source(relation: str) -> str:
     return spec.source_type
 
 
-def _with_connection[T](
-    con: LockedConnection | None, purpose: str, fn: Callable[[LockedConnection], T]
+def _with_connection(  # noqa: UP047 - Python 3.11 support
+    con: LockedConnection | None,
+    purpose: str,
+    fn: Callable[[LockedConnection], T],
 ) -> T:
     """Run ``fn(con)`` either on the caller's connection (caller owns the
     transaction) or on a fresh write-locked connection wrapped in an
@@ -206,7 +256,7 @@ def _with_connection[T](
             owned.execute("COMMIT")
             return result
         except Exception:
-            with contextlib.suppress(Exception):  # pragma: no cover
+            with suppress(Exception):
                 owned.execute("ROLLBACK")
             raise
     finally:
@@ -229,6 +279,9 @@ def promote_insight(
     con: LockedConnection | None = None,
     dedup: bool = False,
     dedup_rate: Any = None,
+    identity_scope: str | None = None,
+    owner_user_id: str | None = None,
+    emit_graph_events: bool = True,
 ) -> str:
     """Promote an insight to a first-class ``insight`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
@@ -258,7 +311,7 @@ def promote_insight(
     block_search resolves the per-book document the same way it does for a
     distilled insight.
     """
-    nid = insight_node_id(text)
+    nid = insight_node_id(text, identity_scope=identity_scope)
     edge_conf = (
         extraction_confidence
         if extraction_confidence is not None
@@ -284,6 +337,8 @@ def promote_insight(
                 "investigation_id": investigation_id,
             }
         )
+        if identity_scope is not None:
+            node_meta["identity_scope"] = identity_scope
         # §9 provenance discriminator. Stamped only when the caller asserts
         # one (the user-authored marginalia path). A model-emerged insight
         # carries no source_kind — the absence IS "model", and we never
@@ -331,6 +386,16 @@ def promote_insight(
             metadata=node_meta,
             node_id=nid,
             on_conflict="ignore",
+            owner_user_id=owner_user_id,
+            emit_event=emit_graph_events,
+        )
+        _verify_private_node(
+            c,
+            node_id=nid,
+            label=text,
+            node_type="insight",
+            metadata=node_meta,
+            owner_user_id=owner_user_id,
         )
         _written, dangling = _add_provenance_edges(
             c,
@@ -342,6 +407,8 @@ def promote_insight(
             extraction_confidence=edge_conf,
             source_document_id=source_document_id,
             chunk_id=chunk_id,
+            emit_events=emit_graph_events,
+            owner_user_id=owner_user_id,
         )
         if dangling:
             _record_dangling(c, nid, "supported_by", dangling)
@@ -366,6 +433,9 @@ def promote_question(
     con: LockedConnection | None = None,
     dedup: bool = False,
     dedup_rate: Any = None,
+    identity_scope: str | None = None,
+    owner_user_id: str | None = None,
+    emit_graph_events: bool = True,
 ) -> str:
     """Promote a question to a first-class ``question`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
@@ -378,7 +448,7 @@ def promote_question(
     question node (a ``duplicate_of`` self-edge) instead of inserting a row.
     Questions dedup against questions only (never against insights).
     """
-    nid = question_node_id(text)
+    nid = question_node_id(text, identity_scope=identity_scope)
 
     def _do(c: LockedConnection) -> str:
         node_meta: dict[str, Any] = dict(metadata or {})
@@ -395,6 +465,8 @@ def promote_question(
                 "investigation_id": investigation_id,
             }
         )
+        if identity_scope is not None:
+            node_meta["identity_scope"] = identity_scope
         if anchor_region_id:
             node_meta["anchor_region_id"] = anchor_region_id
         if source_document_id:
@@ -436,18 +508,32 @@ def promote_question(
             metadata=node_meta,
             node_id=nid,
             on_conflict="ignore",
+            owner_user_id=owner_user_id,
+            emit_event=emit_graph_events,
+        )
+        _verify_private_node(
+            c,
+            node_id=nid,
+            label=text,
+            node_type="question",
+            metadata=node_meta,
+            owner_user_id=owner_user_id,
         )
         _w1, d1 = _add_provenance_edges(
             c, source_node_id=nid, relation="asks_about", targets=asks_about,
             investigation_id=investigation_id, source_tier=source_tier,
             extraction_confidence=extraction_confidence,
             source_document_id=source_document_id, chunk_id=chunk_id,
+            emit_events=emit_graph_events,
+            owner_user_id=owner_user_id,
         )
         _w2, d2 = _add_provenance_edges(
             c, source_node_id=nid, relation="resolved_by", targets=resolved_by,
             investigation_id=investigation_id, source_tier=source_tier,
             extraction_confidence=extraction_confidence,
             source_document_id=source_document_id, chunk_id=chunk_id,
+            emit_events=emit_graph_events,
+            owner_user_id=owner_user_id,
         )
         if d1:
             _record_dangling(c, nid, "asks_about", d1)
@@ -721,20 +807,343 @@ def _event_payload(event: dict[str, Any]) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def resolve_substantive_chunk_id(con: Any, document_id: str | None) -> str | None:
+    """Most substantive non-boilerplate chunk for a document (funnel heuristic).
+
+    Grounds note-taker / funnel deposits so ``knowledge_unit_of`` can recover
+    claim→chunk→doc provenance and the unit becomes reusable.
+    """
+    if not document_id:
+        return None
+    row = con.execute(
+        """SELECT chunk_id FROM chunks
+           WHERE document_id = ?
+             AND length(text) BETWEEN 400 AND 4000
+             AND text NOT ILIKE '%bibliography%'
+             AND text NOT ILIKE '%references%'
+             AND text NOT ILIKE '%index%'
+             AND text NOT ILIKE '## Page%'
+             AND text NOT ILIKE 'chapter %'
+             AND text NOT ILIKE 'contents%'
+           ORDER BY length(text) DESC
+           LIMIT 1""",
+        [document_id],
+    ).fetchone()
+    if not row or row[0] is None:
+        row = con.execute(
+            """SELECT chunk_id FROM chunks
+               WHERE document_id = ?
+               ORDER BY length(text) DESC
+               LIMIT 1""",
+            [document_id],
+        ).fetchone()
+    if not row or row[0] is None:
+        return None
+    return str(row[0])
+
+
+def _note_evidence_texts(
+    event: dict[str, Any],
+    *,
+    events_dir: str | None,
+    con: Any | None = None,
+) -> list[str]:
+    """Load evidence texts for deposit-time groundedness.
+
+    Prefers cited ``source_event_ids``, then adds:
+
+    * every ``evidence.retrieve.delivered`` answer in the same investigation
+    * ``decompose.delivered`` sub-questions / rationales (the wrestling agenda
+      the note synthesizes)
+    * all chunk texts for the note's ``document_id`` when a DB connection is
+      supplied (passage-aligned lexical coverage)
+
+    Note-taker windows synthesize across a retrieve slice; scoring only
+    against the cited subset under-grounds meta-notes that are entailed
+    by sibling delivers in the same window. Document chunks are the book
+    surface the operator is reading — honest entailment evidence, not a
+    score pad.
+    """
+    payload = _event_payload(event)
+    ids = payload.get("source_event_ids") or []
+    want = {str(x) for x in ids if isinstance(ids, list) and x}
+    investigation_id = event.get("investigation_id") or payload.get("investigation_id") or ""
+    if not investigation_id:
+        return []
+    try:
+        from substrate.event_log import default_events_dir, iter_physical_events
+    except ImportError:
+        return []
+    root = events_dir or default_events_dir()
+    cited: list[str] = []
+    siblings: list[str] = []
+    agenda: list[str] = []
+    # Unlocked physical read: append-only JSONL/parquet. Taking
+    # investigation_event_lock (.delivery.lock) here deadlocks on macOS when
+    # the caller already holds that lock (e.g. _promote_delivered_notes iterating
+    # note.emerged under iter_physical_events) — flock is not re-entrant across
+    # fds. Concurrent catch_up holding the lock would also TimeoutError promote.
+    for row in iter_physical_events(
+        str(investigation_id),
+        events_dir=root,
+        _lock_already_held=True,
+    ):
+        pl = row.get("payload") or {}
+        if not isinstance(pl, dict):
+            continue
+        at = row.get("action_type")
+        if at == "decompose.delivered":
+            for sq in pl.get("decomposition") or []:
+                if not isinstance(sq, dict):
+                    continue
+                bits = [
+                    str(sq.get("sub_question") or ""),
+                    str(sq.get("rationale") or ""),
+                ]
+                text = "\n".join(b for b in bits if b.strip())
+                if text.strip():
+                    agenda.append(text.strip())
+            continue
+        bits = [
+            str(pl.get("sub_question") or ""),
+            str(pl.get("answer") or ""),
+            str(pl.get("rendered_text") or ""),
+            str(pl.get("thesis") or ""),
+        ]
+        text = "\n".join(b for b in bits if b.strip())
+        if not text.strip():
+            continue
+        eid = row.get("event_id")
+        if want and eid in want:
+            cited.append(text.strip())
+        elif at == "evidence.retrieve.delivered":
+            siblings.append(text.strip())
+    out = list(cited)
+    seen = set(cited)
+    for s in siblings + agenda:
+        if s not in seen:
+            out.append(s)
+            seen.add(s)
+    doc = event.get("document_id") or payload.get("document_id")
+    if con is not None and isinstance(doc, str) and doc.strip():
+        try:
+            rows = con.execute(
+                "SELECT text FROM chunks WHERE document_id = ?",
+                [doc.strip()],
+            ).fetchall()
+        except Exception:
+            rows = []
+        for (chunk_text,) in rows:
+            if chunk_text is None:
+                continue
+            t = str(chunk_text).strip()
+            if t and t not in seen:
+                out.append(t)
+                seen.add(t)
+    return out
+
+
+def _score_note_groundedness(
+    con: Any,
+    note_text: str,
+    *,
+    chunk_id: str | None,
+    evidence_texts: list[str],
+) -> float:
+    from substrate.eval.groundedness import score_claim
+
+    chunk_texts: list[str] = list(evidence_texts)
+    if chunk_id:
+        row = con.execute(
+            "SELECT text FROM chunks WHERE chunk_id = ? LIMIT 1", [chunk_id]
+        ).fetchone()
+        if row and row[0] is not None:
+            chunk_texts.insert(0, str(row[0]))
+    verdict = score_claim(
+        note_text,
+        chunk_texts,
+        cited_chunk_ids=[chunk_id] if chunk_id else [],
+    )
+    return float(verdict.score)
+
+
+
+def rescore_promoted_note_groundedness(
+    *,
+    con: LockedConnection | None = None,
+    db_path: str | None = None,
+    events_dir: str | None = None,
+    source_document_id: str | None = None,
+    dry_run: bool = True,
+    only_below_threshold: bool = False,
+    threshold: float = 0.5,
+) -> list[dict[str, Any]]:
+    """Re-score insight nodes deposited from note.emerged with current evidence.
+
+    Uses the same ``_note_evidence_texts`` + ``_score_note_groundedness`` path as
+    ``promote_from_note_event`` (no invented scores). Updates
+    ``metadata.groundedness_score`` when ``dry_run=False``.
+
+    Returns one row per considered insight:
+    ``{node_id, old, new, delta, updated, crossed_threshold}``.
+    """
+    from runtime.db_lock import connect_write
+    from substrate.event_log import default_events_dir, iter_physical_events
+    from substrate.graph import default_db_path
+
+    root = events_dir or default_events_dir()
+    path = db_path or default_db_path()
+
+    def _run(c: LockedConnection) -> list[dict[str, Any]]:
+        sql = (
+            "SELECT node_id, canonical_label, metadata FROM nodes "
+            "WHERE node_type = 'insight'"
+        )
+        params: list[Any] = []
+        if source_document_id:
+            sql += (
+                " AND json_extract_string(metadata, '$.source_document_id') = ?"
+            )
+            params.append(source_document_id)
+        rows = c.execute(sql, params).fetchall()
+        out: list[dict[str, Any]] = []
+        for node_id, label, meta_s in rows:
+            import json as _json
+
+            meta: dict[str, Any] = {}
+            if meta_s:
+                try:
+                    meta = _json.loads(meta_s)
+                except (TypeError, ValueError):
+                    meta = {}
+            old_raw = meta.get("groundedness_score")
+            old = float(old_raw) if isinstance(old_raw, (int, float)) else None
+            if only_below_threshold and old is not None and old >= threshold:
+                continue
+            inv = meta.get("investigation_id") or ""
+            origin = meta.get("origin_event_id")
+            chunk_id = meta.get("chunk_id")
+            text = (label or "").strip()
+            if not text or not inv:
+                continue
+            event = None
+            for row in iter_physical_events(str(inv), events_dir=root):
+                if origin and row.get("event_id") == origin:
+                    event = row
+                    break
+            if event is None:
+                for row in iter_physical_events(str(inv), events_dir=root):
+                    if row.get("action_type") != "note.emerged":
+                        continue
+                    pl = row.get("payload") or {}
+                    if isinstance(pl, dict) and (pl.get("note_text") or "").strip() == text:
+                        event = row
+                        break
+            if event is None:
+                continue
+            # Ensure document_id on envelope for chunk join
+            if not event.get("document_id") and meta.get("source_document_id"):
+                event = dict(event)
+                event["document_id"] = meta.get("source_document_id")
+            evidence = _note_evidence_texts(event, events_dir=root, con=c)
+            new = _score_note_groundedness(
+                c, text, chunk_id=chunk_id if isinstance(chunk_id, str) else None,
+                evidence_texts=evidence,
+            )
+            crossed = old is not None and old < threshold <= new
+            updated = False
+            if not dry_run and (old is None or abs(new - old) > 1e-12):
+                _stamp_insight_grounding(
+                    c,
+                    str(node_id),
+                    source_document_id=str(meta.get("source_document_id") or ""),
+                    chunk_id=str(chunk_id or ""),
+                    investigation_id=str(inv),
+                    groundedness_score=new,
+                )
+                updated = True
+            out.append(
+                {
+                    "node_id": str(node_id),
+                    "old": old,
+                    "new": new,
+                    "delta": (new - old) if old is not None else None,
+                    "updated": updated,
+                    "crossed_threshold": crossed,
+                }
+            )
+        return out
+
+    if con is not None:
+        return _run(con)
+    with connect_write(path, purpose="insight/groundedness_backfill") as c:
+        return _run(c)
+
+
+def _stamp_insight_grounding(
+    con: Any,
+    node_id: str,
+    *,
+    source_document_id: str,
+    chunk_id: str,
+    investigation_id: str,
+    groundedness_score: float | None,
+) -> None:
+    """Merge grounding into node metadata (idempotent; upgrades ignore-hits)."""
+    import json
+
+    row = con.execute(
+        "SELECT metadata FROM nodes WHERE node_id = ? LIMIT 1", [node_id]
+    ).fetchone()
+    if row is None:
+        return
+    meta: dict[str, Any] = {}
+    if row[0]:
+        try:
+            meta = json.loads(row[0])
+        except (TypeError, ValueError):
+            meta = {}
+    meta.setdefault("source_document_id", source_document_id)
+    meta.setdefault("chunk_id", chunk_id)
+    if investigation_id:
+        meta.setdefault("investigation_id", investigation_id)
+    if groundedness_score is not None:
+        meta["groundedness_score"] = float(groundedness_score)
+    con.execute(
+        "UPDATE nodes SET metadata = ? WHERE node_id = ?",
+        [json.dumps(meta, separators=(",", ":")), node_id],
+    )
+
+
 def promote_from_note_event(
     event: dict[str, Any],
     *,
     con: LockedConnection | None = None,
     enabled: bool = False,
     embedding_provider: Any = None,
+    emit_graph_events: bool = True,
+    events_dir: str | None = None,
+    min_groundedness: float | None = 0.5,
 ) -> str | None:
     """Promote a single ``note.emerged`` event into an insight node.
 
     Opt-in: returns ``None`` unless ``enabled=True`` (SPR-03 flips the
-    always-on switch). The note's ``source_event_ids`` are recorded in
-    node metadata (they reference events, not nodes, so they cannot be
-    ``supported_by`` edges); document/claim-node grounding is the job of
-    richer callers that pass ``supported_by`` explicitly.
+    always-on switch). Grounds on envelope ``document_id`` + a substantive
+    chunk so ``knowledge_unit_of`` can assemble a reusable unit; deposit-time
+    groundedness scores the note against chunk text PLUS cited
+    ``source_event_ids`` payloads (and broadened sibling/decompose/doc
+    evidence).
+
+    ``min_groundedness`` (default 0.5, same bar as the reuse gate) refuses
+    promotion when the honest lexical score is strictly below the bar —
+    ``note.emerged`` stays on the event log for the notebook, but the
+    retrieve pool is not polluted with below-threshold insights. Pass
+    ``min_groundedness=None`` to promote regardless of score (tests /
+    explicit backfill). Never invents or inflates scores.
+
+    Lock order: event-log reads for evidence happen BEFORE the DuckDB write
+    session so note-taker catch_up cannot deadlock (write-held + event-lock
+    wait vs event-held + write wait).
     """
     if not enabled:
         return None
@@ -743,18 +1152,87 @@ def promote_from_note_event(
     if not isinstance(text, str) or not text.strip():
         return None
     investigation_id = event.get("investigation_id") or payload.get("investigation_id") or ""
-    return promote_insight(
-        text=text.strip(),
-        investigation_id=investigation_id,
-        confidence=payload.get("confidence", "unknown"),
-        metadata={
+    doc_raw = event.get("document_id") or payload.get("document_id")
+    source_document_id = (
+        doc_raw.strip()
+        if isinstance(doc_raw, str) and doc_raw.strip() and not doc_raw.startswith("research:")
+        else None
+    )
+    note_text = text.strip()
+
+    # Event-log evidence OUTSIDE the DuckDB writer (avoids lock-order inversion
+    # with DurableNoteTakerReplay.catch_up).
+    event_evidence = _note_evidence_texts(event, events_dir=events_dir, con=None)
+
+    def _do(c: LockedConnection) -> str | None:
+        chunk_id = (
+            resolve_substantive_chunk_id(c, source_document_id)
+            if source_document_id
+            else None
+        )
+        # Chunk texts only here — no event-log iter under the write lock.
+        evidence_texts = list(event_evidence)
+        if source_document_id:
+            try:
+                rows = c.execute(
+                    "SELECT text FROM chunks WHERE document_id = ?",
+                    [source_document_id],
+                ).fetchall()
+            except Exception:
+                rows = []
+            seen = set(evidence_texts)
+            for (chunk_text,) in rows:
+                if chunk_text is None:
+                    continue
+                t = str(chunk_text).strip()
+                if t and t not in seen:
+                    evidence_texts.append(t)
+                    seen.add(t)
+        gscore: float | None = None
+        if chunk_id or evidence_texts:
+            gscore = _score_note_groundedness(
+                c,
+                note_text,
+                chunk_id=chunk_id,
+                evidence_texts=evidence_texts,
+            )
+        if (
+            min_groundedness is not None
+            and gscore is not None
+            and gscore < float(min_groundedness)
+        ):
+            return None
+        meta: dict[str, Any] = {
             "source_event_ids": payload.get("source_event_ids", []),
             "origin_event_id": event.get("event_id"),
             "origin_note_id": payload.get("note_id"),
-        },
-        embedding_provider=embedding_provider,
-        con=con,
-    )
+        }
+        if gscore is not None:
+            meta["groundedness_score"] = gscore
+        nid = promote_insight(
+            text=note_text,
+            investigation_id=investigation_id,
+            confidence=payload.get("confidence", "unknown"),
+            metadata=meta,
+            source_document_id=source_document_id,
+            chunk_id=chunk_id,
+            embedding_provider=embedding_provider,
+            emit_graph_events=emit_graph_events,
+            con=c,
+        )
+        if nid and source_document_id and chunk_id:
+            _stamp_insight_grounding(
+                c,
+                nid,
+                source_document_id=source_document_id,
+                chunk_id=chunk_id,
+                investigation_id=investigation_id,
+                groundedness_score=gscore,
+            )
+        return nid
+
+    return _with_connection(con, "promote_from_note_event", _do)
+
 
 
 def promote_from_question_event(
@@ -763,6 +1241,7 @@ def promote_from_question_event(
     con: LockedConnection | None = None,
     enabled: bool = False,
     embedding_provider: Any = None,
+    emit_graph_events: bool = True,
 ) -> str | None:
     """Promote a single ``question.identified`` event into a question
     node. Opt-in (see :func:`promote_from_note_event`)."""
@@ -782,6 +1261,7 @@ def promote_from_question_event(
             "origin_question_id": payload.get("question_id"),
         },
         embedding_provider=embedding_provider,
+        emit_graph_events=emit_graph_events,
         con=con,
     )
 
@@ -792,6 +1272,7 @@ def promote_from_marginalia_event(
     con: LockedConnection | None = None,
     enabled: bool = False,
     embedding_provider: Any = None,
+    emit_graph_events: bool = True,
 ) -> str | None:
     """Promote a single ``marginalia.noted`` event into a **user-authored**
     per-book insight node (Read SPR-07 M3).
@@ -848,6 +1329,7 @@ def promote_from_marginalia_event(
             "excerpt": payload.get("excerpt"),
         },
         embedding_provider=embedding_provider,
+        emit_graph_events=emit_graph_events,
         con=con,
     )
 
@@ -990,7 +1472,11 @@ def knowledge_unit_of(
 
     groundedness_score: float | None = None
     if score_groundedness:
-        groundedness_score = _score_unit_groundedness(con, text, chunk_id)
+        stored_gs = meta.get("groundedness_score")
+        if isinstance(stored_gs, (int, float)):
+            groundedness_score = float(stored_gs)
+        else:
+            groundedness_score = _score_unit_groundedness(con, text, chunk_id)
 
     # Resolve the content-rights class from the source document when the caller
     # did not supply one. The funnel deposits notes with no supported_by claim

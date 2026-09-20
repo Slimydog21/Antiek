@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Evidence-bound multimedia research intent</title>
+  <style>body{margin:28px auto;max-width:980px;padding:0 16px;color:#171717;font:15px/1.5 system-ui}h1,h2{letter-spacing:0}h2{border-bottom:2px solid #171717}code{background:#f1f1ec;padding:1px 4px}.decision{border:2px solid #171717;border-left:9px solid #f9bd2b;padding:12px}.refusal{border-left:5px solid #c9432b;padding-left:12px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #777;padding:7px;text-align:left}</style>
+</head>
+<body><main>
+  <header><p>Antiek Multimedia / Cycle 23</p><h1>Preserve a learned claim as an evidence-bound research intent</h1><p>Let a listener capture what they want to investigate without losing exact provenance or accidentally launching unowned, unbudgeted research.</p></header>
+
+  <section><h2>Decision</h2><p class="decision">A verified multimedia claim may create only a private, owner-scoped research intent. The server reopens the current registered audio authority and snapshots its exact claim evidence. Intent creation does not create an investigation or cascade plan, call a model/provider, reserve or approve spend, write the knowledge graph, or imply that research has started.</p></section>
+
+  <section><h2>HTTP Contract</h2>
+    <table><thead><tr><th>Operation</th><th>Contract</th></tr></thead><tbody>
+      <tr><td><code>POST /multimedia/assets/{asset_id}/research-intents</code></td><td>Body contains only expected revision, line ID, a 3–2000 character question, and a 16–128 character idempotency key. Returns 201 for first creation and 200 for exact replay.</td></tr>
+      <tr><td><code>GET /multimedia/research-intents/{intent_id}</code></td><td>Returns only the authenticated owner's immutable intent. Foreign and missing IDs are the same opaque 404.</td></tr>
+    </tbody></table>
+    <p>Responses are <code>private, no-store</code>. A legacy/unverified claim returns 409. Missing, foreign, stale, unregistered, or malformed audio authority returns an opaque 404 or an integrity 409 without exposing another owner.</p>
+  </section>
+
+  <section><h2>Durable Intent</h2>
+    <ul>
+      <li>Persist beneath the multimedia store root in a dedicated SQLite authority ledger with transactional uniqueness on <code>(owner_identity_digest, idempotency_key)</code>.</li>
+      <li>Store a random opaque intent ID, owner digest, question, asset/revision, receipt and audio hashes, chapter and line IDs, trusted claim text and follow-up prompt, every exact evidence source, canonical evidence digest, canonical request digest, creation time, and immutable state <code>prepared</code>.</li>
+      <li>Same owner/key/request/evidence returns the original intent. Same owner/key with any question, claim, revision, receipt, audio, or evidence drift returns 409. Different owners may reuse a key.</li>
+      <li>Every create re-resolves current owner playback metadata and selects the line server-side. The browser cannot submit claim text, source IDs, excerpts, byte ranges, hashes, receipt identity, owner, status, plan ID, authority digest, budget, provider, or model.</li>
+      <li>Evidence digest covers asset/revision, receipt/audio hashes, chapter/line identity, claim/follow-up text, ordered source identities, exact text, byte ranges, and chunk/span hashes.</li>
+    </ul>
+  </section>
+
+  <section><h2>Plan Boundary</h2>
+    <p>The projection reports <code>plan_handoff_status=blocked_unowned_plan_store</code>, <code>provider_launch_authorized=false</code>, <code>spend_authority_digest=null</code>, and a server-derived plan seed containing the question plus immutable intent/evidence digests. It does not expose raw owner identity.</p>
+    <p>Cycle 24 must owner-scope cascade plan create/get/edit/approve/preview/spend-approve/launch, remove caller-authored approver identity, and preserve intent provenance in the plan digest before this handoff can become executable.</p>
+  </section>
+
+  <section><h2>Workstation</h2>
+    <ul>
+      <li>Only <code>verified_exact</code> learned claims offer <strong>Research this</strong>. Legacy claims retain their unavailable-evidence state and cannot create an intent.</li>
+      <li>The action opens an editable question initialized from the trusted follow-up prompt while the immutable claim and source evidence remain visible.</li>
+      <li><strong>Prepare research</strong> creates the intent once, disables duplicate submission, recovers exact retries, and reports that plan review is the next step but currently unavailable.</li>
+      <li>No mount, evidence expansion, typing, voice capture, or successful preparation calls <code>/investigations</code>, plan approval, spend approval, or launch.</li>
+    </ul>
+  </section>
+
+  <section><h2>Refusals</h2>
+    <ul class="refusal">
+      <li>No intent for video, legacy claims, unknown line IDs, stale revisions, foreign assets, missing registration, receipt/link drift, malformed exact evidence, or unsafe/corrupt ledger state.</li>
+      <li>No graph-node inference substitutes for the exact receipt-verified learned claim. No client evidence is merged with authority.</li>
+      <li>No deterministic public ID derived from owner or evidence. No owner ID, filesystem path, receipt body, signing material, or historical revision row is returned.</li>
+    </ul>
+  </section>
+
+  <section><h2>Acceptance Evidence</h2>
+    <ul>
+      <li>Ledger tests cover owner isolation, exact replay, drift conflict, concurrency, persistence, private database permissions, bounded canonical records, and corrupt schema refusal.</li>
+      <li>Route tests cover auth, local and paid exact claims, legacy refusal, foreign opacity, stale revision, unknown line, schema rejection, no-store success/error responses, and zero provider/event/spend calls.</li>
+      <li>Browser tests cover exact-only action, trusted default question, editable question with immutable evidence, duplicate-click prevention, retry, identity reset, and no execution endpoints.</li>
+      <li>Focused and broad multimedia suites, TypeScript, production build, Ruff, HTML parsing, diff hygiene, independent adversarial review, and HardenX strict pass on the exact tree.</li>
+    </ul>
+  </section>
+
+  <section id="harness-hint" data-pattern="authority-before-affordance"><h2>Harness Hint</h2><p>One critic attacks playback/evidence re-resolution and owner/key races. Another attacks browser identity changes and verifies that preparation never becomes execution.</p></section>
+</main></body></html>

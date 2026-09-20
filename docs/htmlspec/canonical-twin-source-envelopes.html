@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Antiek Canonical Twin Source Envelopes</title>
+<style>body{font:16px/1.55 system-ui,sans-serif;color:#1c1917;background:#fafaf9;margin:0}main{max-width:960px;margin:auto;padding:32px}h1,h2{font-family:Georgia,serif}section{border-top:1px solid #d6d3d1;padding:20px 0}code{background:#f5f5f4;padding:2px 5px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #d6d3d1;padding:8px;text-align:left;vertical-align:top}.danger{color:#991b1b;font-weight:700}</style>
+</head><body><main>
+<h1>Canonical twin source envelopes</h1>
+<p><strong>Status:</strong> executable Cycle 105, stacked on the Cycle 104 durable twin lifecycle. This closes initial graph-document declaration and backfill. It does not execute model work or claim platform-wide twin completion.</p>
+
+<section><h2>User outcome</h2>
+<p>Every information-bearing document entering Antiek's canonical graph declares, durably and exactly, which account, source bytes, title, class, and provenance event must seed its recursive notes twin. The declaration cannot be lost after the document commits because both occupy one row mutation.</p></section>
+
+<section><h2>Canonical chokepoint</h2>
+<p><code>substrate.graph.ops.insert_document</code> is the existing writer used by research paste/file ingest, book publication, wrestling document loads, multimedia source HTML and twin publication, and direct graph admission. Cycle 105 adds <code>documents.twin_source_envelope</code> and supplies it in the same <code>INSERT INTO documents</code> statement. It does not add a second asset registry or a cross-database transactional claim.</p>
+<p class="danger">Any direct SQL document insert that omits the envelope remains detectable and cannot pass completeness verification.</p></section>
+
+<section><h2>Closed declaration states</h2>
+<table><tr><th>State</th><th>Meaning</th><th>Projection</th></tr>
+<tr><td><code>eligible</code></td><td>Body satisfies the signed materializer's exact size and shape contract. Envelope contains a canonical <code>AssetContent</code>.</td><td>Idempotently registered as pending in Cycle 104.</td></tr>
+<tr><td><code>metadata_only</code></td><td>No non-whitespace body exists. This row is not yet a viewable information asset.</td><td>Not registered; never counted as completed.</td></tr>
+<tr><td><code>requires_binding</code></td><td>A legacy generated twin has body bytes but no Cycle 104 parent binding yet.</td><td>Outstanding; never projected into twin-of-twin recursion.</td></tr>
+<tr><td><code>requires_enrichment</code></td><td>A real body exists below the materializer's minimum. It is not relabeled as metadata.</td><td>Outstanding, coverage remains partial where eligible work exists.</td></tr>
+<tr><td><code>requires_segmentation</code></td><td>Body exceeds the current 200,000-character materializer ceiling.</td><td>Outstanding; no truncation and no false completion.</td></tr></table></section>
+
+<section><h2>Identity</h2>
+<p>The canonical envelope is compact sorted UTF-8 JSON. Its account is <code>documents.owner_user_id</code>; its asset identifier is <code>document_id</code>; its title is the stored title or identifier fallback; its class is <code>document_type</code>; and its body identity is the SHA-256 of exact <code>raw_text</code>. Body bytes remain only in <code>documents.raw_text</code>; the envelope never duplicates copyrighted or private content. A deterministic event-shaped declaration identifier binds schema, account, identifier, title, class, and body hash. It identifies this durable declaration and does not claim an external provenance event. The Cycle 104 source hash then binds the complete asset reconstructed under the graph write lock.</p></section>
+
+<section><h2>Migration and replay</h2>
+<ol>
+<li>V20 adds the nullable column without inventing declarations for existing rows.</li>
+<li>The locked backfill reads canonical stored fields, derives each envelope, and commits every update in one transaction. Any invalid legacy row rolls the complete batch back.</li>
+<li>An idempotent <code>insert_document(..., on_conflict="ignore")</code> fills a legacy NULL from stored bytes, never replay caller bytes.</li>
+<li>The verifier re-derives every selected row and exact-compares canonical bytes. Body/title/type/owner drift, malformed JSON, substitution, or missing declarations fail closed.</li>
+<li>Legal takedown clears <code>raw_text</code> and replaces the envelope in the same guarded document update, leaving no hidden body copy.</li>
+</ol></section>
+
+<section><h2>Projection and tenancy</h2>
+<p>The projector first verifies only the requested account's graph rows, then registers every eligible source in the Cycle 104 SQLite authority. A crash can leave a prefix registered, but replay converges because both source identity and registration are deterministic. Foreign-account corruption cannot block an owner's projection; the global verifier still detects it. No account can supply another account's envelope or ledger key.</p>
+<p>The lifecycle ledger stores the same hash-only source commitment, never a second copy of <code>raw_text</code>. Signed completion receives current source bytes from the verified graph projection boundary; the ledger exact-compares their commitment before materialization.</p></section>
+
+<section><h2>Coverage semantics</h2>
+<p><code>unknown</code> means no eligible or unresolved information asset exists. <code>partial</code> means an eligible source is pending/failed or a real body still requires binding, enrichment, or segmentation. <code>universal</code> requires every exact eligible declaration selected for the account to have a ready Cycle 104 binding and no unresolved real-body state. Metadata-only rows are reported separately and do not manufacture either success or failure.</p></section>
+
+<section><h2>Acceptance evidence</h2>
+<ul><li>Fresh insert and envelope are one SQL row mutation and roll back together.</li><li>Legacy NULLs backfill atomically and idempotently from stored bytes.</li><li>Direct SQL bypass, drift, and canonical-looking substitutions fail verification.</li><li>Short and oversized real bodies remain explicit unresolved work.</li><li>Projection is account-scoped, restart-safe, and creates no paid work.</li><li>Existing graph, research ingest, book import, multimedia registration, and twin lifecycle behavior stays green.</li></ul></section>
+
+<section><h2>Next sub-specs</h2>
+<p><strong>105A, revision mutation:</strong> route every legitimate title/body/type/owner revision through a compare-and-set operation that atomically replaces the envelope and preserves superseded revision obligations.</p>
+<p><strong>105B, segmentation:</strong> produce bounded ordered segment manifests for oversized HTML while preserving one parent asset and deterministic aggregate twin.</p>
+<p><strong>105C, worker:</strong> lease pending Cycle 104 jobs, reserve operator-approved budget, dispatch once through qualified provider authority, sign completion, and bind without ambiguous resend.</p>
+<p><strong>105D, twin graph publication:</strong> register completed twin bodies as canonical graph documents through a binding-derived path and project advisory nodes only through evidence-backed promotion.</p>
+</section>
+</main></body></html>

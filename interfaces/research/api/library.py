@@ -1,60 +1,33 @@
 """Library catalog endpoint (Read SPR-09 M1).
 
-The Library surface (Unit B's ``apps/reading/``) needs a paginated, filterable,
-searchable catalog of the owned corpus. This router is a THIN composition over
-the SAME servable-corpus read path ``books.py`` already exposes — it adds
-pagination + a title/author substring search + a servable|gated|all filter on
-top of ``substrate.books.model.list_book_assets`` and reuses the EXISTING
-``BookSummary`` shape verbatim (no parallel response model).
-
-§9.0 (deny-by-default) is inherited, not re-implemented: ``BookSummary`` carries
-only metadata + the derived ``servability`` / ``servable_full_text`` flags. A
-gated work appears here FLAGGED as metadata, and its body text is NEVER inline
-in any list payload — the only path that can surface full text is
-``/books/{id}/full-text``, which routes through ``substrate.books.serve``. This
-endpoint never touches ``raw_text`` and never widens to taken-down books.
-
-All reads; uses ``connect_read`` and runs concurrently with the single writer.
+Thin FastAPI composition over ``list_book_assets`` + pure
+``build_library_page`` (filter/search/paginate). §9.0: catalog payloads are
+metadata-only; bodies only via ``/books/{id}/full-text``.
 """
 
 from __future__ import annotations
 
+import contextlib
+import sys
 from typing import Literal
 
 from fastapi import FastAPI, Query
-from pydantic import BaseModel
 
 from substrate.books.model import list_book_assets
 
 from .books import BookSummary, _resolve_db_path
+from .library_catalog import LibraryPage, build_library_page
 
+# Load the metadata-only catalog in bounded deterministic batches. The route
+# exhausts the iterator before computing ``total``; this is a memory trade-off
+# while title/author filtering remains pure, but never an arbitrary corpus cap.
+_CATALOG_BATCH_SIZE = 1_000
 
-class LibraryPage(BaseModel):
-    """One page of the catalog. ``works`` reuses the ``BookSummary`` shape the
-    ``/books`` read path already returns (servability + servable_full_text +
-    metadata only — never a body). ``total`` is the count BEFORE pagination so
-    the surface can render a pager; ``page`` / ``page_size`` echo the request."""
-
-    works: list[BookSummary]
-    total: int
-    page: int
-    page_size: int
-
-
-def _matches_search(asset_summary: BookSummary, needle: str) -> bool:
-    """Case-insensitive substring match over title + author (metadata only —
-    NEVER the body). An empty needle matches everything."""
-    if not needle:
-        return True
-    hay = " ".join(
-        part.lower() for part in (asset_summary.title, asset_summary.author) if part
-    )
-    return needle.lower() in hay
+__all__ = ["LibraryPage", "build_library_page", "register_library_routes"]
 
 
 def register_library_routes(app: FastAPI) -> None:
-    """Mount the library catalog route. Mirrors ``register_book_routes`` — one
-    call from ``create_app``."""
+    """Mount the library catalog route."""
 
     @app.get("/library", response_model=LibraryPage, tags=["library"])
     async def list_library(
@@ -63,36 +36,52 @@ def register_library_routes(app: FastAPI) -> None:
         page: int = Query(default=1, ge=1),
         page_size: int = Query(default=20, ge=1, le=200),
     ) -> LibraryPage:
-        """Paginated, filterable, searchable library catalog.
-
-        ``filter`` selects servable-only / gated-only / both (each work is
-        flagged with its ``servability`` either way). ``search`` is a
-        case-insensitive substring over title + author (metadata only — the
-        gate keeps bodies out of the payload entirely). Pagination is applied
-        AFTER the filter + search so ``total`` reflects the matched set."""
         from runtime.db_lock import connect_read
 
         db = _resolve_db_path()
         con = connect_read(db)
+        transaction_started = False
         try:
-            if filter == "servable":
-                assets = list_book_assets(con, servable_only=True)
-            else:
-                # "gated" and "all" list non-taken-down books; the servability
-                # flag on each lets the caller distinguish. We never widen to
-                # taken-down books on a public catalog.
-                assets = list_book_assets(con, servable_only=False)
-                if filter == "gated":
-                    assets = [a for a in assets if not a.servable_full_text]
+            # DuckDB snapshots are transaction-scoped. Keep every offset batch
+            # on one snapshot so concurrent inserts/takedowns cannot shift the
+            # remaining pages and corrupt the catalog total.
+            con.execute("BEGIN TRANSACTION")
+            transaction_started = True
+            assets = []
+            offset = 0
+            while True:
+                batch = list_book_assets(
+                    con,
+                    servable_only=filter == "servable",
+                    limit=_CATALOG_BATCH_SIZE,
+                    offset=offset,
+                )
+                assets.extend(batch)
+                if len(batch) < _CATALOG_BATCH_SIZE:
+                    break
+                offset += len(batch)
+            con.execute("COMMIT")
+            transaction_started = False
         finally:
-            con.close()
+            primary_failure = sys.exc_info()[0] is not None
+            try:
+                if transaction_started:
+                    # Cleanup must preserve the batch/commit failure that
+                    # caused this path; closing releases the read snapshot.
+                    with contextlib.suppress(Exception):
+                        con.execute("ROLLBACK")
+            finally:
+                if primary_failure:
+                    with contextlib.suppress(Exception):
+                        con.close()
+                else:
+                    con.close()
 
         summaries = [BookSummary.from_asset(a) for a in assets]
-        matched = [s for s in summaries if _matches_search(s, search)]
-        total = len(matched)
-
-        start = (page - 1) * page_size
-        works = matched[start : start + page_size]
-        return LibraryPage(
-            works=works, total=total, page=page, page_size=page_size
+        return build_library_page(
+            summaries,
+            filt=filter,
+            search=search,
+            page=page,
+            page_size=page_size,
         )

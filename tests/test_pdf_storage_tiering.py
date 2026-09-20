@@ -172,6 +172,30 @@ def test_t1_cc0_promotes_to_public_domain(temp_db):
     assert raw is not None
 
 
+def test_t1_index_failure_rolls_back_body_class_envelope_and_provenance(temp_db):
+    doc_id = _seed_row(temp_db, "2402.10003", _CC_BY)
+    before = _read_doc(temp_db, doc_id)
+
+    class _ExplodingEmbedder:
+        dimension = 16
+
+        def encode(self, _text: str) -> list[float]:
+            raise RuntimeError("embedding failed after promotion began")
+
+    with pytest.raises(RuntimeError, match="embedding failed"):
+        store_pdf_for_arxiv_row(
+            _fetched("2402.10003"),
+            db_path=temp_db,
+            embedder=_ExplodingEmbedder(),
+        )
+
+    assert _read_doc(temp_db, doc_id) == before
+    with connect_read(temp_db) as con:
+        assert con.execute(
+            "SELECT count(*) FROM chunks WHERE document_id=?", [doc_id]
+        ).fetchone() == (0,)
+
+
 # ---------------------------------------------------------------------------
 # T3 — REFUSED, never stored (the load-bearing negative)
 # ---------------------------------------------------------------------------
@@ -342,15 +366,13 @@ def test_guard_would_raise_on_a_t3_body_drift(temp_db):
     doc_id = _seed_row(temp_db, "2402.70001", _ARXIV_DEFAULT)
     # Force the drift: write a body + promote the class out-of-band.
     from runtime.db_lock import connect_write
-    from substrate.graph.ops import update_document_gate_columns
 
     with connect_write(temp_db, purpose="test/drift") as con:
+        # Deliberately bypass the sanctioned writer to construct persisted
+        # corruption; the sanctioned writer now rejects this promotion early.
         con.execute(
-            "UPDATE documents SET raw_text = ? WHERE document_id = ?",
-            ["a wrongly-stored body " * 50, doc_id],
-        )
-        update_document_gate_columns(
-            con, doc_id, content_class="source_declared_open", set_content_class=True
+            "UPDATE documents SET raw_text=?, content_class=? WHERE document_id=?",
+            ["a wrongly-stored body " * 50, "source_declared_open", doc_id],
         )
 
     with connect_read(temp_db) as con, pytest.raises(T3BodyServeError):

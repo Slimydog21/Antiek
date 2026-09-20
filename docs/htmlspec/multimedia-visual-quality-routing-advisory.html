@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Multimedia Visual Quality Routing Advisory</title></head>
+<body><main>
+<h1>Learn visual quality per recorded charge without surrendering routing authority</h1>
+<p><strong>Status:</strong> executable sub-spec. <strong>Parent:</strong> Antiek Multimedia STR-01 Cost Routing and Steering. <strong>Depends on:</strong> signed provider execution, Krea reconciliation, private artifact quarantine, and owner-bound candidate review.</p>
+
+<h2>Product contract</h2>
+<p>Antiek records an operator's structured assessment of a materialized Krea visual candidate and produces an owner-scoped, read-only routing advisory over comparable evidence. Every provider, model, capability, catalog, asset, revision, artifact digest, and charged-cent dimension is reopened from MAC-verified server records. The browser supplies only an idempotency key, the expected revision, one accepted-or-rejected disposition, four fixed pass-or-fail rubric answers, and bounded reason codes.</p>
+<p>The report is descriptive before it is prescriptive. It exposes assessment coverage, exclusions, acceptance, mean rubric quality, recorded charges, and Wilson uncertainty by homogeneous cohort. A route recommendation exists only after minimum evidence and coverage gates pass. It never mutates the selected tier, authorizes spend, calls a provider, or enters the live router.</p>
+
+<h2>Evidence boundary</h2>
+<ul>
+  <li><strong>Execution truth:</strong> reopen the MAC-protected execution and require the authenticated owner, exact asset and revision, Krea provider, terminal success, signed model, route policy, endpoint capability, catalog version, and catalog digest.</li>
+  <li><strong>Artifact truth:</strong> reopen the quarantine receipt by candidate ID, verify its MAC and bytes, and bind the assessment to its immutable SHA-256 digest.</li>
+  <li><strong>Accounting truth:</strong> reopen the settled authorization claim and budget hold. Name the value <code>charged_cents</code>, because current Krea success settlement charges the approved ceiling; do not describe it as provider-invoiced actual cost.</li>
+  <li><strong>Human judgment:</strong> accept only <code>pass</code> or <code>fail</code> for prompt fidelity, technical acceptability, visual coherence, and production usability. The server derives <code>quality_score</code> as passed dimensions divided by four.</li>
+  <li><strong>Disposition:</strong> <code>accepted</code> requires production usability to pass. Provenance acknowledgement remains a separate evidence authority and contributes no quality point.</li>
+</ul>
+
+<h2>Persistence contract</h2>
+<p>Create one append-only <code>multimedia_visual_quality_assessments</code> table in the provider execution database. Persist assessment ID, owner identity digest, request ID, execution ID, candidate ID, asset ID, revision ID, artifact digest, rubric version, four binary rubric values, disposition, canonical reason-code JSON, assessment time, and a MAC over every field.</p>
+<ul>
+  <li>Assessment identity is deterministic from candidate ID and rubric version.</li>
+  <li><code>(owner_identity_digest, request_id)</code> and <code>(candidate_id, rubric_version)</code> are unique.</li>
+  <li>An exact retry returns the existing assessment. Reuse of either identity with changed terms fails closed.</li>
+  <li>Exact request replay is resolved from the immutable MAC-protected row before consulting mutable latest-revision state, so later steering cannot break idempotency.</li>
+  <li>The table does not duplicate provider, model, route, capability, catalog, or cost fields; reports join those from verified authorities to prevent attribution drift.</li>
+  <li>All identifiers, digests, timestamps, rubric values, dispositions, and reason-code arrays are canonical and bounded before persistence.</li>
+</ul>
+
+<h2>API contract</h2>
+<ul>
+  <li><code>POST /multimedia/assets/{asset_id}/visual-candidates/{candidate_id}/quality-assessment</code> is authenticated and owner-bound. It accepts <code>request_id</code>, <code>expected_revision_id</code>, <code>disposition</code>, four rubric answers, and zero or more closed reason codes.</li>
+  <li><code>GET /multimedia/routing-recommendations/visuals</code> is authenticated, owner-scoped, and read-only. It accepts an optional bounded UTC <code>as_of</code>, generation-kind filter, and rubric-version filter.</li>
+  <li>The response includes formula version, cutoff, cohort dimensions and metrics, explicit exclusion counts, coverage, eligibility failures, deterministic ranking, and either one advisory recommendation or <code>null</code>.</li>
+  <li>No request accepts owner digest, execution ID, provider, model, route policy, catalog, cost, latency, quality score, artifact digest, or recommendation score from the client.</li>
+</ul>
+
+<h2>Cohort and formula</h2>
+<p>Map signed <code>text-to-image</code> to <code>image</code> and signed <code>text-to-video</code> to <code>video</code>. Unknown capabilities are counted and excluded. Group by generation kind, provider, model, route policy, catalog version, and rubric version.</p>
+<ul>
+  <li><code>n_executions</code>, <code>n_assets</code>, <code>n_materialized_candidates</code>, <code>n_assessed_candidates</code>, and <code>n_accepted</code>.</li>
+  <li><code>mean_quality</code> and <code>acceptance_rate = n_accepted / n_assessed_candidates</code>.</li>
+  <li><code>charged_cents_total</code>, counted once per distinct execution; cost per assessed candidate and cost per accepted candidate.</li>
+  <li><code>quality_lower_bound</code> remains the Wilson 95% lower bound over accepted candidates for API compatibility.</li>
+  <li><code>acceptance_efficiency_score</code> (also exposed under the v1-compatible <code>efficiency_score</code>) divides that lower bound by dollars per assessed candidate. <code>quality_efficiency_score</code> is the descriptive mean four-dimension rubric score per dollar; it is not a causal or confidence claim.</li>
+</ul>
+<p>A cohort is recommendation-eligible only with at least 20 assessed candidates, 10 distinct executions, 3 distinct assets, 80 percent assessment coverage of materialized candidates, nonzero fully verified charged cost, and no unresolved accounting in included executions. A recommendation is emitted only when acceptance efficiency and descriptive rubric-quality efficiency each have one unique winner and select the same cohort. Otherwise the report names <code>quality_acceptance_disagreement</code> or <code>ambiguous_ranking</code> and emits no winner. Sparse, mixed, tied, zero-cost, unknown-capability, and partially authoritative evidence remains visible but cannot win.</p>
+<p>Scores are canonicalized to eight decimal places before ranking. Differences below that public score resolution are deliberately treated as ties rather than routing evidence.</p>
+
+<h2>Five-values rigor</h2>
+<ul>
+  <li><strong>Intellectual honesty:</strong> expose ceiling settlement as <code>charged_cents</code>, keep all component metrics visible, and label the output advisory rather than claiming causal provider superiority.</li>
+  <li><strong>Fairness:</strong> compare only identical capability, provider, model, route, catalog version and signed digest, and rubric cohorts; report selective-label coverage instead of silently dropping unassessed candidates.</li>
+  <li><strong>Rigor:</strong> MAC every persisted assessment, reopen all joined authorities, count execution spend once, version the formula and rubric, and freeze report inclusion at an explicit <code>as_of</code>.</li>
+  <li><strong>Diligence:</strong> test replay, substitution, tamper, stale revision, cross-owner access, artifact corruption, sparse samples, coverage thresholds, mixed cohorts, deterministic ties, and historical cutoffs.</li>
+  <li><strong>Defensibility:</strong> recommendation eligibility is a closed predicate with machine-readable failure reasons; report reads have tests proving they cannot mutate policy, authorization, execution, or accounting state.</li>
+</ul>
+
+<h2>Failure and race model</h2>
+<ul>
+  <li>Assessment fails before insert if the current owner-scoped asset revision differs from the expected revision, or if receipt bytes, receipt MAC, candidate binding, execution MAC, ownership, terminal state, or accounting proof conflicts.</li>
+  <li>Assessment insert runs under the existing cross-process write coordinator. Concurrent exact requests converge; conflicting requests preserve the first immutable fact and return conflict.</li>
+  <li><code>as_of</code> applies to assessment time and produces byte-equivalent cohort content after later assessments arrive, apart from the response's own stable cutoff representation.</li>
+  <li>Historical inclusion also requires execution creation/update, artifact creation, and charge settlement at or before <code>as_of</code>; a later provider terminalization cannot rewrite an earlier report.</li>
+  <li>Reports never reconstruct old asset state from the mutable latest-revision JSON store. Persisted assessment bindings remain reportable after the asset advances.</li>
+  <li>Unknown or corrupt evidence is excluded with a reason; the report never guesses, repairs, or silently weakens a gate.</li>
+  <li>The v1 database is one signing-authority integrity domain. Identity-bearing rows are verified before owner projection so tampering cannot hide evidence; corruption under that server-controlled authority fails the report globally and is an operator incident, not a tenant-scoped exclusion.</li>
+</ul>
+
+<h2>Deployment contract</h2>
+<ul>
+  <li>When live visual generation is configured, the quality runtime reuses that exact execution database and signing authority without constructing a second provider client.</li>
+  <li>Historical-report-only deployments use <code>ANTIEK_MULTIMEDIA_VISUAL_QUALITY_DB_PATH</code> and <code>ANTIEK_MULTIMEDIA_VISUAL_QUALITY_SIGNING_KEY_HEX</code>; they require no Krea token or account credential.</li>
+  <li>The quality database parent is private and owner-controlled. The dedicated signing key must be at least 32 bytes and must match the authority that signed persisted execution, candidate, receipt, and assessment rows.</li>
+</ul>
+
+<h2>Rejected alternatives</h2>
+<ul>
+  <li><strong>Caller-supplied scalar quality and cost:</strong> rejected because a range check cannot establish attribution, accounting truth, reviewer rubric, or artifact identity.</li>
+  <li><strong>One observation per execution:</strong> rejected because one execution may produce several candidates with different utility and one final asset may combine several providers.</li>
+  <li><strong>Mean quality divided by mean cost:</strong> rejected because sparse samples, zero-cost placeholders, selective labels, and uncertainty would produce misleading winners.</li>
+  <li><strong>Cross-owner learning in v1:</strong> rejected because small cohorts leak usage and spend and reviewer scales are not yet calibrated.</li>
+  <li><strong>Automatic router mutation:</strong> rejected until frozen recommendation snapshots, operator controls, rollback, exploration policy, and causal evaluation have separate specs and evidence.</li>
+  <li><strong>All media kinds in v1:</strong> rejected because TTS, assembled video, and local generation have different artifact, settlement, and quality semantics.</li>
+</ul>
+
+<h2>Acceptance</h2>
+<ul>
+  <li>Only the authenticated owner can assess a MAC-valid, byte-valid, materialized candidate from a succeeded Krea execution bound to the exact asset revision.</li>
+  <li>Rubric scoring is server-derived, immutable, idempotent, tamper-evident, and remains readable after revision advancement.</li>
+  <li>Reports derive dimensions and charges from verified records, count charge once per execution, expose coverage/exclusions, and never emit <code>actual_cost</code>.</li>
+  <li>Wilson and efficiency calculations have fixed golden tests; eligibility thresholds and deterministic tie ordering are covered at every boundary.</li>
+  <li>Zero samples and insufficient evidence return an honest null recommendation with reasons.</li>
+  <li>Focused and full multimedia tests, Ruff, declared typing checks, HTML parse, hardening, and independent review pass before merge.</li>
+</ul>
+
+<h2>Non-goals</h2>
+<p>No provider calls, route-policy writes, automatic experimentation, causal inference, LLM judge, free-form review text, cross-owner aggregation, historical backfill, provider invoice reconciliation, TTS scoring, final-documentary scoring, or revision-history redesign.</p>
+
+<section id="harness-hint" data-pattern="adversarial-verification"><p>Implement the evidence registry and integrity tests first, then the pure advisory report and statistical golden cases, then authenticated routes and an independent accounting/owner-boundary review. Run at least two sharpen rounds before shipping.</p></section>
+</main></body>
+</html>

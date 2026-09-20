@@ -8,6 +8,15 @@
  */
 
 import { API_BASE, apiFetch } from "../lib/api";
+import { toast } from "../components/lemon/LemonToast";
+import {
+  CapacityExhaustedError,
+  formatCapacityExhaustedToast,
+  formatCapacityWarnToast,
+  parseCapacityExhaustedDetail,
+  parseCapacityWarning,
+  stashCapacityWarning,
+} from "../lib/capacityWarn";
 
 export type Servability =
   | "public_domain"
@@ -70,6 +79,7 @@ export interface FullTextResponse {
   ad_eligible: boolean;
   canonical_url: string | null;
   license: string | null;
+  content_format?: "text" | "html";
 }
 
 export type CorpusStatus = "servable" | "gated" | "all";
@@ -93,9 +103,16 @@ export async function getBook(documentId: string): Promise<BookDetail> {
 /** Fetch the body the gate permits: full text for servable books, a
  * bounded snippet for gated books, nothing for taken-down books. */
 export async function getBookFullText(documentId: string): Promise<FullTextResponse> {
-  const resp = await apiFetch(
-    `${API_BASE}/books/${encodeURIComponent(documentId)}/full-text`,
+  let resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}/owner-full-text`,
   );
+  // Local development and non-owner/public clients deliberately lack the
+  // private-read capability; retain the established narrow endpoint there.
+  if (resp.status === 403) {
+    resp = await apiFetch(
+      `${API_BASE}/books/${encodeURIComponent(documentId)}/full-text`,
+    );
+  }
   if (resp.status === 404) throw new Error("book_not_found");
   if (!resp.ok) throw new Error(`GET /books/{id}/full-text: HTTP ${resp.status}`);
   return (await resp.json()) as FullTextResponse;
@@ -128,6 +145,9 @@ export interface VoiceNoteResult {
   note_count: number;
   notes: string[];
   emitted_event_ids: string[];
+  /** question.identified ids parked into watch-for-later (may be empty). */
+  parked_question_ids?: string[];
+  parked_question_texts?: string[];
 }
 
 /** Distill a CONFIRMED voice-note transcript into anchored insight/
@@ -187,8 +207,11 @@ export interface SpinResearchResponse {
   gated: boolean;
   servability: Servability | string;
   seed_preview: string;
+
   artifact_path: string | null;
   twin_notes_path: string | null;
+  /** Present when enforcement is soft/hard and used >= 80% monthly ACU. */
+  capacity_warning?: import("../lib/capacityWarn").CapacityWarning | null;
 }
 
 /** Spin a deep research from a book passage (Read SPR-08). The seed is
@@ -211,8 +234,39 @@ export async function spinResearch(
     }),
   });
   if (resp.status === 404) throw new Error("book_not_found");
-  if (!resp.ok) throw new Error(`POST /books/{id}/spin-research: HTTP ${resp.status}`);
-  return (await resp.json()) as SpinResearchResponse;
+  if (!resp.ok) {
+    const body = await resp.text();
+    const exhausted = parseCapacityExhaustedDetail(resp.status, body);
+    if (exhausted) {
+      toast.err(formatCapacityExhaustedToast(exhausted), {
+        ttl: 10000,
+        target: { path: "/settings" },
+      });
+      throw new CapacityExhaustedError(exhausted);
+    }
+    throw new Error(`POST /books/{id}/spin-research: HTTP ${resp.status}`);
+  }
+  const raw = (await resp.json()) as Record<string, unknown>;
+  const capacity_warning = parseCapacityWarning(raw.capacity_warning);
+  const out: SpinResearchResponse = {
+    investigation_id: String(raw.investigation_id),
+    document_id: String(raw.document_id),
+    page_index: Number(raw.page_index),
+    gated: Boolean(raw.gated),
+    servability: raw.servability as Servability | string,
+    seed_preview: String(raw.seed_preview ?? ""),
+    artifact_path: raw.artifact_path == null ? null : String(raw.artifact_path),
+    twin_notes_path: raw.twin_notes_path == null ? null : String(raw.twin_notes_path),
+    capacity_warning,
+  };
+  if (capacity_warning) {
+    stashCapacityWarning(out.investigation_id, capacity_warning);
+    toast.warn(formatCapacityWarnToast(capacity_warning), {
+      ttl: 8000,
+      target: { path: "/inv/" + encodeURIComponent(out.investigation_id) },
+    });
+  }
+  return out;
 }
 
 export interface CuratedBook {
@@ -682,14 +736,95 @@ export interface TalkTurn {
   answer: string;
 }
 
+/** A user-owned model selected for this action. This reference deliberately
+ * contains no owner, payer, credential, or key material. */
+export interface UserModelChoice {
+  authority: "user_model";
+  provider_id: string;
+  model_id: string;
+}
+
+/** What the server actually dispatched. Requested and actual identity remain
+ * separate because routing may fall back or reject a stale choice. */
+export interface BookModelReceipt {
+  authority: "legacy_tier" | "owner_byot";
+  requested_provider_id: string | null;
+  requested_model_id: string | null;
+  actual_provider_id: string;
+  actual_model_id: string;
+  authority_digest: string | null;
+}
+
 export interface AskBookResponse {
+  answer_id: string | null;
+  capture_status: "captured" | "unavailable";
   answer: string;
   citations: BookCitation[];
   /** False when the book had no extractable text to ground on (scanned-image
    * PDF / fully-withheld) — an honest no-context answer, never a hallucination. */
   grounded: boolean;
   context_chunk_count: number;
+  model_receipt?: BookModelReceipt | null;
+  /** thought_partner shape — same role as /thought-partner. */
+  shape?: string | null;
 }
+
+export type BookModelOperationState =
+  | "prepared"
+  | "sent"
+  | "settlement_pending"
+  | "settled"
+  | "unknown"
+  | "cancelled";
+
+export interface BookModelOperationStatus {
+  operation_id: string;
+  state: BookModelOperationState;
+  reserved_cents: number;
+  actual_cents: number | null;
+  created_at: string;
+  updated_at: string;
+  provider_id: string | null;
+  model_id: string | null;
+}
+
+export interface BookAnswerJudgmentResponse {
+  answer_id: string;
+  judgment_id: string;
+  verdict: "good" | "bad";
+  note: string | null;
+}
+
+export class SelectedBookModelUnavailableError extends Error {
+  constructor() {
+    super("That model is no longer available. Choose another model or use Default.");
+    this.name = "SelectedBookModelUnavailableError";
+  }
+}
+
+export class SelectedBookModelOutcomeUnknownError extends Error {
+  constructor(reason: "outcome_unknown" | "unavailable" = "outcome_unknown") {
+    super(reason === "outcome_unknown"
+      ? "The provider outcome is unknown. Reconcile this operation before retrying."
+      : "The selected route became unavailable. Check and release its reservation before retrying.");
+    this.name = "SelectedBookModelOutcomeUnknownError";
+  }
+}
+
+export class BookModelOperationNotFoundError extends Error {
+  constructor() {
+    super("Model operation was not found.");
+    this.name = "BookModelOperationNotFoundError";
+  }
+}
+
+type AskBookOptions = {
+  history?: TalkTurn[];
+  researchTier?: "fast" | "deep";
+} & (
+  | { modelChoice?: undefined; operationId?: never }
+  | { modelChoice: UserModelChoice; operationId: string }
+);
 
 /** Ask one talk-to-book turn (Read SPR-08 M2). Answers CITE pages; a withheld
  * region can never be cited (backend §9.0 gate). 503 when no model provider is
@@ -698,7 +833,7 @@ export interface AskBookResponse {
 export async function askBook(
   documentId: string,
   question: string,
-  opts?: { history?: TalkTurn[]; researchTier?: "fast" | "deep" },
+  opts?: AskBookOptions,
 ): Promise<AskBookResponse> {
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/ask`, {
     method: "POST",
@@ -707,12 +842,69 @@ export async function askBook(
       question,
       history: opts?.history ?? [],
       research_tier: opts?.researchTier ?? "deep",
+      ...(opts?.modelChoice ? { model_choice: opts.modelChoice } : {}),
+      ...(opts?.modelChoice && opts.operationId ? { operation_id: opts.operationId } : {}),
     }),
   });
   if (resp.status === 404) throw new Error("book_not_found");
+  if (opts?.modelChoice && resp.status === 409) {
+    throw new SelectedBookModelUnavailableError();
+  }
+  if (opts?.modelChoice && resp.status === 503) {
+    let detail: unknown;
+    try {
+      const body = await resp.clone().json() as { detail?: unknown };
+      detail = body.detail;
+    } catch {
+      // A bodyless proxy failure is still potentially post-send; stay held.
+    }
+    throw new SelectedBookModelOutcomeUnknownError(
+      detail === "owner_model_unavailable" ? "unavailable" : "outcome_unknown",
+    );
+  }
   if (resp.status === 503) throw new Error("Talk-to-book isn’t available right now.");
   if (!resp.ok) throw new Error(`POST /books/{id}/ask: HTTP ${resp.status}`);
   return (await resp.json()) as AskBookResponse;
+}
+
+async function modelOperationRequest(
+  operationId: string,
+  action?: "reconcile" | "cancel",
+): Promise<BookModelOperationStatus> {
+  const suffix = action ? `/${action}` : "";
+  const resp = await apiFetch(
+    `${API_BASE}/books/model-operations/${encodeURIComponent(operationId)}${suffix}`,
+    action ? { method: "POST" } : undefined,
+  );
+  if (resp.status === 404) throw new BookModelOperationNotFoundError();
+  if (!resp.ok) throw new Error("Model operation status is temporarily unavailable.");
+  return (await resp.json()) as BookModelOperationStatus;
+}
+
+export const getBookModelOperation = (operationId: string) =>
+  modelOperationRequest(operationId);
+export const reconcileBookModelOperation = (operationId: string) =>
+  modelOperationRequest(operationId, "reconcile");
+export const cancelBookModelOperation = (operationId: string) =>
+  modelOperationRequest(operationId, "cancel");
+
+export async function judgeBookAnswer(
+  documentId: string,
+  answerId: string,
+  verdict: "good" | "bad",
+): Promise<BookAnswerJudgmentResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}/answers/${encodeURIComponent(answerId)}/judgment`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verdict }),
+    },
+  );
+  if (resp.status === 404) throw new Error("book_answer_not_found");
+  if (resp.status === 409) throw new Error("book_answer_already_judged");
+  if (!resp.ok) throw new Error(`POST book answer judgment: HTTP ${resp.status}`);
+  return (await resp.json()) as BookAnswerJudgmentResponse;
 }
 
 // ── SPR-08 M4: meta-reading deliverable (PROPOSED boundary) ───────────

@@ -53,6 +53,12 @@ import pytest
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
+from orchestration.rlm.prime_agent_backend import (  # noqa: E402
+    PrimeAgentEvidence,
+    PrimeAgentOutcome,
+    PrimeAgentReceipt,
+    PrimeAgentTerminalState,
+)
 from substrate.graph.rlm_tools import (  # noqa: E402
     CATEGORY_TOOL_MAP,
     MAX_TOOL_OUTPUT_CHARS,
@@ -280,8 +286,6 @@ def test_constructor_requires_llm_or_investigation_id():
 
 def test_equipped_llm_batch_preserves_order():
     # Each task gets its own answer tagged with its index.
-    counter = {"i": 0}
-
     def llm(system: str, user: str) -> str:
         # The "task index" is encoded in the prompt as "task-N".
         import re as _re
@@ -319,6 +323,67 @@ def test_equipped_llm_batch_tools_registered_per_task():
     ]
     out = equipped_llm_batch(tasks, llm_call=llm, max_parallel=2)
     assert set(out) == {"ok1", "ok2"}
+
+
+class _BatchPrimeStub:
+    def __init__(self, *, succeeds: bool):
+        self.succeeds = succeeds
+        self.requests = []
+
+    def run(self, request):
+        self.requests.append(request)
+        state = PrimeAgentTerminalState.SUCCESS if self.succeeds else PrimeAgentTerminalState.FAILED
+        return PrimeAgentOutcome(
+            request,
+            PrimeAgentEvidence(f"prime-{len(self.requests) - 1}") if self.succeeds else None,
+            PrimeAgentReceipt(state, (), 0, 1, 0),
+        )
+
+
+def test_equipped_batch_prime_disabled_preserves_prompts_and_calls():
+    llm = _SeqLLM(['{"final_answer": "a"}', '{"final_answer": "b"}'])
+    assert equipped_llm_batch(
+        [{"prompt": "p1", "tools": []}, {"prompt": "p2", "tools": []}],
+        llm_call=llm, max_parallel=1,
+    ) == ["a", "b"]
+    assert [call[1] for call in llm.calls] == ["p1", "p2"]
+
+
+def test_equipped_batch_prime_success_is_ordered_labeled_and_receipted():
+    prime = _BatchPrimeStub(succeeds=True)
+    receipts = []
+    prompts = []
+
+    def llm(system, user):
+        prompts.append(user)
+        return '{"final_answer": "ok"}'
+
+    out = equipped_llm_batch(
+        [{"prompt": "p1", "tools": []}, {"prompt": "p2", "tools": []}],
+        llm_call=llm, investigation_id="inv", max_parallel=1,
+        prime_backend=prime, prime_outcome_sink=receipts.append,
+    )
+    assert out == ["ok", "ok"]
+    assert [r.request.request_id for r in receipts] == [
+        "inv:tool-batch:0000", "inv:tool-batch:0001",
+    ]
+    assert "non-canonical" in prompts[0] and "prime-0" in prompts[0]
+    assert "non-canonical" in prompts[1] and "prime-1" in prompts[1]
+
+
+def test_equipped_batch_prime_failure_preserves_canonical_prompt():
+    prime = _BatchPrimeStub(succeeds=False)
+    seen = []
+
+    def llm(system, user):
+        seen.append(user)
+        return '{"final_answer": "canonical"}'
+
+    assert equipped_llm_batch(
+        [{"prompt": "p", "tools": []}], llm_call=llm,
+        prime_backend=prime,
+    ) == ["canonical"]
+    assert seen == ["p"]
 
 
 # ---------------------------------------------------------------------------

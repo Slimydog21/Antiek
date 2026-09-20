@@ -208,6 +208,14 @@ def test_create_app_register_providers_false_skips(monkeypatch):
 
 
 def test_health_endpoint_reports_registered_providers(monkeypatch):
+    # Clear the other providers' keys so the assertion is deterministic on a
+    # machine (or shell) that has the operator's live keys exported — otherwise
+    # they register and the exact-list assertion breaks. Mirrors the delenv
+    # hygiene the sibling tests above already apply. ANTIEK_BYOT_ONLY off so the
+    # env keys below are honoured.
+    for k in ("OPENROUTER_API_KEY", "XIAOMI_API_KEY", "HERMES_API_KEY", "Z_AI_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.delenv("ANTIEK_BYOT_ONLY", raising=False)
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-fake-1")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake-1")
     from fastapi.testclient import TestClient
@@ -220,3 +228,25 @@ def test_health_endpoint_reports_registered_providers(monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert sorted(body["registered_providers"]) == ["anthropic", "deepseek"]
+    assert body["providers_ready"] is True
+
+
+def test_health_does_not_call_unbound_user_provider_ready(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv(
+        "ANTIEK_USER_MODELS_PATH", str(tmp_path / "settings" / "user_models.json")
+    )
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.app import create_app
+
+    app = create_app(register_wrestling=False, register_providers=False)
+    with TestClient(app) as client:
+        # Simulate a credential-valid Settings registration after startup. It
+        # belongs in the registry inventory, but no dispatch tier binds it.
+        app.state.registered_providers = {"user-unbound"}
+        resp = client.get("/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["registered_providers"] == ["user-unbound"]
+    assert body["providers_ready"] is False

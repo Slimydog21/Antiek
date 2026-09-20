@@ -1,19 +1,20 @@
-# CI policy — three gates made informational on shared runners
+# CI policy — shared-runner gate decisions and one operational alarm
 
 **Decision date:** 2026-05-25
 **Status:** ✅ Active (each carries a reconsider-if below)
 **Owner:** operator + the unified-main product consolidation (PR #9)
 
-Three CI checks on the four-workflow product PR (`release/unified-main → main`)
-were red for reasons that are **not product-code defects**. Each is converted to
-**informational** — it still runs and surfaces a `::warning::`, but does not
-fail the gate — with the rationale recorded here. The product's real gates stay
-**hard-blocking and green**: the full `pytest` suite (3720 passing), `tsc`, the
-substrate-floor ruff/mypy/no-raise/bypass floor, and the Cloudflare Pages build.
+Sections 1–3 record three CI checks on the four-workflow product PR
+(`release/unified-main → main`) that were initially informational because their
+failures were not product-code defects. Sections 1–2 remain warning-only. The
+§3 reconsideration condition later fired, so lostpixel is now blocking.
 
-This is a deliberate, transparent call (not a silenced failure): nothing here
-hides a product defect, and each gate remains visible as a warning so a real
-regression would still surface.
+Section 4 records a different surface: a schedule/manual-only production alarm.
+It is not a PR gate, but its blocking checker failures intentionally make that
+operational run red.
+
+This is a deliberate, transparent register, not a blanket permission to silence
+failures: each section states its current enforcement and reconsideration rule.
 
 ## 1. Inline-rubric latency — `benchmarks.rubric_latency --check-regression`
 
@@ -50,23 +51,21 @@ lost-pixel's own, so a real visual regression reds the PR. A legitimate visual
 change lands its updated baseline PNGs in the same PR (`npm run
 visualtest:update`).
 
-## 4. prod_parity — scheduled prod-drift probe (STAYS informational — documented, not a swallow)
+## 4. prod_parity — scheduled prod-drift probe (NOT A PR GATE; FAILS HONESTLY)
 
-**Why informational, and why that is correct.** `prod_parity.yml` runs
-`tools/prod_parity/check.py` against live `api.antiek.ai/health` on a schedule
-with `continue-on-error: true` + a `::warning::`, so the scheduled probe cannot
-red a run. That is deliberate: the **real blocking parity enforcement is at
-deploy time** in `infrastructure/ansible/playbooks/deploy.yml`, which sets the
-`antiek_build_sha` fact from the just-pulled SHA and fails the play on a missing
-build / unregistered providers / bad health (the prod-parity check asserts
-against that SHA). A *scheduled* probe of live prod must NOT hard-block CI: a
-normal merge→deploy lag or a transient prod blip would red the board on
-something no PR changed. So the split is: **block at deploy (Ansible),** **inform
-on schedule (this probe).** AGH SPR-04 verified the cited Ansible surface exists
-and is genuinely blocking, and added this entry so the register is complete —
-the workflow's inline rationale was correct but this decision doc had not
-recorded it.
+**Why it is not a PR gate.** `prod_parity.yml` runs only on a schedule and by
+manual dispatch; it has no `pull_request` trigger. It therefore cannot block a
+merge based on an external endpoint or ordinary merge→deploy lag. The
+**blocking deploy-time enforcement** remains in
+`infrastructure/ansible/playbooks/deploy.yml`.
 
-**Reconsider-if:** a dedicated post-deploy GitHub job (not a schedule) is added
-that asserts parity immediately after a deploy — that job should be blocking;
-this scheduled probe stays informational.
+**Why scheduled failures remain failures.** The scheduled/manual workflow is
+an operational alarm, not a merge gate. Its exit status must stay truthful:
+SHA drift, an empty provider registry, or an unreachable endpoint makes the
+run red. Masking those failures with `continue-on-error` or `|| echo` makes the
+Actions history report success precisely when operator attention is needed.
+The checker still treats flywheel maturity as warning-only by default, per the
+separate flywheel decision.
+
+**Reconsider-if:** a dedicated post-deploy GitHub job is added; keep this
+scheduled alarm as defense in depth, but avoid duplicating notifications.

@@ -281,17 +281,29 @@ def test_merge_age_seeds_red_at_30_behind_then_green(tmp_path: Path) -> None:
 
     # Publish base as origin/main, then advance origin/main 30 commits WITHOUT
     # moving the base branch — i.e. a base that is 30 behind origin/main.
-    _git(repo, "push", "-q", "origin", "HEAD:main")
+    assert _git(repo, "push", "-q", "origin", "HEAD:main").returncode == 0
     _git(repo, "checkout", "-q", "-b", "advance")
     for i in range(1, 31):
         (repo / f"c{i}.txt").write_text(f"c{i}\n")
         _git(repo, "add", "-A")
         _git(repo, "commit", "-q", "-m", f"c{i}")
-    _git(repo, "push", "-q", "origin", "advance:main")
+    assert _git(repo, "push", "-q", "origin", "advance:main").returncode == 0
 
     # Detach onto the stale base (30 behind origin/main) + refresh the ref.
     _git(repo, "checkout", "-q", base)
-    _git(repo, "fetch", "-q", "origin")
+    refresh = _git(
+        repo,
+        "fetch",
+        "-q",
+        "origin",
+        "+refs/heads/main:refs/remotes/origin/main",
+    )
+    assert refresh.returncode == 0, refresh.stderr
+    distance = _git(repo, "rev-list", "--count", f"{base}..origin/main")
+    assert distance.returncode == 0 and distance.stdout.strip() == "30", (
+        distance.stdout,
+        distance.stderr,
+    )
 
     # RED: 30 > N(=25) -> exit 1 with the distance in the message.
     red = _run([sys.executable, str(gate)], cwd=repo)

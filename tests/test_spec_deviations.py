@@ -173,7 +173,6 @@ class TestDeviationB_ProviderSpecificMigration:
         p = _hydrate_proposed(d)
         assert p.provider_response_id == "legacy-resp-id"
         assert p.provider_specific == {}
-
     def test_dataclass_default_provider_specific_is_empty_dict(self):
         from acquisition.search.exa.adapter import DiscoveryProposed
         p = DiscoveryProposed(
@@ -184,74 +183,3 @@ class TestDeviationB_ProviderSpecificMigration:
             cost_usd_estimate=0.005, proposed_event_id=None,
         )
         assert p.provider_specific == {}
-
-
-# ── Deviation C: §14.4 — BrowserbaseProviderError common base ────────
-
-
-class TestDeviationC_BrowserbaseProviderErrorBase:
-    def test_common_base_class_exists(self):
-        from acquisition.urls.client_browserbase import BrowserbaseProviderError
-        assert issubclass(BrowserbaseProviderError, RuntimeError)
-
-    @pytest.mark.parametrize(
-        "subclass_path",
-        [
-            ("acquisition.urls.client_browserbase", "BrowserbaseUnavailable"),
-            ("acquisition.urls.client_browserbase", "BrowserbaseRobotsDisallowed"),
-            ("acquisition.urls.client_browserbase", "BrowserbaseFetchError"),
-            ("acquisition.urls.budget_browserbase", "BrowserbaseBudgetExceeded"),
-        ],
-    )
-    def test_subclass_inherits_from_provider_error_base(self, subclass_path):
-        import importlib
-
-        from acquisition.urls.client_browserbase import BrowserbaseProviderError
-        mod = importlib.import_module(subclass_path[0])
-        cls = getattr(mod, subclass_path[1])
-        assert issubclass(cls, BrowserbaseProviderError), \
-            f"{cls.__name__} must inherit from BrowserbaseProviderError per spec §14.4"
-        assert issubclass(cls, RuntimeError), \
-            f"{cls.__name__} must still be a RuntimeError (transitive)"
-
-    def test_catch_all_via_base_class(self):
-        """Operator code that wants 'any Browserbase failure' can
-        catch the base class cleanly. Spec §14.4: 'Failure is loud:
-        BrowserbaseProviderError raises explicitly.'"""
-        from acquisition.urls.budget_browserbase import BrowserbaseBudgetExceeded
-        from acquisition.urls.client_browserbase import (
-            BrowserbaseFetchError,
-            BrowserbaseProviderError,
-            BrowserbaseRobotsDisallowed,
-            BrowserbaseUnavailable,
-        )
-
-        # All four — caught by the base class.
-        for err in (
-            BrowserbaseUnavailable("test"),
-            BrowserbaseRobotsDisallowed("test"),
-            BrowserbaseFetchError("test"),
-            BrowserbaseBudgetExceeded("test"),
-        ):
-            try:
-                raise err
-            except BrowserbaseProviderError:
-                pass  # expected
-            else:
-                pytest.fail(f"{type(err).__name__} should be caught as BrowserbaseProviderError")
-
-    def test_specific_type_discrimination_still_works(self):
-        """The base-class addition must NOT break narrow-except
-        clauses that already discriminate on the concrete error
-        type."""
-        from acquisition.urls.client_browserbase import (
-            BrowserbaseRobotsDisallowed,
-            BrowserbaseUnavailable,
-        )
-
-        try:
-            raise BrowserbaseRobotsDisallowed("test")
-        except BrowserbaseUnavailable:
-            pytest.fail("BrowserbaseRobotsDisallowed should NOT be caught as BrowserbaseUnavailable")
-        except BrowserbaseRobotsDisallowed:
-            pass  # expected

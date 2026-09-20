@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SPR-03 Closure</title>
+    <style>
+      body {
+        font: 16px/1.5 system-ui;
+        background: #fffdf5;
+      }
+      .page {
+        max-width: 950px;
+        margin: auto;
+        padding: 30px;
+      }
+      .block {
+        background: #fff;
+        border: 2px solid #111;
+        box-shadow: 4px 4px #111;
+        padding: 18px;
+        margin: 18px 0;
+      }
+      h1 {
+        color: #1d4aff;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <a href="index.html">← Master</a>
+      <header class="block">
+        <h1>SPR-03 · Adversarial closure</h1>
+        <p>Wave 2 after integration · independent critic</p>
+      </header>
+      <section class="block">
+        <h2>Context and goal</h2>
+        <p>
+          Refute completion with hostile subprocess fixtures and authority
+          checks before any enablement claim.
+        </p>
+      </section>
+      <section class="block">
+        <h2>Milestones</h2>
+        <ol>
+          <li>Hung, nonzero, oversized, malformed and missing executables.</li>
+          <li>Prompt, argv, env and cwd escape attempts.</li>
+          <li>Disabled output/call-count comparison with origin.</li>
+          <li>Zero Prime dispatch, RemoteExec or DB-writer registration.</li>
+          <li>
+            Two suite repetitions, lint/type/diff/security and heterogeneous
+            review.
+          </li>
+        </ol>
+      </section>
+      <section class="block">
+        <h2>Five-values rigor</h2>
+        <p>
+          <b>Honesty:</b> live calls are NOT RUN unless executed.
+          <b>Fairness:</b> separate inherited failures.
+          <b>Rigor:</b> default-to-refuted through hostile cases.
+          <b>Diligence:</b> inspect the diff, not summaries.
+          <b>Defensibility:</b> record commands, exits, commit and risks.
+        </p>
+      </section>
+      <section class="block">
+        <h2>Dependencies, out of scope, gates, handoff</h2>
+        <p>
+          Depends on integrated SPR-01/02. Out: paid calls, production, merge
+          and deploy.
+        </p>
+        <pre>
+pytest -q tests/test_prime_agent_rlm_backend.py tests/test_rlm_repl.py tests/test_rlm_dag.py tests/test_rlm_tools.py tests/test_rlm_long_corpus_and_investigation.py&#10;rg -n "Prime.*dispatch|prime.*RemoteExec|connect_write" orchestration/rlm interfaces/research substrate/graph&#10;git diff --check</pre>
+        <p>Handoff ACCEPT/REWORK, findings, NOT RUN and reversibility.</p>
+      </section>
+      <section
+        id="harness-hint"
+        data-harness-pattern="perspective-diverse-verify"
+        data-harness-fanout-unit="containment, compatibility, authority"
+        data-harness-verifier-lenses="containment; canonical output; no writer/dispatch"
+        data-harness-rounds-floor="2"
+        data-harness-rounds-cap="6"
+      ></section>
+      <footer>2026-08-11 · PA-RLM/SPR-03</footer>
+    </main>
+  </body>
+</html>

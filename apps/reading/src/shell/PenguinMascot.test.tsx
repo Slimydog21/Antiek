@@ -20,13 +20,6 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
-/** Legacy SPR-06 roam tests assume pre-ice timings (800/300–800 stroll). */
-vi.mock("../werner/iceFishingFlags", () => ({
-  wernerIceFishingCursor: false,
-}));
-
-import { wernerIceFishingCursor } from "../werner/iceFishingFlags";
-import { wernerIceFishingCursor as iceFromBarrel } from "../werner";
 import { PenguinMascot, PROJECT_TREE_PANEL_ID } from "./PenguinMascot";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 
@@ -236,7 +229,7 @@ describe("PenguinMascot (SPR-12 M3)", () => {
  * This SUPERSEDES the SPR-06 autonomous roam and the SPR-15 reel. Each claim
  * asserted (rigor #3):
  *  - he never walks himself to a new spot on his own (no ambient roam);
- *  - with the WERNER-ICE flag OFF there is no ambient fishing gag at all;
+ *  - there is no ambient fishing gag at all (removed by operator directive);
  *  - under prefers-reduced-motion he is fully still + clickable;
  *  - a drag RE-STATIONS him (moves + clamps) and never leaves a stroll
  *    transition fighting the pointer.
@@ -245,9 +238,9 @@ describe("PenguinMascot (SPR-12 M3)", () => {
  *  mounted rAF, so they live in PenguinMascot.station.test.tsx.)
  */
 describe("PenguinMascot — the fixed station", () => {
-  it("mounts with the ice-fishing flag mocked off for this suite", () => {
-    expect(wernerIceFishingCursor).toBe(false);
-    expect(iceFromBarrel).toBe(false);
+  it("mounts without any cursor-fishing machinery (removed 2026-08-13)", () => {
+    const { container } = mount();
+    expect(container.querySelector(".werner-fishing")).toBeNull();
   });
 
   it("does NOT walk off to a new spot on its own (fixed — no autonomous roam)", () => {
@@ -266,9 +259,9 @@ describe("PenguinMascot — the fixed station", () => {
     expect(el.style.transition).toBe("");
   });
 
-  it("flag OFF → no ambient fishing gag ever runs (no werner-fishing class)", () => {
-    // This suite mocks wernerIceFishingCursor=false, so the whole ice-fishing
-    // experience (bait, line, gag) is off — Werner just stands at his station.
+  it("never runs an ambient fishing gag (no werner-fishing class, ever)", () => {
+    // The fishing gag is gone (operator directive). The station stays calm
+    // for any pointer state.
     const { container } = mount();
     act(() => {
       vi.advanceTimersByTime(30000);

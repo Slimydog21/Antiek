@@ -14,6 +14,8 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import type { ReactElement } from "react";
 
 import type { DistilledNode } from "../../lib/api";
 
@@ -29,6 +31,12 @@ vi.mock("../../lib/api", async (orig) => {
 
 import DistillView from "./DistillView";
 import { ApiError } from "../../lib/api";
+
+// DistillView renders a react-router Link (OpenAutoNotebookLink — the
+// distill → auto-notebook dogfood path), so every render needs a Router.
+function renderView(ui: ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 // Reset mocks in afterEach (after cleanup), not beforeEach — see the note in
 // NotesPanel.test.tsx: a reset between a prior test's caught-rejection
@@ -54,7 +62,7 @@ describe("DistillView — first-class insights + questions (M2)", () => {
       insights: [insight("i1", "GPUs gate scale.")],
       questions: [question("q1", "What is the moat?")],
     });
-    render(<DistillView investigationId="inv-1" />);
+    renderView(<DistillView investigationId="inv-1" />);
     await waitFor(() => expect(screen.getByText("GPUs gate scale.")).toBeTruthy());
     expect(screen.getByText("Insights")).toBeTruthy();
     expect(screen.getByText("Open questions")).toBeTruthy();
@@ -73,7 +81,7 @@ describe("DistillView — escalation seam, reserve-not-launch (M4)", () => {
       questions: [question("q1", "Source for margins?", { escalated: true, reserved_child_investigation_id: "inv-reserved" })],
     });
     const onChase = vi.fn();
-    render(<DistillView investigationId="inv-1" onChase={onChase} />);
+    renderView(<DistillView investigationId="inv-1" onChase={onChase} />);
     await waitFor(() => expect(screen.getByText("Source for margins?")).toBeTruthy());
     expect(screen.getByText("this needs more research")).toBeTruthy();
     // Nothing is launched here — the chase hand-off only fires on the gesture.
@@ -86,7 +94,7 @@ describe("DistillView — escalation seam, reserve-not-launch (M4)", () => {
 describe("DistillView — honest no-result (M4)", () => {
   it("shows the no-result state on an empty distillation, no canned content", async () => {
     getDistillationMock.mockResolvedValue({ investigation_id: "inv-1", insights: [], questions: [] });
-    render(<DistillView investigationId="inv-1" running={false} />);
+    renderView(<DistillView investigationId="inv-1" running={false} />);
     await waitFor(() =>
       expect(screen.getByText(/distilled no insights or open questions/)).toBeTruthy(),
     );
@@ -96,7 +104,7 @@ describe("DistillView — honest no-result (M4)", () => {
     getDistillationMock.mockImplementation(async () => {
       throw new ApiError("boom", 500, "server error");
     });
-    render(<DistillView investigationId="inv-1" />);
+    renderView(<DistillView investigationId="inv-1" />);
     await waitFor(() => expect(screen.getByText(/Couldn.t load the insights/)).toBeTruthy());
   });
 });
@@ -107,7 +115,7 @@ describe("DistillView — challenge a completed-research insight (M3 + M4)", () 
       .mockResolvedValueOnce({ investigation_id: "inv-1", insights: [insight("i1", "Acme is small.")], questions: [] })
       .mockResolvedValueOnce({ investigation_id: "inv-1", insights: [insight("i1", "Acme is mid-sized.", { refinement_count: 1 })], questions: [] });
     challengeNoteMock.mockResolvedValue({ node_id: "i1", applied: true, superseded: false, new_text: "Acme is mid-sized.", escalated: false, reserved_child_investigation_id: null });
-    render(<DistillView investigationId="inv-1" />);
+    renderView(<DistillView investigationId="inv-1" />);
     await waitFor(() => expect(screen.getByText("Acme is small.")).toBeTruthy());
     fireEvent.click(screen.getByText("challenge this"));
     await waitFor(() => expect(screen.getByText("Acme is mid-sized.")).toBeTruthy());
@@ -120,7 +128,7 @@ describe("DistillView — challenge a completed-research insight (M3 + M4)", () 
     challengeNoteMock.mockImplementation(async () => {
       throw new ApiError("no provider", 503, "no model");
     });
-    render(<DistillView investigationId="inv-1" />);
+    renderView(<DistillView investigationId="inv-1" />);
     await waitFor(() => expect(screen.getByText("A claim.")).toBeTruthy());
     fireEvent.click(screen.getByText("challenge this"));
     await waitFor(() => expect(screen.getByText(/model provider isn/)).toBeTruthy());

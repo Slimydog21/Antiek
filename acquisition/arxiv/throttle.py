@@ -41,10 +41,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-# arXiv API terms of use: at most one request per three seconds. We honor
-# the ceiling, not a fraction of it, because the ban is IP-scoped and the
-# recovery cost (hours) dwarfs the per-request latency cost.
-MIN_REQUEST_SPACING_S = 3.0
+# arXiv API terms of use: at most one request per three seconds. We space at 3.5s
+# — a deliberate 0.5s margin ABOVE the 3.0s ceiling — because clock skew, request
+# jitter, and a redirect hop can push two nominally-3.0s-spaced calls inside the
+# same wall-clock window, and the ban is IP-scoped with an hours-long recovery
+# cost that dwarfs the extra half-second. Matches the ``~/.claude/skills/arxiv``
+# governor's 3.5s spacing so the platform and the skill share one safe cadence.
+MIN_REQUEST_SPACING_S = 3.5
 
 # Default back-off when a 429 arrives without a usable Retry-After header.
 # arXiv bans have historically lasted on the order of minutes-to-hours;

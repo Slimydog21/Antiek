@@ -15,14 +15,16 @@ gating (gate G1) treats it like any source; an external report's own
 citations are flagged ``external_citations_unverified`` so the graph never
 treats them as Antiek-verified sources.
 
-Dedup (M5): the document_id is the content hash of the extracted text — a
-re-ingest of the same file is a no-op (``on_conflict='ignore'``), and the
-notes dedup via SPR-01's hash. A minor edit is a new content hash → a new
-document (versioning, see ``versioning.py``, links it to the original).
+Dedup (M5): the document_id is the content hash of the extracted text (plus
+converter version when one is stamped) — a re-ingest of the same file is a
+no-op (``on_conflict='ignore'``), and the notes dedup via SPR-01's hash. A minor
+edit is a new content hash → a new document (versioning, see ``versioning.py``,
+links it to the original).
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import sys
@@ -30,30 +32,26 @@ from dataclasses import dataclass
 from typing import Any
 
 try:
-    from ...runtime.db_lock import (  # type: ignore[import-not-found]
-        LockedConnection,
-        connect_write,
+    from processing.chunking.chunker import chunk_markdown
+    from runtime.db_lock import LockedConnection, connect_write
+    from substrate.graph.insight_question import graph_db_path
+    from substrate.graph.ops import content_addressed_id, insert_chunk, insert_document
+    from substrate.research_bridge.detect_external import detect_external_research
+    from substrate.research_bridge.extractors import ExtractionResult, extract_text
+    from substrate.research_bridge.ingest import (
+        CHUNK_TARGET_CHARS,
+        _chunk_paragraphs,
+        _split_paragraphs,
     )
-    from ..graph.insight_question import graph_db_path
-    from ..graph.ops import content_addressed_id, insert_chunk, insert_document
-    from .detect_external import detect_external_research
-    from .extractors import ExtractionResult, extract_text
-    from .ingest import CHUNK_TARGET_CHARS, _chunk_paragraphs, _split_paragraphs
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from processing.chunking.chunker import chunk_markdown
     from runtime.db_lock import LockedConnection, connect_write
     from substrate.graph.insight_question import graph_db_path
-    from substrate.graph.ops import (
-        content_addressed_id,
-        insert_chunk,
-        insert_document,
-    )
+    from substrate.graph.ops import content_addressed_id, insert_chunk, insert_document
     from substrate.research_bridge.detect_external import detect_external_research
-    from substrate.research_bridge.extractors import (
-        ExtractionResult,
-        extract_text,
-    )
+    from substrate.research_bridge.extractors import ExtractionResult, extract_text
     from substrate.research_bridge.ingest import (
         CHUNK_TARGET_CHARS,
         _chunk_paragraphs,
@@ -89,7 +87,7 @@ class FileIngestResult:
 def ingest_file(
     con: LockedConnection,
     *,
-    data: bytes | str,
+    data: str | bytes | bytearray,
     filename: str | None = None,
     content_type: str | None = None,
     investigation_id: str | None = None,
@@ -119,7 +117,10 @@ def ingest_file(
         source = "upload"
 
     raw_sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    document_id = content_addressed_id("doc", f"file|{raw_sha}|{source}")
+    document_identity = f"file|{raw_sha}|{source}"
+    if extraction.converter_version:
+        document_identity += f"|converter={extraction.converter_version}"
+    document_id = content_addressed_id("doc", document_identity)
     was_new = con.execute(
         "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1", [document_id]
     ).fetchone() is None
@@ -141,6 +142,7 @@ def ingest_file(
                 "vendor": ext_det.vendor, "vendor_label": ext_det.vendor_label,
                 "external_confidence": ext_det.confidence,
                 "extractor": extraction.extractor, "degraded": extraction.degraded,
+                "converter_version": extraction.converter_version or None,
                 "operator_label": operator_label, "raw_sha256": raw_sha,
                 # The external report's own citations are NOT Antiek-verified.
                 "external_citations_unverified": ext_det.is_external,
@@ -152,9 +154,28 @@ def ingest_file(
 
     chunk_ids: list[str] = []
     if do_chunk and was_new:
-        chunks = _chunk_paragraphs(_split_paragraphs(text), CHUNK_TARGET_CHARS)
-        for i, ch in enumerate(chunks):
-            chunk_ids.append(insert_chunk(con, document_id=document_id, chunk_index=i, text=ch))
+        chunk_payloads: list[tuple[str, str | None, int]]
+        if extraction.kind == "markdown":
+            chunk_payloads = [
+                (chunk.text, chunk.section or None, chunk.token_count)
+                for chunk in chunk_markdown(text)
+            ]
+        else:
+            chunk_payloads = [
+                (chunk, None, 0)
+                for chunk in _chunk_paragraphs(_split_paragraphs(text), CHUNK_TARGET_CHARS)
+            ]
+        for index, (chunk_text, section_path, token_count) in enumerate(chunk_payloads):
+            chunk_ids.append(
+                insert_chunk(
+                    con,
+                    document_id=document_id,
+                    chunk_index=index,
+                    text=chunk_text,
+                    section_path=section_path,
+                    token_count=token_count,
+                )
+            )
 
     return FileIngestResult(
         document_id=document_id, document_type=document_type, source=source,
@@ -183,11 +204,21 @@ async def distill_ingested_document(
     immediately yields insight/question nodes. A coroutine, so ingest itself
     returns without blocking on distillation; the caller schedules this."""
     from roles.note_taker.document_pass import run_document_pass
-    con = connect_write(db_path or graph_db_path(), purpose="ingest_distill")
-    try:
-        return await run_document_pass(
-            result.document_id, result.text, investigation_id=investigation_id,
-            distiller=distiller, chunk_ids=result.chunk_ids, events_dir=events_dir, con=con,
-        )
-    finally:
-        con.close()
+
+    def _sync() -> Any:
+        con = connect_write(db_path or graph_db_path(), purpose="ingest_distill")
+        try:
+            # run_document_pass's only await is an internal to_thread of
+            # distiller.distill, so it runs safely on a fresh loop in this
+            # worker thread while the flock wait stays off the event loop
+            # (#3111 to_thread class).
+            return asyncio.run(
+                run_document_pass(
+                    result.document_id, result.text, investigation_id=investigation_id,
+                    distiller=distiller, chunk_ids=result.chunk_ids, events_dir=events_dir, con=con,
+                )
+            )
+        finally:
+            con.close()
+
+    return await asyncio.to_thread(_sync)

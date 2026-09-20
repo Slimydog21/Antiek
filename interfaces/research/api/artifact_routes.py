@@ -6,19 +6,28 @@ import os
 import sys
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+_PKG_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from runtime.db_lock import connect_write  # noqa: E402
+from services.html_projection.context import Provenance, RenderContext  # noqa: E402
+from services.html_projection.gate import ScriptViolation, assert_script_free  # noqa: E402
+from services.html_projection.renderer import render  # noqa: E402
+from substrate.contracts.anti_ek_honesty import (  # noqa: E402
+    html_projection_response_headers,
+)
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
     apply_source_merge_review,
     build_html_only,
+    build_body,
     commit_source_merge_review,
     compose_artifacts,
     export_research_artifact,
@@ -26,10 +35,12 @@ from substrate.research_artifact import (  # noqa: E402
     list_outline_blocks,
     preview_source_merge_review,
     render_twin_notes_html,
+    research_projection_doc_model,
     restore_source_merge_review,
 )
 from substrate.research_artifact.build_body import build_body  # noqa: E402
 from substrate.research_artifact.paths import artifact_path_for  # noqa: E402
+from substrate.research_artifact.store import ResearchArtifactStore  # noqa: E402
 
 artifact_router = APIRouter(prefix="/research", tags=["research-artifact"])
 
@@ -54,12 +65,20 @@ class BlocksOut(BaseModel):
 
 
 class ExportOut(BaseModel):
+    artifact_id: str
     investigation_id: str
     path: str
     twin_notes_path: str
     content_hash: str
     size_bytes: int
     event_id: str | None = None
+
+
+class ArtifactStatusOut(BaseModel):
+    artifact_id: str
+    investigation_id: str
+    selected_style: str | None
+    latest_version: int
 
 
 class ImportNotesIn(BaseModel):
@@ -229,12 +248,14 @@ def _validate_source_merge_preflight(body: SourceMergeApplyIn, *, db_path: str) 
 
 
 @artifact_router.post("/{investigation_id}/artifact/export", response_model=ExportOut)
-async def post_export_artifact(investigation_id: str) -> ExportOut:
+async def post_export_artifact(investigation_id: str, request: Request) -> ExportOut:
     try:
-        res = export_research_artifact(investigation_id, db_path=_db())
+        owner_user_id = str(getattr(request.state, "user_id", None) or "__operator__")
+        res = export_research_artifact(investigation_id, db_path=_db(), owner_user_id=owner_user_id)
     except Exception as exc:  # pragma: no cover — surface as 500 with message
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return ExportOut(
+        artifact_id=res.artifact_id,
         investigation_id=res.investigation_id,
         path=str(res.path),
         twin_notes_path=str(res.twin_notes_path),
@@ -244,19 +265,41 @@ async def post_export_artifact(investigation_id: str) -> ExportOut:
     )
 
 
-@artifact_router.get("/{investigation_id}/artifact/html", response_class=HTMLResponse)
-async def get_artifact_html(investigation_id: str) -> HTMLResponse:
-    try:
-        body, html = build_html_only(investigation_id, db_path=_db())
-    except Exception as exc:  # pragma: no cover — surface as 500 with message
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return HTMLResponse(
-        html,
-        headers={
-            "x-antiek-investigation-id": investigation_id,
-            "x-antiek-content-hash": body.content_hash(),
-        },
+@artifact_router.get("/{investigation_id}/artifact", response_model=ArtifactStatusOut)
+async def get_artifact_status(investigation_id: str, request: Request) -> ArtifactStatusOut:
+    """Return the caller-owned durable identity and current style metadata."""
+    owner_user_id = str(getattr(request.state, "user_id", None) or "__operator__")
+    store = ResearchArtifactStore(_db())
+    record = store.get_for_investigation(investigation_id, owner_user_id)
+    # Compatibility for the shipped deterministic identity contract. The
+    # investigation lookup remains authoritative for future non-equal IDs.
+    if record is None:
+        candidate = store.get(investigation_id)
+        if candidate is not None and candidate.owner_user_id == owner_user_id:
+            record = candidate
+    if record is None:
+        raise HTTPException(status_code=404, detail="research artifact not found")
+    return ArtifactStatusOut(
+        artifact_id=record.artifact_id,
+        investigation_id=record.investigation_id,
+        selected_style=record.selected_style,
+        latest_version=record.latest_version,
     )
+
+
+@artifact_router.post("/{investigation_id}/artifact/import-notes", response_model=ImportNotesOut)
+async def post_import_notes(investigation_id: str, body: ImportNotesIn) -> ImportNotesOut:
+    try:
+        res = import_agent_notes(Path(body.path), investigation_id=investigation_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ImportNotesOut(
+        investigation_id=res.investigation_id,
+        notes_imported=res.notes_imported,
+        notes_skipped_duplicate=res.notes_skipped_duplicate,
+        event_ids=res.event_ids,
+    )
+
 
 
 @artifact_router.get("/{investigation_id}/artifact/twin-notes.html", response_class=HTMLResponse)
@@ -499,24 +542,49 @@ async def post_source_merge_restore(body: SourceMergeRestoreIn) -> SourceMergeRe
     )
 
 
-@artifact_router.post(
-    "/{investigation_id}/artifact/import-notes", response_model=ImportNotesOut
+@artifact_router.get(
+    "/{investigation_id}/artifact.html",
+    response_class=HTMLResponse,
+    summary="HTML-native research outcome view (script-free projection)",
 )
-async def post_import_notes(
-    investigation_id: str, body: ImportNotesIn
-) -> ImportNotesOut:
+async def get_artifact_html(investigation_id: str, request: Request) -> HTMLResponse:
+    """Serve Profile B research findings as a script-free HTML projection.
+
+    DuckDB/graph remains source of truth; this is a Lemon/HTML projection for
+    daily reading (html-first thesis). Rights-aware synthesis excerpt follows
+    ``build_body`` (§9.0). Distinct from POST ``/artifact/export`` which writes
+    the editable agent-channel HTML (may include note-taking script) to disk.
+    """
     try:
-        res = import_agent_notes(
-            Path(body.path), investigation_id=investigation_id
-        )
+        body = build_body(investigation_id, db_path=_db())
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return ImportNotesOut(
-        investigation_id=res.investigation_id,
-        notes_imported=res.notes_imported,
-        notes_skipped_duplicate=res.notes_skipped_duplicate,
-        event_ids=res.event_ids,
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    doc_model = research_projection_doc_model(body)
+    ctx = RenderContext(
+        provenance=Provenance(
+            document_id=investigation_id,
+            title=body.problem_question or investigation_id,
+            content_class="research_artifact",
+            schema_version="1",
+        )
     )
+    html = render(doc_model, ctx)
+    try:
+        assert_script_free(html)
+    except ScriptViolation as err:
+        raise HTTPException(
+            status_code=500,
+            detail="artifact failed the zero-script gate; refused",
+        ) from err
+    headers = html_projection_response_headers(
+        filename=f"research-{investigation_id}.html",
+        disposition="inline",
+    )
+    # Provenance headers (branch feature): the rendered artifact always names
+    # the investigation it was projected from and pins its content hash.
+    headers["x-antiek-investigation-id"] = investigation_id
+    headers["x-antiek-content-hash"] = body.content_hash()
+    return HTMLResponse(content=html, headers=headers)
 
 
 @artifact_router.get("/{investigation_id}/artifact/blocks", response_model=BlocksOut)

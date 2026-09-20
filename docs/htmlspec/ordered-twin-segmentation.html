@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Cycle 106: Ordered Twin Segmentation</title></head>
+<body>
+<main>
+  <h1>Ordered Twin Segmentation and Parent Aggregation Contract</h1>
+  <p>Status: execution contract. This sprint creates no provider transport and no completion authority.</p>
+  <section><h2>Outcome</h2><p>An oversized canonical document has one deterministic, lossless, ordered segment manifest and one durable parent aggregate obligation. Segment work is intermediate. It can never satisfy the document twin or corpus universality.</p></section>
+  <section><h2>Invariants</h2><ul>
+    <li>Every source character belongs to exactly one contiguous segment, in source order, with no truncation, overlap, gap, normalization, or duplicated body storage.</li>
+    <li>Each segment is at most the materializer ceiling. Newline boundaries are preferred by a versioned algorithm; long lines use a deterministic bounded fallback.</li>
+    <li>The manifest commits to tenant, asset identity, title, class, source events, complete body, every range, every segment hash, algorithm version, and one aggregate obligation.</li>
+    <li>Execution must rederive the manifest from current canonical bytes. Hashes are evidence, not a substitute source.</li>
+    <li>The registry stores hashes, ranges, and canonical metadata only. Legal takedown leaves no hidden source-body copy.</li>
+    <li>All segment obligations and the parent aggregate obligation are created in one SQLite transaction and remain pending in this transport-free sprint.</li>
+    <li>No API can mark the parent ready. A future sprint must bind authorized segment receipts and one exact aggregate completion before coverage can become universal.</li>
+  </ul></section>
+  <section><h2>Future Aggregate Sprint</h2><ol>
+    <li>Verify each segment against current canonical bytes immediately before authorized dispatch.</li>
+    <li>Bind each signed segment completion to manifest hash, index, range, and content hash.</li>
+    <li>Generate the parent proposal from the ordered complete set under a separately approved budget hold.</li>
+    <li>Bind one parent twin to the exact original source identity; never register segment twins as canonical document twins.</li>
+    <li>Cancel or quarantine pending obligations when canonical bytes are legally removed; never infer completion from stale commitments.</li>
+  </ol></section>
+  <section><h2>Acceptance</h2><p>Boundary, long-line, drift, tenant substitution, replay, concurrency, corruption, restart, privacy, and false-completion tests pass. The control plane records that final aggregation and takedown lifecycle mutation remain unimplemented authority.</p></section>
+</main>
+</body>
+</html>

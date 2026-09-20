@@ -69,6 +69,7 @@ def test_init_is_idempotent_after_fast_path():
             row = con.execute("SELECT count(*) FROM nodes").fetchone()
         finally:
             con.close()
+
         assert row is not None and row[0] == 0
 
 def test_warm_probe_is_memoized_no_connection(monkeypatch):
@@ -96,3 +97,49 @@ def test_cold_probe_after_cache_clear_still_works(monkeypatch):
         schema_mod._INITIALIZED_PATHS.clear()
         # Re-probe: memo miss -> real read-only probe -> True.
         assert _schema_is_present(p) is True
+
+
+def test_partial_receipt_shape_forces_cold_repair():
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "partial-receipts.duckdb")
+        init_database_at_path(p)
+        schema_mod._INITIALIZED_PATHS.discard(p)
+        con = duckdb.connect(p)
+        try:
+            con.execute("DROP TABLE event_consumer_receipts")
+            con.execute(
+                "CREATE TABLE event_consumer_receipts "
+                "(event_id TEXT, event_sha256 TEXT)"
+            )
+        finally:
+            con.close()
+
+        assert _schema_is_present(p) is False
+        init_database_at_path(p)
+        con = duckdb.connect(p, read_only=True)
+        try:
+            assert len(con.execute("DESCRIBE event_consumer_receipts").fetchall()) == 12
+        finally:
+            con.close()
+
+
+def test_full_column_receipt_table_without_constraints_is_not_memoized():
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "constraintless-receipts.duckdb")
+        init_database_at_path(p)
+        schema_mod._INITIALIZED_PATHS.discard(p)
+        con = duckdb.connect(p)
+        try:
+            con.execute("DROP TABLE event_consumer_receipts")
+            con.execute(
+                "CREATE TABLE event_consumer_receipts ("
+                "consumer_name TEXT, consumer_version INTEGER, "
+                "investigation_id TEXT, event_id TEXT, action_type TEXT, "
+                "event_sha256 TEXT, status TEXT, output_ref TEXT, "
+                "error_class TEXT, error_digest TEXT, attempt_count INTEGER, "
+                "processed_at TIMESTAMP)"
+            )
+        finally:
+            con.close()
+
+        assert _schema_is_present(p) is False

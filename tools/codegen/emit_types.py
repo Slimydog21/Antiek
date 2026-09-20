@@ -139,6 +139,7 @@ NESTED_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ExaLookupResult,
     # SPR-08 M4 — sub-model for ReadMetaReadingGeneratedPayload.citations.
     schema_module.MetaReadingCitation,
+    schema_module.BookAnswerCitation,
     # Foundation v2 SPR-02 — sub-model for GroundednessScoredPayload.per_claim.
     schema_module.ClaimGroundednessVerdict,
 )
@@ -148,6 +149,7 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.DispatchCallPayload,
     # antiek-yegge-execute SPR-01 — worker registration (future registry, SPR-04).
     schema_module.WorkerIdentityPayload,
+    schema_module.LinkMonsterDigestedPayload,  # Link Monster — one digest attempt
     schema_module.ContextPackAssembledPayload,
     schema_module.KnowledgeReusedPayload,  # AFF SPR-06 — flywheel reuse half
     schema_module.ReuseGatedPayload,  # AFF SPR-08 — trust gate on reuse
@@ -170,6 +172,10 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.UserEditDistillationPayload,
     schema_module.ArtifactGeneratedPayload,
     schema_module.ArtifactInteractedPayload,
+    schema_module.ArtifactCommentCreatedPayload,
+    schema_module.FeedbackThreadResolvedPayload,
+    schema_module.AgentWorkTransitionedPayload,
+    schema_module.ArtifactFeedbackRepliedPayload,
     schema_module.TierAssignedPayload,
     schema_module.TierOverriddenPayload,
     schema_module.TierRewriteBulkPayload,
@@ -279,10 +285,14 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.BlockPositionPayload,
     # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
     schema_module.SourceReadPayload,
+    schema_module.ReadBookAnsweredPayload,
+    schema_module.ReadBookAnswerJudgedPayload,
     # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
     schema_module.ReadMetaReadingGeneratedPayload,
     # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.
     schema_module.DocumentFiledIntoInvestigationPayload,
+    # Own Your Mind P0 §5 — served-impression audit (v35 schema bump).
+    schema_module.SurfaceServedImpressionPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.
@@ -449,9 +459,7 @@ def _python_to_ts_inner(tp: Any, *, field_name: str, model_name: str) -> str:
 
     if origin is dict:
         if len(args) != 2:
-            raise UnsupportedType(
-                f"{model_name}.{field_name}: dict without key+value args: {tp!r}"
-            )
+            raise UnsupportedType(f"{model_name}.{field_name}: dict without key+value args: {tp!r}")
         k_ts = _python_to_ts(args[0], field_name=field_name, model_name=model_name)
         v_ts = _python_to_ts(args[1], field_name=field_name, model_name=model_name)
         # ``Record<K, V>`` requires K to be string/number/symbol-assignable.
@@ -464,13 +472,13 @@ def _python_to_ts_inner(tp: Any, *, field_name: str, model_name: str) -> str:
         # inlined Union of 26 names. Detect by comparing the arg-name set
         # to the known PAYLOAD_MODELS set.
         non_none_args = [a for a in args if a is not type(None)]
-        arg_names = {a.__name__ for a in non_none_args
-                     if isinstance(a, type) and issubclass(a, BaseModel)}
+        arg_names = {
+            a.__name__ for a in non_none_args if isinstance(a, type) and issubclass(a, BaseModel)
+        }
         if arg_names == _payload_model_names():
             return "TypedPayload"
         return " | ".join(
-            _python_to_ts(a, field_name=field_name, model_name=model_name)
-            for a in non_none_args
+            _python_to_ts(a, field_name=field_name, model_name=model_name) for a in non_none_args
         )
 
     raise UnsupportedType(
@@ -605,13 +613,18 @@ def write(output_path: Path | None = None) -> Path:
 
 def main() -> int:
     import argparse
+
     p = argparse.ArgumentParser(description="Emit TypeScript types from Pydantic schemas")
     p.add_argument(
-        "--output", "-o", type=Path, default=None,
+        "--output",
+        "-o",
+        type=Path,
+        default=None,
         help=f"Output path (default: {DEFAULT_OUTPUT})",
     )
     p.add_argument(
-        "--stdout", action="store_true",
+        "--stdout",
+        action="store_true",
         help="Print to stdout instead of writing.",
     )
     args = p.parse_args()

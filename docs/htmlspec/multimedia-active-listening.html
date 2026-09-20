@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Multimedia Active Listening</title>
+</head>
+<body>
+<main>
+  <header>
+    <p>Antiek Multimedia / Cycle 20</p>
+    <h1>Make verified audio usable on a walk, run, or workout</h1>
+    <p>Turn both cheapest-local and paid Audible lessons into one chapter-aware listening surface without weakening receipt authority.</p>
+  </header>
+
+  <section>
+    <h2>Outcome</h2>
+    <p>An authenticated owner can play either registered audio lane through one responsive player with exact chapter navigation, 15-second seek controls, bounded playback speeds, learned-claim review, and browser Media Session controls.</p>
+  </section>
+
+  <section>
+    <h2>Verified timeline projection</h2>
+    <ul>
+      <li>Add ordered chapter metadata containing chapter ID, title, sequence, start seconds, and end seconds to the shared audio playback projection.</li>
+      <li>Local playback projects the already verified <code>AudibleRunManifest.chapters</code> exactly.</li>
+      <li>Paid playback derives contiguous windows from receipt-bound narration source durations and titles from the embedded transformed plan.</li>
+      <li>Every projection independently requires contiguous sequence, start at zero, positive windows, exact chapter-ID order, no gaps or overlap, and final end equal to verified total duration within one millisecond.</li>
+      <li>The HTTP response and TypeScript client reject malformed, duplicate, reordered, non-finite, negative, gapped, overlapping, or duration-drifting chapter timelines.</li>
+      <li>Existing receipt, owner, current revision, byte digest, size, duration, marker, claim, source, and durable-link checks remain mandatory.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Shared player</h2>
+    <ul>
+      <li>One <code>ActiveListeningPlayer</code> renders local and paid audio. It owns the audio element and does not duplicate playback in route-specific panels.</li>
+      <li>Controls include play/pause through native semantics, previous and next chapter, back and forward 15 seconds, and a segmented speed control limited to 1x, 1.25x, 1.5x, and 2x.</li>
+      <li>The current chapter follows verified media time. Chapter buttons seek to exact verified starts and expose title plus bounded elapsed range.</li>
+      <li>Seeking clamps to zero and verified duration. Asset/revision or source change resets UI state and cannot reuse a stale chapter timeline.</li>
+      <li>Learned claims remain available for both local and paid playback, grouped by exact chapter identity. No claim is invented from a title or plan.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Media Session</h2>
+    <ul>
+      <li>When supported, register play, pause, seek backward, seek forward, previous track, and next track handlers against the current audio element.</li>
+      <li>Metadata uses the current asset title and literal Antiek product identity; it never exposes owner, receipt, source, provider, or filesystem data.</li>
+      <li>Playback state and position state follow real media events and verified duration. Invalid browser position-state calls are ignored without breaking playback.</li>
+      <li>Unmount, asset/revision change, and source replacement clear every installed handler and stale metadata owned by the component.</li>
+      <li>Unsupported Media Session browsers retain the complete on-screen player.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Accessibility and responsive behavior</h2>
+    <ul>
+      <li>Icon controls have visible tooltips or accessible names; speed is a radiogroup; chapter selection identifies the current chapter.</li>
+      <li>Stable control dimensions prevent time, speed, and chapter changes from shifting the layout.</li>
+      <li>The player stacks on narrow screens and remains operable by keyboard. Text cannot overlap media controls.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Acceptance</h2>
+    <ul>
+      <li>Local and paid runtime tests prove exact chapter projection and reject timing drift.</li>
+      <li>Both HTTP routes return the same bounded chapter schema and preserve all owner/revision/link checks.</li>
+      <li>Client validation rejects malformed timelines before rendering or seeking.</li>
+      <li>Component tests cover chapter seeking, 15-second clamping, speed changes, active chapter tracking, learned claims, Media Session registration, and cleanup.</li>
+      <li>Local production UI and the general multimedia player both use the shared component; video playback remains unchanged.</li>
+      <li>Broad multimedia tests, focused frontend tests, typecheck, production build, Ruff, HTML parse, diff hygiene, HardenX, and independent review pass.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Non-goals</h2>
+    <p>No offline download, service worker cache, public sharing, transcript editing, continuous microphone steering, automatic playback, route mutation, provider call, spend, receipt issuance, publication, or video-player redesign.</p>
+  </section>
+</main>
+</body>
+</html>

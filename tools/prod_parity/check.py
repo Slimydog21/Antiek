@@ -32,14 +32,12 @@ WHERE IT RUNS (two surfaces, honestly):
     deployed SHA is known (``git_pull.after``) and the URL is live, so a
     non-zero exit *fails the play*. This is the surface that would have
     caught the original drift.
-  * INFORMATIONAL — a scheduled / workflow_dispatch CI job in
+  * OPERATIONAL ALARM — a scheduled / workflow_dispatch CI job in
     ``.github/workflows/prod_parity.yml``. It probes prod against the tip
-    of ``origin/main`` and reports drift, but it CANNOT be a required
-    PR-blocking gate: it structurally needs the *live prod URL*, which is
-    only meaningful AFTER a deploy completes (a PR has no deployed SHA to
-    compare against), and that external endpoint can be down for reasons
-    unrelated to code. So it is marked ``continue-on-error`` and never
-    blocks a PR.
+    of ``origin/main`` and preserves blocking SHA/provider/transport exit
+    codes. It is not a required PR gate because it has no ``pull_request``
+    trigger: a PR has no deployed SHA to compare against. Flywheel maturity
+    alone remains warning-only unless ``--require-flywheel`` is supplied.
 
 REJECTED ALTERNATIVE — "trust the deploy pipeline." Empirically false
 here: the stale-SPA drift already shipped undetected, so a ~10-line

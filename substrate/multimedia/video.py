@@ -28,6 +28,7 @@ Craftsmanship invariants this module guarantees:
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -39,7 +40,11 @@ from substrate.contracts.multimedia import (
     RoutePolicy,
 )
 from substrate.multimedia.audio_assembly import AudioExperience, ChapterAudio
-from substrate.multimedia.planner import MultimediaPlan
+from substrate.multimedia.planner import (
+    CanonicalEvidenceChunk,
+    MultimediaPlan,
+    verify_canonical_evidence_bytes,
+)
 from substrate.multimedia.provider_router import (
     MediaGenerationRequest,
     ProviderRoute,
@@ -150,6 +155,8 @@ class VideoDocumentaryAsset(_VideoBase):
 def build_video_scenes(
     plan: MultimediaPlan,
     audio: AudioExperience,
+    *,
+    canonical_chunks: Mapping[str, CanonicalEvidenceChunk] | None = None,
 ) -> tuple[VideoScene, ...]:
     """Create one scene per audio chapter, using audio duration as truth.
 
@@ -158,6 +165,11 @@ def build_video_scenes(
     can trace a caption back to the evidence behind it — not an opaque
     transcript blob.
     """
+    if plan.grounding_contract != "exact_extract_v2":
+        raise ValueError("video production requires exact_extract_v2 grounding")
+    if plan.unsourced_line_ids:
+        raise ValueError("video production refuses unsourced factual narration")
+    verify_canonical_evidence_bytes(plan, canonical_chunks)
     line_text_by_id = {line.line_id: line.text for line in plan.script_lines}
     scenes: list[VideoScene] = []
     for index, chapter in enumerate(audio.chapters):
@@ -281,8 +293,9 @@ def assemble_video_documentary(
     *,
     asset_id: str,
     revision_id: str,
+    canonical_chunks: Mapping[str, CanonicalEvidenceChunk] | None = None,
 ) -> VideoDocumentaryAsset:
-    scenes = build_video_scenes(plan, audio)
+    scenes = build_video_scenes(plan, audio, canonical_chunks=canonical_chunks)
     visual_plan = plan_visual_generation(scenes, route_policy=plan.request.route_policy)
     timeline = compile_ken_burns_timeline(scenes)
     render = simulate_documentary_render(

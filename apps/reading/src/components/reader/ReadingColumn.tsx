@@ -49,6 +49,9 @@ export interface ReadingColumnProps {
   assetId?: string | null;
   /** The served body for the current page (gate-permitted markdown). */
   text: string;
+  /** HTML is accepted only when the server's sanitize-on-write provenance
+   * marks this exact stored body as trusted. */
+  contentFormat?: "text" | "html";
   /** OPTIONAL resolved chunk id for the page in frame. Omit when no real chunk
    *  id is available — never pass a synthetic one (no fabricated coverage). */
   chunkId?: string | null;
@@ -91,7 +94,7 @@ function renderBlocks(text: string) {
  * for the reader's old inline body, with the attribution markers added.
  */
 export const ReadingColumn = forwardRef<HTMLElement, ReadingColumnProps>(
-  function ReadingColumn({ assetId, text, chunkId }, ref) {
+  function ReadingColumn({ assetId, text, chunkId, contentFormat = "text" }, ref) {
     return (
       <article
         ref={ref}
@@ -107,7 +110,9 @@ export const ReadingColumn = forwardRef<HTMLElement, ReadingColumnProps>(
         className="flex-1 font-serif text-[15px] leading-[1.7] text-ink dark:text-bright"
       >
         {text.trim() ? (
-          renderBlocks(text)
+          contentFormat === "html" ? (
+            <div data-antiek-html-body dangerouslySetInnerHTML={{ __html: text }} />
+          ) : renderBlocks(text)
         ) : (
           <p className="text-shadow-1 dark:text-moonlight italic">
             This book has no readable pages.

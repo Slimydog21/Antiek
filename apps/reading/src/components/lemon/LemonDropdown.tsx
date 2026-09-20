@@ -36,6 +36,7 @@ export function LemonDropdown({
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
   const toggle = useCallback(() => setOpen((o) => !o), []);
@@ -56,12 +57,49 @@ export function LemonDropdown({
     };
   }, [open, close]);
 
+  // Keyboard contract (a11y): Enter/Space toggles; ArrowDown opens when
+  // closed and moves focus to the first menu item when open (menu items are
+  // real buttons, so Tab/Enter navigation then works natively). Mouse
+  // behavior is unchanged.
+  const handleTriggerKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggle();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (open) {
+        menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+      } else {
+        toggle();
+      }
+    }
+  };
+
+  // Menu arrow-key navigation: ArrowDown/ArrowUp move focus between
+  // menuitems with wrap-around; Enter/Space activate natively (real buttons).
+  const handleMenuKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+    );
+    if (items.length === 0) return;
+    const idx = items.indexOf(document.activeElement as HTMLElement);
+    const next =
+      e.key === "ArrowDown"
+        ? (idx + 1) % items.length
+        : (idx - 1 + items.length) % items.length;
+    items[next]?.focus();
+  };
+
   return (
     <div ref={rootRef} className="relative inline-block">
-      {/* Clone trigger with a click handler bound to toggle */}
-      <span onClick={toggle}>{trigger}</span>
+      {/* Clone trigger with click + keyboard handlers bound to toggle */}
+      <span onClick={toggle} onKeyDown={handleTriggerKeyDown}>{trigger}</span>
       {open && (
         <div
+          ref={menuRef}
+          onKeyDown={handleMenuKeyDown}
           className={
             "absolute top-[calc(100%+4px)] z-50 min-w-[180px] " +
             (align === "below-right" ? "right-0" : "left-0") +

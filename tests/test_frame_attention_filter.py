@@ -82,17 +82,42 @@ def test_block_window_routes_all_to_house():
     assert result.house.reason == "antigaming_block"
 
 
-def test_majority_invalid_review_window_still_conserves():
+def test_majority_invalid_review_window_is_held_not_allocated():
     # 2 of 3 seconds duplicate-invalid → fraction 0.667 → REVIEW (below BLOCK's
-    # 0.75). The single valid second earns; the 2 duplicates are excluded from
-    # both sides. Conservation is exact and the excluded count is reported.
-    # (The fully-filtered n_valid==0 branch is defensive: an all-invalid batch
-    # scores GIVT fraction 1.0 → BLOCK, caught by the block branch first.)
+    # 0.75). A REVIEW window is NEVER allocated to a contributor: the whole
+    # value is HELD to house under the review-hold reason (operator queue —
+    # distinguishable from ordinary house seconds by reason). Conservation is
+    # exact and the excluded count is reported. (The fully-filtered n_valid==0
+    # branch is defensive: an all-invalid batch scores GIVT fraction 1.0 →
+    # BLOCK, caught by the block branch first.)
     result = aggregate_window(_batch([_second(7), _second(7), _second(7)]))
     assert result.reconciles()
-    assert result.house.amount_cents + _asset_total(result) == 1000
+    assert result.asset_lines == ()
+    assert result.house.amount_cents == 1000
+    assert result.house.reason == "antigaming_review_hold"
     assert result.fraud_verdict == "review"
     assert result.excluded_second_counts == ((REASON_DUPLICATE_INDEX, 2),)
+
+
+def test_sivt_constant_attention_window_is_held_not_allocated():
+    # A long window whose every second carries the SAME signature trips SIVT-1
+    # (constant attention, REVIEW). The pre-accrual filter holds the WHOLE
+    # window: no contributor accrues, the value sits in the house review-hold,
+    # and the SIVT signal is surfaced on the result.
+    from substrate.anti_gaming.frame_ivt import (
+        MIN_SIVT_WINDOW_SECONDS,
+        REASON_CONSTANT_ATTENTION,
+    )
+
+    n = MIN_SIVT_WINDOW_SECONDS + 4
+    seconds = [_second(i) for i in range(n)]
+    result = aggregate_window(_batch(seconds, cents=3000))
+    assert result.reconciles()
+    assert result.asset_lines == ()
+    assert result.house.amount_cents == 3000
+    assert result.house.reason == "antigaming_review_hold"
+    assert result.fraud_verdict == "review"
+    assert dict(result.verdict_signals).get(REASON_CONSTANT_ATTENTION)
 
 
 def test_conservation_holds_under_partial_filter_multi_asset():
@@ -110,6 +135,6 @@ def test_conservation_holds_under_partial_filter_multi_asset():
     assert result.excluded_second_counts == ((REASON_DUPLICATE_INDEX, 1),)
 
 
-def test_weighting_version_is_v2_on_filtered_accrual():
+def test_weighting_version_is_v3_on_filtered_accrual():
     result = aggregate_window(_batch([_second(0), _second(1)]))
-    assert result.weighting_version == "frame-weight-v2"
+    assert result.weighting_version == "frame-weight-v3"

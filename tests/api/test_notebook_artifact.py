@@ -81,3 +81,20 @@ def test_unknown_format_400_and_missing_404(monkeypatch):
     assert _client().get("/api/notebooks/nb1/artifact?format=pdf").status_code == 400
     monkeypatch.setattr(mod, "resolve_notebook_export", lambda nid, **kw: None)
     assert _client().get("/api/notebooks/none/artifact").status_code == 404
+
+
+def test_artifact_html_inline_script_free(monkeypatch):
+    monkeypatch.setattr(mod, "resolve_notebook_export", lambda nid, **kw: _source())
+    r = _client().get("/api/notebooks/nb1/artifact.html")
+    assert r.status_code == 200
+    assert "inline" in r.headers["content-disposition"]
+    assert r.headers.get("x-antiek-html-projection") == "script-free; disposition=inline"
+    assert "<script" not in r.text.lower()
+
+
+def test_format_html_stays_attachment(monkeypatch):
+    monkeypatch.setattr(mod, "resolve_notebook_export", lambda nid, **kw: _source())
+    r = _client().get("/api/notebooks/nb1/artifact?format=html")
+    assert r.status_code == 200
+    assert "attachment" in r.headers["content-disposition"]
+    assert r.headers.get("x-antiek-html-projection") == "script-free; disposition=attachment"

@@ -189,6 +189,7 @@ class HostLocalRunner:
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         budget: BudgetManager | None = None,
         events_dir: str | None = None,
+        outbox_db_path: str | None = None,
         seal_on_complete: bool = True,
         on_emit: Callable[[StepEvent], Awaitable[None]] | None = None,
         retrieval_substrate: object | None = None,
@@ -199,6 +200,11 @@ class HostLocalRunner:
         self.max_concurrency = max_concurrency
         self.budget = budget or BudgetManager()
         self._events_dir = events_dir
+        if outbox_db_path is None:
+            from substrate.graph import default_db_path
+
+            outbox_db_path = default_db_path()
+        self._outbox_db_path = outbox_db_path
         self._seal_on_complete = seal_on_complete
         # Optional async hook the promotion funnel subscribes to so notes /
         # questions get drained as they are emitted.
@@ -303,6 +309,20 @@ class HostLocalRunner:
     async def _run(self, st: _ResearchState) -> None:
         iid = st.plan.investigation_id
         async with self._semaphore:        # bounded concurrency
+            # A leaf may have waited behind the semaphore while siblings spent
+            # the aggregate budget. Recheck at the actual dispatch boundary so
+            # queued work cannot incur a provider call after the stop limit.
+            if not self.budget.can_launch(st.plan.budget.cost_usd):
+                reason = self.budget.launch_block_reason()
+                st.state = RunState.BUDGET_HALTED
+                st.error = reason
+                log_event(iid, ActionType.INVESTIGATION_CHASE_HALTED,
+                          payload={"reason": "aggregate_budget", "detail": reason},
+                          role="user_agent", events_dir=self._events_dir)
+                await self._push(st, StepEvent(iid, 0, "status", text=reason,
+                                               state=RunState.BUDGET_HALTED))
+                await self._finish(st, None, None, halted=True)
+                return
             st.started = True
             ctx = LoopContext(st.plan, self.budget)
             st.ctx = ctx
@@ -385,7 +405,26 @@ class HostLocalRunner:
             # line-shifted out of the declared-bar baseline — shrink real debt,
             # do not re-mint a phantom)
             with contextlib.suppress(Exception):
-                seal_investigation(iid, events_dir=self._events_dir)
+                seal_investigation(
+                    iid,
+                    events_dir=self._events_dir,
+                    outbox_db_path=self._outbox_db_path,
+                )
+
+        # BYOT wall-time ACU top-up (#3139/#3140/#3184) — best-effort; never
+        # fail completion because metering failed. Soft/hard still apply on
+        # later starts via updated used_compute_units.
+        if st.started:
+            try:
+                from substrate.compute_capacity.acu_meter import (
+                    maybe_commit_investigation_wall_topup,
+                )
+
+                maybe_commit_investigation_wall_topup(
+                    iid, db_path=self._outbox_db_path
+                )
+            except Exception:
+                pass
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 

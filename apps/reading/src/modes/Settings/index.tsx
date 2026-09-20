@@ -1,25 +1,57 @@
-import { useEffect, useMemo, useState } from "react";
+import { startRegistration } from "@simplewebauthn/browser";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
+import { LemonButton } from "../../components/lemon";
+import ModelDecisionBar from "../../components/ModelDecisionBar";
 import {
-  estimateNotDiamondAdvisor,
+  beginPasskeyRegistration,
+  finishPasskeyRegistration,
+  listPasskeys,
+  removePasskey,
+  type SavedPasskey,
+} from "../../lib/auth";
+import {
+  approveFallbackReceipt,
   estimatePromptCost,
   fetchLatestAntiekBench,
+  fetchFallbackReceiptHistory,
+  fetchModelDecision,
+  estimateNotDiamondAdvisor,
   fetchSettingsBudget,
   fetchSettingsModels,
   type AntiekBenchLatestResponse,
   type BudgetResponse,
+  type FallbackReceiptChain,
+  type ModelDecisionResponse,
+  type ModelDecisionTask,
   type ModelRow,
   type NotDiamondAdvisorResponse,
   type PromptCostEstimateRequest,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
+import {
+  fetchComposerProjection,
+  type ComposerChoice,
+  type ComposerModelProjection,
+} from "../../api/composerProjection";
+import {
+  fetchSettingsUsage,
+  type SettingsUsageKeyEntry,
+} from "../../api/settingsUsage";
+import AddModelPanel from "./AddModelPanel";
+import AntiekBenchPanel from "./AntiekBenchPanel";
+import ToolConnectionsPanel from "./ToolConnectionsPanel";
+import UsagePanel from "./UsagePanel";
+import ComputeCapacityPanel from "./ComputeCapacityPanel";
+import LineupPanel from "./LineupPanel";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection.
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
- * ledger or rate table is unset.
+ * ledger or rate table is unset. Add-model securely registers BYOK providers;
+ * granting one dispatch-route authority remains a separate, explicit sprint.
  */
 type TaskKind = NonNullable<PromptCostEstimateRequest["task_kind"]>;
 type RouteMode = NonNullable<PromptCostEstimateRequest["route_mode"]>;
@@ -40,6 +72,15 @@ const ROUTE_MODES: Array<{ value: RouteMode; label: string }> = [
   { value: "manual", label: "Manual" },
 ];
 
+function formatCents(value: number): string {
+  return `$${(value / 100).toFixed(2)}`;
+}
+
+function usageBalanceChip(usage: SettingsUsageKeyEntry): string {
+  if (usage.remaining_cents != null) return formatCents(usage.remaining_cents);
+  if (usage.available_cents != null) return formatCents(usage.available_cents);
+  return "";
+}
 export default function Settings() {
   const tier = useViewportTier();
   const isDark =
@@ -58,6 +99,7 @@ export default function Settings() {
   const [bench, setBench] = useState<AntiekBenchLatestResponse | null>(null);
   const [benchError, setBenchError] = useState<string | null>(null);
   const [promptText, setPromptText] = useState("");
+  const [inputChars, setInputChars] = useState(2000);
   const [outTokens, setOutTokens] = useState(500);
   const [taskKind, setTaskKind] = useState<TaskKind>("research_question");
   const [routeMode, setRouteMode] = useState<RouteMode>("auto_balanced");
@@ -71,23 +113,82 @@ export default function Settings() {
   const [advisor, setAdvisor] = useState<NotDiamondAdvisorResponse | null>(null);
   const [advisorError, setAdvisorError] = useState<string | null>(null);
   const [advising, setAdvising] = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "lineup" | "decision">("overview");
+  const [usageByProvider, setUsageByProvider] = useState<
+    Record<string, SettingsUsageKeyEntry>
+  >({});
+
+  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    const tabs = ["overview", "lineup", "decision"] as const;
+    const current = tabs.indexOf(activeTab);
+    let next = current;
+    if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
+    else if (event.key === "ArrowLeft") next = (current - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    const selected = tabs[next];
+    setActiveTab(selected);
+    document.getElementById(`settings-${selected}-tab`)?.focus();
+  }
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const m = await fetchSettingsModels();
-        if (!cancelled) setModels(m.models);
+        const [settingsModelsResult, budgetResult, usageResult] =
+          await Promise.allSettled([
+            fetchSettingsModels(),
+            fetchSettingsBudget(),
+            fetchSettingsUsage(),
+          ]);
+        if (cancelled) return;
+
+        if (settingsModelsResult.status === "fulfilled") {
+          const modelRows = settingsModelsResult.value.models;
+          setModels(modelRows);
+          if (usageResult.status === "fulfilled") {
+            const modelIds = new Set(modelRows.map((row) => row.provider_id));
+            setUsageByProvider(
+              Object.fromEntries(
+                usageResult.value.keys
+                  .map((entry) => {
+                    if (!modelIds.has(entry.api_key_id)) return null;
+                    return [entry.api_key_id, entry] as const;
+                  })
+                  .filter(
+                    (
+                      item,
+                    ): item is readonly [string, SettingsUsageKeyEntry] =>
+                      item !== null,
+                  ),
+              ),
+            );
+          } else {
+            setUsageByProvider({});
+          }
+        } else {
+          setModelsError(
+            settingsModelsResult.reason instanceof Error
+              ? settingsModelsResult.reason.message
+              : String(settingsModelsResult.reason),
+          );
+        }
+
+        if (budgetResult.status === "fulfilled") {
+          setBudget(budgetResult.value);
+        } else {
+          setBudgetError(
+            budgetResult.reason instanceof Error
+              ? budgetResult.reason.message
+              : String(budgetResult.reason),
+          );
+        }
       } catch (e) {
-        if (!cancelled)
+        if (!cancelled) {
           setModelsError(e instanceof Error ? e.message : String(e));
-      }
-      try {
-        const b = await fetchSettingsBudget();
-        if (!cancelled) setBudget(b);
-      } catch (e) {
-        if (!cancelled)
-          setBudgetError(e instanceof Error ? e.message : String(e));
+        }
       }
       try {
         const latestBench = await fetchLatestAntiekBench();
@@ -106,12 +207,15 @@ export default function Settings() {
     if (
       !budget ||
       budget.daily_cap_usd == null ||
-      budget.spent_usd == null ||
+      budget.reserved_estimated_usd == null ||
       budget.daily_cap_usd <= 0
     ) {
       return null;
     }
-    return Math.min(100, (budget.spent_usd / budget.daily_cap_usd) * 100);
+    return Math.min(
+      100,
+      (budget.reserved_estimated_usd / budget.daily_cap_usd) * 100,
+    );
   }, [budget]);
 
   const modelOptions = useMemo(() => {
@@ -199,8 +303,57 @@ export default function Settings() {
             Models, budget ceiling, and prompt cost projection. Numbers over
             placeholders — unknown spend stays unknown.
           </p>
+          <div className="mt-5 flex gap-1 border-b border-ink/15 dark:border-bright/15" role="tablist" aria-label="Settings views">
+            <button
+              id="settings-overview-tab"
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "overview"}
+              aria-controls="settings-overview-panel"
+              tabIndex={activeTab === "overview" ? 0 : -1}
+              onClick={() => setActiveTab("overview")}
+              onKeyDown={onTabKeyDown}
+              className={`px-3 py-2 text-sm font-semibold ${activeTab === "overview" ? "border-b-2 border-ink text-ink dark:border-bright dark:text-bright" : "text-ink-soft dark:text-starlight"}`}
+            >
+              Overview
+            </button>
+            <button
+              id="settings-lineup-tab"
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "lineup"}
+              aria-controls="settings-lineup-panel"
+              tabIndex={activeTab === "lineup" ? 0 : -1}
+              onClick={() => setActiveTab("lineup")}
+              onKeyDown={onTabKeyDown}
+              className={`px-3 py-2 text-sm font-semibold ${activeTab === "lineup" ? "border-b-2 border-ink text-ink dark:border-bright dark:text-bright" : "text-ink-soft dark:text-starlight"}`}
+            >
+              Lineup
+            </button>
+            <button
+              id="settings-decision-tab"
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "decision"}
+              aria-controls="settings-decision-panel"
+              tabIndex={activeTab === "decision" ? 0 : -1}
+              onClick={() => setActiveTab("decision")}
+              onKeyDown={onTabKeyDown}
+              className={`px-3 py-2 text-sm font-semibold ${activeTab === "decision" ? "border-b-2 border-ink text-ink dark:border-bright dark:text-bright" : "text-ink-soft dark:text-starlight"}`}
+            >
+              Decision tree
+            </button>
+          </div>
         </header>
 
+        {activeTab === "overview" ? (
+          <div
+            id="settings-overview-panel"
+            role="tabpanel"
+            aria-labelledby="settings-overview-tab"
+            tabIndex={0}
+            className="space-y-6"
+          >
         <LemonCard title="Environment" elevation="z1">
           <div className="p-4 space-y-3 font-mono text-[13px]">
             <Row label="Viewport tier" value={tier} />
@@ -217,6 +370,8 @@ export default function Settings() {
             />
           </div>
         </LemonCard>
+
+        <PasskeySettings />
 
         <LemonCard title="Models & providers" elevation="z1">
           <div className="p-4 space-y-3">
@@ -259,7 +414,7 @@ export default function Settings() {
                           : "text-amber-700 dark:text-amber-300"
                       }
                     >
-                      {m.ready ? "ready" : "not registered"}
+                      {m.ready ? "ready" : m.registered ? "registered" : "not registered"}
                     </span>
                     {m.tier_bindings.length > 0 && (
                       <span className="w-full text-[11px] text-ink-soft dark:text-starlight">
@@ -275,6 +430,10 @@ export default function Settings() {
                 ))}
               </ul>
             )}
+            <p className="text-[11px] text-ink-soft dark:text-starlight font-serif italic">
+              Add your own models with the card below. Decision-tree
+              per-prompt override lands in SPR-03.
+            </p>
           </div>
         </LemonCard>
 
@@ -297,10 +456,11 @@ export default function Settings() {
                     }
                   />
                   <Row
-                    label="Spent today"
+                    label="Reserved estimate today"
                     value={
-                      budget.spent_status === "known" && budget.spent_usd != null
-                        ? `$${budget.spent_usd.toFixed(4)}`
+                      budget.spend_basis === "reserved_estimate" &&
+                      budget.reserved_estimated_usd != null
+                        ? `$${budget.reserved_estimated_usd.toFixed(4)}`
                         : "unknown (ledger not inventing $0)"
                     }
                   />
@@ -314,6 +474,12 @@ export default function Settings() {
                   />
                   {budget.cap_env && (
                     <Row label="Cap source" value={budget.cap_env} />
+                  )}
+                  {budget.enforcement_cap_usd != null && (
+                    <Row
+                      label="Daemon enforcement cap"
+                      value={`$${budget.enforcement_cap_usd.toFixed(2)}`}
+                    />
                   )}
                 </div>
                 <div
@@ -619,7 +785,7 @@ export default function Settings() {
                         : "no"
                   }
                 />
-                {estimate.candidates.length > 0 && (
+                {estimate.candidates != null && estimate.candidates.length > 0 && (
                   <div className="pt-2">
                     <p className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
                       Candidates
@@ -694,7 +860,7 @@ export default function Settings() {
                 <p className="text-[11px] text-ink-soft dark:text-starlight">
                   {advisor.recommendation.promotion_gate.reason}
                 </p>
-                {advisor.recommendation.notes.map((n) => (
+                {(advisor.recommendation.notes ?? []).map((n) => (
                   <p
                     key={n}
                     className="text-[11px] text-ink-soft dark:text-starlight"
@@ -706,8 +872,526 @@ export default function Settings() {
             )}
           </div>
         </LemonCard>
+
+        <AddModelPanel />
+
+        <UsagePanel />
+        <ComputeCapacityPanel />
+
+        <ToolConnectionsPanel />
+
+        <AntiekBenchPanel />
+
+        <LemonCard title="Coming later" elevation="z1">
+          <ul className="p-4 space-y-2 text-sm text-ink dark:text-bright list-disc list-inside">
+            <li>Recursive Antiek-bench evolution from usage outcomes</li>
+            <li>Midnight oil: time + goals + price-ceiling approve UI</li>
+            <li>Keyboard map customisation + layout export</li>
+          </ul>
+        </LemonCard>
+          </div>
+        ) : activeTab === "lineup" ? (
+          <div
+            id="settings-lineup-panel"
+            role="tabpanel"
+            aria-labelledby="settings-lineup-tab"
+            tabIndex={0}
+            className="space-y-6"
+          >
+            <LineupPanel />
+          </div>
+        ) : (
+          <div
+            id="settings-decision-panel"
+            role="tabpanel"
+            aria-labelledby="settings-decision-tab"
+            tabIndex={0}
+          >
+            <DecisionTreePanel
+              inputChars={inputChars}
+              setInputChars={setInputChars}
+              outputTokens={outTokens}
+              setOutputTokens={setOutTokens}
+              usageByProvider={usageByProvider}
+            />
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+const DECISION_TASKS: Array<{ value: ModelDecisionTask; label: string }> = [
+  { value: "deep_research", label: "Deep research" },
+  { value: "research_synthesis", label: "Research synthesis" },
+  { value: "reading", label: "Reading" },
+  { value: "twin_note", label: "Twin note" },
+  { value: "writing", label: "Writing" },
+  { value: "multimedia", label: "Multimedia" },
+  { value: "general", label: "General" },
+];
+
+function DecisionTreePanel({
+  inputChars,
+  setInputChars,
+  outputTokens,
+  setOutputTokens,
+  usageByProvider,
+}: {
+  inputChars: number;
+  setInputChars: (value: number) => void;
+  outputTokens: number;
+  setOutputTokens: (value: number) => void;
+  usageByProvider: Record<string, SettingsUsageKeyEntry>;
+}) {
+  const [task, setTask] = useState<ModelDecisionTask>("deep_research");
+  const [decision, setDecision] = useState<ModelDecisionResponse | null>(null);
+  const [projection, setProjection] = useState<ComposerModelProjection | null>(null);
+  const [selected, setSelected] = useState<ComposerChoice | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [receiptHistory, setReceiptHistory] = useState<FallbackReceiptChain[]>([]);
+  const [receiptCursor, setReceiptCursor] = useState<string | null>(null);
+  const [receiptLoading, setReceiptLoading] = useState(true);
+  const [receiptError, setReceiptError] = useState(false);
+  const requestVersion = useRef(0);
+  const usageValid = inputChars >= 1 && outputTokens >= 1;
+  const receiptRequestVersion = useRef(0);
+  const approvalRequestVersion = useRef(0);
+  const [approvingChainId, setApprovingChainId] = useState<string | null>(null);
+  const [approvalError, setApprovalError] = useState<{ chainId: string; message: string } | null>(null);
+
+  const selectedProviderBalance = useMemo(() => {
+    const provider = selected?.provider ?? projection?.chosen_provider ?? null;
+    if (!provider) return null;
+    const usage = usageByProvider[provider];
+    if (!usage) return null;
+    const chip = usageBalanceChip(usage);
+    return chip || null;
+  }, [projection, selected, usageByProvider]);
+
+  useEffect(() => {
+    const version = receiptRequestVersion.current + 1;
+    receiptRequestVersion.current = version;
+    void fetchFallbackReceiptHistory().then(
+      (history) => {
+        if (receiptRequestVersion.current !== version) return;
+        setReceiptHistory(history.items);
+        setReceiptCursor(history.next_cursor);
+        setReceiptLoading(false);
+      },
+      () => {
+        if (receiptRequestVersion.current !== version) return;
+        setReceiptError(true);
+        setReceiptLoading(false);
+      },
+    );
+    return () => {
+      receiptRequestVersion.current += 1;
+      approvalRequestVersion.current += 1;
+    };
+  }, []);
+
+  async function loadOlderReceipts() {
+    if (receiptCursor === null || receiptLoading) return;
+    const version = receiptRequestVersion.current + 1;
+    receiptRequestVersion.current = version;
+    setReceiptLoading(true);
+    setReceiptError(false);
+    try {
+      const history = await fetchFallbackReceiptHistory(receiptCursor);
+      if (receiptRequestVersion.current !== version) return;
+      setReceiptHistory((current) => [...current, ...history.items]);
+      setReceiptCursor(history.next_cursor);
+    } catch {
+      if (receiptRequestVersion.current === version) setReceiptError(true);
+    } finally {
+      if (receiptRequestVersion.current === version) setReceiptLoading(false);
+    }
+  }
+
+  async function approveReceipt(chain: FallbackReceiptChain): Promise<boolean> {
+    if (approvingChainId !== null) return false;
+    const version = approvalRequestVersion.current + 1;
+    approvalRequestVersion.current = version;
+    setApprovingChainId(chain.chain_id);
+    setApprovalError(null);
+    try {
+      const receipt = await approveFallbackReceipt(chain);
+      if (approvalRequestVersion.current !== version) return false;
+      setReceiptHistory((current) => current.map((candidate) =>
+        candidate.chain_id === receipt.chain_id && candidate.manifest_sha256 === receipt.manifest_sha256
+          ? { ...candidate, approval_id: receipt.approval_id, approved_at: receipt.approved_at, approval_eligible: false }
+          : candidate,
+      ));
+      return true;
+    } catch (caught) {
+      if (approvalRequestVersion.current === version) {
+        setApprovalError({ chainId: chain.chain_id, message: caught instanceof Error ? caught.message : "Could not approve exact terms" });
+      }
+      return false;
+    } finally {
+      if (approvalRequestVersion.current === version) setApprovingChainId(null);
+    }
+  }
+
+  function invalidateDecision() {
+    requestVersion.current += 1;
+    setDecision(null);
+    setProjection(null);
+    setSelected(null);
+    setError(null);
+    setLoading(false);
+  }
+
+  async function compare() {
+    const version = requestVersion.current + 1;
+    requestVersion.current = version;
+    setLoading(true);
+    setError(null);
+    setDecision(null);
+    setProjection(null);
+    setSelected(null);
+    try {
+      const [decisionResult, projectionResult] = await Promise.allSettled([
+        fetchModelDecision({
+          task,
+          input_chars: inputChars,
+          expected_output_tokens: outputTokens,
+        }),
+        fetchComposerProjection({
+          task,
+          bounded_usage: [
+            { unit: "input_token", maximum: Math.ceil(inputChars / 4) },
+            { unit: "output_token", maximum: outputTokens },
+          ],
+          seam_id: "user.prompt.generate",
+          operation: "generate",
+        }),
+      ]);
+      if (requestVersion.current !== version) return;
+      if (decisionResult.status === "rejected") throw decisionResult.reason;
+      setDecision(decisionResult.value);
+      if (projectionResult.status === "fulfilled") {
+        setProjection(projectionResult.value);
+        setSelected(null);
+      } else {
+        setProjection(null);
+        setSelected(null);
+        setError("Fallback projection is unavailable.");
+      }
+    } catch (caught) {
+      if (requestVersion.current === version) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    } finally {
+      if (requestVersion.current === version) setLoading(false);
+    }
+  }
+
+  async function selectModel(provider: string, model: string) {
+    const version = requestVersion.current + 1;
+    requestVersion.current = version;
+    const choice = { provider, model };
+    setLoading(true);
+    setError(null);
+    setProjection(null);
+    setSelected(null);
+    try {
+      const projected = await fetchComposerProjection({
+        task,
+        bounded_usage: [
+          { unit: "input_token", maximum: Math.ceil(inputChars / 4) },
+          { unit: "output_token", maximum: outputTokens },
+        ],
+        choice,
+        seam_id: "user.prompt.generate",
+        operation: "generate",
+      });
+      if (requestVersion.current === version) {
+        setProjection(projected);
+        setSelected(choice);
+      }
+    } catch (caught) {
+      if (requestVersion.current === version) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    } finally {
+      if (requestVersion.current === version) setLoading(false);
+    }
+  }
+
+  return (
+    <section aria-labelledby="decision-tree-title" className="space-y-5">
+      <div>
+        <h2 id="decision-tree-title" className="font-serif text-xl text-ink dark:text-bright">Model decision</h2>
+        <p className="mt-1 text-sm text-ink-soft dark:text-starlight">Advisory comparison from registered providers, the operator budget, and measured Antiek-bench evidence when available.</p>
+      </div>
+      <div className="grid gap-3 border-y border-ink/15 py-4 dark:border-bright/15 sm:grid-cols-3">
+        <label className="text-xs font-semibold text-ink-soft dark:text-starlight">
+          Task
+          <select
+            value={task}
+            onChange={(event) => {
+              invalidateDecision();
+              setTask(event.target.value as ModelDecisionTask);
+            }}
+            className="mt-1 block h-10 w-full border border-ink/20 bg-transparent px-2 text-sm text-ink dark:border-bright/20 dark:text-bright"
+          >
+            {DECISION_TASKS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-semibold text-ink-soft dark:text-starlight">
+          Input characters
+          <input type="number" min={1} max={2500000} value={inputChars} onChange={(event) => { invalidateDecision(); setInputChars(Number(event.target.value) || 0); }} className="mt-1 block h-10 w-full border border-ink/20 bg-transparent px-2 text-sm text-ink dark:border-bright/20 dark:text-bright" />
+        </label>
+        <label className="text-xs font-semibold text-ink-soft dark:text-starlight">
+          Output tokens
+          <input type="number" min={1} max={1000000} value={outputTokens} onChange={(event) => { invalidateDecision(); setOutputTokens(Number(event.target.value) || 0); }} className="mt-1 block h-10 w-full border border-ink/20 bg-transparent px-2 text-sm text-ink dark:border-bright/20 dark:text-bright" />
+        </label>
+      </div>
+      <LemonButton type="button" variant="primary" size="md" disabled={loading || !usageValid} onClick={() => void compare()}>
+        {loading ? "Comparing..." : "Compare models"}
+      </LemonButton>
+      {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+      <ModelDecisionBar
+        projection={projection}
+        loading={loading && decision !== null}
+        selected={selected}
+        selectedProviderBalance={selectedProviderBalance}
+        onSelect={(provider, model) => void selectModel(provider, model)}
+      />
+      {decision && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-ink/15 pb-3 dark:border-bright/15">
+            <p className="text-sm text-ink dark:text-bright">
+              Recommended tier: <strong>{decision.recommended_tier ?? "none available"}</strong>
+            </p>
+            <p className="font-mono text-xs text-ink-soft dark:text-starlight">
+              {decision.benchmark_status === "measured" ? "Measured evidence" : "Static quality prior"}
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[680px] border-collapse text-left text-sm">
+              <thead className="border-b-2 border-ink/70 text-xs text-ink-soft dark:border-bright/70 dark:text-starlight">
+                <tr><th className="py-2 pr-3">Rank</th><th className="py-2 pr-3">Tier</th><th className="py-2 pr-3">Model</th><th className="py-2 pr-3">Quality</th><th className="py-2 pr-3">Estimate high</th><th className="py-2">Status</th></tr>
+              </thead>
+              <tbody>
+                {decision.candidates.map((candidate) => (
+                  <tr key={`${candidate.tier}:${candidate.provider}:${candidate.model}`} className="border-b border-ink/10 dark:border-bright/10">
+                    <td className="py-3 pr-3 font-mono">{candidate.rank}</td>
+                    <td className="py-3 pr-3 font-semibold">{candidate.tier}</td>
+                    <td className="py-3 pr-3"><span className="block">{candidate.model}</span><span className="text-xs text-ink-soft dark:text-starlight">{candidate.provider}</span></td>
+                    <td className="py-3 pr-3 font-mono">{candidate.quality_score.toFixed(2)} <span className="text-xs text-ink-soft dark:text-starlight">{candidate.quality_basis === "measured" ? `n=${candidate.benchmark_samples}` : "prior"}</span></td>
+                    <td className="py-3 pr-3 font-mono">{candidate.estimated_usd_high == null ? "unknown" : `$${candidate.estimated_usd_high.toFixed(6)}`}</td>
+                    <td className="py-3">
+                      {!candidate.ready
+                        ? "Unavailable"
+                        : candidate.would_exceed_budget === true
+                          ? "Over budget"
+                          : candidate.would_exceed_budget === false
+                            ? "Within budget"
+                            : "Budget unknown"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {decision.notes.map((note) => <p key={note} className="text-xs text-ink-soft dark:text-starlight">{note}</p>)}
+        </div>
+      )}
+      <FallbackReceiptHistory
+        chains={receiptHistory}
+        cursor={receiptCursor}
+        loading={receiptLoading}
+        unavailable={receiptError}
+        onLoadOlder={() => void loadOlderReceipts()}
+        approvingChainId={approvingChainId}
+        approvalError={approvalError}
+        onApprove={approveReceipt}
+      />
+    </section>
+  );
+}
+
+function FallbackReceiptHistory({
+  chains,
+  cursor,
+  loading,
+  unavailable,
+  onLoadOlder,
+  approvingChainId,
+  approvalError,
+  onApprove,
+}: {
+  chains: FallbackReceiptChain[];
+  cursor: string | null;
+  loading: boolean;
+  unavailable: boolean;
+  onLoadOlder: () => void;
+  approvingChainId: string | null;
+  approvalError: { chainId: string; message: string } | null;
+  onApprove: (chain: FallbackReceiptChain) => Promise<boolean>;
+}) {
+  const [reviewingChainId, setReviewingChainId] = useState<string | null>(null);
+  const reviewRegionRef = useRef<HTMLDivElement>(null);
+  const approvalResultRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (reviewingChainId !== null) reviewRegionRef.current?.focus();
+  }, [reviewingChainId]);
+  useEffect(() => {
+    if (reviewingChainId !== null && chains.some((chain) => chain.chain_id === reviewingChainId && chain.approval_id !== null)) {
+      approvalResultRef.current?.focus();
+      setReviewingChainId(null);
+    }
+  }, [chains, reviewingChainId]);
+  return (
+    <section aria-labelledby="fallback-receipt-history-title" className="border-t border-ink/15 pt-5 dark:border-bright/15">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 id="fallback-receipt-history-title" className="font-serif text-lg text-ink dark:text-bright">Recent fallback executions</h3>
+        <span className="font-mono text-[11px] uppercase text-ink-soft dark:text-starlight">Read only</span>
+      </div>
+      {loading && chains.length === 0 && <p role="status" className="mt-3 text-sm text-ink-soft dark:text-starlight">Loading execution receipts...</p>}
+      {unavailable && <p role="status" className="mt-3 text-sm text-ink-soft dark:text-starlight">Execution receipts are unavailable.</p>}
+      {!loading && !unavailable && chains.length === 0 && <p className="mt-3 text-sm text-ink-soft dark:text-starlight">No fallback executions recorded.</p>}
+      {chains.length > 0 && (
+        <ol className="mt-4 divide-y divide-ink/10 border-y border-ink/10 dark:divide-bright/10 dark:border-bright/10">
+          {chains.map((chain) => (
+            <li key={chain.chain_id} className="py-4" data-testid="fallback-receipt-chain">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <time className="text-ink-soft dark:text-starlight" dateTime={chain.created_at}>{new Date(chain.created_at).toLocaleString()}</time>
+                <span className="font-mono font-semibold text-ink dark:text-bright">{chain.outcome.replace("_", " ")}</span>
+              </div>
+              <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">Manifest {chain.manifest_sha256.slice(0, 10)}</p>
+              {chain.approval_id && chain.approved_at && (
+                <p ref={reviewingChainId === chain.chain_id ? approvalResultRef : undefined} tabIndex={reviewingChainId === chain.chain_id ? -1 : undefined} className="mt-1 font-mono text-[11px] text-ink-soft outline-none dark:text-starlight">
+                  Approved {new Date(chain.approved_at).toLocaleString()} · {chain.approval_id.slice(-10)}
+                </p>
+              )}
+              <ol className="mt-3 space-y-2">
+                {chain.routes.map((route) => (
+                  <li key={route.fallback_index} className="grid gap-x-3 text-xs sm:grid-cols-[2rem_1fr_auto]">
+                    <span className="font-mono text-ink-soft dark:text-starlight">#{route.fallback_index + 1}</span>
+                    <span className="min-w-0 text-ink dark:text-bright"><strong className="break-words">{route.model}</strong><span className="block break-words text-ink-soft dark:text-starlight">{route.provider}</span></span>
+                    <span className="font-mono text-right text-ink-soft dark:text-starlight">{route.state.replace("_", " ")} · cap ${(route.projected_max_cents / 100).toFixed(2)}{route.actual_cents === null ? "" : ` · actual $${(route.actual_cents / 100).toFixed(2)}`}</span>
+                    {route.settlement_evidence_sha256 && <span className="col-start-2 font-mono text-[11px] text-ink-soft dark:text-starlight">Receipt {route.settlement_evidence_sha256.slice(0, 10)}</span>}
+                  </li>
+                ))}
+              </ol>
+              {chain.approval_eligible && chain.approval_id === null && reviewingChainId !== chain.chain_id && (
+                <LemonButton type="button" variant="secondary" size="sm" disabled={approvingChainId !== null} onClick={() => setReviewingChainId(chain.chain_id)} className="mt-3">Review approval</LemonButton>
+              )}
+              {chain.approval_eligible && chain.approval_id === null && reviewingChainId === chain.chain_id && (
+                <div ref={reviewRegionRef} role="region" aria-label="Fallback approval review" tabIndex={-1} className="mt-3 border-l-2 border-sun pl-3 text-sm text-ink outline-none dark:text-bright">
+                  <p className="font-semibold">Approve this exact prepared chain</p>
+                  <dl className="mt-2 grid gap-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    <div><dt className="inline font-semibold text-ink dark:text-bright">Chain </dt><dd className="inline break-all">{chain.chain_id}</dd></div>
+                    <div><dt className="inline font-semibold text-ink dark:text-bright">Manifest </dt><dd className="inline break-all">{chain.manifest_sha256}</dd></div>
+                  </dl>
+                  <p className="mt-1 text-xs text-ink-soft dark:text-starlight">Hard ceiling ${(chain.ceiling_cents / 100).toFixed(2)} · maximum sequential exposure ${(chain.maximum_chain_exposure_cents / 100).toFixed(2)}. Fallback routes are attempted one at a time.</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <LemonButton type="button" variant="primary" size="sm" disabled={approvingChainId !== null} onClick={() => void onApprove(chain)}>{approvingChainId === chain.chain_id ? "Approving..." : "Approve exact terms"}</LemonButton>
+                    <LemonButton type="button" variant="secondary" size="sm" disabled={approvingChainId !== null} onClick={() => setReviewingChainId(null)}>Cancel</LemonButton>
+                  </div>
+                </div>
+              )}
+              {approvalError?.chainId === chain.chain_id && <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">{approvalError.message}</p>}
+            </li>
+          ))}
+        </ol>
+      )}
+      {cursor && <LemonButton type="button" variant="secondary" size="sm" disabled={loading} onClick={onLoadOlder} className="mt-4">{loading ? "Loading..." : "Load older"}</LemonButton>}
+    </section>
+  );
+}
+
+function PasskeySettings() {
+  const [passkeys, setPasskeys] = useState<SavedPasskey[] | null>(null);
+  const [working, setWorking] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function refreshPasskeys() {
+    try {
+      setPasskeys(await listPasskeys());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Couldn't load passkeys.");
+    }
+  }
+
+  useEffect(() => {
+    void refreshPasskeys();
+  }, []);
+
+  async function addPasskey() {
+    setWorking(true);
+    setMessage(null);
+    try {
+      const { ceremony_id, ...optionsJSON } = await beginPasskeyRegistration();
+      const credential = await startRegistration({ optionsJSON });
+      await finishPasskeyRegistration(ceremony_id, credential, "Personal passkey");
+      setMessage("Passkey added. Your next unlock can use this device.");
+      await refreshPasskeys();
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "NotAllowedError")) {
+        setMessage(error instanceof Error ? error.message : "Couldn't add that passkey.");
+      }
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function forgetPasskey(passkey: SavedPasskey) {
+    if (!window.confirm(`Forget “${passkey.label}”? Email recovery will still work.`)) return;
+    setWorking(true);
+    setMessage(null);
+    try {
+      await removePasskey(passkey.id);
+      setMessage("Passkey forgotten.");
+      await refreshPasskeys();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Couldn't remove that passkey.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <LemonCard title="Unlock & recovery" elevation="z1" colour="glacial">
+      <div className="p-4 space-y-4">
+        <div>
+          <p className="text-sm text-ink dark:text-bright font-semibold">Passkeys</p>
+          <p className="text-xs text-ink-soft dark:text-starlight mt-1">
+            Face ID, Touch ID, or your device PIN unlocks Antiek. Email stays available for recovery.
+          </p>
+        </div>
+        {passkeys === null ? (
+          <p className="text-xs text-ink-soft dark:text-starlight">Reading your devices…</p>
+        ) : passkeys.length ? (
+          <ul className="space-y-2">
+            {passkeys.map((passkey) => (
+              <li key={passkey.id} className="flex items-center justify-between gap-3 rounded-hog border border-rule dark:border-slate-2 bg-ice-0 dark:bg-charcoal-2 px-3 py-2">
+                <span>
+                  <strong className="block text-sm text-ink dark:text-bright">{passkey.label}</strong>
+                  <small className="text-[11px] text-ink-soft dark:text-starlight">
+                    {passkey.backed_up ? "Synced passkey" : "This-device passkey"}
+                    {passkey.last_used_at ? ` · used ${new Date(passkey.last_used_at * 1000).toLocaleDateString()}` : ""}
+                  </small>
+                </span>
+                <button type="button" disabled={working} onClick={() => void forgetPasskey(passkey)} className="text-xs font-semibold text-emperor underline underline-offset-4 disabled:opacity-50">
+                  Forget
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-ink-soft dark:text-starlight">No passkey saved yet.</p>
+        )}
+        <LemonButton type="button" variant="secondary" size="md" disabled={working} onClick={() => void addPasskey()}>
+          {working ? "Waiting for your device…" : "Add another passkey"}
+        </LemonButton>
+        {message && <p className="text-xs text-ink-soft dark:text-starlight" role="status">{message}</p>}
+      </div>
+    </LemonCard>
   );
 }
 

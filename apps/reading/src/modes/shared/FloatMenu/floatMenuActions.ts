@@ -5,6 +5,7 @@ import {
   ApiError,
   type BlockSearchHit,
 } from "../../../lib/api";
+import { composeThoughtPartnerSystemContext } from "../../../components/ai/thoughtPartnerSeed";
 import type { MarginaliaNotedPayload } from "../../../generated/types";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
 
@@ -157,6 +158,8 @@ export interface DialogueReply {
   prompt: string;
   /** The model's reply — MODEL-sourced, never relabelled as user content. */
   reply: string;
+  /** Role shape from thought_partner (CHALLENGE | SYNTHESIS | EXTENSION). */
+  shape: "CHALLENGE" | "SYNTHESIS" | "EXTENSION";
 }
 
 /** Build the user-sourced prompt for a dialogue over a selection. The
@@ -208,6 +211,9 @@ export async function dialogueOverSelection(args: {
   selection: FloatMenuSelection;
   followUp?: string;
 }): Promise<DialogueReply> {
+  if (outboundText(args.selection) === null) {
+    throw new ApiError(WITHHELD_OUTBOUND_REASON, 403, WITHHELD_OUTBOUND_REASON);
+  }
   const prompt = buildDialoguePrompt(args.selection, args.followUp);
   const resp = await apiFetch("/thought-partner", {
     method: "POST",
@@ -215,6 +221,7 @@ export async function dialogueOverSelection(args: {
     body: JSON.stringify({
       investigation_id: args.investigationId,
       prompt,
+      system_context: composeThoughtPartnerSystemContext(null),
     }),
   });
   if (!resp.ok) {
@@ -226,5 +233,10 @@ export async function dialogueOverSelection(args: {
   }
   const data = await resp.json();
   const reply: string = data.text ?? data.body ?? "";
-  return { prompt, reply };
+  const rawShape = String(data.shape ?? "SYNTHESIS").toUpperCase();
+  const shape =
+    rawShape === "CHALLENGE" || rawShape === "EXTENSION"
+      ? rawShape
+      : "SYNTHESIS";
+  return { prompt, reply, shape };
 }

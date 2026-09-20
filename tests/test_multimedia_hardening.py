@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from substrate.contracts.multimedia import (
     CostRow,
     GeneratedFile,
@@ -12,7 +14,7 @@ from substrate.contracts.multimedia import (
     SourceCitation,
 )
 from substrate.multimedia.audio_assembly import assemble_audio_experience
-from substrate.multimedia.hardening import evaluate_multimedia_asset
+from substrate.multimedia.hardening import MultimediaHardeningReport, evaluate_multimedia_asset
 from substrate.multimedia.planner import EvidenceChunk, MultimediaPlanRequest, build_multimedia_plan
 from substrate.multimedia.tts import FakeTTSProvider
 from substrate.multimedia.video import assemble_video_documentary, build_video_scenes
@@ -77,13 +79,24 @@ def _video_asset() -> MultimediaAssetContract:
     )
 
 
-def test_audio_smoke_passes_automated_gates_but_keeps_manual_residuals():
+def test_audio_without_authoritative_cost_evidence_is_blocked_and_keeps_manual_residuals():
     report = evaluate_multimedia_asset(_audio_asset())
 
-    assert report.ship_status == "manual_review"
-    assert report.failed_gate_ids == ()
+    assert report.ship_status == "blocked"
+    assert report.failed_gate_ids == ("cost_and_budget",)
     assert report.manual_gate_ids == ("rights_and_publication",)
     assert any("Custom voice" in risk for risk in report.residual_risks)
+
+
+def test_legacy_hardening_report_without_either_cost_authority_still_reopens():
+    payload = evaluate_multimedia_asset(_audio_asset()).model_dump(mode="json")
+    payload.pop("cost_snapshot")
+    payload.pop("local_zero_cost_evidence")
+
+    reopened = MultimediaHardeningReport.model_validate(payload)
+
+    assert reopened.cost_snapshot is None
+    assert reopened.local_zero_cost_evidence is None
 
 
 def test_unsourced_factual_claim_fails_without_acknowledgement():
@@ -150,7 +163,7 @@ def test_video_without_transcript_fails_accessibility_even_with_captions():
     assert any(finding.code == "missing_transcript" for finding in playback.findings)
 
 
-def test_cost_gate_catches_over_budget_and_missing_cost_rows():
+def test_manifest_cost_rows_cannot_satisfy_authoritative_cost_gate():
     call = ProviderCall(
         call_id="call-krea",
         provider="krea",
@@ -217,11 +230,11 @@ def test_cost_gate_catches_over_budget_and_missing_cost_rows():
         manifest=manifest,
     )
 
-    report = evaluate_multimedia_asset(asset, budget_usd=1.0, actual_cost_usd=2.0)
+    report = evaluate_multimedia_asset(asset)
 
     assert "cost_and_budget" in report.failed_gate_ids
     cost_gate = next(gate for gate in report.gates if gate.gate_id == "cost_and_budget")
-    assert {finding.code for finding in cost_gate.findings} >= {"missing_cost_row", "budget_exceeded"}
+    assert {finding.code for finding in cost_gate.findings} == {"cost_evidence_unavailable"}
 
 
 def test_cost_ledger_survives_failed_jobs_and_provider_retry_policy_blocks_ready_partial():
@@ -254,7 +267,7 @@ def test_cost_ledger_survives_failed_jobs_and_provider_retry_policy_blocks_ready
 
     report = evaluate_multimedia_asset(partial_ready, retry_attempts=3, max_retry_attempts=2)
 
-    assert "cost_and_budget" not in report.failed_gate_ids
+    assert "cost_and_budget" in report.failed_gate_ids
     assert "provider_safety_retry" in report.failed_gate_ids
     provider_gate = next(gate for gate in report.gates if gate.gate_id == "provider_safety_retry")
     assert {finding.code for finding in provider_gate.findings} >= {
@@ -264,7 +277,7 @@ def test_cost_ledger_survives_failed_jobs_and_provider_retry_policy_blocks_ready
     }
 
 
-def test_low_actual_cost_cannot_mask_high_ledger_total_for_budget():
+def test_caller_cost_floats_are_rejected():
     asset = _audio_asset()
     expensive_call = ProviderCall(
         call_id="call-pricey",
@@ -290,6 +303,5 @@ def test_low_actual_cost_cannot_mask_high_ledger_total_for_budget():
         }
     )
     expensive = asset.model_copy(update={"manifest": manifest})
-    report = evaluate_multimedia_asset(expensive, budget_usd=10.0, actual_cost_usd=1.0)
-    assert "cost_and_budget" in report.failed_gate_ids
-    assert report.ship_status == "blocked"
+    with pytest.raises(TypeError):
+        evaluate_multimedia_asset(expensive, budget_usd=10.0, actual_cost_usd=1.0)

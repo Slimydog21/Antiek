@@ -26,6 +26,7 @@ from substrate.ad_inventory.frame_attention import (
 from substrate.ad_inventory.frame_attention_accrual import (
     accrue_window,
     aggregate_window,
+    record_client_hint,
     replay,
     window_reconciliation,
 )
@@ -102,11 +103,33 @@ def test_accrual_is_append_only_and_traceable(con):
 
 def test_write_count_is_bounded_by_assets_not_seconds(con):
     """The load-bearing aggregation claim: 600 seconds × 5 assets must NOT
-    produce 3,000 rows — at most (5 asset rows + 1 house row)."""
-    samples = tuple(
-        _sample(f"doc-{k}", area=0.3, prom=0.4, dwell=400) for k in range(5)
+    produce 3,000 rows — at most (5 asset rows + 1 house row).
+
+    The per-second samples are JITTERED (area varies with the second index) so
+    the anti-gaming pre-accrual filter PASSES the window: a 600-second window
+    of byte-identical samples is a SIVT constant-attention signature and is now
+    correctly HELD (1 house row, 0 asset rows) — a different, also-bounded
+    case, exercised by the filter tests."""
+    seconds = tuple(
+        FrameSecond(
+            second_index=i,
+            lens="read",
+            samples=tuple(
+                _sample(
+                    f"doc-{k}",
+                    area=0.3 + ((i + k) % 7) * 0.01,
+                    prom=0.4,
+                    dwell=400,
+                )
+                for k in range(5)
+            ),
+        )
+        for i in range(600)
     )
-    batch = _window("w-big", 600, samples, 6000)
+    batch = WindowFrameBatch(
+        window_id="w-big", seconds=seconds, ad_value_usd_cents=6000,
+    )
+    samples = seconds[0].samples
     accrue_window(con, batch)
     n_accrual = con.execute(
         "SELECT COUNT(*) FROM frame_attention_accruals WHERE window_id = 'w-big'"
@@ -209,3 +232,55 @@ def test_reconciliation_query_matches_total(con):
     rec = window_reconciliation(con, "w-rec")
     assert rec["total_cents"] == 1000
     assert rec["contributor_cents"] + rec["house_cents"] == 1000
+
+
+# ── ad-pipeline gap S1: the client-hint ledger ──────────────────────────────
+
+
+def test_record_client_hint_is_append_only_and_idempotent(con):
+    """An exact retry collapses to one row; a CHANGED claim appends — the
+    ledger records every claim the client made, without any economic effect."""
+    h1 = record_client_hint(
+        con, window_id="w-hint", batch_ref="ref-1",
+        client_hint_ad_value_usd_cents=1000,
+        telemetry_version=FRAME_TELEMETRY_SCHEMA_VERSION,
+    )
+    h2 = record_client_hint(
+        con, window_id="w-hint", batch_ref="ref-1",
+        client_hint_ad_value_usd_cents=1000,
+        telemetry_version=FRAME_TELEMETRY_SCHEMA_VERSION,
+    )
+    assert h1 == h2  # exact retry → same row, no duplicate
+    record_client_hint(
+        con, window_id="w-hint", batch_ref="ref-1",
+        client_hint_ad_value_usd_cents=5000,  # revised claim
+        telemetry_version=FRAME_TELEMETRY_SCHEMA_VERSION,
+    )
+    rows = con.execute(
+        "SELECT client_hint_ad_value_usd_cents FROM "
+        "frame_telemetry_client_hints WHERE window_id = 'w-hint'"
+    ).fetchall()
+    assert sorted(r[0] for r in rows) == [1000, 5000]
+
+
+def test_record_client_hint_has_no_economic_effect(con):
+    """The hint ledger NEVER touches money: recording a hint changes neither
+    the accrual tables nor any escrow balance."""
+    holder = ip_holders.create_pre_onboarded(con, display_name="Hint Press")
+    batch = _window("w-hint-econ", 4, (_sample("doc-a"),), 400)
+    accrue_window(con, batch, asset_to_ip_holder={"doc-a": holder})
+    before_acc = con.execute(
+        "SELECT COUNT(*) FROM frame_attention_accruals"
+    ).fetchone()[0]
+    before_escrow = ip_holders.get(con, holder).escrow_balance_usd
+
+    record_client_hint(
+        con, window_id="w-hint-econ", batch_ref="whatever-ref",
+        client_hint_ad_value_usd_cents=999_999_999,
+        telemetry_version=FRAME_TELEMETRY_SCHEMA_VERSION,
+    )
+    after_acc = con.execute(
+        "SELECT COUNT(*) FROM frame_attention_accruals"
+    ).fetchone()[0]
+    assert after_acc == before_acc
+    assert ip_holders.get(con, holder).escrow_balance_usd == before_escrow

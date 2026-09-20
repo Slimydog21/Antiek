@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SPR-01 Protocol</title>
+    <style>
+      body {
+        font: 16px/1.5 system-ui;
+        background: #fffdf5;
+      }
+      .page {
+        max-width: 950px;
+        margin: auto;
+        padding: 30px;
+      }
+      .block {
+        background: #fff;
+        border: 2px solid #111;
+        box-shadow: 4px 4px #111;
+        padding: 18px;
+        margin: 18px 0;
+      }
+      h1 {
+        color: #1d4aff;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <a href="index.html">← Master</a>
+      <header class="block">
+        <h1>SPR-01 · Protocol and policy</h1>
+        <p>Wave 1 · inline · 5 milestones</p>
+      </header>
+      <section class="block">
+        <h2>Context and goal</h2>
+        <p>
+          Build one bounded opt-in backend returning supplemental evidence plus
+          an execution receipt, and record the narrow superseding §16 decision.
+        </p>
+      </section>
+      <section class="block">
+        <h2>Milestones</h2>
+        <ol>
+          <li>Immutable request, evidence, receipt and outcome types.</li>
+          <li>
+            Stdin prompt transport with prompt/output limits, fixed caller cwd,
+            sanitized environment, disabled context discovery and no tools.
+          </li>
+          <li>
+            Typed disabled, unavailable, timeout, failed, malformed and success
+            states.
+          </li>
+          <li>Environment factory defaulting disabled.</li>
+          <li>
+            §16 amendment: additive RLM only; no dispatch, RemoteExec
+            replacement, DB writes or training.
+          </li>
+        </ol>
+      </section>
+      <section class="block">
+        <h2>Five-values rigor</h2>
+        <p>
+          <b>Honesty:</b> launched is not success; receipts distinguish every
+          terminal state. <b>Fairness:</b> preserve Prime's useful tool role
+          while applying least privilege. <b>Rigor:</b> test argv, env, bytes,
+          timeout and child cleanup on propagated cancellation.
+          <b>Diligence:</b> bind flags to current CLI
+          help. <b>Defensibility:</b> authority limits appear in policy and
+          tests.
+        </p>
+      </section>
+      <section class="block">
+        <h2>Dependencies, out of scope, gates, handoff</h2>
+        <p>
+          Optional installed Prime CLI. Out: workflows, UI, production
+          enablement, credentials and hosted RL.
+        </p>
+        <pre>
+pytest -q tests/test_prime_agent_rlm_backend.py&#10;ruff check orchestration/rlm/prime_agent_backend.py tests/test_prime_agent_rlm_backend.py&#10;git diff --check</pre>
+        <p>
+          Handoff exact public types, knobs, receipt states and limitations.
+        </p>
+      </section>
+      <section
+        id="harness-hint"
+        data-harness-pattern="inline"
+        data-harness-fanout-unit="single backend"
+        data-harness-verifier-lenses="containment; canonical authority"
+        data-harness-rounds-floor="2"
+        data-harness-rounds-cap="6"
+      ></section>
+      <footer>2026-08-11 · PA-RLM/SPR-01</footer>
+    </main>
+  </body>
+</html>

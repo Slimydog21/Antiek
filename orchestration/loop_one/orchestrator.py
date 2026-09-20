@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -292,12 +293,16 @@ def _render_chunks_block_for_sub_question(
 
     blocks: list[str] = []
     for r in results:
-        cid = r.get("chunk_id", "?")
-        tier = r.get("source_tier", "?")
+        # Header fields are source-controlled graph metadata. Collapse all
+        # Unicode line boundaries before placing them in structural framing.
+        cid = _single_line_structural_field(r.get("chunk_id", "?"))
+        tier = _single_line_structural_field(r.get("source_tier", "?"))
         # substrate.graph.search returns column names 'chunk_text' and
         # 'document_title' (not 'text' / 'title') — easy footgun.
-        title = r.get("document_title") or r.get("title") or "(untitled)"
-        section = r.get("section_path") or ""
+        title = _single_line_structural_field(
+            r.get("document_title") or r.get("title") or "(untitled)"
+        )
+        section = _single_line_structural_field(r.get("section_path") or "")
         text = (r.get("chunk_text") or r.get("text") or "").strip()
         sim = r.get("similarity", 0.0)
         header = (
@@ -306,8 +311,18 @@ def _render_chunks_block_for_sub_question(
             + (f" | Section: {section}" if section else "")
             + f" | Similarity: {sim:.3f}\n"
         )
-        blocks.append(header + "\n" + text + "\n")
+        # Prefix every source-controlled line so retrieved text can never
+        # impersonate the record separator or a subsequent chunk heading.
+        # The evidence bridge treats only unprefixed structural lines as
+        # citation authority.
+        quoted_text = "\n".join(f"> {line}" for line in text.splitlines())
+        blocks.append(header + "\n" + quoted_text + "\n")
     return "\n---\n".join(blocks)
+
+
+def _single_line_structural_field(value: object) -> str:
+    """Contain source metadata before inserting it into record framing."""
+    return " ".join(str(value).splitlines())
 
 
 # §9.0 guard: node_types whose ``canonical_label`` is a distilled free-text
@@ -440,6 +455,42 @@ def _prior_graph_knowledge_section(question: str) -> str:
     )
 
 
+async def _render_chunks_block_for_sub_question_async(
+    sub_question: str,
+    *,
+    top_k: int = 5,
+    policy_tag: str = "attribution_eligible",
+) -> str:
+    """Offload sync embedding + DuckDB search so uvicorn /health stays responsive."""
+    return await asyncio.to_thread(
+        _render_chunks_block_for_sub_question,
+        sub_question,
+        top_k=top_k,
+        policy_tag=policy_tag,
+    )
+
+
+async def _render_subgraph_block_for_sub_question_async(
+    sub_question: str,
+    *,
+    top_k: int = 5,
+    policy_tag: str = "attribution_eligible",
+) -> str:
+    """Offload sync subgraph search off the uvicorn event loop."""
+    return await asyncio.to_thread(
+        _render_subgraph_block_for_sub_question,
+        sub_question,
+        top_k=top_k,
+        policy_tag=policy_tag,
+    )
+
+
+async def _prior_graph_knowledge_section_async(question: str) -> str:
+    """Offload Phase-1 orientation corpus cite off the event loop."""
+    return await asyncio.to_thread(_prior_graph_knowledge_section, question)
+
+
+
 # Per-phase await timeout for role bridges. DeepSeek V4 Pro under
 # OpenRouter load empirically takes 200-250s on a long-output role
 # (decomposer producing 8 sub-questions with rationale was 226s on
@@ -453,6 +504,11 @@ PER_EVIDENCE_TIMEOUT = 300.0
 
 # ANT-DRL-03: bounded parallel Phase 2 retrieves (default 4 per spec
 # open question). Override via ANTIEK_PHASE_2_CONCURRENCY for profiling.
+# Default 4: one slot per typical Round-1 sub-question. Mini dogfood
+# (inv-0d863d4e73cc) proved retrieves already run in parallel — phase-2
+# wall ≈ max(provider latency), not sum. Raising concurrency above N
+# sub-questions does not shrink wall; cut per-call latency instead
+# (evidence Xiaomi prefer + compact JSON).
 PHASE_2_MAX_CONCURRENCY = max(
     1,
     int(os.environ.get("ANTIEK_PHASE_2_CONCURRENCY", "4")),
@@ -470,6 +526,7 @@ class InvestigationContext:
     investigation_id: str
     question: str
     context: str = ""
+    document_id: str | None = None
     topic_slug: str | None = None
     max_sub_questions: int = 8
     decomposition: DecomposeQuestionDeliveredPayload | None = None
@@ -627,7 +684,7 @@ async def _run_phase_1(
             f"Question: {ctx.question}\n\n"
             + ("Loop 1 orchestrator orienting on the cold question. " * 30)
             + "\n\n## Prior Graph Knowledge\n\n"
-            + _prior_graph_knowledge_section(ctx.question)
+            + await _prior_graph_knowledge_section_async(ctx.question)
         )
         _write_marker(ctx, "orientation.md", body)
     return await _drive_phase(ctx, phase=1, work=work())
@@ -669,12 +726,12 @@ async def _run_phase_2(
         sem = asyncio.Semaphore(PHASE_2_MAX_CONCURRENCY)
         delivered_action = _action_value(ActionType.EVIDENCE_RETRIEVE_DELIVERED)
 
-        async def _retrieve_one(sq: SubQuestion) -> EvidenceRetrieveDeliveredPayload:
+        async def _retrieve_one(index: int, sq: SubQuestion) -> EvidenceRetrieveDeliveredPayload:
             async with sem:
-                chunks_block = _render_chunks_block_for_sub_question(
+                chunks_block = await _render_chunks_block_for_sub_question_async(
                     sq.sub_question, top_k=5, policy_tag=research_policy_tag,
                 )
-                subgraph_block = _render_subgraph_block_for_sub_question(
+                subgraph_block = await _render_subgraph_block_for_sub_question_async(
                     sq.sub_question, top_k=5, policy_tag=research_policy_tag,
                 )
                 await broadcast_emit(
@@ -687,6 +744,11 @@ async def _run_phase_2(
                         top_k=5,
                         chunks_block=chunks_block,
                         subgraph_block=subgraph_block,
+                        owner_semantic_call_id=(
+                            f"phase2:{index}:" + hashlib.sha256(
+                                sq.sub_question.encode("utf-8")
+                            ).hexdigest()[:16]
+                        ),
                     ),
                     role="orchestrator",
                     policy_id="orchestrator-deterministic",
@@ -707,7 +769,9 @@ async def _run_phase_2(
                     )
                 return delivered.payload
 
-        results = await asyncio.gather(*(_retrieve_one(sq) for sq in sub_qs))
+        results = await asyncio.gather(*(
+            _retrieve_one(index, sq) for index, sq in enumerate(sub_qs)
+        ))
         ctx.evidence.extend(results)
         # Write the three round-1 dimension markers so the file-
         # artifact postcondition for Phase 2 passes. The markers
@@ -1673,6 +1737,23 @@ async def _run_investigation(
     """Walk all 9 phases. On any phase failure, emits
     ``investigation.failed`` and returns. On success, emits
     ``investigation.completed`` with the synthesis verdict."""
+    # AFF SPR-06 reuse half — Mini dogfood daily path is spin-research →
+    # Loop One (not HostLocalRunner). Emit knowledge.reused before phase 1
+    # so /health flywheel_ready can become honest once compounding runs.
+    # Offloaded: retrieval may load embedders / touch DuckDB.
+    try:
+        from substrate.flywheel.investigation_start_reuse import (
+            maybe_reuse_prior_knowledge_at_start,
+        )
+
+        await asyncio.to_thread(
+            maybe_reuse_prior_knowledge_at_start,
+            investigation_id=ctx.investigation_id,
+            question_text=ctx.question,
+            source_document_id=ctx.document_id,
+        )
+    except Exception:
+        pass
     phases: list[Callable[[], Coroutine[Any, Any, bool]]] = [
         lambda: _run_phase_1(ctx, broadcaster, coordinator),
         lambda: _run_phase_2(ctx, broadcaster, coordinator),
@@ -1886,6 +1967,7 @@ def make_loop_one_handler(
             investigation_id=event.investigation_id,
             question=req.question,
             context=req.context,
+            document_id=event.document_id,
             topic_slug=req.topic_slug,
             max_sub_questions=req.max_sub_questions,
             chase_mode=req.chase_mode,
@@ -1896,14 +1978,82 @@ def make_loop_one_handler(
         )
 
         async def run_and_maybe_chase() -> None:
-            await _run_investigation(ctx, broadcaster, coordinator)
+            token = None
+            if req.owner_model_choices is not None:
+                from interfaces.research.api.research_owner_dispatch import (
+                    PAID_LOOP_ONE_ROLES,
+                    ResearchOwnerManifest,
+                    install_manifest,
+                    reset_manifest,
+                )
+                from interfaces.research.api.settings_models_admin import UserModelChoice
+                app = getattr(broadcaster, "_owner_model_app", None)
+                if app is None or req.owner_user_id is None or req.owner_operation_id is None:
+                    ctx.failed_phase = 0
+                    ctx.fail_reason = "owner_model_unavailable"
+                    await broadcast_emit(
+                        broadcaster, ctx.investigation_id,
+                        InvestigationFailedPayload(
+                            phase=0, reason=ctx.fail_reason,
+                            last_completed_phase=None,
+                        ), role="orchestrator", policy_id="owner-model-terminal",
+                    )
+                    return
+                try:
+                    choices = {
+                        role: UserModelChoice.model_validate(req.owner_model_choices[role])
+                        for role in PAID_LOOP_ONE_ROLES
+                    }
+                except Exception:
+                    ctx.failed_phase = 0
+                    ctx.fail_reason = "owner_model_unavailable"
+                    await broadcast_emit(
+                        broadcaster, ctx.investigation_id,
+                        InvestigationFailedPayload(
+                            phase=0, reason=ctx.fail_reason,
+                            last_completed_phase=None,
+                        ), role="orchestrator", policy_id="owner-model-terminal",
+                    )
+                    return
+                token = install_manifest(ResearchOwnerManifest(
+                    app, req.owner_user_id, event.investigation_id,
+                    req.owner_operation_id, choices,
+                ))
+            try:
+                try:
+                    await _run_investigation(ctx, broadcaster, coordinator)
+                except Exception as exc:
+                    from interfaces.research.api.owner_byot_dispatch import (
+                        OwnerByotDispatchUnavailable,
+                        OwnerByotOutcomeUnknown,
+                    )
+                    if not isinstance(exc, OwnerByotDispatchUnavailable):
+                        raise
+                    ctx.failed_phase = min(ctx.last_completed_phase + 1, 9)
+                    ctx.fail_reason = (
+                        "owner_model_outcome_unknown"
+                        if isinstance(exc, OwnerByotOutcomeUnknown)
+                        else "owner_model_unavailable"
+                    )
+                    await broadcast_emit(
+                        broadcaster, ctx.investigation_id,
+                        InvestigationFailedPayload(
+                            phase=ctx.failed_phase, reason=ctx.fail_reason,
+                            last_completed_phase=(ctx.last_completed_phase or None),
+                        ), role="orchestrator", policy_id="owner-model-terminal",
+                    )
+            finally:
+                if token is not None:
+                    reset_manifest(token)
             # Only spawn a chase child if the investigation reached a
             # terminal state we can build on (we don't chase failures).
             if ctx.synthesis is not None and ctx.failed_phase is None:
                 await _maybe_spawn_chase_child(ctx, broadcaster)
 
         # Detached task — the orchestrator runs alongside the request
-        # handler that triggered it.
+        # handler that triggered it. Sync embed/search inside phases is
+        # further offloaded via asyncio.to_thread so --workers 1 uvicorn
+        # keeps serving /health during Loop One.
         asyncio.create_task(
             run_and_maybe_chase(),
             name=f"loop_one:{event.investigation_id}",

@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "qualifications": [
+    {
+      "provider": "exa",
+      "model": "agent-fixed-effort",
+      "operation": "create-agent-run",
+      "checked_at": "2026-07-13",
+      "verdict": "refused",
+      "evidence": {
+        "pinned_pricing": {
+          "status": "pass",
+          "source_url": "https://exa.ai/docs/reference/agent-api/overview",
+          "finding": "Fixed effort modes publish a per-request price; auto effort remains variable."
+        },
+        "durable_idempotency": {
+          "status": "unproven",
+          "source_url": "https://exa.ai/docs/reference/agent-api/create-a-run",
+          "finding": "The create contract returns a provider run ID but documents no caller-supplied idempotency key."
+        },
+        "hidden_retries_disabled": {
+          "status": "unproven",
+          "source_url": "https://exa.ai/docs/reference/agent-api/create-a-run",
+          "finding": "The create contract does not establish retry behavior for an Antiek adapter."
+        },
+        "authoritative_reconciliation": {
+          "status": "fail",
+          "source_url": "https://exa.ai/docs/reference/agent-api/get-a-run",
+          "finding": "Run retrieval and final cost require the provider ID returned by create, so a lost create response cannot be reconciled from Antiek's logical key."
+        },
+        "stable_provider_evidence": {
+          "status": "pass",
+          "source_url": "https://exa.ai/docs/reference/agent-api/get-a-run",
+          "finding": "A retrievable run contains provider status, usage, and costDollars when its provider ID is known."
+        }
+      }
+    },
+    {
+      "provider": "tavily",
+      "model": "research",
+      "operation": "create-research-task",
+      "checked_at": "2026-07-13",
+      "verdict": "refused",
+      "evidence": {
+        "pinned_pricing": {
+          "status": "pass",
+          "source_url": "https://docs.tavily.com/documentation/api-credits",
+          "finding": "Research models publish minimum and maximum credit boundaries and pay-as-you-go credit pricing."
+        },
+        "durable_idempotency": {
+          "status": "unproven",
+          "source_url": "https://docs.tavily.com/documentation/api-reference/endpoint/research",
+          "finding": "The create body documents no caller-supplied idempotency key; request_id is returned after acceptance."
+        },
+        "hidden_retries_disabled": {
+          "status": "unproven",
+          "source_url": "https://docs.tavily.com/documentation/api-reference/endpoint/research",
+          "finding": "The API contract does not establish adapter retry suppression."
+        },
+        "authoritative_reconciliation": {
+          "status": "fail",
+          "source_url": "https://docs.tavily.com/documentation/api-reference/endpoint/research-get",
+          "finding": "Task retrieval requires the provider-generated request_id; the usage endpoint is aggregate rather than keyed by Antiek's operation."
+        },
+        "stable_provider_evidence": {
+          "status": "pass",
+          "source_url": "https://docs.tavily.com/documentation/api-reference/endpoint/usage",
+          "finding": "Task status and account/key usage are provider-hosted evidence when their provider identities are available."
+        }
+      }
+    },
+    {
+      "provider": "perplexity",
+      "model": "agent",
+      "operation": "create-agent-response",
+      "checked_at": "2026-07-13",
+      "verdict": "refused",
+      "evidence": {
+        "pinned_pricing": {
+          "status": "pass",
+          "source_url": "https://docs.perplexity.ai/docs/getting-started/pricing",
+          "finding": "Official pricing publishes model token rates and tool invocation charges."
+        },
+        "durable_idempotency": {
+          "status": "unproven",
+          "source_url": "https://docs.perplexity.ai/api-reference/agent-post",
+          "finding": "The create contract documents a generated response ID but no caller-enforced idempotency key."
+        },
+        "hidden_retries_disabled": {
+          "status": "unproven",
+          "source_url": "https://docs.perplexity.ai/docs/sdk/error-handling",
+          "finding": "Official guidance recommends retries; a future adapter must prove retries are disabled for billable creates."
+        },
+        "authoritative_reconciliation": {
+          "status": "fail",
+          "source_url": "https://docs.perplexity.ai/api-reference/agent-post",
+          "finding": "Exact response cost is authoritative only after the generated response ID is known; no lookup by caller key is documented."
+        },
+        "stable_provider_evidence": {
+          "status": "pass",
+          "source_url": "https://docs.perplexity.ai/api-reference/agent-post",
+          "finding": "Stored responses expose provider status and a USD usage.cost breakdown."
+        }
+      }
+    },
+    {
+      "provider": "openai",
+      "model": "responses-deep-research",
+      "operation": "create-response",
+      "checked_at": "2026-07-13",
+      "verdict": "refused",
+      "evidence": {
+        "pinned_pricing": {
+          "status": "pass",
+          "source_url": "https://developers.openai.com/api/docs/pricing",
+          "finding": "Official pricing publishes model token and built-in tool rates."
+        },
+        "durable_idempotency": {
+          "status": "unproven",
+          "source_url": "https://platform.openai.com/docs/api-reference/introduction",
+          "finding": "X-Client-Request-Id is documented for tracing and support lookup, not provider-enforced deduplication."
+        },
+        "hidden_retries_disabled": {
+          "status": "pass",
+          "source_url": "https://github.com/openai/openai-python#retries",
+          "finding": "The official SDK documents max_retries=0, so an adapter can disable its default retries."
+        },
+        "authoritative_reconciliation": {
+          "status": "fail",
+          "source_url": "https://developers.openai.com/api/docs/guides/background",
+          "finding": "Background retrieval requires the generated response ID; callbacks and metadata do not provide authoritative lookup or not-found by Antiek key."
+        },
+        "stable_provider_evidence": {
+          "status": "pass",
+          "source_url": "https://developers.openai.com/api/docs/guides/background",
+          "finding": "Stored background responses provide provider status and usage when their response ID is known."
+        }
+      }
+    }
+  ]
+}

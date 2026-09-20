@@ -55,6 +55,11 @@ class MarkdownDoc:
     markdown: str
     word_count: int
     final_url: str | None = None
+    # The ISOLATED main-content HTML (chrome stripped, main root serialized).
+    # Computed by the extractor anyway (the root Tag), carried so the ingest
+    # path can feed the reader-HTML sidecar — sanitize-on-write happens in
+    # substrate.reader_html.store, never here (doc→HTML S1).
+    main_html: str = ""
 
 
 # Tags to strip wholesale — UI chrome that pollutes the article body.
@@ -107,29 +112,32 @@ def _pick_main(soup: BeautifulSoup) -> Tag:
 
 
 def _resolve_title(soup: BeautifulSoup) -> str | None:
-    og = soup.find("meta", attrs={"property": "og:title"})
-    og_content = og.get("content") if og else None
-    if og and og_content:
-        return str(og_content).strip()
+    og = soup.find("meta", property="og:title")
+    if og and og.get("content"):
+        og_content = og.get("content")
+        if isinstance(og_content, str) and og_content.strip():
+            return str(og_content).strip()
     title = soup.find("title")
     if title and title.get_text(strip=True):
-        return title.get_text(strip=True)
+        text = title.get_text(strip=True)
+        return text if isinstance(text, str) else None
     h1 = soup.find("h1")
     if h1 and h1.get_text(strip=True):
-        return h1.get_text(strip=True)
+        text = h1.get_text(strip=True)
+        return text if isinstance(text, str) else None
     return None
 
 
 def _resolve_author(soup: BeautifulSoup) -> str | None:
-    for key, value in [
-        ("name", "author"),
-        ("property", "article:author"),
-        ("name", "byl"),  # NYT
-    ]:
-        meta = soup.find("meta", attrs={key: value})
-        meta_content = meta.get("content") if meta else None
-        if meta and meta_content:
-            return str(meta_content).strip()
+    for meta in (
+        soup.find("meta", attrs={"name": "author"}),
+        soup.find("meta", property="article:author"),
+        soup.find("meta", attrs={"name": "byl"}),  # NYT
+    ):
+        if meta and meta.get("content"):
+            meta_content = meta.get("content")
+            if isinstance(meta_content, str) and meta_content.strip():
+                return str(meta_content).strip()
     sch = soup.find(itemprop="author")
     if sch:
         name = sch.find(itemprop="name")
@@ -138,7 +146,7 @@ def _resolve_author(soup: BeautifulSoup) -> str | None:
             return name_text
         txt = str(sch.get_text(strip=True))
         if txt:
-            return txt
+            return txt if isinstance(txt, str) else None
     return None
 
 
@@ -196,4 +204,5 @@ def html_to_markdown(
         markdown=full,
         word_count=len(full.split()),
         final_url=base_url,
+        main_html=str(root),
     )

@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+
+[Unit]
+Description=Antiek verified-backup freshness probe
+Documentation=https://github.com/Slimydog21/Antiek/blob/main/tools/backup_freshness.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/antiek-backup-freshness-probe
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=60
+ProtectSystem=strict
+ProtectHome=read-only
+NoNewPrivileges=true
+PrivateTmp=true

@@ -386,13 +386,14 @@ def test_antiek_node_types_is_subset_of_schema_literal():
     """Every value extraction can produce must be accepted by the schema's
     NodeType Literal, so extraction never emits a value the Pydantic
     payload would reject. This is a SUBSET relationship, not equality:
-    DRW SPR-01 added 'insight' + 'question' as node types that are promoted
-    from the note-taker path, never produced by chunk extraction."""
+    DRW SPR-01 added promotion-only 'insight' + 'question', and account-memory
+    S2a added the projection-only 'memory' type; chunk extraction emits none of
+    those three."""
     import typing as _t
 
     from substrate.schemas.events import NodeType
     schema_values = set(_t.get_args(NodeType))
     assert schema_values >= ANTIEK_NODE_TYPES
-    # The only members of NodeType not produced by extraction are the two
-    # promotion-only types; guard against accidental drift the other way.
-    assert schema_values - ANTIEK_NODE_TYPES == {"insight", "question"}
+    # The only members not produced by extraction are the two promotion types
+    # and the account-memory projection type.
+    assert schema_values - ANTIEK_NODE_TYPES == {"insight", "question", "memory"}

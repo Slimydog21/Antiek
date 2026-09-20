@@ -72,7 +72,24 @@ export async function installAuthMock(page: Page): Promise<void> {
   //    scene must be visible WITHOUT the paid stream). Return graceful-absence
   //    so the procedural scene renders and nothing throws.
   await page.route("**/krea/scene", (route) => json(route, 200, { art: null, mood: null }));
-  await page.route("**/krea/**", (route) => json(route, 200, { art: null }));
+  await page.route("**/krea/**", (route) => {
+    if (new URL(route.request().url()).pathname.endsWith("/krea/status")) {
+      return json(route, 200, {
+        enabled: false,
+        key_present: false,
+        kill_switch: false,
+        gate_verdict: "no_key",
+        reasons: ["no_key"],
+        budget: { spent_today: 0, cap: 0, remaining: 0 },
+        rate_window: { occupancy: 0, max: 0, window_s: 60 },
+        cache: { entries: 0, max_entries: 0 },
+        last_success_at: null,
+        failure_counts: {},
+        failures: [],
+      });
+    }
+    return json(route, 200, { art: null });
+  });
 }
 
 /** Options for `loginAndGotoApp`. */
