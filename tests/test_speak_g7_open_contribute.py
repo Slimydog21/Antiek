@@ -134,11 +134,131 @@ def test_open_contribute_is_rate_limited(client, monkeypatch):
     ).json()
     path = f"/speak/projects/{pub['project_id']}/open-contribute"
 
-    limit = min(_OPEN_CONTRIBUTE_PER_IP_LIMIT, _OPEN_CONTRIBUTE_GLOBAL_LIMIT)
-    codes = [client.post(path).status_code for _ in range(limit + 3)]
-
-    assert codes[:limit] == [201] * limit, f"first {limit} should mint: {codes}"
-    assert codes[limit:] == [429] * 3, f"the rest must be throttled: {codes}"
+    # Pin the PER-IP bucket. Deliberately NOT min(per_ip, global): the first
+    # version of this test used the min, which is the per-IP limit, sent
+    # per_ip + 3 requests, and therefore never reached the global bucket at
+    # all. Mutation-proved vacuous — it passed with the global limit set to
+    # 100000 AND with the global bucket deleted outright, while its name
+    # claimed the door was rate limited. test_global_bucket_is_pinned below
+    # covers the other half; neither test alone certifies the pair.
+    codes = [
+        client.post(path).status_code
+        for _ in range(_OPEN_CONTRIBUTE_PER_IP_LIMIT + 3)
+    ]
+    n = _OPEN_CONTRIBUTE_PER_IP_LIMIT
+    assert codes[:n] == [201] * n, f"first {n} should mint: {codes}"
+    assert codes[n:] == [429] * 3, f"the rest must be throttled: {codes}"
 
     reset_auth_throttles()
     assert client.post(path).status_code == 201, "window reset must re-open the door"
+
+
+def test_global_bucket_is_pinned_independently_of_the_per_ip_bucket(
+    client, monkeypatch
+):
+    """The global bucket must be load-bearing, and provably so.
+
+    The per-IP test cannot see this bucket: it stops at PER_IP_LIMIT + 3
+    requests, far under GLOBAL_LIMIT. To reach it, every request must come
+    from a DIFFERENT client IP so the per-IP gate never fires.
+
+    TestClient pins ``request.client.host`` to a constant and ignores
+    X-Forwarded-For, so varying a header does not work — an earlier version of
+    this test did exactly that and stayed vacuous, passing with the global
+    bucket deleted because the per-IP gate was silently supplying the 429s.
+    Patch the ``_client_ip`` that speak_routes actually calls instead.
+    """
+    import itertools
+
+    from interfaces.research.api import speak_routes
+    from interfaces.research.api.auth import reset_auth_throttles
+    from interfaces.research.api.speak_routes import (
+        _OPEN_CONTRIBUTE_GLOBAL_LIMIT,
+        _OPEN_CONTRIBUTE_PER_IP_LIMIT,
+    )
+
+    assert _OPEN_CONTRIBUTE_PER_IP_LIMIT < _OPEN_CONTRIBUTE_GLOBAL_LIMIT, (
+        "this test assumes per-IP is the tighter bucket; if that inverts, "
+        "spreading across IPs stops isolating the global one"
+    )
+
+    counter = itertools.count()
+    monkeypatch.setattr(
+        speak_routes, "_client_ip", lambda _request: f"10.0.0.{next(counter)}"
+    )
+
+    reset_auth_throttles()
+    monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_ECOSYSTEM", "1")
+    pub = client.post(
+        "/speak/projects",
+        json={
+            "title": "Theo Bakery",
+            "subject_ref": "Uncle Theo",
+            "publish_intent": "will_be_public",
+        },
+    ).json()
+    path = f"/speak/projects/{pub['project_id']}/open-contribute"
+
+    codes = [
+        client.post(path).status_code
+        for _ in range(_OPEN_CONTRIBUTE_GLOBAL_LIMIT + 5)
+    ]
+    minted = codes.count(201)
+    throttled = codes.count(429)
+
+    # Every request had a unique IP, so the per-IP bucket can never fire.
+    # Any 429 here came from the global bucket or from nothing.
+    assert throttled == 5, (
+        f"expected exactly 5 requests past the global limit to be refused; "
+        f"got {minted} minted / {throttled} throttled against a global limit "
+        f"of {_OPEN_CONTRIBUTE_GLOBAL_LIMIT}. Deleting the global bucket must "
+        "fail this test."
+    )
+    assert minted == _OPEN_CONTRIBUTE_GLOBAL_LIMIT, (
+        f"{minted} minted against a global limit of "
+        f"{_OPEN_CONTRIBUTE_GLOBAL_LIMIT}"
+    )
+
+
+def test_one_ip_cannot_exhaust_the_global_budget(client, monkeypatch):
+    """Pins the ORDER of the two gates, which neither other test can see.
+
+    ``_throttled`` records a hit on every call, so checking global first let a
+    single caller burn global budget with requests its own per-IP limit was
+    about to reject: one IP sending GLOBAL_LIMIT requests mints only
+    PER_IP_LIMIT but consumes the whole global window, denying every other
+    caller. That made the throttle a cheaper denial lever than the unbounded
+    endpoint it replaced.
+
+    Both other tests in this file pass under either ordering — verified by
+    mutation — so without this one the order is unpinned.
+    """
+    from interfaces.research.api.auth import _throttle, reset_auth_throttles
+    from interfaces.research.api.speak_routes import (
+        _OPEN_CONTRIBUTE_GLOBAL_LIMIT,
+        _OPEN_CONTRIBUTE_PER_IP_LIMIT,
+    )
+
+    reset_auth_throttles()
+    monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_ECOSYSTEM", "1")
+    pub = client.post(
+        "/speak/projects",
+        json={
+            "title": "Theo Bakery",
+            "subject_ref": "Uncle Theo",
+            "publish_intent": "will_be_public",
+        },
+    ).json()
+    path = f"/speak/projects/{pub['project_id']}/open-contribute"
+
+    # TestClient pins request.client.host to a constant, so every one of these
+    # is the SAME caller — which is exactly the scenario under test.
+    for _ in range(_OPEN_CONTRIBUTE_GLOBAL_LIMIT + 5):
+        client.post(path)
+
+    consumed = len(_throttle.get("speak:open-contribute:global", []))
+    assert consumed <= _OPEN_CONTRIBUTE_PER_IP_LIMIT, (
+        f"one IP consumed {consumed} of {_OPEN_CONTRIBUTE_GLOBAL_LIMIT} global "
+        "slots; the per-IP gate must reject first so a single caller cannot "
+        "deny the endpoint to everyone else"
+    )
