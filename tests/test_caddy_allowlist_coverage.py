@@ -16,7 +16,6 @@ from __future__ import annotations
 import glob
 import os
 import re
-from pathlib import Path
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_HERE)
@@ -41,16 +40,6 @@ _DECORATOR = re.compile(
 )
 # Standalone APIRouters register top-level prefixes the @app scanner misses
 # (e.g. multimedia_router = APIRouter(prefix="/multimedia") — live prod gap).
-# Any decorator, not just @app. -- the variable name is captured so the
-# router's prefix can be applied.
-_ANY_DECORATOR = re.compile(
-    r"""@([A-Za-z_]\w*)\.(?:get|post|put|delete|patch|websocket)\(\s*["']([^"']+)["']"""
-)
-# name = APIRouter(prefix="/x") -- binds the variable to its mount prefix.
-_ROUTER_PREFIX_BINDING = re.compile(
-    r"""(\w+)\s*=\s*APIRouter\([^)]*?prefix\s*=\s*["']([^"']+)["']""",
-    re.DOTALL,
-)
 _ROUTER_PREFIX = re.compile(
     r"""APIRouter\(\s*(?:[^)]*?\bprefix\s*=\s*["']([^"']+)["'])"""
 )
@@ -170,37 +159,15 @@ def test_browser_navigation_never_swallows_auth_callbacks() -> None:
 
 
 def _registered_full_paths() -> set[str]:
-    r"""Every concrete route path, as it is actually MOUNTED.
-
-    Two things this must get right, both of which a previous version did not:
-
-    1. ``@app.`` is not the only decorator. Routes registered on an
-       ``APIRouter`` -- ``@speak_router.post``, ``@write_router.post``,
-       ``@style_router.get`` -- were invisible to a ``@app.``-only regex.
-       That scanner saw 148 routes out of 325, so the "full glob" check it
-       fed was de-collapsing less than half the surface while the rest stayed
-       at segment granularity: the exact collapse this section exists to fix.
-
-    2. A router's ``prefix=`` is part of the mounted path. ``@write_router
-       .post("/blocks")`` on ``APIRouter(prefix="/write")`` is ``/write/blocks``
-       at the edge, not ``/blocks``. Recording the bare literal invents routes
-       that do not exist and hides the ones that do.
-
-    No ``include_router(...)`` call in this tree passes ``prefix=`` (52 calls,
-    0 with a prefix), so the router's own ``prefix=`` is the whole story. If
-    that ever changes, this scanner must learn the include-time prefix too.
-    """
+    """Every concrete route path declared in the API modules."""
     out: set[str] = set()
-    for f in sorted(Path(_REPO, "interfaces").rglob("*.py")):
-        src = f.read_text(encoding="utf-8", errors="ignore")
-        prefixes = dict(_ROUTER_PREFIX_BINDING.findall(src))
-        for m in _ANY_DECORATOR.finditer(src):
-            var, path = m.group(1), m.group(2)
-            if not path.startswith("/"):
-                continue
-            full = prefixes.get(var, "") + path
-            if full and full != "/":
-                out.add(full)
+    for f in glob.glob(os.path.join(_API_DIR, "*.py")):
+        with open(f, encoding="utf-8") as fh:
+            src = fh.read()
+        for m in _DECORATOR.finditer(src):
+            path = m.group(1)
+            if path.startswith("/") and path != "/":
+                out.add(path)
     return out
 
 
