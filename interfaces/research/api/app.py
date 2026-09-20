@@ -161,8 +161,11 @@ class HealthResponse(BaseModel):
     turbopuffer_resolved_kind: str = "brute_force"
     turbopuffer_indexed_row_count: int | None = None
     turbopuffer_content_hash: str | None = None
-    turbopuffer_duckdb_is_sot: bool = True
-    turbopuffer_thought_partner_hybrid_wired: bool = True
+    # bool | None, not bool: None means the probe could not determine it.
+    # These were `bool = True`, so a FAILED probe still reported both as
+    # satisfied — two claims asserted exactly when nothing had checked them.
+    turbopuffer_duckdb_is_sot: bool | None = None
+    turbopuffer_thought_partner_hybrid_wired: bool | None = None
     turbopuffer_production_default_mount: bool = False
     # GF-7: startup read-only health snapshot for the graph DuckDB file.
     # This is intentionally separate from ``status`` so /health can keep
@@ -289,8 +292,10 @@ def _probe_turbopuffer() -> dict[str, Any]:
             "resolved_kind": "brute_force",
             "indexed_row_count": None,
             "content_hash": None,
-            "duckdb_is_sot": True,
-            "thought_partner_hybrid_wired": True,
+            # Probe unavailable → unknown, not "yes". See the same reasoning
+            # in substrate/graph/retrieval_adapters/turbopuffer.py.
+            "duckdb_is_sot": None,
+            "thought_partner_hybrid_wired": None,
             "production_default_mount": False,
             "error": f"{type(exc).__name__}: {exc}",
         }
@@ -2148,14 +2153,17 @@ def create_app(
                     "content_hash"
                 )
             ),
-            turbopuffer_duckdb_is_sot=bool(
+            # No bool() and no True default: both would launder "unknown"
+            # into a definite answer. A missing key means the probe never ran,
+            # which is exactly as unknown as a probe that raised.
+            turbopuffer_duckdb_is_sot=(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "duckdb_is_sot", True
+                    "duckdb_is_sot"
                 )
             ),
-            turbopuffer_thought_partner_hybrid_wired=bool(
+            turbopuffer_thought_partner_hybrid_wired=(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "thought_partner_hybrid_wired", True
+                    "thought_partner_hybrid_wired"
                 )
             ),
             turbopuffer_production_default_mount=bool(
