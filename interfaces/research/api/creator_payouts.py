@@ -11,11 +11,11 @@ render "you have $X accrued; $Y paid out; KYC status: COMPLETED".
 
 from __future__ import annotations
 
-from typing import Any
-
 import duckdb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+
+from runtime.db_lock import ReadConnection, connect_read
 
 # ── Pydantic shapes ────────────────────────────────────────────────
 
@@ -56,9 +56,7 @@ def _resolve_db_path() -> str:
     return path
 
 
-def _load_kyc_state(
-    con: duckdb.DuckDBPyConnection, recipient_ref: str,
-) -> str | None:
+def _load_kyc_state(con: ReadConnection, recipient_ref: str) -> str | None:
     """Read the latest kyc_status row for the recipient."""
     try:
         row = con.execute(
@@ -71,9 +69,7 @@ def _load_kyc_state(
     return row[0] if row else None
 
 
-def _load_transfers(
-    con: duckdb.DuckDBPyConnection, recipient_ref: str,
-) -> list[tuple[Any, ...]]:
+def _load_transfers(con, recipient_ref: str) -> list[tuple]:
     """Load every transfer attempt routed to the recipient. Filters
     by ``recipient_account_id`` matching the recipient_ref (the
     substrate uses the user_id / ip_holder_id as the Stripe Connect
@@ -104,7 +100,7 @@ def register_creator_payouts_routes(app: FastAPI) -> None:
         recipient_ref: str,
     ) -> CreatorPayoutsResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             kyc_state = _load_kyc_state(con, recipient_ref)
             rows = _load_transfers(con, recipient_ref)
@@ -143,7 +139,7 @@ def register_creator_payouts_routes(app: FastAPI) -> None:
             load_balance_cents,
         )
 
-        con2 = duckdb.connect(db, read_only=True)
+        con2 = connect_read(db)
         try:
             rollover_balance_cents = load_balance_cents(
                 con2, recipient_ref,

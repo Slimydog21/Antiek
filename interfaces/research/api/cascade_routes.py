@@ -393,6 +393,31 @@ def _research_loop_factory() -> BrowseLoop:
     return cast(BrowseLoop, make_contract_gather_stub(steps=2, cost_per_step=0.01))
 
 
+def resolved_gather_mode() -> str:
+    """Which gather backend ``_research_loop_factory`` would build, as one word.
+
+    Exposed on ``/health`` so "is DRW actually retrieving, or returning the
+    stub?" is answerable without shell access on the box. It was not: the
+    only signal lived in an env var on the server, and
+    ``infrastructure/ansible/templates/secrets.env.j2:64`` renders
+    ``ANTIEK_DRW_GATHER=`` EMPTY (the intended ``=exa`` sits in a comment two
+    lines above), while an empty value is not ``"exa"`` and falls to the
+    stub. A deployment could therefore do no real retrieval while the smoke
+    runbook read green.
+
+    This mirrors ``_research_loop_factory``'s branch order exactly rather than
+    re-deriving it, and ``tests/test_drw_gather_mode_reported.py`` pins the
+    two together for every env combination — so the reported word cannot
+    drift from the loop that actually gets built.
+    """
+    mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
+    backend_kind = os.environ.get(BACKEND_ENV, "").strip()
+    if backend_kind:
+        # _research_loop_factory refuses this combination rather than picking one.
+        return "conflict" if mode == "exa" else "contained"
+    return "exa" if mode == "exa" else "stub"
+
+
 def _command(kind: str, payload: dict[str, Any] | None) -> Command:
     try:
         return Command(kind=CommandKind(kind), payload=payload or {})
@@ -645,7 +670,7 @@ async def source_policy_preflight(
 
 
 @cascade_router.post("/plans")
-async def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
+def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
     """Decompose a problem into an editable, focus-checked sub-question tree
     and persist it. Returns the root node id + the editable tree."""
     if req.spend_mode is SpendControlMode.HARD_CEILING and not req.sub_questions:
@@ -718,7 +743,7 @@ async def get_plan(root_id: str) -> dict[str, Any]:
 
 
 @cascade_router.post("/plans/{root_id}/edit")
-async def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
+def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
     """Apply one edit to the tree and re-persist. Any edit re-opens the
     approval gate (SPR-05 contract)."""
     with _translate():
@@ -759,7 +784,7 @@ def _apply_edit(tree: PlanTree, req: TreeEditRequest) -> bool:
 
 
 @cascade_router.post("/plans/{root_id}/approve")
-async def approve(root_id: str, req: ApproveRequest) -> dict[str, Any]:
+def approve(root_id: str, req: ApproveRequest) -> dict[str, Any]:
     with _write("approve_plan") as con:
         approval = approve_plan(
             root_id, approver=req.approver, investigation_id="__operator__", con=con

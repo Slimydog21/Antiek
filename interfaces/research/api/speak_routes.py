@@ -31,6 +31,7 @@ economics.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
@@ -151,24 +152,24 @@ def _translate() -> Iterator[None]:
     try:
         yield
     except (ScopedConsentRequired, ConsentRequired, PublicEcosystemGated) as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise HTTPException(status_code=403, detail=str(e))
     except (PublishBlocked, DisbursementBlocked) as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
+        raise HTTPException(status_code=409, detail=str(e))
     except AsrError as e:
         # Transcription couldn't run (no model provider configured, or the
         # provider failed). The honest answer is "we couldn't turn your
         # recording into words" — never a fabricated transcript. 503 because
         # it's a missing/temporarily-unavailable capability, not a bad token.
-        raise HTTPException(status_code=503, detail=str(e)) from e
+        raise HTTPException(status_code=503, detail=str(e))
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 def _decimal(value: str, field: str) -> Decimal:
     try:
         return Decimal(value)
-    except (InvalidOperation, TypeError) as err:
-        raise HTTPException(status_code=400, detail=f"{field} must be a decimal string") from err
+    except (InvalidOperation, TypeError):
+        raise HTTPException(status_code=400, detail=f"{field} must be a decimal string")
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +355,7 @@ async def create_biography(req: CreateBiographyRequest) -> BiographyCompositionR
 
 
 @speak_router.get("/projects")
-async def list_projects() -> dict[str, Any]:
+async def list_projects() -> dict:
     """List Speak projects (the operator's project index). Uses a write
     lock only to ensure the Speak schema exists on a fresh DB; the query
     itself is a read."""
@@ -387,7 +388,7 @@ async def get_project(project_id: str) -> ProjectResponse:
 
 
 @speak_router.get("/projects/{project_id}/economics")
-async def get_economics(project_id: str) -> dict[str, Any]:
+async def get_economics(project_id: str) -> dict:
     with _translate(), _read("speak/api:economics") as con:
         policy = economics_mode.policy_for_project(con, project_id)
     # The G2/G3 gate STATE, read-only (gate_status.py). The UI shows these
@@ -411,7 +412,7 @@ async def get_economics(project_id: str) -> dict[str, Any]:
 
 
 @speak_router.get("/feed")
-async def public_feed() -> dict[str, Any]:
+async def public_feed() -> dict:
     """The browsable PUBLIC feed (M1): projects whose intent is public —
     the surface a visitor scrolls and can 'interview-with'/chime in on.
     Honest when empty (returns ``[]``). Distinct from ``GET /projects``,
@@ -425,6 +426,15 @@ async def public_feed() -> dict[str, Any]:
                 "FROM speak_projects p "
                 "JOIN interview_projects ip ON ip.project_id = p.project_id "
                 "WHERE p.publish_intent = 'will_be_public' "
+                # An active takedown means STOP PUBLISHING. This feed is
+                # unauthenticated and returns subject_ref + subject_status,
+                # so without this predicate a project under takedown keeps
+                # disclosing its subject to anyone. substrate/speak/
+                # publish_gate.py:162 refuses to publish on exactly this
+                # condition; the browsable surface has to agree with the
+                # gate that governs it.
+                "AND NOT EXISTS (SELECT 1 FROM speak_takedowns t "
+                "WHERE t.project_id = p.project_id AND t.status = 'active') "
                 "ORDER BY p.created_at DESC"
             ).fetchall()
     except FileNotFoundError:
@@ -466,7 +476,7 @@ async def invite(project_id: str, req: InviteRequest) -> InviteResponse:
 
 
 @speak_router.get("/projects/{project_id}/invites")
-async def list_invites(project_id: str) -> dict[str, Any]:
+async def list_invites(project_id: str) -> dict:
     with _translate(), _write("speak/api:list_invites") as con:
         rows = invitations.lifecycle(con, project_id)
     return {"count": len(rows), "invites": rows}
@@ -493,7 +503,7 @@ async def resolve_invite(token: str) -> InviteResponse:
 
 
 @speak_router.post("/projects/{project_id}/open-public", status_code=200)
-async def open_public(project_id: str) -> dict[str, Any]:
+async def open_public(project_id: str) -> dict:
     # Gated on G7 — refuses (403) unless ANTIEK_SPEAK_PUBLIC_ECOSYSTEM.
     with _translate(), _write("speak/api:open_public") as con:
         invitations.open_public_contribution(con, project_id)
@@ -574,8 +584,18 @@ async def open_contribute(project_id: str, request: Request) -> dict[str, Any]:
             status_code=429,
             detail="open contribution is busy; retry shortly",
         )
-    with _translate(), _write("speak/api:open_contribute") as con:
-        inv = invitations.mint_open_contribution(con, project_id)
+    # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
+    # that inline in an `async def` parks the whole uvicorn event loop, and
+    # the service runs --workers 1, so one caller stalls the entire API for
+    # up to five minutes. This route is reachable WITHOUT a session (the
+    # operator-auth middleware waves it through), so that is an anonymous
+    # denial of service, not merely a slow request. Hop the blocking work to
+    # a thread, the idiom cbc7c8475 established for the operator routes.
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:open_contribute") as con:
+            return invitations.mint_open_contribution(con, project_id)
+
+    inv = await asyncio.to_thread(_sync)
     return {
         "honesty": {
             "open_contribution": "live_g7_will_be_public_only",
@@ -592,7 +612,7 @@ async def open_contribute(project_id: str, request: Request) -> dict[str, Any]:
 
 
 @speak_router.post("/interviews/{interview_id}/consent", status_code=200)
-async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict[str, Any]:
+async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict:
     with _translate(), _write("speak/api:consent") as con:
         scopes = [ConsentScope(s) for s in req.scopes]
         state = consent_mod.record_consent(con, interview_id=interview_id, scopes=scopes)
@@ -600,7 +620,7 @@ async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict[st
 
 
 @speak_router.get("/interviews/{interview_id}")
-async def get_interview(interview_id: str) -> dict[str, Any]:
+async def get_interview(interview_id: str) -> dict:
     with _translate():
         session = resume(default_db_path(), interview_id)
     return {
@@ -613,7 +633,7 @@ async def get_interview(interview_id: str) -> dict[str, Any]:
 
 
 @speak_router.post("/interviews/{interview_id}/answers", status_code=201)
-async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict[str, Any]:
+async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict:
     with _translate():
         result = submit_answer(
             _db(), interview_id=interview_id, question_id=req.question_id,
@@ -626,7 +646,7 @@ async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict
 
 
 @speak_router.post("/interviews/{interview_id}/followups")
-async def interview_followups(interview_id: str) -> dict[str, Any]:
+async def interview_followups(interview_id: str) -> dict:
     with _translate():
         fus = next_followups(_db(), interview_id=interview_id)
     return {"followups": [
@@ -637,7 +657,7 @@ async def interview_followups(interview_id: str) -> dict[str, Any]:
 
 
 @speak_router.post("/interviews/{interview_id}/claims", status_code=201)
-async def record_interview_claim(interview_id: str, req: ClaimRequest) -> dict[str, Any]:
+async def record_interview_claim(interview_id: str, req: ClaimRequest) -> dict:
     """The answer→claim bridge: record an explicit claim attributed to
     the interviewee (about_subject / third-party tagging is a confirmed
     judgment, not an inference). Feeds corroboration + authoring +
@@ -663,7 +683,7 @@ async def record_interview_claim(interview_id: str, req: ClaimRequest) -> dict[s
 
 
 @speak_router.post("/projects/{project_id}/corroborate")
-async def corroborate(project_id: str) -> dict[str, Any]:
+async def corroborate(project_id: str) -> dict:
     with _translate(), _write("speak/api:corroborate") as con:
         clusters = corroboration.corroborate_project(con, project_id)
     return {"clusters": [
@@ -679,7 +699,7 @@ async def corroborate(project_id: str) -> dict[str, Any]:
 
 
 @speak_router.post("/projects/{project_id}/subject-consent", status_code=200)
-async def set_subject_consent(project_id: str, req: SubjectConsentRequest) -> dict[str, Any]:
+async def set_subject_consent(project_id: str, req: SubjectConsentRequest) -> dict:
     with _translate(), _write("speak/api:subject_consent") as con:
         subject_consent_mod.record_subject_consent(
             con, project_id=project_id, subject_ref=req.subject_ref,
@@ -690,7 +710,7 @@ async def set_subject_consent(project_id: str, req: SubjectConsentRequest) -> di
 
 
 @speak_router.post("/projects/{project_id}/contributors", status_code=201)
-async def map_contributor(project_id: str, req: ContributorRequest) -> dict[str, Any]:
+async def map_contributor(project_id: str, req: ContributorRequest) -> dict:
     with _translate(), _write("speak/api:contributor") as con:
         m = contributor_mod.map_contributor(
             con, interview_id=req.interview_id, project_id=project_id,
@@ -702,7 +722,7 @@ async def map_contributor(project_id: str, req: ContributorRequest) -> dict[str,
 
 
 @speak_router.post("/projects/{project_id}/takedowns", status_code=201)
-async def request_takedown(project_id: str, req: TakedownRequestModel) -> dict[str, Any]:
+async def request_takedown(project_id: str, req: TakedownRequestModel) -> dict:
     with _translate(), _write("speak/api:takedown") as con:
         tid = takedown_mod.request_takedown(
             con, project_id=project_id, target_kind=req.target_kind,
@@ -712,7 +732,7 @@ async def request_takedown(project_id: str, req: TakedownRequestModel) -> dict[s
 
 
 @speak_router.post("/projects/{project_id}/draft")
-async def draft(project_id: str, req: DraftRequest) -> dict[str, Any]:
+async def draft(project_id: str, req: DraftRequest) -> dict:
     with _translate(), _write("speak/api:draft") as con:
         outline = biography.assemble_outline(con, project_id=project_id)
         d = biography.generate_draft(con, project_id=project_id, outline=outline, public=req.public)
@@ -728,7 +748,7 @@ async def draft(project_id: str, req: DraftRequest) -> dict[str, Any]:
 
 
 @speak_router.post("/projects/{project_id}/publish", status_code=201)
-async def publish(project_id: str, req: PublishRequest) -> dict[str, Any]:
+async def publish(project_id: str, req: PublishRequest) -> dict:
     ad_revenue = _decimal(req.ad_revenue_usd, "ad_revenue_usd")
     with _translate(), _write("speak/api:publish") as con:
         result = publish_mod.publish(
@@ -750,7 +770,7 @@ async def publish(project_id: str, req: PublishRequest) -> dict[str, Any]:
 
 
 @speak_router.post("/interviews/{interview_id}/grade", status_code=201)
-async def grade_interview(interview_id: str, req: GradeInterviewRequest) -> dict[str, Any]:
+async def grade_interview(interview_id: str, req: GradeInterviewRequest) -> dict:
     """AI-grade one interview against the requester's information goal
     (SPR-10 M3). The grade is produced by the verifier (here: the honest
     deterministic rubric, since no ``dispatch_fn`` is injected on this
@@ -781,7 +801,7 @@ async def grade_interview(interview_id: str, req: GradeInterviewRequest) -> dict
 
 
 @speak_router.post("/projects/{project_id}/release-payout", status_code=201)
-async def release_payout(project_id: str, req: ReleasePayoutRequest) -> dict[str, Any]:
+async def release_payout(project_id: str, req: ReleasePayoutRequest) -> dict:
     """Release graded payout for a project (SPR-10 M3), routed through §9
     (``accrue_contributions``) into ESCROW — never disbursed. Enforces the
     requester's budget + per-interview cap. With zero ad buyers this
@@ -812,7 +832,7 @@ async def release_payout(project_id: str, req: ReleasePayoutRequest) -> dict[str
 
 
 @speak_router.post("/projects/{project_id}/book-orders", status_code=201)
-async def order_book(project_id: str, req: BookOrderRequest) -> dict[str, Any]:
+async def order_book(project_id: str, req: BookOrderRequest) -> dict:
     with _translate(), _write("speak/api:book_order") as con:
         quote = physical_book.order_physical_book(
             con, project_id=project_id, book_format=req.book_format,
@@ -844,7 +864,7 @@ class RepingRequest(BaseModel):
 @speak_router.get("/opportunities")
 async def public_opportunities(
     interest: str | None = Query(None, description="Optional interest tokens for title/subject overlap"),
-) -> dict[str, Any]:
+) -> dict:
     """Unauthenticated public contribution opportunities (read-only).
 
     Same multi-signal heuristic as dual-push public list — NOT ML.
@@ -1004,6 +1024,13 @@ async def reping_invitee(req: RepingRequest) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+# Ceiling for an invite voice note. Matches the upload limit this repo
+# already uses (doc_ingest_routes.py:58, upload_routes.py:66) rather than
+# inventing a new number. A MediaRecorder note is far smaller in practice;
+# this is a ceiling, not a target.
+_MAX_VOICE_BYTES = 64 * 1024 * 1024
+
+
 class InviteConsentRequest(BaseModel):
     scopes: list[str] = Field(..., min_length=1)
 
@@ -1054,7 +1081,7 @@ def _require_token(con: Any, token: str) -> tuple[str, str]:
 
 
 @speak_router.get("/invite/{token}")
-async def invitee_landing(token: str) -> dict[str, Any]:
+async def invitee_landing(token: str) -> dict:
     """One call for the invitee's landing page: the project they've been
     invited to, the consent scopes the invite asks for, what they've
     already granted (so a returning invitee skips re-consent), and — once
@@ -1103,24 +1130,90 @@ async def invitee_landing(token: str) -> dict[str, Any]:
 
 
 @speak_router.post("/invite/{token}/consent", status_code=200)
-async def invitee_consent(token: str, req: InviteConsentRequest) -> dict[str, Any]:
-    with _translate(), _write("speak/api:invite_consent") as con:
-        interview_id, _ = _require_token(con, token)
-        scopes = [ConsentScope(s) for s in req.scopes]
-        state = consent_mod.record_consent(con, interview_id=interview_id, scopes=scopes)
+async def invitee_consent(token: str, req: InviteConsentRequest) -> dict:
+    # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
+    # that inline in an `async def` parks the whole uvicorn event loop, and
+    # the service runs --workers 1, so one caller stalls the entire API for
+    # up to five minutes. This route is reachable WITHOUT a session (the
+    # operator-auth middleware waves it through), so that is an anonymous
+    # denial of service, not merely a slow request. Hop the blocking work to
+    # a thread, the idiom cbc7c8475 established for the operator routes.
+    def _sync() -> tuple[str, Any]:
+        # Reject an unknown token on the READ path, BEFORE the flock.
+        # This route is waved through the operator gate, so without this
+        # an anonymous caller with a junk token still acquires the
+        # single-writer lock and starves the real writer (ingest, backup)
+        # for up to DEFAULT_TIMEOUT_S. The write below still calls
+        # _require_token, which remains the authority -- this is a cheap
+        # rejection filter, not the check itself, so the race between the
+        # two is harmless: a token revoked in between is caught by the
+        # write-side check exactly as before.
+        try:
+            with _translate(), _read("speak/api:invite_consent:precheck") as _pre:
+                _known = _invite_read_or_404(_pre, token) is not None
+        except FileNotFoundError:
+            # No DB file yet means no invite can exist. Map to the same 404
+            # rather than letting the writer create the database for an
+            # anonymous caller -- _read documents this exact contract.
+            _known = False
+        if not _known:
+            raise HTTPException(
+                status_code=404, detail="unknown or expired invite link"
+            )
+        with _translate(), _write("speak/api:invite_consent") as con:
+            interview_id, _ = _require_token(con, token)
+            scopes = [ConsentScope(s) for s in req.scopes]
+            state = consent_mod.record_consent(
+                con, interview_id=interview_id, scopes=scopes
+            )
+            return interview_id, state
+
+    interview_id, state = await asyncio.to_thread(_sync)
     return {"interview_id": interview_id, "granted": sorted(s.value for s in state.granted)}
 
 
 @speak_router.post("/invite/{token}/answer", status_code=201)
-async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict[str, Any]:
-    with _translate(), _write("speak/api:invite_answer_resolve") as con:
-        interview_id, _ = _require_token(con, token)
-    # submit_answer acquires its own lock(s); call outside ours.
-    with _translate():
-        result = submit_answer(
-            _db(), interview_id=interview_id, question_id=req.question_id,
-            transcript=req.transcript, duration_seconds=req.duration_seconds,
-        )
+async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict:
+    # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
+    # that inline in an `async def` parks the whole uvicorn event loop, and
+    # the service runs --workers 1, so one caller stalls the entire API for
+    # up to five minutes. This route is reachable WITHOUT a session (the
+    # operator-auth middleware waves it through), so that is an anonymous
+    # denial of service, not merely a slow request. Hop the blocking work to
+    # a thread, the idiom cbc7c8475 established for the operator routes.
+    def _sync() -> Any:
+        # Reject an unknown token on the READ path, BEFORE the flock.
+        # This route is waved through the operator gate, so without this
+        # an anonymous caller with a junk token still acquires the
+        # single-writer lock and starves the real writer (ingest, backup)
+        # for up to DEFAULT_TIMEOUT_S. The write below still calls
+        # _require_token, which remains the authority -- this is a cheap
+        # rejection filter, not the check itself, so the race between the
+        # two is harmless: a token revoked in between is caught by the
+        # write-side check exactly as before.
+        try:
+            with _translate(), _read("speak/api:invite_answer_resolve:precheck") as _pre:
+                _known = _invite_read_or_404(_pre, token) is not None
+        except FileNotFoundError:
+            # No DB file yet means no invite can exist. Map to the same 404
+            # rather than letting the writer create the database for an
+            # anonymous caller -- _read documents this exact contract.
+            _known = False
+        if not _known:
+            raise HTTPException(
+                status_code=404, detail="unknown or expired invite link"
+            )
+        with _translate(), _write("speak/api:invite_answer_resolve") as con:
+            interview_id, _ = _require_token(con, token)
+        # submit_answer acquires its own lock(s); call outside ours — but
+        # still on this thread, never the loop.
+        with _translate():
+            return submit_answer(
+                _db(), interview_id=interview_id, question_id=req.question_id,
+                transcript=req.transcript, duration_seconds=req.duration_seconds,
+            )
+
+    result = await asyncio.to_thread(_sync)
     return {"interview_id": result.interview_id, "question_id": result.question_id,
             "document_id": result.document_id, "skipped_reason": result.skipped_reason}
 
@@ -1159,7 +1252,45 @@ async def invitee_voice(
     or silently distils a misheard one — the invitee is told their
     recording couldn't be turned into words, and the text fallback stands.
     """
+    # Resolve the token BEFORE buffering the body. request.body() reads the
+    # whole payload into memory, and this route is waved through the operator
+    # gate, so doing it first let an anonymous caller with a junk token push
+    # an arbitrary number of bytes into the process before being 404'd.
+    try:
+        with _translate(), _read("speak/api:invite_voice_resolve:precheck") as _pre:
+            _known = _invite_read_or_404(_pre, token) is not None
+    except FileNotFoundError:
+        # No DB file yet means no invite can exist. Map to the same 404
+        # rather than letting the writer create the database for an
+        # anonymous caller -- _read documents this exact contract.
+        _known = False
+    if not _known:
+        raise HTTPException(
+            status_code=404, detail="unknown or expired invite link"
+        )
+    # Bound the payload. There is no limit at the edge (the Caddy template
+    # sets no request_body max) and the middleware's only Content-Length
+    # check is the TTS gateway's. The declared-length pre-check mirrors
+    # settings_tiers.py:200; the post-read check catches a lying header.
+    _declared = request.headers.get("Content-Length")
+    if _declared is not None:
+        try:
+            _declared_n = int(_declared)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail="invalid Content-Length"
+            ) from None
+        if _declared_n > _MAX_VOICE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"voice note exceeds {_MAX_VOICE_BYTES} byte limit",
+            )
     audio = await request.body()
+    if len(audio) > _MAX_VOICE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"voice note exceeds {_MAX_VOICE_BYTES} byte limit",
+        )
     if not audio:
         raise HTTPException(status_code=400, detail="empty audio body")
     content_type = request.headers.get("content-type", "audio/webm")
@@ -1170,20 +1301,40 @@ async def invitee_voice(
         sub = content_type.split("/", 1)[1].split(";", 1)[0].strip()
         if sub:
             ext = sub
-    with _translate(), _write("speak/api:invite_voice_resolve") as con:
-        interview_id, _ = _require_token(con, token)
-    # transcribe + submit acquire their own locks; do them OUTSIDE ours.
-    with _translate():
-        text = transcribe_voice(
-            audio,
-            filename=f"invite-voice.{ext}",
-            transcriber=_INVITEE_TRANSCRIBER,
-            language=language,
-        )
-        result = submit_answer(
-            _db(), interview_id=interview_id, question_id=question_id,
-            transcript=text, duration_seconds=duration_seconds,
-        )
+    # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
+    # that inline in an `async def` parks the whole uvicorn event loop, and
+    # the service runs --workers 1, so one caller stalls the entire API for
+    # up to five minutes. This route is reachable WITHOUT a session (the
+    # operator-auth middleware waves it through), so that is an anonymous
+    # denial of service, not merely a slow request. Hop the blocking work to
+    # a thread, the idiom cbc7c8475 established for the operator routes.
+    def _sync() -> tuple[str, Any]:
+        # Reject an unknown token on the READ path, BEFORE the flock.
+        # This route is waved through the operator gate, so without this
+        # an anonymous caller with a junk token still acquires the
+        # single-writer lock and starves the real writer (ingest, backup)
+        # for up to DEFAULT_TIMEOUT_S. The write below still calls
+        # _require_token, which remains the authority -- this is a cheap
+        # rejection filter, not the check itself, so the race between the
+        # two is harmless: a token revoked in between is caught by the
+        # write-side check exactly as before.
+        with _translate(), _write("speak/api:invite_voice_resolve") as con:
+            interview_id, _ = _require_token(con, token)
+        # transcribe + submit acquire their own locks; do them OUTSIDE ours
+        # — and off the loop, since Whisper is CPU-bound for seconds.
+        with _translate():
+            text = transcribe_voice(
+                audio,
+                filename=f"invite-voice.{ext}",
+                transcriber=_INVITEE_TRANSCRIBER,
+                language=language,
+            )
+            return text, submit_answer(
+                _db(), interview_id=interview_id, question_id=question_id,
+                transcript=text, duration_seconds=duration_seconds,
+            )
+
+    text, result = await asyncio.to_thread(_sync)
     return {
         "interview_id": result.interview_id, "question_id": result.question_id,
         "document_id": result.document_id, "skipped_reason": result.skipped_reason,
@@ -1193,10 +1344,41 @@ async def invitee_voice(
 
 @speak_router.post("/invite/{token}/followups")
 async def invitee_followups(token: str) -> dict[str, Any]:
-    with _translate(), _write("speak/api:invite_followups_resolve") as con:
-        interview_id, _ = _require_token(con, token)
-    with _translate():
-        fus = next_followups(_db(), interview_id=interview_id)
+    # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
+    # that inline in an `async def` parks the whole uvicorn event loop, and
+    # the service runs --workers 1, so one caller stalls the entire API for
+    # up to five minutes. This route is reachable WITHOUT a session (the
+    # operator-auth middleware waves it through), so that is an anonymous
+    # denial of service, not merely a slow request. Hop the blocking work to
+    # a thread, the idiom cbc7c8475 established for the operator routes.
+    def _sync() -> Any:
+        # Reject an unknown token on the READ path, BEFORE the flock.
+        # This route is waved through the operator gate, so without this
+        # an anonymous caller with a junk token still acquires the
+        # single-writer lock and starves the real writer (ingest, backup)
+        # for up to DEFAULT_TIMEOUT_S. The write below still calls
+        # _require_token, which remains the authority -- this is a cheap
+        # rejection filter, not the check itself, so the race between the
+        # two is harmless: a token revoked in between is caught by the
+        # write-side check exactly as before.
+        try:
+            with _translate(), _read("speak/api:invite_followups_resolve:precheck") as _pre:
+                _known = _invite_read_or_404(_pre, token) is not None
+        except FileNotFoundError:
+            # No DB file yet means no invite can exist. Map to the same 404
+            # rather than letting the writer create the database for an
+            # anonymous caller -- _read documents this exact contract.
+            _known = False
+        if not _known:
+            raise HTTPException(
+                status_code=404, detail="unknown or expired invite link"
+            )
+        with _translate(), _write("speak/api:invite_followups_resolve") as con:
+            interview_id, _ = _require_token(con, token)
+        with _translate():
+            return next_followups(_db(), interview_id=interview_id)
+
+    fus = await asyncio.to_thread(_sync)
     return {"followups": [
         {"question_id": f.question_id, "text": f.text,
          "follow_up_for_prior_turn": f.follow_up_for_prior_turn}
@@ -1206,7 +1388,39 @@ async def invitee_followups(token: str) -> dict[str, Any]:
 
 @speak_router.post("/invite/{token}/decline", status_code=200)
 async def invitee_decline(token: str) -> dict[str, Any]:
-    with _translate(), _write("speak/api:invite_decline_resolve") as con:
-        interview_id, _ = _require_token(con, token)
-    decline(_db(), interview_id)
+    # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
+    # that inline in an `async def` parks the whole uvicorn event loop, and
+    # the service runs --workers 1, so one caller stalls the entire API for
+    # up to five minutes. This route is reachable WITHOUT a session (the
+    # operator-auth middleware waves it through), so that is an anonymous
+    # denial of service, not merely a slow request. Hop the blocking work to
+    # a thread, the idiom cbc7c8475 established for the operator routes.
+    def _sync() -> str:
+        # Reject an unknown token on the READ path, BEFORE the flock.
+        # This route is waved through the operator gate, so without this
+        # an anonymous caller with a junk token still acquires the
+        # single-writer lock and starves the real writer (ingest, backup)
+        # for up to DEFAULT_TIMEOUT_S. The write below still calls
+        # _require_token, which remains the authority -- this is a cheap
+        # rejection filter, not the check itself, so the race between the
+        # two is harmless: a token revoked in between is caught by the
+        # write-side check exactly as before.
+        try:
+            with _translate(), _read("speak/api:invite_decline_resolve:precheck") as _pre:
+                _known = _invite_read_or_404(_pre, token) is not None
+        except FileNotFoundError:
+            # No DB file yet means no invite can exist. Map to the same 404
+            # rather than letting the writer create the database for an
+            # anonymous caller -- _read documents this exact contract.
+            _known = False
+        if not _known:
+            raise HTTPException(
+                status_code=404, detail="unknown or expired invite link"
+            )
+        with _translate(), _write("speak/api:invite_decline_resolve") as con:
+            interview_id, _ = _require_token(con, token)
+        decline(_db(), interview_id)
+        return interview_id
+
+    interview_id = await asyncio.to_thread(_sync)
     return {"interview_id": interview_id, "status": "declined"}

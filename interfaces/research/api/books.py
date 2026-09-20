@@ -2030,7 +2030,7 @@ def register_book_routes(app: FastAPI) -> None:
         response_model=FullTextResponse,
         tags=["books"],
     )
-    async def get_book_full_text(document_id: str) -> FullTextResponse:
+    def get_book_full_text(document_id: str) -> FullTextResponse:
         from runtime.db_lock import connect_read
 
         db = _resolve_db_path()
@@ -2058,7 +2058,7 @@ def register_book_routes(app: FastAPI) -> None:
         response_model=FullTextResponse,
         tags=["books"],
     )
-    async def get_owner_book_full_text(
+    def get_owner_book_full_text(
         document_id: str, request: Request
     ) -> FullTextResponse:
         """Serve personal-reading bytes only on the proven owner path.

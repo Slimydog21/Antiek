@@ -43,7 +43,10 @@ from processing.embedding import (  # noqa: E402
     EmbeddingProvider,
     default_embedding_provider,
 )
-from runtime.db_lock import connect_write  # noqa: E402
+from runtime.db_lock import (  # noqa: E402
+    connect_read,
+    connect_write,  # noqa: E402
+)
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.context_pack import (  # noqa: E402
     LayerSource,
@@ -217,8 +220,8 @@ def _resolve_region_text_from_db(
     init the DB)."""
     chunk_id = _region_to_chunk_id(region_id)
     try:
-        import duckdb
-        con = duckdb.connect(db_path, read_only=True)
+
+        con = connect_read(db_path)
     except Exception:
         return None
     try:

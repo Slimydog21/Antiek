@@ -23,9 +23,25 @@ From repo: `tools/ops/smoke_drw_1.sh` (same contract).
 ```bash
 curl -sS https://api.antiek.ai/health | python3 -m json.tool
 # Expect: status ok, providers_ready true, build_sha matches main deploy
+#         drw_gather_mode "exa" — "stub" means NO REAL RETRIEVAL
 ```
 
-Prod gather: `ANTIEK_DRW_GATHER=exa` + `EXA_API_KEY` on `/etc/antiek/secrets.env` (set via ansible).
+Prod gather: `ANTIEK_DRW_GATHER=exa` + `EXA_API_KEY` on `/etc/antiek/secrets.env`.
+
+> **Corrected 2026-09-20.** This line previously said "(set via ansible)".
+> Ansible does not set it. `infrastructure/ansible/templates/secrets.env.j2:64`
+> renders `ANTIEK_DRW_GATHER=` and `EXA_API_KEY=` **empty** — the intended
+> `=exa` is in a comment two lines above — and `setup.yml` places the file with
+> `force: false`, so it is written once on a fresh VM and never updated.
+> `_research_loop_factory` reads `os.environ.get("ANTIEK_DRW_GATHER", "stub")`,
+> and an empty string is not `"exa"`, so the untouched rendering yields the
+> contract stub: no retrieval, while this checklist reads green.
+>
+> Both values must be set by hand on the box, or the template taught to
+> interpolate them. Until then, **verify, do not assume**: `/health` now
+> reports `drw_gather_mode`, which is derived from the same branch the cascade
+> takes (`tests/test_drw_gather_mode_reported.py` pins them together), so the
+> curl above answers the question directly.
 
 Local hermetic gate:
 
