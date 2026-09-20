@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-20T14:24:00.835844+00:00",
+  "generated_at": "2026-09-20T14:37:09.312167+00:00",
   "lint": "no_indirect_write_in_async",
   "schema_version": 1,
   "violations": [
@@ -170,27 +170,6 @@
       "line": 1209,
       "path": "interfaces/research/api/speak_routes.py",
       "snippet": "with _translate(), _write(\"speak/api:invite_decline_resolve\") as con:"
-    },
-    {
-      "col": 4,
-      "kind": "indirect-write-in-async:_deposit_synthesis_to_substrate",
-      "line": 1722,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "_deposit_synthesis_to_substrate(ctx)"
-    },
-    {
-      "col": 4,
-      "kind": "indirect-write-in-async:_deposit_synthesis_to_substrate",
-      "line": 1845,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "_deposit_synthesis_to_substrate(ctx)"
-    },
-    {
-      "col": 4,
-      "kind": "indirect-write-in-async:_register_twin_document",
-      "line": 301,
-      "path": "substrate/multimedia/knowledge_registration.py",
-      "snippet": "_register_twin_document("
     }
   ]
 }

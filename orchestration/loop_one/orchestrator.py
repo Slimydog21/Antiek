@@ -1719,7 +1719,7 @@ async def run_synthesis_tail_from_pack(
         role="orchestrator",
         policy_id="orchestrator-cascade-tail",
     )
-    _deposit_synthesis_to_substrate(ctx)
+    await asyncio.to_thread(_deposit_synthesis_to_substrate, ctx)
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
     return ctx
 
@@ -1842,7 +1842,7 @@ async def _run_investigation(
         role="orchestrator",
         policy_id="orchestrator-deterministic",
     )
-    _deposit_synthesis_to_substrate(ctx)
+    await asyncio.to_thread(_deposit_synthesis_to_substrate, ctx)
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
 
 
