@@ -3481,8 +3481,9 @@ def create_app(
         Implementation note: section_blocks has a composite PK
         ``(section_id, block_kind, block_id)``. Moving to a new
         section requires DELETE + INSERT under the same lock."""
-        from runtime.db_lock import connect_write
         import duckdb
+
+        from runtime.db_lock import connect_write
 
         db = _resolve_db_path()
         target_section = req.new_section_id or req.section_id

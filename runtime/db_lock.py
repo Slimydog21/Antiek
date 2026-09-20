@@ -429,14 +429,10 @@ def _log_write_event_sync(
                 con.close()
         finally:
             if acquired:
-                try:
+                with contextlib.suppress(OSError):
                     fcntl.flock(fd, fcntl.LOCK_UN)
-                except OSError:
-                    pass
-            try:
+            with contextlib.suppress(OSError):
                 os.close(fd)
-            except OSError:
-                pass
     except Exception as e:  # pragma: no cover — observability is best-effort
         # If write_log doesn't exist yet (pre-migration), or any other failure,
         # don't propagate. A single line on stderr is enough for ops.
@@ -508,7 +504,7 @@ class LockedConnection:
         return result
 
     @contextlib.contextmanager
-    def transaction(self) -> Iterator["LockedConnection"]:
+    def transaction(self) -> Iterator[LockedConnection]:
         """Run a multi-statement write atomically.
 
         The flock this connection holds gives **mutual exclusion**, not
@@ -591,10 +587,8 @@ class LockedConnection:
                 purpose=self._purpose,
                 keepalive_s=self._keepalive_s,
             )
-            try:
+            with contextlib.suppress(RuntimeError):
                 _PROCESS_WRITE_GATE.release()
-            except RuntimeError:
-                pass
             return
         try:
             self._con.close()
@@ -604,14 +598,10 @@ class LockedConnection:
             try:
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
             finally:
-                try:
+                with contextlib.suppress(OSError):
                     os.close(self._lock_fd)
-                except OSError:
-                    pass
-            try:
+            with contextlib.suppress(RuntimeError):
                 _PROCESS_WRITE_GATE.release()
-            except RuntimeError:
-                pass
         # Log AFTER the lock is released, on a fresh connection (briefly
         # re-locked). The main pipeline never blocks on this.
         if self._db_path:
@@ -678,7 +668,7 @@ def _connect_write_after_process_gate(
     poll_interval_s: float = 0.25,
     purpose: str = "",
     close_log_max_wait_s: float = 0.25,
-) -> "LockedConnection":
+) -> LockedConnection:
     # Fast path: reuse parked in-process writer (skips ~6.8s duckdb.connect).
     warm = _take_warm_slot(db_path)
     if warm is not None:
@@ -748,7 +738,7 @@ def _connect_write_after_process_gate(
                     raise WriteLockTimeout(
                         f"Could not acquire write lock on {lock_path} within {timeout_s}s. "
                         f"Another writer is holding it; inspect with `lsof {lock_path}`."
-                    )
+                    ) from e
                 time.sleep(
                     min(poll_interval_s, max(0.0, deadline - time.monotonic()))
                 )
@@ -756,10 +746,8 @@ def _connect_write_after_process_gate(
         raise
     except Exception:
         _unregister_write_waiter(waiter)
-        try:
+        with contextlib.suppress(OSError):
             os.close(fd)
-        except OSError:
-            pass
         raise
 
     _unregister_write_waiter(waiter)
@@ -1159,19 +1147,15 @@ class FlockWriteCoordinator:
                         os.close(fd)
                         raise WriteLockTimeout(
                             f"Could not acquire write lock on {lock_path} within {self.timeout_s}s."
-                        )
+                        ) from e
                     time.sleep(0.1)
         except Exception:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(fd)
-            except OSError:
-                pass
             raise
-        try:
+        with contextlib.suppress(OSError):
             os.ftruncate(fd, 0)
             os.write(fd, f"{os.getpid()} {purpose} {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n".encode())
-        except OSError:
-            pass
         con = duckdb.connect(self.db_path)
         wrapped = LockedConnection(
             con, fd, lock_path,
