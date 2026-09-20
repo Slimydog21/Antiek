@@ -39,7 +39,12 @@ is preserved when BYOT-only is off, and remains disabled when BYOT-only is on.
 Legacy v1/v2 credentials are deliberately excluded because their owner metadata
 is not cryptographically authenticated. The current migration tool writes v3
 records and its synthetic migration-to-startup regression passes. Re-onboard a
-legacy shared key explicitly if shared startup is still required.
+legacy shared key explicitly if shared startup is still required. The current
+migration tool counts records from all owners when skipping existing handles;
+use `--overwrite` for this recovery. It also appends instead of replacing old
+records, so delete a retired shared credential explicitly by ID after confirming
+the replacement. These migration-tool defects remain separate follow-ups in the
+PR #3197 ownership lane.
 
 PR #3197 adds `--email` migration into a derived personal owner. Such credentials
 will intentionally stop qualifying for shared startup under this fix. Do not
@@ -84,7 +89,10 @@ not a newest-key policy.
 
 ### Status
 
-Implementation and local verification complete; independent review pending.
+Implementation and local verification complete. Independent GLM 5.3 review
+returned ACCEPT, independently rerunning 48 resolver/bootstrap/migration tests.
+It identified the two pre-existing migration-tool limits documented above.
+Draft PR #3276 is open; CI and deployment remain unproved.
 
 ### Files touched
 
@@ -97,7 +105,7 @@ Implementation and local verification complete; independent review pending.
 - [x] Reproduce cross-owner startup resolution with real encrypted records.
 - [x] Restrict shared startup without changing request-scoped authority.
 - [x] Verify current migration, legacy rejection, tampering, and owner consumers.
-- [ ] Independent review and draft PR.
+- [x] Independent GLM 5.3 ACCEPT and draft PR #3276.
 
 ### Gate results
 
