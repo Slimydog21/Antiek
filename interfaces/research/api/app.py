@@ -1842,6 +1842,11 @@ def create_app(
     # cost projection (honest nulls when pricing/spend unknown).
     from .settings_budget import register_settings_budget_routes
     register_settings_budget_routes(app)
+    # Midnight-oil SPR-06 — no-spend preflight for autonomous research swarms:
+    # time box, approved ceiling, route policy, source policy, and HTML/twin-note
+    # artifact obligations. Does not launch agents or reserve budget.
+    from .midnight_oil_routes import register_midnight_oil_routes
+    register_midnight_oil_routes(app)
     # OYM P1 §5 — visible tiers (write half): user-settable chunk tier
     # overrides (POST /settings/tier-overrides) + per-chunk override
     # history (GET /settings/tier-overrides?chunk_id=...).
