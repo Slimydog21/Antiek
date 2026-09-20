@@ -23,8 +23,15 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: visualtest-${{ github.ref }}
-  cancel-in-progress: true
+  # One run per PR branch: a new push to a PR cancels the previous run,
+  # because only the latest head of a PR is worth checking. main is
+  # different — every commit there is a release candidate, so its run must
+  # reach a verdict. Keying main by `github.ref` with cancel-in-progress
+  # meant each merge cancelled the previous merge's run; on ci.yml that
+  # produced 32 cancelled / 8 failure / ZERO success over 40 main runs
+  # before #3203 fixed it. Same shape, same consequence.
+  group: visualtest-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lostpixel:

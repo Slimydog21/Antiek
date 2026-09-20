@@ -36,8 +36,14 @@ on:
   workflow_dispatch:  # let the operator probe prod on demand from the Actions tab
 
 concurrency:
-  group: prod-parity
-  cancel-in-progress: true
+  # Was `group: prod-parity` with no ref and no event — a single
+  # repository-global slot, so ANY run cancelled any other. A manual
+  # workflow_dispatch would kill the scheduled parity check that was
+  # mid-probe, and two scheduled runs could not overlap at all. This is the
+  # only always-on alarm that production matches main; it must not be able
+  # to cancel itself. Give each run its own slot and never cancel.
+  group: prod-parity-${{ github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   probe:
