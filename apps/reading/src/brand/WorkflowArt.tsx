@@ -21,30 +21,39 @@
  */
 import type { Workflow } from "../shell/workflowTaxonomy";
 
+
+import biographyArt from "./workflow-art/biography-512.png";
 import readArt from "./workflow-art/read-512.png";
 import researchArt from "./workflow-art/research-512.png";
 import speakArt from "./workflow-art/speak-512.png";
 import writeArt from "./workflow-art/write-512.png";
 
-const ART: Partial<Record<Workflow, string>> = {
+/** Features that carry their own art. The four product doors, plus surfaces
+ *  that compose several doors and so cannot borrow one door's prop —
+ *  Biography draws on research, writing and gathered voices at once. */
+export type ArtFeature = Exclude<Workflow, "shared"> | "biography";
+
+const ART: Partial<Record<ArtFeature, string>> = {
   research: researchArt,
   read: readArt,
   write: writeArt,
   speak: speakArt,
+  biography: biographyArt,
 };
 
 /** The floor at which all four props still resolve as distinct objects. */
 export const WORKFLOW_ART_MIN_PX = 48;
 
 type Props = {
-  workflow: Workflow | undefined;
+  /** Which feature's art to draw. `shared`/undefined renders nothing. */
+  workflow: ArtFeature | Workflow | undefined;
   /** Rendered edge length in px. Values below the floor are clamped, not honoured. */
   size?: number;
   className?: string;
 };
 
 export default function WorkflowArt({ workflow, size = 64, className }: Props) {
-  const src = workflow ? ART[workflow] : undefined;
+  const src = workflow ? ART[workflow as ArtFeature] : undefined;
   if (!src) return null;
   const px = Math.max(size, WORKFLOW_ART_MIN_PX);
   return (
