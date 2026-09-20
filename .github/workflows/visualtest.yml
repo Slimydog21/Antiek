@@ -57,7 +57,7 @@ jobs:
       - name: Build Storybook
         run: npm run build-storybook
 
-      - name: Run Lost-Pixel against committed baselines (informational)
+      - name: Run Lost-Pixel against committed baselines
         # BLOCKING (AGH SPR-04 G2): the reconsider-if that made this
         # informational — "baselines committed under
         # apps/reading/.lostpixel/baseline/" (ci-informational-gates.md §3) —
@@ -71,7 +71,40 @@ jobs:
         # baselines. If this PR's own run reds, the committed baselines are
         # stale and need an operator re-approval (an honest signal, not a
         # reason to re-swallow).
-        run: npx lost-pixel
+        #
+        # 2026-09-20: the paragraph above was TRUE about intent and WRONG about
+        # effect. lost-pixel 3.22.0 cannot fail on a difference by itself. In
+        # node_modules/lost-pixel/dist/runner.js the exit is nested twice:
+        #
+        #     if ((aboveThresholdDifferenceItems.length > 0 || ...)
+        #         && config.failOnDifference) {
+        #         log('Exiting process with N found differences')
+        #         if (config.generateOnly) { await exitProcess(...) }
+        #     }
+        #
+        # failOnDifference is unset here, and even with it set the exit is
+        # gated on generateOnly — which this project must keep FALSE to
+        # compare against the committed baselines at all. So `npx lost-pixel`
+        # returns 0 no matter how many shots regress, the step goes green, and
+        # because the artifact upload below is `if: failure()` the diffs are
+        # never even uploaded. A CI run was observed green with 357
+        # "Difference of" lines, the largest at 85.95% against a 0.4%
+        # threshold.
+        #
+        # So assert on the artifact lost-pixel WRITES rather than on its exit
+        # code: it emits one PNG into imagePathDifference per above-threshold
+        # shot, and writes nothing there when every shot is within threshold.
+        # That signal does not depend on upstream exit semantics.
+        run: |
+          set -o pipefail
+          npx lost-pixel
+          diffs=$(find .lostpixel/diff -type f -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
+          if [ "${diffs:-0}" -gt 0 ]; then
+            echo "::error title=Visual regression::lost-pixel wrote ${diffs} above-threshold diff(s) to .lostpixel/diff. Review the uploaded artifact; if the change is intentional, land the updated baselines (npm run visualtest:update) in this PR."
+            find .lostpixel/diff -type f -name '*.png' | sed 's|^|  |' | head -40
+            exit 1
+          fi
+          echo "lost-pixel: no above-threshold differences."
 
       - name: Upload diff artifacts on failure
         if: failure()
