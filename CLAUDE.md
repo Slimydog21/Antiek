@@ -123,8 +123,12 @@ Auth: magic-link via AgentMail. Per
 <!-- BEGIN: craft-signature (managed by SPR-E7 of antiek-hashimoto-engineering) -->
 - **Craft signature: inline-rubric latency.** `substrate.synthesis_rubric.scorer.score_synthesis`
   p95 must stay within 10% of the locked baseline (194.85 μs at git
-  `640a31c`, 2026-05-24). CI fails on regression via
-  `python -m benchmarks.rubric_latency --check-regression`. Every other
+  `640a31c`, 2026-05-24). Enforced OPERATOR-SIDE via
+  `python -m benchmarks.rubric_latency --check-regression`. CI runs it
+  INFORMATIONALLY only: `ci.yml:190` pipes it to `|| echo "::warning
+  title=Latency check is informational on CI..."`, because the shared
+  runner reports a false +120% on a microsecond benchmark. (Corrected
+  2026-09-20: this read "CI fails on regression".) Every other
   perf dimension is explicitly "good enough" — see `docs/craft_signature.md`
   for the policy + the locked numbers. To re-mint the baseline after a
   deliberate perf change: `python -m benchmarks.rubric_latency --update-baseline`
