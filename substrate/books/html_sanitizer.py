@@ -80,7 +80,12 @@ from urllib.parse import urlsplit
 # tag pops ONLY the exact stack top; a close for a container deeper in the
 # stack pops nothing (r1's pop-through repair could un-suppress content while
 # an inner drop-container was logically still open).
-SANITIZER_VERSION = "books-allowlist/1.3.0"
+# 1.4.0: a drop-with-content tag that is ALSO an HTML void element no longer
+# opens a suppression that nothing can close. <embed> is void, so no </embed>
+# ever arrives, so the fail-closed pop in 1.2.0 correctly refused to fire and
+# the remainder of the document was suppressed to EOF. One <embed> anywhere in
+# a fetched page silently truncated the stored reader HTML at that point.
+SANITIZER_VERSION = "books-allowlist/1.4.0"
 
 # documents.metadata keys of the trusted-HTML contract. A serve path may emit
 # a stored body AS HTML only when is_trusted_sanitized(metadata) is True.
@@ -106,6 +111,22 @@ ALLOWED_TAGS: frozenset[str] = frozenset({
 
 # Void elements among the allowed set — serialized self-closing, no end tag.
 VOID_TAGS: frozenset[str] = frozenset({"br", "hr", "img"})
+
+# HTML's void elements, per the spec. Deliberately NOT the same set as
+# VOID_TAGS above: that one is the allowlist subset this sanitizer may EMIT,
+# while this one is every element the parser will never hand us an end tag for.
+#
+# The distinction is load-bearing. A tag in _DROP_WITH_CONTENT opens a
+# suppression that only its own end tag closes (fail-closed, see 1.2.0). If
+# such a tag is void, that end tag never comes, and everything after it is
+# swallowed to EOF. Today `embed` is the only member of both sets, but the
+# defect belongs to the intersection rather than to that one tag, so it is
+# closed structurally — adding `source`, `track` or `param` to the drop set
+# later must not silently reintroduce it.
+_HTML_VOID_ELEMENTS: frozenset[str] = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+})
 
 # Active-content containers: dropped WITH their entire content. script/style
 # text must never survive as visible text either. head/title are here so a
@@ -246,7 +267,10 @@ class _SanitizingParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
         if tag in _DROP_WITH_CONTENT:
-            self._drop_stack.append(tag)
+            # A void drop-tag is dropped on the spot. Pushing it would open a
+            # suppression no end tag can ever close (see _HTML_VOID_ELEMENTS).
+            if tag not in _HTML_VOID_ELEMENTS:
+                self._drop_stack.append(tag)
             return
         if self._drop_stack:
             return
