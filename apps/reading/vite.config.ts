@@ -18,6 +18,8 @@ const API_TARGET = "http://127.0.0.1:8000";
 
 export default defineConfig({
   plugins: [react()],
+  // Scan the app entry, not generated Storybook or diagnostic HTML.
+  optimizeDeps: { entries: ["index.html"] },
   server: {
     port: 5173,
     proxy: {

@@ -31,7 +31,9 @@
     "visualtest": "npm run build-storybook && lost-pixel",
     "visualtest:update": "npm run build-storybook && lost-pixel update",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify:deps": "node scripts/verify_dependency_compat.mjs",
+    "verify:vite-dev": "node scripts/verify_vite_dev.mjs"
   },
   "dependencies": {
     "@posthog/react": "^1.10.0",
@@ -78,7 +80,7 @@
     "tailwindcss": "^3.4.15",
     "tsx": "^4.22.3",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11",
+    "vite": "^6.4.3",
     "vitest": "^4.1.7"
   },
   "overrides": {
