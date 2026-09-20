@@ -420,35 +420,52 @@ def _notebook_id_for_document(document_id: str, db_path: str) -> str | None:
         con.close()
 
 
-def _reader_sidecar_source_kind(document_id: str, db_path: str) -> str | None:
-    """The ``source_kind`` of an existing reader-HTML row, or None if there is none.
+ANTIEK_SOURCE_KIND: Final[str] = "antiek"
+ANTIEK_DOCUMENT_TYPE: Final[str] = "antiek_artifact"
 
-    The return leg must never overwrite a reader body some other lane wrote.
-    A notebook can be BOUND to a document (``notebooks.document_id``), and the
+
+def _claimed_id_is_free_or_ours(document_id: str, db_path: str) -> bool:
+    """Whether the return leg may write under the id an artifact claims.
+
+    The return leg must never take over a document some other lane wrote. A
+    notebook can be BOUND to a document (``notebooks.document_id``), and the
     export path stamps that binding into the manifest, so a wrestle notebook
     attached to a book exports an artifact whose claimed document_id is the
-    BOOK's. Writing the notebook's prose under that id on re-import would
-    replace the book's reader body with it — silently, and with no way back.
-    So the claimed id is honoured only when nothing is there yet, or when this
-    route put it there (which keeps a second import of the same artifact
-    idempotent instead of minting a duplicate).
+    BOOK's. Honouring the claim would replace the book's reader body with the
+    notebook's prose — served under the book's title, its provenance footer and
+    its rights class, silently and with no way back.
+
+    BOTH tables have to be asked, because a document and its reader body are
+    written separately and a document routinely exists before its reader HTML
+    does. Asking only the sidecar reads a book that has not been projected yet
+    as "nothing is there", which is the loudest version of exactly the clobber
+    this guard exists to refuse. So the claim is honoured only when the id is
+    unoccupied in both tables, or when this route is what occupies it — which
+    keeps a second import of the same artifact idempotent instead of minting a
+    duplicate.
     """
     from runtime.db_lock import connect_read
 
     con = connect_read(db_path)
     try:
         row = con.execute(
+            "SELECT document_type FROM documents WHERE document_id = ?",
+            [document_id],
+        ).fetchone()
+        if row is not None and str(row[0]) != ANTIEK_DOCUMENT_TYPE:
+            return False
+        row = con.execute(
             "SELECT source_kind FROM document_reader_html WHERE document_id = ?",
             [document_id],
         ).fetchone()
-        return str(row[0]) if row is not None and row[0] is not None else None
-    except Exception:  # pragma: no cover — no sidecar table means nothing to clobber.
-        return None
+        return row is None or row[0] is None or str(row[0]) == ANTIEK_SOURCE_KIND
+    except Exception:  # pragma: no cover — schema drift, not an ingest failure.
+        # Fail closed. A guard that cannot read the tables cannot say the id is
+        # free, and refusing costs only a minted id on the personal_reading
+        # lane, where every unproven artifact lands anyway.
+        return False
     finally:
         con.close()
-
-
-ANTIEK_SOURCE_KIND: Final[str] = "antiek"
 
 
 def _antiek_db_path() -> str:
@@ -593,10 +610,12 @@ async def ingest_antiek_route(
         # "nobody edited these bytes", not "Antiek made this". Only
         # `returned_unmodified` says the second thing: the document_id AND the
         # canonical content hash match what this instance exports for that
-        # document. That is the one case where writing to the claimed id is
-        # safe — the body is byte-identical to the one already there, so the
-        # sidecar upsert cannot clobber anything — and the one case where
-        # `user_owned` is true.
+        # document, so the body is the one Antiek would emit today. That earns
+        # `user_owned` — and it still does not, on its own, earn the claimed
+        # id. A bound notebook exports under the BOUND DOCUMENT's id, so
+        # "matches what we export for this id" and "is what this id already
+        # holds" are different sentences; `_claimed_id_is_free_or_ours` is what
+        # checks the second one.
         #
         # Everything else, `traveled_and_changed` included, carries content this
         # instance did not produce, whatever id the manifest claims. It lands on
@@ -608,8 +627,7 @@ async def ingest_antiek_route(
         returned_home = (
             result.roundtrip == "returned_unmodified"
             and result.document_id is not None
-            and _reader_sidecar_source_kind(result.document_id, db_path)
-            in (None, ANTIEK_SOURCE_KIND)
+            and _claimed_id_is_free_or_ours(result.document_id, db_path)
         )
         if returned_home and result.document_id is not None:
             document_id = result.document_id
@@ -642,7 +660,7 @@ async def ingest_antiek_route(
                     con,
                     document_id=document_id,
                     source_tier=2,
-                    document_type="antiek_artifact",
+                    document_type=ANTIEK_DOCUMENT_TYPE,
                     source_uri=f"antiek://{document_id}",
                     title=result.title,
                     raw_text=raw_text,

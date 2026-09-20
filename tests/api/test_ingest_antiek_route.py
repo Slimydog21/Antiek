@@ -247,6 +247,128 @@ def test_a_bound_notebook_never_overwrites_its_documents_reader_body(client, api
     assert "Notebook prose." not in bodies[bound_id]
 
 
+def test_a_bound_notebook_never_takes_over_a_book_with_no_reader_body_yet(client, api_env):
+    """The same clobber, one step earlier. A document and its reader body are
+    written separately, so a book routinely exists before it has been projected.
+    Asking only the sidecar reads that book as "nothing is there" and hands the
+    notebook's prose the book's id, its title and its servable rights class."""
+    from substrate.graph.ops import insert_document
+
+    db_path = api_env["db_path"]
+    bound_id = "doc-a-book-not-projected-yet"
+    with connect_write(db_path, purpose="test/ingest-antiek/unprojected") as con:
+        insert_document(
+            con,
+            document_id=bound_id,
+            source_tier=2,
+            document_type="upload",
+            title="A Real Book",
+            raw_text="THE BOOK BODY",
+            content_class="public_domain",
+        )
+
+    notebook_id = _notebook(db_path, "Notebook prose.", document_id=bound_id)
+    artifact = _export(client, notebook_id, "antiek").content
+
+    body = _upload(client, artifact).json()
+
+    assert body["document_id"] != bound_id
+    assert body["content_class"] == "personal_reading"
+    # The book had no reader body and must still have none: a servable document
+    # cannot acquire one from an upload.
+    assert bound_id not in _reader_bodies(db_path)
+    # And the book is still what it was.
+    assert client.get(f"/documents/{bound_id}/render").status_code != 200
+
+
+def test_a_reader_body_this_route_did_not_write_is_never_replaced(client, api_env):
+    """The other half of the same guard. A document row and a reader body are
+    separate rows, so a document this route DID create can still hold a body
+    some other lane wrote — a re-projection, a repair. Owning the document is
+    not owning the body, and the body is what an import would destroy."""
+    from substrate.graph.ops import insert_document
+    from substrate.reader_html.store import store_reader_html
+
+    db_path = api_env["db_path"]
+    bound_id = "doc-reprojected-elsewhere"
+    with connect_write(db_path, purpose="test/ingest-antiek/foreign-body") as con:
+        insert_document(
+            con,
+            document_id=bound_id,
+            source_tier=2,
+            document_type="antiek_artifact",
+            raw_text="SOMEONE ELSE'S BODY",
+            content_class="user_owned",
+        )
+        store_reader_html(
+            con,
+            document_id=bound_id,
+            main_html="<p>SOMEONE ELSE'S BODY</p>",
+            source_kind="upload",
+        )
+
+    notebook_id = _notebook(db_path, "Notebook prose.", document_id=bound_id)
+    artifact = _export(client, notebook_id, "antiek").content
+
+    body = _upload(client, artifact).json()
+
+    assert body["document_id"] != bound_id
+    assert body["content_class"] == "personal_reading"
+    assert "SOMEONE ELSE'S BODY" in _reader_bodies(db_path)[bound_id]
+
+
+def test_two_different_artifacts_never_share_a_minted_id(client, api_env):
+    """The minted id is derived from the artifact's own content. A constant —
+    or anything the manifest can steer — would let one upload overwrite the
+    reader body of an unrelated one."""
+    first = _export(client, _notebook(api_env["db_path"], "First body."), "antiek_html")
+    second = _export(client, _notebook(api_env["db_path"], "Second body."), "antiek_html")
+
+    one = _upload(client, first.text.encode("utf-8"), name="a.antiek.html").json()
+    two = _upload(client, second.text.encode("utf-8"), name="b.antiek.html").json()
+
+    assert one["document_id"] != two["document_id"]
+    bodies = _reader_bodies(api_env["db_path"])
+    assert "First body." in bodies[one["document_id"]]
+    assert "Second body." in bodies[two["document_id"]]
+
+
+def test_an_oversize_upload_is_refused_before_it_is_parsed(client, api_env, monkeypatch):
+    monkeypatch.setattr(
+        "interfaces.research.api.doc_ingest_routes._MAX_UPLOAD_BYTES", 64
+    )
+    notebook_id = _notebook(api_env["db_path"], "Too big to come home.")
+    artifact = _export(client, notebook_id, "antiek").content
+    assert len(artifact) > 64
+
+    resp = _upload(client, artifact)
+
+    assert resp.status_code == 413
+    assert _documents(api_env["db_path"]) == set()
+
+
+def test_the_stored_document_carries_the_artifacts_text(client, api_env):
+    """A document stored with no raw_text is invisible to search while looking
+    ingested, which is worse than a refusal."""
+    from runtime.db_lock import connect_read
+
+    notebook_id = _notebook(api_env["db_path"], "Findable after the journey.")
+    artifact = _export(client, notebook_id, "antiek").content
+
+    body = _upload(client, artifact).json()
+
+    con = connect_read(api_env["db_path"])
+    try:
+        row = con.execute(
+            "SELECT raw_text FROM documents WHERE document_id = ?",
+            [body["document_id"]],
+        ).fetchone()
+    finally:
+        con.close()
+    assert row is not None
+    assert "Findable after the journey." in str(row[0])
+
+
 def test_a_second_import_of_the_same_artifact_is_idempotent(client, api_env):
     notebook_id = _notebook(api_env["db_path"], "Came home twice.")
     artifact = _export(client, notebook_id, "antiek").content

@@ -45,11 +45,23 @@ it asserted an id is exactly the §9.0 leak the rights states exist to stop.
 export path stamps that binding into the manifest — so a notebook attached to a
 book exports an artifact claiming the BOOK's id. Honouring it on re-import
 would have replaced the book's reader HTML with notebook prose, silently.
-`_reader_sidecar_source_kind` honours the claimed id only when no sidecar row
-exists or when this route wrote the one that does, which also keeps a second
-import of the same artifact idempotent.
-`test_a_bound_notebook_never_overwrites_its_documents_reader_body` fails
-without that guard (verified by reverting it).
+`_claimed_id_is_free_or_ours` honours the claimed id only when the id is
+unoccupied in BOTH the `documents` table and the reader-HTML sidecar, or when
+this route is what occupies it — which also keeps a second import of the same
+artifact idempotent.
+
+The first cut of that guard asked the sidecar alone, and that was not enough. A
+document and its reader body are written as separate rows, so a book that has
+not been projected yet has a `documents` row and no sidecar row; the sidecar-only
+guard read it as "nothing is there" and handed the notebook's prose the book's
+id, its title, its provenance footer and its `public_domain` rights class — an
+uploaded body on the public serve path, reachable end to end through
+`POST /notebooks` with a `document_id` binding. Adversarial verification caught
+it and it is fixed here.
+`test_a_bound_notebook_never_overwrites_its_documents_reader_body`,
+`test_a_bound_notebook_never_takes_over_a_book_with_no_reader_body_yet` and
+`test_a_reader_body_this_route_did_not_write_is_never_replaced` each fail
+against a different half of the guard removed.
 
 ## Done-bar
 
