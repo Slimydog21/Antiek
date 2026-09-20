@@ -1,10 +1,10 @@
 ---
-- name: install Antiek under reviewed runtime security constraints
+- name: install Antiek with reviewed runtime security requirements
   ansible.builtin.pip:
     name: "{{ antiek_install_dir }}[{{ antiek_dependency_extras }}]"
     editable: true
     virtualenv: "{{ antiek_install_dir }}/.venv"
-    extra_args: "-c {{ (antiek_install_dir ~ '/infrastructure/requirements-security.txt') | quote }}"
+    extra_args: "-r {{ (antiek_install_dir ~ '/infrastructure/requirements-security.txt') | quote }}"
   become_user: "{{ antiek_user }}"
 
 - name: verify installed runtime security versions

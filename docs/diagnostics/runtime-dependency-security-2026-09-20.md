@@ -85,3 +85,24 @@ Branch: fix/runtime-dependency-security-20260920, baseee283d9c8.
 Evidence logs: .audit/dependency-security/ including Linux resolution, target
 OSV query, Ansible syntax, isolated deployment run, package install and review.
 No schema, Parquet, writer-coordination or frontend change belongs to this lane.
+
+
+## GLM review and explicit installation follow-up
+
+GLM returned FIX-BEFORE-PROCEED72/100. Its concern about stale-installed pip
+constraint behavior motivated installing the three exact pins as explicit
+requirements in the same editable-install command. The compatibility suite now
+asserts the installed versions match the reviewed file and meet the saved
+advisory minima. Tests require the actual requirement flag, forbid import-level
+ignore_errors, verify effective privilege inheritance, and inspect nested service
+operations before the dependency gate. The file documents its exact-pin-only
+format. A full three-old-version fixture upgrade is being rerun.
+
+pip check intentionally blocks on unrelated pre-existing dependency drift as
+well as this patch's packages. Investigate and resolve a reported conflict;
+do not bypass the gate. The existing in-place upgrade window remains non-atomic,
+so crash-triggered restarts can observe mixed packages during installation.
+Staged environment rollback remains open and is not claimed by this patch.
+The explicit-requirement rerun succeeded from all three old production versions:
+3 Ansible tasks passed,0 failures. All9 focused deployment/library tests passed,
+including installed-version anchoring. The GLM follow-up review is pending.

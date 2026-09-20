@@ -1,4 +1,5 @@
-# Reviewed runtime security upgrades. Used by setup and deploy as constraints.
+# Reviewed runtime security upgrades. Installed explicitly by setup and deploy.
+# Format: one name==version per line; full-line comments only, no ranges.
 # This intentionally does not claim to lock the full production environment.
 # Keep these exact versions aligned with uv.lock and the verified CI constraints.
 cryptography==50.0.1

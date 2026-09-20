@@ -26,15 +26,33 @@ def test_dependency_tasks_run_under_code_tag_before_service_changes(playbook):
     )
     remote = next(play for play in plays if play["hosts"] == "antiek_prod")
     entries = remote["tasks"]
-    index = next(
+    imports = [
         i for i, task in enumerate(entries)
         if task.get("ansible.builtin.import_tasks") == "../tasks/python-dependencies.yml"
-    )
+    ]
+    assert len(imports) == 1, "Expected one shared dependency gate"
+    index = imports[0]
     assert "code" in entries[index]["tags"]
+    assert not entries[index].get("ignore_errors", False)
+    assert remote["become"] is True
     assert "youtube" in entries[index]["vars"]["antiek_dependency_extras"].split(",")
-    assert not any("ansible.builtin.systemd" in task for task in entries[:index])
+    def assert_no_service_change(task):
+        for key, value in task.items():
+            action = key.rsplit(".", 1)[-1]
+            assert action not in {"systemd", "systemd_service", "service"}
+            if action in {"command", "shell"}:
+                assert "systemctl" not in str(value)
+            if action == "meta":
+                assert value != "flush_handlers"
+            if key in {"block", "rescue", "always"}:
+                for nested in value:
+                    assert_no_service_change(nested)
+
+    for task in entries[:index]:
+        assert_no_service_change(task)
     install, verify, consistency = tasks()
     pip = install["ansible.builtin.pip"]
+    assert pip["extra_args"].split(maxsplit=1)[0] in {"-r", "--requirement"}
     assert "requirements-security.txt" in pip["extra_args"]
     assert pip["editable"] is True
     assert verify["ansible.builtin.command"]["argv"][0].endswith("/.venv/bin/python")

@@ -32,7 +32,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install application and upgraded acquisition libraries
-        run: python -m pip install -c infrastructure/requirements-security.txt -e '.[dev,pdf,youtube]'
+        run: python -m pip install -r infrastructure/requirements-security.txt -e '.[dev,pdf,youtube]'
       - name: Check dependency consistency
         run: python -m pip check
       - name: Exercise real cryptography, PDF and metadata operations

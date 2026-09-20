@@ -5,17 +5,34 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+from importlib.metadata import version
+from pathlib import Path
 
 import cbor2
 import pytest
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
+from packaging.version import Version
 from pypdf import PdfReader
 from reportlab.pdfgen.canvas import Canvas
 from webauthn import verify_authentication_response
 from webauthn.helpers import bytes_to_base64url
 from webauthn.helpers.exceptions import InvalidAuthenticationResponse
 from yt_dlp import YoutubeDL
+
+
+@pytest.fixture(autouse=True)
+def require_reviewed_versions():
+    pins = Path(__file__).resolve().parents[1] / "infrastructure/requirements-security.txt"
+    expected = dict(
+        line.split("==") for line in pins.read_text().splitlines()
+        if line and not line.startswith("#")
+    )
+    minima = {"cryptography": "50.0.0", "pypdf": "6.16.1", "yt-dlp": "2026.7.4"}
+    assert set(expected) == set(minima)
+    for name, target in expected.items():
+        assert Version(target) >= Version(minima[name])
+        assert version(name) == target, f"{name} compatibility requires reviewed version {target}"
 
 
 def test_pdf_generated_document_text_and_page_count():
