@@ -12,9 +12,12 @@ from tools.lints.baseline import (
     BaselineSchema,
     ViolationKey,
     compute_keys,
+    enrich_keys_with_snippets,
     filter_to_new_only,
     find_stale_baseline_entries,
     load_baseline,
+    normalize_snippet,
+    source_line_snippet,
     write_baseline,
 )
 
@@ -343,3 +346,129 @@ def test_find_stale_exact_match_consumes_slot_so_extra_entry_is_stale() -> None:
     )
     assert find_stale_baseline_entries(current=[live], baseline=baseline) == [b2]
 
+
+# ----- whitespace-collapsed normalization (issue #3236) ----------------------
+
+def test_normalize_snippet_strips_and_collapses_whitespace() -> None:
+    assert normalize_snippet("  x  =   bad()\t") == "x = bad()"
+    assert normalize_snippet("") == ""
+    assert normalize_snippet("   ") == ""
+
+
+def test_filter_matches_legacy_strip_only_snippet_via_match_time_normalization() -> None:
+    """Baselines written before whitespace-collapsing store strip-only
+    snippets. Match-time normalization on BOTH sides keeps them matching:
+    a stored snippet with an internal whitespace run equals a collapsed
+    current capture of the same line."""
+    base = ViolationKey(path="a.py", line=10, col=0, kind="mypy:arg-type",
+                        snippet="x  =   bad()")  # legacy strip-only storage
+    shifted = ViolationKey(path="a.py", line=20, col=0, kind="mypy:arg-type",
+                           snippet="x = bad()")  # collapsed at capture
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert filter_to_new_only([shifted], baseline) == []
+    assert find_stale_baseline_entries(current=[shifted], baseline=baseline) == []
+
+
+# ----- exact-first two-pass: the multiset rule is order-independent ---------
+
+def test_filter_new_duplicate_above_original_is_new() -> None:
+    """The multiset rule, order-independently: baseline grandfathers ONE copy
+    of snippet S at line 40; current has the SAME original at line 40 plus a
+    NEW verbatim duplicate ABOVE it at line 30 (sorts first). The duplicate
+    must be NEW — if content matching consumed the slot before the exact
+    match released it, the original would hide behind its own slot and the
+    duplicate would be masked."""
+    snippet = "def _send() -> httpx.Response:"
+    base = ViolationKey(path="a.py", line=40, col=0, kind="mypy:no-untyped-def",
+                        snippet=snippet)
+    duplicate_above = ViolationKey(path="a.py", line=30, col=0,
+                                   kind="mypy:no-untyped-def", snippet=snippet)
+    original = ViolationKey(path="a.py", line=40, col=0,
+                            kind="mypy:no-untyped-def", snippet=snippet)
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert filter_to_new_only([duplicate_above, original], baseline) == [
+        duplicate_above
+    ]
+
+
+def test_find_stale_exact_first_pass_removed_entry_is_stale() -> None:
+    """Mirror of the above for staleness: baseline grandfathers TWO copies of
+    snippet S (lines 40 and 60); only the line-60 copy is still live. The
+    line-40 entry must be reported stale — if the shifted-twin content match
+    consumed the live slot before the exact match released it, the removed
+    entry would hide and burn-down would be blocked."""
+    snippet = "x = bad()"
+    removed = ViolationKey(path="a.py", line=40, col=0, kind="mypy:arg-type",
+                           snippet=snippet)
+    still_live_base = ViolationKey(path="a.py", line=60, col=0,
+                                   kind="mypy:arg-type", snippet=snippet)
+    live = ViolationKey(path="a.py", line=60, col=0, kind="mypy:arg-type",
+                        snippet=snippet)
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="",
+        violations=[removed, still_live_base],
+    )
+    assert find_stale_baseline_entries(current=[live], baseline=baseline) == [
+        removed
+    ]
+
+
+def test_find_stale_multiset_two_identical_one_removed_shifted() -> None:
+    """Multiplicity rule with a shift: two identical-text baseline entries,
+    one occurrence removed and the survivor SHIFTED to a new line — exactly
+    one entry is stale (the survivor content-matches one slot)."""
+    snippet = "x = bad()"
+    b1 = ViolationKey(path="a.py", line=40, col=0, kind="mypy:arg-type",
+                      snippet=snippet)
+    b2 = ViolationKey(path="a.py", line=60, col=0, kind="mypy:arg-type",
+                      snippet=snippet)
+    survivor_shifted = ViolationKey(path="a.py", line=160, col=0,
+                                    kind="mypy:arg-type", snippet=snippet)
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="",
+        violations=[b1, b2],
+    )
+    stale = find_stale_baseline_entries(current=[survivor_shifted], baseline=baseline)
+    assert len(stale) == 1
+    assert stale[0] in (b1, b2)
+
+
+# ----- snippet capture helpers ----------------------------------------------
+
+def test_source_line_snippet_reads_and_normalizes(tmp_path: Path) -> None:
+    src = tmp_path / "a.py"
+    src.write_text("import os\n\n    y   =   bad_call()\n", encoding="utf-8")
+    assert source_line_snippet(src, 3) == "y = bad_call()"
+    assert source_line_snippet(src, 1) == "import os"
+    assert source_line_snippet(src, 2) == ""  # blank line normalizes to empty
+    assert source_line_snippet(src, 99) == ""  # out of range
+    assert source_line_snippet(tmp_path / "missing.py", 1) == ""  # unreadable
+
+
+def test_enrich_keys_with_snippets_stamps_source_text(tmp_path: Path) -> None:
+    src = tmp_path / "pkg" / "a.py"
+    src.parent.mkdir(parents=True)
+    src.write_text("import os\nx = 1\n", encoding="utf-8")
+    keys = [
+        ViolationKey(path="pkg/a.py", line=2, col=0, kind="mypy:arg-type"),
+        ViolationKey(path="pkg/missing.py", line=2, col=0, kind="mypy:arg-type"),
+    ]
+    enriched = enrich_keys_with_snippets(keys, tmp_path)
+    assert enriched[0].snippet == "x = 1"
+    assert enriched[1].snippet == ""
+    # Identity fields untouched.
+    assert [(k.path, k.line, k.col, k.kind) for k in enriched] == [
+        (k.path, k.line, k.col, k.kind) for k in keys
+    ]
+
+
+def test_enrich_keys_with_snippets_accepts_absolute_paths(tmp_path: Path) -> None:
+    src = tmp_path / "abs.py"
+    src.write_text("raise CustomDomainError('x')\n", encoding="utf-8")
+    keys = [ViolationKey(path=str(src), line=1, col=4, kind="raise:CustomDomainError")]
+    enriched = enrich_keys_with_snippets(keys, tmp_path)
+    assert enriched[0].snippet == "raise CustomDomainError('x')"

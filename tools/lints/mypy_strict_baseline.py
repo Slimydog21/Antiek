@@ -34,6 +34,7 @@ from pathlib import Path
 from tools.lints.baseline import (
     ViolationKey,
     compute_keys,
+    enrich_keys_with_snippets,
     filter_to_new_only,
     find_stale_baseline_entries,
     load_baseline,
@@ -119,7 +120,9 @@ def _cmd_capture(paths: list[str], baseline_file: Path) -> int:
     except RuntimeError as exc:
         print(f"mypy invocation failed: {exc}", file=sys.stderr)
         return 2
-    keys = compute_keys(errors, mypy_error_to_key)
+    keys = enrich_keys_with_snippets(
+        compute_keys(errors, mypy_error_to_key), Path.cwd()
+    )
     write_baseline(baseline_file, lint="mypy_strict_substrate_core", violations=keys)
     print(f"wrote {len(keys)} mypy --strict error(s) to {baseline_file}")
     return 0
@@ -137,7 +140,9 @@ def _cmd_enforce(paths: list[str], baseline_file: Path, check_stale: bool) -> in
         print(f"mypy invocation failed: {exc}", file=sys.stderr)
         return 2
 
-    current = compute_keys(errors, mypy_error_to_key)
+    current = enrich_keys_with_snippets(
+        compute_keys(errors, mypy_error_to_key), Path.cwd()
+    )
     new_only = filter_to_new_only(current, baseline)
     for k in new_only:
         print(f"{k.path}:{k.line}:{k.col}: NEW {k.kind}")

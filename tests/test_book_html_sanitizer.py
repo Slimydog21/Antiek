@@ -417,8 +417,17 @@ def test_unbalanced_drop_close_alone_is_noop() -> None:
 
 
 def test_suppression_stack_version_bumped() -> None:
-    """The network-free image policy is a behavioral trust-contract change."""
-    assert SANITIZER_VERSION == "books-allowlist/1.3.0"
+    """The stamped version must move whenever stored output can change.
+
+    Bumped 1.3.0 -> 1.4.0 for the void drop-tag fix: an <embed> used to open a
+    suppression that no end tag could close, truncating the stored body to EOF.
+    Documents ingested before this carry 1.3.0 and may be short; the version is
+    what lets a backfill find them (tools/backfill_book_reader_html.py).
+
+    This assertion failing after a behavioural change is the test working. Bump
+    it deliberately and say why, here and in the module's version history.
+    """
+    assert SANITIZER_VERSION == "books-allowlist/1.4.0"
 
 
 # ---------------------------------------------------------------------------
@@ -446,3 +455,71 @@ def test_strip_trust_markers_defeats_forged_client_metadata() -> None:
 def test_strip_trust_markers_on_unmarked_metadata_is_identity() -> None:
     plain = {"title": "x", "book_import": {"chapter_count": 3}}
     assert strip_trust_markers(plain) == plain
+
+
+# ── 1.4.0: a void drop-tag must not open a suppression nothing can close ──────
+#
+# `_DROP_WITH_CONTENT` opens a suppression that only the tag's own end tag
+# closes, and 1.2.0 made that pop fail-closed on purpose. A void element never
+# produces an end tag, so for a tag in both sets the suppression could never be
+# lifted and the rest of the document was silently swallowed to EOF.
+#
+# `embed` was the only member of both sets when this was found, but the defect
+# belongs to the INTERSECTION, so these tests are written against the property
+# rather than against that one tag.
+
+
+def test_void_drop_tag_does_not_swallow_the_rest_of_the_document() -> None:
+    """The regression: one <embed> truncated a whole fetched page at ingest."""
+    html = "<p>before</p><embed src='x.swf'><h2>chapter two</h2><p>the rest</p>"
+    out = sanitize_book_html(html)
+
+    assert "the rest" in out, "content after a void drop-tag was swallowed"
+    assert "chapter two" in out
+    assert "<embed" not in out, "the void drop-tag itself must still be dropped"
+
+
+def test_void_drop_tag_self_closed_form_behaves_the_same() -> None:
+    out = sanitize_book_html("<p>before</p><embed src='x'/><h2>ch2</h2><p>the rest</p>")
+    assert "the rest" in out
+    assert "<embed" not in out
+
+
+def test_every_void_drop_tag_is_survivable() -> None:
+    """The property, over the actual intersection rather than a hardcoded tag.
+
+    If someone later adds `source`, `track` or `param` to the drop set, this
+    fails unless the structural fix still holds.
+    """
+    from substrate.books.html_sanitizer import (
+        _DROP_WITH_CONTENT,
+        _HTML_VOID_ELEMENTS,
+    )
+
+    void_drop_tags = _DROP_WITH_CONTENT & _HTML_VOID_ELEMENTS
+    assert void_drop_tags, "expected at least one void drop-tag to guard"
+
+    for tag in sorted(void_drop_tags):
+        out = sanitize_book_html(f"<p>before</p><{tag} src='x'><p>the rest</p>")
+        assert "the rest" in out, f"<{tag}> swallowed the remainder of the document"
+        assert f"<{tag}" not in out, f"<{tag}> survived into the output"
+
+
+def test_non_void_drop_tags_still_suppress_their_whole_subtree() -> None:
+    """The fix must not weaken suppression for the tags it does not touch."""
+    assert "alert(1)" not in sanitize_book_html("<p>a</p><script>alert(1)</script><p>b</p>")
+    assert "secret" not in sanitize_book_html("<p>a</p><iframe>secret</iframe><p>b</p>")
+    assert "circle" not in sanitize_book_html("<p>a</p><svg><circle/></svg><p>b</p>")
+    # and each still lets the surrounding document through
+    for html in (
+        "<p>a</p><script>x</script><p>b</p>",
+        "<p>a</p><iframe>x</iframe><p>b</p>",
+        "<p>a</p><svg>x</svg><p>b</p>",
+    ):
+        assert "b" in sanitize_book_html(html)
+
+
+def test_a_stray_close_for_a_void_drop_tag_pops_nothing() -> None:
+    """With the tag never pushed, its stray close must not disturb the stack."""
+    out = sanitize_book_html("<p>before</p></embed><p>the rest</p>")
+    assert "before" in out and "the rest" in out
