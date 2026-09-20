@@ -33,6 +33,8 @@ than passing on an empty measurement.
 from __future__ import annotations
 
 import ast
+import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -217,4 +219,173 @@ def test_known_non_test_modules_still_define_no_tests() -> None:
         assert not _is_test_module(path), (
             f"{rel} now defines tests but is exempted as a non-test module; "
             "remove it from KNOWN_NON_TEST_MODULES so coverage applies"
+        )
+
+
+# ─────────────────────────── TypeScript half ────────────────────────────
+#
+# The same defect exists on the TS side, with a sharper edge: apps/reading/e2e
+# holds BOTH Playwright specs (*.spec.ts) and pure-function unit calibrations
+# (*.test.ts). Playwright's testMatch is /\.spec\.ts$/ and vitest's include was
+# src/**, so a *.test.ts file inside e2e/ matched NEITHER runner.
+#
+# e2e/_ams/visible.pixel.test.ts sat in exactly that gap: 14 tests whose stated
+# purpose is proving assertSceneVisible FAILS on an occluded/empty scene rather
+# than passing vacuously. The calibration that proves a gate is not vacuous was
+# itself never executed. Both runners confirm it in their own words -- vitest
+# reported "No test files found" for an explicit path, and `playwright test
+# --list` printed 92 tests in 28 files without it.
+
+READING = REPO_ROOT / "apps" / "reading"
+
+# TS test files that NO runner collects and that cannot simply be globbed in.
+# vitest cannot reach above its root: including "../../tools/**/*.test.ts"
+# collects the files and then fails every one of them with
+# "Cannot find module '/@fs/.../verify_handoff.test.ts'". Wiring these needs a
+# root-level vitest project, which is a build-setup change rather than a glob.
+#
+# This is a NO-GROWTH register, not an allowlist: entries must LEAVE when
+# fixed (test_registered_ts_files_are_still_uncollected below fails if one
+# becomes collected), and a new orphan cannot be added without editing this
+# dict and saying why.
+KNOWN_UNCOLLECTED_TS: dict[str, str] = {
+    "tools/agent/verify_handoff.test.ts": (
+        "guards tools/agent/verify_handoff.ts, run by scripts/canonical_verify.sh:66; "
+        "needs a root vitest project (outside apps/reading's vite root)"
+    ),
+    "tools/specs/verify_spec_refs.test.ts": (
+        "guards tools/specs/verify_spec_refs.ts, used by scripts/agent_ams_ref_lint.sh; "
+        "needs a root vitest project (outside apps/reading's vite root)"
+    ),
+}
+
+
+def _expand_braces(pattern: str) -> list[str]:
+    """``a.{ts,tsx}`` -> ``[a.ts, a.tsx]`` (single level, which is all we use)."""
+    start = pattern.find("{")
+    if start == -1:
+        return [pattern]
+    end = pattern.find("}", start)
+    if end == -1:
+        return [pattern]
+    head, body, tail = pattern[:start], pattern[start + 1 : end], pattern[end + 1 :]
+    out: list[str] = []
+    for alt in body.split(","):
+        out.extend(_expand_braces(head + alt + tail))
+    return out
+
+
+def _glob_to_regex(pattern: str) -> str:
+    """Translate a vitest include glob to a regex.
+
+    ``**`` crosses directory separators, ``*`` does not. Hand-rolled rather
+    than using fnmatch (whose ``*`` matches ``/``, so ``src/*.test.ts`` would
+    wrongly match nested files) or PurePath.full_match (3.13+, while the local
+    venv is 3.12).
+    """
+    i, out = 0, ["^"]
+    while i < len(pattern):
+        c = pattern[i]
+        if pattern.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+        elif pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+        elif c == "*":
+            out.append("[^/]*")
+            i += 1
+        elif c == "?":
+            out.append("[^/]")
+            i += 1
+        else:
+            out.append(re.escape(c))
+            i += 1
+    out.append("$")
+    return "".join(out)
+
+
+def _vitest_includes() -> list[str]:
+    """The include globs declared in apps/reading/vitest.config.ts."""
+    cfg = (READING / "vitest.config.ts").read_text(encoding="utf-8")
+    m = re.search(r"include:\s*\[(.*?)\]", cfg, re.DOTALL)
+    assert m, "could not find the vitest include array"
+    globs = re.findall(r'"([^"]+)"', m.group(1))
+    assert globs, "vitest include array parsed as empty"
+    expanded: list[str] = []
+    for g in globs:
+        expanded.extend(_expand_braces(g))
+    return expanded
+
+
+def _playwright_spec_suffix() -> str:
+    """Playwright's testMatch, which selects by suffix."""
+    cfg = (READING / "playwright.config.ts").read_text(encoding="utf-8")
+    m = re.search(r"testMatch:\s*/\\\.(\w+)\\\.ts\$/", cfg)
+    assert m, "could not parse the top-level playwright testMatch"
+    return f".{m.group(1)}.ts"
+
+
+def _ts_test_files() -> list[str]:
+    out: list[str] = []
+    for suffix in ("*.test.ts", "*.test.tsx", "*.spec.ts"):
+        for f in REPO_ROOT.rglob(suffix):
+            if any(
+                part in {".git", "node_modules", "dist", "storybook-static", ".venv"}
+                for part in f.parts
+            ):
+                continue
+            out.append(f.relative_to(REPO_ROOT).as_posix())
+    return sorted(set(out))
+
+
+
+def _vitest_collects(rel: str) -> bool:
+    """Does vitest's include glob match this repo-relative path?
+
+    Globs are relative to apps/reading (vite's root) and may escape it with
+    ``../../``. Matching on the repo-relative path and a startswith check was
+    VACUOUS for exactly the register entries it guarded: every entry begins
+    with ``tools/``, so an ``apps/reading/`` prefix test skipped them all and
+    a stale register could never be detected. Comparing paths relative to the
+    vite root handles both shapes uniformly.
+    """
+    rel_to_root = os.path.relpath(REPO_ROOT / rel, READING).replace(os.sep, "/")
+    return any(
+        re.compile(_glob_to_regex(g)).match(rel_to_root) for g in _vitest_includes()
+    )
+
+
+def test_vitest_and_playwright_patterns_are_parseable() -> None:
+    """Guard the guard: a config reshuffle must fail loudly, not silently."""
+    includes = _vitest_includes()
+    assert len(includes) >= 2, f"implausibly few vitest includes: {includes}"
+    assert _playwright_spec_suffix() == ".spec.ts"
+
+
+def test_every_ts_test_file_is_collected_or_registered() -> None:
+    spec_suffix = _playwright_spec_suffix()
+    orphans: list[str] = []
+    for rel in _ts_test_files():
+        if rel in KNOWN_UNCOLLECTED_TS:
+            continue
+        if rel.endswith(spec_suffix) and rel.startswith("apps/reading/e2e/"):
+            continue  # Playwright's testDir
+        if _vitest_collects(rel):
+            continue
+        orphans.append(rel)
+    assert not orphans, (
+        "these TypeScript test files are collected by neither vitest nor "
+        "Playwright, so they execute zero times:\n  " + "\n  ".join(orphans)
+    )
+
+
+def test_registered_ts_files_are_still_uncollected() -> None:
+    """The register must shrink. If an entry is now collected, delete it."""
+    for rel in sorted(KNOWN_UNCOLLECTED_TS):
+        if not (REPO_ROOT / rel).exists():
+            continue
+        assert not _vitest_collects(rel), (
+            f"{rel} is now collected by vitest -- remove it from "
+            "KNOWN_UNCOLLECTED_TS so it is covered by the assertion above"
         )
