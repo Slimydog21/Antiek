@@ -579,7 +579,7 @@ class TurbopufferSubstrate:
             return {"query": text, "top_k": top_k, "results": results[:top_k],
                     "node_matches": [], "status": self.query_status_label()}
         except Exception as exc:
-            return fallback(type(exc).__name__)
+            return fallback(f"{type(exc).__name__}: {exc}")
 
     def sync_servable(
         self,
