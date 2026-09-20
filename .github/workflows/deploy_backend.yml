@@ -1,0 +1,299 @@
+name: deploy-backend
+
+# ──────────────────────────────────────────────────────────────────────────
+# Continuous deployment for the backend (substrate + Caddy + SPA dist).
+#
+# This closes the gap ci.yml's own header names: "Failure blocks the deploy
+# webhook (when wired); for now the deploy stays manual but the gate exists."
+# The gate existed; nothing consumed it. A merge to main landed code that
+# could not reach production until an operator ran
+# `ansible-playbook playbooks/deploy.yml` from their Mac by hand — so a
+# correct, reviewed, green change stayed dead in production for as long as
+# the operator was away from the keyboard. Two Caddy-allowlist features sat
+# dead exactly that way.
+#
+# WHY workflow_run AND NOT `push: [main]`:
+#   A push trigger fires the instant the merge lands, i.e. BEFORE the
+#   required checks have reported. Deploying there would ship code the gate
+#   had not yet passed — strictly worse than the manual step it replaces.
+#   `workflow_run` fires after a gating workflow finishes, so there is
+#   something real to read.
+#
+# WHY BOTH workflows are listed:
+#   main's 8 required contexts come from TWO workflows — `CI` supplies the
+#   four pytest shards + keystone + tsc + vitest, and `enforce-declared-bar`
+#   supplies the mypy/ruff context. Either may finish last. Listening to only
+#   one means deploying while the other is still pending. Listening to both
+#   means the gate job runs twice; the run that fires while siblings are
+#   still pending exits without deploying, and the last one through deploys.
+#
+# WHY the gate re-reads every required context instead of trusting
+# `workflow_run.conclusion`:
+#   That field describes ONE workflow. A green `CI` says nothing about
+#   mypy/ruff. The gate below asserts each of the 8 required contexts is
+#   `success` FOR THE EXACT SHA being deployed, so this cannot ship on a
+#   partially-green commit.
+# ──────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_run:
+    workflows: ["CI", "enforce-declared-bar"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit SHA to deploy (default: current main)"
+        required: false
+        type: string
+      force:
+        description: "Deploy even if prod already reports this SHA"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  # Never run two deploys at once, and never CANCEL one in flight — a
+  # half-applied playbook (service restarted, Caddy not yet reloaded) is
+  # worse than a queued one.
+  group: deploy-backend-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  checks: read
+  statuses: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ── Gate ────────────────────────────────────────────────────────────────
+  # Decides whether this event should produce a deploy, and of what SHA.
+  # Produces no side effects.
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.decide.outputs.should_deploy }}
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - name: Resolve target SHA
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          INPUT_SHA: ${{ inputs.sha }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_run" ]; then
+            SHA="$RUN_SHA"
+          elif [ -n "${INPUT_SHA:-}" ]; then
+            SHA="$INPUT_SHA"
+          else
+            SHA=$(gh api repos/${{ github.repository }}/commits/main --jq .sha)
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Target SHA: $SHA"
+
+      - name: Require every main-required check green for this SHA
+        id: required
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # The contexts main's ruleset requires. Kept as a literal list so
+          # that a ruleset change which silently drops a context does not
+          # silently widen what may deploy.
+          printf '%s\n' \
+            'tsc' \
+            'vitest' \
+            'keystone' \
+            'mypy --strict + ruff (declared scope, baselined)' \
+            'pytest shard 0 of 4' \
+            'pytest shard 1 of 4' \
+            'pytest shard 2 of 4' \
+            'pytest shard 3 of 4' > required.txt
+
+          gh api --paginate \
+            "repos/${{ github.repository }}/commits/$SHA/check-runs?per_page=100" \
+            --jq '.check_runs[] | [.name, .status, (.conclusion // "pending")] | @tsv' \
+            > runs.tsv || true
+
+          echo "── check-runs reported for $SHA ──"
+          cat runs.tsv || true
+
+          missing=0
+          while IFS= read -r ctx; do
+            [ -z "$ctx" ] && continue
+            # Take the most recent conclusion for this context name.
+            concl=$(awk -F'\t' -v c="$ctx" '$1==c {v=$3} END {print v}' runs.tsv)
+            if [ "${concl:-}" != "success" ]; then
+              echo "NOT GREEN: '$ctx' => ${concl:-absent}"
+              missing=1
+            else
+              echo "green: '$ctx'"
+            fi
+          done < required.txt
+
+          if [ "$missing" -ne 0 ]; then
+            echo "all_green=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Required checks not all green yet for $SHA — no deploy from this event."
+          else
+            echo "all_green=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip if production already runs this SHA
+        id: parity
+        env:
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # Both gating workflows fire this job, so without this check the
+          # second one through would restart a service that is already
+          # correct. /health reports the SHA the live process was built from.
+          live=$(curl -fsS --max-time 30 https://api.antiek.ai/health \
+                 | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build_sha",""))' \
+                 || echo "")
+          echo "live build_sha: ${live:-<unreachable>}"
+          if [ "$live" = "$SHA" ]; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decide
+        id: decide
+        env:
+          ALL_GREEN: ${{ steps.required.outputs.all_green }}
+          ALREADY: ${{ steps.parity.outputs.already }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          if [ "$ALL_GREEN" != "true" ]; then
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+          elif [ "$ALREADY" = "true" ] && [ "$FORCE" != "true" ]; then
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Production already reports this SHA — nothing to deploy."
+          else
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Deploy ──────────────────────────────────────────────────────────────
+  deploy:
+    name: deploy
+    needs: gate
+    if: needs.gate.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    # Named environment so the deploy history is auditable in one place and
+    # the operator can attach a required reviewer later WITHOUT touching this
+    # file (Settings → Environments → production).
+    environment:
+      name: production
+      url: https://api.antiek.ai
+    timeout-minutes: 40
+    steps:
+      - name: Checkout the exact SHA that passed the gate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/reading/package-lock.json
+
+      # Phase A of playbooks/deploy.yml runs `npm run build` (tsc -b &&
+      # vite build) on the control node. devDependencies must be present
+      # before the playbook gets there, so install them here.
+      - name: Install reading-app dependencies
+        working-directory: apps/reading
+        run: npm ci
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          # ansible.posix supplies `synchronize` (the frontend dist rsync).
+          pip install "ansible-core>=2.16,<2.21"
+          ansible-galaxy collection install ansible.posix
+          rsync --version | head -1
+
+      - name: Configure SSH for the production host
+        env:
+          DEPLOY_KEY: ${{ secrets.ANTIEK_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.ANTIEK_PROD_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/antiek_ci
+          chmod 600 ~/.ssh/antiek_ci
+          # Host key is PINNED from a secret rather than ssh-keyscan'd at
+          # run time: keyscan trusts whatever answers, which is exactly the
+          # thing host-key checking exists to prevent.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          ssh-keygen -lf ~/.ssh/known_hosts
+
+      - name: Render the Ansible inventory
+        env:
+          PROD_HOST: ${{ secrets.ANTIEK_PROD_HOST }}
+        run: |
+          set -euo pipefail
+          cat > infrastructure/ansible/inventory.ini <<EOF
+          [antiek_prod]
+          antiek-prod-fsn1 ansible_host=${PROD_HOST} ansible_user=root ansible_ssh_private_key_file=~/.ssh/antiek_ci
+
+          [antiek_prod:vars]
+          ansible_python_interpreter=/usr/bin/python3
+          EOF
+          sed 's/ansible_host=[^ ]*/ansible_host=<redacted>/' infrastructure/ansible/inventory.ini
+
+      - name: Ansible connectivity check
+        working-directory: infrastructure/ansible
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "True"
+        run: ansible -i inventory.ini antiek_prod -m ping
+
+      - name: Deploy
+        working-directory: infrastructure/ansible
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "True"
+          ANSIBLE_FORCE_COLOR: "1"
+        run: ansible-playbook -i inventory.ini playbooks/deploy.yml
+
+      # The playbook already asserts /health + prod-parity internally. This
+      # repeats the parity assertion from OUTSIDE the playbook so a future
+      # edit that weakens or skips the in-playbook gate still cannot let a
+      # silently-stale deploy report success.
+      - name: Independent post-deploy parity assertion
+        env:
+          SHA: ${{ needs.gate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          python tools/prod_parity/check.py \
+            --url https://api.antiek.ai \
+            --expected-sha "$SHA"
+
+      - name: Summary
+        if: always()
+        env:
+          SHA: ${{ needs.gate.outputs.sha }}
+        run: |
+          {
+            echo "### Backend deploy"
+            echo ""
+            echo "- target SHA: \`$SHA\`"
+            echo "- result: ${{ job.status }}"
+            echo "- endpoint: https://api.antiek.ai"
+          } >> "$GITHUB_STEP_SUMMARY"
