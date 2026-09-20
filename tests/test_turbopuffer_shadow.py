@@ -132,7 +132,7 @@ def test_vendor_failure_falls_back_explicitly(graph):
     sub = TurbopufferSubstrate.open(graph, model=HashEmbedding(), api_key="x", namespace=fake)
     result = sub.query("quantum")
     assert result["status"] == "degraded — brute_force"
-    assert result["degraded_reason"] == "RuntimeError"
+    assert result["degraded_reason"] == "RuntimeError: outage"
     assert result["results"]
 
 
