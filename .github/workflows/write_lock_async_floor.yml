@@ -43,6 +43,7 @@ on:
       - 'substrate/**/*.py'
       - 'tools/**/*.py'
       - 'tools/lints/baselines/no_blocking_write_in_async.json'
+      - 'tools/lints/baselines/no_indirect_write_in_async.json'
       - 'tests/test_no_blocking_write_in_async.py'
       - '.github/workflows/write_lock_async_floor.yml'
   push:
@@ -60,6 +61,7 @@ on:
       - 'substrate/**/*.py'
       - 'tools/**/*.py'
       - 'tools/lints/baselines/no_blocking_write_in_async.json'
+      - 'tools/lints/baselines/no_indirect_write_in_async.json'
 
 jobs:
   write-lock-async-gate:
@@ -83,4 +85,22 @@ jobs:
           python -m tools.lints.cli_with_baseline enforce blocking_write_in_async \
             --paths $SCOPE_DIRS \
             --baseline-file tools/lints/baselines/no_blocking_write_in_async.json \
+            --check-stale
+
+      - name: Enforce — no write lock reached through a helper on the loop
+        # The sibling lint above flags a write-lock entry point whose NEAREST
+        # scope is an `async def`. Its docstring records what that gives up:
+        # a @contextmanager helper wrapping connect_write "IS a real violation
+        # and this lint cannot see it ... Recorded here rather than papered
+        # over." It was recorded and then never measured -- the exposure was
+        # 38 async functions across 6 modules, 24 of them Speak write routes.
+        #
+        # This lint closes the intra-module subset (where all 38 live) and is
+        # baselined shrink-only, so it holds the line for new code without
+        # redding the migration in flight. Cross-module aliasing stays out of
+        # reach, as documented; this is a widening, not a replacement.
+        run: |
+          python -m tools.lints.cli_with_baseline enforce indirect_write_in_async \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_indirect_write_in_async.json \
             --check-stale

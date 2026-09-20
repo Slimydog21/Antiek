@@ -1,0 +1,175 @@
+{
+  "generated_at": "2026-09-20T14:37:09.312167+00:00",
+  "lint": "no_indirect_write_in_async",
+  "schema_version": 1,
+  "violations": [
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 318,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:create_project\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 339,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:create_biography\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 361,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:list_projects\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 384,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:get_project\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 455,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:invite\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 470,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:list_invites\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 498,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:open_public\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 577,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:open_contribute\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 596,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:consent\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 645,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:claim\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 667,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:corroborate\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 683,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:subject_consent\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 694,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:contributor\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 706,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:takedown\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 716,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:draft\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 733,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:publish\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 760,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:grade\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 790,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:release_payout\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 816,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:book_order\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 1107,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:invite_consent\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 1116,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:invite_answer_resolve\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 1173,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:invite_voice_resolve\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 1196,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:invite_followups_resolve\") as con:"
+    },
+    {
+      "col": 23,
+      "kind": "indirect-write-in-async:_write",
+      "line": 1209,
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "with _translate(), _write(\"speak/api:invite_decline_resolve\") as con:"
+    }
+  ]
+}

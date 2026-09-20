@@ -62,6 +62,12 @@ from tools.lints.no_blocking_write_in_async import (
 from tools.lints.no_blocking_write_in_async import (
     scan_paths as scan_blocking_write_in_async,
 )
+from tools.lints.no_indirect_write_in_async import (
+    Violation as IndirectWriteInAsyncViolation,
+)
+from tools.lints.no_indirect_write_in_async import (
+    scan_paths as scan_indirect_write_in_async,
+)
 from tools.lints.no_raise_in_substrate_writers import (
     Violation,
 )
@@ -122,6 +128,14 @@ def _blocking_write_in_async_to_key(v: object) -> ViolationKey:
     )
 
 
+def _indirect_write_in_async_to_key(v: object) -> ViolationKey:
+    assert isinstance(v, IndirectWriteInAsyncViolation)
+    return ViolationKey(
+        path=str(v.path), line=v.line, col=v.col,
+        kind=f"indirect-write-in-async:{v.helper}",
+    )
+
+
 def _seam_under_lock_to_key(v: object) -> ViolationKey:
     assert isinstance(v, SeamUnderLockViolation)
     return ViolationKey(
@@ -155,6 +169,11 @@ LINT_REGISTRY: dict[str, tuple[
         scan_blocking_write_in_async,
         _blocking_write_in_async_to_key,
         "no_blocking_write_in_async",
+    ),
+    "indirect_write_in_async": (
+        scan_indirect_write_in_async,
+        _indirect_write_in_async_to_key,
+        "no_indirect_write_in_async",
     ),
 }
 
