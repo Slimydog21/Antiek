@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 
 import BrainMascot from "../../brand/BrainMascot";
+import WorkflowArt from "../../brand/WorkflowArt";
 import GlassSurface from "../../shell/GlassSurface";
 import {
   WORKFLOWS,
@@ -96,6 +97,13 @@ export function Home() {
                   "dark:bg-charcoal-2"
                 }
               >
+                {/* The mascot doing this door's verb. Decorative — the label
+                    and verb below carry the meaning for AT and for search. */}
+                <WorkflowArt
+                  workflow={wf}
+                  size={64}
+                  className="mb-2 transition-transform group-hover:-rotate-3"
+                />
                 <span className="font-serif text-lg font-semibold text-ink dark:text-bright">
                   {meta.label}
                 </span>
