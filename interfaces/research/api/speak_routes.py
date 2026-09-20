@@ -426,6 +426,15 @@ async def public_feed() -> dict:
                 "FROM speak_projects p "
                 "JOIN interview_projects ip ON ip.project_id = p.project_id "
                 "WHERE p.publish_intent = 'will_be_public' "
+                # An active takedown means STOP PUBLISHING. This feed is
+                # unauthenticated and returns subject_ref + subject_status,
+                # so without this predicate a project under takedown keeps
+                # disclosing its subject to anyone. substrate/speak/
+                # publish_gate.py:162 refuses to publish on exactly this
+                # condition; the browsable surface has to agree with the
+                # gate that governs it.
+                "AND NOT EXISTS (SELECT 1 FROM speak_takedowns t "
+                "WHERE t.project_id = p.project_id AND t.status = 'active') "
                 "ORDER BY p.created_at DESC"
             ).fetchall()
     except FileNotFoundError:
