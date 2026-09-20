@@ -26,7 +26,7 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from interfaces.research.api import create_app
-from runtime.db_lock import connect_read, connect_write
+from runtime.db_lock import connect_write
 from substrate.auth.magic_link import mint_session_cookie
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.ops import (
@@ -251,6 +251,7 @@ def test_brainstorm_emit_blocks(client, seed):
 
 
 def test_context_promote(client, seed):
+    from runtime.db_lock import connect_read
     r = client.post("/write/context/promote", json={
         "title": "From context", "deliverable_kind": "general_essay",
         "objective": "argue the thesis",
@@ -275,6 +276,7 @@ def test_context_promote(client, seed):
 
 
 def test_context_promote_binds_authenticated_owner_not_body_claim(client):
+    from runtime.db_lock import connect_read
     client.cookies.update(_cookie("user-alice"))
     response = client.post("/write/context/promote", json={
         "title": "Owned context",
@@ -292,6 +294,7 @@ def test_context_promote_binds_authenticated_owner_not_body_claim(client):
 
 
 def test_context_promote_rejects_unauthenticated_and_spoofed_owner(client):
+    from runtime.db_lock import connect_read
     client.cookies.clear()
     with connect_read(default_db_path()) as con:
         before = con.execute("SELECT COUNT(*) FROM deliverables").fetchone()[0]
@@ -319,6 +322,7 @@ def test_generate_empty_section_returns_gap(client, seed):
 
 
 def _section_prose_row(deliverable_id: str):
+    from runtime.db_lock import connect_read
     con = connect_read(default_db_path())
     try:
         return con.execute(
