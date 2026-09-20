@@ -1,6 +1,6 @@
 # Decision: baseline substrate/memory + substrate/agent_skills (reachability gate)
 
-**Date:** 2026-08-07 · **Gate:** `tools/lints/reachability_gate_py.py` (hard CI gate on py3.14)
+**Date:** 2026-08-07 · **Gate:** `tools/lint/reachability_gate_py.py` (hard CI gate on py3.14)
 
 ## Context
 The swarm shipped `substrate/memory/` (account-level memory substrate + recall/router,
