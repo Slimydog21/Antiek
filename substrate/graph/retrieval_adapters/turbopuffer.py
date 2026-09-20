@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import os
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -425,20 +426,39 @@ class TurbopufferSubstrate:
             if not _vectors_close(by_id[rid]["vector"], row.get("vector"), tol=1e-3):
                 vectors_ok = False
                 break
-        metadata = ns.metadata(timeout=30.0)
-        schema = getattr(metadata, "schema_", {})
-        text_schema = schema.get("text") if isinstance(schema, dict) else None
-        text_fts = getattr(text_schema, "full_text_search", None)
-        if isinstance(text_schema, dict):
-            text_fts = text_schema.get("full_text_search")
-        approx = getattr(metadata, "approx_row_count", None)
-        # approx_row_count may lag; accept >= for large, exact for small.
+        # approx_row_count often lags at 0 right after upsert (vendor metadata).
+        # Small exports: require exact approx. SERVABLE-scale (>100): accept strong
+        # sample verify when approx is unknown/0; if approx is partial (0 < n <
+        # payload), poll briefly then fail — that is real under-count, not lag.
+        def _read_meta() -> tuple[Any, Any]:
+            metadata = ns.metadata(timeout=30.0)
+            schema = getattr(metadata, "schema_", {})
+            text_schema = schema.get("text") if isinstance(schema, dict) else None
+            fts: Any = getattr(text_schema, "full_text_search", None)
+            if isinstance(text_schema, dict):
+                fts = text_schema.get("full_text_search")
+            return getattr(metadata, "approx_row_count", None), fts
+
+        approx, text_fts = _read_meta()
         if len(payload) <= 100:
+            for _attempt in range(10):
+                if approx == len(payload):
+                    break
+                time.sleep(0.5)
+                approx, text_fts = _read_meta()
             count_ok = (len(verified_payload) == len(payload) and
                         approx == len(payload))
         else:
-            count_ok = (len(verified_payload) >= min(sample_n, len(payload)) and
-                        (approx is None or int(approx) >= len(payload)))
+            sample_ok = len(verified_payload) >= min(sample_n, len(payload))
+            if approx is not None and 0 < int(approx) < len(payload):
+                for _attempt in range(10):
+                    if int(approx) >= len(payload):
+                        break
+                    time.sleep(0.5)
+                    approx, text_fts = _read_meta()
+            approx_caught_up = approx is not None and int(approx) >= len(payload)
+            approx_unknown = approx is None or int(approx) == 0
+            count_ok = sample_ok and (approx_caught_up or approx_unknown)
         if not (count_ok and digest_ok and vectors_ok and _fts_enabled(text_fts)):
             raise RuntimeError(
                 "staging namespace verification failed: "
