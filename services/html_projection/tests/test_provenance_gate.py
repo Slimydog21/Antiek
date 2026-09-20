@@ -23,6 +23,7 @@ SOURCED = SourceRef(
     ip_holder_id=None,
     locator="/x",
     chunk_text="txt",
+    chunk_id="chunk-pd",
 )
 UNRESOLVED = SourceRef(
     document_id=None,
@@ -60,3 +61,19 @@ def test_incomplete_provenance_banner_with_correct_counts():
     blob = json.dumps(dm, ensure_ascii=False)
     assert "Provenance incomplete — 1 of 3 claims fully sourced." in blob
     assert "(unsourced)" in blob  # the no-source and the unresolved claim
+
+
+def test_document_only_reference_is_not_a_complete_chunk_chain():
+    source = SourceRef(document_id="doc", document_title="Legacy reference",
+                       content_class="public_domain", ip_holder_id=None)
+    dm = adapt_synthesis(_exp([Claim("Summary", [source])]))
+    assert dm["metadata"]["provenance"] == {
+        "fully_sourced": 0, "total": 1, "complete": False,
+    }
+    assert "Legacy reference" in json.dumps(dm)
+
+
+def test_one_missing_citation_cannot_hide_behind_a_resolved_citation():
+    dm = adapt_synthesis(_exp([Claim("Partial", [SOURCED, UNRESOLVED])]))
+    assert dm["metadata"]["provenance"]["fully_sourced"] == 0
+    assert dm["metadata"]["provenance"]["complete"] is False

@@ -1,7 +1,7 @@
 """Archive-to-HTML evidence using the real scratch database and resolver.
 
-The current resolver collapses the thesis into one document-grounded claim;
-these tests do not establish chunk-level attribution or persisted export denial.
+The fixture follows production's typed thesis/evidence archive and chunk-only pins.
+Missing or legacy provenance cannot become a complete claim/chunk/document chain.
 Both the light route and the full application's signed-cookie boundary are exercised.
 """
 
@@ -21,6 +21,13 @@ from runtime.db_lock import connect_read, connect_write
 from services.html_projection.gate import assert_script_free
 from services.html_projection.island import extract_island
 from substrate.graph import default_db_path
+from substrate.schemas import (
+    ConstraintCompliance,
+    EvidenceRetrieveDeliveredPayload,
+    SupportingClaim,
+    SynthesizeDeliveredPayload,
+    ThesisComponent,
+)
 
 
 @pytest.fixture
@@ -55,12 +62,31 @@ def archived_synthesis(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple
                 status="passed",
                 implicit_recommendation="conditional",
                 thesis_text="An authored conclusion from mixed evidence.",
-                evidence=[
-                    {"claim": "First evidence claim", "chunk_id": "chunk-doc-public"},
-                    {"claim": "Second evidence claim", "chunk_id": "chunk-doc-private"},
-                ],
+                thesis=SynthesizeDeliveredPayload(
+                    thesis_summary="An authored conclusion from mixed evidence.",
+                    implicit_recommendation="conditional",
+                    thesis_components=[
+                        ThesisComponent(claim="The public-source claim.", confidence="high",
+                                        supporting_chunk_ids=["chunk-doc-public"]),
+                        ThesisComponent(claim="The private-source claim.", confidence="moderate",
+                                        supporting_chunk_ids=["chunk-doc-private"]),
+                    ],
+                    constraint_compliance=ConstraintCompliance(
+                        hard_constraints_satisfied=True,
+                    ),
+                ).model_dump(mode="json"),
+                evidence=[EvidenceRetrieveDeliveredPayload(
+                    sub_question="What does each source establish?",
+                    answer="Two source-specific findings.",
+                    supporting_claims=[
+                        SupportingClaim(
+                            claim=f"Evidence from {document_id}", evidence_type="direct",
+                            chunk_ids=[f"chunk-{document_id}"], confidence="high",
+                            confidence_basis="The cited passage states the finding.",
+                        ) for document_id in ("doc-public", "doc-private")
+                    ],
+                ).model_dump(mode="json")],
                 chunk_ids=("chunk-doc-public", "chunk-doc-private"),
-                document_ids=("doc-public", "doc-private"),
             ),
             investigation_id="inv-export-database",
             synthesis_id="syn-export-database",
@@ -68,27 +94,41 @@ def archived_synthesis(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple
     return db_path, synthesis_id
 
 
-def test_real_resolver_preserves_document_rights_but_not_per_claim_evidence(
+def test_real_resolver_maps_each_archived_claim_to_its_chunk_without_document_pins(
     archived_synthesis: tuple[str, str],
 ) -> None:
     db_path, synthesis_id = archived_synthesis
     export = resolve_synthesis_export(synthesis_id, db_path=db_path)
     assert export is not None
-    assert len(export.claims) == 1
-    assert export.claims[0].statement == "An authored conclusion from mixed evidence."
-    sources = {source.document_id: source for source in export.claims[0].sources}
+    assert [claim.statement for claim in export.claims] == [
+        "The public-source claim.", "The private-source claim.",
+    ]
+    assert [[source.chunk_id for source in claim.sources] for claim in export.claims] == [
+        ["chunk-doc-public"], ["chunk-doc-private"],
+    ]
+    assert all(claim.fully_sourced for claim in export.claims)
+    sources = {source.document_id: source for claim in export.claims for source in claim.sources}
     assert set(sources) == {"doc-public", "doc-private"}
     assert sources["doc-public"].content_class == "public_domain"
     assert sources["doc-private"].content_class == "personal_reading"
     assert sources["doc-public"].servable is True
     assert sources["doc-private"].servable is False
-    assert all(source.chunk_text is None for source in sources.values())
+    assert sources["doc-public"].chunk_text == "PUBLIC_SOURCE_PASSAGE"
     assert {source.locator for source in sources.values()} == {
         "/read/doc-public", "/read/doc-private",
     }
+    con = connect_read(db_path)
+    try:
+        count_row = con.execute(
+            "SELECT count(*) FROM synthesis_substrate_manifest "
+            "WHERE synthesis_id = ? AND entity_kind = 'document'", [synthesis_id],
+        ).fetchone()
+        assert count_row is not None and count_row[0] == 0
+    finally:
+        con.close()
 
 
-def test_query_html_route_exports_archived_synthesis_without_source_passages(
+def test_query_html_route_embeds_public_passage_and_withholds_private_passage(
     archived_synthesis: tuple[str, str],
 ) -> None:
     _, synthesis_id = archived_synthesis
@@ -103,13 +143,12 @@ def test_query_html_route_exports_archived_synthesis_without_source_passages(
     assert "Public evidence" in response.text
     assert "Private evidence" in response.text
     assert "cite-only" in response.text
-    assert "PUBLIC_SOURCE_PASSAGE" not in response.text
+    assert "PUBLIC_SOURCE_PASSAGE" in response.text
     assert "PRIVATE_SOURCE_PASSAGE" not in response.text
     model = extract_island(response.text)
     assert model["metadata"]["synthesis_id"] == synthesis_id
-    # "Complete" currently means document links, not resolved claim/chunk spans.
     assert model["metadata"]["provenance"] == {
-        "fully_sourced": 1, "total": 1, "complete": True,
+        "fully_sourced": 2, "total": 2, "complete": True,
     }
     assert {edge["to_document_id"] for edge in model["edges"]} == {
         "doc-public", "doc-private",
@@ -170,5 +209,99 @@ def test_full_app_signed_operator_cookie_exports_real_archived_synthesis(
     assert "Private evidence" in response.text
     assert "cite-only" in response.text
     assert "PRIVATE_SOURCE_PASSAGE" not in response.text
-    assert "PUBLIC_SOURCE_PASSAGE" not in response.text
+    assert "PUBLIC_SOURCE_PASSAGE" in response.text
     assert extract_island(response.text)["metadata"]["synthesis_id"] == synthesis_id
+
+
+@pytest.mark.parametrize(
+    "thesis,document_ids,expected_ids",
+    [
+        pytest.param(
+            {"thesis_components": [{"claim": "Partially sourced claim.",
+                                     "supporting_chunk_ids": ["chunk-doc-public", "missing-chunk"]}]},
+            (), ["chunk-doc-public", "missing-chunk"], id="known-and-missing-citation",
+        ),
+        pytest.param(None, ("doc-public",), [None], id="document-only-legacy"),
+        pytest.param(["not-a-thesis-object"], ("doc-public",), [None], id="malformed-thesis"),
+        pytest.param(
+            {"thesis_components": [
+                {"claim": "Valid component.", "supporting_chunk_ids": ["chunk-doc-public"]},
+                "invalid-component",
+            ]}, (), [], id="invalid-component-cannot-disappear",
+        ),
+        pytest.param(
+            {"thesis_components": [{"claim": "Null citation field.",
+                                     "supporting_chunk_ids": None}]},
+            (), [None], id="null-citation-field",
+        ),
+        pytest.param(
+            {"thesis_components": [{"claim": "Scalar citation field.",
+                                     "supporting_chunk_ids": "chunk-doc-public"}]},
+            (), [None], id="nonlist-citation-field",
+        ),
+        pytest.param(
+            {"thesis_components": [{"claim": "Known and malformed citation.",
+                                     "supporting_chunk_ids": ["chunk-doc-public", None]}]},
+            (), ["chunk-doc-public", None], id="known-and-malformed-citation",
+        ),
+        pytest.param(
+            {"thesis_components": [{"claim": "An analogy-grounded claim.",
+                                     "supporting_chunk_ids": [], "supporting_path_indices": [0]}]},
+            (), [], id="analogy-only",
+        ),
+    ],
+)
+def test_incomplete_archived_provenance_stays_incomplete_in_real_html_route(
+    archived_synthesis: tuple[str, str], thesis: object, document_ids: tuple[str, ...],
+    expected_ids: list[str | None],
+) -> None:
+    db_path, _ = archived_synthesis
+    with connect_write(db_path, purpose="test-incomplete-synthesis-export") as con:
+        synthesis_id = archive_synthesis_via_db(
+            con,
+            ArchiveInputs(
+                target_question="Is this claim fully sourced?",
+                synthesis_timestamp=datetime(2026, 9, 20, tzinfo=UTC),
+                status="passed", implicit_recommendation="conditional",
+                thesis_text="A retained authored summary.", thesis=thesis,
+                chunk_ids=("chunk-doc-public",), document_ids=document_ids,
+            ),
+            investigation_id="inv-incomplete", synthesis_id="syn-incomplete",
+        )
+    export = resolve_synthesis_export(synthesis_id, db_path=db_path)
+    assert export is not None
+    assert len(export.claims) == 1
+    assert export.claims[0].fully_sourced is False
+    assert [source.chunk_id for source in export.claims[0].sources] == expected_ids
+    app = FastAPI()
+    register_synthesis_artifact_routes(app)
+    with TestClient(app) as client:
+        response = client.get(f"/api/syntheses/{synthesis_id}/artifact?format=html")
+    assert response.status_code == 200
+    assert "Provenance incomplete" in response.text
+    assert "A retained authored summary." in response.text
+    assert extract_island(response.text)["metadata"]["provenance"] == {
+        "fully_sourced": 0, "total": 1, "complete": False,
+    }
+
+
+@pytest.mark.parametrize("limit", ["_MAX_COMPONENTS", "_MAX_CITATIONS"])
+def test_over_bound_thesis_falls_back_instead_of_claiming_partial_completeness(
+    archived_synthesis: tuple[str, str], monkeypatch: pytest.MonkeyPatch, limit: str,
+) -> None:
+    from interfaces.research.api import synthesis_artifact
+
+    _, synthesis_id = archived_synthesis
+    monkeypatch.setattr(synthesis_artifact, limit, 1)
+    app = FastAPI()
+    register_synthesis_artifact_routes(app)
+    with TestClient(app) as client:
+        response = client.get(f"/api/syntheses/{synthesis_id}/artifact?format=html")
+    assert response.status_code == 200
+    assert "An authored conclusion from mixed evidence." in response.text
+    assert "Provenance incomplete" in response.text
+    assert "PUBLIC_SOURCE_PASSAGE" not in response.text
+    assert "PRIVATE_SOURCE_PASSAGE" not in response.text
+    assert extract_island(response.text)["metadata"]["provenance"] == {
+        "fully_sourced": 0, "total": 1, "complete": False,
+    }

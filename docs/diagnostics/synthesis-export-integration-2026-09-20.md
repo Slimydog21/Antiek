@@ -1,16 +1,25 @@
-# Synthesis export integration evidence
+# Synthesis export provenance repair
 
 ## Failure Dossier
 
-The prior UI tests mocked HTTP responses; backend tests mocked resolution and
-mounted a bare FastAPI instance. They did not connect canonical persistence or
-application authentication to the actual `/artifact?format=html` endpoint.
-No live production failure or provider failure was observed. LLM contacted on
-the application path: no. An independent GLM reviewer is used for code review.
+Production Loop One archives typed thesis components and chunk manifest pins,
+but normally supplies no document manifest pins. The public export resolver
+previously read only document pins and collapsed the summary into one claim.
+It lost claim/source associations on production-shaped archives. When callers
+supplied document pins, the adapter incorrectly counted those references as
+complete claim/chunk/document provenance.
+
+The first integration fixture supplied document pins explicitly. Its 23 passing
+tests proved that narrower branch and authentication, but did not establish
+production representativeness. Independent audit caught the mismatch. The
+initial complete=True regression pin has been replaced, not ratified.
+
+No live incident was observed. Application LLM calls: none. GLM performs
+independent code review only.
 
 ### Signatures
 
-Captured with `inspect.signature` using the worktree source:
+Captured with inspect.signature from canonical code before repair:
 
 ```python
 resolve_synthesis_export(synthesis_id: str, *, db_path: str | None = None) -> SynthesisExport | None
@@ -19,47 +28,63 @@ adapt_synthesis(export: SynthesisExport) -> dict[str, Any]
 archive_synthesis_via_db(con: Any, inputs: ArchiveInputs, *, investigation_id: str, synthesis_id: str | None = None) -> str
 ```
 
+These callable signatures remain unchanged.
+
 ### Numbered failure chain
 
-1. MasterMdViewer supplies the synthesis API path to ArtifactExport.
-2. ArtifactExport requests `/artifact?format=html` with session credentials.
-3. Full application middleware authenticates before route resolution.
-4. The resolver reads synthesis metadata and document rights from DuckDB.
-5. The adapter filters rights; render output passes the script-free gate.
-
-No broken-call exception was reproduced. The missing proof concerned steps
-3–5. Scratch execution also confirms a separate provenance limitation: the
-resolver constructs one thesis claim from document references, without
-reconstructing the archived evidence's claim/chunk relationships.
+1. Loop One's _deposit_synthesis_to_substrate archives thesis_components and
+   chunk_ids, without document_ids.
+2. archive_synthesis_via_db writes chunk pins, without deriving document pins.
+3. The former export resolver queries only document pins and ignores thesis
+   components, so valid chunk citations disappear from the export.
+4. Its fallback attaches every document reference to one summary claim.
+5. SourceRef.resolved formerly checked only document_id, allowing misleading
+   complete=True metadata without a resolved chunk chain.
 
 ### Old vs new call pattern
 
-N/A. This change adds integration evidence without changing product calls.
+The resolver now reads existing thesis JSON, preserves each component's exact
+citation mapping, and queries chunks JOIN documents in parameterized batches.
+It retains missing and malformed citations as unresolved records. Current
+source rights still govern passage inclusion in the adapter. A resolved source
+now needs both chunk and document identity.
+
+Legacy or oversized/malformed component payloads export the authored summary
+and document references with an explicit provenance note and incomplete count.
+Analogy-only claims remain incomplete, with a note that analogy paths are not
+resolved as chunk citations. No claim count is silently truncated.
 
 ### Repro gate
 
-`PYTHONPATH="$PWD" /Users/slimydog/Antiek/platform/.venv/bin/python -m pytest -q tests/api/test_synthesis_export_boundary.py tests/api/test_synthesis_export_database.py tests/api/test_synthesis_artifact.py`
+From the worktree root:
 
-Exit 0, 23 passed. Full output: `.audit/combined-tests.log`.
+```bash
+PYTHONPATH="$PWD" /Users/slimydog/Antiek/platform/.venv/bin/python -m pytest -q services/html_projection/tests tests/api/test_synthesis_artifact.py tests/api/test_synthesis_export_boundary.py tests/api/test_synthesis_export_database.py
+```
+
+467 passed, exit 0. Full output: .audit/export-repair-full-tests.log.
+The production-shaped fixture uses typed SynthesizeDeliveredPayload and
+EvidenceRetrieveDeliveredPayload, pins chunks only, and asserts zero document
+pins before checking exact claim/source resolution.
 
 ### What repro does NOT prove
 
-Live deployment, browser downloads, validated claim/chunk provenance, or
-persistent whole-synthesis restriction. The current schema has no such policy
-field. Metadata refusal tests inject the adapter's transient restriction.
+Live production, browser downloads, or a stable multi-query archival snapshot.
+Whole-synthesis restrictions still have no persisted policy field. Federated
+span IDs remain unresolved in this local graph implementation.
 
 ## Scope Map
 
-| Entry point | Status | Evidence | Live LLM |
-|---|---|---|---|
-| Archive writer → resolver → query HTML route | tested | test_synthesis_export_database.py | no |
-| Query route mixed rights and poisoned renderer | tested | test_synthesis_export_boundary.py | no |
-| Query route restricted metadata, three formats | tested | test_synthesis_export_boundary.py | no |
-| Full app bearer auth, both HTML routes | tested | test_synthesis_export_boundary.py | no |
-| Full app signed-cookie auth and email allowlist | tested | test_synthesis_export_boundary.py | no |
-| Full app signed cookie → real archived export | tested | test_synthesis_export_database.py | no |
-| Browser download and rendered interaction | untested | no browser run | no |
-| Real deployed schema and auth configuration | untested | no production read | no |
+| Entry point | Status | Evidence |
+|---|---|---|
+| Typed archive, chunk-only pins, exact claim sources | tested | test_synthesis_export_database.py |
+| Full app signed cookie to real archived HTML | tested | test_synthesis_export_database.py |
+| Missing/malformed/legacy/analogy citations | tested | test_synthesis_export_database.py |
+| Document-only and partially missing completeness | tested | test_provenance_gate.py |
+| Query-route poison, rights, three-format refusal | tested | test_synthesis_export_boundary.py |
+| Bearer/cookie/allowlist authentication | tested | test_synthesis_export_boundary.py |
+| Browser download and live deployed schema | untested | no run |
+| Archived external federation | untested | retained PR856, separate integration |
 
 ## Handoff
 
@@ -68,74 +93,79 @@ field. Metadata refusal tests inject the adapter's transient restriction.
 | Field | Value |
 |---|---|
 | Date | 2026-09-20 |
-| Repo root | /Users/slimydog/Antiek/.worktrees/synthesis-export-integration-20260920 |
+| Repo | /Users/slimydog/Antiek/.worktrees/synthesis-export-integration-20260920 |
 | Branch | test/synthesis-export-integration-20260920 |
-| Base SHA | b96fa084e7a12b98a24b02f85200d82aeaa7bd2d |
-| Python | /Users/slimydog/Antiek/platform/.venv/bin/python |
-| Python version | 3.12.13 |
-| Application LLM/network calls | none |
+| Base | b96fa084e7a12b98a24b02f85200d82aeaa7bd2d |
+| First evidence commit | 502cb2238c5c3111b3835c943f7e0ea4fd58bb8a |
+| Interpreter | /Users/slimydog/Antiek/platform/.venv/bin/python, Python3.12.13 |
+| Application provider/network calls | none |
 
 ### Not proved
 
-See the untested Scope Map rows and repro limitations above. Full-app bearer and cookie-negative tests use a missing synthesis to distinguish
-rejected access from authenticated resolution. A fourth database test joins
-real archive data, real signed-cookie authentication and successful HTML export
-in the full application.
+See untested scope rows above. Synthetic tests do not establish live output
+quality. Public export rights and citation completeness are separate checks.
 
 ### Status
 
-In progress. Tests and Ruff pass. Independent review pending. Provisional
-export verification grade 78/100: substantially stronger backend evidence,
-with browser and provenance obligations still open.
+In progress. Current tests and types pass; independent implementation review
+is running. Initial M4 compliance was assessed at35/100, provisional repaired
+local-graph compliance at88/100 pending independent review. Broad export
+readiness remains below completion due to browser/live/federated gaps.
 
 ### Files touched
 
-Two new export test modules and this diagnostic. No production implementation.
+The public resolver and adapter; provenance and database integration tests;
+boundary tests from the first evidence commit; this diagnostic.
 
 ### Milestones
 
-- [x] Real archive/resolver test with isolated database.
-- [x] Exact query-route negative tests and full-app authentication.
-- [ ] Independent review accepted.
-- [ ] Browser download proof.
+- [x] Production-shaped archive and full-app authenticated export proof.
+- [x] Exact claim/chunk resolution and honest incomplete fallbacks.
+- [ ] Independent implementation acceptance and current CI.
+- [ ] Browser and deployed verification.
 
 ### Gate results
 
-| Gate | Result | Evidence |
+| Gate | Result | Local evidence |
 |---|---|---|
-| Combined pytest command above | 23 passed, exit 0 | .audit/combined-tests.log |
-| Ruff on both new test modules | exit 0 | root tool output |
-| Strict mypy, follow-imports=silent, both new modules | exit 0 | .audit/mypy-tests.log |
-| Gate-removal mutation | expected pytest exit 1 | .audit/gate-mutation.log |
-| Independent GLM review | running | .audit/export-review.log |
+| Full export suite above | 467 passed, exit0 | .audit/export-repair-full-tests.log |
+| Strict mypy, explicit-package-bases, follow-imports=silent | 4 files clean | .audit/provenance-mypy.log |
+| Ruff on changed Python | passed | command output |
+| Gate-removal mutation | expected pytest exit1 | .audit/gate-mutation.log |
+| Initial evidence-only GLM | ACCEPT84, entrenchment concern | .audit/export-review.log |
+| New implementation GLM | running | .audit/provenance-review.log |
+| Source-only security | LOW, 0 REAL, 7 advisory, exit0 | .audit/export-source-security-summary.json |
 
 ### Decisions mid-flight
 
-Preserve whole-synthesis restrictions as explicitly absent. No fictitious
-database flag was added. Signed cookies use the actual signer and verifier.
+The resolver design reuses PR856's archived-component and graph-join approach,
+while retaining unresolved IDs and correcting document-only completeness.
+The control-plane owner explicitly transferred the public export files from
+that blocked claim. PR856 exact9652d314a remains untouched; its external span
+registry still needs deliberate reintegration. No schema, writer, db_lock,
+Parquet or serving-rights policy change.
 
 ### Assumptions surfaced
 
-Document-level provenance completeness is weaker than the SPR-05 M4 requirement
-to walk each claim/chunk/document chain. The observed metadata must not be
-presented as proof of that stronger requirement.
+Legacy summaries have no verified claim mapping. They remain useful readable
+exports, but do not receive fabricated provenance. Malformed payloads fall back
+visibly. Query batching bounds parameters; parser limits bound expansion.
 
 ### Steelman rejected alternative
 
-Source inspection shows both routes share guards, but would not catch a later
-query-route bypass or an application auth exception. The new tests exercise
-those paths directly.
+Merely renaming complete=True as document-level completeness preserves the
+missing claim citations. This repair resolves the archived graph references
+and keeps genuine gaps visible instead.
 
 ### Open questions
 
-The independent reviewer is assessing whether a test pinning coarse provenance
-would entrench a contract gap. Browser/download verification remains separate.
+Independent critique, browser proof, production parity and federated rebase.
 
 ### Next sprint can start when
 
-Ownership of the relevant resolver/adapter change is coordinated with the
-existing federated-evidence claim, if a provenance correction is required.
+The implementation review is terminal and its findings are handled. Browser
+verification can proceed independently on synthetic local data.
 
 ### Out-of-scope temptations
 
-No schema migration, auth-policy change, production mutation or deployment.
+No provider execution, schema/writer migration, production mutation or deploy.

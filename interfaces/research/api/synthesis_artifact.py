@@ -47,30 +47,52 @@ def _resolve_db_path() -> str:
 
 def _loadjson(value: str | None) -> dict[str, Any]:
     try:
-        return cast(dict[str, Any], json.loads(value)) if value else {}
-    except (TypeError, ValueError):
+        parsed = json.loads(value) if value else {}
+        return cast(dict[str, Any], parsed) if isinstance(parsed, dict) else {}
+    except (TypeError, ValueError, RecursionError):
         return {}
+
+
+# Export is a bounded reader of archived JSON. Oversized/malformed claim data
+# falls back visibly; it must never be partially counted as complete.
+_MAX_THESIS_CHARS = 2_000_000
+_MAX_COMPONENTS = 10_000
+_MAX_CITATIONS = 100_000
+_MAX_CITATION_ID_LENGTH = 4096
+
+
+def _archived_components(value: str | None) -> list[dict[str, Any]]:
+    if not isinstance(value, str) or len(value) > _MAX_THESIS_CHARS:
+        return []
+    thesis = _loadjson(value)
+    components = thesis.get("thesis_components")
+    if not isinstance(components, list) or not 0 < len(components) <= _MAX_COMPONENTS:
+        return []
+    citation_count = 0
+    for component in components:
+        if (not isinstance(component, dict)
+                or not isinstance(component.get("claim"), str)
+                or not component["claim"].strip()):
+            return []
+        ids = component.get("supporting_chunk_ids", [])
+        if isinstance(ids, list):
+            citation_count += len(ids)
+            if citation_count > _MAX_CITATIONS:
+                return []
+            if any(isinstance(cid, str) and len(cid) > _MAX_CITATION_ID_LENGTH for cid in ids):
+                return []
+    return cast(list[dict[str, Any]], components)
 
 
 def resolve_synthesis_export(
     synthesis_id: str, *, db_path: str | None = None
 ) -> SynthesisExport | None:
-    """Build a ``SynthesisExport`` from the graph, or None if it does not exist.
+    """Resolve archived synthesis claims through their exact graph citations.
 
-    Reads the synthesis metadata + the substrate-manifest documents as
-    document-level provenance sources. The document-level rights data
-    (``content_class`` + ``ip_holder_id``) comes straight from ``documents``;
-    the rights FILTER is applied downstream in the adapter (single source of
-    truth), so this resolver never decides embed-vs-cite-only.
-
-    NOTE (rigor #1): the per-claim chunk-level structure of
-    ``syntheses.evidence`` is NOT yet validated against a real archived
-    synthesis (the local graph had zero rows at build time). This resolver
-    reads what is reliably present and renders the thesis as one claim grounded
-    in the manifest documents; it **degrades** to that rather than fabricating a
-    claim structure it cannot verify. When a real synthesis exists, extend this
-    to parse the validated evidence shape into per-claim chunk sources — the
-    adapter already handles arbitrarily many claims + sources.
+    Claim parsing and graph lookup follow PR856's archived-thesis approach.
+    Unknown citations remain unresolved, including federated IDs whose registry
+    is not part of this local-graph resolver. Legacy document references remain
+    useful citations but never establish a complete chunk provenance chain.
     """
     from runtime.db_lock import connect_read
 
@@ -79,7 +101,7 @@ def resolve_synthesis_export(
     try:
         row = con.execute(
             "SELECT synthesis_id, target_question, thesis_text, "
-            "implicit_recommendation, model_versions, parameters "
+            "implicit_recommendation, model_versions, parameters, thesis "
             "FROM syntheses WHERE synthesis_id = ?",
             [synthesis_id],
         ).fetchone()
@@ -92,32 +114,82 @@ def resolve_synthesis_export(
             "WHERE m.synthesis_id = ? AND m.entity_kind = 'document'",
             [synthesis_id],
         ).fetchall()
+        components = _archived_components(row[6])
+        cited: set[str] = set()
+        for component in components:
+            component_ids = component.get("supporting_chunk_ids")
+            if isinstance(component_ids, list):
+                cited.update(cid for cid in component_ids if isinstance(cid, str) and cid)
+        cited_ids = sorted(cited)
+        graph_sources: dict[str, SourceRef] = {}
+        # Bound SQL parameter lists without truncating the archived citations.
+        for offset in range(0, len(cited_ids), 500):
+            batch = cited_ids[offset:offset + 500]
+            placeholders = ",".join("?" for _ in batch)
+            chunk_rows = con.execute(
+                "SELECT c.chunk_id, d.document_id, d.title, d.content_class, "
+                "d.ip_holder_id, c.text FROM chunks c JOIN documents d "
+                "ON d.document_id = c.document_id "
+                f"WHERE c.chunk_id IN ({placeholders})", batch,
+            ).fetchall()
+            for chunk in chunk_rows:
+                graph_sources[chunk[0]] = SourceRef(
+                    document_id=chunk[1], document_title=chunk[2],
+                    content_class=chunk[3], ip_holder_id=chunk[4],
+                    locator=f"/read/{chunk[1]}", chunk_text=chunk[5], chunk_id=chunk[0],
+                )
     finally:
         con.close()
 
-    sources = [
-        SourceRef(
-            document_id=r[0],
-            document_title=r[1],
-            content_class=r[2],
-            ip_holder_id=r[3],
-            locator=f"/read/{r[0]}",
-            chunk_text=None,  # document-level source; chunk text resolved per-claim later
-        )
+    document_sources = [
+        SourceRef(document_id=r[0], document_title=r[1], content_class=r[2],
+                  ip_holder_id=r[3], locator=f"/read/{r[0]}")
         for r in doc_rows
     ]
-    claims = [Claim(statement=row[2], sources=sources)] if row[2] else []
+    claims: list[Claim] = []
+    for component in components:
+        ids = component.get("supporting_chunk_ids", [])
+        sources: list[SourceRef] = []
+        if not isinstance(ids, list):
+            ids = [None]
+        seen: set[str] = set()
+        for chunk_id in ids:
+            if isinstance(chunk_id, str) and chunk_id:
+                if chunk_id in seen:
+                    continue
+                seen.add(chunk_id)
+                source = graph_sources.get(chunk_id)
+                if source is not None:
+                    sources.append(source)
+                    continue
+            sources.append(SourceRef(
+                document_id=None, document_title=None, content_class=None,
+                ip_holder_id=None,
+                chunk_id=chunk_id if isinstance(chunk_id, str) else None,
+            ))
+        claims.append(Claim(statement=component["claim"], sources=sources))
+    if not claims and row[2]:
+        claims = [Claim(statement=row[2], sources=document_sources)]
+
+    provenance_note = None
+    if not components:
+        provenance_note = (
+            "Archived claim provenance unavailable; showing the summary and document references only."
+        )
+    elif any(not c.get("supporting_chunk_ids") and c.get("supporting_path_indices")
+             for c in components):
+        provenance_note = "Analogy paths are not resolved as chunk citations in this export."
 
     return SynthesisExport(
-        synthesis_id=row[0],
-        target_question=row[1] or "(untitled synthesis)",
-        thesis_text=None,  # surfaced as the first claim above
-        recommendation=row[3],
-        model_versions=_loadjson(row[4]),
+        synthesis_id=row[0], target_question=row[1] or "(untitled synthesis)",
+        thesis_text=row[2] if components else None,
+        provenance_note=provenance_note,
+        recommendation=row[3], model_versions=_loadjson(row[4]),
         parameters=_loadjson(row[5]),
         attribution_manifest={
             "document_ip_holders": {
-                s.document_id: s.ip_holder_id for s in sources if s.document_id
+                source.document_id: source.ip_holder_id
+                for claim in claims for source in claim.sources if source.document_id
             }
         },
         claims=claims,

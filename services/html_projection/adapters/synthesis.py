@@ -62,6 +62,7 @@ class SourceRef:
     ip_holder_id: str | None
     locator: str | None = None
     chunk_text: str | None = None
+    chunk_id: str | None = None
 
     @property
     def servable(self) -> bool:
@@ -70,8 +71,8 @@ class SourceRef:
 
     @property
     def resolved(self) -> bool:
-        # Ties to a real document → counts toward provenance completeness.
-        return bool(self.document_id)
+        # Document-only references do not establish a claim/chunk/document chain.
+        return bool(self.chunk_id and self.document_id)
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,7 @@ class SynthesisExport:
     parameters: dict[str, Any] = field(default_factory=dict)
     attribution_manifest: dict[str, Any] = field(default_factory=dict)
     claims: list[Claim] = field(default_factory=list)
+    provenance_note: str | None = None
 
 
 # ── doc-model node builders (existing SPR-02 renderer node types) ──
@@ -172,6 +174,8 @@ def adapt_synthesis(export: SynthesisExport) -> dict[str, Any]:
     complete = total > 0 and fully == total
 
     content: list[dict[str, Any]] = []
+    if export.provenance_note:
+        content.append(_prose(export.provenance_note))
 
     # M4: honest provenance banner at the top when incomplete.
     if not complete and total > 0:
