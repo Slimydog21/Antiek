@@ -1,3 +1,4 @@
+import WorkflowArt from "../../brand/WorkflowArt";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -578,7 +579,7 @@ export default function Library() {
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6 sm:px-8 sm:py-10">
           <header className="space-y-2">
             <div className="flex items-start justify-between gap-4">
-              <h1 className="text-2xl font-serif text-ink dark:text-bright">Library</h1>
+              <span className="flex items-center gap-3"><WorkflowArt workflow="library" size={52} className="shrink-0" /><h1 className="text-2xl font-serif text-ink dark:text-bright">Library</h1></span>
               <div className="shrink-0 mt-1 flex items-center gap-4">
                 {/* SPR-09 M2: the paginated browse view over the catalog endpoint
                     — for scanning the whole shelf a page at a time. Additive to
