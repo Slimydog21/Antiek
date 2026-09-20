@@ -279,98 +279,111 @@ def ingest_url(
     from runtime.db_lock import connect_write
 
     with connect_write(resolved_db_path, purpose="acquisition/urls") as con:
-        # On a CHANGED re-ingest (``on_conflict="replace"``), drop the prior
-        # document row + its chunks FIRST so the re-insert below is a genuine
-        # fresh write of the edited body under the SAME deterministic id (no
-        # fork) — and so a shrinking edit leaves no orphan tail chunks. We then
-        # call insert_document with ``"ignore"`` (the row is gone, so it inserts
-        # cleanly and the SPR-01 deny-by-default guard still fires). Scoped to
-        # the replace path; the default ignore/no-op path is untouched.
-        # ``insert_document`` itself only knows "error"/"ignore"; replace is the
-        # adapter's responsibility (delete-then-insert) so we never pass an
-        # unsupported value down.
-        insert_on_conflict = on_conflict
-        if on_conflict == "replace":
-            # A CHANGED re-ingest must overwrite the body under the SAME id
-            # without forking. We do NOT delete the documents row (other tables
-            # FK-reference it, so a DELETE trips a foreign-key constraint);
-            # instead we UPDATE raw_text in place, then refresh the chunks.
-            # Chunks are deleted first (deterministic content-addressed ids mean
-            # a shrinking edit would otherwise orphan tail rows) and re-inserted
-            # below. insert_document is then told "ignore" (the row already
-            # exists) so it does not raise; the UPDATE is what persists the edit.
-            replace_document_body(con, document_id, raw_text=text)
-            con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
-            insert_on_conflict = "ignore"
-        insert_document(
-            con,
-            document_id=document_id,
-            source_tier=int(source_tier),
-            document_type="web_article",
-            # Personal-Reading Lane (SPR-02): a third-party web article the
-            # owner fetched for their own reading lands personal_reading —
-            # full body readable by the owner, NEVER served publicly / ad-
-            # attributed / trained on (§9.0 Hachette/Bartz discipline). The
-            # IMPORTED CONSTANT is passed, never the string literal
-            # "personal_reading": corpus_audit's bypass-scanner flags any
-            # content_class string literal to keep classify() the single
-            # content_class chokepoint (an ast.Name is safe, an ast.Constant
-            # str is the retired anti-pattern). This is belt-and-suspenders
-            # with the insert_document deny-by-default fallback (SPR-01).
-            content_class=PERSONAL_READING_CONTENT_CLASS,
-            source_uri=page.final_url,
-            title=md_doc.title,
-            author=md_doc.author,
-            published_at=None,
-            investigation_id=investigation_id,
-            raw_text=text,
-            metadata={
-                "requested_url": page.requested_url,
-                "final_url": page.final_url,
-                "content_type": page.content_type,
-                "status_code": page.status_code,
-                "fetched_at": datetime.now(UTC).isoformat(),
-            },
-            on_conflict=insert_on_conflict,
-        )
-        register_source_document(
-            con,
-            document_id=document_id,
-            source_kind=SourceKind.WEB,
-            content_class=PERSONAL_READING_CONTENT_CLASS,
-        )
-        # Reader-HTML sidecar (doc→HTML S1): the reader snapshot is now stored
-        # TRUSTED — the ISOLATED main-content HTML (never raw ``page.body``;
-        # chrome was stripped in ``html_to_markdown``) passes through the book
-        # allowlist sanitizer inside ``store_reader_html``, which stamps the
-        # exact ``SANITIZER_VERSION`` at the same write. The sidecar is the
-        # only trust carrier for the serve path; ``documents.metadata`` is not
-        # touched (the §5.2 hazard). The legacy env-gated FILE snapshot above
-        # stays untouched for back-compat with tests/test_reader_snapshot.py.
-        store_reader_html(
-            con,
-            document_id=document_id,
-            main_html=md_doc.main_html,
-            source_kind="url",
-            source_url=page.final_url,
-        )
-        # Spec §14.2 — record the requested_url→document_id alias so
-        # future fetches that resolve to a different final_url for
-        # the same logical content can find their canonical doc_id
-        # via the alias table. Two aliases written: requested_url
-        # (the input) and final_url (the redirect target). Both row
-        # writes are upserts that increment seen_count when present.
+        # One transaction for the whole ingest. The DELETE above drops a
+        # document's chunks and the loop below re-inserts them; DuckDB
+        # autocommits every statement, so a failure part-way through used to
+        # leave the document with its old chunks gone and its new ones only
+        # partly written. That breaks the provenance chain CLAUDE.md lists as
+        # a critical invariant: every claim cites chunks, every chunk cites a
+        # document. The write lock does not help — nothing was racing; the
+        # later statement simply failed after the earlier ones had committed.
         #
-        # `now_ts` is passed as a parameter (rather than using the
-        # SQL CURRENT_TIMESTAMP keyword) because DuckDB's ON CONFLICT
-        # parser interprets CURRENT_TIMESTAMP in the UPDATE SET clause
-        # as a column reference, which fails binding.
-        now_ts = datetime.now(UTC).replace(tzinfo=None)
-        for alias in {page.requested_url, page.final_url}:
-            if not alias:
-                continue
-            con.execute(
-                """
+        # Safe to hold only because the embeddings moved out of this block
+        # (see the hoist above). While they were inside, this transaction
+        # would have spanned N model forward passes on a single-writer DB.
+        with con.transaction():
+            # On a CHANGED re-ingest (``on_conflict="replace"``), drop the prior
+            # document row + its chunks FIRST so the re-insert below is a genuine
+            # fresh write of the edited body under the SAME deterministic id (no
+            # fork) — and so a shrinking edit leaves no orphan tail chunks. We then
+            # call insert_document with ``"ignore"`` (the row is gone, so it inserts
+            # cleanly and the SPR-01 deny-by-default guard still fires). Scoped to
+            # the replace path; the default ignore/no-op path is untouched.
+            # ``insert_document`` itself only knows "error"/"ignore"; replace is the
+            # adapter's responsibility (delete-then-insert) so we never pass an
+            # unsupported value down.
+            insert_on_conflict = on_conflict
+            if on_conflict == "replace":
+                # A CHANGED re-ingest must overwrite the body under the SAME id
+                # without forking. We do NOT delete the documents row (other tables
+                # FK-reference it, so a DELETE trips a foreign-key constraint);
+                # instead we UPDATE raw_text in place, then refresh the chunks.
+                # Chunks are deleted first (deterministic content-addressed ids mean
+                # a shrinking edit would otherwise orphan tail rows) and re-inserted
+                # below. insert_document is then told "ignore" (the row already
+                # exists) so it does not raise; the UPDATE is what persists the edit.
+                replace_document_body(con, document_id, raw_text=text)
+                con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
+                insert_on_conflict = "ignore"
+            insert_document(
+                con,
+                document_id=document_id,
+                source_tier=int(source_tier),
+                document_type="web_article",
+                # Personal-Reading Lane (SPR-02): a third-party web article the
+                # owner fetched for their own reading lands personal_reading —
+                # full body readable by the owner, NEVER served publicly / ad-
+                # attributed / trained on (§9.0 Hachette/Bartz discipline). The
+                # IMPORTED CONSTANT is passed, never the string literal
+                # "personal_reading": corpus_audit's bypass-scanner flags any
+                # content_class string literal to keep classify() the single
+                # content_class chokepoint (an ast.Name is safe, an ast.Constant
+                # str is the retired anti-pattern). This is belt-and-suspenders
+                # with the insert_document deny-by-default fallback (SPR-01).
+                content_class=PERSONAL_READING_CONTENT_CLASS,
+                source_uri=page.final_url,
+                title=md_doc.title,
+                author=md_doc.author,
+                published_at=None,
+                investigation_id=investigation_id,
+                raw_text=text,
+                metadata={
+                    "requested_url": page.requested_url,
+                    "final_url": page.final_url,
+                    "content_type": page.content_type,
+                    "status_code": page.status_code,
+                    "fetched_at": datetime.now(UTC).isoformat(),
+                },
+                on_conflict=insert_on_conflict,
+            )
+            register_source_document(
+                con,
+                document_id=document_id,
+                source_kind=SourceKind.WEB,
+                content_class=PERSONAL_READING_CONTENT_CLASS,
+            )
+            # Reader-HTML sidecar (doc→HTML S1): the reader snapshot is now stored
+            # TRUSTED — the ISOLATED main-content HTML (never raw ``page.body``;
+            # chrome was stripped in ``html_to_markdown``) passes through the book
+            # allowlist sanitizer inside ``store_reader_html``, which stamps the
+            # exact ``SANITIZER_VERSION`` at the same write. The sidecar is the
+            # only trust carrier for the serve path; ``documents.metadata`` is not
+            # touched (the §5.2 hazard). The legacy env-gated FILE snapshot above
+            # stays untouched for back-compat with tests/test_reader_snapshot.py.
+            store_reader_html(
+                con,
+                document_id=document_id,
+                main_html=md_doc.main_html,
+                source_kind="url",
+                source_url=page.final_url,
+            )
+            # Spec §14.2 — record the requested_url→document_id alias so
+            # future fetches that resolve to a different final_url for
+            # the same logical content can find their canonical doc_id
+            # via the alias table. Two aliases written: requested_url
+            # (the input) and final_url (the redirect target). Both row
+            # writes are upserts that increment seen_count when present.
+            #
+            # `now_ts` is passed as a parameter (rather than using the
+            # SQL CURRENT_TIMESTAMP keyword) because DuckDB's ON CONFLICT
+            # parser interprets CURRENT_TIMESTAMP in the UPDATE SET clause
+            # as a column reference, which fails binding.
+            now_ts = datetime.now(UTC).replace(tzinfo=None)
+            for alias in {page.requested_url, page.final_url}:
+                if not alias:
+                    continue
+                con.execute(
+                    """
                 INSERT INTO url_alias (
                     requested_url, document_id, first_seen_at,
                     last_seen_at, seen_count
@@ -379,45 +392,45 @@ def ingest_url(
                     last_seen_at = EXCLUDED.last_seen_at,
                     seen_count = url_alias.seen_count + 1
                 """,
-                [alias, document_id, now_ts, now_ts],
-            )
-        for i, chunk in enumerate(chunks):
-            # ``insert_chunk`` has deterministic ids (``<doc>::c<index>``) and a
-            # plain INSERT. It needs no ``on_conflict`` here: on the default
-            # path the driver only reaches this block for a brand-new doc (an
-            # unchanged re-run short-circuits in the PG driver before calling
-            # ingest_url), and on the replace path the prior chunks were just
-            # DELETEd above — so every insert in this loop is a fresh row.
-            chunk_id = insert_chunk(
-                con,
-                document_id=document_id,
-                chunk_index=i,
-                text=chunk.text,
-                section_path=chunk.section or None,
-                embedding=chunk_embeddings[i],
-                token_count=chunk.token_count,
-            )
-            chunk_ids.append(chunk_id)
-            chunks_written += 1
+                    [alias, document_id, now_ts, now_ts],
+                )
+            for i, chunk in enumerate(chunks):
+                # ``insert_chunk`` has deterministic ids (``<doc>::c<index>``) and a
+                # plain INSERT. It needs no ``on_conflict`` here: on the default
+                # path the driver only reaches this block for a brand-new doc (an
+                # unchanged re-run short-circuits in the PG driver before calling
+                # ingest_url), and on the replace path the prior chunks were just
+                # DELETEd above — so every insert in this loop is a fresh row.
+                chunk_id = insert_chunk(
+                    con,
+                    document_id=document_id,
+                    chunk_index=i,
+                    text=chunk.text,
+                    section_path=chunk.section or None,
+                    embedding=chunk_embeddings[i],
+                    token_count=chunk.token_count,
+                )
+                chunk_ids.append(chunk_id)
+                chunks_written += 1
 
-            label = chunk_node_labels[i]
-            node_id = insert_node(
-                con,
-                canonical_label=label,
-                node_type="entity",
-                graph_scope="cross_domain",
-                investigation_id=investigation_id,
-                embedding=label_embeddings[i],
-                metadata={
-                    "source": "url",
-                    "final_url": page.final_url,
-                    "chunk_id": chunk_id,
-                    "section": chunk.section,
-                },
-                parent_event_id=event_id,
-                on_conflict="ignore",
-            )
-            node_ids.append(node_id)
+                label = chunk_node_labels[i]
+                node_id = insert_node(
+                    con,
+                    canonical_label=label,
+                    node_type="entity",
+                    graph_scope="cross_domain",
+                    investigation_id=investigation_id,
+                    embedding=label_embeddings[i],
+                    metadata={
+                        "source": "url",
+                        "final_url": page.final_url,
+                        "chunk_id": chunk_id,
+                        "section": chunk.section,
+                    },
+                    parent_event_id=event_id,
+                    on_conflict="ignore",
+                )
+                node_ids.append(node_id)
 
     reader_snapshot_path: str | None = None
     if os.environ.get("ANTIEK_READER_SNAPSHOT", "").strip().lower() in (
