@@ -134,3 +134,50 @@ def test_two_process_snapshots_serialize_on_same_inode(tmp_path):
         if child is not None and child.poll() is None:
             child.kill()
             child.wait()
+
+
+@pytest.mark.parametrize("guard", [db_lock.snapshot_read, db_lock.authority_handoff_guard])
+def test_guard_yields_to_prior_waiter_within_original_deadline(tmp_path, guard, monkeypatch):
+    import time
+
+    db = seed(tmp_path / "prior-waiter.duckdb")
+    waiter = db_lock._register_write_waiter(db)
+    events = []
+    monkeypatch.setattr(db_lock, "_log_write_event", lambda *a, **kw: events.append(kw))
+    started = time.monotonic()
+    try:
+        with (
+            pytest.raises(db_lock.WriteLockTimeout, match="yielding to prior waiters"),
+            guard(db, timeout_s=0.05, poll_interval_s=0.005),
+        ):
+            pytest.fail("guard overtook a published waiter")
+        assert time.monotonic() - started < 0.5
+        assert db_lock.write_handoff_requested(db)
+        if guard is db_lock.authority_handoff_guard:
+            assert len(events) == 1
+            assert events[0]["success"] is False
+            assert events[0]["max_wait_s"] == 0.0
+        else:
+            assert events == []
+    finally:
+        db_lock._unregister_write_waiter(waiter)
+    with guard(db, timeout_s=0.2):
+        pass
+
+
+@pytest.mark.parametrize("guard", [db_lock.snapshot_read, db_lock.authority_handoff_guard])
+def test_guard_rejects_unsafe_waiter_directory_and_recovers(tmp_path, guard):
+    db = seed(tmp_path / "unsafe-waiters.duckdb")
+    before = digest(db)
+    directory = Path(db + ".write.waiters")
+    directory.mkdir(mode=0o700)
+    directory.chmod(0o777)
+    try:
+        with pytest.raises(OSError, match="owner-only"), guard(db, timeout_s=0.05):
+            pytest.fail("unsafe waiter registry must fail closed")
+        assert digest(db) == before
+        assert not list(directory.iterdir())
+    finally:
+        directory.chmod(0o700)
+    with guard(db, timeout_s=0.2):
+        pass

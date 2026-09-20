@@ -160,9 +160,8 @@ pruning, repeated-pruning timeout cleanup, and sidecar descriptor closure.
 The auditor's final bounded safety verdict is SAFE-TO-PROCEED, 98/100, subject
 to execution of the tests. This is not a production recovery grade.
 
-Remaining review findings: repeated snapshot/authority acquisitions can still
-barge ahead of queued writers; waiter-directory permission/ownership failures
-fail closed and need operator runbook coverage. The expiry worker probes the
+Review findings at that checkpoint included guard fairness and waiter-directory
+runbook coverage, addressed in the follow-up below. The expiry worker probes the
 waiter directory up to ten times per second per parked slot. Dependency findings
 and actual rollout/backup recovery remain separate unresolved work.
 
@@ -170,3 +169,40 @@ Executed after the publication and cleanup repairs: 67 tests passed across warm
 writer, snapshot, surviving-reader, backup and export suites on Python3.12.
 Ruff and diff checks passed. This selection differs from the earlier 70-test
 suite; the counts are not a like-for-like comparison. Final-head CI remains pending.
+
+## Guard fairness and waiter-directory operations
+
+Both snapshot and authority guards now yield to already-published waiters before
+they compete for the permanent flock. The yield occurs before registering their
+own token and shares the original deadline. This prevents repeated new guard
+calls from overtaking an existing queued writer. It does not promise strict FIFO
+among contenders that arrive concurrently. Two public-API regressions failed on
+the prior implementation and cover timeout, preservation of another caller's
+token, and subsequent successful acquisition after that token is released.
+
+The registry `<database>.write.waiters` must be a real directory owned by the
+calling effective UID, with no group or other permission bits. A permission,
+ownership, or symlink error fails acquisition closed. A parked warm lease seeing
+such an error releases rather than staying parked. Do not delete live registry
+tokens or the permanent `<database>.write.lock` to fix a timeout.
+
+For an ownership/permission incident, first inspect the service's configured UID
+and the directory's lstat metadata, including symlink status. Verify that all
+cooperating writer/snapshot services use the intended shared identity. Correct
+only the confirmed registry's owner and mode under the deployment's operational
+procedure; mode0700 is the expected default. A symlink must be investigated,
+not followed by a recursive chmod/chown. Retry the failed operation after repair
+and confirm that the permanent lock inode is unchanged. Tests exercise unsafe
+permissions, unchanged source data, and successful acquisition after restoration.
+
+Validation for the guard fairness change: 68 tests passed across snapshot,
+authority guard, warm writer, reader handoff, inode stability, process gate,
+nonblocking logging, deployed backup, and HTTP export. After adding the two
+permission cases, all9 snapshot tests passed. Ruff and diff checks passed.
+
+The fairness auditor returned SAFE-TO-PROCEED,98/100, and found missing authority
+timeout logging on the yield path. Timeout logging now covers all guard
+acquisition timeout paths, including publication and yield, with zero extra wait
+budget; snapshots still never log. The public-API regression checks both cases.
+After the logging correction, all11 snapshot and authority guard tests passed;
+Ruff remained clean.

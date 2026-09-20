@@ -1005,6 +1005,7 @@ def _handoff_guard(
     waiter: tuple[int, str] | None = None
     acquired = False
     try:
+        _yield_to_waiters(db_path, deadline, poll_interval_s)
         while True:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1016,16 +1017,6 @@ def _handoff_guard(
                 if waiter is None:
                     waiter = _register_write_waiter(db_path, deadline=deadline)
                 if time.monotonic() >= deadline:
-                    elapsed = time.monotonic() - started
-                    if log_write:
-                        _log_write_event(
-                            db_path,
-                            purpose,
-                            elapsed,
-                            success=False,
-                            error=f"WriteLockTimeout after {timeout_s}s",
-                            max_wait_s=0.0,
-                        )
                     raise WriteLockTimeout(
                         f"Could not acquire authority handoff lock on {lock_path} "
                         f"within {timeout_s}s; inspect with `lsof {lock_path}`."
@@ -1042,6 +1033,17 @@ def _handoff_guard(
         except OSError:
             pass
         yield None
+    except WriteLockTimeout:
+        if not acquired and log_write:
+            _log_write_event(
+                db_path,
+                purpose,
+                time.monotonic() - started,
+                success=False,
+                error=f"WriteLockTimeout after {timeout_s}s",
+                max_wait_s=0.0,
+            )
+        raise
     finally:
         _unregister_write_waiter(waiter)
         if acquired:
