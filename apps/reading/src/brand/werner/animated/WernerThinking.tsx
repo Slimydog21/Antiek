@@ -34,7 +34,7 @@ export default function WernerThinking({
           style={{
             width: size * 0.16,
             height: size * 0.16,
-            background: "#16C2C2",
+            background: "var(--aurora)",
           }}
           aria-hidden="true"
         />
@@ -43,7 +43,7 @@ export default function WernerThinking({
           style={{
             width: size * 0.16,
             height: size * 0.16,
-            background: "#16C2C2",
+            background: "var(--aurora)",
           }}
           aria-hidden="true"
         />
@@ -52,7 +52,7 @@ export default function WernerThinking({
           style={{
             width: size * 0.16,
             height: size * 0.16,
-            background: "#16C2C2",
+            background: "var(--aurora)",
           }}
           aria-hidden="true"
         />
@@ -61,7 +61,7 @@ export default function WernerThinking({
           style={{
             width: size * 0.16,
             height: size * 0.16,
-            background: "#16C2C2",
+            background: "var(--aurora)",
           }}
           aria-hidden="true"
         />
