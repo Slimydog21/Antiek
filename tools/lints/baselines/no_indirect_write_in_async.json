@@ -1,85 +1,8 @@
 {
-  "generated_at": "2026-09-20T14:15:28.540357+00:00",
+  "generated_at": "2026-09-20T14:37:09.312167+00:00",
   "lint": "no_indirect_write_in_async",
   "schema_version": 1,
   "violations": [
-    {
-      "col": 21,
-      "kind": "indirect-write-in-async:_load_then_save",
-      "line": 179,
-      "path": "interfaces/research/api/advertisers.py",
-      "snippet": "record = _load_then_save("
-    },
-    {
-      "col": 21,
-      "kind": "indirect-write-in-async:_load_then_save",
-      "line": 201,
-      "path": "interfaces/research/api/advertisers.py",
-      "snippet": "record = _load_then_save("
-    },
-    {
-      "col": 21,
-      "kind": "indirect-write-in-async:_load_then_save",
-      "line": 219,
-      "path": "interfaces/research/api/advertisers.py",
-      "snippet": "record = _load_then_save("
-    },
-    {
-      "col": 21,
-      "kind": "indirect-write-in-async:_load_then_save",
-      "line": 237,
-      "path": "interfaces/research/api/advertisers.py",
-      "snippet": "record = _load_then_save("
-    },
-    {
-      "col": 21,
-      "kind": "indirect-write-in-async:_load_then_save",
-      "line": 255,
-      "path": "interfaces/research/api/advertisers.py",
-      "snippet": "record = _load_then_save("
-    },
-    {
-      "col": 21,
-      "kind": "indirect-write-in-async:_load_then_save",
-      "line": 271,
-      "path": "interfaces/research/api/advertisers.py",
-      "snippet": "record = _load_then_save("
-    },
-    {
-      "col": 8,
-      "kind": "indirect-write-in-async:_record_arxiv_serve_audit",
-      "line": 926,
-      "path": "interfaces/research/api/books.py",
-      "snippet": "_record_arxiv_serve_audit(db, document_id, result)"
-    },
-    {
-      "col": 8,
-      "kind": "indirect-write-in-async:_record_arxiv_serve_audit",
-      "line": 957,
-      "path": "interfaces/research/api/books.py",
-      "snippet": "_record_arxiv_serve_audit(db, document_id, result)"
-    },
-    {
-      "col": 9,
-      "kind": "indirect-write-in-async:_write",
-      "line": 585,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "with _write(\"create_plan\") as con:"
-    },
-    {
-      "col": 13,
-      "kind": "indirect-write-in-async:_write",
-      "line": 620,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "with _write(\"edit_plan\") as con:"
-    },
-    {
-      "col": 9,
-      "kind": "indirect-write-in-async:_write",
-      "line": 652,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "with _write(\"approve_plan\") as con:"
-    },
     {
       "col": 23,
       "kind": "indirect-write-in-async:_write",
@@ -247,27 +170,6 @@
       "line": 1209,
       "path": "interfaces/research/api/speak_routes.py",
       "snippet": "with _translate(), _write(\"speak/api:invite_decline_resolve\") as con:"
-    },
-    {
-      "col": 4,
-      "kind": "indirect-write-in-async:_deposit_synthesis_to_substrate",
-      "line": 1722,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "_deposit_synthesis_to_substrate(ctx)"
-    },
-    {
-      "col": 4,
-      "kind": "indirect-write-in-async:_deposit_synthesis_to_substrate",
-      "line": 1845,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "_deposit_synthesis_to_substrate(ctx)"
-    },
-    {
-      "col": 4,
-      "kind": "indirect-write-in-async:_register_twin_document",
-      "line": 301,
-      "path": "substrate/multimedia/knowledge_registration.py",
-      "snippet": "_register_twin_document("
     }
   ]
 }
