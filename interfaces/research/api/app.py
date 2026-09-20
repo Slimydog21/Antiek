@@ -5662,7 +5662,7 @@ def create_app(
         response_model=BillingSummaryResponse,
     )
     async def billing_summary(
-        user_id: str, period: str,
+        user_id: str, period: str, request: Request,
     ) -> BillingSummaryResponse:
         """Per-user-month billing summary. Period format: YYYY-MM.
 
@@ -5671,6 +5671,27 @@ def create_app(
         wires this against a persisted dispatch.call event index.
         For Sprint 19 the substrate computes from event log on
         demand (slow but correct)."""
+        # `user_id` is a PATH parameter and was used unchecked: any
+        # authenticated caller could read any other user's spend by editing
+        # the URL. The operator allowlist is comma-separated
+        # (operator_allowlist_from_env), so more than one identity
+        # authenticating is a supported configuration, and each gets a
+        # distinct request.state.user_id — which makes this a live IDOR in
+        # that configuration rather than a theoretical one.
+        #
+        # `me` resolves to the caller, so a client never needs to know or
+        # transmit its own id. The operator keeps cross-user read: the
+        # billing dashboard and AISidecar are operator surfaces. When auth is
+        # disabled the caller IS `__operator__` (the same fallback the rest of
+        # the API uses), so local dev and the existing tests are unchanged.
+        caller = str(getattr(request.state, "user_id", None) or "__operator__")
+        if user_id == "me":
+            user_id = caller
+        elif user_id != caller and caller != "__operator__":
+            raise HTTPException(
+                status_code=403,
+                detail="billing summary is scoped to the authenticated user",
+            )
         from substrate.billing.aggregator import aggregate_period
         from tools.stripe_connect.pricing import FREE_TIER_MONTHLY_TOKEN_CAP
 
