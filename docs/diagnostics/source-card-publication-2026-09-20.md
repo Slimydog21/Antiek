@@ -125,3 +125,20 @@ The added regression creates a real card, forces only the initial lookup to miss
 The original ACCEPT and source-only Hardenx scan preceded this control-flow change; neither is represented as review or security clearance for the follow-up. The Scope Map formatting defect was also repaired. Board validation passed and origin was fetched before edits; root-owned state and other worktrees were not modified.
 
 Follow-up gates: the same five-module consumer command passes **54 tests, no skips**, exit0 (`.audit/publication-review-consumers.log`). The new replay test supplies a later creation timestamp and still requires the previously elected artifact, pinning winner semantics as well as writer release. Ruff passes, exit0 (`.audit/publication-review-ruff.log`). Strict mypy reports the same seven baseline test annotation errors, no production errors and no introduced errors, exit1 (`.audit/publication-review-mypy.log` and source-mapped `publication-review-mypy-delta.json`). `git diff --check` passes. The earlier original53-consumer and initial source-review evidence remain historical rather than being relabeled as the new result.
+
+### Follow-up review and final source scan
+
+GLM follow-up review of a143aadc488ed7e3e1c949b3a589f844c6e7a8b3
+returned ACCEPT, 94/100. It confirmed the shared reopen call occurs after the
+database write context exits and preserves both elected and inserted rows.
+The new regression proves a second writer can acquire during paused verification
+and that a losing creator returns the original winner. Evidence:
+`.audit/publication-followup-review.log`.
+
+A fresh strict source-only Hardenx scan of the updated source and test exited 0,
+LOW, zero REAL and seven advisory findings, recorded in
+`.audit/publication-final-hardenx.json`. This does not clear dependencies or
+production. Linux CI is pending. The paused-verification test targets the
+previously defective replay branch; the new-insert branch shares the same call
+site but has no separate pause assertion. Crash-orphan recovery remains outside
+this repair, and timeout-based test deadlines retain a load-related flake risk.
