@@ -294,16 +294,20 @@ def test_factory_rejects_unknown_kind(seeded_db):
         make_substrate("pinecone", db, model=emb)
 
 
-def test_default_factory_path_imports_no_vendor():
+def test_default_factory_path_imports_no_vendor(monkeypatch):
     """The default factory path (vss / brute_force) must not import any vendor
     adapter at module load — a grep-equivalent assertion that the seam keeps
     losers off the default path (M5)."""
     import sys
 
     # Importing the substrate module must not pull in the vendor adapters.
+    # Pop via monkeypatch so teardown restores the process-global module cache:
+    # a raw sys.modules.pop leaks, and any later test that monkeypatches into
+    # a popped adapter then patches a fresh re-import while already-imported
+    # classes still read the original module object (shard-dependent failure).
     for mod in ("substrate.graph.retrieval_adapters.turbopuffer",
                 "substrate.graph.retrieval_adapters.ducklake"):
-        sys.modules.pop(mod, None)
+        monkeypatch.delitem(sys.modules, mod, raising=False)
     import importlib
 
     import substrate.graph.retrieval_substrate as rs
