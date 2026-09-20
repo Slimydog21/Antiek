@@ -112,6 +112,21 @@ def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
             "indexed_row_count": indexed_row_count,
             "resolved_kind": kind,
             "hybrid_ready": hybrid_ready,
+            # Both of the next two are CONSTANTS, not measurements, and are
+            # labelled here so a /health reader does not mistake them for
+            # probe results. Everything else in this dict is computed above.
+            #
+            # duckdb_is_sot is a design invariant: DuckDB is the source of
+            # truth and TurboPuffer is a derived index. Nothing at runtime can
+            # falsify it; it is asserted by construction.
+            #
+            # thought_partner_hybrid_wired is a STRUCTURAL claim — that
+            # _retrieve_thought_partner_context routes through
+            # resolve_reuse_substrate_kind / make_substrate_from_con. That is
+            # true today, but a literal cannot detect the wiring being removed,
+            # so the guarantee belongs in a lint over the call site rather than
+            # in a runtime probe. Until that lint exists this field reports an
+            # assumption, and saying so is better than implying it was checked.
             "thought_partner_hybrid_wired": True,
             "duckdb_is_sot": True,
             "production_default_mount": False,
@@ -129,8 +144,14 @@ def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
             "indexed_row_count": None,
             "resolved_kind": "brute_force",
             "hybrid_ready": False,
-            "thought_partner_hybrid_wired": True,
-            "duckdb_is_sot": True,
+            # The probe FAILED, so nothing here was verified. The booleans
+            # above resolve False because false is the safe answer to "is this
+            # feature live". These two used to resolve True on this path, which
+            # asserted two properties precisely when the code could not check
+            # either one — a /health field that says "yes" on its own failure
+            # branch is worse than no field. None means unknown.
+            "thought_partner_hybrid_wired": None,
+            "duckdb_is_sot": None,
             "production_default_mount": False,
             "error": f"{type(exc).__name__}: {exc}",
         }
