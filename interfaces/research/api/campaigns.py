@@ -16,7 +16,7 @@ import duckdb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from runtime.db_lock import connect_read
+from runtime.db_lock import ReadConnection, connect_read
 
 
 class CampaignSummaryResponse(BaseModel):
@@ -46,7 +46,7 @@ def _resolve_db_path() -> str:
 
 
 def _load_advertiser_budget(
-    con: duckdb.DuckDBPyConnection, advertiser_id: str,
+    con: ReadConnection, advertiser_id: str,
 ) -> tuple[bool, int | None]:
     """Returns (advertiser_exists, monthly_budget_usd_cents)."""
     try:
