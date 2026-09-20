@@ -50,6 +50,29 @@ with a different configuration than existing connections
   `.py`**, so its collected set, and therefore its shard composition, is
   byte-identical to `main`'s. It still failed. That is what proves the defect is
   latent on `main` rather than introduced by either PR.
+
+  That inference has a premise, and the premise is easy to miss: "no `.py`
+  changed" only implies "same collection" if **no Python test's collection count
+  depends on the repo tree**. A test that parametrized over a glob of `.tsx`
+  files would make a frontend-only diff reshuffle backend shards — the exact
+  mechanism above, triggered by a PR touching no Python at all.
+
+  Checked, rather than assumed. `tests/test_cost_consent_no_disbursement.py`
+  does parametrize over frontend paths (`_FRONTEND_SURFACE_FILES`, four
+  parametrize sites), which is precisely that shape — but it is a hardcoded
+  two-element tuple of literal `.tsx` paths, so its count cannot move with the
+  file tree. Repo-wide, no module-level glob of the tree feeds any
+  `parametrize`: every `glob`/`rglob`/`iterdir` in `tests/` runs inside a test
+  body against `Path.home()`, `tempfile.gettempdir()`, `tmp_path` or an output
+  directory, never the checkout. And #3284 is 24 modified with 0 added and 0
+  deleted, so even a glob-based parametrization would have yielded the same
+  count.
+
+  **This is the premise to re-check before anyone reuses this argument**, and it
+  is one refactor away from being false: converting `_FRONTEND_SURFACE_FILES`
+  to a glob is an obvious-looking improvement that would silently invalidate it,
+  with no signal to the next person reasoning this way. Credit to the
+  slimydog-6f session for finding the hole in its own argument.
 * **#3281** — shard 1. Adds `.py` test files, so its composition differs.
 
 The test isolates its own database correctly (`db_path = tmp_path /
@@ -86,9 +109,20 @@ and belong to whoever owns the test-integrity floor:
   different configuration than a sibling opens later. Correct, and the only
   option that makes the board mean what it reads.
 * Make partitioning content-independent (stable hash per path, which the module
-  already implements as `shard_for_nodeid` and does not use). That trades
-  balance for determinism and would make an order-dependent failure reproducible
-  on the same shard every time.
+  already implements as `shard_for_nodeid`, exports in `__all__`, and never
+  calls — `pytest_collection_modifyitems` calls `partition_nodeids` instead).
+  That trades balance for determinism and would make an order-dependent failure
+  reproducible on the same shard every time.
+
+  **This option is stronger than the other two on second-order grounds.**
+  Quarantine hides a real connection leak. Finding the leaked handle is correct
+  but unbounded. Only the stable hash buys the property that *a PR's content
+  cannot change which tests share a process*, which is what makes a green board
+  mean something — and it closes the latent trap above permanently, rather than
+  leaving a correct-today premise that one plausible refactor turns false. The
+  module's own docstring already concedes the tradeoff it was avoiding: "a
+  stable hash can produce as the suite grows while retaining reproducible
+  shards."
 
 Quarantining another lane's backend test to unblock an unrelated PR is the one
 option that should not be taken quietly.
