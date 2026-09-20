@@ -39,42 +39,18 @@ export const config: CustomProjectConfig = {
      */
     breakpoints: [1280, 1024, 768],
   },
+  // Freeze the animated scene deterministically. The scene honours
+  // prefers-reduced-motion end-to-end (Scene.tsx frozen flag → every layer
+  // renders one static frame), so forcing the reduce preference in the
+  // screenshot browser makes every shot reproducible instead of catching
+  // the aurora/penguins/sketches at a random animation phase.
+  browserLaunchOptions: {
+    chromium: { args: ["--force-prefers-reduced-motion"] },
+  },
   imagePathBaseline: ".lostpixel/baseline",
   imagePathCurrent: ".lostpixel/current",
   imagePathDifference: ".lostpixel/diff",
   generateOnly: false,
   // S12 ceiling: 0.4% per-shot delta. Tighter than S2's 1% advisory.
   threshold: 0.004,
-  // Skip known-flaky stories at every breakpoint. The framer-motion
-  // spring on workspace-demo produces sub-1% inter-run diffs that
-  // aren't real regressions.
-  //
-  // 2026-09-21: the Doodles scene art (#3275) put live animation into the
-  // composed shell + several component stories, so the same class of
-  // inter-run drift now hits more shots. Observed per-run spread after
-  // re-minting baselines from the CI runner itself:
-  //   navigation-app-shell--empty / --with-project-tree  10-23% (animated
-  //     scene background fills the full-viewport shell)
-  //   ad-ad-border--read-house-fill (w768)               ~22% one run
-  //   sketches-processing-seed-sketches (animated seeds) 0.7-1.4%
-  // These are animation-phase deltas, not regressions: the same code is
-  // green on one run and red on the next (main CI run 35539523835 vs the
-  // PR-baseline runs). Skip them at every breakpoint — same tradeoff the
-  // workspace-demo skip made: swap the animation for a deterministic
-  // transition and then re-include the shots.
-  filterShot: (story: { id?: string }) => {
-    // filterShot receives the STORY (id/kind), not the viewport-suffixed
-    // shot filename — match on the storybook story id.
-    const id = story?.id ?? "";
-    if (!id) return true;
-    const flakyAnimated = [
-      "workspace-demo--scene",
-      "navigation-app-shell--empty",
-      "navigation-app-shell--with-project-tree",
-      "ad-ad-border--read-house-fill",
-      "sketches-processing-seed-sketches--all-three-animated",
-      "sketches-processing-seed-sketches--alternate-seed",
-    ];
-    return !flakyAnimated.some((prefix) => id.startsWith(prefix));
-  },
 };
