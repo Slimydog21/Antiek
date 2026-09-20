@@ -117,10 +117,7 @@ def test_open_contribute_is_rate_limited(client, monkeypatch):
     writer, including the nightly backup and the corpus ingest.
     """
     from interfaces.research.api.auth import reset_auth_throttles
-    from interfaces.research.api.speak_routes import (
-        _OPEN_CONTRIBUTE_GLOBAL_LIMIT,
-        _OPEN_CONTRIBUTE_PER_IP_LIMIT,
-    )
+    from interfaces.research.api.speak_routes import _OPEN_CONTRIBUTE_PER_IP_LIMIT
 
     reset_auth_throttles()
     monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_ECOSYSTEM", "1")
