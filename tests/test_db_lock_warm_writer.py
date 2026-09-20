@@ -298,3 +298,20 @@ def test_flush_and_expiry_destroy_each_lease_once(tmp_path, monkeypatch):
             assert not thread.is_alive()
         assert sum(item is slot for item in destroyed) == 1
     assert len(destroyed) == 10
+
+
+def test_waiter_yield_timeout_releases_local_gate_without_erasing_waiter(tmp_path):
+    db = str(tmp_path / "yield-timeout.duckdb")
+    waiter = db_lock._register_write_waiter(db)
+    started = time.monotonic()
+    try:
+        with pytest.raises(db_lock.WriteLockTimeout, match="yielding to prior waiters"):
+            db_lock.connect_write(db, timeout_s=0.05, poll_interval_s=0.005)
+        assert 0.05 <= time.monotonic() - started < 1
+        assert not db_lock._PROCESS_WRITE_GATE.locked()
+        assert db_lock.write_handoff_requested(db)
+        assert not Path(db).exists()
+    finally:
+        db_lock._unregister_write_waiter(waiter)
+    with db_lock.connect_write(db, timeout_s=1) as con:
+        con.execute("SELECT 1")

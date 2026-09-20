@@ -95,3 +95,42 @@ def test_snapshot_open_error_cleans_lock_without_creating_database(tmp_path):
         con.execute("CREATE TABLE t (id INTEGER)")
     with db_lock.snapshot_read(db, timeout_s=0.2) as con:
         assert con.execute("SELECT count(*) FROM t").fetchone()[0] == 0
+
+
+def test_two_process_snapshots_serialize_on_same_inode(tmp_path):
+    import os
+    import subprocess
+    import sys
+    import time
+
+    db = seed(tmp_path / "two-snapshots.duckdb")
+    marker = tmp_path / "second-entered"
+    env = dict(os.environ)
+    child = None
+    try:
+        with db_lock.snapshot_read(db) as con:
+            inode = Path(db + ".write.lock").stat().st_ino
+            child = subprocess.Popen(
+                [sys.executable, "-c",
+                 "from runtime.db_lock import snapshot_read; from pathlib import Path; "
+                 "import sys\nwith snapshot_read(sys.argv[1], timeout_s=3) as con:\n"
+                 " Path(sys.argv[2]).write_text(str(con.execute('SELECT count(*) FROM t').fetchone()[0]))",
+                 db, str(marker)],
+                env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            deadline = time.monotonic() + 2
+            while not db_lock.write_handoff_requested(db):
+                assert child.poll() is None, child.communicate()
+                assert time.monotonic() < deadline
+                time.sleep(0.005)
+            assert not marker.exists()
+            assert con.execute("SELECT count(*) FROM t").fetchone()[0] == 1
+            assert Path(db + ".write.lock").stat().st_ino == inode
+        _, stderr = child.communicate(timeout=5)
+        assert child.returncode == 0, stderr
+        assert marker.read_text() == "1"
+        assert Path(db + ".write.lock").stat().st_ino == inode
+    finally:
+        if child is not None and child.poll() is None:
+            child.kill()
+            child.wait()

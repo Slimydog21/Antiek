@@ -126,3 +126,20 @@ root-cause implementation, actual caller regressions, invariant/error-path audit
 and cross-lineage acceptance plus CI. The first four are satisfied; the fifth is
 pending. Production recovery is a separate unverified outcome, not included in
 that local score. Full Antiek perfection remains unproven.
+
+### Independent review checkpoint
+
+MiMo V2.5 Pro returned ACCEPT after source review. Its attempted test invocations
+used a nonexistent worktree-local venv and are not counted as executed validation.
+Its narrative described an earlier snapshot exception catch; the later native-lock
+retry was separately audited and proved by the eight reader-handoff cases. The
+reviewer's row scores sum to94 although its displayed total says84; neither is
+used as a product grade.
+
+Two identified coverage gaps are now tested: exhausting the prior-waiter yield
+budget without leaking the local gate or erasing another owner's token, and two
+process snapshots serializing on the same inode. The warm/snapshot suite passes
+18 tests including these additions. At the prior PR head, declared-bar, write-lock,
+tsc, vitest and Pages checks passed; pytest shards/keystone were still running.
+Final CI must be checked on the eventual head. Local readiness remains below100;
+production restoration is still unverified.
