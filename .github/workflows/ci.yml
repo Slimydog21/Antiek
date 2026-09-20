@@ -46,7 +46,7 @@ jobs:
     # Shards include production-scale DuckDB tests (for example a real-shape
     # 5,017-chunk merge). Loaded hosted runners can legitimately exceed the
     # old 30-minute ceiling even when every assertion is making progress.
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       # Each hosted runner starts with limited free disk. The full ML/PDF
       # dependency set is large; retaining downloaded wheels alongside the
@@ -105,20 +105,11 @@ jobs:
           XAI_API_KEY: ""
           OPENAI_API_KEY: ""
           ANTIEK_OPERATOR_TOKEN: ""
-          # pytest -q emits a newline only every 72 tests. Hosted runners
-          # shut down a step that prints nothing for ~10 minutes, so a
-          # slow file between progress lines looks like a hung job.
+          # Hosted runners cancel a step that prints nothing for ~10 minutes.
+          # -v prints each node id as it starts so a slow file cannot look hung.
           PYTHONUNBUFFERED: "1"
         run: |
-          (
-            while true; do
-              sleep 60
-              echo "[pytest-heartbeat] $(date -u +%H:%M:%SZ) still running"
-            done
-          ) &
-          heartbeat_pid=$!
-          trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
-          python -u -m pytest tests/ -q -m "not integration" \
+          python -u -m pytest tests/ -v -m "not integration" \
             -p tools.pytest_file_shard
 
   pytest:
