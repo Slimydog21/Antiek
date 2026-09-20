@@ -2,11 +2,68 @@
 
 **Audience**: you, after the first deploy, pushing a routine update.
 
-**Time**: ~2 minutes typing + ~2 minutes for the playbook to run.
+**Time**: none. Merging to `main` is the whole procedure.
 
 ---
 
-## Happy path
+## Happy path — automatic (default since 2026-09-20)
+
+**You do not run anything.** `.github/workflows/deploy_backend.yml` deploys
+the backend whenever a commit on `main` has every required check green.
+
+1. Merge the PR into `main`.
+2. Wait for the required checks. When the last one goes green, the
+   `deploy-backend` workflow fires on its own.
+3. Watch it if you want:
+
+   ```bash
+   gh run list --workflow deploy-backend --limit 3
+   gh run watch $(gh run list --workflow deploy-backend --limit 1 --json databaseId --jq '.[0].databaseId')
+   ```
+
+The workflow runs the very same `playbooks/deploy.yml` this runbook used to
+ask you to run by hand, from an ubuntu runner instead of your Mac, and then
+asserts prod parity independently of the playbook's own assertion.
+
+**What it will NOT do**, by design:
+
+- deploy a commit whose required checks are not all `success` — it reads
+  each of main's 8 required contexts for that exact SHA, so a green `CI`
+  with a red mypy cannot ship;
+- deploy anything on a push, only after a gating workflow has *finished*;
+- restart a service that is already on the target SHA (it reads
+  `/health.build_sha` first);
+- run two deploys at once (`concurrency: deploy-backend-prod`, and an
+  in-flight deploy is never cancelled).
+
+**To force one** (e.g. after changing something on the box by hand):
+
+```bash
+gh workflow run deploy-backend -f force=true
+```
+
+**To pause automatic deploys**, add a required reviewer to the `production`
+environment (Settings → Environments → production). Deploys then queue for
+your approval instead of going out. To stop them entirely, disable the
+workflow: `gh workflow disable deploy-backend`.
+
+**Credentials it uses**: repo secrets `ANTIEK_DEPLOY_SSH_KEY` (a deploy-only
+ed25519 key, separate from your personal `~/.ssh/antiek_ed25519`),
+`ANTIEK_PROD_HOST`, `ANTIEK_PROD_KNOWN_HOSTS` (the pinned host key — the
+workflow never `ssh-keyscan`s at run time). To revoke CI's access without
+touching your own, drop its line from the box:
+
+```bash
+ssh root@167.235.202.98 \
+  "sed -i '/github-actions-deploy@antiek/d' /root/.ssh/authorized_keys"
+```
+
+---
+
+## Manual path — fallback
+
+Use this when the runner is down, you are mid-incident, or you are
+deploying a ref that is deliberately not `main`.
 
 1. **Push the change to the configured branch.**
 
