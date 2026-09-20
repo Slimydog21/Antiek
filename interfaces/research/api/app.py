@@ -125,6 +125,13 @@ class HealthResponse(BaseModel):
     registered_providers: list[str] = Field(default_factory=list)
     # DRW honest-failure: True when at least one dispatch provider registered.
     providers_ready: bool = False
+    # Which gather backend the DRW cascade would build: "stub" (no real
+    # retrieval), "exa" (live Exa Wedge-1), "contained" (execution backend),
+    # or "conflict" (mutually exclusive flags — _gather_loop raises). Prod
+    # had no outside signal for this: ansible renders ANTIEK_DRW_GATHER
+    # EMPTY, which resolves to the stub, so a deploy could do no retrieval
+    # while the smoke runbook read green.
+    drw_gather_mode: str = "unknown"
     # SPR-07 (antiek-foundation-v2): the commit SHA the running process was
     # built from, so the prod-parity check (tools/prod_parity/check.py) can
     # assert deployed-SHA == main-SHA. Sourced (in order) from the
@@ -2050,6 +2057,10 @@ def create_app(
 
     # ── Health ──────────────────────────────────────────────────
 
+    from interfaces.research.api.cascade_routes import (
+        resolved_gather_mode as _resolved_gather_mode,
+    )
+
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         # Deferred flywheel probe (see create_app): never block /health on the
@@ -2094,6 +2105,7 @@ def create_app(
 
         route_ready_providers = route_ready_provider_ids(registered_providers)
         return HealthResponse(
+            drw_gather_mode=_resolved_gather_mode(),
             status="ok",
             param_version=ANTIEK_PARAM_VERSION,
             schema_version=EVENT_SCHEMA_VERSION,
