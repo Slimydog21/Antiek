@@ -74,6 +74,12 @@ from tools.lints.no_raise_in_substrate_writers import (
 from tools.lints.no_raise_in_substrate_writers import (
     scan_paths as scan_no_raise,
 )
+from tools.lints.no_raw_read_only_connect import (
+    Violation as RawReadOnlyConnectViolation,
+)
+from tools.lints.no_raw_read_only_connect import (
+    scan_paths as scan_raw_read_only_connect,
+)
 from tools.lints.no_seam_call_under_write_lock import (
     Violation as SeamUnderLockViolation,
 )
@@ -136,6 +142,14 @@ def _indirect_write_in_async_to_key(v: object) -> ViolationKey:
     )
 
 
+def _raw_read_only_connect_to_key(v: object) -> ViolationKey:
+    assert isinstance(v, RawReadOnlyConnectViolation)
+    return ViolationKey(
+        path=str(v.path), line=v.line, col=v.col,
+        kind=f"raw-read-only-connect:{v.call}",
+    )
+
+
 def _seam_under_lock_to_key(v: object) -> ViolationKey:
     assert isinstance(v, SeamUnderLockViolation)
     return ViolationKey(
@@ -164,6 +178,11 @@ LINT_REGISTRY: dict[str, tuple[
         scan_seam_under_lock,
         _seam_under_lock_to_key,
         "no_seam_call_under_write_lock",
+    ),
+    "raw_read_only_connect": (
+        scan_raw_read_only_connect,
+        _raw_read_only_connect_to_key,
+        "no_raw_read_only_connect",
     ),
     "blocking_write_in_async": (
         scan_blocking_write_in_async,

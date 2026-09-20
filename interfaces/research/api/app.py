@@ -3050,12 +3050,25 @@ def create_app(
         it."""
         import duckdb as _duckdb
 
+        from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
         from substrate.graph.retrieval_gate import is_chunk_body_withheld
 
         db_path = default_db_path()
         try:
-            con = _duckdb.connect(db_path, read_only=True)
+            # connect_read, not raw duckdb.connect(read_only=True).
+            # db_lock.py:921 says so in as many words, and the reason is not
+            # style: DuckDB REFUSES a read-only handle when this process
+            # already holds the same file read-write, which under
+            # `--workers 1` is the normal state. The raw call raises
+            # ConnectionException — NOT the IOException caught below — so it
+            # escaped as a 500. connect_read catches that exact conflict and
+            # falls back to a read-oriented read-write handle.
+            #
+            # Found by running tools/reachability/probes/usability_keystone.py,
+            # a five-leg journey probe that exists in the tree and that no
+            # workflow runs. Every per-brick test passed; the journey did not.
+            con = connect_read(db_path)
         except _duckdb.IOException as exc:
             raise HTTPException(
                 status_code=503,

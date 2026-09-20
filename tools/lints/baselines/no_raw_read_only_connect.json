@@ -1,0 +1,385 @@
+{
+  "generated_at": "2026-09-20T17:41:02.267890+00:00",
+  "lint": "no_raw_read_only_connect",
+  "schema_version": 1,
+  "violations": [
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 401,
+      "path": "acquisition/link_monster/store.py",
+      "snippet": "con = duckdb.connect(resolved, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 448,
+      "path": "acquisition/link_monster/store.py",
+      "snippet": "con = duckdb.connect(resolved, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 517,
+      "path": "acquisition/link_monster/store.py",
+      "snippet": "con = duckdb.connect(resolved, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 85,
+      "path": "acquisition/search/exa/cache.py",
+      "snippet": "con = duckdb.connect(db_path, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 293,
+      "path": "acquisition/search/retention.py",
+      "snippet": "con = duckdb.connect(resolved, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 116,
+      "path": "acquisition/urls/adapter.py",
+      "snippet": "con = duckdb.connect(resolved, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 599,
+      "path": "acquisition/urls/paulgraham.py",
+      "snippet": "con = duckdb.connect(resolved, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 668,
+      "path": "acquisition/urls/paulgraham.py",
+      "snippet": "con = duckdb.connect(resolved, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 132,
+      "path": "interfaces/research/api/ad_impressions.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 285,
+      "path": "interfaces/research/api/advertisers.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 306,
+      "path": "interfaces/research/api/advertisers.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 325,
+      "path": "interfaces/research/api/advertisers.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 3312,
+      "path": "interfaces/research/api/app.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 3343,
+      "path": "interfaces/research/api/app.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 3462,
+      "path": "interfaces/research/api/app.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 3728,
+      "path": "interfaces/research/api/app.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 4274,
+      "path": "interfaces/research/api/app.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 4316,
+      "path": "interfaces/research/api/app.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 4399,
+      "path": "interfaces/research/api/app.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 76,
+      "path": "interfaces/research/api/campaigns.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 395,
+      "path": "interfaces/research/api/coordination.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 104,
+      "path": "interfaces/research/api/creator_payouts.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 15,
+      "kind": "raw-read-only-connect:connect",
+      "line": 143,
+      "path": "interfaces/research/api/creator_payouts.py",
+      "snippet": "con2 = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 18,
+      "kind": "raw-read-only-connect:connect",
+      "line": 231,
+      "path": "interfaces/research/api/export_routes.py",
+      "snippet": "con = duckdb.connect(db_path, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 354,
+      "path": "interfaces/research/api/federation.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 375,
+      "path": "interfaces/research/api/federation.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 398,
+      "path": "interfaces/research/api/federation.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 449,
+      "path": "interfaces/research/api/federation.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 10,
+      "kind": "raw-read-only-connect:connect",
+      "line": 58,
+      "path": "interfaces/research/api/supersession_routes.py",
+      "snippet": "con = duckdb.connect(default_db_path(), read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 220,
+      "path": "interfaces/research/api/wrestling.py",
+      "snippet": "con = duckdb.connect(db_path, read_only=True)"
+    },
+    {
+      "col": 10,
+      "kind": "raw-read-only-connect:connect",
+      "line": 114,
+      "path": "interfaces/research/api/write_routes.py",
+      "snippet": "con = duckdb.connect(_db(), read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 258,
+      "path": "orchestration/loop_one/orchestrator.py",
+      "snippet": "con = duckdb.connect(db_path, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 371,
+      "path": "orchestration/loop_one/orchestrator.py",
+      "snippet": "con = duckdb.connect(db_path, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 169,
+      "path": "orchestration/session_evidence_pack.py",
+      "snippet": "con = duckdb.connect(db_path, read_only=True)"
+    },
+    {
+      "col": 10,
+      "kind": "raw-read-only-connect:connect",
+      "line": 223,
+      "path": "orchestration/session_evidence_pack.py",
+      "snippet": "con = duckdb.connect(db_path, read_only=True)"
+    },
+    {
+      "col": 10,
+      "kind": "raw-read-only-connect:connect",
+      "line": 237,
+      "path": "substrate/ad_inventory/__main__.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 10,
+      "kind": "raw-read-only-connect:connect",
+      "line": 275,
+      "path": "substrate/ad_inventory/__main__.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 10,
+      "kind": "raw-read-only-connect:connect",
+      "line": 111,
+      "path": "substrate/attribution/compute.py",
+      "snippet": "con = duckdb.connect(resolved, read_only=True)"
+    },
+    {
+      "col": 10,
+      "kind": "raw-read-only-connect:connect",
+      "line": 204,
+      "path": "substrate/cross_graph/__main__.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 10,
+      "kind": "raw-read-only-connect:connect",
+      "line": 235,
+      "path": "substrate/cross_graph/__main__.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 10,
+      "kind": "raw-read-only-connect:connect",
+      "line": 252,
+      "path": "substrate/cross_graph/__main__.py",
+      "snippet": "con = duckdb.connect(db, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 112,
+      "path": "substrate/graph/health.py",
+      "snippet": "con = duckdb.connect(resolved, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 2183,
+      "path": "substrate/graph/schema.py",
+      "snippet": "con = duckdb.connect(db_path, read_only=True)"
+    },
+    {
+      "col": 10,
+      "kind": "raw-read-only-connect:connect",
+      "line": 2306,
+      "path": "substrate/graph/schema.py",
+      "snippet": "con = duckdb.connect(args.db_path, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 361,
+      "path": "tools/arxiv_verify.py",
+      "snippet": "con = duckdb.connect(db_path, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 374,
+      "path": "tools/auction_ab_eval.py",
+      "snippet": "con = duckdb.connect(db_path, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 95,
+      "path": "tools/graph_doctor.py",
+      "snippet": "con = duckdb.connect(graph_path, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 189,
+      "path": "tools/lint/graph_temporal_integrity.py",
+      "snippet": "con = duckdb.connect(graph_path, read_only=True)"
+    },
+    {
+      "col": 14,
+      "kind": "raw-read-only-connect:connect",
+      "line": 202,
+      "path": "tools/lint/provenance_edge_audit.py",
+      "snippet": "con = duckdb.connect(graph_path, read_only=True)"
+    },
+    {
+      "col": 13,
+      "kind": "raw-read-only-connect:connect",
+      "line": 113,
+      "path": "tools/reembed_chunks.py",
+      "snippet": "con_ro = duckdb.connect(db_path, read_only=True)"
+    },
+    {
+      "col": 11,
+      "kind": "raw-read-only-connect:connect",
+      "line": 155,
+      "path": "tools/reembed_chunks.py",
+      "snippet": "rows = duckdb.connect(db_path, read_only=True).execute("
+    },
+    {
+      "col": 11,
+      "kind": "raw-read-only-connect:connect",
+      "line": 327,
+      "path": "tools/run_investigation.py",
+      "snippet": "read = duckdb.connect(db_path, read_only=True)"
+    },
+    {
+      "col": 11,
+      "kind": "raw-read-only-connect:connect",
+      "line": 369,
+      "path": "tools/run_investigation.py",
+      "snippet": "read = duckdb.connect(db_path, read_only=True)"
+    },
+    {
+      "col": 10,
+      "kind": "raw-read-only-connect:connect",
+      "line": 466,
+      "path": "tools/source_census.py",
+      "snippet": "con = duckdb.connect(db_path, read_only=True)"
+    }
+  ]
+}

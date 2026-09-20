@@ -53,7 +53,11 @@ KNOWN_ABSENT: dict[str, str] = {
     # Gates whose CI step and self-test were never committed. Registered
     # rather than silently deleted, because the absence IS the finding.
     # See the corrected Status lines in each record.
-    "tests/test_usability_keystone.py": "gate never wired — see usability-keystone.md",
+    #
+    # tests/test_usability_keystone.py LEFT this register on 2026-09-20: the
+    # probe it names was written, run for the first time, found a live 500
+    # (GET /chunks/{id}), and now has a real test. The register shrank
+    # because the work landed — which is the only way an entry should go.
     "infrastructure/runbooks/usability-keystone-verify-live.md": "never written — see usability-keystone.md",
     "tests/test_uniqueness_registry.py": "gate never wired — see convergence-owner.md",
     "tests/test_reachability_runner.py": "gate never wired — see reachability-gate.md",
