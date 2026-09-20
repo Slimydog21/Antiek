@@ -26,8 +26,8 @@ No LLM, external provider, production database or network call participated in t
 | Separate-process reader during publication | Independent interpreter using actual `_private_png`; same barrier and result assertions |
 | Persistent hard link | Must still raise the original privacy/bounds error |
 | Two concurrent registry creators | Existing database-backed test, plus ten independent pytest invocations |
-| Registry replay, graph/font/file tamper, attestation | Final delayed-publication/hardlink regressions after test cleanup refinement | 0 | 3 passed; `.audit/publication-final-regression.log` |
-| Full source-card module |
+| Registry replay, graph/font/file tamper, attestation | Full source-card module |
+| Replay verification while another writer needs the database | Real write-context SELECT and independent FlockWriteCoordinator acquisition while `_reopen` is paused |
 | Workstation/runtime/coordinator/video bridge | Five-module direct-consumer suite |
 
 ## Handoff
@@ -47,7 +47,7 @@ Linux CI has not run this commit. Local verification covers macOS directory-floc
 
 ### Status
 
-Local scoped and consumer verification pass; independent review and CI remain required.
+Local scoped and consumer verification pass. GLM accepted the initial synchronization change at 92/100. The subsequent database-lock ordering change requires a follow-up review; Linux CI remains required.
 
 ### Files touched
 
@@ -86,7 +86,7 @@ Lock the stable output directory instead of introducing a lockfile lifecycle. Ev
 
 ### Assumptions surfaced
 
-Output directories remain private, as required by the existing registry constructor. A registry create releases all filesystem locks before acquiring the database writer. `_reopen` can take a shared filesystem lock while already under a database writer, but no filesystem-locked code acquires a database lock: there is no inverse lock-order edge. Closing the directory descriptor releases its flock on both success and exception paths.
+Output directories remain private, as required by the existing registry constructor. A registry create releases all filesystem locks before acquiring the database writer. Both newly inserted and concurrently elected rows are reopened only after the database write context exits. Slow shared-filesystem-lock acquisition during verification therefore does not retain that write context. No filesystem-locked code acquires a database lock. Closing the directory descriptor releases its flock on both success and exception paths.
 
 The first exploratory half-second barrier run did not expose the old race under local scheduling load. The retained red run uses a three-second hold and fails both thread and process cases; the tests keep that hold. Sleeps do not coordinate production behavior.
 
@@ -96,7 +96,7 @@ A longer retry could make this CI instance pass while retaining scheduler-depend
 
 ### Open questions
 
-Independent critic and Linux CI must assess the final commit. Crash-orphan recovery is intentionally outside this repair.
+The initial source received GLM ACCEPT92; a follow-up critic and Linux CI must assess the changed replay control flow. Crash-orphan recovery is intentionally outside this repair.
 
 ### Next sprint can start when
 
@@ -114,3 +114,14 @@ findings. This is source-only evidence, not dependency or production clearance.
 The first reduced fixture omitted .gitignore and was classified as a Git tree
 without ignore protection. It exited 1 for that fixture condition; both reports
 remain under .audit/publication-hardenx*.json. No finding was waived.
+
+
+### Review follow-up: release the database writer before verification
+
+GLM returned ACCEPT92/100 for `3f1da4353` (`.audit/publication-independent-review.log`). It identified that the concurrently inserted existing-row branch still called `_reopen` inside the database write context. Since reopening can now wait on a shared filesystem flock, a stalled publisher could extend the database writer hold. Both outcomes now select their row under the same write context and perform `_reopen` after leaving it. The winning row, insert-if-absent semantics, MAC checks and file validation are unchanged; no schema or coordinator changes were made.
+
+The added regression creates a real card, forces only the initial lookup to miss (the concurrent-creator interleaving), and leaves the write-context SELECT real. It pauses `_reopen`, then requires a second thread to acquire an actual FlockWriteCoordinator and read the row before verification resumes. The old flow times out; `.audit/publication-writer-red.log` records one failed test, exit1. This tests database-lock ordering without replacing the coordinator or database connection. Filesystem blocking is covered separately by the existing thread/process regressions.
+
+The original ACCEPT and source-only Hardenx scan preceded this control-flow change; neither is represented as review or security clearance for the follow-up. The Scope Map formatting defect was also repaired. Board validation passed and origin was fetched before edits; root-owned state and other worktrees were not modified.
+
+Follow-up gates: the same five-module consumer command passes **54 tests, no skips**, exit0 (`.audit/publication-review-consumers.log`). The new replay test supplies a later creation timestamp and still requires the previously elected artifact, pinning winner semantics as well as writer release. Ruff passes, exit0 (`.audit/publication-review-ruff.log`). Strict mypy reports the same seven baseline test annotation errors, no production errors and no introduced errors, exit1 (`.audit/publication-review-mypy.log` and source-mapped `publication-review-mypy-delta.json`). `git diff --check` passes. The earlier original53-consumer and initial source-review evidence remain historical rather than being relabeled as the new result.

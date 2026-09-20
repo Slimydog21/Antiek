@@ -189,11 +189,10 @@ class LocalSourceCardRegistry:
                     "INSERT INTO multimedia_local_source_cards VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     [*values, _mac(values, self._key)],
                 )
-            else:
-                return self._reopen(
-                    current, request, owner_digest, snapshot_digest, input_digest
-                )
-        return self._reopen(tuple([*values, _mac(values, self._key)]), request, owner_digest, snapshot_digest, input_digest)
+        # Reopening may wait for filesystem publication. Release the database
+        # writer first, including when another creator inserted the winning row.
+        row = current if current is not None else tuple([*values, _mac(values, self._key)])
+        return self._reopen(row, request, owner_digest, snapshot_digest, input_digest)
 
     def reopen(
         self,

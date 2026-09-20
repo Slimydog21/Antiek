@@ -16,8 +16,10 @@ from nacl.signing import SigningKey
 from PIL import Image
 from PIL import __version__ as pillow_version
 
+from runtime.db_lock import FlockWriteCoordinator
 from substrate.multimedia.diagram_evidence_authority import DiagramEvidenceAuthority
 from substrate.multimedia.local_source_card import (
+    LocalSourceCardArtifact,
     LocalSourceCardError,
     LocalSourceCardRegistry,
     LocalSourceCardRequest,
@@ -289,6 +291,42 @@ def test_concurrent_create_elects_one_identical_card(state) -> None:
         )
     assert rows[0] == rows[1]
     assert len(tuple(Path(rows[0].output_path).parent.glob("*.png"))) == 1
+
+
+def test_existing_row_reopen_releases_database_writer(
+    state: tuple[Path, LocalSourceCardRegistry, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db, registry, _font = state
+    original = registry.create(_request(), owner_id="owner-1", now=NOW)
+    # Reproduce a creator whose initial lookup missed a concurrent insertion.
+    # The write-context SELECT still runs against the real existing row.
+    monkeypatch.setattr(registry, "_load", lambda _card_id: None)
+    reopening = threading.Event()
+    release = threading.Event()
+    real_reopen = registry._reopen
+
+    def delayed_reopen(
+        row: tuple[object, ...], request: LocalSourceCardRequest,
+        owner_digest: str, snapshot_digest: str, input_digest: str,
+    ) -> LocalSourceCardArtifact:
+        reopening.set()
+        assert release.wait(15), "test did not release verification"
+        return real_reopen(row, request, owner_digest, snapshot_digest, input_digest)
+
+    def independent_writer() -> int:
+        with FlockWriteCoordinator(str(db)).acquire_write_context("test.source_card.replay") as connection:
+            return len(connection.execute("SELECT card_id FROM multimedia_local_source_cards").fetchall())
+
+    monkeypatch.setattr(registry, "_reopen", delayed_reopen)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        replay = pool.submit(registry.create, _request(), owner_id="owner-1", now=NOW.replace(day=14))
+        try:
+            assert reopening.wait(10)
+            # A slow filesystem verification must not retain the DB writer.
+            assert pool.submit(independent_writer).result(timeout=3) == 1
+        finally:
+            release.set()
+        assert replay.result(timeout=10) == original
 
 
 def test_foreign_owner_duplicate_chunks_and_reviewer_conflict_fail(state) -> None:
