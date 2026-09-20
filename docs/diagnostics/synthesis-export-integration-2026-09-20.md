@@ -62,7 +62,7 @@ From the worktree root:
 PYTHONPATH="$PWD" /Users/slimydog/Antiek/platform/.venv/bin/python -m pytest -q services/html_projection/tests tests/api/test_synthesis_artifact.py tests/api/test_synthesis_export_boundary.py tests/api/test_synthesis_export_database.py
 ```
 
-471 passed, exit 0. Full output: .audit/export-repair-final-tests.log.
+498 passed, exit 0. Full output: .audit/portable-links-full-tests.log.
 The production-shaped fixture uses typed SynthesizeDeliveredPayload and
 EvidenceRetrieveDeliveredPayload, pins chunks only, and asserts zero document
 pins before checking exact claim/source resolution.
@@ -84,7 +84,8 @@ span IDs remain unresolved in this local graph implementation.
 | Query-route poison, rights, three-format refusal | tested | test_synthesis_export_boundary.py |
 | Bearer/cookie/allowlist authentication | tested | test_synthesis_export_boundary.py |
 | Shared component browser download/refusal, rendered file | tested | assets/synthesis-export-20260920 |
-| Deployed schema and full workstation UI | untested | no run |
+| Downloaded source link to actual reader body | tested | assets/synthesis-export-20260920/portable-reader.png |
+| Deployed schema and other workstation flows | untested | no run |
 | Archived external federation | untested | retained PR856, separate integration |
 
 ## Handoff
@@ -129,8 +130,8 @@ boundary tests from the first evidence commit; this diagnostic.
 
 | Gate | Result | Local evidence |
 |---|---|---|
-| Full export suite above | 471 passed, exit0 | .audit/export-repair-final-tests.log |
-| Strict mypy, explicit-package-bases, follow-imports=silent | 4 files clean | .audit/provenance-mypy.log |
+| Full export suite above | 498 passed, exit0 | .audit/portable-links-full-tests.log |
+| Strict mypy, explicit-package-bases, follow-imports=silent | 4 files clean | .audit/portable-links-mypy.log |
 | Ruff on changed Python | passed | command output |
 | Gate-removal mutation | expected pytest exit1 | .audit/gate-mutation.log |
 | Initial evidence-only GLM | ACCEPT84, entrenchment concern | .audit/export-review.log |
@@ -206,3 +207,47 @@ gets an explicit marker. Both parser limits omitted by the earlier tests now
 have coverage. The resulting suite passes471 tests. Signed-format filename
 quoting, metadata JSON bounds, read-route initialization, and portable source
 links remain separate followups. No full-goal completion claim.
+
+
+## Portable source links
+
+The file-relative link defect observed above is repaired. The resolver uses the
+established ANTIEK_FRONTEND_BASE_URL then ANTIEK_PUBLIC_BASE_URL configuration,
+accepting an absolute HTTP(S) origin. It rejects credentials, invalid host/port,
+controls, queries/fragments and path prefixes. Request Host, Origin and forwarded
+headers never choose exported targets. Document IDs are percent-encoded as one
+path segment. With no usable origin or document path, citations stay visible
+with the document ID and "reader link unavailable", without a broken anchor.
+Both HTML routes and direct resolver calls share this behavior.
+
+The 498-test suite covers precedence, malformed/unset configuration, header
+spoofing, localhost/IPv6, encoded IDs, both endpoints and machine-island links.
+Strict mypy is clean on the four implementation/integration files.
+The earlier followup review is terminal ACCEPT95 at8c6e8da5b. Independent
+review of this portable-link delta is running in .audit/portable-links-review.log.
+
+Browser verification used an isolated Chrome profile with a real signed session
+cookie, the real shared export component, and the local full app. A canonical
+book asset was added to the synthetic public document. Clicking the public
+source link from the downloaded file navigated to the actual Antiek reader at
+http://127.0.0.1:18883/read/doc-public, where PUBLIC_SOURCE_PASSAGE was visibly
+rendered. This closes the local file-to-reader navigation case, not reader-asset
+availability for every graph document or deployed configuration.
+
+[Portable downloaded HTML](assets/synthesis-export-20260920/portable-export.html),
+[rendered file](assets/synthesis-export-20260920/portable-download-render.png),
+[actual reader](assets/synthesis-export-20260920/portable-reader.png), and
+[hashes, source digests and scope](assets/synthesis-export-20260920/portable-verification.json)
+retain the evidence. The new file is10,118bytes, SHA256
+c79cdd07be1ee74b0c5e6812f34a5b4c3c5fe830586c79ae0810dfd8288e2b19.
+API, Vite and Chrome were stopped; ephemeral session credentials were removed.
+The previous c9b5c81b1 artifacts remain as historical before-fix evidence.
+
+A clean isolated npm ci resolved the missing p5 dependency without changing
+package manifests. Its audit revealed50 affected package entries, including
+2critical and10high; runtime-only audit reported1high and30moderate. Those
+counts describe package entries, not distinct advisories or proven application
+exploits. Read-only triage found the runtime high in Tiptap and critical dev
+findings in form-data/Lost Pixel's dependency chain. Evidence is retained under
+.audit/npm-*-20260920.json. Frontend dependency remediation is a separate lane;
+source-only Hardenx results must not be presented as dependency clearance.

@@ -156,6 +156,10 @@ def _source_label(src: SourceRef) -> str:
         parts.append(src.ip_holder_id)
     if src.locator:
         parts.append(src.locator)
+    elif src.document_id:
+        if src.document_id not in parts:
+            parts.append(src.document_id)
+        parts.append("reader link unavailable")
     return " · ".join(parts)
 
 

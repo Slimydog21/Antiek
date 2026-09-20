@@ -37,6 +37,8 @@ def archived_synthesis(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple
     assert Path(db_path).resolve().is_relative_to(tmp_path.resolve())
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
     monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", str(tmp_path / "artifacts"))
+    monkeypatch.setenv("ANTIEK_FRONTEND_BASE_URL", "https://reader.example.test")
+    monkeypatch.delenv("ANTIEK_PUBLIC_BASE_URL", raising=False)
     with connect_write(db_path, purpose="test-synthesis-export-seed") as con:
         for document_id, rights, title, passage in (
             ("doc-public", "public_domain", "Public evidence", "PUBLIC_SOURCE_PASSAGE"),
@@ -115,7 +117,8 @@ def test_real_resolver_maps_each_archived_claim_to_its_chunk_without_document_pi
     assert sources["doc-private"].servable is False
     assert sources["doc-public"].chunk_text == "PUBLIC_SOURCE_PASSAGE"
     assert {source.locator for source in sources.values()} == {
-        "/read/doc-public", "/read/doc-private",
+        "https://reader.example.test/read/doc-public",
+        "https://reader.example.test/read/doc-private",
     }
     con = connect_read(db_path)
     try:
@@ -307,3 +310,115 @@ def test_over_bound_thesis_falls_back_instead_of_claiming_partial_completeness(
     assert extract_island(response.text)["metadata"]["provenance"] == {
         "fully_sourced": 0, "total": 1, "complete": False,
     }
+
+
+@pytest.mark.parametrize(
+    "frontend,public,expected",
+    [
+        ("https://frontend.example.test", "", "https://frontend.example.test"),
+        ("", "https://public.example.test", "https://public.example.test"),
+        ("https://frontend.example.test", "https://public.example.test", "https://frontend.example.test"),
+        ("http://localhost:8080/", "", "http://localhost:8080"),
+        ("http://[::1]:8080/", "", "http://[::1]:8080"),
+    ],
+)
+def test_real_resolver_uses_configured_reader_origin(
+    archived_synthesis: tuple[str, str], monkeypatch: pytest.MonkeyPatch,
+    frontend: str, public: str, expected: str,
+) -> None:
+    monkeypatch.setenv("ANTIEK_FRONTEND_BASE_URL", frontend)
+    monkeypatch.setenv("ANTIEK_PUBLIC_BASE_URL", public)
+    db_path, synthesis_id = archived_synthesis
+    export = resolve_synthesis_export(synthesis_id, db_path=db_path)
+    assert export is not None
+    assert {source.locator for claim in export.claims for source in claim.sources} == {
+        f"{expected}/read/doc-public", f"{expected}/read/doc-private",
+    }
+
+
+@pytest.mark.parametrize(
+    "frontend",
+    [None, "/relative", "javascript:alert(1)", "https://user:pass@reader.example.test",
+     "https://reader.example.test/subpath", "https://reader.example.test?redirect=evil",
+     "https://reader.example.test#fragment", "https://reader.example.test:bad",
+     "https://reader.\nexample.test", "https://reader..example.test",
+     "https://-reader.example.test", "http://999.1.2.3"],
+)
+def test_unavailable_reader_origin_keeps_visible_unclickable_references(
+    archived_synthesis: tuple[str, str], monkeypatch: pytest.MonkeyPatch,
+    frontend: str | None,
+) -> None:
+    if frontend is None:
+        monkeypatch.delenv("ANTIEK_FRONTEND_BASE_URL", raising=False)
+        monkeypatch.delenv("ANTIEK_PUBLIC_BASE_URL", raising=False)
+    else:
+        monkeypatch.setenv("ANTIEK_FRONTEND_BASE_URL", frontend)
+        # An explicitly invalid preferred origin must not silently use another host.
+        monkeypatch.setenv("ANTIEK_PUBLIC_BASE_URL", "https://fallback.example.test")
+    db_path, synthesis_id = archived_synthesis
+    export = resolve_synthesis_export(synthesis_id, db_path=db_path)
+    assert export is not None
+    assert all(source.locator is None for claim in export.claims for source in claim.sources)
+    app = FastAPI()
+    register_synthesis_artifact_routes(app)
+    with TestClient(app) as client:
+        response = client.get(f"/api/syntheses/{synthesis_id}/artifact?format=html")
+    assert response.status_code == 200
+    assert "reader link unavailable" in response.text
+    assert "doc-public" in response.text and "Public evidence" in response.text
+    assert "doc-private" in response.text and "Private evidence" in response.text
+    assert 'href="/read/' not in response.text
+    assert 'href="file:' not in response.text
+    model = extract_island(response.text)
+    cites = [node["attrs"] for node in model["content"] if node["type"] == "antiek_cite_link"]
+    assert len(cites) == 2
+    assert all("target_url" not in cite for cite in cites)
+    assert_script_free(response.text)
+
+
+@pytest.mark.parametrize("suffix", ["artifact.html", "artifact?format=html"])
+def test_both_real_html_routes_keep_configured_links_despite_spoofed_headers(
+    archived_synthesis: tuple[str, str], suffix: str,
+) -> None:
+    _, synthesis_id = archived_synthesis
+    app = FastAPI()
+    register_synthesis_artifact_routes(app)
+    with TestClient(app) as client:
+        response = client.get(f"/api/syntheses/{synthesis_id}/{suffix}", headers={
+            "Host": "host.attacker.test",
+            "Origin": "https://origin.attacker.test",
+            "X-Forwarded-Host": "forwarded.attacker.test",
+            "X-Forwarded-Proto": "http",
+            "Forwarded": "host=forwarded.attacker.test;proto=http",
+        })
+    assert response.status_code == 200
+    model = extract_island(response.text)
+    targets = {
+        node["attrs"]["target_url"] for node in model["content"]
+        if node["type"] == "antiek_cite_link"
+    }
+    assert targets == {
+        "https://reader.example.test/read/doc-public",
+        "https://reader.example.test/read/doc-private",
+    }
+    assert all(f'href="{target}"' in response.text for target in targets)
+    assert "attacker.test" not in response.text
+    assert "PUBLIC_SOURCE_PASSAGE" in response.text
+    assert "PRIVATE_SOURCE_PASSAGE" not in response.text
+    assert_script_free(response.text)
+
+
+@pytest.mark.parametrize(
+    "document_id,encoded",
+    [("a/b", "a%2Fb"), ("a?b", "a%3Fb"), ("a#b", "a%23b"),
+     ("a b", "a%20b"), ("café", "caf%C3%A9"), ("%2e%2e", "%252e%252e"),
+     (".", None), ("..", None)],
+)
+def test_reader_locator_keeps_document_identity_in_one_path_segment(
+    document_id: str, encoded: str | None,
+) -> None:
+    from interfaces.research.api.synthesis_artifact import _reader_locator
+
+    origin = "https://reader.example.test"
+    expected = None if encoded is None else f"{origin}/read/{encoded}"
+    assert _reader_locator(origin, document_id) == expected

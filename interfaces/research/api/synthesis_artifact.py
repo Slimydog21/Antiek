@@ -15,9 +15,13 @@ whole synthesis", which is a lie).
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
+import os
+import re
 from typing import Any, cast
+from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -84,6 +88,54 @@ def _archived_components(value: str | None) -> list[dict[str, Any]]:
     return cast(list[dict[str, Any]], components)
 
 
+def _valid_reader_host(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+    try:
+        ascii_host = host.encode("idna").decode("ascii").rstrip(".")
+    except UnicodeError:
+        return False
+    if not ascii_host or len(ascii_host) > 253 or all(c in "0123456789." for c in ascii_host):
+        return False
+    return all(re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?", label)
+               for label in ascii_host.split("."))
+
+
+def _reader_origin() -> str | None:
+    """Use deployment configuration, never request-controlled host headers.
+
+    Precedence matches the login frontend redirect. A downloaded artifact has
+    no same-origin fallback, so an unavailable origin leaves plain references.
+    """
+    value = (os.environ.get("ANTIEK_FRONTEND_BASE_URL", "").strip()
+             or os.environ.get("ANTIEK_PUBLIC_BASE_URL", "").strip())
+    if not value or any(ord(c) <= 32 or ord(c) == 127 for c in value):
+        return None
+    if "\\" in value or "?" in value or "#" in value:
+        return None
+    try:
+        parsed = urlsplit(value)
+        if (parsed.scheme not in {"http", "https"} or not parsed.hostname
+                or parsed.username is not None or parsed.password is not None
+                or parsed.path not in {"", "/"} or "%" in parsed.netloc
+                or not _valid_reader_host(parsed.hostname)):
+            return None
+        # urlsplit validates brackets; accessing port also validates its range.
+        _ = parsed.port
+    except ValueError:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _reader_locator(origin: str | None, document_id: str) -> str | None:
+    if origin is None or not document_id or document_id in {".", ".."}:
+        return None
+    return f"{origin}/read/{quote(document_id, safe='')}"
+
+
 def resolve_synthesis_export(
     synthesis_id: str, *, db_path: str | None = None
 ) -> SynthesisExport | None:
@@ -96,6 +148,7 @@ def resolve_synthesis_export(
     """
     from runtime.db_lock import connect_read
 
+    origin = _reader_origin()
     db = db_path or _resolve_db_path()
     con = connect_read(db)
     try:
@@ -136,14 +189,15 @@ def resolve_synthesis_export(
                 graph_sources[chunk[0]] = SourceRef(
                     document_id=chunk[1], document_title=chunk[2],
                     content_class=chunk[3], ip_holder_id=chunk[4],
-                    locator=f"/read/{chunk[1]}", chunk_text=chunk[5], chunk_id=chunk[0],
+                    locator=_reader_locator(origin, chunk[1]),
+                    chunk_text=chunk[5], chunk_id=chunk[0],
                 )
     finally:
         con.close()
 
     document_sources = [
         SourceRef(document_id=r[0], document_title=r[1], content_class=r[2],
-                  ip_holder_id=r[3], locator=f"/read/{r[0]}")
+                  ip_holder_id=r[3], locator=_reader_locator(origin, r[0]))
         for r in doc_rows
     ]
     claims: list[Claim] = []
