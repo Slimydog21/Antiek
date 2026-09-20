@@ -505,7 +505,23 @@ async def open_public(project_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-# Admission control for the one unauthenticated write door in this module.
+# Admission control for the only write door in this module that needs NO
+# credential at all.
+#
+# Correcting the earlier claim here, which said "the one unauthenticated write
+# door": there are SIX write routes the operator-auth middleware waves through.
+# Five are /speak/invite/{token}/{consent,answer,voice,followups,decline},
+# reached via the `startswith("/speak/invite/")` bypass. Those carry an
+# unguessable token, which is a capability credential even though it is not a
+# session — so they are not equivalent to this route, which is reachable with
+# nothing but a project_id that GET /speak/feed publishes to anonymous callers.
+#
+# They ARE equally unthrottled, and a leaked or brute-forced token therefore
+# still buys unbounded writes against the single-writer database. Bounding them
+# is a separate change: /invite/{token}/answer is called once per interview
+# question, so a limit copied from here would break a legitimate session, and
+# the right numbers need real usage data rather than a guess.
+#
 # Two buckets, because they defend different things:
 #
 #   per-IP   — stops one caller minting invites in a loop.
@@ -537,11 +553,14 @@ async def open_contribute(project_id: str, request: Request) -> dict[str, Any]:
     Rate-limited: this is an anonymous door onto the single-writer database,
     and ``GET /speak/feed`` publishes the ``project_id`` needed to reach it.
     """
-    if _throttled("speak:open-contribute:global", _OPEN_CONTRIBUTE_GLOBAL_LIMIT):
-        raise HTTPException(
-            status_code=429,
-            detail="open contribution is busy; retry shortly",
-        )
+    # Per-IP FIRST, then global. Order is load-bearing, not stylistic:
+    # ``_throttled`` records a hit on every call, so checking global first let
+    # a single caller burn global budget with requests its own per-IP limit
+    # was about to reject. One IP sending 30/min would mint only 5 but consume
+    # all 30 global slots, denying every other caller for the rest of the
+    # window — the throttle became a cheaper denial lever than the unbounded
+    # endpoint it replaced. Rejecting at the per-IP gate first caps any single
+    # IP's global consumption at _OPEN_CONTRIBUTE_PER_IP_LIMIT per window.
     if _throttled(
         f"speak:open-contribute:{_client_ip(request)}",
         _OPEN_CONTRIBUTE_PER_IP_LIMIT,
@@ -549,6 +568,11 @@ async def open_contribute(project_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(
             status_code=429,
             detail="too many open contribution requests; retry shortly",
+        )
+    if _throttled("speak:open-contribute:global", _OPEN_CONTRIBUTE_GLOBAL_LIMIT):
+        raise HTTPException(
+            status_code=429,
+            detail="open contribution is busy; retry shortly",
         )
     with _translate(), _write("speak/api:open_contribute") as con:
         inv = invitations.mint_open_contribution(con, project_id)
