@@ -18,7 +18,6 @@ from __future__ import annotations
 import os
 import sys
 
-import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
@@ -27,7 +26,7 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from interfaces.research.api import create_app
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_read, connect_write
 from substrate.auth.magic_link import mint_session_cookie
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.ops import (
@@ -267,7 +266,7 @@ def test_context_promote(client, seed):
     assert len(body["block_ids"]) == 2
     blocks = client.get(f"/write/sections/{body['section_id']}/blocks").json()
     assert blocks["count"] == 2
-    with duckdb.connect(default_db_path(), read_only=True) as con:
+    with connect_read(default_db_path()) as con:
         owner = con.execute(
             "SELECT owner_user_id FROM deliverables WHERE deliverable_id = ?",
             [body["deliverable_id"]],
@@ -284,7 +283,7 @@ def test_context_promote_binds_authenticated_owner_not_body_claim(client):
     })
     assert response.status_code == 201, response.text
     result = response.json()
-    with duckdb.connect(default_db_path(), read_only=True) as con:
+    with connect_read(default_db_path()) as con:
         owner = con.execute(
             "SELECT owner_user_id FROM deliverables WHERE deliverable_id = ?",
             [result["deliverable_id"]],
@@ -294,7 +293,7 @@ def test_context_promote_binds_authenticated_owner_not_body_claim(client):
 
 def test_context_promote_rejects_unauthenticated_and_spoofed_owner(client):
     client.cookies.clear()
-    with duckdb.connect(default_db_path(), read_only=True) as con:
+    with connect_read(default_db_path()) as con:
         before = con.execute("SELECT COUNT(*) FROM deliverables").fetchone()[0]
     response = client.post(
         "/write/context/promote",
@@ -302,7 +301,7 @@ def test_context_promote_rejects_unauthenticated_and_spoofed_owner(client):
         headers={"X-User-Id": "user-alice", "X-Auth-Method": "antiek_session_cookie"},
     )
     assert response.status_code == 401
-    with duckdb.connect(default_db_path(), read_only=True) as con:
+    with connect_read(default_db_path()) as con:
         after = con.execute("SELECT COUNT(*) FROM deliverables").fetchone()[0]
     assert after == before
 
@@ -320,8 +319,7 @@ def test_generate_empty_section_returns_gap(client, seed):
 
 
 def _section_prose_row(deliverable_id: str):
-    import duckdb
-    con = duckdb.connect(default_db_path(), read_only=True)
+    con = connect_read(default_db_path())
     try:
         return con.execute(
             "SELECT prose_text, prose_provenance FROM deliverable_sections "
