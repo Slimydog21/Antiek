@@ -1407,6 +1407,26 @@ class AttributionComputeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class PublisherClaimRequest(BaseModel):
+    """Body of ``POST /publishers/{ip_holder_id}/claim``.
+
+    Module level, NOT nested inside ``create_app``. This module sets
+    ``from __future__ import annotations`` (line 29), so every annotation is a
+    string that Pydantic resolves against MODULE globals when it builds the
+    request-body TypeAdapter. A class defined in the factory's local scope is
+    not in those globals, so the reference never resolves and
+    ``app.openapi()`` raises PydanticUserError -- taking the whole schema
+    down, not just this route.
+
+    The 32 sibling models that stay local are fine because they are only ever
+    passed as ``response_model=X``, which hands Pydantic the class OBJECT
+    rather than a name to look up. Only a PARAMETER annotation goes through
+    string resolution, and this was the only one.
+    """
+
+    stripe_connect_account_id: str | None = None
+
+
 def create_app(
     *,
     broadcaster: EventBroadcaster | None = None,
@@ -4542,11 +4562,66 @@ def create_app(
 
     # ── WebSocket live tail ─────────────────────────────────────
 
+    def _ws_client_is_authorised(ws: WebSocket) -> bool:
+        """Apply the operator gate to a WebSocket handshake.
+
+        ``_operator_auth_middleware`` is installed with
+        ``@app.middleware("http")``, i.e. Starlette ``BaseHTTPMiddleware``,
+        whose ``__call__`` begins ``if scope["type"] != "http": await
+        self.app(...); return``. A WebSocket scope is therefore never seen by
+        it — and for the same reason never seen by ``CORSMiddleware``, so the
+        ``Origin`` header is not validated either. ``/ws/events`` called
+        ``ws.accept()`` unconditionally, which on 2026-09-20 answered a
+        credential-free handshake from an arbitrary Origin with
+        ``101 Switching Protocols`` in production and streamed the owner's
+        live typed-event bus (investigation_id, document_id, question_text)
+        to it.
+
+        The check below is the middleware's cookie path, verbatim in effect:
+        same enforcement-disabled escape, same ``ANTIEK_AUTH_SECRET`` gate,
+        same ``verify_session_cookie`` + allowlist comparison.
+
+        Cookies are the right credential here because a browser cannot set
+        headers on ``new WebSocket()``. The session cookie is issued with
+        ``Domain=.antiek.ai`` and ``SameSite=Lax``, so a handshake from
+        ``antiek.ai`` to ``api.antiek.ai`` is SAME-site and carries it, while
+        a page on any other registrable domain is cross-site and does not —
+        which is precisely the boundary we want.
+        """
+        expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
+        operator_emails = operator_allowlist_from_env(_OPERATOR_EMAIL_ENV)
+        expected_st_client_id = os.environ.get(
+            _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
+        ).strip().lower()
+        if not expected_token and not operator_emails and not expected_st_client_id:
+            # Enforcement disabled — local dev and the existing tests, which
+            # connect to this socket with no credentials, work unchanged.
+            return True
+        if not os.environ.get("ANTIEK_AUTH_SECRET", "").strip():
+            return False
+        session_value = ws.cookies.get(_SESSION_COOKIE_NAME, "")
+        if not session_value:
+            return False
+        try:
+            from substrate.auth import verify_session_cookie
+            claims = verify_session_cookie(session_value)
+        except Exception:  # noqa: BLE001 — invalid cookie is simply unauthorised
+            return False
+        if claims is None:
+            return False
+        cookie_email = claims.email.strip().lower()
+        return not operator_emails or cookie_email in operator_emails
+
     @app.websocket("/ws/events")
     async def ws_events(
         ws: WebSocket,
         investigation_id: str | None = Query(default=None),
     ) -> None:
+        if not _ws_client_is_authorised(ws):
+            # Close BEFORE accept: an unauthenticated peer must never reach
+            # the event bus, and never sees 101.
+            await ws.close(code=1008)
+            return
         await ws.accept()
         sub = await bus.subscribe(ws, investigation_id=investigation_id)
         try:
@@ -4880,9 +4955,6 @@ def create_app(
         if h is None:
             raise HTTPException(status_code=404, detail="publisher not found")
         return _holder_to_response(h)
-
-    class PublisherClaimRequest(BaseModel):
-        stripe_connect_account_id: str | None = None
 
     @app.post("/publishers/{ip_holder_id}/claim", response_model=PublisherResponse)
     async def claim_publisher(
