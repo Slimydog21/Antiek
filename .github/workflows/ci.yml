@@ -17,9 +17,19 @@ on:
   workflow_dispatch:  # let the operator trigger from the Actions tab
 
 concurrency:
-  # One CI run per branch. New pushes cancel the previous run.
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # One CI run per PR branch: a new push to a PR cancels the previous run,
+  # because only the latest head of a PR is worth testing.
+  #
+  # main is different. Every commit on main is a release candidate — the
+  # ansible deploy pulls main HEAD — so its verification must run to
+  # completion. Keying main by `github.ref` with cancel-in-progress meant
+  # each merge cancelled the previous merge's run: in the 24h to
+  # 2026-09-19, 52 merges landed at a ~4-minute median cadence against a
+  # 45-minute pytest job and CI completed on main exactly zero times.
+  # Keying main by `github.sha` gives every commit its own group, so runs
+  # never cancel each other and each merged SHA gets a real verdict.
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # Opt into Node 24 for JS-based actions (actions/checkout,
