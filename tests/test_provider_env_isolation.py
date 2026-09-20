@@ -64,3 +64,22 @@ def test_full_suite_step_must_isolate_even_with_no_env_at_all(monkeypatch, tmp_p
     """Running tests/ is the high-risk case; absence of an env block is not an excuse."""
     monkeypatch.setattr(isolation, "WORKFLOW", _workflow(tmp_path, None, "python -m pytest tests/ -q"))
     assert any("does not blank" in error for error in isolation.check())
+
+
+def test_isolation_does_not_strip_non_dispatch_keys(monkeypatch):
+    """`EXA_API_KEY` gates an opt-in operator test that skips at MODULE level.
+
+    A function-scoped fixture runs after module import, so stripping that key
+    would let the module decline to skip and then fail the body — which is
+    exactly what a broader `*_API_KEY` sweep did to
+    `tests/test_exa_gather_returns_real_chunks.py`. The isolation set is scoped
+    to dispatch providers for that reason; widening it breaks opt-in tests.
+    """
+    assert "EXA_API_KEY" not in isolation.provider_env_vars()
+
+
+def test_conftest_isolation_set_matches_the_lint(monkeypatch):
+    """conftest and CI must blank the same keys, or local stops matching CI."""
+    from tests.conftest import _DISPATCH_PROVIDER_KEYS
+
+    assert set(_DISPATCH_PROVIDER_KEYS) == isolation.provider_env_vars()
