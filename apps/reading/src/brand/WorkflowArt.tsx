@@ -23,15 +23,29 @@ import type { Workflow } from "../shell/workflowTaxonomy";
 
 
 import biographyArt from "./workflow-art/biography-512.png";
+import interviewsArt from "./workflow-art/interviews-512.png";
+import libraryArt from "./workflow-art/library-512.png";
+import outcomesArt from "./workflow-art/outcomes-512.png";
 import readArt from "./workflow-art/read-512.png";
 import researchArt from "./workflow-art/research-512.png";
 import speakArt from "./workflow-art/speak-512.png";
+import wrestlerArt from "./workflow-art/wrestler-512.png";
 import writeArt from "./workflow-art/write-512.png";
 
 /** Features that carry their own art. The four product doors, plus surfaces
  *  that compose several doors and so cannot borrow one door's prop —
  *  Biography draws on research, writing and gathered voices at once. */
-export type ArtFeature = Exclude<Workflow, "shared"> | "biography";
+export type ArtFeature =
+  | Exclude<Workflow, "shared">
+  /** Composed surfaces — draw on several doors, so they cannot borrow one door's prop. */
+  | "biography"
+  /** Second-level features. These have no choosing surface big enough to carry art
+   *  (the launcher and sub-action rows are ~30px, under the legibility floor), so
+   *  unlike a door, a mode's own header IS its only placement — not a duplicate one. */
+  | "library"
+  | "wrestler"
+  | "outcomes"
+  | "interviews";
 
 const ART: Partial<Record<ArtFeature, string>> = {
   research: researchArt,
@@ -39,6 +53,10 @@ const ART: Partial<Record<ArtFeature, string>> = {
   write: writeArt,
   speak: speakArt,
   biography: biographyArt,
+  library: libraryArt,
+  wrestler: wrestlerArt,
+  outcomes: outcomesArt,
+  interviews: interviewsArt,
 };
 
 /** The floor at which all four props still resolve as distinct objects. */
