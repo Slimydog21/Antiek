@@ -1,0 +1,74 @@
+# The merge gate for `main`, recorded in the repository.
+#
+# ENFORCEMENT LIVES IN GITHUB, NOT HERE. Ruleset `main-gate-integrity`
+# (id 23702536, enforcement=active, bypass_actors=[], strict policy on) is what
+# actually blocks a merge. This file is the *record* of that contract, and the
+# test that reads it (tests/test_required_checks_contract.py) is what stops the
+# two halves drifting apart.
+#
+# Why the file exists at all: before it, `grep -rF required_status_checks` and
+# `grep -rF main-gate-integrity` both returned ZERO hits in this repo. The
+# configuration deciding whether anything can merge existed only as remote
+# state. Three consequences, all of which had already happened or could:
+#
+#   1. Renaming a job in a workflow silently unhooks its gate. A required
+#      context is matched by NAME; rename the job and the requirement stops
+#      resolving. Nothing in a diff would show it.
+#   2. A reviewer cannot see what is required without an API call and repo
+#      admin rights.
+#   3. A gate can be left OUT of the fence without anyone noticing. That is
+#      not hypothetical — see `pytest` under `emitted_but_not_required`.
+#
+# To CHANGE what is required: edit the ruleset in GitHub, then update this
+# file in the same PR. The test fails on a name here that no workflow emits,
+# which catches the rename case; it cannot read the live ruleset from CI
+# without admin scope, so the pairing is a discipline this file makes visible
+# rather than one it can enforce end-to-end.
+
+# Contexts ruleset 23702536 requires. Every one must be emitted by some job.
+required:
+  - tsc
+  - vitest
+  - keystone
+  - "mypy --strict + ruff (declared scope, baselined)"
+  - pytest shard 0 of 4
+  - pytest shard 1 of 4
+  - pytest shard 2 of 4
+  - pytest shard 3 of 4
+
+# Checks the workflows emit that are NOT in the fence, each with a reason.
+# This list is where an omission becomes visible instead of invisible.
+emitted_but_not_required:
+  pytest:
+    why: >-
+      KNOWN GAP, not a decision. This job runs 17 substantive invariant gates
+      (reachability, contract conformance, four boundary checks, codegen
+      staleness, the anti-stranding gate) on top of requiring the four shards.
+      It is emitted by ci.yml and is NOT required, so those gates cannot block
+      a merge. PR #3210 merged with this job red. Adding it to the ruleset is
+      an operator action.
+  agent-execution-gates:
+    why: Advisory per docs/decisions/ci-informational-gates.md.
+  test-integrity-floor:
+    why: >-
+      Informational by design; every step ends in `exit 0`. Flip-to-blocking is
+      operator-only, one gate at a time, per
+      docs/decisions/test-integrity-ci-floor.md.
+  substrate-quality-gate:
+    why: Path-gated; runs on few commits, so requiring it would block on absence.
+  resilience-quality-gate:
+    why: Path-gated; same reason as substrate-quality-gate.
+  write-lock-async-gate:
+    why: Emitted on every push and currently green; a candidate for the fence.
+  npm-audit:
+    why: Scheduled dependency audit, not a per-PR gate.
+  pip-audit:
+    why: Scheduled dependency audit, not a per-PR gate.
+  lostpixel:
+    why: Visual baselines are environment-sensitive; see PR #3093.
+  axe-core:
+    why: Accessibility sweep; advisory while the baseline is being established.
+  probe prod /health vs origin/main:
+    why: >-
+      Scheduled parity alarm against live production. Cannot gate a PR because
+      it measures the deployed box, not the diff.
