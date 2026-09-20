@@ -25,6 +25,8 @@ import json
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 
+from runtime.db_lock import connect_read
+
 DEFAULT_TTL_SECONDS: int = 24 * 60 * 60
 
 
@@ -78,11 +80,10 @@ def lookup(
 
     Uses a read-only DuckDB connection; safe to call concurrently with
     other readers."""
-    import duckdb
 
     now = now or _now_utc()
     try:
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
     except Exception:
         # Cache miss when the DB file doesn't exist yet (first-ever
         # discover call). Caller proceeds to the live Exa call.

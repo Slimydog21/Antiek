@@ -59,6 +59,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from runtime.db_lock import connect_read
+
 # The four kinds a synthesis manifest may pin, each mapped to its owning table's
 # primary-key column. Mirrors the CHECK constraint on
 # synthesis_substrate_manifest.entity_kind in substrate/graph/schema.py.
@@ -199,7 +201,7 @@ def load_from_duckdb(
     import duckdb  # already a substrate dependency
 
     try:
-        con = duckdb.connect(graph_path, read_only=True)
+        con = connect_read(graph_path)
     except duckdb.Error as exc:
         raise SchemaDriftError(f"cannot open graph: {exc}") from exc
     try:

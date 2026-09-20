@@ -18,6 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from runtime.db_lock import connect_read
 from substrate.schemas import ActionType
 
 SCHEMA_VERSION = 1
@@ -164,9 +165,8 @@ def _load_problem_question(
     from substrate.event_log import trajectory
 
     if plan_root_node_id:
-        import duckdb
 
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
         try:
             row = con.execute(
                 "SELECT canonical_label FROM nodes WHERE node_id = ?",
@@ -218,9 +218,8 @@ def build_session_evidence_pack(
     chunks: list[PackChunk] = []
     leaf_ids: list[str] = []
 
-    import duckdb
 
-    con = duckdb.connect(db_path, read_only=True)
+    con = connect_read(db_path)
     try:
         for iid, sub_q in researches:
             leaf_ids.append(iid)

@@ -40,6 +40,7 @@ import argparse
 import json
 import sys
 
+from runtime.db_lock import connect_read
 from substrate.cross_graph.federation import FederationConfig
 from substrate.cross_graph.federation_config_store import (
     load_config as load_federation_config,
@@ -198,10 +199,9 @@ def _cmd_revoke(args: argparse.Namespace) -> int:
 
 
 def _cmd_list(args: argparse.Namespace) -> int:
-    import duckdb
 
     db = _resolve_db_path(args.db)
-    con = duckdb.connect(db, read_only=True)
+    con = connect_read(db)
     try:
         registry = load_registry(con)
     finally:
@@ -229,10 +229,9 @@ def _cmd_list(args: argparse.Namespace) -> int:
 
 
 def _cmd_show(args: argparse.Namespace) -> int:
-    import duckdb
 
     db = _resolve_db_path(args.db)
-    con = duckdb.connect(db, read_only=True)
+    con = connect_read(db)
     try:
         registry = load_registry(con)
     finally:
@@ -246,10 +245,9 @@ def _cmd_show(args: argparse.Namespace) -> int:
 
 
 def _cmd_config_show(args: argparse.Namespace) -> int:
-    import duckdb
 
     db = _resolve_db_path(args.db)
-    con = duckdb.connect(db, read_only=True)
+    con = connect_read(db)
     try:
         cfg = load_federation_config(con)
     finally:
