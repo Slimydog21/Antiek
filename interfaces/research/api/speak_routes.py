@@ -31,6 +31,7 @@ economics.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
@@ -574,8 +575,18 @@ async def open_contribute(project_id: str, request: Request) -> dict[str, Any]:
             status_code=429,
             detail="open contribution is busy; retry shortly",
         )
-    with _translate(), _write("speak/api:open_contribute") as con:
-        inv = invitations.mint_open_contribution(con, project_id)
+    # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
+    # that inline in an `async def` parks the whole uvicorn event loop, and
+    # the service runs --workers 1, so one caller stalls the entire API for
+    # up to five minutes. This route is reachable WITHOUT a session (the
+    # operator-auth middleware waves it through), so that is an anonymous
+    # denial of service, not merely a slow request. Hop the blocking work to
+    # a thread, the idiom cbc7c8475 established for the operator routes.
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:open_contribute") as con:
+            return invitations.mint_open_contribution(con, project_id)
+
+    inv = await asyncio.to_thread(_sync)
     return {
         "honesty": {
             "open_contribution": "live_g7_will_be_public_only",
@@ -1104,23 +1115,47 @@ async def invitee_landing(token: str) -> dict:
 
 @speak_router.post("/invite/{token}/consent", status_code=200)
 async def invitee_consent(token: str, req: InviteConsentRequest) -> dict:
-    with _translate(), _write("speak/api:invite_consent") as con:
-        interview_id, _ = _require_token(con, token)
-        scopes = [ConsentScope(s) for s in req.scopes]
-        state = consent_mod.record_consent(con, interview_id=interview_id, scopes=scopes)
+    # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
+    # that inline in an `async def` parks the whole uvicorn event loop, and
+    # the service runs --workers 1, so one caller stalls the entire API for
+    # up to five minutes. This route is reachable WITHOUT a session (the
+    # operator-auth middleware waves it through), so that is an anonymous
+    # denial of service, not merely a slow request. Hop the blocking work to
+    # a thread, the idiom cbc7c8475 established for the operator routes.
+    def _sync() -> tuple[str, Any]:
+        with _translate(), _write("speak/api:invite_consent") as con:
+            interview_id, _ = _require_token(con, token)
+            scopes = [ConsentScope(s) for s in req.scopes]
+            state = consent_mod.record_consent(
+                con, interview_id=interview_id, scopes=scopes
+            )
+            return interview_id, state
+
+    interview_id, state = await asyncio.to_thread(_sync)
     return {"interview_id": interview_id, "granted": sorted(s.value for s in state.granted)}
 
 
 @speak_router.post("/invite/{token}/answer", status_code=201)
 async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict:
-    with _translate(), _write("speak/api:invite_answer_resolve") as con:
-        interview_id, _ = _require_token(con, token)
-    # submit_answer acquires its own lock(s); call outside ours.
-    with _translate():
-        result = submit_answer(
-            _db(), interview_id=interview_id, question_id=req.question_id,
-            transcript=req.transcript, duration_seconds=req.duration_seconds,
-        )
+    # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
+    # that inline in an `async def` parks the whole uvicorn event loop, and
+    # the service runs --workers 1, so one caller stalls the entire API for
+    # up to five minutes. This route is reachable WITHOUT a session (the
+    # operator-auth middleware waves it through), so that is an anonymous
+    # denial of service, not merely a slow request. Hop the blocking work to
+    # a thread, the idiom cbc7c8475 established for the operator routes.
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:invite_answer_resolve") as con:
+            interview_id, _ = _require_token(con, token)
+        # submit_answer acquires its own lock(s); call outside ours — but
+        # still on this thread, never the loop.
+        with _translate():
+            return submit_answer(
+                _db(), interview_id=interview_id, question_id=req.question_id,
+                transcript=req.transcript, duration_seconds=req.duration_seconds,
+            )
+
+    result = await asyncio.to_thread(_sync)
     return {"interview_id": result.interview_id, "question_id": result.question_id,
             "document_id": result.document_id, "skipped_reason": result.skipped_reason}
 
@@ -1170,20 +1205,31 @@ async def invitee_voice(
         sub = content_type.split("/", 1)[1].split(";", 1)[0].strip()
         if sub:
             ext = sub
-    with _translate(), _write("speak/api:invite_voice_resolve") as con:
-        interview_id, _ = _require_token(con, token)
-    # transcribe + submit acquire their own locks; do them OUTSIDE ours.
-    with _translate():
-        text = transcribe_voice(
-            audio,
-            filename=f"invite-voice.{ext}",
-            transcriber=_INVITEE_TRANSCRIBER,
-            language=language,
-        )
-        result = submit_answer(
-            _db(), interview_id=interview_id, question_id=question_id,
-            transcript=text, duration_seconds=duration_seconds,
-        )
+    # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
+    # that inline in an `async def` parks the whole uvicorn event loop, and
+    # the service runs --workers 1, so one caller stalls the entire API for
+    # up to five minutes. This route is reachable WITHOUT a session (the
+    # operator-auth middleware waves it through), so that is an anonymous
+    # denial of service, not merely a slow request. Hop the blocking work to
+    # a thread, the idiom cbc7c8475 established for the operator routes.
+    def _sync() -> tuple[str, Any]:
+        with _translate(), _write("speak/api:invite_voice_resolve") as con:
+            interview_id, _ = _require_token(con, token)
+        # transcribe + submit acquire their own locks; do them OUTSIDE ours
+        # — and off the loop, since Whisper is CPU-bound for seconds.
+        with _translate():
+            text = transcribe_voice(
+                audio,
+                filename=f"invite-voice.{ext}",
+                transcriber=_INVITEE_TRANSCRIBER,
+                language=language,
+            )
+            return text, submit_answer(
+                _db(), interview_id=interview_id, question_id=question_id,
+                transcript=text, duration_seconds=duration_seconds,
+            )
+
+    text, result = await asyncio.to_thread(_sync)
     return {
         "interview_id": result.interview_id, "question_id": result.question_id,
         "document_id": result.document_id, "skipped_reason": result.skipped_reason,
@@ -1193,10 +1239,20 @@ async def invitee_voice(
 
 @speak_router.post("/invite/{token}/followups")
 async def invitee_followups(token: str) -> dict[str, Any]:
-    with _translate(), _write("speak/api:invite_followups_resolve") as con:
-        interview_id, _ = _require_token(con, token)
-    with _translate():
-        fus = next_followups(_db(), interview_id=interview_id)
+    # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
+    # that inline in an `async def` parks the whole uvicorn event loop, and
+    # the service runs --workers 1, so one caller stalls the entire API for
+    # up to five minutes. This route is reachable WITHOUT a session (the
+    # operator-auth middleware waves it through), so that is an anonymous
+    # denial of service, not merely a slow request. Hop the blocking work to
+    # a thread, the idiom cbc7c8475 established for the operator routes.
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:invite_followups_resolve") as con:
+            interview_id, _ = _require_token(con, token)
+        with _translate():
+            return next_followups(_db(), interview_id=interview_id)
+
+    fus = await asyncio.to_thread(_sync)
     return {"followups": [
         {"question_id": f.question_id, "text": f.text,
          "follow_up_for_prior_turn": f.follow_up_for_prior_turn}
@@ -1206,7 +1262,18 @@ async def invitee_followups(token: str) -> dict[str, Any]:
 
 @speak_router.post("/invite/{token}/decline", status_code=200)
 async def invitee_decline(token: str) -> dict[str, Any]:
-    with _translate(), _write("speak/api:invite_decline_resolve") as con:
-        interview_id, _ = _require_token(con, token)
-    decline(_db(), interview_id)
+    # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
+    # that inline in an `async def` parks the whole uvicorn event loop, and
+    # the service runs --workers 1, so one caller stalls the entire API for
+    # up to five minutes. This route is reachable WITHOUT a session (the
+    # operator-auth middleware waves it through), so that is an anonymous
+    # denial of service, not merely a slow request. Hop the blocking work to
+    # a thread, the idiom cbc7c8475 established for the operator routes.
+    def _sync() -> str:
+        with _translate(), _write("speak/api:invite_decline_resolve") as con:
+            interview_id, _ = _require_token(con, token)
+        decline(_db(), interview_id)
+        return interview_id
+
+    interview_id = await asyncio.to_thread(_sync)
     return {"interview_id": interview_id, "status": "declined"}
