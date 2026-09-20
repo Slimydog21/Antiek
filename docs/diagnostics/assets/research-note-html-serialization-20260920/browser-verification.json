@@ -1,0 +1,38 @@
+{
+  "source_commit": "a583b34872acce156696ba4359b0551e3511d1a2",
+  "parent_note_persistence_commit": "6e2c73d111a50a74ec0c4a72b3fa00f349822b8b",
+  "browser": {
+    "notes": [
+      "Discuss the literal closing tag </script> and mixed case </ScRiPt>, \u96ea, quotes \" and backslash \\ in source documents."
+    ],
+    "island": "{\n  \"schema_version\": 1,\n  \"investigation_id\": \"inv-browser-note-proof\",\n  \"problem_question\": \"Investigation inv-browser-note-proof\",\n  \"insights\": [],\n  \"open_questions\": [],\n  \"synthesis_excerpt\": null,\n  \"synthesis_withheld\": false,\n  \"source_event_ids\": [],\n  \"agent_notes\": [\n    \"Discuss the literal closing tag \\u003c/script> and mixed case \\u003c/ScRiPt>, \u96ea, quotes \\\" and backslash \\\\ in source documents.\"\n  ]\n}",
+    "visible": "Discuss the literal closing tag </script> and mixed case </ScRiPt>, \u96ea, quotes \" and backslash \\ in source documents.",
+    "errors": []
+  },
+  "api": {
+    "import_status": 200,
+    "notes_imported": 1,
+    "event_count": 1,
+    "replay_imported": 0,
+    "caller_deleted": true,
+    "export_status": 200,
+    "persisted_notes": [
+      "Discuss the literal closing tag </script> and mixed case </ScRiPt>, \u96ea, quotes \" and backslash \\ in source documents."
+    ],
+    "export_bytes": 6236,
+    "scope": "Actual renderer browser Addnote with closing-script text; DevTools DOMserialization not nativeSavePage; actualrouter import/replay/export isolatedlocalDB, nofullappauth/production"
+  },
+  "limits": [
+    "DevTools DOM serialization rather than native Save Page",
+    "Minimal actual artifact_router with isolated database, no full application auth",
+    "No production or paid provider calls"
+  ],
+  "source_sha256": {
+    "substrate/research_artifact/render.py": "ff128bf60532fb33df736b38716ff5baa50161909f142e3f4d042f69ece2988d",
+    "substrate/research_artifact/import_notes.py": "f9339383b3ef7d35990d2837ba5894bf91a9b23f4f262b9308d697736f46611e",
+    "substrate/research_artifact/note_store.py": "369dc28b391553c24c105f27cdb51b507da79c3a6d78adefeedb250c2369011d",
+    "interfaces/research/api/artifact_routes.py": "b66ed6622dba0bf974cdac6acf93eb522141b13676e4868acaee0f8316f800c4",
+    ".audit/browser-note-server.py": "636591eff68d3bbbe3661e53c6582f369241ebaf5b89119c8fa7befcfba6e7fe"
+  },
+  "screenshot_sha256": "d8102ff28ed9e60ecee66d124b8922387ab08bbde17bb040d2f538f05f8b2c67"
+}

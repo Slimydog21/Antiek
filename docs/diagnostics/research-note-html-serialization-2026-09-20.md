@@ -126,3 +126,25 @@ change, then chooses its integration sequence with note persistence.
 
 No changes to note storage, importer, event schema, graph authority or parent
 branch files beyond the three assigned paths.
+
+### Real-browser follow-up
+
+Chrome exercised the actual Add-note control with literal closing-script tags,
+mixed-case tags, Unicode, quotes and a backslash. The machine island contained
+no literal less-than signs; JSON parsing restored the exact text. Saving the
+edited DOM to a caller HTML file and invoking the actual local import route
+returned200 with one accepted note/event. Repeating import returned zero new
+notes. After deleting the caller file, re-export returned200 and retained the
+exact note. No window errors or unhandled rejections were captured. The screenshot
+was visually inspected. Source and evidence hashes are recorded in
+[verification JSON](assets/research-note-html-serialization-20260920/browser-verification.json)
+and [screenshot](assets/research-note-html-serialization-20260920/add-note.png).
+
+This uses DevTools DOM serialization, not native Save Page, and a minimal real
+artifact_router app with an isolated database. Full application authentication,
+production, and the broader writing workflow remain unproved. Local server and
+isolated Chrome shut down normally. Independent GLM review30151 remains running.
+
+Strict source-only Hardenx scan of the changed renderer and test exited0, LOW,
+zero REAL and five advisory findings. Evidence: .audit/serialization-hardenx.json.
+This is not dependency or production clearance.
