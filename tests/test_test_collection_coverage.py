@@ -238,26 +238,20 @@ def test_known_non_test_modules_still_define_no_tests() -> None:
 
 READING = REPO_ROOT / "apps" / "reading"
 
-# TS test files that NO runner collects and that cannot simply be globbed in.
-# vitest cannot reach above its root: including "../../tools/**/*.test.ts"
-# collects the files and then fails every one of them with
-# "Cannot find module '/@fs/.../verify_handoff.test.ts'". Wiring these needs a
-# root-level vitest project, which is a build-setup change rather than a glob.
+# TS test files that no runner collects and that cannot simply be globbed in.
 #
-# This is a NO-GROWTH register, not an allowlist: entries must LEAVE when
-# fixed (test_registered_ts_files_are_still_uncollected below fails if one
-# becomes collected), and a new orphan cannot be added without editing this
-# dict and saying why.
-KNOWN_UNCOLLECTED_TS: dict[str, str] = {
-    "tools/agent/verify_handoff.test.ts": (
-        "guards tools/agent/verify_handoff.ts, run by scripts/canonical_verify.sh:66; "
-        "needs a root vitest project (outside apps/reading's vite root)"
-    ),
-    "tools/specs/verify_spec_refs.test.ts": (
-        "guards tools/specs/verify_spec_refs.ts, used by scripts/agent_ams_ref_lint.sh; "
-        "needs a root vitest project (outside apps/reading's vite root)"
-    ),
-}
+# EMPTY, and that is the point. It briefly held tools/agent/verify_handoff
+# .test.ts and tools/specs/verify_spec_refs.test.ts, on the finding that
+# vitest "cannot reach above its root" -- including ../../tools/**/*.test.ts
+# collected them and then failed every one with "Cannot find module
+# '/@fs/...'". That diagnosis was incomplete: the barrier was vite's fs.allow
+# boundary, not the root, and widening it collects all 26 tests. The register
+# emptied instead of being explained away.
+#
+# It stays as a NO-GROWTH register: entries must LEAVE when fixed
+# (test_registered_ts_files_are_still_uncollected fails if one becomes
+# collected), and a new orphan cannot be added without saying why here.
+KNOWN_UNCOLLECTED_TS: dict[str, str] = {}
 
 
 def _expand_braces(pattern: str) -> list[str]:
