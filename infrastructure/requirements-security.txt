@@ -1,0 +1,6 @@
+# Reviewed runtime security upgrades. Used by setup and deploy as constraints.
+# This intentionally does not claim to lock the full production environment.
+# Keep these exact versions aligned with uv.lock and the verified CI constraints.
+cryptography==50.0.1
+pypdf==6.19.0
+yt-dlp==2026.8.19

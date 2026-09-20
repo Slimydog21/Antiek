@@ -330,14 +330,10 @@
       become_user: "{{ antiek_user }}"
       tags: [code]
 
-    - name: install Antiek with optional extras
-      ansible.builtin.pip:
-        name: "{{ antiek_install_dir }}[pdf,urls,embedding]"
-        editable: true
-        virtualenv: "{{ antiek_install_dir }}/.venv"
-        # Note: this resolves the editable install relative to the venv,
-        # so it correctly picks up pyproject.toml's optional-deps.
-      become_user: "{{ antiek_user }}"
+    - name: install and verify Python dependencies
+      ansible.builtin.import_tasks: ../tasks/python-dependencies.yml
+      vars:
+        antiek_dependency_extras: "pdf,urls,embedding,youtube"
       tags: [code]
 
     # ──────────────────────────────────────────────────────────────────────

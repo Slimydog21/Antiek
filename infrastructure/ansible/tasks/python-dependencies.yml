@@ -1,0 +1,51 @@
+---
+- name: install Antiek under reviewed runtime security constraints
+  ansible.builtin.pip:
+    name: "{{ antiek_install_dir }}[{{ antiek_dependency_extras }}]"
+    editable: true
+    virtualenv: "{{ antiek_install_dir }}/.venv"
+    extra_args: "-c {{ (antiek_install_dir ~ '/infrastructure/requirements-security.txt') | quote }}"
+  become_user: "{{ antiek_user }}"
+
+- name: verify installed runtime security versions
+  ansible.builtin.command:
+    argv:
+      - "{{ antiek_install_dir }}/.venv/bin/python"
+      - -c
+      - |
+        import importlib.metadata as metadata
+        import json
+        import pathlib
+        import sys
+
+        pins = {}
+        for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
+            if line.strip() and not line.lstrip().startswith("#"):
+                name, expected = line.strip().split("==")
+                pins[name] = expected
+        if not pins:
+            raise SystemExit("Runtime security constraints must not be empty")
+        mismatches = {}
+        for name, expected in pins.items():
+            try:
+                actual = metadata.version(name)
+            except metadata.PackageNotFoundError:
+                actual = None
+            if actual != expected:
+                mismatches[name] = {"expected": expected, "installed": actual}
+        if mismatches:
+            raise SystemExit(json.dumps(mismatches, sort_keys=True))
+        print(json.dumps(pins, sort_keys=True))
+      - "{{ antiek_install_dir }}/infrastructure/requirements-security.txt"
+  become_user: "{{ antiek_user }}"
+  changed_when: false
+
+- name: verify installed Python dependency consistency
+  ansible.builtin.command:
+    argv:
+      - "{{ antiek_install_dir }}/.venv/bin/python"
+      - -m
+      - pip
+      - check
+  become_user: "{{ antiek_user }}"
+  changed_when: false
