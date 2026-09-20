@@ -151,3 +151,45 @@ from the reviewer's source-level assessment.
 Strict source-only Hardenx scan of the changed renderer and test exited 0, LOW,
 zero REAL and five advisory findings. Evidence: .audit/serialization-hardenx.json.
 This is not dependency or production clearance.
+
+### Parent recovery integration
+
+Merged parent `d87e4202b0efd48afdc8da18e597e73883d6e87e` into serializer
+`7ddf6b4b0578b3def97f7c4d93c8880bc7ef9f4d` without conflicts or manual source
+edits. Integration commit: `aeb5256767c95e701c3167e97abdc1c21c8dc764`.
+This brings the parent's interrupted-write recovery and associated regressions
+into the same tree as the emitted-JavaScript serialization fix.
+
+The existing browser evidence remains pinned to serializer `a583b3487` and
+parent `6e2c73d11` in its verification JSON. It proves the earlier browser
+serialization and note-import behavior only. It does not prove the newly merged
+parent's recovery behavior. The current recovery evidence is the automated
+consumer suite below; parent independent review remains a separate root task.
+No browser evidence or source pin was rewritten.
+
+The combined consumer command uses the same absolute Python 3.12.13 and Node
+22.22.0 above, with `PYTHONPATH=$PWD`, `ANTIEK_HOME=$PWD/.audit/serialization-integration-runtime`
+and a DuckDB path inside that directory:
+
+```sh
+python -m pytest tests/test_research_artifact_import.py tests/test_research_artifact_note_store.py tests/test_research_artifact_export.py tests/test_research_artifact_template.py tests/test_research_artifact_blocks.py tests/test_research_artifact_compose.py tests/test_research_artifact_hooks.py tests/test_artifact_routes.py tests/test_feedback_routes.py tests/test_feedback_artifact_anchor.py tests/test_style_api.py tests/test_twin_note_taker_generate.py -q --tb=short
+```
+
+Ruff passed across renderer, importer, note store and their three test files.
+Strict mypy used `--strict --follow-imports=silent --explicit-package-bases` on
+those six files. It reports three existing untyped template-test functions and
+no findings in the other five files. A `--shadow-file` comparison using the
+premerge template at `7ddf6b4b` produces identical diagnostics: zero new
+integration findings. This is not a claim of a clean six-file strict type gate.
+No baseline expansion, ignore or type configuration change was made.
+
+Evidence: `.audit/serialization-integration-tests.log`,
+`.audit/serialization-integration-ruff.log`,
+`.audit/serialization-integration-mypy.log` and
+`.audit/serialization-integration-mypy-baseline.log`.
+
+Combined verification completed with exit 0: **187 passed in 46.58 seconds**,
+with one existing Starlette/httpx deprecation warning. Integration evidence
+readiness is **94/100**, reserving six points for the parent's independent
+review and combined branch CI. This score does not extend the old browser
+proof to recovery behavior or imply production deployment.
