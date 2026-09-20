@@ -1123,6 +1123,27 @@ async def invitee_consent(token: str, req: InviteConsentRequest) -> dict:
     # denial of service, not merely a slow request. Hop the blocking work to
     # a thread, the idiom cbc7c8475 established for the operator routes.
     def _sync() -> tuple[str, Any]:
+        # Reject an unknown token on the READ path, BEFORE the flock.
+        # This route is waved through the operator gate, so without this
+        # an anonymous caller with a junk token still acquires the
+        # single-writer lock and starves the real writer (ingest, backup)
+        # for up to DEFAULT_TIMEOUT_S. The write below still calls
+        # _require_token, which remains the authority -- this is a cheap
+        # rejection filter, not the check itself, so the race between the
+        # two is harmless: a token revoked in between is caught by the
+        # write-side check exactly as before.
+        try:
+            with _translate(), _read("speak/api:invite_consent:precheck") as _pre:
+                _known = _invite_read_or_404(_pre, token) is not None
+        except FileNotFoundError:
+            # No DB file yet means no invite can exist. Map to the same 404
+            # rather than letting the writer create the database for an
+            # anonymous caller -- _read documents this exact contract.
+            _known = False
+        if not _known:
+            raise HTTPException(
+                status_code=404, detail="unknown or expired invite link"
+            )
         with _translate(), _write("speak/api:invite_consent") as con:
             interview_id, _ = _require_token(con, token)
             scopes = [ConsentScope(s) for s in req.scopes]
@@ -1145,6 +1166,27 @@ async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict:
     # denial of service, not merely a slow request. Hop the blocking work to
     # a thread, the idiom cbc7c8475 established for the operator routes.
     def _sync() -> Any:
+        # Reject an unknown token on the READ path, BEFORE the flock.
+        # This route is waved through the operator gate, so without this
+        # an anonymous caller with a junk token still acquires the
+        # single-writer lock and starves the real writer (ingest, backup)
+        # for up to DEFAULT_TIMEOUT_S. The write below still calls
+        # _require_token, which remains the authority -- this is a cheap
+        # rejection filter, not the check itself, so the race between the
+        # two is harmless: a token revoked in between is caught by the
+        # write-side check exactly as before.
+        try:
+            with _translate(), _read("speak/api:invite_answer_resolve:precheck") as _pre:
+                _known = _invite_read_or_404(_pre, token) is not None
+        except FileNotFoundError:
+            # No DB file yet means no invite can exist. Map to the same 404
+            # rather than letting the writer create the database for an
+            # anonymous caller -- _read documents this exact contract.
+            _known = False
+        if not _known:
+            raise HTTPException(
+                status_code=404, detail="unknown or expired invite link"
+            )
         with _translate(), _write("speak/api:invite_answer_resolve") as con:
             interview_id, _ = _require_token(con, token)
         # submit_answer acquires its own lock(s); call outside ours — but
@@ -1213,6 +1255,27 @@ async def invitee_voice(
     # denial of service, not merely a slow request. Hop the blocking work to
     # a thread, the idiom cbc7c8475 established for the operator routes.
     def _sync() -> tuple[str, Any]:
+        # Reject an unknown token on the READ path, BEFORE the flock.
+        # This route is waved through the operator gate, so without this
+        # an anonymous caller with a junk token still acquires the
+        # single-writer lock and starves the real writer (ingest, backup)
+        # for up to DEFAULT_TIMEOUT_S. The write below still calls
+        # _require_token, which remains the authority -- this is a cheap
+        # rejection filter, not the check itself, so the race between the
+        # two is harmless: a token revoked in between is caught by the
+        # write-side check exactly as before.
+        try:
+            with _translate(), _read("speak/api:invite_voice_resolve:precheck") as _pre:
+                _known = _invite_read_or_404(_pre, token) is not None
+        except FileNotFoundError:
+            # No DB file yet means no invite can exist. Map to the same 404
+            # rather than letting the writer create the database for an
+            # anonymous caller -- _read documents this exact contract.
+            _known = False
+        if not _known:
+            raise HTTPException(
+                status_code=404, detail="unknown or expired invite link"
+            )
         with _translate(), _write("speak/api:invite_voice_resolve") as con:
             interview_id, _ = _require_token(con, token)
         # transcribe + submit acquire their own locks; do them OUTSIDE ours
@@ -1247,6 +1310,27 @@ async def invitee_followups(token: str) -> dict[str, Any]:
     # denial of service, not merely a slow request. Hop the blocking work to
     # a thread, the idiom cbc7c8475 established for the operator routes.
     def _sync() -> Any:
+        # Reject an unknown token on the READ path, BEFORE the flock.
+        # This route is waved through the operator gate, so without this
+        # an anonymous caller with a junk token still acquires the
+        # single-writer lock and starves the real writer (ingest, backup)
+        # for up to DEFAULT_TIMEOUT_S. The write below still calls
+        # _require_token, which remains the authority -- this is a cheap
+        # rejection filter, not the check itself, so the race between the
+        # two is harmless: a token revoked in between is caught by the
+        # write-side check exactly as before.
+        try:
+            with _translate(), _read("speak/api:invite_followups_resolve:precheck") as _pre:
+                _known = _invite_read_or_404(_pre, token) is not None
+        except FileNotFoundError:
+            # No DB file yet means no invite can exist. Map to the same 404
+            # rather than letting the writer create the database for an
+            # anonymous caller -- _read documents this exact contract.
+            _known = False
+        if not _known:
+            raise HTTPException(
+                status_code=404, detail="unknown or expired invite link"
+            )
         with _translate(), _write("speak/api:invite_followups_resolve") as con:
             interview_id, _ = _require_token(con, token)
         with _translate():
@@ -1270,6 +1354,27 @@ async def invitee_decline(token: str) -> dict[str, Any]:
     # denial of service, not merely a slow request. Hop the blocking work to
     # a thread, the idiom cbc7c8475 established for the operator routes.
     def _sync() -> str:
+        # Reject an unknown token on the READ path, BEFORE the flock.
+        # This route is waved through the operator gate, so without this
+        # an anonymous caller with a junk token still acquires the
+        # single-writer lock and starves the real writer (ingest, backup)
+        # for up to DEFAULT_TIMEOUT_S. The write below still calls
+        # _require_token, which remains the authority -- this is a cheap
+        # rejection filter, not the check itself, so the race between the
+        # two is harmless: a token revoked in between is caught by the
+        # write-side check exactly as before.
+        try:
+            with _translate(), _read("speak/api:invite_decline_resolve:precheck") as _pre:
+                _known = _invite_read_or_404(_pre, token) is not None
+        except FileNotFoundError:
+            # No DB file yet means no invite can exist. Map to the same 404
+            # rather than letting the writer create the database for an
+            # anonymous caller -- _read documents this exact contract.
+            _known = False
+        if not _known:
+            raise HTTPException(
+                status_code=404, detail="unknown or expired invite link"
+            )
         with _translate(), _write("speak/api:invite_decline_resolve") as con:
             interview_id, _ = _require_token(con, token)
         decline(_db(), interview_id)
