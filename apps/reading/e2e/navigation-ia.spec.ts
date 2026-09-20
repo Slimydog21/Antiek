@@ -38,14 +38,14 @@ test.describe("SPR-04 — four-workflow navigation IA", () => {
     // their sr-only label / title.
     for (const label of ["Research", "Read", "Write", "Speak"]) {
       await expect(
-        page.locator(`button[title^="${label} —"]`),
+        page.locator(`button[title^="${label} -"]`),
       ).toBeVisible({ timeout: 5_000 });
     }
     // Exactly four buttons in the workflows region — not five, not 37.
     await expect(workflows).toHaveCount(4);
     // ...plus a single "More" affordance outside the region.
     await expect(
-      page.locator('button[title^="More —"]'),
+      page.locator('button[title^="More -"]'),
     ).toBeVisible({ timeout: 5_000 });
   });
 
