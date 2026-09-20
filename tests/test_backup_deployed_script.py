@@ -38,8 +38,10 @@ from __future__ import annotations
 
 import fcntl
 import getpass
+import hashlib
 import json
 import os
+import select
 import subprocess
 import sys
 import tarfile
@@ -162,6 +164,7 @@ def _build_install_dir(install_dir: Path, *, sabotage_normalizer: bool) -> None:
         install_dir / ".venv" / "bin" / "python3",
         f'#!/usr/bin/env bash\nexec "{sys.executable}" "$@"\n',
     )
+    (install_dir / "runtime").symlink_to(REPO / "runtime", target_is_directory=True)
     tools = install_dir / "tools"
     tools.mkdir()
     target = tools / "backup_normalize_schema.py"
@@ -381,8 +384,11 @@ def test_remote_readback_mismatch_blocks_freshness_marker(tmp_path: Path) -> Non
 # ---------------------------------------------------------------------------
 # c. Red-proof R2: held flock → bounded timeout, no upload; release → success
 # ---------------------------------------------------------------------------
-def test_held_write_lock_times_out_then_succeeds_after_release(tmp_path: Path) -> None:
-    harness = _make_harness(tmp_path, lock_timeout_s="2")
+@pytest.mark.parametrize("lock_timeout_s", ["0", "2"])
+def test_held_write_lock_times_out_then_succeeds_after_release(
+    tmp_path: Path, lock_timeout_s: str
+) -> None:
+    harness = _make_harness(tmp_path, lock_timeout_s=lock_timeout_s)
 
     # A competing "writer" holds the exact runtime/db_lock.py sidecar flock.
     fd = os.open(harness.lock_file, os.O_CREAT | os.O_WRONLY, 0o600)
@@ -393,7 +399,7 @@ def test_held_write_lock_times_out_then_succeeds_after_release(tmp_path: Path) -
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
 
-    assert proc.returncode != 0, f"lock-held run must fail; stdout:\n{proc.stdout}"
+    assert proc.returncode == 3, f"lock-held run must fail; stdout:\n{proc.stdout}"
     assert "could not acquire DuckDB write lock" in proc.stderr, proc.stderr
     assert "aborting backup" in proc.stderr, proc.stderr
     assert not harness.rclone_log.exists()
@@ -612,3 +618,45 @@ def test_freshness_tool_rejects_non_finite_or_negative_threshold(tmp_path: Path)
     control = _run_freshness_tool(["--marker", str(marker), "--max-age-hours", "26.0"])
     assert control.returncode == 1
     assert control.stdout.startswith("STALE:")
+
+
+def test_backup_hands_off_idle_warm_writer_without_mutating_source(tmp_path: Path) -> None:
+    harness = _make_harness(tmp_path, lock_timeout_s="3")
+    db = harness.state_dir / "antiek.duckdb"
+    owner_code = """
+import sys
+import duckdb
+from runtime.db_lock import connect_write
+with connect_write(sys.argv[1], purpose="warm-backup-owner") as con:
+    con.execute("SELECT 1")
+# Checkpoint the owner's write_log before hashing, without releasing its slot.
+with duckdb.connect(sys.argv[1]) as con:
+    con.execute("CHECKPOINT")
+    print(con.execute("SELECT COUNT(*) FROM write_log").fetchone()[0], flush=True)
+sys.stdin.readline()
+"""
+    env = dict(harness.env)
+    env.pop("PYTEST_CURRENT_TEST", None)
+    env["ANTIEK_WRITE_KEEPALIVE_S"] = "60"
+    owner = subprocess.Popen(
+        [sys.executable, "-c", owner_code, str(db)],
+        cwd=REPO, env=env, stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    try:
+        assert select.select([owner.stdout], [], [], 30)[0], "warm owner did not become ready"
+        count_line = owner.stdout.readline().strip()
+        assert count_line.isdigit(), "warm owner failed before readiness"
+        before = hashlib.sha256(db.read_bytes()).hexdigest()
+        proc = _run_script(harness)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert owner.poll() is None, "handoff must work while the owner stays alive"
+        assert hashlib.sha256(db.read_bytes()).hexdigest() == before
+        with duckdb.connect(str(db), read_only=True) as con:
+            assert con.execute("SELECT COUNT(*) FROM write_log").fetchone()[0] == int(count_line)
+        manifest = json.loads(harness.marker.read_text())
+        assert manifest["counts"]["write_log"] == int(count_line)
+        assert manifest["counts"]["documents"] == 1
+        assert harness.rclone_keep.exists()
+    finally:
+        owner.communicate(input="stop\n", timeout=30)

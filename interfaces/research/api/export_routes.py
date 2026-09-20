@@ -21,15 +21,13 @@ READ-ONLY CONTRACT
 The source graph is never opened for write and no table is written. The only
 on-disk side effects besides the /tmp bundle are the writer-coordination
 sidecar conventions every writer already uses: the ``<db>.write.lock`` file
-is created if absent and stamped (never unlinked) — the identical protocol
+is created if absent and stamped (never unlinked), and temporary waiter
+registrations live in ``<db>.write.waiters/`` — the identical protocol
 ``connect_write`` follows — so a concurrent writer is excluded for the
 minimal snapshot window and the DB file itself is untouched.
 
-Why not ``connect_write``? It opens DuckDB for WRITE (the backup template
-documents this exact reason) and appends a ``write_log`` row — a mutation of
-the source DB. Why not ``authority_handoff_guard``? It too appends a
-``write_log`` row on exit. The backup script's manual flock is the
-read-only-correct pattern and is reused here verbatim.
+``runtime.db_lock.snapshot_read`` requests idle warm-writer handoff before
+opening a real READ_ONLY connection. It never appends a ``write_log`` row.
 
 MASTER.md
 ---------
@@ -46,16 +44,14 @@ honestly instead of scraping a non-canonical directory.
 
 from __future__ import annotations
 
-import errno
-import fcntl
 import json
 import os
 import shutil
 import stat
 import sys
 import tempfile
-import time
 import zipfile
+from contextlib import ExitStack
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -70,6 +66,7 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from runtime.db_lock import WriteLockTimeout, snapshot_read  # noqa: E402
 from substrate.event_log import EVENT_SCHEMA_VERSION, default_events_dir  # noqa: E402
 from substrate.graph import default_db_path  # noqa: E402
 
@@ -177,96 +174,48 @@ async def export_my_graph(request: Request) -> StreamingResponse:
 def _export_graph(
     db_path: str, out_dir: Path
 ) -> tuple[list[str], dict[str, int], str]:
-    """Consistent read-only snapshot via DuckDB EXPORT under the writer flock.
-
-    Mirrors ``infrastructure/ansible/templates/backup.sh.j2``: acquire the
-    exclusive sidecar flock (``<db>.write.lock``, same inode discipline as
-    ``connect_write``), open the DB READ-ONLY (EXPORT works on a read-only
-    connection — the backup template proves it and this route tests it),
-    export, release. The ``write_log`` row that ``connect_write`` /
-    ``authority_handoff_guard`` would append is deliberately NOT written —
-    that would mutate the source DB.
+    """Export a read-only snapshot after requesting idle writer handoff.
 
     Returns (table names, per-table row counts, duckdb version string).
     """
-    lock_path = db_path + ".write.lock"
-    parent = os.path.dirname(lock_path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-    # Never unlink the sidecar: flock authority belongs to its inode
-    # (runtime/db_lock.py connect_write comment — replacing the pathname
-    # while another process holds the old inode would split the lock).
-    fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o600)
-    acquired = False
-    try:
-        deadline = time.monotonic() + EXPORT_LOCK_TIMEOUT_S
-        while True:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                acquired = True
-                break
-            except OSError as exc:
-                if exc.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
-                    raise
-                if time.monotonic() >= deadline:
-                    raise _ExportUnavailable(_LOCK_BUSY) from None
-                time.sleep(0.1)
-        # Stamp pid + purpose + timestamp for ops debugging — best-effort,
-        # exactly like connect_write.
+    with ExitStack() as stack:
         try:
-            os.ftruncate(fd, 0)
-            os.write(
-                fd,
-                (
-                    f"{os.getpid()} api:export "
-                    f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n"
-                ).encode(),
-            )
-        except OSError:
-            pass
-
-        import duckdb
-
-        try:
-            con = duckdb.connect(db_path, read_only=True)
+            con = stack.enter_context(snapshot_read(
+                db_path, timeout_s=EXPORT_LOCK_TIMEOUT_S, purpose="api:export"
+            ))
+        except WriteLockTimeout:
+            raise _ExportUnavailable(_LOCK_BUSY) from None
         except Exception:
             raise _ExportUnavailable(_DB_UNAVAILABLE) from None
-        try:
-            # Counts capture happens on the SAME connection inside the SAME
-            # lock window as the EXPORT, so the counts are exactly the
-            # snapshot's (backup.sh.j2 discipline).
-            con.execute("BEGIN TRANSACTION")
-            tables = [
-                row[0]
-                for row in con.execute(
-                    "SELECT table_name FROM information_schema.tables "
-                    "WHERE table_schema = 'main' AND table_type = 'BASE TABLE' "
-                    "ORDER BY table_name"
-                ).fetchall()
-            ]
-            table_rows: dict[str, int] = {}
-            for t in tables:
-                quoted = '"' + t.replace('"', '""') + '"'
-                count_row = con.execute(
-                    f"SELECT COUNT(*) FROM {quoted}"
-                ).fetchone()
-                table_rows[t] = int(count_row[0]) if count_row is not None else 0
-            # EXPORT DATABASE takes a literal path (no bound parameter —
-            # DuckDB rejects '?'), so escape single quotes for the SQL
-            # string literal.
-            escaped = str(out_dir).replace("'", "''")
-            con.execute(f"EXPORT DATABASE '{escaped}' (FORMAT PARQUET);")
-            version_row = con.execute("SELECT version()").fetchone()
-            duckdb_version = (
-                str(version_row[0]) if version_row is not None else "unknown"
-            )
-            con.execute("COMMIT")
-        finally:
-            con.close()
-    finally:
-        if acquired:
-            fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
+        # Counts capture happens on the SAME connection inside the SAME
+        # lock window as the EXPORT, so the counts are exactly the
+        # snapshot's (backup.sh.j2 discipline).
+        con.execute("BEGIN TRANSACTION")
+        tables = [
+            row[0]
+            for row in con.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'main' AND table_type = 'BASE TABLE' "
+                "ORDER BY table_name"
+            ).fetchall()
+        ]
+        table_rows: dict[str, int] = {}
+        for t in tables:
+            quoted = '"' + t.replace('"', '""') + '"'
+            count_row = con.execute(
+                f"SELECT COUNT(*) FROM {quoted}"
+            ).fetchone()
+            table_rows[t] = int(count_row[0]) if count_row is not None else 0
+        # EXPORT DATABASE takes a literal path (no bound parameter —
+        # DuckDB rejects '?'), so escape single quotes for the SQL
+        # string literal.
+        escaped = str(out_dir).replace("'", "''")
+        con.execute(f"EXPORT DATABASE '{escaped}' (FORMAT PARQUET);")
+        version_row = con.execute("SELECT version()").fetchone()
+        duckdb_version = (
+            str(version_row[0]) if version_row is not None else "unknown"
+        )
+        con.execute("COMMIT")
 
     # Normalize the malformed schema.sql DuckDB EXPORT emits for
     # self-referential FKs (edges.superseded_by, deliverable_sections.

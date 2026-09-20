@@ -24,6 +24,7 @@ import tempfile
 import zipfile
 
 import duckdb
+import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api import export_routes
@@ -162,11 +163,14 @@ def test_export_my_graph_bundle(monkeypatch, tmp_path):
     )
 
     # The only DB-named sibling files are the DB and the writer-coordination
-    # sidecar (house protocol; created by connect_write during setup).
+    # sidecars (permanent lock inode and empty waiter directory).
     db_siblings = sorted(
         p.name for p in tmp_path.iterdir() if p.name.startswith("graph.duckdb")
     )
-    assert db_siblings == ["graph.duckdb", "graph.duckdb.write.lock"]
+    assert db_siblings == [
+        "graph.duckdb", "graph.duckdb.write.lock", "graph.duckdb.write.waiters"
+    ]
+    assert not list((tmp_path / "graph.duckdb.write.waiters").iterdir())
 
 
 def test_export_my_graph_503_when_db_path_invalid(monkeypatch, tmp_path):
@@ -183,3 +187,56 @@ def test_export_my_graph_503_when_db_path_invalid(monkeypatch, tmp_path):
     assert "traceback" not in body.lower()
     assert "research_graph" not in body
     assert "graph database unavailable" in body
+
+
+def test_export_hands_off_same_process_warm_writer(monkeypatch, tmp_path):
+    from fastapi import FastAPI
+
+    from runtime import db_lock
+
+    paths = _build_store(monkeypatch, tmp_path)
+    db = paths["db"]
+    monkeypatch.setattr(db_lock, "_write_keepalive_s", lambda: 60.0)
+    monkeypatch.setattr(export_routes, "EXPORT_LOCK_TIMEOUT_S", 1.0)
+    try:
+        with connect_write(db, purpose="warm-export-owner") as con:
+            con.execute("SELECT 1")
+        with duckdb.connect(db) as con:
+            con.execute("CHECKPOINT")
+            log_count = con.execute("SELECT COUNT(*) FROM write_log").fetchone()[0]
+        before = _sha256(db)
+        app = FastAPI()
+        export_routes.register_export_routes(app)
+        with TestClient(app) as client:
+            resp = client.get("/export/my-graph")
+        assert resp.status_code == 200, resp.text[:500]
+        assert _sha256(db) == before
+        with duckdb.connect(db, read_only=True) as con:
+            assert con.execute("SELECT COUNT(*) FROM write_log").fetchone()[0] == log_count
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as bundle:
+            manifest = json.loads(bundle.read("manifest.json"))
+            assert manifest["counts"]["table_rows"]["write_log"] == log_count
+            assert manifest["counts"]["table_rows"]["documents"] == 2
+    finally:
+        db_lock.flush_warm_writers(db)
+
+
+@pytest.mark.parametrize("timeout_s", [0.0, 0.1])
+def test_export_busy_lock_returns_value_free_503(monkeypatch, tmp_path, timeout_s):
+    import fcntl
+
+    from fastapi import FastAPI
+
+    paths = _build_store(monkeypatch, tmp_path)
+    db = paths["db"]
+    monkeypatch.setattr(export_routes, "EXPORT_LOCK_TIMEOUT_S", timeout_s)
+    app = FastAPI()
+    export_routes.register_export_routes(app)
+    before = _sha256(db)
+    with open(db + ".write.lock", "a") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with TestClient(app) as client:
+            resp = client.get("/export/my-graph")
+    assert resp.status_code == 503
+    assert resp.json() == {"detail": "graph write lock held by another process"}
+    assert _sha256(db) == before
