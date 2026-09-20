@@ -257,6 +257,11 @@ def test_nested_synthesis_recurses_to_the_deep_rights_holder():
     assert _units(split, SUBJECT_IP_HOLDER, "holder-deep") == 490_000
     assert split.unattributed_units() == 0
     assert {s.depth for s in split.shares} == {0, 1}
+    # depth is how far down the chain a line was earned — the field a dispute
+    # walks back up. A holder reached through an inner synthesis is not at the
+    # root's depth, and asserting only on the set of depths cannot tell.
+    deep = [s for s in split.shares if s.subject_id == "holder-deep"]
+    assert [(s.depth, s.via_synthesis_id) for s in deep] == [(1, "syn-1")]
 
 
 def test_depth_cap_parks_the_remainder_rather_than_recursing_forever():
