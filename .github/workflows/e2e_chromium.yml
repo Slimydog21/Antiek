@@ -3,12 +3,15 @@
 # WHY THIS EXISTS. Before this job, NO workflow ever invoked `playwright test`.
 # Playwright was installed in CI only as a browser driver for Lost-Pixel and
 # Storybook, so 30 spec files / 136 cases had never executed there. Measured
-# 2026-09-20 at dbb8e0e7d: running the chromium project locally after a real
-# `npm ci` gave 36 passed / 8 failed / 3 skipped. Two of the failures assert on
-# `VITE_WERNER_ICE_FISHING`, a flag that no longer appears anywhere in src/ --
-# tests that rot precisely because nothing ran them. A `shadowRank` closure bug
-# (a helper referenced from inside `evaluateAll`, which executes in the page)
-# had also sat undetected for the same reason.
+# 2026-09-20 at dbb8e0e7d: the first real run of this project gave
+# 35 passed / 9 failed / 3 skipped. EVERY failure was a test that had drifted
+# from a deliberate product change, not a product bug: an em dash where SPR-06
+# ships a hyphen, a second "private" banner tripping strict mode, a thread
+# hop-position rule, a story that mounts after `load`, a `shadowRank` helper
+# referenced from inside `evaluateAll` (which executes in the page, not Node),
+# and two specs for the fishing rod the operator had removed in #3082. All are
+# now resolved and the project is 41 passed / 0 failed / 3 skipped -- so the
+# flip condition below is actually reachable rather than aspirational.
 #
 # INFORMATIONAL-FIRST, WITHOUT THE `exit 0`. Sibling floors follow
 # docs/decisions/test-integrity-ci-floor.md and stay advisory by ending each
