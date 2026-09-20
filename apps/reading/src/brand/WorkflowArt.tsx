@@ -25,11 +25,13 @@ import type { Workflow } from "../shell/workflowTaxonomy";
 import biographyArt from "./workflow-art/biography-512.png";
 import interviewsArt from "./workflow-art/interviews-512.png";
 import libraryArt from "./workflow-art/library-512.png";
+import notebooksArt from "./workflow-art/notebooks-512.png";
 import outcomesArt from "./workflow-art/outcomes-512.png";
 import pricingArt from "./workflow-art/pricing-512.png";
 import readArt from "./workflow-art/read-512.png";
 import researchArt from "./workflow-art/research-512.png";
 import speakArt from "./workflow-art/speak-512.png";
+import sourcesArt from "./workflow-art/sources-512.png";
 import trustArt from "./workflow-art/trust-512.png";
 import wrestlerArt from "./workflow-art/wrestler-512.png";
 import writeArt from "./workflow-art/write-512.png";
@@ -48,6 +50,8 @@ export type ArtFeature =
   | "wrestler"
   | "outcomes"
   | "interviews"
+  | "notebooks"
+  | "sources"
   /** Public-facing shared surfaces. Internal/admin ones (Settings, Privacy,
    *  Billing, Payouts) get nothing — a mascot there is noise, not welcome. */
   | "pricing"
@@ -63,6 +67,8 @@ const ART: Partial<Record<ArtFeature, string>> = {
   wrestler: wrestlerArt,
   outcomes: outcomesArt,
   interviews: interviewsArt,
+  notebooks: notebooksArt,
+  sources: sourcesArt,
   pricing: pricingArt,
   trust: trustArt,
 };
