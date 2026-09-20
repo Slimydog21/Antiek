@@ -1,8 +1,9 @@
 name: CI
 
 # Substrate test gate. Runs the full pytest suite on every push to
-# main and on every PR. Failure blocks the deploy webhook (when
-# wired); for now the deploy stays manual but the gate exists.
+# main and on every PR. Failure blocks the deploy: deploy_backend.yml
+# fires on this workflow's completion and refuses to ship unless every
+# required context on the SHA is green. The deploy is no longer manual.
 #
 # Why pytest only (not lint / typecheck / coverage gates): start
 # with the test that catches regressions and add stricter checks
