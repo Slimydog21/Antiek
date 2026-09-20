@@ -33,19 +33,18 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-import duckdb
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from middleware.supersession.apply import apply_review
-from runtime.db_lock import connect_read, connect_write
+from runtime.db_lock import ReadConnection, connect_read, connect_write
 from substrate.graph import default_db_path
 
 supersession_router = APIRouter()
 
 
 @contextmanager
-def _read() -> Iterator[duckdb.DuckDBPyConnection]:
+def _read() -> Iterator[ReadConnection]:
     # Open read-only DIRECTLY off default_db_path() — do NOT route through
     # ensure_initialized: that calls init_database_at_path -> connect_write,
     # acquiring the EXCLUSIVE single-writer flock, which would serialize this

@@ -68,7 +68,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
-    import duckdb
 
     from compounding.skill_growth import PatchOutcome, SkillPatchGate
     from substrate.dispatch.research_tier import ResearchTier
@@ -90,7 +89,9 @@ from orchestration.phase_runner import (  # noqa: E402
     verify_phase,
 )
 from orchestration.session_evidence_pack import SessionEvidencePack  # noqa: E402
-from runtime.db_lock import connect_read  # noqa: E402
+
+# connect_read replaces the two lazy `import duckdb` + raw read-only connects below.
+from runtime.db_lock import ReadConnection, connect_read  # noqa: E402
 from skills.domain import (  # noqa: E402
     extract_and_patch,
     generate_master_md,
@@ -169,7 +170,7 @@ def _extract_keywords(text: str, *, min_len: int = 3, max_n: int = 8) -> list[st
 
 
 def _keyword_search_chunks(
-    con: duckdb.DuckDBPyConnection,
+    con: ReadConnection,
     keywords: list[str],
     top_k: int,
     *,

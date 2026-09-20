@@ -44,7 +44,7 @@ import sys
 
 import duckdb
 
-from runtime.db_lock import connect_read
+from runtime.db_lock import ReadConnection, connect_read
 
 # Import the canonical write-locker from Sprint 1 day-2. Same flock
 # discipline; this is the Quack v2.0 swap point.
@@ -2282,7 +2282,7 @@ def init_database_at_path(db_path: str, *, timeout_s: float | None = None) -> No
     _INITIALIZED_PATHS.add(db_path)
 
 
-def list_tables(con: duckdb.DuckDBPyConnection) -> list[str]:
+def list_tables(con: ReadConnection) -> list[str]:
     """Return the table names in main schema. Read-only diagnostic."""
     rows = con.execute(
         "SELECT table_name FROM information_schema.tables "

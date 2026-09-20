@@ -24,9 +24,7 @@ import os
 from dataclasses import asdict, dataclass
 from typing import Any
 
-import duckdb
-
-from runtime.db_lock import connect_read
+from runtime.db_lock import ReadConnection, connect_read
 
 
 @dataclass(frozen=True)
@@ -51,7 +49,7 @@ def _wal_path(db_path: str) -> str:
     return db_path + ".wal"
 
 
-def _storage_integrity(con: duckdb.DuckDBPyConnection) -> str:
+def _storage_integrity(con: ReadConnection) -> str:
     """Verify every base table's storage metadata parses.
 
     Returns ``"ok"``, ``"empty"`` when the catalog holds no base tables, or
