@@ -72,7 +72,7 @@ def test_from_con_hybrid_attribution_hits_vendor(graph, tmp_path, monkeypatch):
             lambda **kwargs: made.append(kwargs) or fake,
         )
         out = sub2.query("government", top_k=3, allow_fallback=False)
-        assert out["status"] == "servable"
+        assert out["status"] == "servable", f"vendor path failed: {out.get('failure_reason')}"
         assert out["results"]
         assert made and made[0]["namespace"] == staged["namespace"]
     finally:
