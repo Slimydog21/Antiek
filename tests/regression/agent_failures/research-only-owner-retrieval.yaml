@@ -1,0 +1,19 @@
+id: research-only-owner-retrieval
+observed_at: '2026-09-20'
+source: docs/decisions/research-only-principals.md
+agent: codex
+phase: retrieval
+failure_type: principal_conflation
+context_summary: |
+  Agent and owner retrieval shared a privileged bypass. Research-only chunks
+  appeared in authenticated owner search snippets and book Q&A citations.
+  Agent request context also appeared in owner trajectory responses.
+input:
+  prompt: Retrieve a research_only work through authenticated owner search and ask.
+  env:
+    ANTIEK_RESEARCH_POLICY_TAG: private_research
+expected_behavior: Agent retrieval succeeds; owner response bodies omit source text.
+actual_failure: PUBLISHERCONFIDENTIALPROBE appeared in snippets and request context.
+harness_check_that_now_catches: tests/test_research_only_principals.py
+fix_commit: eb7431ee830100d984ed7d73a1f4002894ea312a
+notes: SQL gate, owner event projection, and full export refusal verified with real HTTP and stored event regressions.

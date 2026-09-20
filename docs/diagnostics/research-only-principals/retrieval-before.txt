@@ -17,7 +17,7 @@ stub_embeddings = None, endpoint = 'search'
         assert response.status_code == 200, response.text
 >       assert PROBE not in response.text
 E       assert 'PUBLISHERCONFIDENTIALPROBE' not in '{"query":"q...],"count":1}'
-E         
+E
 E         'PUBLISHERCONFIDENTIALPROBE' is contained here:
 E           snippet":"PUBLISHERCONFIDENTIALPROBE quantum passage about entanglement and superposition","similarity":0.8679}],"count":1}
 E         ?           ++++++++++++++++++++++++++
@@ -40,7 +40,7 @@ stub_embeddings = None, endpoint = 'ask'
         assert response.status_code == 200, response.text
 >       assert PROBE not in response.text
 E       assert 'PUBLISHERCONFIDENTIALPROBE' not in '{"answer_id..."synthesis"}'
-E         
+E
 E         'PUBLISHERCONFIDENTIALPROBE' is contained here:
 E           snippet":"PUBLISHERCONFIDENTIALPROBE quantum passage about entanglement and superposition"}],"grounded":true,"context_chunk_count":1,"shape":"synthesis"}
 E         ?           ++++++++++++++++++++++++++

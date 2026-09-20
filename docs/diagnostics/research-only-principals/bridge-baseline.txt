@@ -13,13 +13,13 @@ async_client = <httpx.AsyncClient object at 0x10f5b86e0>
         _, bus = app_and_bus
         inv = "inv-ev-happy"
         sub_q = "What's the addressable market?"
-    
+
         register_provider(_StubEvidenceRetriever(json.dumps(_good_response(sub_q))))
         _patch_dispatch_config(monkeypatch, _evidence_config("stub-evidence"))
-    
+
         await _post_evidence_request(async_client, investigation_id=inv, sub_question=sub_q)
         await bus.wait_for_handlers(timeout=5.0)
-    
+
         delivered = [
             r for r in trajectory(inv)
             if r["action_type"] == ActionType.EVIDENCE_RETRIEVE_DELIVERED.value
@@ -51,7 +51,7 @@ async_client = <httpx.AsyncClient object at 0x10835cad0>
         sub_q = "What does the retrieved evidence show?"
         register_provider(_StubEvidenceRetriever(json.dumps(_good_response(sub_q))))
         _patch_dispatch_config(monkeypatch, _evidence_config("stub-evidence"))
-    
+
         await _post_evidence_request(
             async_client,
             investigation_id=inv,
@@ -59,7 +59,7 @@ async_client = <httpx.AsyncClient object at 0x10835cad0>
             chunks_block="### chunk_id: chunk-1\nSource tier: 1\n\nretrieved text\n",
         )
         await bus.wait_for_handlers(timeout=5.0)
-    
+
         delivered = [
             Event.model_validate(row)
             for row in trajectory(inv)
@@ -97,10 +97,10 @@ async_client = <httpx.AsyncClient object at 0x11265fce0>
         }
         register_provider(_StubEvidenceRetriever(json.dumps(response)))
         _patch_dispatch_config(monkeypatch, _evidence_config("stub-evidence"))
-    
+
         await _post_evidence_request(async_client, investigation_id=inv, sub_question=sub_q)
         await bus.wait_for_handlers(timeout=5.0)
-    
+
         delivered = [
             r for r in trajectory(inv)
             if r["action_type"] == ActionType.EVIDENCE_RETRIEVE_DELIVERED.value
@@ -129,16 +129,16 @@ async_client = <httpx.AsyncClient object at 0x10f203620>
     ):
         _, bus = app_and_bus
         inv = "inv-ev-badparse"
-    
+
         stub = _StubEvidenceRetriever("totally not JSON")
         register_provider(stub)
         _patch_dispatch_config(monkeypatch, _evidence_config("stub-evidence"))
-    
+
         await _post_evidence_request(
             async_client, investigation_id=inv, sub_question="anything",
         )
         await bus.wait_for_handlers(timeout=5.0)
-    
+
         delivered = [
             r for r in trajectory(inv)
             if r["action_type"] == ActionType.EVIDENCE_RETRIEVE_DELIVERED.value
@@ -152,7 +152,7 @@ async_client = <httpx.AsyncClient object at 0x10f203620>
         # stamp reflects the dispatched provider, NOT the no-provider fallback.
 >       assert e.policy_id == "stub-evidence/stub-flash-model"
 E       AssertionError: assert 'evidence-ret...k/no-provider' == 'stub-evidenc...b-flash-model'
-E         
+E
 E         - stub-evidence/stub-flash-model
 E         + evidence-retriever-fallback/no-provider
 

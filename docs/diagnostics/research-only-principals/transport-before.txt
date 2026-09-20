@@ -9,7 +9,7 @@ path = '/trajectory/research-probe'
     @pytest.mark.parametrize("path", ["/trajectory/research-probe", "/trajectory"])
     def test_owner_trajectory_withholds_agent_inputs(db, owner_client, path):
         from substrate.event_log import emit_typed, trajectory
-    
+
         emit_typed("research-probe", _evidence_request(), role="evidence_retriever")
         assert PROBE in str(trajectory("research-probe")), "agent replay must retain context"
         response = owner_client.get(path, headers=_OWNER_HEADERS)
@@ -17,7 +17,7 @@ path = '/trajectory/research-probe'
         assert response.json()["count"] == 1
 >       assert PROBE not in response.text
 E       assert 'PUBLISHERCONFIDENTIALPROBE' not in '{"investiga..._id":null}]}'
-E         
+E
 E         'PUBLISHERCONFIDENTIALPROBE' is contained here:
 E           s_block":"PUBLISHERCONFIDENTIALPROBE","subgraph_block":"PUBLISHERCONFIDENTIALPROBE","owner_semantic_call_id":null},"parent_event_id":null,"policy_id":"orchestrator-deterministic","param_version":"0.2.0","schema_version":40,"emitted_at":"2026-09-20T12:51:09.430084Z","document_id":null}]}
 E         ?           ++++++++++++++++++++++++++
@@ -32,7 +32,7 @@ path = '/trajectory'
     @pytest.mark.parametrize("path", ["/trajectory/research-probe", "/trajectory"])
     def test_owner_trajectory_withholds_agent_inputs(db, owner_client, path):
         from substrate.event_log import emit_typed, trajectory
-    
+
         emit_typed("research-probe", _evidence_request(), role="evidence_retriever")
         assert PROBE in str(trajectory("research-probe")), "agent replay must retain context"
         response = owner_client.get(path, headers=_OWNER_HEADERS)
@@ -40,7 +40,7 @@ path = '/trajectory'
         assert response.json()["count"] == 1
 >       assert PROBE not in response.text
 E       assert 'PUBLISHERCONFIDENTIALPROBE' not in '{"count":1,..._id":null}]}'
-E         
+E
 E         'PUBLISHERCONFIDENTIALPROBE' is contained here:
 E           s_block":"PUBLISHERCONFIDENTIALPROBE","subgraph_block":"PUBLISHERCONFIDENTIALPROBE","owner_semantic_call_id":null},"parent_event_id":null,"policy_id":"orchestrator-deterministic","param_version":"0.2.0","schema_version":40,"emitted_at":"2026-09-20T12:51:09.709119Z","document_id":null}]}
 E         ?           ++++++++++++++++++++++++++

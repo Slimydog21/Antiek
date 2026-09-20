@@ -22,7 +22,7 @@ sealed = False
     @pytest.mark.parametrize("sealed", [False, True])
     def test_owner_full_export_refuses_historical_agent_context(db, owner_client, sealed):
         from substrate.event_log import emit_typed, seal_investigation
-    
+
         emit_typed("research-probe", _evidence_request(), role="evidence_retriever")
         if sealed:
             seal_investigation("research-probe")
@@ -41,7 +41,7 @@ sealed = True
     @pytest.mark.parametrize("sealed", [False, True])
     def test_owner_full_export_refuses_historical_agent_context(db, owner_client, sealed):
         from substrate.event_log import emit_typed, seal_investigation
-    
+
         emit_typed("research-probe", _evidence_request(), role="evidence_retriever")
         if sealed:
             seal_investigation("research-probe")
