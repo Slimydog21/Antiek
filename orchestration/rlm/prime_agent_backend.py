@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from orchestration.rlm.prime_invocation_profile import ACTIVE_PROFILE
 from runtime.prime_agent.installation import (
     PRIME_AGENT_BINARY_ENV,
     PrimeAgentUnavailable,
@@ -306,16 +307,17 @@ class PrimeAgentRLMBackend:
             )
 
     def _argv(self, request: PrimeAgentRequest) -> tuple[str, ...]:
+        # The flag block comes from ACTIVE_PROFILE, which is EVIDENCE and stays
+        # EVIDENCE until Prime execution is contained — this backend still
+        # reaches subprocess.Popen on the host (runtime/prime_agent/process.py:124).
+        # EVIDENCE.print_mode_flags() reproduces the historical tuple exactly;
+        # tests/test_prime_invocation_profile.py compares it against a literal
+        # copy of that tuple, and the argv assertions in
+        # test_success_uses_fixed_argv_safe_cwd_and_sanitized_environment still
+        # pin it end to end, unchanged.
         return (
             self._executable,
-            "--offline",
-            "--no-session",
-            "--no-tools",
-            "--no-extensions",
-            "--no-skills",
-            "--no-prompt-templates",
-            "--no-themes",
-            "--no-context-files",
+            *ACTIVE_PROFILE.print_mode_flags(),
             "--cwd",
             str(self._cwd),
             "-p",
