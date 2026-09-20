@@ -56,10 +56,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.14
+        # Was pinned to 3.11, which cannot parse PEP 695 generic syntax. main
+        # uses it in three files — acquisition/arxiv/rate_governor.py,
+        # acquisition/fmp/client.py, acquisition/polygon/client.py — e.g.
+        #   def governed_request[ResponseT: _ResponseLike](
+        # The fake-gate detector ast.parse()s each file it mutates, so under
+        # 3.11 it died on the first of these with `SyntaxError: expected '('`
+        # and scanned nothing afterwards, while this workflow still reported
+        # success. 3.14 matches ci.yml, enforce_declared_bar.yml,
+        # agent_execution_gates.yml, dep_audit.yml and prod_parity.yml.
         uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: "3.14"
           cache: pip
 
       - name: Install (core + dev extras the detector selectors need)
@@ -75,9 +84,17 @@ jobs:
         # Grandfathered survivors still print (loud, not silenced) but exit 0.
         run: |
           set +e
-          python -m tools.fake_gate_detector --enforce
+          out=$(python -m tools.fake_gate_detector --enforce 2>&1)
           rc=$?
-          if [ "$rc" -ne 0 ]; then
+          printf '%s\n' "$out"
+          # A crash and a finding both exit nonzero. Reporting them the same
+          # way made a tool that scanned NOTHING indistinguishable from one
+          # that scanned everything and found a backlog — which is how a
+          # detector that had been dead since the PEP 695 files landed kept
+          # showing up as a routine informational warning.
+          if printf '%s\n' "$out" | grep -q '^Traceback (most recent call last):'; then
+            echo "::warning title=Fake-gate detector CRASHED — no coverage::The tool raised instead of reporting, so this run scanned nothing. Do not read it as a clean pass. Traceback above."
+          elif [ "$rc" -ne 0 ]; then
             echo "::warning title=Fake-gate detector is informational on CI::NEW fake-gate finding(s) detected (exit $rc). Full path:line list above. Flip to blocking per docs/decisions/test-integrity-ci-floor.md when the reconsider-if is met."
           fi
           exit 0
@@ -87,9 +104,17 @@ jobs:
         # stdout before exiting 1 on any finding backlog.
         run: |
           set +e
-          python -m tools.lint.test_desiderata_check --rule all
+          out=$(python -m tools.lint.test_desiderata_check --rule all 2>&1)
           rc=$?
-          if [ "$rc" -ne 0 ]; then
+          printf '%s\n' "$out"
+          # A crash and a finding both exit nonzero. Reporting them the same
+          # way made a tool that scanned NOTHING indistinguishable from one
+          # that scanned everything and found a backlog — which is how a
+          # detector that had been dead since the PEP 695 files landed kept
+          # showing up as a routine informational warning.
+          if printf '%s\n' "$out" | grep -q '^Traceback (most recent call last):'; then
+            echo "::warning title=Test-desiderata lint CRASHED — no coverage::The tool raised instead of reporting, so this run scanned nothing. Do not read it as a clean pass. Traceback above."
+          elif [ "$rc" -ne 0 ]; then
             echo "::warning title=Test-desiderata lint is informational on CI::Desiderata violation backlog present (exit $rc). Full path:line list above. Flip to blocking per docs/decisions/test-integrity-ci-floor.md when the reconsider-if is met."
           fi
           exit 0
@@ -100,10 +125,17 @@ jobs:
         # upward regression before exiting 1.
         run: |
           set +e
-          python -m tools.lint.mock_budget_check enforce \
-            --baseline-file tools/lints/baselines/mock_budget.json
+          out=$(python -m tools.lint.mock_budget_check enforce --baseline-file tools/lints/baselines/mock_budget.json 2>&1)
           rc=$?
-          if [ "$rc" -ne 0 ]; then
+          printf '%s\n' "$out"
+          # A crash and a finding both exit nonzero. Reporting them the same
+          # way made a tool that scanned NOTHING indistinguishable from one
+          # that scanned everything and found a backlog — which is how a
+          # detector that had been dead since the PEP 695 files landed kept
+          # showing up as a routine informational warning.
+          if printf '%s\n' "$out" | grep -q '^Traceback (most recent call last):'; then
+            echo "::warning title=Mock-budget gate CRASHED — no coverage::The tool raised instead of reporting, so this run scanned nothing. Do not read it as a clean pass. Traceback above."
+          elif [ "$rc" -ne 0 ]; then
             echo "::warning title=Mock-budget gate is informational on CI::Mock-ratio regression detected (exit $rc). Module + offending tests above. Flip to blocking per docs/decisions/test-integrity-ci-floor.md when the reconsider-if is met."
           fi
           exit 0
