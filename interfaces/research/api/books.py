@@ -1871,7 +1871,7 @@ def register_book_routes(app: FastAPI) -> None:
         finally:
             con.close()
 
-        def _index_write() -> tuple[int, int]:
+        def _index_write() -> tuple[int, int, int]:
             vectors_rewritten = 0
             con_w = connect_write(db, purpose="books:html_index_job")
             try:

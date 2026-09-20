@@ -26,6 +26,10 @@ from substrate.contracts.anti_ek_honesty import (  # noqa: E402
 )
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
+    SourceMergeApplyReceipt,
+    SourceMergeCommitReceipt,
+    SourceMergePreviewReceipt,
+    SourceMergeRestoreReceipt,
     apply_source_merge_review,
     build_body,
     build_html_only,
@@ -390,7 +394,7 @@ async def post_source_merge_apply(body: SourceMergeApplyIn) -> SourceMergeApplyO
     member_ids = _validate_source_merge_preflight(body, db_path=db_path)
     packet = body.reviewed_packet
 
-    def _apply_sync():
+    def _apply_sync() -> SourceMergeApplyReceipt:
         try:
             with connect_write(db_path, purpose="research_artifact/source_merge_apply") as con:
                 return apply_source_merge_review(
@@ -432,7 +436,7 @@ async def post_source_merge_preview(body: SourceMergeApplyIn) -> SourceMergePrev
     db_path = _db()
     member_ids = _validate_source_merge_preflight(body, db_path=db_path)
     packet = body.reviewed_packet
-    def _preview_sync():
+    def _preview_sync() -> SourceMergePreviewReceipt:
         with connect_write(db_path, purpose="research_artifact/source_merge_preview") as con:
             return preview_source_merge_review(
                 con,
@@ -476,7 +480,7 @@ async def post_source_merge_commit(body: SourceMergeCommitIn) -> SourceMergeComm
     db_path = _db()
     member_ids = _validate_source_merge_preflight(body, db_path=db_path)
     packet = body.reviewed_packet
-    def _commit_sync():
+    def _commit_sync() -> SourceMergeCommitReceipt:
         with connect_write(db_path, purpose="research_artifact/source_merge_commit") as con:
             return commit_source_merge_review(
                 con,
@@ -527,7 +531,7 @@ async def post_source_merge_restore(body: SourceMergeRestoreIn) -> SourceMergeRe
     if not body.acknowledge_restore:
         _raise_source_merge_refusal("source_merge_restore_acknowledgement_required")
     db_path = _db()
-    def _restore_sync():
+    def _restore_sync() -> SourceMergeRestoreReceipt:
         with connect_write(db_path, purpose="research_artifact/source_merge_restore") as con:
             return restore_source_merge_review(
                 con,
