@@ -60,9 +60,8 @@ dependencies = [
   # because services/antiek_format/__init__.py imports signature at package
   # import time, so leaving cryptography undeclared makes the whole format
   # package (and its 63-test gate suite) uncollectable on a clean venv.
-  # Installed in .venv as 48.0.0; floor set at 42.0 (first release with the
-  # stable Ed25519 primitive API this code uses).
-  "cryptography>=42.0",
+  # 50.0.0 fixes CVE-2026-69247; keep the runtime above that security floor.
+  "cryptography>=50.0.0",
   # native_reader.py uses jsonschema to validate the .antiek manifest against
   # manifest.schema.json on read, when jsonschema is available; it falls back
   # to a hand-rolled validator otherwise (soft dep — absence does not break
@@ -75,8 +74,7 @@ dependencies = [
   # in the core server path; relying on another package to provide it made
   # clean CI environments fail at query time.
   "pytz>=2024.1",
-  # 2.8 is the newest line compatible with the repository's declared
-  # cryptography==48 constraint. 3.x requires cryptography>=49.
+  # Both supported webauthn lines accept the patched cryptography floor.
   "webauthn>=2.8,<4",
 ]
 
@@ -89,12 +87,12 @@ arxiv = ["arxiv>=2.1"]
 # pypdfium2: PDF page rasterization for the DeepSeek-OCR-2 scanned-PDF
 # fallback (substrate/research_bridge/ocr.py); self-contained wheel, no
 # poppler dependency.
-pdf = ["pypdf>=4.3", "pdfplumber>=0.11", "pypdfium2>=5.11"]
+pdf = ["pypdf>=6.16.1", "pdfplumber>=0.11", "pypdfium2>=5.11"]
 docs = ["firecrawl-anydoc>=0.1.6,<0.3"]
 urls = ["html2text>=2024.2", "beautifulsoup4>=4.12"]
 embedding = ["sentence-transformers>=3.0", "numpy>=1.26"]
 interview = ["openai-whisper>=20240930"]  # for ASR, swap for API client when wired
-youtube = ["yt-dlp>=2024.8.6", "youtube-transcript-api>=0.6"]
+youtube = ["yt-dlp>=2026.7.4", "youtube-transcript-api>=0.6"]
 rss = ["feedparser>=6.0"]
 # NotDiamond advisory model-router adapter (Wave 1). Optional and lazy:
 # runtime/notdiamond imports the SDK only inside select_model(), so dispatch
