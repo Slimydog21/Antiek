@@ -15,7 +15,8 @@ input:
 expected_behavior: External writers acquire after expiry or an explicit handoff request.
 actual_failure: External acquisition times out even after the warm lease deadline.
 harness_check_that_now_catches: tests/test_db_lock_warm_writer.py
-fix_commit: GAP
+fix_commit: 21e7b8248ce69976a54d31216dc24479b57fc7d4
 notes: |
   Two real subprocess regressions failed on ee283d9c8 before the repair.
-  Repair candidate: independent expiry, contender fairness, non-mutating snapshot guard.
+  Code mitigation: independent expiry, contender fairness, non-mutating snapshot guard.
+  Production deployment and recovered backup verification are still pending.

@@ -111,3 +111,18 @@ After review and CI, integrate under the existing merge authority, deploy the
 coordinator and backup template together, verify a fresh restorable backup and
 successful arXiv handoff, then verify backup-freshness alert delivery. Never
 remove the stable sidecar file while processes may still use it.
+
+### Local verification checkpoint
+
+At code commit `21e7b8248`, the final combined Python 3.12 run passed **70 tests**.
+The Python 3.14 core/backup run passed **63 tests** before the final two
+non-contention-error cases were added. The incident fixture passes six checks.
+Ruff and diff checks pass. The ten direct mypy diagnostics match the base exactly.
+The schema auditor found no single-writer or export-contract regression; its
+retry-classification refinement was implemented and covered by red/green tests.
+
+Local repair score: **80/100**, using five equal checks: reproduced failure,
+root-cause implementation, actual caller regressions, invariant/error-path audit,
+and cross-lineage acceptance plus CI. The first four are satisfied; the fifth is
+pending. Production recovery is a separate unverified outcome, not included in
+that local score. Full Antiek perfection remains unproven.
