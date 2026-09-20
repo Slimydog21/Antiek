@@ -146,76 +146,78 @@ def _fresh_db(tmp_path):
 def test_undo_restores_notebook_block(tmp_path):
     """End-to-end: AI changes a block from prose → claim_card; undo
     sets it back to prose."""
-    cm = _fresh_db(tmp_path)
-    con = cm.__enter__()
-    from substrate.notebooks import append_block, create_notebook, get_notebook
+    # `with` matters: an unclosed writer holds the PROCESS-GLOBAL in-process
+    # write gate (38171a350), so every later connect_write in this pytest
+    # process would block to the 300s gate timeout.
+    with _fresh_db(tmp_path) as con:
+        from substrate.notebooks import append_block, create_notebook, get_notebook
 
-    nb_id = create_notebook(con, title="T")
-    block_id = append_block(
-        con,
-        notebook_id=nb_id,
-        block_type="prose",
-        content={"type": "paragraph", "content": [{"type": "text", "text": "old"}]},
-    )
+        nb_id = create_notebook(con, title="T")
+        block_id = append_block(
+            con,
+            notebook_id=nb_id,
+            block_type="prose",
+            content={"type": "paragraph", "content": [{"type": "text", "text": "old"}]},
+        )
 
-    # Capture the prev state
-    prev_state = {
-        "block_id": block_id,
-        "notebook_id": nb_id,
-        "block_type": "prose",
-        "ref_id": None,
-        "content_json": {"type": "paragraph", "content": [{"type": "text", "text": "old"}]},
-    }
-
-    # AI applies: flip to claim_card via direct SQL (handler-less path)
-    con.execute(
-        "UPDATE notebook_blocks SET block_type = ?, ref_id = ? WHERE block_id = ?",
-        ["claim_card", "c-1", block_id],
-    )
-
-    emit, captured = _capture_emitter()
-    applied = apply_ai_action(
-        con=con,
-        investigation_id="inv-1",
-        target_kind="notebook_block",
-        target_id=block_id,
-        operator_prompt="convert this paragraph to a claim card",
-        prev_state=prev_state,
-        next_state={
+        # Capture the prev state
+        prev_state = {
             "block_id": block_id,
-            "block_type": "claim_card",
-            "ref_id": "c-1",
-        },
-        emit_event_fn=emit,
-    )
-    assert len(captured) == 1
+            "notebook_id": nb_id,
+            "block_type": "prose",
+            "ref_id": None,
+            "content_json": {"type": "paragraph", "content": [{"type": "text", "text": "old"}]},
+        }
 
-    # Undo
-    applied_event = {
-        "event_id": applied.event_id,
-        "investigation_id": "inv-1",
-        "payload": {
-            "action_type": "ai.action.applied",
-            "target_kind": "notebook_block",
-            "target_id": block_id,
-            "prev_state": prev_state,
-            "next_state": {
+        # AI applies: flip to claim_card via direct SQL (handler-less path)
+        con.execute(
+            "UPDATE notebook_blocks SET block_type = ?, ref_id = ? WHERE block_id = ?",
+            ["claim_card", "c-1", block_id],
+        )
+
+        emit, captured = _capture_emitter()
+        applied = apply_ai_action(
+            con=con,
+            investigation_id="inv-1",
+            target_kind="notebook_block",
+            target_id=block_id,
+            operator_prompt="convert this paragraph to a claim card",
+            prev_state=prev_state,
+            next_state={
                 "block_id": block_id,
                 "block_type": "claim_card",
                 "ref_id": "c-1",
             },
-        },
-    }
-    undone_id = undo_ai_action(con, applied_event=applied_event, emit_event_fn=emit)
-    assert undone_id.startswith("evt-")
-    assert len(captured) == 2
+            emit_event_fn=emit,
+        )
+        assert len(captured) == 1
 
-    # Block should be back to prose with no ref_id
-    nb = get_notebook(con, nb_id)
-    assert nb is not None
-    restored = nb.blocks[0]
-    assert restored.block_type == "prose"
-    assert restored.ref_id is None
+        # Undo
+        applied_event = {
+            "event_id": applied.event_id,
+            "investigation_id": "inv-1",
+            "payload": {
+                "action_type": "ai.action.applied",
+                "target_kind": "notebook_block",
+                "target_id": block_id,
+                "prev_state": prev_state,
+                "next_state": {
+                    "block_id": block_id,
+                    "block_type": "claim_card",
+                    "ref_id": "c-1",
+                },
+            },
+        }
+        undone_id = undo_ai_action(con, applied_event=applied_event, emit_event_fn=emit)
+        assert undone_id.startswith("evt-")
+        assert len(captured) == 2
+
+        # Block should be back to prose with no ref_id
+        nb = get_notebook(con, nb_id)
+        assert nb is not None
+        restored = nb.blocks[0]
+        assert restored.block_type == "prose"
+        assert restored.ref_id is None
 
 
 def test_undo_rejects_unknown_action_type():
@@ -234,26 +236,25 @@ def test_undo_rejects_unknown_action_type():
 
 def test_undo_emits_linking_event(tmp_path):
     """The ai.action.undone event references the applied event by id."""
-    cm = _fresh_db(tmp_path)
-    con = cm.__enter__()
-    from substrate.notebooks import append_block, create_notebook
+    with _fresh_db(tmp_path) as con:
+        from substrate.notebooks import append_block, create_notebook
 
-    nb_id = create_notebook(con, title="T")
-    block_id = append_block(con, notebook_id=nb_id, block_type="prose", content={})
+        nb_id = create_notebook(con, title="T")
+        block_id = append_block(con, notebook_id=nb_id, block_type="prose", content={})
 
-    applied_event = {
-        "event_id": "evt-applied-123",
-        "investigation_id": "inv-1",
-        "payload": {
-            "action_type": "ai.action.applied",
-            "target_kind": "notebook_block",
-            "target_id": block_id,
-            "prev_state": {"block_id": block_id, "notebook_id": nb_id, "block_type": "prose", "content_json": {}},
-            "next_state": {"block_id": block_id, "block_type": "claim_card"},
-        },
-    }
-    emit, captured = _capture_emitter()
-    undo_ai_action(con, applied_event=applied_event, emit_event_fn=emit)
+        applied_event = {
+            "event_id": "evt-applied-123",
+            "investigation_id": "inv-1",
+            "payload": {
+                "action_type": "ai.action.applied",
+                "target_kind": "notebook_block",
+                "target_id": block_id,
+                "prev_state": {"block_id": block_id, "notebook_id": nb_id, "block_type": "prose", "content_json": {}},
+                "next_state": {"block_id": block_id, "block_type": "claim_card"},
+            },
+        }
+        emit, captured = _capture_emitter()
+        undo_ai_action(con, applied_event=applied_event, emit_event_fn=emit)
     assert len(captured) == 1
     undone = captured[0]
     assert undone.payload.inverted_event_id == "evt-applied-123"

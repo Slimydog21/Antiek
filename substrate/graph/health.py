@@ -1,9 +1,21 @@
 """Read-only health probes for the graph DuckDB file.
 
 GF-7 asks for corruption/startup visibility for the substrate's source-of-truth
-DuckDB file. DuckDB's Python build in current CI does not expose SQLite-style
-``PRAGMA integrity_check``; when unavailable, this module reports that fact
-explicitly instead of pretending a full page-integrity scan ran.
+DuckDB file. DuckDB does not implement SQLite's ``PRAGMA integrity_check`` — it
+is not a DuckDB pragma at all, so every attempt raised ``CatalogException`` and
+this probe reported ``"unavailable"`` on every build, forever. A field named
+``integrity_check`` that can never say ``ok`` reads, on ``/health``, as though a
+verification ran and passed; none ever did.
+
+This module now runs a check DuckDB actually implements. For every base table in
+``main`` it reads ``pragma_storage_info(<table>)``, which forces DuckDB to parse
+that table's per-column block metadata out of the storage layer. That is the
+layer where on-disk corruption shows up, and it is metadata-only: cost scales
+with column-segment count, not row count, so the probe stays bounded and cheap
+enough to run on every ``/health`` hit.
+
+It remains strictly read-only and never raises: a failure is reported as a
+value, not an exception.
 """
 
 from __future__ import annotations
@@ -37,13 +49,49 @@ def _wal_path(db_path: str) -> str:
     return db_path + ".wal"
 
 
+def _storage_integrity(con: duckdb.DuckDBPyConnection) -> str:
+    """Verify every base table's storage metadata parses.
+
+    Returns ``"ok"``, ``"empty"`` when the catalog holds no base tables, or
+    ``"failed: <where>: <ExcType>"`` naming the first table that would not read.
+    Never raises.
+    """
+    try:
+        tables = [
+            row[0]
+            for row in con.execute(
+                "SELECT table_name FROM duckdb_tables() "
+                "WHERE database_name = current_database() "
+                "AND schema_name = 'main' AND NOT internal "
+                "ORDER BY table_name"
+            ).fetchall()
+        ]
+    except Exception as exc:
+        return f"failed: catalog: {type(exc).__name__}"
+
+    if not tables:
+        return "empty"
+
+    for name in tables:
+        # pragma_storage_info takes a string literal, so the identifier is
+        # embedded rather than bound; double any quote to keep it one literal.
+        literal = name.replace("'", "''")
+        try:
+            con.execute(
+                f"SELECT count(*) FROM pragma_storage_info('{literal}')"
+            ).fetchone()
+        except Exception as exc:
+            return f"failed: {name}: {type(exc).__name__}"
+
+    return "ok"
+
+
 def probe_duckdb_health(db_path: str) -> DuckDBHealth:
     """Probe ``db_path`` without creating or mutating it.
 
     The probe proves the file opens read-only, the graph schema sentinel exists,
-    DuckDB can read database-size metadata, and whether a WAL sidecar is present.
-    It attempts ``PRAGMA integrity_check`` opportunistically and reports
-    ``"unavailable"`` on DuckDB builds that do not implement it.
+    DuckDB can read database-size metadata, and that every base table's storage
+    metadata parses. It also reports whether a WAL sidecar is present.
     """
     resolved = os.path.abspath(os.path.expanduser(db_path))
     wal_path = _wal_path(resolved)
@@ -85,12 +133,7 @@ def probe_duckdb_health(db_path: str) -> DuckDBHealth:
         con.execute("PRAGMA database_size").fetchone()
         database_size_ok = True
 
-        try:
-            rows = con.execute("PRAGMA integrity_check").fetchall()
-        except duckdb.CatalogException:
-            integrity_check = "unavailable"
-        else:
-            integrity_check = "ok" if rows else "empty_result"
+        integrity_check = _storage_integrity(con)
     except Exception as exc:
         return DuckDBHealth(
             ready=False,
@@ -106,13 +149,20 @@ def probe_duckdb_health(db_path: str) -> DuckDBHealth:
     finally:
         con.close()
 
-    ready = schema_present and database_size_ok and integrity_check in {
-        "ok",
-        "unavailable",
-    }
+    # "empty" stays passing: a freshly created file with no tables is a valid
+    # state for a probe that runs before first init. A "failed: ..." value is
+    # real storage-layer corruption and must not be ready.
+    integrity_ok = integrity_check in {"ok", "empty"}
+    ready = schema_present and database_size_ok and integrity_ok
+    if not integrity_ok:
+        status = "integrity_failed"
+    elif not schema_present:
+        status = "schema_missing"
+    else:
+        status = "ok"
     return DuckDBHealth(
         ready=ready,
-        status="ok" if ready else "schema_missing",
+        status=status,
         db_path=resolved,
         schema_present=schema_present,
         database_size_ok=database_size_ok,

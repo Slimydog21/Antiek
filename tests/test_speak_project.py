@@ -77,8 +77,10 @@ def test_invite_n_stakeholders_creates_n_links(db):
         links = {iv.link for iv in invites}
         assert len(links) == 3
         for iv in invites:
-            assert iv.link.startswith("https://interview.antiek.ai/")
-            assert "?token=" in iv.link
+            # The SpeakInvite door form (token IS the credential, unauth route
+            # /speak/invite/:token) — preferred over the legacy interview-host
+            # query form since PublicLane SPR-03 (f6a6adf73).
+            assert iv.link == f"https://antiek.ai/speak/invite/{iv.token}"
             assert iv.status == "invited"
 
 

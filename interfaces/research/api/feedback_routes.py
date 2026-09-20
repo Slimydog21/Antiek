@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -190,12 +191,17 @@ async def get_feedback(
     if_none_match: Annotated[str | None, Header(alias="If-None-Match")] = None,
 ) -> Response:
     _require_enabled()
-    with connect_write(_db_path(), purpose="feedback/read") as con:
-        thread = FeedbackStore().get_thread(
-            con,
-            owner_user_id=_owner(request),
-            thread_id=thread_id,
-        )
+
+    def _sync() -> ThreadView | None:
+        with connect_write(_db_path(), purpose="feedback/read") as con:
+            return FeedbackStore().get_thread(
+                con,
+                owner_user_id=_owner(request),
+                thread_id=thread_id,
+            )
+
+    # flock wait off the uvicorn loop (#3111 to_thread class).
+    thread = await asyncio.to_thread(_sync)
     if thread is None:
         raise HTTPException(status_code=404, detail="feedback thread not found")
     payload = _thread_payload(thread)
