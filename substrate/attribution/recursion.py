@@ -640,9 +640,17 @@ class DisplayGatedProvenanceResolver:
     deferred because the cap has to be in the versioned contract from the first
     priced row, not bolted on after rows exist.
 
-    Both queries are read-only, and ``compute_attribution_for_synthesis`` opens
-    its own read-only handle. The single-writer invariant is untouched: this
-    module never opens a writable connection.
+    EVERY read here goes through ``runtime.db_lock.connect_read`` rather than a
+    raw ``duckdb.connect(..., read_only=True)``. That is not a style
+    preference. DuckDB refuses a true read-only handle whenever the same
+    process already holds the file read-write, and in production it routinely
+    does: uvicorn runs ``--workers 1`` and ``connect_write`` parks a warm
+    writer for ``ANTIEK_WRITE_KEEPALIVE_S`` (20s by default) after every write.
+    That keepalive is disabled under pytest, so a raw read here is green in the
+    suite and raises ``ConnectionException`` in the API process for twenty
+    seconds after any write. ``connect_read`` is the seam that absorbs it.
+    The single-writer invariant is untouched either way: this module never
+    opens a writable connection of its own.
     """
 
     def __init__(
@@ -659,8 +667,7 @@ class DisplayGatedProvenanceResolver:
         self.author_overrides = dict(author_overrides or {})
 
     def resolve(self, synthesis_id: str) -> SynthesisProvenance | None:
-        import duckdb
-
+        from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
 
         from .compute import compute_attribution_for_synthesis
@@ -683,7 +690,7 @@ class DisplayGatedProvenanceResolver:
         }
         result = per_algorithm[self.algorithm]
 
-        con = duckdb.connect(resolved_path, read_only=True)
+        con = connect_read(resolved_path)
         try:
             author = self.author_overrides.get(synthesis_id)
             if author is None:

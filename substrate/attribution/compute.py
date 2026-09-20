@@ -15,8 +15,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Mapping, Optional
 
-import duckdb
-
+from runtime.db_lock import ReadConnection, connect_read
 from substrate.event_log import emit_typed
 from substrate.graph import default_db_path, ensure_initialized
 
@@ -68,7 +67,7 @@ class SynthesisAttributionResult:
 
 
 def _build_claims(
-    con: duckdb.DuckDBPyConnection,
+    con: ReadConnection,
     thesis_components: list[dict],
     chunk_to_doc: Mapping[str, str],
     doc_to_tier: Mapping[str, int],
@@ -108,7 +107,7 @@ def compute_attribution_for_synthesis(
     use ``emit_event=False`` to compute without writing to the log."""
     resolved = db_path or default_db_path()
     ensure_initialized(resolved)
-    con = duckdb.connect(resolved, read_only=True)
+    con = connect_read(resolved)
     try:
         row = con.execute(
             "SELECT synthesis_id, target_question, thesis, investigation_id "

@@ -48,6 +48,28 @@ from substrate.attribution.recursion import (
 from substrate.schemas import TYPED_PAYLOAD_ACTION_TYPES, ActionType
 
 
+def _executable_source(path: str) -> str:
+    """The module's source with every docstring and comment blanked.
+
+    Prose is not behaviour. Both source scans below read a module that
+    explains at length what it must not do, so a naive substring search would
+    fire on the explanation rather than on the code.
+    """
+    import ast
+
+    with open(path, encoding="utf-8") as fh:
+        source = fh.read()
+    lines = source.splitlines()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef):
+            if ast.get_docstring(node, clean=False) is None or not node.body:
+                continue
+            first = node.body[0]
+            for i in range(first.lineno - 1, (first.end_lineno or first.lineno)):
+                lines[i] = ""
+    return "\n".join(line.split("#", 1)[0] for line in lines)
+
+
 def _resolver(*provenance: SynthesisProvenance) -> StaticProvenanceResolver:
     return StaticProvenanceResolver({p.synthesis_id: p for p in provenance})
 
@@ -567,28 +589,9 @@ def test_recursion_module_reaches_no_money_writer():
     """Asserted, not assumed. The recursion computes who is owed attention;
     turning attention into money is gated on §9.0 counsel, and the module must
     not contain the vocabulary to do it."""
-    import ast
-
     from substrate.attribution import recursion
 
-    path = recursion.__file__
-    with open(path, encoding="utf-8") as fh:
-        source = fh.read()
-    tree = ast.parse(source)
-    # Blank every docstring: the module's prose explains the money boundary at
-    # length and those mentions are the opposite of a violation.
-    lines = source.splitlines()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef):
-            doc = ast.get_docstring(node, clean=False)
-            if doc is None or not node.body:
-                continue
-            first = node.body[0]
-            for i in range(first.lineno - 1, (first.end_lineno or first.lineno)):
-                lines[i] = ""
-    code = "\n".join(lines)
-    # Comments are prose too.
-    code = "\n".join(line.split("#", 1)[0] for line in code.splitlines())
+    code = _executable_source(recursion.__file__)
     hits = [w for w in _MONEY_WRITERS if w in code]
     assert not hits, (
         f"substrate/attribution/recursion.py names money-path symbol(s) {hits} in "
@@ -700,3 +703,313 @@ def test_path_only_claims_are_measured_even_though_they_price_nothing(
     assert _units(split, SUBJECT_AUTHOR, "writer-1") == int(
         UNITS_PER_ATTENTION_SECOND * AUTHOR_SHARE_FIXED
     )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 10. Hardening — properties the suite asserted in prose but not in code.
+#
+# Each test below was written against a mutant that survived the suite as
+# first shipped. The mutant is named in the docstring so a future reader can
+# re-inject it and watch this test go red.
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_read_path_goes_through_the_sanctioned_read_connection():
+    """MUTANT: swap ``connect_read`` back to
+    ``duckdb.connect(path, read_only=True)``.
+
+    DuckDB refuses a true read-only handle when the same process already holds
+    the file read-write. Production does exactly that — uvicorn runs
+    ``--workers 1`` and ``connect_write`` parks a warm writer for
+    ``ANTIEK_WRITE_KEEPALIVE_S`` (20s) after every write — and that keepalive
+    is DISABLED under pytest. So a raw read here is green in this suite and
+    raises for twenty seconds after every write in the API process. The
+    behavioural twin below proves the failure; this one keeps the seam from
+    drifting back.
+    """
+    from substrate.attribution import recursion
+
+    code = _executable_source(recursion.__file__)
+    assert "duckdb.connect(" not in code, (
+        "substrate/attribution/recursion.py opens DuckDB directly. Read sites "
+        "go through runtime.db_lock.connect_read, which absorbs the "
+        "same-file-different-configuration refusal that the warm writer "
+        "causes in production and that pytest cannot reproduce."
+    )
+
+
+def test_resolver_reads_while_the_single_writer_holds_the_db(seeded_substrate):
+    """The behavioural twin: the live path must work from inside the process
+    that holds the write handle, because that is the only process there is."""
+    from runtime.db_lock import connect_write
+
+    with connect_write(seeded_substrate["db_path"], purpose="verify-coexist") as con:
+        con.execute("SELECT 1")
+        split = compute_recursive_attribution(
+            seeded_substrate["synthesis_id"], db_path=seeded_substrate["db_path"],
+        )
+    assert split.conserves()
+    assert _units(split, SUBJECT_IP_HOLDER, "holder-a") > 0
+
+
+def test_two_documents_one_holder_merge_into_one_conserved_line():
+    """MUTANT: ``_merge`` keeping ``s.units`` instead of
+    ``prior.units + s.units``.
+
+    A synthesis citing two papers from the same publisher is the ordinary
+    case, and it is the only case that exercises the merge. Without this the
+    headline invariant — the split sums to exactly one second — was pinned
+    only on inputs where no two lines ever collided.
+    """
+    split = split_attention(
+        "syn-1",
+        resolver=_resolver(SynthesisProvenance(
+            synthesis_id="syn-1",
+            author_user_id="writer-1",
+            document_shares={"doc-a": 0.5, "doc-b": 0.25, "doc-c": 0.25},
+            document_ip_holders={
+                "doc-a": "holder-x", "doc-b": "holder-x", "doc-c": "holder-y",
+            },
+        )),
+    )
+    assert split.conserves()
+    assert sum(s.units for s in split.shares) == UNITS_PER_ATTENTION_SECOND
+    holder_x = [
+        s for s in split.shares
+        if s.subject_kind == SUBJECT_IP_HOLDER and s.subject_id == "holder-x"
+    ]
+    assert len(holder_x) == 1, "one holder at one depth is one line, not two"
+    assert holder_x[0].units == 525_000
+    assert _units(split, SUBJECT_IP_HOLDER, "holder-y") == 175_000
+
+
+def test_two_unowned_documents_merge_into_one_conserved_remainder():
+    """The same merge on the unattributed side — two owner-less documents are
+    one ``owner_unknown`` line carrying both budgets, not one carrying half."""
+    split = split_attention(
+        "syn-1",
+        resolver=_resolver(SynthesisProvenance(
+            synthesis_id="syn-1",
+            author_user_id="writer-1",
+            document_shares={"doc-a": 0.5, "doc-b": 0.5},
+            document_ip_holders={"doc-a": None, "doc-b": None},
+        )),
+    )
+    assert split.conserves()
+    unowned = [s for s in split.shares if s.reason == REASON_OWNER_UNKNOWN]
+    assert [s.units for s in unowned] == [700_000]
+
+
+def test_negative_seconds_is_rejected_rather_than_silently_unconserved():
+    """MUTANT: delete the ``seconds < 0`` guard.
+
+    The guard is load-bearing for conservation, not cosmetic: a negative
+    budget short-circuits the walk before any line is emitted, so the split
+    comes back with zero lines against a negative total and ``conserves()``
+    is False. The one property this module exists to hold, broken by an
+    input nobody validated.
+    """
+    with pytest.raises(ValueError, match="seconds"):
+        split_attention(
+            "syn-1",
+            seconds=-1,
+            resolver=_resolver(SynthesisProvenance("syn-1", author_user_id="w")),
+        )
+
+
+def test_degenerate_knobs_are_rejected():
+    """MUTANT: delete the ``author_share`` range guard, or the
+    ``max_depth >= 1`` guard. An author share outside [0, 1] is not a split,
+    it is a sign error that the apportioner would silently clamp into a
+    plausible-looking row."""
+    prov = _resolver(SynthesisProvenance("syn-1", author_user_id="w"))
+    with pytest.raises(ValueError, match="author_share"):
+        split_attention("syn-1", resolver=prov, author_share=1.5)
+    with pytest.raises(ValueError, match="author_share"):
+        split_attention("syn-1", resolver=prov, author_share=-0.1)
+    with pytest.raises(ValueError, match="max_depth"):
+        split_attention("syn-1", resolver=prov, max_depth=0)
+    with pytest.raises(ValueError, match="units_per_second"):
+        split_attention("syn-1", resolver=prov, units_per_second=0)
+
+
+def test_replay_reproduces_non_default_seconds_and_depth():
+    """MUTANT: ``replay`` hardcoding ``seconds=1`` or the default depth cap.
+
+    Every replay assertion in the suite ran at the defaults, so a replay that
+    dropped an input on the floor reproduced the right answer by coincidence.
+    A row metered over an hour, or priced under a non-default cap, is exactly
+    the row a dispute is about.
+    """
+    split = split_attention("syn-0", resolver=_chain(4), seconds=3_600, max_depth=2)
+    assert split.seconds == 3_600
+    assert split.max_depth == 2
+    assert any(s.reason == REASON_DEPTH_CAP for s in split.shares)
+
+    again = replay(split.inputs_json)
+    assert again.seconds == 3_600
+    assert again.max_depth == 2
+    assert again.total_units == 3_600 * UNITS_PER_ATTENTION_SECOND
+    assert again.shares == split.shares
+    assert again.conserves()
+
+
+def test_inputs_digest_is_the_digest_of_the_inputs():
+    """MUTANT: return a constant digest.
+
+    Both sides of every previous digest assertion came from the same code
+    path, so a constant satisfied them. The digest is the tamper evidence on
+    the event row; it has to be checked against its own definition.
+    """
+    import hashlib
+
+    split = split_attention("syn-0", resolver=_chain(1))
+    assert split.inputs_digest == hashlib.sha256(
+        split.inputs_json.encode()
+    ).hexdigest()
+    assert split.inputs_digest != "0" * 64
+
+
+def test_wire_values_of_the_stamped_contract_are_pinned():
+    """MUTANT: change ``GATE_DISPLAY`` or ``ATTRIBUTION_RECURSION_VERSION``.
+
+    Every gate and version assertion compared the field against the constant
+    it was copied from, so the wire strings could drift without a single red.
+    These strings ARE the contract: a consumer keying on ``display`` to refuse
+    settlement (the payload docstring's own rule) breaks silently if the
+    constant moves. Pinned the way the repo already pins
+    ``ATTRIBUTION_ALGORITHM_VERSION``; changing one is a deliberate edit here.
+    """
+    assert GATE_DISPLAY == "display"
+    assert ATTRIBUTION_RECURSION_VERSION == "attr-recursion-v1"
+    assert AUTHOR_SHARE_POLICY == "author-share-fixed-30-v1"
+    assert ATTRIBUTION_SHARE_MATH_VERSION == "attr-math-v1-substrate"
+    assert AUTHOR_SHARE_FIXED == 0.30
+    assert UNITS_PER_ATTENTION_SECOND == 1_000_000
+    assert MAX_RECURSION_DEPTH == 3
+    assert ActionType.SYNTHESIS_ATTRIBUTION_RECURSED.value == (
+        "synthesis.attribution.recursed"
+    )
+
+
+def test_missing_synthesis_on_the_live_path_is_unresolved_not_invented(
+    seeded_substrate,
+):
+    """MUTANT: have the live resolver return an empty
+    ``SynthesisProvenance`` instead of ``None`` when the synthesis is absent.
+
+    The module comment says inventing one "would credit the whole second to an
+    author who does not exist". It survives on conservation — the units land
+    in the unattributed bucket either way — but under the wrong reason, and a
+    typed remainder reason that silently becomes the wrong one is worth less
+    than no reason at all.
+    """
+    split = compute_recursive_attribution(
+        "syn-does-not-exist", db_path=seeded_substrate["db_path"],
+    )
+    assert split.conserves()
+    assert split.unattributed_units() == UNITS_PER_ATTENTION_SECOND
+    reasons = {s.reason for s in split.shares}
+    assert reasons == {REASON_UNRESOLVED_SYNTHESIS}
+    assert REASON_AUTHOR_UNRESOLVED not in reasons
+
+
+def test_ambiguous_document_ownership_leaves_the_author_unresolved(
+    seeded_substrate,
+):
+    """MUTANT: resolve an ambiguous author to the first row.
+
+    ``_resolve_author_user_id``'s docstring says picking the first of several
+    owners "would attribute a writer's second to whoever happens to sort
+    first, which is worse than admitting the substrate cannot say" — and
+    nothing held it to that. The fixture's documents agree on one owner, so
+    the disagreeing case was never exercised.
+    """
+    from runtime.db_lock import connect_write
+    from substrate.graph.ops import insert_document
+
+    with connect_write(seeded_substrate["db_path"], purpose="verify-ambiguity") as con:
+        insert_document(
+            con, document_id="doc-other-owner", source_tier=1,
+            document_type="academic_paper", title="Another Hand",
+            investigation_id="inv-1", content_class="public_domain",
+            ip_holder_id="holder-a", owner_user_id="writer-2",
+        )
+
+    split = compute_recursive_attribution(
+        seeded_substrate["synthesis_id"], db_path=seeded_substrate["db_path"],
+    )
+    assert split.conserves()
+    assert _units(split, SUBJECT_AUTHOR, "writer-1") == 0
+    assert _units(split, SUBJECT_AUTHOR, "writer-2") == 0
+    author_parked = [
+        s for s in split.shares if s.reason == REASON_AUTHOR_UNRESOLVED
+    ]
+    assert [s.units for s in author_parked] == [300_000]
+
+
+def test_an_override_resolves_the_author_the_substrate_cannot_name(
+    seeded_substrate,
+):
+    """The escape hatch the resolver documents: a metering surface knows whose
+    window it is even when the substrate does not. Pinned so the parameter
+    cannot quietly become decorative."""
+    split = compute_recursive_attribution(
+        seeded_substrate["synthesis_id"],
+        db_path=seeded_substrate["db_path"],
+        author_overrides={seeded_substrate["synthesis_id"]: "writer-explicit"},
+    )
+    assert split.conserves()
+    assert _units(split, SUBJECT_AUTHOR, "writer-explicit") == 300_000
+
+
+def test_conservation_and_replay_survive_randomized_provenance_graphs():
+    """The headline invariant, held against graphs nobody hand-wrote.
+
+    Every conservation test above names a shape someone thought of. This one
+    draws them: cycles, diamonds, negative and zero weights, missing
+    syntheses, owner-less documents, unresolvable authors, budgets from zero
+    seconds to an hour, and depth caps from 1 to 6. The seed is fixed so a
+    failure is reproducible rather than a flake to be re-run away.
+    """
+    import random
+
+    rng = random.Random(20260920)
+    for _ in range(400):
+        ids = [f"s{i}" for i in range(rng.randint(1, 8))]
+        provenance = {}
+        for sid in ids:
+            documents = {
+                f"d{sid}_{j}": rng.choice([0.0, rng.random(), -rng.random()])
+                for j in range(rng.randint(0, 6))
+            }
+            provenance[sid] = SynthesisProvenance(
+                synthesis_id=sid,
+                author_user_id=rng.choice([None, f"w{rng.randint(0, 2)}"]),
+                document_shares=documents,
+                document_ip_holders={
+                    d: rng.choice([None, f"h{rng.randint(0, 3)}"]) for d in documents
+                },
+                nested_syntheses={
+                    d: rng.choice(ids) for d in documents if rng.random() < 0.45
+                },
+            )
+        # Sometimes a cited synthesis simply is not there.
+        if len(provenance) > 1 and rng.random() < 0.2:
+            provenance.pop(rng.choice(list(provenance)))
+
+        split = split_attention(
+            rng.choice(ids),
+            resolver=StaticProvenanceResolver(provenance),
+            seconds=rng.choice([0, 1, 2, 7, 60, 3_600]),
+            max_depth=rng.randint(1, 6),
+            author_share=rng.choice([0.0, 0.3, 0.5, 1.0, rng.random()]),
+        )
+        assert split.conserves(), split.inputs_json
+        assert all(s.units >= 0 for s in split.shares)
+        assert all(
+            s.reason is not None
+            for s in split.shares
+            if s.subject_kind == SUBJECT_UNATTRIBUTED
+        ), "an unattributed line with no reason is the silent loss this contract forbids"
+        assert replay(split.inputs_json).shares == split.shares, split.inputs_json

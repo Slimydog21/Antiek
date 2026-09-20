@@ -182,7 +182,23 @@ settled as money.
    keys and breaks ties on the key, and the two should be unified the day the cents twin
    gets the same property — a money-path change, not this lane's.
 
-3. **Adding an `ActionType` breaks the reading app's narration map.**
+3. **A raw read-only DuckDB handle is green under pytest and raises in production.**
+   Found by adversarial verification, fixed in this lane. DuckDB refuses a true
+   read-only connection whenever the same process already holds the file read-write,
+   and the API process does exactly that: uvicorn runs `--workers 1`, and `connect_write`
+   parks a warm writer for `ANTIEK_WRITE_KEEPALIVE_S` (20 seconds by default) after every
+   write. That keepalive is disabled under pytest, so a raw
+   `duckdb.connect(path, read_only=True)` passes every test and then raises
+   `ConnectionException` for twenty seconds after each write in the live process.
+   `runtime.db_lock.connect_read` is the seam that absorbs it, and 65 of the 75 read
+   sites under `substrate/` already used it. Both the new resolver and
+   `compute_attribution_for_synthesis` — which `GET /attribution/{synthesis_id}` has
+   been calling all along — now go through it.
+   `test_resolver_reads_while_the_single_writer_holds_the_db` reproduces the failure
+   behaviourally and `test_read_path_goes_through_the_sanctioned_read_connection` keeps
+   the seam from drifting back.
+
+4. **Adding an `ActionType` breaks the reading app's narration map.**
    `apps/reading/src/modes/ResearchWorkstation/narrateEvent.ts` declares
    `Record<ActionTypeValue, NarrationRule>` and `narrateEvent.test.ts` asserts every
    catalogue entry has a row. A new event type without a row is a red frontend test and a
