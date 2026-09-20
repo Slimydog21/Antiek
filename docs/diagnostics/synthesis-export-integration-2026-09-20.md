@@ -62,14 +62,14 @@ From the worktree root:
 PYTHONPATH="$PWD" /Users/slimydog/Antiek/platform/.venv/bin/python -m pytest -q services/html_projection/tests tests/api/test_synthesis_artifact.py tests/api/test_synthesis_export_boundary.py tests/api/test_synthesis_export_database.py
 ```
 
-467 passed, exit 0. Full output: .audit/export-repair-full-tests.log.
+471 passed, exit 0. Full output: .audit/export-repair-final-tests.log.
 The production-shaped fixture uses typed SynthesizeDeliveredPayload and
 EvidenceRetrieveDeliveredPayload, pins chunks only, and asserts zero document
 pins before checking exact claim/source resolution.
 
 ### What repro does NOT prove
 
-Live production, browser downloads, or a stable multi-query archival snapshot.
+Live production, the full workstation layout, or a stable multi-query archival snapshot.
 Whole-synthesis restrictions still have no persisted policy field. Federated
 span IDs remain unresolved in this local graph implementation.
 
@@ -83,7 +83,8 @@ span IDs remain unresolved in this local graph implementation.
 | Document-only and partially missing completeness | tested | test_provenance_gate.py |
 | Query-route poison, rights, three-format refusal | tested | test_synthesis_export_boundary.py |
 | Bearer/cookie/allowlist authentication | tested | test_synthesis_export_boundary.py |
-| Browser download and live deployed schema | untested | no run |
+| Shared component browser download/refusal, rendered file | tested | assets/synthesis-export-20260920 |
+| Deployed schema and full workstation UI | untested | no run |
 | Archived external federation | untested | retained PR856, separate integration |
 
 ## Handoff
@@ -107,10 +108,9 @@ quality. Public export rights and citation completeness are separate checks.
 
 ### Status
 
-In progress. Current tests and types pass; independent implementation review
-is running. Initial M4 compliance was assessed at35/100, provisional repaired
+In progress. Current tests and types pass; implementation review at c9b5c81b1 accepted91; followup review of copy and coverage changes pending. Initial M4 compliance was assessed at35/100, provisional repaired
 local-graph compliance at88/100 pending independent review. Broad export
-readiness remains below completion due to browser/live/federated gaps.
+readiness remains below completion due to full-workstation/live/federated gaps.
 
 ### Files touched
 
@@ -122,18 +122,19 @@ boundary tests from the first evidence commit; this diagnostic.
 - [x] Production-shaped archive and full-app authenticated export proof.
 - [x] Exact claim/chunk resolution and honest incomplete fallbacks.
 - [ ] Independent implementation acceptance and current CI.
-- [ ] Browser and deployed verification.
+- [x] Local shared component download/refusal and rendered artifact.
+- [ ] Full workstation and deployed verification.
 
 ### Gate results
 
 | Gate | Result | Local evidence |
 |---|---|---|
-| Full export suite above | 467 passed, exit0 | .audit/export-repair-full-tests.log |
+| Full export suite above | 471 passed, exit0 | .audit/export-repair-final-tests.log |
 | Strict mypy, explicit-package-bases, follow-imports=silent | 4 files clean | .audit/provenance-mypy.log |
 | Ruff on changed Python | passed | command output |
 | Gate-removal mutation | expected pytest exit1 | .audit/gate-mutation.log |
 | Initial evidence-only GLM | ACCEPT84, entrenchment concern | .audit/export-review.log |
-| New implementation GLM | running | .audit/provenance-review.log |
+| Implementation GLM at c9b5c81b1 | ACCEPT91, terminal0 | .audit/provenance-review.log |
 | Source-only security | LOW, 0 REAL, 7 advisory, exit0 | .audit/export-source-security-summary.json |
 
 ### Decisions mid-flight
@@ -169,3 +170,39 @@ verification can proceed independently on synthetic local data.
 ### Out-of-scope temptations
 
 No provider execution, schema/writer migration, production mutation or deploy.
+
+
+## Browser evidence and review followup
+
+At c9b5c81b1, an isolated headless Chrome profile used browser-harness to click
+the actual shared ArtifactExport component mounted in a local fixture page.
+The local full app used scratch typed archives and ephemeral bearer auth.
+HTML download produced 9,942 bytes, SHA256
+b17b3f8a0ac0e35cc69e570e77ddb9969f2bca67c6506f69440a880d125cc5a9.
+Its actual bytes passed the script-free gate, retained the public passage,
+excluded the private passage, and reported 2/2 fully sourced claims. A synthetic
+restricted metadata fixture exercised the real refusal route; its specific
+reason appeared visibly in the shared component. This is not proof that a
+persisted restriction field exists.
+
+[Rendered download](assets/synthesis-export-20260920/download-render.png),
+[visible refusal](assets/synthesis-export-20260920/refusal.png),
+[downloaded HTML](assets/synthesis-export-20260920/browser-export-proof.html),
+and [verification record](assets/synthesis-export-20260920/download-verification.json)
+are retained. The fixture uses simple surrounding CSS, not the full workstation.
+The API, Vite and isolated Chrome processes were stopped after verification;
+ephemeral session credentials were removed. An unrelated missing p5 package
+appeared during Vite's initial app dependency scan, but the fixture and real
+export component loaded and completed both interactions. No dependency change
+was made.
+
+A concrete portability gap remains: downloaded source links resolve to
+file:///read/doc-public and file:///read/doc-private. The browser DOM confirms
+these targets. This proof does not claim useful offline source navigation.
+
+The accepted review's stale docstring and fallback-copy findings are corrected.
+Unresolved citation IDs now remain visible; an unavailable permitted passage
+gets an explicit marker. Both parser limits omitted by the earlier tests now
+have coverage. The resulting suite passes471 tests. Signed-format filename
+quoting, metadata JSON bounds, read-route initialization, and portable source
+links remain separate followups. No full-goal completion claim.

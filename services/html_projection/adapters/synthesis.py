@@ -88,8 +88,8 @@ class Claim:
 @dataclass(frozen=True)
 class SynthesisExport:
     """The resolved synthesis the adapter consumes. The M3 route builds this
-    from the live graph (reusing ``compute_attribution_for_synthesis`` +
-    chunk/document resolution); the adapter stays pure + DB-free + testable."""
+    from archived thesis components and current graph chunk/document resolution;
+    the adapter stays pure + DB-free + testable."""
 
     synthesis_id: str
     target_question: str
@@ -150,7 +150,8 @@ def _recommendation_tone(rec: str) -> str:
 def _source_label(src: SourceRef) -> str:
     """A citation label built ONLY from non-text provenance — title, owner,
     locator. NEVER the chunk text (that would defeat cite-only)."""
-    parts = [src.document_title or src.document_id or "unknown source"]
+    unresolved = f"unresolved citation {src.chunk_id}" if src.chunk_id else "unknown source"
+    parts = [src.document_title or src.document_id or unresolved]
     if src.ip_holder_id:
         parts.append(src.ip_holder_id)
     if src.locator:
@@ -214,6 +215,8 @@ def adapt_synthesis(export: SynthesisExport) -> dict[str, Any]:
                 content.append(
                     _prose("(cite-only — full text withheld under the source's rights)")
                 )
+            elif not src.chunk_text:
+                content.append(_prose("(source passage unavailable)"))
             if not src.resolved:
                 content.append(_prose("(unsourced)"))
 

@@ -174,7 +174,7 @@ def resolve_synthesis_export(
     provenance_note = None
     if not components:
         provenance_note = (
-            "Archived claim provenance unavailable; showing the summary and document references only."
+            "Archived claim provenance unavailable; any available summary and document references follow."
         )
     elif any(not c.get("supporting_chunk_ids") and c.get("supporting_path_indices")
              for c in components):

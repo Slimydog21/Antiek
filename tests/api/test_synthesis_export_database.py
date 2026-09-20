@@ -285,7 +285,9 @@ def test_incomplete_archived_provenance_stays_incomplete_in_real_html_route(
     }
 
 
-@pytest.mark.parametrize("limit", ["_MAX_COMPONENTS", "_MAX_CITATIONS"])
+@pytest.mark.parametrize("limit", [
+    "_MAX_COMPONENTS", "_MAX_CITATIONS", "_MAX_THESIS_CHARS", "_MAX_CITATION_ID_LENGTH",
+])
 def test_over_bound_thesis_falls_back_instead_of_claiming_partial_completeness(
     archived_synthesis: tuple[str, str], monkeypatch: pytest.MonkeyPatch, limit: str,
 ) -> None:

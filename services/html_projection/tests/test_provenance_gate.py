@@ -77,3 +77,20 @@ def test_one_missing_citation_cannot_hide_behind_a_resolved_citation():
     dm = adapt_synthesis(_exp([Claim("Partial", [SOURCED, UNRESOLVED])]))
     assert dm["metadata"]["provenance"]["fully_sourced"] == 0
     assert dm["metadata"]["provenance"]["complete"] is False
+
+
+def test_unresolved_citation_identity_remains_visible():
+    source = SourceRef(document_id=None, document_title=None,
+                       content_class=None, ip_holder_id=None, chunk_id="missing-42")
+    dm = adapt_synthesis(_exp([Claim("Partial", [source])]))
+    assert "unresolved citation missing-42" in json.dumps(dm)
+    assert dm["metadata"]["provenance"]["complete"] is False
+
+
+def test_resolved_source_without_passage_explains_absence():
+    source = SourceRef(document_id="doc", document_title="Empty passage",
+                       content_class="public_domain", ip_holder_id=None, chunk_id="chunk")
+    dm = adapt_synthesis(_exp([Claim("Claim", [source])]))
+    assert "source passage unavailable" in json.dumps(dm)
+    # Lack of excerpt content is separate from successful citation resolution.
+    assert dm["metadata"]["provenance"]["complete"] is True
