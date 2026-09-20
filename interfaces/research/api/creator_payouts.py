@@ -15,7 +15,7 @@ import duckdb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from runtime.db_lock import connect_read
+from runtime.db_lock import ReadConnection, connect_read
 
 # ── Pydantic shapes ────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ def _resolve_db_path() -> str:
     return path
 
 
-def _load_kyc_state(con, recipient_ref: str) -> str | None:
+def _load_kyc_state(con: ReadConnection, recipient_ref: str) -> str | None:
     """Read the latest kyc_status row for the recipient."""
     try:
         row = con.execute(
