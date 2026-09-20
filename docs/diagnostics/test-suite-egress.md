@@ -124,6 +124,28 @@ reconsider-if condition. It is deliberately not committed here, because
 committing a gate without an agreed baseline is how informational gates become
 permanent noise.
 
+### What the census does NOT establish
+
+The number above is a **lower bound, not a total.** The detector wraps
+`socket.socket.connect` and `socket.create_connection`. It does not wrap
+`socket.socket.connect_ex`, it does not wrap `getaddrinfo`, and anything that
+shells out — a subprocess running `curl` — bypasses it entirely.
+
+A non-zero result proves the instrument fired. It does not prove the instrument
+is complete, and no control was planted to bound the miss rate. The three
+classes below are real; the absence of a fourth is not established.
+
+A peer session censusing the vitest suite independently reported two successive
+"zero outbound attempts" results that were both **false** — one from a config
+path that meant nothing ran, one from logging through a channel vitest buffers
+and never surfaces. They only trusted the third after asserting a deliberate
+call to a known-bad host appeared in the log. That control is the right bar for
+any future run of this census, including a non-zero one: a partially-wired
+instrument yields a plausible non-zero just as easily as a broken one yields a
+zero. (Their result, with the control in place: 283 attempts, all to
+`localhost`, zero external — the pytest problem has no vitest twin. Playwright
+e2e remains uncensused.)
+
 ## Unrelated observations from the same run
 
 * `tests/substrate/dispatch/test_notdiamond_shadow.py::test_outer_deadline_bounds_a_hung_selector`
