@@ -34,6 +34,26 @@
  * If a future dev re-hardcodes any of these to a hex (the original drift), or
  * lets tokens.css regress off the weathered values, this guard EXITS NON-ZERO.
  *
+ * Q1 EXTENSION — the same drift class, three more families:
+ *
+ *   MUTED-INK family — `ink-soft`, `ink-mute`: the muted-text hierarchy
+ *     (~600 call sites) that existed as utilities with NO definition anywhere
+ *     until Q1. Values live in tokens.css (day :root + night block,
+ *     byte-identical to tokens.ts inkSoft/inkMute); the guard pins those
+ *     values. The Tailwind keys must read the `--ink-soft-rgb`/`--ink-mute-rgb`
+ *     channel vars via `<alpha-value>` so the theme swap cascades and
+ *     /opacity modifiers (border-ink-mute/40) resolve.
+ *
+ *   DANGER family — `danger`: emperor's semantic alias. tokens.css --danger
+ *     must be `var(--emperor)` (an ALIAS, never a hardcoded red — one red, two
+ *     names, no drift surface) and --danger-rgb must carry emperor's channels
+ *     per theme; the Tailwind key reads `rgb(var(--danger-rgb) / <alpha-value>)`
+ *     so bg-danger/10 resolves.
+ *
+ *   SUN-LIGHT family — `sun-light`, `sun-light-soft`, `sun-light-deep`: the
+ *     weathered family tokens.css/tokens.ts carried since AMS-SPR-09 with no
+ *     Tailwind mirror. The keys must reference the CSS vars (theme-invariant).
+ *
  * Out of scope (other FEEL-FIX passes own these): spacing/density, type scale,
  * z-index, modal enter wiring. Brand constant `--sun` (#F5DF24) is intentionally
  * a static hex in both files and is NOT a parity target.
@@ -62,6 +82,14 @@ const EXPECTED_CSS = {
   daySunGlow: "#F1E08F",
   nightSunDeep: "#84722F", // == tokens.ts shadow.night cast + sun.deep.night
   nightSunGlow: "#F2DE9A",
+  // Q1 muted-ink hierarchy + danger alias (byte-identical to tokens.ts
+  // inkSoft/inkMute + accent.emperor). Update only for a DELIBERATE re-tone.
+  dayInkSoft: "#2A3441",
+  nightInkSoft: "#C4CCD7",
+  dayInkMute: "#647380", // AA-cleared: 4.54:1 on ice-2 (mock's #6A7785 failed at 4.25)
+  nightInkMute: "#828C9C", // AA-cleared: 4.80:1 on charcoal-2 (mock's #7C8696 failed at 4.44)
+  dayDangerRgb: "206 54 35", // == emperor day #CE3623 channels
+  nightDangerRgb: "255 97 85", // == emperor night #FF6155 channels
 } as const;
 
 /** Drop `/* … *\/` comments so a commented-out declaration (e.g. a left-behind
@@ -99,6 +127,18 @@ const cssChecks: Array<[string, string | null, string]> = [
   ["day :root --sun-glow", cssVar(day, "sun-glow"), EXPECTED_CSS.daySunGlow],
   ["night --sun-deep", cssVar(night, "sun-deep"), EXPECTED_CSS.nightSunDeep],
   ["night --sun-glow", cssVar(night, "sun-glow"), EXPECTED_CSS.nightSunGlow],
+  // Q1 muted-ink hierarchy (byte-identical to tokens.ts inkSoft/inkMute).
+  ["day :root --ink-soft", cssVar(day, "ink-soft"), EXPECTED_CSS.dayInkSoft],
+  ["night --ink-soft", cssVar(night, "ink-soft"), EXPECTED_CSS.nightInkSoft],
+  ["day :root --ink-mute", cssVar(day, "ink-mute"), EXPECTED_CSS.dayInkMute],
+  ["night --ink-mute", cssVar(night, "ink-mute"), EXPECTED_CSS.nightInkMute],
+  // Q1 danger alias: --danger must ALIAS --emperor (never a hardcoded hex, so
+  // it can never drift off the emperor family), and the rgb channels the
+  // Tailwind `danger` color reads must match emperor's channels per theme.
+  ["day :root --danger", cssVar(day, "danger"), "var(--emperor)"],
+  ["night --danger", cssVar(night, "danger"), "var(--emperor)"],
+  ["day :root --danger-rgb", cssVar(day, "danger-rgb"), EXPECTED_CSS.dayDangerRgb],
+  ["night --danger-rgb", cssVar(night, "danger-rgb"), EXPECTED_CSS.nightDangerRgb],
 ];
 for (const [label, got, want] of cssChecks) {
   const norm = got?.toLowerCase() ?? null;
@@ -152,23 +192,64 @@ for (const key of SHADOW_KEYS) {
   }
 }
 
+// --- Q1: muted-ink + danger keys read the rgb-channel vars ---
+// These colors must be `rgb(var(--<key>-rgb) / <alpha-value>)` — the channel
+// pattern is what lets /opacity modifiers (bg-danger/10, border-ink-mute/40)
+// resolve AND lets the night block swap the value by redeclaring the var. A
+// hardcoded hex is the Q1 drift; a plain var(--key) would silently break the
+// /opacity call sites.
+const CHANNEL_KEYS = ["ink-soft", "ink-mute", "danger"] as const;
+for (const key of CHANNEL_KEYS) {
+  const val = twColorValue(key);
+  if (val === null) {
+    failures.push(`tailwind.config.js colors["${key}"] not found.`);
+    continue;
+  }
+  const expected = `rgb(var(--${key}-rgb) / <alpha-value>)`;
+  if (val !== expected) {
+    failures.push(
+      `tailwind.config.js colors["${key}"] = "${val}" — expected "${expected}". ` +
+        `The muted-ink/danger utilities must read the --${key}-rgb channel var via <alpha-value> ` +
+        `so they cascade per theme and /opacity modifiers resolve.`,
+    );
+  }
+}
+
+// --- Q1: weathered sun-light mirror keys reference their vars (theme-invariant) ---
+const SUN_LIGHT_KEYS = ["sun-light", "sun-light-soft", "sun-light-deep"] as const;
+for (const key of SUN_LIGHT_KEYS) {
+  const val = twColorValue(key);
+  if (val === null) {
+    failures.push(`tailwind.config.js colors["${key}"] not found.`);
+    continue;
+  }
+  const expectedVar = `var(--${key})`;
+  if (val !== expectedVar) {
+    failures.push(
+      `tailwind.config.js colors["${key}"] = "${val}" — expected "${expectedVar}". ` +
+        `The sun-light mirror must reference the CSS var, never a hardcoded hex.`,
+    );
+  }
+}
+
 if (failures.length) {
   console.error(
-    `\ntoken-parity FAILED: ${failures.length} sun accent/shadow drift(s) between ` +
+    `\ntoken-parity FAILED: ${failures.length} drift(s) between ` +
       `tokens.css and tailwind.config.js.\n`,
   );
   for (const f of failures) console.error("  • " + f);
   console.error(
-    "\nThe sun-deep/sun-glow accent + *-night shadow families must agree across " +
-      "tokens.css and tailwind.config.js, or 'lived feel' ≠ 'designed feel'. See this " +
-      "file's header for the parity rule.\n",
+    "\nThe sun accent/shadow, muted-ink (ink-soft/ink-mute), danger, and sun-light " +
+      "families must agree across tokens.css and tailwind.config.js, or 'lived feel' ≠ " +
+      "'designed feel'. See this file's header for the parity rule.\n",
   );
   process.exit(1);
 }
 
 console.log(
-  "token-parity OK — sun accent (sun-deep/sun-glow) + *-night shadows agree: " +
-    "tailwind.config.js references the CSS vars; tokens.css carries the re-toned " +
-    `weathered values (day ${EXPECTED_CSS.daySunDeep}/${EXPECTED_CSS.daySunGlow}, ` +
-    `night ${EXPECTED_CSS.nightSunDeep}/${EXPECTED_CSS.nightSunGlow}).`,
+  "token-parity OK — sun accent (sun-deep/sun-glow), *-night shadows, muted-ink " +
+    "(ink-soft/ink-mute), danger, and sun-light mirrors agree across tokens.css and " +
+    `tailwind.config.js (day ${EXPECTED_CSS.daySunDeep}/${EXPECTED_CSS.daySunGlow}, ` +
+    `night ${EXPECTED_CSS.nightSunDeep}/${EXPECTED_CSS.nightSunGlow}; ` +
+    `ink-mute day ${EXPECTED_CSS.dayInkMute} / night ${EXPECTED_CSS.nightInkMute}).`,
 );

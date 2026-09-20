@@ -48,11 +48,12 @@ utilities. **These three must agree** — drift is a bug.
 - **Brand (invariant across modes):** `sun #F5DF24` (the constant edge), `sun-deep #B89A00` (day) / `#8A7300` (night), `sun-glow`.
 - **Day surface ramp:** `ice-0 #FFFFFF` → `ice-4 #DCE5ED` → `glacial-1/2` → `shadow-1 #4F5F70` → `shadow-2 #384858` → `ink #0F1419`.
 - **Night surface ramp:** `void #040508` → `space-1/2` → `charcoal-1/2` → `slate-1/2` → `moonlight #6B7585` → `starlight #C4CCD7` → `bright #EEF1F6`.
+- **Muted-text hierarchy (Q1):** `ink-soft` (lede/secondary; day `#2A3441`, night `starlight #C4CCD7`) → `ink-mute` (metadata/tertiary; day `#647380`, night `#828C9C` — the AA-cleared steps; both clear WCAG AA 4.5:1 on their usual card/page surfaces in both modes).
 - **Shadows (chunky offset):** day `z1/z2/z3 = 3/5/8px 3/5/8px 0 0 ink`; night casts the same offsets in `sun-deep` (the edge glows).
 - **Radius:** `sm 4px`, `hog 6px`, `hog-lg 10px`. **Edge width:** `2.5px` (`border-edge`).
 - **Type:** sans `Inter`, mono `JetBrains Mono`, **serif `Charter`** (prose — the notebook register).
 - **Werner mascot:** coat = ink, belly = ice-1, **bill + feet = sun** (the visual hook). Eyes = ink (day) / starlight (night).
-- **Reserved accents (sparingly, never substituting for sun):** `aurora #16C2C2` (AI-thinking), `emperor #CE3623` (danger only).
+- **Reserved accents (sparingly, never substituting for sun):** `aurora #16C2C2` (AI-thinking), `emperor #CE3623` (danger only — also exposed under its semantic alias `danger`, same values day + night).
 
 ### SPR-01 reconciliation (2026-05-25)
 `tokens.css` lagged the a11y-darkening that `tokens.ts` + `tailwind.config.js`
@@ -73,6 +74,13 @@ mostly Werner SVG fills + Storybook swatches) are grandfathered in
   reviewed change (e.g. a genuine new token-source file added to `ALLOW_FILES`).
 - A new token-source file is added to `ALLOW_FILES` with a comment, not slipped
   into the baseline.
+
+The same `npm run lint:tokens` also runs the **referenced-token-resolution
+guard** (`scripts/lint_token_refs.ts`, Q1): any `text-/bg-/border-/ring-`
+utility that names a design-token family (a custom Tailwind colour key or a
+tokens.css colour var, including numbered-ramp stems) but resolves to nothing
+fails the lint — the structural fix for the ~630 unstyled `ink-soft`/`ink-mute`/
+`danger` references this queue item closed.
 
 ## Storybook — the visual reference
 

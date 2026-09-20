@@ -44,7 +44,7 @@ import { describe, expect, it } from "vitest";
 
 import { contrastRatio, over, relativeLuminance, type Rgb, type Rgba } from "../../e2e/_ams/visible";
 
-import { barAccent, shadow, sun, sunLight, surface } from "./tokens";
+import { barAccent, danger, inkMute, inkSoft, shadow, sun, sunLight, surface } from "./tokens";
 
 // ── colour parsing (local, tiny; visible.ts's parseRgba is rgb()-string only) ──
 // NOTE: this file holds ZERO raw hex literals — every colour is read FROM the
@@ -195,5 +195,45 @@ describe("AMS-SPR-09 token re-tone — every consumed pair still clears WCAG", (
   it("reuses the visible.ts WCAG math (relativeLuminance white=1, black=0)", () => {
     expect(relativeLuminance({ r: 255, g: 255, b: 255 })).toBeCloseTo(1, 5);
     expect(relativeLuminance({ r: 0, g: 0, b: 0 })).toBeCloseTo(0, 5);
+  });
+});
+
+describe("Q1 — the muted-ink hierarchy + danger alias clear AA on their usual surfaces", () => {
+  it("ink-soft (lede/secondary) clears 4.5:1 on day card+page and night card+page", () => {
+    for (const s of [ICE_0, ICE_2]) {
+      expect(contrastRatio(hex(inkSoft.day), s)).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+    for (const s of [CARD_NIGHT, PAGE_NIGHT]) {
+      expect(contrastRatio(hex(inkSoft.night), s)).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+
+  it("ink-mute (metadata/tertiary) clears 4.5:1 on day card+page and night card+page", () => {
+    // The static mock's values fell just short (day 4.25:1 on ice-2, night
+    // 4.44:1 on charcoal-2); these are the AA-cleared steps.
+    for (const s of [ICE_0, ICE_2]) {
+      expect(contrastRatio(hex(inkMute.day), s)).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+    for (const s of [CARD_NIGHT, PAGE_NIGHT]) {
+      expect(contrastRatio(hex(inkMute.night), s)).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+
+  it("the hierarchy is genuinely stepped: soft reads stronger than mute in both modes", () => {
+    expect(contrastRatio(hex(inkSoft.day), ICE_0)).toBeGreaterThan(
+      contrastRatio(hex(inkMute.day), ICE_0),
+    );
+    expect(contrastRatio(hex(inkSoft.night), CARD_NIGHT)).toBeGreaterThan(
+      contrastRatio(hex(inkMute.night), CARD_NIGHT),
+    );
+  });
+
+  it("danger (the emperor alias) clears 4.5:1 as text on its usual surfaces", () => {
+    for (const s of [ICE_0, ICE_2]) {
+      expect(contrastRatio(hex(danger.day), s)).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+    for (const s of [CARD_NIGHT, PAGE_NIGHT]) {
+      expect(contrastRatio(hex(danger.night), s)).toBeGreaterThanOrEqual(AA_TEXT);
+    }
   });
 });

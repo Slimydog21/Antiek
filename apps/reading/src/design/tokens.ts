@@ -255,6 +255,33 @@ export function aliasFor(m: Mode): SurfaceAliases {
   };
 }
 
+/**
+ * Stepped muting of the ink ramp (Q1 — the muted-text hierarchy).
+ *
+ * Two distinct dimming levels below primary `ink`, each with a night
+ * counterpart, exposed as the `text-ink-soft` / `text-ink-mute` utilities:
+ *
+ *   ink-soft — lede / secondary text. Day #2A3441 sits between shadow-2
+ *              (#384858) and ink (#0F1419); night reuses starlight #C4CCD7,
+ *              the night ramp's body-text step.
+ *   ink-mute — metadata / tertiary text. Values are the WCAG-AA-cleared
+ *              versions of the static mock's (public/redesign.html) --ink-soft/
+ *              --ink-mute: the mock's day #6A7785 measures 4.25:1 on the ice-2
+ *              page and night #7C8696 4.44:1 on the charcoal-2 card — both just
+ *              under the AA 4.5:1 floor — so they were stepped toward the ramp
+ *              until they clear it on every usual background:
+ *                day   #647380 → 4.54:1 on ice-2, 4.88:1 on ice-0
+ *                night #828C9C → 4.80:1 on charcoal-2, 5.59:1 on space-2
+ *              (night moonlight #6B7585 is DIMMER than ink-mute and fails AA on
+ *              a card — 3.50:1; ink-mute is the AA-passing tertiary step.)
+ *
+ * Sibling invariant: byte-identical to --ink-soft/--ink-mute in tokens.css
+ * (day :root + night media block). tailwind.config.js exposes them via the
+ * --ink-soft-rgb/--ink-mute-rgb channel vars so /opacity modifiers resolve.
+ */
+export const inkSoft = { day: "#2A3441", night: "#C4CCD7" } as const;
+export const inkMute = { day: "#647380", night: "#828C9C" } as const;
+
 /** Chunky offset shadows: ink-cast on day, sun-deep-glowing on night.
     AMS-SPR-09: night shadows glow with the re-toned weathered `sun.deep.night`
     (#84722F, was #8A7300) — they read `var(--sun-deep)` in tokens.css, so this
@@ -312,6 +339,16 @@ export const accent = {
   // #E33C2D → #CE3623 so white text hits the WCAG AA 4.5:1 floor.
   emperor: { day: "#CE3623", night: "#FF6155" }, // danger only
 } as const;
+
+/**
+ * Semantic danger alias (Q1). Danger IS emperor — the reserved red accent —
+ * under the name danger-call sites already use (`text-danger`, `border-danger`,
+ * `bg-danger/10`). One red, two names; the alias object IS accent.emperor so
+ * the two can never drift. tokens.css mirrors it as --danger: var(--emperor)
+ * plus the --danger-rgb channels (day 206 54 35 / night 255 97 85) that the
+ * Tailwind `danger` color reads so bg-danger/10 resolves.
+ */
+export const danger = accent.emperor;
 
 /**
  * Research-state family (herdr transfer P0-1). Mirrors tokens.css: semantic
