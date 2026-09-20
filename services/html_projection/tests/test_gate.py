@@ -214,3 +214,66 @@ def test_gate_violation_carries_diagnostics():
     v = exc_info.value.violations[0]
     assert v.kind == "event_handler"
     assert "onload" in v.match
+
+
+# ── Attribute VALUES are not attribute names (the ?onsale=1 false positive) ──
+#
+# Scoping the event-handler scan to tag interiors stops PROSE from firing, but
+# a tag interior contains its own attribute values — and a URL is a string full
+# of name=value pairs. Every one of these is an ordinary link, and each used to
+# classify the whole document as containing an event handler, which makes
+# GET /documents/{id}/render answer 500 for the entire document.
+@pytest.mark.parametrize(
+    "html",
+    [
+        '<a href="https://shop.example.com/deals?onsale=1">sale</a>',
+        '<a href="https://docs.example.com/guide?online=true">guide</a>',
+        '<a href="https://a.example/x#section-only=2">jump</a>',
+        '<a href="/x?ONSALE=1">upper</a>',
+        "<a href=/x?onsale=1>unquoted</a>",
+        '<img src="/i.png?onerror=0" alt="not a handler">',
+    ],
+    ids=[
+        "onsale", "online", "section-only", "uppercase-in-value",
+        "unquoted-value", "onerror-in-src-value",
+    ],
+)
+def test_gate_does_not_fire_on_on_tokens_inside_attribute_values(html):
+    assert find_violations(html) == [], (
+        f"benign link classified as an event handler: {find_violations(html)}"
+    )
+
+
+# The other direction, and the one that matters: blanking values must not
+# blind the gate. Every real handler form still has to fire.
+@pytest.mark.parametrize(
+    "html",
+    [
+        '<div onclick="steal()">x</div>',
+        "<div onclick=steal()>x</div>",
+        '<img src="x" onerror="steal()">',
+        '<body ONLOAD="steal()">x</body>',
+        '<a on-load="steal()">x</a>',
+        '<div onclick ="steal()">x</div>',
+        '<div data-x="?onsale=1" onclick="steal()">both</div>',
+    ],
+    ids=[
+        "quoted", "unquoted", "onerror", "uppercase", "hyphenated",
+        "space-before-equals", "benign-value-plus-real-handler",
+    ],
+)
+def test_gate_still_catches_every_event_handler_form(html):
+    kinds = [v.kind for v in find_violations(html)]
+    assert "event_handler" in kinds, (
+        f"a real event handler was not caught after value-blanking: {html!r} "
+        f"-> {kinds}"
+    )
+
+
+def test_value_blanking_preserves_attribute_names() -> None:
+    """Pin the mechanism, so a future rewrite cannot quietly blank names too."""
+    from services.html_projection.gate import _attr_names_only
+
+    assert _attr_names_only('<a href="/x?onsale=1">') == "<a href=>"
+    assert _attr_names_only('<div onclick="x()">') == "<div onclick=>"
+    assert _attr_names_only("<div onclick=alert(1)>") == "<div onclick=>"
