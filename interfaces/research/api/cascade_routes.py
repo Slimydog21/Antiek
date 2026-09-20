@@ -534,7 +534,7 @@ async def suggestions(limit: int = 8) -> SuggestionsResponse:
 
 
 @cascade_router.post("/plans")
-async def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
+def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
     """Decompose a problem into an editable, focus-checked sub-question tree
     and persist it. Returns the root node id + the editable tree."""
     if req.spend_mode is SpendControlMode.HARD_CEILING and not req.sub_questions:
@@ -607,7 +607,7 @@ async def get_plan(root_id: str) -> dict[str, Any]:
 
 
 @cascade_router.post("/plans/{root_id}/edit")
-async def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
+def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
     """Apply one edit to the tree and re-persist. Any edit re-opens the
     approval gate (SPR-05 contract)."""
     with _translate():
@@ -648,7 +648,7 @@ def _apply_edit(tree: PlanTree, req: TreeEditRequest) -> bool:
 
 
 @cascade_router.post("/plans/{root_id}/approve")
-async def approve(root_id: str, req: ApproveRequest) -> dict[str, Any]:
+def approve(root_id: str, req: ApproveRequest) -> dict[str, Any]:
     with _write("approve_plan") as con:
         approval = approve_plan(
             root_id, approver=req.approver, investigation_id="__operator__", con=con
