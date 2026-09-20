@@ -46,7 +46,8 @@ WP-3 (2026-09-18): optional in-process warm writer keepalive
 (`ANTIEK_WRITE_KEEPALIVE_S`, default 20s; disabled under pytest). Parks the
 DuckDB handle + flock after close so the next `connect_write` in this process
 skips the ~6.8s open on large DBs. Flock stays held while warm (cross-process
-writers wait). Cite: #3121 coexist; #3164/#3165 fill contention.
+writers request handoff). Independent expiry releases idle handles without
+another local acquisition. Cite: #3121 coexist; #3164/#3165 fill contention.
 """
 
 from __future__ import annotations
@@ -61,7 +62,7 @@ import stat
 import threading
 import time
 from collections.abc import Iterable, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
 
 import duckdb
@@ -108,6 +109,7 @@ class _WarmWriterSlot:
     db_path: str
     expires_mono: float
     last_purpose: str
+    expiry_cancel: threading.Event = field(default_factory=threading.Event)
 
 
 _warm_slots: dict[str, _WarmWriterSlot] = {}
@@ -120,6 +122,7 @@ def _warm_key(db_path: str) -> str:
 
 def _destroy_warm_slot(slot: _WarmWriterSlot) -> None:
     """Fully release a parked writer (DuckDB close + flock + local registry)."""
+    slot.expiry_cancel.set()
     with contextlib.suppress(Exception):
         slot.con.close()
     with contextlib.suppress(Exception):
@@ -130,6 +133,39 @@ def _destroy_warm_slot(slot: _WarmWriterSlot) -> None:
         os.close(slot.lock_fd)
 
 
+def _warm_handoff_requested(db_path: str) -> bool:
+    # A failed coordination probe must not strand a parked writer.
+    try:
+        return write_handoff_requested(db_path)
+    except OSError:
+        return True
+
+
+def _schedule_warm_expiry(key: str, slot: _WarmWriterSlot) -> None:
+    """One cancellable worker per parked lease; no thread churn while idle."""
+
+    def watch() -> None:
+        while not slot.expiry_cancel.wait(max(0.0, min(0.1, slot.expires_mono - time.monotonic()))):
+            if _expire_warm_slot(key, slot):
+                return
+
+    threading.Thread(target=watch, daemon=True, name="duckdb-warm-expiry").start()
+
+
+def _expire_warm_slot(key: str, slot: _WarmWriterSlot) -> bool:
+    # Never acquire the process gate here: a contender may hold it while
+    # waiting for this very flock. Identity prevents stale callbacks from
+    # closing a connection already taken for reuse or parked again.
+    with _warm_slots_lock:
+        if _warm_slots.get(key) is not slot:
+            return True
+        if time.monotonic() < slot.expires_mono and not _warm_handoff_requested(slot.db_path):
+            return False
+        _warm_slots.pop(key)
+    _destroy_warm_slot(slot)
+    return True
+
+
 def _take_warm_slot(db_path: str) -> _WarmWriterSlot | None:
     """Return a live warm slot for reuse, or None. Caller holds process gate."""
     key = _warm_key(db_path)
@@ -137,7 +173,8 @@ def _take_warm_slot(db_path: str) -> _WarmWriterSlot | None:
         slot = _warm_slots.pop(key, None)
     if slot is None:
         return None
-    if time.monotonic() >= slot.expires_mono:
+    slot.expiry_cancel.set()
+    if time.monotonic() >= slot.expires_mono or _warm_handoff_requested(db_path):
         _destroy_warm_slot(slot)
         return None
     return slot
@@ -176,6 +213,11 @@ def _park_warm_slot(
     with _warm_slots_lock:
         old = _warm_slots.pop(key, None)
         _warm_slots[key] = new_slot
+        try:
+            _schedule_warm_expiry(key, new_slot)
+        except RuntimeError:
+            _warm_slots.pop(key)
+            _destroy_warm_slot(new_slot)
     if old is not None:
         # Should be unreachable under the process gate; destroy defensively.
         _destroy_warm_slot(old)
@@ -266,15 +308,39 @@ def _ensure_waiter_dir(db_path: str) -> str:
     return waiter_dir
 
 
-def _register_write_waiter(db_path: str) -> tuple[int, str]:
+def _register_write_waiter(
+    db_path: str, *, deadline: float | None = None
+) -> tuple[int, str]:
     waiter_dir = _ensure_waiter_dir(db_path)
-    path = os.path.join(
-        waiter_dir,
-        f"{os.getpid()}-{threading.get_ident()}-{secrets.token_hex(8)}",
-    )
-    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    fcntl.flock(fd, fcntl.LOCK_EX)
-    return fd, path
+    if deadline is None:
+        deadline = time.monotonic() + 5.0
+    while True:
+        path = os.path.join(
+            waiter_dir,
+            f"{os.getpid()}-{threading.get_ident()}-{secrets.token_hex(8)}",
+        )
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        published = False
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                # A stale-token probe may unlink between creation and flock.
+                # Once locked, probes leave this inode alone.
+                token = os.fstat(fd)
+                visible = os.stat(path, follow_symlinks=False)
+                published = (token.st_dev, token.st_ino) == (
+                    visible.st_dev, visible.st_ino
+                )
+            except (BlockingIOError, FileNotFoundError):
+                pass
+            if published:
+                return fd, path
+        finally:
+            if not published:
+                _unregister_write_waiter((fd, path))
+        if time.monotonic() >= deadline:
+            raise WriteLockTimeout(f"Timed out publishing write waiter on {db_path}")
+        time.sleep(min(0.001, max(0.0, deadline - time.monotonic())))
 
 
 def _unregister_write_waiter(waiter: tuple[int, str] | None) -> None:
@@ -618,6 +684,7 @@ class LockedConnection:
             and not self._in_explicit_transaction
             and self._error is None
             and self._lock_fd >= 0
+            and not _warm_handoff_requested(self._db_path)
         )
         if can_park:
             # Log on the warm connection — re-opening for write_log would
@@ -662,6 +729,15 @@ class LockedConnection:
                 error=self._error,
                 max_wait_s=self._close_log_max_wait_s,
             )
+
+
+def _yield_to_waiters(db_path: str, deadline: float, poll_interval_s: float) -> None:
+    """Let published contenders enter before a new local acquisition competes."""
+    while write_handoff_requested(db_path):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise WriteLockTimeout(f"Timed out yielding to prior waiters on {db_path}")
+        time.sleep(min(poll_interval_s, remaining))
 
 
 def connect_write(
@@ -710,6 +786,18 @@ def connect_write(
         raise
 
 
+
+def _is_connection_contention(exc: Exception) -> bool:
+    # A read-oriented same-config handle can retain DuckDB's own file lock
+    # after the parked writer released the advisory lock. Keep exclusion
+    # while those readers drain; unrelated I/O failures are not retryable.
+    return _SAME_FILE_DIFFERENT_CONFIG in str(exc) or (
+        isinstance(exc, duckdb.IOException)
+        and "Could not set lock on file" in str(exc)
+        and "Conflicting lock is held" in str(exc)
+    )
+
+
 def _connect_write_after_process_gate(
     db_path: str,
     *,
@@ -750,8 +838,9 @@ def _connect_write_after_process_gate(
     # the pathname while another process still holds the old inode would allow
     # two writers to acquire different locks. A dead process releases flock in
     # the kernel, so the permanent file needs no stale-file cleanup.
-    fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o600)
     deadline = time.monotonic() + timeout_s
+    _yield_to_waiters(db_path, deadline, poll_interval_s)
+    fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o600)
     acquire_start = time.monotonic()
     waiter: tuple[int, str] | None = None
     try:
@@ -766,37 +855,27 @@ def _connect_write_after_process_gate(
                 # contender owns a separately flocked token so peers cannot
                 # erase its request and dead-process tokens can be pruned.
                 if waiter is None:
-                    waiter = _register_write_waiter(db_path)
+                    waiter = _register_write_waiter(db_path, deadline=deadline)
                 if time.monotonic() >= deadline:
-                    # Record the failed-acquire in write_log so timeout events
-                    # are observable. Log AFTER closing the fd so we don't
-                    # contend with the lock-holder.
-                    os.close(fd)
-                    _unregister_write_waiter(waiter)
-                    elapsed = time.monotonic() - acquire_start
-                    _log_write_event(
-                        db_path,
-                        purpose or "-",
-                        elapsed,
-                        success=False,
-                        error=f"WriteLockTimeout after {timeout_s}s",
-                        # The caller's acquisition deadline has expired;
-                        # observability must not add a second wait budget.
-                        max_wait_s=0.0,
-                    )
                     raise WriteLockTimeout(
                         f"Could not acquire write lock on {lock_path} within {timeout_s}s. "
                         f"Another writer is holding it; inspect with `lsof {lock_path}`."
                     ) from e
-                time.sleep(
-                    min(poll_interval_s, max(0.0, deadline - time.monotonic()))
-                )
-    except WriteLockTimeout:
-        raise
-    except Exception:
+                time.sleep(min(poll_interval_s, max(0.0, deadline - time.monotonic())))
+    except Exception as exc:
         _unregister_write_waiter(waiter)
         with contextlib.suppress(OSError):
             os.close(fd)
+        if isinstance(exc, WriteLockTimeout):
+            # All acquisition failures share cleanup, including publication.
+            _log_write_event(
+                db_path,
+                purpose or "-",
+                time.monotonic() - acquire_start,
+                success=False,
+                error=f"WriteLockTimeout after {timeout_s}s",
+                max_wait_s=0.0,
+            )
         raise
 
     _unregister_write_waiter(waiter)
@@ -804,7 +883,9 @@ def _connect_write_after_process_gate(
     # Stamp pid + purpose + ISO timestamp for ops debugging — best-effort.
     try:
         os.ftruncate(fd, 0)
-        stamp = f"{os.getpid()} {purpose or '-'} {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n"
+        stamp = (
+            f"{os.getpid()} {purpose or '-'} {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n"
+        )
         os.write(fd, stamp.encode())
     except OSError:
         pass
@@ -820,13 +901,11 @@ def _connect_write_after_process_gate(
             break
         except Exception as exc:
             open_error = exc
-            if _SAME_FILE_DIFFERENT_CONFIG not in str(exc):
+            if not _is_connection_contention(exc):
                 break
             if time.monotonic() >= deadline:
                 break
-            time.sleep(
-                min(poll_interval_s, max(0.0, deadline - time.monotonic()))
-            )
+            time.sleep(min(poll_interval_s, max(0.0, deadline - time.monotonic())))
     if con is None:
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
@@ -947,12 +1026,13 @@ def connect_read(
 
 
 @contextlib.contextmanager
-def authority_handoff_guard(
+def _handoff_guard(
     db_path: str,
     *,
     timeout_s: float = 5.0,
     poll_interval_s: float = 0.05,
     purpose: str = "authority-handoff",
+    log_write: bool = True,
 ) -> Iterator[None]:
     """Bounded exclusive writer-flock guard without opening DuckDB for write.
 
@@ -962,8 +1042,8 @@ def authority_handoff_guard(
     timeout, diagnostic stamp, and best-effort write-log path as writers. Never
     hold this guard over network I/O.
     """
-    if timeout_s <= 0 or poll_interval_s <= 0:
-        raise ValueError("timeout and poll interval must be positive")
+    if timeout_s < 0 or poll_interval_s <= 0:
+        raise ValueError("timeout must be non-negative and poll interval positive")
     lock_path = _lock_path_for(db_path)
     parent = os.path.dirname(lock_path)
     if parent:
@@ -974,6 +1054,7 @@ def authority_handoff_guard(
     waiter: tuple[int, str] | None = None
     acquired = False
     try:
+        _yield_to_waiters(db_path, deadline, poll_interval_s)
         while True:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -983,13 +1064,8 @@ def authority_handoff_guard(
                 if exc.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
                     raise
                 if waiter is None:
-                    waiter = _register_write_waiter(db_path)
+                    waiter = _register_write_waiter(db_path, deadline=deadline)
                 if time.monotonic() >= deadline:
-                    elapsed = time.monotonic() - started
-                    _log_write_event(
-                        db_path, purpose, elapsed, success=False,
-                        error=f"WriteLockTimeout after {timeout_s}s", max_wait_s=0.0,
-                    )
                     raise WriteLockTimeout(
                         f"Could not acquire authority handoff lock on {lock_path} "
                         f"within {timeout_s}s; inspect with `lsof {lock_path}`."
@@ -1000,23 +1076,90 @@ def authority_handoff_guard(
         try:
             os.ftruncate(fd, 0)
             stamp = (
-                f"{os.getpid()} {purpose} "
-                f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n"
+                f"{os.getpid()} {purpose} {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n"
             )
             os.write(fd, stamp.encode())
         except OSError:
             pass
         yield None
+    except WriteLockTimeout:
+        if not acquired and log_write:
+            _log_write_event(
+                db_path,
+                purpose,
+                time.monotonic() - started,
+                success=False,
+                error=f"WriteLockTimeout after {timeout_s}s",
+                max_wait_s=0.0,
+            )
+        raise
     finally:
         _unregister_write_waiter(waiter)
         if acquired:
             fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
-        if acquired:
+        if acquired and log_write:
             _log_write_event(
-                db_path, purpose, time.monotonic() - started,
-                success=True, error=None, max_wait_s=0.0,
+                db_path,
+                purpose,
+                time.monotonic() - started,
+                success=True,
+                error=None,
+                max_wait_s=0.0,
             )
+
+
+@contextlib.contextmanager
+def authority_handoff_guard(
+    db_path: str,
+    *,
+    timeout_s: float = 5.0,
+    poll_interval_s: float = 0.05,
+    purpose: str = "authority-handoff",
+) -> Iterator[None]:
+    """Serialize an authority handoff and retain its existing write-log behavior."""
+    if timeout_s <= 0:
+        raise ValueError("timeout and poll interval must be positive")
+    with _handoff_guard(
+        db_path, timeout_s=timeout_s, poll_interval_s=poll_interval_s, purpose=purpose
+    ):
+        yield None
+
+
+@contextlib.contextmanager
+def snapshot_read(
+    db_path: str,
+    *,
+    timeout_s: float = 15.0,
+    poll_interval_s: float = 0.1,
+    purpose: str = "snapshot",
+) -> Iterator[duckdb.DuckDBPyConnection]:
+    """Hold writer exclusion around a genuine read-only, non-logging snapshot.
+
+    Publish contention so warm owners release promptly. No RW fallback or
+    write_log mutation: callers may promise the source DB is unchanged.
+    Close DuckDB before releasing the permanent flock inode.
+    """
+    deadline = time.monotonic() + timeout_s
+    with _handoff_guard(
+        db_path,
+        timeout_s=timeout_s,
+        poll_interval_s=poll_interval_s,
+        purpose=purpose,
+        log_write=False,
+    ):
+        while True:
+            try:
+                con = duckdb.connect(db_path, read_only=True)
+                break
+            except duckdb.Error as exc:
+                if not _is_connection_contention(exc) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(min(poll_interval_s, max(0.0, deadline - time.monotonic())))
+        try:
+            yield con
+        finally:
+            con.close()
 
 
 def connect_write_retrying(

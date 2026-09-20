@@ -1,0 +1,22 @@
+id: warm-writer-starvation
+observed_at: 2026-09-20
+source: docs/diagnostics/warm-writer-starvation-2026-09-20.md
+agent: codex
+phase: persistence
+failure_type: lock_starvation
+context_summary: |
+  Nightly backups on September 19 and 20 exported and uploaded nothing because
+  the API's parked warm writer retained its flock. Scheduled arXiv ingestion
+  also timed out. Warm expiry was checked only on the next local acquisition.
+input:
+  prompt: Park a warm writer, leave the process idle, and acquire from another process.
+  env:
+    ANTIEK_WRITE_KEEPALIVE_S: '0.15'
+expected_behavior: External writers acquire after expiry or an explicit handoff request.
+actual_failure: External acquisition times out even after the warm lease deadline.
+harness_check_that_now_catches: tests/test_db_lock_warm_writer.py
+fix_commit: 21e7b8248ce69976a54d31216dc24479b57fc7d4
+notes: |
+  Two real subprocess regressions failed on ee283d9c8 before the repair.
+  Code mitigation: independent expiry, contender fairness, non-mutating snapshot guard.
+  Production deployment and recovered backup verification are still pending.
