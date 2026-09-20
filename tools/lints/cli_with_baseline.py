@@ -50,6 +50,7 @@ from typing import Any
 from tools.lints.baseline import (
     ViolationKey,
     compute_keys,
+    enrich_keys_with_snippets,
     filter_to_new_only,
     find_stale_baseline_entries,
     load_baseline,
@@ -165,7 +166,9 @@ def _run_capture(
 ) -> int:
     scan_fn, key_fn, full_name = LINT_REGISTRY[lint_name]
     violations = scan_fn(paths)
-    keys = compute_keys(violations, key_fn)
+    # Stamp the normalized source line so the baseline survives line shifts
+    # (content-keyed matching — see tools/lints/baseline.py).
+    keys = enrich_keys_with_snippets(compute_keys(violations, key_fn), Path.cwd())
     write_baseline(baseline_file, lint=full_name, violations=keys)
     print(f"wrote {len(keys)} violation(s) to {baseline_file}")
     return 0
@@ -185,7 +188,9 @@ def _run_enforce(
         return 2
 
     violations = scan_fn(paths)
-    current_keys = compute_keys(violations, key_fn)
+    current_keys = enrich_keys_with_snippets(
+        compute_keys(violations, key_fn), Path.cwd()
+    )
     new_only = filter_to_new_only(current_keys, baseline)
     for k in new_only:
         print(f"{k.path}:{k.line}:{k.col}: NEW {k.kind}")

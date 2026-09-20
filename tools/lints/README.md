@@ -43,15 +43,26 @@ A baseline entry is the *same grandfathered offense* if it matches on
 because of one mechanical fact: **any mid-file insertion shifts every
 baselined violation downstream of it to a new line number**, and a pure
 `(path, line, col, kind)` key would then report that *unchanged* offense
-as NEW. That is a phantom red — the same debt, moved — not a regression.
+as NEW. That is a phantom red — the same debt, moved — not a regression
+(issue #3236: four such phantom reds in 24h across writelint,
+declared-bar mypy/ruff, and the reachability gate).
+
+The snippet is the source line at the violation site, **stripped and
+whitespace-collapsed** (`" ".join(line.split())`), captured at capture
+time. Normalization is applied again at match time to *both* sides, so
+baselines written before whitespace-collapsing (strip-only snippets)
+still match.
 
 This is **not** a widening of the allow-list and **not** a re-mint:
 
 - The grandfathered `(path, line, col, kind)` set is untouched. Snippets
-  are an *additive* field; entries without one (the substrate-lint
-  baselines, and any v1 entry) match on exact line exactly as before.
+  are an *additive* field; entries without one (any v1 entry) match on
+  exact line exactly as before — no flag-day.
+- Matching is **one-to-one**: a finding is NEW exactly when its
+  `(path, kind, snippet)` multiset exceeds the baseline's. A NEW verbatim
+  duplicate beyond the grandfathered count is still NEW.
 - A shifted offense matches by snippet because its source line is
-  byte-identical to the baselined one — it is the same debt, recognized
+  identical to the baselined one — it is the same debt, recognized
   correctly instead of re-reported.
 - The burn-down rule still holds absolutely: a NEW offense on a source
   line the baseline has never seen is still NEW. The only thing snippet
@@ -61,8 +72,19 @@ This is **not** a widening of the allow-list and **not** a re-mint:
   verbatim-duplicate of an existing offending line of the same type,
   which is itself the same debt.)
 
-`capture` and `enforce` both read the current source line for each
-violation and stamp its `snippet` automatically. To enrich an **existing**
+**The honesty trade-off, stated plainly:** content-keying means that
+fixing one site of a rule while introducing a *new* violation with
+byte-identical normalized source text elsewhere in the same file nets to
+zero in the multiset and is not flagged. The one-to-one consumption
+bounds this to verbatim duplicates of an already-grandfathered line;
+catching the identical-text-but-genuinely-different case is review-owned.
+
+`capture` and `enforce` stamp the snippet automatically in every consumer
+of `tools/lints/baseline.py`: `declared_bar` (ruff + mypy),
+`cli_with_baseline` (the substrate lints), `mypy_strict_baseline`, and
+both reachability gates (`tools/lint/reachability_gate.py` — route
+findings; `tools/lint/reachability_gate_py.py` — all findings).
+To enrich an **existing**
 baseline in place without re-running the tool (the set-preserving
 one-time migration), use the `enrich` subcommand — it adds snippets and
 leaves `(path, line, col, kind)`, `lint`, `schema_version` and

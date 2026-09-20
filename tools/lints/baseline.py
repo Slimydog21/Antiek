@@ -17,19 +17,42 @@ JSON shape (deterministic — diffs cleanly across runs)::
       "lint": "no_raise_in_substrate_writers",
       "generated_at": "2026-05-24T19:30:00+00:00",
       "violations": [
-        {"path": "...", "line": N, "col": N, "kind": "..."},
+        {"path": "...", "line": N, "col": N, "kind": "...", "snippet": "..."},
         ...
       ]
     }
 
 Sorting + the schema_version field protect against accidental churn.
+
+Content-keyed matching (the line-shift defect, issue #3236)
+-----------------------------------------------------------
+A pure ``(path, line, col, kind)`` key re-flags a baselined violation as
+NEW whenever any edit ABOVE it shifts its line — the offense is unchanged,
+only its coordinates moved. ``snippet`` (the normalized source line at the
+violation site: stripped, whitespace-collapsed) closes that: matching is
+two-tier — exact ``(path, line, col, kind)`` first, then a
+``(path, kind, snippet)`` content fallback, consumed one-to-one so a
+finding is NEW exactly when its ``(path, kind, snippet)`` multiset exceeds
+the baseline's. Entries WITHOUT a snippet (every baseline written before
+this field existed) match on exact coordinates only — byte-identical to
+the legacy behavior, so no flag-day.
+
+The honesty trade-off, stated plainly: with content-keying, fixing one
+site of a rule while introducing a NEW violation with byte-identical
+normalized source text elsewhere in the same file nets to zero in the
+multiset and is NOT flagged. The one-to-one slot consumption bounds this
+to verbatim duplicates of an already-grandfathered line under the same
+kind; anything beyond the grandfathered count is still NEW. Consumers
+that stamp snippets: ``declared_bar``, ``cli_with_baseline``,
+``mypy_strict_baseline``, ``reachability_gate`` (route findings),
+``reachability_gate_py``.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -43,6 +66,9 @@ __all__ = [
     "write_baseline",
     "filter_to_new_only",
     "find_stale_baseline_entries",
+    "normalize_snippet",
+    "source_line_snippet",
+    "enrich_keys_with_snippets",
 ]
 
 
@@ -58,12 +84,13 @@ class ViolationKey:
     line: int
     col: int
     kind: str
-    # Normalized source line at capture time (``current_source[line].strip()``).
-    # Empty when unknown (substrate-lint baselines never set it). When present
-    # on BOTH a current finding and a baseline entry, ``filter_to_new_only``
-    # treats a ``(path, kind, snippet)`` match as the SAME grandfathered
-    # offense — robust to the line-shift a mid-file insertion causes. See
-    # "Content-keyed matching" in tools/lints/README.md.
+    # Normalized source line at capture time (stripped, whitespace-collapsed
+    # — see ``normalize_snippet``). Empty when unknown (legacy baselines
+    # never set it). When present on BOTH a current finding and a baseline
+    # entry, ``filter_to_new_only`` treats a ``(path, kind, snippet)`` match
+    # as the SAME grandfathered offense — robust to the line-shift a
+    # mid-file insertion causes. See "Content-keyed matching" in
+    # tools/lints/README.md.
     snippet: str = ""
 
 
@@ -147,6 +174,59 @@ def write_baseline(
         fh.write("\n")
 
 
+def normalize_snippet(text: str) -> str:
+    """Canonical content-match form of a source line: stripped with every
+    internal whitespace run collapsed to one space. Applied at capture time
+    AND at match time (to both sides), so baselines written before
+    whitespace-collapsing (strip-only snippets) still match — an entry whose
+    stored snippet differs only in internal spacing compares equal."""
+    return " ".join(text.split())
+
+
+def source_line_snippet(path: Path, line: int) -> str:
+    """The normalized 1-based source line at ``path:line``, or ``""`` when
+    the file is unreadable or the line is out of range (the caller then
+    falls back to exact-line matching)."""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    if 1 <= line <= len(lines):
+        return normalize_snippet(lines[line - 1])
+    return ""
+
+
+def enrich_keys_with_snippets(
+    keys: list[ViolationKey], repo_root: Path
+) -> list[ViolationKey]:
+    """Return a copy of ``keys`` with each ``snippet`` set to the normalized
+    source line at ``(path, line)`` (``""`` when unavailable). Relative key
+    paths resolve against ``repo_root``; absolute paths are used as-is. Each
+    file is read once (cached per path). This is the capture/enforce
+    companion to the content-keyed fallback in ``filter_to_new_only``."""
+    lines_cache: dict[str, list[str]] = {}
+    out: list[ViolationKey] = []
+    for k in keys:
+        path = Path(k.path)
+        if not path.is_absolute():
+            path = repo_root / path
+        cache_key = str(path)
+        lines = lines_cache.get(cache_key)
+        if lines is None:
+            try:
+                lines = path.read_text(
+                    encoding="utf-8", errors="replace"
+                ).splitlines()
+            except OSError:
+                lines = []
+            lines_cache[cache_key] = lines
+        snippet = (
+            normalize_snippet(lines[k.line - 1]) if 1 <= k.line <= len(lines) else ""
+        )
+        out.append(replace(k, snippet=snippet))
+    return out
+
+
 def filter_to_new_only(
     current: list[ViolationKey],
     baseline: BaselineSchema,
@@ -162,47 +242,49 @@ def filter_to_new_only(
        baselines and v1 baselines behave byte-identically to before).
     2. Content fallback: a current finding with a non-empty ``snippet``
        matches a baseline entry of the same ``(path, kind)`` whose
-       ``snippet`` is byte-identical. This is the same comparison the
-       line-shift detector uses and it provably does NOT mask a genuine
-       NEW violation — a real new offense sits on a source line the new
-       code introduced, whose normalized text is not in the baseline
-       Matching is ONE-TO-ONE (a baseline snippet slot absorbs at most one
-       current finding), so a NEW duplicate beyond the grandfathered count
-       is still NEW — content-keying is non-masking by construction.
+       normalized ``snippet`` is identical.
+
+    Matching is ONE-TO-ONE (a baseline snippet slot absorbs at most one
+    current finding), so a finding is NEW exactly when its
+    ``(path, kind, snippet)`` multiset exceeds the baseline's — a NEW
+    duplicate beyond the grandfathered count is still NEW.
+
+    Exact matches are consumed in a FIRST pass, content matches in a
+    SECOND. Order matters: an exact match also releases its snippet slot,
+    and running exact first guarantees a still-present original is never
+    displaced by a shifted twin that happens to sort earlier — otherwise
+    one baselined entry could absorb one finding via content AND leave the
+    exact match uncounted, masking a genuine NEW duplicate (the multiset
+    rule would be violated).
     """
     exact: set[tuple[str, int, int, str]] = {
         (k.path, k.line, k.col, k.kind) for k in baseline.violations
     }
-    # ONE-TO-ONE content matching: each baseline snippet slot absorbs at most
-    # ONE current finding. A baseline that grandfathers N copies of a snippet
-    # (e.g. repeated ``r.raise_for_status()``) covers up to N current
-    # occurrences; the (N+1)th — a genuinely NEW duplicate — is reported NEW.
-    # This is what makes content-keying provably non-masking: a real new
-    # offense beyond the grandfathered count can never hide behind a slot.
     slots: dict[tuple[str, str, str], int] = {}
     for k in baseline.violations:
         if k.snippet:
-            slots[(k.path, k.kind, k.snippet)] = (
-                slots.get((k.path, k.kind, k.snippet), 0) + 1
-            )
-    new_only: list[ViolationKey] = []
+            sk = (k.path, k.kind, normalize_snippet(k.snippet))
+            slots[sk] = slots.get(sk, 0) + 1
+    # Pass 1 — exact matches consume their baseline entry's content capacity
+    # too: release the snippet slot so a NEW verbatim duplicate added
+    # elsewhere can't hide behind it.
+    unmatched: list[ViolationKey] = []
     for k in current:
         if (k.path, k.line, k.col, k.kind) in exact:
-            # An exact match consumes this baseline entry's content capacity
-            # too: release its snippet slot so a NEW verbatim duplicate added
-            # elsewhere can't hide behind it. Without this, one baselined
-            # entry absorbs one finding via exact AND a second via the content
-            # fallback, the exact-match variant of the verbatim-duplicate mask
-            # the one-to-one design exists to prevent.
             if k.snippet:
-                sk = (k.path, k.kind, k.snippet)
+                sk = (k.path, k.kind, normalize_snippet(k.snippet))
                 if slots.get(sk, 0) > 0:
                     slots[sk] -= 1
-            continue
-        key = (k.path, k.kind, k.snippet) if k.snippet else None
-        if key is not None and slots.get(key, 0) > 0:
-            slots[key] -= 1
-            continue
+        else:
+            unmatched.append(k)
+    # Pass 2 — content fallback for whatever exact matching did not absorb.
+    new_only: list[ViolationKey] = []
+    for k in unmatched:
+        if k.snippet:
+            key = (k.path, k.kind, normalize_snippet(k.snippet))
+            if slots.get(key, 0) > 0:
+                slots[key] -= 1
+                continue
         new_only.append(k)
     return sorted(new_only)
 
@@ -216,37 +298,41 @@ def find_stale_baseline_entries(
     Mirrors ``filter_to_new_only``: a baselined offense that shifted line
     is NOT stale — it still reproduces, just lower in the file — so it must
     not be reported as fixed (which would invite a shrink that drops still-
-    live debt). Exact match first, then the ``(path, kind, snippet)`` content
-    fallback for snippet-bearing entries.
+    live debt). Exact match first (consuming the matching current finding's
+    content capacity), then the ``(path, kind, snippet)`` content fallback
+    for snippet-bearing entries, one-to-one: an entry is stale exactly when
+    the current ``(path, kind, snippet)`` multiset no longer covers it.
     """
     cur_exact: set[tuple[str, int, int, str]] = {
         (k.path, k.line, k.col, k.kind) for k in current
     }
-    # ONE-TO-ONE mirror of filter_to_new_only: each current snippet absorbs
-    # at most one baseline slot, so a baseline entry whose twin was consumed
-    # by another still-live occurrence is NOT reported stale.
     cur_slots: dict[tuple[str, str, str], int] = {}
     for k in current:
         if k.snippet:
-            cur_slots[(k.path, k.kind, k.snippet)] = (
-                cur_slots.get((k.path, k.kind, k.snippet), 0) + 1
-            )
-    stale: list[ViolationKey] = []
+            sk = (k.path, k.kind, normalize_snippet(k.snippet))
+            cur_slots[sk] = cur_slots.get(sk, 0) + 1
+    # Pass 1 — exact matches consume the live finding's content capacity,
+    # releasing its slot so a baseline entry beyond the live count is
+    # reported stale instead of hiding behind a slot the exact match never
+    # freed. Exact runs FIRST (mirror of filter_to_new_only) so a
+    # still-present entry at its exact line is never displaced by a shifted
+    # twin that sorts earlier.
+    unmatched: list[ViolationKey] = []
     for k in baseline.violations:
         if (k.path, k.line, k.col, k.kind) in cur_exact:
-            # Mirror of the filter fix: this baseline entry is still live at
-            # its exact line, so the matching current finding's content
-            # capacity is consumed here. Release its slot so a different
-            # baseline entry beyond the live count is reported stale instead
-            # of hiding behind a slot the exact match never freed.
             if k.snippet:
-                sk = (k.path, k.kind, k.snippet)
+                sk = (k.path, k.kind, normalize_snippet(k.snippet))
                 if cur_slots.get(sk, 0) > 0:
                     cur_slots[sk] -= 1
-            continue
-        key = (k.path, k.kind, k.snippet) if k.snippet else None
-        if key is not None and cur_slots.get(key, 0) > 0:
-            cur_slots[key] -= 1
-            continue
+        else:
+            unmatched.append(k)
+    # Pass 2 — content fallback for whatever exact matching did not absorb.
+    stale: list[ViolationKey] = []
+    for k in unmatched:
+        if k.snippet:
+            key = (k.path, k.kind, normalize_snippet(k.snippet))
+            if cur_slots.get(key, 0) > 0:
+                cur_slots[key] -= 1
+                continue
         stale.append(k)
     return sorted(stale)
