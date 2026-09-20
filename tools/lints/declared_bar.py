@@ -66,12 +66,12 @@ import json
 import subprocess
 import sys
 from collections.abc import Iterable
-from dataclasses import replace
 from pathlib import Path
 
 from tools.lints.baseline import (
     ViolationKey,
     compute_keys,
+    enrich_keys_with_snippets,
     filter_to_new_only,
     find_stale_baseline_entries,
     load_baseline,
@@ -257,39 +257,6 @@ def _dedupe(keys: list[ViolationKey]) -> list[ViolationKey]:
     ``compute_keys``) so the existing substrate-lint baselines keep
     their exact established behavior."""
     return sorted(set(keys))
-
-
-def _read_source_lines(repo_root: Path, path: str, cache: dict[str, list[str]]) -> list[str]:
-    """Read a source file once (cached per path) and return its split lines.
-
-    Used to capture the normalized source ``snippet`` for content-keyed
-    baseline matching (see tools/lints/baseline.py). Returns an empty list
-    on any read error so the caller falls back to exact-line matching."""
-    cached = cache.get(path)
-    if cached is not None:
-        return cached
-    try:
-        lines = (repo_root / path).read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        lines = []
-    cache[path] = lines
-    return lines
-
-
-def enrich_keys_with_snippets(
-    keys: list[ViolationKey], repo_root: Path
-) -> list[ViolationKey]:
-    """Return a copy of ``keys`` with each ``snippet`` set to the normalized
-    source line at ``(path, line)`` (``""`` when unavailable). Deterministic:
-    snippet = ``current_source[line].strip()``. This is the capture/enforce
-    companion to the content-keyed fallback in ``filter_to_new_only``."""
-    cache: dict[str, list[str]] = {}
-    out: list[ViolationKey] = []
-    for k in keys:
-        lines = _read_source_lines(repo_root, k.path, cache)
-        snippet = lines[k.line - 1].strip() if 1 <= k.line <= len(lines) else ""
-        out.append(replace(k, snippet=snippet))
-    return out
 
 
 def _cmd_capture(tool: str, baseline_file: Path) -> int:

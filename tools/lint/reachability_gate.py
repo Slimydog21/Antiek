@@ -157,6 +157,7 @@ from tools.lints.baseline import (  # noqa: E402  (after sys.path bootstrap)
     filter_to_new_only,
     find_stale_baseline_entries,
     load_baseline,
+    source_line_snippet,
     write_baseline,
 )
 
@@ -439,6 +440,15 @@ def find_unreachable_routes() -> list[tuple[Path, int, str, str]]:
 # identity survives the App.tsx line shifting (lines move constantly); the line
 # is recorded for the human-facing pointer but the prefix-in-kind is what makes
 # the key stable across unrelated edits to App.tsx.
+#
+# Route findings ALSO stamp ``snippet`` — the normalized ``<Route path="…" …>``
+# declaration line. Kind embeds the prefix, but exact baseline membership still
+# keys on the line, so ANY edit above the declaration used to re-flag the route
+# as NEW at a shifted line (issue #3236 — /coordination/cost-consent and
+# /_panel red on main after unrelated App.tsx edits). The snippet lets the
+# (path, kind, snippet) content fallback recognize the shifted declaration as
+# the same grandfathered route. Augmentation findings anchor at line 1 with a
+# constant kind — exact-stable already — so they carry no snippet.
 
 
 def _finding_to_key(finding: tuple[Path, int, str, str]) -> ViolationKey:
@@ -448,6 +458,9 @@ def _finding_to_key(finding: tuple[Path, int, str, str]) -> ViolationKey:
         line=line,
         col=0,
         kind=kind,
+        snippet=source_line_snippet(path, line)
+        if kind.startswith("route:")
+        else "",
     )
 
 

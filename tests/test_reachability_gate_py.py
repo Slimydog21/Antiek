@@ -1652,3 +1652,79 @@ def test_reachable_top_level_substrate_module_credits_child_package(
     )
     res = _run([sys.executable, str(gate)], cwd=root)
     assert res.returncode == 0, res.stdout + res.stderr
+
+
+# =========================================================================== #
+# (g) Issue #3236 — a baselined finding that SHIFTS line (an edit above it)
+#     is the same grandfathered stranding, not NEW; and a pure shift does not
+#     trip the shrink-only write guard. Content-keyed (path, kind, snippet)
+#     fallback over the kind-embedded identity.
+# =========================================================================== #
+def test_shifted_uncalled_export_is_not_new_and_rewrite_needs_no_force(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _build_clean_tree(root)
+    baseline = root / "tools" / "lints" / "baselines" / "reachability_py.json"
+
+    # One genuine uncalled export, grandfathered at first mint (--force: the
+    # initial mint adds keys by definition).
+    target = root / "substrate" / "authz" / "authority.py"
+    _write(
+        target,
+        '__all__ = ["execute_authorized_call"]\n\n\n'
+        "def execute_authorized_call(x: int) -> int:\n    return x\n",
+    )
+    mint = _run(
+        [sys.executable, str(gate), "--write-baseline", str(baseline),
+         "--force-baseline"],
+        cwd=root,
+    )
+    assert mint.returncode == 0, f"{mint.stdout}\n{mint.stderr}"
+    clean = _run([sys.executable, str(gate)], cwd=root)
+    assert clean.returncode == 0, (
+        f"expected green right after mint, got {clean.returncode}\n"
+        f"{clean.stdout}\n{clean.stderr}"
+    )
+
+    # SHIFT: two comment lines above the def — the finding moves from line 4
+    # to line 6 on byte-identical source text.
+    _write(
+        target,
+        '__all__ = ["execute_authorized_call"]\n\n'
+        "# inserted by an unrelated PR\n# second inserted line\n\n"
+        "def execute_authorized_call(x: int) -> int:\n    return x\n",
+    )
+    shifted = _run([sys.executable, str(gate)], cwd=root)
+    assert shifted.returncode == 0, (
+        f"a line-shifted grandfathered finding must NOT red the gate, got "
+        f"{shifted.returncode}\n{shifted.stdout}\n{shifted.stderr}"
+    )
+
+    # The shrink-only write guard uses the same two-tier matching: a pure
+    # shift is not an ADD, so the re-capture succeeds WITHOUT --force and
+    # keeps the entry (at its new line).
+    rewrite = _run(
+        [sys.executable, str(gate), "--write-baseline", str(baseline)], cwd=root
+    )
+    assert rewrite.returncode == 0, (
+        f"pure-shift re-capture must not need --force, got {rewrite.returncode}\n"
+        f"{rewrite.stdout}\n{rewrite.stderr}"
+    )
+    kinds = {v["kind"] for v in json.loads(baseline.read_text())["violations"]}
+    assert "export:uncalled:execute_authorized_call" in kinds
+
+    # NO-MASK: a NEW uncalled export next to the shifted grandfathered one
+    # still reds.
+    _write(
+        root / "substrate" / "authz" / "extra.py",
+        '__all__ = ["guard_the_new_thing"]\n\n\n'
+        "def guard_the_new_thing(x: int) -> int:\n    return x\n",
+    )
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, (
+        f"expected RED=1 on a NEW uncalled export, got {red.returncode}\n"
+        f"{red.stdout}\n{red.stderr}"
+    )
+    assert "guard_the_new_thing" in red.stdout + red.stderr

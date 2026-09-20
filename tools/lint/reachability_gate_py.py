@@ -344,6 +344,7 @@ from tools.lints.baseline import (  # noqa: E402  (after sys.path bootstrap)
     filter_to_new_only,
     find_stale_baseline_entries,
     load_baseline,
+    source_line_snippet,
     write_baseline,
 )
 
@@ -1848,6 +1849,13 @@ def find_unimported_substrate_packages(
 # so a finding's identity survives unrelated line shifts within its file (the
 # name is stable; the line is the human pointer). Renaming or moving the symbol
 # changes the kind/path and is correctly treated as a NEW fact.
+#
+# Every finding also stamps ``snippet`` — the normalized source line at the
+# anchor (the router assignment / ``def`` line / package ``__init__`` head).
+# Exact baseline membership still keys on the line, so an edit ABOVE a baselined
+# finding used to re-flag it as NEW at a shifted line (issue #3236); the snippet
+# lets the (path, kind, snippet) content fallback recognize the shifted finding
+# as the same grandfathered stranding.
 def _finding_to_key(finding: Finding) -> ViolationKey:
     path, line, kind, _ = finding
     return ViolationKey(
@@ -1855,6 +1863,7 @@ def _finding_to_key(finding: Finding) -> ViolationKey:
         line=line,
         col=0,
         kind=kind,
+        snippet=source_line_snippet(path, line),
     )
 
 
@@ -1958,15 +1967,16 @@ def main(argv: list[str] | None = None) -> int:
             shown = target
         # Shrink-only enforcement: the written set must be a SUBSET of the
         # existing baseline (removals only). Any current key not already
-        # grandfathered is an ADD — refuse unless --force-baseline.
+        # grandfathered is an ADD — refuse unless --force-baseline. The ADD
+        # check uses the shared two-tier matcher (exact, then
+        # (path, kind, snippet) content fallback) so a finding that merely
+        # SHIFTED line under an edit above it is the same grandfathered
+        # stranding, not an add (issue #3236).
         try:
-            existing = {
-                (k.path, k.line, k.col, k.kind)
-                for k in load_baseline(target).violations
-            }
+            existing = load_baseline(target)
         except FileNotFoundError:
-            existing = set()
-        added = [k for k in keys if (k.path, k.line, k.col, k.kind) not in existing]
+            existing = None
+        added = keys if existing is None else filter_to_new_only(keys, existing)
         if added and not args.force_baseline:
             print(
                 f"shrink-only: {len(added)} new finding(s) cannot be baselined "
