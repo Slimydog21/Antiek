@@ -248,6 +248,34 @@ def ingest_url(
     chunks_written = 0
     emb = embedder or default_embedding_provider()
 
+    # Embed BEFORE taking the write lock, not inside the insert loop.
+    #
+    # This used to call emb.encode(chunk.text) per chunk inside
+    # `with connect_write(...)`, so a document's worth of model forward passes
+    # ran while holding the exclusive flock on a single-writer DuckDB. Every
+    # other writer — the nightly backup (180s deadline) and the arXiv OAI sync
+    # (300s) among them — waited on an embedding computation that needed no
+    # lock at all. Nothing here touches the database, so it belongs outside.
+    #
+    # It also makes the ingest wrappable in a transaction: holding one open
+    # across N forward passes would be worse than the non-atomicity it fixes.
+    chunk_embeddings = [emb.encode(chunk.text) for chunk in chunks]
+
+    # Same for the per-chunk node label. Its text depends only on chunk.text,
+    # document_id (line 209) and the index, all known here, so both the label
+    # and its embedding are computed up front. Kept as one list so the loop
+    # below stays a pure write.
+    chunk_node_labels: list[str] = []
+    for _i, _chunk in enumerate(chunks):
+        _stripped = _chunk.text.strip()
+        _label = _stripped.splitlines()[0] if _stripped else ""
+        if len(_label) > _NODE_LABEL_MAX:
+            _label = _label[: _NODE_LABEL_MAX - 1] + "…"
+        if not _label:
+            _label = f"{document_id}#{_i}"
+        chunk_node_labels.append(_label)
+    label_embeddings = [emb.encode(label) for label in chunk_node_labels]
+
     from runtime.db_lock import connect_write
 
     with connect_write(resolved_db_path, purpose="acquisition/urls") as con:
@@ -366,24 +394,20 @@ def ingest_url(
                 chunk_index=i,
                 text=chunk.text,
                 section_path=chunk.section or None,
-                embedding=emb.encode(chunk.text),
+                embedding=chunk_embeddings[i],
                 token_count=chunk.token_count,
             )
             chunk_ids.append(chunk_id)
             chunks_written += 1
 
-            label = chunk.text.strip().splitlines()[0] if chunk.text.strip() else ""
-            if len(label) > _NODE_LABEL_MAX:
-                label = label[: _NODE_LABEL_MAX - 1] + "…"
-            if not label:
-                label = f"{document_id}#{i}"
+            label = chunk_node_labels[i]
             node_id = insert_node(
                 con,
                 canonical_label=label,
                 node_type="entity",
                 graph_scope="cross_domain",
                 investigation_id=investigation_id,
-                embedding=emb.encode(label),
+                embedding=label_embeddings[i],
                 metadata={
                     "source": "url",
                     "final_url": page.final_url,
