@@ -1,3 +1,4 @@
+import WorkflowArt from "../../brand/WorkflowArt";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -110,9 +111,12 @@ export default function InterviewIndex() {
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Interviews
-            </h1>
+            <div className="flex items-center gap-3">
+              <WorkflowArt workflow="interviews" size={52} className="shrink-0" />
+              <h1 className="text-2xl font-serif text-ink dark:text-bright">
+                Interviews
+              </h1>
+            </div>
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Operator-facing index of interview projects + invited
               informants. Per master-spec §11.5: every Loop 4 interview
