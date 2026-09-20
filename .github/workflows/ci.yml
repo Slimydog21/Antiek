@@ -605,6 +605,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # tools/specs/verify_spec_refs.test.ts is a GROUND-TRUTH suite: it
+          # resolves paths with `git cat-file -e origin/main:<path>` rather
+          # than mocking existence. A default checkout creates
+          # refs/remotes/origin/<checked-out-branch>, which on a PR is the
+          # merge ref -- so `origin/main` does not resolve, every lookup
+          # returns false, and the 5 ground-truth cases fail while the same
+          # job is green on a push to main (where origin/main DOES exist).
+          # Same reason the tsc/pytest jobs already pin this.
+          fetch-depth: 0
 
       - name: Set up Node 20
         uses: actions/setup-node@v6

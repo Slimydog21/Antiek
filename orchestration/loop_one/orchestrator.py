@@ -1704,6 +1704,16 @@ async def run_synthesis_tail_from_pack(
         return ctx
 
     assert ctx.synthesis is not None
+    # Persist BEFORE announcing. `_deposit_synthesis_to_substrate` used to be
+    # a synchronous call here, so no yield point existed between the emit and
+    # the write and every consumer woke to a durable row. Moving it onto
+    # `asyncio.to_thread` (to keep the blocking DuckDB write off the loop)
+    # introduced a yield, so a subscriber to INVESTIGATION_COMPLETED could
+    # observe "completed" before the synthesis existed — the frontend, the
+    # exporter, or any other listener, not just a test. Depositing first keeps
+    # the write off the event loop AND restores the ordering guarantee the
+    # event implies.
+    await asyncio.to_thread(_deposit_synthesis_to_substrate, ctx)
     await broadcast_emit(
         broadcaster,
         ctx.investigation_id,
@@ -1719,7 +1729,6 @@ async def run_synthesis_tail_from_pack(
         role="orchestrator",
         policy_id="orchestrator-cascade-tail",
     )
-    await asyncio.to_thread(_deposit_synthesis_to_substrate, ctx)
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
     return ctx
 
@@ -1827,6 +1836,16 @@ async def _run_investigation(
         return
 
     assert ctx.synthesis is not None
+    # Persist BEFORE announcing. `_deposit_synthesis_to_substrate` used to be
+    # a synchronous call here, so no yield point existed between the emit and
+    # the write and every consumer woke to a durable row. Moving it onto
+    # `asyncio.to_thread` (to keep the blocking DuckDB write off the loop)
+    # introduced a yield, so a subscriber to INVESTIGATION_COMPLETED could
+    # observe "completed" before the synthesis existed — the frontend, the
+    # exporter, or any other listener, not just a test. Depositing first keeps
+    # the write off the event loop AND restores the ordering guarantee the
+    # event implies.
+    await asyncio.to_thread(_deposit_synthesis_to_substrate, ctx)
     await broadcast_emit(
         broadcaster,
         ctx.investigation_id,
@@ -1842,7 +1861,6 @@ async def _run_investigation(
         role="orchestrator",
         policy_id="orchestrator-deterministic",
     )
-    await asyncio.to_thread(_deposit_synthesis_to_substrate, ctx)
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
 
 
