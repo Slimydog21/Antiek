@@ -1,0 +1,43 @@
+{
+  "source_commit": "6e2c73d111a50a74ec0c4a72b3fa00f349822b8b",
+  "browser": {
+    "notes": [
+      "Browser-added note survives import and removal of its source file. \u96ea <proof>"
+    ],
+    "visible": "Browser-added note survives import and removal of its source file. \u96ea <proof>",
+    "errors": []
+  },
+  "api": {
+    "import_status": 200,
+    "notes_imported": 1,
+    "event_count": 1,
+    "caller_deleted": true,
+    "export_status": 200,
+    "persisted_notes": [
+      "Browser-added note survives import and removal of its source file. \u96ea <proof>"
+    ],
+    "export_bytes": 6017,
+    "scope": "Actual renderer browser Add-note; edited DOM serialized to caller HTML via DevTools, not native Save Page; actual artifact_router import/export on isolated local DB; no full-app auth/production."
+  },
+  "separate_renderer_failure": {
+    "status": 400,
+    "body": {
+      "detail": "Unterminated string starting at: line 12 column 5 (char 370)"
+    }
+  },
+  "limits": [
+    "DOM serialization via DevTools, not native Save Page",
+    "Minimal real artifact_router app without full application auth",
+    "No production/network providers",
+    "Literal closing-script-tag note fails saved-HTML import; separate renderer repair pending"
+  ],
+  "source_sha256": {
+    "substrate/research_artifact/import_notes.py": "f9339383b3ef7d35990d2837ba5894bf91a9b23f4f262b9308d697736f46611e",
+    "substrate/research_artifact/note_store.py": "369dc28b391553c24c105f27cdb51b507da79c3a6d78adefeedb250c2369011d",
+    "substrate/research_artifact/build_body.py": "a9b196cf125d42e954dbbc933717c061eddfa87331b5c6a4446315bd209d8293",
+    "substrate/research_artifact/render.py": "15f95cc9aee77f2a3811cbb317aac452d84e3139fedab472bf6a6bac1e0754a9",
+    "interfaces/research/api/artifact_routes.py": "b66ed6622dba0bf974cdac6acf93eb522141b13676e4868acaee0f8316f800c4",
+    ".audit/browser-note-server.py": "636591eff68d3bbbe3661e53c6582f369241ebaf5b89119c8fa7befcfba6e7fe"
+  },
+  "screenshot_sha256": "3b3559a80e7917179d06d7ca4843ae44ad2b6960fbffcbdf88a500be836c7171"
+}

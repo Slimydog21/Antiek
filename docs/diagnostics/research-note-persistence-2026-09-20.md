@@ -150,3 +150,27 @@ Independent review accepts the immutable commit and parent records any remaining
 ### Out-of-scope temptations
 
 No schema migration, graph mutation, event-log redesign, automatic legacy-path ingestion, background orphan deletion, renderer changes, broader ownership acquisition or deployment.
+
+### Browser and source-scan follow-up
+
+On source6e2c73d11, Chrome interacted with the actual private HTML Add-note
+control. The edited DOM was serialized to a caller HTML file through DevTools;
+the actual artifact_router import returned200/one accepted note/event. The caller
+file was deleted, and actual re-export returned200 with the same note. Window
+error and rejection capture remained empty. This is not native Save Page, full
+application authentication, or the complete writing workflow. See
+[verification JSON](assets/research-note-persistence-20260920/browser-verification.json)
+and [screenshot](assets/research-note-persistence-20260920/add-note.png).
+
+A second browser case containing literal closing-script-tag text produced
+non-importable saved HTML, returning400 with an unterminated JSON string.
+The existing renderer updates the JSON island without escaping less-than signs.
+That separate renderer defect is assigned to the stacked serialization repair;
+it is not hidden by the ordinary-note success above.
+
+Source-only strict Hardenx scan exited0, LOW, zero REAL and six advisory findings
+on the frozen changed Python files with the repository ignore rules preserved.
+Evidence: .audit/notes-hardenx.json. No dependency or production clearance follows.
+Independent GLM review26146 returned ACCEPT, 88/100, on source6e2c73d11.
+Follow-up work addresses managed-directory permissions and explicit restoration
+of accepted note objects. The original acceptance does not cover that follow-up.
