@@ -5292,27 +5292,39 @@ def create_app(
                             "existing_block_count": existing_block_count,
                         },
                     )
-                # Atomic replace: drop all existing blocks, then re-insert
-                # in order. Both operations sit inside the single
-                # connect_write lock so a concurrent read never sees a
-                # partial state.
-                con.execute(
-                    "DELETE FROM notebook_blocks WHERE notebook_id = ?",
-                    [notebook_id],
-                )
-                for block in decomposed:
-                    append_block(
-                        con,
-                        notebook_id=notebook_id,
-                        block_type=block.block_type,
-                        ref_id=block.ref_id,
-                        content=block.content_json,
+                # Atomic replace: drop all existing blocks, then re-insert in
+                # order, then stamp the notebook — all or nothing.
+                #
+                # The write lock alone does NOT make this atomic, and the
+                # previous comment here claimed it did. DuckDB autocommits
+                # every statement, so a failure part-way through the re-insert
+                # loop left the DELETE durable and destroyed the operator's
+                # notes; `append_block` raises on an unknown block_type and a
+                # SQL CHECK backs it, so that failure is reachable from a
+                # decomposer emitting a node type the schema rejects.
+                # Fault-injected on origin/main, a 3-block notebook lost 2 of 3.
+                #
+                # SPR-01 closed the empty-doc TRIGGER of this loss. This closes
+                # the class: mutual exclusion is not atomicity, and only the
+                # transaction supplies the second.
+                with con.transaction():
+                    con.execute(
+                        "DELETE FROM notebook_blocks WHERE notebook_id = ?",
+                        [notebook_id],
                     )
-                con.execute(
-                    "UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP "
-                    "WHERE notebook_id = ?",
-                    [notebook_id],
-                )
+                    for block in decomposed:
+                        append_block(
+                            con,
+                            notebook_id=notebook_id,
+                            block_type=block.block_type,
+                            ref_id=block.ref_id,
+                            content=block.content_json,
+                        )
+                    con.execute(
+                        "UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP "
+                        "WHERE notebook_id = ?",
+                        [notebook_id],
+                    )
                 return get_notebook(con, notebook_id)
 
         # flock wait off the uvicorn loop (#3111 to_thread class).
