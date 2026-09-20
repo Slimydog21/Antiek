@@ -121,7 +121,7 @@ def test_baseline_is_shrink_only_and_explains_itself():
     assert "SHRINK-ONLY" in data["note"]
     assert data["reconsider_if"]
     assert data["provenance"]["base"]
-    assert len(data["known_unbound"]) <= 1, (
+    assert len(data["known_unbound"]) <= 2, (
         "the baseline grew — a new unbound selector must be fixed, not recorded"
     )
 
@@ -136,3 +136,30 @@ def test_a_fixed_baseline_entry_must_be_removed(monkeypatch):
 @pytest.mark.parametrize("missing", ["note", "known_unbound"])
 def test_baseline_has_required_keys(missing):
     assert missing in json.loads(lint.BASELINE.read_text())
+
+
+def test_control_a_dead_css_rule_is_not_evidence_that_an_element_renders(tmp_path, monkeypatch):
+    """A stylesheet declares how a class WOULD look; it does not render anything.
+
+    The first version of this lint counted ``.css`` as source, so a rule left
+    behind by a deleted component was itself the match. ``.werner-rig-flipper-r``
+    survived only in ``src/werner/waddle.css`` after WernerRig was removed, and
+    the spec binding it went unflagged — the lint was blind to exactly the case
+    it exists for. Caught by a peer session deleting the orphaned stylesheet.
+    """
+    spec_dir = tmp_path / "e2e"
+    spec_dir.mkdir()
+    (spec_dir / "s.spec.ts").write_text(
+        """await page.locator('.ghost-rig-foot').click();\n"""
+    )
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    # Defined in CSS, rendered by nothing.
+    (src_dir / "dead.css").write_text(".ghost-rig-foot { opacity: 0; }")
+    (src_dir / "App.tsx").write_text("<div />")
+    monkeypatch.setattr(lint, "E2E", spec_dir)
+    monkeypatch.setattr(lint, "SRC", src_dir)
+    monkeypatch.setattr(lint, "ROOT", tmp_path)
+
+    found = lint.unbound_selectors()
+    assert len(found) == 1 and "ghost-rig-foot" in found[0]

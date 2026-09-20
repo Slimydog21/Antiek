@@ -49,11 +49,21 @@ _TEMPLATE_TESTID = re.compile(r'data-testid=\{\s*`([^`$]*)\$\{')
 _SOURCE_TESTID = re.compile(r'data-testid=["\']([^"\']+)["\']|getByTestId\(\s*["\']([^"\']+)["\']')
 
 
+#: Files that are EVIDENCE AN ELEMENT RENDERS. Deliberately excludes ``.css``.
+#: A stylesheet declares how a class would look if something used it; it does
+#: not show that anything does. A dead rule left behind by a deleted component
+#: is itself a match, so counting CSS made this lint blind to exactly the case
+#: it exists for: ``.werner-rig-flipper-r`` survived only in
+#: ``src/werner/waddle.css`` after WernerRig was removed, and a spec binding it
+#: went unflagged until the stylesheet was deleted separately.
+_RENDER_EVIDENCE_SUFFIXES = {".tsx", ".ts", ".html", ".svg"}
+
+
 def _source_blob() -> str:
-    """Every source file's text, concatenated once. Classes live in .css too."""
+    """Every rendering source file's text, concatenated once."""
     parts: list[str] = []
     for path in sorted(SRC.rglob("*")):
-        if path.is_file() and path.suffix in {".tsx", ".ts", ".css", ".html", ".svg"}:
+        if path.is_file() and path.suffix in _RENDER_EVIDENCE_SUFFIXES:
             try:
                 parts.append(path.read_text())
             except (UnicodeDecodeError, OSError):
