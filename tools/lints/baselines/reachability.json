@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-20T04:19:10.632174+00:00",
+  "generated_at": "2026-09-20T10:26:40.833584+00:00",
   "lint": "reachability_gate",
   "schema_version": 1,
   "violations": [
@@ -7,13 +7,15 @@
       "col": 0,
       "kind": "route:no-inbound-link:/coordination/cost-consent",
       "line": 197,
-      "path": "apps/reading/src/App.tsx"
+      "path": "apps/reading/src/App.tsx",
+      "snippet": "<Route path=\"/coordination/cost-consent\" element={<CostConsent />} />"
     },
     {
       "col": 0,
       "kind": "route:no-inbound-link:/_panel",
       "line": 265,
-      "path": "apps/reading/src/App.tsx"
+      "path": "apps/reading/src/App.tsx",
+      "snippet": "<Route path=\"/_panel/:panelId\" element={<PanelWindowApp />} />"
     }
   ]
 }
