@@ -5,6 +5,7 @@ Cite: runtime/db_lock.py WP-3; #3121 coexist; #3164/#3165 fill contention.
 
 from __future__ import annotations
 
+import errno
 import os
 import time
 from pathlib import Path
@@ -315,3 +316,76 @@ def test_waiter_yield_timeout_releases_local_gate_without_erasing_waiter(tmp_pat
         db_lock._unregister_write_waiter(waiter)
     with db_lock.connect_write(db, timeout_s=1) as con:
         con.execute("SELECT 1")
+
+
+def test_waiter_registration_survives_pruning_before_flock(tmp_path, monkeypatch):
+    db = str(tmp_path / "publication.duckdb")
+    real_flock = db_lock.fcntl.flock
+    pruned = False
+
+    def prune_before_lock(fd, operation):
+        nonlocal pruned
+        if operation == (db_lock.fcntl.LOCK_EX | db_lock.fcntl.LOCK_NB) and not pruned:
+            pruned = True
+            assert not db_lock.write_handoff_requested(db)
+        return real_flock(fd, operation)
+
+    monkeypatch.setattr(db_lock.fcntl, "flock", prune_before_lock)
+    waiter = db_lock._register_write_waiter(db)
+    try:
+        assert pruned
+        assert db_lock.write_handoff_requested(db)
+    finally:
+        db_lock._unregister_write_waiter(waiter)
+
+
+def test_waiter_publication_timeout_cleans_failed_tokens(tmp_path, monkeypatch):
+    db = str(tmp_path / "publication-timeout.duckdb")
+    real_flock = db_lock.fcntl.flock
+    probing = False
+
+    def always_prune(fd, operation):
+        nonlocal probing
+        if operation == (db_lock.fcntl.LOCK_EX | db_lock.fcntl.LOCK_NB) and not probing:
+            probing = True
+            try:
+                db_lock.write_handoff_requested(db)
+            finally:
+                probing = False
+        return real_flock(fd, operation)
+
+    monkeypatch.setattr(db_lock.fcntl, "flock", always_prune)
+    with pytest.raises(db_lock.WriteLockTimeout, match="publishing write waiter"):
+        db_lock._register_write_waiter(db, deadline=time.monotonic() + 0.02)
+    assert not list(Path(db + ".write.waiters").iterdir())
+
+
+def test_publication_failure_closes_writer_sidecar(tmp_path, monkeypatch):
+    db = str(tmp_path / "publication-failure.duckdb")
+    sidecars = []
+    real_open = os.open
+    real_flock = db_lock.fcntl.flock
+
+    def record_open(path, *args, **kwargs):
+        fd = real_open(path, *args, **kwargs)
+        if str(path) == db_lock._lock_path_for(db):
+            sidecars.append(fd)
+        return fd
+
+    def contend(fd, operation):
+        if fd in sidecars:
+            raise BlockingIOError(errno.EWOULDBLOCK, "held")
+        return real_flock(fd, operation)
+
+    def fail_publication(*args, **kwargs):
+        raise db_lock.WriteLockTimeout("publication expired")
+
+    monkeypatch.setattr(os, "open", record_open)
+    monkeypatch.setattr(db_lock.fcntl, "flock", contend)
+    monkeypatch.setattr(db_lock, "_register_write_waiter", fail_publication)
+    monkeypatch.setattr(db_lock, "_log_write_event", lambda *a, **k: None)
+    with pytest.raises(db_lock.WriteLockTimeout, match="publication expired"):
+        db_lock.connect_write(db, timeout_s=0.1)
+    assert len(sidecars) == 1
+    with pytest.raises(OSError):
+        os.fstat(sidecars[0])

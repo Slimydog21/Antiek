@@ -143,3 +143,30 @@ process snapshots serializing on the same inode. The warm/snapshot suite passes
 tsc, vitest and Pages checks passed; pytest shards/keystone were still running.
 Final CI must be checked on the eventual head. Local readiness remains below100;
 production restoration is still unverified.
+
+## Waiter publication review follow-up
+
+GLM completed a distinct-lineage review of the code and decision trail with
+ACCEPT, 88/100. It identified a create-before-flock race: a stale-token probe
+could unlink a new token before registration locked it. A deterministic test
+reproduced an invisible waiter. Registration now uses nonblocking flock,
+verifies pathname and descriptor identity, and retries within the existing
+acquisition deadline. Failed attempts clean their token and descriptor.
+
+The lock auditor then reproduced a sidecar descriptor leak when publication
+raised a timeout. Writer acquisition now has one exception cleanup path and
+logs timeout only after closing the descriptor. Tests cover publication after
+pruning, repeated-pruning timeout cleanup, and sidecar descriptor closure.
+The auditor's final bounded safety verdict is SAFE-TO-PROCEED, 98/100, subject
+to execution of the tests. This is not a production recovery grade.
+
+Remaining review findings: repeated snapshot/authority acquisitions can still
+barge ahead of queued writers; waiter-directory permission/ownership failures
+fail closed and need operator runbook coverage. The expiry worker probes the
+waiter directory up to ten times per second per parked slot. Dependency findings
+and actual rollout/backup recovery remain separate unresolved work.
+
+Executed after the publication and cleanup repairs: 67 tests passed across warm
+writer, snapshot, surviving-reader, backup and export suites on Python3.12.
+Ruff and diff checks passed. This selection differs from the earlier 70-test
+suite; the counts are not a like-for-like comparison. Final-head CI remains pending.

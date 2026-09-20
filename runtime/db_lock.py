@@ -308,15 +308,39 @@ def _ensure_waiter_dir(db_path: str) -> str:
     return waiter_dir
 
 
-def _register_write_waiter(db_path: str) -> tuple[int, str]:
+def _register_write_waiter(
+    db_path: str, *, deadline: float | None = None
+) -> tuple[int, str]:
     waiter_dir = _ensure_waiter_dir(db_path)
-    path = os.path.join(
-        waiter_dir,
-        f"{os.getpid()}-{threading.get_ident()}-{secrets.token_hex(8)}",
-    )
-    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    fcntl.flock(fd, fcntl.LOCK_EX)
-    return fd, path
+    if deadline is None:
+        deadline = time.monotonic() + 5.0
+    while True:
+        path = os.path.join(
+            waiter_dir,
+            f"{os.getpid()}-{threading.get_ident()}-{secrets.token_hex(8)}",
+        )
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        published = False
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                # A stale-token probe may unlink between creation and flock.
+                # Once locked, probes leave this inode alone.
+                token = os.fstat(fd)
+                visible = os.stat(path, follow_symlinks=False)
+                published = (token.st_dev, token.st_ino) == (
+                    visible.st_dev, visible.st_ino
+                )
+            except (BlockingIOError, FileNotFoundError):
+                pass
+            if published:
+                return fd, path
+        finally:
+            if not published:
+                _unregister_write_waiter((fd, path))
+        if time.monotonic() >= deadline:
+            raise WriteLockTimeout(f"Timed out publishing write waiter on {db_path}")
+        time.sleep(min(0.001, max(0.0, deadline - time.monotonic())))
 
 
 def _unregister_write_waiter(waiter: tuple[int, str] | None) -> None:
@@ -782,35 +806,27 @@ def _connect_write_after_process_gate(
                 # contender owns a separately flocked token so peers cannot
                 # erase its request and dead-process tokens can be pruned.
                 if waiter is None:
-                    waiter = _register_write_waiter(db_path)
+                    waiter = _register_write_waiter(db_path, deadline=deadline)
                 if time.monotonic() >= deadline:
-                    # Record the failed-acquire in write_log so timeout events
-                    # are observable. Log AFTER closing the fd so we don't
-                    # contend with the lock-holder.
-                    os.close(fd)
-                    _unregister_write_waiter(waiter)
-                    elapsed = time.monotonic() - acquire_start
-                    _log_write_event(
-                        db_path,
-                        purpose or "-",
-                        elapsed,
-                        success=False,
-                        error=f"WriteLockTimeout after {timeout_s}s",
-                        # The caller's acquisition deadline has expired;
-                        # observability must not add a second wait budget.
-                        max_wait_s=0.0,
-                    )
                     raise WriteLockTimeout(
                         f"Could not acquire write lock on {lock_path} within {timeout_s}s. "
                         f"Another writer is holding it; inspect with `lsof {lock_path}`."
                     ) from e
                 time.sleep(min(poll_interval_s, max(0.0, deadline - time.monotonic())))
-    except WriteLockTimeout:
-        raise
-    except Exception:
+    except Exception as exc:
         _unregister_write_waiter(waiter)
         with contextlib.suppress(OSError):
             os.close(fd)
+        if isinstance(exc, WriteLockTimeout):
+            # All acquisition failures share cleanup, including publication.
+            _log_write_event(
+                db_path,
+                purpose or "-",
+                time.monotonic() - acquire_start,
+                success=False,
+                error=f"WriteLockTimeout after {timeout_s}s",
+                max_wait_s=0.0,
+            )
         raise
 
     _unregister_write_waiter(waiter)
@@ -998,7 +1014,7 @@ def _handoff_guard(
                 if exc.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
                     raise
                 if waiter is None:
-                    waiter = _register_write_waiter(db_path)
+                    waiter = _register_write_waiter(db_path, deadline=deadline)
                 if time.monotonic() >= deadline:
                     elapsed = time.monotonic() - started
                     if log_write:
