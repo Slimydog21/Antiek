@@ -35,7 +35,7 @@
  * gag drops AND Werner stays put (the reel that used to chase is gone).
  *
  * Mirrors the harness of reel-weighty.spec.ts / _ams/penguin.spec.ts exactly:
- * Storybook iframe URL, [data-testid="penguin-mascot"], boundingBox sampling,
+ * Storybook iframe URL, [data-testid="brain-mascot"], boundingBox sampling,
  * and the _ams/visible.ts pure pixel helpers (frameMeanAbsDiff / whiteBoxFraction).
  */
 import { expect, test, type Page } from "@playwright/test";
@@ -67,14 +67,14 @@ interface Box {
 async function loadMascot(page: Page, id: string): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(storyUrl(id), { waitUntil: "domcontentloaded" });
-  const mascot = page.locator('[data-testid="penguin-mascot"]');
+  const mascot = page.locator('[data-testid="brain-mascot"]');
   await expect(mascot, "penguin mascot not found in the story").toBeVisible({
     timeout: 10_000,
   });
 }
 
 async function mascotBox(page: Page): Promise<Box> {
-  const box = await page.locator('[data-testid="penguin-mascot"]').boundingBox();
+  const box = await page.locator('[data-testid="brain-mascot"]').boundingBox();
   expect(box, "no mascot bounding box").not.toBeNull();
   return box!;
 }
@@ -82,7 +82,7 @@ async function mascotBox(page: Page): Promise<Box> {
 /** Is the loop class currently on the bob span? (the JS gate's visible state). */
 async function fishingClassOn(page: Page): Promise<boolean> {
   return page.evaluate(() => {
-    const el = document.querySelector('[data-testid="penguin-mascot"]');
+    const el = document.querySelector('[data-testid="brain-mascot"]');
     return !!el?.querySelector(".werner-fishing");
   });
 }
@@ -97,7 +97,7 @@ async function fishingClassOn(page: Page): Promise<boolean> {
 async function pinMascot(page: Page): Promise<void> {
   await page.evaluate(() => {
     const el = document.querySelector(
-      '[data-testid="penguin-mascot"]',
+      '[data-testid="brain-mascot"]',
     ) as HTMLElement | null;
     if (!el) return;
     const r = el.getBoundingClientRect();
@@ -208,7 +208,7 @@ test.describe("SPR-05 — the endless never-catch loop (real Chromium pixels)", 
     const home = await mascotBox(page);
     await page.evaluate(() => {
       const el = document.querySelector(
-        '[data-testid="penguin-mascot"]',
+        '[data-testid="brain-mascot"]',
       ) as HTMLElement | null;
       if (el) el.style.transition = "";
     });

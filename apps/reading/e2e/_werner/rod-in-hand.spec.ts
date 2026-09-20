@@ -16,7 +16,7 @@
  * tip the line will leave is the rod's actual drawn tip. Only a real-Chromium
  * pixel/geometry sample can. It follows the _ams/penguin.spec.ts harness exactly
  * (Storybook iframe URL,
- * [data-testid="penguin-mascot"], boundingBox sampling).
+ * [data-testid="brain-mascot"], boundingBox sampling).
  *
  * TWO assertions, one per felt claim:
  *   (a) ROD IS LONGER + HELD — the rendered rod (grip→tip in screen pixels) is
@@ -61,14 +61,14 @@ interface Box {
 async function loadMascot(page: Page, id: string): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(storyUrl(id), { waitUntil: "domcontentloaded" });
-  const mascot = page.locator('[data-testid="penguin-mascot"]');
+  const mascot = page.locator('[data-testid="brain-mascot"]');
   await expect(mascot, "penguin mascot not found in the story").toBeVisible({
     timeout: 10_000,
   });
 }
 
 async function mascotBox(page: Page): Promise<Box> {
-  const box = await page.locator('[data-testid="penguin-mascot"]').boundingBox();
+  const box = await page.locator('[data-testid="brain-mascot"]').boundingBox();
   expect(box, "no mascot bounding box").not.toBeNull();
   return box!;
 }
@@ -89,7 +89,7 @@ test.describe("SPR-04 — the rod is LONG and HELD, and the line leaves its real
     // browser: the rod <g>'s on-screen bounding box (getBoundingClientRect runs
     // layout, so this is the actual drawn span, overflow:visible included).
     const rodRect = await page
-      .locator('[data-testid="penguin-mascot"] [data-werner-rod]')
+      .locator('[data-testid="brain-mascot"] [data-werner-rod]')
       .boundingBox();
     expect(rodRect, "the rod <g> did not render in the mascot").not.toBeNull();
     const rod = rodRect!;
@@ -110,7 +110,7 @@ test.describe("SPR-04 — the rod is LONG and HELD, and the line leaves its real
       y: box.y + ROD_BUTT_LOCAL.y * scale,
     };
     const flipperRect = await page
-      .locator('[data-testid="penguin-mascot"] .werner-rig-flipper-r')
+      .locator('[data-testid="brain-mascot"] .werner-rig-flipper-r')
       .boundingBox();
     expect(flipperRect, "the right flipper did not render").not.toBeNull();
     const f = flipperRect!;

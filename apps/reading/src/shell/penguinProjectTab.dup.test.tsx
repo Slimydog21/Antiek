@@ -112,7 +112,7 @@ function treePanelCount(): number {
 describe("Research + (Penguin) yields exactly one project tab (SPR-05 M4 regression)", () => {
   it("repeated single-clicks float the project tree ONCE, never two", () => {
     mountPenguin();
-    const el = screen.getByTestId("penguin-mascot");
+    const el = screen.getByTestId("brain-mascot");
 
     // Three separate single-clicks, each allowed to elapse its float window.
     for (let i = 0; i < 3; i++) {
@@ -139,7 +139,7 @@ describe("Research + (Penguin) yields exactly one project tab (SPR-05 M4 regress
 
     // Now the Penguin floats it — it flips the existing panel, never adds one.
     mountPenguin();
-    fireEvent.click(screen.getByTestId("penguin-mascot"));
+    fireEvent.click(screen.getByTestId("brain-mascot"));
     act(() => {
       vi.advanceTimersByTime(300);
     });
@@ -153,7 +153,7 @@ describe("Research + (Penguin) yields exactly one project tab (SPR-05 M4 regress
     expect(s().panels[otherId]).toBeDefined();
 
     mountPenguin();
-    fireEvent.click(screen.getByTestId("penguin-mascot"));
+    fireEvent.click(screen.getByTestId("brain-mascot"));
     act(() => {
       vi.advanceTimersByTime(300);
     });
