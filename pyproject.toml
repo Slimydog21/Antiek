@@ -82,7 +82,7 @@ dependencies = [
 
 [project.optional-dependencies]
 turbopuffer_shadow = [
-  "turbopuffer==2.8.0",
+  "turbopuffer==2.9.0",
 ]
 # Acquisition-path-specific dependencies. Pull these in only where needed.
 arxiv = ["arxiv>=2.1"]
