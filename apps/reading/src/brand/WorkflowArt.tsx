@@ -26,9 +26,11 @@ import biographyArt from "./workflow-art/biography-512.png";
 import interviewsArt from "./workflow-art/interviews-512.png";
 import libraryArt from "./workflow-art/library-512.png";
 import outcomesArt from "./workflow-art/outcomes-512.png";
+import pricingArt from "./workflow-art/pricing-512.png";
 import readArt from "./workflow-art/read-512.png";
 import researchArt from "./workflow-art/research-512.png";
 import speakArt from "./workflow-art/speak-512.png";
+import trustArt from "./workflow-art/trust-512.png";
 import wrestlerArt from "./workflow-art/wrestler-512.png";
 import writeArt from "./workflow-art/write-512.png";
 
@@ -45,7 +47,11 @@ export type ArtFeature =
   | "library"
   | "wrestler"
   | "outcomes"
-  | "interviews";
+  | "interviews"
+  /** Public-facing shared surfaces. Internal/admin ones (Settings, Privacy,
+   *  Billing, Payouts) get nothing — a mascot there is noise, not welcome. */
+  | "pricing"
+  | "trust";
 
 const ART: Partial<Record<ArtFeature, string>> = {
   research: researchArt,
@@ -57,6 +63,8 @@ const ART: Partial<Record<ArtFeature, string>> = {
   wrestler: wrestlerArt,
   outcomes: outcomesArt,
   interviews: interviewsArt,
+  pricing: pricingArt,
+  trust: trustArt,
 };
 
 /** The floor at which all four props still resolve as distinct objects. */
