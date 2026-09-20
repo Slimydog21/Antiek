@@ -122,7 +122,7 @@ def render_html(body: ResearchArtifactBody) -> str:
     var p = payload();
     p.agent_notes = p.agent_notes || [];
     p.agent_notes.push(t);
-    el.textContent = JSON.stringify(p, null, 2);
+    el.textContent = JSON.stringify(p, null, 2).replace(/</g, "\\\\u003c");
     syncList(p.agent_notes);
     input.value = "";
   }});
