@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-15T19:41:20.460113+00:00",
+  "generated_at": "2026-09-20T10:29:17.527660+00:00",
   "lint": "reachability_gate_py",
   "schema_version": 1,
   "violations": [
@@ -7,241 +7,260 @@
       "col": 0,
       "kind": "package:unimported:ad_targeting",
       "line": 1,
-      "path": "substrate/ad_targeting/__init__.py"
+      "path": "substrate/ad_targeting/__init__.py",
+      "snippet": "\"\"\"Topic-classification \u2192 ad-inventory selection (Sprint 23-24)."
     },
     {
       "col": 0,
       "kind": "package:unimported:advertisers",
       "line": 1,
-      "path": "substrate/advertisers/__init__.py"
+      "path": "substrate/advertisers/__init__.py",
+      "snippet": "\"\"\"Advertiser + campaign storage (Sprint 23-24 \u00a73 deliverable)."
     },
     {
       "col": 0,
       "kind": "package:unimported:agent_skills",
       "line": 1,
-      "path": "substrate/agent_skills/__init__.py"
+      "path": "substrate/agent_skills/__init__.py",
+      "snippet": "\"\"\"Agent kernel skills \u2014 the agent CODING surface for mining + sculpting data."
     },
     {
       "col": 0,
       "kind": "package:unimported:analytics",
       "line": 1,
-      "path": "substrate/analytics/__init__.py"
+      "path": "substrate/analytics/__init__.py",
+      "snippet": "\"\"\"Analytics-plane helpers \u2014 jsonl \u2192 Parquet projections (not OLTP graph)."
     },
     {
       "col": 0,
       "kind": "package:unimported:autoresearch",
       "line": 1,
-      "path": "substrate/autoresearch/__init__.py"
+      "path": "substrate/autoresearch/__init__.py",
+      "snippet": "\"\"\"Autoresearch \u2014 Sprint 30+ thread 5: config sweeps."
     },
     {
       "col": 0,
       "kind": "package:unimported:collective_graph",
       "line": 1,
-      "path": "substrate/collective_graph/__init__.py"
+      "path": "substrate/collective_graph/__init__.py",
+      "snippet": "\"\"\"Collective-graph eligibility flags (Sprint 22 Phase 3)."
     },
     {
       "col": 0,
       "kind": "package:unimported:cross_graph_writer",
       "line": 1,
-      "path": "substrate/cross_graph_writer/__init__.py"
+      "path": "substrate/cross_graph_writer/__init__.py",
+      "snippet": "\"\"\"Cross-graph writer queue (\u00a713.2 discovered-rule propagation)."
     },
     {
       "col": 0,
       "kind": "package:unimported:deletion_worker",
       "line": 1,
-      "path": "substrate/deletion_worker/__init__.py"
-    },
-    {
-      "col": 0,
-      "kind": "package:unimported:dp_shuffler",
-      "line": 1,
-      "path": "substrate/dp_shuffler/__init__.py"
+      "path": "substrate/deletion_worker/__init__.py",
+      "snippet": "\"\"\"Deletion worker \u2014 Sprint 22 Phase 6 \u00a713.3 30-day SLA enforcement."
     },
     {
       "col": 0,
       "kind": "package:unimported:ducklake",
       "line": 1,
-      "path": "substrate/ducklake/__init__.py"
+      "path": "substrate/ducklake/__init__.py",
+      "snippet": "\"\"\"DuckLake catalog \u2014 Sprint 22 Stage 1 + Sprint 30+ Stage 2 transition."
     },
     {
       "col": 0,
       "kind": "package:unimported:edit",
       "line": 1,
-      "path": "substrate/edit/__init__.py"
+      "path": "substrate/edit/__init__.py",
+      "snippet": "\"\"\"Edit + authoring-trajectory capture (specs/write/ SPR-02)."
     },
     {
       "col": 0,
       "kind": "package:unimported:federation",
       "line": 1,
-      "path": "substrate/federation/__init__.py"
+      "path": "substrate/federation/__init__.py",
+      "snippet": "\"\"\"Signed-resource-pull federation protocol (Sprint 30+ thread)."
     },
     {
       "col": 0,
       "kind": "package:unimported:gap_detection",
       "line": 1,
-      "path": "substrate/gap_detection/__init__.py"
+      "path": "substrate/gap_detection/__init__.py",
+      "snippet": "\"\"\"DRW SPR-07 \u2014 structural gap detection."
     },
     {
       "col": 0,
       "kind": "package:unimported:graph_per_user",
       "line": 1,
-      "path": "substrate/graph_per_user/__init__.py"
+      "path": "substrate/graph_per_user/__init__.py",
+      "snippet": "\"\"\"Per-user DuckDB file lifecycle + per-graph key provider."
     },
     {
       "col": 0,
       "kind": "package:unimported:invariants",
       "line": 1,
-      "path": "substrate/invariants/__init__.py"
+      "path": "substrate/invariants/__init__.py",
+      "snippet": "\"\"\"The CI-green-means invariant registry \u2014 Antiek Foundation SPR-06 (KEYSTONE)."
     },
     {
       "col": 0,
       "kind": "package:unimported:multi_user.crdt_scaffold",
       "line": 1,
-      "path": "substrate/multi_user/crdt_scaffold/__init__.py"
+      "path": "substrate/multi_user/crdt_scaffold/__init__.py",
+      "snippet": "\"\"\"CRDT scaffold for the eventual Sprint-22 grant/revoke race resolution."
     },
     {
       "col": 0,
       "kind": "export:uncalled:execute_authorized_call",
       "line": 439,
-      "path": "substrate/multimedia/execution_authorization.py"
+      "path": "substrate/multimedia/execution_authorization.py",
+      "snippet": "def execute_authorized_call( # noqa: UP047 - package supports Python 3.11."
     },
     {
       "col": 0,
       "kind": "export:uncalled:revoke_execution_authorization",
       "line": 572,
-      "path": "substrate/multimedia/execution_authorization.py"
+      "path": "substrate/multimedia/execution_authorization.py",
+      "snippet": "def revoke_execution_authorization("
     },
     {
       "col": 0,
       "kind": "export:uncalled:revoke_async_execution_authorization",
       "line": 667,
-      "path": "substrate/multimedia/execution_authorization.py"
+      "path": "substrate/multimedia/execution_authorization.py",
+      "snippet": "def revoke_async_execution_authorization("
     },
     {
       "col": 0,
       "kind": "export:uncalled:exclude_provider_executions",
       "line": 31,
-      "path": "substrate/multimedia/local_provider_exclusion.py"
+      "path": "substrate/multimedia/local_provider_exclusion.py",
+      "snippet": "def exclude_provider_executions("
     },
     {
       "col": 0,
       "kind": "export:uncalled:get_execution",
       "line": 112,
-      "path": "substrate/multimedia/operations.py"
+      "path": "substrate/multimedia/operations.py",
+      "snippet": "def get_execution("
     },
     {
       "col": 0,
       "kind": "export:uncalled:list_executions",
       "line": 125,
-      "path": "substrate/multimedia/operations.py"
+      "path": "substrate/multimedia/operations.py",
+      "snippet": "def list_executions("
     },
     {
       "col": 0,
       "kind": "export:uncalled:cancel_execution",
       "line": 154,
-      "path": "substrate/multimedia/operations.py"
+      "path": "substrate/multimedia/operations.py",
+      "snippet": "def cancel_execution("
     },
     {
       "col": 0,
       "kind": "export:uncalled:begin_provider_submission",
       "line": 267,
-      "path": "substrate/multimedia/provider_execution.py"
+      "path": "substrate/multimedia/provider_execution.py",
+      "snippet": "def begin_provider_submission("
     },
     {
       "col": 0,
       "kind": "export:uncalled:bind_provider_job",
       "line": 498,
-      "path": "substrate/multimedia/provider_execution.py"
+      "path": "substrate/multimedia/provider_execution.py",
+      "snippet": "def bind_provider_job("
     },
     {
       "col": 0,
       "kind": "export:uncalled:request_provider_cancellation",
       "line": 633,
-      "path": "substrate/multimedia/provider_execution.py"
+      "path": "substrate/multimedia/provider_execution.py",
+      "snippet": "def request_provider_cancellation("
     },
     {
       "col": 0,
       "kind": "export:uncalled:mark_submission_outcome_unknown",
       "line": 774,
-      "path": "substrate/multimedia/provider_execution.py"
+      "path": "substrate/multimedia/provider_execution.py",
+      "snippet": "def mark_submission_outcome_unknown("
     },
     {
       "col": 0,
       "kind": "export:uncalled:validate_settled_execution",
       "line": 181,
-      "path": "substrate/multimedia/ship_cost_snapshot.py"
+      "path": "substrate/multimedia/ship_cost_snapshot.py",
+      "snippet": "def validate_settled_execution("
     },
     {
       "col": 0,
       "kind": "export:uncalled:issue_visual_rights_decision",
       "line": 123,
-      "path": "substrate/multimedia/visual_evidence_authority.py"
+      "path": "substrate/multimedia/visual_evidence_authority.py",
+      "snippet": "def issue_visual_rights_decision("
     },
     {
       "col": 0,
       "kind": "export:uncalled:is_author_claimed",
       "line": 73,
-      "path": "substrate/payouts/contact_guard.py"
+      "path": "substrate/payouts/contact_guard.py",
+      "snippet": "def is_author_claimed(author_ref: str) -> bool:"
     },
     {
       "col": 0,
       "kind": "export:uncalled:guarded_send_to_author",
       "line": 90,
-      "path": "substrate/payouts/contact_guard.py"
+      "path": "substrate/payouts/contact_guard.py",
+      "snippet": "def guarded_send_to_author("
     },
     {
       "col": 0,
       "kind": "package:unimported:public_graph",
       "line": 1,
-      "path": "substrate/public_graph/__init__.py"
+      "path": "substrate/public_graph/__init__.py",
+      "snippet": "\"\"\"Public-graph quality gate (master-spec \u00a713.9)."
     },
     {
       "col": 0,
       "kind": "package:unimported:public_notes_ingest",
       "line": 1,
-      "path": "substrate/public_notes_ingest/__init__.py"
+      "path": "substrate/public_notes_ingest/__init__.py",
+      "snippet": "\"\"\"Public-notes ingest pipeline (Sprint 22 Phase 3)."
     },
     {
       "col": 0,
       "kind": "package:unimported:reading.projection",
       "line": 1,
-      "path": "substrate/reading/projection/__init__.py"
-    },
-    {
-      "col": 0,
-      "kind": "package:unimported:research_bridge",
-      "line": 1,
-      "path": "substrate/research_bridge/__init__.py"
+      "path": "substrate/reading/projection/__init__.py",
+      "snippet": "\"\"\"Canonical HTML projection persistence boundary.\"\"\""
     },
     {
       "col": 0,
       "kind": "package:unimported:research_bridge.eval",
       "line": 1,
-      "path": "substrate/research_bridge/eval/__init__.py"
+      "path": "substrate/research_bridge/eval/__init__.py",
+      "snippet": "\"\"\"Eval-precision tooling for the extractor (SPR-02 milestone 5)."
     },
     {
       "col": 0,
       "kind": "export:uncalled:guard_servable_body",
       "line": 223,
-      "path": "substrate/rights/arxiv_tiers.py"
+      "path": "substrate/rights/arxiv_tiers.py",
+      "snippet": "def guard_servable_body(tier: RightsTier, body: str | None) -> str | None:"
     },
     {
       "col": 0,
       "kind": "package:unimported:synthesis_rubric",
       "line": 1,
-      "path": "substrate/synthesis_rubric/__init__.py"
-    },
-    {
-      "col": 0,
-      "kind": "package:unimported:telemetry_preferences",
-      "line": 1,
-      "path": "substrate/telemetry_preferences/__init__.py"
+      "path": "substrate/synthesis_rubric/__init__.py",
+      "snippet": "\"\"\"Automatic synthesis rubric scoring (master-spec \u00a714.4 wire-up)."
     },
     {
       "col": 0,
       "kind": "package:unimported:trust_center",
       "line": 1,
-      "path": "substrate/trust_center/__init__.py"
+      "path": "substrate/trust_center/__init__.py",
+      "snippet": "\"\"\"Trust Center publication backend (Sprint 22 \u00a713.7 surface)."
     }
   ]
 }
