@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import io
+import os
+import subprocess
+import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +21,8 @@ from substrate.multimedia.local_source_card import (
     LocalSourceCardError,
     LocalSourceCardRegistry,
     LocalSourceCardRequest,
+    _private_png,
+    _publish,
 )
 from substrate.multimedia.visual_selection import ReviewedVisualSelection, VerifiedVisualEvidence
 
@@ -24,6 +31,87 @@ KEY = b"local-source-card-integrity-key-32"
 SEED = b"s" * 32
 VERIFY = bytes(SigningKey(SEED).verify_key)
 EVIDENCE_KEY = b"source-card-evidence-key-32-bytes"
+
+
+def _png_payload() -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (1280, 720), "white").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+@pytest.mark.parametrize("cross_process", [False, True])
+def test_reader_waits_for_publication_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cross_process: bool,
+) -> None:
+    """Hold the actual two-link window beyond the former 100ms retry budget."""
+    root = tmp_path / "cards"
+    root.mkdir(mode=0o700)
+    output = root / "card.png"
+    payload = _png_payload()
+    linked = threading.Event()
+    release = threading.Event()
+    reader_started = threading.Event()
+    real_link = os.link
+
+    def hold_link(src: str, dst: str, *, src_dir_fd: int, dst_dir_fd: int, follow_symlinks: bool) -> None:
+        real_link(src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd, follow_symlinks=follow_symlinks)
+        linked.set()
+        assert release.wait(30), "test did not release publisher"
+
+    def read() -> str:
+        reader_started.set()
+        return _private_png(output)
+
+    monkeypatch.setattr("substrate.multimedia.local_source_card.os.link", hold_link)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        publisher = pool.submit(_publish, root, output.name, payload)
+        child = None
+        try:
+            assert linked.wait(10)
+            assert output.stat().st_nlink == 2
+            if cross_process:
+                child = subprocess.Popen([
+                    sys.executable, "-c",
+                    "import sys; from pathlib import Path; "
+                    "from substrate.multimedia.local_source_card import _private_png; "
+                    "print('ready', flush=True); print(_private_png(Path(sys.argv[1])))",
+                    str(output),
+                ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                assert child.stdout is not None
+                assert pool.submit(child.stdout.readline).result(timeout=10).strip() == "ready"
+                with pytest.raises(subprocess.TimeoutExpired):
+                    child.wait(timeout=3)
+            else:
+                reader = pool.submit(read)
+                assert reader_started.wait(10)
+                with pytest.raises(TimeoutError):
+                    reader.result(timeout=3)
+            release.set()
+            publisher.result(timeout=10)
+            if child is not None:
+                stdout, stderr = child.communicate(timeout=10)
+                assert child.returncode == 0, stderr
+                assert stdout.strip() == hashlib.sha256(payload).hexdigest()
+            else:
+                assert reader.result(timeout=10) == hashlib.sha256(payload).hexdigest()
+            assert output.stat().st_nlink == 1
+            assert list(root.iterdir()) == [output]
+        finally:
+            release.set()
+            if child is not None:
+                if child.poll() is None:
+                    child.kill()
+                child.communicate(timeout=10)
+
+
+def test_persistent_hardlink_is_rejected(tmp_path: Path) -> None:
+    root = tmp_path / "cards"
+    root.mkdir(mode=0o700)
+    output = root / "card.png"
+    _publish(root, output.name, _png_payload())
+    os.link(output, root / "extra-link.png")
+    with pytest.raises(LocalSourceCardError, match="private and bounded"):
+        _private_png(output)
 
 
 @pytest.fixture
