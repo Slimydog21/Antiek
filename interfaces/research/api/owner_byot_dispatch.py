@@ -126,10 +126,16 @@ def dispatch_talk_to_book_byot(
     resource_authority_guard: Callable[[], AbstractContextManager[str]] | None = None,
     config: DispatchConfig | None = None,
     usage_ledger: ByotUsageLedger | None = None,
-    role: str = "user_agent",
+    role: str = "thought_partner",
     action: str = _ACTION,
 ) -> tuple[DispatchResult, DispatchAuthority]:
-    """Revalidate, freeze, and execute exactly one owner-paid model rung."""
+    """Revalidate, freeze, and execute exactly one owner-paid model rung.
+
+    The default role is ``thought_partner``: the Talk-to-Book ask path (the
+    caller that relies on the default) answers through the SAME role as
+    Surface E / AISidecar / Dialogue since the role unify — an owner-paid
+    rung is not a second partner personality. Loop One callers pass their
+    own role explicitly."""
     try:
         authority, exact_config, frozen_route = _freeze_current_authority(
             app=app,

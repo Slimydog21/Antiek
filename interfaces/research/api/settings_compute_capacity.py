@@ -10,6 +10,7 @@ exists. Enforcement is env-gated (``ANTIEK_COMPUTE_CAPACITY_ENFORCEMENT``).
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any, Literal
 
@@ -119,12 +120,13 @@ async def put_compute_capacity(
 ) -> ComputeCapacityResponse:
     owner = request_owner_user_id(request)
     db = _resolve_db_path()
-    try:
+
+    def _sync() -> Any:
         with connect_write(
             db, purpose="settings/compute-capacity:set", timeout_s=_LOCK_TIMEOUT_S
         ) as con:
             try:
-                cap = set_capacity(
+                return set_capacity(
                     con,
                     owner_user_id=owner,
                     tier=body.tier,
@@ -143,6 +145,10 @@ async def put_compute_capacity(
                         status_code=400, detail="units_out_of_range"
                     ) from exc
                 raise HTTPException(status_code=400, detail="invalid_capacity") from exc
+
+    try:
+        # flock wait off the uvicorn loop (#3111 to_thread class).
+        cap = await asyncio.to_thread(_sync)
     except WriteLockTimeout as exc:
         raise HTTPException(
             status_code=503, detail="graph_busy_retry"
