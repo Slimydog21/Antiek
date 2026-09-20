@@ -1,10 +1,19 @@
 """Process-wide test isolation.
 
-Two autouse fixtures, both function-scoped:
+Three autouse fixtures, all function-scoped:
 
 * ``_isolate_default_breaker`` — resets the dispatch circuit-breaker singleton
   between tests (nygard SPR-04), so a chaos test that trips a provider's
   breaker cannot leak into a later test.
+* ``_isolate_provider_credentials`` — removes every ``*_API_KEY`` from the
+  environment. ``substrate/dispatch`` registers a LIVE provider whenever it
+  finds a key, so a test reaching dispatch on a developer's machine opens a
+  real socket to a real vendor: the suite's result then depends on which keys
+  that machine happens to export, and the run can spend real money. CI already
+  blanks these (enforced by ``tools/lint/provider_env_isolation.py``); this
+  fixture makes a local run match CI instead of diverging from it. Tests that
+  want a provider still set one explicitly — ``monkeypatch.setenv`` runs after
+  this fixture.
 * ``_isolate_antiek_store`` (DOGFOOD SPR-04) — points every substrate-touching
   test at a TMP store so no test can mutate the real ``~/.antiek`` store. This
   is the test/prod firewall that closes the test-residue pollution gap at its
@@ -57,6 +66,16 @@ def _check_store_isolated(db_path: str, real: str, *, node_id: str = "") -> None
             "a tmp path, or mark @pytest.mark.real_store_read for a read-only "
             "real-store test."
         )
+
+
+_PROVIDER_KEY_SUFFIX = "_API_KEY"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_provider_credentials(monkeypatch):
+    """No test may inherit a real vendor credential from the host environment."""
+    for name in [key for key in os.environ if key.endswith(_PROVIDER_KEY_SUFFIX)]:
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)

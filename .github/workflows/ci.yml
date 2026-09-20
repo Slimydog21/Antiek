@@ -103,6 +103,8 @@ jobs:
           HERMES_API_KEY: ""
           XAI_API_KEY: ""
           OPENAI_API_KEY: ""
+          XIAOMI_API_KEY: ""
+          Z_AI_API_KEY: ""
           ANTIEK_OPERATOR_TOKEN: ""
         run: |
           python -m pytest tests/ -q -m "not integration" \
@@ -200,6 +202,9 @@ jobs:
           OPENROUTER_API_KEY: ""
           ANTHROPIC_API_KEY: ""
           OPENAI_API_KEY: ""
+          HERMES_API_KEY: ""
+          XIAOMI_API_KEY: ""
+          Z_AI_API_KEY: ""
         run: |
           python -m pytest services/html_projection/ services/antiek_format/ services/ingestion/ \
             -q -p no:cacheprovider
@@ -340,6 +345,14 @@ jobs:
         # disease it exists to kill). Named here — not just swept into the
         # blanket pytest run — so a keystone failure is unmissable. Hermetic
         # in-process runner; no `|| echo` swallow. See substrate/invariants/ON-RAMP.md.
+        env:
+          ANTHROPIC_API_KEY: ""
+          DEEPSEEK_API_KEY: ""
+          HERMES_API_KEY: ""
+          OPENAI_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+          XIAOMI_API_KEY: ""
+          Z_AI_API_KEY: ""
         run: |
           python -m pytest tests/test_invariant_registry_meta.py -q -p no:cacheprovider -p no:xdist
 
@@ -439,6 +452,8 @@ jobs:
           HERMES_API_KEY: ""
           XAI_API_KEY: ""
           OPENAI_API_KEY: ""
+          XIAOMI_API_KEY: ""
+          Z_AI_API_KEY: ""
         run: |
           python -m pytest compounding/benchmark/tests/ -q -m "not slow" -p no:cacheprovider
 
