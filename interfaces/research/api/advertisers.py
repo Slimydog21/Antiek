@@ -30,10 +30,10 @@ typed ``error.code``.
 
 from __future__ import annotations
 
-import duckdb
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from runtime.db_lock import connect_read
 from substrate.ad_inventory.advertiser_onboarding import (
     AdvertiserOnboardingError,
     AdvertiserRecord,
@@ -172,7 +172,7 @@ def register_advertiser_routes(app: FastAPI) -> None:
         status_code=201,
         tags=["advertisers"],
     )
-    async def post_application(
+    def post_application(
         req: SubmitApplicationRequest, request: Request,
     ) -> AdvertiserResponse:
         try:
@@ -194,7 +194,7 @@ def register_advertiser_routes(app: FastAPI) -> None:
         response_model=AdvertiserResponse,
         tags=["advertisers"],
     )
-    async def post_approve(
+    def post_approve(
         advertiser_id: str, req: ApproveRequest,
     ) -> AdvertiserResponse:
         try:
@@ -212,7 +212,7 @@ def register_advertiser_routes(app: FastAPI) -> None:
         response_model=AdvertiserResponse,
         tags=["advertisers"],
     )
-    async def post_reject(
+    def post_reject(
         advertiser_id: str, req: RejectRequest,
     ) -> AdvertiserResponse:
         try:
@@ -230,7 +230,7 @@ def register_advertiser_routes(app: FastAPI) -> None:
         response_model=AdvertiserResponse,
         tags=["advertisers"],
     )
-    async def post_activate(
+    def post_activate(
         advertiser_id: str, req: ActivateRequest,
     ) -> AdvertiserResponse:
         try:
@@ -248,7 +248,7 @@ def register_advertiser_routes(app: FastAPI) -> None:
         response_model=AdvertiserResponse,
         tags=["advertisers"],
     )
-    async def post_suspend(
+    def post_suspend(
         advertiser_id: str, req: SuspendRequest,
     ) -> AdvertiserResponse:
         try:
@@ -266,7 +266,7 @@ def register_advertiser_routes(app: FastAPI) -> None:
         response_model=AdvertiserResponse,
         tags=["advertisers"],
     )
-    async def post_churn(advertiser_id: str) -> AdvertiserResponse:
+    def post_churn(advertiser_id: str) -> AdvertiserResponse:
         try:
             record = _load_then_save(
                 churn_advertiser, advertiser_id=advertiser_id,
@@ -282,7 +282,7 @@ def register_advertiser_routes(app: FastAPI) -> None:
     )
     async def list_advertisers() -> AdvertiserListResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             registry = load_registry(con)
         finally:
@@ -303,7 +303,7 @@ def register_advertiser_routes(app: FastAPI) -> None:
     )
     async def list_serving() -> AdvertiserListResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             registry = load_registry(con)
         finally:
@@ -322,7 +322,7 @@ def register_advertiser_routes(app: FastAPI) -> None:
     )
     async def get_advertiser(advertiser_id: str) -> AdvertiserResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             registry = load_registry(con)
         finally:

@@ -117,7 +117,11 @@ export default function AISidecar() {
     try {
       setContextError(null);
       const [u, t] = await Promise.all([
-        apiFetch(`/billing/summary/__operator__/${period}`),
+        // `me` resolves server-side to the authenticated caller. This was
+        // hardcoded to `__operator__`, so every signed-in user's sidecar
+        // requested the OPERATOR's spend — and the endpoint served it,
+        // because `user_id` was an unchecked path parameter.
+        apiFetch(`/billing/summary/me/${period}`),
         apiFetch("/trajectory?limit=8"),
       ]);
       if (u?.ok) {

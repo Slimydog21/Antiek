@@ -112,6 +112,21 @@ def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
             "indexed_row_count": indexed_row_count,
             "resolved_kind": kind,
             "hybrid_ready": hybrid_ready,
+            # Both of the next two are CONSTANTS, not measurements, and are
+            # labelled here so a /health reader does not mistake them for
+            # probe results. Everything else in this dict is computed above.
+            #
+            # duckdb_is_sot is a design invariant: DuckDB is the source of
+            # truth and TurboPuffer is a derived index. Nothing at runtime can
+            # falsify it; it is asserted by construction.
+            #
+            # thought_partner_hybrid_wired is a STRUCTURAL claim — that
+            # _retrieve_thought_partner_context routes through
+            # resolve_reuse_substrate_kind / make_substrate_from_con. That is
+            # true today, but a literal cannot detect the wiring being removed,
+            # so the guarantee belongs in a lint over the call site rather than
+            # in a runtime probe. Until that lint exists this field reports an
+            # assumption, and saying so is better than implying it was checked.
             "thought_partner_hybrid_wired": True,
             "duckdb_is_sot": True,
             "production_default_mount": False,
@@ -129,8 +144,14 @@ def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
             "indexed_row_count": None,
             "resolved_kind": "brute_force",
             "hybrid_ready": False,
-            "thought_partner_hybrid_wired": True,
-            "duckdb_is_sot": True,
+            # The probe FAILED, so nothing here was verified. The booleans
+            # above resolve False because false is the safe answer to "is this
+            # feature live". These two used to resolve True on this path, which
+            # asserted two properties precisely when the code could not check
+            # either one — a /health field that says "yes" on its own failure
+            # branch is worse than no field. None means unknown.
+            "thought_partner_hybrid_wired": None,
+            "duckdb_is_sot": None,
             "production_default_mount": False,
             "error": f"{type(exc).__name__}: {exc}",
         }
@@ -404,14 +425,61 @@ class TurbopufferSubstrate:
         # Strong full verify for small exports; sampled verify for SERVABLE-scale
         # (vendor query limit / float32 drift otherwise false-fail at hundreds+ rows).
         sample_n = min(len(payload), 64 if len(payload) > 100 else len(payload))
-        verified = ns.query(rank_by=("id", "asc"), limit=max(1, sample_n),
-                            include_attributes=True,
-                            consistency={"level": "strong"}, timeout=60.0)
-        verified_payload = []
-        for row in getattr(verified, "rows", ()):
-            verified_payload.append({key: getattr(row, key) for key in
-                                     ("id", "vector", "text", "document_id", "source_tier",
-                                      "content_class")})
+        # Sample BOTH ENDS of the id space, not a prefix.
+        #
+        # This used to take the first `sample_n` rows by ("id", "asc") alone.
+        # A truncated write - the failure this verification exists to catch -
+        # lands the LOW ids and drops the tail, so a prefix sample is exactly
+        # the sample it can satisfy. Combined with the approx==0 tolerance
+        # below (vendor metadata genuinely lags at 0 after upsert), a
+        # half-written namespace could verify clean and promote.
+        #
+        # Splitting the budget across asc and desc is necessary but NOT
+        # sufficient on its own: a desc query returns the NAMESPACE's highest
+        # ids, and a truncated namespace still has a tail - just a shorter
+        # one. So the tail sample is also compared against the payload's
+        # maximum id below (`tail_reaches_end`). That is the assertion a
+        # partial write cannot satisfy, and it is what makes the approx==0
+        # lag tolerance safe to keep.
+        _COLS = ("id", "vector", "text", "document_id", "source_tier",
+                 "content_class")
+
+        def _sample(order: str, limit: int) -> list[dict[str, Any]]:
+            if limit <= 0:
+                return []
+            res = ns.query(rank_by=("id", order), limit=limit,
+                           include_attributes=True,
+                           consistency={"level": "strong"}, timeout=60.0)
+            return [{key: getattr(row, key) for key in _COLS}
+                    for row in getattr(res, "rows", ())]
+
+        if sample_n >= len(payload):
+            verified_payload = _sample("asc", max(1, sample_n))
+        else:
+            head_n = max(1, sample_n // 2)
+            tail_n = max(1, sample_n - head_n)
+            head = _sample("asc", head_n)
+            tail = _sample("desc", tail_n)
+            seen: set[str] = set()
+            verified_payload = []
+            for row in [*head, *tail]:
+                if row["id"] in seen:
+                    continue
+                seen.add(row["id"])
+                verified_payload.append(row)
+            # The decisive check: the namespace's highest id must be the
+            # payload's highest id. A prefix-truncated write returns a
+            # perfectly well-formed tail of its OWN rows and satisfies every
+            # count and digest check; only this comparison distinguishes
+            # "all rows present" from "the first N rows present".
+            expected_max_id = max(row["id"] for row in payload)
+            actual_max_id = max((row["id"] for row in tail), default=None)
+            if actual_max_id != expected_max_id:
+                raise RuntimeError(
+                    "staging namespace verification failed: truncated write — "
+                    f"highest id in namespace is {actual_max_id!r}, payload's "
+                    f"highest is {expected_max_id!r} over {len(payload)} rows"
+                )
         by_id = {row["id"]: row for row in payload}
         digest_ok = True
         vectors_ok = True
@@ -449,6 +517,9 @@ class TurbopufferSubstrate:
             count_ok = (len(verified_payload) == len(payload) and
                         approx == len(payload))
         else:
+            # Dedup across the two ends can legitimately shrink the sample
+            # when the namespace is small relative to the budget, so compare
+            # against what a COMPLETE namespace would have yielded.
             sample_ok = len(verified_payload) >= min(sample_n, len(payload))
             if approx is not None and 0 < int(approx) < len(payload):
                 for _attempt in range(10):
